@@ -63,7 +63,9 @@ export default function BeadLifecycleModal({ open, onClose, beadId }: BeadLifecy
     if (!open || !beadId) return
     const controller = new AbortController()
 
-    fetch(`/api/forge/events/page?bead=${encodeURIComponent(beadId)}&limit=200`, {
+    // Use `search` (searches message, bead_id, type) — the endpoint has no `bead` param.
+    // Reverse to chronological order since the API returns timestamp DESC.
+    fetch(`/api/forge/events/page?search=${encodeURIComponent(beadId)}&limit=200`, {
       credentials: 'include',
       signal: controller.signal,
     })
@@ -73,7 +75,8 @@ export default function BeadLifecycleModal({ open, onClose, beadId }: BeadLifecy
       })
       .then((data: { events?: LifecycleEvent[] }) => {
         if (!controller.signal.aborted) {
-          setFetched({ beadId, events: data.events ?? [], error: null })
+          const chronological = (data.events ?? []).slice().reverse()
+          setFetched({ beadId, events: chronological, error: null })
         }
       })
       .catch(err => {

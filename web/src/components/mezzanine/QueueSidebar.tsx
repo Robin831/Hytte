@@ -114,9 +114,10 @@ function AnvilSection({ group, onBeadClick, dragBeadId, dragOverBeadId, onDragSt
 
 interface QueueSidebarProps {
   onBeadClick?: (beadId: string) => void
+  hiddenAnvils?: Set<string>
 }
 
-export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
+export default function QueueSidebar({ onBeadClick, hiddenAnvils }: QueueSidebarProps) {
   const { t } = useTranslation('forge')
   const [beads, setBeads] = useState<QueueBead[]>([])
   const [loading, setLoading] = useState(true)
@@ -227,12 +228,11 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
       return
     }
 
-    // Optimistically reorder: swap priorities in local state
-    const draggedPriority = draggedBead.priority
+    // Optimistically update only the dragged bead's priority — matches single-bead API semantics.
+    // Updating both would create duplicate priorities until the next poll corrects them.
     const targetPriority = targetBead.priority
     setBeads(prev => prev.map(b => {
       if (b.bead_id === dragBeadId) return { ...b, priority: targetPriority }
-      if (b.bead_id === targetBeadId) return { ...b, priority: draggedPriority }
       return b
     }))
 
@@ -252,8 +252,9 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
     }
   }, [dragBeadId, beads])
 
-  const groups = groupByAnvil(beads)
-  const totalBeads = beads.length
+  const visibleBeads = hiddenAnvils?.size ? beads.filter(b => !hiddenAnvils.has(b.anvil)) : beads
+  const groups = groupByAnvil(visibleBeads)
+  const totalBeads = visibleBeads.length
   const errorMessage = errorKey ? String(t(errorKey)) : errorDetail
 
   // Announce brief status updates to screen readers after each poll

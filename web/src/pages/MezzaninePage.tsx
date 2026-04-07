@@ -224,7 +224,7 @@ export default function MezzaninePage() {
       }
       sidebar={
       <div ref={queueRef} className={focusedPanel === 'queue' ? 'ring-2 ring-amber-500/50 ring-inset rounded' : ''}>
-        <QueueSidebar onBeadClick={setSelectedBeadId} />
+        <QueueSidebar onBeadClick={setSelectedBeadId} hiddenAnvils={anvilFilter.hiddenAnvils} />
       </div>
     }>
       <div ref={panelContainerRef} className="flex flex-col gap-4 h-full">
@@ -244,7 +244,7 @@ export default function MezzaninePage() {
 
           <div ref={needsAttentionRef}>
             <NeedsAttentionPanel
-              stuck={status?.stuck ?? []}
+              stuck={(status?.stuck ?? []).filter(b => !anvilFilter.hasFilter || anvilFilter.isVisible(b.anvil))}
               showToast={showToast}
               onBeadClick={setSelectedBeadId}
               highlightBeadId={needsAttentionHighlightBeadId}

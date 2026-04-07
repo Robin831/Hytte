@@ -111,6 +111,7 @@ function WorkerDetailContent({ workerId }: { workerId: string }) {
   const [confirmKill, setConfirmKill] = useState(false)
   const [userScrolledUp, setUserScrolledUp] = useState(false)
   const [, setTick] = useState(0)
+  const [renderNow, setRenderNow] = useState(() => Date.now())
   const logContainerRef = useRef<HTMLDivElement>(null)
 
   const isActive = worker?.status === 'pending' || worker?.status === 'running'
@@ -118,7 +119,7 @@ function WorkerDetailContent({ workerId }: { workerId: string }) {
   // Tick for duration display
   useEffect(() => {
     if (!isActive) return
-    const interval = setInterval(() => setTick(n => n + 1), 1000)
+    const interval = setInterval(() => { setTick(n => n + 1); setRenderNow(Date.now()) }, 1000)
     return () => clearInterval(interval)
   }, [isActive])
 
@@ -168,9 +169,6 @@ function WorkerDetailContent({ workerId }: { workerId: string }) {
     durationMs: number
   }
 
-  // Capture render time once to avoid calling Date.now() impurely during render
-  const [renderNow] = useState(() => Date.now())
-
   const phaseTimeline: PhaseSpan[] = useMemo(() => {
     if (!worker) return []
     const phaseMap = new Map<string, { start: string; end: string | null }>()
@@ -211,17 +209,20 @@ function WorkerDetailContent({ workerId }: { workerId: string }) {
       .filter(p => phaseMap.has(p))
       .map(phase => {
         const span = phaseMap.get(phase)!
+        // Use completed_at as the end for open phases on a finished worker so the
+        // displayed duration matches durationMs and doesn't grow after completion.
+        const end = span.end ?? worker.completed_at ?? null
         const startMs = new Date(span.start).getTime()
-        // For open phases on a completed worker, use completed_at instead of now
         const fallbackEnd = worker.completed_at ? new Date(worker.completed_at).getTime() : renderNow
-        const endMs = span.end ? new Date(span.end).getTime() : fallbackEnd
+        const endMs = end ? new Date(end).getTime() : fallbackEnd
         return {
           phase,
           start: span.start,
-          end: span.end,
+          end,
           durationMs: Math.max(0, endMs - startMs),
         }
       })
+  // renderNow updates every second for active workers, keeping durations live
   }, [worker, events, renderNow])
 
   const currentPhaseIndex = worker?.phase ? PHASE_ORDER.indexOf(worker.phase) : -1
