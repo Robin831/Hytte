@@ -43,6 +43,7 @@ import ForgeSettingsPage from './pages/ForgeSettingsPage'
 import MezzaninePage from './pages/MezzaninePage'
 import ForgeCostsDashboardPage from './pages/ForgeCostsDashboardPage'
 import EventsPage from './pages/EventsPage'
+import IngotsPage from './pages/IngotsPage'
 import WorkerDetailPage from './pages/WorkerDetailPage'
 import WordfeudPage from './pages/WordfeudPage'
 import BudgetPage from './pages/BudgetPage'
@@ -471,6 +472,14 @@ function MainLayout() {
             element={
               <FeatureRoute requireAdmin>
                 <ForgeCostsDashboardPage />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/forge/mezzanine/ingots"
+            element={
+              <FeatureRoute requireAdmin>
+                <IngotsPage />
               </FeatureRoute>
             }
           />

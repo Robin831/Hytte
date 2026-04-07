@@ -725,6 +725,46 @@ func EventsPageHandler(db *DB) http.HandlerFunc {
 	}
 }
 
+// IngotsHandler returns paginated bead lifecycle data with aggregated metrics.
+// Query params: limit, offset, status, search, from, to.
+func IngotsHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+
+		const maxLimit = 500
+		limit := 50
+		if s := r.URL.Query().Get("limit"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				limit = n
+				if limit > maxLimit {
+					limit = maxLimit
+				}
+			}
+		}
+		offset := 0
+		if s := r.URL.Query().Get("offset"); s != "" {
+			if n, err := strconv.Atoi(s); err == nil && n >= 0 {
+				offset = n
+			}
+		}
+
+		status := r.URL.Query().Get("status")
+		search := r.URL.Query().Get("search")
+		from := r.URL.Query().Get("from")
+		to := r.URL.Query().Get("to")
+
+		result, err := db.Ingots(limit, offset, status, search, from, to)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load ingots")
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
 // CostsHandler returns aggregated token usage and cost for the given period.
 // Query param: period — "today" (default), "week", or "month".
 func CostsHandler(db *DB) http.HandlerFunc {
