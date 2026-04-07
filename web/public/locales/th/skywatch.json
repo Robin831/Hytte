@@ -36,6 +36,23 @@
     "magnitude": "\u0e04\u0e48\u0e32\u0e42\u0e0a\u0e15\u0e34\u0e1b\u0e23\u0e32\u0e01\u0e0f {{value}}",
     "elongation": "{{degrees}}\u00b0 \u0e08\u0e32\u0e01\u0e14\u0e27\u0e07\u0e2d\u0e32\u0e17\u0e34\u0e15\u0e22\u0e4c"
   },
+  "directions": {
+    "N": "ทิศเหนือ",
+    "NE": "ทิศตะวันออกเฉียงเหนือ",
+    "E": "ทิศตะวันออก",
+    "SE": "ทิศตะวันออกเฉียงใต้",
+    "S": "ทิศใต้",
+    "SW": "ทิศตะวันตกเฉียงใต้",
+    "W": "ทิศตะวันตก",
+    "NW": "ทิศตะวันตกเฉียงเหนือ"
+  },
+  "highlights": {
+    "title": "ไฮไลท์คืนนี้",
+    "moonNearPlanet": "ดวงจันทร์อยู่ใกล้{{planet}}คืนนี้ (ห่างกัน {{degrees}}°)",
+    "planetConjunction": "{{planet1}} และ {{planet2}} อยู่ใกล้กันคืนนี้ (ห่างกัน {{degrees}}°)",
+    "opposition": "{{planet}} อยู่ในตำแหน่งตรงข้าม — สว่างที่สุด",
+    "brightPlanet": "{{planet}} ส่องสว่างทาง{{direction}}คืนนี้"
+  },
   "sun": {
     "title": "\u0e14\u0e27\u0e07\u0e2d\u0e32\u0e17\u0e34\u0e15\u0e22\u0e4c",
     "sunrise": "\u0e1e\u0e23\u0e30\u0e2d\u0e32\u0e17\u0e34\u0e15\u0e22\u0e4c\u0e02\u0e36\u0e49\u0e19",

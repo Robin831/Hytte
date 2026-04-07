@@ -36,6 +36,23 @@
     "magnitude": "Mag {{value}}",
     "elongation": "{{degrees}}° from Sun"
   },
+  "directions": {
+    "N": "north",
+    "NE": "northeast",
+    "E": "east",
+    "SE": "southeast",
+    "S": "south",
+    "SW": "southwest",
+    "W": "west",
+    "NW": "northwest"
+  },
+  "highlights": {
+    "title": "Tonight's Highlights",
+    "moonNearPlanet": "The Moon is near {{planet}} tonight ({{degrees}}° apart)",
+    "planetConjunction": "{{planet1}} and {{planet2}} are close together tonight ({{degrees}}° apart)",
+    "opposition": "{{planet}} is at opposition — at its brightest",
+    "brightPlanet": "{{planet}} shines brightly in the {{direction}} tonight"
+  },
   "sun": {
     "title": "Sun",
     "sunrise": "Sunrise",

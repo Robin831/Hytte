@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Moon, Sun, Sunrise, Sunset, RefreshCw, Circle } from 'lucide-react'
+import { Moon, Sun, Sunrise, Sunset, RefreshCw, Circle, Sparkles } from 'lucide-react'
 import { formatDate as sharedFormatDate, formatTime as sharedFormatTime } from '../utils/formatDate'
 
 type PhaseKey = 'newMoon' | 'waxingCrescent' | 'firstQuarter' | 'waxingGibbous' | 'fullMoon' | 'waningGibbous' | 'lastQuarter' | 'waningCrescent'
@@ -27,6 +27,12 @@ interface SunData {
   civil_dusk?: string | null
 }
 
+interface HighlightData {
+  type: string
+  key: string
+  params: Record<string, string>
+}
+
 interface PlanetData {
   name: string
   altitude: number
@@ -46,6 +52,7 @@ interface NowResponse {
   moon: MoonData
   sun: SunData
   planets: PlanetData[]
+  highlights: HighlightData[]
 }
 
 interface CalendarDay {
@@ -240,6 +247,35 @@ function findNextPhase(calendar: CalendarDay[], targetPhases: string[]): Calenda
     }
   }
   return null
+}
+
+const HIGHLIGHT_STYLES: Record<string, { bg: string; border: string; text: string }> = {
+  moon_conjunction: { bg: 'from-indigo-950/40 to-gray-900/50', border: 'border-indigo-800/30', text: 'text-indigo-200' },
+  planet_conjunction: { bg: 'from-purple-950/40 to-gray-900/50', border: 'border-purple-800/30', text: 'text-purple-200' },
+  opposition: { bg: 'from-amber-950/40 to-gray-900/50', border: 'border-amber-800/30', text: 'text-amber-200' },
+  bright_planet: { bg: 'from-yellow-950/40 to-gray-900/50', border: 'border-yellow-800/30', text: 'text-yellow-200' },
+}
+
+function resolveHighlightText(h: HighlightData, t: TFunction<readonly ['skywatch', 'common']>): string {
+  const params: Record<string, string> = { ...h.params }
+  // Resolve planet name keys to translated names.
+  if (params.planetKey) {
+    params.planet = t(`skywatch:planets.${params.planetKey}` as never)
+    delete params.planetKey
+  }
+  if (params.planet1Key) {
+    params.planet1 = t(`skywatch:planets.${params.planet1Key}` as never)
+    delete params.planet1Key
+  }
+  if (params.planet2Key) {
+    params.planet2 = t(`skywatch:planets.${params.planet2Key}` as never)
+    delete params.planet2Key
+  }
+  if (params.directionKey) {
+    params.direction = t(`skywatch:directions.${params.directionKey}` as never)
+    delete params.directionKey
+  }
+  return t(`skywatch:${h.key}` as never, params)
 }
 
 function formatDayLength(hours: number, t: TFunction<readonly ['skywatch', 'common']>): string {
@@ -505,11 +541,38 @@ export default function SkyWatchPage() {
                           <span>{t('skywatch:planets.altitude', { degrees: planet.altitude })}</span>
                         )}
                         {planet.altitude > 0 && (
-                          <span>{planet.direction}</span>
+                          <span>{t(`skywatch:directions.${planet.direction}` as never)}</span>
                         )}
                         <span>{t('skywatch:planets.elongation', { degrees: planet.elongation })}</span>
                       </div>
                     </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Tonight's Highlights */}
+        {now.highlights && now.highlights.length > 0 && (
+          <div className="bg-gray-900/50 rounded-2xl p-4 sm:p-5 border border-gray-800/50">
+            <h3 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+              <Sparkles size={16} />
+              {t('skywatch:highlights.title')}
+            </h3>
+            <div className="space-y-2">
+              {now.highlights.map((highlight) => {
+                const styles = HIGHLIGHT_STYLES[highlight.type] || HIGHLIGHT_STYLES.bright_planet
+                const sortedParamsEntries = Object.entries(highlight.params).sort(([a], [b]) => a.localeCompare(b))
+                const stableKey = `${highlight.type}-${highlight.key}-${JSON.stringify(sortedParamsEntries)}`
+                return (
+                  <div
+                    key={stableKey}
+                    className={`bg-gradient-to-r ${styles.bg} rounded-xl px-4 py-3 border ${styles.border}`}
+                  >
+                    <p className={`text-sm ${styles.text}`}>
+                      {resolveHighlightText(highlight, t)}
+                    </p>
                   </div>
                 )
               })}

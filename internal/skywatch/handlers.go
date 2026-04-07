@@ -10,11 +10,12 @@ import (
 
 // NowResponse is the JSON response for GET /api/skywatch/now.
 type NowResponse struct {
-	Timestamp string       `json:"timestamp"`
-	Location  Location     `json:"location"`
-	Moon      MoonInfo     `json:"moon"`
-	Sun       SunTimes     `json:"sun"`
-	Planets   []PlanetInfo `json:"planets"`
+	Timestamp  string       `json:"timestamp"`
+	Location   Location     `json:"location"`
+	Moon       MoonInfo     `json:"moon"`
+	Sun        SunTimes     `json:"sun"`
+	Planets    []PlanetInfo `json:"planets"`
+	Highlights []Highlight  `json:"highlights"`
 }
 
 // MoonCalendarDay is one entry in the moon phase calendar.
@@ -96,12 +97,20 @@ func NowHandler() http.HandlerFunc {
 			t = time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 12, 0, 0, 0, t.Location())
 		}
 
+		// Compute planet positions once to avoid redundant rise/set calculations.
+		planets := GetPlanetPositions(t, lat, lon)
+		highlights := GetTonightHighlights(t, lat, lon, planets)
+		if highlights == nil {
+			highlights = []Highlight{}
+		}
+
 		resp := NowResponse{
-			Timestamp: t.Format(time.RFC3339),
-			Location:  Location{Lat: lat, Lon: lon},
-			Moon:      GetMoonPhase(t, lat, lon),
-			Sun:       GetSunTimes(t, lat, lon),
-			Planets:   GetPlanetPositions(t, lat, lon),
+			Timestamp:  t.Format(time.RFC3339),
+			Location:   Location{Lat: lat, Lon: lon},
+			Moon:       GetMoonPhase(t, lat, lon),
+			Sun:        GetSunTimes(t, lat, lon),
+			Planets:    planets,
+			Highlights: highlights,
 		}
 		writeJSON(w, http.StatusOK, resp)
 	}
