@@ -294,6 +294,12 @@
     "title": "Mezzanine",
     "sidebarPlaceholder": "Ko-sidepanel vises her",
     "floorPlaceholder": "Arbeiderpaneler vises her",
+    "idle": "Ledig",
+    "idleSlot": "Ledig arbeiderslot {{index}}",
+    "noWorkers": "Ingen aktive arbeidere",
+    "workerPanel": {
+      "anvil": "Ambolt"
+    },
     "statusBar": {
       "loading": "Laster status...",
       "unavailable": "Status utilgjengelig",
