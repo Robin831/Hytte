@@ -3,15 +3,9 @@ import type { ComponentType } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import { formatDate, formatTime } from '../utils/formatDate'
-import {
-  ClockWeatherWidget,
-  NetatmoWidget,
-  BusDepartureWidget,
-  CalendarWidget,
-  WorkHoursWidget,
-  KidsSummaryWidget,
-  MoonPhaseWidget,
-} from '../components/today'
+import ParentTodayView from '../components/today/ParentTodayView'
+import KidTodayView from '../components/today/KidTodayView'
+import GuestTodayView from '../components/today/GuestTodayView'
 
 export type FamilyRole = 'parent' | 'child' | 'guest'
 
@@ -24,75 +18,10 @@ function useFamilyRole(): FamilyRole | null {
   return 'guest'
 }
 
-function ParentWidgets() {
-  const { t } = useTranslation('today')
-  return (
-    <>
-      <div className="bg-gray-800 rounded-xl p-4 col-span-2">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.weather')}</h2>
-        <ClockWeatherWidget />
-        <div className="mt-2"><NetatmoWidget /></div>
-      </div>
-      <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.calendar')}</h2>
-        <CalendarWidget />
-      </div>
-      <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.workHoursTitle')}</h2>
-        <WorkHoursWidget />
-      </div>
-      <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.transport')}</h2>
-        <BusDepartureWidget />
-      </div>
-      <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.skywatch')}</h2>
-        <MoonPhaseWidget />
-      </div>
-    </>
-  )
-}
-
-function KidWidgets() {
-  const { t } = useTranslation('today')
-  return (
-    <>
-      <div className="bg-gray-800 rounded-xl p-4 col-span-2">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.stars')}</h2>
-        <KidsSummaryWidget />
-      </div>
-      <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.calendar')}</h2>
-        <CalendarWidget />
-      </div>
-      <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.skywatch')}</h2>
-        <MoonPhaseWidget />
-      </div>
-    </>
-  )
-}
-
-function GuestWidgets() {
-  const { t } = useTranslation('today')
-  return (
-    <>
-      <div className="bg-gray-800 rounded-xl p-4 col-span-2">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.weather')}</h2>
-        <ClockWeatherWidget />
-      </div>
-      <div className="bg-gray-800 rounded-xl p-4 col-span-2">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.calendar')}</h2>
-        <CalendarWidget />
-      </div>
-    </>
-  )
-}
-
 const widgetsByRole: Record<FamilyRole, ComponentType> = {
-  parent: ParentWidgets,
-  child: KidWidgets,
-  guest: GuestWidgets,
+  parent: ParentTodayView,
+  child: KidTodayView,
+  guest: GuestTodayView,
 }
 
 export default function TodayView() {

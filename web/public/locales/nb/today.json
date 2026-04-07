@@ -46,6 +46,20 @@
     "pendingChores_other": "{{count}} oppgaver \u00e5 gj\u00f8re",
     "allDone": "Alt er gjort!"
   },
+  "quickActions": {
+    "title": "Hurtighandlinger",
+    "approveChores": "Godkjenn oppgaver",
+    "checkSchedule": "Sjekk timeplan",
+    "busTimes": "Busstider"
+  },
+  "streak": {
+    "days_one": "{{count}} dag i strekk",
+    "days_other": "{{count}} dager i strekk"
+  },
+  "guest": {
+    "loginPrompt": "Logg inn for \u00e5 se ditt personlige dashbord",
+    "signIn": "Logg inn med Google"
+  },
   "moon": {
     "loading": "Laster m\u00e5ne…",
     "phase": {
