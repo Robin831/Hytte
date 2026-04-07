@@ -134,25 +134,17 @@ func (s *AuroraService) fetchCached(key, url string) ([]byte, error) {
 
 		resp, err := s.client.Do(req)
 		if err != nil {
-			s.mu.RLock()
-			if c, ok := s.cache[key]; ok {
-				data := c.data
-				s.mu.RUnlock()
+			if data := s.fallbackStaleCache(key); data != nil {
 				return data, nil
 			}
-			s.mu.RUnlock()
 			return nil, err
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			s.mu.RLock()
-			if c, ok := s.cache[key]; ok {
-				data := c.data
-				s.mu.RUnlock()
+			if data := s.fallbackStaleCache(key); data != nil {
 				return data, nil
 			}
-			s.mu.RUnlock()
 			return nil, fmt.Errorf("NOAA API returned status %d", resp.StatusCode)
 		}
 
@@ -176,6 +168,18 @@ func (s *AuroraService) fetchCached(key, url string) ([]byte, error) {
 		return nil, err
 	}
 	return val.([]byte), nil
+}
+
+// fallbackStaleCache returns stale cached data if available, extending the TTL
+// to avoid hammering a failing upstream on every subsequent request.
+func (s *AuroraService) fallbackStaleCache(key string) []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if c, ok := s.cache[key]; ok {
+		c.expires = time.Now().Add(auroraCacheDuration)
+		return c.data
+	}
+	return nil
 }
 
 // parseKpData parses NOAA Kp JSON arrays. The first row is a header; skip it.
@@ -242,16 +246,25 @@ func buildAuroraForecast(observed, forecasted []KpEntry, lat, lon float64) *Auro
 		currentKp = &last
 	}
 
-	// Tonight's forecast window: 18:00 today – 06:00 tomorrow.
-	now := time.Now()
-	tonightStart := time.Date(now.Year(), now.Month(), now.Day(), 18, 0, 0, 0, time.UTC)
+	// Tonight's forecast window: 18:00 – 06:00 in observer's approximate local time.
+	// Approximate timezone from longitude (1 hour per 15 degrees).
+	utcNow := time.Now().UTC()
+	offsetSec := int(math.Round(lon/15)) * 3600
+	localZone := time.FixedZone("obs", offsetSec)
+	localNow := utcNow.In(localZone)
+
+	tonightStart := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 18, 0, 0, 0, localZone)
 	tomorrowMorning := tonightStart.Add(12 * time.Hour)
 
-	// If it's already past midnight UTC, shift window back.
-	if now.UTC().Hour() < 6 {
+	// If it's already past midnight local, shift window back.
+	if localNow.Hour() < 6 {
 		tonightStart = tonightStart.Add(-24 * time.Hour)
 		tomorrowMorning = tomorrowMorning.Add(-24 * time.Hour)
 	}
+
+	// Convert window to UTC for comparison with NOAA timestamps.
+	tonightStart = tonightStart.UTC()
+	tomorrowMorning = tomorrowMorning.UTC()
 
 	var maxKp float64
 	var maxKpSet bool
@@ -276,7 +289,7 @@ func buildAuroraForecast(observed, forecasted []KpEntry, lat, lon float64) *Auro
 
 	// Use current observed Kp if we're in the viewing window and have no forecast.
 	if !maxKpSet && currentKp != nil {
-		h := now.UTC().Hour()
+		h := localNow.Hour()
 		if h >= 18 || h < 6 {
 			maxKp = *currentKp
 			maxKpSet = true

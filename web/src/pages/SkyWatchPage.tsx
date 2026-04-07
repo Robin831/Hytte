@@ -394,31 +394,35 @@ export default function SkyWatchPage() {
         setCalendar(calData)
 
         // Aurora fetch is non-critical — don't block the page on failure.
-        try {
-          const auroraRes = await fetch('/api/skywatch/aurora', { credentials: 'include', signal })
-          if (auroraRes.ok) {
-            const auroraData = await auroraRes.json() as AuroraData
-            setAurora(auroraData)
+        if (!signal.aborted) {
+          try {
+            const auroraRes = await fetch('/api/skywatch/aurora', { credentials: 'include', signal })
+            if (auroraRes.ok) {
+              const auroraData = await auroraRes.json() as AuroraData
+              setAurora(auroraData)
+            }
+          } catch (e) {
+            if (e instanceof DOMException && e.name === 'AbortError') throw e
           }
-        } catch {
-          // Non-critical — skip aurora card
         }
 
         // Fetch yesterday's sun data for day length comparison
-        try {
-          const yesterday = new Date()
-          yesterday.setDate(yesterday.getDate() - 1)
-          const yDate = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
-          const yRes = await fetch(
-            `/api/skywatch/now?lat=${nowData.location.lat}&lon=${nowData.location.lon}&date=${yDate}`,
-            { credentials: 'include', signal }
-          )
-          if (yRes.ok) {
-            const yData = await yRes.json() as NowResponse
-            setYesterdayLength(yData.sun.day_length_hours)
+        if (!signal.aborted) {
+          try {
+            const yesterday = new Date()
+            yesterday.setDate(yesterday.getDate() - 1)
+            const yDate = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
+            const yRes = await fetch(
+              `/api/skywatch/now?lat=${nowData.location.lat}&lon=${nowData.location.lon}&date=${yDate}`,
+              { credentials: 'include', signal }
+            )
+            if (yRes.ok) {
+              const yData = await yRes.json() as NowResponse
+              setYesterdayLength(yData.sun.day_length_hours)
+            }
+          } catch (e) {
+            if (e instanceof DOMException && e.name === 'AbortError') throw e
           }
-        } catch {
-          // Non-critical — just skip the comparison
         }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
