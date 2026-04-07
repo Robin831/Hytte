@@ -69,7 +69,10 @@
     "autoAnalyze": "Auto-analyze workouts on upload",
     "autoAnalyzeDescription": "Automatically analyze new workouts with Claude when they are uploaded",
     "enableAutoAnalyze": "Enable auto-analyze",
-    "disableAutoAnalyze": "Disable auto-analyze"
+    "disableAutoAnalyze": "Disable auto-analyze",
+    "strideCustomPrompt": "Custom Stride Prompt",
+    "strideCustomPromptDescription": "Persistent instructions appended to all Stride plan generations. Unlike per-plan Coach Notes, these apply to every generation.",
+    "strideCustomPromptPlaceholder": "e.g. I prefer morning runs. Keep long runs under 2 hours."
   },
   "goalRace": {
     "heading": "Goal Race",

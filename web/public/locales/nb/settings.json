@@ -69,7 +69,10 @@
     "autoAnalyze": "Analyser automatisk ved opplasting",
     "autoAnalyzeDescription": "Analyser nye treningsøkter automatisk med Claude når de lastes opp",
     "enableAutoAnalyze": "Aktiver automatisk analyse",
-    "disableAutoAnalyze": "Deaktiver automatisk analyse"
+    "disableAutoAnalyze": "Deaktiver automatisk analyse",
+    "strideCustomPrompt": "Egendefinert Stride-prompt",
+    "strideCustomPromptDescription": "Faste instruksjoner som legges til alle Stride-plangenereringer. I motsetning til Coach Notes per plan, gjelder disse for hver generering.",
+    "strideCustomPromptPlaceholder": "f.eks. Jeg foretrekker morgenløp. Hold lange løp under 2 timer."
   },
   "goalRace": {
     "heading": "Målrenn",
