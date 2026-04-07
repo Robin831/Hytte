@@ -294,6 +294,11 @@
     "title": "Mezzanine",
     "sidebarPlaceholder": "Ko-sidepanel vises her",
     "floorPlaceholder": "Arbeiderpaneler vises her",
+    "queueSidebar": {
+      "title": "Kø",
+      "loading": "Laster kø...",
+      "unavailable": "Kø utilgjengelig"
+    },
     "idle": "Ledig",
     "idleSlot": "Ledig arbeiderslot {{index}}",
     "noWorkers": "Ingen aktive arbeidere",

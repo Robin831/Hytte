@@ -294,6 +294,11 @@
     "title": "Mezzanine",
     "sidebarPlaceholder": "แถบคิวจะแสดงที่นี่",
     "floorPlaceholder": "แผงงาน Worker จะแสดงที่นี่",
+    "queueSidebar": {
+      "title": "คิว",
+      "loading": "กำลังโหลดคิว...",
+      "unavailable": "คิวไม่พร้อมใช้งาน"
+    },
     "idle": "ว่าง",
     "idleSlot": "ช่อง Worker ว่าง {{index}}",
     "noWorkers": "ไม่มี Worker ที่ทำงานอยู่",
