@@ -54,7 +54,7 @@
   },
   "streak": {
     "days_one": "{{count}} day streak",
-    "days_other": "{{count}} day streak"
+    "days_other": "{{count}} days streak"
   },
   "guest": {
     "loginPrompt": "Sign in to see your personalized dashboard",

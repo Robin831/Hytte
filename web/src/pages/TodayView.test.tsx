@@ -43,17 +43,19 @@ type FamilyStatus = { is_parent: boolean; is_child: boolean } | null
 interface MockAuthState {
   user: object | null
   familyStatus: FamilyStatus
+  hasFeature: (feature: string) => boolean
 }
 
-const authState: MockAuthState = { user: null, familyStatus: null }
+const authState: MockAuthState = { user: null, familyStatus: null, hasFeature: () => false }
 
 vi.mock('../auth', () => ({
   useAuth: () => authState,
 }))
 
-function setAuth(user: object | null, familyStatus: FamilyStatus) {
+function setAuth(user: object | null, familyStatus: FamilyStatus, hasFeature: (f: string) => boolean = () => false) {
   authState.user = user
   authState.familyStatus = familyStatus
+  authState.hasFeature = hasFeature
 }
 
 function renderPage() {
