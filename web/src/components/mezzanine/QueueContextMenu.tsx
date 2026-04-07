@@ -33,7 +33,7 @@ export default function QueueContextMenu({
     onActionCompleteRef.current = onActionComplete
   })
 
-  const { acting, handleAction } = useBeadActions({ showToast })
+  const { acting } = useBeadActions({ showToast })
 
   const isActing = !!acting[beadId] || tagging
 
@@ -162,19 +162,21 @@ export default function QueueContextMenu({
     setConfirmAction('dismiss')
   }
 
+  const showQueueActionUnavailable = (action: 'runNow' | 'dismiss') => {
+    showToast(
+      action === 'runNow'
+        ? 'Run Now is not available for queue items yet.'
+        : 'Dismiss is not available for queue items yet.',
+      'error'
+    )
+  }
+
   const executeConfirmedAction = async () => {
     if (!confirmAction) return
     const action = confirmAction
     setConfirmAction(null)
-    let success: boolean
-    if (action === 'runNow') {
-      success = await handleAction('forceSmith', beadId)
-    } else {
-      success = await handleAction('dismiss', beadId)
-    }
-    if (success) {
-      onActionCompleteRef.current?.()
-    }
+
+    showQueueActionUnavailable(action)
   }
 
   const menuItems = [
