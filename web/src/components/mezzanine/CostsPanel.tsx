@@ -10,7 +10,6 @@ import {
   Area,
   Bar,
   XAxis,
-  YAxis,
   Tooltip,
 } from 'recharts'
 
@@ -60,7 +59,7 @@ export default function CostsPanel() {
         if (trendRes.ok) { setTrend((await trendRes.json()) as DailyCostEntry[]); ok = true } else { setTrend([]) }
         if (anvilRes.ok) { setAnvilCosts((await anvilRes.json()) as AnvilCost[]); ok = true } else { setAnvilCosts([]) }
         if (!ok) setFailed(true)
-      } catch (err) {
+      } catch {
         if (controller.signal.aborted) return
         setTodayCosts(null)
         setTrend([])
