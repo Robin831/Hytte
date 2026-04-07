@@ -34,3 +34,12 @@ export function formatDateTime(date: Date | string, options?: Intl.DateTimeForma
 export function formatNumber(n: number, options?: Intl.NumberFormatOptions): string {
   return n.toLocaleString(i18n.language, options)
 }
+
+/** Returns local date as YYYY-MM-DD (avoids UTC drift from toISOString). */
+export function toLocalDateString(date?: Date): string {
+  const d = date ?? new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
