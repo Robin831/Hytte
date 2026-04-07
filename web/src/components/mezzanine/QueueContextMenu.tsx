@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { MoreVertical, Play, MessageCircle, Tag, XCircle } from 'lucide-react'
 import ConfirmDialog from '../ConfirmDialog'
-import { useBeadActions } from '../../hooks/useBeadActions'
 
 interface QueueContextMenuProps {
   beadId: string
@@ -28,9 +27,9 @@ export default function QueueContextMenu({
   const btnRef = useRef<HTMLButtonElement>(null)
   const portalRef = useRef<HTMLDivElement>(null)
 
-  const { acting } = useBeadActions({ showToast })
+  const [acting, setActing] = useState(false)
 
-  const isActing = !!acting[beadId] || tagging
+  const isActing = acting || tagging
 
   const openMenu = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
@@ -40,10 +39,12 @@ export default function QueueContextMenu({
     setMenuOpen(true)
   }, [])
 
-  const closeMenu = useCallback(() => {
+  const closeMenu = useCallback((skipFocusRestore = false) => {
     setMenuOpen(false)
     setDropdownPos(null)
-    requestAnimationFrame(() => btnRef.current?.focus())
+    if (!skipFocusRestore) {
+      requestAnimationFrame(() => btnRef.current?.focus())
+    }
   }, [])
 
   // Focus first menu item when menu opens
@@ -116,7 +117,7 @@ export default function QueueContextMenu({
   }, [closeMenu])
 
   const handleRunNow = () => {
-    closeMenu()
+    closeMenu(true)
     setConfirmAction('runNow')
   }
 
@@ -153,25 +154,38 @@ export default function QueueContextMenu({
   }
 
   const handleDismiss = () => {
-    closeMenu()
+    closeMenu(true)
     setConfirmAction('dismiss')
-  }
-
-  const showQueueActionUnavailable = (action: 'runNow' | 'dismiss') => {
-    showToast(
-      action === 'runNow'
-        ? 'Run Now is not available for queue items yet.'
-        : 'Dismiss is not available for queue items yet.',
-      'error'
-    )
   }
 
   const executeConfirmedAction = async () => {
     if (!confirmAction) return
     const action = confirmAction
     setConfirmAction(null)
+    requestAnimationFrame(() => btnRef.current?.focus())
 
-    showQueueActionUnavailable(action)
+    const endpoint = action === 'runNow' ? 'run-now' : 'dismiss'
+    setActing(true)
+    try {
+      const res = await fetch(
+        `/api/forge/beads/${encodeURIComponent(beadId)}/${endpoint}`,
+        { method: 'POST', credentials: 'include' }
+      )
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
+      } else {
+        const key = action === 'runNow'
+          ? 'mezzanine.pipeline.queueMenu.runNowSuccess'
+          : 'mezzanine.pipeline.queueMenu.dismissSuccess'
+        showToast(t(key, { id: beadId }), 'success')
+        onActionComplete?.()
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
+    } finally {
+      setActing(false)
+    }
   }
 
   const menuItems = [
@@ -234,7 +248,7 @@ export default function QueueContextMenu({
         message={t('mezzanine.pipeline.queueMenu.runNowConfirmMessage', { id: beadId })}
         confirmLabel={t('mezzanine.pipeline.queueMenu.runNow')}
         onConfirm={() => void executeConfirmedAction()}
-        onCancel={() => setConfirmAction(null)}
+        onCancel={() => { setConfirmAction(null); requestAnimationFrame(() => btnRef.current?.focus()) }}
       />
 
       <ConfirmDialog
@@ -244,7 +258,7 @@ export default function QueueContextMenu({
         confirmLabel={t('attention.dismiss')}
         destructive
         onConfirm={() => void executeConfirmedAction()}
-        onCancel={() => setConfirmAction(null)}
+        onCancel={() => { setConfirmAction(null); requestAnimationFrame(() => btnRef.current?.focus()) }}
       />
     </>
   )
