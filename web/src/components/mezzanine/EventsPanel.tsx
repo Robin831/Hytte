@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Filter } from 'lucide-react'
 import type { WorkerEvent } from '../LiveActivity'
+import { formatTime } from '../../utils/formatDate'
 
 type EventFilter = 'all' | 'errors' | 'prs' | string
 
@@ -45,7 +46,7 @@ const levelDotStyles: Record<string, string> = {
 const MAX_EVENTS = 100
 
 export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
-  const { t, i18n } = useTranslation('forge')
+  const { t } = useTranslation('forge')
   const [events, setEvents] = useState<WorkerEvent[]>([])
   const [filter, setFilter] = useState<EventFilter>('all')
   const lastSeenIdRef = useRef(0)
@@ -61,11 +62,16 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
   }, [])
 
   useEffect(() => {
+    const abortController = new AbortController()
+    const pollingInFlightRef = { current: false }
+
     function startPolling() {
       if (fallbackActiveRef.current) return
       fallbackActiveRef.current = true
       pollingRef.current = setInterval(() => {
-        fetch('/api/forge/events?limit=50', { credentials: 'include' })
+        if (pollingInFlightRef.current) return
+        pollingInFlightRef.current = true
+        fetch('/api/forge/events?limit=50', { credentials: 'include', signal: abortController.signal })
           .then(res => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
           .then((data: unknown) => {
             if (!Array.isArray(data) || data.length === 0) return
@@ -75,7 +81,11 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
             lastSeenIdRef.current = sorted[sorted.length - 1].id
             appendEvents(sorted.reverse())
           })
-          .catch(() => {})
+          .catch(err => {
+            if (err instanceof DOMException && err.name === 'AbortError') return
+            console.warn('EventsPanel: polling fetch failed', err)
+          })
+          .finally(() => { pollingInFlightRef.current = false })
       }, 3000)
     }
 
@@ -93,17 +103,19 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
           // ignore unparseable SSE data
         }
       }
-      es.onerror = () => {
+      es.onerror = (err) => {
+        console.warn('EventsPanel: SSE connection error, falling back to polling', err)
         es.close()
         esRef.current = null
         startPolling()
       }
-    } catch {
+    } catch (err) {
+      console.warn('EventsPanel: SSE not available, falling back to polling', err)
       startPolling()
     }
 
-    // Also do an initial fetch to populate existing events
-    fetch('/api/forge/events?limit=50', { credentials: 'include' })
+    // Initial fetch to populate existing events
+    fetch('/api/forge/events?limit=50', { credentials: 'include', signal: abortController.signal })
       .then(res => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
       .then((data: unknown) => {
         if (!Array.isArray(data) || data.length === 0) return
@@ -113,9 +125,13 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
         }
         setEvents(sorted.slice(0, MAX_EVENTS))
       })
-      .catch(() => {})
+      .catch(err => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        console.warn('EventsPanel: initial fetch failed', err)
+      })
 
     return () => {
+      abortController.abort()
       esRef.current?.close()
       esRef.current = null
       fallbackActiveRef.current = false
@@ -146,17 +162,6 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
     // per-anvil filter
     return events.filter(e => e.anvil === filter)
   }, [events, filter])
-
-  const formatTime = useCallback((timestamp: string) => {
-    try {
-      return new Intl.DateTimeFormat(i18n.language, {
-        hour: '2-digit',
-        minute: '2-digit',
-      }).format(new Date(timestamp))
-    } catch {
-      return timestamp
-    }
-  }, [i18n.language])
 
   return (
     <div className="flex flex-col rounded-lg border border-gray-700/50 bg-gray-900/60 overflow-hidden">
@@ -210,7 +215,7 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
                         <span className="text-xs text-gray-500 tabular-nums shrink-0">
-                          {formatTime(event.timestamp)}
+                          {formatTime(event.timestamp, { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         <span className="text-xs font-medium text-gray-400 shrink-0">
                           {event.type}
