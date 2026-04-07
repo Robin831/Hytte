@@ -320,6 +320,18 @@
       "workers": "Workers",
       "dailyCost": "ค่าใช้จ่ายวันนี้",
       "lastPoll": "ตรวจสอบล่าสุด"
+    },
+    "pipeline": {
+      "title": "ไปป์ไลน์",
+      "stages": {
+        "queue": "คิว",
+        "schematic": "แบบแปลน",
+        "smith": "สมิธ",
+        "temper": "ทดสอบ",
+        "warden": "ตรวจสอบ",
+        "pr": "PR",
+        "merged": "รวมแล้ว"
+      }
     }
   }
 }

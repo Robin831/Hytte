@@ -320,6 +320,18 @@
       "workers": "Arbeidere",
       "dailyCost": "Dagskostnad",
       "lastPoll": "Siste sjekk"
+    },
+    "pipeline": {
+      "title": "Pipeline",
+      "stages": {
+        "queue": "Kø",
+        "schematic": "Skjema",
+        "smith": "Smed",
+        "temper": "Herding",
+        "warden": "Vokter",
+        "pr": "PR",
+        "merged": "Slått sammen"
+      }
     }
   }
 }
