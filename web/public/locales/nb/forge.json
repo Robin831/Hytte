@@ -225,7 +225,8 @@
     "colCost": "Kostnad",
     "colInput": "Input",
     "colOutput": "Output",
-    "colCacheRead": "Cache-lesing"
+    "colCacheRead": "Cache-lesing",
+    "backToMezzanine": "Tilbake til Mezzanine"
   },
   "actions": {
     "refresh": "Oppdater",

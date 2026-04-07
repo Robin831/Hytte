@@ -225,7 +225,8 @@
     "colCost": "ค่าใช้จ่าย",
     "colInput": "อินพุต",
     "colOutput": "เอาต์พุต",
-    "colCacheRead": "อ่านแคช"
+    "colCacheRead": "อ่านแคช",
+    "backToMezzanine": "กลับไปที่ Mezzanine"
   },
   "actions": {
     "refresh": "รีเฟรช",

@@ -225,7 +225,8 @@
     "colCost": "Cost",
     "colInput": "Input",
     "colOutput": "Output",
-    "colCacheRead": "Cache Read"
+    "colCacheRead": "Cache Read",
+    "backToMezzanine": "Back to Mezzanine"
   },
   "actions": {
     "refresh": "Refresh",

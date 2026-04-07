@@ -13,7 +13,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
 } from 'recharts'
 
 interface CostSummary {
@@ -47,21 +46,11 @@ interface BeadCost {
   cache_write: number
 }
 
-interface AnvilDailyCost {
-  date: string
-  [anvil: string]: number | string
+interface AnvilBarEntry {
+  anvil: string
+  cost: number
+  beads: number
 }
-
-const ANVIL_COLORS = [
-  '#818cf8', // indigo
-  '#34d399', // emerald
-  '#f97316', // orange
-  '#f472b6', // pink
-  '#38bdf8', // sky
-  '#a78bfa', // violet
-  '#fbbf24', // amber
-  '#4ade80', // green
-]
 
 export default function ForgeCostsDashboardPage() {
   const { t } = useTranslation('forge')
@@ -87,26 +76,24 @@ export default function ForgeCostsDashboardPage() {
         ])
         if (controller.signal.aborted) return
         let ok = false
-        if (todayRes.status === 'fulfilled' && todayRes.value.ok) {
-          setTodayCosts((await todayRes.value.json()) as CostSummary)
-          ok = true
+        const safeJson = async <T,>(res: PromiseSettledResult<Response>): Promise<T | null> => {
+          if (res.status !== 'fulfilled' || !res.value.ok) return null
+          try {
+            return (await res.value.json()) as T
+          } catch {
+            return null
+          }
         }
-        if (monthRes.status === 'fulfilled' && monthRes.value.ok) {
-          setMonthCosts((await monthRes.value.json()) as CostSummary)
-          ok = true
-        }
-        if (trendRes.status === 'fulfilled' && trendRes.value.ok) {
-          setTrend((await trendRes.value.json()) as DailyCostEntry[])
-          ok = true
-        }
-        if (anvilRes.status === 'fulfilled' && anvilRes.value.ok) {
-          setAnvilCosts((await anvilRes.value.json()) as AnvilCost[])
-          ok = true
-        }
-        if (beadsRes.status === 'fulfilled' && beadsRes.value.ok) {
-          setTopBeads((await beadsRes.value.json()) as BeadCost[])
-          ok = true
-        }
+        const todayData = await safeJson<CostSummary>(todayRes)
+        if (todayData) { setTodayCosts(todayData); ok = true }
+        const monthData = await safeJson<CostSummary>(monthRes)
+        if (monthData) { setMonthCosts(monthData); ok = true }
+        const trendData = await safeJson<DailyCostEntry[]>(trendRes)
+        if (trendData) { setTrend(trendData); ok = true }
+        const anvilData = await safeJson<AnvilCost[]>(anvilRes)
+        if (anvilData) { setAnvilCosts(anvilData.sort((a, b) => a.anvil.localeCompare(b.anvil))); ok = true }
+        const beadsData = await safeJson<BeadCost[]>(beadsRes)
+        if (beadsData) { setTopBeads(beadsData); ok = true }
         setFailed(!ok)
       } catch {
         if (controller.signal.aborted) return
@@ -150,17 +137,11 @@ export default function ForgeCostsDashboardPage() {
     return String(n)
   }
 
-  // Build stacked bar chart data: one entry per date, each anvil as a separate key
-  const anvilNames = [...new Set(anvilCosts.map(a => a.anvil))].sort()
-  const stackedData: AnvilDailyCost[] = (() => {
-    // Use the trend dates as the x-axis, distribute anvil costs proportionally
-    // Since we only have aggregate anvil costs, build a simple bar chart instead
-    return anvilCosts.map(a => ({
-      date: a.anvil,
-      cost: a.estimated_cost,
-      beads: a.bead_count,
-    })) as unknown as AnvilDailyCost[]
-  })()
+  const anvilBarData: AnvilBarEntry[] = anvilCosts.map(a => ({
+    anvil: a.anvil,
+    cost: a.estimated_cost,
+    beads: a.bead_count,
+  }))
 
   const tooltipStyle = {
     backgroundColor: '#1f2937',
@@ -187,7 +168,7 @@ export default function ForgeCostsDashboardPage() {
     return (
       <div className="p-4 sm:p-6 max-w-6xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
-          <Link to="/forge/mezzanine" className="text-gray-400 hover:text-white">
+          <Link to="/forge/mezzanine" className="text-gray-400 hover:text-white" aria-label={t('costsDashboard.backToMezzanine')}>
             <ArrowLeft size={20} />
           </Link>
           <h1 className="text-xl font-bold text-white">{t('costsDashboard.title')}</h1>
@@ -209,7 +190,7 @@ export default function ForgeCostsDashboardPage() {
     <div className="p-4 sm:p-6 max-w-6xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <Link to="/forge/mezzanine" className="text-gray-400 hover:text-white">
+        <Link to="/forge/mezzanine" className="text-gray-400 hover:text-white" aria-label={t('costsDashboard.backToMezzanine')}>
           <ArrowLeft size={20} />
         </Link>
         <h1 className="text-xl font-bold text-white">{t('costsDashboard.title')}</h1>
@@ -225,7 +206,7 @@ export default function ForgeCostsDashboardPage() {
               <p className="text-xs text-gray-400 mt-1">
                 {t('costs.ofLimit', { limit: formatCost(dailyLimit) })}
               </p>
-              <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden mt-2">
+              <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden mt-2" role="progressbar" aria-valuenow={Math.round(budgetPct)} aria-valuemin={0} aria-valuemax={100}>
                 <div
                   className={`h-full rounded-full transition-all ${
                     budgetPct > 90 ? 'bg-red-500' : budgetPct > 70 ? 'bg-amber-500' : 'bg-green-500'
@@ -246,7 +227,7 @@ export default function ForgeCostsDashboardPage() {
             {anvilCosts.reduce((sum, a) => sum + a.bead_count, 0)}
           </p>
           <p className="text-xs text-gray-400 mt-1">
-            {t('costsDashboard.across', { count: anvilNames.length })}
+            {t('costsDashboard.across', { count: anvilCosts.length })}
           </p>
         </div>
       </div>
@@ -326,14 +307,14 @@ export default function ForgeCostsDashboardPage() {
           <div className="h-48 sm:h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={stackedData}
+                data={anvilBarData}
                 margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
                 role="img"
                 aria-label={t('costsDashboard.perAnvil')}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis
-                  dataKey="date"
+                  dataKey="anvil"
                   tick={{ fill: '#6b7280', fontSize: 10 }}
                 />
                 <YAxis
@@ -343,15 +324,14 @@ export default function ForgeCostsDashboardPage() {
                 />
                 <Tooltip
                   contentStyle={tooltipStyle}
-                  formatter={(value, name) => [
+                  formatter={(value) => [
                     typeof value === 'number' ? formatCost(value) : String(value ?? ''),
-                    name === 'cost' ? t('mezzanine.costs.cost') : String(name),
+                    t('costsDashboard.colCost'),
                   ]}
                 />
-                <Legend />
                 <Bar
                   dataKey="cost"
-                  name={t('mezzanine.costs.cost')}
+                  name={t('costsDashboard.colCost')}
                   fill="#818cf8"
                   radius={[4, 4, 0, 0]}
                 />
@@ -372,11 +352,11 @@ export default function ForgeCostsDashboardPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-700/50">
-                  <th className="text-left text-xs text-gray-500 font-medium py-2 pr-4">{t('costsDashboard.colBead')}</th>
-                  <th className="text-right text-xs text-gray-500 font-medium py-2 px-2">{t('costsDashboard.colCost')}</th>
-                  <th className="text-right text-xs text-gray-500 font-medium py-2 px-2 hidden sm:table-cell">{t('costsDashboard.colInput')}</th>
-                  <th className="text-right text-xs text-gray-500 font-medium py-2 px-2 hidden sm:table-cell">{t('costsDashboard.colOutput')}</th>
-                  <th className="text-right text-xs text-gray-500 font-medium py-2 pl-2 hidden md:table-cell">{t('costsDashboard.colCacheRead')}</th>
+                  <th scope="col" className="text-left text-xs text-gray-500 font-medium py-2 pr-4">{t('costsDashboard.colBead')}</th>
+                  <th scope="col" className="text-right text-xs text-gray-500 font-medium py-2 px-2">{t('costsDashboard.colCost')}</th>
+                  <th scope="col" className="text-right text-xs text-gray-500 font-medium py-2 px-2 hidden sm:table-cell">{t('costsDashboard.colInput')}</th>
+                  <th scope="col" className="text-right text-xs text-gray-500 font-medium py-2 px-2 hidden sm:table-cell">{t('costsDashboard.colOutput')}</th>
+                  <th scope="col" className="text-right text-xs text-gray-500 font-medium py-2 pl-2 hidden md:table-cell">{t('costsDashboard.colCacheRead')}</th>
                 </tr>
               </thead>
               <tbody>
