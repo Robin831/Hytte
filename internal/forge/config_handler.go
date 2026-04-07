@@ -169,6 +169,25 @@ func encryptSensitiveFields(cfg *ForgeConfig) error {
 	return nil
 }
 
+// loadForgeConfig reads and parses ~/.forge/config.yaml. It returns an error
+// if the file is missing or cannot be parsed; callers should fall back to
+// defaults in that case.
+func loadForgeConfig() (*ForgeConfig, error) {
+	cfgPath, err := configPath()
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return nil, err
+	}
+	var cfg ForgeConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
 // GetConfigHandler reads ~/.forge/config.yaml and returns it as JSON.
 func GetConfigHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

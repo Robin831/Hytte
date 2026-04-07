@@ -495,7 +495,7 @@ func (d *DB) Retries() ([]Retry, error) {
 // attempts but are not yet resolved.
 func (d *DB) StuckPRs(ciFixMax, reviewFixMax int) ([]Retry, error) {
 	const q = `
-		SELECT id, anvil, bead_id, title, ci_fix_count, review_fix_count,
+		SELECT anvil, bead_id, ci_fix_count, review_fix_count,
 		       ci_passing, has_unresolved_threads, last_checked
 		FROM prs
 		WHERE status = 'open'
@@ -512,15 +512,14 @@ func (d *DB) StuckPRs(ciFixMax, reviewFixMax int) ([]Retry, error) {
 	var result []Retry
 	for rows.Next() {
 		var (
-			id                   int
-			anvil, beadID, title string
-			ciFixCount           int
-			reviewFixCount       int
-			ciPassing            int
-			hasUnresolved        int
-			lastChecked          sql.NullString
+			anvil, beadID string
+			ciFixCount    int
+			reviewFixCount int
+			ciPassing     int
+			hasUnresolved int
+			lastChecked   sql.NullString
 		)
-		if err := rows.Scan(&id, &anvil, &beadID, &title,
+		if err := rows.Scan(&anvil, &beadID,
 			&ciFixCount, &reviewFixCount, &ciPassing, &hasUnresolved,
 			&lastChecked); err != nil {
 			return nil, fmt.Errorf("forge: stuck PRs scan: %w", err)

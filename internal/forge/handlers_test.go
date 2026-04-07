@@ -159,6 +159,10 @@ func TestStatusHandler_WithData(t *testing.T) {
 }
 
 func TestStatusHandler_StuckPRs(t *testing.T) {
+	origDaemonAlive := daemonAlive
+	daemonAlive = func() (bool, string) { return false, "no daemon in test" }
+	defer func() { daemonAlive = origDaemonAlive }()
+
 	fdb := setupTestDB(t)
 
 	now := time.Now().UTC()
@@ -227,6 +231,10 @@ func TestStatusHandler_StuckPRs(t *testing.T) {
 }
 
 func TestStatusHandler_StuckPRs_Dedup(t *testing.T) {
+	origDaemonAlive := daemonAlive
+	daemonAlive = func() (bool, string) { return false, "no daemon in test" }
+	defer func() { daemonAlive = origDaemonAlive }()
+
 	fdb := setupTestDB(t)
 
 	now := time.Now().UTC()
