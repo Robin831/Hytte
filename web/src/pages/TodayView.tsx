@@ -38,15 +38,15 @@ function ParentWidgets() {
         <CalendarWidget />
       </div>
       <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.training')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.workHoursTitle')}</h2>
         <WorkHoursWidget />
       </div>
       <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.family')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.transport')}</h2>
         <BusDepartureWidget />
       </div>
       <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.budget')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.skywatch')}</h2>
         <MoonPhaseWidget />
       </div>
     </>
@@ -62,11 +62,11 @@ function KidWidgets() {
         <KidsSummaryWidget />
       </div>
       <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.chores')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.calendar')}</h2>
         <CalendarWidget />
       </div>
       <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.challenges')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.skywatch')}</h2>
         <MoonPhaseWidget />
       </div>
     </>

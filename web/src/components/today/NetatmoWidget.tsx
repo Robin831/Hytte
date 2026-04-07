@@ -8,20 +8,20 @@ interface ModuleReadings {
   FetchedAt: string
 }
 
-type State = { loading: boolean; data: ModuleReadings | null }
+type State = { loading: boolean; error: boolean; data: ModuleReadings | null }
 type Action = { type: 'start' } | { type: 'done'; data: ModuleReadings } | { type: 'error' }
 
-function reducer(state: State, action: Action): State {
+function reducer(_state: State, action: Action): State {
   switch (action.type) {
-    case 'start': return { ...state, loading: true }
-    case 'done': return { loading: false, data: action.data }
-    case 'error': return { ...state, loading: false }
+    case 'start': return { loading: true, error: false, data: _state.data }
+    case 'done': return { loading: false, error: false, data: action.data }
+    case 'error': return { loading: false, error: true, data: _state.data }
   }
 }
 
 export default function NetatmoWidget() {
   const { t } = useTranslation('today')
-  const [{ loading, data }, dispatch] = useReducer(reducer, { loading: true, data: null })
+  const [{ loading, data }, dispatch] = useReducer(reducer, { loading: true, error: false, data: null })
 
   useEffect(() => {
     const controller = new AbortController()

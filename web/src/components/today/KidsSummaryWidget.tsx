@@ -20,6 +20,7 @@ interface BalanceResponse {
 
 interface State {
   loading: boolean
+  error: boolean
   pendingChores: number
   balance: number | null
   level: number | null
@@ -34,10 +35,10 @@ type Action =
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
-    case 'start': return { ...state, loading: true }
+    case 'start': return { ...state, loading: true, error: false }
     case 'chores': return { ...state, loading: false, pendingChores: action.pending }
     case 'stars': return { ...state, loading: false, balance: action.balance, level: action.level, title: action.title }
-    case 'error': return { ...state, loading: false }
+    case 'error': return { ...state, loading: false, error: true }
   }
 }
 
@@ -45,6 +46,7 @@ export default function KidsSummaryWidget() {
   const { t } = useTranslation('today')
   const [{ loading, pendingChores, balance }, dispatch] = useReducer(reducer, {
     loading: true,
+    error: false,
     pendingChores: 0,
     balance: null,
     level: null,

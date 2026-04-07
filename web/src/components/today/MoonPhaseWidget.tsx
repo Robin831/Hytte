@@ -13,14 +13,14 @@ interface NowResponse {
   moon: MoonInfo
 }
 
-type State = { loading: boolean; moon: MoonInfo | null }
+type State = { loading: boolean; error: boolean; moon: MoonInfo | null }
 type Action = { type: 'start' } | { type: 'done'; moon: MoonInfo } | { type: 'error' }
 
-function reducer(state: State, action: Action): State {
+function reducer(_state: State, action: Action): State {
   switch (action.type) {
-    case 'start': return { ...state, loading: true }
-    case 'done': return { loading: false, moon: action.moon }
-    case 'error': return { ...state, loading: false }
+    case 'start': return { loading: true, error: false, moon: _state.moon }
+    case 'done': return { loading: false, error: false, moon: action.moon }
+    case 'error': return { loading: false, error: true, moon: _state.moon }
   }
 }
 
@@ -38,7 +38,7 @@ const MOON_ICONS: Record<string, string> = {
 export default function MoonPhaseWidget() {
   const { t } = useTranslation('today')
   const location = usePreferredLocation()
-  const [{ loading, moon }, dispatch] = useReducer(reducer, { loading: true, moon: null })
+  const [{ loading, moon }, dispatch] = useReducer(reducer, { loading: true, error: false, moon: null })
 
   useEffect(() => {
     const controller = new AbortController()

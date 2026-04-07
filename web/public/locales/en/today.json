@@ -7,9 +7,9 @@
   "widgets": {
     "weather": "Weather",
     "calendar": "Calendar",
-    "training": "Training",
-    "family": "Family",
-    "budget": "Budget",
+    "workHoursTitle": "Work Hours",
+    "transport": "Transport",
+    "skywatch": "Sky Watch",
     "stars": "Stars",
     "chores": "Chores",
     "challenges": "Challenges"

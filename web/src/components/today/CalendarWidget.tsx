@@ -1,7 +1,7 @@
 import { useEffect, useReducer } from 'react'
 import { Calendar } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatTime } from '../../utils/formatDate'
+import { formatTime, toLocalDateString } from '../../utils/formatDate'
 
 interface CalendarEvent {
   id: string
@@ -15,25 +15,25 @@ interface CalendarResponse {
   events: CalendarEvent[]
 }
 
-type State = { loading: boolean; data: CalendarEvent[] }
+type State = { loading: boolean; error: boolean; data: CalendarEvent[] }
 type Action = { type: 'start' } | { type: 'done'; data: CalendarEvent[] } | { type: 'error' }
 
-function reducer(state: State, action: Action): State {
+function reducer(_state: State, action: Action): State {
   switch (action.type) {
-    case 'start': return { ...state, loading: true }
-    case 'done': return { loading: false, data: action.data }
-    case 'error': return { ...state, loading: false }
+    case 'start': return { loading: true, error: false, data: _state.data }
+    case 'done': return { loading: false, error: false, data: action.data }
+    case 'error': return { loading: false, error: true, data: _state.data }
   }
 }
 
 export default function CalendarWidget() {
   const { t } = useTranslation('today')
-  const [{ loading, data }, dispatch] = useReducer(reducer, { loading: true, data: [] })
+  const [{ loading, data }, dispatch] = useReducer(reducer, { loading: true, error: false, data: [] })
 
   useEffect(() => {
     const controller = new AbortController()
     dispatch({ type: 'start' })
-    const today = new Date().toISOString().slice(0, 10)
+    const today = toLocalDateString()
     fetch(`/api/calendar/events?from=${today}&limit=3`, {
       credentials: 'include',
       signal: controller.signal,

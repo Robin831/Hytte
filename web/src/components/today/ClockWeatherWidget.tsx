@@ -22,14 +22,14 @@ interface ForecastResponse {
   properties: { timeseries: TimeseriesEntry[] }
 }
 
-type State = { loading: boolean; data: ForecastResponse | null }
+type State = { loading: boolean; error: boolean; data: ForecastResponse | null }
 type Action = { type: 'start' } | { type: 'done'; data: ForecastResponse } | { type: 'error' }
 
-function reducer(state: State, action: Action): State {
+function reducer(_state: State, action: Action): State {
   switch (action.type) {
-    case 'start': return { ...state, loading: true }
-    case 'done': return { loading: false, data: action.data }
-    case 'error': return { ...state, loading: false }
+    case 'start': return { loading: true, error: false, data: _state.data }
+    case 'done': return { loading: false, error: false, data: action.data }
+    case 'error': return { loading: false, error: true, data: _state.data }
   }
 }
 
@@ -37,7 +37,7 @@ export default function ClockWeatherWidget() {
   const { t } = useTranslation('today')
   const location = usePreferredLocation()
   const [now, setNow] = useState(() => new Date())
-  const [{ data }, dispatch] = useReducer(reducer, { loading: true, data: null })
+  const [{ data }, dispatch] = useReducer(reducer, { loading: true, error: false, data: null })
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000)

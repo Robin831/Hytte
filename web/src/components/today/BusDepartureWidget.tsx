@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from 'react'
+import { useState, useEffect, useReducer } from 'react'
 import { Bus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatTime } from '../../utils/formatDate'
@@ -21,20 +21,21 @@ interface DeparturesResponse {
   stops: StopDepartures[]
 }
 
-type State = { loading: boolean; data: DeparturesResponse | null }
+type State = { loading: boolean; error: boolean; data: DeparturesResponse | null }
 type Action = { type: 'start' } | { type: 'done'; data: DeparturesResponse } | { type: 'error' }
 
-function reducer(state: State, action: Action): State {
+function reducer(_state: State, action: Action): State {
   switch (action.type) {
-    case 'start': return { ...state, loading: true }
-    case 'done': return { loading: false, data: action.data }
-    case 'error': return { ...state, loading: false }
+    case 'start': return { loading: true, error: false, data: _state.data }
+    case 'done': return { loading: false, error: false, data: action.data }
+    case 'error': return { loading: false, error: true, data: _state.data }
   }
 }
 
 export default function BusDepartureWidget() {
   const { t } = useTranslation('today')
-  const [{ loading, data }, dispatch] = useReducer(reducer, { loading: true, data: null })
+  const [{ loading, data }, dispatch] = useReducer(reducer, { loading: true, error: false, data: null })
+  const [tick, setTick] = useState(() => Date.now())
 
   useEffect(() => {
     const controller = new AbortController()
@@ -44,6 +45,12 @@ export default function BusDepartureWidget() {
       .then((d) => dispatch({ type: 'done', data: d }))
       .catch(() => { if (!controller.signal.aborted) dispatch({ type: 'error' }) })
     return () => controller.abort()
+  }, [])
+
+  // Re-render every 30s to keep relative times fresh
+  useEffect(() => {
+    const id = setInterval(() => setTick(Date.now()), 30_000)
+    return () => clearInterval(id)
   }, [])
 
   if (loading && !data) {
@@ -57,7 +64,7 @@ export default function BusDepartureWidget() {
 
   // Find the next departure across all stops
   const allDepartures = data?.stops?.flatMap((s) => s.departures) ?? []
-  const nowMs = Date.now()
+  const nowMs = tick
   const next = allDepartures
     .filter((d) => new Date(d.departure_time).getTime() > nowMs)
     .sort((a, b) => new Date(a.departure_time).getTime() - new Date(b.departure_time).getTime())[0]

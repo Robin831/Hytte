@@ -28,6 +28,7 @@ vi.mock('react-i18next', () => ({
 vi.mock('../utils/formatDate', () => ({
   formatDate: () => 'Monday, January 1',
   formatTime: () => '12:00',
+  toLocalDateString: () => '2026-01-01',
 }))
 
 // ── Auth mock ─────────────────────────────────────────────────────────────────
@@ -94,26 +95,26 @@ describe('TodayView – widget sets', () => {
     vi.clearAllMocks()
   })
 
-  it('renders parent widgets (Weather, Training, Budget) for parent role', () => {
+  it('renders parent widgets (Weather, Work Hours, Sky Watch) for parent role', () => {
     setAuth({ id: 1 }, { is_parent: true, is_child: false })
     renderPage()
     expect(screen.getByText('Weather')).toBeInTheDocument()
-    expect(screen.getByText('Training')).toBeInTheDocument()
-    expect(screen.getByText('Budget')).toBeInTheDocument()
+    expect(screen.getByText('Work Hours')).toBeInTheDocument()
+    expect(screen.getByText('Sky Watch')).toBeInTheDocument()
   })
 
-  it('renders kid widgets (Stars, Chores) for kid role', () => {
+  it('renders kid widgets (Stars, Calendar) for kid role', () => {
     setAuth({ id: 1 }, { is_parent: false, is_child: true })
     renderPage()
     expect(screen.getByText('Stars')).toBeInTheDocument()
-    expect(screen.getByText('Chores')).toBeInTheDocument()
+    expect(screen.getByText('Calendar')).toBeInTheDocument()
   })
 
-  it('renders guest widgets (Weather, Calendar) without Training for guest role', () => {
+  it('renders guest widgets (Weather, Calendar) without Work Hours for guest role', () => {
     setAuth(null, null)
     renderPage()
     expect(screen.getByText('Weather')).toBeInTheDocument()
     expect(screen.getByText('Calendar')).toBeInTheDocument()
-    expect(screen.queryByText('Training')).not.toBeInTheDocument()
+    expect(screen.queryByText('Work Hours')).not.toBeInTheDocument()
   })
 })
