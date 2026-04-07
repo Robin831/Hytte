@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ListOrdered, ChevronDown, ChevronRight } from 'lucide-react'
+import { SECTION_ORDER } from '../forgeQueueUi'
 import QueueItem from './QueueItem'
+
+type ErrorKey = 'mezzanine.queueSidebar.unavailable' | 'mezzanine.queueSidebar.unknownError'
 
 interface QueueBead {
   bead_id: string
@@ -11,8 +14,6 @@ interface QueueBead {
   status: string
   section: string
 }
-
-const SECTION_ORDER = ['ready', 'in-progress', 'unlabeled', 'needs-attention']
 
 function sectionIndex(s: string): number {
   const i = SECTION_ORDER.indexOf(s)
@@ -41,7 +42,9 @@ function groupByAnvil(beads: QueueBead[]): AnvilGroup[] {
       beads: anvilBeads.sort((a, b) => {
         const sd = sectionIndex(a.section) - sectionIndex(b.section)
         if (sd !== 0) return sd
-        return a.priority - b.priority
+        const pd = a.priority - b.priority
+        if (pd !== 0) return pd
+        return a.bead_id.localeCompare(b.bead_id)
       }),
     }))
 }
@@ -54,7 +57,7 @@ interface AnvilSectionProps {
 function AnvilSection({ group, onBeadClick }: AnvilSectionProps) {
   const { t } = useTranslation('forge')
   const [open, setOpen] = useState(true)
-  const sectionId = `anvil-section-${group.anvil}`
+  const sectionId = `anvil-section-${group.anvil.replace(/[^a-z0-9]/gi, '-').toLowerCase()}`
 
   return (
     <div className="border-b border-gray-700/40 last:border-0" role="region" aria-label={group.anvil}>
@@ -104,7 +107,7 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
   const { t } = useTranslation('forge')
   const [beads, setBeads] = useState<QueueBead[]>([])
   const [loading, setLoading] = useState(true)
-  const [errorKey, setErrorKey] = useState<string | null>(null)
+  const [errorKey, setErrorKey] = useState<ErrorKey | null>(null)
   const [errorDetail, setErrorDetail] = useState<string | null>(null)
 
   const fetchQueue = useCallback(async (signal: AbortSignal): Promise<boolean> => {
@@ -174,8 +177,7 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
 
   const groups = groupByAnvil(beads)
   const totalBeads = beads.length
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const errorMessage = errorKey ? String(t(errorKey as any)) : errorDetail
+  const errorMessage = errorKey ? String(t(errorKey)) : errorDetail
 
   // Announce brief status updates to screen readers after each poll
   const announcement = loading ? '' : (errorMessage || String(t('mezzanine.queueSidebar.queueUpdated', { count: totalBeads })))

@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { sectionColors } from '../forgeQueueUi'
 
 interface QueueItemProps {
   beadId: string
@@ -7,13 +8,6 @@ interface QueueItemProps {
   status: string
   section: string
   onBeadClick?: (beadId: string) => void
-}
-
-const sectionColors: Record<string, string> = {
-  ready: 'bg-green-500/20 text-green-400 border-green-700/30',
-  'in-progress': 'bg-blue-500/20 text-blue-400 border-blue-700/30',
-  unlabeled: 'bg-gray-500/20 text-gray-400 border-gray-600/30',
-  'needs-attention': 'bg-amber-500/20 text-amber-400 border-amber-700/30',
 }
 
 export default function QueueItem({ beadId, title, priority, status, section, onBeadClick }: QueueItemProps) {
