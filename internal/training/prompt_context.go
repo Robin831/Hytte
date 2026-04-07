@@ -357,9 +357,16 @@ func writeWeeklySummarySection(sb *strings.Builder, summaries []WeeklySummary, n
 		limit = len(summaries)
 	}
 
+	// Mark the current week as incomplete so Claude doesn't draw conclusions
+	// from a partial week's data (e.g. flagging "volume drop" on Tuesday).
+	now := time.Now()
+	weekday := int(now.Weekday())
+	daysBack := (weekday - 1 + 7) % 7
+	currentMonday := now.AddDate(0, 0, -daysBack).Format("2006-01-02")
+
 	sb.WriteString("Weekly Training Summary:\n")
-	sb.WriteString("| Week | Duration | Distance | Workouts | Avg HR |\n")
-	sb.WriteString("|------|----------|----------|----------|--------|\n")
+	sb.WriteString("| Week | Duration | Distance | Workouts | Avg HR | Note |\n")
+	sb.WriteString("|------|----------|----------|----------|--------|------|\n")
 
 	for _, s := range summaries[:limit] {
 		hrStr := "--"
@@ -367,8 +374,12 @@ func writeWeeklySummarySection(sb *strings.Builder, summaries []WeeklySummary, n
 			hrStr = fmt.Sprintf("%.0f", s.AvgHeartRate)
 		}
 		distStr := fmt.Sprintf("%.1f km", s.TotalDistance/1000)
-		fmt.Fprintf(sb, "| %s | %s | %s | %d | %s |\n",
-			s.WeekStart, formatDurationSecs(s.TotalDuration), distStr, s.WorkoutCount, hrStr)
+		note := ""
+		if s.WeekStart == currentMonday {
+			note = "INCOMPLETE — week in progress, do NOT compare volume against completed weeks"
+		}
+		fmt.Fprintf(sb, "| %s | %s | %s | %d | %s | %s |\n",
+			s.WeekStart, formatDurationSecs(s.TotalDuration), distStr, s.WorkoutCount, hrStr, note)
 	}
 	sb.WriteString("\n")
 }
