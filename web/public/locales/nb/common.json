@@ -27,7 +27,8 @@
     "wordfeud": "Wordfeud",
     "budget": "Budsjett",
     "salary": "Lønn",
-    "stride": "Stride"
+    "stride": "Stride",
+    "vault": "Hvelv"
   },
   "actions": {
     "save": "Lagre",

@@ -1339,6 +1339,30 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_stride_evaluations_plan ON stride_evaluations(plan_id);
 
+	-- Vault: encrypted personal file storage (Hytte-r43)
+	CREATE TABLE IF NOT EXISTS vault_files (
+		id           INTEGER PRIMARY KEY,
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		filename     TEXT NOT NULL DEFAULT '',
+		mime_type    TEXT NOT NULL DEFAULT '',
+		size_bytes   INTEGER NOT NULL DEFAULT 0,
+		folder       TEXT NOT NULL DEFAULT '',
+		access       TEXT NOT NULL DEFAULT 'private',
+		created_at   TEXT NOT NULL DEFAULT '',
+		updated_at   TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_vault_files_user_id ON vault_files(user_id);
+	CREATE INDEX IF NOT EXISTS idx_vault_files_user_folder ON vault_files(user_id, folder);
+
+	CREATE TABLE IF NOT EXISTS vault_file_tags (
+		file_id INTEGER NOT NULL REFERENCES vault_files(id) ON DELETE CASCADE,
+		tag     TEXT NOT NULL,
+		PRIMARY KEY (file_id, tag)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_vault_file_tags_tag ON vault_file_tags(tag);
+
 	`
 
 	_, err := db.Exec(schema)

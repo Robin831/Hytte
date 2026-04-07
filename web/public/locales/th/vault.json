@@ -1,0 +1,49 @@
+{
+  "title": "ตู้นิรภัย",
+  "upload": "อัปโหลด",
+  "uploadTitle": "อัปโหลดไฟล์",
+  "chooseFiles": "เลือกไฟล์",
+  "uploading": "กำลังอัปโหลด...",
+  "loading": "กำลังโหลด...",
+  "saving": "กำลังบันทึก...",
+  "save": "บันทึก",
+  "edit": "แก้ไข",
+  "editTitle": "แก้ไขไฟล์",
+  "delete": "ลบ",
+  "download": "ดาวน์โหลด",
+  "preview": "ดูตัวอย่าง",
+  "searchPlaceholder": "ค้นหาไฟล์...",
+  "searchLabel": "ค้นหาไฟล์",
+  "filterFolder": "กรองตามโฟลเดอร์",
+  "allFolders": "ทุกโฟลเดอร์",
+  "tagAll": "ทั้งหมด",
+  "accessPrivate": "ส่วนตัว",
+  "accessShared": "แชร์",
+  "empty": {
+    "message": "ยังไม่มีไฟล์",
+    "uploadFirst": "อัปโหลดไฟล์แรกของคุณเพื่อเริ่มต้น"
+  },
+  "columns": {
+    "name": "ชื่อ",
+    "size": "ขนาด",
+    "folder": "โฟลเดอร์",
+    "updated": "อัปเดต",
+    "actions": "การดำเนินการ"
+  },
+  "fields": {
+    "filename": "ชื่อไฟล์",
+    "folder": "โฟลเดอร์",
+    "folderPlaceholder": "เช่น เอกสาร",
+    "access": "การเข้าถึง",
+    "tags": "แท็ก",
+    "tagsPlaceholder": "แท็กคั่นด้วยเครื่องหมายจุลภาค..."
+  },
+  "confirmDelete": "ลบ \"{{title}}\"?",
+  "errors": {
+    "failedToLoad": "ไม่สามารถโหลดไฟล์ได้",
+    "failedToUpload": "ไม่สามารถอัปโหลดไฟล์ได้",
+    "failedToDelete": "ไม่สามารถลบไฟล์ได้",
+    "failedToUpdate": "ไม่สามารถอัปเดตไฟล์ได้",
+    "failedToPreview": "ไม่สามารถดูตัวอย่างไฟล์ได้"
+  }
+}

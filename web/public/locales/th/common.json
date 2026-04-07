@@ -27,7 +27,8 @@
     "wordfeud": "Wordfeud",
     "budget": "งบประมาณ",
     "salary": "เงินเดือน",
-    "stride": "Stride"
+    "stride": "Stride",
+    "vault": "ตู้นิรภัย"
   },
   "actions": {
     "save": "บันทึก",

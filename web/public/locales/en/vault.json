@@ -1,0 +1,49 @@
+{
+  "title": "Vault",
+  "upload": "Upload",
+  "uploadTitle": "Upload Files",
+  "chooseFiles": "Choose files",
+  "uploading": "Uploading...",
+  "loading": "Loading...",
+  "saving": "Saving...",
+  "save": "Save",
+  "edit": "Edit",
+  "editTitle": "Edit File",
+  "delete": "Delete",
+  "download": "Download",
+  "preview": "Preview",
+  "searchPlaceholder": "Search files...",
+  "searchLabel": "Search files",
+  "filterFolder": "Filter by folder",
+  "allFolders": "All folders",
+  "tagAll": "All",
+  "accessPrivate": "Private",
+  "accessShared": "Shared",
+  "empty": {
+    "message": "No files yet.",
+    "uploadFirst": "Upload your first file to get started."
+  },
+  "columns": {
+    "name": "Name",
+    "size": "Size",
+    "folder": "Folder",
+    "updated": "Updated",
+    "actions": "Actions"
+  },
+  "fields": {
+    "filename": "Filename",
+    "folder": "Folder",
+    "folderPlaceholder": "e.g. documents",
+    "access": "Access",
+    "tags": "Tags",
+    "tagsPlaceholder": "Comma-separated tags..."
+  },
+  "confirmDelete": "Delete \"{{title}}\"?",
+  "errors": {
+    "failedToLoad": "Failed to load files",
+    "failedToUpload": "Failed to upload file",
+    "failedToDelete": "Failed to delete file",
+    "failedToUpdate": "Failed to update file",
+    "failedToPreview": "Failed to preview file"
+  }
+}

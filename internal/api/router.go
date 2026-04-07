@@ -30,6 +30,7 @@ import (
 	"github.com/Robin831/Hytte/internal/stars"
 	"github.com/Robin831/Hytte/internal/stride"
 	"github.com/Robin831/Hytte/internal/training"
+	"github.com/Robin831/Hytte/internal/vault"
 	"github.com/Robin831/Hytte/internal/transit"
 	"github.com/Robin831/Hytte/internal/weather"
 	"github.com/Robin831/Hytte/internal/webhooks"
@@ -347,6 +348,20 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/notes/{id}", notes.GetHandler(db))
 				r.Put("/notes/{id}", notes.UpdateHandler(db))
 				r.Delete("/notes/{id}", notes.DeleteHandler(db))
+			})
+
+			// Vault — encrypted file storage, gated by "vault" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "vault"))
+				r.Get("/vault/files", vault.ListHandler(db))
+				r.Post("/vault/files", vault.UploadHandler(db))
+				r.Get("/vault/files/{id}", vault.GetHandler(db))
+				r.Put("/vault/files/{id}", vault.UpdateHandler(db))
+				r.Delete("/vault/files/{id}", vault.DeleteHandler(db))
+				r.Get("/vault/files/{id}/download", vault.DownloadHandler(db))
+				r.Get("/vault/files/{id}/preview", vault.PreviewHandler(db))
+				r.Get("/vault/folders", vault.FoldersHandler(db))
+				r.Get("/vault/tags", vault.TagsHandler(db))
 			})
 
 			// Lactate tests — gated by "lactate" feature.
