@@ -48,12 +48,18 @@ export default function MezzaninePage() {
     return () => { abortRef.current?.abort() }
   }, [])
 
-  // Auto-scroll to the targeted section from deep link params and clear them
+  // Auto-scroll to the targeted section from deep link params and clear them.
+  // Capture current values to avoid stale closures inside the timeout.
+  const beadParam = searchParams.get('bead')
   useEffect(() => {
     if (!sectionParam && !highlightParam) return
 
+    let cancelled = false
+
     // Small delay to allow data to load and components to render
     const timer = setTimeout(() => {
+      if (cancelled) return
+
       if (sectionParam === 'needs-attention' && needsAttentionRef.current) {
         needsAttentionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
       } else if (sectionParam === 'pipeline' && pipelineRef.current) {
@@ -63,8 +69,7 @@ export default function MezzaninePage() {
       }
 
       // Open bead detail modal if bead param is set alongside section
-      const beadParam = searchParams.get('bead')
-      if (beadParam && !selectedBeadId) {
+      if (beadParam) {
         setSelectedBeadId(beadParam)
       }
 
@@ -73,12 +78,16 @@ export default function MezzaninePage() {
         const next = new URLSearchParams(prev)
         next.delete('highlight')
         next.delete('section')
+        next.delete('bead')
         return next
       }, { replace: true })
     }, 300)
 
-    return () => clearTimeout(timer)
-  }, [sectionParam, highlightParam]) // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [sectionParam, highlightParam, beadParam, setSearchParams])
 
   const handleMerge = useCallback(async (prId: number, prNumber: number) => {
     abortRef.current?.abort()

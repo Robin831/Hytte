@@ -719,6 +719,12 @@ func TestForgeDeepLinkURL(t *testing.T) {
 			body:      nil,
 			want:      "/forge/mezzanine?section=pipeline",
 		},
+		{
+			name:      "bead_id with special characters is URL-encoded",
+			eventType: "bead_failed",
+			body:      []byte(`{"event_type":"bead_failed","bead_id":"id with spaces&more=bad"}`),
+			want:      "/forge/mezzanine?section=needs-attention&bead=id+with+spaces%26more%3Dbad",
+		},
 	}
 
 	for _, tt := range tests {

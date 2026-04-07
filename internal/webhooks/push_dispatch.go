@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -186,12 +187,12 @@ func forgeDeepLinkURL(eventType string, body []byte) string {
 	switch eventType {
 	case "pr_ready_to_merge":
 		if beadID != "" {
-			return "/forge/mezzanine?highlight=pr-" + beadID
+			return "/forge/mezzanine?highlight=pr-" + url.QueryEscape(beadID)
 		}
 		return "/forge/mezzanine?section=pipeline"
 	case "bead_failed", "bead_needs_human":
 		if beadID != "" {
-			return "/forge/mezzanine?section=needs-attention&bead=" + beadID
+			return "/forge/mezzanine?section=needs-attention&bead=" + url.QueryEscape(beadID)
 		}
 		return "/forge/mezzanine?section=needs-attention"
 	case "daily_cost", "cost_limit_reached":
