@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Moon, Sun, Sunrise, Sunset, RefreshCw } from 'lucide-react'
+import { Moon, Sun, Sunrise, Sunset, RefreshCw, Circle } from 'lucide-react'
 import { formatDate as sharedFormatDate, formatTime as sharedFormatTime } from '../utils/formatDate'
 
 type PhaseKey = 'newMoon' | 'waxingCrescent' | 'firstQuarter' | 'waxingGibbous' | 'fullMoon' | 'waningGibbous' | 'lastQuarter' | 'waningCrescent'
@@ -27,11 +27,25 @@ interface SunData {
   civil_dusk?: string | null
 }
 
+interface PlanetData {
+  name: string
+  altitude: number
+  azimuth: number
+  direction: string
+  visible: boolean
+  status: string
+  rise_time: string | null
+  set_time: string | null
+  magnitude: number
+  elongation: number
+}
+
 interface NowResponse {
   timestamp: string
   location: { lat: number; lon: number }
   moon: MoonData
   sun: SunData
+  planets: PlanetData[]
 }
 
 interface CalendarDay {
@@ -56,6 +70,24 @@ const PHASE_KEY_MAP: Record<string, PhaseKey> = {
   'Waning Gibbous': 'waningGibbous',
   'Last Quarter': 'lastQuarter',
   'Waning Crescent': 'waningCrescent',
+}
+
+type PlanetKey = 'mercury' | 'venus' | 'mars' | 'jupiter' | 'saturn'
+
+const PLANET_NAME_KEY: Record<string, PlanetKey> = {
+  Mercury: 'mercury',
+  Venus: 'venus',
+  Mars: 'mars',
+  Jupiter: 'jupiter',
+  Saturn: 'saturn',
+}
+
+const PLANET_COLORS: Record<string, { dot: string; bg: string; border: string; text: string }> = {
+  Mercury: { dot: '#9ca3af', bg: 'from-gray-800/50 to-gray-900/50', border: 'border-gray-700/30', text: 'text-gray-300' },
+  Venus: { dot: '#fbbf24', bg: 'from-yellow-950/30 to-gray-900/50', border: 'border-yellow-900/20', text: 'text-yellow-200' },
+  Mars: { dot: '#ef4444', bg: 'from-red-950/30 to-gray-900/50', border: 'border-red-900/20', text: 'text-red-300' },
+  Jupiter: { dot: '#f59e0b', bg: 'from-orange-950/30 to-gray-900/50', border: 'border-orange-900/20', text: 'text-orange-200' },
+  Saturn: { dot: '#d4a017', bg: 'from-yellow-950/20 to-gray-900/50', border: 'border-yellow-800/20', text: 'text-yellow-300' },
 }
 
 function MoonPhaseIcon({ phaseValue, size = 120, glow = false }: { phaseValue: number; size?: number; glow?: boolean }) {
@@ -425,6 +457,65 @@ export default function SkyWatchPage() {
             })}
           </div>
         </div>
+
+        {/* Planets Section */}
+        {now.planets && now.planets.length > 0 && (
+          <div className="bg-gray-900/50 rounded-2xl p-4 sm:p-5 border border-gray-800/50">
+            <h3 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
+              <Circle size={16} />
+              {t('skywatch:planets.title')}
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {now.planets.map((planet) => {
+                const colors = PLANET_COLORS[planet.name] || PLANET_COLORS.Mercury
+                const nameKey = PLANET_NAME_KEY[planet.name] || 'mercury'
+                return (
+                  <div
+                    key={planet.name}
+                    className={`bg-gradient-to-b ${colors.bg} rounded-xl p-3 border ${colors.border}`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div
+                        className="w-3 h-3 rounded-full shrink-0"
+                        style={{ backgroundColor: colors.dot }}
+                      />
+                      <span className={`font-medium ${colors.text}`}>
+                        {t(`skywatch:planets.${nameKey}`)}
+                      </span>
+                      <span className="ml-auto text-xs text-gray-500">
+                        {t('skywatch:planets.magnitude', { value: planet.magnitude })}
+                      </span>
+                    </div>
+                    <div className="text-sm">
+                      {planet.status === 'visible_now' ? (
+                        <div className="text-green-400 font-medium">
+                          {t('skywatch:planets.visibleNow')}
+                        </div>
+                      ) : planet.status === 'rises_at' && planet.rise_time ? (
+                        <div className="text-gray-400">
+                          {t('skywatch:planets.risesAt', { time: localFormatTime(planet.rise_time) })}
+                        </div>
+                      ) : (
+                        <div className="text-gray-500">
+                          {t('skywatch:planets.notVisible')}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                        {planet.altitude > 0 && (
+                          <span>{t('skywatch:planets.altitude', { degrees: planet.altitude })}</span>
+                        )}
+                        {planet.altitude > 0 && (
+                          <span>{planet.direction}</span>
+                        )}
+                        <span>{t('skywatch:planets.elongation', { degrees: planet.elongation })}</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Sun Card */}
         <div className="bg-gradient-to-b from-amber-950/30 to-gray-900/50 rounded-2xl p-5 border border-amber-900/20">

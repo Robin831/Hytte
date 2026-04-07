@@ -22,6 +22,20 @@
     "nextNewMoon": "Nym\u00e5ne",
     "calendar": "M\u00e5nekalender"
   },
+  "planets": {
+    "title": "Planeter",
+    "mercury": "Merkur",
+    "venus": "Venus",
+    "mars": "Mars",
+    "jupiter": "Jupiter",
+    "saturn": "Saturn",
+    "visibleNow": "Synlig nå",
+    "risesAt": "Står opp {{time}}",
+    "notVisible": "Ikke synlig",
+    "altitude": "{{degrees}}° høyde",
+    "magnitude": "Mag {{value}}",
+    "elongation": "{{degrees}}° fra solen"
+  },
   "sun": {
     "title": "Sol",
     "sunrise": "Soloppgang",

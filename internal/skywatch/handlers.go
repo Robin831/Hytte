@@ -10,10 +10,11 @@ import (
 
 // NowResponse is the JSON response for GET /api/skywatch/now.
 type NowResponse struct {
-	Timestamp string   `json:"timestamp"`
-	Location  Location `json:"location"`
-	Moon      MoonInfo `json:"moon"`
-	Sun       SunTimes `json:"sun"`
+	Timestamp string       `json:"timestamp"`
+	Location  Location     `json:"location"`
+	Moon      MoonInfo     `json:"moon"`
+	Sun       SunTimes     `json:"sun"`
+	Planets   []PlanetInfo `json:"planets"`
 }
 
 // MoonCalendarDay is one entry in the moon phase calendar.
@@ -100,6 +101,7 @@ func NowHandler() http.HandlerFunc {
 			Location:  Location{Lat: lat, Lon: lon},
 			Moon:      GetMoonPhase(t, lat, lon),
 			Sun:       GetSunTimes(t, lat, lon),
+			Planets:   GetPlanetPositions(t, lat, lon),
 		}
 		writeJSON(w, http.StatusOK, resp)
 	}
