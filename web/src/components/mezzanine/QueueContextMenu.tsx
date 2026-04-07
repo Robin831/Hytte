@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import type { MouseEvent, KeyboardEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { MoreVertical, Play, MessageCircle, Tag, XCircle } from 'lucide-react'
@@ -39,7 +40,7 @@ export default function QueueContextMenu({
     }
   }, [shouldRestoreFocus])
 
-  const openMenu = useCallback((e: React.MouseEvent) => {
+  const openMenu = useCallback((e: MouseEvent) => {
     e.stopPropagation()
     const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
     setDropdownPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
@@ -86,7 +87,7 @@ export default function QueueContextMenu({
     return () => window.removeEventListener('scroll', handleScroll, true)
   }, [menuOpen, closeMenu])
 
-  const handleMenuKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleMenuKeyDown = useCallback((e: KeyboardEvent) => {
     const items = Array.from(
       (e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('[role="menuitem"]')
     )
@@ -171,7 +172,7 @@ export default function QueueContextMenu({
     setConfirmAction(null)
     setShouldRestoreFocus(true)
 
-    const endpoint = action === 'runNow' ? 'run-now' : 'dismiss'
+    const endpoint = action === 'runNow' ? 'run-now' : 'queue-dismiss'
     setActing(true)
     try {
       const res = await fetch(

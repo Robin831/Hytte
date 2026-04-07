@@ -643,6 +643,31 @@ func (d *DB) QueueAll() ([]QueueEntry, error) {
 	return entries, nil
 }
 
+// QueueEntryByBeadID returns the queue_cache row for a given bead ID,
+// or sql.ErrNoRows if the bead is not in the queue.
+func (d *DB) QueueEntryByBeadID(beadID string) (*QueueEntry, error) {
+	const q = `
+		SELECT bead_id, anvil, title, priority, status, labels, section,
+		       assignee, description, updated_at
+		FROM queue_cache
+		WHERE bead_id = ?
+		LIMIT 1
+	`
+	var e QueueEntry
+	var updatedAt string
+	err := d.db.QueryRow(q, beadID).Scan(
+		&e.BeadID, &e.Anvil, &e.Title, &e.Priority, &e.Status, &e.Labels, &e.Section,
+		&e.Assignee, &e.Description, &updatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if t, err := parseTime(updatedAt); err == nil {
+		e.UpdatedAt = t
+	}
+	return &e, nil
+}
+
 // WorkerByID returns a single worker by its ID, or an error if not found.
 func (d *DB) WorkerByID(id string) (*Worker, error) {
 	const q = `

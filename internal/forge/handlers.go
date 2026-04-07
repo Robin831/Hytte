@@ -2085,3 +2085,81 @@ func ForceSmithHandler(db *DB) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 	}
 }
+
+// RunNowHandler immediately triggers a force-smith run for a bead that is
+// in the ready queue (does not require the bead to have a retry entry).
+func RunNowHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" {
+			writeError(w, http.StatusBadRequest, "bead ID required")
+			return
+		}
+		if !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+		entry, err := db.QueueEntryByBeadID(beadID)
+		if err != nil {
+			log.Printf("forge: run-now lookup %s: %v", beadID, err)
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "bead not found in queue")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to look up bead in queue")
+			}
+			return
+		}
+		if err := sendIPCCommand("force_smith", forceSmithPayload{BeadID: beadID, Anvil: entry.Anvil}); err != nil {
+			log.Printf("forge: run-now force_smith %s failed: %v", beadID, err)
+			writeError(w, http.StatusInternalServerError, "failed to trigger run")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+// QueueDismissHandler removes a bead from the ready queue without requiring
+// it to have a retry entry. It sends a "dismiss_bead" IPC command using
+// the anvil looked up from queue_cache.
+func QueueDismissHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" {
+			writeError(w, http.StatusBadRequest, "bead ID required")
+			return
+		}
+		if !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+		entry, err := db.QueueEntryByBeadID(beadID)
+		if err != nil {
+			log.Printf("forge: queue-dismiss lookup %s: %v", beadID, err)
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "bead not found in queue")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to look up bead in queue")
+			}
+			return
+		}
+		var prid int
+		pr, err := db.PRByBeadID(beadID)
+		if err == nil && pr != nil {
+			prid = pr.ID
+		}
+		if err := sendIPCCommand("dismiss_bead", dismissBeadPayload{BeadID: beadID, Anvil: entry.Anvil, PRID: prid}); err != nil {
+			log.Printf("forge: queue-dismiss dismiss_bead %s failed: %v", beadID, err)
+			writeError(w, http.StatusInternalServerError, "failed to dismiss bead")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}

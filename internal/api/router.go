@@ -203,6 +203,8 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Post("/forge/beads/{id}/dismiss", forge.DismissBeadHandler(forgeDB))
 					r.Post("/forge/beads/{id}/approve", forge.ApproveBeadHandler(forgeDB))
 					r.Post("/forge/beads/{id}/force-smith", forge.ForceSmithHandler(forgeDB))
+					r.Post("/forge/beads/{id}/run-now", forge.RunNowHandler(forgeDB))
+					r.Post("/forge/beads/{id}/queue-dismiss", forge.QueueDismissHandler(forgeDB))
 					r.Post("/forge/beads/{id}/labels", forge.AddLabelHandler())
 					r.Delete("/forge/beads/{id}/labels/{label}", forge.RemoveLabelHandler())
 					r.Post("/forge/beads/{id}/comment", forge.CommentHandler())
