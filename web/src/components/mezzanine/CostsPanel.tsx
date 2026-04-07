@@ -45,28 +45,33 @@ export default function CostsPanel() {
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
     async function load() {
       try {
+        const opts: RequestInit = { credentials: 'include', signal: controller.signal }
         const [todayRes, trendRes, anvilRes] = await Promise.all([
-          fetch('/api/forge/costs?period=today', { credentials: 'include' }),
-          fetch('/api/forge/costs/trend?days=7', { credentials: 'include' }),
-          fetch('/api/forge/costs/anvils?days=7', { credentials: 'include' }),
+          fetch('/api/forge/costs?period=today', opts),
+          fetch('/api/forge/costs/trend?days=7', opts),
+          fetch('/api/forge/costs/anvils?days=7', opts),
         ])
-        if (cancelled) return
+        if (controller.signal.aborted) return
         let ok = false
-        if (todayRes.ok) { setTodayCosts((await todayRes.json()) as CostSummary); ok = true }
-        if (trendRes.ok) { setTrend((await trendRes.json()) as DailyCostEntry[]); ok = true }
-        if (anvilRes.ok) { setAnvilCosts((await anvilRes.json()) as AnvilCost[]); ok = true }
+        if (todayRes.ok) { setTodayCosts((await todayRes.json()) as CostSummary); ok = true } else { setTodayCosts(null) }
+        if (trendRes.ok) { setTrend((await trendRes.json()) as DailyCostEntry[]); ok = true } else { setTrend([]) }
+        if (anvilRes.ok) { setAnvilCosts((await anvilRes.json()) as AnvilCost[]); ok = true } else { setAnvilCosts([]) }
         if (!ok) setFailed(true)
-      } catch {
-        if (!cancelled) setFailed(true)
+      } catch (err) {
+        if (controller.signal.aborted) return
+        setTodayCosts(null)
+        setTrend([])
+        setAnvilCosts([])
+        setFailed(true)
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!controller.signal.aborted) setLoading(false)
       }
     }
     void load()
-    return () => { cancelled = true }
+    return () => { controller.abort() }
   }, [])
 
   const formatCost = (v: number) =>
@@ -96,7 +101,7 @@ export default function CostsPanel() {
         </div>
         <div className="px-3 py-4 flex items-center gap-2 text-sm text-gray-500">
           <AlertCircle size={16} className="text-amber-400 shrink-0" />
-          {t('costs.unavailable')}
+          {t('mezzanine.costs.unavailable')}
         </div>
       </div>
     )
@@ -169,7 +174,7 @@ export default function CostsPanel() {
                         fontSize: '11px',
                         padding: '4px 8px',
                       }}
-                      formatter={(value) => [typeof value === 'number' ? formatCost(value) : String(value ?? ''), t('costs.cost')]}
+                      formatter={(value) => [typeof value === 'number' ? formatCost(value) : String(value ?? ''), t('mezzanine.costs.cost')]}
                       labelFormatter={(label: unknown) => typeof label === 'string' ? formatDateLabel(label) : String(label ?? '')}
                     />
                     <Area
@@ -214,7 +219,7 @@ export default function CostsPanel() {
                           fontSize: '11px',
                           padding: '4px 8px',
                         }}
-                        formatter={(value) => [typeof value === 'number' ? formatCost(value) : String(value ?? ''), t('costs.cost')]}
+                        formatter={(value) => [typeof value === 'number' ? formatCost(value) : String(value ?? ''), t('mezzanine.costs.cost')]}
                       />
                       <Bar
                         dataKey="estimated_cost"

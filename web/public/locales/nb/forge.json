@@ -335,7 +335,9 @@
       "todaySpend": "Dagens forbruk",
       "weeklySpend": "7-dagers trend",
       "perAnvil": "Per ambolt (7 dager)",
-      "viewDashboard": "Vis fullstendig oversikt →"
+      "viewDashboard": "Vis fullstendig oversikt →",
+      "unavailable": "Kostnadsdata utilgjengelig",
+      "cost": "Kostnad"
     },
     "needsAttention": {
       "title": "Trenger oppmerksomhet",
