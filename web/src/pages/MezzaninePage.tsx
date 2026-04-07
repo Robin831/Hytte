@@ -7,6 +7,7 @@ import WorkerPanelGrid from '../components/mezzanine/WorkerPanelGrid'
 import QueueSidebar from '../components/mezzanine/QueueSidebar'
 import PipelineBar from '../components/mezzanine/PipelineBar'
 import NeedsAttentionPanel from '../components/mezzanine/NeedsAttentionPanel'
+import EventsPanel from '../components/mezzanine/EventsPanel'
 import BeadDetailModal from '../components/BeadDetailModal'
 import ToastList from '../components/ToastList'
 
@@ -67,6 +68,10 @@ export default function MezzaninePage() {
           workers={workers}
           onBeadClick={setSelectedBeadId}
         />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <EventsPanel onBeadClick={setSelectedBeadId} />
+        </div>
       </div>
 
       <BeadDetailModal

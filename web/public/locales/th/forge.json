@@ -321,6 +321,15 @@
       "dailyCost": "ค่าใช้จ่ายวันนี้",
       "lastPoll": "ตรวจสอบล่าสุด"
     },
+    "events": {
+      "title": "เหตุการณ์",
+      "filterLabel": "กรองเหตุการณ์",
+      "filterAll": "ทั้งหมด",
+      "filterErrors": "เฉพาะข้อผิดพลาด",
+      "filterPRs": "เฉพาะ PR",
+      "empty": "ยังไม่มีเหตุการณ์",
+      "viewAll": "ดูเหตุการณ์ทั้งหมด →"
+    },
     "needsAttention": {
       "title": "ต้องการความสนใจ",
       "view": "ดู",

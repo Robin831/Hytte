@@ -321,6 +321,15 @@
       "dailyCost": "Dagskostnad",
       "lastPoll": "Siste sjekk"
     },
+    "events": {
+      "title": "Hendelser",
+      "filterLabel": "Filtrer hendelser",
+      "filterAll": "Alle",
+      "filterErrors": "Kun feil",
+      "filterPRs": "Kun PRer",
+      "empty": "Ingen hendelser ennå",
+      "viewAll": "Vis alle hendelser →"
+    },
     "needsAttention": {
       "title": "Trenger oppmerksomhet",
       "view": "Vis",
