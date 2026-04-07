@@ -812,6 +812,9 @@ function DayView({
 
   const handleEditPunchStart = async (newTime: string) => {
     if (!newTime || newTime === punchStart) return
+    const prev = punchStart
+    setPunchStart(newTime)
+    setNewStart(newTime)
     try {
       const r = await fetch('/api/workhours/punch/edit', {
         method: 'PUT',
@@ -819,12 +822,15 @@ function DayView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ start_time: newTime }),
       })
-      if (r.ok) {
-        setPunchStart(newTime)
-        setNewStart(newTime)
+      if (!r.ok) {
+        console.error('workhours: edit punch start failed:', r.status)
+        setPunchStart(prev)
+        setNewStart(prev)
       }
-    } catch {
-      // silently fail — the input will revert on next render
+    } catch (err) {
+      console.error('workhours: edit punch start:', err)
+      setPunchStart(prev)
+      setNewStart(prev)
     }
   }
 

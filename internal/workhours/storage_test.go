@@ -740,3 +740,37 @@ func TestDeleteOpenSession_NoSession(t *testing.T) {
 		t.Errorf("DeleteOpenSession (none): unexpected error: %v", err)
 	}
 }
+
+func TestUpdateOpenSessionStartTime(t *testing.T) {
+	db := setupTestDB(t)
+
+	// No session → sql.ErrNoRows
+	_, err := UpdateOpenSessionStartTime(db, 1, "07:30")
+	if err != sql.ErrNoRows {
+		t.Fatalf("expected sql.ErrNoRows, got %v", err)
+	}
+
+	// Create a session and update it
+	if _, err := CreateOpenSession(db, 1, "2026-03-30", "08:00"); err != nil {
+		t.Fatalf("CreateOpenSession: %v", err)
+	}
+	s, err := UpdateOpenSessionStartTime(db, 1, "07:30")
+	if err != nil {
+		t.Fatalf("UpdateOpenSessionStartTime: %v", err)
+	}
+	if s.StartTime != "07:30" {
+		t.Errorf("StartTime: got %q, want %q", s.StartTime, "07:30")
+	}
+	if s.Date != "2026-03-30" {
+		t.Errorf("Date: got %q, want %q", s.Date, "2026-03-30")
+	}
+
+	// Verify persistence via GetOpenSession
+	s2, err := GetOpenSession(db, 1)
+	if err != nil {
+		t.Fatalf("GetOpenSession after update: %v", err)
+	}
+	if s2.StartTime != "07:30" {
+		t.Errorf("GetOpenSession StartTime: got %q, want %q", s2.StartTime, "07:30")
+	}
+}
