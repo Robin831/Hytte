@@ -69,25 +69,25 @@ func (c *AnthropicClient) SendMessageStream(ctx context.Context, messages []Chat
 	stream := c.client.Messages.NewStreaming(ctx, params)
 	defer stream.Close()
 
-	var full strings.Builder
+	message := anthropic.Message{}
+	prevTextLen := 0
 	for stream.Next() {
 		event := stream.Current()
-		if event.Type == "content_block_delta" {
-			delta := event.Delta
-			if delta.Type == "text_delta" {
-				full.WriteString(delta.Text)
-				if callback != nil {
-					callback(delta.Text)
-				}
-			}
+		message.Accumulate(event)
+
+		// Check if accumulated text grew and send the new chunk to callback.
+		currentText := extractText(&message)
+		if callback != nil && len(currentText) > prevTextLen {
+			callback(currentText[prevTextLen:])
 		}
+		prevTextLen = len(currentText)
 	}
 
 	if err := stream.Err(); err != nil {
 		return "", fmt.Errorf("anthropic stream error: %w", err)
 	}
 
-	return full.String(), nil
+	return extractText(&message), nil
 }
 
 // convertMessages converts ChatMessage slices to the SDK's message format.
