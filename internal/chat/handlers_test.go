@@ -376,7 +376,7 @@ func TestSendMessageHandler_SessionResumption(t *testing.T) {
 	}
 
 	// Set session_id on the conversation to simulate a prior exchange.
-	if err := UpdateSessionID(d, convo.ID, "existing-session-456"); err != nil {
+	if err := UpdateSessionID(d, convo.ID, 1, "existing-session-456"); err != nil {
 		t.Fatalf("update session id: %v", err)
 	}
 
@@ -421,7 +421,7 @@ func TestSendMessageHandler_SessionExpiredFallback(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	if err := UpdateSessionID(d, convo.ID, "expired-session"); err != nil {
+	if err := UpdateSessionID(d, convo.ID, 1, "expired-session"); err != nil {
 		t.Fatalf("update session id: %v", err)
 	}
 

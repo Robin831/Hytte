@@ -15,7 +15,7 @@ type Conversation struct {
 	UserID    int64  `json:"user_id"`
 	Title     string `json:"title"`
 	Model     string `json:"model"`
-	SessionID string `json:"session_id,omitempty"`
+	SessionID string `json:"-"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
 }
@@ -159,13 +159,24 @@ func GetMessages(db *sql.DB, conversationID int64) ([]Message, error) {
 	return msgs, rows.Err()
 }
 
-// UpdateSessionID stores the Claude CLI session ID on a conversation.
-func UpdateSessionID(db *sql.DB, conversationID int64, sessionID string) error {
-	_, err := db.Exec(
-		`UPDATE chat_conversations SET session_id = ? WHERE id = ?`,
-		sessionID, conversationID,
+// UpdateSessionID stores the Claude CLI session ID on a conversation owned by the given user.
+func UpdateSessionID(db *sql.DB, conversationID, userID int64, sessionID string) error {
+	now := time.Now().UTC().Format(timeFormat)
+	result, err := db.Exec(
+		`UPDATE chat_conversations SET session_id = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
+		sessionID, now, conversationID, userID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // InsertMessage adds a message to a conversation and touches updated_at.

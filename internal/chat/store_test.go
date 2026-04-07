@@ -150,17 +150,23 @@ func TestUpdateSessionID(t *testing.T) {
 	}
 
 	// Initially empty.
-	got, _ := GetConversation(d, c.ID, 1)
+	got, err := GetConversation(d, c.ID, 1)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
 	if got.SessionID != "" {
 		t.Fatalf("expected empty session_id, got %q", got.SessionID)
 	}
 
 	// Update session ID.
-	if err := UpdateSessionID(d, c.ID, "sess-abc-123"); err != nil {
+	if err := UpdateSessionID(d, c.ID, 1, "sess-abc-123"); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 
-	got, _ = GetConversation(d, c.ID, 1)
+	got, err = GetConversation(d, c.ID, 1)
+	if err != nil {
+		t.Fatalf("get conversation after update: %v", err)
+	}
 	if got.SessionID != "sess-abc-123" {
 		t.Fatalf("expected 'sess-abc-123', got %q", got.SessionID)
 	}

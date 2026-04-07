@@ -218,7 +218,7 @@ func SendMessageHandler(db *sql.DB) http.HandlerFunc {
 		result, err := runPromptWithSessionFn(ctx, cfg, content, convo.SessionID)
 		if err != nil && convo.SessionID != "" {
 			// Session may have expired or become invalid — retry without session.
-			log.Printf("Session resume failed (session_id=%s), retrying fresh: %v", convo.SessionID, err)
+			log.Printf("Session resume failed, retrying fresh: %v", err)
 			result, err = runPromptWithSessionFn(ctx, cfg, content, "")
 		}
 		if err != nil {
@@ -229,7 +229,7 @@ func SendMessageHandler(db *sql.DB) http.HandlerFunc {
 
 		// Save the session ID for future resumption.
 		if result.SessionID != "" && result.SessionID != convo.SessionID {
-			if dbErr := UpdateSessionID(db, convo.ID, result.SessionID); dbErr != nil {
+			if dbErr := UpdateSessionID(db, convo.ID, user.ID, result.SessionID); dbErr != nil {
 				log.Printf("Failed to save session ID: %v", dbErr)
 			}
 		}
