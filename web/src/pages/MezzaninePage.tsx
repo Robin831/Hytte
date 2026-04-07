@@ -64,19 +64,11 @@ export default function MezzaninePage() {
     [workers],
   )
 
-  const handleRefresh = useCallback(async () => {
-    const results = await Promise.allSettled([
-      Promise.resolve(refreshWorkers()),
-      Promise.resolve(refreshStatus()),
-      Promise.resolve(refreshQueue()),
-    ])
-
-    if (results.every(result => result.status === 'fulfilled')) {
-      showToast(t('mezzanine.shortcuts.refreshed'), 'success')
-      return
-    }
-
-    showToast(t('mezzanine.shortcuts.refreshError'), 'error')
+  const handleRefresh = useCallback(() => {
+    refreshWorkers()
+    refreshStatus()
+    refreshQueue()
+    showToast(t('mezzanine.shortcuts.refreshing'), 'info')
   }, [refreshWorkers, refreshStatus, refreshQueue, showToast, t])
 
   const handleMergeFirstReady = useCallback(() => {

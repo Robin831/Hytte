@@ -419,8 +419,7 @@
       "focusWorkerN": "Fokuser arbeider 1-6",
       "showHelp": "Vis denne hjelpen",
       "closeModal": "Lukk",
-      "refreshed": "Data oppdatert",
-      "refreshError": "Kunne ikke oppdatere data",
+      "refreshing": "Oppdaterer…",
       "noMergeReady": "Ingen PRer klare for sammenslåing",
       "noWorkerFocused": "Ingen arbeider fokusert — trykk 1-6 for å velge"
     }
