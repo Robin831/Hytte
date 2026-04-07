@@ -48,17 +48,32 @@ export default function CostsPanel() {
     async function load() {
       try {
         const opts: RequestInit = { credentials: 'include', signal: controller.signal }
-        const [todayRes, trendRes, anvilRes] = await Promise.all([
+        const [todayResult, trendResult, anvilResult] = await Promise.allSettled([
           fetch('/api/forge/costs?period=today', opts),
           fetch('/api/forge/costs/trend?days=7', opts),
           fetch('/api/forge/costs/anvils?days=7', opts),
         ])
         if (controller.signal.aborted) return
         let ok = false
-        if (todayRes.ok) { setTodayCosts((await todayRes.json()) as CostSummary); ok = true } else { setTodayCosts(null) }
-        if (trendRes.ok) { setTrend((await trendRes.json()) as DailyCostEntry[]); ok = true } else { setTrend([]) }
-        if (anvilRes.ok) { setAnvilCosts((await anvilRes.json()) as AnvilCost[]); ok = true } else { setAnvilCosts([]) }
-        if (!ok) setFailed(true)
+        if (todayResult.status === 'fulfilled' && todayResult.value.ok) {
+          setTodayCosts((await todayResult.value.json()) as CostSummary)
+          ok = true
+        } else {
+          setTodayCosts(null)
+        }
+        if (trendResult.status === 'fulfilled' && trendResult.value.ok) {
+          setTrend((await trendResult.value.json()) as DailyCostEntry[])
+          ok = true
+        } else {
+          setTrend([])
+        }
+        if (anvilResult.status === 'fulfilled' && anvilResult.value.ok) {
+          setAnvilCosts((await anvilResult.value.json()) as AnvilCost[])
+          ok = true
+        } else {
+          setAnvilCosts([])
+        }
+        setFailed(!ok)
       } catch {
         if (controller.signal.aborted) return
         setTodayCosts(null)

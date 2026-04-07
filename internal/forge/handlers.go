@@ -765,16 +765,13 @@ func AnvilCostsHandler(db *DB) http.HandlerFunc {
 		}
 		days := 7
 		if s := r.URL.Query().Get("days"); s != "" {
-			n, err := strconv.Atoi(s)
-			if err != nil || n <= 0 {
-				writeError(w, http.StatusBadRequest, "days must be a positive integer")
-				return
+			if n, err := strconv.Atoi(s); err == nil && n > 0 {
+				if n > 90 {
+					writeError(w, http.StatusBadRequest, "days must be 90 or fewer")
+					return
+				}
+				days = n
 			}
-			if n > 90 {
-				writeError(w, http.StatusBadRequest, "days must be 90 or fewer")
-				return
-			}
-			days = n
 		}
 		anvils, err := db.AnvilCosts(days)
 		if err != nil {
