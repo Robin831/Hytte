@@ -384,6 +384,35 @@ func TestDownloadHandler_NotFound(t *testing.T) {
 	}
 }
 
+func TestPreviewHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	content := []byte("fake png data")
+	f, err := Create(db, 1, "test.png", "image/png", "", "private", []string{}, content)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	idStr := strconv.FormatInt(f.ID, 10)
+	req := withUser(httptest.NewRequest("GET", "/api/vault/files/"+idStr+"/preview", nil), 1)
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	PreviewHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Content-Type") != "image/png" {
+		t.Errorf("Content-Type = %q, want %q", rec.Header().Get("Content-Type"), "image/png")
+	}
+	if rec.Header().Get("Content-Disposition") != "inline" {
+		t.Errorf("Content-Disposition = %q, want %q", rec.Header().Get("Content-Disposition"), "inline")
+	}
+	if rec.Body.String() != string(content) {
+		t.Errorf("body = %q, want %q", rec.Body.String(), string(content))
+	}
+}
+
 func TestPreviewHandler_NotPreviewable(t *testing.T) {
 	db := setupTestDB(t)
 

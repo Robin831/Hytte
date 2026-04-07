@@ -1,12 +1,10 @@
 package vault
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +13,12 @@ import (
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
+
+// ErrFileTooLarge is returned when uploaded file data exceeds the size limit.
+var ErrFileTooLarge = errors.New("file too large")
+
+// ErrNotPreviewable is returned when a file type cannot be previewed inline.
+var ErrNotPreviewable = errors.New("file type not previewable")
 
 // maxFileSize is the maximum allowed upload size (50 MB).
 const maxFileSize = 50 << 20
@@ -63,12 +67,6 @@ func validateStoragePath(path string) error {
 	return nil
 }
 
-// hashFileContent returns the SHA-256 hex digest of the given data.
-func hashFileContent(data []byte) string {
-	h := sha256.Sum256(data)
-	return hex.EncodeToString(h[:])
-}
-
 // Create stores a new file in the vault. The file content is encrypted before
 // writing to disk. Metadata (with encrypted filename) is stored in SQLite.
 func Create(db *sql.DB, userID int64, filename, mimeType, folder, access string, tags []string, data []byte) (*File, error) {
@@ -88,8 +86,6 @@ func Create(db *sql.DB, userID int64, filename, mimeType, folder, access string,
 		return nil, fmt.Errorf("encrypt file data: %w", err)
 	}
 
-	contentHash := hashFileContent(data)
-
 	tx, err := db.Begin()
 	if err != nil {
 		return nil, err
@@ -97,9 +93,9 @@ func Create(db *sql.DB, userID int64, filename, mimeType, folder, access string,
 	defer tx.Rollback()
 
 	res, err := tx.Exec(`
-		INSERT INTO vault_files (user_id, filename, mime_type, size_bytes, folder, access, content_hash, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, userID, encFilename, mimeType, len(data), folder, access, contentHash, now, now)
+		INSERT INTO vault_files (user_id, filename, mime_type, size_bytes, folder, access, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, userID, encFilename, mimeType, len(data), folder, access, now, now)
 	if err != nil {
 		return nil, fmt.Errorf("insert vault file: %w", err)
 	}
@@ -327,10 +323,12 @@ func Delete(db *sql.DB, userID, fileID int64) error {
 		return sql.ErrNoRows
 	}
 
-	// Remove the on-disk file first.
+	// Remove the on-disk file first. If removal fails (for reasons other than
+	// the file not existing), return an error so the DB row is preserved and
+	// the user can retry — this prevents orphaned encrypted blobs on disk.
 	diskPath := filePath(userID, fileID)
 	if err := os.Remove(diskPath); err != nil && !os.IsNotExist(err) {
-		log.Printf("Warning: failed to remove vault file %s: %v", diskPath, err)
+		return fmt.Errorf("remove vault file from disk: %w", err)
 	}
 
 	_, err := db.Exec(`DELETE FROM vault_files WHERE id = ? AND user_id = ?`, fileID, userID)
@@ -427,7 +425,7 @@ func PreviewData(db *sql.DB, userID, fileID int64) ([]byte, string, error) {
 	}
 
 	if !isPreviewable(f.MimeType) {
-		return nil, "", fmt.Errorf("file type not previewable")
+		return nil, "", ErrNotPreviewable
 	}
 
 	data, err := Download(userID, fileID)
@@ -460,7 +458,7 @@ func ReadFileData(r io.Reader) ([]byte, error) {
 		return nil, err
 	}
 	if int64(len(data)) > maxFileSize {
-		return nil, fmt.Errorf("file exceeds maximum size of %d bytes", maxFileSize)
+		return nil, ErrFileTooLarge
 	}
 	return data, nil
 }

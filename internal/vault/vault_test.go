@@ -41,7 +41,6 @@ func setupTestDB(t *testing.T) *sql.DB {
 			size_bytes   INTEGER NOT NULL DEFAULT 0,
 			folder       TEXT NOT NULL DEFAULT '',
 			access       TEXT NOT NULL DEFAULT 'private',
-			content_hash TEXT NOT NULL DEFAULT '',
 			created_at   TEXT NOT NULL DEFAULT '',
 			updated_at   TEXT NOT NULL DEFAULT ''
 		);

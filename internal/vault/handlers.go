@@ -48,7 +48,12 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 
 		data, err := ReadFileData(file)
 		if err != nil {
-			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "file too large"})
+			if errors.Is(err, ErrFileTooLarge) {
+				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "file too large"})
+			} else {
+				log.Printf("Failed to read uploaded file: %v", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read file"})
+			}
 			return
 		}
 
@@ -191,7 +196,7 @@ func PreviewHandler(db *sql.DB) http.HandlerFunc {
 
 		data, mimeType, err := PreviewData(db, user.ID, fileID)
 		if err != nil {
-			if err.Error() == "file type not previewable" {
+			if errors.Is(err, ErrNotPreviewable) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "file type not previewable"})
 				return
 			}

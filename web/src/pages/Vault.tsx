@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useId } from 'react'
 import {
   Upload,
   Search,
@@ -8,7 +8,6 @@ import {
   Download,
   Eye,
   Edit3,
-  X,
   File,
   Image,
   FileText,
@@ -17,7 +16,7 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { ConfirmDialog } from '../components/ui/dialog'
+import { ConfirmDialog, Dialog, DialogHeader, DialogBody } from '../components/ui/dialog'
 
 interface VaultFile {
   id: number
@@ -59,6 +58,9 @@ function isPreviewable(mimeType: string): boolean {
 
 export default function Vault() {
   const { t, i18n } = useTranslation('vault')
+  const uploadTitleId = useId()
+  const editTitleId = useId()
+  const previewTitleId = useId()
   const [files, setFiles] = useState<VaultFile[]>([])
   const [folders, setFolders] = useState<string[]>([])
   const [allTags, setAllTags] = useState<string[]>([])
@@ -121,6 +123,7 @@ export default function Vault() {
   useEffect(() => {
     return () => {
       uploadAbortRef.current?.abort()
+      previewAbortRef.current?.abort()
     }
   }, [])
 
@@ -248,6 +251,7 @@ export default function Vault() {
     previewAbortRef.current?.abort()
     const controller = new AbortController()
     previewAbortRef.current = controller
+    setPreviewUrl(null)
     setPreviewFile(file)
     try {
       const res = await fetch(`/api/vault/files/${file.id}/preview`, {
@@ -373,73 +377,63 @@ export default function Vault() {
       </div>
 
       {/* Upload form modal */}
-      {showUploadForm && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowUploadForm(false)}>
-          <div
-            className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">{t('uploadTitle')}</h2>
-              <button onClick={() => setShowUploadForm(false)} className="text-gray-400 hover:text-white cursor-pointer">
-                <X size={20} />
+      <Dialog open={showUploadForm} onClose={() => setShowUploadForm(false)} aria-labelledby={uploadTitleId}>
+        <DialogHeader id={uploadTitleId} title={t('uploadTitle')} onClose={() => setShowUploadForm(false)} />
+        <DialogBody>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">{t('fields.folder')}</label>
+              <input
+                type="text"
+                value={uploadFolder}
+                onChange={(e) => setUploadFolder(e.target.value)}
+                placeholder={t('fields.folderPlaceholder')}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">{t('fields.access')}</label>
+              <select
+                value={uploadAccess}
+                onChange={(e) => setUploadAccess(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white cursor-pointer focus:outline-none focus:border-blue-500"
+              >
+                <option value="private">{t('accessPrivate')}</option>
+                <option value="shared">{t('accessShared')}</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">{t('fields.tags')}</label>
+              <input
+                type="text"
+                value={uploadTags}
+                onChange={(e) => setUploadTags(e.target.value)}
+                placeholder={t('fields.tagsPlaceholder')}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={(e) => handleUpload(e.target.files)}
+                className="hidden"
+                id="vault-file-input"
+                aria-label={t('chooseFiles')}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors cursor-pointer border-2 border-dashed border-blue-500"
+              >
+                <Upload size={16} />
+                {uploading ? t('uploading') : t('chooseFiles')}
               </button>
             </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">{t('fields.folder')}</label>
-                <input
-                  type="text"
-                  value={uploadFolder}
-                  onChange={(e) => setUploadFolder(e.target.value)}
-                  placeholder={t('fields.folderPlaceholder')}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">{t('fields.access')}</label>
-                <select
-                  value={uploadAccess}
-                  onChange={(e) => setUploadAccess(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white cursor-pointer focus:outline-none focus:border-blue-500"
-                >
-                  <option value="private">{t('accessPrivate')}</option>
-                  <option value="shared">{t('accessShared')}</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">{t('fields.tags')}</label>
-                <input
-                  type="text"
-                  value={uploadTags}
-                  onChange={(e) => setUploadTags(e.target.value)}
-                  placeholder={t('fields.tagsPlaceholder')}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  onChange={(e) => handleUpload(e.target.files)}
-                  className="hidden"
-                  id="vault-file-input"
-                  aria-label={t('chooseFiles')}
-                />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors cursor-pointer border-2 border-dashed border-blue-500"
-                >
-                  <Upload size={16} />
-                  {uploading ? t('uploading') : t('chooseFiles')}
-                </button>
-              </div>
-            </div>
           </div>
-        </div>
-      )}
+        </DialogBody>
+      </Dialog>
 
       {/* File list */}
       {loading ? (
@@ -540,97 +534,75 @@ export default function Vault() {
       )}
 
       {/* Edit modal */}
-      {editFile && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setEditFile(null)}>
-          <div
-            className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">{t('editTitle')}</h2>
-              <button onClick={() => setEditFile(null)} className="text-gray-400 hover:text-white cursor-pointer">
-                <X size={20} />
-              </button>
+      <Dialog open={!!editFile} onClose={() => setEditFile(null)} aria-labelledby={editTitleId}>
+        <DialogHeader id={editTitleId} title={t('editTitle')} onClose={() => setEditFile(null)} />
+        <DialogBody>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">{t('fields.filename')}</label>
+              <input
+                type="text"
+                value={editFilename}
+                onChange={(e) => setEditFilename(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
+              />
             </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">{t('fields.filename')}</label>
-                <input
-                  type="text"
-                  value={editFilename}
-                  onChange={(e) => setEditFilename(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">{t('fields.folder')}</label>
-                <input
-                  type="text"
-                  value={editFolder}
-                  onChange={(e) => setEditFolder(e.target.value)}
-                  placeholder={t('fields.folderPlaceholder')}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">{t('fields.access')}</label>
-                <select
-                  value={editAccess}
-                  onChange={(e) => setEditAccess(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white cursor-pointer focus:outline-none focus:border-blue-500"
-                >
-                  <option value="private">{t('accessPrivate')}</option>
-                  <option value="shared">{t('accessShared')}</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">{t('fields.tags')}</label>
-                <input
-                  type="text"
-                  value={editTags}
-                  onChange={(e) => setEditTags(e.target.value)}
-                  placeholder={t('fields.tagsPlaceholder')}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-              <button
-                onClick={handleSaveEdit}
-                disabled={saving || !editFilename.trim()}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">{t('fields.folder')}</label>
+              <input
+                type="text"
+                value={editFolder}
+                onChange={(e) => setEditFolder(e.target.value)}
+                placeholder={t('fields.folderPlaceholder')}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">{t('fields.access')}</label>
+              <select
+                value={editAccess}
+                onChange={(e) => setEditAccess(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white cursor-pointer focus:outline-none focus:border-blue-500"
               >
-                <Save size={16} />
-                {saving ? t('saving') : t('save')}
-              </button>
+                <option value="private">{t('accessPrivate')}</option>
+                <option value="shared">{t('accessShared')}</option>
+              </select>
             </div>
+            <div>
+              <label className="block text-sm text-gray-400 mb-1">{t('fields.tags')}</label>
+              <input
+                type="text"
+                value={editTags}
+                onChange={(e) => setEditTags(e.target.value)}
+                placeholder={t('fields.tagsPlaceholder')}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <button
+              onClick={handleSaveEdit}
+              disabled={saving || !editFilename.trim()}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            >
+              <Save size={16} />
+              {saving ? t('saving') : t('save')}
+            </button>
           </div>
-        </div>
-      )}
+        </DialogBody>
+      </Dialog>
 
       {/* Preview modal */}
-      {previewFile && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={closePreview}>
-          <div
-            className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-4 border-b border-gray-700">
-              <h2 className="text-sm font-medium truncate">{previewFile.filename}</h2>
-              <button onClick={closePreview} className="text-gray-400 hover:text-white cursor-pointer shrink-0 ml-2">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto p-4 flex items-center justify-center min-h-0">
-              {!previewUrl ? (
-                <div className="text-gray-400 text-sm">{t('loading')}</div>
-              ) : previewFile.mime_type.startsWith('image/') ? (
-                <img src={previewUrl} alt={previewFile.filename} className="max-w-full max-h-full object-contain" />
-              ) : (
-                <iframe src={previewUrl} className="w-full h-full min-h-[60vh]" title={previewFile.filename} />
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <Dialog open={!!previewFile} onClose={closePreview} maxWidth="max-w-4xl" aria-labelledby={previewTitleId}>
+        <DialogHeader id={previewTitleId} title={previewFile?.filename ?? ''} onClose={closePreview} />
+        <DialogBody className="flex-1 flex items-center justify-center min-h-0">
+          {!previewUrl ? (
+            <div className="text-gray-400 text-sm">{t('loading')}</div>
+          ) : previewFile?.mime_type.startsWith('image/') ? (
+            <img src={previewUrl} alt={previewFile.filename} className="max-w-full max-h-full object-contain" />
+          ) : (
+            <iframe src={previewUrl} className="w-full h-full min-h-[60vh]" title={previewFile?.filename} />
+          )}
+        </DialogBody>
+      </Dialog>
 
       {/* Delete confirmation */}
       <ConfirmDialog
