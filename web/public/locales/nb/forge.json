@@ -321,6 +321,12 @@
       "dailyCost": "Dagskostnad",
       "lastPoll": "Siste sjekk"
     },
+    "needsAttention": {
+      "title": "Trenger oppmerksomhet",
+      "clarify": "Avklar",
+      "clarifyLabel": "Avklar perle {{id}}",
+      "dismissLabel": "Avvis perle {{id}}"
+    },
     "pipeline": {
       "title": "Pipeline",
       "stages": {

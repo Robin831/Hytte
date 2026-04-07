@@ -321,6 +321,12 @@
       "dailyCost": "ค่าใช้จ่ายวันนี้",
       "lastPoll": "ตรวจสอบล่าสุด"
     },
+    "needsAttention": {
+      "title": "ต้องการความสนใจ",
+      "clarify": "ชี้แจง",
+      "clarifyLabel": "ชี้แจงงาน {{id}}",
+      "dismissLabel": "ยกเลิกงาน {{id}}"
+    },
     "pipeline": {
       "title": "ไปป์ไลน์",
       "stages": {
