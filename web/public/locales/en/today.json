@@ -46,6 +46,20 @@
     "pendingChores_other": "{{count}} chores to do",
     "allDone": "All done!"
   },
+  "quickActions": {
+    "title": "Quick Actions",
+    "approveChores": "Approve Chores",
+    "checkSchedule": "Check Schedule",
+    "busTimes": "Bus Times"
+  },
+  "streak": {
+    "days_one": "{{count}} day streak",
+    "days_other": "{{count}} days streak"
+  },
+  "guest": {
+    "loginPrompt": "Sign in to see your personalized dashboard",
+    "signIn": "Sign in with Google"
+  },
   "moon": {
     "loading": "Loading moon…",
     "phase": {
