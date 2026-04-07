@@ -2,6 +2,7 @@ package skywatch
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -30,21 +31,39 @@ type Location struct {
 }
 
 // parseCoords extracts lat/lon from query parameters, falling back to defaults.
-func parseCoords(r *http.Request) (float64, float64) {
-	lat := DefaultLat
-	lon := DefaultLon
+// Both lat and lon must be provided together; if only one is given, an error is returned.
+// Latitude must be in [-90, 90] and longitude in [-180, 180].
+func parseCoords(r *http.Request) (float64, float64, error) {
+	latStr := r.URL.Query().Get("lat")
+	lonStr := r.URL.Query().Get("lon")
 
-	if v := r.URL.Query().Get("lat"); v != "" {
-		if parsed, err := strconv.ParseFloat(v, 64); err == nil {
-			lat = parsed
-		}
+	// Neither provided — use defaults.
+	if latStr == "" && lonStr == "" {
+		return DefaultLat, DefaultLon, nil
 	}
-	if v := r.URL.Query().Get("lon"); v != "" {
-		if parsed, err := strconv.ParseFloat(v, 64); err == nil {
-			lon = parsed
-		}
+
+	// One provided without the other.
+	if latStr == "" || lonStr == "" {
+		return 0, 0, fmt.Errorf("both lat and lon must be provided together")
 	}
-	return lat, lon
+
+	lat, err := strconv.ParseFloat(latStr, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid lat value")
+	}
+	lon, err := strconv.ParseFloat(lonStr, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid lon value")
+	}
+
+	if lat < -90 || lat > 90 {
+		return 0, 0, fmt.Errorf("lat must be between -90 and 90")
+	}
+	if lon < -180 || lon > 180 {
+		return 0, 0, fmt.Errorf("lon must be between -180 and 180")
+	}
+
+	return lat, lon, nil
 }
 
 // writeJSON writes a JSON response with the given status code.
@@ -58,9 +77,13 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // GET /api/skywatch/now?lat=...&lon=...
 func NowHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		now := time.Now()
-		lat, lon := parseCoords(r)
+		lat, lon, err := parseCoords(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 
+		now := time.Now()
 		resp := NowResponse{
 			Timestamp: now.Format(time.RFC3339),
 			Location:  Location{Lat: lat, Lon: lon},
@@ -75,6 +98,12 @@ func NowHandler() http.HandlerFunc {
 // GET /api/skywatch/moon?days=30&lat=...&lon=...
 func MoonCalendarHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		lat, lon, err := parseCoords(r)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+
 		days := 30
 		if v := r.URL.Query().Get("days"); v != "" {
 			if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 365 {
@@ -83,7 +112,6 @@ func MoonCalendarHandler() http.HandlerFunc {
 		}
 
 		now := time.Now()
-		lat, lon := parseCoords(r)
 		calendar := make([]MoonCalendarDay, days)
 
 		for i := range days {

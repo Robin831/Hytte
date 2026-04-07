@@ -209,3 +209,49 @@ func TestMoonCalendarHandlerInvalidDays(t *testing.T) {
 		t.Errorf("expected default 30 days for invalid input, got %d", resp.Days)
 	}
 }
+
+func TestParseCoordsValidation(t *testing.T) {
+	tests := []struct {
+		name       string
+		query      string
+		wantErr    bool
+		wantStatus int
+	}{
+		{"lat only", "?lat=60.0", true, http.StatusBadRequest},
+		{"lon only", "?lon=5.0", true, http.StatusBadRequest},
+		{"lat out of range high", "?lat=91&lon=5", true, http.StatusBadRequest},
+		{"lat out of range low", "?lat=-91&lon=5", true, http.StatusBadRequest},
+		{"lon out of range high", "?lat=60&lon=181", true, http.StatusBadRequest},
+		{"lon out of range low", "?lat=60&lon=-181", true, http.StatusBadRequest},
+		{"invalid lat format", "?lat=abc&lon=5", true, http.StatusBadRequest},
+		{"invalid lon format", "?lat=60&lon=abc", true, http.StatusBadRequest},
+		{"valid coords", "?lat=60&lon=5", false, http.StatusOK},
+		{"no coords defaults", "", false, http.StatusOK},
+		{"boundary lat 90", "?lat=90&lon=0", false, http.StatusOK},
+		{"boundary lat -90", "?lat=-90&lon=0", false, http.StatusOK},
+		{"boundary lon 180", "?lat=0&lon=180", false, http.StatusOK},
+		{"boundary lon -180", "?lat=0&lon=-180", false, http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/skywatch/now"+tt.query, nil)
+			w := httptest.NewRecorder()
+			NowHandler().ServeHTTP(w, req)
+
+			if w.Code != tt.wantStatus {
+				t.Errorf("got status %d, want %d", w.Code, tt.wantStatus)
+			}
+
+			if tt.wantErr {
+				var errResp map[string]string
+				if err := json.NewDecoder(w.Body).Decode(&errResp); err != nil {
+					t.Fatalf("failed to decode error response: %v", err)
+				}
+				if errResp["error"] == "" {
+					t.Error("expected non-empty error message")
+				}
+			}
+		})
+	}
+}
