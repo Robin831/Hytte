@@ -174,7 +174,8 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
 
   const groups = groupByAnvil(beads)
   const totalBeads = beads.length
-  const errorMessage = errorKey ? t(errorKey) : errorDetail
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const errorMessage = errorKey ? String(t(errorKey as any)) : errorDetail
 
   return (
     <nav className="flex flex-col h-full" aria-label={t('mezzanine.queueSidebar.title')}>
