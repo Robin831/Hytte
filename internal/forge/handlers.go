@@ -869,6 +869,23 @@ func BeadCostByIDHandler(db *DB) http.HandlerFunc {
 	}
 }
 
+// AnvilHealthHandler returns per-anvil health metrics (active workers, open PRs,
+// queue depth, last activity timestamp).
+func AnvilHealthHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+		anvils, err := db.AnvilHealthList()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load anvil health")
+			return
+		}
+		writeJSON(w, http.StatusOK, anvils)
+	}
+}
+
 // AnvilCostsHandler returns per-anvil cost breakdown for the given period.
 // Query param: days — number of days to include (default 7, max 90).
 func AnvilCostsHandler(db *DB) http.HandlerFunc {

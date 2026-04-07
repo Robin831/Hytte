@@ -501,5 +501,17 @@
       "avgDuration": "Avg Duration",
       "active": "Active"
     }
+  },
+  "anvilsPage": {
+    "title": "Anvils",
+    "backToMezzanine": "Back to Mezzanine",
+    "refresh": "Refresh",
+    "error": "Failed to load anvil health",
+    "loading": "Loading anvils...",
+    "empty": "No anvils found",
+    "activeWorkers": "Workers",
+    "openPRs": "Open PRs",
+    "queueDepth": "Queue",
+    "lastActivity": "Last activity"
   }
 }

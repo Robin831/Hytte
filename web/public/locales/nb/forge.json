@@ -501,5 +501,17 @@
       "avgDuration": "Gj.sn. varighet",
       "active": "Aktive"
     }
+  },
+  "anvilsPage": {
+    "title": "Ambolter",
+    "backToMezzanine": "Tilbake til Mezzanine",
+    "refresh": "Oppdater",
+    "error": "Kunne ikke laste ambolt-helse",
+    "loading": "Laster ambolter...",
+    "empty": "Ingen ambolter funnet",
+    "activeWorkers": "Arbeidere",
+    "openPRs": "Åpne PRer",
+    "queueDepth": "Kø",
+    "lastActivity": "Siste aktivitet"
   }
 }
