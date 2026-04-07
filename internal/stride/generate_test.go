@@ -147,6 +147,48 @@ func TestGeneratePlan_StoresPlan(t *testing.T) {
 	}
 }
 
+func TestGeneratePlan_StoresPlan_Current(t *testing.T) {
+	db := extendedTestDB(t)
+
+	prefs := []struct{ k, v string }{
+		{"stride_enabled", "true"},
+		{"claude_enabled", "true"},
+		{"claude_model", "claude-opus-4-5"},
+	}
+	for _, p := range prefs {
+		if _, err := db.Exec("INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)", p.k, p.v); err != nil {
+			t.Fatalf("set pref %s: %v", p.k, err)
+		}
+	}
+
+	weekStart, weekEnd := currentWeek()
+	planDays := buildMinimalPlan(weekStart)
+	mockResponse, _ := json.Marshal(planDays)
+
+	origFn := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		return string(mockResponse), nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFn })
+
+	if err := GeneratePlan(context.Background(), db, 1, "current"); err != nil {
+		t.Fatalf("GeneratePlan: %v", err)
+	}
+
+	var storedWeekStart, storedWeekEnd string
+	if err := db.QueryRow(
+		"SELECT week_start, week_end FROM stride_plans WHERE user_id = 1",
+	).Scan(&storedWeekStart, &storedWeekEnd); err != nil {
+		t.Fatalf("query plan: %v", err)
+	}
+	if storedWeekStart != weekStart {
+		t.Errorf("week_start = %q, want %q (currentWeek)", storedWeekStart, weekStart)
+	}
+	if storedWeekEnd != weekEnd {
+		t.Errorf("week_end = %q, want %q (currentWeek)", storedWeekEnd, weekEnd)
+	}
+}
+
 func TestGeneratePlan_DBError(t *testing.T) {
 	db := extendedTestDB(t)
 

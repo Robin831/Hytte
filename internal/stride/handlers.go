@@ -488,6 +488,9 @@ func GeneratePlanHandler(db *sql.DB) http.HandlerFunc {
 		weekMode := r.URL.Query().Get("week")
 		if weekMode == "" {
 			weekMode = "next"
+		} else if weekMode != "current" && weekMode != "next" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": `invalid week: must be "current" or "next"`})
+			return
 		}
 
 		if err := GeneratePlan(r.Context(), db, user.ID, weekMode); err != nil {
