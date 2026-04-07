@@ -685,6 +685,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Use(auth.RequireFeature(db, "skywatch"))
 				r.Get("/skywatch/now", skywatch.NowHandler())
 				r.Get("/skywatch/moon", skywatch.MoonCalendarHandler())
+				auroraSvc := skywatch.NewAuroraService()
+				r.Get("/skywatch/aurora", auroraSvc.AuroraHandler())
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.

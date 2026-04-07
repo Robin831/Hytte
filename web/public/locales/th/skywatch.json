@@ -53,6 +53,18 @@
     "opposition": "{{planet}} อยู่ในตำแหน่งตรงข้าม — สว่างที่สุด",
     "brightPlanet": "{{planet}} ส่องสว่างทาง{{direction}}คืนนี้"
   },
+  "aurora": {
+    "title": "พยากรณ์แสงเหนือ",
+    "probability_likely": "มีโอกาสเห็นแสงเหนือคืนนี้",
+    "probability_possible": "อาจเห็นแสงเหนือคืนนี้",
+    "probability_unlikely": "ไม่น่าจะเห็นแสงเหนือคืนนี้",
+    "probability_unknown": "ไม่มีข้อมูลแสงเหนือ",
+    "maxKpTonight": "Kp สูงสุดคืนนี้",
+    "minKpNeeded": "Kp ขั้นต่ำที่ต้องการ",
+    "bestTime": "เวลาที่ดีที่สุด",
+    "bestDirection": "มองไปทาง",
+    "geomagneticLat": "ละติจูดธรณีแม่เหล็ก: {{degrees}}°"
+  },
   "sun": {
     "title": "\u0e14\u0e27\u0e07\u0e2d\u0e32\u0e17\u0e34\u0e15\u0e22\u0e4c",
     "sunrise": "\u0e1e\u0e23\u0e30\u0e2d\u0e32\u0e17\u0e34\u0e15\u0e22\u0e4c\u0e02\u0e36\u0e49\u0e19",

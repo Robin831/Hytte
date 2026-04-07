@@ -53,6 +53,18 @@
     "opposition": "{{planet}} er i opposisjon — på sitt sterkeste",
     "brightPlanet": "{{planet}} lyser sterkt i {{direction}} i kveld"
   },
+  "aurora": {
+    "title": "Nordlysvarsel",
+    "probability_likely": "Nordlys sannsynlig i natt",
+    "probability_possible": "Nordlys mulig i natt",
+    "probability_unlikely": "Nordlys usannsynlig i natt",
+    "probability_unknown": "Ingen nordlysdata tilgjengelig",
+    "maxKpTonight": "Maks Kp i natt",
+    "minKpNeeded": "Min Kp nødvendig",
+    "bestTime": "Beste tid",
+    "bestDirection": "Se mot",
+    "geomagneticLat": "Geomagnetisk breddegrad: {{degrees}}°"
+  },
   "sun": {
     "title": "Sol",
     "sunrise": "Soloppgang",
