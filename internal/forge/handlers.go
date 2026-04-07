@@ -257,8 +257,27 @@ func StatusHandler(db *DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "failed to load retries")
 			return
 		}
-		out.NeedsHuman = len(retries)
 		out.Stuck = retries
+
+		// Also include PRs with exhausted CI/review fix attempts.
+		const defaultCIFixMax = 5
+		const defaultReviewFixMax = 5
+		stuckPRs, err := db.StuckPRs(defaultCIFixMax, defaultReviewFixMax)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to load stuck PRs")
+			return
+		}
+		// Deduplicate: skip stuck PRs whose bead is already in retries.
+		seen := make(map[string]bool, len(retries))
+		for _, r := range retries {
+			seen[r.BeadID] = true
+		}
+		for _, sp := range stuckPRs {
+			if !seen[sp.BeadID] {
+				out.Stuck = append(out.Stuck, sp)
+			}
+		}
+		out.NeedsHuman = len(out.Stuck)
 
 		writeJSON(w, http.StatusOK, out)
 	}

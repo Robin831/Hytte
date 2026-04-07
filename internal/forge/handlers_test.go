@@ -158,6 +158,110 @@ func TestStatusHandler_WithData(t *testing.T) {
 	}
 }
 
+func TestStatusHandler_StuckPRs(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC()
+	nowStr := now.Format(time.RFC3339)
+
+	// PR with exhausted CI fix attempts (ci_fix_count=5, ci_passing=0).
+	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES (1, 10, 'a', 'ci-stuck', 'feat/ci', 'main', 'CI stuck', 'open', ?, ?, 5, 0, 0, 0, 0, 0, 0, 0, 0)
+	`, nowStr, nowStr) //nolint:errcheck
+
+	// PR with exhausted review fix attempts (review_fix_count=5, has_unresolved_threads=1).
+	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES (2, 11, 'a', 'review-stuck', 'feat/rev', 'main', 'Review stuck', 'open', ?, ?, 0, 5, 1, 0, 0, 1, 0, 0, 0)
+	`, nowStr, nowStr) //nolint:errcheck
+
+	// PR that is healthy — should NOT appear (ci_fix_count below max).
+	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES (3, 12, 'a', 'healthy', 'feat/ok', 'main', 'OK', 'open', ?, ?, 2, 1, 0, 0, 0, 0, 0, 0, 0)
+	`, nowStr, nowStr) //nolint:errcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/status", nil)
+	rec := httptest.NewRecorder()
+	StatusHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		NeedsHuman int     `json:"needs_human"`
+		Stuck      []Retry `json:"stuck"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.NeedsHuman != 2 {
+		t.Errorf("expected 2 needs_human, got %d", body.NeedsHuman)
+	}
+	if len(body.Stuck) != 2 {
+		t.Errorf("expected 2 stuck entries, got %d", len(body.Stuck))
+	}
+
+	// Verify reasons are set.
+	reasons := map[string]string{}
+	for _, s := range body.Stuck {
+		reasons[s.BeadID] = s.LastError
+	}
+	if reasons["ci-stuck"] != "CI fix attempts exhausted" {
+		t.Errorf("unexpected reason for ci-stuck: %q", reasons["ci-stuck"])
+	}
+	if reasons["review-stuck"] != "Review fix attempts exhausted" {
+		t.Errorf("unexpected reason for review-stuck: %q", reasons["review-stuck"])
+	}
+}
+
+func TestStatusHandler_StuckPRs_Dedup(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC()
+	nowStr := now.Format(time.RFC3339)
+
+	// PR with exhausted CI fix attempts.
+	fdb.db.Exec(`INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+		last_checked, ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES (1, 10, 'a', 'dup-bead', 'feat/dup', 'main', 'Dup', 'open', ?, ?, 5, 0, 0, 0, 0, 0, 0, 0, 0)
+	`, nowStr, nowStr) //nolint:errcheck
+
+	// Same bead already in retries.
+	fdb.db.Exec(`INSERT INTO retries (bead_id, anvil, retry_count, next_retry, needs_human, clarification_needed, last_error, updated_at, dispatch_failures)
+		VALUES ('dup-bead', 'a', 3, NULL, 1, 0, 'retry err', ?, 0)
+	`, nowStr) //nolint:errcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/status", nil)
+	rec := httptest.NewRecorder()
+	StatusHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		NeedsHuman int     `json:"needs_human"`
+		Stuck      []Retry `json:"stuck"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// Should be 1 (from retries), not 2 — the stuck PR is deduplicated.
+	if body.NeedsHuman != 1 {
+		t.Errorf("expected 1 needs_human (dedup), got %d", body.NeedsHuman)
+	}
+	if len(body.Stuck) != 1 {
+		t.Errorf("expected 1 stuck entry (dedup), got %d", len(body.Stuck))
+	}
+}
+
 // --- WorkersHandler ---
 
 func TestWorkersHandler_NilDB(t *testing.T) {
