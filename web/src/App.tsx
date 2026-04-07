@@ -58,6 +58,7 @@ import SalaryPage from './pages/SalaryPage'
 import BudgetCreditCards from './pages/BudgetCreditCards'
 import BudgetRegning from './pages/BudgetRegning'
 import BudgetVariables from './pages/BudgetVariables'
+import Vault from './pages/Vault'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -88,6 +89,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="notes">
                 <Notes />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/vault"
+            element={
+              <FeatureRoute feature="vault">
+                <Vault />
               </FeatureRoute>
             }
           />

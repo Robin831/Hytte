@@ -30,6 +30,7 @@ import {
   PiggyBank,
   Banknote,
   Zap,
+  Lock,
 } from 'lucide-react'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
@@ -56,6 +57,7 @@ const navItems: NavItem[] = [
   { to: '/calendar', icon: <Calendar size={20} />, label: 'nav.calendar' },
   { to: '/webhooks', icon: <Webhook size={20} />, label: 'nav.webhooks', requiresAuth: true, feature: 'webhooks' },
   { to: '/notes', icon: <FileText size={20} />, label: 'nav.notes', requiresAuth: true, feature: 'notes' },
+  { to: '/vault', icon: <Lock size={20} />, label: 'nav.vault', requiresAuth: true, feature: 'vault' },
   { to: '/chat', icon: <MessageSquare size={20} />, label: 'nav.chat', requiresAuth: true, feature: 'chat' },
   { to: '/training', icon: <Dumbbell size={20} />, label: 'nav.training', requiresAuth: true, feature: 'training' },
   { to: '/training/stride', icon: <Zap size={20} />, label: 'nav.stride', requiresAuth: true, feature: 'stride' },

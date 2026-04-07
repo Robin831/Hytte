@@ -30,6 +30,7 @@ var FeatureDefaults = map[string]bool{
 	"salary":           false,
 	"stride":           false,
 	"skywatch":          true,
+	"vault":            false,
 }
 
 // FeatureKeys is a sorted list of all known feature keys, used for stable

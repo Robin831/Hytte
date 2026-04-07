@@ -18,6 +18,7 @@ import type budgetEn from '../public/locales/en/budget.json'
 import type salaryEn from '../public/locales/en/salary.json'
 import type strideEn from '../public/locales/en/stride.json'
 import type todayEn from '../public/locales/en/today.json'
+import type vaultEn from '../public/locales/en/vault.json'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -43,6 +44,7 @@ declare module 'i18next' {
       salary: typeof salaryEn
       stride: typeof strideEn
       today: typeof todayEn
+      vault: typeof vaultEn
     }
   }
 }

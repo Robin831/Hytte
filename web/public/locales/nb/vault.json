@@ -1,0 +1,49 @@
+{
+  "title": "Hvelv",
+  "upload": "Last opp",
+  "uploadTitle": "Last opp filer",
+  "chooseFiles": "Velg filer",
+  "uploading": "Laster opp...",
+  "loading": "Laster...",
+  "saving": "Lagrer...",
+  "save": "Lagre",
+  "edit": "Rediger",
+  "editTitle": "Rediger fil",
+  "delete": "Slett",
+  "download": "Last ned",
+  "preview": "Forhåndsvisning",
+  "searchPlaceholder": "Søk i filer...",
+  "searchLabel": "Søk i filer",
+  "filterFolder": "Filtrer etter mappe",
+  "allFolders": "Alle mapper",
+  "tagAll": "Alle",
+  "accessPrivate": "Privat",
+  "accessShared": "Delt",
+  "empty": {
+    "message": "Ingen filer ennå.",
+    "uploadFirst": "Last opp din første fil for å komme i gang."
+  },
+  "columns": {
+    "name": "Navn",
+    "size": "Størrelse",
+    "folder": "Mappe",
+    "updated": "Oppdatert",
+    "actions": "Handlinger"
+  },
+  "fields": {
+    "filename": "Filnavn",
+    "folder": "Mappe",
+    "folderPlaceholder": "f.eks. dokumenter",
+    "access": "Tilgang",
+    "tags": "Etiketter",
+    "tagsPlaceholder": "Kommaseparerte etiketter..."
+  },
+  "confirmDelete": "Slette \"{{title}}\"?",
+  "errors": {
+    "failedToLoad": "Kunne ikke laste filer",
+    "failedToUpload": "Kunne ikke laste opp fil",
+    "failedToDelete": "Kunne ikke slette fil",
+    "failedToUpdate": "Kunne ikke oppdatere fil",
+    "failedToPreview": "Kunne ikke forhåndsvise fil"
+  }
+}
