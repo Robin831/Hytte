@@ -11,6 +11,7 @@ import {
 import ConfirmDialog from './ConfirmDialog'
 import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
 import { usePanelCollapse } from '../hooks/usePanelCollapse'
+import { SECTION_ORDER, sectionColors } from './forgeQueueUi'
 
 interface QueueBead {
   bead_id: string
@@ -50,8 +51,6 @@ function parseLabels(raw: string): string[] {
 }
 
 const FORGE_READY_LABEL = 'forgeReady'
-
-const SECTION_ORDER = ['ready', 'in-progress', 'unlabeled', 'needs-attention']
 
 function compareSections(a: string, b: string): number {
   const ai = SECTION_ORDER.indexOf(a)
@@ -180,13 +179,7 @@ interface SectionBadgeProps {
 
 function SectionBadge({ section }: SectionBadgeProps) {
   const { t } = useTranslation('forge')
-  const config: Record<string, { cls: string }> = {
-    ready: { cls: 'bg-green-500/20 text-green-400 border-green-700/30' },
-    'in-progress': { cls: 'bg-blue-500/20 text-blue-400 border-blue-700/30' },
-    unlabeled: { cls: 'bg-gray-500/20 text-gray-400 border-gray-600/30' },
-    'needs-attention': { cls: 'bg-amber-500/20 text-amber-400 border-amber-700/30' },
-  }
-  const { cls } = config[section] ?? { cls: 'bg-gray-500/20 text-gray-400 border-gray-600/30' }
+  const cls = sectionColors[section] ?? sectionColors['unlabeled']
   return (
     <span
       className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs border font-medium ${cls}`}
