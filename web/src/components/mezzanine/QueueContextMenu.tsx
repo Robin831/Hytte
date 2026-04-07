@@ -27,11 +27,11 @@ export default function QueueContextMenu({
   const [tagging, setTagging] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
   const portalRef = useRef<HTMLDivElement>(null)
+  const menuItemRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const onActionCompleteRef = useRef(onActionComplete)
+  onActionCompleteRef.current = onActionComplete
 
-  const { acting, handleAction } = useBeadActions({
-    showToast,
-    onRetried: onActionComplete ? () => onActionComplete() : undefined,
-  })
+  const { acting, handleAction } = useBeadActions({ showToast })
 
   const isActing = !!acting[beadId] || tagging
 
@@ -46,7 +46,17 @@ export default function QueueContextMenu({
   const closeMenu = useCallback(() => {
     setMenuOpen(false)
     setDropdownPos(null)
+    btnRef.current?.focus()
   }, [])
+
+  // Focus first menu item when menu opens
+  useEffect(() => {
+    if (menuOpen) {
+      requestAnimationFrame(() => {
+        menuItemRefs.current[0]?.focus()
+      })
+    }
+  }, [menuOpen])
 
   // Close on click outside
   useEffect(() => {
@@ -71,15 +81,40 @@ export default function QueueContextMenu({
     return () => window.removeEventListener('scroll', handleScroll, true)
   }, [menuOpen, closeMenu])
 
-  // Close on Escape
-  useEffect(() => {
-    if (!menuOpen) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeMenu()
+  const handleMenuKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const items = menuItemRefs.current.filter(Boolean) as HTMLButtonElement[]
+    const currentIdx = items.indexOf(e.target as HTMLButtonElement)
+
+    switch (e.key) {
+      case 'ArrowDown': {
+        e.preventDefault()
+        const next = currentIdx < items.length - 1 ? currentIdx + 1 : 0
+        items[next]?.focus()
+        break
+      }
+      case 'ArrowUp': {
+        e.preventDefault()
+        const prev = currentIdx > 0 ? currentIdx - 1 : items.length - 1
+        items[prev]?.focus()
+        break
+      }
+      case 'Home':
+        e.preventDefault()
+        items[0]?.focus()
+        break
+      case 'End':
+        e.preventDefault()
+        items[items.length - 1]?.focus()
+        break
+      case 'Escape':
+        e.preventDefault()
+        closeMenu()
+        break
+      case 'Tab':
+        closeMenu()
+        break
     }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [menuOpen, closeMenu])
+  }, [closeMenu])
 
   const handleRunNow = () => {
     closeMenu()
@@ -109,7 +144,7 @@ export default function QueueContextMenu({
         showToast((data as { error?: string }).error ?? `HTTP ${res.status}`, 'error')
       } else {
         showToast(t('mezzanine.pipeline.queueMenu.tagSuccess', { id: beadId }), 'success')
-        onActionComplete?.()
+        onActionCompleteRef.current?.()
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : t('unknownError'), 'error')
@@ -125,13 +160,17 @@ export default function QueueContextMenu({
 
   const executeConfirmedAction = async () => {
     if (!confirmAction) return
+    const action = confirmAction
     setConfirmAction(null)
-    if (confirmAction === 'runNow') {
-      await handleAction('forceSmith', beadId)
+    let success: boolean
+    if (action === 'runNow') {
+      success = await handleAction('forceSmith', beadId)
     } else {
-      await handleAction('dismiss', beadId)
+      success = await handleAction('dismiss', beadId)
     }
-    onActionComplete?.()
+    if (success) {
+      onActionCompleteRef.current?.()
+    }
   }
 
   const menuItems = [
@@ -154,7 +193,7 @@ export default function QueueContextMenu({
         }}
         disabled={isActing}
         aria-label={t('mezzanine.pipeline.queueMenu.actionsLabel', { id: beadId })}
-        aria-haspopup="true"
+        aria-haspopup="menu"
         aria-expanded={menuOpen}
         className="flex items-center justify-center h-5 w-5 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-700/50 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-50 disabled:cursor-not-allowed"
       >
@@ -168,15 +207,18 @@ export default function QueueContextMenu({
           className="w-44 rounded-lg bg-gray-800 border border-gray-600 shadow-xl py-1 overflow-hidden"
           role="menu"
           aria-label={t('mezzanine.pipeline.queueMenu.actionsLabel', { id: beadId })}
+          onKeyDown={handleMenuKeyDown}
         >
-          {menuItems.map((item) => (
+          {menuItems.map((item, idx) => (
             <button
               key={item.key}
+              ref={(el) => { menuItemRefs.current[idx] = el }}
               type="button"
               role="menuitem"
+              tabIndex={-1}
               onClick={item.onClick}
               disabled={isActing}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors disabled:opacity-50 ${item.className}`}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors disabled:opacity-50 focus:outline-none focus:bg-gray-700/60 ${item.className}`}
             >
               <item.icon size={14} aria-hidden="true" />
               <span>{item.label}</span>
