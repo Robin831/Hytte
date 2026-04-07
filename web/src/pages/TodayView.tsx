@@ -3,6 +3,15 @@ import type { ComponentType } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import { formatDate, formatTime } from '../utils/formatDate'
+import {
+  ClockWeatherWidget,
+  NetatmoWidget,
+  BusDepartureWidget,
+  CalendarWidget,
+  WorkHoursWidget,
+  KidsSummaryWidget,
+  MoonPhaseWidget,
+} from '../components/today'
 
 export type FamilyRole = 'parent' | 'child' | 'guest'
 
@@ -20,19 +29,25 @@ function ParentWidgets() {
   return (
     <>
       <div className="bg-gray-800 rounded-xl p-4 col-span-2">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">{t('widgets.weather')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.weather')}</h2>
+        <ClockWeatherWidget />
+        <div className="mt-2"><NetatmoWidget /></div>
       </div>
       <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">{t('widgets.calendar')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.calendar')}</h2>
+        <CalendarWidget />
       </div>
       <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">{t('widgets.training')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.training')}</h2>
+        <WorkHoursWidget />
       </div>
       <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">{t('widgets.family')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.family')}</h2>
+        <BusDepartureWidget />
       </div>
       <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">{t('widgets.budget')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.budget')}</h2>
+        <MoonPhaseWidget />
       </div>
     </>
   )
@@ -43,13 +58,16 @@ function KidWidgets() {
   return (
     <>
       <div className="bg-gray-800 rounded-xl p-4 col-span-2">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">{t('widgets.stars')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.stars')}</h2>
+        <KidsSummaryWidget />
       </div>
       <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">{t('widgets.chores')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.chores')}</h2>
+        <CalendarWidget />
       </div>
       <div className="bg-gray-800 rounded-xl p-4">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">{t('widgets.challenges')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.challenges')}</h2>
+        <MoonPhaseWidget />
       </div>
     </>
   )
@@ -60,10 +78,12 @@ function GuestWidgets() {
   return (
     <>
       <div className="bg-gray-800 rounded-xl p-4 col-span-2">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">{t('widgets.weather')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.weather')}</h2>
+        <ClockWeatherWidget />
       </div>
       <div className="bg-gray-800 rounded-xl p-4 col-span-2">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">{t('widgets.calendar')}</h2>
+        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-2">{t('widgets.calendar')}</h2>
+        <CalendarWidget />
       </div>
     </>
   )

@@ -13,5 +13,48 @@
     "stars": "Stjerner",
     "chores": "Oppgaver",
     "challenges": "Utfordringer"
+  },
+  "clockWeather": {
+    "loading": "Laster v\u00e6r…"
+  },
+  "netatmo": {
+    "loading": "Laster sensorer…",
+    "indoor": "Inne",
+    "outdoor": "Ute"
+  },
+  "bus": {
+    "loading": "Laster avganger…",
+    "noDepartures": "Ingen kommende avganger",
+    "min": "m"
+  },
+  "calendar": {
+    "loading": "Laster hendelser…",
+    "noEvents": "Ingen kommende hendelser",
+    "allDay": "Hele dagen"
+  },
+  "workHours": {
+    "loading": "Laster timer…",
+    "remaining": "igjen",
+    "done": "Ferdig for dagen",
+    "punchedIn": "Stemplet inn"
+  },
+  "kids": {
+    "loading": "Laster…",
+    "pendingChores_one": "{{count}} oppgave \u00e5 gj\u00f8re",
+    "pendingChores_other": "{{count}} oppgaver \u00e5 gj\u00f8re",
+    "allDone": "Alt er gjort!"
+  },
+  "moon": {
+    "loading": "Laster m\u00e5ne…",
+    "phase": {
+      "new_moon": "Nym\u00e5ne",
+      "waxing_crescent": "Voksende m\u00e5nesigd",
+      "first_quarter": "F\u00f8rste kvarter",
+      "waxing_gibbous": "Voksende m\u00e5ne",
+      "full_moon": "Fullm\u00e5ne",
+      "waning_gibbous": "Avtagende m\u00e5ne",
+      "last_quarter": "Siste kvarter",
+      "waning_crescent": "Avtagende m\u00e5nesigd"
+    }
   }
 }

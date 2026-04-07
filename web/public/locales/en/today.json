@@ -13,5 +13,48 @@
     "stars": "Stars",
     "chores": "Chores",
     "challenges": "Challenges"
+  },
+  "clockWeather": {
+    "loading": "Loading weather…"
+  },
+  "netatmo": {
+    "loading": "Loading sensors…",
+    "indoor": "In",
+    "outdoor": "Out"
+  },
+  "bus": {
+    "loading": "Loading departures…",
+    "noDepartures": "No upcoming departures",
+    "min": "m"
+  },
+  "calendar": {
+    "loading": "Loading events…",
+    "noEvents": "No upcoming events",
+    "allDay": "All day"
+  },
+  "workHours": {
+    "loading": "Loading hours…",
+    "remaining": "remaining",
+    "done": "Done for the day",
+    "punchedIn": "Punched in"
+  },
+  "kids": {
+    "loading": "Loading…",
+    "pendingChores_one": "{{count}} chore to do",
+    "pendingChores_other": "{{count}} chores to do",
+    "allDone": "All done!"
+  },
+  "moon": {
+    "loading": "Loading moon…",
+    "phase": {
+      "new_moon": "New Moon",
+      "waxing_crescent": "Waxing Crescent",
+      "first_quarter": "First Quarter",
+      "waxing_gibbous": "Waxing Gibbous",
+      "full_moon": "Full Moon",
+      "waning_gibbous": "Waning Gibbous",
+      "last_quarter": "Last Quarter",
+      "waning_crescent": "Waning Crescent"
+    }
   }
 }
