@@ -404,6 +404,7 @@ function DayView({
   const currentDateRef = useRef(currentDate)
   const leaveDaysCacheRef = useRef<Map<string, LeaveDay[]>>(new Map())
   const datePickerRef = useRef<HTMLInputElement>(null)
+  const punchEditAbortRef = useRef<AbortController | null>(null)
   const [dayData, setDayData] = useState<{ day: WorkDay | null; summary: DaySummary | null } | null>(null)
   const [presets, setPresets] = useState<WorkDeductionPreset[]>([])
   const [flex, setFlex] = useState<{ flex: FlexPoolResult; reset_date: string; days_in_pool: number } | null>(null)
@@ -777,6 +778,9 @@ function DayView({
 
   const handlePunchOut = async () => {
     if (!punchStart) return
+    // Abort any in-flight start-time edit so its revert path can't resurrect punchStart.
+    punchEditAbortRef.current?.abort()
+    punchEditAbortRef.current = null
     const endTime = currentTimeHHMM()
     if (endTime <= punchStart) {
       alert(t('workhours:punchMidnightError'))
@@ -807,6 +811,36 @@ function DayView({
       }
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleEditPunchStart = async (newTime: string) => {
+    if (!newTime || !punchStart || newTime === punchStart) return
+    const prev: string = punchStart
+    // Abort any previous in-flight edit and start a new one.
+    punchEditAbortRef.current?.abort()
+    const controller = new AbortController()
+    punchEditAbortRef.current = controller
+    setPunchStart(newTime)
+    setNewStart(newTime)
+    try {
+      const r = await fetch('/api/workhours/punch/edit', {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start_time: newTime }),
+        signal: controller.signal,
+      })
+      if (!r.ok) {
+        console.error('workhours: edit punch start failed:', r.status)
+        setPunchStart(prev)
+        setNewStart(prev)
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
+      console.error('workhours: edit punch start:', err)
+      setPunchStart(prev)
+      setNewStart(prev)
     }
   }
 
@@ -1063,6 +1097,22 @@ function DayView({
                   </button>
                 ) : (
                   <>
+                    <div className="flex items-center gap-1 text-xs">
+                      <label htmlFor="punch-start-time" className="text-gray-400">{t('workhours:punchStartLabel')}</label>
+                      <input
+                        id="punch-start-time"
+                        key={punchStart}
+                        type="time"
+                        defaultValue={punchStart}
+                        onBlur={e => handleEditPunchStart(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.currentTarget.blur()
+                          }
+                        }}
+                        className="bg-gray-800 border border-gray-600 rounded px-1 py-0.5 text-xs text-white font-mono w-[5rem] focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
                     <button
                       type="button"
                       onClick={handlePunchOut}
@@ -1071,7 +1121,7 @@ function DayView({
                       aria-label={t('workhours:punchOut')}
                     >
                       <Clock size={12} />
-                      {t('workhours:punchOutAt', { time: punchStart })}
+                      {t('workhours:punchOut')}
                     </button>
                     <button
                       type="button"

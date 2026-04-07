@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -1194,6 +1195,90 @@ func TestPunchOutHandler_InvalidEndTime(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+// --- PunchEditHandler ---
+
+func TestPunchEditHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+	// Use a past date so the future-time guard never applies regardless of wall clock.
+	if _, err := CreateOpenSession(db, 1, "2026-03-30", "08:00"); err != nil {
+		t.Fatalf("CreateOpenSession: %v", err)
+	}
+	handler := PunchEditHandler(db)
+
+	// Use a start_time guaranteed to be valid for the past-date session.
+	wantTime := "07:30"
+	body := jsonBody(t, map[string]any{"start_time": wantTime})
+	req := withUser(httptest.NewRequest("PUT", "/api/workhours/punch/edit", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var s OpenSession
+	if err := json.NewDecoder(rec.Body).Decode(&s); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if s.StartTime != wantTime {
+		t.Errorf("StartTime: got %q, want %q", s.StartTime, wantTime)
+	}
+}
+
+func TestPunchEditHandler_NoSession(t *testing.T) {
+	db := setupTestDB(t)
+	handler := PunchEditHandler(db)
+
+	body := jsonBody(t, map[string]any{"start_time": "07:30"})
+	req := withUser(httptest.NewRequest("PUT", "/api/workhours/punch/edit", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPunchEditHandler_InvalidTime(t *testing.T) {
+	db := setupTestDB(t)
+	handler := PunchEditHandler(db)
+
+	body := jsonBody(t, map[string]any{"start_time": "not-a-time"})
+	req := withUser(httptest.NewRequest("PUT", "/api/workhours/punch/edit", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestPunchEditHandler_FutureTime(t *testing.T) {
+	db := setupTestDB(t)
+	// Use today's date so the future-time guard is active.
+	today := time.Now().Format("2006-01-02")
+	if _, err := CreateOpenSession(db, 1, today, "08:00"); err != nil {
+		t.Fatalf("CreateOpenSession: %v", err)
+	}
+	handler := PunchEditHandler(db)
+
+	// Round up to the next full minute and add a larger buffer so the
+	// formatted HH:MM value remains strictly in the future for the handler.
+	now := time.Now()
+	futureTime := now.Truncate(time.Minute).Add(11 * time.Minute).Format("15:04")
+	body := jsonBody(t, map[string]any{"start_time": futureTime})
+	req := withUser(httptest.NewRequest("PUT", "/api/workhours/punch/edit", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for future start_time, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
