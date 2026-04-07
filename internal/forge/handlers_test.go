@@ -4122,3 +4122,117 @@ func TestAnvilCostsHandler_DaysBoundExceeded(t *testing.T) {
 		t.Fatalf("expected 400 for days>90, got %d", rec.Code)
 	}
 }
+
+// --- EventsPageHandler ---
+
+func TestEventsPageHandler_NilDB(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/events/page", nil)
+	rec := httptest.NewRecorder()
+	EventsPageHandler(nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestEventsPageHandler_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/events/page", nil)
+	rec := httptest.NewRecorder()
+	EventsPageHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body EventsPageResult
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Total != 0 {
+		t.Errorf("expected total 0, got %d", body.Total)
+	}
+	if body.Events == nil {
+		t.Error("expected non-nil empty events slice")
+	}
+}
+
+func TestEventsPageHandler_WithFilters(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`
+		INSERT INTO events (id, timestamp, type, message, bead_id, anvil) VALUES
+		  (1, ?, 'worker_start', 'Started b1', 'b1', 'anvil1'),
+		  (2, ?, 'pr_opened', 'PR for b1', 'b1', 'anvil1'),
+		  (3, ?, 'worker_start', 'Started b2', 'b2', 'anvil2')
+	`, now, now, now) //nolint:errcheck
+
+	// Filter by type
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/events/page?type=worker_start", nil)
+	rec := httptest.NewRecorder()
+	EventsPageHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body EventsPageResult
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Total != 2 {
+		t.Errorf("expected 2 worker_start events, got %d", body.Total)
+	}
+
+	// Filter by search
+	req = httptest.NewRequest(http.MethodGet, "/api/forge/events/page?search=b2", nil)
+	rec = httptest.NewRecorder()
+	EventsPageHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	body = EventsPageResult{}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Total != 1 {
+		t.Errorf("expected 1 event matching 'b2', got %d", body.Total)
+	}
+}
+
+func TestEventsPageHandler_Pagination(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	for i := 1; i <= 5; i++ {
+		fdb.db.Exec(`INSERT INTO events (timestamp, type, message, bead_id, anvil) VALUES (?, 'test', 'msg', 'b1', 'a')`, now) //nolint:errcheck
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/events/page?limit=2&offset=0", nil)
+	rec := httptest.NewRecorder()
+	EventsPageHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var body EventsPageResult
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Total != 5 {
+		t.Errorf("expected total 5, got %d", body.Total)
+	}
+	if len(body.Events) != 2 {
+		t.Errorf("expected 2 events in page, got %d", len(body.Events))
+	}
+}
+
+func TestEventsPageHandler_LimitCapped(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	// Requesting limit=1000 should be capped to 500.
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/events/page?limit=1000", nil)
+	rec := httptest.NewRecorder()
+	EventsPageHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}

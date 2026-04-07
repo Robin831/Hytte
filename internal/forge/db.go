@@ -478,8 +478,9 @@ func (d *DB) EventsPaginated(limit, offset int, eventType, anvil, search, from, 
 		args = append(args, anvil)
 	}
 	if search != "" {
-		conditions = append(conditions, "(message LIKE ? OR bead_id LIKE ? OR type LIKE ?)")
-		pattern := "%" + search + "%"
+		conditions = append(conditions, "(message LIKE ? ESCAPE '\\' OR bead_id LIKE ? ESCAPE '\\' OR type LIKE ? ESCAPE '\\')")
+		escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(search)
+		pattern := "%" + escaped + "%"
 		args = append(args, pattern, pattern, pattern)
 	}
 	if from != "" {
@@ -510,7 +511,9 @@ func (d *DB) EventsPaginated(limit, offset int, eventType, anvil, search, from, 
 		ORDER BY timestamp DESC
 		LIMIT ? OFFSET ?
 	`, where)
-	queryArgs := append(args, limit, offset)
+	queryArgs := make([]any, len(args), len(args)+2)
+	copy(queryArgs, args)
+	queryArgs = append(queryArgs, limit, offset)
 
 	rows, err := d.db.Query(q, queryArgs...)
 	if err != nil {
