@@ -985,3 +985,106 @@ func TestQueueEntryByBeadID_NotFound(t *testing.T) {
 		t.Fatalf("expected sql.ErrNoRows, got %v", err)
 	}
 }
+
+// --- AnvilCosts ---
+
+func TestAnvilCosts_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	anvils, err := fdb.AnvilCosts(7)
+	if err != nil {
+		t.Fatalf("AnvilCosts: %v", err)
+	}
+	if anvils == nil {
+		t.Error("expected non-nil empty slice, got nil")
+	}
+	if len(anvils) != 0 {
+		t.Errorf("expected 0 anvils, got %d", len(anvils))
+	}
+}
+
+func TestAnvilCosts_OrderedByDescCost(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := fdb.db.Exec(`INSERT INTO bead_costs (bead_id, anvil, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, updated_at) VALUES ('b1', 'cheap', 100, 50, 0, 0, 0.01, ?), ('b2', 'expensive', 500, 250, 0, 0, 0.10, ?)`, now, now)
+	if err != nil {
+		t.Fatalf("insert bead_costs: %v", err)
+	}
+
+	anvils, err := fdb.AnvilCosts(7)
+	if err != nil {
+		t.Fatalf("AnvilCosts: %v", err)
+	}
+	if len(anvils) != 2 {
+		t.Fatalf("expected 2 anvils, got %d", len(anvils))
+	}
+	if anvils[0].Anvil != "expensive" {
+		t.Errorf("expected first anvil to be 'expensive' (highest cost), got %q", anvils[0].Anvil)
+	}
+}
+
+func TestAnvilCosts_MissingTable(t *testing.T) {
+	rawDB, err := sql.Open("sqlite", "file::memory:?cache=shared&mode=memory")
+	if err != nil {
+		t.Fatalf("open in-memory db: %v", err)
+	}
+	rawDB.SetMaxOpenConns(1)
+	rawDB.SetMaxIdleConns(1)
+	t.Cleanup(func() { rawDB.Close() })
+
+	fdb := &DB{db: rawDB}
+	anvils, err := fdb.AnvilCosts(7)
+	if err != nil {
+		t.Fatalf("expected nil error for missing bead_costs table, got: %v", err)
+	}
+	if anvils == nil {
+		t.Error("expected non-nil empty slice, got nil")
+	}
+	if len(anvils) != 0 {
+		t.Errorf("expected 0 anvils, got %d", len(anvils))
+	}
+}
+
+func TestAnvilCosts_ExcludesOldDates(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	old := time.Now().UTC().AddDate(0, 0, -10).Format(time.RFC3339)
+	_, err := fdb.db.Exec(`INSERT INTO bead_costs (bead_id, anvil, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, updated_at) VALUES ('b1', 'recent', 100, 50, 0, 0, 0.01, ?), ('b2', 'old', 100, 50, 0, 0, 0.01, ?)`, now, old)
+	if err != nil {
+		t.Fatalf("insert bead_costs: %v", err)
+	}
+
+	anvils, err := fdb.AnvilCosts(7)
+	if err != nil {
+		t.Fatalf("AnvilCosts: %v", err)
+	}
+	if len(anvils) != 1 {
+		t.Errorf("expected 1 anvil (within 7 days), got %d", len(anvils))
+	}
+	if len(anvils) == 1 && anvils[0].Anvil != "recent" {
+		t.Errorf("expected 'recent' anvil, got %q", anvils[0].Anvil)
+	}
+}
+
+func TestAnvilCosts_DefaultsAndCap(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	// days=0 should default to 7 (no panic, returns empty).
+	anvils, err := fdb.AnvilCosts(0)
+	if err != nil {
+		t.Fatalf("AnvilCosts(0): %v", err)
+	}
+	if anvils == nil {
+		t.Error("expected non-nil slice for days=0")
+	}
+
+	// days > 90 should be capped at 90 (no panic).
+	anvils, err = fdb.AnvilCosts(200)
+	if err != nil {
+		t.Fatalf("AnvilCosts(200): %v", err)
+	}
+	if anvils == nil {
+		t.Error("expected non-nil slice for days=200")
+	}
+}

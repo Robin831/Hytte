@@ -330,6 +330,15 @@
       "empty": "No events yet",
       "viewAll": "View all events →"
     },
+    "costs": {
+      "title": "Costs",
+      "todaySpend": "Today's spend",
+      "weeklySpend": "7-day trend",
+      "perAnvil": "Per anvil (7 days)",
+      "viewDashboard": "View full dashboard →",
+      "unavailable": "Cost data unavailable",
+      "cost": "Cost"
+    },
     "needsAttention": {
       "title": "Needs Attention",
       "view": "View",

@@ -4046,3 +4046,79 @@ func TestQueueDismissHandler_IPCFailure(t *testing.T) {
 		t.Fatalf("expected 500 when IPC fails, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// --- AnvilCostsHandler ---
+
+func TestAnvilCostsHandler_NilDB(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/costs/anvils", nil)
+	rec := httptest.NewRecorder()
+	AnvilCostsHandler(nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestAnvilCostsHandler_EmptyReturnsArray(t *testing.T) {
+	fdb := setupTestDB(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/costs/anvils?days=7", nil)
+	rec := httptest.NewRecorder()
+	AnvilCostsHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var anvils []AnvilCost
+	if err := json.NewDecoder(rec.Body).Decode(&anvils); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if anvils == nil {
+		t.Error("expected non-nil array, got null")
+	}
+}
+
+func TestAnvilCostsHandler_WithData(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO bead_costs (bead_id, anvil, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, updated_at) VALUES ('b1', 'anvil-a', 100, 50, 0, 0, 0.01, ?)`, now) //nolint:errcheck
+	fdb.db.Exec(`INSERT INTO bead_costs (bead_id, anvil, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, updated_at) VALUES ('b2', 'anvil-a', 200, 100, 0, 0, 0.02, ?)`, now) //nolint:errcheck
+	fdb.db.Exec(`INSERT INTO bead_costs (bead_id, anvil, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, updated_at) VALUES ('b3', 'anvil-b', 300, 150, 0, 0, 0.05, ?)`, now) //nolint:errcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/costs/anvils?days=7", nil)
+	rec := httptest.NewRecorder()
+	AnvilCostsHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var anvils []AnvilCost
+	if err := json.NewDecoder(rec.Body).Decode(&anvils); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(anvils) != 2 {
+		t.Fatalf("expected 2 anvils, got %d", len(anvils))
+	}
+	// First result should be highest cost (anvil-b = 0.05).
+	if anvils[0].Anvil != "anvil-b" {
+		t.Errorf("expected first anvil to be 'anvil-b', got %q", anvils[0].Anvil)
+	}
+}
+
+func TestAnvilCostsHandler_InvalidDaysIgnored(t *testing.T) {
+	fdb := setupTestDB(t)
+	// Non-integer days should be silently ignored, falling back to default (7).
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/costs/anvils?days=bad", nil)
+	rec := httptest.NewRecorder()
+	AnvilCostsHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for invalid days param, got %d", rec.Code)
+	}
+}
+
+func TestAnvilCostsHandler_DaysBoundExceeded(t *testing.T) {
+	fdb := setupTestDB(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/costs/anvils?days=91", nil)
+	rec := httptest.NewRecorder()
+	AnvilCostsHandler(fdb).ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for days>90, got %d", rec.Code)
+	}
+}

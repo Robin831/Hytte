@@ -198,6 +198,7 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Get("/forge/costs", forge.CostsHandler(forgeDB))
 					r.Get("/forge/costs/trend", forge.CostsTrendHandler(forgeDB))
 					r.Get("/forge/costs/beads", forge.TopBeadCostsHandler(forgeDB))
+					r.Get("/forge/costs/anvils", forge.AnvilCostsHandler(forgeDB))
 					r.Get("/forge/beads/{id}", forge.BeadDetailHandler())
 					r.Post("/forge/beads/{id}/retry", forge.RetryBeadHandler(forgeDB))
 					r.Post("/forge/beads/{id}/dismiss", forge.DismissBeadHandler(forgeDB))
