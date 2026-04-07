@@ -331,6 +331,27 @@
         "warden": "ตรวจสอบ",
         "pr": "PR",
         "merged": "รวมแล้ว"
+      },
+      "badges": {
+        "ciPassing": "CI ผ่าน",
+        "ciPending": "CI รอดำเนินการ",
+        "ciFailing": "CI ล้มเหลว",
+        "approved": "รีวิวอนุมัติแล้ว",
+        "approvedShort": "อนุมัติ",
+        "changesRequested": "ขอแก้ไข",
+        "changesRequestedShort": "แก้ไข",
+        "pendingReview": "รอรีวิว",
+        "reviewShort": "รีวิว",
+        "noReview": "ยังไม่มีรีวิว",
+        "conflict": "ขัดแย้งในการรวม",
+        "unresolvedThreads": "มีเธรดที่ยังไม่ได้แก้ไข",
+        "merge": "รวม",
+        "mergeLabel": "รวม PR #{{number}}"
+      },
+      "mergeDialog": {
+        "title": "รวม Pull Request",
+        "message": "รวม PR #{{number}}? คำสั่งรวมจะถูกส่งผ่าน forge",
+        "confirm": "รวม"
       }
     }
   }

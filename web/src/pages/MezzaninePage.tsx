@@ -1,16 +1,48 @@
-import { useState } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useForgeWorkers, useForgeStatus, useForgeQueue } from '../hooks/useForgeStatus'
+import { useToast } from '../hooks/useToast'
 import MezzanineLayout from '../components/mezzanine/MezzanineLayout'
 import WorkerPanelGrid from '../components/mezzanine/WorkerPanelGrid'
 import QueueSidebar from '../components/mezzanine/QueueSidebar'
 import PipelineBar from '../components/mezzanine/PipelineBar'
 import BeadDetailModal from '../components/BeadDetailModal'
+import ToastList from '../components/ToastList'
 
 export default function MezzaninePage() {
+  const { t } = useTranslation('forge')
   const { workers } = useForgeWorkers()
   const { status } = useForgeStatus()
   const { beads: queueBeads } = useForgeQueue()
   const [selectedBeadId, setSelectedBeadId] = useState<string | null>(null)
+  const { toasts, showToast } = useToast()
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
+
+  const handleMerge = useCallback(async (prId: number, prNumber: number) => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    try {
+      const res = await fetch(`/api/forge/prs/${prId}/merge`, {
+        method: 'POST',
+        credentials: 'include',
+        signal: controller.signal,
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        showToast((body as { error?: string }).error ?? t('readyToMerge.mergeError'), 'error')
+        return
+      }
+      showToast(t('readyToMerge.mergeSuccess', { number: prNumber }), 'success')
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      showToast(t('readyToMerge.mergeError'), 'error')
+    }
+  }, [showToast, t])
 
   return (
     <MezzanineLayout sidebar={<QueueSidebar onBeadClick={setSelectedBeadId} />}>
@@ -20,6 +52,7 @@ export default function MezzaninePage() {
           openPRs={status?.open_prs}
           queueBeads={queueBeads}
           onBeadClick={setSelectedBeadId}
+          onMerge={handleMerge}
         />
 
         <WorkerPanelGrid
@@ -33,6 +66,8 @@ export default function MezzaninePage() {
         beadId={selectedBeadId}
         onClose={() => setSelectedBeadId(null)}
       />
+
+      <ToastList toasts={toasts} />
     </MezzanineLayout>
   )
 }

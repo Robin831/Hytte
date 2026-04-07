@@ -18,9 +18,10 @@ interface PipelineStageProps {
   stage: StageKey
   beads: PipelineBeadInfo[]
   onBeadClick?: (beadId: string) => void
+  onMerge?: (prId: number, prNumber: number) => void
 }
 
-export default function PipelineStage({ stage, beads, onBeadClick }: PipelineStageProps) {
+export default function PipelineStage({ stage, beads, onBeadClick, onMerge }: PipelineStageProps) {
   const { t } = useTranslation('forge')
 
   return (
@@ -42,7 +43,7 @@ export default function PipelineStage({ stage, beads, onBeadClick }: PipelineSta
 
       <div className="flex flex-col gap-1.5 p-2 min-h-[48px]">
         {beads.map(bead => (
-          <PipelineBeadCard key={bead.beadId} bead={bead} onBeadClick={onBeadClick} />
+          <PipelineBeadCard key={bead.beadId} bead={bead} onBeadClick={onBeadClick} onMerge={stage === 'pr' ? onMerge : undefined} />
         ))}
       </div>
     </div>

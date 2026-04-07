@@ -45,7 +45,9 @@ export interface OpenPR {
   bead_id: string
   branch: string
   ci_passing: boolean
+  ci_pending: boolean
   has_approval: boolean
+  changes_requested: boolean
   is_conflicting: boolean
   has_unresolved_threads: boolean
   has_pending_reviews: boolean

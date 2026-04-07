@@ -331,6 +331,27 @@
         "warden": "Warden",
         "pr": "PR",
         "merged": "Merged"
+      },
+      "badges": {
+        "ciPassing": "CI checks passing",
+        "ciPending": "CI checks pending",
+        "ciFailing": "CI checks failing",
+        "approved": "Review approved",
+        "approvedShort": "Approved",
+        "changesRequested": "Changes requested",
+        "changesRequestedShort": "Changes",
+        "pendingReview": "Review pending",
+        "reviewShort": "Review",
+        "noReview": "No review yet",
+        "conflict": "Merge conflict",
+        "unresolvedThreads": "Unresolved review threads",
+        "merge": "Merge",
+        "mergeLabel": "Merge PR #{{number}}"
+      },
+      "mergeDialog": {
+        "title": "Merge Pull Request",
+        "message": "Merge PR #{{number}}? This will trigger the merge command via forge.",
+        "confirm": "Merge"
       }
     }
   }

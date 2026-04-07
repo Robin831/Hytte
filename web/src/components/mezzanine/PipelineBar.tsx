@@ -46,9 +46,10 @@ interface PipelineBarProps {
   openPRs?: OpenPR[]
   queueBeads?: QueueBead[]
   onBeadClick?: (beadId: string) => void
+  onMerge?: (prId: number, prNumber: number) => void
 }
 
-export default function PipelineBar({ workers, openPRs, queueBeads, onBeadClick }: PipelineBarProps) {
+export default function PipelineBar({ workers, openPRs, queueBeads, onBeadClick, onMerge }: PipelineBarProps) {
   const { t } = useTranslation('forge')
 
   const stageBeads = useMemo(() => {
@@ -80,6 +81,18 @@ export default function PipelineBar({ workers, openPRs, queueBeads, onBeadClick 
           title: pr.title,
           status: pr.ci_passing && pr.has_approval ? 'done' : 'active',
           anvil: pr.anvil,
+          pr: {
+            prId: pr.id,
+            prNumber: pr.number,
+            ciPassing: pr.ci_passing,
+            ciPending: pr.ci_pending,
+            hasApproval: pr.has_approval,
+            changesRequested: pr.changes_requested,
+            isConflicting: pr.is_conflicting,
+            hasUnresolvedThreads: pr.has_unresolved_threads,
+            hasPendingReviews: pr.has_pending_reviews,
+            bellowsManaged: pr.bellows_managed,
+          },
         })
         placed.add(pr.bead_id)
       }
@@ -119,6 +132,7 @@ export default function PipelineBar({ workers, openPRs, queueBeads, onBeadClick 
               stage={stage}
               beads={stageBeads.get(stage) ?? []}
               onBeadClick={onBeadClick}
+              onMerge={onMerge}
             />
           </div>
         ))}
