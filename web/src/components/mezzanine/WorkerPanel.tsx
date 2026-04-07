@@ -147,21 +147,21 @@ export default function WorkerPanel({ worker, showToast, onBeadClick }: WorkerPa
   const [killing, setKilling] = useState(false)
   const [confirmKill, setConfirmKill] = useState(false)
   const [userScrolledUp, setUserScrolledUp] = useState(false)
-  const [duration, setDuration] = useState(() => formatDuration(worker.started_at))
+  const [, setTick] = useState(0)
   const logContainerRef = useRef<HTMLDivElement>(null)
   const logFetchingRef = useRef(false)
 
   const isActive = worker.status === 'pending' || worker.status === 'running'
+  const duration = formatDuration(worker.started_at)
 
-  // Update duration every second for active workers, and reset when started_at changes
+  // Tick every second for active workers to keep duration display fresh
   useEffect(() => {
-    setDuration(formatDuration(worker.started_at))
     if (!isActive) return
     const interval = setInterval(() => {
-      setDuration(formatDuration(worker.started_at))
+      setTick(n => n + 1)
     }, 1000)
     return () => clearInterval(interval)
-  }, [isActive, worker.started_at])
+  }, [isActive])
 
   // Poll parsed log
   useEffect(() => {
