@@ -27,9 +27,11 @@ export default function QueueContextMenu({
   const [tagging, setTagging] = useState(false)
   const btnRef = useRef<HTMLButtonElement>(null)
   const portalRef = useRef<HTMLDivElement>(null)
-  const menuItemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const onActionCompleteRef = useRef(onActionComplete)
-  onActionCompleteRef.current = onActionComplete
+
+  useEffect(() => {
+    onActionCompleteRef.current = onActionComplete
+  })
 
   const { acting, handleAction } = useBeadActions({ showToast })
 
@@ -53,7 +55,7 @@ export default function QueueContextMenu({
   useEffect(() => {
     if (menuOpen) {
       requestAnimationFrame(() => {
-        menuItemRefs.current[0]?.focus()
+        portalRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
       })
     }
   }, [menuOpen])
@@ -82,7 +84,9 @@ export default function QueueContextMenu({
   }, [menuOpen, closeMenu])
 
   const handleMenuKeyDown = useCallback((e: React.KeyboardEvent) => {
-    const items = menuItemRefs.current.filter(Boolean) as HTMLButtonElement[]
+    const items = Array.from(
+      portalRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []
+    )
     const currentIdx = items.indexOf(e.target as HTMLButtonElement)
 
     switch (e.key) {
@@ -209,10 +213,9 @@ export default function QueueContextMenu({
           aria-label={t('mezzanine.pipeline.queueMenu.actionsLabel', { id: beadId })}
           onKeyDown={handleMenuKeyDown}
         >
-          {menuItems.map((item, idx) => (
+          {menuItems.map((item) => (
             <button
               key={item.key}
-              ref={(el) => { menuItemRefs.current[idx] = el }}
               type="button"
               role="menuitem"
               tabIndex={-1}
