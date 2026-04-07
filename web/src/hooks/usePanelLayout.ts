@@ -42,6 +42,10 @@ export function usePanelLayout() {
     const containerRect = container.getBoundingClientRect()
     const containerHeight = containerRect.height
 
+    // Prevent text selection while dragging
+    const prevUserSelect = document.body.style.userSelect
+    document.body.style.userSelect = 'none'
+
     function onPointerMove(ev: PointerEvent) {
       const deltaY = ev.clientY - startY
       const deltaPct = (deltaY / containerHeight) * 100
@@ -52,6 +56,7 @@ export function usePanelLayout() {
     function onPointerUp() {
       document.removeEventListener('pointermove', onPointerMove)
       document.removeEventListener('pointerup', onPointerUp)
+      document.body.style.userSelect = prevUserSelect
       // Save on release
       setLayout(prev => {
         saveLayout(prev)

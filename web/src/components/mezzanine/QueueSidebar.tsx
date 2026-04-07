@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useId, useRef } from 'react'
+import { useState, useEffect, useCallback, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ListOrdered, ChevronDown, ChevronRight } from 'lucide-react'
 import { SECTION_ORDER } from '../forgeQueueUi'
@@ -122,7 +122,6 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
   const [errorDetail, setErrorDetail] = useState<string | null>(null)
   const [dragBeadId, setDragBeadId] = useState<string | null>(null)
   const [dragOverBeadId, setDragOverBeadId] = useState<string | null>(null)
-  const reorderOverrideRef = useRef<Map<string, number>>(new Map())
 
   const fetchQueue = useCallback(async (signal: AbortSignal): Promise<boolean> => {
     const res = await fetch('/api/forge/queue/all', {
@@ -216,7 +215,6 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
 
     // Optimistically reorder: swap priorities in local state
     const newPriority = targetBead.priority
-    reorderOverrideRef.current.set(dragBeadId, newPriority)
     setBeads(prev => prev.map(b =>
       b.bead_id === dragBeadId ? { ...b, priority: newPriority } : b
     ))
@@ -235,8 +233,6 @@ export default function QueueSidebar({ onBeadClick }: QueueSidebarProps) {
     } catch {
       // Reorder is best-effort; the next poll will correct the state
     }
-    // Clear override after next poll cycle
-    setTimeout(() => { reorderOverrideRef.current.delete(dragBeadId) }, 6000)
   }, [dragBeadId, beads])
 
   const groups = groupByAnvil(beads)

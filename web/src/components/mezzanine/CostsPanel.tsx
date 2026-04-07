@@ -206,7 +206,10 @@ export default function CostsPanel() {
             step={0.5}
             value={budgetConfig.dailyBudget || ''}
             placeholder="0"
-            onChange={e => updateBudgetConfig({ dailyBudget: Number(e.target.value) || 0 })}
+            onChange={e => {
+              const parsed = Number(e.target.value)
+              updateBudgetConfig({ dailyBudget: !isNaN(parsed) && parsed >= 0 ? parsed : 0 })
+            }}
             className="w-full px-2 py-1 text-xs rounded bg-gray-800 border border-gray-700 text-gray-300 focus:outline-none focus:ring-1 focus:ring-amber-500"
           />
         </div>
@@ -234,7 +237,14 @@ export default function CostsPanel() {
               </span>
             </div>
             {dailyLimit > 0 && (
-              <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+              <div
+                className="h-2 bg-gray-700 rounded-full overflow-hidden"
+                role="progressbar"
+                aria-valuenow={Math.round(budgetPct)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={t('mezzanine.costs.todaySpend')}
+              >
                 <div
                   className={`h-full rounded-full transition-all ${
                     budgetPct > 90

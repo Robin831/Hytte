@@ -30,8 +30,15 @@ export default function AnvilFilterDropdown({
         setOpen(false)
       }
     }
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false)
+    }
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
   }, [open])
 
   return (
@@ -88,6 +95,8 @@ export default function AnvilFilterDropdown({
                 key={anvil}
                 type="button"
                 onClick={() => onToggle(anvil)}
+                aria-pressed={visible}
+                aria-label={anvil}
                 className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-gray-700/50 transition-colors"
               >
                 <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center ${

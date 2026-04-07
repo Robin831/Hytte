@@ -134,6 +134,7 @@ export default function EventsPanel({ onBeadClick }: EventsPanelProps) {
                   onClick={handleClick}
                   role={clickable ? 'button' : undefined}
                   tabIndex={clickable ? 0 : undefined}
+                  aria-label={clickable ? t('mezzanine.lifecycle.title', { beadId: event.bead_id }) : undefined}
                   onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick?.() } } : undefined}
                 >
                   <div className="flex items-start gap-2">

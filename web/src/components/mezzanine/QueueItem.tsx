@@ -29,8 +29,8 @@ export default function QueueItem({ beadId, title, priority, status, section, on
       ].join(' ')}
       draggable={draggable}
       onDragStart={draggable ? (e) => onDragStart?.(e, beadId) : undefined}
-      onDragOver={draggable ? (e) => { e.preventDefault(); onDragOver?.(e) } : undefined}
-      onDrop={draggable ? (e) => { e.preventDefault(); onDrop?.(e, beadId) } : undefined}
+      onDragOver={(e) => { e.preventDefault(); onDragOver?.(e) }}
+      onDrop={(e) => { e.preventDefault(); onDrop?.(e, beadId) }}
     >
       {/* Row 1: bead ID + priority */}
       <div className="flex items-center gap-2 min-w-0">
@@ -46,7 +46,7 @@ export default function QueueItem({ beadId, title, priority, status, section, on
           {beadId}
         </button>
         {priority > 0 && (
-          <span className="text-xs text-gray-500 shrink-0" aria-label={t('mezzanine.queueSidebar.priority', { priority })}>P{priority}</span>
+          <span className="text-xs text-gray-500 shrink-0" role="text" aria-label={t('mezzanine.queueSidebar.priority', { priority })}>P{priority}</span>
         )}
         <span className={`ml-auto inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border font-medium shrink-0 ${cls}`}>
           {t(`fullQueue.section.${section}`, { defaultValue: section })}
