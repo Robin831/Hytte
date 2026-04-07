@@ -294,6 +294,12 @@
     "title": "Mezzanine",
     "sidebarPlaceholder": "Queue sidebar will appear here",
     "floorPlaceholder": "Worker panels will appear here",
+    "idle": "Idle",
+    "idleSlot": "Idle worker slot {{index}}",
+    "noWorkers": "No active workers",
+    "workerPanel": {
+      "anvil": "Anvil"
+    },
     "statusBar": {
       "loading": "Loading status...",
       "unavailable": "Status unavailable",

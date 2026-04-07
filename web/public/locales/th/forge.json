@@ -294,6 +294,12 @@
     "title": "Mezzanine",
     "sidebarPlaceholder": "แถบคิวจะแสดงที่นี่",
     "floorPlaceholder": "แผงงาน Worker จะแสดงที่นี่",
+    "idle": "ว่าง",
+    "idleSlot": "ช่อง Worker ว่าง {{index}}",
+    "noWorkers": "ไม่มี Worker ที่ทำงานอยู่",
+    "workerPanel": {
+      "anvil": "Anvil"
+    },
     "statusBar": {
       "loading": "กำลังโหลดสถานะ...",
       "unavailable": "ไม่สามารถโหลดสถานะได้",
