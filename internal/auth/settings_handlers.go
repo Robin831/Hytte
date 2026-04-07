@@ -94,6 +94,15 @@ func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 				prefs["claude_cli_path"] = decrypted
 			}
 		}
+		// Decrypt stride_custom_prompt (user-generated text, encrypted at rest).
+		if raw, ok := prefs["stride_custom_prompt"]; ok && raw != "" {
+			decrypted, err := encryption.DecryptField(raw)
+			if err != nil {
+				log.Printf("Warning: failed to decrypt stride_custom_prompt, returning as-is: %v", err)
+			} else {
+				prefs["stride_custom_prompt"] = decrypted
+			}
+		}
 		// Mask Wordfeud credentials so the UI knows they exist without exposing them.
 		for _, key := range []string{"wordfeud_session_token", "wordfeud_email", "wordfeud_password"} {
 			if raw, ok := prefs[key]; ok && raw != "" {
@@ -403,15 +412,17 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		// Encrypt claude_cli_path before persisting.
-		if val, ok := toWrite["claude_cli_path"]; ok && val != "" {
-			enc, err := encryption.EncryptField(val)
-			if err != nil {
-				log.Printf("Failed to encrypt claude_cli_path: %v", err)
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save preferences"})
-				return
+		// Encrypt claude_cli_path and stride_custom_prompt before persisting.
+		for _, key := range []string{"claude_cli_path", "stride_custom_prompt"} {
+			if val, ok := toWrite[key]; ok && val != "" {
+				enc, err := encryption.EncryptField(val)
+				if err != nil {
+					log.Printf("Failed to encrypt %s: %v", key, err)
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save preferences"})
+					return
+				}
+				toWrite[key] = enc
 			}
-			toWrite["claude_cli_path"] = enc
 		}
 
 		// All keys validated — now persist them.
@@ -442,6 +453,15 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 				delete(prefs, "claude_cli_path")
 			} else {
 				prefs["claude_cli_path"] = decrypted
+			}
+		}
+		// Decrypt stride_custom_prompt in PUT response (mirrors GET handler).
+		if raw, ok := prefs["stride_custom_prompt"]; ok && raw != "" {
+			decrypted, decErr := encryption.DecryptField(raw)
+			if decErr != nil {
+				log.Printf("Warning: failed to decrypt stride_custom_prompt in PUT response: %v", decErr)
+			} else {
+				prefs["stride_custom_prompt"] = decrypted
 			}
 		}
 		// Mask Wordfeud credentials in PUT response (mirrors GET handler).
