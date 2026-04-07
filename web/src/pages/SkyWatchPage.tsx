@@ -12,19 +12,19 @@ interface MoonData {
   phase_value: number
   moonrise: string | null
   moonset: string | null
-  always_up: boolean
-  always_down: boolean
+  always_up?: boolean
+  always_down?: boolean
 }
 
 interface SunData {
-  sunrise: string | null
-  sunset: string | null
-  solar_noon: string | null
+  sunrise?: string | null
+  sunset?: string | null
+  solar_noon?: string | null
   day_length_hours: number
-  golden_hour_start: string | null
-  golden_hour_end: string | null
-  civil_dawn: string | null
-  civil_dusk: string | null
+  golden_hour_start?: string | null
+  golden_hour_end?: string | null
+  civil_dawn?: string | null
+  civil_dusk?: string | null
 }
 
 interface NowResponse {
@@ -183,7 +183,7 @@ function StarField() {
   )
 }
 
-function localFormatTime(iso: string | null): string {
+function localFormatTime(iso: string | null | undefined): string {
   if (!iso) return '--:--'
   return sharedFormatTime(iso, { hour: '2-digit', minute: '2-digit' })
 }
@@ -256,7 +256,7 @@ export default function SkyWatchPage() {
         try {
           const yesterday = new Date()
           yesterday.setDate(yesterday.getDate() - 1)
-          const yDate = yesterday.toISOString().slice(0, 10)
+          const yDate = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
           const yRes = await fetch(
             `/api/skywatch/now?lat=${nowData.location.lat}&lon=${nowData.location.lon}&date=${yDate}`,
             { credentials: 'include', signal }
