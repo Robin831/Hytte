@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle, RefreshCw, RotateCcw, Settings } from 'lucide-react'
+import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle, RefreshCw, RotateCcw, Settings, Layers } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../auth'
 import { useForgeStatus, useForgeWorkers } from '../hooks/useForgeStatus'
@@ -283,6 +283,20 @@ export default function ForgeDashboardPage() {
           <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
           <span className="hidden sm:inline">{t('actions.refresh')}</span>
         </button>
+
+        {/* Mezzanine — admin only */}
+        {user?.is_admin && (
+          <NavLink
+            to="/forge/mezzanine"
+            className="flex items-center gap-1.5 min-h-[36px] px-3 rounded-lg text-sm font-medium transition-colors
+              bg-gray-700 text-gray-300 border border-gray-600
+              hover:bg-gray-600"
+            aria-label={t('actions.mezzanine')}
+          >
+            <Layers size={14} />
+            <span className="hidden sm:inline">{t('actions.mezzanine')}</span>
+          </NavLink>
+        )}
 
         {/* Settings — admin only */}
         {user?.is_admin && (

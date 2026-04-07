@@ -237,7 +237,8 @@
     "restartConfirmTitle": "Rebuild & Restart Forge",
     "restartConfirmMessage": "รัน ~/.forge/restart.sh เพื่อ rebuild และ restart forge daemon? Dashboard อาจไม่พร้อมใช้งานชั่วคราว",
     "restartSuccess": "เริ่มการ restart แล้ว",
-    "settings": "ตั้งค่า"
+    "settings": "ตั้งค่า",
+    "mezzanine": "Mezzanine"
   },
   "release": {
     "title": "ปล่อยเวอร์ชัน",

@@ -237,7 +237,8 @@
     "restartConfirmTitle": "Bygg og start Forge på nytt",
     "restartConfirmMessage": "Kjør ~/.forge/restart.sh for å bygge og starte forge-daemon på nytt? Oversikten kan være kort utilgjengelig.",
     "restartSuccess": "Omstart igangsatt",
-    "settings": "Innstillinger"
+    "settings": "Innstillinger",
+    "mezzanine": "Mezzanine"
   },
   "release": {
     "title": "Utgivelse",
