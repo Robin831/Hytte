@@ -41,7 +41,7 @@ func TestAngularSepAltAz(t *testing.T) {
 			name:     "small separation",
 			alt1:     45, az1: 100,
 			alt2:     47, az2: 101,
-			wantDeg:  2.24,
+			wantDeg:  2.12,
 			tolerance: 0.1,
 		},
 	}

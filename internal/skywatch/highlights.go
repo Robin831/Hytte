@@ -104,7 +104,7 @@ func GetTonightHighlights(date time.Time, lat, lon float64) []Highlight {
 		})
 	}
 
-	var highlights []Highlight
+	highlights := []Highlight{}
 
 	// 1. Detect conjunctions (two objects within 5°).
 	for i := 0; i < len(objects); i++ {
