@@ -40,6 +40,7 @@ import AllowancePage from './pages/AllowancePage'
 import MyChoresPage from './pages/MyChoresPage'
 import ForgeDashboardPage from './pages/ForgeDashboardPage'
 import ForgeSettingsPage from './pages/ForgeSettingsPage'
+import MezzaninePage from './pages/MezzaninePage'
 import WordfeudPage from './pages/WordfeudPage'
 import BudgetPage from './pages/BudgetPage'
 import BudgetImport from './pages/BudgetImport'
@@ -435,6 +436,14 @@ function MainLayout() {
             element={
               <FeatureRoute requireAdmin>
                 <ForgeSettingsPage />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/forge/mezzanine"
+            element={
+              <FeatureRoute requireAdmin>
+                <MezzaninePage />
               </FeatureRoute>
             }
           />
