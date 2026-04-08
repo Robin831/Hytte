@@ -70,9 +70,14 @@ function groupEventsByDate(events: CalendarEvent[], locale: string): Map<string,
   })
 
   for (const event of sorted) {
-    // Use local date for grouping
-    const localDate = new Date(event.start_time)
-    const key = formatDateKey(localDate)
+    // All-day events have UTC-midnight start times — use UTC date to avoid timezone shift.
+    // Timed events use local date so they appear under the correct local day.
+    let key: string
+    if (event.all_day) {
+      key = event.start_time.slice(0, 10)
+    } else {
+      key = formatDateKey(new Date(event.start_time))
+    }
     const existing = groups.get(key)
     if (existing) {
       existing.push(event)
@@ -91,7 +96,8 @@ export default function CalendarPage() {
 
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [calendars, setCalendars] = useState<CalendarInfo[]>([])
-  const [connected, setConnected] = useState(false)
+  const [connected, setConnected] = useState<boolean | null>(null)
+  const [calendarsLoading, setCalendarsLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -104,13 +110,13 @@ export default function CalendarPage() {
 
   const selectorRef = useRef<HTMLDivElement>(null)
 
-  const rangeEnd = addDays(rangeStart, daysToShow)
-
   const fetchEvents = useCallback(async (sync = false, signal?: AbortSignal) => {
     if (!user) return
     try {
+      // Derive rangeEnd internally so this callback doesn't depend on a new Date instance each render
+      const endDate = addDays(rangeStart, daysToShow)
       const startParam = rangeStart.toISOString()
-      const endParam = rangeEnd.toISOString()
+      const endParam = endDate.toISOString()
       const url = `/api/calendar/events?start=${encodeURIComponent(startParam)}&end=${encodeURIComponent(endParam)}${sync ? '&sync=true' : ''}`
       const res = await fetch(url, { credentials: 'include', signal })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -122,12 +128,13 @@ export default function CalendarPage() {
       setError(t('calendar.errors.failedToLoad'))
       console.error('Failed to load calendar events:', err)
     }
-  }, [user, rangeStart, rangeEnd, t])
+  }, [user, rangeStart, t])
 
   // Fetch calendars once on mount
   useEffect(() => {
     if (!user) return
     const controller = new AbortController()
+    setCalendarsLoading(true)
     fetch('/api/calendar/calendars', { credentials: 'include', signal: controller.signal })
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -139,17 +146,22 @@ export default function CalendarPage() {
       })
       .catch(err => {
         if (err instanceof DOMException && err.name === 'AbortError') return
+        setConnected(false)
         console.error('Failed to load calendars:', err)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setCalendarsLoading(false)
       })
     return () => controller.abort()
   }, [user])
 
-  // Fetch events whenever rangeStart changes (includes initial load)
+  // Fetch events whenever rangeStart changes (includes initial load).
+  // Use sync=false to avoid hitting Google APIs on every navigation; the Sync button handles explicit refresh.
   useEffect(() => {
     if (!user) return
     const controller = new AbortController()
     setLoading(true)
-    fetchEvents(true, controller.signal).finally(() => {
+    fetchEvents(false, controller.signal).finally(() => {
       if (!controller.signal.aborted) setLoading(false)
     })
     return () => controller.abort()
@@ -187,8 +199,9 @@ export default function CalendarPage() {
   }
 
   const handleToggleCalendar = async (calendarId: string, currentlySelected: boolean) => {
-    // Optimistic update
-    const updated = calendars.map(c =>
+    // Capture previous state before optimistic update so revert is deterministic
+    const prevCalendars = calendars
+    const updated = prevCalendars.map(c =>
       c.id === calendarId ? { ...c, selected: !currentlySelected } : c
     )
     setCalendars(updated)
@@ -204,11 +217,11 @@ export default function CalendarPage() {
         body: JSON.stringify({ calendar_ids: selectedIds }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      // Refetch events with the new calendar selection
-      await fetchEvents(true)
+      // Refetch events with the new calendar selection (no Google sync, just cached)
+      await fetchEvents(false)
     } catch (err) {
-      // Revert on failure
-      setCalendars(calendars)
+      // Revert to the state we captured before the optimistic update
+      setCalendars(prevCalendars)
       console.error('Failed to save calendar settings:', err)
     } finally {
       setSavingCalendars(false)
@@ -254,7 +267,7 @@ export default function CalendarPage() {
 
         <div className="flex items-center gap-2 sm:ml-auto">
           {/* Calendar selector toggle */}
-          {connected && calendars.length > 0 && (
+          {connected === true && calendars.length > 0 && (
             <div className="relative" ref={selectorRef}>
               <button
                 onClick={() => setShowSelector(!showSelector)}
@@ -303,7 +316,7 @@ export default function CalendarPage() {
           )}
 
           {/* Sync button */}
-          {connected && (
+          {connected === true && (
             <button
               onClick={handleSync}
               disabled={syncing}
@@ -317,8 +330,8 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Not connected state */}
-      {!loading && !connected && (
+      {/* Not connected state — only shown once calendars have loaded to avoid flash for connected users */}
+      {!loading && !calendarsLoading && connected === false && (
         <div className="rounded-lg bg-gray-800/50 border border-gray-700 p-6 text-center">
           <CalendarDays size={40} className="mx-auto text-gray-500 mb-3" />
           <p className="text-gray-300 mb-2">{t('calendar.notConnected')}</p>
@@ -327,7 +340,7 @@ export default function CalendarPage() {
       )}
 
       {/* Date navigation */}
-      {connected && (
+      {connected === true && (
         <nav className="flex items-center gap-2 mb-4" aria-label={t('calendar.agenda')}>
           <button
             onClick={goPrev}
@@ -350,7 +363,7 @@ export default function CalendarPage() {
             <ChevronRight size={20} />
           </button>
           <span className="text-sm text-gray-400 ml-2" aria-live="polite">
-            {formatDate(rangeStart, rangeFormatOpts)} – {formatDate(addDays(rangeEnd, -1), rangeFormatOpts)}
+            {formatDate(rangeStart, rangeFormatOpts)} – {formatDate(addDays(rangeStart, daysToShow - 1), rangeFormatOpts)}
           </span>
         </nav>
       )}
@@ -370,7 +383,7 @@ export default function CalendarPage() {
       )}
 
       {/* Agenda list */}
-      {!loading && connected && (
+      {!loading && connected === true && (
         <div className="space-y-1" role="list" aria-label={t('calendar.agenda')}>
           {grouped.size === 0 && !error && (
             <div className="text-center py-12 text-gray-500">
@@ -379,7 +392,10 @@ export default function CalendarPage() {
             </div>
           )}
 
-          {Array.from(grouped.entries()).map(([dateKey, dayEvents]) => {
+          {(() => {
+            // Build calendar color lookup once, not inside every day's render iteration
+            const calColorMap = new Map(calendars.map(c => [c.id, c.background_color]))
+            return Array.from(grouped.entries()).map(([dateKey, dayEvents]) => {
             const date = new Date(dateKey + 'T00:00:00')
             const today = isToday(date)
             const tomorrow = isTomorrow(date)
@@ -387,9 +403,6 @@ export default function CalendarPage() {
             let dateLabel = formatDate(date, dateFormatOpts)
             if (today) dateLabel = `${t('calendar.todayLabel')} — ${dateLabel}`
             else if (tomorrow) dateLabel = `${t('calendar.tomorrowLabel')} — ${dateLabel}`
-
-            // Build a lookup of calendar colors
-            const calColorMap = new Map(calendars.map(c => [c.id, c.background_color]))
 
             return (
               <div key={dateKey} role="listitem">
@@ -455,7 +468,8 @@ export default function CalendarPage() {
                 </div>
               </div>
             )
-          })}
+          })
+          })()}
         </div>
       )}
     </div>
