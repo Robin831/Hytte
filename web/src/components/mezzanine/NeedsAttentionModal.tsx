@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import {
   RotateCcw,
   CheckCircle,
@@ -26,7 +27,7 @@ interface PendingConfirm {
   beadId: string
 }
 
-function statusLabel(status: NeedsAttentionStatus, t: (key: string) => string): string {
+function statusLabel(status: NeedsAttentionStatus, t: TFunction<'forge'>): string {
   switch (status) {
     case 'needs_human': return t('attention.modal.statusNeedsHuman')
     case 'clarification_needed': return t('attention.clarificationNeeded')
@@ -68,7 +69,7 @@ function actionStyle(action: NeedsAttentionAction): string {
   }
 }
 
-function actionLabel(action: NeedsAttentionAction, t: (key: string) => string): string {
+function actionLabel(action: NeedsAttentionAction, t: TFunction<'forge'>): string {
   switch (action) {
     case 'retry': return t('attention.retry')
     case 'approve': return t('attention.approve')
@@ -77,7 +78,7 @@ function actionLabel(action: NeedsAttentionAction, t: (key: string) => string): 
   }
 }
 
-function confirmTitle(action: NeedsAttentionAction, t: (key: string) => string): string {
+function confirmTitle(action: NeedsAttentionAction, t: TFunction<'forge'>): string {
   switch (action) {
     case 'retry': return t('attention.retryConfirmTitle')
     case 'approve': return t('attention.approveConfirmTitle')
@@ -86,7 +87,7 @@ function confirmTitle(action: NeedsAttentionAction, t: (key: string) => string):
   }
 }
 
-function confirmMessage(action: NeedsAttentionAction, beadId: string, t: (key: string, opts?: Record<string, string>) => string): string {
+function confirmMessage(action: NeedsAttentionAction, beadId: string, t: TFunction<'forge'>): string {
   switch (action) {
     case 'retry': return t('attention.retryConfirmMessage', { id: beadId })
     case 'approve': return t('attention.approveConfirmMessage', { id: beadId })
