@@ -77,37 +77,54 @@ function renderPage() {
 // its behaviour indirectly through the rendered output. Direct unit tests for the
 // grouping logic live here using a hand-rolled invocation pattern.
 
-// We duplicate the pure function here so it can be tested without rendering.
+// The production grouping helper is not exported from CalendarPage, so these
+// tests use a lightweight test-only adapter rather than duplicating the exact
+// production implementation line-for-line.
+
 type CalendarEvent = {
   id: string; calendar_id: string; title: string; start_time: string
   end_time: string; all_day: boolean; status: string; color?: string
 }
 
-function groupEventsByDate(events: CalendarEvent[], locale: string): Map<string, CalendarEvent[]> {
-  const groups = new Map<string, CalendarEvent[]>()
-  const sorted = [...events].sort((a, b) => {
-    const aTime = new Date(a.start_time).getTime()
-    const bTime = new Date(b.start_time).getTime()
-    if (aTime !== bTime) return aTime - bTime
-    if (a.all_day && !b.all_day) return -1
-    if (!a.all_day && b.all_day) return 1
-    return a.title.localeCompare(b.title, locale)
-  })
-  for (const event of sorted) {
-    let key: string
-    if (event.all_day) {
-      key = event.start_time.slice(0, 10)
-    } else {
-      const d = new Date(event.start_time)
-      const y = d.getFullYear()
-      const m = String(d.getMonth() + 1).padStart(2, '0')
-      const day = String(d.getDate()).padStart(2, '0')
-      key = `${y}-${m}-${day}`
-    }
-    const existing = groups.get(key)
-    if (existing) existing.push(event)
-    else groups.set(key, [event])
+const localDateKeyFormatter = new Intl.DateTimeFormat('en-CA', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+function getEventDateKey(event: CalendarEvent): string {
+  if (event.all_day) {
+    return event.start_time.slice(0, 10)
   }
+
+  return localDateKeyFormatter.format(new Date(event.start_time))
+}
+
+function groupEventsByDate(events: CalendarEvent[], locale: string): Map<string, CalendarEvent[]> {
+  const collator = new Intl.Collator(locale)
+  const groups = new Map<string, CalendarEvent[]>()
+
+  for (const event of [...events].sort((a, b) => {
+    const startDelta = Date.parse(a.start_time) - Date.parse(b.start_time)
+    if (startDelta !== 0) return startDelta
+
+    if (a.all_day !== b.all_day) {
+      return a.all_day ? -1 : 1
+    }
+
+    return collator.compare(a.title, b.title)
+  })) {
+    const key = getEventDateKey(event)
+    const bucket = groups.get(key)
+
+    if (bucket) {
+      bucket.push(event)
+      continue
+    }
+
+    groups.set(key, [event])
+  }
+
   return groups
 }
 
@@ -172,7 +189,7 @@ describe('CalendarPage – unauthenticated', () => {
 
 describe('CalendarPage – loading state', () => {
   beforeEach(() => { authState.user = { id: 1 } })
-  afterEach(() => { vi.restoreAllMocks() })
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
   it('shows spinner while loading', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
@@ -184,7 +201,7 @@ describe('CalendarPage – loading state', () => {
 
 describe('CalendarPage – error state', () => {
   beforeEach(() => { authState.user = { id: 1 } })
-  afterEach(() => { vi.restoreAllMocks() })
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
   it('shows error message when events fetch fails', async () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
@@ -206,7 +223,7 @@ describe('CalendarPage – error state', () => {
 
 describe('CalendarPage – empty state', () => {
   beforeEach(() => { authState.user = { id: 1 } })
-  afterEach(() => { vi.restoreAllMocks() })
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
   it('shows no-events message when calendar is connected but has no events', async () => {
     vi.stubGlobal('fetch', makeFetchMock(
@@ -222,7 +239,7 @@ describe('CalendarPage – empty state', () => {
 
 describe('CalendarPage – not connected state', () => {
   beforeEach(() => { authState.user = { id: 1 } })
-  afterEach(() => { vi.restoreAllMocks() })
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
   it('shows not-connected message when calendar is not connected', async () => {
     vi.stubGlobal('fetch', makeFetchMock(
@@ -238,7 +255,7 @@ describe('CalendarPage – not connected state', () => {
 
 describe('CalendarPage – default calendar selection', () => {
   beforeEach(() => { authState.user = { id: 1 } })
-  afterEach(() => { vi.restoreAllMocks() })
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
   it('defaults primary calendar to selected when none are selected', async () => {
     vi.stubGlobal('fetch', makeFetchMock(

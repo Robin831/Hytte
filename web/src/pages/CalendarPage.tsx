@@ -223,9 +223,10 @@ export default function CalendarPage() {
     setCalendars(updated)
 
     const selectedIds = updated.filter(c => c.selected).map(c => c.id)
-    // Prevent saving an empty selection — fall back to ['primary'] so the backend
-    // doesn't silently revert to its own default and create a UI/results mismatch.
-    const idsToSave = selectedIds.length > 0 ? selectedIds : ['primary']
+    // Keep at least one calendar selected so we only ever persist real calendar IDs.
+    if (selectedIds.length === 0) {
+      return
+    }
 
     setSavingCalendars(true)
     try {
@@ -233,7 +234,7 @@ export default function CalendarPage() {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ calendar_ids: idsToSave }),
+        body: JSON.stringify({ calendar_ids: selectedIds }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       // Refetch events with the new calendar selection (no Google sync, just cached)
