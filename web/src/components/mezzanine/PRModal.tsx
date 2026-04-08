@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   GitPullRequest,
@@ -105,6 +105,13 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
   const [confirmAction, setConfirmAction] = useState<PendingForgeAction | null>(null)
   const [confirmExtAction, setConfirmExtAction] = useState<PendingExternalAction | null>(null)
   const [collapsedAnvils, setCollapsedAnvils] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    if (!open) {
+      setConfirmAction(null)
+      setConfirmExtAction(null)
+    }
+  }, [open])
 
   function handleClose() {
     setConfirmAction(null)
@@ -592,11 +599,15 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
                 const collapsed = !!collapsedAnvils[anvil]
                 const shortName = anvil.includes('/') ? anvil.split('/')[1] : anvil
 
+                const anvilContentId = `anvil-content-${anvil.replace(/[^a-z0-9]/gi, '-')}`
+
                 return (
                   <div key={anvil}>
                     {anvilGroups.length > 1 && (
                       <button
                         type="button"
+                        aria-expanded={!collapsed}
+                        aria-controls={anvilContentId}
                         onClick={() => toggleAnvil(anvil)}
                         className="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-gray-800/50 transition-colors"
                       >
@@ -607,7 +618,7 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
                     )}
 
                     {!collapsed && (
-                      <div className="divide-y divide-gray-800/50">
+                      <div id={anvilContentId} className="divide-y divide-gray-800/50">
                         {group.forge.length > 0 && group.external.length > 0 && (
                           <p className="px-4 py-1.5 text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-800/30">
                             {t('readyToMerge.forgeSection')}
@@ -631,7 +642,7 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
       </Dialog>
 
       <ConfirmDialog
-        open={confirmAction !== null}
+        open={open && confirmAction !== null}
         title={confirmAction ? forgeConfirmTitle(confirmAction.type) : ''}
         message={confirmAction ? forgeConfirmMessage(confirmAction.type, confirmAction.pr) : ''}
         confirmLabel={confirmAction ? forgeConfirmLabel(confirmAction.type) : ''}
@@ -643,7 +654,7 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
       />
 
       <ConfirmDialog
-        open={confirmExtAction !== null}
+        open={open && confirmExtAction !== null}
         title={confirmExtAction ? extConfirmTitle(confirmExtAction.type) : ''}
         message={confirmExtAction ? extConfirmMessage(confirmExtAction.type, confirmExtAction.pr) : ''}
         confirmLabel={confirmExtAction ? extConfirmLabel(confirmExtAction.type) : ''}

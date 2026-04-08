@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { OpenPR } from './useForgeStatus'
 
 export interface ExternalPR {
@@ -18,6 +19,7 @@ export interface AllPRsData {
 }
 
 export function useAllPRs(enabled: boolean = true) {
+  const { t } = useTranslation('forge')
   const [data, setData] = useState<AllPRsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -32,9 +34,11 @@ export function useAllPRs(enabled: boolean = true) {
 
     const controller = new AbortController()
     let timeoutId: ReturnType<typeof setTimeout> | undefined
+    let isFirstFetch = true
 
     async function fetchAllPRs() {
-      setLoading(true)
+      if (isFirstFetch) setLoading(true)
+      isFirstFetch = false
       setError(null)
       try {
         const res = await fetch('/api/forge/prs/all', {
@@ -55,7 +59,7 @@ export function useAllPRs(enabled: boolean = true) {
       } catch (err) {
         if (controller.signal.aborted) return
         if (err instanceof Error && err.name === 'AbortError') return
-        setError(err instanceof Error ? err.message : 'Unknown error')
+        setError(err instanceof Error ? err.message : t('unknownError'))
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false)
