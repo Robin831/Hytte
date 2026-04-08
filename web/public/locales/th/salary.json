@@ -40,7 +40,9 @@
   },
   "absenceCost": {
     "title": "ผลกระทบจากการขาดงาน",
-    "perDay": "{{amount}} ต่อวัน"
+    "perDay": "{{amount}} ต่อวัน",
+    "perSickDay": "ต่อวันลาป่วย: {{sign}}{{amount}} (ต้นทุนสุทธิหลังเงินเพิ่มลาป่วย)",
+    "perVacationDay": "ต่อวันลาพักร้อน: ~{{amount}} (ค่าคอมมิชชันที่ลดลง)"
   },
   "config": {
     "title": "การตั้งค่า",

@@ -53,6 +53,36 @@ func AbsenceDayCost(config Config, workingDays int, absenceDays int) float64 {
 	return dailyRate * float64(absenceDays)
 }
 
+// SickDayCost returns the net cost per sick day. Sick days are mostly
+// compensated by the sick addon (ferieDayRate × standardHours per day).
+// The net cost is the commission you would have earned for that day minus
+// the sick addon. A negative value means the addon exceeds daily commission.
+func SickDayCost(config Config, tiers []CommissionTier, workingDays int, totalRevenue float64) float64 {
+	if workingDays <= 0 {
+		return 0
+	}
+	fullCommission := CalculateCommission(totalRevenue, tiers)
+	dailyCommission := fullCommission / float64(workingDays)
+
+	const ferieDayRate = 354.53
+	sickAddonPerDay := ferieDayRate * config.StandardHours
+
+	return dailyCommission - sickAddonPerDay
+}
+
+// VacationDayCost returns the marginal commission loss per vacation day.
+// It computes the difference between commission at full attendance and
+// commission with one fewer working day (scaled tiers).
+func VacationDayCost(tiers []CommissionTier, workingDays int, totalRevenue float64) float64 {
+	if workingDays <= 0 {
+		return 0
+	}
+	fullCommission := CalculateCommission(totalRevenue, tiers)
+	scaledTiers := ScaleTiersForAbsence(tiers, workingDays, 1)
+	reducedCommission := CalculateCommission(totalRevenue, scaledTiers)
+	return fullCommission - reducedCommission
+}
+
 // ScaleTiersForAbsence returns tiers with all boundaries scaled proportionally
 // by the ratio of effective working days to total working days. This ensures
 // employees are not penalized when absence (vacation or sick leave) reduces
