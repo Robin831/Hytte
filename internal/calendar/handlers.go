@@ -24,7 +24,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // Query params:
 //   - start: RFC3339 or YYYY-MM-DD (required)
 //   - end:   RFC3339 or YYYY-MM-DD (required)
-//   - sync:  if "true", triggers a background sync before returning cached data
+//   - sync:  if "true", performs a sync inline before querying and returning events
 func EventsHandler(db *sql.DB, client *Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -53,15 +53,21 @@ func EventsHandler(db *sql.DB, client *Client) http.HandlerFunc {
 		// Load user's visible calendars from preferences.
 		calendarIDs := loadVisibleCalendars(db, user.ID)
 
+		// Treat empty preference as "primary" for both sync and query to keep behaviour consistent.
+		queryCalendars := calendarIDs
+		if len(queryCalendars) == 0 {
+			queryCalendars = []string{"primary"}
+		}
+
 		if doSync {
-			hasToken, _ := auth.HasGoogleToken(db, user.ID)
+			hasToken, err := auth.HasGoogleToken(db, user.ID)
+			if err != nil {
+				log.Printf("calendar: check google token for user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check google token"})
+				return
+			}
 			if hasToken {
-				syncCalendars := calendarIDs
-				if len(syncCalendars) == 0 {
-					// If no preference set, sync primary calendar.
-					syncCalendars = []string{"primary"}
-				}
-				for _, calID := range syncCalendars {
+				for _, calID := range queryCalendars {
 					if err := client.FetchAndCacheEvents(r.Context(), user.ID, calID, startTime, endTime); err != nil {
 						log.Printf("calendar: sync failed for user %d calendar %s: %v", user.ID, calID, err)
 					}
@@ -69,7 +75,7 @@ func EventsHandler(db *sql.DB, client *Client) http.HandlerFunc {
 			}
 		}
 
-		events, err := QueryEvents(db, user.ID, calendarIDs, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
+		events, err := QueryEvents(db, user.ID, queryCalendars, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
 		if err != nil {
 			log.Printf("calendar: query events for user %d: %v", user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to query events"})
@@ -159,7 +165,12 @@ func SyncHandler(db *sql.DB, client *Client) http.HandlerFunc {
 		user := auth.UserFromContext(r.Context())
 
 		hasToken, err := auth.HasGoogleToken(db, user.ID)
-		if err != nil || !hasToken {
+		if err != nil {
+			log.Printf("calendar: check Google token for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check calendar connection"})
+			return
+		}
+		if !hasToken {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "calendar not connected"})
 			return
 		}
@@ -180,7 +191,7 @@ func SyncHandler(db *sql.DB, client *Client) http.HandlerFunc {
 		}
 
 		// Sync 3 months back and 6 months forward.
-		now := time.Now()
+		now := time.Now().UTC()
 		timeMin := now.AddDate(0, -3, 0)
 		timeMax := now.AddDate(0, 6, 0)
 

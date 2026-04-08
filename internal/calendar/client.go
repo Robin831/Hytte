@@ -253,20 +253,37 @@ func convertEvent(item *gcal.Event, calendarID string) (Event, bool) {
 	}
 
 	if item.Start.Date != "" {
-		// All-day event: dates are in YYYY-MM-DD format.
+		// All-day event: normalize YYYY-MM-DD to UTC midnight RFC3339 for consistent ordering.
 		e.AllDay = true
-		e.StartTime = item.Start.Date
-		if item.End != nil {
-			e.EndTime = item.End.Date
+		startDate, err := time.Parse("2006-01-02", item.Start.Date)
+		if err != nil {
+			return Event{}, false
+		}
+		e.StartTime = startDate.UTC().Format(time.RFC3339)
+		if item.End != nil && item.End.Date != "" {
+			endDate, err := time.Parse("2006-01-02", item.End.Date)
+			if err != nil {
+				return Event{}, false
+			}
+			e.EndTime = endDate.UTC().Format(time.RFC3339)
 		} else {
-			e.EndTime = item.Start.Date
+			e.EndTime = e.StartTime
 		}
 	} else if item.Start.DateTime != "" {
-		e.StartTime = item.Start.DateTime
-		if item.End != nil {
-			e.EndTime = item.End.DateTime
+		// Timed event: normalize to UTC RFC3339 for consistent ordering.
+		startT, err := time.Parse(time.RFC3339, item.Start.DateTime)
+		if err != nil {
+			return Event{}, false
+		}
+		e.StartTime = startT.UTC().Format(time.RFC3339)
+		if item.End != nil && item.End.DateTime != "" {
+			endT, err := time.Parse(time.RFC3339, item.End.DateTime)
+			if err != nil {
+				return Event{}, false
+			}
+			e.EndTime = endT.UTC().Format(time.RFC3339)
 		} else {
-			e.EndTime = item.Start.DateTime
+			e.EndTime = e.StartTime
 		}
 	} else {
 		return Event{}, false

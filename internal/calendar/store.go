@@ -15,11 +15,7 @@ func UpsertEvents(db *sql.DB, userID int64, events []Event) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer tx.Rollback() //nolint:errcheck
 
 	stmt, err := tx.Prepare(`
 		INSERT INTO calendar_events (id, user_id, calendar_id, title, description, location, start_time, end_time, all_day, status, color, updated_at)
@@ -41,17 +37,17 @@ func UpsertEvents(db *sql.DB, userID int64, events []Event) error {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, e := range events {
-		encTitle, err := encryption.EncryptField(e.Title)
-		if err != nil {
-			return err
+		encTitle, encErr := encryption.EncryptField(e.Title)
+		if encErr != nil {
+			return encErr
 		}
-		encDesc, err := encryption.EncryptField(e.Description)
-		if err != nil {
-			return err
+		encDesc, encErr := encryption.EncryptField(e.Description)
+		if encErr != nil {
+			return encErr
 		}
-		encLoc, err := encryption.EncryptField(e.Location)
-		if err != nil {
-			return err
+		encLoc, encErr := encryption.EncryptField(e.Location)
+		if encErr != nil {
+			return encErr
 		}
 
 		allDay := 0
@@ -59,9 +55,9 @@ func UpsertEvents(db *sql.DB, userID int64, events []Event) error {
 			allDay = 1
 		}
 
-		if _, err := stmt.Exec(e.ID, userID, e.CalendarID, encTitle, encDesc, encLoc,
-			e.StartTime, e.EndTime, allDay, e.Status, e.Color, now); err != nil {
-			return err
+		if _, execErr := stmt.Exec(e.ID, userID, e.CalendarID, encTitle, encDesc, encLoc,
+			e.StartTime, e.EndTime, allDay, e.Status, e.Color, now); execErr != nil {
+			return execErr
 		}
 	}
 
@@ -77,11 +73,7 @@ func DeleteEvents(db *sql.DB, userID int64, calendarID string, eventIDs []string
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer tx.Rollback() //nolint:errcheck
 
 	stmt, err := tx.Prepare(`DELETE FROM calendar_events WHERE id = ? AND user_id = ? AND calendar_id = ?`)
 	if err != nil {
@@ -90,8 +82,8 @@ func DeleteEvents(db *sql.DB, userID int64, calendarID string, eventIDs []string
 	defer stmt.Close()
 
 	for _, id := range eventIDs {
-		if _, err := stmt.Exec(id, userID, calendarID); err != nil {
-			return err
+		if _, execErr := stmt.Exec(id, userID, calendarID); execErr != nil {
+			return execErr
 		}
 	}
 	return tx.Commit()
