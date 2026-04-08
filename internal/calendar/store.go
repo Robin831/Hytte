@@ -2,7 +2,7 @@ package calendar
 
 import (
 	"database/sql"
-	"log"
+	"fmt"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -145,20 +145,14 @@ func QueryEvents(db *sql.DB, userID int64, calendarIDs []string, start, end stri
 		}
 		e.AllDay = allDay != 0
 
-		e.Title, err = encryption.DecryptField(encTitle)
-		if err != nil {
-			log.Printf("calendar: decrypt title for event %s: %v (using raw value)", e.ID, err)
-			e.Title = encTitle
+		if e.Title, err = encryption.DecryptField(encTitle); err != nil {
+			return nil, fmt.Errorf("decrypt event title %s: %w", e.ID, err)
 		}
-		e.Description, err = encryption.DecryptField(encDesc)
-		if err != nil {
-			log.Printf("calendar: decrypt description for event %s: %v (using raw value)", e.ID, err)
-			e.Description = encDesc
+		if e.Description, err = encryption.DecryptField(encDesc); err != nil {
+			return nil, fmt.Errorf("decrypt event description %s: %w", e.ID, err)
 		}
-		e.Location, err = encryption.DecryptField(encLoc)
-		if err != nil {
-			log.Printf("calendar: decrypt location for event %s: %v (using raw value)", e.ID, err)
-			e.Location = encLoc
+		if e.Location, err = encryption.DecryptField(encLoc); err != nil {
+			return nil, fmt.Errorf("decrypt event location %s: %w", e.ID, err)
 		}
 
 		events = append(events, e)

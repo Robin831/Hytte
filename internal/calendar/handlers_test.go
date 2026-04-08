@@ -10,14 +10,20 @@ import (
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/db"
+	"github.com/Robin831/Hytte/internal/encryption"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
+	t.Setenv("ENCRYPTION_KEY", "test-key-for-calendar-tests")
+	encryption.ResetEncryptionKey()
+	t.Cleanup(func() { encryption.ResetEncryptionKey() })
+
 	d, err := db.Init(":memory:")
 	if err != nil {
 		t.Fatalf("init test db: %v", err)
 	}
+	d.SetMaxOpenConns(1)
 	t.Cleanup(func() { d.Close() })
 	return d
 }
