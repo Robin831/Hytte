@@ -139,6 +139,8 @@ export default function CalendarPage() {
       if (err instanceof DOMException && err.name === 'AbortError') return
       setError(t('calendar.errors.failedToLoad'))
       console.error('Failed to load calendar events:', err)
+    } finally {
+      if (!signal?.aborted) setLoading(false)
     }
   }, [user, rangeStart, t])
 
@@ -177,9 +179,7 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!user) return
     const controller = new AbortController()
-    fetchEvents(false, controller.signal).finally(() => {
-      if (!controller.signal.aborted) setLoading(false)
-    })
+    fetchEvents(false, controller.signal)
     return () => controller.abort()
   }, [user, rangeStart, fetchEvents])
 
