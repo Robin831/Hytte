@@ -1,4 +1,4 @@
-import { useState, useEffect, useId, useRef } from 'react'
+import { useState, useEffect, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Save } from 'lucide-react'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
@@ -70,10 +70,10 @@ export default function ForgeSettingsModal({ open, onClose, showToast }: ForgeSe
   useEffect(() => {
     if (!open) return
     const controller = new AbortController()
-    setLoading(true)
-    setError(null)
 
     const load = async () => {
+      setLoading(true)
+      setError(null)
       try {
         const res = await fetch('/api/forge/config', {
           credentials: 'include',
@@ -438,7 +438,7 @@ function ToggleField({
   value: boolean
   onChange: (v: boolean) => void
 }) {
-  const labelId = useRef(crypto.randomUUID()).current
+  const labelId = useId()
   return (
     <div className="flex items-center gap-3 cursor-pointer" onClick={() => onChange(!value)}>
       <button
