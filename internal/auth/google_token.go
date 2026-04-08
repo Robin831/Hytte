@@ -3,8 +3,6 @@ package auth
 import (
 	"database/sql"
 	"fmt"
-	"log"
-	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -54,7 +52,7 @@ func SaveGoogleToken(db *sql.DB, userID int64, token *GoogleToken) error {
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id) DO UPDATE SET
 			access_token  = excluded.access_token,
-			refresh_token = excluded.refresh_token,
+			refresh_token = CASE WHEN excluded.refresh_token = '' THEN google_tokens.refresh_token ELSE excluded.refresh_token END,
 			token_type    = excluded.token_type,
 			expiry        = excluded.expiry,
 			scopes        = excluded.scopes,
@@ -81,20 +79,12 @@ func LoadGoogleToken(db *sql.DB, userID int64) (*GoogleToken, error) {
 
 	accessToken, err := encryption.DecryptField(encAccess)
 	if err != nil {
-		if strings.HasPrefix(encAccess, "enc:") {
-			return nil, fmt.Errorf("decrypt access token for user %d: %w", userID, err)
-		}
-		log.Printf("google_token: decrypt access token warning (legacy plaintext) for user %d: %v", userID, err)
-		accessToken = encAccess
+		return nil, fmt.Errorf("decrypt access token for user %d: %w", userID, err)
 	}
 
 	refreshToken, err := encryption.DecryptField(encRefresh)
 	if err != nil {
-		if strings.HasPrefix(encRefresh, "enc:") {
-			return nil, fmt.Errorf("decrypt refresh token for user %d: %w", userID, err)
-		}
-		log.Printf("google_token: decrypt refresh token warning (legacy plaintext) for user %d: %v", userID, err)
-		refreshToken = encRefresh
+		return nil, fmt.Errorf("decrypt refresh token for user %d: %w", userID, err)
 	}
 
 	var expiry time.Time

@@ -39,10 +39,14 @@ func GoogleLoginHandler() http.HandlerFunc {
 			Secure:   isSecure(),
 		})
 
-		url := cfg.AuthCodeURL(state,
+		opts := []oauth2.AuthCodeOption{
 			oauth2.AccessTypeOffline,
-			oauth2.SetAuthURLParam("prompt", "consent"),
-		)
+		}
+		if r.URL.Query().Get("prompt") == "consent" || r.URL.Query().Get("reauthorize") == "true" {
+			opts = append(opts, oauth2.SetAuthURLParam("prompt", "consent"))
+		}
+
+		url := cfg.AuthCodeURL(state, opts...)
 		http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 	}
 }
