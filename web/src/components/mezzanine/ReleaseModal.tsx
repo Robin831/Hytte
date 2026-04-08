@@ -64,6 +64,8 @@ export default function ReleaseModal({ open, onClose, showToast }: ReleaseModalP
   const abortRef = useRef<AbortController | null>(null)
 
   async function fetchSuggestion(controller: AbortController) {
+    setSuggestLoading(true)
+    setSuggestError(null)
     try {
       const res = await fetch('/api/forge/release/suggest', {
         credentials: 'include',
@@ -96,8 +98,6 @@ export default function ReleaseModal({ open, onClose, showToast }: ReleaseModalP
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
-    setSuggestLoading(true)
-    setSuggestError(null)
     void fetchSuggestion(controller)
     return controller
   }
@@ -112,9 +112,12 @@ export default function ReleaseModal({ open, onClose, showToast }: ReleaseModalP
   // Fetch suggestion when modal opens
   useEffect(() => {
     if (!open) return
-    const controller = startSuggestionFetch()
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchSuggestion(controller)
     return () => controller.abort()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   function handleClose() {
@@ -138,18 +141,18 @@ export default function ReleaseModal({ open, onClose, showToast }: ReleaseModalP
         body: JSON.stringify({ version }),
       })
       const raw: unknown = await res.json()
-      if (!res.ok || typeof raw !== 'object' || raw === null || !Array.isArray((raw as Record<string, unknown>).steps)) {
+      if (typeof raw === 'object' && raw !== null && Array.isArray((raw as Record<string, unknown>).steps)) {
+        const data = raw as ReleaseResponse
+        setReleaseResult(data)
+        if (data.success) {
+          showToast(t('release.success', { tag: data.tag }), 'success')
+        } else {
+          const failedStep = data.steps.find(s => !s.success)
+          showToast(failedStep?.error ?? t('release.failed'), 'error')
+        }
+      } else {
         const msg = (raw as Record<string, unknown> | null)?.['error']
         showToast(typeof msg === 'string' ? msg : t('release.failed'), 'error')
-        return
-      }
-      const data = raw as ReleaseResponse
-      setReleaseResult(data)
-      if (data.success) {
-        showToast(t('release.success', { tag: data.tag }), 'success')
-      } else {
-        const failedStep = data.steps.find(s => !s.success)
-        showToast(failedStep?.error ?? t('release.failed'), 'error')
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), 'error')
