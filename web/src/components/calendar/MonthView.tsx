@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { formatDate } from '../../utils/formatDate'
+import { formatDate, formatTime } from '../../utils/formatDate'
 import {
   type CalendarViewProps,
   type CalendarEvent,
@@ -59,6 +59,7 @@ function getEventsForDate(events: CalendarEvent[], dateKey: string): CalendarEve
 }
 
 const MAX_VISIBLE_EVENTS = 3
+const timeFormatOpts: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' }
 
 export default function MonthView({ events, calendars, rangeStart, onNavigateToDay }: CalendarViewProps) {
   const { t } = useTranslation('common')
@@ -78,11 +79,11 @@ export default function MonthView({ events, calendars, rangeStart, onNavigateToD
   }, [])
 
   return (
-    <div className="select-none">
+    <div className="select-none" role="grid" aria-label={t('calendar.monthView')}>
       {/* Weekday headers */}
-      <div className="grid grid-cols-7 mb-1">
+      <div className="grid grid-cols-7 mb-1" role="row">
         {weekdayHeaders.map((day, i) => (
-          <div key={i} className="text-center text-xs font-medium text-gray-500 py-1">
+          <div key={i} role="columnheader" className="text-center text-xs font-medium text-gray-500 py-1">
             {day}
           </div>
         ))}
@@ -100,6 +101,8 @@ export default function MonthView({ events, calendars, rangeStart, onNavigateToD
           return (
             <button
               key={dateKey}
+              role="gridcell"
+              aria-label={`${formatDate(date, { month: 'long', day: 'numeric' })}${dayEvents.length > 0 ? `, ${dayEvents.length} ${dayEvents.length === 1 ? 'event' : 'events'}` : ''}`}
               onClick={() => onNavigateToDay(date)}
               className={`
                 border-r border-b border-gray-700/50 p-1 min-h-[4.5rem] sm:min-h-[6rem] text-left
@@ -128,7 +131,7 @@ export default function MonthView({ events, calendars, rangeStart, onNavigateToD
                     style={{ backgroundColor: getEventColor(event, colorMap) + 'cc' }}
                     title={event.title}
                   >
-                    {event.all_day ? event.title : `${new Date(event.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }).slice(0, 5)} ${event.title}`}
+                    {event.all_day ? event.title : `${formatTime(event.start_time, timeFormatOpts)} ${event.title}`}
                   </div>
                 ))}
                 {overflow > 0 && (

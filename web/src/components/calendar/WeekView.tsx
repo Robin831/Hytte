@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect } from 'react'
+import { useMemo, useRef, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime } from '../../utils/formatDate'
 import {
@@ -62,14 +62,20 @@ export default function WeekView({ events, calendars, rangeStart, onNavigateToDa
   const weekStart = useMemo(() => getWeekStart(rangeStart), [rangeStart])
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
 
+  // Live-updating current time (updates every 60s)
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
   // Scroll to current hour on mount
   useEffect(() => {
     if (scrollRef.current) {
-      const now = new Date()
       const scrollTo = Math.max(0, (now.getHours() - 1) * HOUR_HEIGHT)
       scrollRef.current.scrollTop = scrollTo
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Collect all-day events per day
   const allDayByDay = useMemo(() => {
@@ -147,7 +153,7 @@ export default function WeekView({ events, calendars, rangeStart, onNavigateToDa
                 className="absolute right-2 text-[10px] sm:text-xs text-gray-500 -translate-y-1/2"
                 style={{ top: `${hour * HOUR_HEIGHT}px` }}
               >
-                {String(hour).padStart(2, '0')}:00
+                {formatTime(new Date(2024, 0, 1, hour, 0), timeFormatOpts)}
               </div>
             ))}
           </div>
@@ -165,7 +171,6 @@ export default function WeekView({ events, calendars, rangeStart, onNavigateToDa
 
             {/* Current time indicator */}
             {weekDays.some(d => isToday(d)) && (() => {
-              const now = new Date()
               const todayIndex = weekDays.findIndex(d => isToday(d))
               const minutes = now.getHours() * 60 + now.getMinutes()
               const top = (minutes / 60) * HOUR_HEIGHT

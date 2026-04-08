@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect } from 'react'
+import { useMemo, useRef, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Clock, MapPin } from 'lucide-react'
 import { formatTime } from '../../utils/formatDate'
@@ -54,14 +54,20 @@ export default function DayView({ events, calendars, rangeStart }: CalendarViewP
     return { allDay, timed }
   }, [events, dateKey])
 
+  // Live-updating current time (updates every 60s)
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
   // Scroll to current hour on mount
   useEffect(() => {
     if (scrollRef.current) {
-      const now = new Date()
       const scrollTo = Math.max(0, (now.getHours() - 1) * HOUR_HEIGHT)
       scrollRef.current.scrollTop = scrollTo
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex flex-col overflow-hidden">
@@ -100,7 +106,7 @@ export default function DayView({ events, calendars, rangeStart }: CalendarViewP
                 className="absolute right-2 text-xs text-gray-500 -translate-y-1/2"
                 style={{ top: `${hour * HOUR_HEIGHT}px` }}
               >
-                {String(hour).padStart(2, '0')}:00
+                {formatTime(new Date(2024, 0, 1, hour, 0), timeFormatOpts)}
               </div>
             ))}
           </div>
@@ -118,7 +124,6 @@ export default function DayView({ events, calendars, rangeStart }: CalendarViewP
 
             {/* Current time indicator */}
             {today && (() => {
-              const now = new Date()
               const minutes = now.getHours() * 60 + now.getMinutes()
               const top = (minutes / 60) * HOUR_HEIGHT
               return (

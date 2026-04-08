@@ -307,7 +307,7 @@ export default function CalendarPage() {
                   `}
                 >
                   {icon}
-                  <span className="hidden sm:inline">{t(labelKey)}</span>
+                  <span>{t(labelKey)}</span>
                 </button>
               ))}
             </div>
