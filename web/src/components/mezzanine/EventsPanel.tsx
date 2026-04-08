@@ -70,10 +70,12 @@ export default function EventsPanel({ onBeadClick: _onBeadClick }: EventsPanelPr
   }, [events])
 
   const filtered = useMemo(() => {
-    if (filter === 'all') return events
-    if (filter === 'errors') return events.filter(e => classifyLevel(e) === 'failure')
+    // Always exclude noisy poll events — they're 80%+ of all events.
+    const meaningful = events.filter(e => e.type !== 'poll')
+    if (filter === 'all') return meaningful
+    if (filter === 'errors') return meaningful.filter(e => classifyLevel(e) === 'failure')
     if (filter === 'prs') {
-      return events.filter(e => {
+      return meaningful.filter(e => {
         const type = e.type?.toLowerCase() ?? ''
         return type.includes('pr') || type.includes('merge') || type.includes('warden') || type.includes('review')
       })
@@ -81,9 +83,9 @@ export default function EventsPanel({ onBeadClick: _onBeadClick }: EventsPanelPr
     // per-anvil filter: filter is `anvil:<name>`
     if (filter.startsWith('anvil:')) {
       const anvilName = filter.slice(6)
-      return events.filter(e => e.anvil === anvilName)
+      return meaningful.filter(e => e.anvil === anvilName)
     }
-    return events
+    return meaningful
   }, [events, filter])
 
   return (
