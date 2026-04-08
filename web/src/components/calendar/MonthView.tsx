@@ -9,24 +9,14 @@ import {
   formatDateKey,
   addDays,
   isToday,
+  startOfWeekMonday,
 } from './types'
-
-/** Get Monday-based start of week */
-function startOfWeek(date: Date): Date {
-  const d = new Date(date)
-  const day = d.getDay()
-  // Monday = 1, Sunday = 0 → shift Sunday to 7
-  const diff = day === 0 ? 6 : day - 1
-  d.setDate(d.getDate() - diff)
-  d.setHours(0, 0, 0, 0)
-  return d
-}
 
 function getMonthGridDates(year: number, month: number): Date[] {
   const firstOfMonth = new Date(year, month, 1)
   const lastOfMonth = new Date(year, month + 1, 0)
-  const gridStart = startOfWeek(firstOfMonth)
-  const gridEnd = startOfWeek(addDays(lastOfMonth, 7)) // ensure we fill last row
+  const gridStart = startOfWeekMonday(firstOfMonth)
+  const gridEnd = startOfWeekMonday(addDays(lastOfMonth, 7)) // ensure we fill last row
 
   const dates: Date[] = []
   let current = new Date(gridStart)
@@ -46,16 +36,27 @@ function getMonthGridDates(year: number, month: number): Date[] {
   return dates
 }
 
-function getEventsForDate(events: CalendarEvent[], dateKey: string): CalendarEvent[] {
-  return events.filter(event => {
+/** Build a date-key → events map once per render, avoiding O(events) per cell. */
+function buildEventsByDate(events: CalendarEvent[], gridDates: Date[]): Map<string, CalendarEvent[]> {
+  const map = new Map<string, CalendarEvent[]>()
+  const addToDate = (dateKey: string, event: CalendarEvent) => {
+    const bucket = map.get(dateKey)
+    if (bucket) bucket.push(event)
+    else map.set(dateKey, [event])
+  }
+  for (const event of events) {
     if (event.all_day) {
-      // All-day events span from start_time to end_time (exclusive end in Google)
       const startKey = event.start_time.slice(0, 10)
       const endKey = event.end_time.slice(0, 10)
-      return dateKey >= startKey && dateKey < endKey
+      for (const date of gridDates) {
+        const dateKey = formatDateKey(date)
+        if (dateKey >= startKey && dateKey < endKey) addToDate(dateKey, event)
+      }
+    } else {
+      addToDate(formatDateKey(new Date(event.start_time)), event)
     }
-    return formatDateKey(new Date(event.start_time)) === dateKey
-  })
+  }
+  return map
 }
 
 const MAX_VISIBLE_EVENTS = 3
@@ -68,6 +69,7 @@ export default function MonthView({ events, calendars, rangeStart, onNavigateToD
   const month = rangeStart.getMonth()
   const colorMap = useMemo(() => getCalendarColorMap(calendars), [calendars])
   const gridDates = useMemo(() => getMonthGridDates(year, month), [year, month])
+  const eventsByDate = useMemo(() => buildEventsByDate(events, gridDates), [events, gridDates])
 
   const weekdayHeaders = useMemo(() => {
     // Generate Monday-Sunday headers
@@ -95,14 +97,21 @@ export default function MonthView({ events, calendars, rangeStart, onNavigateToD
           const dateKey = formatDateKey(date)
           const inMonth = date.getMonth() === month
           const today = isToday(date)
-          const dayEvents = getEventsForDate(events, dateKey)
+          const dayEvents = eventsByDate.get(dateKey) ?? []
           const overflow = dayEvents.length - MAX_VISIBLE_EVENTS
+
+          const visibleEventTitles = dayEvents.slice(0, MAX_VISIBLE_EVENTS).map(event => event.title)
+          const ariaLabelParts = [
+            formatDate(date, { month: 'long', day: 'numeric' }),
+            ...visibleEventTitles,
+            ...(overflow > 0 ? [`+${overflow} ${t('calendar.more')}`] : []),
+          ]
 
           return (
             <button
               key={dateKey}
               role="gridcell"
-              aria-label={`${formatDate(date, { month: 'long', day: 'numeric' })}${dayEvents.length > 0 ? `, ${dayEvents.length} ${dayEvents.length === 1 ? 'event' : 'events'}` : ''}`}
+              aria-label={ariaLabelParts.join(', ')}
               onClick={() => onNavigateToDay(date)}
               className={`
                 border-r border-b border-gray-700/50 p-1 min-h-[4.5rem] sm:min-h-[6rem] text-left

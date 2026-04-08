@@ -18,11 +18,13 @@ function getEventPosition(event: CalendarEvent): { top: number; height: number }
   const start = new Date(event.start_time)
   const end = new Date(event.end_time)
   const startMinutes = start.getHours() * 60 + start.getMinutes()
-  const endMinutes = end.getHours() * 60 + end.getMinutes()
-  const duration = Math.max(endMinutes - startMinutes, 15)
+  // Use timestamp delta clamped to end of day to correctly handle overnight events.
+  const dayEndMs = new Date(start).setHours(24, 0, 0, 0)
+  const clampedEndMs = Math.min(end.getTime(), dayEndMs)
+  const durationMinutes = Math.max((clampedEndMs - start.getTime()) / (60 * 1000), 15)
   return {
     top: (startMinutes / 60) * HOUR_HEIGHT,
-    height: (duration / 60) * HOUR_HEIGHT,
+    height: (durationMinutes / 60) * HOUR_HEIGHT,
   }
 }
 

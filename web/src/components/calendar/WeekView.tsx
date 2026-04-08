@@ -9,29 +9,23 @@ import {
   formatDateKey,
   addDays,
   isToday,
+  startOfWeekMonday,
 } from './types'
 
 const HOUR_HEIGHT = 48 // px per hour slot
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
-function getWeekStart(date: Date): Date {
-  const d = new Date(date)
-  const day = d.getDay()
-  const diff = day === 0 ? 6 : day - 1
-  d.setDate(d.getDate() - diff)
-  d.setHours(0, 0, 0, 0)
-  return d
-}
-
 function getEventPosition(event: CalendarEvent): { top: number; height: number } {
   const start = new Date(event.start_time)
   const end = new Date(event.end_time)
   const startMinutes = start.getHours() * 60 + start.getMinutes()
-  const endMinutes = end.getHours() * 60 + end.getMinutes()
-  const duration = Math.max(endMinutes - startMinutes, 15) // minimum 15min display
+  // Use timestamp delta clamped to end of day to correctly handle overnight events.
+  const dayEndMs = new Date(start).setHours(24, 0, 0, 0)
+  const clampedEndMs = Math.min(end.getTime(), dayEndMs)
+  const durationMinutes = Math.max((clampedEndMs - start.getTime()) / (60 * 1000), 15)
   return {
     top: (startMinutes / 60) * HOUR_HEIGHT,
-    height: (duration / 60) * HOUR_HEIGHT,
+    height: (durationMinutes / 60) * HOUR_HEIGHT,
   }
 }
 
@@ -59,7 +53,7 @@ export default function WeekView({ events, calendars, rangeStart, onNavigateToDa
   const scrollRef = useRef<HTMLDivElement>(null)
   const colorMap = useMemo(() => getCalendarColorMap(calendars), [calendars])
 
-  const weekStart = useMemo(() => getWeekStart(rangeStart), [rangeStart])
+  const weekStart = useMemo(() => startOfWeekMonday(rangeStart), [rangeStart])
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
 
   // Live-updating current time (updates every 60s)

@@ -10,6 +10,7 @@ import {
   startOfDay,
   endOfDay,
   addDays,
+  startOfWeekMonday,
 } from '../components/calendar/types'
 import MonthView from '../components/calendar/MonthView'
 import WeekView from '../components/calendar/WeekView'
@@ -24,16 +25,6 @@ function toRFC3339(date: Date): string {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
-/** Get Monday-based start of week */
-function startOfWeek(date: Date): Date {
-  const d = new Date(date)
-  const day = d.getDay()
-  const diff = day === 0 ? 6 : day - 1
-  d.setDate(d.getDate() - diff)
-  d.setHours(0, 0, 0, 0)
-  return d
-}
-
 function getStartOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1)
 }
@@ -45,15 +36,16 @@ function getViewRange(view: ViewMode, rangeStart: Date): { start: Date; end: Dat
       // Fetch from start of first visible week to end of last visible week
       const firstOfMonth = getStartOfMonth(rangeStart)
       const lastOfMonth = new Date(rangeStart.getFullYear(), rangeStart.getMonth() + 1, 0)
-      const gridStart = startOfWeek(firstOfMonth)
-      const gridEnd = endOfDay(addDays(startOfWeek(addDays(lastOfMonth, 7)), -1))
-      // Extend end to cover full 6th row if needed
-      const totalDays = Math.ceil((gridEnd.getTime() - gridStart.getTime()) / (1000 * 60 * 60 * 24))
-      const endDate = totalDays < 42 ? endOfDay(addDays(gridStart, 41)) : gridEnd
+      const gridStart = startOfWeekMonday(firstOfMonth)
+      const gridEnd = endOfDay(addDays(startOfWeekMonday(addDays(lastOfMonth, 7)), -1))
+      // Extend end to cover full 6th row if needed, using date-based arithmetic
+      // to avoid DST-sensitive millisecond day calculations.
+      const sixWeekEnd = endOfDay(addDays(gridStart, 41))
+      const endDate = gridEnd.getTime() < sixWeekEnd.getTime() ? sixWeekEnd : gridEnd
       return { start: gridStart, end: endDate }
     }
     case 'week': {
-      const ws = startOfWeek(rangeStart)
+      const ws = startOfWeekMonday(rangeStart)
       return { start: ws, end: endOfDay(addDays(ws, 6)) }
     }
     case 'day':
@@ -271,7 +263,7 @@ export default function CalendarPage() {
       case 'month':
         return formatDate(rangeStart, { month: 'long', year: 'numeric' })
       case 'week': {
-        const ws = startOfWeek(rangeStart)
+        const ws = startOfWeekMonday(rangeStart)
         const we = addDays(ws, 6)
         return `${formatDate(ws, rangeFormatOpts)} – ${formatDate(we, rangeFormatOpts)}`
       }

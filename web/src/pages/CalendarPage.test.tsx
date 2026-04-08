@@ -264,6 +264,59 @@ describe('CalendarPage – not connected state', () => {
   })
 })
 
+describe('CalendarPage – view mode', () => {
+  beforeEach(() => {
+    authState.user = { id: 1 }
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals(); vi.clearAllMocks()
+    try { localStorage.removeItem('hytte-calendar-view') } catch { /* ignore */ }
+  })
+
+  it('defaults to month view when no stored preference', async () => {
+    try { localStorage.removeItem('hytte-calendar-view') } catch { /* ignore */ }
+    vi.stubGlobal('fetch', makeFetchMock(
+      { calendars: [{ id: 'primary', summary: 'My Calendar', primary: true, selected: true }], connected: true },
+      { events: [] },
+    ))
+    renderPage()
+    await waitFor(() => {
+      // Month view renders a grid with role="grid"
+      expect(screen.getByRole('grid')).toBeInTheDocument()
+    })
+  })
+
+  it('persisted view mode is respected on load', async () => {
+    try { localStorage.setItem('hytte-calendar-view', 'agenda') } catch { /* ignore */ }
+    vi.stubGlobal('fetch', makeFetchMock(
+      { calendars: [{ id: 'primary', summary: 'My Calendar', primary: true, selected: true }], connected: true },
+      { events: [] },
+    ))
+    renderPage()
+    await waitFor(() => {
+      // Agenda view shows "No events" message, not a grid
+      expect(screen.getByText('No events in this period')).toBeInTheDocument()
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument()
+    })
+  })
+
+  it('switching to agenda view updates rendered content', async () => {
+    try { localStorage.setItem('hytte-calendar-view', 'agenda') } catch { /* ignore */ }
+    vi.stubGlobal('fetch', makeFetchMock(
+      { calendars: [{ id: 'primary', summary: 'My Calendar', primary: true, selected: true }], connected: true },
+      { events: [] },
+    ))
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('No events in this period')).toBeInTheDocument()
+    })
+    // The view mode radio buttons are present
+    expect(screen.getByRole('radio', { name: 'Month' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Agenda' })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Agenda' })).toHaveAttribute('aria-checked', 'true')
+  })
+})
+
 describe('CalendarPage – default calendar selection', () => {
   beforeEach(() => {
     authState.user = { id: 1 }

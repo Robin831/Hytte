@@ -46,6 +46,17 @@ export function formatDateKey(date: Date): string {
   return `${y}-${m}-${d}`
 }
 
+/** Get Monday-based start of week — shared across all calendar views. */
+export function startOfWeekMonday(date: Date): Date {
+  const d = new Date(date)
+  const day = d.getDay()
+  // Monday = 1, Sunday = 0 → shift Sunday to position 7
+  const diff = day === 0 ? 6 : day - 1
+  d.setDate(d.getDate() - diff)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
 export function addDays(date: Date, days: number): Date {
   const d = new Date(date)
   d.setDate(d.getDate() + days)
