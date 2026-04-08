@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RefreshCw, ChevronLeft, ChevronRight, MapPin, Clock, Filter, CalendarDays } from 'lucide-react'
 import { useAuth } from '../auth'
+import { formatDate, formatTime } from '../utils/formatDate'
 
 interface CalendarEvent {
   id: string
@@ -105,67 +106,59 @@ export default function CalendarPage() {
 
   const rangeEnd = addDays(rangeStart, daysToShow)
 
-  const fetchEvents = useCallback(async (sync = false) => {
+  const fetchEvents = useCallback(async (sync = false, signal?: AbortSignal) => {
     if (!user) return
     try {
       const startParam = rangeStart.toISOString()
       const endParam = rangeEnd.toISOString()
       const url = `/api/calendar/events?start=${encodeURIComponent(startParam)}&end=${encodeURIComponent(endParam)}${sync ? '&sync=true' : ''}`
-      const res = await fetch(url, { credentials: 'include' })
+      const res = await fetch(url, { credentials: 'include', signal })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       setEvents(data.events ?? [])
       setError(null)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(t('calendar.errors.failedToLoad'))
       console.error('Failed to load calendar events:', err)
     }
   }, [user, rangeStart, rangeEnd, t])
 
-  const fetchCalendars = useCallback(async () => {
+  const fetchCalendars = useCallback(async (signal?: AbortSignal) => {
     if (!user) return
     try {
-      const res = await fetch('/api/calendar/calendars', { credentials: 'include' })
+      const res = await fetch('/api/calendar/calendars', { credentials: 'include', signal })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       setCalendars(data.calendars ?? [])
       setConnected(data.connected ?? false)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       console.error('Failed to load calendars:', err)
     }
   }, [user])
 
-  // Initial load: fetch calendars and events (with sync)
+  // Fetch calendars once on mount
+  useEffect(() => {
+    if (!user) return
+    const controller = new AbortController()
+    fetchCalendars(controller.signal)
+    return () => controller.abort()
+  }, [user, fetchCalendars])
+
+  // Fetch events whenever rangeStart changes (includes initial load)
   useEffect(() => {
     if (!user) {
       setLoading(false)
       return
     }
-    let cancelled = false
-    async function load() {
-      setLoading(true)
-      try {
-        await Promise.all([
-          fetchCalendars(),
-          fetchEvents(true),
-        ])
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => { cancelled = true }
-  }, [user, fetchCalendars, fetchEvents])
-
-  // Refetch events when date range changes (not initial load)
-  const initialLoadDone = useRef(false)
-  useEffect(() => {
-    if (!initialLoadDone.current) {
-      initialLoadDone.current = true
-      return
-    }
-    fetchEvents(true)
-  }, [rangeStart, fetchEvents])
+    const controller = new AbortController()
+    setLoading(true)
+    fetchEvents(true, controller.signal).finally(() => {
+      if (!controller.signal.aborted) setLoading(false)
+    })
+    return () => controller.abort()
+  }, [user, rangeStart, fetchEvents])
 
   // Close calendar selector on outside click
   useEffect(() => {
@@ -240,21 +233,21 @@ export default function CalendarPage() {
     )
   }
 
-  const dateFormatter = new Intl.DateTimeFormat(locale, {
+  const dateFormatOpts: Intl.DateTimeFormatOptions = {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
-  })
+  }
 
-  const timeFormatter = new Intl.DateTimeFormat(locale, {
+  const timeFormatOpts: Intl.DateTimeFormatOptions = {
     hour: '2-digit',
     minute: '2-digit',
-  })
+  }
 
-  const rangeFormatter = new Intl.DateTimeFormat(locale, {
+  const rangeFormatOpts: Intl.DateTimeFormatOptions = {
     month: 'short',
     day: 'numeric',
-  })
+  }
 
   const grouped = groupEventsByDate(events, locale)
 
@@ -272,6 +265,8 @@ export default function CalendarPage() {
                 onClick={() => setShowSelector(!showSelector)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700 transition-colors cursor-pointer"
                 aria-label={t('calendar.selectCalendars')}
+                aria-expanded={showSelector}
+                aria-haspopup="true"
               >
                 <Filter size={16} />
                 <span className="hidden sm:inline">{t('calendar.calendars')}</span>
@@ -279,7 +274,7 @@ export default function CalendarPage() {
 
               {/* Calendar selector dropdown */}
               {showSelector && (
-                <div className="absolute right-0 top-full mt-1 w-72 bg-gray-800 rounded-lg border border-gray-700 shadow-xl z-10 py-2">
+                <div className="absolute right-0 top-full mt-1 w-72 bg-gray-800 rounded-lg border border-gray-700 shadow-xl z-10 py-2" role="menu">
                   <div className="px-3 py-1.5 text-xs font-medium text-gray-400 uppercase tracking-wide">
                     {t('calendar.selectCalendars')}
                   </div>
@@ -288,6 +283,8 @@ export default function CalendarPage() {
                       key={cal.id}
                       onClick={() => handleToggleCalendar(cal.id, cal.selected)}
                       disabled={savingCalendars}
+                      role="menuitemcheckbox"
+                      aria-checked={cal.selected}
                       className="flex items-center gap-3 w-full px-3 py-2 text-left text-sm hover:bg-gray-700/50 transition-colors cursor-pointer disabled:opacity-50"
                     >
                       <span
@@ -336,7 +333,7 @@ export default function CalendarPage() {
 
       {/* Date navigation */}
       {connected && (
-        <div className="flex items-center gap-2 mb-4">
+        <nav className="flex items-center gap-2 mb-4" aria-label={t('calendar.agenda')}>
           <button
             onClick={goPrev}
             className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors cursor-pointer"
@@ -357,10 +354,10 @@ export default function CalendarPage() {
           >
             <ChevronRight size={20} />
           </button>
-          <span className="text-sm text-gray-400 ml-2">
-            {rangeFormatter.format(rangeStart)} – {rangeFormatter.format(addDays(rangeEnd, -1))}
+          <span className="text-sm text-gray-400 ml-2" aria-live="polite">
+            {formatDate(rangeStart, rangeFormatOpts)} – {formatDate(addDays(rangeEnd, -1), rangeFormatOpts)}
           </span>
-        </div>
+        </nav>
       )}
 
       {/* Loading state */}
@@ -372,14 +369,14 @@ export default function CalendarPage() {
 
       {/* Error state */}
       {error && (
-        <div className="rounded-lg bg-red-900/30 border border-red-800 p-4 mb-4 text-red-300 text-sm">
+        <div role="alert" className="rounded-lg bg-red-900/30 border border-red-800 p-4 mb-4 text-red-300 text-sm">
           {error}
         </div>
       )}
 
       {/* Agenda list */}
       {!loading && connected && (
-        <div className="space-y-1">
+        <div className="space-y-1" role="list" aria-label={t('calendar.agenda')}>
           {grouped.size === 0 && !error && (
             <div className="text-center py-12 text-gray-500">
               <CalendarDays size={32} className="mx-auto mb-2 opacity-50" />
@@ -392,7 +389,7 @@ export default function CalendarPage() {
             const today = isToday(date)
             const tomorrow = isTomorrow(date)
 
-            let dateLabel = dateFormatter.format(date)
+            let dateLabel = formatDate(date, dateFormatOpts)
             if (today) dateLabel = `${t('calendar.todayLabel')} — ${dateLabel}`
             else if (tomorrow) dateLabel = `${t('calendar.tomorrowLabel')} — ${dateLabel}`
 
@@ -400,15 +397,15 @@ export default function CalendarPage() {
             const calColorMap = new Map(calendars.map(c => [c.id, c.background_color]))
 
             return (
-              <div key={dateKey}>
+              <div key={dateKey} role="listitem">
                 {/* Date header */}
-                <div className={`sticky top-0 z-[1] px-3 py-2 text-sm font-medium rounded-lg mb-1 ${
+                <h2 className={`sticky top-0 z-[1] px-3 py-2 text-sm font-medium rounded-lg mb-1 ${
                   today
                     ? 'bg-blue-900/40 text-blue-300 border border-blue-800/50'
                     : 'bg-gray-800/60 text-gray-300'
                 }`}>
                   {dateLabel}
-                </div>
+                </h2>
 
                 {/* Events for this date */}
                 <div className="space-y-1 mb-3">
@@ -416,9 +413,10 @@ export default function CalendarPage() {
                     const calColor = event.color || calColorMap.get(event.calendar_id) || '#4285f4'
 
                     return (
-                      <div
+                      <article
                         key={event.id}
                         className="flex gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-800/50 transition-colors group"
+                        aria-label={event.title}
                       >
                         {/* Color indicator */}
                         <div
@@ -440,11 +438,11 @@ export default function CalendarPage() {
                             {event.all_day ? (
                               <span>{t('calendar.allDay')}</span>
                             ) : (
-                              <span>
-                                {timeFormatter.format(new Date(event.start_time))}
+                              <time dateTime={event.start_time}>
+                                {formatTime(event.start_time, timeFormatOpts)}
                                 {' – '}
-                                {timeFormatter.format(new Date(event.end_time))}
-                              </span>
+                                {formatTime(event.end_time, timeFormatOpts)}
+                              </time>
                             )}
                           </div>
 
@@ -456,7 +454,7 @@ export default function CalendarPage() {
                             </div>
                           )}
                         </div>
-                      </div>
+                      </article>
                     )
                   })}
                 </div>
