@@ -68,7 +68,7 @@ func UpcomingHandler(db *sql.DB) http.HandlerFunc {
 
 		currentMonth := now.Format("2006-01")
 
-		var upcoming []UpcomingTransaction
+		upcoming := make([]UpcomingTransaction, 0)
 		for _, rec := range recurrings {
 			nextDue, err := nextRecurringDueDate(rec)
 			if err != nil {

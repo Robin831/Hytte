@@ -425,12 +425,11 @@ export default function BudgetPage() {
     setLoading(true)
     setError(null)
     try {
-      const [acctRes, catRes, txnRes, sumRes, upcomingRes] = await Promise.all([
+      const [acctRes, catRes, txnRes, sumRes] = await Promise.all([
         fetch('/api/budget/accounts', { credentials: 'include', signal }),
         fetch('/api/budget/categories', { credentials: 'include', signal }),
         fetch(`/api/budget/transactions?month=${m}`, { credentials: 'include', signal }),
         fetch(`/api/budget/summary?month=${m}`, { credentials: 'include', signal }),
-        fetch('/api/budget/upcoming', { credentials: 'include', signal }),
       ])
       if (!acctRes.ok || !catRes.ok || !txnRes.ok || !sumRes.ok) {
         throw new Error(t('errors.loadFailed'))
@@ -445,9 +444,14 @@ export default function BudgetPage() {
       setCategories(catData.categories ?? [])
       setTransactions(txnData.transactions ?? [])
       setSummary(sumData)
-      if (upcomingRes.ok) {
-        const upcomingData = await upcomingRes.json()
-        setUpcoming(upcomingData.upcoming ?? [])
+      try {
+        const upcomingRes = await fetch('/api/budget/upcoming', { credentials: 'include', signal })
+        if (upcomingRes.ok) {
+          const upcomingData = await upcomingRes.json()
+          setUpcoming(upcomingData.upcoming ?? [])
+        }
+      } catch (upcomingErr) {
+        if (upcomingErr instanceof Error && upcomingErr.name === 'AbortError') throw upcomingErr
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
