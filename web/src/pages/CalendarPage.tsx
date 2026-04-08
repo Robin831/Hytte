@@ -92,7 +92,7 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [calendars, setCalendars] = useState<CalendarInfo[]>([])
   const [connected, setConnected] = useState(false)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSelector, setShowSelector] = useState(false)
@@ -124,34 +124,29 @@ export default function CalendarPage() {
     }
   }, [user, rangeStart, rangeEnd, t])
 
-  const fetchCalendars = useCallback(async (signal?: AbortSignal) => {
-    if (!user) return
-    try {
-      const res = await fetch('/api/calendar/calendars', { credentials: 'include', signal })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      setCalendars(data.calendars ?? [])
-      setConnected(data.connected ?? false)
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      console.error('Failed to load calendars:', err)
-    }
-  }, [user])
-
   // Fetch calendars once on mount
   useEffect(() => {
     if (!user) return
     const controller = new AbortController()
-    fetchCalendars(controller.signal)
+    fetch('/api/calendar/calendars', { credentials: 'include', signal: controller.signal })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then(data => {
+        setCalendars(data.calendars ?? [])
+        setConnected(data.connected ?? false)
+      })
+      .catch(err => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        console.error('Failed to load calendars:', err)
+      })
     return () => controller.abort()
-  }, [user, fetchCalendars])
+  }, [user])
 
   // Fetch events whenever rangeStart changes (includes initial load)
   useEffect(() => {
-    if (!user) {
-      setLoading(false)
-      return
-    }
+    if (!user) return
     const controller = new AbortController()
     setLoading(true)
     fetchEvents(true, controller.signal).finally(() => {
