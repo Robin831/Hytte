@@ -185,11 +185,41 @@ func (s *AuroraService) fallbackStaleCache(key string) []byte {
 	return nil
 }
 
-// parseKpData parses NOAA Kp JSON arrays. The first row is a header; skip it.
+// parseKpData parses NOAA Kp JSON data. Supports both the current object format
+// ([{"time_tag":"...","Kp":3.0,...}]) and the legacy array-of-arrays format
+// ([["header1","header2"],["2026-04-01",3.0],...]).
 func parseKpData(data []byte) ([]KpEntry, error) {
+	// Try new object format first.
+	var objects []struct {
+		TimeTag  string  `json:"time_tag"`
+		Kp       float64 `json:"kp"`
+		KpUpper  float64 `json:"Kp"` // observed endpoint uses uppercase "Kp"
+		Observed string  `json:"observed"`
+	}
+	if err := json.Unmarshal(data, &objects); err == nil && len(objects) > 0 {
+		entries := make([]KpEntry, 0, len(objects))
+		for _, o := range objects {
+			kp := o.Kp
+			if kp == 0 && o.KpUpper > 0 {
+				kp = o.KpUpper
+			}
+			source := "observed"
+			if o.Observed != "" {
+				source = o.Observed
+			}
+			entries = append(entries, KpEntry{
+				TimeTag: o.TimeTag,
+				Kp:      kp,
+				Source:   source,
+			})
+		}
+		return entries, nil
+	}
+
+	// Fall back to legacy array-of-arrays format.
 	var raw [][]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unrecognized NOAA response format")
 	}
 
 	if len(raw) < 2 {
@@ -209,7 +239,6 @@ func parseKpData(data []byte) ([]KpEntry, error) {
 
 		var kp float64
 		if err := json.Unmarshal(row[1], &kp); err != nil {
-			// Try as string (some endpoints return Kp as "2.33").
 			var kpStr string
 			if err2 := json.Unmarshal(row[1], &kpStr); err2 != nil {
 				continue
@@ -230,7 +259,7 @@ func parseKpData(data []byte) ([]KpEntry, error) {
 		entries = append(entries, KpEntry{
 			TimeTag: timeTag,
 			Kp:      kp,
-			Source:  source,
+			Source:   source,
 		})
 	}
 
