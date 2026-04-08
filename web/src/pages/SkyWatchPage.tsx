@@ -404,7 +404,7 @@ export default function SkyWatchPage() {
         // Aurora fetch is non-critical — don't block the page on failure.
         if (!signal.aborted) {
           try {
-            const auroraRes = await fetch('/api/skywatch/aurora', { credentials: 'include', signal })
+            const auroraRes = await fetch(`/api/skywatch/aurora?lat=${nowData.location.lat}&lon=${nowData.location.lon}`, { credentials: 'include', signal })
             if (auroraRes.ok) {
               const auroraData = await auroraRes.json() as AuroraData
               setAurora(auroraData)
