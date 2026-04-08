@@ -1,37 +1,9 @@
-import { useState, useEffect, useRef, useId } from 'react'
+import { useEffect, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RefreshCw, Rocket, CheckCircle, XCircle, Loader2, ExternalLink } from 'lucide-react'
 import { Dialog, DialogHeader, DialogBody } from '../ui/dialog'
 import ConfirmDialog from '../ConfirmDialog'
-
-interface FragmentSummary {
-  file: string
-  category: string
-  summary: string
-}
-
-interface SuggestResponse {
-  current_version: string
-  suggested_version: string
-  suggested_bump: string
-  changelog_preview: FragmentSummary[]
-}
-
-interface StepResult {
-  step: string
-  command: string
-  output?: string
-  success: boolean
-  error?: string
-}
-
-interface ReleaseResponse {
-  version: string
-  tag: string
-  success: boolean
-  steps: StepResult[]
-  actions_url?: string
-}
+import { useReleaseFlow, CATEGORY_COLORS } from '../../hooks/useReleaseFlow'
 
 interface ReleaseModalProps {
   open: boolean
@@ -39,126 +11,36 @@ interface ReleaseModalProps {
   showToast: (message: string, type: 'success' | 'error') => void
 }
 
-const categoryColors: Record<string, string> = {
-  Added: 'text-green-400',
-  Changed: 'text-blue-400',
-  Fixed: 'text-amber-400',
-  Removed: 'text-red-400',
-  Deprecated: 'text-gray-400',
-  Security: 'text-purple-400',
-}
-
 export default function ReleaseModal({ open, onClose, showToast }: ReleaseModalProps) {
   const { t } = useTranslation('forge')
   const titleId = useId()
+  const versionInputId = useId()
 
-  const [suggestion, setSuggestion] = useState<SuggestResponse | null>(null)
-  const [suggestLoading, setSuggestLoading] = useState(false)
-  const [suggestError, setSuggestError] = useState<string | null>(null)
-
-  const [version, setVersion] = useState('')
-  const [confirmOpen, setConfirmOpen] = useState(false)
-  const [releasing, setReleasing] = useState(false)
-  const [releaseResult, setReleaseResult] = useState<ReleaseResponse | null>(null)
-
-  const abortRef = useRef<AbortController | null>(null)
-
-  async function fetchSuggestion(controller: AbortController) {
-    setSuggestLoading(true)
-    setSuggestError(null)
-    try {
-      const res = await fetch('/api/forge/release/suggest', {
-        credentials: 'include',
-        signal: controller.signal,
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
-      }
-      const data: SuggestResponse = await res.json()
-      if (!controller.signal.aborted) {
-        setSuggestion(data)
-        setVersion(data.suggested_version)
-        setReleaseResult(null)
-      }
-    } catch (err) {
-      if (controller.signal.aborted) return
-      setSuggestError(err instanceof Error ? err.message : String(err))
-    } finally {
-      if (abortRef.current === controller) {
-        abortRef.current = null
-      }
-      if (!controller.signal.aborted) {
-        setSuggestLoading(false)
-      }
-    }
-  }
-
-  function startSuggestionFetch() {
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-    void fetchSuggestion(controller)
-    return controller
-  }
-
-  // Abort in-flight request on unmount
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort()
-    }
-  }, [])
+  const {
+    suggestion,
+    suggestLoading,
+    suggestError,
+    version,
+    setVersion,
+    confirmOpen,
+    setConfirmOpen,
+    releasing,
+    releaseResult,
+    startFetch,
+    handleRefresh,
+    handleRelease,
+  } = useReleaseFlow(showToast)
 
   // Fetch suggestion when modal opens
   useEffect(() => {
     if (!open) return
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void fetchSuggestion(controller)
-    return () => controller.abort()
+    return startFetch()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   function handleClose() {
     setConfirmOpen(false)
     onClose()
-  }
-
-  function handleRefresh() {
-    startSuggestionFetch()
-  }
-
-  async function handleRelease() {
-    setConfirmOpen(false)
-    setReleasing(true)
-    setReleaseResult(null)
-    try {
-      const res = await fetch('/api/forge/release', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ version }),
-      })
-      const raw: unknown = await res.json()
-      if (typeof raw === 'object' && raw !== null && Array.isArray((raw as Record<string, unknown>).steps)) {
-        const data = raw as ReleaseResponse
-        setReleaseResult(data)
-        if (data.success) {
-          showToast(t('release.success', { tag: data.tag }), 'success')
-        } else {
-          const failedStep = data.steps.find(s => !s.success)
-          showToast(failedStep?.error ?? t('release.failed'), 'error')
-        }
-      } else {
-        const msg = (raw as Record<string, unknown> | null)?.['error']
-        showToast(typeof msg === 'string' ? msg : t('release.failed'), 'error')
-      }
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), 'error')
-    } finally {
-      setReleasing(false)
-    }
   }
 
   return (
@@ -223,7 +105,7 @@ export default function ReleaseModal({ open, onClose, showToast }: ReleaseModalP
                       .sort((a, b) => a.category.localeCompare(b.category))
                       .map((frag) => (
                       <li key={frag.file} className="text-sm flex items-start gap-2">
-                        <span className={`shrink-0 font-medium ${categoryColors[frag.category] ?? 'text-gray-400'}`}>
+                        <span className={`shrink-0 font-medium ${CATEGORY_COLORS[frag.category] ?? 'text-gray-400'}`}>
                           {frag.category}
                         </span>
                         <span className="text-gray-300">{frag.summary}</span>
@@ -236,11 +118,11 @@ export default function ReleaseModal({ open, onClose, showToast }: ReleaseModalP
               {/* Version input + release button */}
               <div className="flex items-end gap-3">
                 <div className="flex flex-col gap-1">
-                  <label htmlFor="release-modal-version" className="text-xs text-gray-500">
+                  <label htmlFor={versionInputId} className="text-xs text-gray-500">
                     {t('release.versionLabel')}
                   </label>
                   <input
-                    id="release-modal-version"
+                    id={versionInputId}
                     type="text"
                     value={version}
                     onChange={e => setVersion(e.target.value)}

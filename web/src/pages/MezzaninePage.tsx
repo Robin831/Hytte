@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useAuth } from '../auth'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useForgeWorkers, useForgeStatus, useForgeQueue } from '../hooks/useForgeStatus'
@@ -27,6 +28,8 @@ import ToastList from '../components/ToastList'
 
 export default function MezzaninePage() {
   const { t } = useTranslation('forge')
+  const { user } = useAuth()
+  const isAdmin = !!user?.is_admin
   const { workers: allWorkers, refresh: refreshWorkers } = useForgeWorkers()
   const { status, refresh: refreshStatus } = useForgeStatus()
   const { beads: queueBeads, refresh: refreshQueue } = useForgeQueue()
@@ -214,9 +217,9 @@ export default function MezzaninePage() {
       onFocusWorker: handleFocusWorker,
       onShowHelp: () => setShowShortcutHelp(true),
       onTogglePRModal: () => setShowPRModal(prev => !prev),
-      onToggleReleaseModal: () => setShowReleaseModal(prev => !prev),
+      onToggleReleaseModal: () => { if (isAdmin) setShowReleaseModal(prev => !prev) },
     }),
-    [handleRefresh, handleMergeFirstReady, handleKillFocusedWorker, handleFocusPanel, handleFocusWorker],
+    [handleRefresh, handleMergeFirstReady, handleKillFocusedWorker, handleFocusPanel, handleFocusWorker, isAdmin],
   )
 
   useKeyboardShortcuts(shortcutActions)
@@ -339,6 +342,7 @@ export default function MezzaninePage() {
       <ShortcutHelpModal
         open={showShortcutHelp}
         onClose={() => setShowShortcutHelp(false)}
+        isAdmin={isAdmin}
       />
 
       <ToastList toasts={toasts} />
