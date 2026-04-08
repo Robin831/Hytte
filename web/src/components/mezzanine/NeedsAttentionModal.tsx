@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   RotateCcw,
@@ -119,7 +119,7 @@ export default function NeedsAttentionModal({ open, onClose, showToast, onBeadCl
     onBeadClick?.(beadId)
   }
 
-  const titleId = 'needs-attention-modal-title'
+  const titleId = useId()
 
   return (
     <>
@@ -183,12 +183,13 @@ export default function NeedsAttentionModal({ open, onClose, showToast, onBeadCl
                           type="button"
                           onClick={() => onAction(action, item.beadId)}
                           disabled={isActing}
+                          aria-label={actionLabel(action, t)}
                           title={actionLabel(action, t)}
                           className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors
                             disabled:opacity-50 disabled:cursor-not-allowed ${actionStyle(action)}`}
                         >
                           {actionIcon(action)}
-                          <span className="hidden sm:inline">{actionLabel(action, t)}</span>
+                          <span>{actionLabel(action, t)}</span>
                         </button>
                       ))}
                     </div>
