@@ -338,7 +338,8 @@
       "daemon": "Daemon",
       "workers": "Workers",
       "dailyCost": "ค่าใช้จ่ายวันนี้",
-      "lastPoll": "ตรวจสอบล่าสุด"
+      "lastPoll": "ตรวจสอบล่าสุด",
+      "needsAttention": "{{count}} รายการต้องการความสนใจ"
     },
     "events": {
       "title": "เหตุการณ์",
