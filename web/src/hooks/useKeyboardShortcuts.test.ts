@@ -204,6 +204,19 @@ describe('useKeyboardShortcuts', () => {
 
       document.body.removeChild(dialog)
     })
+
+    it('still fires onTogglePRModal for "p" even when an aria-modal dialog is open', () => {
+      const dialog = document.createElement('div')
+      dialog.setAttribute('aria-modal', 'true')
+      document.body.appendChild(dialog)
+
+      const actions = makeActions()
+      renderHook(() => useKeyboardShortcuts(actions))
+      fireKey('p')
+      expect(actions.onTogglePRModal).toHaveBeenCalledOnce()
+
+      document.body.removeChild(dialog)
+    })
   })
 
   describe('key repeat suppression', () => {

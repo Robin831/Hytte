@@ -29,11 +29,18 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions, enabled =
         return
       }
 
-      // Ignore global shortcuts while an aria-modal dialog is open
-      if (document.querySelector('[aria-modal="true"]')) return
-
       // Ignore when modifier keys are held (allow browser shortcuts)
       if (e.ctrlKey || e.metaKey || e.altKey) return
+
+      // Allow "p" to toggle the PR modal even when a modal is open (so it can close itself)
+      if (e.key === 'p') {
+        e.preventDefault()
+        actions.onTogglePRModal()
+        return
+      }
+
+      // Ignore all other global shortcuts while an aria-modal dialog is open
+      if (document.querySelector('[aria-modal="true"]')) return
 
       switch (e.key) {
         case 'r':
@@ -68,10 +75,6 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions, enabled =
         case '6':
           e.preventDefault()
           actions.onFocusWorker(parseInt(e.key, 10) - 1)
-          break
-        case 'p':
-          e.preventDefault()
-          actions.onTogglePRModal()
           break
         case '?':
           e.preventDefault()
