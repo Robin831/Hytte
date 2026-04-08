@@ -22,6 +22,7 @@ import ConfirmDialog from '../ConfirmDialog'
 import { useAllPRs } from '../../hooks/useAllPRs'
 import type { ExternalPR, MergedPR } from '../../hooks/useAllPRs'
 import type { OpenPR } from '../../hooks/useForgeStatus'
+import { timeAgo } from '../../utils/timeAgo'
 
 interface PRModalProps {
   open: boolean
@@ -98,7 +99,8 @@ function ReviewBadge({ pr, t }: { pr: OpenPR; t: TFunction<'forge'> }) {
 }
 
 export default function PRModal({ open, onClose, showToast, onBeadClick }: PRModalProps) {
-  const { t, i18n } = useTranslation('forge')
+  const { t } = useTranslation('forge')
+  const { t: tCommon } = useTranslation('common')
   const titleId = useId()
   const { data, loading, error, refetch } = useAllPRs(open)
   const [acting, setActing] = useState<Partial<Record<string, boolean>>>({})
@@ -552,8 +554,6 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
 
   function renderMergedPR(pr: MergedPR) {
     const url = githubUrl(pr.anvil, pr.number)
-    const mergedAt = pr.last_checked ? new Date(pr.last_checked) : null
-
     return (
       <div key={`merged-${pr.id}`} className="px-4 py-3 flex flex-col gap-1">
         <div className="flex items-start justify-between gap-2">
@@ -573,9 +573,9 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
                 </button>
               )}
               <span className="text-xs text-gray-600 truncate max-w-[150px] sm:max-w-none">{pr.branch}</span>
-              {mergedAt && (
+              {pr.last_checked && (
                 <span className="text-xs text-gray-500">
-                  {new Intl.DateTimeFormat(i18n.language, { hour: '2-digit', minute: '2-digit' }).format(mergedAt)}
+                  {timeAgo(pr.last_checked, tCommon)}
                 </span>
               )}
             </div>
