@@ -210,6 +210,7 @@ export default function MezzaninePage() {
   return (
     <MezzanineLayout
       showToast={showToast}
+      onNeedsAttentionClick={() => needsAttentionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
       headerActions={
         allAnvils.length > 1 ? (
           <AnvilFilterDropdown

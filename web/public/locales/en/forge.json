@@ -338,7 +338,8 @@
       "daemon": "Daemon",
       "workers": "Workers",
       "dailyCost": "Daily Cost",
-      "lastPoll": "Last Poll"
+      "lastPoll": "Last Poll",
+      "needsAttention": "{{count}} items need attention"
     },
     "events": {
       "title": "Events",

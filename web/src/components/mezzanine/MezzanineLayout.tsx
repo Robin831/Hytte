@@ -7,9 +7,10 @@ interface MezzanineLayoutProps {
   children?: ReactNode
   showToast?: (message: string, type: 'success' | 'error') => void
   headerActions?: ReactNode
+  onNeedsAttentionClick?: () => void
 }
 
-export default function MezzanineLayout({ sidebar, children, showToast, headerActions }: MezzanineLayoutProps) {
+export default function MezzanineLayout({ sidebar, children, showToast, headerActions, onNeedsAttentionClick }: MezzanineLayoutProps) {
   const { t } = useTranslation('forge')
 
   return (
@@ -39,7 +40,7 @@ export default function MezzanineLayout({ sidebar, children, showToast, headerAc
           </h1>
           <div className="flex items-center gap-2 flex-wrap">
             {headerActions}
-            <StatusBar showToast={showToast} />
+            <StatusBar showToast={showToast} onNeedsAttentionClick={onNeedsAttentionClick} />
           </div>
         </div>
       </header>

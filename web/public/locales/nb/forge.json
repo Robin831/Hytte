@@ -338,7 +338,8 @@
       "daemon": "Daemon",
       "workers": "Arbeidere",
       "dailyCost": "Dagskostnad",
-      "lastPoll": "Siste sjekk"
+      "lastPoll": "Siste sjekk",
+      "needsAttention": "{{count}} elementer trenger oppmerksomhet"
     },
     "events": {
       "title": "Hendelser",
