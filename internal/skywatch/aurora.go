@@ -303,12 +303,9 @@ func buildAuroraForecast(observed, forecasted []KpEntry, lat, lon float64) *Auro
 	var tonightEntries []KpEntry
 
 	for _, e := range forecasted {
-		t, err := time.Parse("2006-01-02 15:04:05.000", e.TimeTag)
+		t, err := parseKpTimestamp(e.TimeTag)
 		if err != nil {
-			t, err = time.Parse("2006-01-02 15:04:05", e.TimeTag)
-			if err != nil {
-				continue
-			}
+			continue
 		}
 		if !t.Before(tonightStart) && t.Before(tomorrowMorning) {
 			tonightEntries = append(tonightEntries, e)
@@ -428,4 +425,20 @@ func MinKpForAurora(geomagLat float64) float64 {
 	default:
 		return 9
 	}
+}
+
+// parseKpTimestamp parses NOAA Kp timestamps in various formats:
+// "2026-04-08T18:00:00", "2026-04-08 18:00:00", "2026-04-08 18:00:00.000"
+func parseKpTimestamp(s string) (time.Time, error) {
+	for _, layout := range []string{
+		"2006-01-02T15:04:05",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04:05.000",
+		time.RFC3339,
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unrecognized timestamp: %s", s)
 }
