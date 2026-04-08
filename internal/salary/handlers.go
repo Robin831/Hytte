@@ -234,6 +234,8 @@ type EstimateResponse struct {
 	BillableRevenue         float64          `json:"billable_revenue"`
 	InternalRevenue         float64          `json:"internal_revenue"`
 	AbsenceCostPerDay       float64          `json:"absence_cost_per_day"`
+	SickDayCostAmount       float64          `json:"sick_day_cost"`
+	VacationDayCostAmount   float64          `json:"vacation_day_cost"`
 }
 
 // buildEstimate produces an EstimateResponse for the given YYYY-MM month string.
@@ -335,6 +337,11 @@ func buildEstimateWithParams(db *sql.DB, userID int64, month string, today time.
 	absenceCostPerDay := AbsenceDayCost(*cfg, totalDays, 1)
 	standardHoursTotal := float64(totalDays) * cfg.StandardHours
 
+	// Projected full-month revenue for per-day cost calculations.
+	projectedTotalRevenue := projectedBillableRevenue + projectedInternalRevenue
+	sickCost := SickDayCost(*cfg, tiers, totalDays, projectedTotalRevenue)
+	vacCost := VacationDayCost(tiers, totalDays, projectedTotalRevenue)
+
 	return &EstimateResponse{
 		Month:                   month,
 		Config:                  *cfg,
@@ -350,6 +357,8 @@ func buildEstimateWithParams(db *sql.DB, userID int64, month string, today time.
 		BillableRevenue:         billableRevenue,
 		InternalRevenue:         internalRevenue,
 		AbsenceCostPerDay:       absenceCostPerDay,
+		SickDayCostAmount:       sickCost,
+		VacationDayCostAmount:   vacCost,
 	}, nil
 }
 
@@ -394,6 +403,10 @@ func buildEstimateResponseFromRecord(db *sql.DB, userID int64, month string, tod
 	internalRevenue := rec.InternalHours * cfg.InternalHourlyRate
 	absenceCostPerDay := AbsenceDayCost(*cfg, totalDays, 1)
 
+	totalRevenue := billableRevenue + internalRevenue
+	sickCost := SickDayCost(*cfg, tiers, totalDays, totalRevenue)
+	vacCost := VacationDayCost(tiers, totalDays, totalRevenue)
+
 	monthStart := time.Date(year, time.Month(mon), 1, 0, 0, 0, 0, time.UTC)
 	var doneDays int
 	switch {
@@ -423,6 +436,8 @@ func buildEstimateResponseFromRecord(db *sql.DB, userID int64, month string, tod
 		BillableRevenue:         billableRevenue,
 		InternalRevenue:         internalRevenue,
 		AbsenceCostPerDay:       absenceCostPerDay,
+		SickDayCostAmount:       sickCost,
+		VacationDayCostAmount:   vacCost,
 	}, nil
 }
 

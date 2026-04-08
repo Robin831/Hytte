@@ -40,7 +40,9 @@
   },
   "absenceCost": {
     "title": "Fraværskostnad",
-    "perDay": "{{amount}} per dag"
+    "perDay": "{{amount}} per dag",
+    "perSickDay": "Per sykedag: {{sign}}{{amount}} (nettokostnad etter syketillegg)",
+    "perVacationDay": "Per feriedag: ~{{amount}} (provisjonsreduksjon)"
   },
   "config": {
     "title": "Konfigurasjon",

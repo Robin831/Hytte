@@ -1,5 +1,9 @@
 package salary
 
+// ferieDayRate is the Norwegian feriepenger daily base rate (kr per hour per day).
+// It is used both in EstimateMonth (sick addon per day) and SickDayCost.
+const ferieDayRate = 354.53
+
 // CalculateCommission applies the progressive tier commission structure to the
 // given revenue amount. For each tier where amount > floor, the commission is
 // (min(amount, ceiling) - floor) * rate. A tier with ceiling == 0 is unbounded.
@@ -51,6 +55,36 @@ func AbsenceDayCost(config Config, workingDays int, absenceDays int) float64 {
 	}
 	dailyRate := config.BaseSalary / float64(workingDays)
 	return dailyRate * float64(absenceDays)
+}
+
+// SickDayCost returns the net cost per sick day. Sick days are mostly
+// compensated by the sick addon (ferieDayRate × standardHours per day).
+// The net cost is the commission you would have earned for that day minus
+// the sick addon. A negative value means the addon exceeds daily commission.
+func SickDayCost(config Config, tiers []CommissionTier, workingDays int, totalRevenue float64) float64 {
+	if workingDays <= 0 {
+		return 0
+	}
+	fullCommission := CalculateCommission(totalRevenue, tiers)
+	dailyCommission := fullCommission / float64(workingDays)
+
+	sickAddonPerDay := ferieDayRate * config.StandardHours
+
+	return dailyCommission - sickAddonPerDay
+}
+
+// VacationDayCost returns the marginal commission loss per vacation day.
+// It computes the difference between commission at full attendance and
+// commission with one fewer working day (scaled tiers).
+func VacationDayCost(tiers []CommissionTier, workingDays int, totalRevenue float64) float64 {
+	if workingDays <= 0 {
+		return 0
+	}
+	fullCommission := CalculateCommission(totalRevenue, tiers)
+	scaledTiers := ScaleTiersForAbsence(tiers, workingDays, 1)
+	reducedRevenue := totalRevenue * float64(workingDays-1) / float64(workingDays)
+	reducedCommission := CalculateCommission(reducedRevenue, scaledTiers)
+	return fullCommission - reducedCommission
 }
 
 // ScaleTiersForAbsence returns tiers with all boundaries scaled proportionally
@@ -131,7 +165,6 @@ func EstimateMonth(
 	// Sick day addon: for each sick day, the employee receives a fixed daily rate
 	// based on the feriepenger day rate (354.53 kr) × standard hours per day.
 	// This is an employer-specific formula matching Norwegian payslip conventions.
-	const ferieDayRate = 354.53
 	var sickAddon float64
 	if sickDays > 0 {
 		sickAddon = ferieDayRate * config.StandardHours * float64(sickDays)

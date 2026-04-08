@@ -180,6 +180,95 @@ func TestAbsenceDayCost(t *testing.T) {
 	}
 }
 
+func TestSickDayCost(t *testing.T) {
+	cfg := Config{BaseSalary: 50000, StandardHours: 7.5}
+
+	tests := []struct {
+		name         string
+		workingDays  int
+		totalRevenue float64
+		want         float64
+	}{
+		{
+			name:         "zero working days",
+			workingDays:  0,
+			totalRevenue: 100000,
+			want:         0,
+		},
+		{
+			name:         "sick addon exceeds daily commission",
+			workingDays:  22,
+			totalRevenue: 120000,
+			// commission = 0 + 4000 + 8000 + 10000 = 22000
+			// daily commission = 22000/22 = 1000
+			// sick addon = 354.53 * 7.5 = 2658.975
+			// net = 1000 - 2658.975 = -1658.975
+			want: round2(22000.0/22.0 - 354.53*7.5),
+		},
+		{
+			name:         "zero commission",
+			workingDays:  22,
+			totalRevenue: 50000, // below first tier ceiling, 0% rate
+			// commission = 0, daily = 0, sick addon = 2658.975
+			// net = 0 - 2658.975 = -2658.975
+			want: round2(-354.53 * 7.5),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := round2(SickDayCost(cfg, defaultTiers, tc.workingDays, tc.totalRevenue))
+			if got != tc.want {
+				t.Errorf("SickDayCost(workingDays=%d, revenue=%.0f) = %v, want %v",
+					tc.workingDays, tc.totalRevenue, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestVacationDayCost(t *testing.T) {
+	tests := []struct {
+		name         string
+		workingDays  int
+		totalRevenue float64
+		want         float64
+	}{
+		{
+			name:         "zero working days",
+			workingDays:  0,
+			totalRevenue: 100000,
+			want:         0,
+		},
+		{
+			name:         "revenue in commission tiers",
+			workingDays:  22,
+			totalRevenue: 100000,
+			// Full commission: 0 + (80k-60k)*0.20 + (100k-80k)*0.40 = 12000
+			// Reduced commission uses both scaled revenue and scaled tiers for 21/22 worked days.
+			// The difference = full - reduced (positive value)
+			want: round2(CalculateCommission(100000, defaultTiers) -
+				CalculateCommission(100000*(21.0/22.0), ScaleTiersForAbsence(defaultTiers, 22, 1))),
+		},
+		{
+			name:         "revenue below first tier",
+			workingDays:  22,
+			totalRevenue: 50000,
+			// All commission is 0, so vacation day cost is 0
+			want: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := round2(VacationDayCost(defaultTiers, tc.workingDays, tc.totalRevenue))
+			if got != tc.want {
+				t.Errorf("VacationDayCost(workingDays=%d, revenue=%.0f) = %v, want %v",
+					tc.workingDays, tc.totalRevenue, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestScaleTiersForAbsence(t *testing.T) {
 	tiers := []CommissionTier{
 		{Floor: 0, Ceiling: 60000, Rate: 0},

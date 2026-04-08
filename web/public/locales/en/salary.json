@@ -40,7 +40,9 @@
   },
   "absenceCost": {
     "title": "Absence Impact",
-    "perDay": "{{amount}} per day"
+    "perDay": "{{amount}} per day",
+    "perSickDay": "Per sick day: {{sign}}{{amount}} (net cost after sick addon)",
+    "perVacationDay": "Per vacation day: ~{{amount}} (commission reduction)"
   },
   "config": {
     "title": "Configuration",

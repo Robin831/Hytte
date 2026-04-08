@@ -65,6 +65,8 @@ interface EstimateResponse {
   billable_revenue: number
   internal_revenue: number
   absence_cost_per_day: number
+  sick_day_cost: number
+  vacation_day_cost: number
 }
 
 interface MonthProjection {
@@ -1093,14 +1095,22 @@ export default function SalaryPage() {
           )}
 
           {/* Per-absence-day cost */}
-          {estimate.absence_cost_per_day > 0 && (
+          {(estimate.sick_day_cost !== 0 || estimate.vacation_day_cost !== 0) && (
             <div className="bg-gray-800 rounded-xl p-5">
               <h2 className="text-base font-medium text-white mb-2">{t('absenceCost.title')}</h2>
-              <p className="text-sm text-gray-300">
-                {t('absenceCost.perDay', {
-                  amount: formatCurrency(estimate.absence_cost_per_day),
-                })}
-              </p>
+              <div className="space-y-1">
+                <p className="text-sm text-gray-300">
+                  {t('absenceCost.perSickDay', {
+                    amount: formatCurrency(Math.abs(estimate.sick_day_cost)),
+                    sign: estimate.sick_day_cost >= 0 ? '−' : '+',
+                  })}
+                </p>
+                <p className="text-sm text-gray-300">
+                  {t('absenceCost.perVacationDay', {
+                    amount: formatCurrency(estimate.vacation_day_cost),
+                  })}
+                </p>
+              </div>
             </div>
           )}
 
