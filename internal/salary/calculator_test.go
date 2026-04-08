@@ -196,7 +196,7 @@ func TestSickDayCost(t *testing.T) {
 			want:         0,
 		},
 		{
-			name:         "high commission exceeds sick addon",
+			name:         "sick addon exceeds daily commission",
 			workingDays:  22,
 			totalRevenue: 120000,
 			// commission = 0 + 4000 + 8000 + 10000 = 22000
@@ -244,10 +244,10 @@ func TestVacationDayCost(t *testing.T) {
 			workingDays:  22,
 			totalRevenue: 100000,
 			// Full commission: 0 + (80k-60k)*0.20 + (100k-80k)*0.40 = 12000
-			// Scaled tiers (21/22): floors/ceilings * 21/22
+			// Reduced commission uses both scaled revenue and scaled tiers for 21/22 worked days.
 			// The difference = full - reduced (positive value)
 			want: round2(CalculateCommission(100000, defaultTiers) -
-				CalculateCommission(100000, ScaleTiersForAbsence(defaultTiers, 22, 1))),
+				CalculateCommission(100000*(21.0/22.0), ScaleTiersForAbsence(defaultTiers, 22, 1))),
 		},
 		{
 			name:         "revenue below first tier",
