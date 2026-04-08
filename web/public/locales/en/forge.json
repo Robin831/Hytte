@@ -570,6 +570,7 @@
     "reviewChanges": "Changes Requested",
     "reviewPending": "Pending Review",
     "conflict": "Conflict",
-    "unresolvedThreads": "Threads"
+    "unresolvedThreads": "Threads",
+    "retry": "Retry"
   }
 }

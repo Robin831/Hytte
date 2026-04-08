@@ -570,6 +570,7 @@
     "reviewChanges": "Endringer forespurt",
     "reviewPending": "Venter på gjennomgang",
     "conflict": "Konflikt",
-    "unresolvedThreads": "Tråder"
+    "unresolvedThreads": "Tråder",
+    "retry": "Prøv igjen"
   }
 }

@@ -17,52 +17,59 @@ export interface AllPRsData {
   external_prs: ExternalPR[]
 }
 
-export function useAllPRs() {
+export function useAllPRs(enabled: boolean) {
   const [data, setData] = useState<AllPRsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  function refetch() {
+    setRefreshKey(k => k + 1)
+  }
 
   useEffect(() => {
-    let cancelled = false
+    if (!enabled) return
+
+    const controller = new AbortController()
     let timeoutId: ReturnType<typeof setTimeout> | undefined
-    let currentController: AbortController | null = null
 
     async function fetchAllPRs() {
-      currentController = new AbortController()
       try {
         const res = await fetch('/api/forge/prs/all', {
           credentials: 'include',
-          signal: currentController.signal,
+          signal: controller.signal,
         })
-        if (cancelled) return
+        if (controller.signal.aborted) return
         if (!res.ok) {
           const body = await res.json().catch(() => ({}))
           setError((body as { error?: string }).error ?? `HTTP ${res.status}`)
           return
         }
         const json: AllPRsData = await res.json()
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setData(json)
           setError(null)
         }
       } catch (err) {
-        if (cancelled || (err instanceof Error && err.name === 'AbortError')) return
+        if (controller.signal.aborted) return
+        if (err instanceof Error && err.name === 'AbortError') return
         setError(err instanceof Error ? err.message : 'Unknown error')
       } finally {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setLoading(false)
           timeoutId = setTimeout(() => void fetchAllPRs(), 30_000)
         }
       }
     }
 
+    setLoading(true)
+    setError(null)
     void fetchAllPRs()
     return () => {
-      cancelled = true
-      currentController?.abort()
+      controller.abort()
       if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
-  }, [])
+  }, [enabled, refreshKey])
 
-  return { data, loading, error }
+  return { data, loading, error, refetch }
 }

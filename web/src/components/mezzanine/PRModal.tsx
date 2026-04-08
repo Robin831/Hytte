@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   GitPullRequest,
@@ -20,7 +20,7 @@ import type { TFunction } from 'i18next'
 import { Dialog, DialogHeader, DialogBody } from '../ui/dialog'
 import ConfirmDialog from '../ConfirmDialog'
 import { useAllPRs } from '../../hooks/useAllPRs'
-import type { AllPRsData, ExternalPR } from '../../hooks/useAllPRs'
+import type { ExternalPR } from '../../hooks/useAllPRs'
 import type { OpenPR } from '../../hooks/useForgeStatus'
 
 interface PRModalProps {
@@ -100,20 +100,18 @@ function ReviewBadge({ pr, t }: { pr: OpenPR; t: TFunction<'forge'> }) {
 export default function PRModal({ open, onClose, showToast, onBeadClick }: PRModalProps) {
   const { t } = useTranslation('forge')
   const titleId = useId()
-  const { data, loading, error } = useAllPRs()
+  const { data, loading, error, refetch } = useAllPRs(open)
   const [acting, setActing] = useState<Partial<Record<string, boolean>>>({})
   const [confirmAction, setConfirmAction] = useState<PendingForgeAction | null>(null)
   const [confirmExtAction, setConfirmExtAction] = useState<PendingExternalAction | null>(null)
   const [collapsedAnvils, setCollapsedAnvils] = useState<Record<string, boolean>>({})
-  const [prevOpen, setPrevOpen] = useState(open)
 
-  if (prevOpen !== open) {
-    setPrevOpen(open)
+  useEffect(() => {
     if (!open) {
       setConfirmAction(null)
       setConfirmExtAction(null)
     }
-  }
+  }, [open])
 
   const anvilGroups = useMemo(() => {
     if (!data) return []
@@ -569,7 +567,16 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
             <p className="px-6 py-8 text-sm text-gray-500 text-center">{t('prModal.loading')}</p>
           )}
           {error && (
-            <p className="px-6 py-8 text-sm text-red-400 text-center">{t('prModal.error')}</p>
+            <div className="flex flex-col items-center justify-center py-8 gap-3">
+              <p className="text-sm text-red-400">{t('prModal.error')}</p>
+              <button
+                type="button"
+                onClick={refetch}
+                className="text-xs text-gray-400 hover:text-white transition-colors underline"
+              >
+                {t('prModal.retry')}
+              </button>
+            </div>
           )}
           {!loading && !error && totalCount === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-gray-400">

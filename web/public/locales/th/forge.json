@@ -570,6 +570,7 @@
     "reviewChanges": "ขอแก้ไข",
     "reviewPending": "รอการตรวจสอบ",
     "conflict": "ขัดแย้ง",
-    "unresolvedThreads": "เธรด"
+    "unresolvedThreads": "เธรด",
+    "retry": "ลองอีกครั้ง"
   }
 }
