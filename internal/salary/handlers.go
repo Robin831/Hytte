@@ -25,27 +25,30 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// countWeekdays returns the number of Mon–Fri days in the given year/month.
+// countWeekdays returns the number of working days (Mon–Fri, excluding Norwegian
+// public holidays) in the given year/month.
 func countWeekdays(year, month int) int {
+	holidays := budget.NorwegianHolidays(year)
 	start := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
 	end := start.AddDate(0, 1, 0)
 	count := 0
 	for d := start; d.Before(end); d = d.AddDate(0, 0, 1) {
-		if d.Weekday() != time.Saturday && d.Weekday() != time.Sunday {
+		if d.Weekday() != time.Saturday && d.Weekday() != time.Sunday && !holidays[d.Format("2006-01-02")] {
 			count++
 		}
 	}
 	return count
 }
 
-// countWeekdaysUpTo returns the number of Mon–Fri days from the 1st of the
-// month up to and including the given day number.
+// countWeekdaysUpTo returns the number of working days (Mon–Fri, excluding Norwegian
+// public holidays) from the 1st of the month up to and including the given day number.
 func countWeekdaysUpTo(year, month, day int) int {
+	holidays := budget.NorwegianHolidays(year)
 	start := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
 	count := 0
 	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
-		if d.Weekday() != time.Saturday && d.Weekday() != time.Sunday {
+		if d.Weekday() != time.Saturday && d.Weekday() != time.Sunday && !holidays[d.Format("2006-01-02")] {
 			count++
 		}
 	}

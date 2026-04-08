@@ -27,7 +27,7 @@ func TestEasterSunday(t *testing.T) {
 }
 
 func TestNorwegianHolidays(t *testing.T) {
-	h := norwegianHolidays(2026)
+	h := NorwegianHolidays(2026)
 
 	mustBeHoliday := []string{
 		"2026-01-01", // Nyttårsdag

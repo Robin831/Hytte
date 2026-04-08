@@ -21,9 +21,9 @@ func easterSunday(year int) time.Time {
 	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 }
 
-// norwegianHolidays returns a set of YYYY-MM-DD strings for Norwegian public holidays in the given year.
+// NorwegianHolidays returns a set of YYYY-MM-DD strings for Norwegian public holidays in the given year.
 // It covers both fixed-date holidays and Easter-based movable holidays.
-func norwegianHolidays(year int) map[string]bool {
+func NorwegianHolidays(year int) map[string]bool {
 	holidays := make(map[string]bool)
 	add := func(t time.Time) {
 		holidays[t.Format("2006-01-02")] = true
@@ -60,7 +60,7 @@ func previousBusinessDay(t time.Time) time.Time {
 
 	for {
 		if d.Year() != cachedYear {
-			holidays = norwegianHolidays(d.Year())
+			holidays = NorwegianHolidays(d.Year())
 			cachedYear = d.Year()
 		}
 		wd := d.Weekday()
@@ -81,7 +81,7 @@ func nextBusinessDay(t time.Time) time.Time {
 
 	for {
 		if d.Year() != cachedYear {
-			holidays = norwegianHolidays(d.Year())
+			holidays = NorwegianHolidays(d.Year())
 			cachedYear = d.Year()
 		}
 		wd := d.Weekday()
