@@ -304,7 +304,18 @@ func buildEstimateWithParams(db *sql.DB, userID int64, month string, today time.
 	billableRevenue := billableHours * cfg.HourlyRate
 	internalRevenue := internalHoursWorked * cfg.InternalHourlyRate
 
-	record := EstimateMonth(*cfg, tiers, taxParams, hoursWorked, billableRevenue, internalRevenue, totalDays, vacationDays, sickDays)
+	// For current and future months, project remaining working days at standard hours.
+	// This gives a realistic monthly estimate rather than showing only hours logged so far.
+	projectedHours := hoursWorked
+	projectedBillableRevenue := billableRevenue
+	projectedInternalRevenue := internalRevenue
+	if remainingDays > 0 {
+		projectedRemainingHours := float64(remainingDays) * cfg.StandardHours
+		projectedHours = hoursWorked + projectedRemainingHours
+		projectedBillableRevenue = billableRevenue + (projectedRemainingHours * cfg.HourlyRate)
+	}
+
+	record := EstimateMonth(*cfg, tiers, taxParams, projectedHours, projectedBillableRevenue, projectedInternalRevenue, totalDays, vacationDays, sickDays)
 	record.Month = month
 	record.BillableHours = billableHours
 	record.InternalHours = internalHoursWorked
