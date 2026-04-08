@@ -97,8 +97,8 @@ export default function CalendarPage() {
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [calendars, setCalendars] = useState<CalendarInfo[]>([])
   const [connected, setConnected] = useState<boolean | null>(null)
-  const [calendarsLoading, setCalendarsLoading] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [calendarsLoading, setCalendarsLoading] = useState(true)
+  const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showSelector, setShowSelector] = useState(false)
@@ -134,7 +134,6 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!user) return
     const controller = new AbortController()
-    setCalendarsLoading(true)
     fetch('/api/calendar/calendars', { credentials: 'include', signal: controller.signal })
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -160,7 +159,6 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!user) return
     const controller = new AbortController()
-    setLoading(true)
     fetchEvents(false, controller.signal).finally(() => {
       if (!controller.signal.aborted) setLoading(false)
     })
@@ -228,9 +226,9 @@ export default function CalendarPage() {
     }
   }
 
-  const goToday = () => setRangeStart(startOfDay(new Date()))
-  const goPrev = () => setRangeStart(prev => addDays(prev, -daysToShow))
-  const goNext = () => setRangeStart(prev => addDays(prev, daysToShow))
+  const goToday = () => { setLoading(true); setRangeStart(startOfDay(new Date())) }
+  const goPrev = () => { setLoading(true); setRangeStart(prev => addDays(prev, -daysToShow)) }
+  const goNext = () => { setLoading(true); setRangeStart(prev => addDays(prev, daysToShow)) }
 
   if (!user) {
     return (
