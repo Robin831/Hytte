@@ -179,6 +179,7 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!user) return
     const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
     fetchEvents(false, controller.signal)
     return () => controller.abort()
   }, [user, rangeStart, fetchEvents])
