@@ -560,6 +560,16 @@
   },
   "prModal": {
     "title": "การจัดการ PR",
-    "placeholder": "การจัดการ PR เร็วๆ นี้…"
+    "loading": "กำลังโหลด pull requests…",
+    "error": "ไม่สามารถโหลด pull requests ได้",
+    "empty": "ไม่มี pull requests ที่เปิดอยู่",
+    "ciPass": "CI ผ่าน",
+    "ciFail": "CI ล้มเหลว",
+    "ciPending": "CI รอดำเนินการ",
+    "reviewApproved": "อนุมัติแล้ว",
+    "reviewChanges": "ขอแก้ไข",
+    "reviewPending": "รอการตรวจสอบ",
+    "conflict": "ขัดแย้ง",
+    "unresolvedThreads": "เธรด"
   }
 }

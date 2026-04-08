@@ -560,6 +560,16 @@
   },
   "prModal": {
     "title": "PR-håndtering",
-    "placeholder": "PR-håndtering kommer snart…"
+    "loading": "Laster pull requests…",
+    "error": "Kunne ikke laste pull requests",
+    "empty": "Ingen åpne pull requests",
+    "ciPass": "CI OK",
+    "ciFail": "CI Feil",
+    "ciPending": "CI Venter",
+    "reviewApproved": "Godkjent",
+    "reviewChanges": "Endringer forespurt",
+    "reviewPending": "Venter på gjennomgang",
+    "conflict": "Konflikt",
+    "unresolvedThreads": "Tråder"
   }
 }

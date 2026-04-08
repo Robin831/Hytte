@@ -322,6 +322,8 @@ export default function MezzaninePage() {
       <PRModal
         open={showPRModal}
         onClose={() => setShowPRModal(false)}
+        showToast={showToast}
+        onBeadClick={setSelectedBeadId}
       />
 
       <ShortcutHelpModal
