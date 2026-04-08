@@ -16,7 +16,7 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
 function getEventPosition(event: CalendarEvent, dayStart: Date): { top: number; height: number } {
   const dayStartMs = dayStart.getTime()
-  const dayEndMs = dayStartMs + 24 * 60 * 60 * 1000
+  const dayEndMs = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1).getTime()
   const eventStartMs = new Date(event.start_time).getTime()
   const eventEndMs = new Date(event.end_time).getTime()
   const clampedStartMs = Math.max(eventStartMs, dayStartMs)
@@ -45,7 +45,7 @@ export default function DayView({ events, calendars, rangeStart }: CalendarViewP
 
   const { allDay, timed } = useMemo(() => {
     const dayStartMs = dayStart.getTime()
-    const dayEndMs = dayStartMs + 24 * 60 * 60 * 1000
+    const dayEndMs = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate() + 1).getTime()
     const allDay: CalendarEvent[] = []
     const timed: CalendarEvent[] = []
     for (const event of events) {

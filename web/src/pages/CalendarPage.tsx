@@ -90,8 +90,10 @@ export default function CalendarPage() {
   const [rangeStart, setRangeStart] = useState(() => startOfDay(new Date()))
 
   const selectorRef = useRef<HTMLDivElement>(null)
+  const fetchControllerRef = useRef<AbortController | null>(null)
 
   const handleSetViewMode = (mode: ViewMode) => {
+    if (mode === viewMode) return
     setLoading(true)
     setViewMode(mode)
     try { localStorage.setItem(STORAGE_KEY, mode) } catch { /* ignore */ }
@@ -99,9 +101,15 @@ export default function CalendarPage() {
 
   const fetchEvents = useCallback(async (sync = false, signal?: AbortSignal) => {
     if (!user) return
+    // Cancel any previous in-flight fetch so stale responses can't overwrite newer results
+    fetchControllerRef.current?.abort()
+    const ctl = new AbortController()
+    fetchControllerRef.current = ctl
+    // Chain caller's signal (e.g. effect cleanup) so it propagates to our controller
+    if (signal) signal.addEventListener('abort', () => ctl.abort(), { once: true })
     try {
       const url = buildEventsUrl(viewMode, rangeStart, sync)
-      const res = await fetch(url, { credentials: 'include', signal })
+      const res = await fetch(url, { credentials: 'include', signal: ctl.signal })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       setEvents(data.events ?? [])
@@ -111,7 +119,7 @@ export default function CalendarPage() {
       setError(t('calendar.errors.failedToLoad'))
       console.error('Failed to load calendar events:', err)
     } finally {
-      if (!signal?.aborted) setLoading(false)
+      if (!ctl.signal.aborted) setLoading(false)
     }
   }, [user, rangeStart, viewMode, t])
 
@@ -147,26 +155,10 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!user) return
     const controller = new AbortController()
-    const url = buildEventsUrl(viewMode, rangeStart)
-    fetch(url, { credentials: 'include', signal: controller.signal })
-      .then(res => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json()
-      })
-      .then(data => {
-        setEvents(data.events ?? [])
-        setError(null)
-      })
-      .catch(err => {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setError(t('calendar.errors.failedToLoad'))
-        console.error('Failed to load calendar events:', err)
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
-      })
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- setState calls in fetchEvents are all async (after await)
+    void fetchEvents(false, controller.signal)
     return () => controller.abort()
-  }, [user, rangeStart, viewMode, t])
+  }, [fetchEvents])
 
   // Close calendar selector on outside click
   useEffect(() => {
