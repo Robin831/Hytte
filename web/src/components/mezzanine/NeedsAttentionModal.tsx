@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import {
@@ -10,7 +10,6 @@ import {
 } from 'lucide-react'
 import { Dialog, DialogHeader, DialogBody } from '../ui/dialog'
 import ConfirmDialog from '../ConfirmDialog'
-import { useNeedsAttention } from '../../hooks/useNeedsAttention'
 import type { NeedsAttentionItem, NeedsAttentionAction, NeedsAttentionStatus } from '../../hooks/useNeedsAttention'
 import { useBeadActions } from '../../hooks/useBeadActions'
 import type { BeadActionType } from '../../hooks/useBeadActions'
@@ -18,6 +17,7 @@ import type { BeadActionType } from '../../hooks/useBeadActions'
 interface NeedsAttentionModalProps {
   open: boolean
   onClose: () => void
+  items: NeedsAttentionItem[]
   showToast: (message: string, type: 'success' | 'error') => void
   onBeadClick?: (beadId: string) => void
 }
@@ -101,11 +101,16 @@ function prUrl(item: NeedsAttentionItem): string | null {
   return item.pr.anvil.includes('/') ? `https://github.com/${item.pr.anvil}/pull/${item.pr.number}` : null
 }
 
-export default function NeedsAttentionModal({ open, onClose, showToast, onBeadClick }: NeedsAttentionModalProps) {
+export default function NeedsAttentionModal({ open, onClose, items, showToast, onBeadClick }: NeedsAttentionModalProps) {
   const { t } = useTranslation('forge')
-  const { items } = useNeedsAttention()
   const { acting, handleAction } = useBeadActions({ showToast })
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
+
+  // Clear any pending confirmation when the modal closes so the ConfirmDialog
+  // doesn't remain visible on its own after ESC/backdrop/X dismissal.
+  useEffect(() => {
+    if (!open) setPendingConfirm(null)
+  }, [open])
 
   function onAction(action: NeedsAttentionAction, beadId: string) {
     if (action === 'dismiss') {

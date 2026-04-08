@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useForgeWorkers, useForgeStatus, useForgeQueue } from '../hooks/useForgeStatus'
+import { computeNeedsAttentionItems } from '../hooks/useNeedsAttention'
 import { useToast } from '../hooks/useToast'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useAnvilFilter } from '../hooks/useAnvilFilter'
@@ -142,6 +143,8 @@ export default function MezzaninePage() {
     () => workers.filter(w => w.status === 'pending' || w.status === 'running'),
     [workers],
   )
+
+  const attentionItems = useMemo(() => computeNeedsAttentionItems(status), [status])
 
   const handleRefresh = useCallback(() => {
     refreshWorkers()
@@ -304,6 +307,7 @@ export default function MezzaninePage() {
       <NeedsAttentionModal
         open={showNeedsAttention}
         onClose={() => setShowNeedsAttention(false)}
+        items={attentionItems}
         showToast={showToast}
         onBeadClick={setSelectedBeadId}
       />
