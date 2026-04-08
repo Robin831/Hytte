@@ -14,6 +14,7 @@ function makeActions(overrides: Partial<KeyboardShortcutActions> = {}): Keyboard
     onShowHelp: vi.fn(),
     onTogglePRModal: vi.fn(),
     onToggleReleaseModal: vi.fn(),
+    onToggleSettingsModal: vi.fn(),
     ...overrides,
   }
 }
@@ -150,6 +151,13 @@ describe('useKeyboardShortcuts', () => {
       expect(actions.onToggleReleaseModal).toHaveBeenCalledOnce()
     })
 
+    it('calls onToggleSettingsModal for "s"', () => {
+      const actions = makeActions()
+      renderHook(() => useKeyboardShortcuts(actions))
+      fireKey('s')
+      expect(actions.onToggleSettingsModal).toHaveBeenCalledOnce()
+    })
+
     it('calls onShowHelp for "?"', () => {
       const actions = makeActions()
       renderHook(() => useKeyboardShortcuts(actions))
@@ -235,6 +243,19 @@ describe('useKeyboardShortcuts', () => {
       renderHook(() => useKeyboardShortcuts(actions))
       fireKey('l')
       expect(actions.onToggleReleaseModal).toHaveBeenCalledOnce()
+
+      document.body.removeChild(dialog)
+    })
+
+    it('still fires onToggleSettingsModal for "s" even when an aria-modal dialog is open', () => {
+      const dialog = document.createElement('div')
+      dialog.setAttribute('aria-modal', 'true')
+      document.body.appendChild(dialog)
+
+      const actions = makeActions()
+      renderHook(() => useKeyboardShortcuts(actions))
+      fireKey('s')
+      expect(actions.onToggleSettingsModal).toHaveBeenCalledOnce()
 
       document.body.removeChild(dialog)
     })

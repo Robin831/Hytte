@@ -157,8 +157,8 @@ export default function ForgeSettingsModal({ open, onClose, showToast }: ForgeSe
           </div>
         )}
 
-        {error && !config && (
-          <p className="text-red-400">{error}</p>
+        {error && (
+          <p className="text-red-400 mb-2">{error}</p>
         )}
 
         {config && (
