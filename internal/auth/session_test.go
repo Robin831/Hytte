@@ -40,6 +40,15 @@ func setupTestDB(t *testing.T) *sql.DB {
 			value   TEXT NOT NULL DEFAULT '',
 			PRIMARY KEY (user_id, key)
 		);
+		CREATE TABLE google_tokens (
+			user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+			access_token  TEXT NOT NULL,
+			refresh_token TEXT NOT NULL,
+			token_type    TEXT NOT NULL DEFAULT 'Bearer',
+			expiry        TEXT NOT NULL DEFAULT '',
+			scopes        TEXT NOT NULL DEFAULT '',
+			updated_at    TEXT NOT NULL DEFAULT ''
+		);
 	`)
 	if err != nil {
 		t.Fatalf("create schema: %v", err)
