@@ -12,7 +12,6 @@ export type NeedsAttentionStatus =
   | 'dispatch_failure'
   | 'ci_exhausted'
   | 'review_exhausted'
-  | 'max_retries'
 
 /** Actions that can be taken on this item. */
 export type NeedsAttentionAction = 'retry' | 'approve' | 'dismiss' | 'forceSmith'
@@ -44,44 +43,95 @@ export interface NeedsAttentionItem {
   raw: StuckBead
 }
 
-function classifyStatuses(bead: StuckBead, pr: OpenPR | undefined): NeedsAttentionStatus[] {
+export function hasExhaustedReason(lastError: string | undefined, kind: 'ci' | 'review'): boolean {
+  if (!lastError) return false
+
+  const normalized = lastError.toLowerCase()
+  const patterns =
+    kind === 'ci'
+      ? [
+          /\bci_exhausted\b/,
+          /\bci exhausted\b/,
+          /\bexhausted ci\b/,
+          /\bci\b.*\bexhausted\b/,
+          /\bexhausted\b.*\bci\b/,
+        ]
+      : [
+          /\breview_exhausted\b/,
+          /\breview exhausted\b/,
+          /\bexhausted review\b/,
+          /\breview\b.*\bexhausted\b/,
+          /\bexhausted\b.*\breview\b/,
+        ]
+
+  return patterns.some((pattern) => pattern.test(normalized))
+}
+
+export function isPRExhaustion(bead: StuckBead): boolean {
+  const lastError = bead.last_error?.toLowerCase() ?? ''
+
+  return (
+    lastError.includes('ci_exhausted') ||
+    lastError.includes('ci exhausted') ||
+    lastError.includes('review_exhausted') ||
+    lastError.includes('review exhausted') ||
+    lastError.includes('max_retries') ||
+    lastError.includes('max retries')
+  )
+}
+
+export function classifyStatuses(bead: StuckBead, _pr: OpenPR | undefined): NeedsAttentionStatus[] {
   const statuses: NeedsAttentionStatus[] = []
 
   if (bead.clarification_needed) statuses.push('clarification_needed')
   if (bead.needs_human) statuses.push('needs_human')
   if (bead.dispatch_failures > 0) statuses.push('dispatch_failure')
 
-  if (pr) {
-    if (pr.ci_fix_count > 0) statuses.push('ci_exhausted')
-    if (pr.review_fix_count > 0) statuses.push('review_exhausted')
-  }
-
-  if (bead.retry_count > 0 && statuses.length === 0) statuses.push('max_retries')
+  if (hasExhaustedReason(bead.last_error, 'ci')) statuses.push('ci_exhausted')
+  if (hasExhaustedReason(bead.last_error, 'review')) statuses.push('review_exhausted')
 
   return statuses
 }
 
-function classifySource(bead: StuckBead): NeedsAttentionSource {
-  // Items from the retries table have needs_human, clarification_needed, or
-  // dispatch_failures set. PR-only stuck items typically only have retry_count
-  // from the synthetic Retry row the backend creates for stuck PRs — but they
-  // won't have needs_human or clarification_needed set.
-  if (bead.needs_human || bead.clarification_needed || bead.dispatch_failures > 0) {
+export function classifySource(bead: StuckBead): NeedsAttentionSource {
+  // Stuck PRs are merged into status.stuck as synthetic retry rows and may
+  // still have needs_human set, so do not use needs_human to distinguish
+  // source. Instead, detect the known PR exhaustion reasons from last_error
+  // and fall back to retry-table signals for non-PR items.
+  if (isPRExhaustion(bead)) {
+    return 'pr'
+  }
+
+  if (bead.clarification_needed || bead.dispatch_failures > 0 || bead.needs_human) {
     return 'retry'
   }
-  return 'pr'
+
+  return 'retry'
 }
 
-function availableActions(source: NeedsAttentionSource, statuses: NeedsAttentionStatus[]): NeedsAttentionAction[] {
-  const actions: NeedsAttentionAction[] = ['retry', 'dismiss']
+export function availableActions(source: NeedsAttentionSource, statuses: NeedsAttentionStatus[]): NeedsAttentionAction[] {
+  const actions: NeedsAttentionAction[] = ['dismiss']
 
-  // Approve is useful when the item just needs a human sign-off
-  if (statuses.includes('needs_human') || statuses.includes('ci_exhausted') || statuses.includes('review_exhausted')) {
+  const hasRetryEntry = source === 'retry'
+
+  // Retry is only safe for items backed by a real retries-table row.
+  if (hasRetryEntry) {
+    actions.push('retry')
+  }
+
+  // Approve is useful when the item just needs a human sign-off, but bead
+  // action endpoints require a real retries-table entry and will 404 for
+  // synthetic PR-stuck items.
+  if (
+    hasRetryEntry &&
+    (statuses.includes('needs_human') || statuses.includes('ci_exhausted') || statuses.includes('review_exhausted'))
+  ) {
     actions.push('approve')
   }
 
-  // Force smith lets a human re-run with extra context
-  if (source === 'retry' || statuses.includes('clarification_needed')) {
+  // Force smith lets a human re-run with extra context, but only for items
+  // backed by a retries-table row.
+  if (hasRetryEntry && statuses.includes('clarification_needed')) {
     actions.push('forceSmith')
   }
 
