@@ -91,7 +91,25 @@
   },
   "calendar": {
     "title": "ปฏิทิน",
-    "comingSoon": "ปฏิทินและการจองจะเปิดให้บริการเร็วๆ นี้"
+    "agenda": "กำหนดการ",
+    "today": "วันนี้",
+    "todayLabel": "วันนี้",
+    "tomorrowLabel": "พรุ่งนี้",
+    "noEvents": "ไม่มีกิจกรรมในช่วงเวลานี้",
+    "allDay": "ทั้งวัน",
+    "calendars": "ปฏิทิน",
+    "selectCalendars": "เลือกปฏิทิน",
+    "primary": "หลัก",
+    "refresh": "รีเฟรช",
+    "previousPeriod": "ช่วงก่อนหน้า",
+    "nextPeriod": "ช่วงถัดไป",
+    "notConnected": "ยังไม่ได้เชื่อมต่อปฏิทิน",
+    "notConnectedHint": "เข้าสู่ระบบด้วย Google และอนุญาตการเข้าถึงปฏิทินเพื่อดูกิจกรรมของคุณที่นี่",
+    "signInRequired": "เข้าสู่ระบบเพื่อดูปฏิทินของคุณ",
+    "errors": {
+      "failedToLoad": "ไม่สามารถโหลดกิจกรรมปฏิทินได้",
+      "syncFailed": "การซิงค์ปฏิทินล้มเหลว"
+    }
   },
   "family": {
     "title": "ครอบครัว",

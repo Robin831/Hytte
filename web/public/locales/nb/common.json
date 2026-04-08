@@ -91,7 +91,25 @@
   },
   "calendar": {
     "title": "Kalender",
-    "comingSoon": "Kalender og bestillinger kommer snart."
+    "agenda": "Agenda",
+    "today": "I dag",
+    "todayLabel": "I dag",
+    "tomorrowLabel": "I morgen",
+    "noEvents": "Ingen hendelser i denne perioden",
+    "allDay": "Hele dagen",
+    "calendars": "Kalendere",
+    "selectCalendars": "Velg kalendere",
+    "primary": "primær",
+    "refresh": "Oppdater",
+    "previousPeriod": "Forrige periode",
+    "nextPeriod": "Neste periode",
+    "notConnected": "Kalender ikke tilkoblet",
+    "notConnectedHint": "Logg inn med Google og gi kalendertilgang for å se hendelsene dine her.",
+    "signInRequired": "Logg inn for å se kalenderen din.",
+    "errors": {
+      "failedToLoad": "Kunne ikke laste kalenderhendelser",
+      "syncFailed": "Kalendersynkronisering mislyktes"
+    }
   },
   "family": {
     "title": "Familie",

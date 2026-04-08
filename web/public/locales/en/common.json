@@ -91,7 +91,25 @@
   },
   "calendar": {
     "title": "Calendar",
-    "comingSoon": "Calendar and bookings coming soon."
+    "agenda": "Agenda",
+    "today": "Today",
+    "todayLabel": "Today",
+    "tomorrowLabel": "Tomorrow",
+    "noEvents": "No events in this period",
+    "allDay": "All day",
+    "calendars": "Calendars",
+    "selectCalendars": "Select calendars",
+    "primary": "primary",
+    "refresh": "Refresh",
+    "previousPeriod": "Previous period",
+    "nextPeriod": "Next period",
+    "notConnected": "Calendar not connected",
+    "notConnectedHint": "Sign in with Google and grant calendar access to see your events here.",
+    "signInRequired": "Sign in to view your calendar.",
+    "errors": {
+      "failedToLoad": "Failed to load calendar events",
+      "syncFailed": "Calendar sync failed"
+    }
   },
   "family": {
     "title": "Family",
