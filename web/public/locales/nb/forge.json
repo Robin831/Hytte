@@ -437,7 +437,8 @@
       "noMergeReady": "Ingen PRer klare for sammenslåing",
       "noWorkerFocused": "Ingen arbeider fokusert — trykk 1-6 for å velge",
       "togglePRModal": "Vis/skjul PR-håndtering",
-      "toggleReleaseModal": "Vis/skjul utgivelse"
+      "toggleReleaseModal": "Vis/skjul utgivelse",
+      "toggleSettingsModal": "Vis/skjul innstillinger"
     },
     "lifecycle": {
       "title": "Perlelivssyklus — {{beadId}}",

@@ -5,6 +5,7 @@
   "save": "Lagre",
   "saving": "Lagrer…",
   "saveSuccess": "Konfigurasjon lagret — forge laster på nytt",
+  "cancel": "Avbryt",
   "saveError": "Kunne ikke lagre konfigurasjon",
   "sections": {
     "settings": "Globale innstillinger",

@@ -437,7 +437,8 @@
       "noMergeReady": "ไม่มี PR ที่พร้อมรวม",
       "noWorkerFocused": "ไม่มี Worker ที่เลือก — กด 1-6 เพื่อเลือก",
       "togglePRModal": "สลับการจัดการ PR",
-      "toggleReleaseModal": "สลับการปล่อยเวอร์ชัน"
+      "toggleReleaseModal": "สลับการปล่อยเวอร์ชัน",
+      "toggleSettingsModal": "สลับการตั้งค่า"
     },
     "lifecycle": {
       "title": "วงจรชีวิตงาน — {{beadId}}",

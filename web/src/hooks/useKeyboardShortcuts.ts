@@ -11,6 +11,7 @@ export interface KeyboardShortcutActions {
   onShowHelp: () => void
   onTogglePRModal: () => void
   onToggleReleaseModal: () => void
+  onToggleSettingsModal: () => void
 }
 
 export function useKeyboardShortcuts(actions: KeyboardShortcutActions, enabled = true) {
@@ -42,6 +43,11 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions, enabled =
       if (e.key === 'l') {
         e.preventDefault()
         actions.onToggleReleaseModal()
+        return
+      }
+      if (e.key === 's') {
+        e.preventDefault()
+        actions.onToggleSettingsModal()
         return
       }
 

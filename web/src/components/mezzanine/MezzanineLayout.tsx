@@ -10,9 +10,10 @@ interface MezzanineLayoutProps {
   onNeedsAttentionClick?: () => void
   needsAttentionCount?: number
   onReleaseClick?: () => void
+  onSettingsClick?: () => void
 }
 
-export default function MezzanineLayout({ sidebar, children, showToast, headerActions, onNeedsAttentionClick, needsAttentionCount, onReleaseClick }: MezzanineLayoutProps) {
+export default function MezzanineLayout({ sidebar, children, showToast, headerActions, onNeedsAttentionClick, needsAttentionCount, onReleaseClick, onSettingsClick }: MezzanineLayoutProps) {
   const { t } = useTranslation('forge')
 
   return (
@@ -42,7 +43,7 @@ export default function MezzanineLayout({ sidebar, children, showToast, headerAc
           </h1>
           <div className="flex items-center gap-2 flex-wrap">
             {headerActions}
-            <StatusBar showToast={showToast} onNeedsAttentionClick={onNeedsAttentionClick} needsAttentionCount={needsAttentionCount} onReleaseClick={onReleaseClick} />
+            <StatusBar showToast={showToast} onNeedsAttentionClick={onNeedsAttentionClick} needsAttentionCount={needsAttentionCount} onReleaseClick={onReleaseClick} onSettingsClick={onSettingsClick} />
           </div>
         </div>
       </header>

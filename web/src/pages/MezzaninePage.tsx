@@ -24,6 +24,7 @@ import ShortcutHelpModal from '../components/mezzanine/ShortcutHelpModal'
 import NeedsAttentionModal from '../components/mezzanine/NeedsAttentionModal'
 import PRModal from '../components/mezzanine/PRModal'
 import ReleaseModal from '../components/mezzanine/ReleaseModal'
+import ForgeSettingsModal from '../components/mezzanine/ForgeSettingsModal'
 import ToastList from '../components/ToastList'
 
 export default function MezzaninePage() {
@@ -62,6 +63,7 @@ export default function MezzaninePage() {
   const [showNeedsAttention, setShowNeedsAttention] = useState(false)
   const [showPRModal, setShowPRModal] = useState(false)
   const [showReleaseModal, setShowReleaseModal] = useState(false)
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [mergeConfirmPR, setMergeConfirmPR] = useState<{ id: number; number: number } | null>(null)
   const [focusedPanel, setFocusedPanel] = useState<PanelKey | null>(null)
   const [focusedWorkerIndex, setFocusedWorkerIndex] = useState<number | null>(null)
@@ -218,6 +220,7 @@ export default function MezzaninePage() {
       onShowHelp: () => setShowShortcutHelp(true),
       onTogglePRModal: () => setShowPRModal(prev => !prev),
       onToggleReleaseModal: () => { if (isAdmin) setShowReleaseModal(prev => !prev) },
+      onToggleSettingsModal: () => { if (isAdmin) setShowSettingsModal(prev => !prev) },
     }),
     [handleRefresh, handleMergeFirstReady, handleKillFocusedWorker, handleFocusPanel, handleFocusWorker, isAdmin],
   )
@@ -230,6 +233,7 @@ export default function MezzaninePage() {
       onNeedsAttentionClick={() => setShowNeedsAttention(true)}
       needsAttentionCount={attentionItems.length}
       onReleaseClick={() => setShowReleaseModal(true)}
+      onSettingsClick={() => setShowSettingsModal(true)}
       headerActions={
         allAnvils.length > 1 ? (
           <AnvilFilterDropdown
@@ -336,6 +340,12 @@ export default function MezzaninePage() {
       <ReleaseModal
         open={showReleaseModal}
         onClose={() => setShowReleaseModal(false)}
+        showToast={showToast}
+      />
+
+      <ForgeSettingsModal
+        open={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
         showToast={showToast}
       />
 
