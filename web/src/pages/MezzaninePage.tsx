@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useForgeWorkers, useForgeStatus, useForgeQueue } from '../hooks/useForgeStatus'
+import { computeNeedsAttentionItems } from '../hooks/useNeedsAttention'
 import { useToast } from '../hooks/useToast'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useAnvilFilter } from '../hooks/useAnvilFilter'
@@ -19,6 +20,7 @@ import AnvilFilterDropdown from '../components/mezzanine/AnvilFilterDropdown'
 import BeadDetailModal from '../components/BeadDetailModal'
 import MergeConfirmDialog from '../components/MergeConfirmDialog'
 import ShortcutHelpModal from '../components/mezzanine/ShortcutHelpModal'
+import NeedsAttentionModal from '../components/mezzanine/NeedsAttentionModal'
 import ToastList from '../components/ToastList'
 
 export default function MezzaninePage() {
@@ -52,6 +54,7 @@ export default function MezzaninePage() {
   const [initialBeadDeepLink] = useState(() => searchParams.get('bead'))
   const [selectedBeadId, setSelectedBeadId] = useState<string | null>(() => searchParams.get('bead'))
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
+  const [showNeedsAttention, setShowNeedsAttention] = useState(false)
   const [mergeConfirmPR, setMergeConfirmPR] = useState<{ id: number; number: number } | null>(null)
   const [focusedPanel, setFocusedPanel] = useState<PanelKey | null>(null)
   const [focusedWorkerIndex, setFocusedWorkerIndex] = useState<number | null>(null)
@@ -141,6 +144,11 @@ export default function MezzaninePage() {
     [workers],
   )
 
+  const attentionItems = useMemo(
+    () => computeNeedsAttentionItems(status).filter(item => anvilFilter.isVisible(item.anvil)),
+    [status, anvilFilter],
+  )
+
   const handleRefresh = useCallback(() => {
     refreshWorkers()
     refreshStatus()
@@ -210,7 +218,8 @@ export default function MezzaninePage() {
   return (
     <MezzanineLayout
       showToast={showToast}
-      onNeedsAttentionClick={() => needsAttentionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+      onNeedsAttentionClick={() => setShowNeedsAttention(true)}
+      needsAttentionCount={attentionItems.length}
       headerActions={
         allAnvils.length > 1 ? (
           <AnvilFilterDropdown
@@ -298,6 +307,14 @@ export default function MezzaninePage() {
           onCancel={() => setMergeConfirmPR(null)}
         />
       )}
+
+      <NeedsAttentionModal
+        open={showNeedsAttention}
+        onClose={() => setShowNeedsAttention(false)}
+        items={attentionItems}
+        showToast={showToast}
+        onBeadClick={setSelectedBeadId}
+      />
 
       <ShortcutHelpModal
         open={showShortcutHelp}
