@@ -9,6 +9,7 @@ export interface KeyboardShortcutActions {
   onFocusPanel: (panel: PanelKey) => void
   onFocusWorker: (index: number) => void
   onShowHelp: () => void
+  onTogglePRModal: () => void
 }
 
 export function useKeyboardShortcuts(actions: KeyboardShortcutActions, enabled = true) {
@@ -67,6 +68,10 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions, enabled =
         case '6':
           e.preventDefault()
           actions.onFocusWorker(parseInt(e.key, 10) - 1)
+          break
+        case 'p':
+          e.preventDefault()
+          actions.onTogglePRModal()
           break
         case '?':
           e.preventDefault()

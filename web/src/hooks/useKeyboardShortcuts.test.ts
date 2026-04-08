@@ -12,6 +12,7 @@ function makeActions(overrides: Partial<KeyboardShortcutActions> = {}): Keyboard
     onFocusPanel: vi.fn(),
     onFocusWorker: vi.fn(),
     onShowHelp: vi.fn(),
+    onTogglePRModal: vi.fn(),
     ...overrides,
   }
 }
@@ -132,6 +133,13 @@ describe('useKeyboardShortcuts', () => {
       expect(actions.onFocusWorker).toHaveBeenCalledWith(2)
       fireKey('6')
       expect(actions.onFocusWorker).toHaveBeenCalledWith(5)
+    })
+
+    it('calls onTogglePRModal for "p"', () => {
+      const actions = makeActions()
+      renderHook(() => useKeyboardShortcuts(actions))
+      fireKey('p')
+      expect(actions.onTogglePRModal).toHaveBeenCalledOnce()
     })
 
     it('calls onShowHelp for "?"', () => {

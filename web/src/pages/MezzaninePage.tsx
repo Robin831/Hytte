@@ -21,6 +21,7 @@ import BeadDetailModal from '../components/BeadDetailModal'
 import MergeConfirmDialog from '../components/MergeConfirmDialog'
 import ShortcutHelpModal from '../components/mezzanine/ShortcutHelpModal'
 import NeedsAttentionModal from '../components/mezzanine/NeedsAttentionModal'
+import PRModal from '../components/mezzanine/PRModal'
 import ToastList from '../components/ToastList'
 
 export default function MezzaninePage() {
@@ -55,6 +56,7 @@ export default function MezzaninePage() {
   const [selectedBeadId, setSelectedBeadId] = useState<string | null>(() => searchParams.get('bead'))
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
   const [showNeedsAttention, setShowNeedsAttention] = useState(false)
+  const [showPRModal, setShowPRModal] = useState(false)
   const [mergeConfirmPR, setMergeConfirmPR] = useState<{ id: number; number: number } | null>(null)
   const [focusedPanel, setFocusedPanel] = useState<PanelKey | null>(null)
   const [focusedWorkerIndex, setFocusedWorkerIndex] = useState<number | null>(null)
@@ -209,6 +211,7 @@ export default function MezzaninePage() {
       onFocusPanel: handleFocusPanel,
       onFocusWorker: handleFocusWorker,
       onShowHelp: () => setShowShortcutHelp(true),
+      onTogglePRModal: () => setShowPRModal(prev => !prev),
     }),
     [handleRefresh, handleMergeFirstReady, handleKillFocusedWorker, handleFocusPanel, handleFocusWorker],
   )
@@ -314,6 +317,11 @@ export default function MezzaninePage() {
         items={attentionItems}
         showToast={showToast}
         onBeadClick={setSelectedBeadId}
+      />
+
+      <PRModal
+        open={showPRModal}
+        onClose={() => setShowPRModal(false)}
       />
 
       <ShortcutHelpModal

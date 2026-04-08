@@ -435,7 +435,8 @@
       "closeModal": "Lukk",
       "refreshing": "Oppdaterer…",
       "noMergeReady": "Ingen PRer klare for sammenslåing",
-      "noWorkerFocused": "Ingen arbeider fokusert — trykk 1-6 for å velge"
+      "noWorkerFocused": "Ingen arbeider fokusert — trykk 1-6 for å velge",
+      "togglePRModal": "Vis/skjul PR-håndtering"
     },
     "lifecycle": {
       "title": "Perlelivssyklus — {{beadId}}",
@@ -556,5 +557,9 @@
     "openPRs": "Åpne PRer",
     "queueDepth": "Kø",
     "lastActivity": "Siste aktivitet"
+  },
+  "prModal": {
+    "title": "PR-håndtering",
+    "placeholder": "PR-håndtering kommer snart…"
   }
 }
