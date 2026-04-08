@@ -211,6 +211,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"income_day":                         true,
 			"partner_income_day":                 true,
 			"stride_custom_prompt":               true,
+			"calendar_visible_ids":               true,
 		}
 
 		// Integer range keys: HR/pace, work hours, budget preferences, and other numeric settings.
