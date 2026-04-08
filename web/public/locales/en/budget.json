@@ -401,6 +401,10 @@
       "copyFailed": "Failed to copy from last month."
     }
   },
+  "upcoming": {
+    "title": "Upcoming",
+    "yourShare": "You: {{amount}}"
+  },
   "errors": {
     "loadFailed": "Failed to load budget data.",
     "saveFailed": "Failed to save transaction.",
