@@ -151,9 +151,27 @@ export default function CalendarPage() {
   useEffect(() => {
     if (!user) return
     const controller = new AbortController()
-    fetchEvents(false, controller.signal)
+    const { start, end } = getViewRange(viewMode, rangeStart)
+    const url = `/api/calendar/events?start=${encodeURIComponent(toRFC3339(start))}&end=${encodeURIComponent(toRFC3339(end))}`
+    fetch(url, { credentials: 'include', signal: controller.signal })
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then(data => {
+        setEvents(data.events ?? [])
+        setError(null)
+      })
+      .catch(err => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setError(t('calendar.errors.failedToLoad'))
+        console.error('Failed to load calendar events:', err)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
     return () => controller.abort()
-  }, [user, rangeStart, viewMode, fetchEvents])
+  }, [user, rangeStart, viewMode, t])
 
   // Close calendar selector on outside click
   useEffect(() => {

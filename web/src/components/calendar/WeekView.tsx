@@ -189,7 +189,7 @@ export default function WeekView({ events, calendars, rangeStart, onNavigateToDa
               )
             })()}
 
-            {weekDays.map((day, dayIndex) => {
+            {weekDays.map((day, _dayIndex) => {
               const dateKey = formatDateKey(day)
               const { timed } = getEventsForDay(events, dateKey)
               const today = isToday(day)
