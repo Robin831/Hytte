@@ -74,10 +74,24 @@ func UpcomingHandler(db *sql.DB) http.HandlerFunc {
 			if err != nil {
 				continue
 			}
+
+			// Advance past dates forward until we reach today or beyond.
+			for nextDue.Before(today) {
+				copy := rec
+				copy.LastGenerated = nextDue.Format("2006-01-02")
+				nextDue, err = nextRecurringDueDate(copy)
+				if err != nil {
+					break
+				}
+			}
+			if err != nil {
+				continue
+			}
+
 			adjusted := nextBusinessDay(nextDue)
 
-			// Skip if before today or beyond horizon.
-			if adjusted.Before(today) || adjusted.After(horizon) {
+			// Skip if beyond horizon.
+			if adjusted.After(horizon) {
 				continue
 			}
 
