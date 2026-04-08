@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Circle, Users, DollarSign, Clock, AlertTriangle, RotateCcw } from 'lucide-react'
 import { useForgeStatus } from '../../hooks/useForgeStatus'
-import { useNeedsAttention } from '../../hooks/useNeedsAttention'
+import { computeNeedsAttentionItems } from '../../hooks/useNeedsAttention'
 import { useAuth } from '../../auth'
 import ConfirmDialog from '../ConfirmDialog'
 
@@ -54,7 +54,7 @@ export default function StatusBar({ showToast, onNeedsAttentionClick }: StatusBa
   const { t } = useTranslation('forge')
   const { user } = useAuth()
   const { status, error, loading } = useForgeStatus()
-  const { count: needsAttentionCount } = useNeedsAttention()
+  const needsAttentionCount = useMemo(() => computeNeedsAttentionItems(status).length, [status])
   const [todayCost, setTodayCost] = useState<number>(0)
   const [lastPoll, setLastPoll] = useState<string | undefined>(undefined)
   const [confirmRestart, setConfirmRestart] = useState(false)
@@ -179,19 +179,29 @@ export default function StatusBar({ showToast, onNeedsAttentionClick }: StatusBa
         value={formattedTime}
       />
 
-      {needsAttentionCount > 0 && (
-        <button
-          type="button"
-          onClick={onNeedsAttentionClick}
-          aria-label={t('mezzanine.statusBar.needsAttention', { count: needsAttentionCount })}
-          className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors
-            bg-amber-600/20 text-amber-300 border-amber-600/30
-            hover:bg-amber-600/30"
-        >
-          <AlertTriangle size={14} />
-          <span className="font-medium">{needsAttentionCount}</span>
-        </button>
-      )}
+      {needsAttentionCount > 0 &&
+        (onNeedsAttentionClick ? (
+          <button
+            type="button"
+            onClick={onNeedsAttentionClick}
+            aria-label={t('mezzanine.statusBar.needsAttention', { count: needsAttentionCount })}
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors
+              bg-amber-600/20 text-amber-300 border-amber-600/30
+              hover:bg-amber-600/30"
+          >
+            <AlertTriangle size={14} />
+            <span className="font-medium">{needsAttentionCount}</span>
+          </button>
+        ) : (
+          <div
+            aria-label={t('mezzanine.statusBar.needsAttention', { count: needsAttentionCount })}
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm
+              bg-amber-600/20 text-amber-300 border-amber-600/30"
+          >
+            <AlertTriangle size={14} />
+            <span className="font-medium">{needsAttentionCount}</span>
+          </div>
+        ))}
 
       {user?.is_admin && (
         <button

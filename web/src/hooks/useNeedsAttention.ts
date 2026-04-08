@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useForgeStatus } from './useForgeStatus'
-import type { StuckBead, OpenPR } from './useForgeStatus'
+import type { StuckBead, OpenPR, ForgeStatus } from './useForgeStatus'
 
 /** Source of the stuck item: retries table or an exhausted PR. */
 export type NeedsAttentionSource = 'retry' | 'pr'
@@ -159,10 +159,38 @@ function buildItem(bead: StuckBead, pr: OpenPR | undefined): NeedsAttentionItem 
   }
 }
 
+/** Returns true when a stuck bead meets the criteria to appear in the Needs Attention panel. */
+function meetsAttentionCriteria(bead: StuckBead): boolean {
+  return bead.needs_human || bead.clarification_needed || bead.dispatch_failures > 0 || bead.retry_count > 0
+}
+
+/**
+ * Pure helper: computes the list of needs-attention items from a forge status
+ * snapshot. Consumers that already hold a `ForgeStatus` value (e.g. `StatusBar`)
+ * can call this directly instead of invoking `useNeedsAttention()`, avoiding a
+ * second `useForgeStatus()` polling loop.
+ */
+export function computeNeedsAttentionItems(status: ForgeStatus | null | undefined): NeedsAttentionItem[] {
+  if (!status) return []
+
+  const prByBeadId = new Map<string, OpenPR>()
+  if (status.open_prs) {
+    for (const pr of status.open_prs) {
+      if (!prByBeadId.has(pr.bead_id)) {
+        prByBeadId.set(pr.bead_id, pr)
+      }
+    }
+  }
+
+  return (status.stuck ?? [])
+    .filter(meetsAttentionCriteria)
+    .map(bead => buildItem(bead, prByBeadId.get(bead.bead_id)))
+}
+
 /**
  * Combines stuck retries and exhausted PRs from forge status into a unified
  * list of items that need human attention. This is the foundational data layer
- * consumed by the status bar badge and needs-attention modal.
+ * consumed by the status bar badge and needs-attention panel.
  */
 export function useNeedsAttention(): {
   items: NeedsAttentionItem[]
@@ -170,22 +198,7 @@ export function useNeedsAttention(): {
   isLoading: boolean
 } {
   const { status, loading } = useForgeStatus()
-
-  const items = useMemo(() => {
-    if (!status) return []
-
-    const prByBeadId = new Map<string, OpenPR>()
-    if (status.open_prs) {
-      for (const pr of status.open_prs) {
-        if (!prByBeadId.has(pr.bead_id)) {
-          prByBeadId.set(pr.bead_id, pr)
-        }
-      }
-    }
-
-    return (status.stuck ?? []).map(bead => buildItem(bead, prByBeadId.get(bead.bead_id)))
-  }, [status])
-
+  const items = useMemo(() => computeNeedsAttentionItems(status), [status])
   return {
     items,
     count: items.length,
