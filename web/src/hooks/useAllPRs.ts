@@ -73,7 +73,7 @@ export function useAllPRs(enabled: boolean = true) {
       controller.abort()
       if (timeoutId !== undefined) clearTimeout(timeoutId)
     }
-  }, [enabled, refreshKey])
+  }, [enabled, refreshKey, t])
 
   return { data, loading, error, refetch }
 }
