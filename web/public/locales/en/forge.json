@@ -435,7 +435,8 @@
       "closeModal": "Close",
       "refreshing": "Refreshing…",
       "noMergeReady": "No PRs ready to merge",
-      "noWorkerFocused": "No worker focused — press 1-6 to select one"
+      "noWorkerFocused": "No worker focused — press 1-6 to select one",
+      "togglePRModal": "Toggle PR management"
     },
     "lifecycle": {
       "title": "Bead Lifecycle — {{beadId}}",
@@ -556,5 +557,9 @@
     "openPRs": "Open PRs",
     "queueDepth": "Queue",
     "lastActivity": "Last activity"
+  },
+  "prModal": {
+    "title": "PR Management",
+    "placeholder": "PR management coming soon…"
   }
 }

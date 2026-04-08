@@ -12,6 +12,7 @@ function makeActions(overrides: Partial<KeyboardShortcutActions> = {}): Keyboard
     onFocusPanel: vi.fn(),
     onFocusWorker: vi.fn(),
     onShowHelp: vi.fn(),
+    onTogglePRModal: vi.fn(),
     ...overrides,
   }
 }
@@ -134,6 +135,13 @@ describe('useKeyboardShortcuts', () => {
       expect(actions.onFocusWorker).toHaveBeenCalledWith(5)
     })
 
+    it('calls onTogglePRModal for "p"', () => {
+      const actions = makeActions()
+      renderHook(() => useKeyboardShortcuts(actions))
+      fireKey('p')
+      expect(actions.onTogglePRModal).toHaveBeenCalledOnce()
+    })
+
     it('calls onShowHelp for "?"', () => {
       const actions = makeActions()
       renderHook(() => useKeyboardShortcuts(actions))
@@ -193,6 +201,19 @@ describe('useKeyboardShortcuts', () => {
       renderHook(() => useKeyboardShortcuts(actions))
       fireKey('r')
       expect(actions.onRefresh).not.toHaveBeenCalled()
+
+      document.body.removeChild(dialog)
+    })
+
+    it('still fires onTogglePRModal for "p" even when an aria-modal dialog is open', () => {
+      const dialog = document.createElement('div')
+      dialog.setAttribute('aria-modal', 'true')
+      document.body.appendChild(dialog)
+
+      const actions = makeActions()
+      renderHook(() => useKeyboardShortcuts(actions))
+      fireKey('p')
+      expect(actions.onTogglePRModal).toHaveBeenCalledOnce()
 
       document.body.removeChild(dialog)
     })
