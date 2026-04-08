@@ -131,7 +131,7 @@ export default function NeedsAttentionModal({ open, onClose, items, showToast, o
 
   return (
     <>
-      <Dialog open={open} onClose={onClose} maxWidth="max-w-lg" aria-labelledby={titleId}>
+      <Dialog open={open && pendingConfirm === null} onClose={onClose} maxWidth="max-w-lg" aria-labelledby={titleId}>
         <DialogHeader id={titleId} title={t('attention.title')} onClose={onClose} />
         <DialogBody className="p-0">
           {items.length === 0 ? (

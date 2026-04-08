@@ -144,7 +144,10 @@ export default function MezzaninePage() {
     [workers],
   )
 
-  const attentionItems = useMemo(() => computeNeedsAttentionItems(status), [status])
+  const attentionItems = useMemo(
+    () => computeNeedsAttentionItems(status).filter(item => anvilFilter.isVisible(item.anvil)),
+    [status, anvilFilter],
+  )
 
   const handleRefresh = useCallback(() => {
     refreshWorkers()
@@ -216,6 +219,7 @@ export default function MezzaninePage() {
     <MezzanineLayout
       showToast={showToast}
       onNeedsAttentionClick={() => setShowNeedsAttention(true)}
+      needsAttentionCount={attentionItems.length}
       headerActions={
         allAnvils.length > 1 ? (
           <AnvilFilterDropdown

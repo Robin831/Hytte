@@ -48,13 +48,15 @@ interface CostSummary {
 interface StatusBarProps {
   showToast?: (message: string, type: 'success' | 'error') => void
   onNeedsAttentionClick?: () => void
+  needsAttentionCount?: number
 }
 
-export default function StatusBar({ showToast, onNeedsAttentionClick }: StatusBarProps) {
+export default function StatusBar({ showToast, onNeedsAttentionClick, needsAttentionCount: needsAttentionCountProp }: StatusBarProps) {
   const { t } = useTranslation('forge')
   const { user } = useAuth()
   const { status, error, loading } = useForgeStatus()
-  const needsAttentionCount = useMemo(() => computeNeedsAttentionItems(status).length, [status])
+  const ownNeedsAttentionCount = useMemo(() => computeNeedsAttentionItems(status).length, [status])
+  const needsAttentionCount = needsAttentionCountProp ?? ownNeedsAttentionCount
   const [todayCost, setTodayCost] = useState<number>(0)
   const [lastPoll, setLastPoll] = useState<string | undefined>(undefined)
   const [confirmRestart, setConfirmRestart] = useState(false)
