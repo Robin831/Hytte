@@ -895,8 +895,8 @@ func TestVacationHandler_Empty(t *testing.T) {
 	if resp.DaysRemaining != 25 {
 		t.Errorf("DaysRemaining = %d, want 25", resp.DaysRemaining)
 	}
-	if resp.FeriepengerPct != 10.2 {
-		t.Errorf("FeriepengerPct = %v, want 10.2", resp.FeriepengerPct)
+	if resp.FeriepengerPct != 12 {
+		t.Errorf("FeriepengerPct = %v, want 12", resp.FeriepengerPct)
 	}
 }
 
@@ -937,7 +937,7 @@ func TestVacationHandler_WithVacationDays(t *testing.T) {
 	if v.DaysRemaining != 20 {
 		t.Errorf("DaysRemaining = %d, want 20", v.DaysRemaining)
 	}
-	wantAccrued := 80000 * 0.102
+	wantAccrued := 80000 * 0.12
 	if v.FeriepengerAccrued != wantAccrued {
 		t.Errorf("FeriepengerAccrued = %v, want %v", v.FeriepengerAccrued, wantAccrued)
 	}

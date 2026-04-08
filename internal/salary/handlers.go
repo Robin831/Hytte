@@ -1178,8 +1178,8 @@ type VacationResponse struct {
 }
 
 const (
-	vacationDaysAllowance = 25    // Norwegian statutory minimum (ferieloven)
-	feriepengerRate       = 0.102 // 10.2% of gross — standard Norwegian rate
+	vacationDaysAllowance = 25   // Norwegian statutory minimum (ferieloven)
+	feriepengerRate       = 0.12 // 12% of gross — Norwegian rate with 5 weeks vacation (avtalefestet)
 )
 
 // VacationHandler handles GET /api/salary/vacation?year=YYYY.
