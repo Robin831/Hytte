@@ -54,7 +54,13 @@
     "viewPR": "View PR #{{number}}",
     "viewLogs": "View Logs",
     "viewLogsTitle": "Logs — {{id}}",
-    "closeLogs": "Close log viewer"
+    "closeLogs": "Close log viewer",
+    "modal": {
+      "statusNeedsHuman": "Needs human",
+      "statusDispatchFailure": "Dispatch failure",
+      "statusCIExhausted": "CI exhausted",
+      "statusReviewExhausted": "Review exhausted"
+    }
   },
   "readyToMerge": {
     "title": "Pull Requests",

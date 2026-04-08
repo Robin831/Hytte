@@ -19,6 +19,7 @@ import AnvilFilterDropdown from '../components/mezzanine/AnvilFilterDropdown'
 import BeadDetailModal from '../components/BeadDetailModal'
 import MergeConfirmDialog from '../components/MergeConfirmDialog'
 import ShortcutHelpModal from '../components/mezzanine/ShortcutHelpModal'
+import NeedsAttentionModal from '../components/mezzanine/NeedsAttentionModal'
 import ToastList from '../components/ToastList'
 
 export default function MezzaninePage() {
@@ -52,6 +53,7 @@ export default function MezzaninePage() {
   const [initialBeadDeepLink] = useState(() => searchParams.get('bead'))
   const [selectedBeadId, setSelectedBeadId] = useState<string | null>(() => searchParams.get('bead'))
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
+  const [showNeedsAttention, setShowNeedsAttention] = useState(false)
   const [mergeConfirmPR, setMergeConfirmPR] = useState<{ id: number; number: number } | null>(null)
   const [focusedPanel, setFocusedPanel] = useState<PanelKey | null>(null)
   const [focusedWorkerIndex, setFocusedWorkerIndex] = useState<number | null>(null)
@@ -210,7 +212,7 @@ export default function MezzaninePage() {
   return (
     <MezzanineLayout
       showToast={showToast}
-      onNeedsAttentionClick={() => needsAttentionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+      onNeedsAttentionClick={() => setShowNeedsAttention(true)}
       headerActions={
         allAnvils.length > 1 ? (
           <AnvilFilterDropdown
@@ -298,6 +300,13 @@ export default function MezzaninePage() {
           onCancel={() => setMergeConfirmPR(null)}
         />
       )}
+
+      <NeedsAttentionModal
+        open={showNeedsAttention}
+        onClose={() => setShowNeedsAttention(false)}
+        showToast={showToast}
+        onBeadClick={setSelectedBeadId}
+      />
 
       <ShortcutHelpModal
         open={showShortcutHelp}

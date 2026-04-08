@@ -54,7 +54,13 @@
     "viewPR": "Vis PR #{{number}}",
     "viewLogs": "Vis logger",
     "viewLogsTitle": "Logger — {{id}}",
-    "closeLogs": "Lukk loggvisning"
+    "closeLogs": "Lukk loggvisning",
+    "modal": {
+      "statusNeedsHuman": "Trenger menneske",
+      "statusDispatchFailure": "Utsendingsfeil",
+      "statusCIExhausted": "CI uttømt",
+      "statusReviewExhausted": "Gjennomgang uttømt"
+    }
   },
   "readyToMerge": {
     "title": "Pull Requests",

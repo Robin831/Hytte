@@ -54,7 +54,13 @@
     "viewPR": "ดู PR #{{number}}",
     "viewLogs": "ดูล็อก",
     "viewLogsTitle": "ล็อก — {{id}}",
-    "closeLogs": "ปิดตัวดูล็อก"
+    "closeLogs": "ปิดตัวดูล็อก",
+    "modal": {
+      "statusNeedsHuman": "ต้องการคน",
+      "statusDispatchFailure": "การส่งล้มเหลว",
+      "statusCIExhausted": "CI หมดรอบ",
+      "statusReviewExhausted": "การตรวจสอบหมดรอบ"
+    }
   },
   "readyToMerge": {
     "title": "Pull Requests",
