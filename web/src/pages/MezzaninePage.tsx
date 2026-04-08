@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { useAuth } from '../auth'
 import { useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useForgeWorkers, useForgeStatus, useForgeQueue } from '../hooks/useForgeStatus'
@@ -22,10 +23,13 @@ import MergeConfirmDialog from '../components/MergeConfirmDialog'
 import ShortcutHelpModal from '../components/mezzanine/ShortcutHelpModal'
 import NeedsAttentionModal from '../components/mezzanine/NeedsAttentionModal'
 import PRModal from '../components/mezzanine/PRModal'
+import ReleaseModal from '../components/mezzanine/ReleaseModal'
 import ToastList from '../components/ToastList'
 
 export default function MezzaninePage() {
   const { t } = useTranslation('forge')
+  const { user } = useAuth()
+  const isAdmin = !!user?.is_admin
   const { workers: allWorkers, refresh: refreshWorkers } = useForgeWorkers()
   const { status, refresh: refreshStatus } = useForgeStatus()
   const { beads: queueBeads, refresh: refreshQueue } = useForgeQueue()
@@ -57,6 +61,7 @@ export default function MezzaninePage() {
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
   const [showNeedsAttention, setShowNeedsAttention] = useState(false)
   const [showPRModal, setShowPRModal] = useState(false)
+  const [showReleaseModal, setShowReleaseModal] = useState(false)
   const [mergeConfirmPR, setMergeConfirmPR] = useState<{ id: number; number: number } | null>(null)
   const [focusedPanel, setFocusedPanel] = useState<PanelKey | null>(null)
   const [focusedWorkerIndex, setFocusedWorkerIndex] = useState<number | null>(null)
@@ -212,8 +217,9 @@ export default function MezzaninePage() {
       onFocusWorker: handleFocusWorker,
       onShowHelp: () => setShowShortcutHelp(true),
       onTogglePRModal: () => setShowPRModal(prev => !prev),
+      onToggleReleaseModal: () => { if (isAdmin) setShowReleaseModal(prev => !prev) },
     }),
-    [handleRefresh, handleMergeFirstReady, handleKillFocusedWorker, handleFocusPanel, handleFocusWorker],
+    [handleRefresh, handleMergeFirstReady, handleKillFocusedWorker, handleFocusPanel, handleFocusWorker, isAdmin],
   )
 
   useKeyboardShortcuts(shortcutActions)
@@ -223,6 +229,7 @@ export default function MezzaninePage() {
       showToast={showToast}
       onNeedsAttentionClick={() => setShowNeedsAttention(true)}
       needsAttentionCount={attentionItems.length}
+      onReleaseClick={() => setShowReleaseModal(true)}
       headerActions={
         allAnvils.length > 1 ? (
           <AnvilFilterDropdown
@@ -326,9 +333,16 @@ export default function MezzaninePage() {
         onBeadClick={setSelectedBeadId}
       />
 
+      <ReleaseModal
+        open={showReleaseModal}
+        onClose={() => setShowReleaseModal(false)}
+        showToast={showToast}
+      />
+
       <ShortcutHelpModal
         open={showShortcutHelp}
         onClose={() => setShowShortcutHelp(false)}
+        isAdmin={isAdmin}
       />
 
       <ToastList toasts={toasts} />

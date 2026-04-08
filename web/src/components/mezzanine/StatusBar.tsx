@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Circle, Users, DollarSign, Clock, AlertTriangle, RotateCcw } from 'lucide-react'
+import { Circle, Users, DollarSign, Clock, AlertTriangle, RotateCcw, Tag } from 'lucide-react'
 import { useForgeStatus } from '../../hooks/useForgeStatus'
 import { computeNeedsAttentionItems } from '../../hooks/useNeedsAttention'
 import { useAuth } from '../../auth'
@@ -49,9 +49,10 @@ interface StatusBarProps {
   showToast?: (message: string, type: 'success' | 'error') => void
   onNeedsAttentionClick?: () => void
   needsAttentionCount?: number
+  onReleaseClick?: () => void
 }
 
-export default function StatusBar({ showToast, onNeedsAttentionClick, needsAttentionCount: needsAttentionCountProp }: StatusBarProps) {
+export default function StatusBar({ showToast, onNeedsAttentionClick, needsAttentionCount: needsAttentionCountProp, onReleaseClick }: StatusBarProps) {
   const { t } = useTranslation('forge')
   const { user } = useAuth()
   const { status, error, loading } = useForgeStatus()
@@ -204,6 +205,20 @@ export default function StatusBar({ showToast, onNeedsAttentionClick, needsAtten
             <span className="font-medium">{needsAttentionCount}</span>
           </div>
         ))}
+
+      {user?.is_admin && onReleaseClick && (
+        <button
+          type="button"
+          onClick={onReleaseClick}
+          aria-label={t('release.title')}
+          className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors
+            bg-emerald-600/20 text-emerald-300 border-emerald-600/30
+            hover:bg-emerald-600/30"
+        >
+          <Tag size={14} />
+          <span className="hidden sm:inline">{t('release.title')}</span>
+        </button>
+      )}
 
       {user?.is_admin && (
         <button

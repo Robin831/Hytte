@@ -5,6 +5,7 @@ import { X } from 'lucide-react'
 interface ShortcutHelpModalProps {
   open: boolean
   onClose: () => void
+  isAdmin?: boolean
 }
 
 interface ShortcutEntry {
@@ -12,7 +13,7 @@ interface ShortcutEntry {
   label: string
 }
 
-export default function ShortcutHelpModal({ open, onClose }: ShortcutHelpModalProps) {
+export default function ShortcutHelpModal({ open, onClose, isAdmin }: ShortcutHelpModalProps) {
   const { t } = useTranslation('forge')
 
   const SHORTCUTS: ShortcutEntry[] = [
@@ -24,6 +25,7 @@ export default function ShortcutHelpModal({ open, onClose }: ShortcutHelpModalPr
     { key: 'e', label: t('mezzanine.shortcuts.focusEvents') },
     { key: '1-6', label: t('mezzanine.shortcuts.focusWorkerN') },
     { key: 'p', label: t('mezzanine.shortcuts.togglePRModal') },
+    ...(isAdmin ? [{ key: 'l', label: `${t('mezzanine.shortcuts.toggleReleaseModal')} (admin only)` }] : []),
     { key: '?', label: t('mezzanine.shortcuts.showHelp') },
     { key: 'Esc', label: t('mezzanine.shortcuts.closeModal') },
   ]
