@@ -870,6 +870,99 @@ func TestClosedPRs_DefaultPerAnvil(t *testing.T) {
 	}
 }
 
+// --- RecentlyMergedPRs ---
+
+func TestRecentlyMergedPRs_Empty(t *testing.T) {
+	fdb := setupTestDB(t)
+	prs, err := fdb.RecentlyMergedPRs(time.Now().Add(-24 * time.Hour))
+	if err != nil {
+		t.Fatalf("RecentlyMergedPRs: %v", err)
+	}
+	if prs == nil {
+		t.Error("expected non-nil empty slice, got nil")
+	}
+	if len(prs) != 0 {
+		t.Errorf("expected 0 prs, got %d", len(prs))
+	}
+}
+
+func TestRecentlyMergedPRs_FiltersByCutoff(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC()
+	recent := now.Add(-1 * time.Hour).Format(time.RFC3339)
+	old := now.Add(-25 * time.Hour).Format(time.RFC3339)
+
+	_, err := fdb.db.Exec(`
+		INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at, last_checked,
+		                 ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		                 has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES
+		  (1, 10, 'anvil1', 'b1', 'feat/b1', 'main', 'Recent merged',  'merged', ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+		  (2, 11, 'anvil1', 'b2', 'feat/b2', 'main', 'Old merged',     'merged', ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+		  (3, 12, 'anvil1', 'b3', 'feat/b3', 'main', 'Open PR',        'open',   ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+	`, recent, recent, old, old, recent, recent)
+	if err != nil {
+		t.Fatalf("insert prs: %v", err)
+	}
+
+	since := now.Add(-24 * time.Hour)
+	prs, err := fdb.RecentlyMergedPRs(since)
+	if err != nil {
+		t.Fatalf("RecentlyMergedPRs: %v", err)
+	}
+	if len(prs) != 1 {
+		t.Fatalf("expected 1 recently merged PR, got %d", len(prs))
+	}
+	if prs[0].Number != 10 {
+		t.Errorf("expected PR number 10, got %d", prs[0].Number)
+	}
+	if prs[0].Status != "merged" {
+		t.Errorf("expected status 'merged', got %q", prs[0].Status)
+	}
+}
+
+func TestRecentlyMergedPRs_OrderedByLastCheckedDesc(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	now := time.Now().UTC()
+	t1 := now.Add(-1 * time.Hour).Format(time.RFC3339)
+	t2 := now.Add(-2 * time.Hour).Format(time.RFC3339)
+	t3 := now.Add(-3 * time.Hour).Format(time.RFC3339)
+
+	_, err := fdb.db.Exec(`
+		INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at, last_checked,
+		                 ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		                 has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES
+		  (1, 10, 'anvil1', 'b1', 'feat/b1', 'main', 'PR oldest',  'merged', ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+		  (2, 11, 'anvil1', 'b2', 'feat/b2', 'main', 'PR newest',  'merged', ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+		  (3, 12, 'anvil1', 'b3', 'feat/b3', 'main', 'PR middle',  'merged', ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+	`, t3, t3, t1, t1, t2, t2)
+	if err != nil {
+		t.Fatalf("insert prs: %v", err)
+	}
+
+	since := now.Add(-24 * time.Hour)
+	prs, err := fdb.RecentlyMergedPRs(since)
+	if err != nil {
+		t.Fatalf("RecentlyMergedPRs: %v", err)
+	}
+	if len(prs) != 3 {
+		t.Fatalf("expected 3 prs, got %d", len(prs))
+	}
+	// Should be ordered newest last_checked first.
+	if prs[0].Number != 11 {
+		t.Errorf("expected first PR 11 (newest), got %d", prs[0].Number)
+	}
+	if prs[1].Number != 12 {
+		t.Errorf("expected second PR 12 (middle), got %d", prs[1].Number)
+	}
+	if prs[2].Number != 10 {
+		t.Errorf("expected third PR 10 (oldest), got %d", prs[2].Number)
+	}
+}
+
 // --- QueueAll ---
 
 func TestQueueAll_Empty(t *testing.T) {

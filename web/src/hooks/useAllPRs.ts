@@ -13,9 +13,21 @@ export interface ExternalPR {
   is_draft: boolean
 }
 
+export interface MergedPR {
+  id: number
+  number: number
+  title: string
+  anvil: string
+  bead_id: string
+  branch: string
+  status: string
+  last_checked?: string
+}
+
 export interface AllPRsData {
   forge_prs: OpenPR[]
   external_prs: ExternalPR[]
+  recently_merged: MergedPR[]
 }
 
 export function useAllPRs(enabled: boolean = true) {

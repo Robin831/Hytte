@@ -571,6 +571,9 @@
     "reviewPending": "รอการตรวจสอบ",
     "conflict": "ขัดแย้ง",
     "unresolvedThreads": "เธรด",
-    "retry": "ลองอีกครั้ง"
+    "retry": "ลองอีกครั้ง",
+    "recentlyMergedSection": "รวมล่าสุด ({{count}})",
+    "merged": "รวมแล้ว",
+    "lastObserved": "พบล่าสุด {{time}}"
   }
 }

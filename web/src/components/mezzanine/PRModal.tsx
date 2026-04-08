@@ -20,8 +20,9 @@ import type { TFunction } from 'i18next'
 import { Dialog, DialogHeader, DialogBody } from '../ui/dialog'
 import ConfirmDialog from '../ConfirmDialog'
 import { useAllPRs } from '../../hooks/useAllPRs'
-import type { ExternalPR } from '../../hooks/useAllPRs'
+import type { ExternalPR, MergedPR } from '../../hooks/useAllPRs'
 import type { OpenPR } from '../../hooks/useForgeStatus'
+import { timeAgo } from '../../utils/timeAgo'
 
 interface PRModalProps {
   open: boolean
@@ -99,6 +100,7 @@ function ReviewBadge({ pr, t }: { pr: OpenPR; t: TFunction<'forge'> }) {
 
 export default function PRModal({ open, onClose, showToast, onBeadClick }: PRModalProps) {
   const { t } = useTranslation('forge')
+  const { t: tCommon } = useTranslation('common')
   const titleId = useId()
   const { data, loading, error, refetch } = useAllPRs(open)
   const [acting, setActing] = useState<Partial<Record<string, boolean>>>({})
@@ -548,6 +550,58 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
     )
   }
 
+  const recentlyMerged = data?.recently_merged ?? []
+
+  function renderMergedPR(pr: MergedPR) {
+    const url = githubUrl(pr.anvil, pr.number)
+    return (
+      <div key={`merged-${pr.id}`} className="px-4 py-3 flex flex-col gap-1">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex flex-col gap-1 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs text-gray-500 shrink-0">#{pr.number}</span>
+              <span className="text-sm text-gray-300 truncate">{pr.title}</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {pr.bead_id && (
+                <button
+                  type="button"
+                  onClick={() => handleBeadClick(pr.bead_id)}
+                  className="text-xs font-mono text-cyan-400 hover:text-cyan-300 hover:underline transition-colors"
+                >
+                  {pr.bead_id}
+                </button>
+              )}
+              <span className="text-xs text-gray-600 truncate max-w-[150px] sm:max-w-none">{pr.branch}</span>
+              {pr.last_checked && (
+                <span className="text-xs text-gray-500" title={t('prModal.lastObserved', { time: timeAgo(pr.last_checked, tCommon) })}>
+                  {t('prModal.lastObserved', { time: timeAgo(pr.last_checked, tCommon) })}
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400 border border-purple-500/25">
+              <GitMerge size={12} />
+              <span className="hidden sm:inline">{t('prModal.merged')}</span>
+            </span>
+            {url && (
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={t('readyToMerge.viewOnGitHub')}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <ExternalLink size={14} />
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const hasConfirmDialog = confirmAction !== null || confirmExtAction !== null
 
   return (
@@ -579,7 +633,7 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
               </button>
             </div>
           )}
-          {!loading && !error && totalCount === 0 && (
+          {!loading && !error && totalCount === 0 && recentlyMerged.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-gray-400">
               <GitPullRequest size={40} className="mb-4 text-gray-600" />
               <p className="text-sm">{t('prModal.empty')}</p>
@@ -629,6 +683,16 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
                   </div>
                 )
               })}
+            </div>
+          )}
+          {!loading && !error && recentlyMerged.length > 0 && (
+            <div className="border-t border-gray-700/40">
+              <p className="px-4 py-2.5 text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-800/30">
+                {t('prModal.recentlyMergedSection', { count: recentlyMerged.length })}
+              </p>
+              <div className="divide-y divide-gray-800/50">
+                {recentlyMerged.map(pr => renderMergedPR(pr))}
+              </div>
             </div>
           )}
         </DialogBody>

@@ -31,8 +31,9 @@ type ExternalPR struct {
 // AllPRsResponse contains all forge-tracked and external PRs returned by the API.
 // Any grouping (e.g., by anvil) is performed client-side.
 type AllPRsResponse struct {
-	ForgePRs    []PR           `json:"forge_prs"`
-	ExternalPRs []ExternalPR   `json:"external_prs"`
+	ForgePRs        []PR         `json:"forge_prs"`
+	ExternalPRs     []ExternalPR `json:"external_prs"`
+	RecentlyMerged  []PR         `json:"recently_merged"`
 }
 
 // ghPR is the JSON shape returned by `gh pr list --json`.
@@ -247,9 +248,26 @@ func AllPRsHandler(db *DB) http.HandlerFunc {
 			external = []ExternalPR{}
 		}
 
+		// RecentlyMergedPRs uses last_checked (observation/polling time) as a
+		// proxy for merge time, so the 24h window reflects when the merge was
+		// last observed, not the exact GitHub merge timestamp.
+		var recentlyMerged []PR
+		if db != nil {
+			since := time.Now().Add(-24 * time.Hour)
+			recentlyMerged, err = db.RecentlyMergedPRs(since)
+			if err != nil {
+				log.Printf("forge: all-prs: failed to load recently merged PRs: %v", err)
+				recentlyMerged = []PR{}
+			}
+		}
+		if recentlyMerged == nil {
+			recentlyMerged = []PR{}
+		}
+
 		writeJSON(w, http.StatusOK, AllPRsResponse{
-			ForgePRs:    forgePRs,
-			ExternalPRs: external,
+			ForgePRs:       forgePRs,
+			ExternalPRs:    external,
+			RecentlyMerged: recentlyMerged,
 		})
 	}
 }
