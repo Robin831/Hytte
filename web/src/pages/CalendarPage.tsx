@@ -276,7 +276,7 @@ export default function CalendarPage() {
     }
   })()
 
-  const viewButtons: { mode: ViewMode; icon: React.ReactNode; labelKey: string }[] = [
+  const viewButtons: { mode: ViewMode; icon: React.ReactNode; labelKey: 'calendar.monthView' | 'calendar.weekView' | 'calendar.dayView' | 'calendar.agenda' }[] = [
     { mode: 'month', icon: <LayoutGrid size={14} />, labelKey: 'calendar.monthView' },
     { mode: 'week', icon: <Columns3 size={14} />, labelKey: 'calendar.weekView' },
     { mode: 'day', icon: <Calendar size={14} />, labelKey: 'calendar.dayView' },
