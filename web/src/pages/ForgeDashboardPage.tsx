@@ -54,7 +54,7 @@ export default function ForgeDashboardPage() {
   const { user } = useAuth()
   const { status, error, loading: statusLoading } = useForgeStatus()
   const { workers: allWorkers, loading: workersLoading } = useForgeWorkers()
-  const { data: allPRsData } = useAllPRs()
+  const { data: allPRsData } = useAllPRs(true)
   const loading = statusLoading || workersLoading
   const { toasts, showToast } = useToast()
 

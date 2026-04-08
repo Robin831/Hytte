@@ -560,6 +560,17 @@
   },
   "prModal": {
     "title": "PR Management",
-    "placeholder": "PR management coming soon…"
+    "loading": "Loading pull requests…",
+    "error": "Failed to load pull requests",
+    "empty": "No open pull requests",
+    "ciPass": "CI Pass",
+    "ciFail": "CI Fail",
+    "ciPending": "CI Pending",
+    "reviewApproved": "Approved",
+    "reviewChanges": "Changes Requested",
+    "reviewPending": "Pending Review",
+    "conflict": "Conflict",
+    "unresolvedThreads": "Threads",
+    "retry": "Retry"
   }
 }
