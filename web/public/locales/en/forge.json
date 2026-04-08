@@ -571,6 +571,8 @@
     "reviewPending": "Pending Review",
     "conflict": "Conflict",
     "unresolvedThreads": "Threads",
-    "retry": "Retry"
+    "retry": "Retry",
+    "recentlyMergedSection": "Recently Merged ({{count}})",
+    "merged": "Merged"
   }
 }

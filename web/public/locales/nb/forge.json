@@ -571,6 +571,8 @@
     "reviewPending": "Venter på gjennomgang",
     "conflict": "Konflikt",
     "unresolvedThreads": "Tråder",
-    "retry": "Prøv igjen"
+    "retry": "Prøv igjen",
+    "recentlyMergedSection": "Nylig sammenslått ({{count}})",
+    "merged": "Sammenslått"
   }
 }
