@@ -74,9 +74,16 @@ function MainLayout() {
           <Route path="/" element={<TodayView />} />
           <Route path="/login" element={<Login />} />
           <Route path="/weather" element={<Weather />} />
-          <Route path="/calendar" element={<CalendarPage />} />
 
           {/* Feature-gated routes */}
+          <Route
+            path="/calendar"
+            element={
+              <FeatureRoute feature="calendar">
+                <CalendarPage />
+              </FeatureRoute>
+            }
+          />
           <Route
             path="/webhooks"
             element={
