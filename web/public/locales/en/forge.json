@@ -436,7 +436,8 @@
       "refreshing": "Refreshing…",
       "noMergeReady": "No PRs ready to merge",
       "noWorkerFocused": "No worker focused — press 1-6 to select one",
-      "togglePRModal": "Toggle PR management"
+      "togglePRModal": "Toggle PR management",
+      "toggleReleaseModal": "Toggle release"
     },
     "lifecycle": {
       "title": "Bead Lifecycle — {{beadId}}",

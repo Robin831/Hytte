@@ -22,6 +22,7 @@ import MergeConfirmDialog from '../components/MergeConfirmDialog'
 import ShortcutHelpModal from '../components/mezzanine/ShortcutHelpModal'
 import NeedsAttentionModal from '../components/mezzanine/NeedsAttentionModal'
 import PRModal from '../components/mezzanine/PRModal'
+import ReleaseModal from '../components/mezzanine/ReleaseModal'
 import ToastList from '../components/ToastList'
 
 export default function MezzaninePage() {
@@ -57,6 +58,7 @@ export default function MezzaninePage() {
   const [showShortcutHelp, setShowShortcutHelp] = useState(false)
   const [showNeedsAttention, setShowNeedsAttention] = useState(false)
   const [showPRModal, setShowPRModal] = useState(false)
+  const [showReleaseModal, setShowReleaseModal] = useState(false)
   const [mergeConfirmPR, setMergeConfirmPR] = useState<{ id: number; number: number } | null>(null)
   const [focusedPanel, setFocusedPanel] = useState<PanelKey | null>(null)
   const [focusedWorkerIndex, setFocusedWorkerIndex] = useState<number | null>(null)
@@ -212,6 +214,7 @@ export default function MezzaninePage() {
       onFocusWorker: handleFocusWorker,
       onShowHelp: () => setShowShortcutHelp(true),
       onTogglePRModal: () => setShowPRModal(prev => !prev),
+      onToggleReleaseModal: () => setShowReleaseModal(prev => !prev),
     }),
     [handleRefresh, handleMergeFirstReady, handleKillFocusedWorker, handleFocusPanel, handleFocusWorker],
   )
@@ -223,6 +226,7 @@ export default function MezzaninePage() {
       showToast={showToast}
       onNeedsAttentionClick={() => setShowNeedsAttention(true)}
       needsAttentionCount={attentionItems.length}
+      onReleaseClick={() => setShowReleaseModal(true)}
       headerActions={
         allAnvils.length > 1 ? (
           <AnvilFilterDropdown
@@ -324,6 +328,12 @@ export default function MezzaninePage() {
         onClose={() => setShowPRModal(false)}
         showToast={showToast}
         onBeadClick={setSelectedBeadId}
+      />
+
+      <ReleaseModal
+        open={showReleaseModal}
+        onClose={() => setShowReleaseModal(false)}
+        showToast={showToast}
       />
 
       <ShortcutHelpModal

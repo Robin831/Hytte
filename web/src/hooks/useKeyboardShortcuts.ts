@@ -10,6 +10,7 @@ export interface KeyboardShortcutActions {
   onFocusWorker: (index: number) => void
   onShowHelp: () => void
   onTogglePRModal: () => void
+  onToggleReleaseModal: () => void
 }
 
 export function useKeyboardShortcuts(actions: KeyboardShortcutActions, enabled = true) {
@@ -32,10 +33,15 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions, enabled =
       // Ignore when modifier keys are held (allow browser shortcuts)
       if (e.ctrlKey || e.metaKey || e.altKey) return
 
-      // Allow "p" to toggle the PR modal even when a modal is open (so it can close itself)
+      // Allow "p" and "l" to toggle modals even when a modal is open (so they can close themselves)
       if (e.key === 'p') {
         e.preventDefault()
         actions.onTogglePRModal()
+        return
+      }
+      if (e.key === 'l') {
+        e.preventDefault()
+        actions.onToggleReleaseModal()
         return
       }
 

@@ -24,6 +24,7 @@ export default function ShortcutHelpModal({ open, onClose }: ShortcutHelpModalPr
     { key: 'e', label: t('mezzanine.shortcuts.focusEvents') },
     { key: '1-6', label: t('mezzanine.shortcuts.focusWorkerN') },
     { key: 'p', label: t('mezzanine.shortcuts.togglePRModal') },
+    { key: 'l', label: t('mezzanine.shortcuts.toggleReleaseModal') },
     { key: '?', label: t('mezzanine.shortcuts.showHelp') },
     { key: 'Esc', label: t('mezzanine.shortcuts.closeModal') },
   ]
