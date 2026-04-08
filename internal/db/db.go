@@ -1375,6 +1375,36 @@ func createSchema(db *sql.DB) error {
 		updated_at    TEXT NOT NULL DEFAULT ''
 	);
 
+	-- Cached Google Calendar events for incremental sync (Hytte-w6p2).
+	-- Title, description, and location are encrypted at rest.
+	CREATE TABLE IF NOT EXISTS calendar_events (
+		id          TEXT NOT NULL,
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		calendar_id TEXT NOT NULL,
+		title       TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
+		location    TEXT NOT NULL DEFAULT '',
+		start_time  TEXT NOT NULL,
+		end_time    TEXT NOT NULL,
+		all_day     INTEGER NOT NULL DEFAULT 0,
+		status      TEXT NOT NULL DEFAULT '',
+		color       TEXT NOT NULL DEFAULT '',
+		updated_at  TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (id, user_id, calendar_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_calendar_events_user_time
+		ON calendar_events(user_id, start_time, end_time);
+
+	-- Per-user sync state for Google Calendar incremental sync (Hytte-w6p2).
+	CREATE TABLE IF NOT EXISTS calendar_sync_state (
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		calendar_id TEXT NOT NULL,
+		sync_token  TEXT NOT NULL DEFAULT '',
+		synced_at   TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (user_id, calendar_id)
+	);
+
 	`
 
 	_, err := db.Exec(schema)

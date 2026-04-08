@@ -12,6 +12,7 @@ import (
 	"github.com/Robin831/Hytte/internal/allowance"
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/budget"
+	"github.com/Robin831/Hytte/internal/calendar"
 	"github.com/Robin831/Hytte/internal/creditcard"
 	"github.com/Robin831/Hytte/internal/salary"
 	"github.com/Robin831/Hytte/internal/chat"
@@ -88,6 +89,9 @@ func NewRouter(db *sql.DB) http.Handler {
 
 	// Infrastructure module registry pre-populated with built-in modules.
 	infraRegistry := infra.NewDefaultRegistry(db)
+
+	// Google Calendar client (token management + event caching).
+	calendarClient := calendar.NewClient(db)
 
 	// Transit service (Entur API client with 30-second departure cache).
 	transitSvc := transit.NewService()
@@ -348,6 +352,15 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/notes/{id}", notes.GetHandler(db))
 				r.Put("/notes/{id}", notes.UpdateHandler(db))
 				r.Delete("/notes/{id}", notes.DeleteHandler(db))
+			})
+
+			// Calendar — Google Calendar integration, gated by "calendar" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "calendar"))
+				r.Get("/calendar/events", calendar.EventsHandler(db, calendarClient))
+				r.Get("/calendar/calendars", calendar.CalendarsHandler(db, calendarClient))
+				r.Put("/calendar/settings", calendar.SettingsHandler(db))
+				r.Post("/calendar/sync", calendar.SyncHandler(db, calendarClient))
 			})
 
 			// Vault — encrypted file storage, gated by "vault" feature.
