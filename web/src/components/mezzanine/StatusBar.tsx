@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Circle, Users, DollarSign, Clock, AlertTriangle, RotateCcw, Tag } from 'lucide-react'
+import { Circle, Users, DollarSign, Clock, AlertTriangle, RotateCcw, Tag, Settings } from 'lucide-react'
 import { useForgeStatus } from '../../hooks/useForgeStatus'
 import { computeNeedsAttentionItems } from '../../hooks/useNeedsAttention'
 import { useAuth } from '../../auth'
@@ -50,9 +50,10 @@ interface StatusBarProps {
   onNeedsAttentionClick?: () => void
   needsAttentionCount?: number
   onReleaseClick?: () => void
+  onSettingsClick?: () => void
 }
 
-export default function StatusBar({ showToast, onNeedsAttentionClick, needsAttentionCount: needsAttentionCountProp, onReleaseClick }: StatusBarProps) {
+export default function StatusBar({ showToast, onNeedsAttentionClick, needsAttentionCount: needsAttentionCountProp, onReleaseClick, onSettingsClick }: StatusBarProps) {
   const { t } = useTranslation('forge')
   const { user } = useAuth()
   const { status, error, loading } = useForgeStatus()
@@ -232,6 +233,20 @@ export default function StatusBar({ showToast, onNeedsAttentionClick, needsAtten
         >
           <RotateCcw size={14} className={restarting ? 'animate-spin' : ''} />
           <span className="hidden sm:inline">{t('actions.restart')}</span>
+        </button>
+      )}
+
+      {user?.is_admin && onSettingsClick && (
+        <button
+          type="button"
+          onClick={onSettingsClick}
+          aria-label={t('actions.settings')}
+          className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors
+            bg-gray-600/20 text-gray-300 border-gray-600/30
+            hover:bg-gray-600/30"
+        >
+          <Settings size={14} />
+          <span className="hidden sm:inline">{t('actions.settings')}</span>
         </button>
       )}
 

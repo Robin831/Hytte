@@ -26,6 +26,7 @@ export default function ShortcutHelpModal({ open, onClose, isAdmin }: ShortcutHe
     { key: '1-6', label: t('mezzanine.shortcuts.focusWorkerN') },
     { key: 'p', label: t('mezzanine.shortcuts.togglePRModal') },
     ...(isAdmin ? [{ key: 'l', label: `${t('mezzanine.shortcuts.toggleReleaseModal')} (admin only)` }] : []),
+    ...(isAdmin ? [{ key: 's', label: `${t('mezzanine.shortcuts.toggleSettingsModal')} (admin only)` }] : []),
     { key: '?', label: t('mezzanine.shortcuts.showHelp') },
     { key: 'Esc', label: t('mezzanine.shortcuts.closeModal') },
   ]

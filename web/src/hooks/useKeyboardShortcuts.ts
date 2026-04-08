@@ -11,6 +11,7 @@ export interface KeyboardShortcutActions {
   onShowHelp: () => void
   onTogglePRModal: () => void
   onToggleReleaseModal: () => void
+  onToggleSettingsModal: () => void
 }
 
 export function useKeyboardShortcuts(actions: KeyboardShortcutActions, enabled = true) {
@@ -33,7 +34,7 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions, enabled =
       // Ignore when modifier keys are held (allow browser shortcuts)
       if (e.ctrlKey || e.metaKey || e.altKey) return
 
-      // Allow "p" and "l" to toggle modals even when a modal is open (so they can close themselves)
+      // Allow "p", "l", and "s" to toggle modals even when a modal is open (so they can close themselves)
       if (e.key === 'p') {
         e.preventDefault()
         actions.onTogglePRModal()
@@ -44,7 +45,11 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions, enabled =
         actions.onToggleReleaseModal()
         return
       }
-
+      if (e.key === 's') {
+        e.preventDefault()
+        actions.onToggleSettingsModal()
+        return
+      }
       // Ignore all other global shortcuts while an aria-modal dialog is open
       if (document.querySelector('[aria-modal="true"]')) return
 

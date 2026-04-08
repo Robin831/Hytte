@@ -1,10 +1,12 @@
 {
   "title": "Forge Settings",
+  "description": "Configure Forge daemon settings including anvils, smith limits, timing, providers, and notifications",
   "loading": "Loading configuration…",
   "loadError": "Failed to load forge configuration",
   "save": "Save",
   "saving": "Saving…",
   "saveSuccess": "Configuration saved — forge will hot-reload",
+  "cancel": "Cancel",
   "saveError": "Failed to save configuration",
   "sections": {
     "settings": "Global Settings",
