@@ -574,8 +574,8 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
               )}
               <span className="text-xs text-gray-600 truncate max-w-[150px] sm:max-w-none">{pr.branch}</span>
               {pr.last_checked && (
-                <span className="text-xs text-gray-500">
-                  {timeAgo(pr.last_checked, tCommon)}
+                <span className="text-xs text-gray-500" title={t('prModal.lastObserved', { time: timeAgo(pr.last_checked, tCommon) })}>
+                  {t('prModal.lastObserved', { time: timeAgo(pr.last_checked, tCommon) })}
                 </span>
               )}
             </div>

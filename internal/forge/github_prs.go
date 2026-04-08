@@ -248,6 +248,9 @@ func AllPRsHandler(db *DB) http.HandlerFunc {
 			external = []ExternalPR{}
 		}
 
+		// RecentlyMergedPRs uses last_checked (observation/polling time) as a
+		// proxy for merge time, so the 24h window reflects when the merge was
+		// last observed, not the exact GitHub merge timestamp.
 		var recentlyMerged []PR
 		if db != nil {
 			since := time.Now().Add(-24 * time.Hour)

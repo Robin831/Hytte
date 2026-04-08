@@ -394,8 +394,9 @@ func (d *DB) ClosedPRs(perAnvil int) ([]PR, error) {
 	return prs, nil
 }
 
-// RecentlyMergedPRs returns PRs with status 'merged' whose last_checked is
-// after the given cutoff time, ordered by last_checked descending.
+// RecentlyMergedPRs returns PRs with status 'merged' whose last_checked
+// (observation/polling time, not an actual merge timestamp) is after the given
+// cutoff time, ordered by last_checked descending.
 func (d *DB) RecentlyMergedPRs(since time.Time) ([]PR, error) {
 	const q = `
 		SELECT id, number, anvil, bead_id, branch, base_branch, title, status,

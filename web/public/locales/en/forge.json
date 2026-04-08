@@ -573,6 +573,7 @@
     "unresolvedThreads": "Threads",
     "retry": "Retry",
     "recentlyMergedSection": "Recently Merged ({{count}})",
-    "merged": "Merged"
+    "merged": "Merged",
+    "lastObserved": "last observed {{time}}"
   }
 }

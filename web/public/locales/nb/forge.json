@@ -573,6 +573,7 @@
     "unresolvedThreads": "Tråder",
     "retry": "Prøv igjen",
     "recentlyMergedSection": "Nylig sammenslått ({{count}})",
-    "merged": "Sammenslått"
+    "merged": "Sammenslått",
+    "lastObserved": "sist observert {{time}}"
   }
 }
