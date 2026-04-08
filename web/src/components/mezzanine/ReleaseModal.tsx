@@ -109,14 +109,18 @@ export default function ReleaseModal({ open, onClose, showToast }: ReleaseModalP
     }
   }, [])
 
-  // Fetch suggestion when modal opens; reset confirm dialog on open
+  // Fetch suggestion when modal opens
   useEffect(() => {
     if (!open) return
-    setConfirmOpen(false)
     const controller = startSuggestionFetch()
     return () => controller.abort()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
+
+  function handleClose() {
+    setConfirmOpen(false)
+    onClose()
+  }
 
   function handleRefresh() {
     startSuggestionFetch()
@@ -158,14 +162,14 @@ export default function ReleaseModal({ open, onClose, showToast }: ReleaseModalP
     <>
       <Dialog
         open={open}
-        onClose={onClose}
+        onClose={handleClose}
         maxWidth="max-w-lg"
         aria-labelledby={titleId}
       >
         <DialogHeader
           id={titleId}
           title={t('release.title')}
-          onClose={onClose}
+          onClose={handleClose}
         />
         <DialogBody>
           {suggestLoading && !suggestion ? (
@@ -317,7 +321,7 @@ export default function ReleaseModal({ open, onClose, showToast }: ReleaseModalP
       </Dialog>
 
       <ConfirmDialog
-        open={confirmOpen}
+        open={open && confirmOpen}
         title={t('release.confirmTitle')}
         message={t('release.confirmMessage', { version: `v${version}` })}
         confirmLabel={t('release.releaseButton')}
