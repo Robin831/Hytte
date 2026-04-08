@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight, Plus, Trash2, X, Pencil, Check, TrendingUp, Home, Tag, CreditCard, Repeat, Receipt, Zap } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Trash2, X, Pencil, Check, TrendingUp, Home, Tag, CreditCard, Repeat, Receipt, Zap, Clock } from 'lucide-react'
 import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -52,6 +52,21 @@ interface MonthlySummary {
   net: number
   income_split: number
   by_category: CategorySummary[]
+}
+
+interface UpcomingTransaction {
+  date: string
+  description: string
+  amount: number
+  your_share: number
+  split_type: string
+  category_id: number | null
+  category_name: string
+  category_color: string
+  category_icon: string
+  frequency: string
+  recurring_id: number
+  variable_name?: string
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -400,6 +415,7 @@ export default function BudgetPage() {
   const [error, setError] = useState<string | null>(null)
   const [showQuickAdd, setShowQuickAdd] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [upcoming, setUpcoming] = useState<UpcomingTransaction[]>([])
   const [splitEditing, setSplitEditing] = useState(false)
   const [splitInput, setSplitInput] = useState('')
   const [splitSaving, setSplitSaving] = useState(false)
@@ -408,12 +424,14 @@ export default function BudgetPage() {
   const loadData = useCallback(async (m: string, signal?: AbortSignal) => {
     setLoading(true)
     setError(null)
+    setUpcoming([])
     try {
-      const [acctRes, catRes, txnRes, sumRes] = await Promise.all([
+      const [acctRes, catRes, txnRes, sumRes, upcomingRes] = await Promise.all([
         fetch('/api/budget/accounts', { credentials: 'include', signal }),
         fetch('/api/budget/categories', { credentials: 'include', signal }),
         fetch(`/api/budget/transactions?month=${m}`, { credentials: 'include', signal }),
         fetch(`/api/budget/summary?month=${m}`, { credentials: 'include', signal }),
+        fetch('/api/budget/upcoming', { credentials: 'include', signal }),
       ])
       if (!acctRes.ok || !catRes.ok || !txnRes.ok || !sumRes.ok) {
         throw new Error(t('errors.loadFailed'))
@@ -428,9 +446,14 @@ export default function BudgetPage() {
       setCategories(catData.categories ?? [])
       setTransactions(txnData.transactions ?? [])
       setSummary(sumData)
+      if (upcomingRes.ok) {
+        const upcomingData = await upcomingRes.json()
+        setUpcoming(upcomingData.upcoming ?? [])
+      }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : t('errors.loadFailed'))
+      setUpcoming([])
     } finally {
       setLoading(false)
     }
@@ -872,6 +895,71 @@ export default function BudgetPage() {
             })}
           </ul>
         </>
+      )}
+
+      {/* Upcoming transactions */}
+      {upcoming.length > 0 && (
+        <div className="border-t border-gray-800">
+          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide px-4 pt-4 pb-2 flex items-center gap-2">
+            <Clock size={14} />
+            {t('upcoming.title')}
+          </h2>
+          <ul className="divide-y divide-gray-800">
+            {upcoming.map((item) => {
+              const isIncome = item.amount > 0
+              const hasSplit = item.split_type !== 'percentage' || item.your_share !== item.amount
+
+              return (
+                <li key={`${item.recurring_id}-${item.date}`} className="flex items-center gap-3 px-4 py-3">
+                  {/* Date */}
+                  <span className="w-14 text-xs text-gray-400 shrink-0">
+                    {formatTxDate(item.date)}
+                  </span>
+
+                  {/* Description + category badge */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate text-gray-300">
+                      {item.description || t('noDescription')}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {item.category_name && (
+                        <span
+                          className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full"
+                          style={{
+                            backgroundColor: (item.category_color || '#6b7280') + '30',
+                            color: item.category_color || '#9ca3af',
+                            border: `1px solid ${(item.category_color || '#6b7280')}60`,
+                          }}
+                        >
+                          {item.category_icon} {item.category_name}
+                        </span>
+                      )}
+                      {item.variable_name && (
+                        <span className="text-xs text-gray-500">
+                          {item.variable_name}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Amount */}
+                  <div className="text-right shrink-0">
+                    <p
+                      className={`text-sm font-medium tabular-nums ${isIncome ? 'text-green-400/70' : 'text-red-400/70'}`}
+                    >
+                      {isIncome ? '+' : '-'}{formatAmount(item.amount)}
+                    </p>
+                    {hasSplit && Math.abs(item.your_share) !== Math.abs(item.amount) && (
+                      <p className="text-xs text-gray-500 tabular-nums">
+                        {t('upcoming.yourShare', { amount: formatAmount(item.your_share) })}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
       )}
     </div>
   )

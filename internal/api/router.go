@@ -329,6 +329,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/credit-card/sync-variable", creditcard.SyncVariableBillHandler(db))
 				r.Get("/credit-card/opening-balance", creditcard.OpeningBalanceGetHandler(db))
 				r.Put("/credit-card/opening-balance", creditcard.OpeningBalancePutHandler(db))
+				r.Get("/budget/upcoming", budget.UpcomingHandler(db))
 				r.Get("/budget/regning", budget.RegningHandler(db))
 				r.Get("/budget/recurring", budget.RecurringListHandler(db))
 				r.Post("/budget/recurring", budget.RecurringCreateHandler(db))

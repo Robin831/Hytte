@@ -401,6 +401,10 @@
       "copyFailed": "Kunne ikke kopiere fra forrige måned."
     }
   },
+  "upcoming": {
+    "title": "Kommende",
+    "yourShare": "Din del: {{amount}}"
+  },
   "errors": {
     "loadFailed": "Kunne ikke laste budsjettdata.",
     "saveFailed": "Kunne ikke lagre transaksjon.",
