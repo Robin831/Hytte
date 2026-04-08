@@ -498,6 +498,23 @@ func aggregateCategoryTotals(txns []Transaction, catMap map[int64]Category, limi
 		}
 	}
 
+	// Add categories that have budget limits but no transactions this month,
+	// so they still appear with "0 / budget" in the summary.
+	for catID, lim := range limits {
+		k := catKey{id: catID, valid: true}
+		if _, seen := aggMap[k]; !seen && lim.Amount > 0 {
+			a := &agg{catID: &catID}
+			id := catID
+			if cat, ok := catMap[id]; ok {
+				a.name = cat.Name
+				a.color = cat.Color
+				a.isIncome = cat.IsIncome
+			}
+			aggMap[k] = a
+			aggOrder = append(aggOrder, k)
+		}
+	}
+
 	byCat = make([]CategorySummary, 0, len(aggOrder))
 	for _, k := range aggOrder {
 		a := aggMap[k]
