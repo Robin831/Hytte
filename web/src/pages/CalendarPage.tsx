@@ -165,7 +165,10 @@ export default function CalendarPage() {
       })
       .catch(err => {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        setConnected(false)
+        // Leave connected as null (unknown) on network/server errors rather than
+        // showing the "not connected" state, which would be misleading if the user
+        // IS connected but the server is temporarily unavailable.
+        setError(t('calendar.errors.failedToLoad'))
         console.error('Failed to load calendars:', err)
       })
       .finally(() => {
@@ -198,21 +201,12 @@ export default function CalendarPage() {
   }, [showSelector])
 
   const handleSync = async () => {
+    // Use sync=true on the events endpoint for an inline refresh of the displayed range.
+    // This avoids the heavier POST /calendar/sync which clears all cached state and
+    // fetches a 9-month window, which can be slow and prone to timeouts.
     setSyncing(true)
-    try {
-      const res = await fetch('/api/calendar/sync', {
-        method: 'POST',
-        credentials: 'include',
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      await fetchEvents(false)
-      setError(null)
-    } catch (err) {
-      setError(t('calendar.errors.syncFailed'))
-      console.error('Calendar sync failed:', err)
-    } finally {
-      setSyncing(false)
-    }
+    await fetchEvents(true)
+    setSyncing(false)
   }
 
   const handleToggleCalendar = async (calendarId: string, currentlySelected: boolean) => {
@@ -225,7 +219,9 @@ export default function CalendarPage() {
 
     const selectedIds = updated.filter(c => c.selected).map(c => c.id)
     // Keep at least one calendar selected so we only ever persist real calendar IDs.
+    // Revert the optimistic update if the toggle would deselect all calendars.
     if (selectedIds.length === 0) {
+      setCalendars(prevCalendars)
       return
     }
 

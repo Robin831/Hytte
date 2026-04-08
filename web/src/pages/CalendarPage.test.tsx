@@ -71,33 +71,37 @@ function renderPage() {
   )
 }
 
-// ── groupEventsByDate unit tests ──────────────────────────────────────────────
-
-// Import the pure function by re-exporting it; since it isn't exported we test
-// its behaviour indirectly through the rendered output. Direct unit tests for the
-// grouping logic live here using a hand-rolled invocation pattern.
+// ── groupEventsByDate-related test helpers ────────────────────────────────────
 
 // The production grouping helper is not exported from CalendarPage, so these
-// tests use a lightweight test-only adapter rather than duplicating the exact
-// production implementation line-for-line.
+// tests verify grouping behaviour through rendered output instead of calling the
+// helper directly.
+
+// The local types and date-key helper below are test-only utilities used to
+// express the expected grouping behaviour in assertions; they are not a
+// re-export or direct invocation of the production implementation.
 
 type CalendarEvent = {
   id: string; calendar_id: string; title: string; start_time: string
   end_time: string; all_day: boolean; status: string; color?: string
 }
 
-const localDateKeyFormatter = new Intl.DateTimeFormat('en-CA', {
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
+// Use the same deterministic YYYY-MM-DD keying as production (formatDateKey in
+// CalendarPage.tsx) rather than Intl.DateTimeFormat('en-CA'), which can vary
+// across JS runtimes and ICU data and would diverge from production behaviour.
+function getLocalDateKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
 
 function getEventDateKey(event: CalendarEvent): string {
   if (event.all_day) {
     return event.start_time.slice(0, 10)
   }
 
-  return localDateKeyFormatter.format(new Date(event.start_time))
+  return getLocalDateKey(new Date(event.start_time))
 }
 
 function groupEventsByDate(events: CalendarEvent[], locale: string): Map<string, CalendarEvent[]> {
