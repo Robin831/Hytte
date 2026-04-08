@@ -10,6 +10,8 @@ import (
 	"maps"
 	"net/http"
 	"os"
+
+	"golang.org/x/oauth2"
 )
 
 // GoogleLoginHandler redirects the user to Google's OAuth consent screen.
@@ -37,7 +39,14 @@ func GoogleLoginHandler() http.HandlerFunc {
 			Secure:   isSecure(),
 		})
 
-		url := cfg.AuthCodeURL(state)
+		opts := []oauth2.AuthCodeOption{
+			oauth2.AccessTypeOffline,
+		}
+		if r.URL.Query().Get("prompt") == "consent" || r.URL.Query().Get("reauthorize") == "true" {
+			opts = append(opts, oauth2.SetAuthURLParam("prompt", "consent"))
+		}
+
+		url := cfg.AuthCodeURL(state, opts...)
 		http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 	}
 }
@@ -109,6 +118,27 @@ func GoogleCallbackHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("Failed to upsert user: %v", err)
 			http.Error(w, "failed to save user", http.StatusInternalServerError)
 			return
+		}
+
+		// Persist the Google OAuth token (access + refresh) so we can make
+		// Google API calls (e.g. Calendar) on behalf of the user later.
+		grantedScopes := ""
+		if extra := token.Extra("scope"); extra != nil {
+			if s, ok := extra.(string); ok {
+				grantedScopes = s
+			}
+		}
+		googleToken := &GoogleToken{
+			AccessToken:  token.AccessToken,
+			RefreshToken: token.RefreshToken,
+			TokenType:    token.TokenType,
+			Expiry:       token.Expiry,
+			Scopes:       grantedScopes,
+		}
+		if err := SaveGoogleToken(db, user.ID, googleToken); err != nil {
+			log.Printf("Failed to save Google token for user %d: %v", user.ID, err)
+			// Non-fatal: the user can still log in, calendar features just
+			// won't work until next re-auth.
 		}
 
 		// Create session.

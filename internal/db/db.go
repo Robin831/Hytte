@@ -1363,6 +1363,18 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_vault_file_tags_tag ON vault_file_tags(tag);
 
+	-- Google OAuth tokens for Calendar API and other Google integrations.
+	-- Access and refresh tokens are encrypted at rest via internal/encryption.
+	CREATE TABLE IF NOT EXISTS google_tokens (
+		user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		access_token  TEXT NOT NULL,
+		refresh_token TEXT NOT NULL,
+		token_type    TEXT NOT NULL DEFAULT 'Bearer',
+		expiry        TEXT NOT NULL DEFAULT '',
+		scopes        TEXT NOT NULL DEFAULT '',
+		updated_at    TEXT NOT NULL DEFAULT ''
+	);
+
 	`
 
 	_, err := db.Exec(schema)
