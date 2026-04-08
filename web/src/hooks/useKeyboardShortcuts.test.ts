@@ -13,6 +13,7 @@ function makeActions(overrides: Partial<KeyboardShortcutActions> = {}): Keyboard
     onFocusWorker: vi.fn(),
     onShowHelp: vi.fn(),
     onTogglePRModal: vi.fn(),
+    onToggleReleaseModal: vi.fn(),
     ...overrides,
   }
 }
