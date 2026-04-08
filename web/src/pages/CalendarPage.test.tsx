@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import CalendarPage from './CalendarPage'
 import enCommon from '../../public/locales/en/common.json'
@@ -226,8 +226,15 @@ describe('CalendarPage – error state', () => {
 })
 
 describe('CalendarPage – empty state', () => {
-  beforeEach(() => { authState.user = { id: 1 } })
-  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+  beforeEach(() => {
+    authState.user = { id: 1 }
+    // Default view is month; set to agenda so the "no events" message renders
+    try { localStorage.setItem('hytte-calendar-view', 'agenda') } catch { /* ignore */ }
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals(); vi.clearAllMocks()
+    try { localStorage.removeItem('hytte-calendar-view') } catch { /* ignore */ }
+  })
 
   it('shows no-events message when calendar is connected but has no events', async () => {
     vi.stubGlobal('fetch', makeFetchMock(
@@ -257,9 +264,73 @@ describe('CalendarPage – not connected state', () => {
   })
 })
 
+describe('CalendarPage – view mode', () => {
+  beforeEach(() => {
+    authState.user = { id: 1 }
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals(); vi.clearAllMocks()
+    try { localStorage.removeItem('hytte-calendar-view') } catch { /* ignore */ }
+  })
+
+  it('defaults to month view when no stored preference', async () => {
+    try { localStorage.removeItem('hytte-calendar-view') } catch { /* ignore */ }
+    vi.stubGlobal('fetch', makeFetchMock(
+      { calendars: [{ id: 'primary', summary: 'My Calendar', primary: true, selected: true }], connected: true },
+      { events: [] },
+    ))
+    renderPage()
+    await waitFor(() => {
+      // Month view renders a grid with role="grid"
+      expect(screen.getByRole('grid')).toBeInTheDocument()
+    })
+  })
+
+  it('persisted view mode is respected on load', async () => {
+    try { localStorage.setItem('hytte-calendar-view', 'agenda') } catch { /* ignore */ }
+    vi.stubGlobal('fetch', makeFetchMock(
+      { calendars: [{ id: 'primary', summary: 'My Calendar', primary: true, selected: true }], connected: true },
+      { events: [] },
+    ))
+    renderPage()
+    await waitFor(() => {
+      // Agenda view shows "No events" message, not a grid
+      expect(screen.getByText('No events in this period')).toBeInTheDocument()
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument()
+    })
+  })
+
+  it('switching to agenda view updates rendered content', async () => {
+    // Start in default month view (no pre-set localStorage)
+    vi.stubGlobal('fetch', makeFetchMock(
+      { calendars: [{ id: 'primary', summary: 'My Calendar', primary: true, selected: true }], connected: true },
+      { events: [] },
+    ))
+    renderPage()
+    // Month view renders a grid
+    await waitFor(() => {
+      expect(screen.getByRole('grid')).toBeInTheDocument()
+    })
+    // Click Agenda button to switch views
+    fireEvent.click(screen.getByRole('radio', { name: 'Agenda' }))
+    // After switching, no grid — shows "No events" agenda empty state
+    await waitFor(() => {
+      expect(screen.getByText('No events in this period')).toBeInTheDocument()
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument()
+    })
+    expect(screen.getByRole('radio', { name: 'Agenda' })).toHaveAttribute('aria-checked', 'true')
+  })
+})
+
 describe('CalendarPage – default calendar selection', () => {
-  beforeEach(() => { authState.user = { id: 1 } })
-  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+  beforeEach(() => {
+    authState.user = { id: 1 }
+    try { localStorage.setItem('hytte-calendar-view', 'agenda') } catch { /* ignore */ }
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals(); vi.clearAllMocks()
+    try { localStorage.removeItem('hytte-calendar-view') } catch { /* ignore */ }
+  })
 
   it('defaults primary calendar to selected when none are selected', async () => {
     vi.stubGlobal('fetch', makeFetchMock(

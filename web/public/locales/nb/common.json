@@ -92,6 +92,11 @@
   "calendar": {
     "title": "Kalender",
     "agenda": "Agenda",
+    "monthView": "Måned",
+    "weekView": "Uke",
+    "dayView": "Dag",
+    "viewMode": "Visningsmodus",
+    "more": "flere",
     "today": "I dag",
     "todayLabel": "I dag",
     "tomorrowLabel": "I morgen",

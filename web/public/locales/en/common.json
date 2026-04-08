@@ -92,6 +92,11 @@
   "calendar": {
     "title": "Calendar",
     "agenda": "Agenda",
+    "monthView": "Month",
+    "weekView": "Week",
+    "dayView": "Day",
+    "viewMode": "View mode",
+    "more": "more",
     "today": "Today",
     "todayLabel": "Today",
     "tomorrowLabel": "Tomorrow",

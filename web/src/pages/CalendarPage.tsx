@@ -1,103 +1,75 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { RefreshCw, ChevronLeft, ChevronRight, MapPin, Clock, Filter, CalendarDays } from 'lucide-react'
+import { RefreshCw, ChevronLeft, ChevronRight, Filter, CalendarDays, List, LayoutGrid, Columns3, Calendar } from 'lucide-react'
 import { useAuth } from '../auth'
-import { formatDate, formatTime } from '../utils/formatDate'
+import { formatDate } from '../utils/formatDate'
+import {
+  type CalendarEvent,
+  type CalendarInfo,
+  type ViewMode,
+  startOfDay,
+  endOfDay,
+  addDays,
+  startOfWeekMonday,
+} from '../components/calendar/types'
+import MonthView from '../components/calendar/MonthView'
+import WeekView from '../components/calendar/WeekView'
+import DayView from '../components/calendar/DayView'
+import AgendaView from '../components/calendar/AgendaView'
 
-interface CalendarEvent {
-  id: string
-  calendar_id: string
-  title: string
-  description?: string
-  location?: string
-  start_time: string
-  end_time: string
-  all_day: boolean
-  status: string
-  color?: string
-}
+const AGENDA_DAYS = 14
+const STORAGE_KEY = 'hytte-calendar-view'
 
-interface CalendarInfo {
-  id: string
-  summary: string
-  description?: string
-  background_color?: string
-  foreground_color?: string
-  primary: boolean
-  selected: boolean
-}
-
-function startOfDay(date: Date): Date {
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  return d
-}
-
-function endOfDay(date: Date): Date {
-  const d = new Date(date)
-  d.setHours(23, 59, 59, 0)
-  return d
-}
-
-function addDays(date: Date, days: number): Date {
-  const d = new Date(date)
-  d.setDate(d.getDate() + days)
-  return d
-}
-
-/** Format a Date as RFC3339 without fractional seconds, e.g. "2026-04-08T00:00:00Z". */
+/** Format a Date as RFC3339 without fractional seconds. */
 function toRFC3339(date: Date): string {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
-function formatDateKey(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+function getStartOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1)
 }
 
-function isToday(date: Date): boolean {
-  const now = new Date()
-  return formatDateKey(date) === formatDateKey(now)
-}
-
-function isTomorrow(date: Date): boolean {
-  const tomorrow = addDays(new Date(), 1)
-  return formatDateKey(date) === formatDateKey(tomorrow)
-}
-
-function groupEventsByDate(events: CalendarEvent[], locale: string): Map<string, CalendarEvent[]> {
-  const groups = new Map<string, CalendarEvent[]>()
-
-  const sorted = [...events].sort((a, b) => {
-    const aTime = new Date(a.start_time).getTime()
-    const bTime = new Date(b.start_time).getTime()
-    if (aTime !== bTime) return aTime - bTime
-    // All-day events first within the same start time
-    if (a.all_day && !b.all_day) return -1
-    if (!a.all_day && b.all_day) return 1
-    return a.title.localeCompare(b.title, locale)
-  })
-
-  for (const event of sorted) {
-    // All-day events have UTC-midnight start times — use UTC date to avoid timezone shift.
-    // Timed events use local date so they appear under the correct local day.
-    let key: string
-    if (event.all_day) {
-      key = event.start_time.slice(0, 10)
-    } else {
-      key = formatDateKey(new Date(event.start_time))
+/** Calculate the date range to fetch based on view mode and rangeStart */
+function getViewRange(view: ViewMode, rangeStart: Date): { start: Date; end: Date } {
+  switch (view) {
+    case 'month': {
+      // Fetch from start of first visible week to end of last visible week
+      const firstOfMonth = getStartOfMonth(rangeStart)
+      const lastOfMonth = new Date(rangeStart.getFullYear(), rangeStart.getMonth() + 1, 0)
+      const gridStart = startOfWeekMonday(firstOfMonth)
+      const gridEnd = endOfDay(addDays(startOfWeekMonday(addDays(lastOfMonth, 7)), -1))
+      // Extend end to cover full 6th row if needed, using date-based arithmetic
+      // to avoid DST-sensitive millisecond day calculations.
+      const sixWeekEnd = endOfDay(addDays(gridStart, 41))
+      const endDate = gridEnd.getTime() < sixWeekEnd.getTime() ? sixWeekEnd : gridEnd
+      return { start: gridStart, end: endDate }
     }
-    const existing = groups.get(key)
-    if (existing) {
-      existing.push(event)
-    } else {
-      groups.set(key, [event])
+    case 'week': {
+      const ws = startOfWeekMonday(rangeStart)
+      return { start: ws, end: endOfDay(addDays(ws, 6)) }
     }
+    case 'day':
+      return { start: startOfDay(rangeStart), end: endOfDay(rangeStart) }
+    case 'agenda':
+    default:
+      return { start: startOfDay(rangeStart), end: endOfDay(addDays(rangeStart, AGENDA_DAYS - 1)) }
   }
+}
 
-  return groups
+/** Build the events fetch URL for a given view mode and range start. */
+function buildEventsUrl(view: ViewMode, rangeStart: Date, sync = false): string {
+  const { start, end } = getViewRange(view, rangeStart)
+  return `/api/calendar/events?start=${encodeURIComponent(toRFC3339(start))}&end=${encodeURIComponent(toRFC3339(end))}${sync ? '&sync=true' : ''}`
+}
+
+function loadViewMode(): ViewMode {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored && ['month', 'week', 'day', 'agenda'].includes(stored)) {
+      return stored as ViewMode
+    }
+  } catch { /* ignore */ }
+  return 'month'
 }
 
 export default function CalendarPage() {
@@ -114,23 +86,30 @@ export default function CalendarPage() {
   const [error, setError] = useState<string | null>(null)
   const [showSelector, setShowSelector] = useState(false)
   const [savingCalendars, setSavingCalendars] = useState(false)
-
-  // Date range: start from today, show 14 days ahead by default
+  const [viewMode, setViewMode] = useState<ViewMode>(loadViewMode)
   const [rangeStart, setRangeStart] = useState(() => startOfDay(new Date()))
-  const daysToShow = 14
 
   const selectorRef = useRef<HTMLDivElement>(null)
+  const fetchControllerRef = useRef<AbortController | null>(null)
+
+  const handleSetViewMode = (mode: ViewMode) => {
+    if (mode === viewMode) return
+    setLoading(true)
+    setViewMode(mode)
+    try { localStorage.setItem(STORAGE_KEY, mode) } catch { /* ignore */ }
+  }
 
   const fetchEvents = useCallback(async (sync = false, signal?: AbortSignal) => {
     if (!user) return
+    // Cancel any previous in-flight fetch so stale responses can't overwrite newer results
+    fetchControllerRef.current?.abort()
+    const ctl = new AbortController()
+    fetchControllerRef.current = ctl
+    // Chain caller's signal (e.g. effect cleanup) so it propagates to our controller
+    if (signal) signal.addEventListener('abort', () => ctl.abort(), { once: true })
     try {
-      // Derive rangeEnd internally so this callback doesn't depend on a new Date instance each render.
-      // Use RFC3339 without fractional seconds (backend parseFlexibleTime doesn't support ms).
-      // End is 23:59:59 of the last displayed day to avoid including events from the next period.
-      const startParam = toRFC3339(rangeStart)
-      const endParam = toRFC3339(endOfDay(addDays(rangeStart, daysToShow - 1)))
-      const url = `/api/calendar/events?start=${encodeURIComponent(startParam)}&end=${encodeURIComponent(endParam)}${sync ? '&sync=true' : ''}`
-      const res = await fetch(url, { credentials: 'include', signal })
+      const url = buildEventsUrl(viewMode, rangeStart, sync)
+      const res = await fetch(url, { credentials: 'include', signal: ctl.signal })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       setEvents(data.events ?? [])
@@ -140,9 +119,9 @@ export default function CalendarPage() {
       setError(t('calendar.errors.failedToLoad'))
       console.error('Failed to load calendar events:', err)
     } finally {
-      if (!signal?.aborted) setLoading(false)
+      if (!ctl.signal.aborted) setLoading(false)
     }
-  }, [user, rangeStart, t])
+  }, [user, rangeStart, viewMode, t])
 
   // Fetch calendars once on mount
   useEffect(() => {
@@ -155,8 +134,6 @@ export default function CalendarPage() {
       })
       .then(data => {
         let cals: CalendarInfo[] = data.calendars ?? []
-        // If no calendars are explicitly selected, default to the primary calendar so
-        // the UI selection matches the backend's "no preference → show primary" behaviour.
         if (cals.length > 0 && !cals.some(c => c.selected)) {
           cals = cals.map(c => ({ ...c, selected: c.primary }))
         }
@@ -165,9 +142,6 @@ export default function CalendarPage() {
       })
       .catch(err => {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        // Leave connected as null (unknown) on network/server errors rather than
-        // showing the "not connected" state, which would be misleading if the user
-        // IS connected but the server is temporarily unavailable.
         setError(t('calendar.errors.failedToLoad'))
         console.error('Failed to load calendars:', err)
       })
@@ -175,17 +149,16 @@ export default function CalendarPage() {
         if (!controller.signal.aborted) setCalendarsLoading(false)
       })
     return () => controller.abort()
-  }, [user])
+  }, [user, t])
 
-  // Fetch events whenever rangeStart changes (includes initial load).
-  // Use sync=false to avoid hitting Google APIs on every navigation; the Sync button handles explicit refresh.
+  // Fetch events whenever rangeStart or viewMode changes
   useEffect(() => {
     if (!user) return
     const controller = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
-    fetchEvents(false, controller.signal)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- setState calls in fetchEvents are all async (after await)
+    void fetchEvents(false, controller.signal)
     return () => controller.abort()
-  }, [user, rangeStart, fetchEvents])
+  }, [fetchEvents])
 
   // Close calendar selector on outside click
   useEffect(() => {
@@ -201,16 +174,12 @@ export default function CalendarPage() {
   }, [showSelector])
 
   const handleSync = async () => {
-    // Use sync=true on the events endpoint for an inline refresh of the displayed range.
-    // This avoids the heavier POST /calendar/sync which clears all cached state and
-    // fetches a 9-month window, which can be slow and prone to timeouts.
     setSyncing(true)
     await fetchEvents(true)
     setSyncing(false)
   }
 
   const handleToggleCalendar = async (calendarId: string, currentlySelected: boolean) => {
-    // Capture previous state before optimistic update so revert is deterministic
     const prevCalendars = calendars
     const updated = prevCalendars.map(c =>
       c.id === calendarId ? { ...c, selected: !currentlySelected } : c
@@ -218,8 +187,6 @@ export default function CalendarPage() {
     setCalendars(updated)
 
     const selectedIds = updated.filter(c => c.selected).map(c => c.id)
-    // Keep at least one calendar selected so we only ever persist real calendar IDs.
-    // Revert the optimistic update if the toggle would deselect all calendars.
     if (selectedIds.length === 0) {
       setCalendars(prevCalendars)
       return
@@ -234,10 +201,8 @@ export default function CalendarPage() {
         body: JSON.stringify({ calendar_ids: selectedIds }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      // Refetch events with the new calendar selection (no Google sync, just cached)
       await fetchEvents(false)
     } catch (err) {
-      // Revert to the state we captured before the optimistic update
       setCalendars(prevCalendars)
       console.error('Failed to save calendar settings:', err)
     } finally {
@@ -246,8 +211,37 @@ export default function CalendarPage() {
   }
 
   const goToday = () => { setLoading(true); setRangeStart(startOfDay(new Date())) }
-  const goPrev = () => { setLoading(true); setRangeStart(prev => addDays(prev, -daysToShow)) }
-  const goNext = () => { setLoading(true); setRangeStart(prev => addDays(prev, daysToShow)) }
+
+  const goPrev = () => {
+    setLoading(true)
+    setRangeStart(prev => {
+      switch (viewMode) {
+        case 'month': return new Date(prev.getFullYear(), prev.getMonth() - 1, 1)
+        case 'week': return addDays(prev, -7)
+        case 'day': return addDays(prev, -1)
+        case 'agenda': return addDays(prev, -AGENDA_DAYS)
+      }
+    })
+  }
+
+  const goNext = () => {
+    setLoading(true)
+    setRangeStart(prev => {
+      switch (viewMode) {
+        case 'month': return new Date(prev.getFullYear(), prev.getMonth() + 1, 1)
+        case 'week': return addDays(prev, 7)
+        case 'day': return addDays(prev, 1)
+        case 'agenda': return addDays(prev, AGENDA_DAYS)
+      }
+    })
+  }
+
+  /** Navigate to a specific day — switches to day view */
+  const handleNavigateToDay = (date: Date) => {
+    handleSetViewMode('day')
+    setLoading(true)
+    setRangeStart(startOfDay(date))
+  }
 
   if (!user) {
     return (
@@ -258,31 +252,72 @@ export default function CalendarPage() {
     )
   }
 
-  const dateFormatOpts: Intl.DateTimeFormatOptions = {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  }
+  const rangeLabel = (() => {
+    const rangeFormatOpts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
+    switch (viewMode) {
+      case 'month':
+        return formatDate(rangeStart, { month: 'long', year: 'numeric' })
+      case 'week': {
+        const ws = startOfWeekMonday(rangeStart)
+        const we = addDays(ws, 6)
+        return `${formatDate(ws, rangeFormatOpts)} – ${formatDate(we, rangeFormatOpts)}`
+      }
+      case 'day':
+        return formatDate(rangeStart, { weekday: 'long', month: 'long', day: 'numeric' })
+      case 'agenda':
+      default: {
+        return `${formatDate(rangeStart, rangeFormatOpts)} – ${formatDate(addDays(rangeStart, AGENDA_DAYS - 1), rangeFormatOpts)}`
+      }
+    }
+  })()
 
-  const timeFormatOpts: Intl.DateTimeFormatOptions = {
-    hour: '2-digit',
-    minute: '2-digit',
-  }
+  const viewButtons: { mode: ViewMode; icon: React.ReactNode; labelKey: 'calendar.monthView' | 'calendar.weekView' | 'calendar.dayView' | 'calendar.agenda' }[] = [
+    { mode: 'month', icon: <LayoutGrid size={14} />, labelKey: 'calendar.monthView' },
+    { mode: 'week', icon: <Columns3 size={14} />, labelKey: 'calendar.weekView' },
+    { mode: 'day', icon: <Calendar size={14} />, labelKey: 'calendar.dayView' },
+    { mode: 'agenda', icon: <List size={14} />, labelKey: 'calendar.agenda' },
+  ]
 
-  const rangeFormatOpts: Intl.DateTimeFormatOptions = {
-    month: 'short',
-    day: 'numeric',
+  const viewProps = {
+    events,
+    calendars,
+    rangeStart,
+    locale,
+    onNavigateToDay: handleNavigateToDay,
   }
-
-  const grouped = groupEventsByDate(events, locale)
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+    <div className={`p-4 sm:p-6 ${viewMode === 'agenda' ? 'max-w-3xl' : 'max-w-6xl'} mx-auto`}>
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
         <h1 className="text-2xl font-bold">{t('calendar.title')}</h1>
 
-        <div className="flex items-center gap-2 sm:ml-auto">
+        <div className="flex items-center gap-2 sm:ml-auto flex-wrap">
+          {/* View mode toggle */}
+          {connected === true && (
+            <div className="flex rounded-lg bg-gray-800 p-0.5" role="radiogroup" aria-label={t('calendar.viewMode')}>
+              {viewButtons.map(({ mode, icon, labelKey }) => (
+                <button
+                  key={mode}
+                  onClick={() => handleSetViewMode(mode)}
+                  role="radio"
+                  aria-checked={viewMode === mode}
+                  aria-label={t(labelKey)}
+                  className={`
+                    flex items-center gap-1 px-2 py-1 text-xs rounded-md transition-colors cursor-pointer
+                    ${viewMode === mode
+                      ? 'bg-gray-700 text-white'
+                      : 'text-gray-400 hover:text-gray-200'
+                    }
+                  `}
+                >
+                  {icon}
+                  <span>{t(labelKey)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Calendar selector toggle */}
           {connected === true && calendars.length > 0 && (
             <div className="relative" ref={selectorRef}>
@@ -297,7 +332,6 @@ export default function CalendarPage() {
                 <span className="hidden sm:inline">{t('calendar.calendars')}</span>
               </button>
 
-              {/* Calendar selector dropdown */}
               {showSelector && (
                 <div className="absolute right-0 top-full mt-1 w-72 bg-gray-800 rounded-lg border border-gray-700 shadow-xl z-10 py-2" role="menu">
                   <div className="px-3 py-1.5 text-xs font-medium text-gray-400 uppercase tracking-wide">
@@ -347,7 +381,7 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Not connected state — only shown once calendars have loaded to avoid flash for connected users */}
+      {/* Not connected state */}
       {!loading && !calendarsLoading && connected === false && (
         <div className="rounded-lg bg-gray-800/50 border border-gray-700 p-6 text-center">
           <CalendarDays size={40} className="mx-auto text-gray-500 mb-3" />
@@ -358,7 +392,7 @@ export default function CalendarPage() {
 
       {/* Date navigation */}
       {connected === true && (
-        <nav className="flex items-center gap-2 mb-4" aria-label={t('calendar.agenda')}>
+        <nav className="flex items-center gap-2 mb-4" aria-label={t('calendar.title')}>
           <button
             onClick={goPrev}
             className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors cursor-pointer"
@@ -380,7 +414,7 @@ export default function CalendarPage() {
             <ChevronRight size={20} />
           </button>
           <span className="text-sm text-gray-400 ml-2" aria-live="polite">
-            {formatDate(rangeStart, rangeFormatOpts)} – {formatDate(addDays(rangeStart, daysToShow - 1), rangeFormatOpts)}
+            {rangeLabel}
           </span>
         </nav>
       )}
@@ -399,95 +433,14 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* Agenda list */}
+      {/* View content */}
       {!loading && connected === true && (
-        <div className="space-y-1" role="list" aria-label={t('calendar.agenda')}>
-          {grouped.size === 0 && !error && (
-            <div className="text-center py-12 text-gray-500">
-              <CalendarDays size={32} className="mx-auto mb-2 opacity-50" />
-              <p>{t('calendar.noEvents')}</p>
-            </div>
-          )}
-
-          {(() => {
-            // Build calendar color lookup once, not inside every day's render iteration
-            const calColorMap = new Map(calendars.map(c => [c.id, c.background_color]))
-            return Array.from(grouped.entries()).map(([dateKey, dayEvents]) => {
-            const date = new Date(dateKey + 'T00:00:00')
-            const today = isToday(date)
-            const tomorrow = isTomorrow(date)
-
-            let dateLabel = formatDate(date, dateFormatOpts)
-            if (today) dateLabel = `${t('calendar.todayLabel')} — ${dateLabel}`
-            else if (tomorrow) dateLabel = `${t('calendar.tomorrowLabel')} — ${dateLabel}`
-
-            return (
-              <div key={dateKey} role="listitem">
-                {/* Date header */}
-                <h2 className={`sticky top-0 z-[1] px-3 py-2 text-sm font-medium rounded-lg mb-1 ${
-                  today
-                    ? 'bg-blue-900/40 text-blue-300 border border-blue-800/50'
-                    : 'bg-gray-800/60 text-gray-300'
-                }`}>
-                  {dateLabel}
-                </h2>
-
-                {/* Events for this date */}
-                <div className="space-y-1 mb-3">
-                  {dayEvents.map(event => {
-                    const calColor = event.color || calColorMap.get(event.calendar_id) || '#4285f4'
-
-                    return (
-                      <article
-                        key={event.id}
-                        className="flex gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-800/50 transition-colors group"
-                        aria-label={event.title}
-                      >
-                        {/* Color indicator */}
-                        <div
-                          className="w-1 rounded-full shrink-0 mt-0.5"
-                          style={{ backgroundColor: calColor, minHeight: '1.25rem' }}
-                        />
-
-                        {/* Event content */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start gap-2">
-                            <span className="font-medium text-sm text-white truncate">
-                              {event.title}
-                            </span>
-                          </div>
-
-                          {/* Time */}
-                          <div className="flex items-center gap-1 mt-0.5 text-xs text-gray-400">
-                            <Clock size={12} className="shrink-0" />
-                            {event.all_day ? (
-                              <span>{t('calendar.allDay')}</span>
-                            ) : (
-                              <time dateTime={event.start_time}>
-                                {formatTime(event.start_time, timeFormatOpts)}
-                                {' – '}
-                                {formatTime(event.end_time, timeFormatOpts)}
-                              </time>
-                            )}
-                          </div>
-
-                          {/* Location */}
-                          {event.location && (
-                            <div className="flex items-center gap-1 mt-0.5 text-xs text-gray-500">
-                              <MapPin size={12} className="shrink-0" />
-                              <span className="truncate">{event.location}</span>
-                            </div>
-                          )}
-                        </div>
-                      </article>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })
-          })()}
-        </div>
+        <>
+          {viewMode === 'month' && <MonthView {...viewProps} />}
+          {viewMode === 'week' && <WeekView {...viewProps} />}
+          {viewMode === 'day' && <DayView {...viewProps} />}
+          {viewMode === 'agenda' && <AgendaView {...viewProps} />}
+        </>
       )}
     </div>
   )
