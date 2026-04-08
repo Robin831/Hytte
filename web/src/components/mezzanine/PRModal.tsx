@@ -202,7 +202,7 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
           extBellows: 'readyToMerge.extBellowsSuccess',
           extResetCounters: 'readyToMerge.extResetCountersSuccess',
         }
-        showToast?.(t(successKeyMap[action.type], { number: action.pr.number }), 'success')
+        showToast?.(t(successKeyMap[action.type] as never, { number: action.pr.number }), 'success')
       }
     } catch (err) {
       showToast?.(err instanceof Error ? err.message : t('unknownError'), 'error')
@@ -222,7 +222,7 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
       resetCounters: 'readyToMerge.resetCountersConfirmTitle',
       close: 'readyToMerge.closeConfirmTitle',
     }
-    return t(keyMap[type])
+    return t(keyMap[type] as never)
   }
 
   function forgeConfirmMessage(type: ForgeAction, pr: OpenPR): string {
@@ -236,7 +236,7 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
       resetCounters: 'readyToMerge.resetCountersConfirmMessage',
       close: 'readyToMerge.closeConfirmMessage',
     }
-    return t(keyMap[type], { number: pr.number })
+    return t(keyMap[type] as never, { number: pr.number })
   }
 
   function forgeConfirmLabel(type: ForgeAction): string {
@@ -250,7 +250,7 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
       resetCounters: 'readyToMerge.resetCounters',
       close: 'readyToMerge.close',
     }
-    return t(keyMap[type])
+    return t(keyMap[type] as never)
   }
 
   function extConfirmTitle(type: ExternalAction): string {
@@ -263,7 +263,7 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
       extBellows: 'readyToMerge.extBellowsConfirmTitle',
       extResetCounters: 'readyToMerge.extResetCountersConfirmTitle',
     }
-    return t(keyMap[type])
+    return t(keyMap[type] as never)
   }
 
   function extConfirmMessage(type: ExternalAction, pr: ExternalPR): string {
@@ -276,7 +276,7 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
       extBellows: 'readyToMerge.extBellowsConfirmMessage',
       extResetCounters: 'readyToMerge.extResetCountersConfirmMessage',
     }
-    return t(keyMap[type], { number: pr.number })
+    return t(keyMap[type] as never, { number: pr.number })
   }
 
   function extConfirmLabel(type: ExternalAction): string {
@@ -289,7 +289,7 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
       extBellows: 'readyToMerge.bellows',
       extResetCounters: 'readyToMerge.resetCounters',
     }
-    return t(keyMap[type])
+    return t(keyMap[type] as never)
   }
 
   function isMergeReady(pr: OpenPR): boolean {
