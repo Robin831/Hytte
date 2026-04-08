@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import {
@@ -105,12 +105,14 @@ export default function NeedsAttentionModal({ open, onClose, items, showToast, o
   const { t } = useTranslation('forge')
   const { acting, handleAction } = useBeadActions({ showToast })
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null)
+  const [prevOpen, setPrevOpen] = useState(open)
 
   // Clear any pending confirmation when the modal closes so the ConfirmDialog
   // doesn't remain visible on its own after ESC/backdrop/X dismissal.
-  useEffect(() => {
+  if (prevOpen !== open) {
+    setPrevOpen(open)
     if (!open) setPendingConfirm(null)
-  }, [open])
+  }
 
   function onAction(action: NeedsAttentionAction, beadId: string) {
     if (action === 'dismiss') {
