@@ -143,6 +143,13 @@ describe('useKeyboardShortcuts', () => {
       expect(actions.onTogglePRModal).toHaveBeenCalledOnce()
     })
 
+    it('calls onToggleReleaseModal for "l"', () => {
+      const actions = makeActions()
+      renderHook(() => useKeyboardShortcuts(actions))
+      fireKey('l')
+      expect(actions.onToggleReleaseModal).toHaveBeenCalledOnce()
+    })
+
     it('calls onShowHelp for "?"', () => {
       const actions = makeActions()
       renderHook(() => useKeyboardShortcuts(actions))
@@ -215,6 +222,19 @@ describe('useKeyboardShortcuts', () => {
       renderHook(() => useKeyboardShortcuts(actions))
       fireKey('p')
       expect(actions.onTogglePRModal).toHaveBeenCalledOnce()
+
+      document.body.removeChild(dialog)
+    })
+
+    it('still fires onToggleReleaseModal for "l" even when an aria-modal dialog is open', () => {
+      const dialog = document.createElement('div')
+      dialog.setAttribute('aria-modal', 'true')
+      document.body.appendChild(dialog)
+
+      const actions = makeActions()
+      renderHook(() => useKeyboardShortcuts(actions))
+      fireKey('l')
+      expect(actions.onToggleReleaseModal).toHaveBeenCalledOnce()
 
       document.body.removeChild(dialog)
     })

@@ -63,75 +63,65 @@ export default function ReleaseModal({ open, onClose, showToast }: ReleaseModalP
 
   const abortRef = useRef<AbortController | null>(null)
 
-  // Fetch suggestion when modal opens
-  useEffect(() => {
-    if (!open) return
-
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    async function fetchSuggestion() {
-      setSuggestLoading(true)
-      setSuggestError(null)
-      try {
-        const res = await fetch('/api/forge/release/suggest', {
-          credentials: 'include',
-          signal: controller.signal,
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
-        }
-        const data: SuggestResponse = await res.json()
-        if (!controller.signal.aborted) {
-          setSuggestion(data)
-          setVersion(data.suggested_version)
-          setReleaseResult(null)
-        }
-      } catch (err) {
-        if (controller.signal.aborted) return
-        setSuggestError(err instanceof Error ? err.message : String(err))
-      } finally {
-        if (!controller.signal.aborted) setSuggestLoading(false)
+  async function fetchSuggestion(controller: AbortController) {
+    try {
+      const res = await fetch('/api/forge/release/suggest', {
+        credentials: 'include',
+        signal: controller.signal,
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
+      }
+      const data: SuggestResponse = await res.json()
+      if (!controller.signal.aborted) {
+        setSuggestion(data)
+        setVersion(data.suggested_version)
+        setReleaseResult(null)
+      }
+    } catch (err) {
+      if (controller.signal.aborted) return
+      setSuggestError(err instanceof Error ? err.message : String(err))
+    } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null
+      }
+      if (!controller.signal.aborted) {
+        setSuggestLoading(false)
       }
     }
+  }
 
-    void fetchSuggestion()
-    return () => controller.abort()
-  }, [open])
-
-  function handleRefresh() {
+  function startSuggestionFetch() {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
     setSuggestLoading(true)
     setSuggestError(null)
+    void fetchSuggestion(controller)
+    return controller
+  }
 
-    async function fetchSuggestion() {
-      try {
-        const res = await fetch('/api/forge/release/suggest', {
-          credentials: 'include',
-          signal: controller.signal,
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`)
-        }
-        const data: SuggestResponse = await res.json()
-        if (!controller.signal.aborted) {
-          setSuggestion(data)
-          setVersion(data.suggested_version)
-          setReleaseResult(null)
-        }
-      } catch (err) {
-        if (controller.signal.aborted) return
-        setSuggestError(err instanceof Error ? err.message : String(err))
-      } finally {
-        if (!controller.signal.aborted) setSuggestLoading(false)
-      }
+  // Abort in-flight request on unmount
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort()
     }
+  }, [])
 
-    void fetchSuggestion()
+  // Fetch suggestion when modal opens; reset confirm dialog when it closes
+  useEffect(() => {
+    if (!open) {
+      setConfirmOpen(false)
+      return
+    }
+    const controller = startSuggestionFetch()
+    return () => controller.abort()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  function handleRefresh() {
+    startSuggestionFetch()
   }
 
   async function handleRelease() {
