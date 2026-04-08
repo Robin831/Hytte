@@ -32,12 +32,8 @@ func UpcomingHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
-		osloLoc, err := time.LoadLocation("Europe/Oslo")
-		if err != nil {
-			osloLoc = time.UTC
-		}
-		now := time.Now().In(osloLoc)
-		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, osloLoc)
+		now := time.Now().UTC()
+		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 		horizon := today.AddDate(0, 0, 30)
 
 		recurrings, err := listActiveRecurring(db, user.ID)
@@ -95,10 +91,10 @@ func UpcomingHandler(db *sql.DB) http.HandlerFunc {
 				continue
 			}
 
-			// Respect end_date.
+			// Respect end_date using the adjusted business-day date that will be returned.
 			if rec.EndDate != "" {
 				endDate, err := time.Parse("2006-01-02", rec.EndDate)
-				if err == nil && nextDue.After(endDate) {
+				if err == nil && adjusted.After(endDate) {
 					continue
 				}
 			}
@@ -109,10 +105,12 @@ func UpcomingHandler(db *sql.DB) http.HandlerFunc {
 				month := nextDue.Format("2006-01")
 				if month == currentMonth {
 					varName, varTotal, _, varErr := variableBillMonthInfo(db, *rec.VariableID, month)
-					if varErr == nil {
-						amount = varTotal
-						variableName = varName
+					if varErr != nil {
+						log.Printf("budget upcoming: skipping recurring_id=%d variable_id=%d month=%s: variableBillMonthInfo failed: %v", rec.ID, *rec.VariableID, month, varErr)
+						continue
 					}
+					amount = varTotal
+					variableName = varName
 				}
 			}
 

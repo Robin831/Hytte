@@ -18,34 +18,10 @@ func TestUpcomingHandler_Empty(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	var body struct {
-		Upcoming []UpcomingTransaction `json:"upcoming"`
-	}
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if body.Upcoming == nil {
-		t.Error("expected non-nil upcoming slice, got null")
-	}
-	if len(body.Upcoming) != 0 {
-		t.Errorf("expected 0 upcoming, got %d", len(body.Upcoming))
-	}
-}
-
-func TestUpcomingHandler_EmptyReturnsArray(t *testing.T) {
-	db := setupTestDB(t)
-
-	req := withUser(httptest.NewRequest("GET", "/api/budget/upcoming", nil), 1)
-	rec := httptest.NewRecorder()
-	UpcomingHandler(db).ServeHTTP(rec, req)
-
-	// Verify JSON contains [] not null for the upcoming field.
+	// Verify JSON shape: field must be [] not null.
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
 		t.Fatalf("unmarshal: %v", err)
-	}
-	if string(raw["upcoming"]) == "null" {
-		t.Error("upcoming field is null, expected empty array []")
 	}
 	if string(raw["upcoming"]) != "[]" {
 		t.Errorf("upcoming field = %s, expected []", string(raw["upcoming"]))
@@ -167,6 +143,140 @@ func TestUpcomingHandler_ExcludesExpiredRecurring(t *testing.T) {
 	}
 	if len(body.Upcoming) != 0 {
 		t.Errorf("expected 0 upcoming for expired recurring, got %d", len(body.Upcoming))
+	}
+}
+
+func TestUpcomingHandler_BusinessDayAdjustment(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO budget_accounts (id, user_id, name, type, currency, balance) VALUES (1, 1, 'Main', 'checking', 'NOK', 0)`)
+	if err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	// Find the next Saturday within the 30-day window.
+	now := time.Now().UTC()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	var nextSat time.Time
+	for d := today.AddDate(0, 0, 1); !d.After(today.AddDate(0, 0, 29)); d = d.AddDate(0, 0, 1) {
+		if d.Weekday() == time.Saturday {
+			nextSat = d
+			break
+		}
+	}
+	if nextSat.IsZero() {
+		t.Skip("no Saturday found in next 29 days")
+	}
+
+	rec := &Recurring{
+		AccountID:   1,
+		Amount:      200,
+		Description: "Weekend Bill",
+		Frequency:   FrequencyWeekly,
+		StartDate:   nextSat,
+		Active:      true,
+		SplitType:   SplitTypePercentage,
+	}
+	if err := CreateRecurring(db, 1, rec); err != nil {
+		t.Fatalf("create recurring: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/upcoming", nil), 1)
+	w := httptest.NewRecorder()
+	UpcomingHandler(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Upcoming []UpcomingTransaction `json:"upcoming"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Upcoming) == 0 {
+		t.Fatal("expected at least 1 upcoming transaction for weekend bill")
+	}
+	got, parseErr := time.Parse("2006-01-02", body.Upcoming[0].Date)
+	if parseErr != nil {
+		t.Fatalf("parse date: %v", parseErr)
+	}
+	if got.Weekday() == time.Saturday || got.Weekday() == time.Sunday {
+		t.Errorf("expected business day, got %s (%s)", body.Upcoming[0].Date, got.Weekday())
+	}
+	if got.Before(nextSat) {
+		t.Errorf("adjusted date %s is before original Saturday %s", body.Upcoming[0].Date, nextSat.Format("2006-01-02"))
+	}
+}
+
+func TestUpcomingHandler_HorizonBoundary(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO budget_accounts (id, user_id, name, type, currency, balance) VALUES (1, 1, 'Main', 'checking', 'NOK', 0)`)
+	if err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	// Item within 30-day horizon: should be included.
+	now := time.Now().UTC()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	withinHorizon := today.AddDate(0, 0, 10)
+	// Item beyond 30-day horizon: should be excluded.
+	beyondHorizon := today.AddDate(0, 0, 35)
+
+	r1 := &Recurring{
+		AccountID:   1,
+		Amount:      100,
+		Description: "Within Horizon",
+		Frequency:   FrequencyWeekly,
+		StartDate:   withinHorizon,
+		Active:      true,
+		SplitType:   SplitTypePercentage,
+	}
+	r2 := &Recurring{
+		AccountID:   1,
+		Amount:      200,
+		Description: "Beyond Horizon",
+		Frequency:   FrequencyWeekly,
+		StartDate:   beyondHorizon,
+		Active:      true,
+		SplitType:   SplitTypePercentage,
+	}
+	if err := CreateRecurring(db, 1, r1); err != nil {
+		t.Fatalf("create recurring 1: %v", err)
+	}
+	if err := CreateRecurring(db, 1, r2); err != nil {
+		t.Fatalf("create recurring 2: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/upcoming", nil), 1)
+	w := httptest.NewRecorder()
+	UpcomingHandler(db).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Upcoming []UpcomingTransaction `json:"upcoming"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	var foundWithin, foundBeyond bool
+	for _, item := range body.Upcoming {
+		switch item.Description {
+		case "Within Horizon":
+			foundWithin = true
+		case "Beyond Horizon":
+			foundBeyond = true
+		}
+	}
+	if !foundWithin {
+		t.Error("expected 'Within Horizon' item to be included in upcoming")
+	}
+	if foundBeyond {
+		t.Error("expected 'Beyond Horizon' item to be excluded from upcoming")
 	}
 }
 
