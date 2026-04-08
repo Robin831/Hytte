@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   GitPullRequest,
@@ -105,13 +105,6 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
   const [confirmAction, setConfirmAction] = useState<PendingForgeAction | null>(null)
   const [confirmExtAction, setConfirmExtAction] = useState<PendingExternalAction | null>(null)
   const [collapsedAnvils, setCollapsedAnvils] = useState<Record<string, boolean>>({})
-
-  useEffect(() => {
-    if (!open) {
-      setConfirmAction(null)
-      setConfirmExtAction(null)
-    }
-  }, [open])
 
   function handleClose() {
     setConfirmAction(null)
