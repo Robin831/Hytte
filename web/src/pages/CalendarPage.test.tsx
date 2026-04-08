@@ -226,8 +226,15 @@ describe('CalendarPage – error state', () => {
 })
 
 describe('CalendarPage – empty state', () => {
-  beforeEach(() => { authState.user = { id: 1 } })
-  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+  beforeEach(() => {
+    authState.user = { id: 1 }
+    // Default view is month; set to agenda so the "no events" message renders
+    try { localStorage.setItem('hytte-calendar-view', 'agenda') } catch { /* ignore */ }
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals(); vi.clearAllMocks()
+    try { localStorage.removeItem('hytte-calendar-view') } catch { /* ignore */ }
+  })
 
   it('shows no-events message when calendar is connected but has no events', async () => {
     vi.stubGlobal('fetch', makeFetchMock(
@@ -258,8 +265,14 @@ describe('CalendarPage – not connected state', () => {
 })
 
 describe('CalendarPage – default calendar selection', () => {
-  beforeEach(() => { authState.user = { id: 1 } })
-  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+  beforeEach(() => {
+    authState.user = { id: 1 }
+    try { localStorage.setItem('hytte-calendar-view', 'agenda') } catch { /* ignore */ }
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals(); vi.clearAllMocks()
+    try { localStorage.removeItem('hytte-calendar-view') } catch { /* ignore */ }
+  })
 
   it('defaults primary calendar to selected when none are selected', async () => {
     vi.stubGlobal('fetch', makeFetchMock(

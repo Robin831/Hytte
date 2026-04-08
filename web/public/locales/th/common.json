@@ -92,6 +92,11 @@
   "calendar": {
     "title": "ปฏิทิน",
     "agenda": "กำหนดการ",
+    "monthView": "เดือน",
+    "weekView": "สัปดาห์",
+    "dayView": "วัน",
+    "viewMode": "โหมดมุมมอง",
+    "more": "เพิ่มเติม",
     "today": "วันนี้",
     "todayLabel": "วันนี้",
     "tomorrowLabel": "พรุ่งนี้",
