@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   GitPullRequest,
@@ -106,12 +106,11 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
   const [confirmExtAction, setConfirmExtAction] = useState<PendingExternalAction | null>(null)
   const [collapsedAnvils, setCollapsedAnvils] = useState<Record<string, boolean>>({})
 
-  useEffect(() => {
-    if (!open) {
-      setConfirmAction(null)
-      setConfirmExtAction(null)
-    }
-  }, [open])
+  function handleClose() {
+    setConfirmAction(null)
+    setConfirmExtAction(null)
+    onClose()
+  }
 
   const anvilGroups = useMemo(() => {
     if (!data) return []
@@ -553,14 +552,14 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
     <>
       <Dialog
         open={open && !hasConfirmDialog}
-        onClose={onClose}
+        onClose={handleClose}
         maxWidth="max-w-2xl"
         aria-labelledby={titleId}
       >
         <DialogHeader
           id={titleId}
           title={totalCount > 0 ? `${t('prModal.title')} (${totalCount})` : t('prModal.title')}
-          onClose={onClose}
+          onClose={handleClose}
         />
         <DialogBody className="p-0">
           {loading && (

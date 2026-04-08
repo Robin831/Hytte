@@ -34,6 +34,8 @@ export function useAllPRs(enabled: boolean) {
     let timeoutId: ReturnType<typeof setTimeout> | undefined
 
     async function fetchAllPRs() {
+      setLoading(true)
+      setError(null)
       try {
         const res = await fetch('/api/forge/prs/all', {
           credentials: 'include',
@@ -62,8 +64,6 @@ export function useAllPRs(enabled: boolean) {
       }
     }
 
-    setLoading(true)
-    setError(null)
     void fetchAllPRs()
     return () => {
       controller.abort()
