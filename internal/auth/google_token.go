@@ -3,6 +3,8 @@ package auth
 import (
 	"database/sql"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -79,12 +81,20 @@ func LoadGoogleToken(db *sql.DB, userID int64) (*GoogleToken, error) {
 
 	accessToken, err := encryption.DecryptField(encAccess)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt access token for user %d: %w", userID, err)
+		if strings.HasPrefix(encAccess, "enc:") {
+			return nil, fmt.Errorf("decrypt access token for user %d: %w", userID, err)
+		}
+		log.Printf("google_token: decrypt access token warning (legacy plaintext) for user %d: %v", userID, err)
+		accessToken = encAccess
 	}
 
 	refreshToken, err := encryption.DecryptField(encRefresh)
 	if err != nil {
-		return nil, fmt.Errorf("decrypt refresh token for user %d: %w", userID, err)
+		if strings.HasPrefix(encRefresh, "enc:") {
+			return nil, fmt.Errorf("decrypt refresh token for user %d: %w", userID, err)
+		}
+		log.Printf("google_token: decrypt refresh token warning (legacy plaintext) for user %d: %v", userID, err)
+		refreshToken = encRefresh
 	}
 
 	var expiry time.Time

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -26,6 +27,25 @@ func TestSaveAndLoadGoogleToken(t *testing.T) {
 
 	if err := SaveGoogleToken(db, userID, original); err != nil {
 		t.Fatalf("SaveGoogleToken: %v", err)
+	}
+
+	// Verify tokens are stored as ciphertext (enc: prefix) in the DB
+	var rawAccess, rawRefresh string
+	err := db.QueryRow(`SELECT access_token, refresh_token FROM google_tokens WHERE user_id = ?`, userID).Scan(&rawAccess, &rawRefresh)
+	if err != nil {
+		t.Fatalf("query raw tokens: %v", err)
+	}
+	if !strings.HasPrefix(rawAccess, "enc:") {
+		t.Errorf("access_token in DB should be encrypted (enc: prefix), got %q", rawAccess)
+	}
+	if !strings.HasPrefix(rawRefresh, "enc:") {
+		t.Errorf("refresh_token in DB should be encrypted (enc: prefix), got %q", rawRefresh)
+	}
+	if rawAccess == original.AccessToken {
+		t.Error("access_token in DB should not equal plaintext")
+	}
+	if rawRefresh == original.RefreshToken {
+		t.Error("refresh_token in DB should not equal plaintext")
 	}
 
 	loaded, err := LoadGoogleToken(db, userID)
