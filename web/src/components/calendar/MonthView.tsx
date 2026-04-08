@@ -91,81 +91,85 @@ export default function MonthView({ events, calendars, rangeStart, onNavigateToD
         ))}
       </div>
 
-      {/* Day grid */}
-      <div className="grid grid-cols-7 border-t border-l border-gray-700/50">
-        {gridDates.map((date) => {
-          const dateKey = formatDateKey(date)
-          const inMonth = date.getMonth() === month
-          const today = isToday(date)
-          const dayEvents = eventsByDate.get(dateKey) ?? []
-          const overflow = dayEvents.length - MAX_VISIBLE_EVENTS
+      {/* Day grid — rows wrapped in role="row" for correct ARIA grid semantics */}
+      <div className="border-t border-l border-gray-700/50">
+        {Array.from({ length: Math.ceil(gridDates.length / 7) }, (_, rowIndex) => (
+          <div key={rowIndex} role="row" className="grid grid-cols-7">
+            {gridDates.slice(rowIndex * 7, (rowIndex + 1) * 7).map((date) => {
+              const dateKey = formatDateKey(date)
+              const inMonth = date.getMonth() === month
+              const today = isToday(date)
+              const dayEvents = eventsByDate.get(dateKey) ?? []
+              const overflow = dayEvents.length - MAX_VISIBLE_EVENTS
 
-          const visibleEventTitles = dayEvents.slice(0, MAX_VISIBLE_EVENTS).map(event => event.title)
-          const ariaLabelParts = [
-            formatDate(date, { month: 'long', day: 'numeric' }),
-            ...visibleEventTitles,
-            ...(overflow > 0 ? [`+${overflow} ${t('calendar.more')}`] : []),
-          ]
+              const visibleEventTitles = dayEvents.slice(0, MAX_VISIBLE_EVENTS).map(event => event.title)
+              const ariaLabelParts = [
+                formatDate(date, { month: 'long', day: 'numeric' }),
+                ...visibleEventTitles,
+                ...(overflow > 0 ? [`+${overflow} ${t('calendar.more')}`] : []),
+              ]
 
-          return (
-            <button
-              key={dateKey}
-              role="gridcell"
-              aria-label={ariaLabelParts.join(', ')}
-              onClick={() => onNavigateToDay(date)}
-              className={`
-                border-r border-b border-gray-700/50 p-1 min-h-[4.5rem] sm:min-h-[6rem] text-left
-                transition-colors hover:bg-gray-800/50 cursor-pointer
-                ${inMonth ? '' : 'opacity-40'}
-              `}
-            >
-              {/* Day number */}
-              <div className="flex items-center justify-center sm:justify-start mb-0.5">
-                <span
+              return (
+                <button
+                  key={dateKey}
+                  role="gridcell"
+                  aria-label={ariaLabelParts.join(', ')}
+                  onClick={() => onNavigateToDay(date)}
                   className={`
-                    text-xs sm:text-sm w-6 h-6 flex items-center justify-center rounded-full
-                    ${today ? 'bg-blue-600 text-white font-bold' : 'text-gray-300'}
+                    border-r border-b border-gray-700/50 p-1 min-h-[4.5rem] sm:min-h-[6rem] text-left
+                    transition-colors hover:bg-gray-800/50 cursor-pointer
+                    ${inMonth ? '' : 'opacity-40'}
                   `}
                 >
-                  {date.getDate()}
-                </span>
-              </div>
-
-              {/* Event pills (desktop) / dots (mobile) */}
-              <div className="hidden sm:block space-y-0.5">
-                {dayEvents.slice(0, MAX_VISIBLE_EVENTS).map(event => (
-                  <div
-                    key={event.id}
-                    className="text-[10px] leading-tight truncate rounded px-1 py-0.5 text-white/90"
-                    style={{ backgroundColor: getEventColor(event, colorMap) + 'cc' }}
-                    title={event.title}
-                  >
-                    {event.all_day ? event.title : `${formatTime(event.start_time, timeFormatOpts)} ${event.title}`}
+                  {/* Day number */}
+                  <div className="flex items-center justify-center sm:justify-start mb-0.5">
+                    <span
+                      className={`
+                        text-xs sm:text-sm w-6 h-6 flex items-center justify-center rounded-full
+                        ${today ? 'bg-blue-600 text-white font-bold' : 'text-gray-300'}
+                      `}
+                    >
+                      {date.getDate()}
+                    </span>
                   </div>
-                ))}
-                {overflow > 0 && (
-                  <div className="text-[10px] text-gray-400 px-1">
-                    +{overflow} {t('calendar.more')}
-                  </div>
-                )}
-              </div>
 
-              {/* Mobile: colored dots */}
-              <div className="flex sm:hidden gap-0.5 flex-wrap justify-center">
-                {dayEvents.slice(0, 5).map(event => (
-                  <span
-                    key={event.id}
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ backgroundColor: getEventColor(event, colorMap) }}
-                  />
-                ))}
-                {dayEvents.length > 5 && (
-                  <span className="text-[8px] text-gray-400">+</span>
-                )}
-              </div>
-            </button>
-          )
-        })}
+                  {/* Event pills (desktop) / dots (mobile) */}
+                  <div className="hidden sm:block space-y-0.5">
+                    {dayEvents.slice(0, MAX_VISIBLE_EVENTS).map(event => (
+                      <div
+                        key={event.id}
+                        className="text-[10px] leading-tight truncate rounded px-1 py-0.5 text-white/90"
+                        style={{ backgroundColor: getEventColor(event, colorMap) + 'cc' }}
+                        title={event.title}
+                      >
+                        {event.all_day ? event.title : `${formatTime(event.start_time, timeFormatOpts)} ${event.title}`}
+                      </div>
+                    ))}
+                    {overflow > 0 && (
+                      <div className="text-[10px] text-gray-400 px-1">
+                        +{overflow} {t('calendar.more')}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Mobile: colored dots */}
+                  <div className="flex sm:hidden gap-0.5 flex-wrap justify-center">
+                    {dayEvents.slice(0, 5).map(event => (
+                      <span
+                        key={event.id}
+                        className="w-1.5 h-1.5 rounded-full"
+                        style={{ backgroundColor: getEventColor(event, colorMap) }}
+                      />
+                    ))}
+                    {dayEvents.length > 5 && (
+                      <span className="text-[8px] text-gray-400">+</span>
+                    )}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        ))}
       </div>
     </div>
   )

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import CalendarPage from './CalendarPage'
 import enCommon from '../../public/locales/en/common.json'
@@ -301,18 +301,23 @@ describe('CalendarPage – view mode', () => {
   })
 
   it('switching to agenda view updates rendered content', async () => {
-    try { localStorage.setItem('hytte-calendar-view', 'agenda') } catch { /* ignore */ }
+    // Start in default month view (no pre-set localStorage)
     vi.stubGlobal('fetch', makeFetchMock(
       { calendars: [{ id: 'primary', summary: 'My Calendar', primary: true, selected: true }], connected: true },
       { events: [] },
     ))
     renderPage()
+    // Month view renders a grid
+    await waitFor(() => {
+      expect(screen.getByRole('grid')).toBeInTheDocument()
+    })
+    // Click Agenda button to switch views
+    fireEvent.click(screen.getByRole('radio', { name: 'Agenda' }))
+    // After switching, no grid — shows "No events" agenda empty state
     await waitFor(() => {
       expect(screen.getByText('No events in this period')).toBeInTheDocument()
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument()
     })
-    // The view mode radio buttons are present
-    expect(screen.getByRole('radio', { name: 'Month' })).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: 'Agenda' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'Agenda' })).toHaveAttribute('aria-checked', 'true')
   })
 })

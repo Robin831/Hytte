@@ -15,21 +15,25 @@ import {
 const HOUR_HEIGHT = 48 // px per hour slot
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
-function getEventPosition(event: CalendarEvent): { top: number; height: number } {
-  const start = new Date(event.start_time)
-  const end = new Date(event.end_time)
-  const startMinutes = start.getHours() * 60 + start.getMinutes()
-  // Use timestamp delta clamped to end of day to correctly handle overnight events.
-  const dayEndMs = new Date(start).setHours(24, 0, 0, 0)
-  const clampedEndMs = Math.min(end.getTime(), dayEndMs)
-  const durationMinutes = Math.max((clampedEndMs - start.getTime()) / (60 * 1000), 15)
+function getEventPosition(event: CalendarEvent, dayStart: Date): { top: number; height: number } {
+  const dayStartMs = dayStart.getTime()
+  const dayEndMs = dayStartMs + 24 * 60 * 60 * 1000
+  const eventStartMs = new Date(event.start_time).getTime()
+  const eventEndMs = new Date(event.end_time).getTime()
+  const clampedStartMs = Math.max(eventStartMs, dayStartMs)
+  const clampedEndMs = Math.min(eventEndMs, dayEndMs)
+  const startMinutes = (clampedStartMs - dayStartMs) / (60 * 1000)
+  const durationMinutes = Math.max((clampedEndMs - clampedStartMs) / (60 * 1000), 15)
   return {
     top: (startMinutes / 60) * HOUR_HEIGHT,
     height: (durationMinutes / 60) * HOUR_HEIGHT,
   }
 }
 
-function getEventsForDay(events: CalendarEvent[], dateKey: string): { allDay: CalendarEvent[]; timed: CalendarEvent[] } {
+function getEventsForDay(events: CalendarEvent[], day: Date): { allDay: CalendarEvent[]; timed: CalendarEvent[] } {
+  const dateKey = formatDateKey(day)
+  const dayStartMs = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime()
+  const dayEndMs = dayStartMs + 24 * 60 * 60 * 1000
   const allDay: CalendarEvent[] = []
   const timed: CalendarEvent[] = []
   for (const event of events) {
@@ -39,8 +43,12 @@ function getEventsForDay(events: CalendarEvent[], dateKey: string): { allDay: Ca
       if (dateKey >= startKey && dateKey < endKey) {
         allDay.push(event)
       }
-    } else if (formatDateKey(new Date(event.start_time)) === dateKey) {
-      timed.push(event)
+    } else {
+      const eventStartMs = new Date(event.start_time).getTime()
+      const eventEndMs = new Date(event.end_time).getTime()
+      if (eventStartMs < dayEndMs && eventEndMs > dayStartMs) {
+        timed.push(event)
+      }
     }
   }
   return { allDay, timed }
@@ -73,10 +81,7 @@ export default function WeekView({ events, calendars, rangeStart, onNavigateToDa
 
   // Collect all-day events per day
   const allDayByDay = useMemo(() => {
-    return weekDays.map(day => {
-      const dateKey = formatDateKey(day)
-      return getEventsForDay(events, dateKey).allDay
-    })
+    return weekDays.map(day => getEventsForDay(events, day).allDay)
   }, [events, weekDays])
 
   const hasAllDay = allDayByDay.some(d => d.length > 0)
@@ -183,10 +188,11 @@ export default function WeekView({ events, calendars, rangeStart, onNavigateToDa
               )
             })()}
 
-            {weekDays.map((day, _dayIndex) => {
+            {weekDays.map((day) => {
               const dateKey = formatDateKey(day)
-              const { timed } = getEventsForDay(events, dateKey)
+              const { timed } = getEventsForDay(events, day)
               const today = isToday(day)
+              const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate())
 
               return (
                 <div
@@ -194,7 +200,7 @@ export default function WeekView({ events, calendars, rangeStart, onNavigateToDa
                   className={`relative border-l border-gray-700/50 ${today ? 'bg-blue-950/20' : ''}`}
                 >
                   {timed.map(event => {
-                    const { top, height } = getEventPosition(event)
+                    const { top, height } = getEventPosition(event, dayStart)
                     const color = getEventColor(event, colorMap)
 
                     return (

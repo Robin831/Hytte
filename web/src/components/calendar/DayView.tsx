@@ -14,14 +14,15 @@ import {
 const HOUR_HEIGHT = 56 // px per hour slot — slightly taller than week view for readability
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
-function getEventPosition(event: CalendarEvent): { top: number; height: number } {
-  const start = new Date(event.start_time)
-  const end = new Date(event.end_time)
-  const startMinutes = start.getHours() * 60 + start.getMinutes()
-  // Use timestamp delta clamped to end of day to correctly handle overnight events.
-  const dayEndMs = new Date(start).setHours(24, 0, 0, 0)
-  const clampedEndMs = Math.min(end.getTime(), dayEndMs)
-  const durationMinutes = Math.max((clampedEndMs - start.getTime()) / (60 * 1000), 15)
+function getEventPosition(event: CalendarEvent, dayStart: Date): { top: number; height: number } {
+  const dayStartMs = dayStart.getTime()
+  const dayEndMs = dayStartMs + 24 * 60 * 60 * 1000
+  const eventStartMs = new Date(event.start_time).getTime()
+  const eventEndMs = new Date(event.end_time).getTime()
+  const clampedStartMs = Math.max(eventStartMs, dayStartMs)
+  const clampedEndMs = Math.min(eventEndMs, dayEndMs)
+  const startMinutes = (clampedStartMs - dayStartMs) / (60 * 1000)
+  const durationMinutes = Math.max((clampedEndMs - clampedStartMs) / (60 * 1000), 15)
   return {
     top: (startMinutes / 60) * HOUR_HEIGHT,
     height: (durationMinutes / 60) * HOUR_HEIGHT,
@@ -37,8 +38,14 @@ export default function DayView({ events, calendars, rangeStart }: CalendarViewP
 
   const dateKey = formatDateKey(rangeStart)
   const today = isToday(rangeStart)
+  const dayStart = useMemo(
+    () => new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate()),
+    [rangeStart],
+  )
 
   const { allDay, timed } = useMemo(() => {
+    const dayStartMs = dayStart.getTime()
+    const dayEndMs = dayStartMs + 24 * 60 * 60 * 1000
     const allDay: CalendarEvent[] = []
     const timed: CalendarEvent[] = []
     for (const event of events) {
@@ -48,13 +55,17 @@ export default function DayView({ events, calendars, rangeStart }: CalendarViewP
         if (dateKey >= startKey && dateKey < endKey) {
           allDay.push(event)
         }
-      } else if (formatDateKey(new Date(event.start_time)) === dateKey) {
-        timed.push(event)
+      } else {
+        const eventStartMs = new Date(event.start_time).getTime()
+        const eventEndMs = new Date(event.end_time).getTime()
+        if (eventStartMs < dayEndMs && eventEndMs > dayStartMs) {
+          timed.push(event)
+        }
       }
     }
     timed.sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
     return { allDay, timed }
-  }, [events, dateKey])
+  }, [events, dateKey, dayStart])
 
   // Live-updating current time (updates every 60s)
   const [now, setNow] = useState(() => new Date())
@@ -140,7 +151,7 @@ export default function DayView({ events, calendars, rangeStart }: CalendarViewP
 
             {/* Timed events */}
             {timed.map(event => {
-              const { top, height } = getEventPosition(event)
+              const { top, height } = getEventPosition(event, dayStart)
               const color = getEventColor(event, colorMap)
               const showDetails = height >= 40
 

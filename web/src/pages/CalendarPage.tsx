@@ -56,6 +56,12 @@ function getViewRange(view: ViewMode, rangeStart: Date): { start: Date; end: Dat
   }
 }
 
+/** Build the events fetch URL for a given view mode and range start. */
+function buildEventsUrl(view: ViewMode, rangeStart: Date, sync = false): string {
+  const { start, end } = getViewRange(view, rangeStart)
+  return `/api/calendar/events?start=${encodeURIComponent(toRFC3339(start))}&end=${encodeURIComponent(toRFC3339(end))}${sync ? '&sync=true' : ''}`
+}
+
 function loadViewMode(): ViewMode {
   try {
     const stored = localStorage.getItem(STORAGE_KEY)
@@ -86,6 +92,7 @@ export default function CalendarPage() {
   const selectorRef = useRef<HTMLDivElement>(null)
 
   const handleSetViewMode = (mode: ViewMode) => {
+    setLoading(true)
     setViewMode(mode)
     try { localStorage.setItem(STORAGE_KEY, mode) } catch { /* ignore */ }
   }
@@ -93,10 +100,7 @@ export default function CalendarPage() {
   const fetchEvents = useCallback(async (sync = false, signal?: AbortSignal) => {
     if (!user) return
     try {
-      const { start, end } = getViewRange(viewMode, rangeStart)
-      const startParam = toRFC3339(start)
-      const endParam = toRFC3339(end)
-      const url = `/api/calendar/events?start=${encodeURIComponent(startParam)}&end=${encodeURIComponent(endParam)}${sync ? '&sync=true' : ''}`
+      const url = buildEventsUrl(viewMode, rangeStart, sync)
       const res = await fetch(url, { credentials: 'include', signal })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
@@ -137,14 +141,13 @@ export default function CalendarPage() {
         if (!controller.signal.aborted) setCalendarsLoading(false)
       })
     return () => controller.abort()
-  }, [user])
+  }, [user, t])
 
   // Fetch events whenever rangeStart or viewMode changes
   useEffect(() => {
     if (!user) return
     const controller = new AbortController()
-    const { start, end } = getViewRange(viewMode, rangeStart)
-    const url = `/api/calendar/events?start=${encodeURIComponent(toRFC3339(start))}&end=${encodeURIComponent(toRFC3339(end))}`
+    const url = buildEventsUrl(viewMode, rangeStart)
     fetch(url, { credentials: 'include', signal: controller.signal })
       .then(res => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
