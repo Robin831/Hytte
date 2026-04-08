@@ -45,16 +45,14 @@ export function useKeyboardShortcuts(actions: KeyboardShortcutActions, enabled =
         actions.onToggleReleaseModal()
         return
       }
-      if (e.key === 's') {
-        e.preventDefault()
-        actions.onToggleSettingsModal()
-        return
-      }
-
       // Ignore all other global shortcuts while an aria-modal dialog is open
       if (document.querySelector('[aria-modal="true"]')) return
 
       switch (e.key) {
+        case 's':
+          e.preventDefault()
+          actions.onToggleSettingsModal()
+          break
         case 'r':
           e.preventDefault()
           actions.onRefresh()

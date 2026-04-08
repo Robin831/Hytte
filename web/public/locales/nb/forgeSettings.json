@@ -1,5 +1,6 @@
 {
   "title": "Forge-innstillinger",
+  "description": "Konfigurer Forge-daemoninnstillinger inkludert ambolter, smedegrenser, tidsinnstillinger, leverandører og varsler",
   "loading": "Laster konfigurasjon…",
   "loadError": "Kunne ikke laste forge-konfigurasjon",
   "save": "Lagre",

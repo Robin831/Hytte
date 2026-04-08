@@ -1,4 +1,4 @@
-import { useState, useEffect, useId } from 'react'
+import { useState, useEffect, useId, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Save } from 'lucide-react'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
@@ -60,6 +60,7 @@ interface ForgeSettingsModalProps {
 export default function ForgeSettingsModal({ open, onClose, showToast }: ForgeSettingsModalProps) {
   const { t } = useTranslation('forgeSettings')
   const titleId = useId()
+  const descriptionId = useId()
 
   const [config, setConfig] = useState<ForgeConfig | null>(null)
   const [loading, setLoading] = useState(true)
@@ -146,9 +147,10 @@ export default function ForgeSettingsModal({ open, onClose, showToast }: ForgeSe
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="max-w-3xl" aria-labelledby={titleId}>
+    <Dialog open={open} onClose={onClose} maxWidth="max-w-3xl" aria-labelledby={titleId} aria-describedby={descriptionId}>
       <DialogHeader id={titleId} title={t('title')} onClose={onClose} />
       <DialogBody>
+        <p id={descriptionId} className="sr-only">{t('description')}</p>
         {loading && (
           <div className="flex items-center justify-center h-32 text-gray-400">
             {t('loading')}
@@ -370,7 +372,7 @@ export default function ForgeSettingsModal({ open, onClose, showToast }: ForgeSe
             type="button"
             onClick={saveConfig}
             disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors cursor-pointer"
           >
             <Save size={16} />
             {saving ? t('saving') : t('save')}
@@ -436,14 +438,15 @@ function ToggleField({
   value: boolean
   onChange: (v: boolean) => void
 }) {
+  const labelId = useRef(crypto.randomUUID()).current
   return (
-    <label className="flex items-center gap-3 cursor-pointer">
+    <div className="flex items-center gap-3 cursor-pointer" onClick={() => onChange(!value)}>
       <button
         type="button"
         role="switch"
         aria-checked={value}
-        aria-label={label}
-        onClick={() => onChange(!value)}
+        aria-labelledby={labelId}
+        onClick={(e) => { e.stopPropagation(); onChange(!value) }}
         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
           value ? 'bg-blue-600' : 'bg-gray-600'
         }`}
@@ -454,8 +457,8 @@ function ToggleField({
           }`}
         />
       </button>
-      <span className="text-sm text-gray-300">{label}</span>
-    </label>
+      <span id={labelId} className="text-sm text-gray-300">{label}</span>
+    </div>
   )
 }
 

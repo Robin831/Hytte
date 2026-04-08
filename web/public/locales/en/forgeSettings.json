@@ -1,5 +1,6 @@
 {
   "title": "Forge Settings",
+  "description": "Configure Forge daemon settings including anvils, smith limits, timing, providers, and notifications",
   "loading": "Loading configuration…",
   "loadError": "Failed to load forge configuration",
   "save": "Save",
