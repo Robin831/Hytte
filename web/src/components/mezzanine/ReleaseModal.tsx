@@ -109,12 +109,10 @@ export default function ReleaseModal({ open, onClose, showToast }: ReleaseModalP
     }
   }, [])
 
-  // Fetch suggestion when modal opens; reset confirm dialog when it closes
+  // Fetch suggestion when modal opens; reset confirm dialog on open
   useEffect(() => {
-    if (!open) {
-      setConfirmOpen(false)
-      return
-    }
+    if (!open) return
+    setConfirmOpen(false)
     const controller = startSuggestionFetch()
     return () => controller.abort()
   // eslint-disable-next-line react-hooks/exhaustive-deps
