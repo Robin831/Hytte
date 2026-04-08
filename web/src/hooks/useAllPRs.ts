@@ -17,7 +17,7 @@ export interface AllPRsData {
   external_prs: ExternalPR[]
 }
 
-export function useAllPRs(enabled: boolean) {
+export function useAllPRs(enabled: boolean = true) {
   const [data, setData] = useState<AllPRsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

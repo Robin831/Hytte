@@ -161,6 +161,7 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
       } else {
         const successKey = `readyToMerge.${action.type}Success` as const
         showToast?.(t(successKey, { number: action.pr.number }), 'success')
+        refetch()
       }
     } catch (err) {
       showToast?.(err instanceof Error ? err.message : t('unknownError'), 'error')
@@ -203,6 +204,7 @@ export default function PRModal({ open, onClose, showToast, onBeadClick }: PRMod
           extResetCounters: 'readyToMerge.extResetCountersSuccess',
         }
         showToast?.(t(successKeyMap[action.type] as never, { number: action.pr.number }), 'success')
+        refetch()
       }
     } catch (err) {
       showToast?.(err instanceof Error ? err.message : t('unknownError'), 'error')
