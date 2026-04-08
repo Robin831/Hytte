@@ -33,10 +33,21 @@ function startOfDay(date: Date): Date {
   return d
 }
 
+function endOfDay(date: Date): Date {
+  const d = new Date(date)
+  d.setHours(23, 59, 59, 0)
+  return d
+}
+
 function addDays(date: Date, days: number): Date {
   const d = new Date(date)
   d.setDate(d.getDate() + days)
   return d
+}
+
+/** Format a Date as RFC3339 without fractional seconds, e.g. "2026-04-08T00:00:00Z". */
+function toRFC3339(date: Date): string {
+  return date.toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
 function formatDateKey(date: Date): string {
@@ -113,10 +124,11 @@ export default function CalendarPage() {
   const fetchEvents = useCallback(async (sync = false, signal?: AbortSignal) => {
     if (!user) return
     try {
-      // Derive rangeEnd internally so this callback doesn't depend on a new Date instance each render
-      const endDate = addDays(rangeStart, daysToShow)
-      const startParam = rangeStart.toISOString()
-      const endParam = endDate.toISOString()
+      // Derive rangeEnd internally so this callback doesn't depend on a new Date instance each render.
+      // Use RFC3339 without fractional seconds (backend parseFlexibleTime doesn't support ms).
+      // End is 23:59:59 of the last displayed day to avoid including events from the next period.
+      const startParam = toRFC3339(rangeStart)
+      const endParam = toRFC3339(endOfDay(addDays(rangeStart, daysToShow - 1)))
       const url = `/api/calendar/events?start=${encodeURIComponent(startParam)}&end=${encodeURIComponent(endParam)}${sync ? '&sync=true' : ''}`
       const res = await fetch(url, { credentials: 'include', signal })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -140,7 +152,13 @@ export default function CalendarPage() {
         return res.json()
       })
       .then(data => {
-        setCalendars(data.calendars ?? [])
+        let cals: CalendarInfo[] = data.calendars ?? []
+        // If no calendars are explicitly selected, default to the primary calendar so
+        // the UI selection matches the backend's "no preference → show primary" behaviour.
+        if (cals.length > 0 && !cals.some(c => c.selected)) {
+          cals = cals.map(c => ({ ...c, selected: c.primary }))
+        }
+        setCalendars(cals)
         setConnected(data.connected ?? false)
       })
       .catch(err => {
@@ -205,6 +223,9 @@ export default function CalendarPage() {
     setCalendars(updated)
 
     const selectedIds = updated.filter(c => c.selected).map(c => c.id)
+    // Prevent saving an empty selection — fall back to ['primary'] so the backend
+    // doesn't silently revert to its own default and create a UI/results mismatch.
+    const idsToSave = selectedIds.length > 0 ? selectedIds : ['primary']
 
     setSavingCalendars(true)
     try {
@@ -212,7 +233,7 @@ export default function CalendarPage() {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ calendar_ids: selectedIds }),
+        body: JSON.stringify({ calendar_ids: idsToSave }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       // Refetch events with the new calendar selection (no Google sync, just cached)
