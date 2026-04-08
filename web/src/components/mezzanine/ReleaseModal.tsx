@@ -69,10 +69,10 @@ export default function ReleaseModal({ open, onClose, showToast }: ReleaseModalP
 
     const controller = new AbortController()
     abortRef.current = controller
-    setSuggestLoading(true)
-    setSuggestError(null)
 
     async function fetchSuggestion() {
+      setSuggestLoading(true)
+      setSuggestError(null)
       try {
         const res = await fetch('/api/forge/release/suggest', {
           credentials: 'include',
