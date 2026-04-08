@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"sync"
@@ -85,6 +86,7 @@ func (s *AuroraService) AuroraHandler() http.HandlerFunc {
 
 		forecast, err := s.getAuroraForecast(r.Context(), lat, lon)
 		if err != nil {
+			log.Printf("skywatch: aurora forecast error: %v", err)
 			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to fetch aurora data"})
 			return
 		}
