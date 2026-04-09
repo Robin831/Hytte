@@ -40,9 +40,6 @@ export default function BudgetSnapshotCard() {
     const controller = new AbortController()
     const signal = controller.signal
 
-    setError(false)
-    setLoading(true)
-
     Promise.all([
       fetch('/api/budget/regning', { credentials: 'include', signal }),
       fetch('/api/budget/accounts', { credentials: 'include', signal }),
