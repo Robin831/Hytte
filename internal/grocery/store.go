@@ -3,13 +3,12 @@ package grocery
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
 
-// ListByHousehold returns all grocery items for the given household, ordered by sort_order then created_at.
+// ListByHousehold returns all grocery items for the given household, ordered by checked, then sort_order, then created_at.
 func ListByHousehold(db *sql.DB, householdID int64) ([]GroceryItem, error) {
 	rows, err := db.Query(`
 		SELECT id, household_id, content, original_text, source_language, checked, sort_order, added_by, created_at
@@ -44,7 +43,7 @@ func ListByHousehold(db *sql.DB, householdID int64) ([]GroceryItem, error) {
 
 		parsed, err := time.Parse(time.RFC3339, createdAt)
 		if err != nil {
-			log.Printf("grocery: failed to parse created_at %q for item %d: %v", createdAt, item.ID, err)
+			return nil, fmt.Errorf("parse created_at for item %d: %w", item.ID, err)
 		}
 		item.CreatedAt = parsed
 		items = append(items, item)
@@ -73,7 +72,9 @@ func Add(db *sql.DB, item GroceryItem) (GroceryItem, error) {
 
 	// Default sort_order to the next value for this household.
 	var maxOrder sql.NullInt64
-	_ = db.QueryRow("SELECT MAX(sort_order) FROM grocery_items WHERE household_id = ?", item.HouseholdID).Scan(&maxOrder)
+	if err := db.QueryRow("SELECT MAX(sort_order) FROM grocery_items WHERE household_id = ?", item.HouseholdID).Scan(&maxOrder); err != nil {
+		return GroceryItem{}, fmt.Errorf("select max sort_order: %w", err)
+	}
 	if maxOrder.Valid {
 		item.SortOrder = int(maxOrder.Int64) + 1
 	}
@@ -107,7 +108,10 @@ func UpdateChecked(db *sql.DB, id int64, householdID int64, checked bool) error 
 	if err != nil {
 		return fmt.Errorf("update checked: %w", err)
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
 	if n == 0 {
 		return sql.ErrNoRows
 	}
@@ -120,7 +124,10 @@ func UpdateSortOrder(db *sql.DB, id int64, householdID int64, order int) error {
 	if err != nil {
 		return fmt.Errorf("update sort_order: %w", err)
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
 	if n == 0 {
 		return sql.ErrNoRows
 	}
@@ -133,6 +140,9 @@ func DeleteCompleted(db *sql.DB, householdID int64) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("delete completed: %w", err)
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("rows affected: %w", err)
+	}
 	return n, nil
 }

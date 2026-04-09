@@ -17,6 +17,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("init test db: %v", err)
 	}
+	database.SetMaxOpenConns(1)
+	database.SetMaxIdleConns(1)
 	t.Cleanup(func() { database.Close() })
 
 	// Create a test user.
