@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -23,7 +24,7 @@ func TestHandleAddAndList(t *testing.T) {
 
 	// Add an item.
 	body := `{"content":"Milk","source_language":"en"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/grocery/", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/grocery/items", bytes.NewBufferString(body))
 	req = withUser(req, user)
 	w := httptest.NewRecorder()
 	HandleAdd(db)(w, req)
@@ -43,7 +44,7 @@ func TestHandleAddAndList(t *testing.T) {
 	}
 
 	// List items.
-	req = httptest.NewRequest(http.MethodGet, "/api/grocery/", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/grocery/items", nil)
 	req = withUser(req, user)
 	w = httptest.NewRecorder()
 	HandleList(db)(w, req)
@@ -68,7 +69,7 @@ func TestHandleAddEmptyContent(t *testing.T) {
 	user := &auth.User{ID: 1, Email: "test@example.com", Name: "Test"}
 
 	body := `{"content":"  "}`
-	req := httptest.NewRequest(http.MethodPost, "/api/grocery/", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/grocery/items", bytes.NewBufferString(body))
 	req = withUser(req, user)
 	w := httptest.NewRecorder()
 	HandleAdd(db)(w, req)
@@ -82,15 +83,15 @@ func TestHandleCheck(t *testing.T) {
 	db := setupTestDB(t)
 	user := &auth.User{ID: 1, Email: "test@example.com", Name: "Test"}
 
-	created, err := Add(db, GroceryItem{UserID: 1, Content: "Eggs", OriginalText: "Eggs", AddedBy: 1})
+	created, err := Add(db, GroceryItem{HouseholdID: user.ID, Content: "Eggs", OriginalText: "Eggs", AddedBy: user.ID})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 
 	body := `{"checked":true}`
-	req := httptest.NewRequest(http.MethodPatch, "/api/grocery/1/check", bytes.NewBufferString(body))
+	req := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/grocery/items/%d/check", created.ID), bytes.NewBufferString(body))
 	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", "1")
+	rctx.URLParams.Add("id", fmt.Sprintf("%d", created.ID))
 	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 	req = withUser(req, user)
 	w := httptest.NewRecorder()
@@ -100,25 +101,24 @@ func TestHandleCheck(t *testing.T) {
 		t.Fatalf("HandleCheck status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
 	}
 
-	items, err := ListByUser(db, 1)
+	items, err := ListByHousehold(db, user.ID)
 	if err != nil {
-		t.Fatalf("ListByUser: %v", err)
+		t.Fatalf("ListByHousehold: %v", err)
 	}
 	if !items[0].Checked {
 		t.Error("item should be checked")
 	}
-	_ = created
 }
 
 func TestHandleClearCompleted(t *testing.T) {
 	db := setupTestDB(t)
 	user := &auth.User{ID: 1, Email: "test@example.com", Name: "Test"}
 
-	item, err := Add(db, GroceryItem{UserID: 1, Content: "Milk", OriginalText: "Milk", AddedBy: 1})
+	item, err := Add(db, GroceryItem{HouseholdID: user.ID, Content: "Milk", OriginalText: "Milk", AddedBy: user.ID})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if err := UpdateChecked(db, item.ID, 1, true); err != nil {
+	if err := UpdateChecked(db, item.ID, user.ID, true); err != nil {
 		t.Fatalf("UpdateChecked: %v", err)
 	}
 
@@ -131,9 +131,9 @@ func TestHandleClearCompleted(t *testing.T) {
 		t.Fatalf("HandleClearCompleted status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	items, err := ListByUser(db, 1)
+	items, err := ListByHousehold(db, user.ID)
 	if err != nil {
-		t.Fatalf("ListByUser: %v", err)
+		t.Fatalf("ListByHousehold: %v", err)
 	}
 	if len(items) != 0 {
 		t.Errorf("got %d items after clear, want 0", len(items))

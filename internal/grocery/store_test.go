@@ -2,15 +2,17 @@ package grocery
 
 import (
 	"database/sql"
-	"os"
 	"testing"
 
 	"github.com/Robin831/Hytte/internal/db"
+	"github.com/Robin831/Hytte/internal/encryption"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	os.Setenv("ENCRYPTION_KEY", "test-key-that-is-at-least-32-bytes-long!!")
+	t.Setenv("ENCRYPTION_KEY", "test-key-for-grocery-tests")
+	encryption.ResetEncryptionKey()
+	t.Cleanup(func() { encryption.ResetEncryptionKey() })
 	database, err := db.Init(":memory:")
 	if err != nil {
 		t.Fatalf("init test db: %v", err)
@@ -29,7 +31,7 @@ func TestAddAndList(t *testing.T) {
 	d := setupTestDB(t)
 
 	item := GroceryItem{
-		UserID:         1,
+		HouseholdID:    1,
 		Content:        "Milk",
 		OriginalText:   "Melk",
 		SourceLanguage: "nb",
@@ -50,9 +52,9 @@ func TestAddAndList(t *testing.T) {
 		t.Error("new item should not be checked")
 	}
 
-	items, err := ListByUser(d, 1)
+	items, err := ListByHousehold(d, 1)
 	if err != nil {
-		t.Fatalf("ListByUser: %v", err)
+		t.Fatalf("ListByHousehold: %v", err)
 	}
 	if len(items) != 1 {
 		t.Fatalf("got %d items, want 1", len(items))
@@ -68,7 +70,7 @@ func TestAddAndList(t *testing.T) {
 func TestUpdateChecked(t *testing.T) {
 	d := setupTestDB(t)
 
-	created, err := Add(d, GroceryItem{UserID: 1, Content: "Eggs", OriginalText: "Eggs", AddedBy: 1})
+	created, err := Add(d, GroceryItem{HouseholdID: 1, Content: "Eggs", OriginalText: "Eggs", AddedBy: 1})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
@@ -77,24 +79,24 @@ func TestUpdateChecked(t *testing.T) {
 		t.Fatalf("UpdateChecked: %v", err)
 	}
 
-	items, err := ListByUser(d, 1)
+	items, err := ListByHousehold(d, 1)
 	if err != nil {
-		t.Fatalf("ListByUser: %v", err)
+		t.Fatalf("ListByHousehold: %v", err)
 	}
 	if !items[0].Checked {
 		t.Error("expected item to be checked")
 	}
 
-	// Wrong user should get ErrNoRows.
+	// Wrong household should get ErrNoRows.
 	if err := UpdateChecked(d, created.ID, 999, false); err != sql.ErrNoRows {
-		t.Errorf("expected ErrNoRows for wrong user, got %v", err)
+		t.Errorf("expected ErrNoRows for wrong household, got %v", err)
 	}
 }
 
 func TestUpdateSortOrder(t *testing.T) {
 	d := setupTestDB(t)
 
-	created, err := Add(d, GroceryItem{UserID: 1, Content: "Bread", OriginalText: "Bread", AddedBy: 1})
+	created, err := Add(d, GroceryItem{HouseholdID: 1, Content: "Bread", OriginalText: "Bread", AddedBy: 1})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
@@ -103,9 +105,9 @@ func TestUpdateSortOrder(t *testing.T) {
 		t.Fatalf("UpdateSortOrder: %v", err)
 	}
 
-	items, err := ListByUser(d, 1)
+	items, err := ListByHousehold(d, 1)
 	if err != nil {
-		t.Fatalf("ListByUser: %v", err)
+		t.Fatalf("ListByHousehold: %v", err)
 	}
 	if items[0].SortOrder != 42 {
 		t.Errorf("got sort_order %d, want 42", items[0].SortOrder)
@@ -115,11 +117,11 @@ func TestUpdateSortOrder(t *testing.T) {
 func TestDeleteCompleted(t *testing.T) {
 	d := setupTestDB(t)
 
-	_, err := Add(d, GroceryItem{UserID: 1, Content: "Milk", OriginalText: "Milk", AddedBy: 1})
+	_, err := Add(d, GroceryItem{HouseholdID: 1, Content: "Milk", OriginalText: "Milk", AddedBy: 1})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	item2, err := Add(d, GroceryItem{UserID: 1, Content: "Eggs", OriginalText: "Eggs", AddedBy: 1})
+	item2, err := Add(d, GroceryItem{HouseholdID: 1, Content: "Eggs", OriginalText: "Eggs", AddedBy: 1})
 	if err != nil {
 		t.Fatalf("Add: %v", err)
 	}
@@ -137,9 +139,9 @@ func TestDeleteCompleted(t *testing.T) {
 		t.Errorf("deleted %d, want 1", deleted)
 	}
 
-	items, err := ListByUser(d, 1)
+	items, err := ListByHousehold(d, 1)
 	if err != nil {
-		t.Fatalf("ListByUser: %v", err)
+		t.Fatalf("ListByHousehold: %v", err)
 	}
 	if len(items) != 1 {
 		t.Fatalf("got %d items, want 1", len(items))
@@ -149,7 +151,7 @@ func TestDeleteCompleted(t *testing.T) {
 	}
 }
 
-func TestUserScoping(t *testing.T) {
+func TestHouseholdScoping(t *testing.T) {
 	d := setupTestDB(t)
 
 	// Create a second user.
@@ -158,28 +160,28 @@ func TestUserScoping(t *testing.T) {
 		t.Fatalf("insert user 2: %v", err)
 	}
 
-	_, err = Add(d, GroceryItem{UserID: 1, Content: "Milk", OriginalText: "Milk", AddedBy: 1})
+	_, err = Add(d, GroceryItem{HouseholdID: 1, Content: "Milk", OriginalText: "Milk", AddedBy: 1})
 	if err != nil {
-		t.Fatalf("Add user 1: %v", err)
+		t.Fatalf("Add household 1: %v", err)
 	}
-	_, err = Add(d, GroceryItem{UserID: 2, Content: "Bread", OriginalText: "Bread", AddedBy: 2})
+	_, err = Add(d, GroceryItem{HouseholdID: 2, Content: "Bread", OriginalText: "Bread", AddedBy: 2})
 	if err != nil {
-		t.Fatalf("Add user 2: %v", err)
+		t.Fatalf("Add household 2: %v", err)
 	}
 
-	items1, err := ListByUser(d, 1)
+	items1, err := ListByHousehold(d, 1)
 	if err != nil {
-		t.Fatalf("ListByUser 1: %v", err)
+		t.Fatalf("ListByHousehold 1: %v", err)
 	}
 	if len(items1) != 1 {
-		t.Errorf("user 1 has %d items, want 1", len(items1))
+		t.Errorf("household 1 has %d items, want 1", len(items1))
 	}
 
-	items2, err := ListByUser(d, 2)
+	items2, err := ListByHousehold(d, 2)
 	if err != nil {
-		t.Fatalf("ListByUser 2: %v", err)
+		t.Fatalf("ListByHousehold 2: %v", err)
 	}
 	if len(items2) != 1 {
-		t.Errorf("user 2 has %d items, want 1", len(items2))
+		t.Errorf("household 2 has %d items, want 1", len(items2))
 	}
 }

@@ -2,10 +2,10 @@ package grocery
 
 import "time"
 
-// GroceryItem represents a single item on a user's grocery list.
+// GroceryItem represents a single item on a household's grocery list.
 type GroceryItem struct {
 	ID             int64     `json:"id"`
-	UserID         int64     `json:"user_id"`
+	HouseholdID    int64     `json:"household_id"`
 	Content        string    `json:"content"`
 	OriginalText   string    `json:"original_text"`
 	SourceLanguage string    `json:"source_language"`

@@ -1419,7 +1419,7 @@ func createSchema(db *sql.DB) error {
 	-- Grocery list items (Hytte-euvr).
 	CREATE TABLE IF NOT EXISTS grocery_items (
 		id              INTEGER PRIMARY KEY,
-		user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		household_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		content         TEXT NOT NULL DEFAULT '',
 		original_text   TEXT NOT NULL DEFAULT '',
 		source_language TEXT NOT NULL DEFAULT '',
@@ -1429,7 +1429,7 @@ func createSchema(db *sql.DB) error {
 		created_at      TEXT NOT NULL DEFAULT ''
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_grocery_items_user_id ON grocery_items(user_id);
+	CREATE INDEX IF NOT EXISTS idx_grocery_items_household ON grocery_items(household_id);
 
 	`
 

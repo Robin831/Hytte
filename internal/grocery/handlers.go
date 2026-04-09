@@ -20,12 +20,12 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-// HandleList returns all grocery items for the authenticated user.
+// HandleList returns all grocery items for the authenticated user's household.
 func HandleList(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
-		items, err := ListByUser(db, user.ID)
+		items, err := ListByHousehold(db, user.ID)
 		if err != nil {
 			log.Printf("Failed to list grocery items: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list items"})
@@ -53,7 +53,7 @@ func HandleAdd(db *sql.DB) http.HandlerFunc {
 		}
 
 		item := GroceryItem{
-			UserID:         user.ID,
+			HouseholdID:    user.ID,
 			Content:        body.Content,
 			OriginalText:   body.Content, // Translation integration comes later.
 			SourceLanguage: body.SourceLanguage,
@@ -130,7 +130,7 @@ func HandleReorder(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// HandleClearCompleted deletes all checked items for the authenticated user.
+// HandleClearCompleted deletes all checked items for the authenticated user's household.
 func HandleClearCompleted(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
