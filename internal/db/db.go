@@ -163,6 +163,7 @@ func createSchema(db *sql.DB) error {
 		training_load       REAL,
 		hr_drift_pct        REAL,
 		pace_cv_pct         REAL,
+		race_id             INTEGER REFERENCES stride_races(id) ON DELETE SET NULL,
 		UNIQUE(user_id, fit_file_hash)
 	);
 

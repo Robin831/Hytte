@@ -179,9 +179,15 @@ func UpdateRace(db *sql.DB, id, userID int64, name, date string, distanceM float
 // stride_races.result_time from the workout's duration_seconds. Both the
 // workout and race must belong to the same user.
 func LinkWorkoutToRace(db *sql.DB, workoutID, raceID, userID int64) error {
-	// Verify the race belongs to the user.
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin link tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// Verify the race belongs to the user (inside tx to avoid TOCTOU).
 	var raceExists int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_races WHERE id = ? AND user_id = ?`, raceID, userID).Scan(&raceExists); err != nil {
+	if err := tx.QueryRow(`SELECT COUNT(*) FROM stride_races WHERE id = ? AND user_id = ?`, raceID, userID).Scan(&raceExists); err != nil {
 		return fmt.Errorf("check race ownership: %w", err)
 	}
 	if raceExists == 0 {
@@ -190,21 +196,24 @@ func LinkWorkoutToRace(db *sql.DB, workoutID, raceID, userID int64) error {
 
 	// Read the workout's duration to use as the race result time.
 	var durationSeconds int
-	if err := db.QueryRow(`SELECT duration_seconds FROM workouts WHERE id = ? AND user_id = ?`, workoutID, userID).Scan(&durationSeconds); err != nil {
+	if err := tx.QueryRow(`SELECT duration_seconds FROM workouts WHERE id = ? AND user_id = ?`, workoutID, userID).Scan(&durationSeconds); err != nil {
 		return fmt.Errorf("get workout duration: %w", err)
 	}
 
-	tx, err := db.Begin()
+	res, err := tx.Exec(`UPDATE workouts SET race_id = ? WHERE id = ? AND user_id = ?`, raceID, workoutID, userID)
 	if err != nil {
-		return fmt.Errorf("begin link tx: %w", err)
-	}
-	defer tx.Rollback() //nolint:errcheck
-
-	if _, err := tx.Exec(`UPDATE workouts SET race_id = ? WHERE id = ? AND user_id = ?`, raceID, workoutID, userID); err != nil {
 		return fmt.Errorf("set workout race_id: %w", err)
 	}
-	if _, err := tx.Exec(`UPDATE stride_races SET result_time = ? WHERE id = ? AND user_id = ?`, durationSeconds, raceID, userID); err != nil {
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("workout %d not found for user %d", workoutID, userID)
+	}
+
+	res, err = tx.Exec(`UPDATE stride_races SET result_time = ? WHERE id = ? AND user_id = ?`, durationSeconds, raceID, userID)
+	if err != nil {
 		return fmt.Errorf("set race result_time: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("race %d not found for user %d", raceID, userID)
 	}
 
 	return tx.Commit()
@@ -223,7 +232,8 @@ func FindMatchingRace(db *sql.DB, userID int64, date string, distanceMeters floa
 	minDist := distanceMeters * 0.8
 	maxDist := distanceMeters * 1.2
 
-	rows, err := db.Query(`
+	var r Race
+	err = db.QueryRow(`
 		SELECT id, user_id, name, date, distance_m, target_time, priority, notes, result_time, created_at
 		FROM stride_races
 		WHERE user_id = ?
@@ -231,22 +241,15 @@ func FindMatchingRace(db *sql.DB, userID int64, date string, distanceMeters floa
 		  AND distance_m >= ? AND distance_m <= ?
 		ORDER BY ABS(julianday(date) - julianday(?)) ASC
 		LIMIT 1
-	`, userID, dayBefore, dayAfter, minDist, maxDist, date)
-	if err != nil {
-		return nil, fmt.Errorf("query matching race: %w", err)
-	}
-	defer rows.Close()
-
-	if !rows.Next() {
-		return nil, rows.Err()
-	}
-
-	var r Race
-	if err := rows.Scan(
+	`, userID, dayBefore, dayAfter, minDist, maxDist, date).Scan(
 		&r.ID, &r.UserID, &r.Name, &r.Date, &r.DistanceM,
 		&r.TargetTime, &r.Priority, &r.Notes, &r.ResultTime, &r.CreatedAt,
-	); err != nil {
-		return nil, fmt.Errorf("scan matching race: %w", err)
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("query matching race: %w", err)
 	}
 	if r.Name, err = encryption.DecryptField(r.Name); err != nil {
 		return nil, fmt.Errorf("decrypt race name: %w", err)
