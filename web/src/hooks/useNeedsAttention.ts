@@ -14,7 +14,7 @@ export type NeedsAttentionStatus =
   | 'review_exhausted'
 
 /** Actions that can be taken on this item. */
-export type NeedsAttentionAction = 'retry' | 'approve' | 'dismiss' | 'forceSmith'
+export type NeedsAttentionAction = 'retry' | 'approve' | 'dismiss' | 'forceSmith' | 'wardenRerun'
 
 export interface NeedsAttentionItem {
   /** Bead identifier. */
@@ -133,6 +133,15 @@ export function availableActions(source: NeedsAttentionSource, statuses: NeedsAt
   // backed by a retries-table row.
   if (hasRetryEntry && statuses.includes('clarification_needed')) {
     actions.push('forceSmith')
+  }
+
+  // Warden rerun is useful when the warden rejected changes that are actually
+  // fine — re-runs the warden review without restarting the smith.
+  if (
+    hasRetryEntry &&
+    (statuses.includes('needs_human') || statuses.includes('review_exhausted'))
+  ) {
+    actions.push('wardenRerun')
   }
 
   return actions

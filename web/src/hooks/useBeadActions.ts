@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-export type BeadActionType = 'retry' | 'approve' | 'dismiss' | 'forceSmith'
+export type BeadActionType = 'retry' | 'approve' | 'dismiss' | 'forceSmith' | 'wardenRerun'
 
 const actionPath: Record<BeadActionType, string> = {
   retry: 'retry',
   approve: 'approve',
   dismiss: 'dismiss',
   forceSmith: 'force-smith',
+  wardenRerun: 'warden-rerun',
 }
 
 interface UseBeadActionsOptions {
@@ -16,7 +17,7 @@ interface UseBeadActionsOptions {
 }
 
 /**
- * Shared hook for performing bead actions (retry, approve, dismiss, forceSmith).
+ * Shared hook for performing bead actions (retry, approve, dismiss, forceSmith, wardenRerun).
  * Handles fetch, error parsing, toast notifications, and per-bead loading state.
  */
 export function useBeadActions({ showToast, onRetried }: UseBeadActionsOptions) {

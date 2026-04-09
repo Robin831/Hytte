@@ -4724,3 +4724,116 @@ func TestAnvilHealthHandler_WithData(t *testing.T) {
 		t.Error("expected non-nil last_activity")
 	}
 }
+
+// --- WardenRerunHandler ---
+
+func wardenRerunRequest(beadID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads/"+beadID+"/warden-rerun", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", beadID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestWardenRerunHandler_NilDB(t *testing.T) {
+	rec := httptest.NewRecorder()
+	WardenRerunHandler(nil).ServeHTTP(rec, wardenRerunRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestWardenRerunHandler_EmptyID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/beads//warden-rerun", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	WardenRerunHandler(nil).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestWardenRerunHandler_MalformedID(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	WardenRerunHandler(fdb).ServeHTTP(rec, wardenRerunRequest("not-valid!!"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWardenRerunHandler_BeadNotFound(t *testing.T) {
+	fdb := setupTestDB(t)
+	rec := httptest.NewRecorder()
+	WardenRerunHandler(fdb).ServeHTTP(rec, wardenRerunRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWardenRerunHandler_Success(t *testing.T) {
+	fdb := setupTestDB(t)
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO retries (bead_id, anvil, retry_count, next_retry, needs_human, clarification_needed, last_error, updated_at, dispatch_failures)
+		VALUES ('Hytte-abc1', 'anvil1', 1, NULL, 1, 0, 'review_exhausted', ?, 0)
+	`, nowStr) //nolint:errcheck
+
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	received := receiveIPCCommand(t, socketPath)
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+
+	rec := httptest.NewRecorder()
+	WardenRerunHandler(fdb).ServeHTTP(rec, wardenRerunRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]bool
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body["ok"] {
+		t.Error("expected ok=true in response")
+	}
+
+	select {
+	case cmd := <-received:
+		if cmd.Type != "warden_rerun" {
+			t.Errorf("expected command type 'warden_rerun', got %q", cmd.Type)
+		}
+		var p wardenRerunPayload
+		if err := json.Unmarshal(cmd.Payload, &p); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if p.BeadID != "Hytte-abc1" {
+			t.Errorf("expected bead_id 'Hytte-abc1', got %q", p.BeadID)
+		}
+		if p.Anvil != "anvil1" {
+			t.Errorf("expected anvil 'anvil1', got %q", p.Anvil)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for command on socket")
+	}
+}
+
+func TestWardenRerunHandler_IPCFailure(t *testing.T) {
+	fdb := setupTestDB(t)
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO retries (bead_id, anvil, retry_count, next_retry, needs_human, clarification_needed, last_error, updated_at, dispatch_failures)
+		VALUES ('Hytte-abc1', 'anvil1', 1, NULL, 1, 0, 'review_exhausted', ?, 0)
+	`, nowStr) //nolint:errcheck
+
+	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
+
+	rec := httptest.NewRecorder()
+	WardenRerunHandler(fdb).ServeHTTP(rec, wardenRerunRequest("Hytte-abc1"))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when IPC fails, got %d: %s", rec.Code, rec.Body.String())
+	}
+}

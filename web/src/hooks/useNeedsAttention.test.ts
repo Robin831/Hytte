@@ -216,4 +216,23 @@ describe('availableActions', () => {
   it('does NOT include forceSmith for retry source without clarification_needed', () => {
     expect(availableActions('retry', ['needs_human'])).not.toContain('forceSmith')
   })
+
+  it('includes wardenRerun for retry source with needs_human', () => {
+    expect(availableActions('retry', ['needs_human'])).toContain('wardenRerun')
+  })
+
+  it('includes wardenRerun for retry source with review_exhausted', () => {
+    expect(availableActions('retry', ['review_exhausted'])).toContain('wardenRerun')
+  })
+
+  it('does NOT include wardenRerun for pr source', () => {
+    expect(availableActions('pr', ['needs_human'])).not.toContain('wardenRerun')
+    expect(availableActions('pr', ['review_exhausted'])).not.toContain('wardenRerun')
+  })
+
+  it('does NOT include wardenRerun for retry source without needs_human or review_exhausted', () => {
+    expect(availableActions('retry', ['clarification_needed'])).not.toContain('wardenRerun')
+    expect(availableActions('retry', ['ci_exhausted'])).not.toContain('wardenRerun')
+    expect(availableActions('retry', ['dispatch_failure'])).not.toContain('wardenRerun')
+  })
 })
