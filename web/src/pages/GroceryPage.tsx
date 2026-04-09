@@ -35,18 +35,18 @@ export default function GroceryPage() {
   // Initial load
   useEffect(() => {
     if (!user) return
-    let cancelled = false
+    const controller = new AbortController()
     ;(async () => {
       try {
-        const fetched = await fetchItems()
-        if (!cancelled) setItems(fetched)
+        const fetched = await fetchItems(controller.signal)
+        if (!controller.signal.aborted) setItems(fetched)
       } catch {
-        if (!cancelled) setError(t('errors.failedToLoad'))
+        if (!controller.signal.aborted) setError(t('errors.failedToLoad'))
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!controller.signal.aborted) setLoading(false)
       }
     })()
-    return () => { cancelled = true }
+    return () => { controller.abort() }
   }, [user, fetchItems, t])
 
   // Poll every 5 seconds
@@ -70,6 +70,7 @@ export default function GroceryPage() {
     const text = newItem.trim()
     if (!text || adding) return
     setAdding(true)
+    setError('')
     try {
       const res = await fetch('/api/grocery/items', {
         method: 'POST',
@@ -91,6 +92,7 @@ export default function GroceryPage() {
 
   const handleToggle = async (item: GroceryItem) => {
     const newChecked = !item.checked
+    setError('')
     // Optimistic update
     setItems(prev => {
       const updated = prev.map(i => i.id === item.id ? { ...i, checked: newChecked } : i)
@@ -117,6 +119,7 @@ export default function GroceryPage() {
   const handleClearCompleted = async () => {
     const checked = items.filter(i => i.checked)
     if (checked.length === 0) return
+    setError('')
     // Optimistic remove
     setItems(prev => prev.filter(i => !i.checked))
     try {
@@ -137,7 +140,7 @@ export default function GroceryPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex items-center justify-center h-64" role="status">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
       </div>
     )
@@ -148,9 +151,9 @@ export default function GroceryPage() {
       <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-200 text-sm flex items-center justify-between">
+        <div role="alert" className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-200 text-sm flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => setError('')} className="ml-2 text-red-400 hover:text-red-200 cursor-pointer">
+          <button onClick={() => setError('')} className="ml-2 text-red-400 hover:text-red-200 cursor-pointer" aria-label={t('common:actions.close')}>
             <X size={16} />
           </button>
         </div>
@@ -224,9 +227,12 @@ function GroceryItemRow({ item, onToggle }: { item: GroceryItem; onToggle: (item
   return (
     <button
       onClick={() => onToggle(item)}
+      role="checkbox"
+      aria-checked={item.checked}
       className="flex items-start gap-3 w-full px-3 py-3 rounded-lg hover:bg-gray-800/50 transition-colors cursor-pointer text-left"
     >
       <span
+        aria-hidden="true"
         className={`shrink-0 mt-0.5 w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
           item.checked
             ? 'bg-green-600 border-green-600'
