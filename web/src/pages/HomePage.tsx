@@ -73,7 +73,11 @@ export default function HomePage() {
               referrerPolicy="no-referrer"
             />
           ) : user ? (
-            <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-lg font-medium">
+            <div
+              className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-lg font-medium"
+              role="img"
+              aria-label={user.name}
+            >
               {user.name.charAt(0).toUpperCase()}
             </div>
           ) : null}
@@ -83,7 +87,7 @@ export default function HomePage() {
             ? t(getGreetingKey(hour, true), { name: firstName })
             : t(getGreetingKey(hour, false))}
         </p>
-        <div className="text-6xl font-bold tabular-nums tracking-tight mb-4">{timeStr}</div>
+        <time className="block text-6xl font-bold tabular-nums tracking-tight mb-4" dateTime={now.toISOString()}>{timeStr}</time>
         <p className="text-gray-400 text-lg">{dateStr}</p>
       </header>
 
