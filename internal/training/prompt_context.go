@@ -778,7 +778,7 @@ func isRaceWorkout(w *Workout) bool {
 }
 
 // BuildRaceContext builds an enriched race context for AI prompt injection.
-// Returns nil if the workout is not a race or no race data is available.
+// Returns nil if the workout is not classified as a race.
 func BuildRaceContext(db *sql.DB, workout *Workout) *RaceContext {
 	if !isRaceWorkout(workout) {
 		return nil
@@ -804,10 +804,8 @@ func BuildRaceContext(db *sql.DB, workout *Workout) *RaceContext {
 		}
 	}
 
-	// Analyze pacing from laps.
-	if len(workout.Laps) > 1 {
-		rc.PacingProfile = classifyPacing(workout.Laps)
-	}
+	// Analyze pacing from laps. classifyPacing handles single-lap or sparse data.
+	rc.PacingProfile = classifyPacing(workout.Laps)
 
 	// Riegel comparisons from historical races.
 	rc.RiegelComparisons = buildRiegelComparisons(db, workout)
@@ -871,32 +869,34 @@ func getRaceByID(db *sql.DB, raceID, userID int64) (*raceRow, error) {
 // classifyPacing analyzes lap split times to determine the pacing strategy.
 // Returns "negative" (getting faster), "positive" (slowing down), or "even".
 func classifyPacing(laps []Lap) string {
-	if len(laps) < 2 {
-		return "even"
-	}
-
-	// Use pace (sec/km) for laps that have distance. Skip laps with no pace data.
-	var paces []float64
+	// Use distance-weighted pace (sec/km) so short/long laps do not skew the result.
+	var validLaps []Lap
 	for _, lap := range laps {
 		if lap.AvgPaceSecPerKm > 0 && lap.DistanceMeters > 100 {
-			paces = append(paces, lap.AvgPaceSecPerKm)
+			validLaps = append(validLaps, lap)
 		}
 	}
-	if len(paces) < 2 {
+	if len(validLaps) < 2 {
 		return "even"
 	}
 
-	// Compare first half average vs second half average.
-	mid := len(paces) / 2
-	var firstSum, secondSum float64
-	for _, p := range paces[:mid] {
-		firstSum += p
+	// Compare first half average vs second half average using lap distance as weight.
+	mid := len(validLaps) / 2
+	var firstWeightedSum, firstDistanceSum float64
+	for _, lap := range validLaps[:mid] {
+		firstWeightedSum += lap.AvgPaceSecPerKm * lap.DistanceMeters
+		firstDistanceSum += lap.DistanceMeters
 	}
-	for _, p := range paces[mid:] {
-		secondSum += p
+	var secondWeightedSum, secondDistanceSum float64
+	for _, lap := range validLaps[mid:] {
+		secondWeightedSum += lap.AvgPaceSecPerKm * lap.DistanceMeters
+		secondDistanceSum += lap.DistanceMeters
 	}
-	firstAvg := firstSum / float64(mid)
-	secondAvg := secondSum / float64(len(paces)-mid)
+	if firstDistanceSum == 0 || secondDistanceSum == 0 {
+		return "even"
+	}
+	firstAvg := firstWeightedSum / firstDistanceSum
+	secondAvg := secondWeightedSum / secondDistanceSum
 
 	// >3% difference threshold
 	diff := (secondAvg - firstAvg) / firstAvg
@@ -1084,7 +1084,9 @@ func FormatRacePromptSection(rc *RaceContext) string {
 		fmt.Fprintf(&sb, "Race Date: %s\n", rc.RaceDate)
 	}
 	fmt.Fprintf(&sb, "Distance: %.2f km\n", rc.DistanceM/1000)
-	fmt.Fprintf(&sb, "Priority: %s-race\n", rc.Priority)
+	if strings.TrimSpace(rc.Priority) != "" {
+		fmt.Fprintf(&sb, "Priority: %s-race\n", rc.Priority)
+	}
 
 	// Target vs actual
 	if rc.TargetTime != nil && *rc.TargetTime > 0 {
@@ -1096,7 +1098,7 @@ func FormatRacePromptSection(rc *RaceContext) string {
 		if diffSec > 0 {
 			fmt.Fprintf(&sb, "Result: %s SLOWER than target (+%.1f%%)\n", formatDurationSecs(diffSec), diffPct)
 		} else if diffSec < 0 {
-			fmt.Fprintf(&sb, "Result: %s FASTER than target (%.1f%%)\n", formatDurationSecs(-diffSec), diffPct)
+			fmt.Fprintf(&sb, "Result: %s FASTER than target (%.1f%%)\n", formatDurationSecs(-diffSec), math.Abs(diffPct))
 		} else {
 			sb.WriteString("Result: Exactly on target\n")
 		}

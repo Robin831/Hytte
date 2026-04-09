@@ -147,10 +147,16 @@ func TestBuildRaceContext_WithRaceID(t *testing.T) {
 	database := setupTestDB(t)
 
 	// Insert a race.
-	encName, _ := encryption.EncryptField("Oslo Marathon")
-	encNotes, _ := encryption.EncryptField("Goal is sub-3:30")
+	encName, err := encryption.EncryptField("Oslo Marathon")
+	if err != nil {
+		t.Fatalf("encrypt race name: %v", err)
+	}
+	encNotes, err := encryption.EncryptField("Goal is sub-3:30")
+	if err != nil {
+		t.Fatalf("encrypt race notes: %v", err)
+	}
 	targetTime := 12600 // 3:30:00
-	_, err := database.Exec(`
+	_, err = database.Exec(`
 		INSERT INTO stride_races (id, user_id, name, date, distance_m, target_time, priority, notes, created_at)
 		VALUES (1, 1, ?, '2026-04-05', 42195, ?, 'A', ?, ?)
 	`, encName, targetTime, encNotes, time.Now().UTC().Format(time.RFC3339))
