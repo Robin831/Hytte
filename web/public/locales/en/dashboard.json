@@ -21,6 +21,14 @@
       "title": "Norwegian Word of the Day",
       "footer": "Changes daily · {{count}} words total"
     },
+    "calendar": {
+      "title": "Today's Events",
+      "loading": "Loading events",
+      "allDay": "All day",
+      "noEvents": "No events today",
+      "error": "Could not load events",
+      "viewCalendar": "Full calendar →"
+    },
     "activity": {
       "title": "Recent Activity"
     },

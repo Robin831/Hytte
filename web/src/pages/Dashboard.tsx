@@ -10,6 +10,7 @@ import ActivityFeedWidget from '../components/widgets/ActivityFeedWidget'
 import InfraStatusWidget from '../components/widgets/InfraStatusWidget'
 import GitHubStatusWidget from '../components/widgets/GitHubStatusWidget'
 import NetatmoWidget from '../components/widgets/NetatmoWidget'
+import CalendarWidget from '../components/widgets/CalendarWidget'
 
 function Dashboard() {
   const { hasFeature } = useAuth()
@@ -20,6 +21,7 @@ function Dashboard() {
         <GreetingWidget />
         <WeatherWidget />
         <DaylightWidget />
+        {hasFeature('calendar') && <CalendarWidget />}
         {hasFeature('netatmo') && <NetatmoWidget />}
         {hasFeature('training') && <FitnessWidget />}
         {hasFeature('lactate') && <LactateSummaryWidget />}
