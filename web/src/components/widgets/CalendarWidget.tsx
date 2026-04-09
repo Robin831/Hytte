@@ -65,6 +65,7 @@ export default function CalendarWidget() {
     return new Intl.DateTimeFormat(i18n.language, {
       hour: '2-digit',
       minute: '2-digit',
+      hour12: false,
     }).format(new Date(event.start_time))
   }
 
