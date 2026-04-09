@@ -391,17 +391,23 @@ type RaceResult struct {
 	Priority  string
 }
 
-// listRaceResults queries all workouts with non-null race_id, joined with
-// stride_races, returning completed race results for the user.
+// listRaceResults queries completed race results for the user that are linked
+// to at least one workout.
 func listRaceResults(ctx context.Context, db *sql.DB, userID int64) ([]RaceResult, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT sr.name, sr.date, sr.distance_m, sr.result_time, sr.priority
 		FROM stride_races sr
-		JOIN workouts w ON w.race_id = sr.id AND w.user_id = sr.user_id
 		WHERE sr.user_id = ?
 		  AND sr.result_time IS NOT NULL
 		  AND sr.result_time > 0
+		  AND EXISTS (
+			SELECT 1
+			FROM workouts w
+			WHERE w.race_id = sr.id
+			  AND w.user_id = sr.user_id
+		  )
 		ORDER BY sr.date DESC
+		LIMIT 20
 	`, userID)
 	if err != nil {
 		return nil, err
