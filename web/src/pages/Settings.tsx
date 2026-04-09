@@ -909,6 +909,7 @@ function Settings() {
               value={preferences.theme || 'dark'}
               onChange={(e) => savePreference('theme', e.target.value)}
               disabled={saving}
+              aria-label={t('appearance.theme')}
               className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="dark">{t('appearance.themeDark')}</option>
@@ -941,6 +942,7 @@ function Settings() {
               value={preferences.home_location || ''}
               onChange={(e) => savePreference('home_location', e.target.value)}
               disabled={saving}
+              aria-label={t('location.homeCity')}
               className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">{t('location.selectCity')}</option>
@@ -1756,6 +1758,7 @@ function Settings() {
                 value={deleteConfirmText}
                 onChange={(e) => setDeleteConfirmText(e.target.value)}
                 placeholder={t('dangerZone.deleteTypePlaceholder')}
+                aria-label={t('dangerZone.deleteTypePlaceholder')}
                 className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white w-full mb-3 focus:outline-none focus:ring-2 focus:ring-red-500"
               />
               <div className="flex gap-3">
