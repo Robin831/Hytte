@@ -175,19 +175,31 @@ func formatRadarrEvent(prefix, eventType string, payload map[string]any) (title,
 		instanceName, _ := payload["instanceName"].(string)
 		return prefix + ": Test", fmt.Sprintf("Test notification from %s", instanceName)
 	case "Grab":
-		body = movieDesc
-		if quality != "" {
-			body += " — " + quality
+		var parts []string
+		if movieDesc != "" {
+			parts = append(parts, movieDesc)
 		}
+		if quality != "" {
+			parts = append(parts, quality)
+		}
+		body = strings.Join(parts, " — ")
 		if indexer != "" {
-			body += " from " + indexer
+			if body != "" {
+				body += " from " + indexer
+			} else {
+				body = indexer
+			}
 		}
 		return prefix + ": Grabbed", body
 	case "Download":
-		body = movieDesc
-		if quality != "" {
-			body += " — " + quality
+		var parts []string
+		if movieDesc != "" {
+			parts = append(parts, movieDesc)
 		}
+		if quality != "" {
+			parts = append(parts, quality)
+		}
+		body = strings.Join(parts, " — ")
 		return prefix + ": Downloaded", body
 	case "Rename":
 		return prefix + ": Renamed", movieDesc
@@ -239,7 +251,7 @@ func formatSonarrEvent(prefix, eventType string, payload map[string]any) (title,
 	}
 
 	epCode := ""
-	if epSeason > 0 || epNumber > 0 {
+	if epSeason > 0 && epNumber > 0 {
 		epCode = fmt.Sprintf("S%02dE%02d", epSeason, epNumber)
 	}
 
@@ -248,23 +260,34 @@ func formatSonarrEvent(prefix, eventType string, payload map[string]any) (title,
 		instanceName, _ := payload["instanceName"].(string)
 		return prefix + ": Test", fmt.Sprintf("Test notification from %s", instanceName)
 	case "Grab":
-		body = seriesTitle
+		mainParts := make([]string, 0, 2)
+		if seriesTitle != "" {
+			mainParts = append(mainParts, seriesTitle)
+		}
 		if epCode != "" {
-			body += " " + epCode
+			mainParts = append(mainParts, epCode)
+		}
+
+		bodyParts := make([]string, 0, 2)
+		if len(mainParts) > 0 {
+			bodyParts = append(bodyParts, strings.Join(mainParts, " "))
 		}
 		if quality != "" {
-			body += " — " + quality
+			bodyParts = append(bodyParts, quality)
 		}
-		return prefix + ": Grabbed", body
+		return prefix + ": Grabbed", strings.Join(bodyParts, " — ")
 	case "Download":
-		body = seriesTitle
+		bodyParts := make([]string, 0, 3)
+		if seriesTitle != "" {
+			bodyParts = append(bodyParts, seriesTitle)
+		}
 		if epCode != "" {
-			body += " " + epCode
+			bodyParts = append(bodyParts, epCode)
 		}
 		if epTitle != "" {
-			body += " '" + epTitle + "'"
+			bodyParts = append(bodyParts, "\""+epTitle+"\"")
 		}
-		return prefix + ": Downloaded", body
+		return prefix + ": Downloaded", strings.Join(bodyParts, " ")
 	case "Rename":
 		return prefix + ": Renamed", seriesTitle
 	case "SeriesAdd":

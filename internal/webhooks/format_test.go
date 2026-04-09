@@ -450,6 +450,19 @@ func TestFormatWebhookNotification_RadarrEvents(t *testing.T) {
 			wantTitle: "Radarr: Grabbed",
 			wantBody:  "",
 		},
+		{
+			name: "MissingMovieWithReleaseDetails",
+			payload: map[string]any{
+				"eventType":    "Grab",
+				"instanceName": "Radarr",
+				"release": map[string]any{
+					"quality": "WEBDL-1080p",
+					"indexer": "NZBGeek",
+				},
+			},
+			wantTitle: "Radarr: Grabbed",
+			wantBody:  "WEBDL-1080p from NZBGeek",
+		},
 	}
 
 	for _, tt := range tests {
@@ -507,7 +520,7 @@ func TestFormatWebhookNotification_SonarrEvents(t *testing.T) {
 				},
 			},
 			wantTitle: "Sonarr: Downloaded",
-			wantBody:  "Breaking Bad S01E03 '...And the Bag's in the River'",
+			wantBody:  "Breaking Bad S01E03 \"...And the Bag's in the River\"",
 		},
 		{
 			name: "Rename",
