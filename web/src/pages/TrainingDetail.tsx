@@ -189,11 +189,14 @@ export default function TrainingDetail() {
 
   // Fetch linked race details when workout has a race_id.
   useEffect(() => {
-    if (!workout?.race_id) return
     const controller = new AbortController()
+    if (!workout?.race_id) {
+      setLinkedRace(null)
+      return () => controller.abort()
+    }
     async function fetchRace() {
       try {
-        const res = await fetch('/api/stride/races', { credentials: 'include', signal: controller.signal })
+        const res = await fetch(`/api/stride/races/${workout!.race_id}`, { credentials: 'include', signal: controller.signal })
         if (controller.signal.aborted) return
         if (!res.ok) {
           setLinkedRace(null)
@@ -201,9 +204,8 @@ export default function TrainingDetail() {
         }
         const data = await res.json()
         if (controller.signal.aborted) return
-        const races: Array<{ id: number; name: string; date: string; distance_m: number; target_time: number | null; result_time: number | null }> = data.races ?? []
-        const match = races.find(r => r.id === workout!.race_id)
-        setLinkedRace(match ? { name: match.name, date: match.date, distance_m: match.distance_m, target_time: match.target_time, result_time: match.result_time } : null)
+        const r = data.race as { name: string; date: string; distance_m: number; target_time: number | null; result_time: number | null }
+        setLinkedRace({ name: r.name, date: r.date, distance_m: r.distance_m, target_time: r.target_time, result_time: r.result_time })
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           console.warn('Failed to load linked race:', err)
@@ -501,7 +503,7 @@ export default function TrainingDetail() {
               {linkedRace.target_time != null && linkedRace.result_time != null && (
                 <> &middot; {t('detail.linkedRace.difference')}: {(() => {
                   const diff = linkedRace.result_time! - linkedRace.target_time!
-                  const sign = diff <= 0 ? '-' : '+'
+                  const sign = diff < 0 ? '-' : diff > 0 ? '+' : ''
                   return `${sign}${formatDuration(Math.abs(diff))}`
                 })()}</>
               )}
