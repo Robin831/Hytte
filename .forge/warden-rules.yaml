@@ -10609,3 +10609,2618 @@ rules:
         Verify that translated strings are not being manipulated with .replace(), .split(), .trim(), or similar string methods. Instead, create dedicated translation keys for each distinct use case, as string manipulation assumes specific word order, spacing, or punctuation that varies across locales.
       source: copilot:PR#522
       added: "2026-04-05"
+    - id: optimistic-delete-without-ok-check
+      category: error-handling
+      pattern: >-
+        State update (e.g. filtering out an item) after a DELETE/PUT/POST fetch call without first checking res.ok
+      check: >-
+        Verify that local state is only updated after confirming the server responded successfully (res.ok). Optimistic removal without an ok-check can desync the UI from the server. Surface an error message to the user on failure instead of silently dropping the item from state.
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: optimistic-state-mutation
+      category: error-handling
+      pattern: >-
+        State updates (setState, filter, map, spread) that follow a fetch/DELETE/POST/PUT call without checking the response status first
+      check: >-
+        Verify that state mutations only occur after confirming the API response was successful (e.g. res.ok or res.status check). On failure, the UI should show an error instead of optimistically removing or updating data.
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: local-midnight-date-parsing
+      category: ui
+      pattern: new Date() called with a YYYY-MM-DD string without a time component
+      check: >-
+        YYYY-MM-DD strings passed to new Date() are treated as UTC, causing off-by-one day/week errors in non-UTC timezones. Append T00:00:00 to parse as local midnight, or use the app's existing date formatting/parsing helpers.
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: date-only-string-comparison
+      category: other
+      pattern: >-
+        Comparing a date-only string (YYYY-MM-DD) parsed with new Date() against new Date() (which includes time)
+      check: >-
+        When splitting or filtering items by date using a YYYY-MM-DD string, avoid parsing with new Date() and comparing against new Date(). Timezone offsets can shift the parsed date, and time-of-day differences make 'today' classification unstable. Instead, compare date strings directly (lexicographic YYYY-MM-DD comparison) or normalize both sides to local-midnight dates.
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: fetch-error-handling-abort
+      category: error-handling
+      pattern: >-
+        React components with fetch calls in useEffect or useCallback that lack error handling or AbortController usage
+      check: >-
+        Verify that fetch calls (1) check res.ok and throw on non-OK responses, (2) have meaningful catch blocks that log or surface errors instead of swallowing them, and (3) use AbortController signals to prevent state updates after unmount
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: date-string-utc-parsing
+      category: ui
+      pattern: new Date('YYYY-MM-DD') used to parse date-only strings
+      check: >-
+        Date-only strings passed to `new Date()` are parsed as UTC, which can shift the displayed day in negative-offset timezones. Append `T00:00:00` to parse as local midnight, or use the shared `formatDate` helper.
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: composite-fk-unique-constraint
+      category: security
+      pattern: >-
+        A parent table referenced by child tables via foreign key includes a user_id column but lacks a UNIQUE(user_id, id) constraint
+      check: >-
+        Verify that tables with a user_id column that are referenced by child tables declare UNIQUE(user_id, id) so child tables can use composite foreign keys (user_id, parent_id) to enforce same-user ownership at the database level
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: cross-user-fk-ownership
+      category: security
+      pattern: >-
+        A FOREIGN KEY references another table's primary key without including user_id in the constraint, when both tables have a user_id column
+      check: >-
+        Verify that foreign keys between user-scoped tables include user_id in a composite FK (e.g., FOREIGN KEY (user_id, plan_id) REFERENCES parent_table(user_id, id)) to enforce ownership at the DB level and prevent cross-user data access
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: cross-user-resource-access
+      category: security
+      pattern: >-
+        Handler accepts a client-supplied foreign key ID (e.g. plan_id, team_id) and uses it in a database query or insert without ownership validation
+      check: >-
+        Verify that any client-supplied resource ID referencing another table is validated to belong to the authenticated user before being used in queries or inserts, preventing cross-user data access via crafted IDs
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: validate-duration-fields
+      category: error-handling
+      pattern: >-
+        Handler accepts numeric fields representing durations (e.g. target_time, result_time, elapsed, duration) from user input
+      check: >-
+        Verify that duration fields are validated to reject negative values and optionally capped to a reasonable maximum before storage
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: frontend-page-tests
+      category: testing
+      pattern: >-
+        New or substantially modified React page component with interactive flows (fetch calls, create/delete operations, error states)
+      check: >-
+        Verify that new interactive pages have corresponding Vitest + RTL tests covering loading states, empty states, success paths, and error paths, following existing test patterns like BudgetCreditCards.test.tsx
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: sqlite-composite-fk-conflict
+      category: other
+      pattern: >-
+        SQLite table with multiple foreign keys referencing the same parent table column, especially when one FK has an ON DELETE action and another does not
+      check: >-
+        Verify that when a table defines multiple foreign keys pointing to the same parent, their ON DELETE/ON UPDATE actions are consistent. A composite FK without an ON DELETE action defaults to RESTRICT, which can silently override a SET NULL or CASCADE on a single-column FK to the same parent, causing unexpected delete failures.
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: no-redundant-sqlite-unique-index
+      category: performance
+      pattern: >-
+        A table definition with a UNIQUE constraint on columns AND a separate CREATE UNIQUE INDEX on the same columns
+      check: >-
+        Verify that unique indexes are not duplicated — a UNIQUE constraint in the table definition already creates an implicit unique index in SQLite, so a separate CREATE UNIQUE INDEX on the same columns is redundant and adds unnecessary index maintenance overhead
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: validate-parsed-input-before-submit
+      category: error-handling
+      pattern: >-
+        A parse/convert function returns null for both empty and invalid input, and the result is used in a form submission without distinguishing the two cases
+      check: >-
+        When a parsing function returns null (or a sentinel value) for invalid input, verify that non-empty user input that fails parsing triggers a visible validation error rather than being silently treated as absent/null
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: no-silent-catch-in-handlers
+      category: error-handling
+      pattern: >-
+        catch blocks that silently ignore errors in user-triggered actions (e.g. button clicks, form submits)
+      check: >-
+        Verify that catch blocks in event handlers and async actions log the error and surface user-visible feedback (error message state, toast, etc.) rather than silently swallowing failures
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: intl-locale-undefined
+      category: style
+      pattern: >-
+        Intl.DateTimeFormat or Intl.NumberFormat called with i18n.language or a specific locale string
+      check: >-
+        Pass `undefined` as the locale argument to Intl.DateTimeFormat and Intl.NumberFormat so formatting respects the user's browser/OS settings rather than the app's pinned language
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: i18n-pluralization-keys
+      category: style
+      pattern: >-
+        Translation JSON files with count-based pluralization keys (e.g. `*_other` suffix)
+      check: >-
+        Verify that pluralization keys follow the established `*_one` / `*_other` pair pattern. Every key with an `_other` suffix must have a corresponding `_one` variant, and the base key (without suffix) should also exist. Omitting `_one` variants makes plural selection and fallback behavior unpredictable across languages.
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: i18next-plural-keys
+      category: style
+      pattern: >-
+        Translation JSON files containing keys with `_other` suffix or keys using `{{count}}` interpolation
+      check: >-
+        Verify that every pluralized translation key has both `_one` and `_other` variants across all locale files. Do not use a bare key (e.g. `weeksAway`) alongside `_other` — always provide explicit `_one` / `_other` pairs so i18next plural rules select the correct form.
+      source: copilot:PR#524
+      added: "2026-04-05"
+    - id: claude-model-string-consistency
+      category: other
+      pattern: >-
+        Hardcoded Claude/Anthropic model name strings (e.g. "claude-opus-4-5", "claude-sonnet-4-6") used as defaults or fallbacks
+      check: >-
+        Verify that hardcoded model strings match the naming convention used elsewhere in the codebase. Prefer reusing a shared config default (e.g. LoadClaudeConfig) rather than duplicating model strings, and ensure any fallback value is a known-valid model identifier consistent with existing code and tests.
+      source: copilot:PR#525
+      added: "2026-04-05"
+    - id: reuse-sentinel-errors
+      category: error-handling
+      pattern: >-
+        Function returns a new error (errors.New or fmt.Errorf) whose message duplicates an existing sentinel error variable
+      check: >-
+        Verify that the function returns the existing sentinel error variable instead of creating a new error with the same message, so callers can use errors.Is() consistently
+      source: copilot:PR#525
+      added: "2026-04-05"
+    - id: query-filter-matches-usage
+      category: other
+      pattern: >-
+        Database query results used to build prompts, reports, or UI sections with a specific label (e.g. 'upcoming', 'active', 'pending')
+      check: >-
+        Verify that the underlying query actually filters to match the stated scope. If the code labels data as 'upcoming' or 'unfinished', the query must exclude past/completed records (e.g. filter by date and null result fields) rather than returning all rows and relying on the label alone.
+      source: copilot:PR#525
+      added: "2026-04-05"
+    - id: db-query-context-propagation
+      category: concurrency
+      pattern: >-
+        Database calls using db.Query or db.Exec inside functions that accept a context.Context parameter
+      check: >-
+        Verify that all database operations use their Context variants (QueryContext, ExecContext, QueryRowContext) and propagate the provided ctx, so that cancellations and timeouts stop in-flight DB work
+      source: copilot:PR#525
+      added: "2026-04-05"
+    - id: use-context-aware-db-methods
+      category: concurrency
+      pattern: >-
+        Database calls (Query, QueryRow, Exec, Prepare) used inside functions that accept a context.Context parameter
+      check: >-
+        Verify that context-aware variants (QueryContext, QueryRowContext, ExecContext, PrepareContext) are used instead of their non-context counterparts, so that cancellations and timeouts propagate correctly
+      source: copilot:PR#525
+      added: "2026-04-05"
+    - id: validate-ai-structured-output
+      category: error-handling
+      pattern: >-
+        Parsing or persisting structured output from an LLM/AI response (e.g. JSON plans, lists, schedules)
+      check: >-
+        Verify that validation goes beyond basic field presence to enforce domain invariants (expected count, date ranges, no duplicates, correct ordering) before persisting, so malformed AI output is rejected rather than stored as canonical data
+      source: copilot:PR#525
+      added: "2026-04-05"
+    - id: nil-location-guard
+      category: error-handling
+      pattern: Functions accepting *time.Location parameters
+      check: >-
+        Verify that *time.Location parameters are nil-checked before use (e.g., in time.Time.In()), since passing nil causes a panic. Either guard with a default (time.UTC) or document and enforce the non-nil contract.
+      source: copilot:PR#526
+      added: "2026-04-05"
+    - id: time-scheduling-test-precision
+      category: testing
+      pattern: >-
+        Tests for time/date scheduling functions that only assert on partial fields (e.g., weekday, hour) rather than exact expected timestamps
+      check: >-
+        Assert the exact expected timestamp (year/month/day/hour) for each test case, not just partial fields like weekday or hour. Also assert a maximum future delta (e.g., <= 7 days) to catch implementations that return a correct weekday/hour far in the future, and include boundary cases where the current time exactly equals the scheduled time.
+      source: copilot:PR#526
+      added: "2026-04-05"
+    - id: icon-mock-coverage
+      category: testing
+      pattern: >-
+        Adding new Lucide icon imports to a React component that has corresponding test files with lucide-react mocks
+      check: >-
+        Verify that the test file's lucide-react mock exports all icons used by the component. If the mock uses named exports, add any newly introduced icons; alternatively, use a Proxy-based mock that returns a generic component for any icon name.
+      source: copilot:PR#528
+      added: "2026-04-06"
+    - id: fetch-error-silent-null
+      category: error-handling
+      pattern: >-
+        State initialized to null/empty with a fetch call whose catch block only logs, causing the UI to show an empty/missing-data state instead of an error
+      check: >-
+        Verify that failed API fetches surface an error state to the user rather than silently falling back to the 'no data' empty state. Introduce a dedicated error state variable and render an appropriate error message when the fetch fails.
+      source: copilot:PR#528
+      added: "2026-04-06"
+    - id: expanded-view-shows-all-fields
+      category: ui
+      pattern: >-
+        UI component has collapsed/expanded states where fields are truncated or hidden in the collapsed view
+      check: >-
+        Verify that all relevant data fields are fully rendered in the expanded view — if a field is truncated or hidden when collapsed, the expanded state should display it in full so users can read the complete content
+      source: copilot:PR#528
+      added: "2026-04-06"
+    - id: match-actual-data-encoding
+      category: other
+      pattern: >-
+        Code that matches or filters on string enum values (e.g., sport types, status codes, category names) using hardcoded literals
+      check: >-
+        Verify that all literal values used in match/filter logic correspond to values actually produced by the upstream data source (e.g., DB writes, API imports, parsers). Remove unreachable literals that give a false sense of coverage, and align with the actual encoding (e.g., checking the primary field and optionally sub-fields) rather than inventing variants.
+      source: copilot:PR#529
+      added: "2026-04-06"
+    - id: sport-subsport-test-data
+      category: testing
+      pattern: >-
+        Test data using Sport field values like 'trail_running' or 'track_running' for workout matching
+      check: >-
+        Verify that test workout data reflects the real FIT import representation: Sport should be the base activity (e.g. 'running') and trail/track variants belong in SubSport (e.g. 'trail', 'track'). Tests using combined sport strings that the system never emits give false confidence.
+      source: copilot:PR#529
+      added: "2026-04-06"
+    - id: boundary-condition-doc-sync
+      category: other
+      pattern: >-
+        Time comparison using Before/After with a comment describing boundary behavior (e.g. 'has not yet passed', 'still in the future')
+      check: >-
+        Verify that the docstring accurately describes the boundary condition behavior — specifically whether equality (exact match) is treated as before or after. If the code uses strict Before/After, the doc must not imply the boundary is inclusive, and vice versa.
+      source: copilot:PR#530
+      added: "2026-04-06"
+    - id: nullable-fk-silent-skip
+      category: error-handling
+      pattern: >-
+        Code that computes a result but skips persisting or acting on it when an optional foreign-key lookup returns no match
+      check: >-
+        When a foreign-key (e.g. plan_id) lookup finds no match, verify the code still persists the result and triggers side-effects (e.g. notifications). If the FK column is NOT NULL, consider making it nullable or using a sentinel value so that records are not silently dropped.
+      source: copilot:PR#530
+      added: "2026-04-06"
+    - id: redundant-encryption-key-before-setup-test-db
+      category: testing
+      pattern: Test sets ENCRYPTION_KEY via t.Setenv before calling setupTestDB(t)
+      check: >-
+        Verify that tests do not set ENCRYPTION_KEY before calling setupTestDB, as setupTestDB overrides ENCRYPTION_KEY and resets the encryption key singleton, making any prior key assignment ineffective. Either rely on setupTestDB's key or set the key after setupTestDB returns.
+      source: copilot:PR#530
+      added: "2026-04-06"
+    - id: e2e-tests-for-background-workflows
+      category: testing
+      pattern: >-
+        New scheduled or background workflow functions that orchestrate multiple steps (DB queries, external API calls, persistence, notifications)
+      check: >-
+        Verify that end-to-end tests exist for the orchestration function itself (not just unit tests for individual helpers). The tests should use injected/mocked external dependencies (API clients, notification senders) and validate the full pipeline: item selection/filtering, processing logic, persistence of results, and conditional side-effects like notifications.
+      source: copilot:PR#530
+      added: "2026-04-06"
+    - id: react-dom-import-style
+      category: style
+      pattern: >-
+        Import of react-dom using default import syntax (e.g., `import ReactDOM from 'react-dom'`)
+      check: >-
+        Verify that `react-dom` is imported using a namespace import (`import * as ReactDOM from 'react-dom'`) or named imports (`import { createPortal } from 'react-dom'`), not a default import, to avoid failures with ESM/verbatimModuleSyntax configurations.
+      source: copilot:PR#531
+      added: "2026-04-06"
+    - id: git-repo-mutex
+      category: concurrency
+      pattern: >-
+        Functions performing git operations (fetch, checkout, reset, pull) on a shared repository checkout
+      check: >-
+        Verify that all mutating git operations on a shared working tree are guarded by the same mutex to prevent concurrent access, index lock errors, or working tree corruption
+      source: copilot:PR#532
+      added: "2026-04-06"
+    - id: no-fallback-on-decrypt-error
+      category: error-handling
+      pattern: >-
+        Code that catches encryption.DecryptField errors and falls back to using the raw ciphertext as plaintext
+      check: >-
+        DecryptField already returns legacy plaintext unchanged (no enc: prefix). If decryption of a prefixed ciphertext fails, the data is corrupt or the key is wrong — falling back to the raw ciphertext is misleading. Return or propagate the decrypt error instead of silently treating ciphertext as usable data.
+      source: copilot:PR#533
+      added: "2026-04-06"
+    - id: api-response-shape-matches-contract
+      category: other
+      pattern: API handler returning JSON with a wrapper object or bare array/value
+      check: >-
+        Verify that the actual response shape (bare array vs object wrapper) matches the documented API contract in the PR description, OpenAPI spec, or task requirements
+      source: copilot:PR#533
+      added: "2026-04-06"
+    - id: doc-matches-implementation
+      category: other
+      pattern: >-
+        Comments or doc strings that describe counting, return values, or behavioral semantics of a function
+      check: >-
+        Verify that comments accurately describe the actual implementation behavior — e.g., if a comment says a counter tracks 'attempted' items, confirm the code increments it on every attempt, not only on success
+      source: copilot:PR#533
+      added: "2026-04-06"
+    - id: test-encrypted-field-roundtrip
+      category: testing
+      pattern: >-
+        Tests for handlers that read encrypted database fields (using encryption.DecryptField) but only insert plaintext values in test setup
+      check: >-
+        Verify that handler tests include at least one test case inserting a value encrypted with encryption.EncryptField, asserting the API correctly decrypts and returns the expected plaintext
+      source: copilot:PR#533
+      added: "2026-04-06"
+    - id: verify-import-names
+      category: other
+      pattern: TypeScript import statements referencing types or values from local modules
+      check: >-
+        Verify that every imported name actually exists as an export in the referenced module — watch for typos, stale renames, or copy-paste errors that will fail compilation
+      source: copilot:PR#534
+      added: "2026-04-06"
+    - id: clear-dependent-state-on-input-change
+      category: ui
+      pattern: >-
+        useEffect that fetches data into state based on a changing dependency without resetting related state variables at the top of the effect
+      check: >-
+        When a useEffect fetches data based on a dependency (e.g. selectedId, currentPlan), verify that derived state from the previous value is cleared before or at the start of the new fetch. Stale data should not remain visible if the new request fails, is slow, or returns non-OK.
+      source: copilot:PR#534
+      added: "2026-04-06"
+    - id: ambiguous-param-precedence
+      category: error-handling
+      pattern: >-
+        Handler accepts multiple mutually exclusive query/path parameters that select different query modes
+      check: >-
+        When a handler accepts multiple optional filter parameters that change query behavior (e.g. plan_id vs workout_id), verify it either returns 400 when more than one is provided or explicitly documents which takes precedence
+      source: copilot:PR#534
+      added: "2026-04-06"
+    - id: new-filter-needs-tests
+      category: testing
+      pattern: Adding a new query parameter or filter option to an existing handler
+      check: >-
+        Verify that new filtering/query parameter branches have dedicated test coverage (success + invalid input cases), not just the pre-existing paths
+      source: copilot:PR#534
+      added: "2026-04-06"
+    - id: react-effect-dep-stale-closure
+      category: concurrency
+      pattern: >-
+        useEffect that reads an object (e.g. `currentPlan`) inside the body but only lists a derived property (e.g. `currentPlan?.id`) in the dependency array
+      check: >-
+        Verify that every variable referenced inside a useEffect is either listed in the dependency array or derived outside the effect. Prefer extracting derived values (e.g. `const planId = currentPlan?.id`) and referencing only those inside the effect to avoid stale closures and exhaustive-deps warnings.
+      source: copilot:PR#534
+      added: "2026-04-06"
+    - id: switch-default-fallback
+      category: ui
+      pattern: >-
+        Switch statements or conditional chains mapping backend string values to UI elements (icons, classes, labels)
+      check: >-
+        Verify that switch/conditional mappings over backend string values include a default fallback so the UI degrades gracefully when unexpected or new values are introduced, rather than rendering undefined
+      source: copilot:PR#534
+      added: "2026-04-06"
+    - id: guard-nullable-json-arrays
+      category: error-handling
+      pattern: >-
+        Frontend code using .length, .map(), or other array methods on a field decoded from a JSON API response where the backend type is a Go slice
+      check: >-
+        Go nil slices serialize as `null` in JSON, not `[]`. Verify that any array field from an API response is guarded with `Array.isArray(field)` or coerced to `[]` (e.g. `field ?? []`) before calling array methods like `.length` or `.map()` to prevent runtime TypeErrors on older or malformed data.
+      source: copilot:PR#534
+      added: "2026-04-06"
+    - id: guard-nullable-arrays-before-map
+      category: error-handling
+      pattern: >-
+        Calling .map() on a field from an API response without verifying it is actually an array
+      check: >-
+        When iterating over array fields from API payloads (e.g., flags, items, tags), guard against null/undefined by coercing to an array first (e.g., `const items = Array.isArray(value) ? value : []`) before calling .map(), .filter(), or .length. API responses may return null instead of an empty array.
+      source: copilot:PR#534
+      added: "2026-04-06"
+    - id: map-overwrite-ordering
+      category: performance
+      pattern: >-
+        Building a map from an ordered list where duplicate keys are possible (e.g., looping over query results to build a lookup map by date, ID, or other non-unique key)
+      check: >-
+        Verify that the loop handles duplicate keys intentionally. If the source data has a meaningful order (e.g., ORDER BY created_at DESC), ensure the map either keeps the first entry (newest) by guarding with !map.has(key), or explicitly compares timestamps before overwriting, rather than silently letting later iterations overwrite earlier ones with stale data.
+      source: copilot:PR#534
+      added: "2026-04-06"
+    - id: breaking-api-semantics
+      category: other
+      pattern: >-
+        Changes to preference validation, allowlists, or input format handling in API handlers
+      check: >-
+        Verify that changes to accepted input formats are backwards-compatible or explicitly documented. If a previously accepted format is removed, ensure existing clients won't break and the change is noted in the PR description and changelog.
+      source: copilot:PR#534
+      added: "2026-04-06"
+    - id: go-nil-slice-json-null
+      category: error-handling
+      pattern: >-
+        TypeScript type uses `string[]` or other array type for a field that comes from a Go API where the corresponding slice could be nil
+      check: >-
+        Verify that array-typed fields from Go APIs are typed as `T[] | null` (or optional) since Go encodes nil slices as JSON `null`, not `[]`. Ensure the UI normalizes these to empty arrays at the API boundary to prevent runtime errors from `.length`, `.map`, etc.
+      source: copilot:PR#534
+      added: "2026-04-06"
+    - id: completion-rate-overcounting
+      category: other
+      pattern: >-
+        Code that counts or aggregates evaluation/status records to compute completion rates or compliance metrics
+      check: >-
+        Verify that completion counting excludes unplanned/bonus items, de-duplicates by a unique identity (e.g. workout_id) to prevent double-counting, and cannot produce rates above 100%. Only count statuses that represent genuine planned-session completion (e.g. compliant, partial) rather than treating all non-missed evaluations as completed.
+      source: copilot:PR#535
+      added: "2026-04-06"
+    - id: clamp-displayed-percentages
+      category: ui
+      pattern: >-
+        Rendering a percentage value in text or a visual indicator (progress bar, chart, badge) without clamping
+      check: >-
+        Verify that percentage values displayed to users are clamped to a sensible range (typically [0, 100]) both in text labels and visual elements, especially when the underlying data could exceed expected bounds due to edge cases like duplicates or bonus entries
+      source: copilot:PR#535
+      added: "2026-04-06"
+    - id: date-boundary-off-by-one
+      category: other
+      pattern: >-
+        Date comparisons using < or > with period boundaries (week_end, month_end, day_end) where the boundary date itself may be inclusive in some contexts but exclusive in others
+      check: >-
+        Verify that date boundary comparisons are consistent across related queries. When filtering by period boundaries (e.g., week_end < today), check whether the boundary value is treated as inclusive or exclusive in other functions that operate on the same data, and ensure the filter correctly handles the edge case when today falls exactly on the boundary date.
+      source: copilot:PR#535
+      added: "2026-04-06"
+    - id: unmarshal-error-propagation
+      category: error-handling
+      pattern: >-
+        JSON/data unmarshal errors that are silently ignored or swallowed, especially when the resulting zero-value feeds into downstream calculations (rates, aggregations, rollups)
+      check: >-
+        Verify that unmarshal/decode errors are propagated (returned as errors) or at minimum logged and excluded from downstream computations, rather than silently falling through with zero-values that produce misleading results
+      source: copilot:PR#535
+      added: "2026-04-06"
+    - id: clamp-numeric-ui-values
+      category: ui
+      pattern: >-
+        Numeric values from API responses used directly in CSS properties (width, height, etc.) or chart/visualization props without sanitization
+      check: >-
+        Verify that numeric values derived from API responses are coerced to finite numbers and clamped to valid ranges (e.g., [0, 100] for percentages) before use in styles or UI components, to prevent NaN, Infinity, or negative values from breaking rendering
+      source: copilot:PR#535
+      added: "2026-04-06"
+    - id: guard-zero-division-in-percentage-calc
+      category: error-handling
+      pattern: >-
+        Calculating percentages or ratios from dynamic numeric values (e.g. durations, counts, ranges) used in CSS or rendering
+      check: >-
+        Verify that the divisor cannot be zero. When computing percentages from user-controlled or time-derived spans (e.g. totalMs, range, duration), guard against zero/negative values to prevent NaN/Infinity in CSS properties or rendered output. Provide a fallback state or clamp to a minimal non-zero value.
+      source: copilot:PR#536
+      added: "2026-04-06"
+    - id: no-stale-memoized-dates
+      category: ui
+      pattern: >-
+        useMemo or useRef used to cache a Date/time value with an empty or static dependency array
+      check: >-
+        Dates and times derived via useMemo with empty deps (or stored in useRef without refresh) become stale if the component stays mounted across midnight. Derive the current date on each render (it's cheap) or set up a timer to refresh it, so time-dependent UI (markers, countdowns, selections) stays accurate.
+      source: copilot:PR#536
+      added: "2026-04-06"
+    - id: aria-expanded-state-consistency
+      category: ui
+      pattern: >-
+        Interactive element sets aria-expanded or toggles expanded state based on data that may be optional/missing
+      check: >-
+        Verify that toggle controls and aria-expanded are gated on the presence of the content they control, so control state cannot become inconsistent when optional data is missing
+      source: copilot:PR#537
+      added: "2026-04-06"
+    - id: accordion-hidden-content-a11y
+      category: ui
+      pattern: >-
+        Accordion or collapsible panel that uses CSS (e.g. grid-rows-[0fr], max-height:0, overflow-hidden) to visually hide content while keeping it in the DOM
+      check: >-
+        Verify that collapsed accordion content is not exposed to assistive technology. Either conditionally render the content only when expanded, or apply aria-hidden="true" and/or the inert attribute to the collapsed panel so the accessibility tree matches the visual state indicated by aria-expanded.
+      source: copilot:PR#537
+      added: "2026-04-06"
+    - id: frontend-backend-field-sync
+      category: other
+      pattern: >-
+        Frontend code references fields from an API response type that are not present in the backend handler's actual response
+      check: >-
+        Verify that every field accessed from an API response in the frontend is actually included in the corresponding backend handler's response. Cross-reference the backend handler implementation to confirm the response shape matches what the frontend expects, rather than relying solely on TypeScript type definitions.
+      source: copilot:PR#538
+      added: "2026-04-07"
+    - id: hook-error-state-handling
+      category: error-handling
+      pattern: >-
+        Component uses a custom hook that returns an error field but only destructures/uses other fields like loading or data
+      check: >-
+        Verify that components consuming hooks with error states actually handle the error case. When a hook returns an error field, ignoring it can cause the UI to render misleading default/empty states instead of showing an explicit error or unavailable indicator.
+      source: copilot:PR#538
+      added: "2026-04-07"
+    - id: layout-matches-spec
+      category: ui
+      pattern: >-
+        A component implements a layout structure (flex, grid, positioning) that was specified differently in the task or design requirements
+      check: >-
+        Verify that the layout implementation technique (CSS grid vs flexbox vs other) matches what the task/design specifies — if the spec calls for CSS grid, don't substitute flexbox, and vice versa, as this creates technical debt and may block planned future features that depend on the specified layout model
+      source: copilot:PR#538
+      added: "2026-04-07"
+    - id: i18n-key-exists
+      category: ui
+      pattern: Usage of t() translation function with i18n keys
+      check: >-
+        Verify that every i18n key passed to t() actually exists in the corresponding locale JSON files. Check that the namespace prefix matches the file where the key is defined (e.g. a key in forge.json should use the forge: namespace, not a different one).
+      source: copilot:PR#539
+      added: "2026-04-07"
+    - id: reuse-toast-hook
+      category: ui
+      pattern: >-
+        Custom toast/notification state management with local useState, timers, or counters for showing temporary messages
+      check: >-
+        Verify that the existing `useToast()` hook and `ToastList` component are used instead of re-implementing toast state, timers, or counters locally
+      source: copilot:PR#539
+      added: "2026-04-07"
+    - id: i18n-interpolation-sync
+      category: other
+      pattern: >-
+        Adding or changing interpolation variables (e.g. `{{id}}`) in translation strings across locale JSON files
+      check: >-
+        Verify that all call sites using the modified translation key actually pass the required interpolation variables. If a key gains a new `{{variable}}`, update every `t('key')` call to provide `{ variable }`, or keep the key without interpolation if call sites construct the string differently (e.g. concatenation). Apply changes consistently across all locale files.
+      source: copilot:PR#539
+      added: "2026-04-07"
+    - id: ui-matches-spec
+      category: ui
+      pattern: >-
+        PR description or issue spec lists UI elements, fields, or features to be displayed
+      check: >-
+        Verify that every field or element mentioned in the PR description/spec is actually rendered in the component. If the implementation intentionally omits a described field, update the spec to match what is rendered.
+      source: copilot:PR#539
+      added: "2026-04-07"
+    - id: live-region-scope
+      category: ui
+      pattern: >-
+        A container with role="status", aria-live, or aria-relevant wrapping a large or frequently-updating list/table
+      check: >-
+        Verify that ARIA live regions wrap only small, concise status messages — not entire scrollable lists. For auto-polling or frequently-changing data, use a dedicated (often visually-hidden) live region that announces a brief summary (e.g. 'Queue updated (N items)') instead of causing screen readers to re-read the full list on every update.
+      source: copilot:PR#540
+      added: "2026-04-07"
+    - id: stable-sort-tiebreaker
+      category: ui
+      pattern: Sorting arrays of items by one or more fields without a final unique tie-breaker
+      check: >-
+        Verify that every sort comparator includes a stable tie-breaker on a unique field (e.g., ID or timestamp) as the last comparison, so that items with equal sort keys maintain a deterministic order across re-renders and data refreshes
+      source: copilot:PR#540
+      added: "2026-04-07"
+    - id: sanitize-dynamic-html-ids
+      category: ui
+      pattern: >-
+        Dynamic values (user input, API data, config strings) used to construct HTML element ids or aria-* attributes
+      check: >-
+        Verify that dynamic strings used in HTML id or aria-controls/aria-labelledby attributes are sanitized or slugified to remove characters invalid in HTML ids (spaces, slashes, special chars), preventing broken accessibility relationships and invalid DOM
+      source: copilot:PR#540
+      added: "2026-04-07"
+    - id: no-eslint-disable-for-known-keys
+      category: style
+      pattern: >-
+        Using `eslint-disable` with `as any` casts for i18n translation keys (`t(...)` calls) when the set of possible keys is finite and known
+      check: >-
+        Verify that translation key variables passed to `t()` are typed as string-literal unions of their known values instead of using `as any` casts or `eslint-disable` comments to suppress type errors
+      source: copilot:PR#540
+      added: "2026-04-07"
+    - id: shared-ui-constants
+      category: ui
+      pattern: >-
+        Color mappings, display order arrays, or other UI constants that map domain values to visual properties appearing in a new or modified component
+      check: >-
+        Verify the constant is not duplicated from another component. If the same mapping exists elsewhere, extract it into a shared util module and import from both places to prevent drift.
+      source: copilot:PR#540
+      added: "2026-04-07"
+    - id: unique-aria-ids
+      category: ui
+      pattern: >-
+        Generating HTML element IDs by sanitizing user-facing strings (e.g. replacing special characters in names) for use in aria-controls, aria-labelledby, or other ID-based attribute relationships
+      check: >-
+        Verify that generated IDs are guaranteed unique. Sanitizing display names can cause collisions (e.g. 'foo.bar' and 'foo-bar' both become 'foo-bar'). Use React's useId(), a stable index, or a hash to ensure uniqueness rather than relying solely on sanitized names.
+      source: copilot:PR#540
+      added: "2026-04-07"
+    - id: preserve-server-sort-order
+      category: ui
+      pattern: >-
+        Client-side sorting of API results using a substitute key (e.g. ID) instead of the server's actual sort fields
+      check: >-
+        When re-sorting server-provided lists on the client, verify the tie-breaker matches the backend's ordering columns. If the backend sorts by fields like updated_at or created_at, either preserve the original server order for ties or include those fields in the client model so the sort is consistent across views.
+      source: copilot:PR#540
+      added: "2026-04-07"
+    - id: polling-hook-error-handling
+      category: error-handling
+      pattern: >-
+        Custom React hooks that fetch data via polling and check `res.ok` or specific status codes
+      check: >-
+        Verify that all non-success HTTP responses are handled consistently: non-OK responses (beyond expected ones like 404) must set an error state, decide whether to clear or preserve stale data, and surface the error to the UI rather than silently ignoring it
+      source: copilot:PR#541
+      added: "2026-04-07"
+    - id: catch-block-must-handle-errors
+      category: error-handling
+      pattern: >-
+        A catch block that silently swallows non-abort errors without logging or surfacing them to the UI
+      check: >-
+        Verify that catch blocks either set an error state (e.g., setError), log the error, or both — never silently discard non-abort errors, as this hides failures and can leave stale data displayed
+      source: copilot:PR#541
+      added: "2026-04-07"
+    - id: forge-phase-to-stage-mapping
+      category: ui
+      pattern: Mapping forge worker phases to UI display stages or categories
+      check: >-
+        Verify that all known forge phases (e.g., rebase, impl, smith, pr) have explicit mappings to their correct UI stage. A catch-all default branch should not silently misclassify phases — either map them explicitly or flag unknown phases visibly.
+      source: copilot:PR#541
+      added: "2026-04-07"
+    - id: extract-shared-constants
+      category: style
+      pattern: >-
+        Hard-coded numeric literals (timeouts, limits, thresholds) duplicated across multiple callers or packages
+      check: >-
+        Verify that repeated magic numbers are extracted into named constants shared between callers, so values don't silently drift when only one site is updated
+      source: copilot:PR#542
+      added: "2026-04-07"
+    - id: behavior-change-needs-test
+      category: testing
+      pattern: >-
+        Code that changes conditional behavior or precedence logic (e.g., applying defaults only when a condition is not already met)
+      check: >-
+        When modifying behavior precedence or conditional defaults, verify that a unit test covers the new logic branch — ideally by extracting the decision into a testable helper rather than requiring integration-level setup
+      source: copilot:PR#542
+      added: "2026-04-07"
+    - id: no-internal-tokens-in-api-responses
+      category: security
+      pattern: >-
+        Struct fields containing internal session tokens, resumption tokens, or secret identifiers with json tags that would serialize them to API responses
+      check: >-
+        Verify that internal/secret tokens (e.g. CLI session IDs, resumption tokens, API keys) use `json:"-"` or are excluded from API response structs so they are never exposed to browsers or downstream clients
+      source: copilot:PR#544
+      added: "2026-04-07"
+    - id: mutation-requires-user-scope-and-timestamp
+      category: security
+      pattern: >-
+        Database UPDATE or DELETE on user-owned rows (e.g., conversations, preferences, sessions)
+      check: >-
+        Verify that every mutation on user-owned data includes `user_id` in the WHERE clause to prevent cross-user access, and updates `updated_at` for consistent ordering and auditing.
+      source: copilot:PR#544
+      added: "2026-04-07"
+    - id: test-error-assertions
+      category: testing
+      pattern: Test code that discards errors with _ from functions that return (value, error)
+      check: >-
+        Verify that all (value, error) returns in tests assert err == nil before using the value, so failures produce clear diagnostics instead of nil-pointer panics
+      source: copilot:PR#544
+      added: "2026-04-07"
+    - id: no-sensitive-ids-in-logs
+      category: security
+      pattern: >-
+        Log statements that include session IDs, tokens, or other secret/session-resumption values
+      check: >-
+        Verify that log lines do not emit full session IDs, API keys, or tokens. Use a short prefix/suffix, a hash, or omit the value entirely to prevent credential leakage through logs.
+      source: copilot:PR#544
+      added: "2026-04-07"
+    - id: handle-db-lookup-errors
+      category: error-handling
+      pattern: >-
+        DB lookup where only the success case is checked (e.g., `if err == nil && result != nil`) and the error is silently discarded
+      check: >-
+        Verify that database query errors are explicitly handled — either logged and/or returned to the caller — rather than silently ignored. Discarding a DB error and proceeding with a zero-value default hides transient failures and makes root-cause diagnosis harder.
+      source: copilot:PR#545
+      added: "2026-04-07"
+    - id: error-context-identifiers
+      category: error-handling
+      pattern: >-
+        Error wrapping in database or service methods that receive entity identifiers (IDs, keys, names) as parameters
+      check: >-
+        Verify that wrapped errors include the relevant entity identifier (e.g. bead ID, user ID, session ID) in the error message so that concurrent operations can be distinguished in logs and debugging
+      source: copilot:PR#545
+      added: "2026-04-07"
+    - id: handler-input-validation-tests
+      category: testing
+      pattern: >-
+        When modifying an HTTP handler's implementation, especially changing how it processes path parameters or request inputs
+      check: >-
+        Verify that all input validation paths (empty ID, malformed ID, missing parameters) still have corresponding test coverage after the refactor, not just the happy path and nil-dependency cases
+      source: copilot:PR#545
+      added: "2026-04-07"
+    - id: nested-interactive-key-propagation
+      category: ui
+      pattern: >-
+        A clickable or keyboard-interactive element (button, link, input) is nested inside another element that has an onKeyDown or onClick handler
+      check: >-
+        Verify that Enter/Space key events on nested interactive elements call e.stopPropagation() to prevent the parent handler from firing (e.g., opening a detail view when the user intended to activate the nested button)
+      source: copilot:PR#546
+      added: "2026-04-07"
+    - id: tri-state-boolean-mismatch
+      category: other
+      pattern: >-
+        A boolean field is used to represent a value that has more than two meaningful states (e.g., pass/fail/pending, yes/no/unknown)
+      check: >-
+        Verify that boolean fields are not used to model tri-state or multi-state values. If a domain concept has more than two states (e.g., CI status: passing/failing/pending), use an enum or string union type instead of a boolean to avoid silently collapsing distinct states into one.
+      source: copilot:PR#546
+      added: "2026-04-07"
+    - id: review-state-completeness
+      category: ui
+      pattern: >-
+        UI code that renders different states (approved, pending, rejected, etc.) based on model/API fields
+      check: >-
+        Verify that every state mentioned in the PR description or spec has a corresponding field in the data model and is handled in the UI rendering logic. If a state is described but not modeled, either add the field to the API/model or update the documentation to reflect the actually supported states.
+      source: copilot:PR#546
+      added: "2026-04-07"
+    - id: week-mode-selection-logic
+      category: ui
+      pattern: >-
+        Frontend logic that selects a mode or variant based on the presence/absence of a single related entity (e.g., choosing 'current' vs 'next' week plan)
+      check: >-
+        Verify the selection logic checks for the existence of *any* relevant entity, not just one specific variant. A missing entity of type A does not mean no entities exist — query the full collection (e.g., with a limit=1 existence check) before defaulting to a fallback mode.
+      source: copilot:PR#547
+      added: "2026-04-07"
+    - id: validate-query-params-strictly
+      category: error-handling
+      pattern: Query parameter parsed with a default/fallback that silently accepts any value
+      check: >-
+        Verify that query parameters with a fixed set of valid values are explicitly validated and return a 400 error for unrecognized values, rather than silently falling through to a default. Silent defaults hide client bugs and typos.
+      source: copilot:PR#547
+      added: "2026-04-07"
+    - id: new-handler-behavior-needs-tests
+      category: testing
+      pattern: A handler gains a new query parameter, flag, or code path
+      check: >-
+        Verify that new handler behaviors (e.g. new query parameters or conditional branches) have corresponding test cases that exercise the new path and assert expected results
+      source: copilot:PR#547
+      added: "2026-04-07"
+    - id: test-new-branches
+      category: testing
+      pattern: A new conditional branch or mode is added to an existing function
+      check: >-
+        Verify that the new branch/mode has dedicated unit tests, not just coverage of existing branches. If the function is tested only with old parameter values, add a test exercising the new path and asserting its distinct behavior.
+      source: copilot:PR#547
+      added: "2026-04-07"
+    - id: action-handler-wiring
+      category: ui
+      pattern: >-
+        UI action buttons or handlers that are named after server-side operations (e.g. retry, clarify, dismiss) but only perform client-side navigation or state changes
+      check: >-
+        Verify that each named action button is wired to its corresponding API/IPC endpoint. If an action label implies a server-side operation (e.g. 'Clarify', 'Retry', 'Approve') but the handler only performs client-side navigation or opens a detail view, either wire it to the appropriate API route or rename the UI affordance to accurately reflect what it does (e.g. 'View Details' instead of 'Clarify').
+      source: copilot:PR#548
+      added: "2026-04-07"
+    - id: deduplicate-bead-action-handlers
+      category: other
+      pattern: >-
+        New component implements fetch calls for bead actions (retry, dismiss, approve, clarify) with toast/error handling
+      check: >-
+        Verify that bead action logic (retry/dismiss/approve/clarify fetch calls, error parsing, success messaging) reuses the shared helper or hook rather than re-implementing inline. Check for duplication against existing action handlers in NeedsAttentionCard.tsx or any extracted shared utility.
+      source: copilot:PR#548
+      added: "2026-04-07"
+    - id: encrypt-preference-consumer-check
+      category: security
+      pattern: Encrypting a user preference value before storing it in the database
+      check: >-
+        Verify that all consumers of the preference (not just HTTP handlers) decrypt the value after reading. Search for direct reads via GetPreferences or GetPreference that use the key — if any non-HTTP code path reads it without decrypting, it will receive ciphertext instead of plaintext.
+      source: copilot:PR#549
+      added: "2026-04-07"
+    - id: decrypt-fail-no-ciphertext-leak
+      category: security
+      pattern: >-
+        DecryptField error handling where the decrypted value is returned to API responses or clients
+      check: >-
+        When DecryptField fails, verify the raw stored value (likely enc:... ciphertext) is never returned to clients. On failure, log a warning and return an empty string or omit the field from the response — do not fall back to the undecrypted value, which leaks ciphertext and risks double-encryption on re-save.
+      source: copilot:PR#549
+      added: "2026-04-07"
+    - id: new-preference-key-round-trip-test
+      category: testing
+      pattern: Adding a new allowed preference key to settings handlers
+      check: >-
+        Verify that a round-trip test exists for the new preference key, asserting it is accepted by PUT, stored encrypted (if applicable), and returned as plaintext by GET — following the pattern of existing tests like TestPreferencesPutHandler_AdminClaudeCliPathEncryptedRoundtrip
+      source: copilot:PR#549
+      added: "2026-04-07"
+    - id: decrypt-failure-omit-field
+      category: security
+      pattern: >-
+        Returning user preferences or encrypted fields in API responses after a DecryptField failure
+      check: >-
+        When DecryptField fails for a field, verify the field is omitted or deleted from the response map rather than returning the raw ciphertext to the client, to avoid leaking encrypted values and preventing double-encryption on subsequent saves
+      source: copilot:PR#549
+      added: "2026-04-07"
+    - id: no-hardcoded-config-values
+      category: other
+      pattern: >-
+        Functions that hard-code numeric limits, thresholds, or feature settings that are already modeled in a config file or settings struct
+      check: >-
+        Verify that configurable values (limits, thresholds, feature flags) are read from the existing config source with safe fallbacks to defaults, rather than hard-coded in handler or business logic, to prevent drift between components sharing the same configuration
+      source: copilot:PR#552
+      added: "2026-04-07"
+    - id: stub-daemon-alive-in-tests
+      category: testing
+      pattern: >-
+        Test functions that call StatusHandler or other handlers depending on daemonAlive without overriding it
+      check: >-
+        Verify that daemonAlive is stubbed (saved, replaced, and deferred-restored) in every StatusHandler test so tests are hermetic and don't perform real unix socket dials
+      source: copilot:PR#552
+      added: "2026-04-07"
+    - id: no-unused-select-columns
+      category: performance
+      pattern: >-
+        SQL SELECT statements that fetch columns which are scanned but never used in the returned result
+      check: >-
+        Verify that every column selected and scanned from a SQL query is actually used to build the return value. Remove unused columns from both the SELECT list and Scan call to reduce query work and keep the function focused.
+      source: copilot:PR#552
+      added: "2026-04-07"
+    - id: merged-list-sort-order
+      category: ui
+      pattern: >-
+        Two or more separately-sorted slices are concatenated or appended into a single result list that is displayed in the UI
+      check: >-
+        Verify the combined list is re-sorted after merging so the UI presents a consistent global order (e.g., by recency) instead of showing two independently-sorted segments
+      source: copilot:PR#552
+      added: "2026-04-07"
+    - id: stub-external-deps-in-tests
+      category: testing
+      pattern: >-
+        Test functions that call handlers or functions which internally reach out to external resources (sockets, network, filesystem) without stubbing/overriding those dependencies
+      check: >-
+        Verify that tests override or stub all external dependencies (e.g. daemon health checks, socket dials, HTTP clients) to prevent environment-dependent behavior, flakiness, and slow timeouts. Follow the same stubbing pattern used by neighboring tests in the same file.
+      source: copilot:PR#552
+      added: "2026-04-07"
+    - id: null-state-revert-guard
+      category: error-handling
+      pattern: >-
+        State setter revert using a captured previous value from a nullable state variable
+      check: >-
+        When capturing a previous value from nullable state (e.g. `const prev = someNullableState`) to use as a revert in an error handler, verify the captured value is null-checked before use. Return early or skip the revert if the previous value could be null, to avoid type errors under strict mode and runtime issues.
+      source: copilot:PR#551
+      added: "2026-04-07"
+    - id: optimistic-update-race-condition
+      category: concurrency
+      pattern: >-
+        Optimistic UI updates with revert-on-failure logic where multiple actions can modify the same state
+      check: >-
+        Verify that optimistic update revert/fallback paths cannot conflict with other in-flight or completed mutations on the same state. Use AbortController, request IDs, or disable conflicting actions during in-flight requests so that stale responses cannot resurrect outdated UI state.
+      source: copilot:PR#551
+      added: "2026-04-07"
+    - id: future-time-validation-date-context
+      category: other
+      pattern: >-
+        Time validation that compares a user-supplied time against `time.Now()` or today's date, when the record being validated may belong to a different date
+      check: >-
+        Verify that future-time checks use the record's own date context (e.g., the session's date field) rather than assuming the current date. A validation like `start_time > now` is only correct when the record's date is today; for other dates it may incorrectly reject valid input.
+      source: copilot:PR#551
+      added: "2026-04-07"
+    - id: deterministic-test-assertions
+      category: testing
+      pattern: >-
+        Test assertions that branch on time.Now() or other non-deterministic values (e.g., accepting multiple status codes depending on wall-clock time)
+      check: >-
+        Verify that tests produce a single deterministic expected outcome. Construct test inputs relative to the current time (e.g., now + 1 minute for future, now - 1 hour for past) so assertions are unconditional, or inject a clock dependency to control time in tests.
+      source: copilot:PR#551
+      added: "2026-04-07"
+    - id: label-input-association
+      category: ui
+      pattern: >-
+        A <label> and <input> pair where the label lacks htmlFor or the input lacks a matching id, or an input uses aria-label when a visible label already exists nearby
+      check: >-
+        Verify that every <label> is programmatically associated with its <input> via matching htmlFor/id attributes (or by nesting the input inside the label), and remove redundant aria-label when a proper label association exists
+      source: copilot:PR#551
+      added: "2026-04-07"
+    - id: debounce-input-network-calls
+      category: performance
+      pattern: >-
+        Input element onChange handler that directly triggers a network request (fetch/PUT/POST/PATCH)
+      check: >-
+        Verify that text/time/number inputs do not fire network requests on every keystroke via onChange. Prefer persisting on onBlur or Enter (or debounce the call) while updating local state immediately to avoid bursts of aborted/in-flight requests and unnecessary server load.
+      source: copilot:PR#551
+      added: "2026-04-07"
+    - id: time-format-truncation-flaky-test
+      category: testing
+      pattern: >-
+        Tests that format time.Now() with minute-level precision (e.g., Format("15:04")) and compare or use the result as a future/past boundary
+      check: >-
+        Verify that time truncation to minutes cannot cause flaky failures near minute boundaries. Use a larger offset (e.g., +10m instead of +1m) and truncate to the minute before adding the offset to guarantee the formatted value remains valid throughout test execution.
+      source: copilot:PR#551
+      added: "2026-04-07"
+    - id: query-after-update-race
+      category: concurrency
+      pattern: >-
+        A function that UPDATEs a row then immediately SELECTs it back in a separate query to return the result
+      check: >-
+        Verify that a nil/empty result from the follow-up SELECT is treated as an error, not silently returned as success. Between the UPDATE and the SELECT another operation (e.g., concurrent delete) can remove the row, causing the SELECT to return nil while the caller assumes the update succeeded.
+      source: copilot:PR#551
+      added: "2026-04-07"
+    - id: endpoint-entity-mismatch
+      category: error-handling
+      pattern: >-
+        UI actions that call API endpoints designed for a different entity type or data source than the one being acted upon
+      check: >-
+        Verify that action handlers target endpoints compatible with the entity's backing store. For example, if items come from a queue cache, ensure the actions call queue-appropriate endpoints rather than reusing endpoints that only work for retry-table entries.
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: stub-actions-conflict-with-pr-claims
+      category: other
+      pattern: >-
+        Action handlers that show placeholder toasts (e.g. 'not available yet') or no-op implementations alongside success strings, completion callbacks, or PR descriptions claiming the feature is wired up
+      check: >-
+        Verify that declared action handlers actually call their backend endpoints and handle success/error responses. Flag any stub or placeholder implementations that contradict the PR description, surrounding i18n strings, or callback signatures suggesting the actions should be functional.
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: menu-close-focus-vs-modal
+      category: ui
+      pattern: >-
+        A context menu or dropdown calls closeMenu()/onClose() with focus restoration before opening a modal dialog
+      check: >-
+        Verify that closing a menu to open a modal does not restore focus to the trigger button, which can steal focus from the newly opened dialog. Focus restoration should be deferred until after the modal closes, or skipped entirely when transitioning to a modal.
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: no-unused-hook-imports
+      category: other
+      pattern: >-
+        A React hook or function is imported and its return values are destructured, but none of the returned values are actually used in any meaningful code path within the component
+      check: >-
+        Verify that every imported hook and its destructured values are actively used in the component logic. If a hook is imported for future use but not yet wired up, remove it until it is needed to avoid dead code and misleading disabled/loading states that can never trigger.
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: endpoint-capability-match
+      category: error-handling
+      pattern: >-
+        Frontend action wired to a backend endpoint that operates on a specific resource subset (e.g. retry list, archive) but the UI triggers it from a broader context (e.g. general queue)
+      check: >-
+        Verify that the backend endpoint's preconditions match all the contexts where the frontend can invoke it. If a handler requires the resource to exist in a specific table or state (e.g. retries, archived), ensure the UI only offers that action when the precondition holds, or use/create an endpoint that handles the broader set of resources the UI operates on.
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: dom-vs-react-event-types
+      category: other
+      pattern: >-
+        A React event type (e.g. React.MouseEvent, React.KeyboardEvent) is used to annotate a callback passed to native DOM APIs like document.addEventListener
+      check: >-
+        Verify that callbacks passed to native DOM addEventListener use the global DOM event types (MouseEvent, KeyboardEvent, etc.) rather than React synthetic event types (React.MouseEvent, React.KeyboardEvent). React event types and DOM event types are incompatible and will cause TypeScript compilation errors.
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: outside-click-focus-restore
+      category: ui
+      pattern: >-
+        Menu/popover outside-click handlers that call a close function which restores focus to the trigger element
+      check: >-
+        When closing a menu via outside click, do not restore focus to the trigger button — it steals focus from whatever the user actually clicked. Only restore focus on keyboard-initiated closes (e.g. Escape). Pass a flag like `skipFocusRestore` to the close function in outside-click handlers.
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: scroll-close-no-focus-restore
+      category: ui
+      pattern: >-
+        Scroll event handlers that close menus or popups by calling a close/dismiss function
+      check: >-
+        Verify that scroll-triggered menu/popup closures skip focus restoration to the trigger element, as scrolling should not cause unexpected focus jumps
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: menu-tab-focus-trap
+      category: ui
+      pattern: >-
+        Context menu or dropdown keyboard handler that restores focus to trigger element on close
+      check: >-
+        Verify that pressing Tab to leave a menu does not restore focus to the trigger element, which would trap keyboard users. On Tab key, close the menu without focus restore so focus moves naturally to the next focusable element.
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: queue-section-validation
+      category: security
+      pattern: >-
+        Handler operates on a queue entry by ID but is documented as targeting a specific queue section (e.g. ready)
+      check: >-
+        Verify the handler checks the queue entry's section/status matches the expected value before acting. A lookup by ID alone can allow operations on entries in unintended sections (blocked, in-progress, etc.). Validate the section and return an appropriate error (409 Conflict or 400 Bad Request) when it doesn't match.
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: log-unexpected-db-errors
+      category: error-handling
+      pattern: >-
+        Database lookup where only sql.ErrNoRows is expected and other errors are silently ignored
+      check: >-
+        When a DB query error is checked only for sql.ErrNoRows, verify that unexpected (non-ErrNoRows) errors are logged so operational issues are not silently hidden
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: new-db-helpers-need-tests
+      category: testing
+      pattern: >-
+        New database helper/accessor function added to a file that already has companion tests
+      check: >-
+        Verify that unit tests are added for the new DB helper covering both the success path (correct row returned) and the not-found path (sql.ErrNoRows)
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: docstring-error-wrapping-accuracy
+      category: error-handling
+      pattern: >-
+        Function docstrings that mention returning specific sentinel errors (e.g. sql.ErrNoRows) while the implementation wraps errors with fmt.Errorf(%w)
+      check: >-
+        Verify that docstrings accurately describe how sentinel errors are returned — if the implementation wraps the error, the docstring should state the error is wrapped and that callers must use errors.Is() to detect it
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: destructive-action-confirm-dialog
+      category: ui
+      pattern: ConfirmDialog usage for actions described as destructive or dangerous
+      check: >-
+        Verify that confirmation dialogs for destructive actions pass the `destructive` prop so styling matches the severity of the operation
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: disabled-focus-restore
+      category: ui
+      pattern: >-
+        A component disables a trigger element (e.g., button) with `disabled={...}` while also restoring focus to that same element after an async action
+      check: >-
+        Verify that focus is not restored to an element that becomes disabled. Use `aria-disabled` with manual click/key prevention instead of the native `disabled` attribute so the element remains focusable, or restore focus to a different non-disabled element after the async action completes.
+      source: copilot:PR#550
+      added: "2026-04-07"
+    - id: sse-rest-race-condition
+      category: concurrency
+      pattern: >-
+        Component uses both an initial REST fetch and an SSE/WebSocket stream to populate the same state
+      check: >-
+        Verify that the REST fetch merges into existing state (dedupe by id) rather than replacing it, to avoid overwriting events already appended from the real-time stream if messages arrive before the fetch resolves
+      source: copilot:PR#553
+      added: "2026-04-07"
+    - id: avoid-string-union-collapse
+      category: style
+      pattern: >-
+        A TypeScript union type that includes both string literals and a bare `string` type (e.g. `'a' | 'b' | string`), which collapses to just `string` and removes type-safety
+      check: >-
+        Verify that union types with string literals do not also include a bare `string` member. Use a tagged template literal type (e.g. `anvil:${string}`), a discriminated union, or an explicit list of allowed values so TypeScript can enforce valid filter/enum values at compile time.
+      source: copilot:PR#553
+      added: "2026-04-07"
+    - id: doc-endpoint-alignment
+      category: other
+      pattern: >-
+        PR introduces or references API endpoints in documentation, task descriptions, or comments
+      check: >-
+        Verify that endpoint URLs in PR descriptions, docs, and task plans match the actually implemented backend routes. Flag any mismatches between documented and coded endpoint paths.
+      source: copilot:PR#553
+      added: "2026-04-07"
+    - id: shared-sse-polling-hook
+      category: other
+      pattern: >-
+        New component implements SSE connection with polling fallback or event stream consumption
+      check: >-
+        Verify the component reuses the existing shared SSE/polling hook rather than re-implementing stream connection, reconnection, last-seen tracking, ordering, or error handling logic that already exists in the codebase
+      source: copilot:PR#553
+      added: "2026-04-07"
+    - id: grid-cols-match-children
+      category: ui
+      pattern: >-
+        Grid layout with grid-cols-N where N exceeds the number of rendered child elements
+      check: >-
+        Verify that the number of grid columns matches the actual number of child elements rendered. A multi-column grid with fewer children than columns leaves empty visual gaps. Use single-column layout until additional panels/children are ready.
+      source: copilot:PR#553
+      added: "2026-04-07"
+    - id: use-router-link-for-internal-nav
+      category: ui
+      pattern: >-
+        Raw <a href="/..."> tags used for internal application routes instead of React Router's Link/NavLink components
+      check: >-
+        Verify that internal navigation uses Link or NavLink from react-router-dom instead of raw anchor tags, to preserve SPA behavior and avoid full page reloads that lose client-side state
+      source: copilot:PR#553
+      added: "2026-04-07"
+    - id: promise-all-settled-partial-failure
+      category: error-handling
+      pattern: >-
+        Promise.all used with multiple independent fetch calls where results are handled individually
+      check: >-
+        When fetching from multiple independent endpoints in parallel, use Promise.allSettled instead of Promise.all so that a network error or rejection on one request does not discard successful responses from the others. Ensure partial data can still render when only a subset of endpoints fail.
+      source: copilot:PR#554
+      added: "2026-04-07"
+    - id: link-route-exists
+      category: ui
+      pattern: Component renders a link or navigation target to an internal route
+      check: >-
+        Verify that the destination route actually exists in the frontend router. If a link points to a path that has no corresponding route definition, either add the route/page or update the link to point to an existing route.
+      source: copilot:PR#554
+      added: "2026-04-07"
+    - id: recharts-tooltip-formatter-label
+      category: ui
+      pattern: >-
+        Recharts Tooltip with a custom `formatter` that returns a hardcoded series label instead of using the `name`/`dataKey` argument
+      check: >-
+        Verify that Recharts Tooltip formatters use the `name` parameter (second argument) for the series label rather than a hardcoded string, especially when the chart renders multiple data series that need distinct labels
+      source: copilot:PR#555
+      added: "2026-04-07"
+    - id: chart-type-matches-spec
+      category: ui
+      pattern: >-
+        Chart components with comments or labels describing a specific chart type (e.g. 'stacked bar chart', 'grouped bar chart', 'line chart')
+      check: >-
+        Verify the actual chart implementation matches its described type. For stacked bar charts, ensure multiple Bar components share a stackId. For grouped charts, ensure bars use different x offsets. Comments, variable names, and spec references must align with the rendered visualization.
+      source: copilot:PR#555
+      added: "2026-04-07"
+    - id: mezzanine-layout-consistency
+      category: ui
+      pattern: New route or page added under /forge/mezzanine/* path
+      check: >-
+        Verify the route/page is wrapped in MezzanineLayout so it shares the Mezzanine status bar and sidebar styling with sibling pages
+      source: copilot:PR#556
+      added: "2026-04-07"
+    - id: stop-polling-on-not-found
+      category: performance
+      pattern: >-
+        Polling hooks that continue fetching when the target entity is null, missing, or returns 404
+      check: >-
+        Verify that polling/interval hooks stop or back off when the target resource is not found (null result or 404 response), rather than polling indefinitely
+      source: copilot:PR#556
+      added: "2026-04-07"
+    - id: guard-optional-route-params
+      category: error-handling
+      pattern: >-
+        A component uses an optional route parameter (e.g. from useParams) and passes it directly to a hook or API call with a fallback like `?? ''`
+      check: >-
+        Verify that optional route params are guarded before being passed to hooks or used in API calls. The component should render an error/not-found state and skip the hook when the param is missing, rather than passing an empty string that triggers requests to malformed URLs.
+      source: copilot:PR#556
+      added: "2026-04-07"
+    - id: api-endpoint-data-reliability
+      category: other
+      pattern: >-
+        Frontend code fetching a list/top-N endpoint and then filtering client-side for a specific item
+      check: >-
+        Verify that the API endpoint used is guaranteed to return the specific item needed. If the endpoint returns a ranked/limited subset (e.g., top N, most recent), the target item may not be included. Use or create a targeted endpoint that accepts the specific ID instead of relying on client-side filtering of aggregate results.
+      source: copilot:PR#556
+      added: "2026-04-07"
+    - id: i18next-fallback-default-value
+      category: style
+      pattern: >-
+        t() translation calls using a plain string as the second argument for fallback text
+      check: >-
+        Verify that translation fallback values use the `{ defaultValue: ... }` option object instead of passing a string as the second argument to `t()`, to avoid i18next option parsing surprises and maintain codebase consistency.
+      source: copilot:PR#556
+      added: "2026-04-07"
+    - id: surface-action-feedback
+      category: error-handling
+      pattern: >-
+        User-initiated actions (fetch/POST calls in event handlers) that catch errors or check response status
+      check: >-
+        Verify that all user-initiated actions (e.g. kill, delete, retry) surface success and error feedback to the user via toasts or alerts. Do not silently swallow failures with only console.error — the user must be informed of the outcome.
+      source: copilot:PR#556
+      added: "2026-04-07"
+    - id: extract-shared-log-rendering
+      category: style
+      pattern: >-
+        Log entry rendering logic (markdown link sanitization, code-fence detection, log level classification, tool/thought formatting) duplicated across multiple components
+      check: >-
+        When adding or modifying log rendering code, verify that shared helpers (getSafeHref, markdownLinkComponents, hasCodeFence, classifyLevel, LogEntryRow) are extracted into a reusable module rather than duplicated across components like LiveActivity and WorkerDetailPage
+      source: copilot:PR#556
+      added: "2026-04-07"
+    - id: test-new-polling-hooks
+      category: testing
+      pattern: >-
+        New or modified hooks or modules that introduce polling, periodic data fetching, or recurring side effects
+      check: >-
+        Verify that tests exist covering loading/error states, successful data fetch, and that polling correctly stops on terminal conditions (e.g., completion, not-found, unmount)
+      source: copilot:PR#556
+      added: "2026-04-07"
+    - id: reuse-sse-hooks-for-live-data
+      category: performance
+      pattern: >-
+        Fetching event or streaming data with a one-shot fetch when an existing SSE/polling hook is available
+      check: >-
+        Verify that pages displaying ongoing or live data (e.g. events, logs, worker status) reuse existing SSE or polling hooks instead of one-shot fetches, so the UI stays up-to-date without reimplementing subscription logic
+      source: copilot:PR#556
+      added: "2026-04-07"
+    - id: link-target-query-param-handling
+      category: ui
+      pattern: Code creates a link with query parameters targeting an internal page
+      check: >-
+        Verify the target page actually reads and handles the query parameters being passed. If the link includes ?param=value, the destination component must use useSearchParams or equivalent to parse and act on that parameter, otherwise the link is non-functional.
+      source: copilot:PR#557
+      added: "2026-04-07"
+    - id: date-range-boundary-format
+      category: other
+      pattern: >-
+        Date range filtering that appends time strings like T23:59:59 to date boundaries without timezone suffixes
+      check: >-
+        Verify that date/time boundary values match the stored timestamp format (e.g. include Z suffix for RFC3339). Prefer computing next-day-start with `< nextDay` over inclusive upper bounds to avoid off-by-one and format mismatch issues.
+      source: copilot:PR#557
+      added: "2026-04-07"
+    - id: metric-name-matches-query
+      category: other
+      pattern: >-
+        SQL aggregation or metric computation where the field/variable name implies a specific status but the query filters on a different or broader set of statuses
+      check: >-
+        Verify that metric field names, UI labels, and translation keys accurately describe what the underlying query actually counts or aggregates. If a field is named `running_count`, it should only count `status = 'running'`, not `status IN ('pending', 'running')`. Either narrow the query to match the name or rename the field to reflect the broader scope (e.g. `active_count`).
+      source: copilot:PR#558
+      added: "2026-04-07"
+    - id: duration-from-unparsed-timestamps
+      category: error-handling
+      pattern: >-
+        Computing a duration or difference from two parsed timestamps where either parse could fail
+      check: >-
+        Verify that duration/difference calculations only execute when ALL input timestamps parsed successfully and are non-zero. An unparseable or zero-value timestamp used in arithmetic can produce huge, negative, or otherwise nonsensical results.
+      source: copilot:PR#558
+      added: "2026-04-07"
+    - id: sqlite-datetime-ordering
+      category: performance
+      pattern: SQL queries using ORDER BY on timestamp/datetime columns in SQLite
+      check: >-
+        Verify that ORDER BY clauses on timestamp columns use datetime() wrapper (e.g. ORDER BY datetime(column) DESC) to ensure correct chronological sorting regardless of timestamp format (RFC3339 vs YYYY-MM-DD HH:MM:SS), since lexicographic ordering can produce incorrect results when mixed formats exist
+      source: copilot:PR#558
+      added: "2026-04-07"
+    - id: misplaced-comment
+      category: style
+      pattern: Comments that document a specific function, type, or variable
+      check: >-
+        Verify that doc comments are placed directly above the symbol they document, not separated by unrelated declarations
+      source: copilot:PR#559
+      added: "2026-04-07"
+    - id: desktop-only-event-handlers
+      category: ui
+      pattern: >-
+        Event listeners or hooks described as desktop-only that register handlers unconditionally without checking device/viewport
+      check: >-
+        Verify that features documented or intended as desktop-only are gated behind a media query (e.g., min-width or pointer:fine) or an explicit enabled parameter, rather than registering handlers unconditionally on all devices
+      source: copilot:PR#560
+      added: "2026-04-07"
+    - id: keyboard-shortcut-silent-failure
+      category: ui
+      pattern: >-
+        Keyboard shortcut handler that early-returns when data is undefined or still loading
+      check: >-
+        Verify that keyboard shortcut handlers provide user feedback (toast, error state, or status message) when they cannot perform their action due to missing or loading data, rather than silently doing nothing
+      source: copilot:PR#560
+      added: "2026-04-07"
+    - id: disable-global-shortcuts-in-modals
+      category: ui
+      pattern: >-
+        Global document-level keyboard event listeners (keydown, keyup, keypress) that trigger application actions
+      check: >-
+        Verify that global keyboard shortcut handlers are suppressed when an aria-modal dialog is open, e.g. by guarding with `document.querySelector('[aria-modal="true"]')` or an `enabled` flag, to prevent actions firing while the user interacts with a modal
+      source: copilot:PR#560
+      added: "2026-04-07"
+    - id: ignore-key-repeat-on-shortcuts
+      category: ui
+      pattern: Keyboard shortcut handlers using keydown events without checking e.repeat
+      check: >-
+        Verify that keyboard shortcut handlers ignore repeated keydown events (e.repeat === true) to prevent actions from firing multiple times when a key is held down, especially for destructive or side-effect-producing operations
+      source: copilot:PR#560
+      added: "2026-04-07"
+    - id: async-success-toast-before-await
+      category: error-handling
+      pattern: >-
+        Toast or success feedback shown immediately after calling async functions without awaiting their results
+      check: >-
+        Verify that success toasts/notifications are only shown after async operations have resolved successfully, not optimistically before completion. Use Promise.allSettled or try/catch to confirm results before displaying success feedback.
+      source: copilot:PR#560
+      added: "2026-04-07"
+    - id: refresh-resets-loading-state
+      category: ui
+      pattern: >-
+        A refresh/refetch function that bumps a dependency key (e.g. refreshKey) to re-trigger a useEffect fetch
+      check: >-
+        Verify that the refresh function resets loading to true (and optionally clears error) before triggering the refetch, so consumers can reflect the in-progress state in UI
+      source: copilot:PR#560
+      added: "2026-04-07"
+    - id: promise-based-toast-feedback
+      category: error-handling
+      pattern: >-
+        Wrapping synchronous or fire-and-forget function calls in Promise.allSettled/Promise.all to determine success/failure for user-facing feedback (e.g. toast notifications)
+      check: >-
+        Verify that functions wrapped in Promise.all/Promise.allSettled actually return promises representing the async operation's outcome. If they are synchronous triggers (e.g. state setters that kick off a fetch internally), the promise will always resolve regardless of whether the underlying operation succeeds. Either refactor the functions to return the underlying fetch promise, or use a neutral/fire-and-forget toast instead of success/error toasts.
+      source: copilot:PR#560
+      added: "2026-04-07"
+    - id: destructive-keyboard-shortcut-confirmation
+      category: ui
+      pattern: >-
+        Keyboard shortcut handler that directly invokes a destructive or irreversible action (e.g. merge, delete, submit) without user confirmation
+      check: >-
+        Verify that keyboard shortcuts for destructive or irreversible actions show a confirmation dialog or reuse the existing confirmation flow before executing, so a single accidental keypress cannot trigger the action
+      source: copilot:PR#560
+      added: "2026-04-07"
+    - id: guard-browser-apis
+      category: error-handling
+      pattern: >-
+        Direct calls to browser-only APIs (window.matchMedia, window.requestAnimationFrame, navigator.*, document.*) in hooks or modules that may run in non-browser environments
+      check: >-
+        Verify that browser-only APIs are guarded with typeof checks (e.g., `typeof window.matchMedia === 'function'`) before invocation, so the code does not crash in SSR, test runners (happy-dom/jsdom), or other non-browser contexts
+      source: copilot:PR#560
+      added: "2026-04-07"
+    - id: test-new-hooks
+      category: testing
+      pattern: >-
+        New React hook files in web/src/hooks/ that contain non-trivial logic (state management, event listeners, side effects, conditional behavior)
+      check: >-
+        Verify that unit tests exist for the new hook covering its key behaviors, registration/unregistration lifecycle, and edge cases to prevent regressions
+      source: copilot:PR#560
+      added: "2026-04-07"
+    - id: deep-link-highlight-state
+      category: ui
+      pattern: >-
+        URL search params used as the sole source of truth for transient UI state (e.g., highlights, scroll targets) that are then removed on a timer or after render
+      check: >-
+        Verify that deep-link parameters are captured into component state on mount before being cleared from the URL. Relying on searchParams alone and then removing them on a timer can race with data loading, causing highlights to vanish before the user sees them. The pattern should be: parse URL params → store in local state → clear URL → use local state for highlighting/scrolling.
+      source: copilot:PR#561
+      added: "2026-04-07"
+    - id: url-param-derived-highlight-state
+      category: ui
+      pattern: >-
+        Component props or rendering logic derived directly from URL search params that are deleted/cleaned up in a useEffect
+      check: >-
+        Verify that any UI state derived from URL search params (e.g., highlight IDs, scroll targets, selected items) is captured into component state before the params are removed. If an effect cleans up query params after mount, props that read directly from searchParams will lose their values, causing highlights or visual indicators to flash or never render on slow loads.
+      source: copilot:PR#561
+      added: "2026-04-07"
+    - id: unused-destructured-params
+      category: style
+      pattern: >-
+        Destructured function parameters that are declared but never referenced in the function body
+      check: >-
+        Verify that all destructured parameters are actually used in the function body. If a parameter is unused, either remove it from the destructure, prefix it with an underscore to satisfy noUnusedParameters, or wire it up to the intended functionality.
+      source: copilot:PR#562
+      added: "2026-04-07"
+    - id: optimistic-reorder-consistency
+      category: ui
+      pattern: Optimistic UI updates that reorder or swap properties between items in a list
+      check: >-
+        Verify that optimistic reorder logic updates ALL affected items consistently (e.g., when swapping priorities, both items must be updated locally), not just the dragged/moved item. Partial updates can create duplicate values and visual inconsistencies until the next server refresh.
+      source: copilot:PR#562
+      added: "2026-04-07"
+    - id: drag-drop-scope-guard
+      category: ui
+      pattern: >-
+        Drag-and-drop handlers that reorder items within a scoped group (e.g., within an anvil, section, or list)
+      check: >-
+        Verify that the drop handler validates the dragged item and the drop target belong to the same scope/group before applying the reorder. Reject cross-scope drops to prevent misleading state updates.
+      source: copilot:PR#562
+      added: "2026-04-07"
+    - id: drag-state-cleanup
+      category: ui
+      pattern: Code implementing drag-and-drop with state variables tracking drag source/target
+      check: >-
+        Verify that drag state (e.g., dragItemId, dragOverItemId) is reset when the drag operation ends without a successful drop, using onDragEnd or equivalent handlers to prevent stale visual states
+      source: copilot:PR#562
+      added: "2026-04-07"
+    - id: cap-open-ended-durations
+      category: ui
+      pattern: Computing elapsed time with Date.now() as fallback when an end timestamp is null
+      check: >-
+        Verify that open-ended duration calculations (using Date.now() when end is null) are capped at a meaningful boundary (e.g. completed_at, updated_at) for finished/completed entities, so durations stop growing after the process is done
+      source: copilot:PR#562
+      added: "2026-04-07"
+    - id: localstorage-try-catch
+      category: error-handling
+      pattern: localStorage.setItem() or localStorage.removeItem() calls without try/catch
+      check: >-
+        Wrap localStorage writes in try/catch so persistence is best-effort. localStorage can throw on quota exceeded or disabled storage, which would break the calling interaction.
+      source: copilot:PR#562
+      added: "2026-04-07"
+    - id: pointer-listener-cleanup
+      category: ui
+      pattern: >-
+        Code registers document-level pointer/mouse/touch event listeners in a pointerdown or mousedown handler
+      check: >-
+        Verify that listeners are cleaned up on all exit paths: pointerup, pointercancel, window blur, and component unmount (if a drag/interaction is still active). Also verify that any temporary style overrides (e.g. userSelect, cursor) are restored in every cleanup path.
+      source: copilot:PR#562
+      added: "2026-04-07"
+    - id: optimistic-ui-server-sync
+      category: ui
+      pattern: >-
+        Optimistic UI updates that modify multiple items locally but send a single-item API request
+      check: >-
+        Verify that optimistic state updates match the exact scope of the server-side mutation. If the UI optimistically updates N items, the API call must also update those same N items — otherwise the next data fetch will revert the unsynced items and may produce inconsistent state (e.g. duplicate values).
+      source: copilot:PR#562
+      added: "2026-04-07"
+    - id: consistent-fallback-timestamps
+      category: ui
+      pattern: >-
+        Code computes a duration or elapsed time using a fallback (e.g. Date.now()) for a missing end timestamp, but a separate variable or display path derives the same value independently without applying the same fallback
+      check: >-
+        When a fallback end-time (e.g. completed_at or Date.now()) is used to compute a derived value like durationMs, verify that every other code path consuming the same start/end pair applies the identical fallback so displayed values stay consistent
+      source: copilot:PR#562
+      added: "2026-04-07"
+    - id: api-param-and-sort-order
+      category: other
+      pattern: >-
+        Frontend code fetching from an API endpoint with query parameters or assuming a specific sort order of results
+      check: >-
+        Verify that query parameters used in fetch calls actually exist and are supported by the backend endpoint. When the response order matters (e.g., building timelines, deriving first/last values), confirm the API's sort order matches the component's assumption, and re-sort client-side if needed.
+      source: copilot:PR#562
+      added: "2026-04-07"
+    - id: filter-all-consumers
+      category: ui
+      pattern: >-
+        A shared filter or selection state is introduced that affects how data is displayed across multiple UI panels or components on the same page
+      check: >-
+        Verify that the filter is applied consistently to ALL consumers of the filtered data on the page, not just some panels. Cross-check the PR description's scope claims against which components actually receive the filtered data.
+      source: copilot:PR#562
+      added: "2026-04-07"
+    - id: stale-captured-time
+      category: ui
+      pattern: >-
+        A time value (e.g. Date.now(), new Date()) captured once in a component (useState initializer, useMemo without deps, module scope) but used to compute durations or elapsed time in rendered output that is expected to update live
+      check: >-
+        Verify that any 'now' timestamp used to calculate live/ongoing durations is derived from a value that updates on each render cycle (e.g. a tick state, re-invoked Date.now()) rather than captured once at mount, otherwise displayed durations will freeze at their initial value
+      source: copilot:PR#562
+      added: "2026-04-07"
+    - id: implementation-matches-stated-design
+      category: other
+      pattern: PR introduces a new dependency or implementation approach
+      check: >-
+        Verify that the actual dependency/library used in the code matches what was stated in the PR description or design plan. If they differ, either the description or the implementation should be updated for consistency.
+      source: copilot:PR#564
+      added: "2026-04-07"
+    - id: docs-match-implementation
+      category: other
+      pattern: PR description or code comments claim a feature or fallback behavior exists
+      check: >-
+        Verify that every behavior described in PR descriptions, doc comments, or user-facing text is actually implemented in the code. Flag any claimed functionality that has no corresponding implementation, and recommend either implementing it or removing the claim.
+      source: copilot:PR#564
+      added: "2026-04-07"
+    - id: nullable-json-time-fields
+      category: error-handling
+      pattern: >-
+        JSON struct fields representing optional timestamps formatted as strings, especially where zero/missing times could produce empty strings instead of null
+      check: >-
+        Verify that optional time fields in JSON structs use pointer types (*string) with omitempty rather than plain strings that could serialize as empty strings. A zero time should produce null (omitted) in JSON, not an invalid empty string that fails format parsing on the client side.
+      source: copilot:PR#564
+      added: "2026-04-07"
+    - id: remove-unused-imports
+      category: style
+      pattern: >-
+        Import statements remain after the component/module they reference is no longer used in the file
+      check: >-
+        Verify that all imports are actually used in the file, especially after refactoring routes or swapping components — unused imports will fail builds with noUnusedLocals enabled
+      source: copilot:PR#565
+      added: "2026-04-07"
+    - id: boolean-flag-fallback-logic
+      category: other
+      pattern: >-
+        Deriving a role or category by negating one boolean flag (e.g. `!is_child`) instead of explicitly checking the intended positive flag
+      check: >-
+        When code infers a role from the absence of one flag (e.g. treating not-child as parent), verify it also checks the positive flag (e.g. `is_parent`) and provides a safe fallback for users who match neither flag
+      source: copilot:PR#565
+      added: "2026-04-07"
+    - id: no-capitalize-localized-strings
+      category: ui
+      pattern: >-
+        capitalize or toUpperCase/charAt(0).toUpperCase applied to Intl-formatted or i18n-translated date/time strings
+      check: >-
+        Verify that locale-formatted strings (from Intl.DateTimeFormat, toLocaleDateString, etc.) are not manually capitalized, as many locales intentionally use lowercase for weekdays and months
+      source: copilot:PR#565
+      added: "2026-04-07"
+    - id: page-level-test-coverage
+      category: testing
+      pattern: >-
+        New page component with conditional rendering logic (role-based, feature-gated, or auth-dependent widget selection)
+      check: >-
+        Verify that new pages with branching UI logic have a corresponding test file covering each branch (e.g. role/auth variants) and that rendered text uses the expected translation keys
+      source: copilot:PR#565
+      added: "2026-04-07"
+    - id: clock-interval-minute-alignment
+      category: ui
+      pattern: >-
+        setInterval used to update a displayed clock or time that only shows hours and minutes (HH:MM)
+      check: >-
+        Verify the interval is aligned to the next minute boundary so the display updates promptly when the minute changes, rather than being offset by up to 59 seconds depending on mount time. Use setTimeout to the next minute boundary first, then setInterval(fn, 60_000).
+      source: copilot:PR#565
+      added: "2026-04-07"
+    - id: auth-loading-flicker
+      category: ui
+      pattern: >-
+        Component derives UI state (role, layout, permissions) from useAuth() user/status fields without checking the loading flag
+      check: >-
+        Verify that components depending on auth state gate their rendering on useAuth().loading (return null or a skeleton) before deriving roles or choosing layouts, to prevent a flash of incorrect UI while /api/auth/me resolves
+      source: copilot:PR#565
+      added: "2026-04-07"
+    - id: consistent-role-identifiers
+      category: style
+      pattern: >-
+        Adding or referencing role/status string literals (e.g. union types, enums, or comparisons involving user roles like 'parent', 'child', 'admin')
+      check: >-
+        Verify that new role or status string values match the canonical identifiers already used elsewhere in the codebase (models, middleware, sidebar, feature routes). Use i18n for user-facing display labels instead of introducing alternate synonyms as code-level values.
+      source: copilot:PR#565
+      added: "2026-04-07"
+    - id: safe-mime-preview-allowlist
+      category: security
+      pattern: >-
+        Code that renders or previews user-uploaded files based on MIME type, especially using iframes or inline content disposition
+      check: >-
+        Verify that previewable MIME types are restricted to a safe allowlist (e.g. image/png, image/jpeg, image/gif, image/webp, application/pdf) and never include types that can execute scripts (text/html, image/svg+xml, text/*). Text content should be rendered as plain text (e.g. <pre> with textContent) rather than in an iframe or with innerHTML.
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: thai-locale-gregorian-calendar
+      category: ui
+      pattern: >-
+        Code using Intl.DateTimeFormat with i18n.language or locale parameter for date formatting
+      check: >-
+        Verify that Thai locale dates use calendar: 'gregory' to avoid Buddhist Era years. Prefer the shared formatDateTime() utility; if using Intl.DateTimeFormat directly, add `...(isThaiLocale ? { calendar: 'gregory' } : {})` to the options.
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: object-url-cleanup-on-unmount
+      category: performance
+      pattern: >-
+        URL.createObjectURL() stored in React state without a corresponding useEffect cleanup
+      check: >-
+        Verify that every `URL.createObjectURL()` result stored in state has a `useEffect` cleanup that calls `URL.revokeObjectURL()` when the value changes or the component unmounts, not just on explicit user actions like closing a modal
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: cancel-stale-async-on-unmount
+      category: concurrency
+      pattern: >-
+        Async fetch triggered by user action (e.g. opening a modal/preview) where the result updates component state
+      check: >-
+        Verify that an AbortController is used to cancel in-flight requests when the component unmounts or the user dismisses the UI, so stale responses don't call setState on unmounted/changed components
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: deduplicate-before-unique-insert
+      category: error-handling
+      pattern: >-
+        Inserting user-supplied list items into a table with a UNIQUE constraint (e.g., tags, labels, categories)
+      check: >-
+        Verify that the input slice is deduplicated and trimmed before insertion, and/or that the INSERT uses ON CONFLICT DO NOTHING, to prevent UNIQUE constraint failures from duplicate entries
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: preview-mime-type-safety
+      category: security
+      pattern: Handler serves user-uploaded content inline using the stored Content-Type header
+      check: >-
+        Verify that preview/inline-serving endpoints enforce a strict server-side allowlist of safe MIME types (e.g. image/png, image/jpeg, application/pdf, text/plain — excluding text/html and image/svg+xml) to prevent same-origin script execution. Confirm responses include X-Content-Type-Options: nosniff and a restrictive Content-Security-Policy header.
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: delete-order-disk-then-db
+      category: error-handling
+      pattern: Code that deletes both a database row and an associated file/blob on disk
+      check: >-
+        Verify that the on-disk file is removed before the database row is deleted, so a failure in file removal does not leave orphaned blobs with no DB reference. Alternatively, confirm there is an orphan cleanup mechanism.
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: abort-controller-cleanup-on-unmount
+      category: concurrency
+      pattern: >-
+        AbortController stored in a ref and used for async operations (fetch, upload) inside a component
+      check: >-
+        Verify that a useEffect cleanup function aborts the controller on unmount to prevent state updates on unmounted components and orphaned network requests
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: test-db-uses-real-schema
+      category: testing
+      pattern: >-
+        Test files that define their own schema with setupTestDB instead of using internal/db.Init
+      check: >-
+        Tests must use internal/db.Init(":memory:") (the real schema) and insert required parent rows (e.g. a test user) so that foreign-key constraints match production. Do not create ad-hoc test schemas that omit tables or FK relationships.
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: clear-stale-async-state
+      category: ui
+      pattern: >-
+        State setter triggers an async operation whose result updates a second piece of state (e.g., setting a selected item then fetching its content into a preview/display state)
+      check: >-
+        Verify that the dependent state (e.g., preview URL, loaded content) is cleared before starting the new async operation, and that any previous in-flight request or object URL is aborted/revoked, so the UI shows a loading state instead of briefly flashing stale content
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: abort-controller-unmount-cleanup
+      category: concurrency
+      pattern: >-
+        AbortController refs used in async operations (fetch, XMLHttpRequest) inside React components without useEffect unmount cleanup
+      check: >-
+        Verify that every AbortController ref used for in-flight async requests has a corresponding useEffect cleanup that calls abort() on unmount, preventing state updates on unmounted components
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: use-shared-dialog-for-modals
+      category: ui
+      pattern: >-
+        Custom modal implementations using plain div elements with overlay/backdrop styling
+      check: >-
+        Verify that modals use the shared Dialog component (web/src/components/ui/dialog.tsx) instead of custom div-based modals, ensuring consistent focus trapping, Escape-to-close, and accessibility behavior
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: no-plaintext-hashes-of-encrypted-data
+      category: security
+      pattern: >-
+        Storing a hash (SHA-256, MD5, etc.) of plaintext data alongside its encrypted form
+      check: >-
+        Verify that hashes stored in the database are not computed from plaintext sensitive data. Plain hashes enable known-file/known-content detection if the DB is compromised, undermining encryption at rest. Use a keyed hash (e.g., HMAC with a secret) instead, or remove the hash column if it is not yet needed.
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: disk-db-delete-ordering
+      category: error-handling
+      pattern: Code that deletes both a file on disk and its corresponding database row
+      check: >-
+        Verify that if disk deletion fails (for non-NotExist errors), the database row is preserved so the operation can be retried. Deleting the DB row after a failed disk deletion creates orphaned files with no metadata reference.
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: distinguish-error-types-in-http-responses
+      category: error-handling
+      pattern: >-
+        A single error return from an I/O or reader function is mapped to one specific HTTP status code without inspecting the underlying error type
+      check: >-
+        Verify that error responses distinguish between different failure modes (e.g., size limit vs I/O error) using errors.As/errors.Is, so clients receive accurate status codes (413 vs 500) instead of a misleading blanket response
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: sentinel-errors-over-string-matching
+      category: error-handling
+      pattern: >-
+        Code that calls err.Error() and compares the result to a string literal, or uses strings.Contains on error messages to branch logic
+      check: >-
+        Verify that error identity checks use sentinel errors (var ErrFoo = errors.New(...)) with errors.Is/errors.As instead of comparing error message strings. String-based error matching is brittle and breaks when messages change or errors get wrapped.
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: test-both-paths
+      category: testing
+      pattern: >-
+        New handler tests that only cover error/negative paths without corresponding success/positive-path tests
+      check: >-
+        Verify that every new handler has tests for both success and failure paths — if only a negative-path test exists (e.g., invalid input, not found), add a success-path test that exercises the happy path and asserts expected status code, headers, and response body
+      source: copilot:PR#566
+      added: "2026-04-07"
+    - id: i18next-default-value-option
+      category: other
+      pattern: >-
+        Calls to i18next `t()` function with a plain string as the second argument instead of an options object
+      check: >-
+        Verify that fallback/default values for `t()` are passed via `{ defaultValue: ... }` options object, not as a bare string second argument, which can cause TypeScript type errors and unexpected runtime behavior
+      source: copilot:PR#568
+      added: "2026-04-07"
+    - id: render-error-state-on-fetch-failure
+      category: error-handling
+      pattern: >-
+        Component fetches data and conditionally returns null when data is missing, but also has an error state
+      check: >-
+        Verify that when a fetch fails and error state is set, the component renders an explicit error or unavailable message instead of silently returning null or disappearing
+      source: copilot:PR#568
+      added: "2026-04-07"
+    - id: widget-error-empty-state
+      category: error-handling
+      pattern: >-
+        Widget or component returns null or renders nothing when a data fetch fails and no cached/previous data exists
+      check: >-
+        Verify that when a fetch error occurs and no data has been previously loaded, the component renders an explicit error or unavailable placeholder instead of returning null and leaving an empty area
+      source: copilot:PR#568
+      added: "2026-04-07"
+    - id: fetch-error-state-fallback
+      category: error-handling
+      pattern: >-
+        Component fetches data and conditionally renders loading/content states based on data presence
+      check: >-
+        Verify that when a fetch fails and no cached data exists, the component renders a distinct error or unavailable state instead of showing an infinite loading indicator. Check that the error state from the fetch hook is handled in the render logic, not just the data/loading states.
+      source: copilot:PR#568
+      added: "2026-04-07"
+    - id: fetch-error-vs-empty-state
+      category: error-handling
+      pattern: >-
+        Component displays a fallback/empty state message when data is null or a collection is empty, but the data comes from an async fetch that could fail
+      check: >-
+        Verify that the component checks the error state from the fetch and renders an explicit error/unavailable message instead of falling through to the empty/success state (e.g. 'no items' or 'all done') which would be misleading when the real cause is a network or API failure
+      source: copilot:PR#568
+      added: "2026-04-07"
+    - id: distinguish-error-from-empty
+      category: error-handling
+      pattern: >-
+        Data fetching with error state where the error branch renders the same UI as the empty-data branch
+      check: >-
+        Verify that error states and empty-data states render distinct UI. When a fetch fails, the component should show an error/unavailable message rather than falling through to the 'no results' empty state, which misleads users into thinking the data source is genuinely empty.
+      source: copilot:PR#568
+      added: "2026-04-07"
+    - id: stub-fetch-in-component-tests
+      category: testing
+      pattern: >-
+        Test files rendering components that internally call fetch() in useEffect hooks without mocking fetch or the data-fetching module
+      check: >-
+        When testing components that render children using useEffect fetch calls, verify that global.fetch is stubbed or the fetching modules are mocked to prevent network errors and test flakiness
+      source: copilot:PR#568
+      added: "2026-04-07"
+    - id: nullable-api-response-fields
+      category: error-handling
+      pattern: >-
+        Frontend TypeScript interfaces for API responses where backend fields can be null (e.g., no data yet, empty state)
+      check: >-
+        Verify that TypeScript response types accurately reflect nullable fields from the backend API. When an endpoint can return null for a field (e.g., no entry exists yet), the frontend type must use `| null` and the component must render an explicit empty/default state rather than treating null as an error or rendering blank.
+      source: copilot:PR#568
+      added: "2026-04-07"
+    - id: api-temporal-param-mismatch
+      category: other
+      pattern: >-
+        Frontend fetches the same endpoint multiple times with different intended time contexts (e.g. today vs yesterday), but the backend handler always uses time.Now() or a fixed reference with no date/time parameter
+      check: >-
+        Verify that when the frontend needs data for different dates or time periods, the backend endpoint actually accepts and respects a date/time parameter. If the handler hardcodes time.Now(), calling it twice will return identical results, making any comparison (e.g. day-over-day diff) meaningless.
+      source: copilot:PR#567
+      added: "2026-04-07"
+    - id: time-duration-rounding-overflow
+      category: ui
+      pattern: >-
+        Duration formatting that independently rounds hours and minutes from a fractional value
+      check: >-
+        Verify that duration formatting rounds the total minutes first, then derives hours and minutes via divmod, so that rounding cannot produce values like '1h 60m'
+      source: copilot:PR#567
+      added: "2026-04-07"
+    - id: localize-user-facing-errors
+      category: error-handling
+      pattern: >-
+        Hard-coded English strings in error messages that are displayed to users (e.g. thrown errors, toast messages, alert text)
+      check: >-
+        Verify that all user-facing error messages use i18n translation keys (e.g. `t('namespace:error')`) instead of hard-coded English strings, and prefer parsing backend error JSON where available
+      source: copilot:PR#567
+      added: "2026-04-07"
+    - id: i18n-aria-labels
+      category: ui
+      pattern: >-
+        aria-label or title attributes that use raw API strings or untranslated values in JSX
+      check: >-
+        Verify that aria-label and title attributes use translated strings via t() instead of raw API values, so screen readers and tooltips work correctly in all locales
+      source: copilot:PR#567
+      added: "2026-04-07"
+    - id: local-date-formatting
+      category: other
+      pattern: >-
+        Using toISOString().slice(0, 10) or similar UTC-based methods to format a Date as YYYY-MM-DD for display or query parameters
+      check: >-
+        Verify that date formatting uses local date parts (getFullYear/getMonth/getDate) instead of toISOString() when the intent is a local-timezone date string. toISOString() returns UTC, which can be off by one day in non-UTC timezones.
+      source: copilot:PR#567
+      added: "2026-04-07"
+    - id: go-omitempty-optional-ts
+      category: other
+      pattern: >-
+        TypeScript interface fields corresponding to Go struct fields tagged with `omitempty`
+      check: >-
+        When a Go struct field uses the `omitempty` JSON tag, the field will be absent from the JSON payload when it has its zero value. The corresponding TypeScript interface field must be marked optional (e.g. `field?: type`) so the TS type accurately reflects that the field may be `undefined`.
+      source: copilot:PR#567
+      added: "2026-04-07"
+    - id: go-omitempty-ts-optional
+      category: other
+      pattern: >-
+        TypeScript interface fields typed as `string | null` (or `T | null`) that correspond to Go struct pointer fields with `omitempty` JSON tags
+      check: >-
+        When a Go backend uses pointer fields with `omitempty`, missing values are omitted from the JSON (resulting in `undefined` in JS), not sent as `null`. The corresponding TypeScript properties should be marked optional (`field?: T | null`) rather than just nullable (`field: T | null`) to accurately reflect the payload shape.
+      source: copilot:PR#567
+      added: "2026-04-07"
+    - id: test-new-query-params
+      category: testing
+      pattern: A handler gains a new query parameter or request input that alters behavior
+      check: >-
+        Verify that httptest assertions exist for the new parameter: at least one valid-value test confirming correct behavior and one invalid-value test confirming a proper error response (e.g. 400)
+      source: copilot:PR#567
+      added: "2026-04-07"
+    - id: aria-label-include-date-context
+      category: ui
+      pattern: >-
+        Interactive or focusable elements in date-based lists or calendars that have aria-label attributes
+      check: >-
+        Verify that aria-labels on date-related list items include the formatted date (and contextual markers like 'today') so screen reader users can identify which day is focused, not just the data value displayed
+      source: copilot:PR#567
+      added: "2026-04-07"
+    - id: i18n-interpolation-over-concatenation
+      category: style
+      pattern: >-
+        JSX that concatenates variables or numbers directly with translated strings (e.g. `{value}{t('key')}` or `{t('key')}{variable}`)
+      check: >-
+        Use a single translation key with interpolation variables (e.g. `t('key', { count, value })`) instead of concatenating values with translated fragments, so locales can reorder tokens, apply plural rules, and control spacing
+      source: copilot:PR#567
+      added: "2026-04-07"
+    - id: auth-mock-completeness
+      category: testing
+      pattern: Component consumes new fields from useAuth() or other context hooks
+      check: >-
+        Verify that all existing test mocks for the affected context/hook are updated to include the newly consumed fields, so tests do not throw on missing properties
+      source: copilot:PR#569
+      added: "2026-04-07"
+    - id: nav-links-match-spec
+      category: ui
+      pattern: Navigation links or button hrefs/onClick handlers that route to specific pages
+      check: >-
+        Verify that navigation targets match what is described in the PR description and changelog — if links go to different destinations than documented, either fix the links or update the documentation to match actual behavior
+      source: copilot:PR#569
+      added: "2026-04-07"
+    - id: i18n-plural-forms
+      category: style
+      pattern: >-
+        Translation JSON files with i18next plural keys (_one, _other, _many, etc.) where the singular and plural forms have identical text
+      check: >-
+        Verify that plural form translation keys (_other, _many, _few) use grammatically correct plural text distinct from the singular (_one) form, e.g. 'day' vs 'days'
+      source: copilot:PR#569
+      added: "2026-04-07"
+    - id: nan-inf-trig-propagation
+      category: error-handling
+      pattern: >-
+        Trigonometric coordinate conversions using acos/asin with unclamped inputs or azimuth formulas that divide by cosine terms
+      check: >-
+        Verify that trigonometric conversions clamp inputs to [-1,1] before asin/acos and use atan2-based formulas instead of acos(cosAz) to avoid NaN/Inf at degenerate inputs (poles, zenith). Uncaught NaN breaks JSON marshaling.
+      source: copilot:PR#570
+      added: "2026-04-07"
+    - id: conditional-field-status-consistency
+      category: error-handling
+      pattern: >-
+        A response field is populated independently of a related status/enum field that controls its semantic meaning
+      check: >-
+        Verify that optional response fields (like timestamps, URLs, metadata) are only populated when the corresponding status field value makes them meaningful. If a field like `rise_time` only makes sense when `status` is `rises_at`, guard the field assignment with the same condition that sets the status, to avoid inconsistent API responses.
+      source: copilot:PR#570
+      added: "2026-04-07"
+    - id: no-exported-mutable-package-vars
+      category: security
+      pattern: Exported package-level slice or map variables (e.g., `var AllFoo = []Type{...}`)
+      check: >-
+        Exported package-level slices and maps are mutable by any importing package, which can cause unexpected behavior. Make the variable unexported and provide an accessor function that returns a copy.
+      source: copilot:PR#570
+      added: "2026-04-07"
+    - id: react-key-from-object-values
+      category: ui
+      pattern: Building React keys by joining Object.values() without including property names
+      check: >-
+        Verify that React keys derived from object params are deterministic and collision-resistant: include both param names and values (e.g., sort entries by key and stringify key:value pairs) rather than joining only Object.values(), which is order-dependent and can collide when values contain the delimiter.
+      source: copilot:PR#571
+      added: "2026-04-07"
+    - id: highlight-visibility-guard
+      category: other
+      pattern: >-
+        Code that pairs or combines celestial objects (or any location-aware entities) for display as highlights or recommendations
+      check: >-
+        Verify that ALL objects in a pairing/highlight must individually meet visibility or eligibility criteria before being shown together. A conjunction or combined highlight should not be emitted if any participant fails its own visibility check (e.g., below horizon, not observable, insufficient elongation).
+      source: copilot:PR#571
+      added: "2026-04-07"
+    - id: filter-data-by-observability
+      category: other
+      pattern: >-
+        Generating user-facing highlights, recommendations, or alerts based on computed astronomical/geospatial data without checking whether the item is actually observable or relevant to the user's context
+      check: >-
+        When presenting items as actionable or notable to the user (e.g., 'tonight's highlights'), verify that each item passes a visibility or relevance filter (e.g., is above the horizon, is in the user's region, is within the valid time window) rather than relying solely on a computed metric like elongation or distance
+      source: copilot:PR#571
+      added: "2026-04-07"
+    - id: avoid-duplicate-expensive-calls
+      category: performance
+      pattern: >-
+        A handler or function calls an expensive computation directly and also indirectly through another function that internally performs the same computation
+      check: >-
+        Verify that expensive operations (e.g., iterative searches, external API calls, heavy calculations) are not invoked multiple times per request. If two call sites need overlapping data, refactor to compute once and pass the result, or provide a lightweight variant that skips unneeded work.
+      source: copilot:PR#571
+      added: "2026-04-07"
+    - id: outbound-request-context
+      category: concurrency
+      pattern: >-
+        http.NewRequest or http.Get/Post calls in HTTP handlers that do not use the incoming request context
+      check: >-
+        Verify that outbound HTTP requests created inside handlers use http.NewRequestWithContext(r.Context(), ...) so they are canceled when the client disconnects or the handler context expires
+      source: copilot:PR#572
+      added: "2026-04-07"
+    - id: hemisphere-aware-defaults
+      category: other
+      pattern: >-
+        Hard-coded directional or geographic constants (e.g., compass directions, hemisphere assumptions) in handlers that accept arbitrary latitude/longitude
+      check: >-
+        Verify that directional or geographic values are derived from the input coordinates (e.g., latitude sign) rather than hard-coded to a single hemisphere's perspective
+      source: copilot:PR#572
+      added: "2026-04-07"
+    - id: normalize-backend-enums-before-ui-lookup
+      category: error-handling
+      pattern: Backend string values used directly to select UI styles or i18n translation keys
+      check: >-
+        Verify that string values from the backend are normalized to a known union type before using them to look up styles or translation keys. If the backend returns an unexpected value, both the style and the translation lookup should fall back gracefully to a defined default (e.g. 'unknown') rather than requesting a missing key.
+      source: copilot:PR#572
+      added: "2026-04-07"
+    - id: dependency-version-consistency
+      category: other
+      pattern: >-
+        Package version changes in package.json where the actual pinned version differs from what is described in PR description or changelog
+      check: >-
+        Verify that dependency versions in package.json match what is stated in the PR description and changelog fragments — flag canary/prerelease pins when stable versions are referenced, and vice versa
+      source: copilot:PR#573
+      added: "2026-04-08"
+    - id: changelog-version-accuracy
+      category: other
+      pattern: >-
+        Changelog entries that reference specific dependency versions (e.g. `package 1.2.3`)
+      check: >-
+        Verify listed versions match the actual resolved versions in the lockfile. If the package.json uses semver ranges (^, ~), either list the resolved version from the lockfile, describe as a range, or omit patch-level specificity to avoid misleading release notes.
+      source: copilot:PR#573
+      added: "2026-04-08"
+    - id: preserve-existing-secrets-on-upsert
+      category: security
+      pattern: >-
+        Upsert or UPDATE that writes a token, secret, or credential field where the new value may be empty or missing
+      check: >-
+        Verify that an empty/missing incoming value does not overwrite a valid existing stored value. Use a conditional update (e.g., CASE WHEN ... or WHERE ... != '') to preserve the existing secret when the new one is blank.
+      source: copilot:PR#574
+      added: "2026-04-08"
+    - id: no-redundant-decrypt-fallback
+      category: error-handling
+      pattern: >-
+        Code that calls encryption.DecryptField and then separately checks for the enc: prefix or adds legacy-plaintext fallback logic
+      check: >-
+        encryption.DecryptField already handles legacy plaintext values (returns them unchanged) and only errors on malformed enc:-prefixed values. Do not duplicate this logic at call sites — just propagate the error.
+      source: copilot:PR#574
+      added: "2026-04-08"
+    - id: no-redundant-plaintext-fallback
+      category: error-handling
+      pattern: >-
+        Code that checks for a prefix or format after calling DecryptField, then falls back to treating the value as plaintext
+      check: >-
+        Verify that callers of DecryptField do not add redundant plaintext fallback logic — DecryptField already returns legacy plaintext as-is without error, so prefix checks and plaintext fallback branches are unreachable dead code. Simplify to a single wrapped error on decrypt failure.
+      source: copilot:PR#574
+      added: "2026-04-08"
+    - id: conditional-oauth-consent-prompt
+      category: security
+      pattern: >-
+        OAuth login handler setting prompt=consent or similar consent-forcing parameters on the authorization URL
+      check: >-
+        Verify that forcing the OAuth consent screen (e.g., prompt=consent) is conditional rather than unconditional. Forcing consent on every login increases friction and can appear as a broken auth loop. It should only be triggered when actually needed — such as when requesting additional scopes, when the user lacks a stored refresh token, or via an explicit re-authorization flow.
+      source: copilot:PR#574
+      added: "2026-04-08"
+    - id: tx-rollback-shadowed-err
+      category: error-handling
+      pattern: >-
+        Deferred transaction rollback that checks an outer `err` variable, combined with short variable declarations (`:=`) for `err` inside the function body
+      check: >-
+        Verify that deferred rollback logic is not defeated by variable shadowing. Prefer the unconditional `defer tx.Rollback()` pattern (which is a no-op after commit) over conditional `if err != nil { tx.Rollback() }` in a defer, since `:=` in inner scopes shadows the outer `err` and prevents the defer from seeing the failure.
+      source: copilot:PR#575
+      added: "2026-04-08"
+    - id: tx-commit-deferred-rollback
+      category: error-handling
+      pattern: >-
+        Deferred rollback guarded by a named error variable combined with a bare `return tx.Commit()`
+      check: >-
+        Verify that `tx.Commit()` errors are assigned to the named return variable so the deferred rollback executes on commit failure, or that rollback is called explicitly when Commit fails
+      source: copilot:PR#575
+      added: "2026-04-08"
+    - id: tx-rollback-on-error
+      category: error-handling
+      pattern: >-
+        Database transaction with deferred rollback and errors returned inside loops or nested blocks
+      check: >-
+        Verify that returning an error from within a loop or nested block does not shadow the transaction error variable, which would prevent the deferred tx.Rollback() from detecting the failure and executing. Ensure the named return error is properly assigned so deferred rollback logic runs correctly.
+      source: copilot:PR#575
+      added: "2026-04-08"
+    - id: normalize-stored-timestamps
+      category: performance
+      pattern: >-
+        Storing date/time values as raw strings in SQLite with varying formats or timezone offsets
+      check: >-
+        Verify that all stored timestamps are normalized to a single comparable representation (e.g. UTC RFC3339 with Z suffix, or Unix seconds as INTEGER) before writing to the database. Ensure all-day date-only values and date-time values use a consistent format so that SQLite TEXT comparisons (ORDER BY, >=, <=) produce chronologically correct results.
+      source: copilot:PR#575
+      added: "2026-04-08"
+    - id: handle-db-errors-not-ignore
+      category: error-handling
+      pattern: >-
+        Discarding errors from database or service calls (e.g. `val, _ := someFunc(...)`) or collapsing internal errors and client errors into the same HTTP status code
+      check: >-
+        Verify that errors from DB queries and internal service calls are never silently discarded. Each error must be logged and returned as an HTTP 500 (internal server error). Distinguish between client errors (4xx) and server errors (5xx) so operational issues are not misclassified or masked.
+      source: copilot:PR#575
+      added: "2026-04-08"
+    - id: consistent-default-behavior
+      category: other
+      pattern: >-
+        A feature has separate code paths (e.g. sync vs query, read vs write) that each independently handle a missing or empty configuration value
+      check: >-
+        Verify that when a configuration value or user preference is missing/empty, all code paths that depend on it resolve to the same default behavior. A default that means 'primary only' in the sync path but 'all items' in the query path (or vice versa) will produce inconsistent or stale results.
+      source: copilot:PR#575
+      added: "2026-04-08"
+    - id: exhaustion-status-from-counter-misuse
+      category: error-handling
+      pattern: >-
+        Classifying a status (e.g., exhausted, failed) by checking whether a retry/fix counter is greater than zero
+      check: >-
+        Verify that exhaustion or terminal-failure statuses are derived from an authoritative signal (e.g., an explicit backend field or a parsed error reason) rather than from a non-zero retry counter, which only indicates that retries occurred—not that they were exhausted
+      source: copilot:PR#576
+      added: "2026-04-08"
+    - id: synthetic-row-field-assumptions
+      category: other
+      pattern: >-
+        Backend merges heterogeneous sources into a single collection (e.g., synthetic rows injected alongside real rows) and frontend code classifies items by checking a shared boolean field
+      check: >-
+        Verify that classification logic does not rely on fields that are set by multiple sources with different semantics. When synthetic or merged rows share fields with real rows (e.g., needs_human set on both retry items and PR-based stuck items), use a discriminating signal specific to each source (e.g., a dedicated type field or matching on known error reasons) rather than a boolean that both sources populate.
+      source: copilot:PR#576
+      added: "2026-04-08"
+    - id: no-actions-without-backing-entry
+      category: error-handling
+      pattern: >-
+        UI hook or component builds a list of available actions for items that may come from different data sources (e.g., real DB rows vs. synthetic/computed rows)
+      check: >-
+        Verify that advertised user actions are only included when the backing data they depend on actually exists. Do not expose actions whose API endpoints require a specific database record (e.g., a retries-table entry) for items that are synthetic or derived from a different source, as those calls will 404.
+      source: copilot:PR#576
+      added: "2026-04-08"
+    - id: no-unreachable-classification-states
+      category: other
+      pattern: >-
+        Classification or categorization logic with multiple branches/states where some states depend on upstream data that may never produce the required signal
+      check: >-
+        Verify that every classification state is actually reachable given the data flowing into it. If upstream queries or data transformations guarantee certain fields are always set, downstream branches that check for the absence of those fields are dead code. Either add a distinct signal from the data source to make the state reachable, or remove the unreachable branch to avoid misleading logic.
+      source: copilot:PR#576
+      added: "2026-04-08"
+    - id: test-classification-helpers
+      category: testing
+      pattern: >-
+        Adding or modifying functions that classify, categorize, or determine available actions based on backend domain logic (e.g., status classifiers, availability helpers, enum mappers)
+      check: >-
+        Verify that classification/categorization helpers have unit tests covering representative inputs for each category, especially edge cases between similar classifications (e.g., distinguishing between two stuck states). These functions encode backend semantics in the frontend and are foundational to dependent UI logic, so regressions are costly.
+      source: copilot:PR#576
+      added: "2026-04-08"
+    - id: deduplicate-hook-data-fetching
+      category: performance
+      pattern: >-
+        A component calls a hook that fetches data, and also calls another hook that internally fetches the same data
+      check: >-
+        Verify that the same API endpoint is not polled multiple times from the same component tree via independent hooks. If two hooks fetch the same data, refactor so the data is fetched once and shared (e.g., pass the already-fetched data into the second hook, or extract a pure computation helper).
+      source: copilot:PR#578
+      added: "2026-04-08"
+    - id: no-inert-clickable-elements
+      category: ui
+      pattern: >-
+        A clickable element (button, anchor) is rendered with an optional onClick/href handler that may be undefined
+      check: >-
+        Verify that clickable elements are not rendered when their handler is undefined. Either make the handler required, conditionally render a non-interactive element when no handler is provided, or disable the control with appropriate styling.
+      source: copilot:PR#578
+      added: "2026-04-08"
+    - id: shared-count-source-of-truth
+      category: ui
+      pattern: >-
+        A count or badge is derived from a data source independently of the component that displays the underlying items
+      check: >-
+        Verify that counts/badges and their corresponding detail views share a single source of truth for filtering and counting logic, so the displayed count always matches the number of items the user actually sees
+      source: copilot:PR#578
+      added: "2026-04-08"
+    - id: impl-matches-spec
+      category: other
+      pattern: >-
+        PR description or task requirements describe specific UI behavior (e.g. opening a modal, navigating to a route, toggling state)
+      check: >-
+        Verify the implementation matches the behavior described in the PR description/task requirements. If they diverge, either update the description to reflect what was built or change the implementation to match the spec.
+      source: copilot:PR#578
+      added: "2026-04-08"
+    - id: unstable-hook-dependency
+      category: performance
+      pattern: >-
+        A `new Date()` or other object/array literal is created during render and used in a `useCallback` or `useEffect` dependency array
+      check: >-
+        Verify that all dependency array entries are referentially stable. Inline object or array constructions (e.g., `new Date()`, `{}`, `[]`) produce a new reference every render, defeating memoization and causing infinite re-render loops. Derive such values inside the hook body, or wrap them in `useMemo`.
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: allday-event-utc-date-grouping
+      category: ui
+      pattern: >-
+        Grouping or displaying calendar events by date using local time conversion (e.g., new Date(event.start_time)) without distinguishing all-day from timed events
+      check: >-
+        Verify that all-day events use the UTC date portion (e.g., start_time.slice(0,10) or getUTCFullYear/Month/Date) for date grouping and display, since backends typically normalize all-day starts to UTC midnight. Only use local time conversion for timed events, otherwise users outside UTC will see all-day events under the wrong day.
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: calendar-sync-on-navigation
+      category: performance
+      pattern: >-
+        Calendar or external API sync/refresh triggered during routine UI navigation (e.g. pagination, date range changes, tab switches)
+      check: >-
+        Verify that expensive external API syncs (sync=true, force-refresh, etc.) are only triggered by explicit user actions (e.g. a refresh button) or initial load, not by routine navigation like changing date ranges, paginating, or switching views
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: loading-state-false-default
+      category: ui
+      pattern: >-
+        A boolean state initialized to `false` that controls conditional UI (e.g. connected/disconnected, enabled/disabled) where the true value depends on an async fetch
+      check: >-
+        Verify that boolean states governing conditional UI are not initialized to a value that implies a resolved state. If the actual value comes from an async call, initialize to `null` (or use a separate loading flag) so the UI does not briefly flash the wrong state before the fetch completes.
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: hoist-invariant-computation-outside-loop
+      category: performance
+      pattern: >-
+        A value or data structure that does not depend on the loop variable is constructed inside a render loop (e.g., inside .map(), .forEach(), or Array.from(...).map(...))
+      check: >-
+        Verify that Maps, Sets, lookup tables, and other derived data structures that are invariant across iterations are built once before the loop, not reconstructed on every iteration
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: stale-closure-optimistic-revert
+      category: concurrency
+      pattern: >-
+        Optimistic UI update with a failure-path revert that references outer-scope state instead of capturing it before mutation
+      check: >-
+        When reverting an optimistic update on failure, verify the rollback value is captured in a local variable before the optimistic set, or use a functional state update (e.g. `setState(prev => ...)`) so the revert is deterministic even if other state changes occurred between the optimistic update and the error
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: iso-timestamp-fractional-seconds
+      category: other
+      pattern: >-
+        JavaScript Date.toISOString() values passed as query parameters to Go backend endpoints
+      check: >-
+        Verify that ISO timestamps sent to the Go backend do not include fractional seconds (.000Z). The backend parseFlexibleTime only accepts time.RFC3339 (no fractional seconds) or YYYY-MM-DD. Strip milliseconds before sending, or use YYYY-MM-DD format instead.
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: default-selection-consistency
+      category: ui
+      pattern: >-
+        Backend treats empty/missing filter preference as a default (e.g., 'primary'), while the frontend derives selection state from the stored preference alone
+      check: >-
+        When a backend falls back to a default value for an empty or missing preference, verify the frontend applies the same default so the UI selection state matches the displayed results. Either default-select on the client when the API returns no selection, or prevent saving an empty value by converting it to the default.
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: date-range-boundary-off-by-one
+      category: ui
+      pattern: >-
+        Computing an end date/time for a range query by adding the full count of items (e.g. addDays(start, N)) instead of N-1, or mixing inclusive and exclusive boundary semantics between UI display and backend query
+      check: >-
+        Verify that date/time range boundaries are consistent between the UI label and the backend query. If the UI displays N days starting from a date, the query end boundary should be the end of the last displayed day (inclusive) or the start of the next day (exclusive), matching the backend's comparison operator (<=, <). An off-by-one in the end boundary can fetch events outside the displayed range.
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: page-logic-tests
+      category: testing
+      pattern: >-
+        New page component with non-trivial client-side logic such as data grouping, sorting, filtering, or date manipulation
+      check: >-
+        Verify that unit tests exist for pure helper functions (e.g. grouping/sorting utilities) and that basic render tests cover loading, error, and empty states. Reference existing page tests in web/src/pages/ for patterns.
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: google-calendar-primary-id-literal
+      category: ui
+      pattern: Code that saves or persists the literal string `primary` as a Google Calendar ID
+      check: >-
+        Verify that only real calendar IDs (typically email addresses) are persisted, never the literal `primary` alias. The backend filters cached events by exact `calendar_id`, so persisting `primary` causes events to disappear. Prefer preventing empty selection or falling back to the actual `cal.id` where `cal.primary === true`.
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: no-duplicated-logic-in-tests
+      category: testing
+      pattern: Test file re-implements or duplicates a function that exists in production code
+      check: >-
+        Verify that tests import and exercise the real production implementation rather than duplicating it. Extract and export the helper from the production module so tests can import it directly, or validate behavior through rendered output only. Duplicated logic risks false positives where tests pass even if the real code regresses.
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: unstub-globals-cleanup
+      category: testing
+      pattern: vi.stubGlobal used in test files
+      check: >-
+        Verify that vi.stubGlobal calls are cleaned up with vi.unstubAllGlobals() (not just vi.restoreAllMocks()), typically in an afterEach block, to prevent leaking stubs into other tests
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: unstub-globals-in-tests
+      category: testing
+      pattern: Test files using vi.stubGlobal() with vi.restoreAllMocks() in afterEach cleanup
+      check: >-
+        When vi.stubGlobal() is used, cleanup must use vi.unstubAllGlobals() (not vi.restoreAllMocks()) to properly undo global stubs and prevent leaking across test cases
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: unstub-globals-in-test-cleanup
+      category: testing
+      pattern: >-
+        Test files using vi.stubGlobal() with vi.restoreAllMocks() in afterEach/afterAll cleanup
+      check: >-
+        When vi.stubGlobal() is used, cleanup must use vi.unstubAllGlobals() (not vi.restoreAllMocks()) to properly revert globalThis changes and prevent global state leaking into subsequent test suites
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: optimistic-update-revert-on-invalid
+      category: ui
+      pattern: >-
+        Optimistic UI updates that filter or toggle items in a collection with a validity constraint (e.g., at least one item must remain selected)
+      check: >-
+        Verify that optimistic updates revert to the previous state when the resulting state would be invalid (e.g., empty selection). Ensure the early-return path does not leave the UI in an inconsistent state where the optimistic change was applied but never rolled back or persisted.
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: distinguish-disconnected-from-error
+      category: error-handling
+      pattern: >-
+        A fetch/API call sets a boolean connected/enabled state to false in the catch/error branch
+      check: >-
+        Verify that transient errors (network failures, 5xx) do not flip a connection/feature status to false. Keep the status as null/unknown on errors and surface an error state separately, so the UI does not incorrectly show a 'not connected' empty state when the service is merely temporarily unavailable.
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: prefer-scoped-sync-over-full-resync
+      category: performance
+      pattern: UI refresh or reload button calling a full resync/clear+refetch endpoint
+      check: >-
+        Verify that routine UI refresh actions use scoped/incremental sync (e.g., syncing only the displayed range) rather than triggering a full resync that clears cached state and re-fetches everything. Reserve full resync endpoints for explicit user-initiated 'full resync' actions, and label buttons accordingly.
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: no-reimplemented-logic-in-tests
+      category: testing
+      pattern: >-
+        Test file defines its own version of a function or algorithm that already exists in production code
+      check: >-
+        Tests should exercise the actual production implementation, not a re-implemented copy. Export the production helper or test behavior via rendered/observable output instead of duplicating logic in the test file.
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: deterministic-date-keys-in-tests
+      category: testing
+      pattern: >-
+        Test code that formats dates into YYYY-MM-DD keys using Intl.DateTimeFormat or toLocaleDateString instead of matching the production keying logic
+      check: >-
+        Tests must use the same deterministic date-key logic as production code (manual YYYY-MM-DD construction) rather than locale-dependent formatting like Intl.DateTimeFormat, which can vary across runtimes and cause flaky tests
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: misleading-test-comments
+      category: testing
+      pattern: >-
+        Comments in test files that describe how production code is imported, re-exported, or invoked
+      check: >-
+        Verify that comments accurately describe the actual test approach — if a production function is not directly imported or called, comments must not claim it is re-exported or directly tested. Comments should reflect whether tests verify behaviour through rendered output, integration, or direct unit invocation.
+      source: copilot:PR#577
+      added: "2026-04-08"
+    - id: avoid-duplicate-polling-hooks
+      category: performance
+      pattern: >-
+        A component that is always mounted (e.g. a modal with an open/closed prop) internally calls a hook that performs periodic polling or data fetching
+      check: >-
+        Verify that always-mounted components do not introduce duplicate polling loops. Either pass already-fetched data as props, extract the computation into a shared utility, or conditionally mount the component only when it is visible.
+      source: copilot:PR#579
+      added: "2026-04-08"
+    - id: modal-close-stale-state
+      category: ui
+      pattern: >-
+        Modal or dialog component with internal state (e.g. confirmation dialogs, pending actions, form state) and an onClose/onDismiss callback
+      check: >-
+        Verify that all internal transient state (pending confirmations, sub-dialogs, form drafts, error messages) is reset when the modal closes via any path (ESC, backdrop click, close button, programmatic close). If onClose doesn't clear this state, child dialogs or stale UI can persist after the parent modal is dismissed.
+      source: copilot:PR#579
+      added: "2026-04-08"
+    - id: feature-completeness-vs-spec
+      category: other
+      pattern: >-
+        PR adds action handling (buttons, action types, enums) that references a set of supported operations
+      check: >-
+        Verify that all actions/operations mentioned in the task description or spec are actually implemented in the code, and that the code doesn't reference unimplemented actions. If an action is intentionally deferred, the PR description should explicitly state what's excluded and why.
+      source: copilot:PR#579
+      added: "2026-04-08"
+    - id: filter-consistency-across-views
+      category: ui
+      pattern: >-
+        Derived/computed data used in modals, panels, or secondary views alongside a filtered primary view
+      check: >-
+        Verify that all derived data respects the active filter state. When a page has a filter (e.g., anvil filter, category filter), ensure that modals, badges, counts, and secondary panels compute their data from the filtered set — not the unfiltered source — so the UI remains consistent with the user's current filter selection.
+      source: copilot:PR#579
+      added: "2026-04-08"
+    - id: shared-state-consistency
+      category: ui
+      pattern: >-
+        Multiple components independently fetching or polling the same data source (e.g. separate hook calls for the same API) where their results are displayed together or cross-referenced in the UI
+      check: >-
+        Verify that components sharing related data derive it from a single source of truth rather than independent fetch/poll loops, to prevent the UI from showing stale or inconsistent snapshots (e.g. a badge count disagreeing with a detail list)
+      source: copilot:PR#579
+      added: "2026-04-08"
+    - id: nested-dialog-focus-trap
+      category: ui
+      pattern: >-
+        A modal/dialog component renders a second overlay (confirmation dialog, popover, etc.) on top of itself
+      check: >-
+        Verify that keyboard focus is properly trapped in the topmost overlay. When a nested dialog opens above a parent dialog, focus must not escape back to the parent content. Either use a focus-trapping dialog component for the nested overlay, or suspend/close the parent dialog while the nested one is shown.
+      source: copilot:PR#579
+      added: "2026-04-08"
+    - id: modal-actions-match-spec
+      category: ui
+      pattern: >-
+        Component renders action buttons from a dynamic list (e.g. item.actions) in a modal or dialog
+      check: >-
+        When a modal or dialog renders dynamic actions from a data source, verify that all actions mentioned in the task/PR description are actually supported by the underlying data model and wired to working endpoints. Flag any discrepancy between documented/specified actions and implemented actions.
+      source: copilot:PR#579
+      added: "2026-04-08"
+    - id: keyboard-shortcut-modal-toggle
+      category: ui
+      pattern: >-
+        Adding a keyboard shortcut that toggles a modal open/closed, where a global shortcut handler suppresses keys while any modal is open
+      check: >-
+        Verify the shortcut can both open AND close the modal. If the global handler blocks keys when `[aria-modal="true"]` is present, the shortcut must either be exempted from that guard or handled inside the modal itself. Ensure tests cover the modal-open keypress case.
+      source: copilot:PR#581
+      added: "2026-04-08"
+    - id: optional-params-backward-compat
+      category: other
+      pattern: Adding required parameters to existing hook or function signatures
+      check: >-
+        Verify that all existing call sites are updated when changing a function/hook signature from zero arguments to required arguments, or make the new parameter optional with a sensible default to maintain backward compatibility
+      source: copilot:PR#582
+      added: "2026-04-08"
+    - id: refetch-after-mutation
+      category: ui
+      pattern: >-
+        Action handlers (approve, merge, close, etc.) that mutate remote state without updating the local data or triggering a refetch
+      check: >-
+        After a successful mutation (POST/PUT/DELETE) that changes server-side state, verify the UI immediately reflects the change by calling refetch() or optimistically updating local state, rather than relying on the next polling interval
+      source: copilot:PR#582
+      added: "2026-04-08"
+    - id: nested-dialog-parent-gate
+      category: ui
+      pattern: >-
+        A child dialog/modal's visibility is controlled by its own local state (e.g. confirmAction, showDialog) while living inside a parent modal that has its own open prop
+      check: >-
+        Verify that the child dialog's open state is gated on the parent's open prop (e.g. `open={parentOpen && hasConfirmAction}`), and that closing the parent clears the child's visibility state (e.g. via a useEffect that resets local state when parentOpen becomes false). Otherwise the child dialog can remain visible and block the UI after the parent is dismissed.
+      source: copilot:PR#582
+      added: "2026-04-08"
+    - id: nested-dialog-lifecycle
+      category: ui
+      pattern: >-
+        A confirmation dialog or child modal whose open state is controlled independently from its parent modal/dialog
+      check: >-
+        Verify that nested dialogs (confirm dialogs, action dialogs) depend on the parent modal's open state and that their trigger state is reset when the parent modal closes, preventing orphaned dialogs from remaining visible after the parent is dismissed
+      source: copilot:PR#582
+      added: "2026-04-08"
+    - id: aria-expanded-collapsible
+      category: ui
+      pattern: Button or control that toggles visibility of a content section (collapse/expand)
+      check: >-
+        Verify that the toggle element has `aria-expanded` bound to the open/closed state and `aria-controls` pointing to the `id` of the collapsible content container, so screen readers can announce the current state and target.
+      source: copilot:PR#582
+      added: "2026-04-08"
+    - id: background-poll-loading-flash
+      category: ui
+      pattern: >-
+        Setting a loading/spinner state to true on every periodic background data fetch or poll interval
+      check: >-
+        Verify that background polling does not reset the main loading state and flash the UI. Only show a loading indicator on initial load or manual refetch; keep existing data visible during background refreshes, optionally using a separate 'refreshing' flag.
+      source: copilot:PR#582
+      added: "2026-04-08"
+    - id: localize-error-strings
+      category: error-handling
+      pattern: >-
+        Hard-coded English error strings in frontend code (e.g. 'Unknown error', 'Something went wrong')
+      check: >-
+        Verify that user-facing error strings use i18n translation keys (e.g. t('unknownError')) instead of hard-coded English text, consistent with the project's react-i18next convention
+      source: copilot:PR#582
+      added: "2026-04-08"
+    - id: useeffect-deps-completeness
+      category: concurrency
+      pattern: >-
+        useEffect or useMemo/useCallback with dependency arrays that reference functions or values from hooks (e.g. t from useTranslation, navigate from useNavigate) inside the effect body
+      check: >-
+        Verify that all hook-returned values used inside the effect are included in the dependency array to prevent stale closures and ensure reactivity to changes (e.g. language switches)
+      source: copilot:PR#582
+      added: "2026-04-08"
+    - id: date-arithmetic-no-ms-division
+      category: performance
+      pattern: >-
+        Calculating number of days by dividing millisecond deltas (e.g. `(end - start) / (1000 * 60 * 60 * 24)`) in local time
+      check: >-
+        Day-count calculations using millisecond division can be off by ±1 around DST transitions because local days are not always exactly 24 hours. Use date-based arithmetic (e.g. `addDays`, counting calendar days) or perform the calculation in UTC to avoid DST skew.
+      source: copilot:PR#580
+      added: "2026-04-08"
+    - id: deduplicate-date-logic
+      category: other
+      pattern: >-
+        Multiple functions computing the same date/time concept (e.g., start-of-week, start-of-month) scattered across different files or components
+      check: >-
+        Verify that shared date/time calculations are defined in a single utility module and reused, rather than reimplemented independently in multiple places where they can drift out of sync
+      source: copilot:PR#580
+      added: "2026-04-08"
+    - id: pregroup-filtered-data-before-render-loop
+      category: performance
+      pattern: >-
+        A filter/find call on a collection is invoked inside a per-item render loop (e.g., iterating grid cells, list rows, table rows) instead of being pre-computed outside the loop
+      check: >-
+        Verify that repeated collection lookups inside render loops are pre-grouped into a Map or object (via useMemo or equivalent) so each iteration performs an O(1) lookup instead of an O(n) filter
+      source: copilot:PR#580
+      added: "2026-04-08"
+    - id: overnight-event-duration
+      category: ui
+      pattern: >-
+        Calendar event positioning that computes duration or height from end-minus-start minutes within a single day
+      check: >-
+        Verify that event duration calculation handles events crossing midnight correctly. Computing endMinutes - startMinutes produces a negative value for overnight events, causing them to render as minimum-height blocks. Use the actual timestamp delta (end - start) and clamp or split the rendered segment to the visible day so overnight events display with correct height.
+      source: copilot:PR#580
+      added: "2026-04-08"
+    - id: test-view-mode-state
+      category: testing
+      pattern: >-
+        Adding view mode toggling, rendering conditional components based on view state, or persisting UI state to localStorage
+      check: >-
+        Verify that tests cover: (1) the default view mode renders correctly, (2) switching view modes updates the rendered content, and (3) persisted state (e.g. localStorage) is respected on reload
+      source: copilot:PR#580
+      added: "2026-04-08"
+    - id: single-fetch-source-of-truth
+      category: concurrency
+      pattern: >-
+        useEffect hooks that duplicate data-fetching logic already available in a named function (e.g., building URLs or calling fetch separately instead of reusing an existing fetch helper)
+      check: >-
+        Verify that each data-fetching path reuses a single shared function rather than duplicating fetch logic inline. Duplicated fetches risk divergent behavior (different query params, missing error handling) and race conditions where a stale response overwrites a newer one. The useEffect should delegate to the canonical fetch function, passing an AbortController signal for cleanup.
+      source: copilot:PR#580
+      added: "2026-04-08"
+    - id: loading-state-on-refetch
+      category: ui
+      pattern: >-
+        A useEffect or callback fetches data and sets loading=false on completion, but a state change (e.g. view mode, filter, page) triggers a re-fetch without first setting loading=true
+      check: >-
+        Verify that loading state is set to true at the start of every code path that triggers an async data fetch, not just on initial mount — otherwise users see stale data with no loading indicator during refetches
+      source: copilot:PR#580
+      added: "2026-04-08"
+    - id: react-effect-i18n-dep
+      category: ui
+      pattern: >-
+        useEffect that calls t() or uses translated strings but does not include t or i18n.language in the dependency array
+      check: >-
+        Verify that any useEffect referencing the i18n translation function t() (directly or via translated error messages) includes t or i18n.language in its dependency array so strings update when the active language changes
+      source: copilot:PR#580
+      added: "2026-04-08"
+    - id: multi-day-event-overlap
+      category: ui
+      pattern: >-
+        Filtering or grouping calendar/timeline events by matching only their start date or start time against a day/slot boundary
+      check: >-
+        Verify that events spanning multiple days or crossing midnight are included in every day/slot they overlap, not just the one containing their start time. Events should be selected by overlap with the day's [start, end) bounds, and rendered blocks should be clamped to the visible day boundaries for correct positioning.
+      source: copilot:PR#580
+      added: "2026-04-08"
+    - id: calendar-overnight-event-overlap
+      category: ui
+      pattern: >-
+        Filtering timed events by comparing their start date/time to a specific day key (e.g., formatDateKey(event.start_time) === dateKey)
+      check: >-
+        Verify that timed events spanning multiple days or crossing midnight are not dropped from days they overlap but did not start on. Events should be filtered by overlap with the day's local time bounds (start < dayEnd && end > dayStart), and their displayed position/duration should be clamped to the visible day range.
+      source: copilot:PR#580
+      added: "2026-04-08"
+    - id: aria-grid-row-structure
+      category: ui
+      pattern: "Elements using role=\"grid\" with role=\"gridcell\" children"
+      check: >-
+        Verify that gridcell elements are wrapped in role="row" containers. In ARIA grid semantics, gridcells must be contained within role="row" elements (optionally grouped by role="rowgroup"), not placed as direct children of the grid. If proper row structure is not needed, remove role="grid"/role="gridcell" to avoid confusing screen reader navigation.
+      source: copilot:PR#580
+      added: "2026-04-08"
+    - id: guard-redundant-state-updates
+      category: ui
+      pattern: >-
+        State setter called without checking if the new value differs from the current value, especially when downstream effects depend on state changes to clear loading/pending indicators
+      check: >-
+        Verify that state-setting handlers (e.g. setViewMode, setTab, setFilter) early-return or skip when the new value equals the current value, to prevent loading indicators from getting stuck when no downstream effect fires
+      source: copilot:PR#580
+      added: "2026-04-08"
+    - id: abort-stale-fetch
+      category: concurrency
+      pattern: >-
+        Multiple code paths (e.g. user navigation, sync buttons, settings changes) trigger the same fetch/load function without coordinating cancellation
+      check: >-
+        Verify that all call sites sharing a data-fetch function use a shared AbortController (or request-generation ID) so that starting a new load cancels or invalidates any in-flight request, preventing stale responses from overwriting fresher data
+      source: copilot:PR#580
+      added: "2026-04-08"
+    - id: dst-safe-time-arithmetic
+      category: ui
+      pattern: >-
+        Code computing day boundaries or time positions using fixed millisecond offsets (e.g., 24*60*60*1000, 86400000) instead of date arithmetic
+      check: >-
+        Verify that day boundary calculations and time positioning use local date arithmetic (e.g., new Date(y, m, d+1)) rather than fixed 24h millisecond offsets, which break on DST transitions where days have 23 or 25 hours
+      source: copilot:PR#580
+      added: "2026-04-08"
+    - id: use-accurate-timestamps
+      category: other
+      pattern: >-
+        Query filters or function names that imply a time-based semantic (e.g. 'recently merged', 'last 24h') but actually filter on an indirect timestamp like polling time or last_checked
+      check: >-
+        Verify that time-based queries filter on the actual event timestamp (e.g. merged_at, created_at) rather than an observation/polling timestamp. If only an indirect timestamp is available, ensure the naming and documentation clearly reflect what is actually being measured.
+      source: copilot:PR#583
+      added: "2026-04-08"
+    - id: test-new-db-queries
+      category: testing
+      pattern: New or modified database query methods or repository functions
+      check: >-
+        Verify that new DB query methods have corresponding unit tests covering filtering logic, edge cases around boundary values (e.g. timestamp cutoffs), ordering, and both matching and non-matching rows
+      source: copilot:PR#583
+      added: "2026-04-08"
+    - id: timestamp-accuracy
+      category: other
+      pattern: >-
+        Time-based filtering or display labels that imply a specific timestamp (e.g. 'merged in last 24h', 'created recently') but the underlying query uses a different time reference (e.g. observation time, last_checked, updated_at instead of the actual event timestamp)
+      check: >-
+        Verify that time-based labels and filters use the correct timestamp field. If the UI says 'merged in last 24h', the query must filter on `merged_at`, not `last_checked` or observation time. Either source the accurate timestamp from the API/DB or adjust the label to reflect what is actually being measured.
+      source: copilot:PR#583
+      added: "2026-04-08"
+    - id: scaled-model-consistent-inputs
+      category: other
+      pattern: >-
+        A function scales thresholds/tiers/brackets for a reduced scenario but passes the original unscaled input value through them
+      check: >-
+        When scaling thresholds or tiers by a ratio (e.g. reduced working days), verify that the corresponding input value (e.g. revenue, income) is also scaled by the same ratio. Using unscaled input against scaled thresholds produces incorrect results — often reversing the sign of the intended difference.
+      source: copilot:PR#584
+      added: "2026-04-08"
+    - id: duplicate-constants
+      category: other
+      pattern: >-
+        A numeric constant or magic number appears in more than one function or calculation path within the same package
+      check: >-
+        Verify that repeated numeric constants are extracted into a single package-level constant (or config field) so future updates don't risk values drifting between calculation paths
+      source: copilot:PR#584
+      added: "2026-04-08"
+    - id: vacation-cost-test-consistency
+      category: testing
+      pattern: >-
+        Tests for functions that compute marginal cost/loss by comparing full vs reduced scenarios
+      check: >-
+        When testing marginal cost calculations (e.g., cost of a day off), verify that the test expectation applies the same scaling logic to ALL dependent inputs — not just some. If tiers/thresholds are scaled for absence, the corresponding revenue/base values must also be scaled to match the intended behavior, otherwise the test locks in a bug.
+      source: copilot:PR#584
+      added: "2026-04-08"
+    - id: test-case-name-matches-intent
+      category: testing
+      pattern: >-
+        Test case names or descriptions that reference specific relationships between values (e.g., 'exceeds', 'less than', 'equals')
+      check: >-
+        Verify that the test case name accurately describes the relationship between the test values — a name claiming X exceeds Y should have numbers where X > Y, not the reverse
+      source: copilot:PR#584
+      added: "2026-04-08"
+    - id: parallel-fetch-requests
+      category: performance
+      pattern: >-
+        Multiple fetch/API calls in a component where some run sequentially outside an existing Promise.all
+      check: >-
+        Verify that independent API requests are batched into a single Promise.all rather than awaited sequentially, to minimize total loading time
+      source: copilot:PR#585
+      added: "2026-04-08"
+    - id: consistent-timezone-date-comparison
+      category: other
+      pattern: >-
+        Date-only comparisons where dates are constructed or parsed in different locations/timezones (e.g. mixing time.Now() in a local timezone with time.Parse in UTC, or comparing dates from different time.Location values)
+      check: >-
+        Verify that all date-only values being compared use the same time.Location. When date-only comparisons span multiple functions or files (e.g. parsing stored dates vs computing today/horizon), ensure they all normalize to the same location (typically UTC) before comparison to avoid off-by-one-day errors at day boundaries and month rollovers.
+      source: copilot:PR#585
+      added: "2026-04-08"
+    - id: business-day-adjusted-date-filtering
+      category: other
+      pattern: >-
+        Date filtering or cutoff comparisons on recurring/scheduled transactions that have business-day adjustment logic
+      check: >-
+        When filtering by end_date or any date cutoff, verify the comparison uses the adjusted date (e.g., after business-day shifting) rather than the raw/original due date. The adjusted date is what gets returned to the user, so filtering on the unadjusted date can include items that land after the cutoff once adjusted.
+      source: copilot:PR#585
+      added: "2026-04-08"
+    - id: silent-error-fallback
+      category: error-handling
+      pattern: >-
+        An error from a function call is checked but the error branch falls back to a default value instead of logging, skipping, or returning
+      check: >-
+        Verify that errors are not silently swallowed with a fallback value. Ignored errors hide operational issues and can produce incorrect results shown to the user. Either log and skip the affected item, or propagate the error as a 500 response.
+      source: copilot:PR#585
+      added: "2026-04-08"
+    - id: consolidate-overlapping-tests
+      category: testing
+      pattern: >-
+        Multiple test functions that assert the same behavior or endpoint response with largely identical setup and assertions
+      check: >-
+        Verify that new or existing tests do not duplicate each other. If two tests validate the same outcome (e.g., same endpoint returning the same response shape), consolidate them into a single test to reduce duplication while still covering all relevant assertions.
+      source: copilot:PR#585
+      added: "2026-04-08"
+    - id: test-business-logic-edge-cases
+      category: testing
+      pattern: >-
+        Handler or function implements date/time adjustment logic (e.g., business-day shifting, horizon filtering, timezone conversion)
+      check: >-
+        Verify that tests assert the core business logic edge cases — e.g., weekend/holiday adjustment, boundary cutoffs applied to the adjusted (not raw) value, and off-by-one scenarios at range boundaries
+      source: copilot:PR#585
+      added: "2026-04-08"
+    - id: interface-extension-callers
+      category: testing
+      pattern: >-
+        Adding a required property to a TypeScript interface or type that is implemented or constructed in multiple places
+      check: >-
+        Verify that all existing callers, constructors, and test helpers that build objects of this type have been updated to include the new required property, or make the new property optional if not all contexts need it
+      source: copilot:PR#586
+      added: "2026-04-08"
+    - id: new-shortcut-needs-test
+      category: testing
+      pattern: A new keyboard shortcut or key binding is added to useKeyboardShortcuts.ts
+      check: >-
+        Verify that a corresponding unit test is added to useKeyboardShortcuts.test.ts asserting the new key triggers the expected callback
+      source: copilot:PR#586
+      added: "2026-04-08"
+    - id: nested-dialog-state-reset
+      category: ui
+      pattern: >-
+        A modal or dialog contains nested confirm/alert dialogs with their own open state
+      check: >-
+        Verify that nested dialog state (e.g. confirmOpen) is reset when the parent modal closes, so the nested dialog doesn't remain visible after the parent is dismissed via backdrop click, close button, or keyboard shortcut
+      source: copilot:PR#586
+      added: "2026-04-08"
+    - id: structured-error-response-display
+      category: error-handling
+      pattern: >-
+        Frontend code that checks `response.ok` or status codes before processing API response bodies that contain structured error/failure details
+      check: >-
+        When an API returns structured response data (e.g. step-by-step results, failure details) even on error status codes, ensure the frontend parses and displays that structured data regardless of HTTP status. Only fall back to generic error handling for responses that don't match the expected shape. Use the response body's own success/error fields to determine messaging, not just the HTTP status code.
+      source: copilot:PR#586
+      added: "2026-04-08"
+    - id: admin-gate-all-paths
+      category: security
+      pattern: >-
+        A feature or action is admin-gated in the UI (e.g., a button is hidden for non-admins) but an alternative trigger path (keyboard shortcut, URL, programmatic call) reaches the same functionality without an equivalent guard
+      check: >-
+        Verify that ALL paths to an admin-gated action—including keyboard shortcuts, deep links, and programmatic triggers—enforce the same authorization check, not just the primary UI element
+      source: copilot:PR#586
+      added: "2026-04-08"
+    - id: extract-shared-logic
+      category: other
+      pattern: >-
+        A new component duplicates request, state, or UI logic already present in an existing component
+      check: >-
+        Verify that shared logic between components is extracted into a reusable hook or component rather than duplicated, to prevent drift over time
+      source: copilot:PR#586
+      added: "2026-04-08"
+    - id: react-unique-input-ids
+      category: ui
+      pattern: >-
+        Hard-coded `id` strings on form elements (input, select, textarea) inside reusable or modal components
+      check: >-
+        Verify that form element IDs use React's `useId()` hook instead of hard-coded strings to prevent duplicate IDs when the component renders multiple times, and to keep label/input association robust
+      source: copilot:PR#586
+      added: "2026-04-08"
+    - id: admin-only-ui-visibility
+      category: ui
+      pattern: >-
+        UI elements (shortcuts, buttons, menu items) that reference admin-only functionality
+      check: >-
+        Verify that UI elements referencing admin-only actions are either hidden from non-admin users or clearly annotated as admin-only, so users are not shown options they cannot use
+      source: copilot:PR#586
+      added: "2026-04-08"
+    - id: new-interface-member-requires-test-update
+      category: testing
+      pattern: >-
+        Adding a new member to an interface or type that is consumed by test files or multiple callers
+      check: >-
+        When a new member is added to a shared interface/type, verify that all existing callers and test files are updated to provide the new member, and that a dedicated test is added covering the new behavior (e.g., a new keyboard shortcut mapping gets a test alongside existing ones)
+      source: copilot:PR#587
+      added: "2026-04-08"
+    - id: modal-shortcut-toggle-consistency
+      category: ui
+      pattern: >-
+        Keyboard shortcuts described as 'toggle' that interact with modal dialogs, especially when modal suppression logic may block the shortcut while the modal is open
+      check: >-
+        Verify that keyboard shortcuts labeled as 'toggle' can both open AND close their target. If modal suppression logic (e.g. checking `[aria-modal="true"]`) blocks shortcuts while a modal is open, either exempt toggle shortcuts from suppression or update the help text to say 'open' instead of 'toggle'.
+      source: copilot:PR#587
+      added: "2026-04-08"
+    - id: no-crypto-random-uuid-in-render
+      category: ui
+      pattern: crypto.randomUUID() called during React component render to generate element IDs
+      check: >-
+        Verify that components use React's useId() hook instead of crypto.randomUUID() for generating IDs during render, as crypto.randomUUID is unavailable in some browsers and test runners
+      source: copilot:PR#587
+      added: "2026-04-08"
+    - id: stale-data-masked-error
+      category: error-handling
+      pattern: >-
+        Component loads data, then allows reload/refresh while keeping previously loaded data in state
+      check: >-
+        When a reload or refresh fails after data was previously loaded successfully, verify the error is still surfaced to the user (e.g., via banner or toast) rather than being hidden by a condition like `error && !data`. Users should not silently continue working with stale data after a failed refresh.
+      source: copilot:PR#587
+      added: "2026-04-08"
+    - id: extract-shared-ui-logic
+      category: ui
+      pattern: >-
+        A modal or dialog component that reimplements form fields, validation, or editor UI already present in an existing page or component
+      check: >-
+        Verify that modal/dialog components reuse shared form components or hooks rather than duplicating field definitions and logic from existing pages, to prevent drift and double-maintenance
+      source: copilot:PR#587
+      added: "2026-04-08"
