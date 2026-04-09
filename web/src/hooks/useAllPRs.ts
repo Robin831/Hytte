@@ -11,6 +11,12 @@ export interface ExternalPR {
   author: string
   url: string
   is_draft: boolean
+  ci_passing: boolean
+  ci_pending: boolean
+  has_approval: boolean
+  changes_requested: boolean
+  is_conflicting: boolean
+  has_unresolved_threads: boolean
 }
 
 export interface MergedPR {

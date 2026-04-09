@@ -18,14 +18,20 @@ import (
 
 // ExternalPR represents a GitHub pull request not tracked by forge.
 type ExternalPR struct {
-	Number     int    `json:"number"`
-	Title      string `json:"title"`
-	Anvil      string `json:"anvil"`
-	Branch     string `json:"branch"`
-	BaseBranch string `json:"base_branch"`
-	Author     string `json:"author"`
-	URL        string `json:"url"`
-	IsDraft    bool   `json:"is_draft"`
+	Number               int    `json:"number"`
+	Title                string `json:"title"`
+	Anvil                string `json:"anvil"`
+	Branch               string `json:"branch"`
+	BaseBranch           string `json:"base_branch"`
+	Author               string `json:"author"`
+	URL                  string `json:"url"`
+	IsDraft              bool   `json:"is_draft"`
+	CIPassing            bool   `json:"ci_passing"`
+	CIPending            bool   `json:"ci_pending"`
+	HasApproval          bool   `json:"has_approval"`
+	ChangesRequested     bool   `json:"changes_requested"`
+	IsConflicting        bool   `json:"is_conflicting"`
+	HasUnresolvedThreads bool   `json:"has_unresolved_threads"`
 }
 
 // AllPRsResponse contains all forge-tracked and external PRs returned by the API.
@@ -47,17 +53,43 @@ type ghPR struct {
 	Author      struct {
 		Login string `json:"login"`
 	} `json:"author"`
+	ReviewDecision     string            `json:"reviewDecision"`
+	Mergeable          string            `json:"mergeable"`
+	StatusCheckRollup  []ghCheckStatus   `json:"statusCheckRollup"`
+	ReviewRequests     []ghReviewRequest `json:"reviewRequests"`
 }
 
-// prCache holds cached external PRs with a TTL.
+// ghCheckStatus represents a single CI check from `statusCheckRollup`.
+type ghCheckStatus struct {
+	// CheckRun fields
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+	// StatusContext fields
+	State string `json:"state"`
+}
+
+// ghReviewRequest represents a pending review request.
+type ghReviewRequest struct {
+	Login string `json:"login"`
+	Name  string `json:"name"`
+}
+
+// prCache holds cached GitHub PRs with a TTL.
 type prCache struct {
-	mu       sync.Mutex
-	data     []ExternalPR
-	fetchedAt time.Time
-	ttl      time.Duration
+	mu          sync.Mutex
+	data        []ExternalPR
+	raw         map[string]ghPR    // keyed by "repo:number"
+	anvilToRepo map[string]string  // short anvil name → "owner/repo"
+	fetchedAt   time.Time
+	ttl         time.Duration
 }
 
 var externalPRCache = &prCache{ttl: 60 * time.Second}
+
+// ghPRKey returns a cache key for a GitHub PR.
+func ghPRKey(anvil string, number int) string {
+	return fmt.Sprintf("%s:%d", anvil, number)
+}
 
 // repoFromRemote extracts the GitHub "owner/repo" from a git remote URL.
 func repoFromRemote(repoPath string) (string, error) {
@@ -89,16 +121,26 @@ func parseGitHubRepo(remote string) string {
 	return remote
 }
 
-// fetchExternalPRs fetches all open PRs from GitHub for each configured anvil,
-// then filters out forge-tracked PRs to return only external ones.
+// ghPRResult holds the output of fetchGitHubPRs.
+type ghPRResult struct {
+	external    []ExternalPR
+	raw         map[string]ghPR // keyed by "repo:number"
+	anvilToRepo map[string]string // short anvil name → "owner/repo"
+}
+
+// fetchGitHubPRs fetches all open PRs from GitHub for each configured anvil.
+// Returns the external PRs (filtered to exclude forge-tracked ones) and raw
+// GitHub PR data for enriching forge PRs.
 // The cache mutex is only held while reading/writing cached data, not during CLI calls.
-func fetchExternalPRs(forgePRs []PR) ([]ExternalPR, error) {
+func fetchGitHubPRs(forgePRs []PR) (*ghPRResult, error) {
 	externalPRCache.mu.Lock()
 	if time.Since(externalPRCache.fetchedAt) < externalPRCache.ttl && externalPRCache.data != nil {
 		// Re-filter against current forge PRs since forge state may have changed
 		cached := externalPRCache.data
+		raw := externalPRCache.raw
+		a2r := externalPRCache.anvilToRepo
 		externalPRCache.mu.Unlock()
-		return filterExternal(cached, forgePRs), nil
+		return &ghPRResult{external: filterExternal(cached, forgePRs), raw: raw, anvilToRepo: a2r}, nil
 	}
 	externalPRCache.mu.Unlock()
 
@@ -134,8 +176,10 @@ func fetchExternalPRs(forgePRs []PR) ([]ExternalPR, error) {
 	ghPath := resolveCommand("gh")
 
 	var allExternal []ExternalPR
+	rawMap := make(map[string]ghPR)
+	anvilToRepo := make(map[string]string)
 
-	for _, anvil := range cfg.Anvils {
+	for anvilName, anvil := range cfg.Anvils {
 		if anvil.Path == "" {
 			continue
 		}
@@ -147,6 +191,7 @@ func fetchExternalPRs(forgePRs []PR) ([]ExternalPR, error) {
 		if repo == "" || !strings.Contains(repo, "/") {
 			continue
 		}
+		anvilToRepo[strings.ToLower(anvilName)] = repo
 
 		prs, err := ghListPRs(ghPath, repo)
 		if err != nil {
@@ -155,7 +200,8 @@ func fetchExternalPRs(forgePRs []PR) ([]ExternalPR, error) {
 		}
 
 		for _, pr := range prs {
-			allExternal = append(allExternal, ExternalPR{
+			rawMap[ghPRKey(repo, pr.Number)] = pr
+			ep := ExternalPR{
 				Number:     pr.Number,
 				Title:      pr.Title,
 				Anvil:      repo,
@@ -164,7 +210,9 @@ func fetchExternalPRs(forgePRs []PR) ([]ExternalPR, error) {
 				Author:     pr.Author.Login,
 				URL:        pr.URL,
 				IsDraft:    pr.IsDraft,
-			})
+			}
+			enrichExternalPR(&ep, pr)
+			allExternal = append(allExternal, ep)
 		}
 	}
 
@@ -172,10 +220,16 @@ func fetchExternalPRs(forgePRs []PR) ([]ExternalPR, error) {
 	// Lock only for the cache write, not during the CLI calls above.
 	externalPRCache.mu.Lock()
 	externalPRCache.data = allExternal
+	externalPRCache.raw = rawMap
+	externalPRCache.anvilToRepo = anvilToRepo
 	externalPRCache.fetchedAt = time.Now()
 	externalPRCache.mu.Unlock()
 
-	return filterExternal(allExternal, forgePRs), nil
+	return &ghPRResult{
+		external:    filterExternal(allExternal, forgePRs),
+		raw:         rawMap,
+		anvilToRepo: anvilToRepo,
+	}, nil
 }
 
 // filterExternal removes PRs that are tracked by forge from the list.
@@ -203,7 +257,7 @@ func ghListPRs(ghPath, repo string) ([]ghPR, error) {
 	cmd := exec.CommandContext(ctx, ghPath, "pr", "list",
 		"--repo", repo,
 		"--state", "open",
-		"--json", "number,title,headRefName,baseRefName,url,author,isDraft",
+		"--json", "number,title,headRefName,baseRefName,url,author,isDraft,reviewDecision,mergeable,statusCheckRollup,reviewRequests",
 		"--limit", "100",
 	)
 	out, err := cmd.CombinedOutput()
@@ -215,6 +269,65 @@ func ghListPRs(ghPath, repo string) ([]ghPR, error) {
 		return nil, fmt.Errorf("parse gh output: %w", err)
 	}
 	return prs, nil
+}
+
+// ghCIStatus interprets statusCheckRollup into (passing, pending).
+func ghCIStatus(checks []ghCheckStatus) (passing bool, pending bool) {
+	if len(checks) == 0 {
+		return false, false
+	}
+	allDone := true
+	anyFailed := false
+	for _, c := range checks {
+		// StatusContext uses State; CheckRun uses Status+Conclusion
+		if c.State != "" {
+			switch strings.ToUpper(c.State) {
+			case "SUCCESS":
+				// ok
+			case "PENDING", "EXPECTED":
+				allDone = false
+			default:
+				anyFailed = true
+			}
+		} else {
+			switch strings.ToUpper(c.Status) {
+			case "COMPLETED":
+				if strings.ToUpper(c.Conclusion) != "SUCCESS" && strings.ToUpper(c.Conclusion) != "NEUTRAL" && strings.ToUpper(c.Conclusion) != "SKIPPED" {
+					anyFailed = true
+				}
+			default:
+				allDone = false
+			}
+		}
+	}
+	if anyFailed {
+		return false, false
+	}
+	if !allDone {
+		return false, true
+	}
+	return true, false
+}
+
+// enrichExternalPR populates status fields on an ExternalPR from GitHub data.
+func enrichExternalPR(ep *ExternalPR, gh ghPR) {
+	ciPassing, ciPending := ghCIStatus(gh.StatusCheckRollup)
+	ep.CIPassing = ciPassing
+	ep.CIPending = ciPending
+	ep.HasApproval = strings.EqualFold(gh.ReviewDecision, "APPROVED")
+	ep.ChangesRequested = strings.EqualFold(gh.ReviewDecision, "CHANGES_REQUESTED")
+	ep.IsConflicting = strings.EqualFold(gh.Mergeable, "CONFLICTING")
+	ep.HasUnresolvedThreads = false // not directly available from gh pr list
+}
+
+// enrichForgePR overlays live GitHub status onto a non-bellows-managed forge PR.
+func enrichForgePR(pr *PR, gh ghPR) {
+	ciPassing, _ := ghCIStatus(gh.StatusCheckRollup)
+	pr.CIPassing = ciPassing
+	pr.HasApproval = strings.EqualFold(gh.ReviewDecision, "APPROVED")
+	pr.HasPendingReviews = len(gh.ReviewRequests) > 0
+	pr.IsConflicting = strings.EqualFold(gh.Mergeable, "CONFLICTING")
+	// has_unresolved_threads not available from gh pr list — leave as-is
 }
 
 // parseConfigYAML unmarshals forge config YAML.
@@ -238,11 +351,30 @@ func AllPRsHandler(db *DB) http.HandlerFunc {
 			forgePRs = []PR{}
 		}
 
-		// Always attempt to fetch external PRs; forgePRs may be empty when db is nil.
-		external, err := fetchExternalPRs(forgePRs)
+		// Fetch all GitHub PRs; also returns raw data for enriching forge PRs.
+		ghResult, err := fetchGitHubPRs(forgePRs)
+		var external []ExternalPR
 		if err != nil {
 			log.Printf("forge: all-prs: failed to fetch external PRs: %v", err)
 			external = []ExternalPR{}
+		} else if ghResult != nil {
+			external = ghResult.external
+
+			// Enrich non-bellows-managed forge PRs with live GitHub status.
+			for i := range forgePRs {
+				if forgePRs[i].BellowsManaged {
+					continue
+				}
+				// Map the short anvil name to the GitHub "owner/repo" for lookup.
+				repo := ghResult.anvilToRepo[strings.ToLower(forgePRs[i].Anvil)]
+				if repo == "" {
+					continue
+				}
+				key := ghPRKey(repo, forgePRs[i].Number)
+				if gh, ok := ghResult.raw[key]; ok {
+					enrichForgePR(&forgePRs[i], gh)
+				}
+			}
 		}
 		if external == nil {
 			external = []ExternalPR{}
