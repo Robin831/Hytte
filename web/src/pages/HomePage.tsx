@@ -7,6 +7,7 @@ import TodayScheduleCard from '../components/home/TodayScheduleCard'
 import WeatherCard from '../components/home/WeatherCard'
 import StridePlanCard from '../components/home/StridePlanCard'
 import WorkHoursCard from '../components/home/WorkHoursCard'
+import BudgetSnapshotCard from '../components/home/BudgetSnapshotCard'
 
 export default function HomePage() {
   const { t } = useTranslation('common')
@@ -67,6 +68,7 @@ export default function HomePage() {
         {hasFeature('calendar') && <TodayScheduleCard />}
         {hasFeature('stride') && <StridePlanCard />}
         {hasFeature('work_hours') && <WorkHoursCard />}
+        {hasFeature('budget') && <BudgetSnapshotCard />}
       </div>
     </div>
   )

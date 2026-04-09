@@ -27,6 +27,7 @@ vi.mock('react-i18next', () => ({
 vi.mock('../utils/formatDate', () => ({
   formatDate: () => 'Wednesday, April 9, 2026',
   formatTime: () => '08:00:00',
+  formatNumber: (n: number) => String(n),
 }))
 
 // ── useNow mock ───────────────────────────────────────────────────────────────
@@ -67,6 +68,10 @@ vi.mock('../components/home/StridePlanCard', () => ({
 
 vi.mock('../components/home/WorkHoursCard', () => ({
   default: () => <div data-testid="work-hours-card" />,
+}))
+
+vi.mock('../components/home/BudgetSnapshotCard', () => ({
+  default: () => <div data-testid="budget-snapshot-card" />,
 }))
 
 function setAuth(user: MockUser | null, hasFeature: (f: string) => boolean = () => false) {
@@ -225,5 +230,19 @@ describe('HomePage – feature-flagged cards', () => {
     renderPage()
     expect(screen.getByTestId('stride-plan-card')).toBeInTheDocument()
     expect(screen.getByTestId('work-hours-card')).toBeInTheDocument()
+  })
+
+  it('does not render BudgetSnapshotCard when budget feature is disabled', () => {
+    mockNow.value = new Date('2026-04-09T08:00:00')
+    setAuth({ name: 'Robin Smith' }, () => false)
+    renderPage()
+    expect(screen.queryByTestId('budget-snapshot-card')).not.toBeInTheDocument()
+  })
+
+  it('renders BudgetSnapshotCard when budget feature is enabled', () => {
+    mockNow.value = new Date('2026-04-09T08:00:00')
+    setAuth({ name: 'Robin Smith' }, (f) => f === 'budget')
+    renderPage()
+    expect(screen.getByTestId('budget-snapshot-card')).toBeInTheDocument()
   })
 })
