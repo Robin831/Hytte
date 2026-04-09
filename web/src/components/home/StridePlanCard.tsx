@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
-import { CheckCircle } from 'lucide-react'
 
 interface StrideSession {
   warmup: string
@@ -29,17 +28,11 @@ interface StridePlan {
   created_at: string
 }
 
-interface Evaluation {
-  plan_id: number
-  workout_id: number
-}
-
 export default function StridePlanCard() {
   const { t, i18n } = useTranslation('stride')
   const { t: tToday } = useTranslation('today')
   const { user } = useAuth()
   const [plan, setPlan] = useState<StridePlan | null>(null)
-  const [evaluatedDates, setEvaluatedDates] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
@@ -60,29 +53,7 @@ export default function StridePlanCard() {
         if (!res.ok) throw new Error('Failed to fetch plan')
         const data = await res.json()
         if (controller.signal.aborted) return
-        const p = data.plan as StridePlan
-        setPlan(p)
-
-        // Fetch evaluations for this plan to mark completed days
-        const evalRes = await fetch(`/api/stride/evaluations?plan_id=${p.id}`, {
-          credentials: 'include',
-          signal: controller.signal,
-        })
-        if (controller.signal.aborted) return
-        if (evalRes.ok) {
-          const evalData = await evalRes.json()
-          const dates = new Set<string>()
-          for (const rec of (evalData.evaluations ?? []) as Evaluation[]) {
-            // Find the day plan matching this evaluation's workout
-            // Evaluations exist = workout was uploaded for that plan
-            if (rec.workout_id) {
-              // We have an evaluation — mark the plan dates that have been evaluated
-              // Since we can't directly map workout→date here, we mark all evaluated plan IDs
-              dates.add(String(rec.workout_id))
-            }
-          }
-          setEvaluatedDates(dates)
-        }
+        setPlan(data.plan as StridePlan)
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return
@@ -95,15 +66,13 @@ export default function StridePlanCard() {
     return () => { controller.abort() }
   }, [user])
 
-  const now = new Date()
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const today = new Date().toISOString().slice(0, 10)
   const todayPlan = plan?.plan?.find((d) => d.date === today)
 
   const formatDate = (dateStr: string) =>
     new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(new Date(dateStr + 'T00:00:00'))
 
   const sessionsPlanned = plan?.plan?.filter((d) => !d.rest_day).length ?? 0
-  const hasEvaluations = evaluatedDates.size > 0
 
   return (
     <div className="bg-gray-800 rounded-xl p-5">
@@ -177,7 +146,7 @@ export default function StridePlanCard() {
                       : isToday
                         ? 'bg-blue-500'
                         : isPast
-                          ? hasEvaluations ? 'bg-green-600' : 'bg-gray-600'
+                          ? 'bg-gray-500'
                           : 'bg-gray-600'
                   }`}
                   title={`${formatDate(day.date)}${isRest ? ` – ${t('plan.restDay')}` : ''}`}
@@ -186,13 +155,7 @@ export default function StridePlanCard() {
             })}
           </div>
 
-          {/* Checkmark if today's workout was evaluated */}
-          {todayPlan && !todayPlan.rest_day && hasEvaluations && (
-            <div className="flex items-center gap-1.5 text-green-400 text-xs">
-              <CheckCircle size={14} />
-              <span>{t('evaluation.compliant')}</span>
-            </div>
-          )}
+
         </div>
       )}
     </div>

@@ -153,7 +153,7 @@ export default function WorkHoursCard() {
           {/* Hours summary */}
           {summary && standardMinutes > 0 && (
             <>
-              <div className="w-full bg-gray-700 rounded-full h-1.5" role="progressbar" aria-valuenow={netMinutes} aria-valuemin={0} aria-valuemax={standardMinutes} aria-label={t('workHours.progressLabel')}>
+              <div className="w-full bg-gray-700 rounded-full h-1.5" role="progressbar" aria-valuenow={Math.min(netMinutes, standardMinutes)} aria-valuemin={0} aria-valuemax={standardMinutes} aria-label={t('workHours.progressLabel')}>
                 <div
                   className={`h-1.5 rounded-full ${isDone ? 'bg-green-500' : 'bg-blue-500'}`}
                   style={{ width: `${Math.min(100, (netMinutes / standardMinutes) * 100)}%` }}
