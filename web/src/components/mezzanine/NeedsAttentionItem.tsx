@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RotateCcw, ExternalLink, XCircle, CheckCircle, Hammer, ShieldCheck } from 'lucide-react'
 import type { StuckBead } from '../../hooks/useForgeStatus'
 import ConfirmDialog from '../ConfirmDialog'
 import { useBeadActions } from '../../hooks/useBeadActions'
+import { availableActions, classifySource, classifyStatuses } from '../../hooks/useNeedsAttention'
 
 interface NeedsAttentionItemProps {
   bead: StuckBead
@@ -25,6 +26,11 @@ export default function NeedsAttentionItem({
   const { acting, handleAction } = useBeadActions({ showToast, onRetried })
 
   const isActing = !!acting[bead.bead_id]
+  const actions = useMemo(() => {
+    const source = classifySource(bead)
+    const statuses = classifyStatuses(bead, undefined)
+    return availableActions(source, statuses)
+  }, [bead])
 
   return (
     <>
@@ -50,57 +56,65 @@ export default function NeedsAttentionItem({
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              onClick={() => void handleAction('retry', bead.bead_id)}
-              disabled={isActing}
-              aria-label={t('attention.retryLabel', { id: bead.bead_id })}
-              title={t('attention.retry')}
-              className="flex items-center justify-center min-h-[36px] min-w-[36px] rounded-lg text-sm transition-colors
-                bg-amber-600/20 text-amber-300 border border-amber-600/30
-                hover:bg-amber-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <RotateCcw size={14} className={isActing ? 'animate-spin' : ''} />
-            </button>
+            {actions.includes('retry') && (
+              <button
+                type="button"
+                onClick={() => void handleAction('retry', bead.bead_id)}
+                disabled={isActing}
+                aria-label={t('attention.retryLabel', { id: bead.bead_id })}
+                title={t('attention.retry')}
+                className="flex items-center justify-center min-h-[36px] min-w-[36px] rounded-lg text-sm transition-colors
+                  bg-amber-600/20 text-amber-300 border border-amber-600/30
+                  hover:bg-amber-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <RotateCcw size={14} className={isActing ? 'animate-spin' : ''} />
+              </button>
+            )}
 
-            <button
-              type="button"
-              onClick={() => setConfirmAction('approve')}
-              disabled={isActing}
-              aria-label={t('attention.approve')}
-              title={t('attention.approve')}
-              className="flex items-center justify-center min-h-[36px] min-w-[36px] rounded-lg text-sm transition-colors
-                bg-green-600/20 text-green-300 border border-green-600/30
-                hover:bg-green-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <CheckCircle size={14} />
-            </button>
+            {actions.includes('approve') && (
+              <button
+                type="button"
+                onClick={() => setConfirmAction('approve')}
+                disabled={isActing}
+                aria-label={t('attention.approve')}
+                title={t('attention.approve')}
+                className="flex items-center justify-center min-h-[36px] min-w-[36px] rounded-lg text-sm transition-colors
+                  bg-green-600/20 text-green-300 border border-green-600/30
+                  hover:bg-green-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <CheckCircle size={14} />
+              </button>
+            )}
 
-            <button
-              type="button"
-              onClick={() => setConfirmAction('forceSmith')}
-              disabled={isActing}
-              aria-label={t('attention.forceSmith')}
-              title={t('attention.forceSmith')}
-              className="flex items-center justify-center min-h-[36px] min-w-[36px] rounded-lg text-sm transition-colors
-                bg-purple-600/20 text-purple-300 border border-purple-600/30
-                hover:bg-purple-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Hammer size={14} />
-            </button>
+            {actions.includes('forceSmith') && (
+              <button
+                type="button"
+                onClick={() => setConfirmAction('forceSmith')}
+                disabled={isActing}
+                aria-label={t('attention.forceSmith')}
+                title={t('attention.forceSmith')}
+                className="flex items-center justify-center min-h-[36px] min-w-[36px] rounded-lg text-sm transition-colors
+                  bg-purple-600/20 text-purple-300 border border-purple-600/30
+                  hover:bg-purple-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Hammer size={14} />
+              </button>
+            )}
 
-            <button
-              type="button"
-              onClick={() => setConfirmAction('wardenRerun')}
-              disabled={isActing}
-              aria-label={t('attention.wardenRerun')}
-              title={t('attention.wardenRerun')}
-              className="flex items-center justify-center min-h-[36px] min-w-[36px] rounded-lg text-sm transition-colors
-                bg-cyan-600/20 text-cyan-300 border border-cyan-600/30
-                hover:bg-cyan-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ShieldCheck size={14} />
-            </button>
+            {actions.includes('wardenRerun') && (
+              <button
+                type="button"
+                onClick={() => setConfirmAction('wardenRerun')}
+                disabled={isActing}
+                aria-label={t('attention.wardenRerun')}
+                title={t('attention.wardenRerun')}
+                className="flex items-center justify-center min-h-[36px] min-w-[36px] rounded-lg text-sm transition-colors
+                  bg-cyan-600/20 text-cyan-300 border border-cyan-600/30
+                  hover:bg-cyan-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ShieldCheck size={14} />
+              </button>
+            )}
 
             <button
               type="button"
@@ -115,18 +129,20 @@ export default function NeedsAttentionItem({
               <ExternalLink size={14} />
             </button>
 
-            <button
-              type="button"
-              onClick={() => setConfirmAction('dismiss')}
-              disabled={isActing}
-              aria-label={t('mezzanine.needsAttention.dismissLabel', { id: bead.bead_id })}
-              title={t('attention.dismiss')}
-              className="flex items-center justify-center min-h-[36px] min-w-[36px] rounded-lg text-sm transition-colors
-                bg-red-600/20 text-red-300 border border-red-600/30
-                hover:bg-red-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <XCircle size={14} />
-            </button>
+            {actions.includes('dismiss') && (
+              <button
+                type="button"
+                onClick={() => setConfirmAction('dismiss')}
+                disabled={isActing}
+                aria-label={t('mezzanine.needsAttention.dismissLabel', { id: bead.bead_id })}
+                title={t('attention.dismiss')}
+                className="flex items-center justify-center min-h-[36px] min-w-[36px] rounded-lg text-sm transition-colors
+                  bg-red-600/20 text-red-300 border border-red-600/30
+                  hover:bg-red-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <XCircle size={14} />
+              </button>
+            )}
           </div>
         </div>
 

@@ -17,7 +17,7 @@ interface UseBeadActionsOptions {
 }
 
 /**
- * Shared hook for performing bead actions (retry, approve, dismiss, forceSmith).
+ * Shared hook for performing bead actions (retry, approve, dismiss, forceSmith, wardenRerun).
  * Handles fetch, error parsing, toast notifications, and per-bead loading state.
  */
 export function useBeadActions({ showToast, onRetried }: UseBeadActionsOptions) {

@@ -121,8 +121,20 @@ export default function NeedsAttentionModal({ open, onClose, items, showToast, o
     if (!open) setPendingConfirm(null)
   }
 
+  function shouldConfirmAction(action: NeedsAttentionAction): boolean {
+    switch (action) {
+      case 'retry':
+        return false
+      case 'approve':
+      case 'dismiss':
+      case 'forceSmith':
+      case 'wardenRerun':
+        return true
+    }
+  }
+
   function onAction(action: NeedsAttentionAction, beadId: string) {
-    if (action === 'dismiss') {
+    if (shouldConfirmAction(action)) {
       setPendingConfirm({ action, beadId })
     } else {
       void handleAction(action as BeadActionType, beadId)
