@@ -61,6 +61,14 @@ vi.mock('../components/home/TodayScheduleCard', () => ({
   default: () => null,
 }))
 
+vi.mock('../components/home/StridePlanCard', () => ({
+  default: () => <div data-testid="stride-plan-card" />,
+}))
+
+vi.mock('../components/home/WorkHoursCard', () => ({
+  default: () => <div data-testid="work-hours-card" />,
+}))
+
 function setAuth(user: MockUser | null, hasFeature: (f: string) => boolean = () => false) {
   authState.user = user
   authState.hasFeature = hasFeature
@@ -174,5 +182,48 @@ describe('HomePage – avatar fallback', () => {
     setAuth(null)
     renderPage()
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+})
+
+describe('HomePage – feature-flagged cards', () => {
+  afterEach(() => {
+    vi.clearAllMocks()
+    authState.user = null
+  })
+
+  it('does not render StridePlanCard when stride feature is disabled', () => {
+    mockNow.value = new Date('2026-04-09T08:00:00')
+    setAuth({ name: 'Robin Smith' }, () => false)
+    renderPage()
+    expect(screen.queryByTestId('stride-plan-card')).not.toBeInTheDocument()
+  })
+
+  it('renders StridePlanCard when stride feature is enabled', () => {
+    mockNow.value = new Date('2026-04-09T08:00:00')
+    setAuth({ name: 'Robin Smith' }, (f) => f === 'stride')
+    renderPage()
+    expect(screen.getByTestId('stride-plan-card')).toBeInTheDocument()
+  })
+
+  it('does not render WorkHoursCard when work_hours feature is disabled', () => {
+    mockNow.value = new Date('2026-04-09T08:00:00')
+    setAuth({ name: 'Robin Smith' }, () => false)
+    renderPage()
+    expect(screen.queryByTestId('work-hours-card')).not.toBeInTheDocument()
+  })
+
+  it('renders WorkHoursCard when work_hours feature is enabled', () => {
+    mockNow.value = new Date('2026-04-09T08:00:00')
+    setAuth({ name: 'Robin Smith' }, (f) => f === 'work_hours')
+    renderPage()
+    expect(screen.getByTestId('work-hours-card')).toBeInTheDocument()
+  })
+
+  it('renders both cards when both features are enabled', () => {
+    mockNow.value = new Date('2026-04-09T08:00:00')
+    setAuth({ name: 'Robin Smith' }, () => true)
+    renderPage()
+    expect(screen.getByTestId('stride-plan-card')).toBeInTheDocument()
+    expect(screen.getByTestId('work-hours-card')).toBeInTheDocument()
   })
 })

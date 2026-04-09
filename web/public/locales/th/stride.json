@@ -19,7 +19,9 @@
     "cooldown": "คูลดาวน์",
     "strides": "สไตรด์",
     "targetHR": "อัตราการเต้นหัวใจสูงสุด",
-    "bpm": "{{value}} ครั้ง/นาที"
+    "bpm": "{{value}} ครั้ง/นาที",
+    "sessionCount_one": "{{count}} เซสชัน",
+    "sessionCount_other": "{{count}} เซสชัน"
   },
   "races": {
     "title": "ปฏิทินการแข่งขัน",

@@ -39,7 +39,9 @@
     "remaining": "remaining",
     "done": "Done for the day",
     "punchedIn": "Punched in",
-    "notStarted": "Not started"
+    "punchIn": "Punch in",
+    "notStarted": "Not started",
+    "progressLabel": "Work hours progress"
   },
   "kids": {
     "loading": "Loading…",
