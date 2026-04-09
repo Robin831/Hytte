@@ -33,7 +33,14 @@ func isExternalBead(beadID string) bool {
 
 // repoForAnvil resolves a short anvil name (e.g. "Hytte") to the GitHub
 // "owner/repo" string by reading the forge config and the git remote URL.
+// If anvilName already looks like "owner/repo" it is returned as-is without
+// consulting the config, so PR records that store the full repo string work too.
 func repoForAnvil(anvilName string) (string, error) {
+	// If the value already contains exactly one '/' (and no whitespace), treat it
+	// as a fully-qualified "owner/repo" string and return it directly.
+	if strings.Count(anvilName, "/") == 1 && !strings.ContainsAny(anvilName, " \t\n") {
+		return anvilName, nil
+	}
 	cfgPath, err := configPath()
 	if err != nil {
 		return "", fmt.Errorf("resolve config path: %w", err)
@@ -212,6 +219,14 @@ func validatePRForIPC(w http.ResponseWriter, pr *PR, needsBranch bool) bool {
 // an "external_pr_action" IPC command to the forge daemon. It writes the HTTP
 // response directly (success or error).
 func sendExternalPRAction(w http.ResponseWriter, pr *PR, action, failMsg string) {
+	if pr.Anvil == "" || pr.BeadID == "" {
+		writeError(w, http.StatusBadRequest, "PR record is missing required fields (anvil, bead_id)")
+		return
+	}
+	if pr.Number <= 0 {
+		writeError(w, http.StatusBadRequest, "PR record has invalid PR number")
+		return
+	}
 	repo, err := repoForAnvil(pr.Anvil)
 	if err != nil {
 		log.Printf("forge: %s ext pr %d: %v", action, pr.Number, err)

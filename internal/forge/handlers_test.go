@@ -3916,6 +3916,72 @@ func TestFixConflictsPRHandler_ExtBead(t *testing.T) {
 	assertExternalPRAction(t, received, "rebase", 101)
 }
 
+func closePRRequest(prID string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/prs/"+prID+"/close", nil)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", prID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestClosePRHandler_ExtBead(t *testing.T) {
+	fdb, prDBID, socketPath := setupExtPRTest(t, "ext-warden-7", 111)
+	received := receiveIPCCommand(t, socketPath)
+
+	rec := httptest.NewRecorder()
+	ClosePRHandler(fdb).ServeHTTP(rec, closePRRequest(fmt.Sprintf("%d", prDBID)))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	assertExternalPRAction(t, received, "close", 111)
+}
+
+// TestClosePRHandler_ExtBead_OwnerRepo verifies that when pr.Anvil is already
+// stored as an "owner/repo" string, repoForAnvil returns it directly without
+// consulting the forge config.
+func TestClosePRHandler_ExtBead_OwnerRepo(t *testing.T) {
+	// Use a socket but no forge config — the anvil is already "owner/repo".
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+
+	fdb := setupTestDB(t)
+	prDBID := insertTestPR(t, fdb, 112, "owner/myrepo", "ext-warden-8", "forge/ext-warden-8")
+
+	received := receiveIPCCommand(t, socketPath)
+
+	rec := httptest.NewRecorder()
+	ClosePRHandler(fdb).ServeHTTP(rec, closePRRequest(fmt.Sprintf("%d", prDBID)))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	select {
+	case cmd := <-received:
+		if cmd.Type != "external_pr_action" {
+			t.Errorf("expected command type 'external_pr_action', got %q", cmd.Type)
+		}
+		var pa struct {
+			Repo   string `json:"repo"`
+			Number int    `json:"number"`
+			Action string `json:"action"`
+		}
+		if err := json.Unmarshal(cmd.Payload, &pa); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if pa.Action != "close" {
+			t.Errorf("expected action 'close', got %q", pa.Action)
+		}
+		if pa.Number != 112 {
+			t.Errorf("expected number 112, got %d", pa.Number)
+		}
+		if pa.Repo != "owner/myrepo" {
+			t.Errorf("expected repo 'owner/myrepo', got %q", pa.Repo)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for IPC command")
+	}
+}
+
 // --- RunNowHandler ---
 
 func runNowRequest(beadID string) *http.Request {
