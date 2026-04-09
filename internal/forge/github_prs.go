@@ -322,9 +322,11 @@ func enrichExternalPR(ep *ExternalPR, gh ghPR) {
 
 // enrichForgePR overlays live GitHub status onto a non-bellows-managed forge PR.
 func enrichForgePR(pr *PR, gh ghPR) {
-	ciPassing, _ := ghCIStatus(gh.StatusCheckRollup)
+	ciPassing, ciPending := ghCIStatus(gh.StatusCheckRollup)
 	pr.CIPassing = ciPassing
+	pr.CIPending = ciPending
 	pr.HasApproval = strings.EqualFold(gh.ReviewDecision, "APPROVED")
+	pr.ChangesRequested = strings.EqualFold(gh.ReviewDecision, "CHANGES_REQUESTED")
 	pr.HasPendingReviews = len(gh.ReviewRequests) > 0
 	pr.IsConflicting = strings.EqualFold(gh.Mergeable, "CONFLICTING")
 	// has_unresolved_threads not available from gh pr list — leave as-is

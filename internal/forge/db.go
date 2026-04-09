@@ -55,6 +55,8 @@ type PR struct {
 	HasPendingReviews    bool       `json:"has_pending_reviews"`
 	HasApproval          bool       `json:"has_approval"`
 	BellowsManaged       bool       `json:"bellows_managed"`
+	CIPending            bool       `json:"ci_pending"`
+	ChangesRequested     bool       `json:"changes_requested"`
 }
 
 // Event represents a forge event log entry.
