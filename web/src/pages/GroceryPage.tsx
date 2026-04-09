@@ -16,7 +16,7 @@ interface GroceryItem {
 }
 
 export default function GroceryPage() {
-  const { t } = useTranslation('grocery')
+  const { t } = useTranslation(['grocery', 'common'])
   const { user } = useAuth()
   const [items, setItems] = useState<GroceryItem[]>([])
   const [newItem, setNewItem] = useState('')
