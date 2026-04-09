@@ -101,7 +101,7 @@ func isTreadmill(w *Workout) bool {
 // historicalContext is an optional pre-built historical context block;
 // enrichedBlock is an optional pre-built block of computed training metrics (HR drift, pace CV, training load, ACR);
 // userContext is optional additional context provided by the user that is appended at the end.
-func buildInsightsPrompt(w *Workout, basePrompt string, userProfileBlock string, hasGoalRace bool, zones []ZoneDistribution, historicalContext string, enrichedBlock string, userContext string) string {
+func buildInsightsPrompt(w *Workout, basePrompt string, userProfileBlock string, hasGoalRace bool, zones []ZoneDistribution, historicalContext string, enrichedBlock string, userContext string, raceContext *RaceContext) string {
 	dur := formatDurationSecs(w.DurationSeconds)
 	dist := fmt.Sprintf("%.2f km", w.DistanceMeters/1000)
 
@@ -186,6 +186,10 @@ func buildInsightsPrompt(w *Workout, basePrompt string, userProfileBlock string,
 	if historicalContext != "" {
 		sb.WriteString("\n")
 		sb.WriteString(historicalContext)
+	}
+
+	if raceContext != nil {
+		sb.WriteString(FormatRacePromptSection(raceContext))
 	}
 
 	if historicalContext != "" {
@@ -296,9 +300,10 @@ func RunInsightsAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int6
 
 	historicalContext := BuildHistoricalContext(db, userID, workout)
 	enrichedBlock := BuildEnrichedWorkoutBlock(db, workout)
+	raceContext := BuildRaceContext(db, workout)
 
 	userContext := settings.LoadPrompt(db, "insights", "")
-	prompt := buildInsightsPrompt(workout, settings.DefaultPromptBodies["insights"], profile.Block, profile.HasGoalRace, zones, historicalContext, enrichedBlock, userContext)
+	prompt := buildInsightsPrompt(workout, settings.DefaultPromptBodies["insights"], profile.Block, profile.HasGoalRace, zones, historicalContext, enrichedBlock, userContext, raceContext)
 	raw, err := runPromptFunc(ctx, cfg, prompt)
 	if err != nil {
 		return fmt.Errorf("Claude insights for workout %d: %w", workoutID, err)
