@@ -290,7 +290,7 @@ func FindMatchingRaces(db *sql.DB, userID int64, date string, distanceMeters flo
 	}
 	defer rows.Close()
 
-	var races []Race
+	races := []Race{}
 	for rows.Next() {
 		var r Race
 		if err := rows.Scan(&r.ID, &r.UserID, &r.Name, &r.Date, &r.DistanceM,

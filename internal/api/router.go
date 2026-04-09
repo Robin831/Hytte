@@ -50,11 +50,10 @@ func NewRouter(db *sql.DB) http.Handler {
 	webhookHub := webhooks.NewHub()
 
 	// Wire up race-matching callback to break the training→stride import cycle.
-	training.OnRaceClassified = func(db *sql.DB, workoutID, userID int64, workoutDate string, distanceMeters float64) {
+	training.OnRaceClassified = func(db *sql.DB, workoutID, userID int64, workoutDate string, distanceMeters float64) error {
 		result, err := stride.TryMatchRaceForWorkout(db, workoutID, userID, workoutDate, distanceMeters)
 		if err != nil {
-			log.Printf("Race matching failed for workout %d: %v", workoutID, err)
-			return
+			return err
 		}
 		switch result.Status {
 		case "linked":
@@ -62,6 +61,7 @@ func NewRouter(db *sql.DB) http.Handler {
 		case "ambiguous":
 			log.Printf("Ambiguous race match for workout %d: %d candidates found", workoutID, result.Candidates)
 		}
+		return nil
 	}
 
 	r.Use(middleware.Logger)
