@@ -60,6 +60,7 @@ import BudgetRegning from './pages/BudgetRegning'
 import BudgetVariables from './pages/BudgetVariables'
 import Vault from './pages/Vault'
 import SkyWatchPage from './pages/SkyWatchPage'
+import GroceryPage from './pages/GroceryPage'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -422,6 +423,16 @@ function MainLayout() {
             element={
               <FeatureRoute feature="skywatch">
                 <SkyWatchPage />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Grocery list route */}
+          <Route
+            path="/grocery"
+            element={
+              <FeatureRoute feature="grocery">
+                <GroceryPage />
               </FeatureRoute>
             }
           />

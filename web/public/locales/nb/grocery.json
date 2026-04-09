@@ -1,0 +1,18 @@
+{
+  "title": "Handleliste",
+  "addPlaceholder": "Legg til en vare...",
+  "add": "Legg til",
+  "clearCompleted": "Fjern fullførte",
+  "empty": "Handlelisten er tom",
+  "emptyHint": "Legg til varer med feltet over",
+  "errors": {
+    "failedToLoad": "Kunne ikke laste handlelisten",
+    "failedToAdd": "Kunne ikke legge til vare",
+    "failedToUpdate": "Kunne ikke oppdatere vare",
+    "failedToClear": "Kunne ikke fjerne fullførte varer"
+  },
+  "checkedSection": "Fullført",
+  "item": {
+    "original": "Original: {{text}}"
+  }
+}

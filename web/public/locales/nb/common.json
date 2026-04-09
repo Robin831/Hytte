@@ -28,7 +28,8 @@
     "salary": "Lønn",
     "stride": "Stride",
     "vault": "Hvelv",
-    "skywatch": "Himmelvakt"
+    "skywatch": "Himmelvakt",
+    "grocery": "Handleliste"
   },
   "actions": {
     "save": "Lagre",
