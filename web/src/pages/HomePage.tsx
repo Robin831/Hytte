@@ -8,7 +8,9 @@ import WeatherCard from '../components/home/WeatherCard'
 
 export default function HomePage() {
   const { t } = useTranslation('common')
-  const { user, hasFeature } = useAuth()
+  const auth = useAuth()
+  const user = auth.user
+  const hasFeature = auth.hasFeature ?? (() => false)
   const now = useNow()
 
   const firstName = user?.name.split(' ')[0] ?? ''

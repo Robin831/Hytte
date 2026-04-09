@@ -16,6 +16,7 @@ export default function TodayScheduleCard() {
   const { user } = useAuth()
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [calendars, setCalendars] = useState<CalendarInfo[]>([])
+  const [connected, setConnected] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
 
@@ -38,6 +39,7 @@ export default function TodayScheduleCard() {
         const eventsData = await eventsRes.json()
         const calendarsData = await calendarsRes.json()
         if (controller.signal.aborted) return
+        setConnected(calendarsData.connected === true)
         setEvents(eventsData.events ?? [])
         setCalendars(calendarsData.calendars ?? [])
         setError(false)
@@ -53,9 +55,13 @@ export default function TodayScheduleCard() {
     return () => { controller.abort() }
   }, [user])
 
+  if (connected === false) return null
+
   const colorMap = getCalendarColorMap(calendars)
 
+  const now = new Date()
   const sorted = [...events]
+    .filter((e) => e.all_day || new Date(e.start_time).getTime() >= now.getTime())
     .sort((a, b) => {
       if (a.all_day && !b.all_day) return -1
       if (!a.all_day && b.all_day) return 1

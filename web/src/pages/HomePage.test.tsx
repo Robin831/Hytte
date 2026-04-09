@@ -44,14 +44,26 @@ interface MockUser {
   picture?: string
 }
 
-const authState: { user: MockUser | null } = { user: null }
+const authState: { user: MockUser | null; hasFeature: (f: string) => boolean } = {
+  user: null,
+  hasFeature: () => false,
+}
 
 vi.mock('../auth', () => ({
   useAuth: () => authState,
 }))
 
-function setAuth(user: MockUser | null) {
+vi.mock('../components/home/WeatherCard', () => ({
+  default: () => null,
+}))
+
+vi.mock('../components/home/TodayScheduleCard', () => ({
+  default: () => null,
+}))
+
+function setAuth(user: MockUser | null, hasFeature: (f: string) => boolean = () => false) {
   authState.user = user
+  authState.hasFeature = hasFeature
 }
 
 function renderPage() {
