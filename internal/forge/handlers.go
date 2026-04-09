@@ -526,7 +526,7 @@ func normalizeBeadDetail(raw map[string]any) BeadDetail {
 				if v, ok := m["author"].(string); ok {
 					bc.Author = v
 				}
-				if v, ok := m["body"].(string); ok {
+				if v, ok := m["text"].(string); ok {
 					bc.Body = v
 				}
 				if v, ok := m["created_at"].(string); ok {
