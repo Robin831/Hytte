@@ -874,7 +874,7 @@ function Settings() {
       )}
       <h1 className="text-2xl font-bold mb-8">{t('title')}</h1>
 
-      {/* Profile Section */}
+      {/* Profile Section — includes appearance, language, and location */}
       <CollapsibleSection id="profile" title={t('profile.heading')}>
         <div className="flex items-center gap-4 mb-4">
           {user.picture ? (
@@ -897,60 +897,60 @@ function Settings() {
         <p className="text-sm text-gray-500">
           {t('profile.memberSince', { date: memberSince })}
         </p>
-      </CollapsibleSection>
 
-      {/* Appearance Section */}
-      <CollapsibleSection id="appearance" title={t('appearance.heading')}>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-medium">{t('appearance.theme')}</p>
-            <p className="text-sm text-gray-400">{t('appearance.themeDescription')}</p>
-          </div>
-          <select
-            value={preferences.theme || 'dark'}
-            onChange={(e) => savePreference('theme', e.target.value)}
-            disabled={saving}
-            className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="dark">{t('appearance.themeDark')}</option>
-            <option value="light" disabled>{t('appearance.themeLight')}</option>
-          </select>
-        </div>
-      </CollapsibleSection>
-
-      {/* Language Section */}
-      <CollapsibleSection id="language" title={t('language.heading')}>
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="font-medium">{t('language.displayLanguage')}</p>
-            <p className="text-sm text-gray-400">{t('language.displayLanguageDescription')}</p>
-          </div>
-          <div className="w-52">
-            <LanguageSwitcher />
+        {/* Appearance */}
+        <div className="border-t border-gray-700 pt-4 mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">{t('appearance.theme')}</p>
+              <p className="text-sm text-gray-400">{t('appearance.themeDescription')}</p>
+            </div>
+            <select
+              value={preferences.theme || 'dark'}
+              onChange={(e) => savePreference('theme', e.target.value)}
+              disabled={saving}
+              className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="dark">{t('appearance.themeDark')}</option>
+              <option value="light" disabled>{t('appearance.themeLight')}</option>
+            </select>
           </div>
         </div>
-      </CollapsibleSection>
 
-      {/* Location Section */}
-      <CollapsibleSection id="location" title={t('location.heading')}>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="font-medium">{t('location.homeCity')}</p>
-            <p className="text-sm text-gray-400">{t('location.homeCityDescription')}</p>
+        {/* Language */}
+        <div className="border-t border-gray-700 pt-4 mt-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium">{t('language.displayLanguage')}</p>
+              <p className="text-sm text-gray-400">{t('language.displayLanguageDescription')}</p>
+            </div>
+            <div className="w-52">
+              <LanguageSwitcher />
+            </div>
           </div>
-          <select
-            value={preferences.home_location || ''}
-            onChange={(e) => savePreference('home_location', e.target.value)}
-            disabled={saving}
-            className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">{t('location.selectCity')}</option>
-            {cityNames.map((city) => (
-              <option key={city} value={city}>
-                {city}
-              </option>
-            ))}
-          </select>
+        </div>
+
+        {/* Location */}
+        <div className="border-t border-gray-700 pt-4 mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">{t('location.homeCity')}</p>
+              <p className="text-sm text-gray-400">{t('location.homeCityDescription')}</p>
+            </div>
+            <select
+              value={preferences.home_location || ''}
+              onChange={(e) => savePreference('home_location', e.target.value)}
+              disabled={saving}
+              className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">{t('location.selectCity')}</option>
+              {cityNames.map((city) => (
+                <option key={city} value={city}>
+                  {city}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </CollapsibleSection>
 
@@ -1287,101 +1287,101 @@ function Settings() {
               />
             </div>
           </div>
-        </div>
-      </CollapsibleSection>}
+          {/* Goal Race */}
+          <div className="border-t border-gray-700 pt-4 mt-4">
+            <p className="text-sm font-medium text-gray-300 mb-3">{t('goalRace.heading')}</p>
+            <div className="space-y-4">
+              {/* Race name */}
+              <div className="flex items-center justify-between gap-4">
+                <label htmlFor="goal-race-name" className="font-medium shrink-0">{t('goalRace.raceName')}</label>
+                <input
+                  id="goal-race-name"
+                  type="text"
+                  value={goalRaceNameDraft}
+                  onChange={(e) => setGoalRaceNameDraft(e.target.value)}
+                  onBlur={() => savePreference('goal_race_name', goalRaceNameDraft, true)}
+                  placeholder={t('goalRace.raceNamePlaceholder')}
+                  disabled={saving}
+                  className="w-56 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
 
-      {/* Goal Race Section — hidden for child users */}
-      {!isChild && <CollapsibleSection id="goal-race" title={t('goalRace.heading')}>
-        <div className="space-y-4">
-          {/* Race name */}
-          <div className="flex items-center justify-between gap-4">
-            <label htmlFor="goal-race-name" className="font-medium shrink-0">{t('goalRace.raceName')}</label>
-            <input
-              id="goal-race-name"
-              type="text"
-              value={goalRaceNameDraft}
-              onChange={(e) => setGoalRaceNameDraft(e.target.value)}
-              onBlur={() => savePreference('goal_race_name', goalRaceNameDraft, true)}
-              placeholder={t('goalRace.raceNamePlaceholder')}
-              disabled={saving}
-              className="w-56 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+              {/* Race date */}
+              <div className="flex items-center justify-between gap-4">
+                <label htmlFor="goal-race-date" className="font-medium shrink-0">{t('goalRace.raceDate')}</label>
+                <input
+                  id="goal-race-date"
+                  type="date"
+                  value={goalRaceDateDraft}
+                  onChange={(e) => {
+                    setGoalRaceDateDraft(e.target.value)
+                    savePreference('goal_race_date', e.target.value, true)
+                  }}
+                  disabled={saving}
+                  className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]"
+                />
+              </div>
 
-          {/* Race date */}
-          <div className="flex items-center justify-between gap-4">
-            <label htmlFor="goal-race-date" className="font-medium shrink-0">{t('goalRace.raceDate')}</label>
-            <input
-              id="goal-race-date"
-              type="date"
-              value={goalRaceDateDraft}
-              onChange={(e) => {
-                setGoalRaceDateDraft(e.target.value)
-                savePreference('goal_race_date', e.target.value, true)
-              }}
-              disabled={saving}
-              className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]"
-            />
-          </div>
+              {/* Distance */}
+              <div className="flex items-center justify-between gap-4">
+                <label htmlFor="goal-race-distance" className="font-medium shrink-0">{t('goalRace.raceDistance')}</label>
+                <select
+                  id="goal-race-distance"
+                  value={goalRaceDistanceDraft}
+                  onChange={(e) => {
+                    setGoalRaceDistanceDraft(e.target.value)
+                    savePreference('goal_race_distance', e.target.value, true)
+                  }}
+                  disabled={saving}
+                  className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">{t('goalRace.distancePlaceholder')}</option>
+                  <option value="5K">{t('goalRace.distance5K')}</option>
+                  <option value="10K">{t('goalRace.distance10K')}</option>
+                  <option value="half_marathon">{t('goalRace.distanceHalf')}</option>
+                  <option value="marathon">{t('goalRace.distanceMarathon')}</option>
+                  <option value="custom">{t('goalRace.distanceCustom')}</option>
+                </select>
+              </div>
 
-          {/* Distance */}
-          <div className="flex items-center justify-between gap-4">
-            <label htmlFor="goal-race-distance" className="font-medium shrink-0">{t('goalRace.raceDistance')}</label>
-            <select
-              id="goal-race-distance"
-              value={goalRaceDistanceDraft}
-              onChange={(e) => {
-                setGoalRaceDistanceDraft(e.target.value)
-                savePreference('goal_race_distance', e.target.value, true)
-              }}
-              disabled={saving}
-              className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">{t('goalRace.distancePlaceholder')}</option>
-              <option value="5K">{t('goalRace.distance5K')}</option>
-              <option value="10K">{t('goalRace.distance10K')}</option>
-              <option value="half_marathon">{t('goalRace.distanceHalf')}</option>
-              <option value="marathon">{t('goalRace.distanceMarathon')}</option>
-              <option value="custom">{t('goalRace.distanceCustom')}</option>
-            </select>
-          </div>
+              {/* Target time */}
+              <div className="flex items-center justify-between gap-4">
+                <label htmlFor="goal-race-target-time" className="font-medium shrink-0">{t('goalRace.targetTime')}</label>
+                <input
+                  id="goal-race-target-time"
+                  type="text"
+                  value={goalRaceTargetTimeDraft}
+                  onChange={(e) => setGoalRaceTargetTimeDraft(e.target.value)}
+                  onBlur={() => {
+                    if (goalRaceTargetTimeDraft === '') {
+                      savePreference('goal_race_target_time', '', true)
+                    } else if (isValidTargetTime(goalRaceTargetTimeDraft)) {
+                      savePreference('goal_race_target_time', goalRaceTargetTimeDraft, true)
+                    } else {
+                      setGoalRaceTargetTimeDraft(preferences.goal_race_target_time || '')
+                    }
+                  }}
+                  placeholder={t('goalRace.targetTimePlaceholder')}
+                  disabled={saving}
+                  aria-label={t('goalRace.targetTime')}
+                  className="w-32 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white font-mono text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
 
-          {/* Target time */}
-          <div className="flex items-center justify-between gap-4">
-            <label htmlFor="goal-race-target-time" className="font-medium shrink-0">{t('goalRace.targetTime')}</label>
-            <input
-              id="goal-race-target-time"
-              type="text"
-              value={goalRaceTargetTimeDraft}
-              onChange={(e) => setGoalRaceTargetTimeDraft(e.target.value)}
-              onBlur={() => {
-                if (goalRaceTargetTimeDraft === '') {
-                  savePreference('goal_race_target_time', '', true)
-                } else if (isValidTargetTime(goalRaceTargetTimeDraft)) {
-                  savePreference('goal_race_target_time', goalRaceTargetTimeDraft, true)
-                } else {
-                  setGoalRaceTargetTimeDraft(preferences.goal_race_target_time || '')
-                }
-              }}
-              placeholder={t('goalRace.targetTimePlaceholder')}
-              disabled={saving}
-              aria-label={t('goalRace.targetTime')}
-              className="w-32 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white font-mono text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {/* Countdown */}
-          {goalRaceDateDraft && (
-            <div className="pt-2 text-sm font-medium">
-              {weeksUntilRace === null ? null : weeksUntilRace === -1 ? (
-                <span className="text-gray-400">{t('goalRace.raceInPast')}</span>
-              ) : weeksUntilRace === 0 ? (
-                <span className="text-green-400">{t('goalRace.raceToday')}</span>
-              ) : (
-                <span className="text-blue-400">{t('goalRace.countdown', { count: weeksUntilRace })}</span>
+              {/* Countdown */}
+              {goalRaceDateDraft && (
+                <div className="pt-2 text-sm font-medium">
+                  {weeksUntilRace === null ? null : weeksUntilRace === -1 ? (
+                    <span className="text-gray-400">{t('goalRace.raceInPast')}</span>
+                  ) : weeksUntilRace === 0 ? (
+                    <span className="text-green-400">{t('goalRace.raceToday')}</span>
+                  ) : (
+                    <span className="text-blue-400">{t('goalRace.countdown', { count: weeksUntilRace })}</span>
+                  )}
+                </div>
               )}
             </div>
-          )}
+          </div>
         </div>
       </CollapsibleSection>}
 
@@ -1687,8 +1687,10 @@ function Settings() {
         )}
       </CollapsibleSection>}
 
-      {/* Sessions Section */}
-      <CollapsibleSection id="sessions" title={t('sessions.heading')}>
+      {/* Security Section — sessions + account deletion */}
+      <CollapsibleSection id="security" title={t('security.heading')}>
+        {/* Sessions */}
+        <p className="text-sm font-medium text-gray-300 mb-3">{t('sessions.heading')}</p>
         <div className="space-y-3 mb-4">
           {sessions.map((session) => (
             <div
@@ -1725,6 +1727,58 @@ function Settings() {
             {t('sessions.signOutEverywhere')}
           </button>
         )}
+
+        {/* Danger Zone */}
+        <div className="border-t border-gray-700 pt-4 mt-4">
+          <p className="text-sm font-medium text-red-400 mb-3">{t('dangerZone.heading')}</p>
+          {!showDeleteConfirm ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">{t('dangerZone.deleteAccount')}</p>
+                <p className="text-sm text-gray-400">
+                  {t('dangerZone.deleteAccountDescription')}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="bg-red-600 hover:bg-red-700 text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer"
+              >
+                {t('dangerZone.deleteAccount')}
+              </button>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm text-gray-300 mb-3">
+                {t('dangerZone.deleteIrreversibleBefore')} <span className="font-mono font-bold text-red-400">{t('dangerZone.deleteKeyword')}</span> {t('dangerZone.deleteIrreversibleAfter')}
+              </p>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder={t('dangerZone.deleteTypePlaceholder')}
+                className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white w-full mb-3 focus:outline-none focus:ring-2 focus:ring-red-500"
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={deleteAccount}
+                  disabled={deleteConfirmText !== 'DELETE'}
+                  className="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer"
+                >
+                  {t('dangerZone.deleteConfirmButton')}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowDeleteConfirm(false)
+                    setDeleteConfirmText('')
+                  }}
+                  className="bg-gray-700 hover:bg-gray-600 text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer"
+                >
+                  {t('dangerZone.cancel')}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </CollapsibleSection>
 
       {/* Integrations Section — hidden for child users and non-feature users */}
@@ -2035,9 +2089,9 @@ function Settings() {
       </CollapsibleSection>
       )}
 
-      {/* AI Prompts — admin only */}
+      {/* AI & Automation — admin only */}
       {user?.is_admin && (
-      <CollapsibleSection id="ai-prompts" title={t('aiPrompts.heading')}>
+      <CollapsibleSection id="ai-automation" title={t('aiAutomation.heading')}>
         <p className="text-sm text-gray-400 mb-4">{t('aiPrompts.description')}</p>
 
         <div className="space-y-6">
@@ -2115,61 +2169,6 @@ function Settings() {
         </CollapsibleSection>
       )}
 
-      {/* Danger Zone */}
-      <CollapsibleSection
-        id="danger-zone"
-        title={t('dangerZone.heading')}
-        className="border border-red-900/50"
-        titleClassName="text-lg font-semibold text-red-400"
-      >
-        {!showDeleteConfirm ? (
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">{t('dangerZone.deleteAccount')}</p>
-              <p className="text-sm text-gray-400">
-                {t('dangerZone.deleteAccountDescription')}
-              </p>
-            </div>
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="bg-red-600 hover:bg-red-700 text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer"
-            >
-              {t('dangerZone.deleteAccount')}
-            </button>
-          </div>
-        ) : (
-          <div>
-            <p className="text-sm text-gray-300 mb-3">
-              {t('dangerZone.deleteIrreversibleBefore')} <span className="font-mono font-bold text-red-400">{t('dangerZone.deleteKeyword')}</span> {t('dangerZone.deleteIrreversibleAfter')}
-            </p>
-            <input
-              type="text"
-              value={deleteConfirmText}
-              onChange={(e) => setDeleteConfirmText(e.target.value)}
-              placeholder={t('dangerZone.deleteTypePlaceholder')}
-              className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white w-full mb-3 focus:outline-none focus:ring-2 focus:ring-red-500"
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={deleteAccount}
-                disabled={deleteConfirmText !== 'DELETE'}
-                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer"
-              >
-                {t('dangerZone.deleteConfirmButton')}
-              </button>
-              <button
-                onClick={() => {
-                  setShowDeleteConfirm(false)
-                  setDeleteConfirmText('')
-                }}
-                className="bg-gray-700 hover:bg-gray-600 text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer"
-              >
-                {t('dangerZone.cancel')}
-              </button>
-            </div>
-          </div>
-        )}
-      </CollapsibleSection>
     </main>
   )
 }

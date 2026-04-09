@@ -195,6 +195,12 @@
     "wordfeudConnectFailed": "เชื่อมต่อบัญชี Wordfeud ไม่สำเร็จ",
     "wordfeudDisconnectFailed": "ยกเลิกการเชื่อมต่อบัญชี Wordfeud ไม่สำเร็จ"
   },
+  "security": {
+    "heading": "ความปลอดภัย"
+  },
+  "aiAutomation": {
+    "heading": "AI และระบบอัตโนมัติ"
+  },
   "aiPrompts": {
     "heading": "AI Prompts",
     "description": "ปรับแต่ง prompt ที่ใช้สำหรับการวิเคราะห์การออกกำลังกายด้วย AI",

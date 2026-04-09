@@ -195,6 +195,12 @@
     "wordfeudConnectFailed": "Failed to connect Wordfeud account",
     "wordfeudDisconnectFailed": "Failed to disconnect Wordfeud account"
   },
+  "security": {
+    "heading": "Security"
+  },
+  "aiAutomation": {
+    "heading": "AI & Automation"
+  },
   "aiPrompts": {
     "heading": "AI Prompts",
     "description": "Customize the prompts used for AI-powered workout analysis",
