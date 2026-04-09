@@ -177,7 +177,8 @@ func UpdateRace(db *sql.DB, id, userID int64, name, date string, distanceM float
 
 // LinkWorkoutToRace sets workouts.race_id to the given race and populates
 // stride_races.result_time from the workout's duration_seconds. Both the
-// workout and race must belong to the same user.
+// workout and race must belong to userID (consistent with other stride helpers
+// that always take a userID for ownership enforcement).
 func LinkWorkoutToRace(db *sql.DB, workoutID, raceID, userID int64) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -196,19 +197,19 @@ func LinkWorkoutToRace(db *sql.DB, workoutID, raceID, userID int64) error {
 
 	// Read the workout's duration to use as the race result time.
 	var durationSeconds int
-	if err := tx.QueryRow(`SELECT duration_seconds FROM workouts WHERE id = ? AND user_id = ?`, workoutID, userID).Scan(&durationSeconds); err != nil {
+	err = tx.QueryRow(`SELECT duration_seconds FROM workouts WHERE id = ? AND user_id = ?`, workoutID, userID).Scan(&durationSeconds)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("workout %d not found for user %d", workoutID, userID)
+	}
+	if err != nil {
 		return fmt.Errorf("get workout duration: %w", err)
 	}
 
-	res, err := tx.Exec(`UPDATE workouts SET race_id = ? WHERE id = ? AND user_id = ?`, raceID, workoutID, userID)
-	if err != nil {
+	if _, err := tx.Exec(`UPDATE workouts SET race_id = ? WHERE id = ? AND user_id = ?`, raceID, workoutID, userID); err != nil {
 		return fmt.Errorf("set workout race_id: %w", err)
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("workout %d not found for user %d", workoutID, userID)
-	}
 
-	res, err = tx.Exec(`UPDATE stride_races SET result_time = ? WHERE id = ? AND user_id = ?`, durationSeconds, raceID, userID)
+	res, err := tx.Exec(`UPDATE stride_races SET result_time = ? WHERE id = ? AND user_id = ?`, durationSeconds, raceID, userID)
 	if err != nil {
 		return fmt.Errorf("set race result_time: %w", err)
 	}
@@ -219,8 +220,10 @@ func LinkWorkoutToRace(db *sql.DB, workoutID, raceID, userID int64) error {
 	return tx.Commit()
 }
 
-// FindMatchingRace queries stride_races for a race matching the given date (±1 day)
-// and distance (within 20%). Returns the best matching race or nil if none found.
+// FindMatchingRace queries stride_races for the single best-matching race for the
+// given date (±1 day) and distance (within 20%), ordered by closest date.
+// Returns nil if no race matches. Only one result is returned (LIMIT 1); callers
+// that need multiple candidates should query directly.
 func FindMatchingRace(db *sql.DB, userID int64, date string, distanceMeters float64) (*Race, error) {
 	parsedDate, err := time.Parse("2006-01-02", date)
 	if err != nil {
