@@ -190,13 +190,13 @@ export default function TrainingDetail() {
   // Fetch linked race details when workout has a race_id.
   useEffect(() => {
     const controller = new AbortController()
-    if (!workout?.race_id) {
-      setLinkedRace(null)
-      return () => controller.abort()
-    }
     async function fetchRace() {
+      if (!workout?.race_id) {
+        setLinkedRace(null)
+        return
+      }
       try {
-        const res = await fetch(`/api/stride/races/${workout!.race_id}`, { credentials: 'include', signal: controller.signal })
+        const res = await fetch(`/api/stride/races/${workout.race_id}`, { credentials: 'include', signal: controller.signal })
         if (controller.signal.aborted) return
         if (!res.ok) {
           setLinkedRace(null)
