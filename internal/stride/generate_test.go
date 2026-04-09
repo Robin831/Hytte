@@ -32,7 +32,8 @@ func extendedTestDB(t *testing.T) *sql.DB {
 			distance_meters  REAL NOT NULL DEFAULT 0,
 			avg_heart_rate   INTEGER NOT NULL DEFAULT 0,
 			sport            TEXT NOT NULL DEFAULT 'running',
-			training_load    REAL
+			training_load    REAL,
+			race_id          INTEGER
 		);
 	`)
 	if err != nil {
