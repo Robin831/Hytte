@@ -23,6 +23,7 @@
     },
     "calendar": {
       "title": "Dagens hendelser",
+      "loading": "Laster hendelser",
       "allDay": "Hele dagen",
       "noEvents": "Ingen hendelser i dag",
       "error": "Kunne ikke laste hendelser",

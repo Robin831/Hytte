@@ -23,6 +23,7 @@
     },
     "calendar": {
       "title": "Today's Events",
+      "loading": "Loading events",
       "allDay": "All day",
       "noEvents": "No events today",
       "error": "Could not load events",

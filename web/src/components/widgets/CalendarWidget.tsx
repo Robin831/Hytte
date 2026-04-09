@@ -10,8 +10,7 @@ function toRFC3339(date: Date): string {
 }
 
 export default function CalendarWidget() {
-  const { t } = useTranslation('dashboard')
-  const { i18n } = useTranslation()
+  const { t, i18n } = useTranslation('dashboard')
   const { user } = useAuth()
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [calendars, setCalendars] = useState<CalendarInfo[]>([])
@@ -32,9 +31,11 @@ export default function CalendarWidget() {
       fetch('/api/calendar/calendars', { credentials: 'include', signal: controller.signal }),
     ])
       .then(async ([eventsRes, calendarsRes]) => {
+        if (controller.signal.aborted) return
         if (!eventsRes.ok || !calendarsRes.ok) throw new Error('Failed to fetch')
         const eventsData = await eventsRes.json()
         const calendarsData = await calendarsRes.json()
+        if (controller.signal.aborted) return
         setEvents(eventsData.events ?? [])
         setCalendars(calendarsData.calendars ?? [])
         setError(null)
@@ -70,6 +71,7 @@ export default function CalendarWidget() {
     <Widget title={t('widgets.calendar.title')}>
       {loading && (
         <div className="space-y-2" role="status" aria-live="polite">
+          <span className="sr-only">{t('widgets.calendar.loading')}</span>
           <div className="h-4 bg-gray-700 rounded animate-pulse w-3/4" />
           <div className="h-4 bg-gray-700 rounded animate-pulse w-1/2" />
           <div className="h-4 bg-gray-700 rounded animate-pulse w-2/3" />
