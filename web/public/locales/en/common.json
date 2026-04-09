@@ -66,6 +66,9 @@
   "api": {
     "label": "API: {{status}}"
   },
+  "home": {
+    "viewDashboard": "View full dashboard"
+  },
   "greeting": {
     "morning": "Good morning!",
     "afternoon": "Good afternoon!",

@@ -1,4 +1,6 @@
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
+import { LayoutDashboard } from 'lucide-react'
 import { useAuth } from '../auth'
 import { formatDate, formatTime } from '../utils/formatDate'
 import { getGreetingKey } from '../utils/greeting'
@@ -70,6 +72,19 @@ export default function HomePage() {
         {hasFeature('work_hours') && <WorkHoursCard />}
         {hasFeature('budget') && <BudgetSnapshotCard />}
       </div>
+
+      {/* Link to full dashboard */}
+      {user && (
+        <div className="mt-6 text-center">
+          <Link
+            to="/dashboard"
+            className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm"
+          >
+            <LayoutDashboard size={16} />
+            {t('home.viewDashboard')}
+          </Link>
+        </div>
+      )}
     </div>
   )
 }
