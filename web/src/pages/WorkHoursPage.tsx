@@ -443,6 +443,27 @@ function DayView({
       .catch(() => {})
   }, [])
 
+  const loadDay = useCallback(async (date: string, signal?: AbortSignal) => {
+    setLoading(true)
+    try {
+      const r = await fetch(`/api/workhours/day?date=${encodeURIComponent(date)}`, { credentials: 'include', signal })
+      if (signal?.aborted || currentDateRef.current !== date) return
+      if (r.ok) {
+        const data: { day: WorkDay | null; summary: DaySummary | null } = await r.json()
+        if (currentDateRef.current === date) setDayData(data)
+      } else {
+        if (currentDateRef.current === date) setDayData({ day: null, summary: null })
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
+      if (currentDateRef.current === date) setDayData({ day: null, summary: null })
+    } finally {
+      if (!signal?.aborted && currentDateRef.current === date) {
+        setLoading(false)
+      }
+    }
+  }, [])
+
   const handleFlexRedeem = useCallback(async () => {
     setRedeemingFlex(true)
     try {
@@ -487,27 +508,6 @@ function DayView({
       })
       .catch(() => {})
   }, [loadFlex])
-
-  const loadDay = useCallback(async (date: string, signal?: AbortSignal) => {
-    setLoading(true)
-    try {
-      const r = await fetch(`/api/workhours/day?date=${encodeURIComponent(date)}`, { credentials: 'include', signal })
-      if (signal?.aborted || currentDateRef.current !== date) return
-      if (r.ok) {
-        const data: { day: WorkDay | null; summary: DaySummary | null } = await r.json()
-        if (currentDateRef.current === date) setDayData(data)
-      } else {
-        if (currentDateRef.current === date) setDayData({ day: null, summary: null })
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
-      if (currentDateRef.current === date) setDayData({ day: null, summary: null })
-    } finally {
-      if (!signal?.aborted && currentDateRef.current === date) {
-        setLoading(false)
-      }
-    }
-  }, [])
 
   const loadLeaveDay = useCallback(async (date: string, signal?: AbortSignal) => {
     try {
