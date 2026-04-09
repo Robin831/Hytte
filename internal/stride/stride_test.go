@@ -694,6 +694,45 @@ func TestLinkWorkoutToRace(t *testing.T) {
 	}
 }
 
+func TestLinkWorkoutToRace_ZeroDuration(t *testing.T) {
+	db := setupTestDB(t)
+
+	race, err := CreateRace(db, 1, "Test 10K", "2026-05-01", 10000, nil, "B", "")
+	if err != nil {
+		t.Fatalf("create race: %v", err)
+	}
+
+	// Insert a workout with duration_seconds = 0 (e.g. a freshly imported FIT file).
+	if _, err := db.Exec(`
+		INSERT INTO workouts (id, user_id, sport, started_at, duration_seconds, distance_meters, fit_file_hash, created_at)
+		VALUES (350, 1, 'running', '2026-05-01T08:00:00Z', 0, 10050, 'hash-zero-dur', '2026-05-01T08:00:00Z')
+	`); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	if err := LinkWorkoutToRace(db, 350, race.ID, 1); err != nil {
+		t.Fatalf("LinkWorkoutToRace: %v", err)
+	}
+
+	// Verify workout is linked.
+	var raceID sql.NullInt64
+	if err := db.QueryRow(`SELECT race_id FROM workouts WHERE id = 350`).Scan(&raceID); err != nil {
+		t.Fatalf("query race_id: %v", err)
+	}
+	if !raceID.Valid || raceID.Int64 != race.ID {
+		t.Errorf("workout race_id = %v, want %d", raceID, race.ID)
+	}
+
+	// result_time should remain NULL — zero duration must not overwrite it.
+	updated, err := GetRaceByID(db, race.ID, 1)
+	if err != nil {
+		t.Fatalf("get race: %v", err)
+	}
+	if updated.ResultTime != nil {
+		t.Errorf("race result_time = %v, want nil (zero duration should not populate result_time)", *updated.ResultTime)
+	}
+}
+
 func TestLinkWorkoutToRace_WrongUser(t *testing.T) {
 	db := setupTestDB(t)
 

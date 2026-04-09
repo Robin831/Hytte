@@ -209,12 +209,16 @@ func LinkWorkoutToRace(db *sql.DB, workoutID, raceID, userID int64) error {
 		return fmt.Errorf("set workout race_id: %w", err)
 	}
 
-	res, err := tx.Exec(`UPDATE stride_races SET result_time = ? WHERE id = ? AND user_id = ?`, durationSeconds, raceID, userID)
-	if err != nil {
-		return fmt.Errorf("set race result_time: %w", err)
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("race %d not found for user %d", raceID, userID)
+	// Only populate result_time when duration is known; a zero duration would
+	// overwrite an existing result with an invalid value.
+	if durationSeconds > 0 {
+		res, err := tx.Exec(`UPDATE stride_races SET result_time = ? WHERE id = ? AND user_id = ?`, durationSeconds, raceID, userID)
+		if err != nil {
+			return fmt.Errorf("set race result_time: %w", err)
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return fmt.Errorf("race %d not found for user %d", raceID, userID)
+		}
 	}
 
 	return tx.Commit()

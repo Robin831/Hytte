@@ -21,7 +21,8 @@ var (
 
 	// OnRaceClassified is called when a workout is classified as a race by Claude.
 	// It is set by the API layer to avoid an import cycle between training and stride.
-	// Returns an error so the caller can log failures rather than silently swallowing them.
+	// It returns an error so RunClaudeAnalysis can log race-matching failures while
+	// treating auto-linking as a best-effort step.
 	OnRaceClassified func(db *sql.DB, workoutID, userID int64, workoutDate string, distanceMeters float64) error
 )
 

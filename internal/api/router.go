@@ -60,6 +60,10 @@ func NewRouter(db *sql.DB) http.Handler {
 			log.Printf("Auto-linked workout %d to race %d (%s)", workoutID, result.RaceID, result.RaceName)
 		case "ambiguous":
 			log.Printf("Ambiguous race match for workout %d: %d candidates found", workoutID, result.Candidates)
+			// Tag the workout so the frontend can surface a confirmation prompt.
+			if tagErr := training.AddAITags(db, workoutID, userID, []string{"ai:race:ambiguous"}); tagErr != nil {
+				log.Printf("Failed to tag ambiguous race match for workout %d: %v", workoutID, tagErr)
+			}
 		}
 		return nil
 	}
