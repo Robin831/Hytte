@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/encryption"
 	"github.com/Robin831/Hytte/internal/hrzones"
 	"github.com/Robin831/Hytte/internal/lactate"
 )
@@ -719,4 +720,465 @@ func writeRacePredictionsSection(sb *strings.Builder, preds *RacePredictions) {
 		fmt.Fprintf(sb, "| %s | %s | %s |\n", p.Distance, p.PredictedTime, p.PacePerKm)
 	}
 	sb.WriteString("\n")
+}
+
+// RaceContext holds enriched race data for AI prompt injection when analyzing
+// a race workout. Built by BuildRaceContext.
+type RaceContext struct {
+	RaceName      string
+	RaceDate      string
+	DistanceM     float64
+	TargetTime    *int // seconds
+	ActualTime    int  // seconds (from workout duration)
+	Priority      string
+	Notes         string
+	PacingProfile string // "positive", "negative", or "even"
+	// RiegelComparisons holds percentage over/under Riegel-predicted time from historical races.
+	RiegelComparisons []RiegelComparison
+	// TrainingPhase from the current Stride plan (e.g. "base", "build", "taper").
+	TrainingPhase string
+	// WeeklyVolume from the most recent complete training week.
+	WeeklyVolumeKm float64
+	// PreviousRaces at similar distances with results.
+	PreviousRaces []PastRace
+}
+
+// RiegelComparison holds a comparison between actual race time and Riegel-predicted time
+// from a reference race.
+type RiegelComparison struct {
+	RefRaceName string
+	RefDistance  float64
+	RefTime     int // seconds
+	PredictedS  float64
+	ActualS     int
+	DeltaPct    float64 // positive = slower than predicted, negative = faster
+}
+
+// PastRace is a previous race result at a similar distance.
+type PastRace struct {
+	Name      string
+	Date      string
+	DistanceM float64
+	TimeS     int
+	PacePerKm string
+}
+
+// isRaceWorkout returns true if the workout is classified as a race via
+// race_id linkage or the ai:type:race tag.
+func isRaceWorkout(w *Workout) bool {
+	if w.RaceID != nil {
+		return true
+	}
+	for _, tag := range w.Tags {
+		if tag == "ai:type:race" {
+			return true
+		}
+	}
+	return false
+}
+
+// BuildRaceContext builds an enriched race context for AI prompt injection.
+// Returns nil if the workout is not classified as a race.
+func BuildRaceContext(db *sql.DB, workout *Workout) *RaceContext {
+	if !isRaceWorkout(workout) {
+		return nil
+	}
+
+	rc := &RaceContext{
+		ActualTime: workout.DurationSeconds,
+		DistanceM:  workout.DistanceMeters,
+	}
+
+	// Fetch the linked race entry if available.
+	if workout.RaceID != nil {
+		race, err := getRaceByID(db, *workout.RaceID, workout.UserID)
+		if err != nil {
+			log.Printf("BuildRaceContext: failed to load race %d: %v", *workout.RaceID, err)
+		} else if race != nil {
+			rc.RaceName = race.name
+			rc.RaceDate = race.date
+			rc.DistanceM = race.distanceM
+			rc.TargetTime = race.targetTime
+			rc.Priority = race.priority
+			rc.Notes = race.notes
+		}
+	}
+
+	// Analyze pacing from laps. classifyPacing handles single-lap or sparse data.
+	rc.PacingProfile = classifyPacing(workout.Laps)
+
+	// Riegel comparisons from historical races.
+	rc.RiegelComparisons = buildRiegelComparisons(db, workout)
+
+	// Training phase from current Stride plan.
+	rc.TrainingPhase = getCurrentTrainingPhase(db, workout.UserID)
+
+	// Weekly volume from most recent complete week.
+	rc.WeeklyVolumeKm = getRecentWeeklyVolume(db, workout.UserID)
+
+	// Previous races at similar distances.
+	rc.PreviousRaces = fetchSimilarRaces(db, workout.UserID, workout.DistanceMeters, workout.ID)
+
+	return rc
+}
+
+// raceRow is a minimal race record for internal use to avoid importing stride.
+type raceRow struct {
+	name       string
+	date       string
+	distanceM  float64
+	targetTime *int
+	priority   string
+	notes      string
+}
+
+// getRaceByID fetches a single race, decrypting name and notes.
+func getRaceByID(db *sql.DB, raceID, userID int64) (*raceRow, error) {
+	var name, date, priority, notes string
+	var distanceM float64
+	var targetTime *int
+	err := db.QueryRow(`
+		SELECT name, date, distance_m, target_time, priority, notes
+		FROM stride_races
+		WHERE id = ? AND user_id = ?
+	`, raceID, userID).Scan(&name, &date, &distanceM, &targetTime, &priority, &notes)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	decName, err := encryption.DecryptField(name)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt race name: %w", err)
+	}
+	decNotes, err := encryption.DecryptField(notes)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt race notes: %w", err)
+	}
+	return &raceRow{
+		name:       decName,
+		date:       date,
+		distanceM:  distanceM,
+		targetTime: targetTime,
+		priority:   priority,
+		notes:      decNotes,
+	}, nil
+}
+
+// classifyPacing analyzes lap split times to determine the pacing strategy.
+// Returns "negative" (getting faster), "positive" (slowing down), or "even".
+func classifyPacing(laps []Lap) string {
+	// Use distance-weighted pace (sec/km) so short/long laps do not skew the result.
+	var validLaps []Lap
+	for _, lap := range laps {
+		if lap.AvgPaceSecPerKm > 0 && lap.DistanceMeters > 100 {
+			validLaps = append(validLaps, lap)
+		}
+	}
+	if len(validLaps) < 2 {
+		return "even"
+	}
+
+	// Compare first half average vs second half average using lap distance as weight.
+	mid := len(validLaps) / 2
+	var firstWeightedSum, firstDistanceSum float64
+	for _, lap := range validLaps[:mid] {
+		firstWeightedSum += lap.AvgPaceSecPerKm * lap.DistanceMeters
+		firstDistanceSum += lap.DistanceMeters
+	}
+	var secondWeightedSum, secondDistanceSum float64
+	for _, lap := range validLaps[mid:] {
+		secondWeightedSum += lap.AvgPaceSecPerKm * lap.DistanceMeters
+		secondDistanceSum += lap.DistanceMeters
+	}
+	if firstDistanceSum == 0 || secondDistanceSum == 0 {
+		return "even"
+	}
+	firstAvg := firstWeightedSum / firstDistanceSum
+	secondAvg := secondWeightedSum / secondDistanceSum
+
+	// >3% difference threshold
+	diff := (secondAvg - firstAvg) / firstAvg
+	if diff > 0.03 {
+		return "positive" // slowing down
+	}
+	if diff < -0.03 {
+		return "negative" // getting faster
+	}
+	return "even"
+}
+
+// riegelCompare returns the percentage difference between actual race time and
+// Riegel-predicted time from a reference effort. Positive = slower than predicted.
+func riegelCompare(actualTimeS int, actualDistM, refTimeS float64, refDistM float64) float64 {
+	predicted := riegelPredict(refTimeS, refDistM, actualDistM)
+	if predicted <= 0 {
+		return 0
+	}
+	return (float64(actualTimeS) - predicted) / predicted * 100
+}
+
+// buildRiegelComparisons compares this race result against historical race results
+// at different distances using the Riegel formula.
+func buildRiegelComparisons(db *sql.DB, workout *Workout) []RiegelComparison {
+	rows, err := db.Query(`
+		SELECT sr.name, sr.distance_m, sr.result_time
+		FROM stride_races sr
+		JOIN workouts w ON w.race_id = sr.id AND w.user_id = sr.user_id
+		WHERE sr.user_id = ?
+		  AND sr.result_time IS NOT NULL
+		  AND sr.result_time > 0
+		  AND w.id != ?
+		ORDER BY w.started_at DESC
+		LIMIT 10
+	`, workout.UserID, workout.ID)
+	if err != nil {
+		log.Printf("BuildRaceContext: riegel comparisons query: %v", err)
+		return nil
+	}
+	defer rows.Close()
+
+	var comps []RiegelComparison
+	for rows.Next() {
+		var encName string
+		var distM float64
+		var resultTime int
+		if err := rows.Scan(&encName, &distM, &resultTime); err != nil {
+			log.Printf("BuildRaceContext: scan riegel row: %v", err)
+			continue
+		}
+		name, err := encryption.DecryptField(encName)
+		if err != nil {
+			log.Printf("BuildRaceContext: decrypt race name: %v", err)
+			name = "Unknown race"
+		}
+		// Skip same-distance races (Riegel isn't meaningful for same distance).
+		distRatio := distM / workout.DistanceMeters
+		if distRatio > 0.9 && distRatio < 1.1 {
+			continue
+		}
+		delta := riegelCompare(workout.DurationSeconds, workout.DistanceMeters, float64(resultTime), distM)
+		comps = append(comps, RiegelComparison{
+			RefRaceName: name,
+			RefDistance:  distM,
+			RefTime:     resultTime,
+			PredictedS:  riegelPredict(float64(resultTime), distM, workout.DistanceMeters),
+			ActualS:     workout.DurationSeconds,
+			DeltaPct:    delta,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("BuildRaceContext: riegel comparisons iteration: %v", err)
+	}
+	return comps
+}
+
+// getCurrentTrainingPhase returns the phase from the current Stride plan, or empty string.
+func getCurrentTrainingPhase(db *sql.DB, userID int64) string {
+	today := time.Now().UTC().Format("2006-01-02")
+	var phase string
+	err := db.QueryRow(`
+		SELECT phase FROM stride_plans
+		WHERE user_id = ? AND week_start <= ? AND week_end >= ?
+		ORDER BY week_start DESC LIMIT 1
+	`, userID, today, today).Scan(&phase)
+	if err != nil {
+		return ""
+	}
+	return phase
+}
+
+// getRecentWeeklyVolume returns the total distance in km from the most recent
+// complete training week.
+func getRecentWeeklyVolume(db *sql.DB, userID int64) float64 {
+	// Find Monday of the current week to exclude it.
+	now := time.Now().UTC()
+	weekday := int(now.Weekday())
+	daysBack := (weekday - 1 + 7) % 7
+	currentMonday := now.AddDate(0, 0, -daysBack)
+	prevMonday := currentMonday.AddDate(0, 0, -7)
+	prevSunday := currentMonday.AddDate(0, 0, -1)
+
+	var totalDist float64
+	err := db.QueryRow(`
+		SELECT COALESCE(SUM(distance_meters), 0)
+		FROM workouts
+		WHERE user_id = ?
+		  AND date(started_at) >= ?
+		  AND date(started_at) <= ?
+	`, userID, prevMonday.Format("2006-01-02"), prevSunday.Format("2006-01-02")).Scan(&totalDist)
+	if err != nil {
+		return 0
+	}
+	return totalDist / 1000
+}
+
+// fetchSimilarRaces returns past races at similar distances (within ±30%) that
+// have a result time, excluding the current workout.
+func fetchSimilarRaces(db *sql.DB, userID int64, distanceM float64, excludeWorkoutID int64) []PastRace {
+	minDist := distanceM * 0.7
+	maxDist := distanceM * 1.3
+
+	rows, err := db.Query(`
+		SELECT sr.name, sr.date, sr.distance_m, sr.result_time
+		FROM stride_races sr
+		JOIN workouts w ON w.race_id = sr.id AND w.user_id = sr.user_id
+		WHERE sr.user_id = ?
+		  AND sr.result_time IS NOT NULL
+		  AND sr.result_time > 0
+		  AND sr.distance_m >= ? AND sr.distance_m <= ?
+		  AND w.id != ?
+		ORDER BY sr.date DESC
+		LIMIT 5
+	`, userID, minDist, maxDist, excludeWorkoutID)
+	if err != nil {
+		log.Printf("BuildRaceContext: fetch similar races: %v", err)
+		return nil
+	}
+	defer rows.Close()
+
+	var races []PastRace
+	for rows.Next() {
+		var encName, date string
+		var distM float64
+		var timeS int
+		if err := rows.Scan(&encName, &date, &distM, &timeS); err != nil {
+			log.Printf("BuildRaceContext: scan similar race: %v", err)
+			continue
+		}
+		name, err := encryption.DecryptField(encName)
+		if err != nil {
+			name = "Unknown race"
+		}
+		pacePerKm := float64(timeS) / (distM / 1000)
+		races = append(races, PastRace{
+			Name:      name,
+			Date:      date,
+			DistanceM: distM,
+			TimeS:     timeS,
+			PacePerKm: formatPacePerKm(pacePerKm),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("BuildRaceContext: similar races iteration: %v", err)
+	}
+	return races
+}
+
+// FormatRacePromptSection formats a RaceContext into a prompt section for Claude.
+func FormatRacePromptSection(rc *RaceContext) string {
+	if rc == nil {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n--- RACE ANALYSIS CONTEXT ---\n")
+	sb.WriteString("This workout is a RACE. Provide race-specific analysis.\n\n")
+
+	// Race details
+	if rc.RaceName != "" {
+		fmt.Fprintf(&sb, "Race: %s\n", rc.RaceName)
+	}
+	if rc.RaceDate != "" {
+		fmt.Fprintf(&sb, "Race Date: %s\n", rc.RaceDate)
+	}
+	fmt.Fprintf(&sb, "Distance: %.2f km\n", rc.DistanceM/1000)
+	if strings.TrimSpace(rc.Priority) != "" {
+		fmt.Fprintf(&sb, "Priority: %s-race\n", rc.Priority)
+	}
+
+	// Target vs actual
+	if rc.TargetTime != nil && *rc.TargetTime > 0 {
+		target := *rc.TargetTime
+		fmt.Fprintf(&sb, "Target Time: %s\n", formatDurationSecs(target))
+		fmt.Fprintf(&sb, "Actual Time: %s\n", formatDurationSecs(rc.ActualTime))
+		diffSec := rc.ActualTime - target
+		diffPct := float64(diffSec) / float64(target) * 100
+		if diffSec > 0 {
+			fmt.Fprintf(&sb, "Result: %s SLOWER than target (+%.1f%%)\n", formatDurationSecs(diffSec), diffPct)
+		} else if diffSec < 0 {
+			fmt.Fprintf(&sb, "Result: %s FASTER than target (%.1f%%)\n", formatDurationSecs(-diffSec), math.Abs(diffPct))
+		} else {
+			sb.WriteString("Result: Exactly on target\n")
+		}
+	}
+
+	// Pacing analysis
+	if rc.PacingProfile != "" {
+		var pacingDesc string
+		switch rc.PacingProfile {
+		case "negative":
+			pacingDesc = "Negative split (got faster) — strong finish, good pacing discipline"
+		case "positive":
+			pacingDesc = "Positive split (slowed down) — may indicate too-aggressive start or fading"
+		case "even":
+			pacingDesc = "Even pacing — consistent effort throughout"
+		}
+		fmt.Fprintf(&sb, "Pacing: %s\n", pacingDesc)
+	}
+
+	// Riegel comparisons
+	if len(rc.RiegelComparisons) > 0 {
+		sb.WriteString("\nRiegel Formula Comparison (predicted vs actual):\n")
+		sb.WriteString("| Reference Race | Ref Distance | Predicted | Actual | Delta |\n")
+		sb.WriteString("|----------------|-------------|-----------|--------|-------|\n")
+		for _, c := range rc.RiegelComparisons {
+			sign := "+"
+			if c.DeltaPct < 0 {
+				sign = ""
+			}
+			fmt.Fprintf(&sb, "| %s | %.1f km | %s | %s | %s%.1f%% |\n",
+				c.RefRaceName, c.RefDistance/1000,
+				formatDurationSecs(int(math.Round(c.PredictedS))),
+				formatDurationSecs(c.ActualS),
+				sign, c.DeltaPct)
+		}
+		sb.WriteString("Negative delta = outperformed prediction (good). Positive = underperformed.\n")
+	}
+
+	// Training block context
+	if rc.TrainingPhase != "" || rc.WeeklyVolumeKm > 0 {
+		sb.WriteString("\nTraining Block Context:\n")
+		if rc.TrainingPhase != "" {
+			fmt.Fprintf(&sb, "- Current Phase: %s\n", rc.TrainingPhase)
+			if strings.Contains(strings.ToLower(rc.TrainingPhase), "taper") {
+				sb.WriteString("  (Athlete was in taper — assess if freshness benefited performance)\n")
+			}
+		}
+		if rc.WeeklyVolumeKm > 0 {
+			fmt.Fprintf(&sb, "- Recent Weekly Volume: %.1f km\n", rc.WeeklyVolumeKm)
+		}
+	}
+
+	if rc.Notes != "" {
+		fmt.Fprintf(&sb, "\nAthlete's Race Notes: %s\n", rc.Notes)
+	}
+
+	// Previous races at similar distance
+	if len(rc.PreviousRaces) > 0 {
+		sb.WriteString("\nPrevious Races at Similar Distance:\n")
+		sb.WriteString("| Race | Date | Distance | Time | Pace/km |\n")
+		sb.WriteString("|------|------|----------|------|----------|\n")
+		for _, r := range rc.PreviousRaces {
+			fmt.Fprintf(&sb, "| %s | %s | %.1f km | %s | %s |\n",
+				r.Name, r.Date, r.DistanceM/1000,
+				formatDurationSecs(r.TimeS), r.PacePerKm)
+		}
+	}
+
+	// Instructions for Claude
+	sb.WriteString("\n--- RACE ANALYSIS INSTRUCTIONS ---\n")
+	sb.WriteString(`In addition to the standard analysis fields, your response MUST address these four areas in the relevant fields:
+
+1. **Race Execution Analysis** (in pacing_analysis): Evaluate the pacing strategy, split analysis, and how well the race was executed tactically. Was the start too aggressive? Did the athlete fade or finish strong?
+
+2. **Goal Assessment** (in effort_summary): Compare actual vs target time. Was the goal realistic? What factors contributed to meeting or missing the target?
+
+3. **Training Effectiveness** (in threshold_context): Based on the training block phase, weekly volume, and Riegel comparisons, assess whether the training prepared the athlete well for this race distance and effort.
+
+4. **Next-Race Recommendations** (in suggestions): Provide specific, actionable recommendations for the next race — pacing adjustments, training focus areas, race-day strategy improvements.
+`)
+
+	return sb.String()
 }
