@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
-import { formatNumber, formatDate } from '../../utils/formatDate'
+import { formatNumber } from '../../utils/formatDate'
 
 interface RegningData {
   your_remaining: number
@@ -19,7 +19,7 @@ interface Account {
 }
 
 function formatCurrency(amount: number): string {
-  return formatNumber(Math.abs(amount), {
+  return formatNumber(amount, {
     style: 'currency',
     currency: 'NOK',
     minimumFractionDigits: 0,
@@ -40,6 +40,9 @@ export default function BudgetSnapshotCard() {
     const controller = new AbortController()
     const signal = controller.signal
 
+    setError(false)
+    setLoading(true)
+
     Promise.all([
       fetch('/api/budget/regning', { credentials: 'include', signal }),
       fetch('/api/budget/accounts', { credentials: 'include', signal }),
@@ -48,10 +51,12 @@ export default function BudgetSnapshotCard() {
         if (signal.aborted) return
         if (!regningRes.ok) throw new Error('Failed to fetch')
         const regningData = await regningRes.json()
+        if (signal.aborted) return
         setRegning(regningData)
 
         if (accountsRes.ok) {
           const accountsData = await accountsRes.json()
+          if (signal.aborted) return
           const cards = (accountsData.accounts ?? []).filter(
             (a: Account) => a.type === 'credit'
           )
@@ -61,7 +66,7 @@ export default function BudgetSnapshotCard() {
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        setError(true)
+        if (!signal.aborted) setError(true)
       })
       .finally(() => {
         if (!signal.aborted) setLoading(false)
@@ -70,12 +75,14 @@ export default function BudgetSnapshotCard() {
     return () => { controller.abort() }
   }, [user])
 
-  const daysUntilPayday = regning?.your_income_due
-    ? Math.max(0, Math.ceil(
-        (new Date(regning.your_income_due + 'T00:00:00').getTime() - new Date().setHours(0, 0, 0, 0)) /
-          (1000 * 60 * 60 * 24)
-      ))
-    : null
+  const daysUntilPayday = (() => {
+    if (!regning?.your_income_due) return null
+    const parts = regning.your_income_due.split('-').map(Number)
+    const due = new Date(parts[0], parts[1] - 1, parts[2])
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return Math.max(0, Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)))
+  })()
 
   return (
     <div className="bg-gray-800 rounded-xl p-5">
@@ -107,7 +114,7 @@ export default function BudgetSnapshotCard() {
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-400">{t('budget.remaining')}</span>
             <span className={`text-sm font-semibold tabular-nums ${regning.your_remaining >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {regning.your_remaining < 0 && '−'}{formatCurrency(regning.your_remaining)}
+              {formatCurrency(regning.your_remaining)}
             </span>
           </div>
 
@@ -136,7 +143,7 @@ export default function BudgetSnapshotCard() {
             <div key={card.id} className="flex items-center justify-between border-t border-gray-700 pt-2">
               <span className="text-sm text-gray-400 truncate mr-2">{card.name}</span>
               <span className={`text-sm tabular-nums ${card.balance < 0 ? 'text-red-400' : 'text-gray-300'}`}>
-                {card.balance < 0 && '−'}{formatCurrency(card.balance)}
+                {formatCurrency(card.balance)}
               </span>
             </div>
           ))}
