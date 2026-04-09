@@ -63,6 +63,16 @@
     "loginPrompt": "Logg inn for \u00e5 se ditt personlige dashbord",
     "signIn": "Logg inn med Google"
   },
+  "budget": {
+    "title": "Budsjett",
+    "loading": "Laster budsjett…",
+    "remaining": "Igjen",
+    "bills": "Regninger",
+    "payday": "Lønningsdag",
+    "paydayToday": "I dag",
+    "paydayDays_one": "{{count}} dag",
+    "paydayDays_other": "{{count}} dager"
+  },
   "moon": {
     "loading": "Laster m\u00e5ne…",
     "phase": {

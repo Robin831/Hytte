@@ -63,6 +63,16 @@
     "loginPrompt": "Sign in to see your personalized dashboard",
     "signIn": "Sign in with Google"
   },
+  "budget": {
+    "title": "Budget",
+    "loading": "Loading budget…",
+    "remaining": "Remaining",
+    "bills": "Bills",
+    "payday": "Payday",
+    "paydayToday": "Today",
+    "paydayDays_one": "{{count}} day",
+    "paydayDays_other": "{{count}} days"
+  },
   "moon": {
     "loading": "Loading moon…",
     "phase": {
