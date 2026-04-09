@@ -2392,6 +2392,42 @@ func ForceSmithHandler(db *DB) http.HandlerFunc {
 	}
 }
 
+// WardenRerunHandler re-runs the warden review without restarting the smith.
+// Sends a "warden_rerun" IPC command to the forge daemon socket.
+func WardenRerunHandler(db *DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		beadID := chi.URLParam(r, "id")
+		if beadID == "" {
+			writeError(w, http.StatusBadRequest, "bead ID required")
+			return
+		}
+		if !validBeadID.MatchString(beadID) {
+			writeError(w, http.StatusBadRequest, "invalid bead ID")
+			return
+		}
+		if db == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
+			return
+		}
+		retry, err := db.RetryByBeadID(beadID)
+		if err != nil {
+			log.Printf("forge: warden-rerun lookup %s: %v", beadID, err)
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "bead not found in retry list")
+			} else {
+				writeError(w, http.StatusInternalServerError, "failed to look up bead retry state")
+			}
+			return
+		}
+		if err := sendIPCCommand("warden_rerun", wardenRerunPayload{BeadID: beadID, Anvil: retry.Anvil}); err != nil {
+			log.Printf("forge: warden_rerun %s failed: %v", beadID, err)
+			writeError(w, http.StatusInternalServerError, "failed to rerun warden")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
 // RunNowHandler immediately triggers a force-smith run for a bead that is
 // in the ready queue (does not require the bead to have a retry entry).
 func RunNowHandler(db *DB) http.HandlerFunc {

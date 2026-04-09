@@ -6,6 +6,7 @@ import {
   CheckCircle,
   XCircle,
   Hammer,
+  ShieldCheck,
   ExternalLink,
 } from 'lucide-react'
 import { Dialog, DialogHeader, DialogBody } from '../ui/dialog'
@@ -53,6 +54,7 @@ function actionIcon(action: NeedsAttentionAction) {
     case 'approve': return <CheckCircle size={14} />
     case 'dismiss': return <XCircle size={14} />
     case 'forceSmith': return <Hammer size={14} />
+    case 'wardenRerun': return <ShieldCheck size={14} />
   }
 }
 
@@ -66,6 +68,8 @@ function actionStyle(action: NeedsAttentionAction): string {
       return 'bg-red-600/20 text-red-300 border-red-600/30 hover:bg-red-600/30'
     case 'forceSmith':
       return 'bg-purple-600/20 text-purple-300 border-purple-600/30 hover:bg-purple-600/30'
+    case 'wardenRerun':
+      return 'bg-cyan-600/20 text-cyan-300 border-cyan-600/30 hover:bg-cyan-600/30'
   }
 }
 
@@ -75,6 +79,7 @@ function actionLabel(action: NeedsAttentionAction, t: TFunction<'forge'>): strin
     case 'approve': return t('attention.approve')
     case 'dismiss': return t('attention.dismiss')
     case 'forceSmith': return t('attention.forceSmith')
+    case 'wardenRerun': return t('attention.wardenRerun')
   }
 }
 
@@ -84,6 +89,7 @@ function confirmTitle(action: NeedsAttentionAction, t: TFunction<'forge'>): stri
     case 'approve': return t('attention.approveConfirmTitle')
     case 'dismiss': return t('attention.dismissConfirmTitle')
     case 'forceSmith': return t('attention.forceSmithConfirmTitle')
+    case 'wardenRerun': return t('attention.wardenRerunConfirmTitle')
   }
 }
 
@@ -93,6 +99,7 @@ function confirmMessage(action: NeedsAttentionAction, beadId: string, t: TFuncti
     case 'approve': return t('attention.approveConfirmMessage', { id: beadId })
     case 'dismiss': return t('attention.dismissConfirmMessage', { id: beadId })
     case 'forceSmith': return t('attention.forceSmithConfirmMessage', { id: beadId })
+    case 'wardenRerun': return t('attention.wardenRerunConfirmMessage', { id: beadId })
   }
 }
 

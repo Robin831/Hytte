@@ -53,6 +53,12 @@ type forceSmithPayload struct {
 	UserNote string `json:"user_note"`
 }
 
+// wardenRerunPayload is the payload for a "warden_rerun" IPC command.
+type wardenRerunPayload struct {
+	BeadID string `json:"bead_id"`
+	Anvil  string `json:"anvil"`
+}
+
 // sendIPCCommand sends a structured JSON command to the forge daemon socket.
 // Like signalDaemon, this is fire-and-forget — it does not wait for a response
 // to avoid the timeout issues described in Hytte-e535.
