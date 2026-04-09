@@ -852,8 +852,12 @@ func TestSumFlexRedemptions(t *testing.T) {
 func TestGetFlexRedemptions_FiltersByFromDate(t *testing.T) {
 	db := setupTestDB(t)
 
-	CreateFlexRedemption(db, 1, "2026-03-01", 30)
-	CreateFlexRedemption(db, 1, "2026-04-01", 30)
+	if _, err := CreateFlexRedemption(db, 1, "2026-03-01", 30); err != nil {
+		t.Fatalf("create first redemption: %v", err)
+	}
+	if _, err := CreateFlexRedemption(db, 1, "2026-04-01", 30); err != nil {
+		t.Fatalf("create second redemption: %v", err)
+	}
 
 	redemptions, err := GetFlexRedemptions(db, 1, "2026-04-01")
 	if err != nil {

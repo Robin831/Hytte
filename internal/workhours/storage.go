@@ -842,6 +842,22 @@ func SumFlexRedemptions(db *sql.DB, userID int64, fromDate string) (int, error) 
 	return int(total.Int64), nil
 }
 
+// SumFlexRedemptionsForDate returns the total redeemed minutes for a user on a specific date.
+func SumFlexRedemptionsForDate(db *sql.DB, userID int64, date string) (int, error) {
+	var total sql.NullInt64
+	err := db.QueryRow(
+		"SELECT SUM(minutes) FROM work_flex_redemptions WHERE user_id = ? AND date = ?",
+		userID, date,
+	).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("sum flex redemptions for date: %w", err)
+	}
+	if !total.Valid {
+		return 0, nil
+	}
+	return int(total.Int64), nil
+}
+
 // verifyDayOwnership returns an error if dayID does not belong to userID.
 func verifyDayOwnership(db *sql.DB, dayID, userID int64) error {
 	var count int

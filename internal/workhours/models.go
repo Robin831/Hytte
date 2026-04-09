@@ -53,6 +53,7 @@ type DaySummary struct {
 	ReportedMinutes  int     `json:"reported_minutes"`
 	ReportedHours    float64 `json:"reported_hours"`
 	RemainderMinutes int     `json:"remainder_minutes"` // goes to flex pool
+	RedeemedMinutes  int     `json:"redeemed_minutes"`  // flex redeemed on this day
 	StandardMinutes  int     `json:"standard_minutes"`
 	BalanceMinutes   int     `json:"balance_minutes"` // reported - standard
 }

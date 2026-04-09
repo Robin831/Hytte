@@ -930,7 +930,7 @@ func createSchema(db *sql.DB) error {
 		created_at TEXT NOT NULL DEFAULT ''
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_work_flex_redemptions_user ON work_flex_redemptions(user_id);
+	CREATE INDEX IF NOT EXISTS idx_work_flex_redemptions_user_date ON work_flex_redemptions(user_id, date);
 
 	-- AI prompt templates: editable defaults used by Claude analysis features (Hytte-434x).
 	-- prompt_key is the logical identifier ('analysis', 'comparison', 'training_load').

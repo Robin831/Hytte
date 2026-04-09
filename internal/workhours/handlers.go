@@ -91,6 +91,20 @@ func DayGetHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Credit any flex redemptions made for this specific date into reported minutes.
+		redeemed, err := SumFlexRedemptionsForDate(db, user.ID, date)
+		if err != nil {
+			log.Printf("workhours: load day redemptions: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load redemptions"})
+			return
+		}
+		if redeemed > 0 {
+			summary.RedeemedMinutes = redeemed
+			summary.ReportedMinutes += redeemed
+			summary.ReportedHours = float64(summary.ReportedMinutes) / 60.0
+			summary.BalanceMinutes += redeemed
+		}
+
 		writeJSON(w, http.StatusOK, map[string]any{
 			"day":     day,
 			"summary": summary,
@@ -687,9 +701,22 @@ func FlexResetHandler(db *sql.DB) http.HandlerFunc {
 
 // FlexRedeemHandler handles POST /api/workhours/flex/redeem.
 // Redeems one rounding interval of flex time, deducting it from the pool.
+// Accepts an optional JSON body: {"date": "YYYY-MM-DD"} to specify which day
+// receives the redeemed time. Defaults to the server's current date.
 func FlexRedeemHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
+
+		// Parse optional date from request body.
+		targetDate := time.Now().Format("2006-01-02")
+		if r.Body != nil {
+			var body struct {
+				Date string `json:"date"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err == nil && isValidDate(body.Date) {
+				targetDate = body.Date
+			}
+		}
 
 		settings, err := loadSettings(db, user.ID)
 		if err != nil {
@@ -703,7 +730,7 @@ func FlexRedeemHandler(db *sql.DB) http.HandlerFunc {
 			rounding = 30
 		}
 
-		// Compute current flex pool.
+		// Compute current flex pool up to and including targetDate.
 		prefs, err := auth.GetPreferences(db, user.ID)
 		if err != nil {
 			log.Printf("workhours: flex redeem load prefs: %v", err)
@@ -717,9 +744,8 @@ func FlexRedeemHandler(db *sql.DB) http.HandlerFunc {
 				fromDate = t.Format("2006-01-02")
 			}
 		}
-		toDate := time.Now().UTC().Format("2006-01-02")
 
-		days, err := ListDaysInRange(db, user.ID, fromDate, toDate)
+		days, err := ListDaysInRange(db, user.ID, fromDate, targetDate)
 		if err != nil {
 			log.Printf("workhours: flex redeem load days: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load days"})
@@ -735,12 +761,28 @@ func FlexRedeemHandler(db *sql.DB) http.HandlerFunc {
 
 		flex := CalculateFlexPool(summaries, settings.RoundingMinutes)
 
-		redeemed, err := SumFlexRedemptions(db, user.ID, fromDate)
+		// Use a serializable transaction to atomically check balance and insert,
+		// preventing double-spend from concurrent requests.
+		tx, err := db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelSerializable})
 		if err != nil {
-			log.Printf("workhours: flex redeem sum redemptions: %v", err)
+			log.Printf("workhours: flex redeem begin tx: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to begin transaction"})
+			return
+		}
+		defer tx.Rollback()
+
+		// Re-check balance inside the transaction.
+		var totalRedeemed sql.NullInt64
+		err = tx.QueryRowContext(r.Context(),
+			"SELECT SUM(minutes) FROM work_flex_redemptions WHERE user_id = ? AND date >= ?",
+			user.ID, fromDate,
+		).Scan(&totalRedeemed)
+		if err != nil {
+			log.Printf("workhours: flex redeem sum in tx: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load redemptions"})
 			return
 		}
+		redeemed := int(totalRedeemed.Int64)
 
 		available := flex.TotalMinutes - redeemed
 		if available < rounding {
@@ -748,11 +790,34 @@ func FlexRedeemHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		redemption, err := CreateFlexRedemption(db, user.ID, toDate, rounding)
+		now := time.Now().UTC().Format(time.RFC3339)
+		res, err := tx.ExecContext(r.Context(),
+			"INSERT INTO work_flex_redemptions (user_id, date, minutes, created_at) VALUES (?, ?, ?, ?)",
+			user.ID, targetDate, rounding, now,
+		)
 		if err != nil {
-			log.Printf("workhours: flex redeem create: %v", err)
+			log.Printf("workhours: flex redeem insert: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create redemption"})
 			return
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			log.Printf("workhours: flex redeem last insert id: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create redemption"})
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			log.Printf("workhours: flex redeem commit: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to commit redemption"})
+			return
+		}
+
+		redemption := &FlexRedemption{
+			ID:        id,
+			UserID:    user.ID,
+			Date:      targetDate,
+			Minutes:   rounding,
+			CreatedAt: now,
 		}
 
 		// Return updated pool.
