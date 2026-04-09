@@ -3,10 +3,12 @@ import { useAuth } from '../auth'
 import { formatDate, formatTime } from '../utils/formatDate'
 import { getGreetingKey } from '../utils/greeting'
 import { useNow } from '../hooks/useNow'
+import TodayScheduleCard from '../components/home/TodayScheduleCard'
+import WeatherCard from '../components/home/WeatherCard'
 
 export default function HomePage() {
   const { t } = useTranslation('common')
-  const { user } = useAuth()
+  const { user, hasFeature } = useAuth()
   const now = useNow()
 
   const firstName = user?.name.split(' ')[0] ?? ''
@@ -55,8 +57,10 @@ export default function HomePage() {
         <p className="text-gray-400 text-lg">{dateStr}</p>
       </header>
 
-      {/* Two-column responsive grid for future briefing cards */}
+      {/* Today's briefing cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <WeatherCard />
+        {hasFeature('calendar') && <TodayScheduleCard />}
       </div>
     </div>
   )
