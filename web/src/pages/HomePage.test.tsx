@@ -27,6 +27,7 @@ vi.mock('react-i18next', () => ({
 vi.mock('../utils/formatDate', () => ({
   formatDate: () => 'Wednesday, April 9, 2026',
   formatTime: () => '08:00:00',
+  formatNumber: (n: number) => String(n),
 }))
 
 // ── useNow mock ───────────────────────────────────────────────────────────────
@@ -67,6 +68,10 @@ vi.mock('../components/home/StridePlanCard', () => ({
 
 vi.mock('../components/home/WorkHoursCard', () => ({
   default: () => <div data-testid="work-hours-card" />,
+}))
+
+vi.mock('../components/home/BudgetSnapshotCard', () => ({
+  default: () => <div data-testid="budget-snapshot-card" />,
 }))
 
 function setAuth(user: MockUser | null, hasFeature: (f: string) => boolean = () => false) {

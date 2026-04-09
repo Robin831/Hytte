@@ -47,12 +47,12 @@ export default function BudgetSnapshotCard() {
       .then(async ([regningRes, accountsRes]) => {
         if (signal.aborted) return
         if (!regningRes.ok) throw new Error('Failed to fetch')
-        const regningData = await regningRes.json()
+        const regningData = await regningRes.json() as RegningData
         if (signal.aborted) return
         setRegning(regningData)
 
         if (accountsRes.ok) {
-          const accountsData = await accountsRes.json()
+          const accountsData = await accountsRes.json() as { accounts?: Account[] }
           if (signal.aborted) return
           const cards = (accountsData.accounts ?? []).filter(
             (a: Account) => a.type === 'credit'
@@ -75,10 +75,11 @@ export default function BudgetSnapshotCard() {
   const daysUntilPayday = (() => {
     if (!regning?.your_income_due) return null
     const parts = regning.your_income_due.split('-').map(Number)
-    const due = new Date(parts[0], parts[1] - 1, parts[2])
+    const dueUtc = Date.UTC(parts[0], parts[1] - 1, parts[2])
     const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    return Math.max(0, Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)))
+    const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())
+    const millisecondsPerDay = 1000 * 60 * 60 * 24
+    return Math.max(0, Math.ceil((dueUtc - todayUtc) / millisecondsPerDay))
   })()
 
   return (
