@@ -9,9 +9,16 @@
     "failedToLoad": "ไม่สามารถโหลดรายการซื้อของ",
     "failedToAdd": "ไม่สามารถเพิ่มรายการ",
     "failedToUpdate": "ไม่สามารถอัปเดตรายการ",
-    "failedToClear": "ไม่สามารถล้างรายการที่เสร็จแล้ว"
+    "failedToClear": "ไม่สามารถล้างรายการที่เสร็จแล้ว",
+    "failedToTranslate": "ไม่สามารถแปลเสียงพูด",
+    "failedToStartRecording": "ไม่สามารถเริ่มบันทึกเสียง"
   },
   "checkedSection": "เสร็จแล้ว",
+  "translating": "กำลังแปลเสียงพูด...",
+  "voice": {
+    "start": "เริ่มพูด",
+    "stop": "หยุดบันทึก"
+  },
   "item": {
     "original": "ต้นฉบับ: {{text}}"
   }

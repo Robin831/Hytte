@@ -18,6 +18,7 @@ type GroceryItem struct {
 // AddItemRequest is the JSON body for creating a new grocery item.
 type AddItemRequest struct {
 	Content        string `json:"content"`
+	OriginalText   string `json:"original_text"`
 	SourceLanguage string `json:"source_language"`
 }
 

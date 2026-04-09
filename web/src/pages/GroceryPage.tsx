@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, Check, X } from 'lucide-react'
+import { Plus, Trash2, Check, X, Mic, MicOff } from 'lucide-react'
 import { useAuth } from '../auth'
 
 interface GroceryItem {
@@ -15,6 +15,20 @@ interface GroceryItem {
   created_at: string
 }
 
+interface TranslatedItem {
+  item: string
+  original: string
+  language: string
+}
+
+type SpeechRecognitionType = typeof window extends { SpeechRecognition: infer T } ? T : unknown
+
+function getSpeechRecognitionCtor(): (new () => SpeechRecognitionType) | undefined {
+  if (typeof window === 'undefined') return undefined
+  const w = window as unknown as Record<string, unknown>
+  return (w.SpeechRecognition ?? w.webkitSpeechRecognition) as (new () => SpeechRecognitionType) | undefined
+}
+
 export default function GroceryPage() {
   const { t } = useTranslation(['grocery', 'common'])
   const { user } = useAuth()
@@ -23,7 +37,10 @@ export default function GroceryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [adding, setAdding] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [isTranslating, setIsTranslating] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const recognitionRef = useRef<SpeechRecognitionType | null>(null)
 
   const fetchItems = useCallback(async (signal?: AbortSignal) => {
     const res = await fetch('/api/grocery/items', { credentials: 'include', signal })
@@ -66,6 +83,17 @@ export default function GroceryPage() {
     return () => { clearInterval(intervalId); controller.abort() }
   }, [user, fetchItems])
 
+  // Unmount cleanup: abort any in-flight translation and stop any active recognition
+  useEffect(() => {
+    return () => {
+      translateControllerRef.current?.abort()
+      translateControllerRef.current = null
+      const recognition = recognitionRef.current as { stop?: () => void } | null
+      recognition?.stop?.()
+      recognitionRef.current = null
+    }
+  }, [])
+
   const handleAdd = async () => {
     const text = newItem.trim()
     if (!text || adding) return
@@ -87,6 +115,118 @@ export default function GroceryPage() {
       setError(t('errors.failedToAdd'))
     } finally {
       setAdding(false)
+    }
+  }
+
+  const addTranslatedItems = async (translatedItems: TranslatedItem[]) => {
+    const results = await Promise.allSettled(
+      translatedItems.map(ti =>
+        fetch('/api/grocery/items', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: ti.item,
+            original_text: ti.original,
+            source_language: ti.language,
+          }),
+        }).then(res => {
+          if (!res.ok) throw new Error('add failed')
+          return res.json()
+        })
+      )
+    )
+    const failed = results.some(r => r.status === 'rejected')
+    if (failed) setError(t('errors.failedToAdd'))
+    // Refetch to get authoritative ordering
+    try {
+      const fetched = await fetchItems()
+      setItems(fetched)
+    } catch {
+      // If refetch fails, add successful items optimistically
+      const added = results
+        .filter((r): r is PromiseFulfilledResult<{ item: GroceryItem }> => r.status === 'fulfilled')
+        .map(r => r.value.item)
+      if (added.length > 0) {
+        setItems(prev => [...prev.filter(i => !i.checked), ...added, ...prev.filter(i => i.checked)])
+      }
+    }
+  }
+
+  const translateControllerRef = useRef<AbortController | null>(null)
+
+  const handleVoiceInput = async (transcript: string) => {
+    translateControllerRef.current?.abort()
+    const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/immutability
+    translateControllerRef.current = controller
+    setIsTranslating(true)
+    setError('')
+    try {
+      const res = await fetch('/api/grocery/translate', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: transcript }),
+        signal: controller.signal,
+      })
+      if (!res.ok) throw new Error('translate failed')
+      const data = await res.json()
+      await addTranslatedItems(data.items as TranslatedItem[])
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setError(t('errors.failedToTranslate'))
+    } finally {
+      if (translateControllerRef.current === controller) {
+        setIsTranslating(false)
+        // eslint-disable-next-line react-hooks/immutability
+        translateControllerRef.current = null
+      }
+    }
+  }
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      const recognition = recognitionRef.current as { stop?: () => void } | null
+      recognition?.stop?.()
+      setIsRecording(false)
+      return
+    }
+
+    const Ctor = getSpeechRecognitionCtor()
+    if (!Ctor) return
+
+    const recognition = new Ctor() as Record<string, unknown>
+    recognition.continuous = false
+    recognition.interimResults = false
+
+    recognition.onresult = (event: { results: { transcript: string }[][] }) => {
+      const transcript = event.results[0][0].transcript
+      setIsRecording(false)
+      if (transcript.trim()) {
+        handleVoiceInput(transcript.trim())
+      }
+    }
+
+    recognition.onerror = (event: { error?: string; message?: string; type?: string }) => {
+      const speechError = event.error || event.message || event.type
+      setError(speechError ? `${t('errors.failedToTranslate')}: ${speechError}` : t('errors.failedToTranslate'))
+      setIsRecording(false)
+    }
+
+    recognition.onend = () => {
+      setIsRecording(false)
+    }
+
+    recognitionRef.current = recognition as SpeechRecognitionType
+    setError('')
+    try {
+      ;(recognition as { start: () => void }).start()
+      setIsRecording(true)
+    } catch {
+      recognitionRef.current = null
+      setIsRecording(false)
+      setError(t('errors.failedToStartRecording'))
     }
   }
 
@@ -140,6 +280,7 @@ export default function GroceryPage() {
 
   const unchecked = items.filter(i => !i.checked)
   const checked = items.filter(i => i.checked)
+  const speechSupported = !!getSpeechRecognitionCtor()
 
   if (loading) {
     return (
@@ -162,6 +303,13 @@ export default function GroceryPage() {
         </div>
       )}
 
+      {isTranslating && (
+        <div className="mb-4 p-3 bg-blue-900/50 border border-blue-700 rounded-lg text-blue-200 text-sm flex items-center gap-2">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400" />
+          <span>{t('translating')}</span>
+        </div>
+      )}
+
       {/* Add item input */}
       <div className="flex gap-2 mb-6">
         <input
@@ -174,7 +322,27 @@ export default function GroceryPage() {
           className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
           aria-label={t('addPlaceholder')}
         />
-        {/* Insertion point for future microphone button (sub-task 3) */}
+        {speechSupported && (
+          <button
+            onClick={toggleRecording}
+            disabled={isTranslating}
+            className={`shrink-0 rounded-lg px-3 py-3 flex items-center justify-center cursor-pointer transition-colors ${
+              isRecording
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+            aria-label={isRecording ? t('voice.stop') : t('voice.start')}
+          >
+            {isRecording ? (
+              <span className="relative flex items-center justify-center">
+                <span className="absolute inline-flex h-8 w-8 rounded-full bg-red-400 opacity-40 animate-ping" />
+                <MicOff size={20} />
+              </span>
+            ) : (
+              <Mic size={20} />
+            )}
+          </button>
+        )}
         <button
           onClick={handleAdd}
           disabled={!newItem.trim() || adding}

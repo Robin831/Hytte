@@ -9,9 +9,16 @@
     "failedToLoad": "Failed to load grocery list",
     "failedToAdd": "Failed to add item",
     "failedToUpdate": "Failed to update item",
-    "failedToClear": "Failed to clear completed items"
+    "failedToClear": "Failed to clear completed items",
+    "failedToTranslate": "Failed to translate voice input",
+    "failedToStartRecording": "Failed to start recording"
   },
   "checkedSection": "Completed",
+  "translating": "Translating voice input...",
+  "voice": {
+    "start": "Start voice input",
+    "stop": "Stop recording"
+  },
   "item": {
     "original": "Original: {{text}}"
   }
