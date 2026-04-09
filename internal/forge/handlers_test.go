@@ -3790,6 +3790,132 @@ func TestResetCountersExternalPRHandler_Success(t *testing.T) {
 	testExternalPRDaemonSuccess(t, ResetCountersExternalPRHandler(), "/api/forge/ext-prs/reset-counters", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"reset-counters"}}`)
 }
 
+// --- ext- bead routing through handlers ---
+// These tests verify that handlers for PRs with ext- prefixed bead IDs route
+// through sendExternalPRAction (external_pr_action IPC) instead of the normal
+// forge pipeline IPC.
+
+func setupExtPRTest(t *testing.T, beadID string, prNumber int) (*DB, int, string) {
+	t.Helper()
+	// Set up forge config so repoForAnvil can resolve the anvil.
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/myrepo.git")
+	t.Setenv("PATH", tmpBin)
+
+	fdb := setupTestDB(t)
+	prDBID := insertTestPR(t, fdb, prNumber, "myAnvil", beadID, "forge/"+beadID)
+
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
+	return fdb, prDBID, socketPath
+}
+
+func assertExternalPRAction(t *testing.T, received <-chan ipcCommand, expectedAction string, expectedNumber int) {
+	t.Helper()
+	select {
+	case cmd := <-received:
+		if cmd.Type != "external_pr_action" {
+			t.Errorf("expected command type 'external_pr_action', got %q", cmd.Type)
+		}
+		var pa struct {
+			Repo   string `json:"repo"`
+			Number int    `json:"number"`
+			Action string `json:"action"`
+		}
+		if err := json.Unmarshal(cmd.Payload, &pa); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if pa.Action != expectedAction {
+			t.Errorf("expected action %q, got %q", expectedAction, pa.Action)
+		}
+		if pa.Number != expectedNumber {
+			t.Errorf("expected number %d, got %d", expectedNumber, pa.Number)
+		}
+		if pa.Repo != "owner/myrepo" {
+			t.Errorf("expected repo 'owner/myrepo', got %q", pa.Repo)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for IPC command")
+	}
+}
+
+func TestApprovePRHandler_ExtBead(t *testing.T) {
+	fdb, prDBID, socketPath := setupExtPRTest(t, "ext-warden-1", 55)
+	received := receiveIPCCommand(t, socketPath)
+
+	rec := httptest.NewRecorder()
+	ApprovePRHandler(fdb).ServeHTTP(rec, approvePRRequest(fmt.Sprintf("%d", prDBID)))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	assertExternalPRAction(t, received, "approve", 55)
+}
+
+func TestMergePRHandler_ExtBead(t *testing.T) {
+	fdb, prDBID, socketPath := setupExtPRTest(t, "ext-warden-2", 66)
+	received := receiveIPCCommand(t, socketPath)
+
+	rec := httptest.NewRecorder()
+	MergePRHandler(fdb).ServeHTTP(rec, mergePRRequest(fmt.Sprintf("%d", prDBID)))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	assertExternalPRAction(t, received, "merge", 66)
+}
+
+func TestBellowsPRHandler_ExtBead(t *testing.T) {
+	fdb, prDBID, socketPath := setupExtPRTest(t, "ext-warden-3", 77)
+	received := receiveIPCCommand(t, socketPath)
+
+	rec := httptest.NewRecorder()
+	BellowsPRHandler(fdb).ServeHTTP(rec, bellowsPRRequest(fmt.Sprintf("%d", prDBID)))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	assertExternalPRAction(t, received, "bellows", 77)
+}
+
+func TestFixCommentsPRHandler_ExtBead(t *testing.T) {
+	fdb, prDBID, socketPath := setupExtPRTest(t, "ext-warden-4", 88)
+	received := receiveIPCCommand(t, socketPath)
+
+	rec := httptest.NewRecorder()
+	FixCommentsPRHandler(fdb).ServeHTTP(rec, fixCommentsPRRequest(fmt.Sprintf("%d", prDBID)))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	assertExternalPRAction(t, received, "fix-comments", 88)
+}
+
+func TestFixCIPRHandler_ExtBead(t *testing.T) {
+	fdb, prDBID, socketPath := setupExtPRTest(t, "ext-warden-5", 99)
+	received := receiveIPCCommand(t, socketPath)
+
+	rec := httptest.NewRecorder()
+	FixCIPRHandler(fdb).ServeHTTP(rec, fixCIPRRequest(fmt.Sprintf("%d", prDBID)))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	assertExternalPRAction(t, received, "fix-ci", 99)
+}
+
+func TestFixConflictsPRHandler_ExtBead(t *testing.T) {
+	fdb, prDBID, socketPath := setupExtPRTest(t, "ext-warden-6", 101)
+	received := receiveIPCCommand(t, socketPath)
+
+	rec := httptest.NewRecorder()
+	FixConflictsPRHandler(fdb).ServeHTTP(rec, fixConflictsPRRequest(fmt.Sprintf("%d", prDBID)))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	assertExternalPRAction(t, received, "rebase", 101)
+}
+
 // --- RunNowHandler ---
 
 func runNowRequest(beadID string) *http.Request {

@@ -987,27 +987,9 @@ func MergePRHandler(db *DB) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		// External PRs (ext- bead IDs) bypass IPC and use gh CLI directly.
+		// External PRs (ext- bead IDs) are routed via external_pr_action IPC.
 		if isExternalBead(pr.BeadID) {
-			repo, err := repoForAnvil(pr.Anvil)
-			if err != nil {
-				log.Printf("forge: merge ext pr %d: %v", pr.Number, err)
-				writeError(w, http.StatusInternalServerError, "failed to resolve repo for anvil")
-				return
-			}
-			ghPath := resolveCommand("gh")
-			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctx, ghPath, "pr", "merge", "--merge", "--delete-branch",
-				"--repo", repo,
-				strconv.Itoa(pr.Number),
-			)
-			if out, err := cmd.CombinedOutput(); err != nil {
-				log.Printf("forge: merge ext pr %s#%d failed: %v: %s", repo, pr.Number, err, out)
-				writeError(w, http.StatusInternalServerError, "failed to merge PR")
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+			sendExternalPRAction(w, pr, "merge", "failed to send merge command")
 			return
 		}
 		if !validatePRForIPC(w, pr, true) {
@@ -1481,8 +1463,6 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 	}
 }
 
-// BellowsPRHandler signals the forge daemon to assign bellows to monitor a PR.
-// Sends a structured JSON pr_action IPC command with action "assign_bellows".
 // BellowsPRHandler signals the forge daemon to assign bellows to a PR.
 // External PRs (ext- bead IDs) are routed via external_pr_action IPC.
 func BellowsPRHandler(db *DB) http.HandlerFunc {
@@ -1515,27 +1495,9 @@ func ApprovePRHandler(db *DB) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		// External PRs (ext- bead IDs) bypass IPC and use gh CLI directly.
+		// External PRs (ext- bead IDs) are routed via external_pr_action IPC.
 		if isExternalBead(pr.BeadID) {
-			repo, err := repoForAnvil(pr.Anvil)
-			if err != nil {
-				log.Printf("forge: approve ext pr %d: %v", pr.Number, err)
-				writeError(w, http.StatusInternalServerError, "failed to resolve repo for anvil")
-				return
-			}
-			ghPath := resolveCommand("gh")
-			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-			defer cancel()
-			cmd := exec.CommandContext(ctx, ghPath, "pr", "review", "--approve",
-				"--repo", repo,
-				strconv.Itoa(pr.Number),
-			)
-			if out, err := cmd.CombinedOutput(); err != nil {
-				log.Printf("forge: approve ext pr %s#%d failed: %v: %s", repo, pr.Number, err, out)
-				writeError(w, http.StatusInternalServerError, "failed to approve PR")
-				return
-			}
-			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+			sendExternalPRAction(w, pr, "approve", "failed to send approve command")
 			return
 		}
 		if !validatePRForIPC(w, pr, false) {
@@ -1558,7 +1520,6 @@ func ApprovePRHandler(db *DB) http.HandlerFunc {
 }
 
 // FixCommentsPRHandler signals the forge daemon to fix review comments on a PR.
-// Sends a structured JSON pr_action IPC command with action "burnish".
 // External PRs (ext- bead IDs) are routed via external_pr_action IPC.
 func FixCommentsPRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1583,7 +1544,6 @@ func FixCommentsPRHandler(db *DB) http.HandlerFunc {
 }
 
 // FixCIPRHandler signals the forge daemon to fix CI failures on a PR.
-// Sends a structured JSON pr_action IPC command with action "quench".
 // External PRs (ext- bead IDs) are routed via external_pr_action IPC.
 func FixCIPRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1608,7 +1568,6 @@ func FixCIPRHandler(db *DB) http.HandlerFunc {
 }
 
 // FixConflictsPRHandler signals the forge daemon to rebase a PR to fix conflicts.
-// Sends a structured JSON pr_action IPC command with action "rebase".
 // External PRs (ext- bead IDs) are routed via external_pr_action IPC.
 func FixConflictsPRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1632,8 +1591,6 @@ func FixConflictsPRHandler(db *DB) http.HandlerFunc {
 	}
 }
 
-// ClosePRHandler signals the forge daemon to close a pull request.
-// Sends a structured JSON pr_action IPC command with action "close".
 // ClosePRHandler signals the forge daemon to close a pull request.
 // External PRs (ext- bead IDs) are routed via external_pr_action IPC.
 func ClosePRHandler(db *DB) http.HandlerFunc {
