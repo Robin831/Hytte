@@ -25,7 +25,7 @@ type SpeechRecognitionType = typeof window extends { SpeechRecognition: infer T 
 
 const SpeechRecognitionCtor: (new () => SpeechRecognitionType) | undefined =
   typeof window !== 'undefined'
-    ? ((window as Record<string, unknown>).SpeechRecognition ?? (window as Record<string, unknown>).webkitSpeechRecognition) as (new () => SpeechRecognitionType) | undefined
+    ? (((window as unknown) as Record<string, unknown>).SpeechRecognition ?? ((window as unknown) as Record<string, unknown>).webkitSpeechRecognition) as (new () => SpeechRecognitionType) | undefined
     : undefined
 
 export default function GroceryPage() {
