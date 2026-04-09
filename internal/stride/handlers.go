@@ -15,6 +15,54 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// RaceMatchResult describes the outcome of automatic race matching for a
+// workout classified as a race.
+type RaceMatchResult struct {
+	Status     string `json:"status"`      // "linked", "ambiguous", "no_match"
+	RaceID     int64  `json:"race_id"`     // set when Status == "linked"
+	RaceName   string `json:"race_name"`   // set when Status == "linked"
+	Candidates int    `json:"candidates"`  // number of matching races found
+}
+
+// TryMatchRaceForWorkout attempts to auto-link a workout classified as a race
+// to a matching entry in the user's race calendar. It uses date and distance to
+// find candidates. If exactly one race matches, it links the workout and
+// populates the race's result_time. If multiple races match, it returns an
+// ambiguous result so the caller can flag it for user confirmation.
+func TryMatchRaceForWorkout(db *sql.DB, workoutID, userID int64, workoutDate string, distanceMeters float64) (*RaceMatchResult, error) {
+	// Extract YYYY-MM-DD from an RFC3339 or date-only string.
+	if len(workoutDate) > 10 {
+		workoutDate = workoutDate[:10]
+	}
+
+	candidates, err := FindMatchingRaces(db, userID, workoutDate, distanceMeters)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(candidates) == 0 {
+		return &RaceMatchResult{Status: "no_match"}, nil
+	}
+
+	if len(candidates) == 1 {
+		if err := LinkWorkoutToRace(db, workoutID, candidates[0].ID, userID); err != nil {
+			return nil, err
+		}
+		return &RaceMatchResult{
+			Status:     "linked",
+			RaceID:     candidates[0].ID,
+			RaceName:   candidates[0].Name,
+			Candidates: 1,
+		}, nil
+	}
+
+	// Multiple matches — ambiguous; caller should flag for user confirmation.
+	return &RaceMatchResult{
+		Status:     "ambiguous",
+		Candidates: len(candidates),
+	}, nil
+}
+
 // ListEvaluationsHandler returns stride evaluations for the authenticated user.
 // Optional query params:
 //   - plan_id (integer) — filters to evaluations for that plan

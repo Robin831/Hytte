@@ -827,3 +827,143 @@ func TestFindMatchingRace_WrongUser(t *testing.T) {
 		t.Errorf("expected no match for wrong user, got %+v", found)
 	}
 }
+
+// --- FindMatchingRaces (plural) tests ---
+
+func TestFindMatchingRaces_MultipleMatches(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create two races on the same day with similar distances.
+	if _, err := CreateRace(db, 1, "10K Race A", "2026-05-01", 10000, nil, "A", ""); err != nil {
+		t.Fatalf("create race A: %v", err)
+	}
+	if _, err := CreateRace(db, 1, "10K Race B", "2026-05-01", 10200, nil, "B", ""); err != nil {
+		t.Fatalf("create race B: %v", err)
+	}
+
+	races, err := FindMatchingRaces(db, 1, "2026-05-01", 10100)
+	if err != nil {
+		t.Fatalf("FindMatchingRaces: %v", err)
+	}
+	if len(races) != 2 {
+		t.Fatalf("expected 2 matches, got %d", len(races))
+	}
+}
+
+func TestFindMatchingRaces_NoMatch(t *testing.T) {
+	db := setupTestDB(t)
+
+	races, err := FindMatchingRaces(db, 1, "2026-05-01", 10000)
+	if err != nil {
+		t.Fatalf("FindMatchingRaces: %v", err)
+	}
+	if len(races) != 0 {
+		t.Errorf("expected 0 matches, got %d", len(races))
+	}
+}
+
+// --- TryMatchRaceForWorkout tests ---
+
+func TestTryMatchRaceForWorkout_SingleMatch(t *testing.T) {
+	db := setupTestDB(t)
+
+	race, err := CreateRace(db, 1, "Spring 10K", "2026-05-01", 10000, nil, "A", "")
+	if err != nil {
+		t.Fatalf("create race: %v", err)
+	}
+
+	if _, err := db.Exec(`
+		INSERT INTO workouts (id, user_id, sport, started_at, duration_seconds, distance_meters, fit_file_hash, created_at)
+		VALUES (400, 1, 'running', '2026-05-01T08:00:00Z', 2700, 10050, 'hash-try-match', '2026-05-01T08:00:00Z')
+	`); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	result, err := TryMatchRaceForWorkout(db, 400, 1, "2026-05-01T08:00:00Z", 10050)
+	if err != nil {
+		t.Fatalf("TryMatchRaceForWorkout: %v", err)
+	}
+	if result.Status != "linked" {
+		t.Fatalf("status = %q, want %q", result.Status, "linked")
+	}
+	if result.RaceID != race.ID {
+		t.Errorf("race_id = %d, want %d", result.RaceID, race.ID)
+	}
+	if result.RaceName != "Spring 10K" {
+		t.Errorf("race_name = %q, want %q", result.RaceName, "Spring 10K")
+	}
+	if result.Candidates != 1 {
+		t.Errorf("candidates = %d, want 1", result.Candidates)
+	}
+
+	// Verify the workout was actually linked.
+	var raceID sql.NullInt64
+	if err := db.QueryRow(`SELECT race_id FROM workouts WHERE id = 400`).Scan(&raceID); err != nil {
+		t.Fatalf("query race_id: %v", err)
+	}
+	if !raceID.Valid || raceID.Int64 != race.ID {
+		t.Errorf("workout race_id = %v, want %d", raceID, race.ID)
+	}
+
+	// Verify race result_time was populated.
+	updated, err := GetRaceByID(db, race.ID, 1)
+	if err != nil {
+		t.Fatalf("get race: %v", err)
+	}
+	if updated.ResultTime == nil || *updated.ResultTime != 2700 {
+		t.Errorf("race result_time = %v, want 2700", updated.ResultTime)
+	}
+}
+
+func TestTryMatchRaceForWorkout_Ambiguous(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateRace(db, 1, "Race A", "2026-05-01", 10000, nil, "A", ""); err != nil {
+		t.Fatalf("create race A: %v", err)
+	}
+	if _, err := CreateRace(db, 1, "Race B", "2026-05-01", 10200, nil, "B", ""); err != nil {
+		t.Fatalf("create race B: %v", err)
+	}
+
+	if _, err := db.Exec(`
+		INSERT INTO workouts (id, user_id, sport, started_at, duration_seconds, distance_meters, fit_file_hash, created_at)
+		VALUES (401, 1, 'running', '2026-05-01T08:00:00Z', 2700, 10100, 'hash-ambiguous', '2026-05-01T08:00:00Z')
+	`); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	result, err := TryMatchRaceForWorkout(db, 401, 1, "2026-05-01T08:00:00Z", 10100)
+	if err != nil {
+		t.Fatalf("TryMatchRaceForWorkout: %v", err)
+	}
+	if result.Status != "ambiguous" {
+		t.Fatalf("status = %q, want %q", result.Status, "ambiguous")
+	}
+	if result.Candidates != 2 {
+		t.Errorf("candidates = %d, want 2", result.Candidates)
+	}
+
+	// Verify the workout was NOT linked (ambiguous should not auto-link).
+	var raceID sql.NullInt64
+	if err := db.QueryRow(`SELECT race_id FROM workouts WHERE id = 401`).Scan(&raceID); err != nil {
+		t.Fatalf("query race_id: %v", err)
+	}
+	if raceID.Valid {
+		t.Errorf("workout should not be linked when ambiguous, got race_id = %d", raceID.Int64)
+	}
+}
+
+func TestTryMatchRaceForWorkout_NoMatch(t *testing.T) {
+	db := setupTestDB(t)
+
+	result, err := TryMatchRaceForWorkout(db, 999, 1, "2026-05-01T08:00:00Z", 10000)
+	if err != nil {
+		t.Fatalf("TryMatchRaceForWorkout: %v", err)
+	}
+	if result.Status != "no_match" {
+		t.Fatalf("status = %q, want %q", result.Status, "no_match")
+	}
+	if result.Candidates != 0 {
+		t.Errorf("candidates = %d, want 0", result.Candidates)
+	}
+}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/Robin831/Hytte/internal/encryption"
 	"github.com/Robin831/Hytte/internal/settings"
+	"github.com/Robin831/Hytte/internal/stride"
 )
 
 var (
@@ -82,6 +83,22 @@ func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64)
 	if analysisTitle != "" {
 		if err := SetAITitle(db, workoutID, userID, analysisTitle); err != nil {
 			log.Printf("Failed to set AI title for workout %d: %v", workoutID, err)
+		}
+	}
+
+	// When a workout is classified as a race, attempt to auto-link it to a
+	// matching race in the user's race calendar.
+	if analysisType == "race" && workout.DistanceMeters > 0 {
+		result, err := stride.TryMatchRaceForWorkout(db, workoutID, userID, workout.StartedAt, workout.DistanceMeters)
+		if err != nil {
+			log.Printf("Race matching failed for workout %d: %v", workoutID, err)
+		} else {
+			switch result.Status {
+			case "linked":
+				log.Printf("Auto-linked workout %d to race %d (%s)", workoutID, result.RaceID, result.RaceName)
+			case "ambiguous":
+				log.Printf("Ambiguous race match for workout %d: %d candidates found", workoutID, result.Candidates)
+			}
 		}
 	}
 

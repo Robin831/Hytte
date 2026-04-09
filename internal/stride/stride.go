@@ -263,6 +263,51 @@ func FindMatchingRace(db *sql.DB, userID int64, date string, distanceMeters floa
 	return &r, nil
 }
 
+// FindMatchingRaces returns all races that match the given date (±1 day) and
+// distance (within 20%). Unlike FindMatchingRace which returns at most one,
+// this returns all candidates so the caller can detect ambiguous matches.
+func FindMatchingRaces(db *sql.DB, userID int64, date string, distanceMeters float64) ([]Race, error) {
+	parsedDate, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return nil, fmt.Errorf("parse date %q: %w", date, err)
+	}
+	dayBefore := parsedDate.AddDate(0, 0, -1).Format("2006-01-02")
+	dayAfter := parsedDate.AddDate(0, 0, 1).Format("2006-01-02")
+
+	minDist := distanceMeters * 0.8
+	maxDist := distanceMeters * 1.2
+
+	rows, err := db.Query(`
+		SELECT id, user_id, name, date, distance_m, target_time, priority, notes, result_time, created_at
+		FROM stride_races
+		WHERE user_id = ?
+		  AND date >= ? AND date <= ?
+		  AND distance_m >= ? AND distance_m <= ?
+		ORDER BY ABS(julianday(date) - julianday(?)) ASC
+	`, userID, dayBefore, dayAfter, minDist, maxDist, date)
+	if err != nil {
+		return nil, fmt.Errorf("query matching races: %w", err)
+	}
+	defer rows.Close()
+
+	var races []Race
+	for rows.Next() {
+		var r Race
+		if err := rows.Scan(&r.ID, &r.UserID, &r.Name, &r.Date, &r.DistanceM,
+			&r.TargetTime, &r.Priority, &r.Notes, &r.ResultTime, &r.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan race row: %w", err)
+		}
+		if r.Name, err = encryption.DecryptField(r.Name); err != nil {
+			return nil, fmt.Errorf("decrypt race name: %w", err)
+		}
+		if r.Notes, err = encryption.DecryptField(r.Notes); err != nil {
+			return nil, fmt.Errorf("decrypt race notes: %w", err)
+		}
+		races = append(races, r)
+	}
+	return races, rows.Err()
+}
+
 // DeleteRace removes a race owned by the given user.
 func DeleteRace(db *sql.DB, id, userID int64) error {
 	res, err := db.Exec("DELETE FROM stride_races WHERE id = ? AND user_id = ?", id, userID)
