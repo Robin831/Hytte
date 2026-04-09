@@ -5,6 +5,8 @@ import { getGreetingKey } from '../utils/greeting'
 import { useNow } from '../hooks/useNow'
 import TodayScheduleCard from '../components/home/TodayScheduleCard'
 import WeatherCard from '../components/home/WeatherCard'
+import StridePlanCard from '../components/home/StridePlanCard'
+import WorkHoursCard from '../components/home/WorkHoursCard'
 
 export default function HomePage() {
   const { t } = useTranslation('common')
@@ -63,6 +65,8 @@ export default function HomePage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <WeatherCard />
         {hasFeature('calendar') && <TodayScheduleCard />}
+        {hasFeature('stride') && <StridePlanCard />}
+        {hasFeature('work_hours') && <WorkHoursCard />}
       </div>
     </div>
   )
