@@ -28,7 +28,8 @@
     "salary": "เงินเดือน",
     "stride": "Stride",
     "vault": "ตู้นิรภัย",
-    "skywatch": "สังเกตท้องฟ้า"
+    "skywatch": "สังเกตท้องฟ้า",
+    "grocery": "รายการซื้อของ"
   },
   "actions": {
     "save": "บันทึก",

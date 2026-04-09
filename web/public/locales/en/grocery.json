@@ -1,0 +1,18 @@
+{
+  "title": "Grocery List",
+  "addPlaceholder": "Add an item...",
+  "add": "Add",
+  "clearCompleted": "Clear completed",
+  "empty": "Your grocery list is empty",
+  "emptyHint": "Add items using the input above",
+  "errors": {
+    "failedToLoad": "Failed to load grocery list",
+    "failedToAdd": "Failed to add item",
+    "failedToUpdate": "Failed to update item",
+    "failedToClear": "Failed to clear completed items"
+  },
+  "checkedSection": "Completed",
+  "item": {
+    "original": "Original: {{text}}"
+  }
+}

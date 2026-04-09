@@ -20,6 +20,7 @@ import type strideEn from '../public/locales/en/stride.json'
 import type todayEn from '../public/locales/en/today.json'
 import type vaultEn from '../public/locales/en/vault.json'
 import type skywatchEn from '../public/locales/en/skywatch.json'
+import type groceryEn from '../public/locales/en/grocery.json'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -47,6 +48,7 @@ declare module 'i18next' {
       today: typeof todayEn
       vault: typeof vaultEn
       skywatch: typeof skywatchEn
+      grocery: typeof groceryEn
     }
   }
 }
