@@ -195,6 +195,12 @@
     "wordfeudConnectFailed": "Kunne ikke koble til Wordfeud-konto",
     "wordfeudDisconnectFailed": "Kunne ikke koble fra Wordfeud-konto"
   },
+  "security": {
+    "heading": "Sikkerhet"
+  },
+  "aiAutomation": {
+    "heading": "AI og automatisering"
+  },
   "aiPrompts": {
     "heading": "AI-ledetekster",
     "description": "Tilpass ledetekstene som brukes for AI-drevet treningsanalyse",
