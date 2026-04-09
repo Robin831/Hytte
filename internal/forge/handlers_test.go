@@ -3378,7 +3378,10 @@ func TestFilterExternal(t *testing.T) {
 		{Number: 3, Anvil: "owner/repo", Title: "another forge"},
 		{Number: 4, Anvil: "owner/other", Title: "other repo pr"},
 	}
-	result := filterExternal(allGitHub, forgePRs)
+	// anvilToRepo maps the short anvil name used in forge PRs to the full repo.
+	// Here the anvil names happen to equal the full repo strings.
+	anvilToRepo := map[string]string{"owner/repo": "owner/repo"}
+	result := filterExternal(allGitHub, forgePRs, anvilToRepo)
 	if len(result) != 2 {
 		t.Fatalf("expected 2 external PRs, got %d", len(result))
 	}

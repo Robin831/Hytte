@@ -55,8 +55,12 @@ type PR struct {
 	HasPendingReviews    bool       `json:"has_pending_reviews"`
 	HasApproval          bool       `json:"has_approval"`
 	BellowsManaged       bool       `json:"bellows_managed"`
-	CIPending            bool       `json:"ci_pending"`
-	ChangesRequested     bool       `json:"changes_requested"`
+	// CIPending and ChangesRequested are runtime-only fields populated via
+	// GitHub enrichment in AllPRsHandler. They are not persisted in the DB
+	// and default to false for bellows-managed PRs (which track CI state
+	// via their own polling loop stored in ci_passing).
+	CIPending        bool `json:"ci_pending"`
+	ChangesRequested bool `json:"changes_requested"`
 }
 
 // Event represents a forge event log entry.

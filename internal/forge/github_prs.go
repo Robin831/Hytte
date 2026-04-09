@@ -140,7 +140,7 @@ func fetchGitHubPRs(forgePRs []PR) (*ghPRResult, error) {
 		raw := externalPRCache.raw
 		a2r := externalPRCache.anvilToRepo
 		externalPRCache.mu.Unlock()
-		return &ghPRResult{external: filterExternal(cached, forgePRs), raw: raw, anvilToRepo: a2r}, nil
+		return &ghPRResult{external: filterExternal(cached, forgePRs, a2r), raw: raw, anvilToRepo: a2r}, nil
 	}
 	externalPRCache.mu.Unlock()
 
@@ -226,24 +226,29 @@ func fetchGitHubPRs(forgePRs []PR) (*ghPRResult, error) {
 	externalPRCache.mu.Unlock()
 
 	return &ghPRResult{
-		external:    filterExternal(allExternal, forgePRs),
+		external:    filterExternal(allExternal, forgePRs, anvilToRepo),
 		raw:         rawMap,
 		anvilToRepo: anvilToRepo,
 	}, nil
 }
 
 // filterExternal removes PRs that are tracked by forge from the list.
-func filterExternal(allGitHub []ExternalPR, forgePRs []PR) []ExternalPR {
-	// Build a set of forge PR numbers keyed by both the short anvil name
-	// (e.g. "hytte") and the full repo (e.g. "Robin831/Hytte") since the
-	// external PRs use "owner/repo" while forge PRs use the short config name.
-	forgeSet := make(map[int]bool, len(forgePRs))
+// anvilToRepo maps short anvil names (e.g. "hytte") to "owner/repo" strings,
+// which is the same value stored in ExternalPR.Anvil. Using a composite
+// "owner/repo:number" key prevents false-positive collisions when PR numbers
+// are the same across different repos.
+func filterExternal(allGitHub []ExternalPR, forgePRs []PR, anvilToRepo map[string]string) []ExternalPR {
+	forgeSet := make(map[string]bool, len(forgePRs))
 	for _, fp := range forgePRs {
-		forgeSet[fp.Number] = true
+		repo := anvilToRepo[strings.ToLower(fp.Anvil)]
+		if repo != "" {
+			forgeSet[fmt.Sprintf("%s:%d", repo, fp.Number)] = true
+		}
 	}
 	var result []ExternalPR
 	for _, ep := range allGitHub {
-		if !forgeSet[ep.Number] {
+		key := fmt.Sprintf("%s:%d", ep.Anvil, ep.Number)
+		if !forgeSet[key] {
 			result = append(result, ep)
 		}
 	}
