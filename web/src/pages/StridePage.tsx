@@ -100,6 +100,8 @@ function complianceIcon(compliance: StrideEvaluation['compliance']) {
       return <XCircle size={18} className="text-red-400" />
     case 'bonus':
       return <CheckCircle2 size={18} className="text-blue-400" />
+    case 'rest_day':
+      return <CheckCircle2 size={18} className="text-gray-400" />
     default:
       return <Circle size={18} className="text-gray-400" />
   }
@@ -115,6 +117,8 @@ function complianceBadgeClass(compliance: StrideEvaluation['compliance']): strin
       return 'bg-red-500/15 text-red-400 border-red-500/30'
     case 'bonus':
       return 'bg-blue-500/15 text-blue-400 border-blue-500/30'
+    case 'rest_day':
+      return 'bg-gray-500/15 text-gray-400 border-gray-500/30'
     default:
       return 'bg-gray-500/15 text-gray-400 border-gray-500/30'
   }
@@ -133,16 +137,17 @@ function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: bool
   const dateLabel = formatDate(date, { month: 'short', day: 'numeric' })
 
   const complianceLabel = evaluation ? t(`evaluation.${evaluation.eval.compliance}`) : null
+  const hasExpandableContent = (!day.rest_day && !!day.session) || (!!evaluation && (day.rest_day || !day.session))
 
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
       <button
         type="button"
-        onClick={() => !day.rest_day && !!day.session && setExpanded(v => !v)}
-        className={`w-full flex items-center gap-3 p-3 text-left ${!day.rest_day && !!day.session ? 'hover:bg-gray-700 active:bg-gray-600 cursor-pointer' : 'cursor-default'}`}
-        aria-expanded={expanded && !!day.session}
+        onClick={() => hasExpandableContent && setExpanded(v => !v)}
+        className={`w-full flex items-center gap-3 p-3 text-left ${hasExpandableContent ? 'hover:bg-gray-700 active:bg-gray-600 cursor-pointer' : 'cursor-default'}`}
+        aria-expanded={expanded && hasExpandableContent}
         aria-controls={`day-details-${day.date}`}
-        disabled={day.rest_day || !day.session}
+        disabled={!hasExpandableContent}
       >
         {/* Completion / evaluation indicator */}
         <div className="flex-shrink-0">
@@ -182,7 +187,7 @@ function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: bool
         </div>
 
         {/* Expand chevron */}
-        {!day.rest_day && (
+        {hasExpandableContent && (
           <div className="flex-shrink-0">
             {expanded ? (
               <ChevronUp size={16} className="text-gray-500" />
@@ -197,91 +202,93 @@ function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: bool
       <div
         id={`day-details-${day.date}`}
         className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${
-          expanded && !day.rest_day && day.session ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+          expanded && hasExpandableContent ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
         }`}
-        aria-hidden={!(expanded && !day.rest_day && !!day.session)}
+        aria-hidden={!(expanded && hasExpandableContent)}
         // @ts-expect-error — `inert` is a valid HTML attribute not yet in React's typings
-        inert={!(expanded && !day.rest_day && !!day.session) ? '' : undefined}
+        inert={!(expanded && hasExpandableContent) ? '' : undefined}
       >
         <div className="overflow-hidden">
-          {!day.rest_day && day.session && (
-            <div className="px-4 pb-4 space-y-3 border-t border-gray-700 pt-3">
-              {day.session.description && (
-                <p className="text-sm text-gray-200">{day.session.description}</p>
-              )}
-              {day.session.warmup && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.warmup')}</p>
-                  <p className="text-sm text-gray-200">{day.session.warmup}</p>
-                </div>
-              )}
-              {day.session.main_set && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.mainSet')}</p>
-                  <p className="text-sm text-gray-200">{day.session.main_set}</p>
-                </div>
-              )}
-              {day.session.cooldown && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.cooldown')}</p>
-                  <p className="text-sm text-gray-200">{day.session.cooldown}</p>
-                </div>
-              )}
-              {day.session.strides && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.strides')}</p>
-                  <p className="text-sm text-gray-200">{day.session.strides}</p>
-                </div>
-              )}
-              {day.session.target_hr_cap > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.targetHR')}</p>
-                  <p className="text-sm text-gray-200">{t('plan.bpm', { value: day.session.target_hr_cap })}</p>
-                </div>
-              )}
-
-              {/* Stride evaluation section */}
-              {evaluation && (() => {
-                const flags = Array.isArray(evaluation.eval.flags) ? evaluation.eval.flags : []
-                return (
-                  <div className="mt-3 pt-3 border-t border-gray-700 space-y-2">
-                    {evaluation.eval.notes && (
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.coachNotes')}</p>
-                        <p className="text-sm text-gray-200">{evaluation.eval.notes}</p>
-                      </div>
-                    )}
-                    {flags.length > 0 && (
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.warnings')}</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {flags.map(flag => (
-                            <span
-                              key={flag}
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${
-                                flagIsSevere(flag)
-                                  ? 'bg-red-500/15 border-red-500/30 text-red-400'
-                                  : 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
-                              }`}
-                            >
-                              <AlertTriangle size={10} />
-                              {t(`evaluation.flagLabels.${flag}`, { defaultValue: flag.replace(/_/g, ' ') })}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {evaluation.eval.adjustments && (
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.adjustments')}</p>
-                        <p className="text-sm text-gray-400">{evaluation.eval.adjustments}</p>
-                      </div>
-                    )}
+          <div className="px-4 pb-4 space-y-3 border-t border-gray-700 pt-3">
+            {!day.rest_day && day.session && (
+              <>
+                {day.session.description && (
+                  <p className="text-sm text-gray-200">{day.session.description}</p>
+                )}
+                {day.session.warmup && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.warmup')}</p>
+                    <p className="text-sm text-gray-200">{day.session.warmup}</p>
                   </div>
-                )
-              })()}
-            </div>
-          )}
+                )}
+                {day.session.main_set && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.mainSet')}</p>
+                    <p className="text-sm text-gray-200">{day.session.main_set}</p>
+                  </div>
+                )}
+                {day.session.cooldown && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.cooldown')}</p>
+                    <p className="text-sm text-gray-200">{day.session.cooldown}</p>
+                  </div>
+                )}
+                {day.session.strides && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.strides')}</p>
+                    <p className="text-sm text-gray-200">{day.session.strides}</p>
+                  </div>
+                )}
+                {day.session.target_hr_cap > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('plan.targetHR')}</p>
+                    <p className="text-sm text-gray-200">{t('plan.bpm', { value: day.session.target_hr_cap })}</p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Stride evaluation section */}
+            {evaluation && (() => {
+              const flags = Array.isArray(evaluation.eval.flags) ? evaluation.eval.flags : []
+              return (
+                <div className={`space-y-2 ${!day.rest_day && day.session ? 'mt-3 pt-3 border-t border-gray-700' : ''}`}>
+                  {evaluation.eval.notes && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.coachNotes')}</p>
+                      <p className="text-sm text-gray-200">{evaluation.eval.notes}</p>
+                    </div>
+                  )}
+                  {flags.length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.warnings')}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {flags.map(flag => (
+                          <span
+                            key={flag}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${
+                              flagIsSevere(flag)
+                                ? 'bg-red-500/15 border-red-500/30 text-red-400'
+                                : 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
+                            }`}
+                          >
+                            <AlertTriangle size={10} />
+                            {t(`evaluation.flagLabels.${flag}`, { defaultValue: flag.replace(/_/g, ' ') })}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {evaluation.eval.adjustments && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.adjustments')}</p>
+                      <p className="text-sm text-gray-400">{evaluation.eval.adjustments}</p>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+          </div>
         </div>
       </div>
     </div>
@@ -793,7 +800,8 @@ export default function StridePage() {
     ? [...currentPlan.plan].sort((a, b) => a.date.localeCompare(b.date))
     : []
 
-  // Map each plan day date to its newest stride evaluation (via workout date lookup).
+  // Map each plan day date to its newest stride evaluation (via workout date lookup,
+  // or via eval.date for rest_day/missed evaluations without a workout).
   // evaluations is ordered created_at DESC so the first entry per date is the newest.
   const dayEvaluationMap = useMemo(() => {
     const map = new Map<string, StrideEvaluationRecord>()
@@ -801,6 +809,8 @@ export default function StridePage() {
       if (rec.workout_id != null) {
         const date = workoutIdToDate.get(rec.workout_id)
         if (date && !map.has(date)) map.set(date, rec)
+      } else if (rec.eval.date && !map.has(rec.eval.date)) {
+        map.set(rec.eval.date, rec)
       }
     }
     return map

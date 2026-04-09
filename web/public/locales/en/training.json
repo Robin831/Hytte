@@ -319,6 +319,7 @@
     "compliant": "Completed",
     "partial": "Partial",
     "missed": "Missed",
+    "rest_day": "Rest day",
     "bonus": "Bonus",
     "coachNotes": "Coach notes",
     "warnings": "Warnings",

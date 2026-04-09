@@ -472,3 +472,179 @@ func TestEvaluateWorkout_InvalidJSON(t *testing.T) {
 		t.Error("expected error for invalid JSON response, got nil")
 	}
 }
+
+// --- parseEvalResponse rest_day compliance ---
+
+func TestParseEvalResponse_RestDayCompliance(t *testing.T) {
+	raw := `{"planned_type":"rest","actual_type":"rest","compliance":"rest_day","notes":"Rest day taken.","flags":[],"adjustments":"","date":"2026-04-07"}`
+	eval, err := parseEvalResponse(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if eval.Compliance != "rest_day" {
+		t.Errorf("compliance = %q, want rest_day", eval.Compliance)
+	}
+}
+
+// --- evaluateRestDaysAndMissedSessions ---
+
+func TestEvaluateRestDaysAndMissedSessions_RestDay(t *testing.T) {
+	db := setupTestDB(t)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	weekStart := time.Now().UTC().AddDate(0, 0, -3).Format("2006-01-02")
+	weekEnd := time.Now().UTC().AddDate(0, 0, 3).Format("2006-01-02")
+
+	planJSON, _ := json.Marshal([]DayPlan{
+		{Date: today, RestDay: true},
+	})
+	insertTestPlan(t, db, 1, weekStart, weekEnd, string(planJSON))
+
+	ctx := context.Background()
+	if err := evaluateRestDaysAndMissedSessions(ctx, db, 1); err != nil {
+		t.Fatalf("evaluateRestDaysAndMissedSessions: %v", err)
+	}
+
+	// Should have one evaluation with rest_day compliance and NULL workout_id.
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_evaluations WHERE user_id = 1 AND workout_id IS NULL`).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 rest_day evaluation, got %d", count)
+	}
+
+	// Verify compliance via decryption.
+	records, err := ListEvaluations(db, 1, nil, nil)
+	if err != nil {
+		t.Fatalf("ListEvaluations: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Eval.Compliance != "rest_day" {
+		t.Errorf("compliance = %q, want rest_day", records[0].Eval.Compliance)
+	}
+	if records[0].Eval.Date != today {
+		t.Errorf("date = %q, want %q", records[0].Eval.Date, today)
+	}
+	if records[0].WorkoutID != nil {
+		t.Errorf("workout_id = %v, want nil", records[0].WorkoutID)
+	}
+}
+
+func TestEvaluateRestDaysAndMissedSessions_MissedSession(t *testing.T) {
+	db := setupTestDB(t)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	weekStart := time.Now().UTC().AddDate(0, 0, -3).Format("2006-01-02")
+	weekEnd := time.Now().UTC().AddDate(0, 0, 3).Format("2006-01-02")
+
+	planJSON, _ := json.Marshal([]DayPlan{
+		{Date: today, RestDay: false, Session: &Session{MainSet: "4x10min threshold", Description: "Threshold session"}},
+	})
+	insertTestPlan(t, db, 1, weekStart, weekEnd, string(planJSON))
+
+	ctx := context.Background()
+	if err := evaluateRestDaysAndMissedSessions(ctx, db, 1); err != nil {
+		t.Fatalf("evaluateRestDaysAndMissedSessions: %v", err)
+	}
+
+	records, err := ListEvaluations(db, 1, nil, nil)
+	if err != nil {
+		t.Fatalf("ListEvaluations: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	if records[0].Eval.Compliance != "missed" {
+		t.Errorf("compliance = %q, want missed", records[0].Eval.Compliance)
+	}
+	if !strings.Contains(records[0].Eval.Notes, "Threshold session") {
+		t.Errorf("notes should mention session type, got %q", records[0].Eval.Notes)
+	}
+}
+
+func TestEvaluateRestDaysAndMissedSessions_WithWorkout(t *testing.T) {
+	db := setupTestDB(t)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	weekStart := time.Now().UTC().AddDate(0, 0, -3).Format("2006-01-02")
+	weekEnd := time.Now().UTC().AddDate(0, 0, 3).Format("2006-01-02")
+
+	planJSON, _ := json.Marshal([]DayPlan{
+		{Date: today, RestDay: false, Session: &Session{MainSet: "easy run"}},
+	})
+	insertTestPlan(t, db, 1, weekStart, weekEnd, string(planJSON))
+
+	// Insert a workout for today using a fixed midday timestamp to avoid flakiness around UTC midnight.
+	workoutStarted := today + "T12:00:00Z"
+	if _, err := db.Exec(`
+		INSERT INTO workouts (id, user_id, sport, started_at, fit_file_hash, created_at)
+		VALUES (50, 1, 'running', ?, 'hash-exists', ?)
+	`, workoutStarted, workoutStarted); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := evaluateRestDaysAndMissedSessions(ctx, db, 1); err != nil {
+		t.Fatalf("evaluateRestDaysAndMissedSessions: %v", err)
+	}
+
+	// No evaluation should be created because a workout exists.
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_evaluations WHERE user_id = 1 AND workout_id IS NULL`).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 non-workout evaluations, got %d", count)
+	}
+}
+
+func TestEvaluateRestDaysAndMissedSessions_NoPlan(t *testing.T) {
+	db := setupTestDB(t)
+
+	ctx := context.Background()
+	if err := evaluateRestDaysAndMissedSessions(ctx, db, 1); err != nil {
+		t.Fatalf("evaluateRestDaysAndMissedSessions: %v", err)
+	}
+
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_evaluations WHERE user_id = 1`).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 evaluations with no plan, got %d", count)
+	}
+}
+
+func TestEvaluateRestDaysAndMissedSessions_Idempotent(t *testing.T) {
+	db := setupTestDB(t)
+
+	today := time.Now().UTC().Format("2006-01-02")
+	weekStart := time.Now().UTC().AddDate(0, 0, -3).Format("2006-01-02")
+	weekEnd := time.Now().UTC().AddDate(0, 0, 3).Format("2006-01-02")
+
+	planJSON, _ := json.Marshal([]DayPlan{
+		{Date: today, RestDay: true},
+	})
+	insertTestPlan(t, db, 1, weekStart, weekEnd, string(planJSON))
+
+	ctx := context.Background()
+
+	// Run twice.
+	if err := evaluateRestDaysAndMissedSessions(ctx, db, 1); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+	if err := evaluateRestDaysAndMissedSessions(ctx, db, 1); err != nil {
+		t.Fatalf("second run: %v", err)
+	}
+
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_evaluations WHERE user_id = 1 AND workout_id IS NULL`).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 evaluation after two runs (idempotent), got %d", count)
+	}
+}

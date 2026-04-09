@@ -96,6 +96,29 @@ func MatchAllWorkouts(workouts []training.Workout, plan Plan) []WorkoutMatch {
 	return matches
 }
 
+// PlannedSessionForDate looks up a specific date in a plan and returns:
+//   - session, false if the date has a planned session
+//   - nil, true if the date is a rest day
+//   - nil, false if the date is not found in the plan
+func PlannedSessionForDate(plan Plan, date string) (session *PlannedSession, isRestDay bool) {
+	var dayPlans []DayPlan
+	if err := json.Unmarshal(plan.Plan, &dayPlans); err != nil {
+		return nil, false
+	}
+	for _, dp := range dayPlans {
+		if dp.Date == date {
+			if dp.RestDay {
+				return nil, true
+			}
+			if dp.Session != nil {
+				return &PlannedSession{Date: dp.Date, Session: dp.Session}, false
+			}
+			return nil, false
+		}
+	}
+	return nil, false
+}
+
 // extractPlannedSessions decodes the plan JSON and returns the non-rest day sessions.
 func extractPlannedSessions(plan Plan) []PlannedSession {
 	var dayPlans []DayPlan

@@ -213,6 +213,69 @@ func TestMatchAllWorkouts_EmptyPlan(t *testing.T) {
 	}
 }
 
+// --- PlannedSessionForDate ---
+
+func TestPlannedSessionForDate_RestDay(t *testing.T) {
+	days := []DayPlan{
+		{Date: "2026-04-07", RestDay: true},
+		{Date: "2026-04-08", RestDay: false, Session: &Session{MainSet: "threshold"}},
+	}
+	plan := makePlan(days)
+
+	session, isRestDay := PlannedSessionForDate(plan, "2026-04-07")
+	if !isRestDay {
+		t.Error("expected rest day, got false")
+	}
+	if session != nil {
+		t.Errorf("expected nil session for rest day, got %+v", session)
+	}
+}
+
+func TestPlannedSessionForDate_PlannedSession(t *testing.T) {
+	days := []DayPlan{
+		{Date: "2026-04-07", RestDay: true},
+		{Date: "2026-04-08", RestDay: false, Session: &Session{MainSet: "threshold", Description: "Threshold run"}},
+	}
+	plan := makePlan(days)
+
+	session, isRestDay := PlannedSessionForDate(plan, "2026-04-08")
+	if isRestDay {
+		t.Error("expected non-rest day, got true")
+	}
+	if session == nil {
+		t.Fatal("expected session, got nil")
+	}
+	if session.Session.MainSet != "threshold" {
+		t.Errorf("expected main_set 'threshold', got %q", session.Session.MainSet)
+	}
+}
+
+func TestPlannedSessionForDate_DateNotInPlan(t *testing.T) {
+	days := []DayPlan{
+		{Date: "2026-04-07", RestDay: true},
+	}
+	plan := makePlan(days)
+
+	session, isRestDay := PlannedSessionForDate(plan, "2026-04-10")
+	if isRestDay {
+		t.Error("expected false for date not in plan")
+	}
+	if session != nil {
+		t.Errorf("expected nil session for date not in plan, got %+v", session)
+	}
+}
+
+func TestPlannedSessionForDate_InvalidPlanJSON(t *testing.T) {
+	plan := Plan{Plan: json.RawMessage(`invalid`)}
+	session, isRestDay := PlannedSessionForDate(plan, "2026-04-07")
+	if isRestDay {
+		t.Error("expected false for invalid JSON")
+	}
+	if session != nil {
+		t.Error("expected nil session for invalid JSON")
+	}
+}
+
 func TestMatchAllWorkouts_EmptyWorkouts(t *testing.T) {
 	days := []DayPlan{
 		{Date: "2026-04-08", RestDay: false, Session: &Session{MainSet: "threshold"}},

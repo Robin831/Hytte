@@ -1,7 +1,8 @@
 export interface StrideEvaluation {
   planned_type: string
   actual_type: string
-  compliance: 'compliant' | 'partial' | 'missed' | 'bonus'
+  compliance: 'compliant' | 'partial' | 'missed' | 'bonus' | 'rest_day'
+  date?: string
   notes: string
   flags: string[] | null
   adjustments: string

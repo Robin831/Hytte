@@ -15,6 +15,12 @@ import (
 	"github.com/Robin831/Hytte/internal/training"
 )
 
+// Evaluation note templates for rest days and missed sessions.
+const (
+	noteRestDay        = "Rest day taken as planned \u2014 good recovery."
+	noteMissedSession  = "Planned %s was not completed. Consider adjusting the remaining week if needed."
+)
+
 // criticalFlags is the set of evaluation flag values that warrant an immediate push notification.
 var criticalFlags = map[string]bool{
 	"overtraining": true,
@@ -26,10 +32,11 @@ var criticalFlags = map[string]bool{
 type Evaluation struct {
 	PlannedType string   `json:"planned_type"` // session type that was planned (e.g. "threshold", "easy", "long_run", "none")
 	ActualType  string   `json:"actual_type"`  // session type that was performed
-	Compliance  string   `json:"compliance"`   // "compliant", "partial", "missed", or "bonus"
+	Compliance  string   `json:"compliance"`   // "compliant", "partial", "missed", "bonus", or "rest_day"
 	Notes       string   `json:"notes"`        // narrative assessment
 	Flags       []string `json:"flags"`        // warning flags, e.g. "hr_too_high", "overtraining"
 	Adjustments string   `json:"adjustments"`  // suggested adjustments to upcoming training
+	Date        string   `json:"date,omitempty"` // date (YYYY-MM-DD) for rest_day/missed evaluations without a workout
 }
 
 // NextNightlyEvaluationRun returns the next time the nightly evaluation cron should fire
@@ -139,7 +146,8 @@ func RunUserEvaluation(ctx context.Context, db *sql.DB, httpClient *http.Client,
 	return evaluated, nil
 }
 
-// evaluateUserWorkouts processes all unevaluated workouts for a single user since the given timestamp.
+// evaluateUserWorkouts processes all unevaluated workouts for a single user since the given timestamp,
+// then checks for rest days and missed sessions.
 func evaluateUserWorkouts(ctx context.Context, db *sql.DB, httpClient *http.Client, userID int64, since string) error {
 	claudeCfg, err := training.LoadClaudeConfig(db, userID)
 	if err != nil {
@@ -153,18 +161,22 @@ func evaluateUserWorkouts(ctx context.Context, db *sql.DB, httpClient *http.Clie
 	if err != nil {
 		return fmt.Errorf("query unevaluated workouts: %w", err)
 	}
-	if len(workouts) == 0 {
-		return nil
+
+	if len(workouts) > 0 {
+		profile := training.BuildUserTrainingProfile(db, userID)
+
+		for _, workout := range workouts {
+			evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+			if err := evaluateSingleWorkout(evalCtx, db, httpClient, userID, workout, claudeCfg, profile); err != nil {
+				log.Printf("stride eval: workout %d for user %d: %v", workout.ID, userID, err)
+			}
+			cancel()
+		}
 	}
 
-	profile := training.BuildUserTrainingProfile(db, userID)
-
-	for _, workout := range workouts {
-		evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
-		if err := evaluateSingleWorkout(evalCtx, db, httpClient, userID, workout, claudeCfg, profile); err != nil {
-			log.Printf("stride eval: workout %d for user %d: %v", workout.ID, userID, err)
-		}
-		cancel()
+	// Check for rest days and missed sessions regardless of whether workouts were found.
+	if err := evaluateRestDaysAndMissedSessions(ctx, db, userID); err != nil {
+		log.Printf("stride eval: rest/missed check for user %d: %v", userID, err)
 	}
 
 	return nil
@@ -333,6 +345,131 @@ func storeEvaluation(ctx context.Context, db *sql.DB, userID, workoutID, planID 
 	return err
 }
 
+// storeEvaluationForDate encrypts and inserts an Evaluation record with no associated workout.
+// Used for rest day and missed session evaluations.
+func storeEvaluationForDate(ctx context.Context, db *sql.DB, userID, planID int64, eval *Evaluation) error {
+	evalBytes, err := json.Marshal(eval)
+	if err != nil {
+		return fmt.Errorf("marshal eval: %w", err)
+	}
+	encEval, err := encryption.EncryptField(string(evalBytes))
+	if err != nil {
+		return fmt.Errorf("encrypt eval: %w", err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO stride_evaluations (user_id, plan_id, workout_id, eval_json, created_at)
+		VALUES (?, ?, NULL, ?, ?)
+	`, userID, planID, encEval, now)
+	return err
+}
+
+// hasDateEvaluation checks whether a non-workout evaluation already exists for
+// the given user and plan created on or after the given timestamp. This prevents
+// duplicate rest_day/missed evaluations when nightly eval runs more than once.
+func hasDateEvaluation(ctx context.Context, db *sql.DB, userID, planID int64, since string) (bool, error) {
+	var count int
+	err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM stride_evaluations
+		WHERE user_id = ? AND plan_id = ? AND workout_id IS NULL AND created_at >= ?
+	`, userID, planID, since).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// evaluateRestDaysAndMissedSessions checks whether today was a rest day or had a
+// planned session with no matching workout, and creates an appropriate evaluation.
+func evaluateRestDaysAndMissedSessions(ctx context.Context, db *sql.DB, userID int64) error {
+	today := time.Now().UTC().Format("2006-01-02")
+
+	plan, err := getPlanContainingDate(ctx, db, userID, today)
+	if err != nil {
+		return fmt.Errorf("find plan for today: %w", err)
+	}
+	if plan == nil {
+		return nil
+	}
+
+	// Check if we already created a non-workout evaluation today (idempotency).
+	todayStart := today + "T00:00:00Z"
+	exists, err := hasDateEvaluation(ctx, db, userID, plan.ID, todayStart)
+	if err != nil {
+		return fmt.Errorf("check existing date evaluation: %w", err)
+	}
+	if exists {
+		return nil
+	}
+
+	session, isRestDay := PlannedSessionForDate(*plan, today)
+
+	// Check if any workout exists for today.
+	hasWorkout, err := hasWorkoutOnDate(ctx, db, userID, today)
+	if err != nil {
+		return fmt.Errorf("check workouts for today: %w", err)
+	}
+
+	if hasWorkout {
+		// A workout was uploaded today — the regular evaluation path handles it.
+		return nil
+	}
+
+	if isRestDay {
+		eval := &Evaluation{
+			PlannedType: "rest",
+			ActualType:  "rest",
+			Compliance:  "rest_day",
+			Notes:       noteRestDay,
+			Flags:       []string{},
+			Adjustments: "",
+			Date:        today,
+		}
+		return storeEvaluationForDate(ctx, db, userID, plan.ID, eval)
+	}
+
+	if session != nil {
+		sessionType := "session"
+		if session.Session != nil && session.Session.Description != "" {
+			sessionType = session.Session.Description
+		}
+		eval := &Evaluation{
+			PlannedType: sessionType,
+			ActualType:  "none",
+			Compliance:  "missed",
+			Notes:       fmt.Sprintf(noteMissedSession, sessionType),
+			Flags:       []string{},
+			Adjustments: "",
+			Date:        today,
+		}
+		return storeEvaluationForDate(ctx, db, userID, plan.ID, eval)
+	}
+
+	return nil
+}
+
+// hasWorkoutOnDate checks whether any workout exists for the given user on the specified date.
+func hasWorkoutOnDate(ctx context.Context, db *sql.DB, userID int64, date string) (bool, error) {
+	dateStart := date + "T00:00:00Z"
+	// Use exclusive upper bound (start of next day) to cover the full 24 hours.
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return false, fmt.Errorf("parse date %q: %w", date, err)
+	}
+	nextDay := t.AddDate(0, 0, 1).Format("2006-01-02") + "T00:00:00Z"
+	var count int
+	err = db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM workouts
+		WHERE user_id = ? AND started_at >= ? AND started_at < ?
+	`, userID, dateStart, nextDay).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // hasCriticalFlag returns true if any flag in the list is considered critical.
 func hasCriticalFlag(flags []string) bool {
 	for _, f := range flags {
@@ -483,7 +620,7 @@ func parseEvalResponse(response string) (*Evaluation, error) {
 	}
 
 	switch eval.Compliance {
-	case "compliant", "partial", "missed", "bonus":
+	case "compliant", "partial", "missed", "bonus", "rest_day":
 	default:
 		return nil, fmt.Errorf("invalid compliance value: %q", eval.Compliance)
 	}

@@ -319,6 +319,7 @@
     "compliant": "Fullført",
     "partial": "Delvis",
     "missed": "Ikke gjennomført",
+    "rest_day": "Hviledag",
     "bonus": "Bonus",
     "coachNotes": "Trenerkommentar",
     "warnings": "Advarsler",
