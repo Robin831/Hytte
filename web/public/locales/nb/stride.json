@@ -32,6 +32,7 @@
     "past_one": "{{count}} tidligere løp",
     "past_other": "{{count}} tidligere løp",
     "result": "Resultat",
+    "target": "Mål",
     "delete": "Slett løp",
     "form": {
       "name": "Løpsnavn",

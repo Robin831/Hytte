@@ -32,6 +32,7 @@
     "past_one": "{{count}} past race",
     "past_other": "{{count}} past races",
     "result": "Result",
+    "target": "Target",
     "delete": "Delete race",
     "form": {
       "name": "Race name",

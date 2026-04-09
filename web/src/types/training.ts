@@ -21,6 +21,7 @@ export interface Workout {
   pace_cv_pct?: number
   laps?: Lap[]
   tags?: string[]
+  race_id?: number
   samples?: Samples
 }
 

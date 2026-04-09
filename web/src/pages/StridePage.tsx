@@ -1026,7 +1026,8 @@ export default function StridePage() {
                       {formatDate(`${race.date}T00:00:00`, { dateStyle: 'medium' })}
                       {' · '}
                       {formatDistance(race.distance_m)}
-                      {race.target_time != null && ` · ${formatDuration(race.target_time)}`}
+                      {race.target_time != null && ` · ${t('races.target')}: ${formatDuration(race.target_time)}`}
+                      {race.result_time != null && ` · ${t('races.result')}: ${formatDuration(race.result_time)}`}
                       {weeks > 0 && ` · ${t('races.weeksAway', { count: weeks })}`}
                     </p>
                   </div>
@@ -1060,6 +1061,7 @@ export default function StridePage() {
                         {formatDate(`${race.date}T00:00:00`, { dateStyle: 'medium' })}
                         {' · '}
                         {formatDistance(race.distance_m)}
+                        {race.target_time != null && ` · ${t('races.target')}: ${formatDuration(race.target_time)}`}
                         {race.result_time != null && ` · ${t('races.result')}: ${formatDuration(race.result_time)}`}
                       </p>
                     </div>
