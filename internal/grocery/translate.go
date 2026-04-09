@@ -16,6 +16,12 @@ type TranslatedItem struct {
 	SourceLanguage string `json:"language"`
 }
 
+// promptRunner abstracts the Claude CLI call for testability.
+type promptRunner func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error)
+
+// runPrompt is the default prompt runner. Override in tests.
+var runPrompt promptRunner = training.RunPrompt
+
 // TranslateAndNormalize sends grocery input text to Claude CLI for translation
 // to Norwegian and normalization for a shopping list.
 func TranslateAndNormalize(ctx context.Context, cfg *training.ClaudeConfig, input string) ([]TranslatedItem, error) {
@@ -23,7 +29,7 @@ func TranslateAndNormalize(ctx context.Context, cfg *training.ClaudeConfig, inpu
 
 Input: %s`, input)
 
-	output, err := training.RunPrompt(ctx, cfg, prompt)
+	output, err := runPrompt(ctx, cfg, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("claude translation: %w", err)
 	}

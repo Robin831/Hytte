@@ -107,9 +107,9 @@ export default function GroceryPage() {
   }
 
   const addTranslatedItems = async (translatedItems: TranslatedItem[]) => {
-    for (const ti of translatedItems) {
-      try {
-        const res = await fetch('/api/grocery/items', {
+    const results = await Promise.allSettled(
+      translatedItems.map(ti =>
+        fetch('/api/grocery/items', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
@@ -118,17 +118,35 @@ export default function GroceryPage() {
             original_text: ti.original,
             source_language: ti.language,
           }),
+        }).then(res => {
+          if (!res.ok) throw new Error('add failed')
+          return res.json()
         })
-        if (!res.ok) throw new Error('add failed')
-        const data = await res.json()
-        setItems(prev => [...prev.filter(i => !i.checked), data.item, ...prev.filter(i => i.checked)])
-      } catch {
-        setError(t('errors.failedToAdd'))
+      )
+    )
+    const failed = results.some(r => r.status === 'rejected')
+    if (failed) setError(t('errors.failedToAdd'))
+    // Refetch to get authoritative ordering
+    try {
+      const fetched = await fetchItems()
+      setItems(fetched)
+    } catch {
+      // If refetch fails, add successful items optimistically
+      const added = results
+        .filter((r): r is PromiseFulfilledResult<{ item: GroceryItem }> => r.status === 'fulfilled')
+        .map(r => r.value.item)
+      if (added.length > 0) {
+        setItems(prev => [...prev.filter(i => !i.checked), ...added, ...prev.filter(i => i.checked)])
       }
     }
   }
 
+  const translateControllerRef = useRef<AbortController | null>(null)
+
   const handleVoiceInput = async (transcript: string) => {
+    translateControllerRef.current?.abort()
+    const controller = new AbortController()
+    translateControllerRef.current = controller
     setIsTranslating(true)
     setError('')
     try {
@@ -137,14 +155,19 @@ export default function GroceryPage() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: transcript }),
+        signal: controller.signal,
       })
       if (!res.ok) throw new Error('translate failed')
       const data = await res.json()
       await addTranslatedItems(data.items as TranslatedItem[])
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(t('errors.failedToTranslate'))
     } finally {
-      setIsTranslating(false)
+      if (translateControllerRef.current === controller) {
+        setIsTranslating(false)
+        translateControllerRef.current = null
+      }
     }
   }
 
