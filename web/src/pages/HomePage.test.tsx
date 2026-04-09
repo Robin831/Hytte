@@ -231,4 +231,18 @@ describe('HomePage – feature-flagged cards', () => {
     expect(screen.getByTestId('stride-plan-card')).toBeInTheDocument()
     expect(screen.getByTestId('work-hours-card')).toBeInTheDocument()
   })
+
+  it('does not render BudgetSnapshotCard when budget feature is disabled', () => {
+    mockNow.value = new Date('2026-04-09T08:00:00')
+    setAuth({ name: 'Robin Smith' }, () => false)
+    renderPage()
+    expect(screen.queryByTestId('budget-snapshot-card')).not.toBeInTheDocument()
+  })
+
+  it('renders BudgetSnapshotCard when budget feature is enabled', () => {
+    mockNow.value = new Date('2026-04-09T08:00:00')
+    setAuth({ name: 'Robin Smith' }, (f) => f === 'budget')
+    renderPage()
+    expect(screen.getByTestId('budget-snapshot-card')).toBeInTheDocument()
+  })
 })

@@ -16,12 +16,13 @@ interface Account {
   type: string
   balance: number
   credit_limit: number
+  currency?: string
 }
 
-function formatCurrency(amount: number): string {
+function formatCurrency(amount: number, currency = 'NOK'): string {
   return formatNumber(amount, {
     style: 'currency',
-    currency: 'NOK',
+    currency,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   })
@@ -141,7 +142,7 @@ export default function BudgetSnapshotCard() {
             <div key={card.id} className="flex items-center justify-between border-t border-gray-700 pt-2">
               <span className="text-sm text-gray-400 truncate mr-2">{card.name}</span>
               <span className={`text-sm tabular-nums ${card.balance < 0 ? 'text-red-400' : 'text-gray-300'}`}>
-                {formatCurrency(card.balance)}
+                {formatCurrency(card.balance, card.currency)}
               </span>
             </div>
           ))}
