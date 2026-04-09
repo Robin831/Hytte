@@ -3,7 +3,6 @@
   "tagline": "Ditt koselige hjørne på nettet",
   "nav": {
     "home": "Hjem",
-    "dashboard": "Oversikt",
     "weather": "Vær",
     "calendar": "Kalender",
     "webhooks": "Webhooks",
@@ -67,7 +66,7 @@
     "label": "API: {{status}}"
   },
   "home": {
-    "viewDashboard": "Vis fullstendig oversikt"
+    "aboutDescription": "Din personlige oversikt for budsjett, trening, arbeidstid og mer."
   },
   "greeting": {
     "morning": "God morgen!",

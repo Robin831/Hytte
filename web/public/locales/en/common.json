@@ -3,7 +3,6 @@
   "tagline": "Your cozy corner of the web",
   "nav": {
     "home": "Home",
-    "dashboard": "Dashboard",
     "weather": "Weather",
     "calendar": "Calendar",
     "webhooks": "Webhooks",
@@ -67,7 +66,7 @@
     "label": "API: {{status}}"
   },
   "home": {
-    "viewDashboard": "View full dashboard"
+    "aboutDescription": "Your personal dashboard for budget, training, work hours & more."
   },
   "greeting": {
     "morning": "Good morning!",

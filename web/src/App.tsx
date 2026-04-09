@@ -6,7 +6,6 @@ import FeatureRoute from './components/FeatureRoute'
 import KioskPage from './pages/KioskPage'
 import TodayView from './pages/TodayView'
 import HomePage from './pages/HomePage'
-import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import Settings from './pages/Settings'
 import Weather from './pages/Weather'
@@ -439,14 +438,6 @@ function MainLayout() {
 
           {/* Protected routes (accessible to all authenticated users) */}
           {/* Note: FeatureRoute also supports requireAdmin prop for admin-only routes */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
           <Route
             path="/settings"
             element={
