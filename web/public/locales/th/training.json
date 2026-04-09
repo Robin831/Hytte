@@ -86,6 +86,12 @@
     "similar": {
       "title": "การออกกำลังกายที่คล้ายกัน",
       "compare": "เปรียบเทียบ"
+    },
+    "linkedRace": {
+      "title": "การแข่งขันที่เชื่อมโยง",
+      "targetTime": "เป้าหมาย",
+      "actualTime": "จริง",
+      "difference": "ผลต่าง"
     }
   },
   "analysis": {

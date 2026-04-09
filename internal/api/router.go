@@ -455,6 +455,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Use(auth.RequireFeature(db, "stride"))
 				r.Get("/stride/races", stride.ListRacesHandler(db))
 				r.Post("/stride/races", stride.CreateRaceHandler(db))
+				r.Get("/stride/races/{id}", stride.GetRaceHandler(db))
 				r.Put("/stride/races/{id}", stride.UpdateRaceHandler(db))
 				r.Delete("/stride/races/{id}", stride.DeleteRaceHandler(db))
 				r.Get("/stride/notes", stride.ListNotesHandler(db))

@@ -190,6 +190,33 @@ func ListRacesHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// GetRaceHandler returns a single race by ID for the authenticated user.
+// GET /api/stride/races/{id}
+func GetRaceHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid race ID"})
+			return
+		}
+
+		race, err := GetRaceByID(db, id, user.ID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "race not found"})
+				return
+			}
+			log.Printf("stride: get race %d: %v", id, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get race"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"race": race})
+	}
+}
+
 // CreateRaceHandler creates a new race in the race calendar.
 // Expects JSON body: {"name":"...","date":"YYYY-MM-DD","distance_m":42195,"target_time":null,"priority":"A","notes":"..."}
 func CreateRaceHandler(db *sql.DB) http.HandlerFunc {

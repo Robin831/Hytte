@@ -86,6 +86,12 @@
     "similar": {
       "title": "Lignende økter",
       "compare": "Sammenlign"
+    },
+    "linkedRace": {
+      "title": "Tilknyttet løp",
+      "targetTime": "Mål",
+      "actualTime": "Faktisk",
+      "difference": "Diff"
     }
   },
   "analysis": {

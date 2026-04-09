@@ -216,6 +216,83 @@ func TestDeleteRaceHandler_NotFound(t *testing.T) {
 	}
 }
 
+func TestGetRaceHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	race, err := CreateRace(db, 1, "Target Race", "2026-06-01", 42195, nil, "A", "notes")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	idStr := strconv.FormatInt(race.ID, 10)
+	req := withUser(httptest.NewRequest("GET", "/api/stride/races/"+idStr, nil), 1)
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	GetRaceHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Race Race `json:"race"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Race.ID != race.ID {
+		t.Errorf("id = %d, want %d", body.Race.ID, race.ID)
+	}
+	if body.Race.Name != "Target Race" {
+		t.Errorf("name = %q, want %q", body.Race.Name, "Target Race")
+	}
+}
+
+func TestGetRaceHandler_InvalidID(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/races/abc", nil), 1)
+	req = withChiParam(req, "id", "abc")
+	rec := httptest.NewRecorder()
+	GetRaceHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestGetRaceHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/races/999", nil), 1)
+	req = withChiParam(req, "id", "999")
+	rec := httptest.NewRecorder()
+	GetRaceHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestGetRaceHandler_WrongUser(t *testing.T) {
+	db := setupTestDB(t)
+
+	race, err := CreateRace(db, 1, "User 1 Race", "2026-06-01", 5000, nil, "C", "")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	idStr := strconv.FormatInt(race.ID, 10)
+	req := withUser(httptest.NewRequest("GET", "/api/stride/races/"+idStr, nil), 2)
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	GetRaceHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
 // --- Note handler tests ---
 
 func TestListNotesHandler_Empty(t *testing.T) {

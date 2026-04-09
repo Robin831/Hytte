@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useId, type ReactNode } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowRight, Minus, AlertTriangle, CheckCircle2, Info, FlaskConical, XCircle, Zap } from 'lucide-react'
+import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2, TrendingUp, TrendingDown, ArrowRight, Minus, AlertTriangle, CheckCircle2, Info, FlaskConical, XCircle, Zap, Trophy } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
@@ -81,6 +81,7 @@ export default function TrainingDetail() {
   const [racePredictions, setRacePredictions] = useState<RacePredictions | null>(null)
   const [showLactateImport, setShowLactateImport] = useState(false)
   const [strideEval, setStrideEval] = useState<StrideEvaluationRecord | null>(null)
+  const [linkedRace, setLinkedRace] = useState<{ name: string; date: string; distance_m: number; target_time: number | null; result_time: number | null } | null>(null)
 
   function formatDistance(meters: number): string {
     if (meters < 1000) return `${Math.round(meters)} ${t('units.m')}`
@@ -107,6 +108,7 @@ export default function TrainingDetail() {
       setAnalysisError('')
       setInsights(null)
       setRacePredictions(null)
+      setLinkedRace(null)
       setZones([])
       setSimilar([])
       setStrideEval(null)
@@ -184,6 +186,36 @@ export default function TrainingDetail() {
     run()
     return () => controller.abort()
   }, [user, id, t])
+
+  // Fetch linked race details when workout has a race_id.
+  useEffect(() => {
+    const controller = new AbortController()
+    async function fetchRace() {
+      if (!workout?.race_id) {
+        setLinkedRace(null)
+        return
+      }
+      try {
+        const res = await fetch(`/api/stride/races/${workout.race_id}`, { credentials: 'include', signal: controller.signal })
+        if (controller.signal.aborted) return
+        if (!res.ok) {
+          setLinkedRace(null)
+          return
+        }
+        const data = await res.json()
+        if (controller.signal.aborted) return
+        const r = data.race as { name: string; date: string; distance_m: number; target_time: number | null; result_time: number | null }
+        setLinkedRace({ name: r.name, date: r.date, distance_m: r.distance_m, target_time: r.target_time, result_time: r.result_time })
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') {
+          console.warn('Failed to load linked race:', err)
+          setLinkedRace(null)
+        }
+      }
+    }
+    fetchRace()
+    return () => controller.abort()
+  }, [workout?.race_id])
 
   // Poll for analysis completion when status is 'pending'.
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -452,6 +484,32 @@ export default function TrainingDetail() {
           onClose={() => setShowLactateImport(false)}
           onSuccess={(testId) => navigate(`/lactate/${testId}`)}
         />
+      )}
+
+      {/* Linked Race Info */}
+      {linkedRace && (
+        <div className="bg-gray-800 rounded-xl p-4 mb-6 flex items-center gap-3">
+          <Trophy size={18} className="text-yellow-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-white">{t('detail.linkedRace.title')}: {linkedRace.name}</p>
+            <p className="text-xs text-gray-400">
+              {formatDate(`${linkedRace.date}T00:00:00`, { dateStyle: 'medium' })}
+              {linkedRace.target_time != null && (
+                <> &middot; {t('detail.linkedRace.targetTime')}: {formatDuration(linkedRace.target_time)}</>
+              )}
+              {linkedRace.result_time != null && (
+                <> &middot; {t('detail.linkedRace.actualTime')}: {formatDuration(linkedRace.result_time)}</>
+              )}
+              {linkedRace.target_time != null && linkedRace.result_time != null && (
+                <> &middot; {t('detail.linkedRace.difference')}: {(() => {
+                  const diff = linkedRace.result_time! - linkedRace.target_time!
+                  const sign = diff < 0 ? '-' : diff > 0 ? '+' : ''
+                  return `${sign}${formatDuration(Math.abs(diff))}`
+                })()}</>
+              )}
+            </p>
+          </div>
+        </div>
       )}
 
       {/* AI Analysis section — admin only */}

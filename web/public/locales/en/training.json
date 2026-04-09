@@ -86,6 +86,12 @@
     "similar": {
       "title": "Similar Workouts",
       "compare": "Compare"
+    },
+    "linkedRace": {
+      "title": "Linked Race",
+      "targetTime": "Target",
+      "actualTime": "Actual",
+      "difference": "Diff"
     }
   },
   "analysis": {
