@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Wrench,
   RotateCcw,
+  XCircle,
 } from 'lucide-react'
 import { Dialog, DialogHeader, DialogBody } from '../ui/dialog'
 import { CIBadge, ReviewBadge } from './PRBadges'
