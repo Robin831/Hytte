@@ -27,6 +27,7 @@ type Workout struct {
 	TrainingLoad    *float64 `json:"training_load,omitempty"`
 	HRDriftPct      *float64 `json:"hr_drift_pct,omitempty"`
 	PaceCVPct       *float64 `json:"pace_cv_pct,omitempty"`
+	RaceID          *int64   `json:"race_id,omitempty"`
 
 	// Populated on detail requests.
 	Laps    []Lap    `json:"laps,omitempty"`
