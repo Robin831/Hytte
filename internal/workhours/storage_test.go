@@ -1,6 +1,7 @@
 package workhours
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"testing"
@@ -788,7 +789,7 @@ func TestUpdateOpenSessionStartTime(t *testing.T) {
 func TestCreateAndGetFlexRedemptions(t *testing.T) {
 	db := setupTestDB(t)
 
-	r, err := CreateFlexRedemption(db, 1, "2026-04-01", 30)
+	r, err := CreateFlexRedemption(context.Background(), db, 1, "2026-04-01", 30)
 	if err != nil {
 		t.Fatalf("create flex redemption: %v", err)
 	}
@@ -824,10 +825,10 @@ func TestSumFlexRedemptions(t *testing.T) {
 	}
 
 	// Add two redemptions.
-	if _, err := CreateFlexRedemption(db, 1, "2026-04-01", 30); err != nil {
+	if _, err := CreateFlexRedemption(context.Background(), db, 1, "2026-04-01", 30); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if _, err := CreateFlexRedemption(db, 1, "2026-04-02", 30); err != nil {
+	if _, err := CreateFlexRedemption(context.Background(), db, 1, "2026-04-02", 30); err != nil {
 		t.Fatalf("create: %v", err)
 	}
 
@@ -852,10 +853,10 @@ func TestSumFlexRedemptions(t *testing.T) {
 func TestGetFlexRedemptions_FiltersByFromDate(t *testing.T) {
 	db := setupTestDB(t)
 
-	if _, err := CreateFlexRedemption(db, 1, "2026-03-01", 30); err != nil {
+	if _, err := CreateFlexRedemption(context.Background(), db, 1, "2026-03-01", 30); err != nil {
 		t.Fatalf("create first redemption: %v", err)
 	}
-	if _, err := CreateFlexRedemption(db, 1, "2026-04-01", 30); err != nil {
+	if _, err := CreateFlexRedemption(context.Background(), db, 1, "2026-04-01", 30); err != nil {
 		t.Fatalf("create second redemption: %v", err)
 	}
 

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -98,12 +99,7 @@ func DayGetHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load redemptions"})
 			return
 		}
-		if redeemed > 0 {
-			summary.RedeemedMinutes = redeemed
-			summary.ReportedMinutes += redeemed
-			summary.ReportedHours = float64(summary.ReportedMinutes) / 60.0
-			summary.BalanceMinutes += redeemed
-		}
+		applyRedemptionToSummary(&summary, redeemed)
 
 		writeJSON(w, http.StatusOK, map[string]any{
 			"day":     day,
@@ -526,7 +522,18 @@ func WeekSummaryHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		summaries, err := calculateSummaries(days, settings)
+		weekRedemptions, err := GetFlexRedemptions(db, user.ID, monday.Format("2006-01-02"))
+		if err != nil {
+			log.Printf("workhours: week redemptions: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load redemptions"})
+			return
+		}
+		weekRedemptionMap := make(map[string]int, len(weekRedemptions))
+		for _, r := range weekRedemptions {
+			weekRedemptionMap[r.Date] += r.Minutes
+		}
+
+		summaries, err := calculateSummaries(days, settings, weekRedemptionMap)
 		if err != nil {
 			log.Printf("workhours: calculate week summaries: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to calculate summaries"})
@@ -584,7 +591,18 @@ func MonthSummaryHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		summaries, err := calculateSummaries(days, settings)
+		monthRedemptions, err := GetFlexRedemptions(db, user.ID, firstDay)
+		if err != nil {
+			log.Printf("workhours: month redemptions: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load redemptions"})
+			return
+		}
+		monthRedemptionMap := make(map[string]int, len(monthRedemptions))
+		for _, r := range monthRedemptions {
+			monthRedemptionMap[r.Date] += r.Minutes
+		}
+
+		summaries, err := calculateSummaries(days, settings, monthRedemptionMap)
 		if err != nil {
 			log.Printf("workhours: calculate month summaries: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to calculate summaries"})
@@ -645,7 +663,7 @@ func FlexPoolHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		summaries, err := calculateSummaries(days, settings)
+		summaries, err := calculateSummaries(days, settings, nil)
 		if err != nil {
 			log.Printf("workhours: flex pool calculate: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to calculate flex pool"})
@@ -708,12 +726,17 @@ func FlexRedeemHandler(db *sql.DB) http.HandlerFunc {
 		user := auth.UserFromContext(r.Context())
 
 		// Parse optional date from request body.
-		targetDate := time.Now().Format("2006-01-02")
+		targetDate := time.Now().UTC().Format("2006-01-02")
 		if r.Body != nil {
 			var body struct {
 				Date string `json:"date"`
 			}
-			if err := json.NewDecoder(r.Body).Decode(&body); err == nil && isValidDate(body.Date) {
+			dec := json.NewDecoder(r.Body)
+			if err := dec.Decode(&body); err != nil && err != io.EOF {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+				return
+			}
+			if isValidDate(body.Date) {
 				targetDate = body.Date
 			}
 		}
@@ -752,7 +775,7 @@ func FlexRedeemHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		summaries, err := calculateSummaries(days, settings)
+		summaries, err := calculateSummaries(days, settings, nil)
 		if err != nil {
 			log.Printf("workhours: flex redeem calculate: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to calculate flex pool"})
@@ -790,19 +813,9 @@ func FlexRedeemHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		now := time.Now().UTC().Format(time.RFC3339)
-		res, err := tx.ExecContext(r.Context(),
-			"INSERT INTO work_flex_redemptions (user_id, date, minutes, created_at) VALUES (?, ?, ?, ?)",
-			user.ID, targetDate, rounding, now,
-		)
+		redemption, err := CreateFlexRedemption(r.Context(), tx, user.ID, targetDate, rounding)
 		if err != nil {
-			log.Printf("workhours: flex redeem insert: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create redemption"})
-			return
-		}
-		id, err := res.LastInsertId()
-		if err != nil {
-			log.Printf("workhours: flex redeem last insert id: %v", err)
+			log.Printf("workhours: flex redeem create: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create redemption"})
 			return
 		}
@@ -810,14 +823,6 @@ func FlexRedeemHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("workhours: flex redeem commit: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to commit redemption"})
 			return
-		}
-
-		redemption := &FlexRedemption{
-			ID:        id,
-			UserID:    user.ID,
-			Date:      targetDate,
-			Minutes:   rounding,
-			CreatedAt: now,
 		}
 
 		// Return updated pool.
@@ -1216,13 +1221,29 @@ func PunchOutHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// calculateSummaries computes DaySummary for each WorkDay.
-func calculateSummaries(days []WorkDay, settings UserSettings) ([]DaySummary, error) {
+// applyRedemptionToSummary credits redeemed flex minutes into a DaySummary.
+func applyRedemptionToSummary(s *DaySummary, redeemedMinutes int) {
+	if redeemedMinutes <= 0 {
+		return
+	}
+	s.RedeemedMinutes = redeemedMinutes
+	s.ReportedMinutes += redeemedMinutes
+	s.ReportedHours = float64(s.ReportedMinutes) / 60.0
+	s.BalanceMinutes += redeemedMinutes
+}
+
+// calculateSummaries computes DaySummary for each WorkDay, applying any
+// flex redemptions from redemptionsByDate (date string → redeemed minutes).
+// Pass nil to skip redemption augmentation.
+func calculateSummaries(days []WorkDay, settings UserSettings, redemptionsByDate map[string]int) ([]DaySummary, error) {
 	summaries := make([]DaySummary, 0, len(days))
 	for _, d := range days {
 		s, err := CalculateDay(d, settings)
 		if err != nil {
 			return nil, err
+		}
+		if redemptionsByDate != nil {
+			applyRedemptionToSummary(&s, redemptionsByDate[s.Date])
 		}
 		summaries = append(summaries, s)
 	}

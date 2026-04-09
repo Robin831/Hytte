@@ -1,6 +1,7 @@
 package workhours
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -8,6 +9,11 @@ import (
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
+
+// dbExecer is implemented by both *sql.DB and *sql.Tx.
+type dbExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
 
 // GetDay returns the work day for a user on the given date (YYYY-MM-DD),
 // including its sessions and deductions. Returns nil, nil if no entry exists.
@@ -782,9 +788,10 @@ func DeleteOpenSession(db *sql.DB, userID int64) error {
 }
 
 // CreateFlexRedemption inserts a new flex redemption record.
-func CreateFlexRedemption(db *sql.DB, userID int64, date string, minutes int) (*FlexRedemption, error) {
+// db may be a *sql.DB or *sql.Tx.
+func CreateFlexRedemption(ctx context.Context, db dbExecer, userID int64, date string, minutes int) (*FlexRedemption, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := db.Exec(
+	res, err := db.ExecContext(ctx,
 		"INSERT INTO work_flex_redemptions (user_id, date, minutes, created_at) VALUES (?, ?, ?, ?)",
 		userID, date, minutes, now,
 	)
