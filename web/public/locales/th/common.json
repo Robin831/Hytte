@@ -66,6 +66,9 @@
   "api": {
     "label": "API: {{status}}"
   },
+  "home": {
+    "viewDashboard": "ดูแดชบอร์ดทั้งหมด"
+  },
   "greeting": {
     "morning": "สวัสดีตอนเช้า!",
     "afternoon": "สวัสดีตอนบ่าย!",

@@ -527,20 +527,13 @@ function MainLayout() {
             path="/admin"
             element={
               <ProtectedRoute>
-                {user?.is_admin ? <Admin /> : <Navigate to="/dashboard" replace />}
+                {user?.is_admin ? <Admin /> : <Navigate to="/" replace />}
               </ProtectedRoute>
             }
           />
 
           {/* Catch-all */}
-          <Route
-            path="*"
-            element={
-              <ProtectedRoute>
-                <Navigate to="/dashboard" replace />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>

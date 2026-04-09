@@ -66,6 +66,9 @@
   "api": {
     "label": "API: {{status}}"
   },
+  "home": {
+    "viewDashboard": "Vis fullstendig oversikt"
+  },
   "greeting": {
     "morning": "God morgen!",
     "afternoon": "God ettermiddag!",
