@@ -42,8 +42,14 @@ interface PendingExternalAction {
   pr: ExternalPR
 }
 
+const anvilRepoMap: Record<string, string> = {
+  hytte: 'Robin831/Hytte',
+  forge: 'Robin831/Forge',
+}
+
 function githubUrl(anvil: string, number: number): string | null {
-  return anvil.includes('/') ? `https://github.com/${anvil}/pull/${number}` : null
+  const repo = anvil.includes('/') ? anvil : anvilRepoMap[anvil.toLowerCase()]
+  return repo ? `https://github.com/${repo}/pull/${number}` : null
 }
 
 export default function PRModal({ open, onClose, showToast, onBeadClick }: PRModalProps) {
