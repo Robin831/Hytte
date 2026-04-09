@@ -1,13 +1,20 @@
 import type { TFunction } from 'i18next'
 
-export function getWeatherIcon(symbolCode: string, size = 24) {
+export function getWeatherIcon(symbolCode: string, size = 24, alt = '') {
   return (
     <img
       src={`/weather-icons/${symbolCode}.svg`}
-      alt={symbolCode.replace(/_/g, ' ')}
+      alt={alt}
+      aria-hidden={alt === '' ? true : undefined}
       width={size}
       height={size}
       className="shrink-0"
+      onError={(e) => {
+        const img = e.currentTarget
+        if (!img.src.endsWith('/weather-icons/cloudy.svg')) {
+          img.src = '/weather-icons/cloudy.svg'
+        }
+      }}
     />
   )
 }
