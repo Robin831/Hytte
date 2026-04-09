@@ -13,12 +13,15 @@ import (
 
 	"github.com/Robin831/Hytte/internal/encryption"
 	"github.com/Robin831/Hytte/internal/settings"
-	"github.com/Robin831/Hytte/internal/stride"
 )
 
 var (
 	// ErrClaudeNotEnabled is returned when Claude is disabled in the user's config.
 	ErrClaudeNotEnabled = errors.New("Claude is not enabled — enable it in settings")
+
+	// OnRaceClassified is called when a workout is classified as a race by Claude.
+	// It is set by the API layer to avoid an import cycle between training and stride.
+	OnRaceClassified func(db *sql.DB, workoutID, userID int64, workoutDate string, distanceMeters float64)
 )
 
 // RunClaudeAnalysis runs Claude classification on a workout: builds the prompt,
@@ -88,18 +91,8 @@ func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64)
 
 	// When a workout is classified as a race, attempt to auto-link it to a
 	// matching race in the user's race calendar.
-	if analysisType == "race" && workout.DistanceMeters > 0 {
-		result, err := stride.TryMatchRaceForWorkout(db, workoutID, userID, workout.StartedAt, workout.DistanceMeters)
-		if err != nil {
-			log.Printf("Race matching failed for workout %d: %v", workoutID, err)
-		} else {
-			switch result.Status {
-			case "linked":
-				log.Printf("Auto-linked workout %d to race %d (%s)", workoutID, result.RaceID, result.RaceName)
-			case "ambiguous":
-				log.Printf("Ambiguous race match for workout %d: %d candidates found", workoutID, result.Candidates)
-			}
-		}
+	if analysisType == "race" && workout.DistanceMeters > 0 && OnRaceClassified != nil {
+		OnRaceClassified(db, workoutID, userID, workout.StartedAt, workout.DistanceMeters)
 	}
 
 	return nil
