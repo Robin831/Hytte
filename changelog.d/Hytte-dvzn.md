@@ -1,0 +1,2 @@
+category: Added
+- **Automatic race matching for workouts** - When a workout is classified as a race by Claude AI, the system automatically matches it against the user's race calendar. If exactly one race matches (by date ±1 day and distance ±20%), the workout is linked and the race result time is populated. If multiple races match, the result is flagged as ambiguous for manual resolution. (Hytte-dvzn)

@@ -18,6 +18,12 @@ import (
 var (
 	// ErrClaudeNotEnabled is returned when Claude is disabled in the user's config.
 	ErrClaudeNotEnabled = errors.New("Claude is not enabled — enable it in settings")
+
+	// OnRaceClassified is called when a workout is classified as a race by Claude.
+	// It is set by the API layer to avoid an import cycle between training and stride.
+	// It returns an error so RunClaudeAnalysis can log race-matching failures while
+	// treating auto-linking as a best-effort step.
+	OnRaceClassified func(db *sql.DB, workoutID, userID int64, workoutDate string, distanceMeters float64) error
 )
 
 // RunClaudeAnalysis runs Claude classification on a workout: builds the prompt,
@@ -82,6 +88,14 @@ func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64)
 	if analysisTitle != "" {
 		if err := SetAITitle(db, workoutID, userID, analysisTitle); err != nil {
 			log.Printf("Failed to set AI title for workout %d: %v", workoutID, err)
+		}
+	}
+
+	// When a workout is classified as a race, attempt to auto-link it to a
+	// matching race in the user's race calendar.
+	if analysisType == "race" && workout.DistanceMeters > 0 && OnRaceClassified != nil {
+		if err := OnRaceClassified(db, workoutID, userID, workout.StartedAt, workout.DistanceMeters); err != nil {
+			log.Printf("Race matching failed for workout %d: %v", workoutID, err)
 		}
 	}
 

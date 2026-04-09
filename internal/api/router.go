@@ -49,6 +49,25 @@ func NewRouter(db *sql.DB) http.Handler {
 	r := chi.NewRouter()
 	webhookHub := webhooks.NewHub()
 
+	// Wire up race-matching callback to break the training→stride import cycle.
+	training.OnRaceClassified = func(db *sql.DB, workoutID, userID int64, workoutDate string, distanceMeters float64) error {
+		result, err := stride.TryMatchRaceForWorkout(db, workoutID, userID, workoutDate, distanceMeters)
+		if err != nil {
+			return err
+		}
+		switch result.Status {
+		case "linked":
+			log.Printf("Auto-linked workout %d to race %d (%s)", workoutID, result.RaceID, result.RaceName)
+		case "ambiguous":
+			log.Printf("Ambiguous race match for workout %d: %d candidates found", workoutID, result.Candidates)
+			// Tag the workout so the frontend can surface a confirmation prompt.
+			if tagErr := training.AddAITags(db, workoutID, userID, []string{"ai:race:ambiguous"}); tagErr != nil {
+				log.Printf("Failed to tag ambiguous race match for workout %d: %v", workoutID, tagErr)
+			}
+		}
+		return nil
+	}
+
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
