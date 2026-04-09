@@ -968,6 +968,9 @@ func buildRiegelComparisons(db *sql.DB, workout *Workout) []RiegelComparison {
 			DeltaPct:    delta,
 		})
 	}
+	if err := rows.Err(); err != nil {
+		log.Printf("BuildRaceContext: riegel comparisons iteration: %v", err)
+	}
 	return comps
 }
 
@@ -1056,6 +1059,9 @@ func fetchSimilarRaces(db *sql.DB, userID int64, distanceM float64, excludeWorko
 			TimeS:     timeS,
 			PacePerKm: formatPacePerKm(pacePerKm),
 		})
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("BuildRaceContext: similar races iteration: %v", err)
 	}
 	return races
 }

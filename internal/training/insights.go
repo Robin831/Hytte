@@ -188,10 +188,6 @@ func buildInsightsPrompt(w *Workout, basePrompt string, userProfileBlock string,
 		sb.WriteString(historicalContext)
 	}
 
-	if raceContext != nil {
-		sb.WriteString(FormatRacePromptSection(raceContext))
-	}
-
 	if historicalContext != "" {
 		sb.WriteString(`
 Respond with this exact JSON structure:
@@ -225,6 +221,10 @@ Respond with this exact JSON structure:
   "confidence_score": 0.85,
   "confidence_note": "Brief explanation of confidence level and any data limitations"
 }`)
+	}
+
+	if raceContext != nil {
+		sb.WriteString(FormatRacePromptSection(raceContext))
 	}
 
 	if userContext != "" {
