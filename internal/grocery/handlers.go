@@ -174,6 +174,10 @@ func HandleTranslate(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load translation config"})
 			return
 		}
+		if !cfg.Enabled {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "claude is not enabled"})
+			return
+		}
 
 		items, err := TranslateAndNormalize(r.Context(), cfg, body.Text)
 		if err != nil {

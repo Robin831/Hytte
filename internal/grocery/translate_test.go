@@ -82,8 +82,8 @@ func TestTranslateAndNormalize(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !strings.Contains(err.Error(), "parsing claude response") {
-			t.Errorf("error %q should contain 'parsing claude response'", err.Error())
+		if !strings.Contains(err.Error(), "parsing claude response (output length") {
+			t.Errorf("error %q should contain 'parsing claude response (output length'", err.Error())
 		}
 	})
 }
@@ -124,6 +124,24 @@ func TestHandleTranslateValidation(t *testing.T) {
 
 		if w.Code != http.StatusRequestEntityTooLarge {
 			t.Errorf("status = %d, want %d", w.Code, http.StatusRequestEntityTooLarge)
+		}
+	})
+
+	t.Run("returns 400 when Claude is disabled", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/grocery/translate", bytes.NewBufferString(`{"text":"eggs"}`))
+		req = withUser(req, user)
+		w := httptest.NewRecorder()
+		HandleTranslate(db)(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want %d; body: %s", w.Code, http.StatusBadRequest, w.Body.String())
+		}
+		var resp map[string]string
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if resp["error"] != "claude is not enabled" {
+			t.Errorf("error = %q, want %q", resp["error"], "claude is not enabled")
 		}
 	})
 

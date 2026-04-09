@@ -23,10 +23,11 @@ interface TranslatedItem {
 
 type SpeechRecognitionType = typeof window extends { SpeechRecognition: infer T } ? T : unknown
 
-const SpeechRecognitionCtor: (new () => SpeechRecognitionType) | undefined =
-  typeof window !== 'undefined'
-    ? (((window as unknown) as Record<string, unknown>).SpeechRecognition ?? ((window as unknown) as Record<string, unknown>).webkitSpeechRecognition) as (new () => SpeechRecognitionType) | undefined
-    : undefined
+function getSpeechRecognitionCtor(): (new () => SpeechRecognitionType) | undefined {
+  if (typeof window === 'undefined') return undefined
+  const w = window as unknown as Record<string, unknown>
+  return (w.SpeechRecognition ?? w.webkitSpeechRecognition) as (new () => SpeechRecognitionType) | undefined
+}
 
 export default function GroceryPage() {
   const { t } = useTranslation(['grocery', 'common'])
@@ -81,6 +82,17 @@ export default function GroceryPage() {
     const intervalId = setInterval(poll, 5000)
     return () => { clearInterval(intervalId); controller.abort() }
   }, [user, fetchItems])
+
+  // Unmount cleanup: abort any in-flight translation and stop any active recognition
+  useEffect(() => {
+    return () => {
+      translateControllerRef.current?.abort()
+      translateControllerRef.current = null
+      const recognition = recognitionRef.current as { stop?: () => void } | null
+      recognition?.stop?.()
+      recognitionRef.current = null
+    }
+  }, [])
 
   const handleAdd = async () => {
     const text = newItem.trim()
@@ -179,9 +191,10 @@ export default function GroceryPage() {
       return
     }
 
-    if (!SpeechRecognitionCtor) return
+    const Ctor = getSpeechRecognitionCtor()
+    if (!Ctor) return
 
-    const recognition = new SpeechRecognitionCtor() as Record<string, unknown>
+    const recognition = new Ctor() as Record<string, unknown>
     recognition.continuous = false
     recognition.interimResults = false
 
@@ -202,8 +215,15 @@ export default function GroceryPage() {
     }
 
     recognitionRef.current = recognition as SpeechRecognitionType
-    ;(recognition as { start: () => void }).start()
-    setIsRecording(true)
+    setError('')
+    try {
+      ;(recognition as { start: () => void }).start()
+      setIsRecording(true)
+    } catch {
+      recognitionRef.current = null
+      setIsRecording(false)
+      setError(t('errors.failedToTranslate'))
+    }
   }
 
   const handleToggle = async (item: GroceryItem) => {
@@ -256,7 +276,7 @@ export default function GroceryPage() {
 
   const unchecked = items.filter(i => !i.checked)
   const checked = items.filter(i => i.checked)
-  const speechSupported = !!SpeechRecognitionCtor
+  const speechSupported = !!getSpeechRecognitionCtor()
 
   if (loading) {
     return (
