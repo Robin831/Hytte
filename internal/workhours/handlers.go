@@ -639,10 +639,31 @@ func FlexPoolHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		flex := CalculateFlexPool(summaries, settings.RoundingMinutes)
+
+		redeemed, err := SumFlexRedemptions(db, user.ID, fromDate)
+		if err != nil {
+			log.Printf("workhours: flex pool sum redemptions: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load redemptions"})
+			return
+		}
+		flex.TotalMinutes -= redeemed
+		if flex.TotalMinutes < 0 {
+			flex.TotalMinutes = 0
+		}
+		// Recalculate to_next_interval after subtracting redemptions.
+		flex.ToNextInterval = 0
+		if flex.TotalMinutes > 0 {
+			mod := flex.TotalMinutes % settings.RoundingMinutes
+			if mod != 0 {
+				flex.ToNextInterval = settings.RoundingMinutes - mod
+			}
+		}
+
 		writeJSON(w, http.StatusOK, map[string]any{
-			"flex":           flex,
-			"reset_date":     fromDate,
-			"days_in_pool":   len(summaries),
+			"flex":             flex,
+			"reset_date":       fromDate,
+			"days_in_pool":     len(summaries),
+			"rounding_minutes": settings.RoundingMinutes,
 		})
 	}
 }
@@ -661,6 +682,96 @@ func FlexResetHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]string{"reset_date": today})
+	}
+}
+
+// FlexRedeemHandler handles POST /api/workhours/flex/redeem.
+// Redeems one rounding interval of flex time, deducting it from the pool.
+func FlexRedeemHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		settings, err := loadSettings(db, user.ID)
+		if err != nil {
+			log.Printf("workhours: flex redeem load settings: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load settings"})
+			return
+		}
+
+		rounding := settings.RoundingMinutes
+		if rounding <= 0 {
+			rounding = 30
+		}
+
+		// Compute current flex pool.
+		prefs, err := auth.GetPreferences(db, user.ID)
+		if err != nil {
+			log.Printf("workhours: flex redeem load prefs: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load preferences"})
+			return
+		}
+
+		fromDate := "2000-01-01"
+		if v, ok := prefs["work_hours_flex_reset_date"]; ok && v != "" {
+			if t, err := time.Parse("2006-01-02", v); err == nil {
+				fromDate = t.Format("2006-01-02")
+			}
+		}
+		toDate := time.Now().Format("2006-01-02")
+
+		days, err := ListDaysInRange(db, user.ID, fromDate, toDate)
+		if err != nil {
+			log.Printf("workhours: flex redeem load days: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load days"})
+			return
+		}
+
+		summaries, err := calculateSummaries(days, settings)
+		if err != nil {
+			log.Printf("workhours: flex redeem calculate: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to calculate flex pool"})
+			return
+		}
+
+		flex := CalculateFlexPool(summaries, settings.RoundingMinutes)
+
+		redeemed, err := SumFlexRedemptions(db, user.ID, fromDate)
+		if err != nil {
+			log.Printf("workhours: flex redeem sum redemptions: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load redemptions"})
+			return
+		}
+
+		available := flex.TotalMinutes - redeemed
+		if available < rounding {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "insufficient flex pool balance"})
+			return
+		}
+
+		redemption, err := CreateFlexRedemption(db, user.ID, toDate, rounding)
+		if err != nil {
+			log.Printf("workhours: flex redeem create: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create redemption"})
+			return
+		}
+
+		// Return updated pool.
+		newTotal := available - rounding
+		toNext := 0
+		if newTotal > 0 {
+			mod := newTotal % rounding
+			if mod != 0 {
+				toNext = rounding - mod
+			}
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"redemption": redemption,
+			"flex": FlexPoolResult{
+				TotalMinutes:   newTotal,
+				ToNextInterval: toNext,
+			},
+		})
 	}
 }
 

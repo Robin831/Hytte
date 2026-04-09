@@ -117,6 +117,15 @@ type OpenSession struct {
 	PunchedAt string `json:"punched_at"` // RFC3339
 }
 
+// FlexRedemption represents a single flex pool redemption record.
+type FlexRedemption struct {
+	ID        int64  `json:"id"`
+	UserID    int64  `json:"user_id"`
+	Date      string `json:"date"`       // YYYY-MM-DD
+	Minutes   int    `json:"minutes"`    // minutes redeemed
+	CreatedAt string `json:"created_at"` // RFC3339
+}
+
 // LeaveBalance represents leave usage totals for a given year.
 type LeaveBalance struct {
 	Year              int `json:"year"`

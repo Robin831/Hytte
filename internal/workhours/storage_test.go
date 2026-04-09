@@ -97,6 +97,14 @@ func setupTestDB(t *testing.T) *sql.DB {
 		punched_at TEXT NOT NULL,
 		UNIQUE(user_id)
 	);
+
+	CREATE TABLE IF NOT EXISTS work_flex_redemptions (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		date       TEXT NOT NULL,
+		minutes    INTEGER NOT NULL,
+		created_at TEXT NOT NULL DEFAULT ''
+	);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		t.Fatalf("create schema: %v", err)
@@ -772,5 +780,86 @@ func TestUpdateOpenSessionStartTime(t *testing.T) {
 	}
 	if s2.StartTime != "07:30" {
 		t.Errorf("GetOpenSession StartTime: got %q, want %q", s2.StartTime, "07:30")
+	}
+}
+
+// --- Flex Redemptions ---
+
+func TestCreateAndGetFlexRedemptions(t *testing.T) {
+	db := setupTestDB(t)
+
+	r, err := CreateFlexRedemption(db, 1, "2026-04-01", 30)
+	if err != nil {
+		t.Fatalf("create flex redemption: %v", err)
+	}
+	if r.Minutes != 30 {
+		t.Errorf("minutes: got %d, want 30", r.Minutes)
+	}
+	if r.Date != "2026-04-01" {
+		t.Errorf("date: got %q, want %q", r.Date, "2026-04-01")
+	}
+
+	redemptions, err := GetFlexRedemptions(db, 1, "2026-01-01")
+	if err != nil {
+		t.Fatalf("get flex redemptions: %v", err)
+	}
+	if len(redemptions) != 1 {
+		t.Fatalf("count: got %d, want 1", len(redemptions))
+	}
+	if redemptions[0].Minutes != 30 {
+		t.Errorf("minutes: got %d, want 30", redemptions[0].Minutes)
+	}
+}
+
+func TestSumFlexRedemptions(t *testing.T) {
+	db := setupTestDB(t)
+
+	// No redemptions => 0.
+	total, err := SumFlexRedemptions(db, 1, "2026-01-01")
+	if err != nil {
+		t.Fatalf("sum empty: %v", err)
+	}
+	if total != 0 {
+		t.Errorf("empty sum: got %d, want 0", total)
+	}
+
+	// Add two redemptions.
+	if _, err := CreateFlexRedemption(db, 1, "2026-04-01", 30); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := CreateFlexRedemption(db, 1, "2026-04-02", 30); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	total, err = SumFlexRedemptions(db, 1, "2026-01-01")
+	if err != nil {
+		t.Fatalf("sum: %v", err)
+	}
+	if total != 60 {
+		t.Errorf("sum: got %d, want 60", total)
+	}
+
+	// With a fromDate that excludes the first redemption.
+	total, err = SumFlexRedemptions(db, 1, "2026-04-02")
+	if err != nil {
+		t.Fatalf("sum: %v", err)
+	}
+	if total != 30 {
+		t.Errorf("sum from 04-02: got %d, want 30", total)
+	}
+}
+
+func TestGetFlexRedemptions_FiltersByFromDate(t *testing.T) {
+	db := setupTestDB(t)
+
+	CreateFlexRedemption(db, 1, "2026-03-01", 30)
+	CreateFlexRedemption(db, 1, "2026-04-01", 30)
+
+	redemptions, err := GetFlexRedemptions(db, 1, "2026-04-01")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(redemptions) != 1 {
+		t.Errorf("count: got %d, want 1", len(redemptions))
 	}
 }

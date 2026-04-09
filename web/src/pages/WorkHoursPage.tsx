@@ -407,7 +407,7 @@ function DayView({
   const punchEditAbortRef = useRef<AbortController | null>(null)
   const [dayData, setDayData] = useState<{ day: WorkDay | null; summary: DaySummary | null } | null>(null)
   const [presets, setPresets] = useState<WorkDeductionPreset[]>([])
-  const [flex, setFlex] = useState<{ flex: FlexPoolResult; reset_date: string; days_in_pool: number } | null>(null)
+  const [flex, setFlex] = useState<{ flex: FlexPoolResult; reset_date: string; days_in_pool: number; rounding_minutes?: number } | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [newStart, setNewStart] = useState('')
@@ -418,6 +418,7 @@ function DayView({
   const [punchStart, setPunchStart] = useState<string | null>(null)
   const [leaveDay, setLeaveDay] = useState<LeaveDay | null>(null)
   const [leaveSaving, setLeaveSaving] = useState(false)
+  const [redeemingFlex, setRedeemingFlex] = useState(false)
   const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null)
   const [recentlyUsed, setRecentlyUsed] = useState<number[]>(() => {
     try {
@@ -438,9 +439,23 @@ function DayView({
   const loadFlex = useCallback(() => {
     fetch('/api/workhours/flex', { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
-      .then((data: { flex: FlexPoolResult; reset_date: string; days_in_pool: number } | null) => setFlex(data))
+      .then((data: { flex: FlexPoolResult; reset_date: string; days_in_pool: number; rounding_minutes?: number } | null) => setFlex(data))
       .catch(() => {})
   }, [])
+
+  const handleFlexRedeem = useCallback(async () => {
+    setRedeemingFlex(true)
+    try {
+      const r = await fetch('/api/workhours/flex/redeem', { method: 'POST', credentials: 'include' })
+      if (r.ok) {
+        loadFlex()
+      }
+    } catch {
+      // ignore
+    } finally {
+      setRedeemingFlex(false)
+    }
+  }, [loadFlex])
 
   useEffect(() => {
     fetch('/api/workhours/presets', { credentials: 'include' })
@@ -1393,12 +1408,23 @@ function DayView({
           {flex && (
             <section className="flex items-center justify-between bg-gray-800/50 rounded-lg px-4 py-3">
               <span className="text-sm text-gray-400">{t('workhours:flexPool')}</span>
-              <span
-                className={`font-mono text-sm font-semibold ${flex.flex.total_minutes < 0 ? 'text-red-400' : 'text-green-400'}`}
-              >
-                {flex.flex.total_minutes > 0 ? '+' : ''}
-                {formatMins(flex.flex.total_minutes)}
-              </span>
+              <div className="flex items-center gap-2">
+                {flex.flex.total_minutes >= (flex.rounding_minutes ?? 30) && (
+                  <button
+                    onClick={handleFlexRedeem}
+                    disabled={redeemingFlex}
+                    className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
+                  >
+                    {t('workhours:redeemFlex', { minutes: flex.rounding_minutes ?? 30 })}
+                  </button>
+                )}
+                <span
+                  className={`font-mono text-sm font-semibold ${flex.flex.total_minutes < 0 ? 'text-red-400' : 'text-green-400'}`}
+                >
+                  {flex.flex.total_minutes > 0 ? '+' : ''}
+                  {formatMins(flex.flex.total_minutes)}
+                </span>
+              </div>
             </section>
           )}
         </>

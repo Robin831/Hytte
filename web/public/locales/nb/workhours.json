@@ -86,5 +86,6 @@
   "days": "dager",
   "internal": "Interntid",
   "markInternal": "Merk som interntid (møte/admin)",
-  "markExternal": "Merk som fakturerbart klientarbeid"
+  "markExternal": "Merk som fakturerbart klientarbeid",
+  "redeemFlex": "Bruk {{minutes}} min"
 }

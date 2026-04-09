@@ -631,6 +631,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/workhours/summary/month", workhours.MonthSummaryHandler(db))
 				r.Get("/workhours/flex", workhours.FlexPoolHandler(db))
 				r.Post("/workhours/flex/reset", workhours.FlexResetHandler(db))
+				r.Post("/workhours/flex/redeem", workhours.FlexRedeemHandler(db))
 				r.Get("/workhours/leave", workhours.LeaveDayListHandler(db))
 				r.Put("/workhours/leave", workhours.LeaveDayPutHandler(db))
 				r.Delete("/workhours/leave", workhours.LeaveDayDeleteHandler(db))

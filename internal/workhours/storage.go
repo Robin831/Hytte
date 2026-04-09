@@ -781,6 +781,64 @@ func DeleteOpenSession(db *sql.DB, userID int64) error {
 	return err
 }
 
+// CreateFlexRedemption inserts a new flex redemption record.
+func CreateFlexRedemption(db *sql.DB, userID int64, date string, minutes int) (*FlexRedemption, error) {
+	now := time.Now().Format(time.RFC3339)
+	res, err := db.Exec(
+		"INSERT INTO work_flex_redemptions (user_id, date, minutes, created_at) VALUES (?, ?, ?, ?)",
+		userID, date, minutes, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert flex redemption: %w", err)
+	}
+	id, _ := res.LastInsertId()
+	return &FlexRedemption{
+		ID:        id,
+		UserID:    userID,
+		Date:      date,
+		Minutes:   minutes,
+		CreatedAt: now,
+	}, nil
+}
+
+// GetFlexRedemptions returns all flex redemptions for a user from the given start date onward.
+func GetFlexRedemptions(db *sql.DB, userID int64, fromDate string) ([]FlexRedemption, error) {
+	rows, err := db.Query(
+		"SELECT id, user_id, date, minutes, created_at FROM work_flex_redemptions WHERE user_id = ? AND date >= ? ORDER BY date",
+		userID, fromDate,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query flex redemptions: %w", err)
+	}
+	defer rows.Close()
+
+	var result []FlexRedemption
+	for rows.Next() {
+		var r FlexRedemption
+		if err := rows.Scan(&r.ID, &r.UserID, &r.Date, &r.Minutes, &r.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan flex redemption: %w", err)
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+// SumFlexRedemptions returns the total redeemed minutes for a user from the given start date.
+func SumFlexRedemptions(db *sql.DB, userID int64, fromDate string) (int, error) {
+	var total sql.NullInt64
+	err := db.QueryRow(
+		"SELECT SUM(minutes) FROM work_flex_redemptions WHERE user_id = ? AND date >= ?",
+		userID, fromDate,
+	).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("sum flex redemptions: %w", err)
+	}
+	if !total.Valid {
+		return 0, nil
+	}
+	return int(total.Int64), nil
+}
+
 // verifyDayOwnership returns an error if dayID does not belong to userID.
 func verifyDayOwnership(db *sql.DB, dayID, userID int64) error {
 	var count int
