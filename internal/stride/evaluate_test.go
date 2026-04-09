@@ -577,8 +577,8 @@ func TestEvaluateRestDaysAndMissedSessions_WithWorkout(t *testing.T) {
 	})
 	insertTestPlan(t, db, 1, weekStart, weekEnd, string(planJSON))
 
-	// Insert a workout for today.
-	workoutStarted := time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339)
+	// Insert a workout for today using a fixed midday timestamp to avoid flakiness around UTC midnight.
+	workoutStarted := today + "T12:00:00Z"
 	if _, err := db.Exec(`
 		INSERT INTO workouts (id, user_id, sport, started_at, fit_file_hash, created_at)
 		VALUES (50, 1, 'running', ?, 'hash-exists', ?)
