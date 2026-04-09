@@ -21,6 +21,13 @@
       "title": "Norsk ord for dagen",
       "footer": "Skifter daglig · {{count}} ord totalt"
     },
+    "calendar": {
+      "title": "Dagens hendelser",
+      "allDay": "Hele dagen",
+      "noEvents": "Ingen hendelser i dag",
+      "error": "Kunne ikke laste hendelser",
+      "viewCalendar": "Full kalender →"
+    },
     "activity": {
       "title": "Siste aktivitet"
     },
