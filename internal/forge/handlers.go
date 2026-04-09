@@ -25,6 +25,50 @@ import (
 
 var validBeadID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-]{1,63}$`)
 
+// isExternalBead returns true if the bead ID has an "ext-" prefix, indicating
+// it was created by warden batch updates rather than the normal forge pipeline.
+func isExternalBead(beadID string) bool {
+	return strings.HasPrefix(beadID, "ext-")
+}
+
+// repoForAnvil resolves a short anvil name (e.g. "Hytte") to the GitHub
+// "owner/repo" string by reading the forge config and the git remote URL.
+// If anvilName already looks like "owner/repo" it is returned as-is without
+// consulting the config, so PR records that store the full repo string work too.
+func repoForAnvil(anvilName string) (string, error) {
+	// If the value already contains exactly one '/' (and no whitespace), treat it
+	// as a fully-qualified "owner/repo" string and return it directly.
+	if strings.Count(anvilName, "/") == 1 && !strings.ContainsAny(anvilName, " \t\n") {
+		return anvilName, nil
+	}
+	cfgPath, err := configPath()
+	if err != nil {
+		return "", fmt.Errorf("resolve config path: %w", err)
+	}
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		return "", fmt.Errorf("read config: %w", err)
+	}
+	var cfg ForgeConfig
+	if err := parseConfigYAML(data, &cfg); err != nil {
+		return "", fmt.Errorf("parse config: %w", err)
+	}
+	lower := strings.ToLower(anvilName)
+	for name, anvil := range cfg.Anvils {
+		if strings.EqualFold(name, anvilName) || strings.EqualFold(name, lower) {
+			if anvil.Path == "" {
+				continue
+			}
+			repo, err := repoFromRemote(anvil.Path)
+			if err != nil {
+				return "", fmt.Errorf("resolve repo for anvil %s: %w", anvilName, err)
+			}
+			return repo, nil
+		}
+	}
+	return "", fmt.Errorf("anvil %q not found in forge config", anvilName)
+}
+
 // validWorkerID accepts UUIDs, short test IDs, and any alphanumeric-with-dash identifier.
 var validWorkerID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9\-]{0,127}$`)
 
@@ -169,6 +213,41 @@ func validatePRForIPC(w http.ResponseWriter, pr *PR, needsBranch bool) bool {
 		return false
 	}
 	return true
+}
+
+// sendExternalPRAction resolves the repo for an external PR's anvil and sends
+// an "external_pr_action" IPC command to the forge daemon. It writes the HTTP
+// response directly (success or error).
+func sendExternalPRAction(w http.ResponseWriter, pr *PR, action, failMsg string) {
+	if pr.Anvil == "" || pr.BeadID == "" {
+		writeError(w, http.StatusBadRequest, "PR record is missing required fields (anvil, bead_id)")
+		return
+	}
+	if pr.Number <= 0 {
+		writeError(w, http.StatusBadRequest, "PR record has invalid PR number")
+		return
+	}
+	repo, err := repoForAnvil(pr.Anvil)
+	if err != nil {
+		log.Printf("forge: %s ext pr %d: %v", action, pr.Number, err)
+		writeError(w, http.StatusInternalServerError, "failed to resolve repo for anvil")
+		return
+	}
+	payload := struct {
+		Repo   string `json:"repo"`
+		Number int    `json:"number"`
+		Action string `json:"action"`
+	}{
+		Repo:   repo,
+		Number: pr.Number,
+		Action: action,
+	}
+	if err := sendIPCCommand("external_pr_action", payload); err != nil {
+		log.Printf("forge: %s ext pr %s#%d failed: %v", action, repo, pr.Number, err)
+		writeError(w, http.StatusInternalServerError, failMsg)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // sendPRAction sends a structured "pr_action" IPC command to the forge daemon.
@@ -923,6 +1002,11 @@ func MergePRHandler(db *DB) http.HandlerFunc {
 		if !ok {
 			return
 		}
+		// External PRs (ext- bead IDs) are routed via external_pr_action IPC.
+		if isExternalBead(pr.BeadID) {
+			sendExternalPRAction(w, pr, "merge", "failed to send merge command")
+			return
+		}
 		if !validatePRForIPC(w, pr, true) {
 			return
 		}
@@ -1394,12 +1478,16 @@ func WorkerLogHandler(db *DB) http.HandlerFunc {
 	}
 }
 
-// BellowsPRHandler signals the forge daemon to assign bellows to monitor a PR.
-// Sends a structured JSON pr_action IPC command with action "assign_bellows".
+// BellowsPRHandler signals the forge daemon to assign bellows to a PR.
+// External PRs (ext- bead IDs) are routed via external_pr_action IPC.
 func BellowsPRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pr, ok := lookupPR(w, r, db)
 		if !ok {
+			return
+		}
+		if isExternalBead(pr.BeadID) {
+			sendExternalPRAction(w, pr, "bellows", "failed to send bellows command")
 			return
 		}
 		if !validatePRForIPC(w, pr, true) {
@@ -1422,6 +1510,11 @@ func ApprovePRHandler(db *DB) http.HandlerFunc {
 		if !ok {
 			return
 		}
+		// External PRs (ext- bead IDs) are routed via external_pr_action IPC.
+		if isExternalBead(pr.BeadID) {
+			sendExternalPRAction(w, pr, "approve", "failed to send approve command")
+			return
+		}
 		if !validatePRForIPC(w, pr, false) {
 			return
 		}
@@ -1442,11 +1535,15 @@ func ApprovePRHandler(db *DB) http.HandlerFunc {
 }
 
 // FixCommentsPRHandler signals the forge daemon to fix review comments on a PR.
-// Sends a structured JSON pr_action IPC command with action "burnish".
+// External PRs (ext- bead IDs) are routed via external_pr_action IPC.
 func FixCommentsPRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pr, ok := lookupPR(w, r, db)
 		if !ok {
+			return
+		}
+		if isExternalBead(pr.BeadID) {
+			sendExternalPRAction(w, pr, "fix-comments", "failed to send fix-comments command")
 			return
 		}
 		if !validatePRForIPC(w, pr, true) {
@@ -1462,11 +1559,15 @@ func FixCommentsPRHandler(db *DB) http.HandlerFunc {
 }
 
 // FixCIPRHandler signals the forge daemon to fix CI failures on a PR.
-// Sends a structured JSON pr_action IPC command with action "quench".
+// External PRs (ext- bead IDs) are routed via external_pr_action IPC.
 func FixCIPRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pr, ok := lookupPR(w, r, db)
 		if !ok {
+			return
+		}
+		if isExternalBead(pr.BeadID) {
+			sendExternalPRAction(w, pr, "fix-ci", "failed to send fix-ci command")
 			return
 		}
 		if !validatePRForIPC(w, pr, true) {
@@ -1482,11 +1583,15 @@ func FixCIPRHandler(db *DB) http.HandlerFunc {
 }
 
 // FixConflictsPRHandler signals the forge daemon to rebase a PR to fix conflicts.
-// Sends a structured JSON pr_action IPC command with action "rebase".
+// External PRs (ext- bead IDs) are routed via external_pr_action IPC.
 func FixConflictsPRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pr, ok := lookupPR(w, r, db)
 		if !ok {
+			return
+		}
+		if isExternalBead(pr.BeadID) {
+			sendExternalPRAction(w, pr, "rebase", "failed to send rebase command")
 			return
 		}
 		if !validatePRForIPC(w, pr, true) {
@@ -1502,11 +1607,15 @@ func FixConflictsPRHandler(db *DB) http.HandlerFunc {
 }
 
 // ClosePRHandler signals the forge daemon to close a pull request.
-// Sends a structured JSON pr_action IPC command with action "close".
+// External PRs (ext- bead IDs) are routed via external_pr_action IPC.
 func ClosePRHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		pr, ok := lookupPR(w, r, db)
 		if !ok {
+			return
+		}
+		if isExternalBead(pr.BeadID) {
+			sendExternalPRAction(w, pr, "close", "failed to send close command")
 			return
 		}
 		if !validatePRForIPC(w, pr, false) {
