@@ -194,16 +194,20 @@ export default function TrainingDetail() {
     async function fetchRace() {
       try {
         const res = await fetch('/api/stride/races', { credentials: 'include', signal: controller.signal })
-        if (!res.ok) return
+        if (controller.signal.aborted) return
+        if (!res.ok) {
+          setLinkedRace(null)
+          return
+        }
         const data = await res.json()
+        if (controller.signal.aborted) return
         const races: Array<{ id: number; name: string; date: string; distance_m: number; target_time: number | null; result_time: number | null }> = data.races ?? []
         const match = races.find(r => r.id === workout!.race_id)
-        if (match) {
-          setLinkedRace({ name: match.name, date: match.date, distance_m: match.distance_m, target_time: match.target_time, result_time: match.result_time })
-        }
+        setLinkedRace(match ? { name: match.name, date: match.date, distance_m: match.distance_m, target_time: match.target_time, result_time: match.result_time } : null)
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
           console.warn('Failed to load linked race:', err)
+          setLinkedRace(null)
         }
       }
     }
