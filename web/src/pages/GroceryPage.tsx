@@ -107,11 +107,13 @@ export default function GroceryPage() {
       })
       if (!res.ok) throw new Error('toggle failed')
     } catch {
-      // Revert on failure
-      setItems(prev => {
-        const reverted = prev.map(i => i.id === item.id ? { ...i, checked: item.checked } : i)
-        return [...reverted.filter(i => !i.checked), ...reverted.filter(i => i.checked)]
-      })
+      // Refetch on failure to get authoritative state, avoiding stale-closure overwrites
+      try {
+        const fetched = await fetchItems()
+        setItems(fetched)
+      } catch {
+        // If refetch also fails, leave the optimistic state in place
+      }
       setError(t('errors.failedToUpdate'))
     }
   }
@@ -120,6 +122,7 @@ export default function GroceryPage() {
     const checked = items.filter(i => i.checked)
     if (checked.length === 0) return
     setError('')
+    const snapshot = [...items]
     // Optimistic remove
     setItems(prev => prev.filter(i => !i.checked))
     try {
@@ -129,8 +132,8 @@ export default function GroceryPage() {
       })
       if (!res.ok) throw new Error('clear failed')
     } catch {
-      // Revert on failure
-      setItems(prev => [...prev, ...checked])
+      // Revert to pre-optimistic snapshot to avoid duplicates and ordering issues
+      setItems(snapshot)
       setError(t('errors.failedToClear'))
     }
   }
