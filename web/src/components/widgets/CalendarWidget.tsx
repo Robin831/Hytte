@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
 import type { CalendarEvent, CalendarInfo } from '../calendar/types'
@@ -15,7 +16,7 @@ export default function CalendarWidget() {
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [calendars, setCalendars] = useState<CalendarInfo[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -38,18 +39,18 @@ export default function CalendarWidget() {
         if (controller.signal.aborted) return
         setEvents(eventsData.events ?? [])
         setCalendars(calendarsData.calendars ?? [])
-        setError(null)
+        setError(false)
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        setError(t('widgets.calendar.error'))
+        setError(true)
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false)
       })
 
     return () => { controller.abort() }
-  }, [user, t])
+  }, [user])
 
   const colorMap = getCalendarColorMap(calendars)
 
@@ -78,7 +79,7 @@ export default function CalendarWidget() {
         </div>
       )}
       {error && !loading && (
-        <p className="text-red-400 text-sm">{error}</p>
+        <p className="text-red-400 text-sm">{t('widgets.calendar.error')}</p>
       )}
       {!loading && !error && sorted.length === 0 && (
         <p className="text-gray-500 text-sm">{t('widgets.calendar.noEvents')}</p>
@@ -103,9 +104,9 @@ export default function CalendarWidget() {
         </div>
       )}
       {!loading && !error && (
-        <a href="/calendar" className="block text-xs text-gray-500 hover:text-gray-400 mt-3">
+        <Link to="/calendar" className="block text-xs text-gray-500 hover:text-gray-400 mt-3">
           {t('widgets.calendar.viewCalendar')}
-        </a>
+        </Link>
       )}
     </Widget>
   )
