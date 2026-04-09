@@ -208,7 +208,9 @@ export default function GroceryPage() {
       }
     }
 
-    recognition.onerror = () => {
+    recognition.onerror = (event: { error?: string; message?: string; type?: string }) => {
+      const speechError = event.error || event.message || event.type
+      setError(speechError ? `${t('errors.failedToTranslate')}: ${speechError}` : t('errors.failedToTranslate'))
       setIsRecording(false)
     }
 
@@ -224,7 +226,7 @@ export default function GroceryPage() {
     } catch {
       recognitionRef.current = null
       setIsRecording(false)
-      setError(t('errors.failedToTranslate'))
+      setError(t('errors.failedToStartRecording'))
     }
   }
 

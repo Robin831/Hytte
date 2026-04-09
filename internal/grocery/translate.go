@@ -47,12 +47,7 @@ Input: %s`, input)
 
 	var items []TranslatedItem
 	if err := json.Unmarshal([]byte(output), &items); err != nil {
-		const maxPreview = 200
-		preview := output
-		if len(preview) > maxPreview {
-			preview = preview[:maxPreview] + "..."
-		}
-		return nil, fmt.Errorf("parsing claude response (output length %d): %w (preview: %s)", len(output), err, preview)
+		return nil, fmt.Errorf("parsing claude response (output length %d): %w", len(output), err)
 	}
 
 	return items, nil

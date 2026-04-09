@@ -10,7 +10,8 @@
     "failedToAdd": "Failed to add item",
     "failedToUpdate": "Failed to update item",
     "failedToClear": "Failed to clear completed items",
-    "failedToTranslate": "Failed to translate voice input"
+    "failedToTranslate": "Failed to translate voice input",
+    "failedToStartRecording": "Failed to start recording"
   },
   "checkedSection": "Completed",
   "translating": "Translating voice input...",

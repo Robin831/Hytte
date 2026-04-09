@@ -10,7 +10,8 @@
     "failedToAdd": "Kunne ikke legge til vare",
     "failedToUpdate": "Kunne ikke oppdatere vare",
     "failedToClear": "Kunne ikke fjerne fullførte varer",
-    "failedToTranslate": "Kunne ikke oversette taleinndata"
+    "failedToTranslate": "Kunne ikke oversette taleinndata",
+    "failedToStartRecording": "Kunne ikke starte opptak"
   },
   "checkedSection": "Fullført",
   "translating": "Oversetter taleinndata...",
