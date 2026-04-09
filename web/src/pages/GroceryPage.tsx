@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, Check, X } from 'lucide-react'
+import { Plus, Trash2, Check, X, Mic, MicOff } from 'lucide-react'
 import { useAuth } from '../auth'
 
 interface GroceryItem {
@@ -15,6 +15,19 @@ interface GroceryItem {
   created_at: string
 }
 
+interface TranslatedItem {
+  item: string
+  original: string
+  language: string
+}
+
+type SpeechRecognitionType = typeof window extends { SpeechRecognition: infer T } ? T : unknown
+
+const SpeechRecognitionCtor: (new () => SpeechRecognitionType) | undefined =
+  typeof window !== 'undefined'
+    ? ((window as Record<string, unknown>).SpeechRecognition ?? (window as Record<string, unknown>).webkitSpeechRecognition) as (new () => SpeechRecognitionType) | undefined
+    : undefined
+
 export default function GroceryPage() {
   const { t } = useTranslation(['grocery', 'common'])
   const { user } = useAuth()
@@ -23,7 +36,10 @@ export default function GroceryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [adding, setAdding] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [isTranslating, setIsTranslating] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const recognitionRef = useRef<SpeechRecognitionType | null>(null)
 
   const fetchItems = useCallback(async (signal?: AbortSignal) => {
     const res = await fetch('/api/grocery/items', { credentials: 'include', signal })
@@ -90,6 +106,83 @@ export default function GroceryPage() {
     }
   }
 
+  const addTranslatedItems = async (translatedItems: TranslatedItem[]) => {
+    for (const ti of translatedItems) {
+      try {
+        const res = await fetch('/api/grocery/items', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: ti.item,
+            original_text: ti.original,
+            source_language: ti.language,
+          }),
+        })
+        if (!res.ok) throw new Error('add failed')
+        const data = await res.json()
+        setItems(prev => [...prev.filter(i => !i.checked), data.item, ...prev.filter(i => i.checked)])
+      } catch {
+        setError(t('errors.failedToAdd'))
+      }
+    }
+  }
+
+  const handleVoiceInput = async (transcript: string) => {
+    setIsTranslating(true)
+    setError('')
+    try {
+      const res = await fetch('/api/grocery/translate', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: transcript }),
+      })
+      if (!res.ok) throw new Error('translate failed')
+      const data = await res.json()
+      await addTranslatedItems(data.items as TranslatedItem[])
+    } catch {
+      setError(t('errors.failedToTranslate'))
+    } finally {
+      setIsTranslating(false)
+    }
+  }
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      const recognition = recognitionRef.current as { stop?: () => void } | null
+      recognition?.stop?.()
+      setIsRecording(false)
+      return
+    }
+
+    if (!SpeechRecognitionCtor) return
+
+    const recognition = new SpeechRecognitionCtor() as Record<string, unknown>
+    recognition.continuous = false
+    recognition.interimResults = false
+
+    recognition.onresult = (event: { results: { transcript: string }[][] }) => {
+      const transcript = event.results[0][0].transcript
+      setIsRecording(false)
+      if (transcript.trim()) {
+        handleVoiceInput(transcript.trim())
+      }
+    }
+
+    recognition.onerror = () => {
+      setIsRecording(false)
+    }
+
+    recognition.onend = () => {
+      setIsRecording(false)
+    }
+
+    recognitionRef.current = recognition as SpeechRecognitionType
+    ;(recognition as { start: () => void }).start()
+    setIsRecording(true)
+  }
+
   const handleToggle = async (item: GroceryItem) => {
     const newChecked = !item.checked
     setError('')
@@ -140,6 +233,7 @@ export default function GroceryPage() {
 
   const unchecked = items.filter(i => !i.checked)
   const checked = items.filter(i => i.checked)
+  const speechSupported = !!SpeechRecognitionCtor
 
   if (loading) {
     return (
@@ -162,6 +256,13 @@ export default function GroceryPage() {
         </div>
       )}
 
+      {isTranslating && (
+        <div className="mb-4 p-3 bg-blue-900/50 border border-blue-700 rounded-lg text-blue-200 text-sm flex items-center gap-2">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400" />
+          <span>{t('translating')}</span>
+        </div>
+      )}
+
       {/* Add item input */}
       <div className="flex gap-2 mb-6">
         <input
@@ -174,7 +275,27 @@ export default function GroceryPage() {
           className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
           aria-label={t('addPlaceholder')}
         />
-        {/* Insertion point for future microphone button (sub-task 3) */}
+        {speechSupported && (
+          <button
+            onClick={toggleRecording}
+            disabled={isTranslating}
+            className={`shrink-0 rounded-lg px-3 py-3 flex items-center justify-center cursor-pointer transition-colors ${
+              isRecording
+                ? 'bg-red-600 hover:bg-red-700 text-white'
+                : 'bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white'
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+            aria-label={isRecording ? t('voice.stop') : t('voice.start')}
+          >
+            {isRecording ? (
+              <span className="relative flex items-center justify-center">
+                <span className="absolute inline-flex h-8 w-8 rounded-full bg-red-400 opacity-40 animate-ping" />
+                <MicOff size={20} />
+              </span>
+            ) : (
+              <Mic size={20} />
+            )}
+          </button>
+        )}
         <button
           onClick={handleAdd}
           disabled={!newItem.trim() || adding}

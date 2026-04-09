@@ -9,9 +9,15 @@
     "failedToLoad": "Kunne ikke laste handlelisten",
     "failedToAdd": "Kunne ikke legge til vare",
     "failedToUpdate": "Kunne ikke oppdatere vare",
-    "failedToClear": "Kunne ikke fjerne fullførte varer"
+    "failedToClear": "Kunne ikke fjerne fullførte varer",
+    "failedToTranslate": "Kunne ikke oversette taleinndata"
   },
   "checkedSection": "Fullført",
+  "translating": "Oversetter taleinndata...",
+  "voice": {
+    "start": "Start taleinndata",
+    "stop": "Stopp opptak"
+  },
   "item": {
     "original": "Original: {{text}}"
   }

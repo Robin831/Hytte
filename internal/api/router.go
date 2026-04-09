@@ -732,6 +732,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Patch("/grocery/items/{id}/check", grocery.HandleCheck(db))
 				r.Patch("/grocery/items/{id}/reorder", grocery.HandleReorder(db))
 				r.Delete("/grocery/completed", grocery.HandleClearCompleted(db))
+				r.Post("/grocery/translate", grocery.HandleTranslate(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.
