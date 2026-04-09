@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { GitMerge, Bell, ShieldCheck, ExternalLink, MessageSquare, ChevronDown, ChevronRight, RotateCcw, Wrench, XCircle, CheckCircle, Clock, AlertTriangle } from 'lucide-react'
+import { GitMerge, Bell, ShieldCheck, ExternalLink, MessageSquare, ChevronDown, ChevronRight, RotateCcw, Wrench, XCircle, AlertTriangle } from 'lucide-react'
 import type { OpenPR } from '../hooks/useForgeStatus'
 import type { ExternalPR } from '../hooks/useAllPRs'
 import ConfirmDialog from './ConfirmDialog'
+import { CIBadge, ReviewBadge } from './mezzanine/PRBadges'
 import { CollapsiblePanelHeader } from './CollapsiblePanelHeader'
 import { usePanelCollapse } from '../hooks/usePanelCollapse'
 
@@ -267,21 +268,19 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
                   {pr.bead_id}
                 </button>
               )}
-              {pr.ci_passing ? (
-                <span className="text-xs text-green-500">CI &#10003;</span>
-              ) : (
-                <span className="text-xs text-red-500">CI &#10007;</span>
-              )}
-              {pr.has_approval ? (
-                <span className="text-xs text-green-500">{t('readyToMerge.approved')}</span>
-              ) : (
-                <span className="text-xs text-gray-500">{t('readyToMerge.pendingReview')}</span>
-              )}
+              <CIBadge pr={pr} t={t} />
+              <ReviewBadge pr={pr} t={t} />
               {pr.is_conflicting && (
-                <span className="text-xs text-amber-500">{t('readyToMerge.conflict')}</span>
+                <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/25">
+                  <AlertTriangle size={12} />
+                  <span className="hidden sm:inline">{t('prModal.conflict')}</span>
+                </span>
               )}
               {pr.has_unresolved_threads && (
-                <span className="text-xs text-amber-500">{t('readyToMerge.unresolvedThreads')}</span>
+                <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/25">
+                  <MessageSquare size={12} />
+                  <span className="hidden sm:inline">{t('prModal.unresolvedThreads')}</span>
+                </span>
               )}
               {pr.bellows_managed && (
                 <span className="text-xs text-indigo-400">{t('readyToMerge.bellowsActive')}</span>
@@ -438,38 +437,8 @@ export default function ReadyToMergeCard({ forgePRs, externalPRs, onMerged, show
               )}
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
-              {pr.ci_passing ? (
-                <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-green-500/15 text-green-400 border border-green-500/25">
-                  <CheckCircle size={12} />
-                  <span className="hidden sm:inline">{t('prModal.ciPass')}</span>
-                </span>
-              ) : pr.ci_pending ? (
-                <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-400 border border-yellow-500/25">
-                  <Clock size={12} />
-                  <span className="hidden sm:inline">{t('prModal.ciPending')}</span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/25">
-                  <XCircle size={12} />
-                  <span className="hidden sm:inline">{t('prModal.ciFail')}</span>
-                </span>
-              )}
-              {pr.has_approval ? (
-                <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-green-500/15 text-green-400 border border-green-500/25">
-                  <CheckCircle size={12} />
-                  <span className="hidden sm:inline">{t('prModal.reviewApproved')}</span>
-                </span>
-              ) : pr.changes_requested ? (
-                <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-red-500/15 text-red-400 border border-red-500/25">
-                  <XCircle size={12} />
-                  <span className="hidden sm:inline">{t('prModal.reviewChanges')}</span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-gray-500/15 text-gray-400 border border-gray-500/25">
-                  <Clock size={12} />
-                  <span className="hidden sm:inline">{t('prModal.reviewPending')}</span>
-                </span>
-              )}
+              <CIBadge pr={pr} t={t} />
+              <ReviewBadge pr={pr} t={t} />
               {pr.is_conflicting && (
                 <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/25">
                   <AlertTriangle size={12} />
