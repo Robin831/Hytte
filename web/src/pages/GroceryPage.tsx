@@ -158,6 +158,7 @@ export default function GroceryPage() {
   const handleVoiceInput = async (transcript: string) => {
     translateControllerRef.current?.abort()
     const controller = new AbortController()
+    // eslint-disable-next-line react-hooks/immutability
     translateControllerRef.current = controller
     setIsTranslating(true)
     setError('')
@@ -178,6 +179,7 @@ export default function GroceryPage() {
     } finally {
       if (translateControllerRef.current === controller) {
         setIsTranslating(false)
+        // eslint-disable-next-line react-hooks/immutability
         translateControllerRef.current = null
       }
     }

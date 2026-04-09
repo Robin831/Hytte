@@ -247,6 +247,7 @@ describe('GroceryPage – voice input', () => {
       onend: (() => void) | null = null
       start = vi.fn(startImpl)
       stop = vi.fn()
+      // eslint-disable-next-line @typescript-eslint/no-this-alias
       constructor() { instance = this }
     }
     return Object.assign(MockRecognition, { getInstance: () => instance })
