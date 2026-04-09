@@ -1416,6 +1416,21 @@ func createSchema(db *sql.DB) error {
 		PRIMARY KEY (user_id, calendar_id)
 	);
 
+	-- Grocery list items (Hytte-euvr).
+	CREATE TABLE IF NOT EXISTS grocery_items (
+		id              INTEGER PRIMARY KEY,
+		user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		content         TEXT NOT NULL DEFAULT '',
+		original_text   TEXT NOT NULL DEFAULT '',
+		source_language TEXT NOT NULL DEFAULT '',
+		checked         INTEGER NOT NULL DEFAULT 0,
+		sort_order      INTEGER NOT NULL DEFAULT 0,
+		added_by        INTEGER NOT NULL REFERENCES users(id),
+		created_at      TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_grocery_items_user_id ON grocery_items(user_id);
+
 	`
 
 	_, err := db.Exec(schema)

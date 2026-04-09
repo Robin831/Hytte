@@ -18,6 +18,7 @@ import (
 	"github.com/Robin831/Hytte/internal/chat"
 	"github.com/Robin831/Hytte/internal/dashboard"
 	"github.com/Robin831/Hytte/internal/family"
+	"github.com/Robin831/Hytte/internal/grocery"
 	"github.com/Robin831/Hytte/internal/forge"
 	"github.com/Robin831/Hytte/internal/infra"
 	"github.com/Robin831/Hytte/internal/kiosk"
@@ -702,6 +703,16 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/skywatch/moon", skywatch.MoonCalendarHandler())
 				auroraSvc := skywatch.NewAuroraService()
 				r.Get("/skywatch/aurora", auroraSvc.AuroraHandler())
+			})
+
+			// Grocery list — gated by "grocery" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "grocery"))
+				r.Get("/grocery/items", grocery.HandleList(db))
+				r.Post("/grocery/items", grocery.HandleAdd(db))
+				r.Patch("/grocery/items/{id}/check", grocery.HandleCheck(db))
+				r.Patch("/grocery/items/{id}/reorder", grocery.HandleReorder(db))
+				r.Delete("/grocery/completed", grocery.HandleClearCompleted(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.
