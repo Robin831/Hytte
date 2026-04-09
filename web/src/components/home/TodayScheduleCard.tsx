@@ -77,8 +77,8 @@ export default function TodayScheduleCard() {
         <h2 className="text-xs uppercase tracking-wide text-gray-500">
           {t('widgets.calendar')}
         </h2>
-        <Link to="/calendar" className="text-xs text-gray-500 hover:text-gray-400">
-          {t('calendar.allDay') ? '→' : '→'}
+        <Link to="/calendar" className="text-xs text-gray-500 hover:text-gray-400" aria-label={t('viewMore')}>
+          →
         </Link>
       </div>
 

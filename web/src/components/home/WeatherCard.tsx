@@ -72,20 +72,24 @@ export default function WeatherCard() {
   })
 
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
     dispatch({ type: 'start' })
-    fetch(`/api/weather/forecast?lat=${location.lat}&lon=${location.lon}&location=${encodeURIComponent(location.name)}`)
+    fetch(`/api/weather/forecast?lat=${location.lat}&lon=${location.lon}&location=${encodeURIComponent(location.name)}`, {
+      credentials: 'include',
+      signal: controller.signal,
+    })
       .then((r) => {
         if (!r.ok) throw new Error('Failed to fetch forecast')
         return r.json() as Promise<ForecastResponse>
       })
       .then((data) => {
-        if (!cancelled) dispatch({ type: 'success', data })
+        if (!controller.signal.aborted) dispatch({ type: 'success', data })
       })
-      .catch(() => {
-        if (!cancelled) dispatch({ type: 'error' })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        if (!controller.signal.aborted) dispatch({ type: 'error' })
       })
-    return () => { cancelled = true }
+    return () => { controller.abort() }
   }, [location.lat, location.lon, location.name])
 
   const current = forecast?.properties?.timeseries?.[0]
@@ -101,7 +105,7 @@ export default function WeatherCard() {
         <h2 className="text-xs uppercase tracking-wide text-gray-500">
           {tToday('widgets.weather')}
         </h2>
-        <Link to="/weather" className="text-xs text-gray-500 hover:text-gray-400">
+        <Link to="/weather" className="text-xs text-gray-500 hover:text-gray-400" aria-label={tToday('viewMore')}>
           →
         </Link>
       </div>
