@@ -449,13 +449,16 @@ function DayView({
       const r = await fetch('/api/workhours/flex/redeem', { method: 'POST', credentials: 'include' })
       if (r.ok) {
         loadFlex()
+      } else {
+        const data = await r.json().catch(() => null)
+        alert(data?.error ?? t('workhours:redeemFlexError'))
       }
     } catch {
-      // ignore
+      alert(t('workhours:redeemFlexError'))
     } finally {
       setRedeemingFlex(false)
     }
-  }, [loadFlex])
+  }, [loadFlex, t])
 
   useEffect(() => {
     fetch('/api/workhours/presets', { credentials: 'include' })

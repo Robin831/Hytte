@@ -87,5 +87,6 @@
   "internal": "Internal",
   "markInternal": "Mark as internal (meeting/admin)",
   "markExternal": "Mark as billable client work",
-  "redeemFlex": "Redeem {{minutes}} min"
+  "redeemFlex": "Redeem {{minutes}} min",
+  "redeemFlexError": "Failed to redeem flex time"
 }

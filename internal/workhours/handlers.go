@@ -615,7 +615,7 @@ func FlexPoolHandler(db *sql.DB) http.HandlerFunc {
 				fromDate = t.Format("2006-01-02")
 			}
 		}
-		toDate := time.Now().Format("2006-01-02")
+		toDate := time.Now().UTC().Format("2006-01-02")
 
 		days, err := ListDaysInRange(db, user.ID, fromDate, toDate)
 		if err != nil {
@@ -717,7 +717,7 @@ func FlexRedeemHandler(db *sql.DB) http.HandlerFunc {
 				fromDate = t.Format("2006-01-02")
 			}
 		}
-		toDate := time.Now().Format("2006-01-02")
+		toDate := time.Now().UTC().Format("2006-01-02")
 
 		days, err := ListDaysInRange(db, user.ID, fromDate, toDate)
 		if err != nil {

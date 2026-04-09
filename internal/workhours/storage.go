@@ -783,7 +783,7 @@ func DeleteOpenSession(db *sql.DB, userID int64) error {
 
 // CreateFlexRedemption inserts a new flex redemption record.
 func CreateFlexRedemption(db *sql.DB, userID int64, date string, minutes int) (*FlexRedemption, error) {
-	now := time.Now().Format(time.RFC3339)
+	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := db.Exec(
 		"INSERT INTO work_flex_redemptions (user_id, date, minutes, created_at) VALUES (?, ?, ?, ?)",
 		userID, date, minutes, now,
@@ -791,7 +791,10 @@ func CreateFlexRedemption(db *sql.DB, userID int64, date string, minutes int) (*
 	if err != nil {
 		return nil, fmt.Errorf("insert flex redemption: %w", err)
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("flex redemption last insert id: %w", err)
+	}
 	return &FlexRedemption{
 		ID:        id,
 		UserID:    userID,
@@ -812,7 +815,7 @@ func GetFlexRedemptions(db *sql.DB, userID int64, fromDate string) ([]FlexRedemp
 	}
 	defer rows.Close()
 
-	var result []FlexRedemption
+	result := []FlexRedemption{}
 	for rows.Next() {
 		var r FlexRedemption
 		if err := rows.Scan(&r.ID, &r.UserID, &r.Date, &r.Minutes, &r.CreatedAt); err != nil {

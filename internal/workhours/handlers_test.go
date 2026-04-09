@@ -570,9 +570,16 @@ func TestFlexRedeemHandler_Success(t *testing.T) {
 	if body["flex"] == nil {
 		t.Error("expected flex in response")
 	}
-	flexMap := body["flex"].(map[string]any)
-	if int(flexMap["total_minutes"].(float64)) != 0 {
-		t.Errorf("expected flex pool 0 after redeeming 30 from 30, got %v", flexMap["total_minutes"])
+	flexMap, ok := body["flex"].(map[string]any)
+	if !ok {
+		t.Fatal("expected flex to be a map")
+	}
+	totalMin, ok := flexMap["total_minutes"].(float64)
+	if !ok {
+		t.Fatal("expected total_minutes to be a number")
+	}
+	if int(totalMin) != 0 {
+		t.Errorf("expected flex pool 0 after redeeming 30 from 30, got %v", totalMin)
 	}
 }
 

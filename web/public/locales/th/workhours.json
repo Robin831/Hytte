@@ -87,5 +87,6 @@
   "internal": "ภายใน",
   "markInternal": "ทำเครื่องหมายเป็นภายใน (ประชุม/งานธุรการ)",
   "markExternal": "ทำเครื่องหมายเป็นงานลูกค้าที่เรียกเก็บได้",
-  "redeemFlex": "ใช้ {{minutes}} น."
+  "redeemFlex": "ใช้ {{minutes}} น.",
+  "redeemFlexError": "ไม่สามารถใช้เวลาเฟล็กซ์ได้"
 }
