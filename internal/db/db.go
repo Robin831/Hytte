@@ -921,6 +921,17 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id)
 	);
 
+	-- Flex pool redemptions: tracks when users redeem accumulated flex time.
+	CREATE TABLE IF NOT EXISTS work_flex_redemptions (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		date       TEXT NOT NULL,        -- YYYY-MM-DD
+		minutes    INTEGER NOT NULL,     -- minutes redeemed (positive)
+		created_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_work_flex_redemptions_user_date ON work_flex_redemptions(user_id, date);
+
 	-- AI prompt templates: editable defaults used by Claude analysis features (Hytte-434x).
 	-- prompt_key is the logical identifier ('analysis', 'comparison', 'training_load').
 	-- prompt_body stores the instruction text injected into the Claude prompt.

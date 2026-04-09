@@ -532,6 +532,104 @@ func TestFlexResetHandler_Success(t *testing.T) {
 	}
 }
 
+// --- FlexRedeemHandler ---
+
+func TestFlexRedeemHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create a work day with enough remainder to build a flex pool.
+	// 7h45m session = 465 min. Lunch 30min. Net = 435 min.
+	// Reported = floor(435/30)*30 = 420 min. Remainder = 15 min.
+	// We need 2 such days to get 30 min remainder.
+	for _, date := range []string{"2026-04-01", "2026-04-02"} {
+		day, err := UpsertDay(db, 1, date, true, "")
+		if err != nil {
+			t.Fatalf("upsert %s: %v", date, err)
+		}
+		if _, err := AddSession(db, day.ID, 1, "08:00", "15:45", 0, false); err != nil {
+			t.Fatalf("add session %s: %v", date, err)
+		}
+	}
+
+	handler := FlexRedeemHandler(db)
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/flex/redeem", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["redemption"] == nil {
+		t.Error("expected redemption in response")
+	}
+	if body["flex"] == nil {
+		t.Error("expected flex in response")
+	}
+	flexMap, ok := body["flex"].(map[string]any)
+	if !ok {
+		t.Fatal("expected flex to be a map")
+	}
+	totalMin, ok := flexMap["total_minutes"].(float64)
+	if !ok {
+		t.Fatal("expected total_minutes to be a number")
+	}
+	if int(totalMin) != 0 {
+		t.Errorf("expected flex pool 0 after redeeming 30 from 30, got %v", totalMin)
+	}
+}
+
+func TestFlexRedeemHandler_InsufficientPool(t *testing.T) {
+	db := setupTestDB(t)
+
+	// No work days means flex pool is 0, so redeeming should fail.
+	handler := FlexRedeemHandler(db)
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/flex/redeem", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFlexRedeemHandler_CannotRedeemTwice(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create enough flex pool for exactly one redemption (30 min).
+	for _, date := range []string{"2026-04-01", "2026-04-02"} {
+		day, err := UpsertDay(db, 1, date, true, "")
+		if err != nil {
+			t.Fatalf("upsert %s: %v", date, err)
+		}
+		if _, err := AddSession(db, day.ID, 1, "08:00", "15:45", 0, false); err != nil {
+			t.Fatalf("add session %s: %v", date, err)
+		}
+	}
+
+	handler := FlexRedeemHandler(db)
+
+	// First redeem should succeed.
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/flex/redeem", nil), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first redeem: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Second redeem should fail (pool is now 0).
+	req = withUser(httptest.NewRequest("POST", "/api/workhours/flex/redeem", nil), testUser)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("second redeem: expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 // --- SessionUpdateHandler ---
 
 func TestSessionUpdateHandler_Success(t *testing.T) {

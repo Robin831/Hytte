@@ -1,6 +1,7 @@
 package workhours
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
@@ -8,6 +9,11 @@ import (
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
+
+// dbExecer is implemented by both *sql.DB and *sql.Tx.
+type dbExecer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
 
 // GetDay returns the work day for a user on the given date (YYYY-MM-DD),
 // including its sessions and deductions. Returns nil, nil if no entry exists.
@@ -779,6 +785,84 @@ func UpdateOpenSessionStartTime(db *sql.DB, userID int64, startTime string) (*Op
 func DeleteOpenSession(db *sql.DB, userID int64) error {
 	_, err := db.Exec("DELETE FROM work_open_sessions WHERE user_id = ?", userID)
 	return err
+}
+
+// CreateFlexRedemption inserts a new flex redemption record.
+// db may be a *sql.DB or *sql.Tx.
+func CreateFlexRedemption(ctx context.Context, db dbExecer, userID int64, date string, minutes int) (*FlexRedemption, error) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := db.ExecContext(ctx,
+		"INSERT INTO work_flex_redemptions (user_id, date, minutes, created_at) VALUES (?, ?, ?, ?)",
+		userID, date, minutes, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert flex redemption: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, fmt.Errorf("flex redemption last insert id: %w", err)
+	}
+	return &FlexRedemption{
+		ID:        id,
+		UserID:    userID,
+		Date:      date,
+		Minutes:   minutes,
+		CreatedAt: now,
+	}, nil
+}
+
+// GetFlexRedemptions returns all flex redemptions for a user from the given start date onward.
+func GetFlexRedemptions(db *sql.DB, userID int64, fromDate string) ([]FlexRedemption, error) {
+	rows, err := db.Query(
+		"SELECT id, user_id, date, minutes, created_at FROM work_flex_redemptions WHERE user_id = ? AND date >= ? ORDER BY date",
+		userID, fromDate,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query flex redemptions: %w", err)
+	}
+	defer rows.Close()
+
+	result := []FlexRedemption{}
+	for rows.Next() {
+		var r FlexRedemption
+		if err := rows.Scan(&r.ID, &r.UserID, &r.Date, &r.Minutes, &r.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan flex redemption: %w", err)
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
+}
+
+// SumFlexRedemptions returns the total redeemed minutes for a user from the given start date.
+func SumFlexRedemptions(db *sql.DB, userID int64, fromDate string) (int, error) {
+	var total sql.NullInt64
+	err := db.QueryRow(
+		"SELECT SUM(minutes) FROM work_flex_redemptions WHERE user_id = ? AND date >= ?",
+		userID, fromDate,
+	).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("sum flex redemptions: %w", err)
+	}
+	if !total.Valid {
+		return 0, nil
+	}
+	return int(total.Int64), nil
+}
+
+// SumFlexRedemptionsForDate returns the total redeemed minutes for a user on a specific date.
+func SumFlexRedemptionsForDate(db *sql.DB, userID int64, date string) (int, error) {
+	var total sql.NullInt64
+	err := db.QueryRow(
+		"SELECT SUM(minutes) FROM work_flex_redemptions WHERE user_id = ? AND date = ?",
+		userID, date,
+	).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("sum flex redemptions for date: %w", err)
+	}
+	if !total.Valid {
+		return 0, nil
+	}
+	return int(total.Int64), nil
 }
 
 // verifyDayOwnership returns an error if dayID does not belong to userID.

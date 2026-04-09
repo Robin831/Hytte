@@ -53,6 +53,7 @@ type DaySummary struct {
 	ReportedMinutes  int     `json:"reported_minutes"`
 	ReportedHours    float64 `json:"reported_hours"`
 	RemainderMinutes int     `json:"remainder_minutes"` // goes to flex pool
+	RedeemedMinutes  int     `json:"redeemed_minutes"`  // flex redeemed on this day
 	StandardMinutes  int     `json:"standard_minutes"`
 	BalanceMinutes   int     `json:"balance_minutes"` // reported - standard
 }
@@ -115,6 +116,15 @@ type OpenSession struct {
 	Date      string `json:"date"`       // YYYY-MM-DD
 	StartTime string `json:"start_time"` // HH:MM (24h)
 	PunchedAt string `json:"punched_at"` // RFC3339
+}
+
+// FlexRedemption represents a single flex pool redemption record.
+type FlexRedemption struct {
+	ID        int64  `json:"id"`
+	UserID    int64  `json:"user_id"`
+	Date      string `json:"date"`       // YYYY-MM-DD
+	Minutes   int    `json:"minutes"`    // minutes redeemed
+	CreatedAt string `json:"created_at"` // RFC3339
 }
 
 // LeaveBalance represents leave usage totals for a given year.
