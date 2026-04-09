@@ -37,6 +37,11 @@ func FormatWebhookNotification(headers map[string]string, body []byte, method, p
 				return formatForgeNotification(payload)
 			}
 
+			// Radarr/Sonarr (*arr) webhooks — identified by eventType + instanceName.
+			if title, body, ok := formatArrNotification(payload); ok {
+				return title, body
+			}
+
 			// Generic JSON: use the first of event/action/type that has a value.
 			for _, key := range []string{"event", "action", "type"} {
 				if val, ok := payload[key].(string); ok && val != "" {
@@ -110,6 +115,202 @@ func isMinorWord(w string) bool {
 		return true
 	}
 	return false
+}
+
+// formatArrNotification produces a title and body for Radarr/Sonarr webhook payloads.
+// These are identified by the presence of both "eventType" and "instanceName" fields.
+func formatArrNotification(payload map[string]any) (title, notifBody string, ok bool) {
+	eventType, hasEvent := payload["eventType"].(string)
+	instanceName, hasInstance := payload["instanceName"].(string)
+	if !hasEvent || !hasInstance || eventType == "" || instanceName == "" {
+		return "", "", false
+	}
+
+	// Determine source: use instanceName for prefix, detect type by movie vs series key.
+	isRadarr := strings.EqualFold(instanceName, "Radarr")
+	isSonarr := strings.EqualFold(instanceName, "Sonarr")
+	if !isRadarr && !isSonarr {
+		// Fallback detection by payload shape.
+		if _, hasMovie := payload["movie"].(map[string]any); hasMovie {
+			isRadarr = true
+		} else if _, hasSeries := payload["series"].(map[string]any); hasSeries {
+			isSonarr = true
+		}
+	}
+
+	prefix := instanceName
+	if isRadarr {
+		prefix = "Radarr"
+	} else if isSonarr {
+		prefix = "Sonarr"
+	}
+
+	if isRadarr {
+		title, notifBody = formatRadarrEvent(prefix, eventType, payload)
+	} else if isSonarr {
+		title, notifBody = formatSonarrEvent(prefix, eventType, payload)
+	} else {
+		// Unknown *arr instance — generic format.
+		title = fmt.Sprintf("%s: %s", instanceName, eventType)
+	}
+
+	return title, notifBody, true
+}
+
+func formatRadarrEvent(prefix, eventType string, payload map[string]any) (title, body string) {
+	movie, _ := payload["movie"].(map[string]any)
+	movieTitle := mapStr(movie, "title")
+	movieYear := mapFloat(movie, "year")
+	release, _ := payload["release"].(map[string]any)
+	quality := mapStr(release, "quality")
+	indexer := mapStr(release, "indexer")
+
+	movieDesc := movieTitle
+	if movieTitle != "" && movieYear > 0 {
+		movieDesc = fmt.Sprintf("%s (%d)", movieTitle, int(movieYear))
+	}
+
+	switch eventType {
+	case "Test":
+		instanceName, _ := payload["instanceName"].(string)
+		return prefix + ": Test", fmt.Sprintf("Test notification from %s", instanceName)
+	case "Grab":
+		body = movieDesc
+		if quality != "" {
+			body += " — " + quality
+		}
+		if indexer != "" {
+			body += " from " + indexer
+		}
+		return prefix + ": Grabbed", body
+	case "Download":
+		body = movieDesc
+		if quality != "" {
+			body += " — " + quality
+		}
+		return prefix + ": Downloaded", body
+	case "Rename":
+		return prefix + ": Renamed", movieDesc
+	case "MovieAdded":
+		return prefix + ": Movie Added", movieDesc
+	case "MovieDelete":
+		return prefix + ": Movie Deleted", movieDesc
+	case "MovieFileDelete":
+		return prefix + ": File Deleted", movieDesc
+	case "Health":
+		return prefix + ": Health Issue", mapStr(payload, "message")
+	case "HealthRestored":
+		return prefix + ": Health Restored", mapStr(payload, "message")
+	case "ApplicationUpdate":
+		return prefix + ": Updated", fmt.Sprintf("Updated to %s", mapStr(payload, "version"))
+	case "ManualInteractionRequired":
+		body = movieTitle
+		if body != "" {
+			body += " — "
+		}
+		body += "manual interaction required"
+		return prefix + ": Manual Action Needed", body
+	default:
+		return fmt.Sprintf("%s: %s", prefix, eventType), ""
+	}
+}
+
+func formatSonarrEvent(prefix, eventType string, payload map[string]any) (title, body string) {
+	series, _ := payload["series"].(map[string]any)
+	seriesTitle := mapStr(series, "title")
+	seriesYear := mapFloat(series, "year")
+	release, _ := payload["release"].(map[string]any)
+	quality := mapStr(release, "quality")
+
+	// Get first episode from episodes array.
+	var epSeason, epNumber int
+	var epTitle string
+	if episodes, ok := payload["episodes"].([]any); ok && len(episodes) > 0 {
+		if ep, ok := episodes[0].(map[string]any); ok {
+			epSeason = int(mapFloat(ep, "seasonNumber"))
+			epNumber = int(mapFloat(ep, "episodeNumber"))
+			epTitle = mapStr(ep, "title")
+		}
+	}
+
+	seriesDesc := seriesTitle
+	if seriesTitle != "" && seriesYear > 0 {
+		seriesDesc = fmt.Sprintf("%s (%d)", seriesTitle, int(seriesYear))
+	}
+
+	epCode := ""
+	if epSeason > 0 || epNumber > 0 {
+		epCode = fmt.Sprintf("S%02dE%02d", epSeason, epNumber)
+	}
+
+	switch eventType {
+	case "Test":
+		instanceName, _ := payload["instanceName"].(string)
+		return prefix + ": Test", fmt.Sprintf("Test notification from %s", instanceName)
+	case "Grab":
+		body = seriesTitle
+		if epCode != "" {
+			body += " " + epCode
+		}
+		if quality != "" {
+			body += " — " + quality
+		}
+		return prefix + ": Grabbed", body
+	case "Download":
+		body = seriesTitle
+		if epCode != "" {
+			body += " " + epCode
+		}
+		if epTitle != "" {
+			body += " '" + epTitle + "'"
+		}
+		return prefix + ": Downloaded", body
+	case "Rename":
+		return prefix + ": Renamed", seriesTitle
+	case "SeriesAdd":
+		return prefix + ": Series Added", seriesDesc
+	case "SeriesDelete":
+		return prefix + ": Series Deleted", seriesTitle
+	case "EpisodeFileDelete":
+		body = seriesTitle
+		if epCode != "" {
+			body += " " + epCode
+		}
+		return prefix + ": File Deleted", body
+	case "Health":
+		return prefix + ": Health Issue", mapStr(payload, "message")
+	case "HealthRestored":
+		return prefix + ": Health Restored", mapStr(payload, "message")
+	case "ApplicationUpdate":
+		return prefix + ": Updated", fmt.Sprintf("Updated to %s", mapStr(payload, "version"))
+	case "ManualInteractionRequired":
+		body = seriesTitle
+		if body != "" {
+			body += " — "
+		}
+		body += "manual interaction required"
+		return prefix + ": Manual Action Needed", body
+	default:
+		return fmt.Sprintf("%s: %s", prefix, eventType), ""
+	}
+}
+
+// mapStr safely extracts a string value from a map.
+func mapStr(m map[string]any, key string) string {
+	if m == nil {
+		return ""
+	}
+	v, _ := m[key].(string)
+	return v
+}
+
+// mapFloat safely extracts a float64 value from a map (JSON numbers).
+func mapFloat(m map[string]any, key string) float64 {
+	if m == nil {
+		return 0
+	}
+	v, _ := m[key].(float64)
+	return v
 }
 
 // formatGitHubNotification produces a title and body for known GitHub event types.

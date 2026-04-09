@@ -314,6 +314,349 @@ func TestFormatWebhookNotification_ForgeFallsBackToMessageWhenSummaryEmpty(t *te
 	}
 }
 
+func TestFormatWebhookNotification_RadarrEvents(t *testing.T) {
+	tests := []struct {
+		name      string
+		payload   map[string]any
+		wantTitle string
+		wantBody  string
+	}{
+		{
+			name: "Test",
+			payload: map[string]any{
+				"eventType":    "Test",
+				"instanceName": "Radarr",
+			},
+			wantTitle: "Radarr: Test",
+			wantBody:  "Test notification from Radarr",
+		},
+		{
+			name: "Grab",
+			payload: map[string]any{
+				"eventType":    "Grab",
+				"instanceName": "Radarr",
+				"movie":        map[string]any{"title": "Inception", "year": float64(2010)},
+				"release":      map[string]any{"quality": "Bluray-1080p", "indexer": "NZBgeek"},
+			},
+			wantTitle: "Radarr: Grabbed",
+			wantBody:  "Inception (2010) — Bluray-1080p from NZBgeek",
+		},
+		{
+			name: "Download",
+			payload: map[string]any{
+				"eventType":    "Download",
+				"instanceName": "Radarr",
+				"movie":        map[string]any{"title": "Inception", "year": float64(2010)},
+				"release":      map[string]any{"quality": "Bluray-1080p"},
+			},
+			wantTitle: "Radarr: Downloaded",
+			wantBody:  "Inception (2010) — Bluray-1080p",
+		},
+		{
+			name: "Rename",
+			payload: map[string]any{
+				"eventType":    "Rename",
+				"instanceName": "Radarr",
+				"movie":        map[string]any{"title": "Inception", "year": float64(2010)},
+			},
+			wantTitle: "Radarr: Renamed",
+			wantBody:  "Inception (2010)",
+		},
+		{
+			name: "MovieAdded",
+			payload: map[string]any{
+				"eventType":    "MovieAdded",
+				"instanceName": "Radarr",
+				"movie":        map[string]any{"title": "The Matrix", "year": float64(1999)},
+			},
+			wantTitle: "Radarr: Movie Added",
+			wantBody:  "The Matrix (1999)",
+		},
+		{
+			name: "MovieDelete",
+			payload: map[string]any{
+				"eventType":    "MovieDelete",
+				"instanceName": "Radarr",
+				"movie":        map[string]any{"title": "The Matrix", "year": float64(1999)},
+			},
+			wantTitle: "Radarr: Movie Deleted",
+			wantBody:  "The Matrix (1999)",
+		},
+		{
+			name: "MovieFileDelete",
+			payload: map[string]any{
+				"eventType":    "MovieFileDelete",
+				"instanceName": "Radarr",
+				"movie":        map[string]any{"title": "The Matrix", "year": float64(1999)},
+			},
+			wantTitle: "Radarr: File Deleted",
+			wantBody:  "The Matrix (1999)",
+		},
+		{
+			name: "Health",
+			payload: map[string]any{
+				"eventType":    "Health",
+				"instanceName": "Radarr",
+				"message":      "Indexer NZBgeek is unavailable",
+			},
+			wantTitle: "Radarr: Health Issue",
+			wantBody:  "Indexer NZBgeek is unavailable",
+		},
+		{
+			name: "HealthRestored",
+			payload: map[string]any{
+				"eventType":    "HealthRestored",
+				"instanceName": "Radarr",
+				"message":      "Indexer NZBgeek is available again",
+			},
+			wantTitle: "Radarr: Health Restored",
+			wantBody:  "Indexer NZBgeek is available again",
+		},
+		{
+			name: "ApplicationUpdate",
+			payload: map[string]any{
+				"eventType":    "ApplicationUpdate",
+				"instanceName": "Radarr",
+				"version":      "5.3.6.8612",
+			},
+			wantTitle: "Radarr: Updated",
+			wantBody:  "Updated to 5.3.6.8612",
+		},
+		{
+			name: "ManualInteractionRequired",
+			payload: map[string]any{
+				"eventType":    "ManualInteractionRequired",
+				"instanceName": "Radarr",
+				"movie":        map[string]any{"title": "Inception"},
+			},
+			wantTitle: "Radarr: Manual Action Needed",
+			wantBody:  "Inception — manual interaction required",
+		},
+		{
+			name: "UnknownEventType",
+			payload: map[string]any{
+				"eventType":    "SomeFutureEvent",
+				"instanceName": "Radarr",
+			},
+			wantTitle: "Radarr: SomeFutureEvent",
+			wantBody:  "",
+		},
+		{
+			name: "MissingMovieFields",
+			payload: map[string]any{
+				"eventType":    "Grab",
+				"instanceName": "Radarr",
+			},
+			wantTitle: "Radarr: Grabbed",
+			wantBody:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, _ := json.Marshal(tt.payload)
+			title, notifBody := FormatWebhookNotification(map[string]string{}, body, "POST", "/hooks/abc")
+			if title != tt.wantTitle {
+				t.Errorf("title = %q, want %q", title, tt.wantTitle)
+			}
+			if notifBody != tt.wantBody {
+				t.Errorf("body = %q, want %q", notifBody, tt.wantBody)
+			}
+		})
+	}
+}
+
+func TestFormatWebhookNotification_SonarrEvents(t *testing.T) {
+	tests := []struct {
+		name      string
+		payload   map[string]any
+		wantTitle string
+		wantBody  string
+	}{
+		{
+			name: "Test",
+			payload: map[string]any{
+				"eventType":    "Test",
+				"instanceName": "Sonarr",
+			},
+			wantTitle: "Sonarr: Test",
+			wantBody:  "Test notification from Sonarr",
+		},
+		{
+			name: "Grab",
+			payload: map[string]any{
+				"eventType":    "Grab",
+				"instanceName": "Sonarr",
+				"series":       map[string]any{"title": "Breaking Bad", "year": float64(2008)},
+				"episodes": []any{
+					map[string]any{"seasonNumber": float64(1), "episodeNumber": float64(3), "title": "...And the Bag's in the River"},
+				},
+				"release": map[string]any{"quality": "HDTV-720p"},
+			},
+			wantTitle: "Sonarr: Grabbed",
+			wantBody:  "Breaking Bad S01E03 — HDTV-720p",
+		},
+		{
+			name: "Download",
+			payload: map[string]any{
+				"eventType":    "Download",
+				"instanceName": "Sonarr",
+				"series":       map[string]any{"title": "Breaking Bad", "year": float64(2008)},
+				"episodes": []any{
+					map[string]any{"seasonNumber": float64(1), "episodeNumber": float64(3), "title": "...And the Bag's in the River"},
+				},
+			},
+			wantTitle: "Sonarr: Downloaded",
+			wantBody:  "Breaking Bad S01E03 '...And the Bag's in the River'",
+		},
+		{
+			name: "Rename",
+			payload: map[string]any{
+				"eventType":    "Rename",
+				"instanceName": "Sonarr",
+				"series":       map[string]any{"title": "Breaking Bad"},
+			},
+			wantTitle: "Sonarr: Renamed",
+			wantBody:  "Breaking Bad",
+		},
+		{
+			name: "SeriesAdd",
+			payload: map[string]any{
+				"eventType":    "SeriesAdd",
+				"instanceName": "Sonarr",
+				"series":       map[string]any{"title": "Breaking Bad", "year": float64(2008)},
+			},
+			wantTitle: "Sonarr: Series Added",
+			wantBody:  "Breaking Bad (2008)",
+		},
+		{
+			name: "SeriesDelete",
+			payload: map[string]any{
+				"eventType":    "SeriesDelete",
+				"instanceName": "Sonarr",
+				"series":       map[string]any{"title": "Breaking Bad"},
+			},
+			wantTitle: "Sonarr: Series Deleted",
+			wantBody:  "Breaking Bad",
+		},
+		{
+			name: "EpisodeFileDelete",
+			payload: map[string]any{
+				"eventType":    "EpisodeFileDelete",
+				"instanceName": "Sonarr",
+				"series":       map[string]any{"title": "Breaking Bad"},
+				"episodes": []any{
+					map[string]any{"seasonNumber": float64(2), "episodeNumber": float64(10)},
+				},
+			},
+			wantTitle: "Sonarr: File Deleted",
+			wantBody:  "Breaking Bad S02E10",
+		},
+		{
+			name: "Health",
+			payload: map[string]any{
+				"eventType":    "Health",
+				"instanceName": "Sonarr",
+				"message":      "Download client is unavailable",
+			},
+			wantTitle: "Sonarr: Health Issue",
+			wantBody:  "Download client is unavailable",
+		},
+		{
+			name: "HealthRestored",
+			payload: map[string]any{
+				"eventType":    "HealthRestored",
+				"instanceName": "Sonarr",
+				"message":      "Download client is available again",
+			},
+			wantTitle: "Sonarr: Health Restored",
+			wantBody:  "Download client is available again",
+		},
+		{
+			name: "ApplicationUpdate",
+			payload: map[string]any{
+				"eventType":    "ApplicationUpdate",
+				"instanceName": "Sonarr",
+				"version":      "4.0.1.929",
+			},
+			wantTitle: "Sonarr: Updated",
+			wantBody:  "Updated to 4.0.1.929",
+		},
+		{
+			name: "ManualInteractionRequired",
+			payload: map[string]any{
+				"eventType":    "ManualInteractionRequired",
+				"instanceName": "Sonarr",
+				"series":       map[string]any{"title": "Breaking Bad"},
+			},
+			wantTitle: "Sonarr: Manual Action Needed",
+			wantBody:  "Breaking Bad — manual interaction required",
+		},
+		{
+			name: "UnknownEventType",
+			payload: map[string]any{
+				"eventType":    "SomeFutureEvent",
+				"instanceName": "Sonarr",
+			},
+			wantTitle: "Sonarr: SomeFutureEvent",
+			wantBody:  "",
+		},
+		{
+			name: "EmptyEpisodesArray",
+			payload: map[string]any{
+				"eventType":    "Download",
+				"instanceName": "Sonarr",
+				"series":       map[string]any{"title": "Breaking Bad"},
+				"episodes":     []any{},
+			},
+			wantTitle: "Sonarr: Downloaded",
+			wantBody:  "Breaking Bad",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, _ := json.Marshal(tt.payload)
+			title, notifBody := FormatWebhookNotification(map[string]string{}, body, "POST", "/hooks/abc")
+			if title != tt.wantTitle {
+				t.Errorf("title = %q, want %q", title, tt.wantTitle)
+			}
+			if notifBody != tt.wantBody {
+				t.Errorf("body = %q, want %q", notifBody, tt.wantBody)
+			}
+		})
+	}
+}
+
+func TestFormatWebhookNotification_ArrMissingInstanceName(t *testing.T) {
+	// Payload with eventType but no instanceName should NOT match *arr formatter.
+	body, _ := json.Marshal(map[string]any{
+		"eventType": "Grab",
+		"movie":     map[string]any{"title": "Inception"},
+	})
+
+	title, _ := FormatWebhookNotification(map[string]string{}, body, "POST", "/hooks/abc")
+
+	// Should fall through to generic — eventType is not in the generic keys list.
+	if title == "Radarr: Grabbed" {
+		t.Errorf("should not match *arr formatter without instanceName")
+	}
+}
+
+func TestFormatWebhookNotification_ArrDoesNotConflictWithForge(t *testing.T) {
+	// Forge payloads use event_type (snake_case), not eventType (camelCase).
+	body, _ := json.Marshal(map[string]any{
+		"event_type": "pr_created",
+		"message":    "PR created",
+	})
+
+	title, _ := FormatWebhookNotification(map[string]string{}, body, "POST", "/hooks/abc")
+
+	if title != "Forge: PR Created" {
+		t.Errorf("Forge payload incorrectly handled, title = %q", title)
+	}
+}
+
 func TestFormatWebhookNotification_FallbackEmptyBody(t *testing.T) {
 	headers := map[string]string{}
 	body := []byte{}
