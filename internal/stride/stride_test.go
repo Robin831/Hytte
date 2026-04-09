@@ -93,6 +93,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			training_load       REAL,
 			hr_drift_pct        REAL,
 			pace_cv_pct         REAL,
+			race_id             INTEGER REFERENCES stride_races(id) ON DELETE SET NULL,
 			UNIQUE(user_id, fit_file_hash)
 		);
 		CREATE TABLE stride_evaluations (
@@ -649,5 +650,180 @@ func TestRunNightlyEvaluation_SkipsUsersWithoutStride(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("expected 0 evaluations for user without stride, got %d", count)
+	}
+}
+
+// --- LinkWorkoutToRace tests ---
+
+func TestLinkWorkoutToRace(t *testing.T) {
+	db := setupTestDB(t)
+
+	race, err := CreateRace(db, 1, "Test 10K", "2026-05-01", 10000, nil, "B", "")
+	if err != nil {
+		t.Fatalf("create race: %v", err)
+	}
+
+	// Insert a workout with a known duration.
+	if _, err := db.Exec(`
+		INSERT INTO workouts (id, user_id, sport, started_at, duration_seconds, distance_meters, fit_file_hash, created_at)
+		VALUES (300, 1, 'running', '2026-05-01T08:00:00Z', 2700, 10050, 'hash-link', '2026-05-01T08:00:00Z')
+	`); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	if err := LinkWorkoutToRace(db, 300, race.ID, 1); err != nil {
+		t.Fatalf("LinkWorkoutToRace: %v", err)
+	}
+
+	// Verify workout.race_id is set.
+	var raceID sql.NullInt64
+	if err := db.QueryRow(`SELECT race_id FROM workouts WHERE id = 300`).Scan(&raceID); err != nil {
+		t.Fatalf("query race_id: %v", err)
+	}
+	if !raceID.Valid || raceID.Int64 != race.ID {
+		t.Errorf("workout race_id = %v, want %d", raceID, race.ID)
+	}
+
+	// Verify race.result_time is populated from workout duration.
+	updated, err := GetRaceByID(db, race.ID, 1)
+	if err != nil {
+		t.Fatalf("get race: %v", err)
+	}
+	if updated.ResultTime == nil || *updated.ResultTime != 2700 {
+		t.Errorf("race result_time = %v, want 2700", updated.ResultTime)
+	}
+}
+
+func TestLinkWorkoutToRace_WrongUser(t *testing.T) {
+	db := setupTestDB(t)
+
+	race, err := CreateRace(db, 1, "My Race", "2026-05-01", 10000, nil, "B", "")
+	if err != nil {
+		t.Fatalf("create race: %v", err)
+	}
+
+	if _, err := db.Exec(`
+		INSERT INTO workouts (id, user_id, sport, started_at, duration_seconds, fit_file_hash, created_at)
+		VALUES (301, 1, 'running', '2026-05-01T08:00:00Z', 2700, 'hash-wrong-user', '2026-05-01T08:00:00Z')
+	`); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	// User 999 should not be able to link.
+	err = LinkWorkoutToRace(db, 301, race.ID, 999)
+	if err == nil {
+		t.Error("expected error for wrong user, got nil")
+	}
+}
+
+// --- FindMatchingRace tests ---
+
+func TestFindMatchingRace_ExactMatch(t *testing.T) {
+	db := setupTestDB(t)
+
+	race, err := CreateRace(db, 1, "Spring 10K", "2026-05-01", 10000, nil, "A", "")
+	if err != nil {
+		t.Fatalf("create race: %v", err)
+	}
+
+	// Exact date and distance match.
+	found, err := FindMatchingRace(db, 1, "2026-05-01", 10000)
+	if err != nil {
+		t.Fatalf("FindMatchingRace: %v", err)
+	}
+	if found == nil {
+		t.Fatal("expected match, got nil")
+	}
+	if found.ID != race.ID {
+		t.Errorf("found race ID = %d, want %d", found.ID, race.ID)
+	}
+}
+
+func TestFindMatchingRace_FuzzyDate(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := CreateRace(db, 1, "Fuzzy Race", "2026-05-02", 10000, nil, "B", "")
+	if err != nil {
+		t.Fatalf("create race: %v", err)
+	}
+
+	// Date ±1 day: workout on May 1, race on May 2.
+	found, err := FindMatchingRace(db, 1, "2026-05-01", 10000)
+	if err != nil {
+		t.Fatalf("FindMatchingRace: %v", err)
+	}
+	if found == nil {
+		t.Fatal("expected fuzzy date match, got nil")
+	}
+	if found.Name != "Fuzzy Race" {
+		t.Errorf("name = %q, want %q", found.Name, "Fuzzy Race")
+	}
+}
+
+func TestFindMatchingRace_FuzzyDistance(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := CreateRace(db, 1, "HM Race", "2026-05-01", 21097, nil, "A", "")
+	if err != nil {
+		t.Fatalf("create race: %v", err)
+	}
+
+	// Distance within 20%: 21097 * 0.85 = ~17932, which is within [21097*0.8, 21097*1.2].
+	found, err := FindMatchingRace(db, 1, "2026-05-01", 21097*0.85)
+	if err != nil {
+		t.Fatalf("FindMatchingRace: %v", err)
+	}
+	if found == nil {
+		t.Fatal("expected fuzzy distance match, got nil")
+	}
+}
+
+func TestFindMatchingRace_NoMatch_DateTooFar(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateRace(db, 1, "Far Race", "2026-05-05", 10000, nil, "C", ""); err != nil {
+		t.Fatalf("create race: %v", err)
+	}
+
+	// Date 3 days away — outside ±1 day window.
+	found, err := FindMatchingRace(db, 1, "2026-05-02", 10000)
+	if err != nil {
+		t.Fatalf("FindMatchingRace: %v", err)
+	}
+	if found != nil {
+		t.Errorf("expected no match for date too far, got %+v", found)
+	}
+}
+
+func TestFindMatchingRace_NoMatch_DistanceTooFar(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateRace(db, 1, "Marathon", "2026-05-01", 42195, nil, "A", ""); err != nil {
+		t.Fatalf("create race: %v", err)
+	}
+
+	// Distance way off: 10000 vs 42195 — outside 20% window.
+	found, err := FindMatchingRace(db, 1, "2026-05-01", 10000)
+	if err != nil {
+		t.Fatalf("FindMatchingRace: %v", err)
+	}
+	if found != nil {
+		t.Errorf("expected no match for distance too far, got %+v", found)
+	}
+}
+
+func TestFindMatchingRace_WrongUser(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateRace(db, 1, "Private Race", "2026-05-01", 10000, nil, "B", ""); err != nil {
+		t.Fatalf("create race: %v", err)
+	}
+
+	found, err := FindMatchingRace(db, 999, "2026-05-01", 10000)
+	if err != nil {
+		t.Fatalf("FindMatchingRace: %v", err)
+	}
+	if found != nil {
+		t.Errorf("expected no match for wrong user, got %+v", found)
 	}
 }

@@ -39,7 +39,7 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 		       w.distance_meters, w.avg_heart_rate, w.max_heart_rate,
 		       w.avg_pace_sec_per_km, w.avg_cadence, w.calories,
 		       w.ascent_meters, w.descent_meters, w.fit_file_hash, w.analysis_status, w.title_source, w.created_at,
-		       w.training_load, w.hr_drift_pct, w.pace_cv_pct,
+		       w.training_load, w.hr_drift_pct, w.pace_cv_pct, w.race_id,
 		       (SELECT GROUP_CONCAT(tag) FROM (SELECT tag FROM workout_tags WHERE workout_id = w.id ORDER BY tag)) AS tags
 		FROM workouts w
 		WHERE w.user_id = ?
@@ -56,13 +56,14 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 		var tagsStr sql.NullString
 		var isIndoor int
 		var trainingLoad, hrDriftPct, paceCVPct sql.NullFloat64
+		var raceID sql.NullInt64
 		if err := rows.Scan(
 			&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
 			&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
 			&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 			&w.Calories, &w.AscentMeters, &w.DescentMeters,
 			&w.FitFileHash, &w.AnalysisStatus, &w.TitleSource, &w.CreatedAt,
-			&trainingLoad, &hrDriftPct, &paceCVPct, &tagsStr,
+			&trainingLoad, &hrDriftPct, &paceCVPct, &raceID, &tagsStr,
 		); err != nil {
 			return nil, fmt.Errorf("scan workout: %w", err)
 		}
@@ -75,6 +76,9 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 		}
 		if paceCVPct.Valid {
 			w.PaceCVPct = &paceCVPct.Float64
+		}
+		if raceID.Valid {
+			w.RaceID = &raceID.Int64
 		}
 		if tagsStr.Valid && tagsStr.String != "" {
 			w.Tags = strings.Split(tagsStr.String, ",")
@@ -89,12 +93,13 @@ func GetByID(db *sql.DB, id, userID int64) (*Workout, error) {
 	var w Workout
 	var isIndoor int
 	var trainingLoad, hrDriftPct, paceCVPct sql.NullFloat64
+	var raceID sql.NullInt64
 	err := db.QueryRow(`
 		SELECT id, user_id, sport, sub_sport, is_indoor, title, started_at, duration_seconds,
 		       distance_meters, avg_heart_rate, max_heart_rate,
 		       avg_pace_sec_per_km, avg_cadence, calories,
 		       ascent_meters, descent_meters, fit_file_hash, analysis_status, title_source, created_at,
-		       training_load, hr_drift_pct, pace_cv_pct
+		       training_load, hr_drift_pct, pace_cv_pct, race_id
 		FROM workouts
 		WHERE id = ? AND user_id = ?`, id, userID).Scan(
 		&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
@@ -102,7 +107,7 @@ func GetByID(db *sql.DB, id, userID int64) (*Workout, error) {
 		&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 		&w.Calories, &w.AscentMeters, &w.DescentMeters,
 		&w.FitFileHash, &w.AnalysisStatus, &w.TitleSource, &w.CreatedAt,
-		&trainingLoad, &hrDriftPct, &paceCVPct,
+		&trainingLoad, &hrDriftPct, &paceCVPct, &raceID,
 	)
 	w.IsIndoor = isIndoor != 0
 	if trainingLoad.Valid {
@@ -113,6 +118,9 @@ func GetByID(db *sql.DB, id, userID int64) (*Workout, error) {
 	}
 	if paceCVPct.Valid {
 		w.PaceCVPct = &paceCVPct.Float64
+	}
+	if raceID.Valid {
+		w.RaceID = &raceID.Int64
 	}
 	if err != nil {
 		return nil, err
@@ -511,12 +519,13 @@ func getWorkoutWithLaps(db *sql.DB, id, userID int64) (*Workout, error) {
 	var w Workout
 	var isIndoor int
 	var trainingLoad, hrDriftPct, paceCVPct sql.NullFloat64
+	var raceID sql.NullInt64
 	err := db.QueryRow(`
 		SELECT id, user_id, sport, sub_sport, is_indoor, title, started_at, duration_seconds,
 		       distance_meters, avg_heart_rate, max_heart_rate,
 		       avg_pace_sec_per_km, avg_cadence, calories,
 		       ascent_meters, descent_meters, fit_file_hash, analysis_status, title_source, created_at,
-		       training_load, hr_drift_pct, pace_cv_pct
+		       training_load, hr_drift_pct, pace_cv_pct, race_id
 		FROM workouts
 		WHERE id = ? AND user_id = ?`, id, userID).Scan(
 		&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
@@ -524,7 +533,7 @@ func getWorkoutWithLaps(db *sql.DB, id, userID int64) (*Workout, error) {
 		&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
 		&w.Calories, &w.AscentMeters, &w.DescentMeters,
 		&w.FitFileHash, &w.AnalysisStatus, &w.TitleSource, &w.CreatedAt,
-		&trainingLoad, &hrDriftPct, &paceCVPct,
+		&trainingLoad, &hrDriftPct, &paceCVPct, &raceID,
 	)
 	if trainingLoad.Valid {
 		w.TrainingLoad = &trainingLoad.Float64
@@ -534,6 +543,9 @@ func getWorkoutWithLaps(db *sql.DB, id, userID int64) (*Workout, error) {
 	}
 	if paceCVPct.Valid {
 		w.PaceCVPct = &paceCVPct.Float64
+	}
+	if raceID.Valid {
+		w.RaceID = &raceID.Int64
 	}
 	w.IsIndoor = isIndoor != 0
 	if err != nil {

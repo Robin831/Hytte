@@ -2002,6 +2002,18 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add race_id FK column to workouts table (Hytte-im9y).
+	// Links a workout to a stride_races entry when the workout is a race result.
+	var hasRaceID int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('workouts') WHERE name = 'race_id'`).Scan(&hasRaceID); err != nil {
+		return fmt.Errorf("check workouts race_id column: %w", err)
+	}
+	if hasRaceID == 0 {
+		if _, err := db.Exec(`ALTER TABLE workouts ADD COLUMN race_id INTEGER REFERENCES stride_races(id) ON DELETE SET NULL`); err != nil {
+			return fmt.Errorf("add workouts race_id column: %w", err)
+		}
+	}
+
 	return nil
 }
 
