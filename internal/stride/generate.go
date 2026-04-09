@@ -408,7 +408,7 @@ func listRaceResults(ctx context.Context, db *sql.DB, userID int64) ([]RaceResul
 	}
 	defer rows.Close()
 
-	var results []RaceResult
+	results := []RaceResult{}
 	for rows.Next() {
 		var r RaceResult
 		var encName string
