@@ -14,6 +14,7 @@ export interface ExternalPR {
   ci_passing: boolean
   ci_pending: boolean
   has_approval: boolean
+  has_pending_reviews: boolean
   changes_requested: boolean
   is_conflicting: boolean
   has_unresolved_threads: boolean
