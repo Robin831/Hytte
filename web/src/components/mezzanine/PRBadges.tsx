@@ -5,6 +5,7 @@ export interface PRStatusFields {
   ci_passing: boolean
   ci_pending: boolean
   has_approval: boolean
+  has_pending_reviews: boolean
   changes_requested: boolean
   is_conflicting: boolean
   has_unresolved_threads: boolean
@@ -52,10 +53,14 @@ export function ReviewBadge({ pr, t }: { pr: PRStatusFields; t: TFunction<'forge
       </span>
     )
   }
-  return (
-    <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-gray-500/15 text-gray-400 border border-gray-500/25">
-      <Clock size={12} />
-      <span className="hidden sm:inline">{t('prModal.reviewPending')}</span>
-    </span>
-  )
+  if (pr.has_pending_reviews) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-400 border border-yellow-500/25">
+        <Clock size={12} />
+        <span className="hidden sm:inline">{t('prModal.reviewPending')}</span>
+      </span>
+    )
+  }
+  // No approval, no changes requested, no pending reviews — review not required
+  return null
 }
