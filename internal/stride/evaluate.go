@@ -15,6 +15,12 @@ import (
 	"github.com/Robin831/Hytte/internal/training"
 )
 
+// Evaluation note templates for rest days and missed sessions.
+const (
+	noteRestDay        = "Rest day taken as planned \u2014 good recovery."
+	noteMissedSession  = "Planned %s was not completed. Consider adjusting the remaining week if needed."
+)
+
 // criticalFlags is the set of evaluation flag values that warrant an immediate push notification.
 var criticalFlags = map[string]bool{
 	"overtraining": true,
@@ -416,7 +422,7 @@ func evaluateRestDaysAndMissedSessions(ctx context.Context, db *sql.DB, userID i
 			PlannedType: "rest",
 			ActualType:  "rest",
 			Compliance:  "rest_day",
-			Notes:       "Rest day taken as planned \u2014 good recovery.",
+			Notes:       noteRestDay,
 			Flags:       []string{},
 			Adjustments: "",
 			Date:        today,
@@ -433,7 +439,7 @@ func evaluateRestDaysAndMissedSessions(ctx context.Context, db *sql.DB, userID i
 			PlannedType: sessionType,
 			ActualType:  "none",
 			Compliance:  "missed",
-			Notes:       fmt.Sprintf("Planned %s was not completed. Consider adjusting the remaining week if needed.", sessionType),
+			Notes:       fmt.Sprintf(noteMissedSession, sessionType),
 			Flags:       []string{},
 			Adjustments: "",
 			Date:        today,
@@ -447,12 +453,17 @@ func evaluateRestDaysAndMissedSessions(ctx context.Context, db *sql.DB, userID i
 // hasWorkoutOnDate checks whether any workout exists for the given user on the specified date.
 func hasWorkoutOnDate(ctx context.Context, db *sql.DB, userID int64, date string) (bool, error) {
 	dateStart := date + "T00:00:00Z"
-	dateEnd := date + "T23:59:59Z"
+	// Use exclusive upper bound (start of next day) to cover the full 24 hours.
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return false, fmt.Errorf("parse date %q: %w", date, err)
+	}
+	nextDay := t.AddDate(0, 0, 1).Format("2006-01-02") + "T00:00:00Z"
 	var count int
-	err := db.QueryRowContext(ctx, `
+	err = db.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM workouts
-		WHERE user_id = ? AND started_at >= ? AND started_at <= ?
-	`, userID, dateStart, dateEnd).Scan(&count)
+		WHERE user_id = ? AND started_at >= ? AND started_at < ?
+	`, userID, dateStart, nextDay).Scan(&count)
 	if err != nil {
 		return false, err
 	}
