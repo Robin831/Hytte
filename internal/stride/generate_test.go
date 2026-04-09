@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,7 +33,8 @@ func extendedTestDB(t *testing.T) *sql.DB {
 			distance_meters  REAL NOT NULL DEFAULT 0,
 			avg_heart_rate   INTEGER NOT NULL DEFAULT 0,
 			sport            TEXT NOT NULL DEFAULT 'running',
-			training_load    REAL
+			training_load    REAL,
+			race_id          INTEGER
 		);
 	`)
 	if err != nil {
@@ -386,5 +388,132 @@ func buildMinimalPlan(weekStart string) []DayPlan {
 		}
 	}
 	return days
+}
+
+func TestListRaceResults_Empty(t *testing.T) {
+	db := setupTestDB(t)
+
+	results, err := listRaceResults(context.Background(), db, 1)
+	if err != nil {
+		t.Fatalf("listRaceResults: %v", err)
+	}
+	if results == nil {
+		t.Error("expected non-nil empty slice, got nil")
+	}
+	if len(results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}
+
+func TestListRaceResults_ReturnsLinkedRaces(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert a race with a result_time.
+	_, err := db.Exec(`INSERT INTO stride_races (id, user_id, name, date, distance_m, result_time, priority, created_at)
+		VALUES (1, 1, 'Test 10K', '2026-03-15', 10000, 2400, 'A', '2026-03-15')`)
+	if err != nil {
+		t.Fatalf("insert race: %v", err)
+	}
+
+	// Insert a workout linked to that race.
+	_, err = db.Exec(`INSERT INTO workouts (id, user_id, started_at, duration_seconds, distance_meters, sport, race_id)
+		VALUES (1, 1, '2026-03-15T08:00:00Z', 2400, 10000, 'running', 1)`)
+	if err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	// Insert a race without result_time (should not appear).
+	_, err = db.Exec(`INSERT INTO stride_races (id, user_id, name, date, distance_m, priority, created_at)
+		VALUES (2, 1, 'Future Race', '2026-06-01', 21097, 'A', '2026-03-01')`)
+	if err != nil {
+		t.Fatalf("insert future race: %v", err)
+	}
+
+	// Insert a workout linked to a race but for a different user (should not appear).
+	_, err = db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@test.com', 'Other', 'g2')`)
+	if err != nil {
+		t.Fatalf("insert user2: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO stride_races (id, user_id, name, date, distance_m, result_time, priority, created_at)
+		VALUES (3, 2, 'Other Race', '2026-03-10', 5000, 1200, 'B', '2026-03-10')`)
+	if err != nil {
+		t.Fatalf("insert other race: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO workouts (id, user_id, started_at, duration_seconds, distance_meters, sport, race_id)
+		VALUES (2, 2, '2026-03-10T08:00:00Z', 1200, 5000, 'running', 3)`)
+	if err != nil {
+		t.Fatalf("insert other workout: %v", err)
+	}
+
+	results, err := listRaceResults(context.Background(), db, 1)
+	if err != nil {
+		t.Fatalf("listRaceResults: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Name != "Test 10K" {
+		t.Errorf("name = %q, want %q", results[0].Name, "Test 10K")
+	}
+	if results[0].TimeSecs != 2400 {
+		t.Errorf("time = %d, want 2400", results[0].TimeSecs)
+	}
+	if results[0].DistanceM != 10000 {
+		t.Errorf("distance = %f, want 10000", results[0].DistanceM)
+	}
+	if results[0].Priority != "A" {
+		t.Errorf("priority = %q, want %q", results[0].Priority, "A")
+	}
+}
+
+func TestBuildGeneratePrompt_RaceHistorySection(t *testing.T) {
+	history := []RaceResult{
+		{Name: "Spring 10K", Date: "2026-03-15", DistanceM: 10000, TimeSecs: 2400, Priority: "A"},
+		{Name: "Park Run", Date: "2026-02-01", DistanceM: 5000, TimeSecs: 1185, Priority: "C"},
+	}
+
+	prompt := buildGeneratePrompt(
+		"2026-04-06", "2026-04-12",
+		"", nil, nil,
+		history,
+		nil, 0, 0,
+		nil,
+		"", "", "",
+		"", "",
+		"",
+	)
+
+	if !strings.Contains(prompt, "## Race History") {
+		t.Error("prompt missing Race History section")
+	}
+	if !strings.Contains(prompt, "Spring 10K") {
+		t.Error("prompt missing race name 'Spring 10K'")
+	}
+	if !strings.Contains(prompt, "40m00s") {
+		t.Error("prompt missing formatted time for 10K race")
+	}
+	if !strings.Contains(prompt, "4:00/km") {
+		t.Error("prompt missing pace for 10K race")
+	}
+	if !strings.Contains(prompt, "Park Run") {
+		t.Error("prompt missing race name 'Park Run'")
+	}
+}
+
+func TestBuildGeneratePrompt_NoRaceHistoryWhenEmpty(t *testing.T) {
+	prompt := buildGeneratePrompt(
+		"2026-04-06", "2026-04-12",
+		"", nil, nil,
+		[]RaceResult{},
+		nil, 0, 0,
+		nil,
+		"", "", "",
+		"", "",
+		"",
+	)
+
+	if strings.Contains(prompt, "## Race History") {
+		t.Error("prompt should not contain Race History when empty")
+	}
 }
 

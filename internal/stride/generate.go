@@ -201,6 +201,12 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 		return fmt.Errorf("list notes: %w", err)
 	}
 
+	// Query completed race results linked to workouts.
+	raceHistory, err := listRaceResults(ctx, db, userID)
+	if err != nil {
+		return fmt.Errorf("list race results: %w", err)
+	}
+
 	// Read optional custom prompt appended to the plan generation request.
 	// Decrypt it because the preference is stored encrypted at rest.
 	customPrompt := prefs["stride_custom_prompt"]
@@ -251,6 +257,7 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 		weekStart, weekEnd,
 		profileBlock,
 		races, notes,
+		raceHistory,
 		acr, acute, chronic,
 		recentSummaries,
 		prevPlanJSON, prevPlanModel, prevPlanCreatedAt,
@@ -375,12 +382,62 @@ func loadPreviousPlan(ctx context.Context, db *sql.DB, userID int64, weekStart s
 	return planJSON, model, createdAt, err
 }
 
+// RaceResult holds a completed race linked to a workout for prompt context.
+type RaceResult struct {
+	Name      string
+	Date      string
+	DistanceM float64
+	TimeSecs  int
+	Priority  string
+}
+
+// listRaceResults queries completed race results for the user that are linked
+// to at least one workout.
+func listRaceResults(ctx context.Context, db *sql.DB, userID int64) ([]RaceResult, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT sr.name, sr.date, sr.distance_m, sr.result_time, sr.priority
+		FROM stride_races sr
+		WHERE sr.user_id = ?
+		  AND sr.result_time IS NOT NULL
+		  AND sr.result_time > 0
+		  AND EXISTS (
+			SELECT 1
+			FROM workouts w
+			WHERE w.race_id = sr.id
+			  AND w.user_id = sr.user_id
+		  )
+		ORDER BY sr.date DESC
+		LIMIT 20
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	results := []RaceResult{}
+	for rows.Next() {
+		var r RaceResult
+		var encName string
+		if err := rows.Scan(&encName, &r.Date, &r.DistanceM, &r.TimeSecs, &r.Priority); err != nil {
+			return nil, err
+		}
+		name, err := encryption.DecryptField(encName)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt race name: %w", err)
+		}
+		r.Name = name
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
 // buildGeneratePrompt assembles the full prompt string for Claude plan generation.
 func buildGeneratePrompt(
 	weekStart, weekEnd string,
 	profileBlock string,
 	races []Race,
 	notes []Note,
+	raceHistory []RaceResult,
 	acr *float64, acute, chronic float64,
 	summaries []training.WeeklySummary,
 	prevPlanJSON, prevPlanModel, prevPlanCreatedAt string,
@@ -477,6 +534,26 @@ func buildGeneratePrompt(
 			if r.Notes != "" {
 				fmt.Fprintf(&sb, "  Notes: %s\n", r.Notes)
 			}
+		}
+		sb.WriteString("\n")
+	}
+
+	// Race history (completed races linked to workouts).
+	if len(raceHistory) > 0 {
+		sb.WriteString("## Race History\n")
+		for _, r := range raceHistory {
+			h, m, s := secondsToHMS(r.TimeSecs)
+			var timeStr string
+			if h > 0 {
+				timeStr = fmt.Sprintf("%dh%02dm%02ds", h, m, s)
+			} else {
+				timeStr = fmt.Sprintf("%dm%02ds", m, s)
+			}
+			paceSecPerKm := float64(r.TimeSecs) / (r.DistanceM / 1000)
+			paceMin := int(paceSecPerKm) / 60
+			paceSec := int(paceSecPerKm) % 60
+			fmt.Fprintf(&sb, "- %s on %s (%.1f km, %s, pace %d:%02d/km, priority %s)\n",
+				r.Name, r.Date, r.DistanceM/1000, timeStr, paceMin, paceSec, r.Priority)
 		}
 		sb.WriteString("\n")
 	}
