@@ -95,7 +95,8 @@ export default function StridePlanCard() {
     return () => { controller.abort() }
   }, [user])
 
-  const today = new Date().toISOString().slice(0, 10)
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   const todayPlan = plan?.plan?.find((d) => d.date === today)
 
   const formatDate = (dateStr: string) =>
@@ -157,7 +158,7 @@ export default function StridePlanCard() {
             ) : null
           ) : (
             <p className="text-xs text-gray-500">
-              {t('plan.phase', { phase: plan.phase })} · {sessionsPlanned} {sessionsPlanned === 1 ? 'session' : 'sessions'}
+              {t('plan.phase', { phase: plan.phase })} · {t('plan.sessionCount', { count: sessionsPlanned })}
             </p>
           )}
 

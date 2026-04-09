@@ -27,7 +27,8 @@ export default function WorkHoursCard() {
   const [punchingIn, setPunchingIn] = useState(false)
 
   const fetchData = useCallback((signal?: AbortSignal) => {
-    const today = new Date().toISOString().slice(0, 10)
+    const now = new Date()
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 
     Promise.all([
       fetch('/api/workhours/punch-session', { credentials: 'include', signal }),
@@ -62,15 +63,16 @@ export default function WorkHoursCard() {
   const handlePunchIn = async () => {
     setPunchingIn(true)
     try {
-      const now = new Date()
-      const hh = String(now.getHours()).padStart(2, '0')
-      const mm = String(now.getMinutes()).padStart(2, '0')
+      const punchNow = new Date()
+      const hh = String(punchNow.getHours()).padStart(2, '0')
+      const mm = String(punchNow.getMinutes()).padStart(2, '0')
+      const punchDate = `${punchNow.getFullYear()}-${String(punchNow.getMonth() + 1).padStart(2, '0')}-${String(punchNow.getDate()).padStart(2, '0')}`
       const res = await fetch('/api/workhours/punch-in', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          date: now.toISOString().slice(0, 10),
+          date: punchDate,
           start_time: `${hh}:${mm}`,
         }),
       })
@@ -140,7 +142,7 @@ export default function WorkHoursCard() {
                   onClick={handlePunchIn}
                   disabled={punchingIn}
                   className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50"
-                  aria-label={t('workHours.punchedIn')}
+                  aria-label={t('workHours.punchIn')}
                 >
                   <LogIn size={14} />
                 </button>
@@ -151,7 +153,7 @@ export default function WorkHoursCard() {
           {/* Hours summary */}
           {summary && standardMinutes > 0 && (
             <>
-              <div className="w-full bg-gray-700 rounded-full h-1.5">
+              <div className="w-full bg-gray-700 rounded-full h-1.5" role="progressbar" aria-valuenow={netMinutes} aria-valuemin={0} aria-valuemax={standardMinutes} aria-label={t('workHours.progressLabel')}>
                 <div
                   className={`h-1.5 rounded-full ${isDone ? 'bg-green-500' : 'bg-blue-500'}`}
                   style={{ width: `${Math.min(100, (netMinutes / standardMinutes) * 100)}%` }}

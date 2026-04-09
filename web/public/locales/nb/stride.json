@@ -19,7 +19,9 @@
     "cooldown": "Nedkjøling",
     "strides": "Strides",
     "targetHR": "Maks puls",
-    "bpm": "{{value}} slag/min"
+    "bpm": "{{value}} slag/min",
+    "sessionCount_one": "{{count}} økt",
+    "sessionCount_other": "{{count}} økter"
   },
   "races": {
     "title": "Løpskalender",

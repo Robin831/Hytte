@@ -39,7 +39,9 @@
     "remaining": "igjen",
     "done": "Ferdig for dagen",
     "punchedIn": "Stemplet inn",
-    "notStarted": "Ikke startet"
+    "punchIn": "Stemple inn",
+    "notStarted": "Ikke startet",
+    "progressLabel": "Arbeidstimer fremgang"
   },
   "kids": {
     "loading": "Laster…",

@@ -19,7 +19,9 @@
     "cooldown": "Cooldown",
     "strides": "Strides",
     "targetHR": "Target HR Cap",
-    "bpm": "{{value}} bpm"
+    "bpm": "{{value}} bpm",
+    "sessionCount_one": "{{count}} session",
+    "sessionCount_other": "{{count}} sessions"
   },
   "races": {
     "title": "Race Calendar",
