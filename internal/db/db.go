@@ -1432,6 +1432,43 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_grocery_items_household ON grocery_items(household_id);
 
+	-- Homework helper tables (Hytte-bn5m).
+	CREATE TABLE IF NOT EXISTS kids_homework_profiles (
+		id                 INTEGER PRIMARY KEY,
+		kid_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		age                INTEGER NOT NULL DEFAULT 0,
+		grade_level        TEXT NOT NULL DEFAULT '',
+		subjects           TEXT NOT NULL DEFAULT '[]',
+		preferred_language TEXT NOT NULL DEFAULT '',
+		school_name        TEXT NOT NULL DEFAULT '',
+		current_topics     TEXT NOT NULL DEFAULT '[]',
+		created_at         TEXT NOT NULL DEFAULT '',
+		updated_at         TEXT NOT NULL DEFAULT '',
+		UNIQUE(kid_id)
+	);
+
+	CREATE TABLE IF NOT EXISTS homework_conversations (
+		id         INTEGER PRIMARY KEY,
+		kid_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		subject    TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_homework_conversations_kid ON homework_conversations(kid_id);
+
+	CREATE TABLE IF NOT EXISTS homework_messages (
+		id              INTEGER PRIMARY KEY,
+		conversation_id INTEGER NOT NULL REFERENCES homework_conversations(id) ON DELETE CASCADE,
+		role            TEXT NOT NULL DEFAULT '',
+		content         TEXT NOT NULL DEFAULT '',
+		help_level      TEXT NOT NULL DEFAULT '',
+		image_path      TEXT NOT NULL DEFAULT '',
+		created_at      TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_homework_messages_conversation ON homework_messages(conversation_id);
+
 	`
 
 	_, err := db.Exec(schema)
