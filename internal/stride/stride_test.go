@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,6 +68,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			plan_id     INTEGER REFERENCES stride_plans(id) ON DELETE SET NULL,
 			content     TEXT NOT NULL,
+			target_date TEXT NOT NULL DEFAULT '',
 			created_at  TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE workouts (
@@ -262,7 +264,7 @@ func TestDeleteRaceWrongUser(t *testing.T) {
 func TestCreateAndListNotes(t *testing.T) {
 	db := setupTestDB(t)
 
-	note, err := CreateNote(db, 1, nil, "Feeling tired this week")
+	note, err := CreateNote(db, 1, nil, "Feeling tired this week", "")
 	if err != nil {
 		t.Fatalf("create note: %v", err)
 	}
@@ -272,13 +274,32 @@ func TestCreateAndListNotes(t *testing.T) {
 	if note.PlanID != nil {
 		t.Errorf("plan_id = %v, want nil", note.PlanID)
 	}
+	// When no target_date is provided, it should default to the note's creation date.
+	createdAt, err := time.Parse(time.RFC3339, note.CreatedAt)
+	if err != nil {
+		t.Fatalf("parse created_at %q: %v", note.CreatedAt, err)
+	}
+	expectedDate := createdAt.UTC().Format("2006-01-02")
+	if note.TargetDate != expectedDate {
+		t.Errorf("target_date = %q, want %q (should default to creation date)", note.TargetDate, expectedDate)
+	}
+
+	// Create a note with an explicit target_date.
+	explicitDate := "2026-04-15"
+	note2, err := CreateNote(db, 1, nil, "Planned rest day", explicitDate)
+	if err != nil {
+		t.Fatalf("create note with target_date: %v", err)
+	}
+	if note2.TargetDate != explicitDate {
+		t.Errorf("target_date = %q, want %q", note2.TargetDate, explicitDate)
+	}
 
 	notes, err := ListNotes(db, 1, nil)
 	if err != nil {
 		t.Fatalf("list notes: %v", err)
 	}
-	if len(notes) != 1 {
-		t.Fatalf("got %d notes, want 1", len(notes))
+	if len(notes) != 2 {
+		t.Fatalf("got %d notes, want 2", len(notes))
 	}
 	if notes[0].Content != "Feeling tired this week" {
 		t.Errorf("content = %q, want %q", notes[0].Content, "Feeling tired this week")
@@ -288,7 +309,7 @@ func TestCreateAndListNotes(t *testing.T) {
 func TestDeleteNote(t *testing.T) {
 	db := setupTestDB(t)
 
-	note, err := CreateNote(db, 1, nil, "Delete me")
+	note, err := CreateNote(db, 1, nil, "Delete me", "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -306,10 +327,55 @@ func TestDeleteNote(t *testing.T) {
 	}
 }
 
+func TestGetNotesByTargetDate(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create notes for different dates.
+	_, err := CreateNote(db, 1, nil, "Note for April 10", "2026-04-10")
+	if err != nil {
+		t.Fatalf("create note 1: %v", err)
+	}
+	_, err = CreateNote(db, 1, nil, "Another note for April 10", "2026-04-10")
+	if err != nil {
+		t.Fatalf("create note 2: %v", err)
+	}
+	_, err = CreateNote(db, 1, nil, "Note for April 11", "2026-04-11")
+	if err != nil {
+		t.Fatalf("create note 3: %v", err)
+	}
+
+	// Query for April 10 — should return 2 notes.
+	notes, err := GetNotesByTargetDate(db, 1, "2026-04-10")
+	if err != nil {
+		t.Fatalf("GetNotesByTargetDate: %v", err)
+	}
+	if len(notes) != 2 {
+		t.Fatalf("expected 2 notes for 2026-04-10, got %d", len(notes))
+	}
+
+	// Query for April 11 — should return 1 note.
+	notes, err = GetNotesByTargetDate(db, 1, "2026-04-11")
+	if err != nil {
+		t.Fatalf("GetNotesByTargetDate: %v", err)
+	}
+	if len(notes) != 1 {
+		t.Fatalf("expected 1 note for 2026-04-11, got %d", len(notes))
+	}
+
+	// Query for April 12 — should return 0 notes.
+	notes, err = GetNotesByTargetDate(db, 1, "2026-04-12")
+	if err != nil {
+		t.Fatalf("GetNotesByTargetDate: %v", err)
+	}
+	if len(notes) != 0 {
+		t.Errorf("expected 0 notes for 2026-04-12, got %d", len(notes))
+	}
+}
+
 func TestDeleteNoteWrongUser(t *testing.T) {
 	db := setupTestDB(t)
 
-	note, err := CreateNote(db, 1, nil, "Keep me")
+	note, err := CreateNote(db, 1, nil, "Keep me", "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -548,8 +614,8 @@ func TestNextStrideRun(t *testing.T) {
 // --- RunNightlyEvaluation (with mocked runPromptFunc) ---
 
 // TestRunNightlyEvaluation_EvaluatesAndStores verifies that RunNightlyEvaluation selects
-// users with stride_enabled, finds their unevaluated workouts, calls Claude, and persists
-// the result. The Claude runner is mocked so no subprocess is spawned.
+// users with stride_enabled, finds their unevaluated workouts from yesterday, calls Claude,
+// and persists the result. The Claude runner is mocked so no subprocess is spawned.
 func TestRunNightlyEvaluation_EvaluatesAndStores(t *testing.T) {
 	origFn := runPromptFunc
 	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
@@ -569,15 +635,14 @@ func TestRunNightlyEvaluation_EvaluatesAndStores(t *testing.T) {
 		}
 	}
 
-	// Insert a plan covering today.
-	now := time.Now().UTC()
-	workoutDate := now.Format("2006-01-02")
-	weekStart := now.AddDate(0, 0, -3).Format("2006-01-02")
-	weekEnd := now.AddDate(0, 0, 3).Format("2006-01-02")
+	// Nightly evaluation targets yesterday, so place the workout and plan on yesterday.
+	yesterday := time.Now().UTC().AddDate(0, 0, -1)
+	weekStart := yesterday.AddDate(0, 0, -3).Format("2006-01-02")
+	weekEnd := yesterday.AddDate(0, 0, 3).Format("2006-01-02")
 	planID := insertTestPlan(t, db, 1, weekStart, weekEnd, `[]`)
 
-	// Insert a workout within the last 24 hours.
-	workoutStartedAt := now.Add(-1 * time.Hour).Format(time.RFC3339)
+	// Insert a workout on yesterday (within the nightly eval window).
+	workoutStartedAt := yesterday.Add(10 * time.Hour).Format(time.RFC3339)
 	if _, err := db.Exec(`
 		INSERT INTO workouts (id, user_id, sport, started_at, fit_file_hash, created_at)
 		VALUES (100, 1, 'running', ?, 'hash-nightly', ?)
@@ -599,7 +664,7 @@ func TestRunNightlyEvaluation_EvaluatesAndStores(t *testing.T) {
 	}
 
 	// Workout should no longer appear in unevaluated list.
-	since := now.Add(-25 * time.Hour).Format(time.RFC3339)
+	since := yesterday.Add(-1 * time.Hour).Format(time.RFC3339)
 	workouts, err := queryUnevaluatedWorkouts(context.Background(), db, 1, since)
 	if err != nil {
 		t.Fatalf("queryUnevaluatedWorkouts: %v", err)
@@ -610,8 +675,80 @@ func TestRunNightlyEvaluation_EvaluatesAndStores(t *testing.T) {
 		}
 	}
 
-	_ = workoutDate
 	_ = planID
+}
+
+// TestRunNightlyEvaluation_NoteAwareEvaluation verifies that when a user has notes
+// targeting yesterday's date and a planned session was missed, Claude is called for a
+// contextual evaluation instead of using the template string.
+func TestRunNightlyEvaluation_NoteAwareEvaluation(t *testing.T) {
+	promptCalled := false
+	origFn := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, prompt string) (string, error) {
+		promptCalled = true
+		// Return a contextual evaluation that differs from the template.
+		return `{"planned_type":"easy","actual_type":"none","compliance":"missed","notes":"User noted knee pain, rescheduling is appropriate.","flags":[],"adjustments":"Move the easy run to tomorrow.","date":"` + time.Now().UTC().AddDate(0, 0, -1).Format("2006-01-02") + `"}`, nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFn })
+
+	db := setupTestDB(t)
+
+	// Enable stride and Claude for user 1.
+	for _, kv := range [][2]string{
+		{"stride_enabled", "true"},
+		{"claude_enabled", "true"},
+	} {
+		if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`, kv[0], kv[1]); err != nil {
+			t.Fatalf("insert preference %s: %v", kv[0], err)
+		}
+	}
+
+	// Set up a plan covering yesterday with a planned session.
+	yesterday := time.Now().UTC().AddDate(0, 0, -1)
+	yesterdayStr := yesterday.Format("2006-01-02")
+	weekStart := yesterday.AddDate(0, 0, -3).Format("2006-01-02")
+	weekEnd := yesterday.AddDate(0, 0, 3).Format("2006-01-02")
+	planJSON := `[{"date":"` + yesterdayStr + `","rest_day":false,"session":{"description":"Easy run","warmup":"10 min","main_set":"30 min easy","cooldown":"5 min","strides":"","target_hr_cap":140}}]`
+	planID := insertTestPlan(t, db, 1, weekStart, weekEnd, planJSON)
+
+	// Create a note targeting yesterday explaining the miss.
+	_, err := CreateNote(db, 1, &planID, "Knee is sore today, will do the run tomorrow instead", yesterdayStr)
+	if err != nil {
+		t.Fatalf("create note: %v", err)
+	}
+
+	// No workout for yesterday — the session is missed.
+
+	if err := RunNightlyEvaluation(context.Background(), db, nil); err != nil {
+		t.Fatalf("RunNightlyEvaluation: %v", err)
+	}
+
+	// Claude should have been called for the contextual evaluation.
+	if !promptCalled {
+		t.Error("expected Claude to be called for note-aware evaluation, but it was not")
+	}
+
+	// A non-workout evaluation should be stored.
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_evaluations WHERE user_id = 1 AND workout_id IS NULL`).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 non-workout evaluation record, got %d", count)
+	}
+
+	// Verify the stored evaluation contains the contextual notes from Claude, not the template.
+	var evalJSON string
+	if err := db.QueryRow(`SELECT eval_json FROM stride_evaluations WHERE user_id = 1 AND workout_id IS NULL`).Scan(&evalJSON); err != nil {
+		t.Fatalf("query eval_json: %v", err)
+	}
+	decrypted, err := encryption.DecryptField(evalJSON)
+	if err != nil {
+		t.Fatalf("decrypt eval: %v", err)
+	}
+	if !strings.Contains(decrypted, "knee pain") {
+		t.Errorf("expected contextual evaluation mentioning knee pain, got %s", decrypted)
+	}
 }
 
 // TestRunNightlyEvaluation_SkipsUsersWithoutStride verifies that users without

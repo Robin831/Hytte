@@ -1334,6 +1334,7 @@ func createSchema(db *sql.DB) error {
 		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		plan_id     INTEGER REFERENCES stride_plans(id) ON DELETE SET NULL,
 		content     TEXT NOT NULL,
+		target_date TEXT NOT NULL DEFAULT '',
 		created_at  TEXT NOT NULL DEFAULT ''
 	);
 
@@ -2015,6 +2016,22 @@ func createSchema(db *sql.DB) error {
 	if hasChatSessionID == 0 {
 		if _, err := db.Exec(`ALTER TABLE chat_conversations ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("add chat_conversations session_id column: %w", err)
+		}
+	}
+
+	// Add target_date column to stride_notes table (Hytte-y9xg).
+	// Allows users to assign notes to a specific date for contextual evaluation.
+	var hasTargetDate int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stride_notes') WHERE name = 'target_date'`).Scan(&hasTargetDate); err != nil {
+		return fmt.Errorf("check stride_notes target_date column: %w", err)
+	}
+	if hasTargetDate == 0 {
+		if _, err := db.Exec(`ALTER TABLE stride_notes ADD COLUMN target_date TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add stride_notes target_date column: %w", err)
+		}
+		// Backfill existing rows: set target_date to the date portion of created_at.
+		if _, err := db.Exec(`UPDATE stride_notes SET target_date = SUBSTR(created_at, 1, 10) WHERE target_date = ''`); err != nil {
+			return fmt.Errorf("backfill stride_notes target_date: %w", err)
 		}
 	}
 

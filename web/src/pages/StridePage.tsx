@@ -24,6 +24,7 @@ interface Note {
   user_id: number
   plan_id: number | null
   content: string
+  target_date: string
   created_at: string
 }
 
@@ -495,6 +496,10 @@ export default function StridePage() {
 
   // Note form state
   const [noteContent, setNoteContent] = useState('')
+  const [noteTargetDate, setNoteTargetDate] = useState(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  })
   const [noteSubmitting, setNoteSubmitting] = useState(false)
 
   const loadRaces = useCallback(async (signal?: AbortSignal) => {
@@ -757,7 +762,7 @@ export default function StridePage() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: noteContent }),
+        body: JSON.stringify({ content: noteContent, target_date: noteTargetDate }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -1092,7 +1097,17 @@ export default function StridePage() {
             rows={3}
             className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-base sm:text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
           />
-          <div className="mt-2 flex justify-end">
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <label htmlFor="note-target-date" className="text-xs text-gray-400">{t('notes.targetDate')}</label>
+              <input
+                id="note-target-date"
+                type="date"
+                value={noteTargetDate}
+                onChange={e => setNoteTargetDate(e.target.value)}
+                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
             <button
               type="submit"
               disabled={noteSubmitting || !noteContent.trim()}
@@ -1122,6 +1137,7 @@ export default function StridePage() {
                     <Trash2 size={14} />
                   </button>
                   <span className="text-xs text-gray-500">
+                    {note.target_date && <span className="mr-1">{formatDate(`${note.target_date}T00:00:00`)}</span>}
                     {formatDateTime(note.created_at, { dateStyle: 'short', timeStyle: 'short' })}
                   </span>
                 </div>

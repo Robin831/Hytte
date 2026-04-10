@@ -358,7 +358,7 @@ func TestCreateNoteHandler_EmptyContent(t *testing.T) {
 func TestDeleteNoteHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 
-	note, err := CreateNote(db, 1, nil, "Delete me")
+	note, err := CreateNote(db, 1, nil, "Delete me", "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}

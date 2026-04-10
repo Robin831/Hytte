@@ -402,14 +402,15 @@ func ListNotesHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // CreateNoteHandler creates a new note.
-// Expects JSON body: {"content":"...","plan_id":null}
+// Expects JSON body: {"content":"...","plan_id":null,"target_date":"YYYY-MM-DD"}
 func CreateNoteHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
 		var body struct {
-			Content string `json:"content"`
-			PlanID  *int64 `json:"plan_id"`
+			Content    string `json:"content"`
+			PlanID     *int64 `json:"plan_id"`
+			TargetDate string `json:"target_date"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -420,6 +421,13 @@ func CreateNoteHandler(db *sql.DB) http.HandlerFunc {
 		if body.Content == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content is required"})
 			return
+		}
+
+		if body.TargetDate != "" {
+			if _, err := time.Parse("2006-01-02", body.TargetDate); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "target_date must be in YYYY-MM-DD format"})
+				return
+			}
 		}
 
 		if body.PlanID != nil {
@@ -436,7 +444,7 @@ func CreateNoteHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		note, err := CreateNote(db, user.ID, body.PlanID, body.Content)
+		note, err := CreateNote(db, user.ID, body.PlanID, body.Content, body.TargetDate)
 		if err != nil {
 			log.Printf("stride: create note: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create note"})

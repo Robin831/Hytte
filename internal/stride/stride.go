@@ -27,11 +27,12 @@ type Race struct {
 // Note represents a short free-text note from the user that feeds into the
 // next Stride plan generation.
 type Note struct {
-	ID        int64  `json:"id"`
-	UserID    int64  `json:"user_id"`
-	PlanID    *int64 `json:"plan_id"` // nullable — linked to plan when created during a plan week
-	Content   string `json:"content"` // encrypted at rest
-	CreatedAt string `json:"created_at"`
+	ID         int64  `json:"id"`
+	UserID     int64  `json:"user_id"`
+	PlanID     *int64 `json:"plan_id"`     // nullable — linked to plan when created during a plan week
+	Content    string `json:"content"`     // encrypted at rest
+	TargetDate string `json:"target_date"` // YYYY-MM-DD — which date this note applies to
+	CreatedAt  string `json:"created_at"`
 }
 
 // NextStrideRun returns the next time the weekly Stride cron should fire
@@ -332,7 +333,7 @@ func DeleteRace(db *sql.DB, id, userID int64) error {
 // When planID is nil, all notes for the user are returned.
 func ListNotes(db *sql.DB, userID int64, planID *int64) ([]Note, error) {
 	query := `
-		SELECT id, user_id, plan_id, content, created_at
+		SELECT id, user_id, plan_id, content, target_date, created_at
 		FROM stride_notes
 		WHERE user_id = ?`
 	args := []any{userID}
@@ -352,7 +353,7 @@ func ListNotes(db *sql.DB, userID int64, planID *int64) ([]Note, error) {
 	var notes []Note
 	for rows.Next() {
 		var n Note
-		if err := rows.Scan(&n.ID, &n.UserID, &n.PlanID, &n.Content, &n.CreatedAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.UserID, &n.PlanID, &n.Content, &n.TargetDate, &n.CreatedAt); err != nil {
 			return nil, err
 		}
 		if n.Content, err = encryption.DecryptField(n.Content); err != nil {
@@ -370,8 +371,12 @@ func ListNotes(db *sql.DB, userID int64, planID *int64) ([]Note, error) {
 }
 
 // CreateNote inserts a new note.
-func CreateNote(db *sql.DB, userID int64, planID *int64, content string) (*Note, error) {
+func CreateNote(db *sql.DB, userID int64, planID *int64, content, targetDate string) (*Note, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
+
+	if targetDate == "" {
+		targetDate = now[:10]
+	}
 
 	encContent, err := encryption.EncryptField(content)
 	if err != nil {
@@ -379,9 +384,9 @@ func CreateNote(db *sql.DB, userID int64, planID *int64, content string) (*Note,
 	}
 
 	res, err := db.Exec(`
-		INSERT INTO stride_notes (user_id, plan_id, content, created_at)
-		VALUES (?, ?, ?, ?)
-	`, userID, planID, encContent, now)
+		INSERT INTO stride_notes (user_id, plan_id, content, target_date, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, userID, planID, encContent, targetDate, now)
 	if err != nil {
 		return nil, fmt.Errorf("insert note: %w", err)
 	}
@@ -398,10 +403,10 @@ func CreateNote(db *sql.DB, userID int64, planID *int64, content string) (*Note,
 func getNoteByID(db *sql.DB, id, userID int64) (*Note, error) {
 	var n Note
 	err := db.QueryRow(`
-		SELECT id, user_id, plan_id, content, created_at
+		SELECT id, user_id, plan_id, content, target_date, created_at
 		FROM stride_notes
 		WHERE id = ? AND user_id = ?
-	`, id, userID).Scan(&n.ID, &n.UserID, &n.PlanID, &n.Content, &n.CreatedAt)
+	`, id, userID).Scan(&n.ID, &n.UserID, &n.PlanID, &n.Content, &n.TargetDate, &n.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -425,6 +430,33 @@ func DeleteNote(db *sql.DB, id, userID int64) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// GetNotesByTargetDate returns all notes for a user targeting a specific date.
+func GetNotesByTargetDate(db *sql.DB, userID int64, date string) ([]Note, error) {
+	rows, err := db.Query(`
+		SELECT id, user_id, plan_id, content, target_date, created_at
+		FROM stride_notes
+		WHERE user_id = ? AND target_date = ?
+		ORDER BY created_at ASC
+	`, userID, date)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var notes []Note
+	for rows.Next() {
+		var n Note
+		if err := rows.Scan(&n.ID, &n.UserID, &n.PlanID, &n.Content, &n.TargetDate, &n.CreatedAt); err != nil {
+			return nil, err
+		}
+		if n.Content, err = encryption.DecryptField(n.Content); err != nil {
+			return nil, fmt.Errorf("decrypt note content: %w", err)
+		}
+		notes = append(notes, n)
+	}
+	return notes, rows.Err()
 }
 
 // Plan represents a generated weekly training plan from stride_plans.

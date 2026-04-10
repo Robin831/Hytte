@@ -501,7 +501,7 @@ func TestEvaluateRestDaysAndMissedSessions_RestDay(t *testing.T) {
 	insertTestPlan(t, db, 1, weekStart, weekEnd, string(planJSON))
 
 	ctx := context.Background()
-	if err := evaluateRestDaysAndMissedSessions(ctx, db, 1); err != nil {
+	if err := evaluateRestDaysAndMissedSessions(ctx, db, nil, 1, time.Now().UTC().Format("2006-01-02")); err != nil {
 		t.Fatalf("evaluateRestDaysAndMissedSessions: %v", err)
 	}
 
@@ -546,7 +546,7 @@ func TestEvaluateRestDaysAndMissedSessions_MissedSession(t *testing.T) {
 	insertTestPlan(t, db, 1, weekStart, weekEnd, string(planJSON))
 
 	ctx := context.Background()
-	if err := evaluateRestDaysAndMissedSessions(ctx, db, 1); err != nil {
+	if err := evaluateRestDaysAndMissedSessions(ctx, db, nil, 1, time.Now().UTC().Format("2006-01-02")); err != nil {
 		t.Fatalf("evaluateRestDaysAndMissedSessions: %v", err)
 	}
 
@@ -587,7 +587,7 @@ func TestEvaluateRestDaysAndMissedSessions_WithWorkout(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := evaluateRestDaysAndMissedSessions(ctx, db, 1); err != nil {
+	if err := evaluateRestDaysAndMissedSessions(ctx, db, nil, 1, time.Now().UTC().Format("2006-01-02")); err != nil {
 		t.Fatalf("evaluateRestDaysAndMissedSessions: %v", err)
 	}
 
@@ -605,7 +605,7 @@ func TestEvaluateRestDaysAndMissedSessions_NoPlan(t *testing.T) {
 	db := setupTestDB(t)
 
 	ctx := context.Background()
-	if err := evaluateRestDaysAndMissedSessions(ctx, db, 1); err != nil {
+	if err := evaluateRestDaysAndMissedSessions(ctx, db, nil, 1, time.Now().UTC().Format("2006-01-02")); err != nil {
 		t.Fatalf("evaluateRestDaysAndMissedSessions: %v", err)
 	}
 
@@ -633,10 +633,10 @@ func TestEvaluateRestDaysAndMissedSessions_Idempotent(t *testing.T) {
 	ctx := context.Background()
 
 	// Run twice.
-	if err := evaluateRestDaysAndMissedSessions(ctx, db, 1); err != nil {
+	if err := evaluateRestDaysAndMissedSessions(ctx, db, nil, 1, time.Now().UTC().Format("2006-01-02")); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
-	if err := evaluateRestDaysAndMissedSessions(ctx, db, 1); err != nil {
+	if err := evaluateRestDaysAndMissedSessions(ctx, db, nil, 1, time.Now().UTC().Format("2006-01-02")); err != nil {
 		t.Fatalf("second run: %v", err)
 	}
 
