@@ -397,6 +397,17 @@ func fakeExecCommand(lines []string) func(ctx context.Context, name string, args
 	}
 }
 
+// fakeExecCommandCapture is like fakeExecCommand but also records the args
+// passed to each invocation into the provided slice.
+func fakeExecCommandCapture(lines []string, captured *[][]string) func(ctx context.Context, name string, args ...string) *exec.Cmd {
+	return func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		*captured = append(*captured, args)
+		output := strings.Join(lines, "\n") + "\n"
+		cmd := exec.CommandContext(ctx, "echo", "-n", output)
+		return cmd
+	}
+}
+
 func TestHandleSendMessageSuccess(t *testing.T) {
 	rec, handler, conv := setupSendMessageTest(t)
 
@@ -1116,5 +1127,85 @@ func TestHandleSendMessageDefaultHelpLevel(t *testing.T) {
 	respBody := rec.Body.String()
 	if !strings.Contains(respBody, "event: done") {
 		t.Errorf("expected done event in response")
+	}
+}
+
+func TestStreamClaudeArgsIncludeVerbose(t *testing.T) {
+	rec, handler, conv := setupSendMessageTest(t)
+
+	var captured [][]string
+	origExec := execCommand
+	execCommand = fakeExecCommandCapture([]string{
+		`{"type":"result","result":"ok","session_id":"sess-v","is_error":false}`,
+	}, &captured)
+	t.Cleanup(func() { execCommand = origExec })
+
+	body, contentType := multipartBody(t, map[string]string{
+		"message":    "test verbose flag",
+		"help_level": "hint",
+	}, nil)
+
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/homework/children/2/conversations/%d/messages", conv.ID), body)
+	r.Header.Set("Content-Type", contentType)
+	r = withChiParams(withUser(r, testParent), map[string]string{"childId": "2", "id": fmt.Sprintf("%d", conv.ID)})
+
+	handler.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if len(captured) == 0 {
+		t.Fatal("execCommand was never called")
+	}
+
+	args := captured[0]
+	hasVerbose := false
+	hasStreamJSON := false
+	for i, a := range args {
+		if a == "--verbose" {
+			hasVerbose = true
+		}
+		if a == "--output-format" && i+1 < len(args) && args[i+1] == "stream-json" {
+			hasStreamJSON = true
+		}
+	}
+	if !hasStreamJSON {
+		t.Error("expected --output-format stream-json in args")
+	}
+	if !hasVerbose {
+		t.Error("expected --verbose in args alongside --output-format stream-json")
+	}
+}
+
+func TestStreamClaudeStderrCapturedOnError(t *testing.T) {
+	rec, handler, conv := setupSendMessageTest(t)
+
+	origExec := execCommand
+	execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		// Use sh -c to write to stderr and exit 1.
+		cmd := exec.CommandContext(ctx, "sh", "-c", "echo 'Error: --verbose required' >&2; exit 1")
+		return cmd
+	}
+	t.Cleanup(func() { execCommand = origExec })
+
+	body, contentType := multipartBody(t, map[string]string{
+		"message":    "test stderr",
+		"help_level": "hint",
+	}, nil)
+
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/homework/children/2/conversations/%d/messages", conv.ID), body)
+	r.Header.Set("Content-Type", contentType)
+	r = withChiParams(withUser(r, testParent), map[string]string{"childId": "2", "id": fmt.Sprintf("%d", conv.ID)})
+
+	handler.ServeHTTP(rec, r)
+
+	respBody := rec.Body.String()
+	// The error event should contain the stderr output.
+	if !strings.Contains(respBody, "event: error") {
+		t.Errorf("expected error event, got: %s", respBody)
+	}
+	if !strings.Contains(respBody, "--verbose required") {
+		t.Errorf("expected stderr content in error event, got: %s", respBody)
 	}
 }

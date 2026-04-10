@@ -2,6 +2,7 @@ package homework
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -672,7 +673,7 @@ type claudeStreamLine struct {
 // using the @path syntax so Claude can analyse it. Returns the full response text
 // and session ID.
 func streamClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPrompt, prompt, imagePath, sessionID string, w http.ResponseWriter, flusher http.Flusher) (string, string, error) {
-	args := []string{"--model", cfg.Model, "-p", "-", "--output-format", "stream-json", "--system-prompt", systemPrompt}
+	args := []string{"--model", cfg.Model, "-p", "-", "--output-format", "stream-json", "--verbose", "--system-prompt", systemPrompt}
 	if sessionID != "" {
 		args = append(args, "--resume", sessionID)
 	}
@@ -689,6 +690,9 @@ func streamClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPrompt,
 
 	cmd := execCommand(ctx, cfg.CLIPath, args...)
 	cmd.Stdin = strings.NewReader(fullPrompt)
+
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -757,11 +761,11 @@ func streamClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPrompt,
 
 	if err := scanner.Err(); err != nil {
 		cmd.Wait()
-		return "", "", fmt.Errorf("scan claude output: %w", err)
+		return "", "", fmt.Errorf("scan claude output: %w: %s", err, strings.TrimSpace(stderrBuf.String()))
 	}
 
 	if err := cmd.Wait(); err != nil {
-		return "", "", fmt.Errorf("claude exit: %w", err)
+		return "", "", fmt.Errorf("claude exit: %w: %s", err, strings.TrimSpace(stderrBuf.String()))
 	}
 
 	return strings.TrimSpace(fullText.String()), resultSessionID, nil
