@@ -219,6 +219,41 @@ func TestBuildEvalPrompt_OmitsEmptyTitle(t *testing.T) {
 	}
 }
 
+func TestBuildEvalPrompt_WithNotes(t *testing.T) {
+	workout := training.Workout{
+		Sport:     "running",
+		StartedAt: "2026-04-06T07:00:00Z",
+	}
+	notes := []Note{
+		{ID: 1, TargetDate: "2026-04-05", Content: "Felt sick with a cold"},
+		{ID: 2, TargetDate: "2026-04-06", Content: "Still recovering, took it easy"},
+	}
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, notes)
+	if !strings.Contains(prompt, "User Notes") {
+		t.Error("expected prompt to contain User Notes section header")
+	}
+	if !strings.Contains(prompt, "Felt sick with a cold") {
+		t.Error("expected prompt to contain first note content")
+	}
+	if !strings.Contains(prompt, "Still recovering, took it easy") {
+		t.Error("expected prompt to contain second note content")
+	}
+	if !strings.Contains(prompt, "2026-04-05") {
+		t.Error("expected prompt to contain first note date")
+	}
+}
+
+func TestBuildEvalPrompt_WithoutNotes(t *testing.T) {
+	workout := training.Workout{
+		Sport:     "running",
+		StartedAt: "2026-04-06T07:00:00Z",
+	}
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	if strings.Contains(prompt, "User Notes") {
+		t.Error("prompt should not contain User Notes section when no notes provided")
+	}
+}
+
 // --- storeEvaluation and queryUnevaluatedWorkouts ---
 
 func TestStoreEvaluation_RoundTrip(t *testing.T) {
