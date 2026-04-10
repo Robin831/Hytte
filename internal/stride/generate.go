@@ -195,8 +195,8 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 		}
 	}
 
-	// Query stride notes (all, most recent first).
-	notes, err := listAllNotes(ctx, db, userID)
+	// Query unconsumed stride notes for plan context.
+	notes, err := listUnconsumedNotes(ctx, db, userID)
 	if err != nil {
 		return fmt.Errorf("list notes: %w", err)
 	}
@@ -295,8 +295,16 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
+	// Use a transaction so that the plan upsert and note consumption are atomic —
+	// a failed plan insert does not silently eat notes.
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
 	// Upsert into stride_plans (unique on user_id + week_start).
-	_, err = db.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO stride_plans (user_id, week_start, week_end, phase, plan_json, prompt, response, model, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, week_start) DO UPDATE SET
@@ -309,6 +317,21 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 	`, userID, weekStart, weekEnd, "", string(planBytes), encPrompt, encResponse, claudeCfg.Model, now)
 	if err != nil {
 		return fmt.Errorf("insert stride plan: %w", err)
+	}
+
+	// Mark consumed notes within the same transaction.
+	if len(notes) > 0 {
+		noteIDs := make([]int64, len(notes))
+		for i, n := range notes {
+			noteIDs[i] = n.ID
+		}
+		if err := MarkNotesConsumed(ctx, tx, userID, noteIDs, "weekly"); err != nil {
+			return fmt.Errorf("mark notes consumed: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit plan tx: %w", err)
 	}
 
 	return nil
@@ -336,14 +359,16 @@ func upcomingWeek() (weekStart, weekEnd string) {
 	return monday.Format(dateFmt), sunday.Format(dateFmt)
 }
 
-// listAllNotes returns all stride notes for a user, most recent first, limit 20.
-func listAllNotes(ctx context.Context, db *sql.DB, userID int64) ([]Note, error) {
+// listUnconsumedNotes returns stride notes for a user that have not yet been
+// consumed by any process (weekly plan generation, nightly evaluation, etc.).
+// Results are ordered most recent first with a safety limit of 200.
+func listUnconsumedNotes(ctx context.Context, db *sql.DB, userID int64) ([]Note, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT id, user_id, plan_id, content, target_date, created_at
 		FROM stride_notes
-		WHERE user_id = ?
+		WHERE user_id = ? AND consumed_at IS NULL
 		ORDER BY created_at DESC
-		LIMIT 20
+		LIMIT 200
 	`, userID)
 	if err != nil {
 		return nil, err

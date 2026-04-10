@@ -517,3 +517,206 @@ func TestBuildGeneratePrompt_NoRaceHistoryWhenEmpty(t *testing.T) {
 	}
 }
 
+// insertNote is a test helper that inserts a stride note and returns its ID.
+func insertNote(t *testing.T, db *sql.DB, userID int64, content string) int64 {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := db.Exec(
+		"INSERT INTO stride_notes (user_id, content, target_date, created_at) VALUES (?, ?, '', ?)",
+		userID, content, now,
+	)
+	if err != nil {
+		t.Fatalf("insert note: %v", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("insert note last insert id: %v", err)
+	}
+	return id
+}
+
+// mockClaude sets up runPromptFunc to return a valid 7-day plan for the given
+// weekStart and registers cleanup with t.Cleanup to restore the original function.
+func mockClaude(t *testing.T, weekStart string) {
+	t.Helper()
+	planDays := buildMinimalPlan(weekStart)
+	mockResponse, _ := json.Marshal(planDays)
+
+	origFn := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		return string(mockResponse), nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFn })
+}
+
+// enableStride sets up user preferences to enable stride and Claude.
+func enableStride(t *testing.T, db *sql.DB, userID int64) {
+	t.Helper()
+	prefs := []struct{ k, v string }{
+		{"stride_enabled", "true"},
+		{"claude_enabled", "true"},
+		{"claude_model", "claude-opus-4-5"},
+	}
+	for _, p := range prefs {
+		if _, err := db.Exec("INSERT INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)", userID, p.k, p.v); err != nil {
+			t.Fatalf("set pref %s: %v", p.k, err)
+		}
+	}
+}
+
+func TestListUnconsumedNotes_OnlyUnconsumed(t *testing.T) {
+	db := extendedTestDB(t)
+
+	// Insert two unconsumed notes.
+	insertNote(t, db, 1, "note-a")
+	insertNote(t, db, 1, "note-b")
+
+	// Insert a consumed note.
+	id3 := insertNote(t, db, 1, "note-consumed")
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := db.Exec("UPDATE stride_notes SET consumed_at = ?, consumed_by = 'manual' WHERE id = ?", now, id3); err != nil {
+		t.Fatalf("mark consumed: %v", err)
+	}
+
+	notes, err := listUnconsumedNotes(context.Background(), db, 1)
+	if err != nil {
+		t.Fatalf("listUnconsumedNotes: %v", err)
+	}
+	if len(notes) != 2 {
+		t.Fatalf("expected 2 unconsumed notes, got %d", len(notes))
+	}
+	for _, n := range notes {
+		if n.Content == "note-consumed" {
+			t.Error("consumed note should not appear in unconsumed list")
+		}
+	}
+}
+
+func TestListUnconsumedNotes_ExcludesNightlyConsumed(t *testing.T) {
+	db := extendedTestDB(t)
+
+	insertNote(t, db, 1, "note-active")
+
+	// Simulate a note consumed by the nightly process.
+	idNightly := insertNote(t, db, 1, "note-nightly")
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := db.Exec("UPDATE stride_notes SET consumed_at = ?, consumed_by = 'nightly' WHERE id = ?", now, idNightly); err != nil {
+		t.Fatalf("mark nightly consumed: %v", err)
+	}
+
+	notes, err := listUnconsumedNotes(context.Background(), db, 1)
+	if err != nil {
+		t.Fatalf("listUnconsumedNotes: %v", err)
+	}
+	if len(notes) != 1 {
+		t.Fatalf("expected 1 unconsumed note, got %d", len(notes))
+	}
+	if notes[0].Content != "note-active" {
+		t.Errorf("expected note-active, got %q", notes[0].Content)
+	}
+}
+
+func TestGeneratePlan_MarksNotesConsumed(t *testing.T) {
+	db := extendedTestDB(t)
+	enableStride(t, db, 1)
+
+	id1 := insertNote(t, db, 1, "plan-note-1")
+	id2 := insertNote(t, db, 1, "plan-note-2")
+
+	weekStart, _ := upcomingWeek()
+	mockClaude(t, weekStart)
+
+	if err := GeneratePlan(context.Background(), db, 1, "next"); err != nil {
+		t.Fatalf("GeneratePlan: %v", err)
+	}
+
+	// Both notes should now be consumed with consumed_by='weekly'.
+	for _, id := range []int64{id1, id2} {
+		var consumedAt sql.NullString
+		var consumedBy sql.NullString
+		if err := db.QueryRow("SELECT consumed_at, consumed_by FROM stride_notes WHERE id = ?", id).Scan(&consumedAt, &consumedBy); err != nil {
+			t.Fatalf("query note %d: %v", id, err)
+		}
+		if !consumedAt.Valid {
+			t.Errorf("note %d: consumed_at should be set", id)
+		}
+		if !consumedBy.Valid || consumedBy.String != "weekly" {
+			t.Errorf("note %d: consumed_by = %q, want %q", id, consumedBy.String, "weekly")
+		}
+	}
+}
+
+func TestGeneratePlan_FailedInsertRollsBackNoteConsumption(t *testing.T) {
+	db := extendedTestDB(t)
+	enableStride(t, db, 1)
+
+	id1 := insertNote(t, db, 1, "rollback-note")
+
+	weekStart, _ := upcomingWeek()
+	mockClaude(t, weekStart)
+
+	// Drop stride_plans to trigger a DB error on insert.
+	if _, err := db.Exec("DROP TABLE stride_plans"); err != nil {
+		t.Fatalf("drop table: %v", err)
+	}
+
+	err := GeneratePlan(context.Background(), db, 1, "next")
+	if err == nil {
+		t.Fatal("expected error when stride_plans table is missing, got nil")
+	}
+
+	// Note should remain unconsumed because the transaction was rolled back.
+	var consumedAt sql.NullString
+	if err := db.QueryRow("SELECT consumed_at FROM stride_notes WHERE id = ?", id1).Scan(&consumedAt); err != nil {
+		t.Fatalf("query note: %v", err)
+	}
+	if consumedAt.Valid {
+		t.Error("note should remain unconsumed after failed plan insert")
+	}
+}
+
+func TestGeneratePlan_UnconsumedNotesSurviveAcrossRuns(t *testing.T) {
+	db := extendedTestDB(t)
+	enableStride(t, db, 1)
+
+	weekStart, _ := upcomingWeek()
+	mockClaude(t, weekStart)
+
+	// First run: one note gets consumed.
+	insertNote(t, db, 1, "first-run-note")
+
+	if err := GeneratePlan(context.Background(), db, 1, "next"); err != nil {
+		t.Fatalf("first GeneratePlan: %v", err)
+	}
+
+	// Add a new note after the first run.
+	id2 := insertNote(t, db, 1, "second-run-note")
+
+	// Second run: only the new note should be picked up.
+	if err := GeneratePlan(context.Background(), db, 1, "next"); err != nil {
+		t.Fatalf("second GeneratePlan: %v", err)
+	}
+
+	// The second note should now be consumed.
+	var consumedAt sql.NullString
+	var consumedBy sql.NullString
+	if err := db.QueryRow("SELECT consumed_at, consumed_by FROM stride_notes WHERE id = ?", id2).Scan(&consumedAt, &consumedBy); err != nil {
+		t.Fatalf("query note: %v", err)
+	}
+	if !consumedAt.Valid {
+		t.Error("second note should be consumed after second run")
+	}
+	if !consumedBy.Valid || consumedBy.String != "weekly" {
+		t.Errorf("consumed_by = %q, want %q", consumedBy.String, "weekly")
+	}
+
+	// Verify total: all notes should be consumed now.
+	var unconsumed int
+	if err := db.QueryRow("SELECT COUNT(*) FROM stride_notes WHERE user_id = 1 AND consumed_at IS NULL").Scan(&unconsumed); err != nil {
+		t.Fatalf("count unconsumed: %v", err)
+	}
+	if unconsumed != 0 {
+		t.Errorf("expected 0 unconsumed notes, got %d", unconsumed)
+	}
+}
+
