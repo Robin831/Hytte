@@ -629,6 +629,128 @@ func TestHandleSendMessageSubjectAutoDetection(t *testing.T) {
 	}
 }
 
+func TestHandleParentReviewSuccess(t *testing.T) {
+	d := setupTestDB(t)
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00.000Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	// Create two conversations with messages at different help levels.
+	conv1, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "Math"})
+	if err != nil {
+		t.Fatalf("create conversation 1: %v", err)
+	}
+	conv2, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "Reading"})
+	if err != nil {
+		t.Fatalf("create conversation 2: %v", err)
+	}
+
+	// Conv1: 2 hints, 1 explain — each turn has a user message and an assistant reply,
+	// matching the production pattern where HandleSendMessage stores help_level on both.
+	// Help-level totals count assistant messages only, so each pair contributes 1.
+	for _, hl := range []HelpLevel{HelpLevelHint, HelpLevelHint, HelpLevelExplain} {
+		if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv1.ID, Role: "user", Content: "q", HelpLevel: hl}); err != nil {
+			t.Fatalf("add message: %v", err)
+		}
+		if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv1.ID, Role: "assistant", Content: "a", HelpLevel: hl}); err != nil {
+			t.Fatalf("add assistant message: %v", err)
+		}
+	}
+	// Conv2: 1 walkthrough (user + assistant pair).
+	if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv2.ID, Role: "user", Content: "q", HelpLevel: HelpLevelWalkthrough}); err != nil {
+		t.Fatalf("add message: %v", err)
+	}
+	if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv2.ID, Role: "assistant", Content: "a", HelpLevel: HelpLevelWalkthrough}); err != nil {
+		t.Fatalf("add assistant message: %v", err)
+	}
+
+	handler := HandleParentReview(d)
+	r := withChiParams(withUser(newRequest(http.MethodGet, "/api/homework/children/2/review", nil), testParent), map[string]string{"childId": "2"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var envelope struct {
+		Review ParentReviewResponse `json:"review"`
+	}
+	decode(t, w.Body.Bytes(), &envelope)
+	resp := envelope.Review
+
+	if len(resp.Conversations) != 2 {
+		t.Fatalf("expected 2 conversations, got %d", len(resp.Conversations))
+	}
+	// 3 user + 3 assistant in conv1, 1 user + 1 assistant in conv2 = 8 total messages.
+	if resp.TotalMessages != 8 {
+		t.Errorf("expected 8 total messages, got %d", resp.TotalMessages)
+	}
+	// Help-level totals count only assistant messages.
+	if resp.HelpLevelTotals["hint"] != 2 {
+		t.Errorf("expected 2 hints total, got %d", resp.HelpLevelTotals["hint"])
+	}
+	if resp.HelpLevelTotals["explain"] != 1 {
+		t.Errorf("expected 1 explain total, got %d", resp.HelpLevelTotals["explain"])
+	}
+	if resp.HelpLevelTotals["walkthrough"] != 1 {
+		t.Errorf("expected 1 walkthrough total, got %d", resp.HelpLevelTotals["walkthrough"])
+	}
+	// Averages: 8 messages / 2 conversations = 4.0.
+	if resp.AverageMessagesPerConversation != 4.0 {
+		t.Errorf("expected 4.0 avg messages per conv, got %f", resp.AverageMessagesPerConversation)
+	}
+	// hint average: 2 / 2 conversations = 1.0.
+	if resp.HelpLevelAverages["hint"] != 1.0 {
+		t.Errorf("expected hint average 1.0, got %f", resp.HelpLevelAverages["hint"])
+	}
+}
+
+func TestHandleParentReviewEmpty(t *testing.T) {
+	d := setupTestDB(t)
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00.000Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	handler := HandleParentReview(d)
+	r := withChiParams(withUser(newRequest(http.MethodGet, "/api/homework/children/2/review", nil), testParent), map[string]string{"childId": "2"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var envelope struct {
+		Review ParentReviewResponse `json:"review"`
+	}
+	decode(t, w.Body.Bytes(), &envelope)
+	resp := envelope.Review
+
+	if len(resp.Conversations) != 0 {
+		t.Errorf("expected 0 conversations, got %d", len(resp.Conversations))
+	}
+	if resp.TotalMessages != 0 {
+		t.Errorf("expected 0 total messages, got %d", resp.TotalMessages)
+	}
+}
+
+func TestHandleParentReviewForbidden(t *testing.T) {
+	d := setupTestDB(t)
+	// No family link.
+
+	handler := HandleParentReview(d)
+	r := withChiParams(withUser(newRequest(http.MethodGet, "/api/homework/children/2/review", nil), testParent), map[string]string{"childId": "2"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestHandleSendMessageDefaultHelpLevel(t *testing.T) {
 	rec, handler, conv := setupSendMessageTest(t)
 

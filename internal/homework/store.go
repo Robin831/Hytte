@@ -471,7 +471,7 @@ func GetConversationsForParentReview(db *sql.DB, kidID int64) ([]ConversationSum
 			SELECT m.conversation_id, m.help_level, COUNT(*)
 			FROM homework_messages m
 			JOIN homework_conversations c ON c.id = m.conversation_id
-			WHERE c.kid_id = ? AND m.help_level != ''
+			WHERE c.kid_id = ? AND m.help_level != '' AND m.role = 'assistant'
 			GROUP BY m.conversation_id, m.help_level`, kidID)
 		if err != nil {
 			return nil, fmt.Errorf("count help levels: %w", err)

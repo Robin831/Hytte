@@ -545,6 +545,77 @@ func HandleSendMessage(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// ParentReviewResponse is the JSON shape returned by HandleParentReview.
+type ParentReviewResponse struct {
+	Conversations                  []ConversationSummary `json:"conversations"`
+	TotalMessages                  int                   `json:"total_messages"`
+	HelpLevelTotals                map[string]int        `json:"help_level_totals"`
+	HelpLevelAverages              map[string]float64    `json:"help_level_averages"`
+	AverageMessagesPerConversation float64               `json:"average_messages_per_conversation"`
+}
+
+// HandleParentReview returns an aggregated summary of a child's homework conversations
+// with per-conversation and overall help-level statistics.
+// GET /api/homework/children/{childId}/review
+// Admin users bypass the family_links check and may access any child's review.
+func HandleParentReview(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		var childID int64
+		if user.IsAdmin {
+			id, err := strconv.ParseInt(chi.URLParam(r, "childId"), 10, 64)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid child ID"})
+				return
+			}
+			childID = id
+		} else {
+			var ok bool
+			childID, ok = parseChildID(w, r, db, user.ID)
+			if !ok {
+				return
+			}
+		}
+
+		summaries, err := GetConversationsForParentReview(db, childID)
+		if err != nil {
+			log.Printf("homework: parent review kid %d: %v", childID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load review data"})
+			return
+		}
+		if summaries == nil {
+			summaries = []ConversationSummary{}
+		}
+
+		totalMessages := 0
+		helpTotals := make(map[string]int)
+		for _, s := range summaries {
+			totalMessages += s.MessageCount
+			for level, count := range s.HelpLevels {
+				helpTotals[level] += count
+			}
+		}
+
+		helpAverages := make(map[string]float64)
+		var avgMsgsPerConv float64
+		if len(summaries) > 0 {
+			avgMsgsPerConv = float64(totalMessages) / float64(len(summaries))
+			for level, count := range helpTotals {
+				helpAverages[level] = float64(count) / float64(len(summaries))
+			}
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"review": ParentReviewResponse{
+			Conversations:                  summaries,
+			TotalMessages:                  totalMessages,
+			HelpLevelTotals:                helpTotals,
+			HelpLevelAverages:              helpAverages,
+			AverageMessagesPerConversation: avgMsgsPerConv,
+		}})
+	}
+}
+
 // claudeStreamLine represents a line from Claude CLI's stream-json output.
 type claudeStreamLine struct {
 	Type      string `json:"type"`
