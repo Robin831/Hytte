@@ -119,14 +119,24 @@ func GetProfileByKidID(db *sql.DB, kidID int64) (*HomeworkProfile, error) {
 		return nil, fmt.Errorf("get homework profile: %w", err)
 	}
 
-	p.SchoolName = decryptOrPlaintext(encSchool)
+	schoolName, err := decryptField(encSchool)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt school_name: %w", err)
+	}
+	p.SchoolName = schoolName
 
-	subjectsStr := decryptOrPlaintext(encSubjects)
+	subjectsStr, err := decryptField(encSubjects)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt subjects: %w", err)
+	}
 	if err := json.Unmarshal([]byte(subjectsStr), &p.Subjects); err != nil {
 		return nil, fmt.Errorf("unmarshal subjects: %w", err)
 	}
 
-	topicsStr := decryptOrPlaintext(encTopics)
+	topicsStr, err := decryptField(encTopics)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt current_topics: %w", err)
+	}
 	if err := json.Unmarshal([]byte(topicsStr), &p.CurrentTopics); err != nil {
 		return nil, fmt.Errorf("unmarshal current_topics: %w", err)
 	}
@@ -169,15 +179,15 @@ func CreateConversation(db *sql.DB, conv HomeworkConversation) (HomeworkConversa
 	return conv, nil
 }
 
-// GetConversation returns a single homework conversation by ID.
-func GetConversation(db *sql.DB, id int64) (*HomeworkConversation, error) {
+// GetConversation returns a single homework conversation by ID, scoped to a specific kid.
+func GetConversation(db *sql.DB, id, kidID int64) (*HomeworkConversation, error) {
 	var c HomeworkConversation
 	var encSubject string
 	err := db.QueryRow(`
 		SELECT id, kid_id, subject, created_at, updated_at
 		FROM homework_conversations
-		WHERE id = ?`,
-		id,
+		WHERE id = ? AND kid_id = ?`,
+		id, kidID,
 	).Scan(&c.ID, &c.KidID, &encSubject, &c.CreatedAt, &c.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -185,7 +195,11 @@ func GetConversation(db *sql.DB, id int64) (*HomeworkConversation, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get homework conversation: %w", err)
 	}
-	c.Subject = decryptOrPlaintext(encSubject)
+	subject, err := decryptField(encSubject)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt conversation subject: %w", err)
+	}
+	c.Subject = subject
 	return &c, nil
 }
 
@@ -210,7 +224,11 @@ func ListConversationsByKid(db *sql.DB, kidID int64) ([]HomeworkConversation, er
 		if err := rows.Scan(&c.ID, &c.KidID, &encSubject, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
-		c.Subject = decryptOrPlaintext(encSubject)
+		subject, err := decryptField(encSubject)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt conversation subject: %w", err)
+		}
+		c.Subject = subject
 		convos = append(convos, c)
 	}
 	if err := rows.Err(); err != nil {
@@ -259,14 +277,15 @@ func AddMessage(db *sql.DB, msg HomeworkMessage) (HomeworkMessage, error) {
 	return msg, nil
 }
 
-// GetMessages returns all messages for a conversation, ordered chronologically.
-func GetMessages(db *sql.DB, conversationID int64) ([]HomeworkMessage, error) {
+// GetMessages returns all messages for a conversation, scoped to a specific kid.
+func GetMessages(db *sql.DB, conversationID, kidID int64) ([]HomeworkMessage, error) {
 	rows, err := db.Query(`
-		SELECT id, conversation_id, role, content, help_level, image_path, created_at
-		FROM homework_messages
-		WHERE conversation_id = ?
-		ORDER BY created_at ASC, id ASC`,
-		conversationID,
+		SELECT m.id, m.conversation_id, m.role, m.content, m.help_level, m.image_path, m.created_at
+		FROM homework_messages m
+		JOIN homework_conversations c ON c.id = m.conversation_id
+		WHERE m.conversation_id = ? AND c.kid_id = ?
+		ORDER BY m.created_at ASC, m.id ASC`,
+		conversationID, kidID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("list homework messages: %w", err)
@@ -281,8 +300,16 @@ func GetMessages(db *sql.DB, conversationID int64) ([]HomeworkMessage, error) {
 		if err := rows.Scan(&m.ID, &m.ConversationID, &m.Role, &encContent, &helpLevel, &encImagePath, &m.CreatedAt); err != nil {
 			return nil, err
 		}
-		m.Content = decryptOrPlaintext(encContent)
-		m.ImagePath = decryptOrPlaintext(encImagePath)
+		content, err := decryptField(encContent)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt message content: %w", err)
+		}
+		m.Content = content
+		imgPath, err := decryptField(encImagePath)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt message image_path: %w", err)
+		}
+		m.ImagePath = imgPath
 		m.HelpLevel = HelpLevel(helpLevel)
 		msgs = append(msgs, m)
 	}
@@ -314,50 +341,52 @@ func GetConversationsForParentReview(db *sql.DB, kidID int64) ([]ConversationSum
 	defer rows.Close()
 
 	var summaries []ConversationSummary
-	var convIDs []int64
+	idIndex := map[int64]int{}
 	for rows.Next() {
 		var s ConversationSummary
 		var encSubject string
 		if err := rows.Scan(&s.ID, &s.KidID, &encSubject, &s.CreatedAt, &s.UpdatedAt, &s.MessageCount); err != nil {
 			return nil, err
 		}
-		s.Subject = decryptOrPlaintext(encSubject)
+		subject, err := decryptField(encSubject)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt conversation subject: %w", err)
+		}
+		s.Subject = subject
 		s.HelpLevels = map[string]int{}
+		idIndex[s.ID] = len(summaries)
 		summaries = append(summaries, s)
-		convIDs = append(convIDs, s.ID)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	// Fetch help-level counts per conversation.
-	if len(convIDs) > 0 {
-		idIndex := make(map[int64]int, len(summaries))
-		for i, s := range summaries {
-			idIndex[s.ID] = i
+	// Fetch help-level counts for all conversations in a single query.
+	if len(summaries) > 0 {
+		hlRows, err := db.Query(`
+			SELECT m.conversation_id, m.help_level, COUNT(*)
+			FROM homework_messages m
+			JOIN homework_conversations c ON c.id = m.conversation_id
+			WHERE c.kid_id = ? AND m.help_level != ''
+			GROUP BY m.conversation_id, m.help_level`, kidID)
+		if err != nil {
+			return nil, fmt.Errorf("count help levels: %w", err)
 		}
+		defer hlRows.Close()
 
-		for _, cid := range convIDs {
-			hlRows, err := db.Query(`
-				SELECT help_level, COUNT(*) FROM homework_messages
-				WHERE conversation_id = ? AND help_level != ''
-				GROUP BY help_level`, cid)
-			if err != nil {
-				return nil, fmt.Errorf("count help levels: %w", err)
-			}
-			for hlRows.Next() {
-				var level string
-				var count int
-				if err := hlRows.Scan(&level, &count); err != nil {
-					hlRows.Close()
-					return nil, err
-				}
-				summaries[idIndex[cid]].HelpLevels[level] = count
-			}
-			hlRows.Close()
-			if err := hlRows.Err(); err != nil {
+		for hlRows.Next() {
+			var convID int64
+			var level string
+			var count int
+			if err := hlRows.Scan(&convID, &level, &count); err != nil {
 				return nil, err
 			}
+			if idx, ok := idIndex[convID]; ok {
+				summaries[idx].HelpLevels[level] = count
+			}
+		}
+		if err := hlRows.Err(); err != nil {
+			return nil, err
 		}
 	}
 
@@ -367,21 +396,20 @@ func GetConversationsForParentReview(db *sql.DB, kidID int64) ([]ConversationSum
 	return summaries, nil
 }
 
-// decryptOrPlaintext decrypts a field value. If the value has the "enc:" prefix but
-// decryption fails, it returns an empty string to avoid leaking ciphertext.
+// decryptField decrypts a field value. If the value has the "enc:" prefix but
+// decryption fails, the error is propagated to avoid silently losing data.
 // For legacy plaintext values (no "enc:" prefix), the value is returned as-is.
-func decryptOrPlaintext(val string) string {
+func decryptField(val string) (string, error) {
 	if val == "" {
-		return val
+		return val, nil
 	}
 	decrypted, err := encryption.DecryptField(val)
 	if err != nil {
 		if len(val) >= 4 && val[:4] == "enc:" {
-			log.Printf("homework: decrypt field failed for enc:-prefixed value: %v", err)
-			return ""
+			return "", fmt.Errorf("decrypt encrypted field: %w", err)
 		}
 		log.Printf("homework: decrypt field warning (legacy plaintext): %v", err)
-		return val
+		return val, nil
 	}
-	return decrypted
+	return decrypted, nil
 }

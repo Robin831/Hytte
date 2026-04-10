@@ -169,7 +169,7 @@ func TestConversationCRUD(t *testing.T) {
 	}
 
 	// Get conversation.
-	got, err := GetConversation(d, conv.ID)
+	got, err := GetConversation(d, conv.ID, 2)
 	if err != nil {
 		t.Fatalf("get conversation: %v", err)
 	}
@@ -181,12 +181,21 @@ func TestConversationCRUD(t *testing.T) {
 	}
 
 	// Get non-existent conversation.
-	none, err := GetConversation(d, 999)
+	none, err := GetConversation(d, 999, 2)
 	if err != nil {
 		t.Fatalf("get missing conversation: %v", err)
 	}
 	if none != nil {
 		t.Fatal("expected nil for missing conversation")
+	}
+
+	// Get conversation with wrong kid_id returns nil (access control).
+	wrongKid, err := GetConversation(d, conv.ID, 1)
+	if err != nil {
+		t.Fatalf("get conversation wrong kid: %v", err)
+	}
+	if wrongKid != nil {
+		t.Fatal("expected nil when accessing conversation with wrong kid_id")
 	}
 
 	// List conversations.
@@ -266,7 +275,7 @@ func TestMessageCRUD(t *testing.T) {
 	}
 
 	// Get messages.
-	msgs, err := GetMessages(d, conv.ID)
+	msgs, err := GetMessages(d, conv.ID, 2)
 	if err != nil {
 		t.Fatalf("get messages: %v", err)
 	}
@@ -284,12 +293,21 @@ func TestMessageCRUD(t *testing.T) {
 	}
 
 	// Empty messages for non-existent conversation.
-	empty, err := GetMessages(d, 999)
+	empty, err := GetMessages(d, 999, 2)
 	if err != nil {
 		t.Fatalf("get empty messages: %v", err)
 	}
 	if len(empty) != 0 {
 		t.Fatalf("expected 0 messages, got %d", len(empty))
+	}
+
+	// Messages with wrong kid_id returns empty (access control).
+	wrongKid, err := GetMessages(d, conv.ID, 1)
+	if err != nil {
+		t.Fatalf("get messages wrong kid: %v", err)
+	}
+	if len(wrongKid) != 0 {
+		t.Fatalf("expected 0 messages for wrong kid, got %d", len(wrongKid))
 	}
 }
 
@@ -317,7 +335,7 @@ func TestConversationUpdatedAtOnMessage(t *testing.T) {
 		t.Fatalf("add message: %v", err)
 	}
 
-	got, err := GetConversation(d, conv.ID)
+	got, err := GetConversation(d, conv.ID, 2)
 	if err != nil {
 		t.Fatalf("get conversation: %v", err)
 	}
@@ -403,7 +421,7 @@ func TestMessageWithImage(t *testing.T) {
 		t.Fatalf("add message with image: %v", err)
 	}
 
-	msgs, err := GetMessages(d, conv.ID)
+	msgs, err := GetMessages(d, conv.ID, 2)
 	if err != nil {
 		t.Fatalf("get messages: %v", err)
 	}
