@@ -1,11 +1,18 @@
 package homework
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 )
 
-// Subject keywords for classification.
+// Subject keyword patterns with word-boundary matching.
+var (
+	mathPatterns    []*regexp.Regexp
+	writingPatterns []*regexp.Regexp
+	readingPatterns []*regexp.Regexp
+)
+
 var (
 	mathKeywords = []string{
 		"equation", "solve", "calculate", "algebra", "geometry", "fraction",
@@ -25,14 +32,29 @@ var (
 	}
 )
 
+func init() {
+	mathPatterns = compileKeywords(mathKeywords)
+	writingPatterns = compileKeywords(writingKeywords)
+	readingPatterns = compileKeywords(readingKeywords)
+}
+
+func compileKeywords(keywords []string) []*regexp.Regexp {
+	patterns := make([]*regexp.Regexp, len(keywords))
+	for i, kw := range keywords {
+		escaped := regexp.QuoteMeta(kw)
+		patterns[i] = regexp.MustCompile(`\b` + escaped + `\b`)
+	}
+	return patterns
+}
+
 // DetectSubject scans message text for subject indicators and returns the
 // best-matching subject: "math", "writing", "reading", or "general".
 func DetectSubject(messageText string) string {
 	lower := strings.ToLower(messageText)
 
-	mathCount := countKeywords(lower, mathKeywords)
-	writingCount := countKeywords(lower, writingKeywords)
-	readingCount := countKeywords(lower, readingKeywords)
+	mathCount := countPatterns(lower, mathPatterns)
+	writingCount := countPatterns(lower, writingPatterns)
+	readingCount := countPatterns(lower, readingPatterns)
 
 	if mathCount == 0 && writingCount == 0 && readingCount == 0 {
 		return "general"
@@ -56,10 +78,10 @@ func DetectSubject(messageText string) string {
 	return best
 }
 
-func countKeywords(text string, keywords []string) int {
+func countPatterns(text string, patterns []*regexp.Regexp) int {
 	count := 0
-	for _, kw := range keywords {
-		if strings.Contains(text, kw) {
+	for _, p := range patterns {
+		if p.MatchString(text) {
 			count++
 		}
 	}
@@ -78,15 +100,21 @@ func BuildSystemPrompt(profile HomeworkProfile, helpLevel HelpLevel, detectedSub
 	// Section 2: Age/grade calibration
 	b.WriteString(ageCalibration(profile))
 
-	// Section 3: Subject-specific pedagogical rules
-	b.WriteString(subjectRules(detectedSubject))
+	// Section 3: Subject-specific pedagogical rules (normalize case for robustness)
+	b.WriteString(subjectRules(strings.ToLower(detectedSubject)))
 
-	// Section 4: Anti-cheating guardrails
+	// Section 4: Anti-cheating guardrails, adapted to the selected help level
 	b.WriteString("IMPORTANT RULES:\n")
-	b.WriteString("- Never provide complete answers directly.\n")
-	b.WriteString("- Do not do the student's work for them.\n")
-	b.WriteString("- If the student asks you to just give the answer, gently redirect them to think through the problem.\n")
-	b.WriteString("- Do not generate entire essays, solutions, or assignments.\n\n")
+	if helpLevel == HelpLevelAnswer {
+		b.WriteString("- You may explain the full solution step-by-step to help the student learn.\n")
+		b.WriteString("- Focus on teaching understanding, not just providing answers to copy.\n")
+		b.WriteString("- Encourage the student to explain back what they learned.\n\n")
+	} else {
+		b.WriteString("- Never provide complete answers directly.\n")
+		b.WriteString("- Do not do the student's work for them.\n")
+		b.WriteString("- If the student asks you to just give the answer, gently redirect them to think through the problem.\n")
+		b.WriteString("- Do not generate entire essays, solutions, or assignments.\n\n")
+	}
 
 	// Section 5: Help-level enforcement
 	b.WriteString(helpLevelRules(helpLevel))
@@ -97,6 +125,12 @@ func BuildSystemPrompt(profile HomeworkProfile, helpLevel HelpLevel, detectedSub
 func ageCalibration(profile HomeworkProfile) string {
 	age := profile.Age
 	grade := parseGrade(profile.GradeLevel)
+
+	// When no calibration data is available, use a neutral middle-school default
+	// rather than assuming an advanced student.
+	if age == 0 && grade == 0 {
+		return "Use moderate vocabulary appropriate for a middle-school student. You can introduce subject-specific terms but explain them when first used.\n\n"
+	}
 
 	isYoung := (age > 0 && age <= 8) || (grade > 0 && grade <= 3)
 	isMiddle := (age > 0 && age <= 13) || (grade > 0 && grade <= 8)
@@ -112,7 +146,8 @@ func ageCalibration(profile HomeworkProfile) string {
 
 // parseGrade extracts a numeric grade from strings like "3", "5th", "grade 7".
 func parseGrade(gradeLevel string) int {
-	cleaned := strings.ToLower(gradeLevel)
+	// TrimSpace first so trailing whitespace doesn't prevent suffix removal.
+	cleaned := strings.TrimSpace(strings.ToLower(gradeLevel))
 	cleaned = strings.TrimPrefix(cleaned, "grade ")
 	cleaned = strings.TrimPrefix(cleaned, "grade")
 	cleaned = strings.TrimSuffix(cleaned, "th")
