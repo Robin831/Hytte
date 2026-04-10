@@ -68,15 +68,17 @@ export function hasExhaustedReason(lastError: string | undefined, kind: 'ci' | '
 }
 
 export function isPRExhaustion(bead: StuckBead): boolean {
-  const lastError = bead.last_error?.toLowerCase() ?? ''
+  const lastError = bead.last_error
+  const normalized = lastError?.toLowerCase() ?? ''
 
+  // Delegate to hasExhaustedReason so backend strings like
+  // "Review fix attempts exhausted" / "CI fix attempts exhausted" are matched
+  // in addition to the short ci_exhausted / review_exhausted forms.
   return (
-    lastError.includes('ci_exhausted') ||
-    lastError.includes('ci exhausted') ||
-    lastError.includes('review_exhausted') ||
-    lastError.includes('review exhausted') ||
-    lastError.includes('max_retries') ||
-    lastError.includes('max retries')
+    hasExhaustedReason(lastError, 'ci') ||
+    hasExhaustedReason(lastError, 'review') ||
+    normalized.includes('max_retries') ||
+    normalized.includes('max retries')
   )
 }
 
@@ -130,8 +132,12 @@ export function availableActions(source: NeedsAttentionSource, statuses: NeedsAt
   }
 
   // Force smith lets a human re-run with extra context, but only for items
-  // backed by a retries-table row.
-  if (hasRetryEntry && statuses.includes('clarification_needed')) {
+  // backed by a retries-table row. Available when the smith needs clarification
+  // or the warden rejected the smith's changes (needs_human / review_exhausted).
+  if (
+    hasRetryEntry &&
+    (statuses.includes('clarification_needed') || statuses.includes('needs_human') || statuses.includes('review_exhausted'))
+  ) {
     actions.push('forceSmith')
   }
 

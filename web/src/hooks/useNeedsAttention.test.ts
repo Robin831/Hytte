@@ -102,6 +102,14 @@ describe('isPRExhaustion', () => {
   it('is case-insensitive', () => {
     expect(isPRExhaustion(makeStuckBead({ last_error: 'CI_EXHAUSTED' }))).toBe(true)
   })
+
+  it('detects backend "CI fix attempts exhausted" wording', () => {
+    expect(isPRExhaustion(makeStuckBead({ last_error: 'CI fix attempts exhausted' }))).toBe(true)
+  })
+
+  it('detects backend "Review fix attempts exhausted" wording', () => {
+    expect(isPRExhaustion(makeStuckBead({ last_error: 'Review fix attempts exhausted' }))).toBe(true)
+  })
 })
 
 describe('classifyStatuses', () => {
@@ -176,6 +184,16 @@ describe('classifySource', () => {
   it('returns "pr" when last_error indicates max_retries', () => {
     expect(classifySource(makeStuckBead({ last_error: 'max_retries reached' }))).toBe('pr')
   })
+
+  it('returns "pr" for backend "CI fix attempts exhausted" wording', () => {
+    expect(classifySource(makeStuckBead({ last_error: 'CI fix attempts exhausted' }))).toBe('pr')
+  })
+
+  it('returns "pr" for backend "Review fix attempts exhausted" wording', () => {
+    // Synthetic stuck-PR rows must not get source='retry' or Force Smith will 404
+    const bead = makeStuckBead({ needs_human: true, last_error: 'Review fix attempts exhausted' })
+    expect(classifySource(bead)).toBe('pr')
+  })
 })
 
 describe('availableActions', () => {
@@ -213,8 +231,16 @@ describe('availableActions', () => {
     expect(availableActions('pr', ['clarification_needed'])).not.toContain('forceSmith')
   })
 
-  it('does NOT include forceSmith for retry source without clarification_needed', () => {
-    expect(availableActions('retry', ['needs_human'])).not.toContain('forceSmith')
+  it('includes forceSmith for retry source with needs_human', () => {
+    expect(availableActions('retry', ['needs_human'])).toContain('forceSmith')
+  })
+
+  it('includes forceSmith for retry source with review_exhausted', () => {
+    expect(availableActions('retry', ['review_exhausted'])).toContain('forceSmith')
+  })
+
+  it('does NOT include forceSmith for retry source without relevant status', () => {
+    expect(availableActions('retry', ['dispatch_failure'])).not.toContain('forceSmith')
   })
 
   it('includes wardenRerun for retry source with needs_human', () => {
