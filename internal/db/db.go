@@ -2084,6 +2084,17 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add session_id column to homework_conversations table (Hytte-lr5n).
+	var hasHomeworkSessionID int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('homework_conversations') WHERE name = 'session_id'`).Scan(&hasHomeworkSessionID); err != nil {
+		return fmt.Errorf("check homework_conversations session_id column: %w", err)
+	}
+	if hasHomeworkSessionID == 0 {
+		if _, err := db.Exec(`ALTER TABLE homework_conversations ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add homework_conversations session_id column: %w", err)
+		}
+	}
+
 	return nil
 }
 

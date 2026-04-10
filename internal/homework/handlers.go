@@ -1,16 +1,24 @@
 package homework
 
 import (
+	"bufio"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/training"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -19,6 +27,17 @@ const maxProfileBodySize = 64 << 10
 
 // maxConversationBodySize is the maximum allowed request body size for new conversations (8 KB).
 const maxConversationBodySize = 8 << 10
+
+// maxMessageUploadSize is the maximum allowed multipart body size for send message (10 MB).
+const maxMessageUploadSize = 10 << 20
+
+// allowedImageTypes lists MIME types accepted for homework image uploads.
+var allowedImageTypes = map[string]bool{
+	"image/jpeg": true,
+	"image/png":  true,
+	"image/gif":  true,
+	"image/webp": true,
+}
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -273,4 +292,344 @@ func HandleNewConversation(db *sql.DB) http.HandlerFunc {
 
 		writeJSON(w, http.StatusCreated, map[string]any{"conversation": conv})
 	}
+}
+
+// HandleSendMessage accepts a multipart form with a text message and optional image,
+// detects the subject, builds a system prompt, calls Claude CLI, and streams the
+// response back to the client via SSE.
+// POST /api/homework/children/{childId}/conversations/{id}/messages
+func HandleSendMessage(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		childID, ok := parseChildID(w, r, db, user.ID)
+		if !ok {
+			return
+		}
+
+		convID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid conversation ID"})
+			return
+		}
+
+		// Verify conversation exists and belongs to child.
+		conv, err := GetConversation(db, convID, childID)
+		if err != nil {
+			log.Printf("homework: get conversation %d kid %d: %v", convID, childID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get conversation"})
+			return
+		}
+		if conv == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "conversation not found"})
+			return
+		}
+
+		// Parse multipart form data.
+		r.Body = http.MaxBytesReader(w, r.Body, maxMessageUploadSize)
+		if err := r.ParseMultipartForm(maxMessageUploadSize); err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
+				return
+			}
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid multipart form"})
+			return
+		}
+		defer r.MultipartForm.RemoveAll()
+
+		message := strings.TrimSpace(r.FormValue("message"))
+		if message == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "message is required"})
+			return
+		}
+
+		helpLevel := HelpLevel(strings.TrimSpace(r.FormValue("help_level")))
+		if helpLevel == "" {
+			helpLevel = HelpLevelHint
+		}
+		if !ValidHelpLevels[helpLevel] {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid help_level: must be one of hint, explain, walkthrough, answer"})
+			return
+		}
+
+		// Handle optional image upload.
+		var imagePath string
+		if fhs := r.MultipartForm.File["image"]; len(fhs) > 0 {
+			file, err := fhs[0].Open()
+			if err != nil {
+				log.Printf("homework: open uploaded image: %v", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read uploaded image"})
+				return
+			}
+			defer file.Close()
+
+			// Read first 512 bytes for MIME detection.
+			header := make([]byte, 512)
+			n, _ := file.Read(header)
+			mimeType := http.DetectContentType(header[:n])
+			if !allowedImageTypes[mimeType] {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported image type"})
+				return
+			}
+
+			// Seek back to beginning for full copy.
+			if seeker, ok := file.(io.Seeker); ok {
+				seeker.Seek(0, io.SeekStart)
+			}
+
+			// Save to temp directory.
+			uploadDir := filepath.Join(os.TempDir(), "hytte-homework-uploads")
+			if err := os.MkdirAll(uploadDir, 0700); err != nil {
+				log.Printf("homework: create upload dir: %v", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save image"})
+				return
+			}
+
+			ext := ".jpg"
+			switch mimeType {
+			case "image/png":
+				ext = ".png"
+			case "image/gif":
+				ext = ".gif"
+			case "image/webp":
+				ext = ".webp"
+			}
+
+			tmpFile, err := os.CreateTemp(uploadDir, fmt.Sprintf("hw-%d-*%s", convID, ext))
+			if err != nil {
+				log.Printf("homework: create temp file: %v", err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save image"})
+				return
+			}
+			defer tmpFile.Close()
+
+			if _, err := io.Copy(tmpFile, file); err != nil {
+				log.Printf("homework: copy image: %v", err)
+				os.Remove(tmpFile.Name())
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save image"})
+				return
+			}
+			imagePath = tmpFile.Name()
+		}
+
+		// Detect subject from message text.
+		detectedSubject := DetectSubject(message)
+
+		// Update conversation subject if it was empty.
+		if conv.Subject == "" && detectedSubject != "general" {
+			conv.Subject = detectedSubject
+			_, _ = db.Exec(
+				`UPDATE homework_conversations SET subject = ? WHERE id = ?`,
+				detectedSubject, conv.ID,
+			)
+		}
+
+		// Load the child's profile for prompt building.
+		profile, err := GetProfileByKidID(db, childID)
+		if err != nil {
+			log.Printf("homework: get profile for prompt kid %d: %v", childID, err)
+		}
+		if profile == nil {
+			profile = &HomeworkProfile{}
+		}
+
+		systemPrompt := BuildSystemPrompt(*profile, helpLevel, detectedSubject)
+
+		// Load Claude config from the parent's preferences.
+		cfg, err := training.LoadClaudeConfig(db, user.ID)
+		if err != nil {
+			log.Printf("homework: load claude config user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load Claude configuration"})
+			return
+		}
+		if !cfg.Enabled {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Claude is not enabled — enable it in settings"})
+			return
+		}
+
+		// Store the user message.
+		userMsg, err := AddMessage(db, HomeworkMessage{
+			ConversationID: conv.ID,
+			Role:           "user",
+			Content:        message,
+			HelpLevel:      helpLevel,
+			ImagePath:      imagePath,
+		})
+		if err != nil {
+			log.Printf("homework: add user message conv %d: %v", conv.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save message"})
+			return
+		}
+
+		// Get existing session ID for conversation continuity.
+		sessionID, _ := GetSessionID(db, conv.ID, childID)
+
+		// Set up SSE streaming.
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
+
+		// Send the saved user message first.
+		userMsgJSON, _ := json.Marshal(userMsg)
+		fmt.Fprintf(w, "event: user_message\ndata: %s\n\n", userMsgJSON)
+		flusher.Flush()
+
+		// Build Claude CLI command with streaming output.
+		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+		defer cancel()
+
+		fullResponse, newSessionID, err := streamClaude(ctx, cfg, systemPrompt, message, sessionID, w, flusher)
+		if err != nil && sessionID != "" {
+			// Session may have expired — retry without session.
+			log.Printf("homework: session resume failed, retrying fresh: %v", err)
+			fmt.Fprintf(w, "event: retry\ndata: {\"reason\":\"session expired, retrying\"}\n\n")
+			flusher.Flush()
+			fullResponse, newSessionID, err = streamClaude(ctx, cfg, systemPrompt, message, "", w, flusher)
+		}
+
+		if err != nil {
+			log.Printf("homework: claude error conv %d: %v", conv.ID, err)
+			fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Claude failed to respond\"}\n\n")
+			flusher.Flush()
+			return
+		}
+
+		// Save session ID for future resumption.
+		if newSessionID != "" && newSessionID != sessionID {
+			if dbErr := UpdateSessionID(db, conv.ID, childID, newSessionID); dbErr != nil {
+				log.Printf("homework: save session ID conv %d: %v", conv.ID, dbErr)
+			}
+		}
+
+		// Store the assistant response.
+		assistantMsg, err := AddMessage(db, HomeworkMessage{
+			ConversationID: conv.ID,
+			Role:           "assistant",
+			Content:        fullResponse,
+			HelpLevel:      helpLevel,
+		})
+		if err != nil {
+			log.Printf("homework: add assistant message conv %d: %v", conv.ID, err)
+			fmt.Fprintf(w, "event: error\ndata: {\"error\":\"failed to save response\"}\n\n")
+			flusher.Flush()
+			return
+		}
+
+		// Send done event with the full saved assistant message.
+		assistantJSON, _ := json.Marshal(assistantMsg)
+		fmt.Fprintf(w, "event: done\ndata: %s\n\n", assistantJSON)
+		flusher.Flush()
+	}
+}
+
+// claudeStreamLine represents a line from Claude CLI's stream-json output.
+type claudeStreamLine struct {
+	Type      string `json:"type"`
+	Result    string `json:"result"`
+	SessionID string `json:"session_id"`
+	IsError   bool   `json:"is_error"`
+	// For assistant message events containing content blocks.
+	Message struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	} `json:"message"`
+}
+
+// streamClaude runs the Claude CLI with stream-json output and sends text deltas
+// as SSE events. Returns the full response text and session ID.
+func streamClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPrompt, prompt, sessionID string, w http.ResponseWriter, flusher http.Flusher) (string, string, error) {
+	args := []string{"--model", cfg.Model, "-p", "-", "--output-format", "stream-json", "--system-prompt", systemPrompt}
+	if sessionID != "" {
+		args = append(args, "--resume", sessionID)
+	}
+
+	cmd := execCommand(ctx, cfg.CLIPath, args...)
+	cmd.Stdin = strings.NewReader(prompt)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", "", fmt.Errorf("stdout pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return "", "", fmt.Errorf("start claude: %w", err)
+	}
+
+	var fullText strings.Builder
+	var resultSessionID string
+	scanner := bufio.NewScanner(stdout)
+	// Allow larger lines for content-heavy responses.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+
+		var ev claudeStreamLine
+		if err := json.Unmarshal(line, &ev); err != nil {
+			continue
+		}
+
+		switch ev.Type {
+		case "assistant":
+			// Initial assistant message with content blocks.
+			for _, block := range ev.Message.Content {
+				if block.Type == "text" && block.Text != "" {
+					fullText.WriteString(block.Text)
+					data, _ := json.Marshal(map[string]string{"text": block.Text})
+					fmt.Fprintf(w, "event: delta\ndata: %s\n\n", data)
+					flusher.Flush()
+				}
+			}
+		case "content_block_delta":
+			// Parse delta text from the raw line.
+			var delta struct {
+				Delta struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"delta"`
+			}
+			if err := json.Unmarshal(line, &delta); err == nil && delta.Delta.Text != "" {
+				fullText.WriteString(delta.Delta.Text)
+				data, _ := json.Marshal(map[string]string{"text": delta.Delta.Text})
+				fmt.Fprintf(w, "event: delta\ndata: %s\n\n", data)
+				flusher.Flush()
+			}
+		case "result":
+			if ev.IsError {
+				cmd.Wait()
+				return "", "", fmt.Errorf("claude returned error: %s", ev.Result)
+			}
+			if ev.Result != "" {
+				// Use the result field as the authoritative full text.
+				fullText.Reset()
+				fullText.WriteString(ev.Result)
+			}
+			resultSessionID = ev.SessionID
+		}
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return "", "", fmt.Errorf("claude exit: %w", err)
+	}
+
+	return strings.TrimSpace(fullText.String()), resultSessionID, nil
+}
+
+// execCommand creates an exec.Cmd. Extracted for test substitution.
+var execCommand = execCommandImpl
+
+func execCommandImpl(ctx context.Context, name string, args ...string) *exec.Cmd {
+	return exec.CommandContext(ctx, name, args...)
 }

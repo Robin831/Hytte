@@ -231,6 +231,39 @@ func GetConversation(db *sql.DB, id, kidID int64) (*HomeworkConversation, error)
 	return &c, nil
 }
 
+// GetSessionID returns the Claude CLI session ID for a homework conversation.
+func GetSessionID(db *sql.DB, conversationID, kidID int64) (string, error) {
+	var sessionID string
+	err := db.QueryRow(
+		`SELECT session_id FROM homework_conversations WHERE id = ? AND kid_id = ?`,
+		conversationID, kidID,
+	).Scan(&sessionID)
+	if err != nil {
+		return "", fmt.Errorf("get homework session_id: %w", err)
+	}
+	return sessionID, nil
+}
+
+// UpdateSessionID stores the Claude CLI session ID on a homework conversation.
+func UpdateSessionID(db *sql.DB, conversationID, kidID int64, sessionID string) error {
+	now := time.Now().UTC().Format(timeFormat)
+	result, err := db.Exec(
+		`UPDATE homework_conversations SET session_id = ?, updated_at = ? WHERE id = ? AND kid_id = ?`,
+		sessionID, now, conversationID, kidID,
+	)
+	if err != nil {
+		return fmt.Errorf("update homework session_id: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // ListConversationsByKid returns all homework conversations for a child, newest first.
 func ListConversationsByKid(db *sql.DB, kidID int64) ([]HomeworkConversation, error) {
 	rows, err := db.Query(`
