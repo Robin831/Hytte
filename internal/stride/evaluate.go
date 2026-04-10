@@ -202,9 +202,9 @@ func evaluateUserWorkouts(ctx context.Context, db *sql.DB, httpClient *http.Clie
 			if err != nil {
 				log.Printf("stride eval: begin tx to mark notes consumed for user %d: %v", userID, err)
 			} else {
+				defer tx.Rollback()
 				if err := MarkNotesConsumed(ctx, tx, userID, noteIDs, "nightly"); err != nil {
 					log.Printf("stride eval: mark notes consumed for user %d: %v", userID, err)
-					tx.Rollback()
 				} else if err := tx.Commit(); err != nil {
 					log.Printf("stride eval: commit notes consumed for user %d: %v", userID, err)
 				}

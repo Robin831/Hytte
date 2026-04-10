@@ -688,32 +688,13 @@ func TestEvaluateRestDaysAndMissedSessions_Idempotent(t *testing.T) {
 
 // --- Notes in nightly evaluation ---
 
-func TestBuildEvalPrompt_IncludesNotes(t *testing.T) {
-	workout := training.Workout{
-		Sport:     "running",
-		StartedAt: "2026-04-08T07:00:00Z",
-	}
-	notes := []Note{
-		{ID: 1, Content: "Feeling sick, sore throat", TargetDate: "2026-04-08"},
-		{ID: 2, Content: "Slept poorly last night", TargetDate: "2026-04-07"},
-	}
-	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, notes)
-	if !strings.Contains(prompt, "User Notes") {
-		t.Error("expected prompt to contain User Notes section")
-	}
-	if !strings.Contains(prompt, "Feeling sick, sore throat") {
-		t.Error("expected prompt to contain first note content")
-	}
-	if !strings.Contains(prompt, "Slept poorly last night") {
-		t.Error("expected prompt to contain second note content")
-	}
-}
-
 func TestEvaluateUserWorkouts_NotesConsumedAfterSuccess(t *testing.T) {
 	db := setupTestDB(t)
 
 	origFn := runPromptFunc
-	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+	var capturedPrompt string
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, prompt string) (string, error) {
+		capturedPrompt = prompt
 		return `{"planned_type":"easy","actual_type":"easy","compliance":"compliant","notes":"Good.","flags":[],"adjustments":"None."}`, nil
 	}
 	t.Cleanup(func() { runPromptFunc = origFn })
@@ -762,6 +743,17 @@ func TestEvaluateUserWorkouts_NotesConsumedAfterSuccess(t *testing.T) {
 	targetDate := yesterday.Format("2006-01-02")
 	if err := evaluateUserWorkouts(ctx, db, nil, 1, since, targetDate); err != nil {
 		t.Fatalf("evaluateUserWorkouts: %v", err)
+	}
+
+	// Verify notes were included in the prompt sent to Claude.
+	if !strings.Contains(capturedPrompt, "Feeling fatigued") {
+		t.Error("expected prompt to contain first note content")
+	}
+	if !strings.Contains(capturedPrompt, "Sore knee after last run") {
+		t.Error("expected prompt to contain second note content")
+	}
+	if !strings.Contains(capturedPrompt, yesterday.Format("2006-01-02")) {
+		t.Error("expected prompt to contain note target date")
 	}
 
 	// Verify notes are consumed.
