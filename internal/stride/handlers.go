@@ -376,7 +376,7 @@ func DeleteRaceHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // ListNotesHandler returns notes for the authenticated user.
-// Optional query param: plan_id (integer).
+// Optional query params: plan_id (integer), status ("active", "consumed", "all").
 func ListNotesHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -391,7 +391,15 @@ func ListNotesHandler(db *sql.DB) http.HandlerFunc {
 			planID = &pid
 		}
 
-		notes, err := ListNotes(db, user.ID, planID)
+		status := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
+		switch status {
+		case "", "active", "consumed", "all":
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid status"})
+			return
+		}
+
+		notes, err := ListNotes(db, user.ID, planID, status)
 		if err != nil {
 			log.Printf("stride: list notes: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list notes"})

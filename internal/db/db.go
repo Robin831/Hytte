@@ -1335,6 +1335,8 @@ func createSchema(db *sql.DB) error {
 		plan_id     INTEGER REFERENCES stride_plans(id) ON DELETE SET NULL,
 		content     TEXT NOT NULL,
 		target_date TEXT NOT NULL DEFAULT '',
+		consumed_at TEXT,
+		consumed_by TEXT,
 		created_at  TEXT NOT NULL DEFAULT ''
 	);
 
@@ -2069,6 +2071,27 @@ func createSchema(db *sql.DB) error {
 		// Backfill existing rows: set target_date to the date portion of created_at.
 		if _, err := db.Exec(`UPDATE stride_notes SET target_date = SUBSTR(created_at, 1, 10) WHERE target_date = ''`); err != nil {
 			return fmt.Errorf("backfill stride_notes target_date: %w", err)
+		}
+	}
+
+	// Add consumed_at and consumed_by columns to stride_notes table (Hytte-4xnx).
+	// Tracks when and by what process a note was consumed (e.g. weekly plan generation).
+	var hasConsumedAt int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stride_notes') WHERE name = 'consumed_at'`).Scan(&hasConsumedAt); err != nil {
+		return fmt.Errorf("check stride_notes consumed_at column: %w", err)
+	}
+	if hasConsumedAt == 0 {
+		if _, err := db.Exec(`ALTER TABLE stride_notes ADD COLUMN consumed_at TEXT`); err != nil {
+			return fmt.Errorf("add stride_notes consumed_at column: %w", err)
+		}
+	}
+	var hasConsumedBy int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stride_notes') WHERE name = 'consumed_by'`).Scan(&hasConsumedBy); err != nil {
+		return fmt.Errorf("check stride_notes consumed_by column: %w", err)
+	}
+	if hasConsumedBy == 0 {
+		if _, err := db.Exec(`ALTER TABLE stride_notes ADD COLUMN consumed_by TEXT`); err != nil {
+			return fmt.Errorf("add stride_notes consumed_by column: %w", err)
 		}
 	}
 

@@ -1,10 +1,12 @@
 package stride
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -27,12 +29,14 @@ type Race struct {
 // Note represents a short free-text note from the user that feeds into the
 // next Stride plan generation.
 type Note struct {
-	ID         int64  `json:"id"`
-	UserID     int64  `json:"user_id"`
-	PlanID     *int64 `json:"plan_id"`     // nullable — linked to plan when created during a plan week
-	Content    string `json:"content"`     // encrypted at rest
-	TargetDate string `json:"target_date"` // YYYY-MM-DD — which date this note applies to
-	CreatedAt  string `json:"created_at"`
+	ID         int64      `json:"id"`
+	UserID     int64      `json:"user_id"`
+	PlanID     *int64     `json:"plan_id"`      // nullable — linked to plan when created during a plan week
+	Content    string     `json:"content"`      // encrypted at rest
+	TargetDate string     `json:"target_date"`  // YYYY-MM-DD — which date this note applies to
+	ConsumedAt *time.Time `json:"consumed_at"`  // nullable — set when consumed by a process (e.g. plan generation)
+	ConsumedBy *string    `json:"consumed_by"`  // nullable — identifier of the consuming process
+	CreatedAt  string     `json:"created_at"`
 }
 
 // NextStrideRun returns the next time the weekly Stride cron should fire
@@ -52,6 +56,31 @@ func NextStrideRun(now time.Time, loc *time.Location) time.Time {
 		return todayRun.AddDate(0, 0, 7)
 	}
 	return time.Date(now.Year(), now.Month(), now.Day()+daysUntilSunday, 18, 0, 0, 0, loc)
+}
+
+// scanNote scans a note row into a Note struct, handling nullable consumed_at/consumed_by
+// columns and decrypting the content field.
+func scanNote(scanner interface{ Scan(...any) error }, n *Note) error {
+	var consumedAt sql.NullString
+	var consumedBy sql.NullString
+	if err := scanner.Scan(&n.ID, &n.UserID, &n.PlanID, &n.Content, &n.TargetDate, &consumedAt, &consumedBy, &n.CreatedAt); err != nil {
+		return err
+	}
+	if consumedAt.Valid {
+		t, err := time.Parse(time.RFC3339, consumedAt.String)
+		if err != nil {
+			return fmt.Errorf("parse consumed_at: %w", err)
+		}
+		n.ConsumedAt = &t
+	}
+	if consumedBy.Valid {
+		n.ConsumedBy = &consumedBy.String
+	}
+	var err error
+	if n.Content, err = encryption.DecryptField(n.Content); err != nil {
+		return fmt.Errorf("decrypt note content: %w", err)
+	}
+	return nil
 }
 
 // ListRaces returns all races for a user ordered by date ascending.
@@ -329,11 +358,13 @@ func DeleteRace(db *sql.DB, id, userID int64) error {
 	return nil
 }
 
-// ListNotes returns notes for a user, optionally filtered by plan_id.
-// When planID is nil, all notes for the user are returned.
-func ListNotes(db *sql.DB, userID int64, planID *int64) ([]Note, error) {
+// ListNotes returns notes for a user, optionally filtered by plan_id and status.
+// When planID is nil, notes are not filtered by plan. The status parameter controls
+// consumption filtering: "active" returns only unconsumed notes (consumed_at IS NULL),
+// "consumed" returns only consumed notes, and "all" (or empty string) returns everything.
+func ListNotes(db *sql.DB, userID int64, planID *int64, status string) ([]Note, error) {
 	query := `
-		SELECT id, user_id, plan_id, content, target_date, created_at
+		SELECT id, user_id, plan_id, content, target_date, consumed_at, consumed_by, created_at
 		FROM stride_notes
 		WHERE user_id = ?`
 	args := []any{userID}
@@ -342,6 +373,19 @@ func ListNotes(db *sql.DB, userID int64, planID *int64) ([]Note, error) {
 		query += ` AND plan_id = ?`
 		args = append(args, *planID)
 	}
+
+	normalizedStatus := strings.ToLower(strings.TrimSpace(status))
+	switch normalizedStatus {
+	case "", "all":
+		// No additional filter.
+	case "active":
+		query += ` AND consumed_at IS NULL`
+	case "consumed":
+		query += ` AND consumed_at IS NOT NULL`
+	default:
+		return nil, fmt.Errorf("invalid status %q: must be active, consumed, all, or empty", status)
+	}
+
 	query += ` ORDER BY created_at DESC`
 
 	rows, err := db.Query(query, args...)
@@ -353,11 +397,8 @@ func ListNotes(db *sql.DB, userID int64, planID *int64) ([]Note, error) {
 	var notes []Note
 	for rows.Next() {
 		var n Note
-		if err := rows.Scan(&n.ID, &n.UserID, &n.PlanID, &n.Content, &n.TargetDate, &n.CreatedAt); err != nil {
+		if err := scanNote(rows, &n); err != nil {
 			return nil, err
-		}
-		if n.Content, err = encryption.DecryptField(n.Content); err != nil {
-			return nil, fmt.Errorf("decrypt note content: %w", err)
 		}
 		notes = append(notes, n)
 	}
@@ -402,16 +443,13 @@ func CreateNote(db *sql.DB, userID int64, planID *int64, content, targetDate str
 // getNoteByID returns a single note by ID, scoped to the given user.
 func getNoteByID(db *sql.DB, id, userID int64) (*Note, error) {
 	var n Note
-	err := db.QueryRow(`
-		SELECT id, user_id, plan_id, content, target_date, created_at
+	row := db.QueryRow(`
+		SELECT id, user_id, plan_id, content, target_date, consumed_at, consumed_by, created_at
 		FROM stride_notes
 		WHERE id = ? AND user_id = ?
-	`, id, userID).Scan(&n.ID, &n.UserID, &n.PlanID, &n.Content, &n.TargetDate, &n.CreatedAt)
-	if err != nil {
+	`, id, userID)
+	if err := scanNote(row, &n); err != nil {
 		return nil, err
-	}
-	if n.Content, err = encryption.DecryptField(n.Content); err != nil {
-		return nil, fmt.Errorf("decrypt note content: %w", err)
 	}
 	return &n, nil
 }
@@ -432,10 +470,36 @@ func DeleteNote(db *sql.DB, id, userID int64) error {
 	return nil
 }
 
+// MarkNotesConsumed sets consumed_at and consumed_by for the given note IDs
+// within the provided transaction. This marks notes as having been processed
+// by a consuming process (e.g. weekly plan generation, nightly evaluation).
+func MarkNotesConsumed(ctx context.Context, tx *sql.Tx, userID int64, noteIDs []int64, consumedBy string) error {
+	if len(noteIDs) == 0 {
+		return nil
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	placeholders := make([]string, len(noteIDs))
+	args := make([]any, 0, len(noteIDs)+3)
+	args = append(args, now, consumedBy, userID)
+	for i, id := range noteIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+
+	query := `UPDATE stride_notes SET consumed_at = ?, consumed_by = ? WHERE user_id = ? AND id IN (` + strings.Join(placeholders, ",") + `)`
+	_, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("mark notes consumed: %w", err)
+	}
+	return nil
+}
+
 // GetNotesByTargetDate returns all notes for a user targeting a specific date.
 func GetNotesByTargetDate(db *sql.DB, userID int64, date string) ([]Note, error) {
 	rows, err := db.Query(`
-		SELECT id, user_id, plan_id, content, target_date, created_at
+		SELECT id, user_id, plan_id, content, target_date, consumed_at, consumed_by, created_at
 		FROM stride_notes
 		WHERE user_id = ? AND target_date = ?
 		ORDER BY created_at ASC
@@ -448,11 +512,8 @@ func GetNotesByTargetDate(db *sql.DB, userID int64, date string) ([]Note, error)
 	var notes []Note
 	for rows.Next() {
 		var n Note
-		if err := rows.Scan(&n.ID, &n.UserID, &n.PlanID, &n.Content, &n.TargetDate, &n.CreatedAt); err != nil {
+		if err := scanNote(rows, &n); err != nil {
 			return nil, err
-		}
-		if n.Content, err = encryption.DecryptField(n.Content); err != nil {
-			return nil, fmt.Errorf("decrypt note content: %w", err)
 		}
 		notes = append(notes, n)
 	}
