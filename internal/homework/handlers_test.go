@@ -352,7 +352,7 @@ func setupSendMessageTest(t *testing.T) (*httptest.ResponseRecorder, http.Handle
 	}
 
 	// Set up Claude config in user_preferences.
-	_, err = d.Exec(`INSERT INTO user_preferences (user_id, pref_key, pref_value) VALUES (1, 'claude_enabled', 'true')`)
+	_, err = d.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true')`)
 	if err != nil {
 		t.Fatalf("insert claude_enabled pref: %v", err)
 	}
@@ -522,7 +522,7 @@ func TestHandleSendMessageWithImage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert family link: %v", err)
 	}
-	_, err = d.Exec(`INSERT INTO user_preferences (user_id, pref_key, pref_value) VALUES (1, 'claude_enabled', 'true')`)
+	_, err = d.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true')`)
 	if err != nil {
 		t.Fatalf("insert pref: %v", err)
 	}
