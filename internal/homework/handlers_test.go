@@ -646,15 +646,23 @@ func TestHandleParentReviewSuccess(t *testing.T) {
 		t.Fatalf("create conversation 2: %v", err)
 	}
 
-	// Conv1: 2 hints, 1 explain.
+	// Conv1: 2 hints, 1 explain — each turn has a user message and an assistant reply,
+	// matching the production pattern where HandleSendMessage stores help_level on both.
+	// Help-level totals count assistant messages only, so each pair contributes 1.
 	for _, hl := range []HelpLevel{HelpLevelHint, HelpLevelHint, HelpLevelExplain} {
 		if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv1.ID, Role: "user", Content: "q", HelpLevel: hl}); err != nil {
 			t.Fatalf("add message: %v", err)
 		}
+		if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv1.ID, Role: "assistant", Content: "a", HelpLevel: hl}); err != nil {
+			t.Fatalf("add assistant message: %v", err)
+		}
 	}
-	// Conv2: 1 walkthrough.
+	// Conv2: 1 walkthrough (user + assistant pair).
 	if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv2.ID, Role: "user", Content: "q", HelpLevel: HelpLevelWalkthrough}); err != nil {
 		t.Fatalf("add message: %v", err)
+	}
+	if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv2.ID, Role: "assistant", Content: "a", HelpLevel: HelpLevelWalkthrough}); err != nil {
+		t.Fatalf("add assistant message: %v", err)
 	}
 
 	handler := HandleParentReview(d)
@@ -666,15 +674,20 @@ func TestHandleParentReviewSuccess(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp ParentReviewResponse
-	decode(t, w.Body.Bytes(), &resp)
+	var envelope struct {
+		Review ParentReviewResponse `json:"review"`
+	}
+	decode(t, w.Body.Bytes(), &envelope)
+	resp := envelope.Review
 
 	if len(resp.Conversations) != 2 {
 		t.Fatalf("expected 2 conversations, got %d", len(resp.Conversations))
 	}
-	if resp.TotalMessages != 4 {
-		t.Errorf("expected 4 total messages, got %d", resp.TotalMessages)
+	// 3 user + 3 assistant in conv1, 1 user + 1 assistant in conv2 = 8 total messages.
+	if resp.TotalMessages != 8 {
+		t.Errorf("expected 8 total messages, got %d", resp.TotalMessages)
 	}
+	// Help-level totals count only assistant messages.
 	if resp.HelpLevelTotals["hint"] != 2 {
 		t.Errorf("expected 2 hints total, got %d", resp.HelpLevelTotals["hint"])
 	}
@@ -683,6 +696,14 @@ func TestHandleParentReviewSuccess(t *testing.T) {
 	}
 	if resp.HelpLevelTotals["walkthrough"] != 1 {
 		t.Errorf("expected 1 walkthrough total, got %d", resp.HelpLevelTotals["walkthrough"])
+	}
+	// Averages: 8 messages / 2 conversations = 4.0.
+	if resp.AverageMessagesPerConversation != 4.0 {
+		t.Errorf("expected 4.0 avg messages per conv, got %f", resp.AverageMessagesPerConversation)
+	}
+	// hint average: 2 / 2 conversations = 1.0.
+	if resp.HelpLevelAverages["hint"] != 1.0 {
+		t.Errorf("expected hint average 1.0, got %f", resp.HelpLevelAverages["hint"])
 	}
 }
 
@@ -702,8 +723,11 @@ func TestHandleParentReviewEmpty(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp ParentReviewResponse
-	decode(t, w.Body.Bytes(), &resp)
+	var envelope struct {
+		Review ParentReviewResponse `json:"review"`
+	}
+	decode(t, w.Body.Bytes(), &envelope)
+	resp := envelope.Review
 
 	if len(resp.Conversations) != 0 {
 		t.Errorf("expected 0 conversations, got %d", len(resp.Conversations))
