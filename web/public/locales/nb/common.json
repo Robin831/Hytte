@@ -30,7 +30,8 @@
     "vault": "Hvelv",
     "skywatch": "Himmelvakt",
     "grocery": "Handleliste",
-    "homework": "Lekser"
+    "homework": "Lekser",
+    "homeworkReview": "Lekseoversikt"
   },
   "actions": {
     "save": "Lagre",

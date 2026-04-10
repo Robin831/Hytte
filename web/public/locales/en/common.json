@@ -30,7 +30,8 @@
     "vault": "Vault",
     "skywatch": "Sky Watch",
     "grocery": "Grocery List",
-    "homework": "Homework"
+    "homework": "Homework",
+    "homeworkReview": "Homework Review"
   },
   "actions": {
     "save": "Save",

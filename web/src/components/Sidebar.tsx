@@ -33,6 +33,7 @@ import {
   Moon,
   ShoppingCart,
   BookOpen,
+  ClipboardList,
 } from 'lucide-react'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
@@ -77,6 +78,7 @@ const navItems: NavItem[] = [
   { to: '/grocery', icon: <ShoppingCart size={20} />, label: 'nav.grocery', requiresAuth: true, feature: 'grocery' },
   { to: '/wordfeud', icon: <Gamepad2 size={20} />, label: 'nav.wordfeud', requiresAuth: true, feature: 'wordfeud' },
   { to: '/homework', icon: <BookOpen size={20} />, label: 'nav.homework', requiresAuth: true, feature: 'homework', familyRole: 'child' },
+  { to: '/homework/review', icon: <ClipboardList size={20} />, label: 'nav.homeworkReview', requiresAuth: true, feature: 'homework', familyRole: 'parent' },
   { to: '/forge', icon: <Hammer size={20} />, label: 'nav.forge', requiresAuth: true, requireAdmin: true },
 ]
 
@@ -112,7 +114,7 @@ export default function Sidebar() {
     if (item.requiresAuth && !user) return false
     if (item.requireAdmin && !user?.is_admin) return false
     if (item.feature && !hasFeature(item.feature)) return false
-    if (item.familyRole === 'parent' && !familyStatus?.is_parent) return false
+    if (item.familyRole === 'parent' && !familyStatus?.is_parent && !user?.is_admin) return false
     if (item.familyRole === 'child' && !familyStatus?.is_child) return false
     return true
   })

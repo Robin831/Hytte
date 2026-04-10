@@ -64,6 +64,7 @@ import GroceryPage from './pages/GroceryPage'
 import HomeworkPage from './pages/HomeworkPage'
 import HomeworkChat from './pages/HomeworkChat'
 import HomeworkSettings from './pages/HomeworkSettings'
+import HomeworkParentReview from './pages/HomeworkParentReview'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -454,6 +455,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="homework" familyRole="child">
                 <HomeworkSettings />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/homework/review"
+            element={
+              <FeatureRoute feature="homework" familyRole="parent">
+                <HomeworkParentReview />
               </FeatureRoute>
             }
           />
