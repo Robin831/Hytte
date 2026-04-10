@@ -63,6 +63,7 @@ import SkyWatchPage from './pages/SkyWatchPage'
 import GroceryPage from './pages/GroceryPage'
 import HomeworkPage from './pages/HomeworkPage'
 import HomeworkChat from './pages/HomeworkChat'
+import HomeworkSettings from './pages/HomeworkSettings'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -445,6 +446,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="homework" familyRole="child">
                 <HomeworkPage />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/homework/settings"
+            element={
+              <FeatureRoute feature="homework" familyRole="child">
+                <HomeworkSettings />
               </FeatureRoute>
             }
           />

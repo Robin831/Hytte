@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, BookOpen, Loader2 } from 'lucide-react'
+import { Plus, BookOpen, Loader2, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime as fmtTime } from '../utils/formatDate'
 
@@ -96,18 +96,27 @@ export default function HomeworkPage() {
     <div className="max-w-2xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold">{t('title')}</h1>
-        <button
-          onClick={createConversation}
-          disabled={creating}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {creating ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <Plus size={16} />
-          )}
-          {t('newConversation')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('/homework/settings')}
+            className="p-2 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer text-gray-400 hover:text-white"
+            aria-label={t('settings.title')}
+          >
+            <Settings size={20} />
+          </button>
+          <button
+            onClick={createConversation}
+            disabled={creating}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {creating ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Plus size={16} />
+            )}
+            {t('newConversation')}
+          </button>
+        </div>
       </div>
 
       {error && (

@@ -36,5 +36,44 @@
     "failedToCreate": "Failed to create conversation",
     "failedToLoadMessages": "Failed to load messages",
     "failedToSend": "Failed to send message"
+  },
+  "settings": {
+    "title": "Profile Settings",
+    "age": "Age",
+    "gradeLevel": "Grade Level",
+    "selectGrade": "Select grade...",
+    "grade": "Grade {{n}}",
+    "preferredLanguage": "Preferred Language",
+    "selectLanguage": "Select language...",
+    "languages": {
+      "en": "English",
+      "nb": "Norwegian",
+      "th": "Thai"
+    },
+    "subjects": "Current Subjects",
+    "subjectNames": {
+      "math": "Math",
+      "reading": "Reading",
+      "writing": "Writing",
+      "science": "Science",
+      "social_studies": "Social Studies",
+      "english": "English",
+      "norwegian": "Norwegian",
+      "thai": "Thai",
+      "art": "Art",
+      "music": "Music",
+      "physical_education": "Physical Education"
+    },
+    "schoolName": "School Name",
+    "schoolNamePlaceholder": "Optional",
+    "currentTopics": "Current Topics",
+    "currentTopicsHint": "One topic per line",
+    "currentTopicsPlaceholder": "e.g. Fractions\nPhotosynthesis\nWorld War II",
+    "save": "Save",
+    "saved": "Profile saved successfully",
+    "errors": {
+      "failedToLoad": "Failed to load profile",
+      "failedToSave": "Failed to save profile"
+    }
   }
 }
