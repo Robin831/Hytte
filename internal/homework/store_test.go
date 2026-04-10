@@ -455,7 +455,7 @@ func TestUpdateConversationSubject(t *testing.T) {
 	}
 
 	// Update the subject via the store function (which encrypts).
-	if err := UpdateConversationSubject(d, conv.ID, "math"); err != nil {
+	if err := UpdateConversationSubject(d, conv.ID, 2, "math"); err != nil {
 		t.Fatalf("update subject: %v", err)
 	}
 

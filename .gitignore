@@ -23,4 +23,4 @@ node_modules/
 data/
 
 # Homework image uploads (runtime data)
-homework-uploads/
+data/homework-uploads/

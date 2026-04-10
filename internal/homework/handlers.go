@@ -382,7 +382,7 @@ func HandleSendMessage(db *sql.DB) http.HandlerFunc {
 			}
 
 			// Save to permanent upload directory so images are available in conversation history.
-			uploadDir := filepath.Join("homework-uploads", fmt.Sprintf("%d", conv.ID))
+			uploadDir := filepath.Join(homeworkUploadsDir(), fmt.Sprintf("%d", conv.ID))
 			if err := os.MkdirAll(uploadDir, 0700); err != nil {
 				log.Printf("homework: create upload dir: %v", err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save image"})
@@ -419,10 +419,17 @@ func HandleSendMessage(db *sql.DB) http.HandlerFunc {
 		// Detect subject from message text.
 		detectedSubject := DetectSubject(message)
 
-		// Update conversation subject if it was empty.
+		// Use the persisted conversation subject when already set; only fall back to
+		// the auto-detected value when the conversation has no subject yet.
+		subjectForPrompt := conv.Subject
+		if subjectForPrompt == "" {
+			subjectForPrompt = detectedSubject
+		}
+
+		// Persist detected subject only when the conversation had none before.
 		if conv.Subject == "" && detectedSubject != "general" {
 			conv.Subject = detectedSubject
-			if err := UpdateConversationSubject(db, conv.ID, detectedSubject); err != nil {
+			if err := UpdateConversationSubject(db, conv.ID, childID, detectedSubject); err != nil {
 				log.Printf("homework: update conversation subject conv %d: %v", conv.ID, err)
 			}
 		}
@@ -436,7 +443,7 @@ func HandleSendMessage(db *sql.DB) http.HandlerFunc {
 			profile = &HomeworkProfile{}
 		}
 
-		systemPrompt := BuildSystemPrompt(*profile, helpLevel, detectedSubject)
+		systemPrompt := BuildSystemPrompt(*profile, helpLevel, subjectForPrompt)
 
 		// Load Claude config from the parent's preferences.
 		cfg, err := training.LoadClaudeConfig(db, user.ID)
@@ -465,7 +472,13 @@ func HandleSendMessage(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Get existing session ID for conversation continuity.
-		sessionID, _ := GetSessionID(db, conv.ID, childID)
+		var sessionID string
+		sessionID, err = GetSessionID(db, conv.ID, childID)
+		if err != nil {
+			log.Printf("homework: get session ID conv %d: %v", conv.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
 
 		// Set up SSE streaming.
 		flusher, ok := w.(http.Flusher)
@@ -635,11 +648,25 @@ func streamClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPrompt,
 		}
 	}
 
+	if err := scanner.Err(); err != nil {
+		cmd.Wait()
+		return "", "", fmt.Errorf("scan claude output: %w", err)
+	}
+
 	if err := cmd.Wait(); err != nil {
 		return "", "", fmt.Errorf("claude exit: %w", err)
 	}
 
 	return strings.TrimSpace(fullText.String()), resultSessionID, nil
+}
+
+// homeworkUploadsDir returns the base directory for homework image uploads.
+// The HOMEWORK_UPLOADS_DIR environment variable overrides the default.
+func homeworkUploadsDir() string {
+	if d := os.Getenv("HOMEWORK_UPLOADS_DIR"); d != "" {
+		return d
+	}
+	return filepath.Join("data", "homework-uploads")
 }
 
 // execCommand creates an exec.Cmd. Extracted for test substitution.

@@ -8,9 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -519,6 +517,9 @@ func TestHandleSendMessageForbidden(t *testing.T) {
 func TestHandleSendMessageWithImage(t *testing.T) {
 	d := setupTestDB(t)
 
+	// Route uploads to a temp directory that is cleaned up automatically.
+	t.Setenv("HOMEWORK_UPLOADS_DIR", t.TempDir())
+
 	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00.000Z')`)
 	if err != nil {
 		t.Fatalf("insert family link: %v", err)
@@ -564,11 +565,8 @@ func TestHandleSendMessageWithImage(t *testing.T) {
 	if len(msgs) < 1 {
 		t.Fatal("expected at least 1 message")
 	}
-	// Clean up uploaded image and directory.
-	if msgs[0].ImagePath != "" {
-		os.Remove(msgs[0].ImagePath)
-		os.Remove(filepath.Dir(msgs[0].ImagePath))
-		os.Remove("homework-uploads")
+	if msgs[0].ImagePath == "" {
+		t.Error("expected image path to be set on user message")
 	}
 }
 
