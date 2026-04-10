@@ -67,7 +67,11 @@
     "targetDate": "สำหรับวันที่",
     "activeLabel": "ใช้งานอยู่",
     "historyLabel": "ประวัติ",
-    "consumedBy": "ใช้โดย {{process}} เมื่อ {{date}}"
+    "consumedBy": "ใช้โดย {{process}} เมื่อ {{date}}",
+    "consumedByProcess": {
+      "nightly": "ทุกคืน",
+      "weekly": "ทุกสัปดาห์"
+    }
   },
   "history": {
     "title": "ประวัติแผนการฝึก",

@@ -360,8 +360,8 @@ func DeleteRace(db *sql.DB, id, userID int64) error {
 
 // ListNotes returns notes for a user, optionally filtered by plan_id and status.
 // When planID is nil, notes are not filtered by plan. The status parameter controls
-// consumption filtering: "active" returns only unconsumed notes (consumed_at IS NULL),
-// "consumed" returns only consumed notes, and "all" (or empty string) returns everything.
+// consumption filtering: "" or "active" returns only unconsumed notes (consumed_at IS NULL),
+// "consumed" returns only consumed notes, and "all" returns everything.
 func ListNotes(db *sql.DB, userID int64, planID *int64, status string) ([]Note, error) {
 	query := `
 		SELECT id, user_id, plan_id, content, target_date, consumed_at, consumed_by, created_at
@@ -383,7 +383,7 @@ func ListNotes(db *sql.DB, userID int64, planID *int64, status string) ([]Note, 
 	case "consumed":
 		query += ` AND consumed_at IS NOT NULL`
 	default:
-		return nil, fmt.Errorf("invalid status %q: must be active, consumed, all, or empty", status)
+		return nil, fmt.Errorf("invalid status %q: must be active, consumed, or all (empty defaults to active)", status)
 	}
 
 	query += ` ORDER BY created_at DESC`

@@ -67,7 +67,11 @@
     "targetDate": "For date",
     "activeLabel": "Active",
     "historyLabel": "History",
-    "consumedBy": "Used by {{process}} on {{date}}"
+    "consumedBy": "Used by {{process}} on {{date}}",
+    "consumedByProcess": {
+      "nightly": "Nightly",
+      "weekly": "Weekly"
+    }
   },
   "history": {
     "title": "Plan History",

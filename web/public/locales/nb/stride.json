@@ -67,7 +67,11 @@
     "targetDate": "For dato",
     "activeLabel": "Aktive",
     "historyLabel": "Historikk",
-    "consumedBy": "Brukt av {{process}} den {{date}}"
+    "consumedBy": "Brukt av {{process}} den {{date}}",
+    "consumedByProcess": {
+      "nightly": "Nattlig",
+      "weekly": "Ukentlig"
+    }
   },
   "history": {
     "title": "Planhistorikk",

@@ -527,20 +527,15 @@ export default function StridePage() {
 
   const loadNotes = useCallback(async (signal?: AbortSignal) => {
     try {
-      const [activeRes, consumedRes] = await Promise.all([
-        fetch('/api/stride/notes?status=active', { credentials: 'include', signal }),
-        fetch('/api/stride/notes?status=consumed', { credentials: 'include', signal }),
-      ])
-      if (!activeRes.ok) {
-        throw new Error(`Failed to load notes: ${activeRes.status} ${activeRes.statusText}`)
+      const res = await fetch('/api/stride/notes?status=all', { credentials: 'include', signal })
+      if (!res.ok) {
+        throw new Error(`Failed to load notes: ${res.status} ${res.statusText}`)
       }
-      if (!consumedRes.ok) {
-        throw new Error(`Failed to load consumed notes: ${consumedRes.status} ${consumedRes.statusText}`)
-      }
-      const [activeData, consumedData] = await Promise.all([activeRes.json(), consumedRes.json()])
+      const data = await res.json()
       if (!signal?.aborted) {
-        setNotes(activeData.notes ?? [])
-        setConsumedNotes(consumedData.notes ?? [])
+        const allNotes = data.notes ?? []
+        setNotes(allNotes.filter((n: { consumed_at: string | null }) => !n.consumed_at))
+        setConsumedNotes(allNotes.filter((n: { consumed_at: string | null }) => !!n.consumed_at))
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return
@@ -1179,12 +1174,20 @@ export default function StridePage() {
                           <Trash2 size={14} />
                         </button>
                         <div className="flex flex-col items-end gap-0.5">
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-gray-700/50 text-gray-400">
-                            {t('notes.consumedBy', {
-                              process: note.consumed_by ?? '',
-                              date: note.consumed_at ? formatDate(note.consumed_at) : '',
-                            })}
-                          </span>
+                          {(() => {
+                            const consumedByLabel = note.consumed_by === 'nightly'
+                              ? t('notes.consumedByProcess.nightly')
+                              : note.consumed_by === 'weekly'
+                                ? t('notes.consumedByProcess.weekly')
+                                : null
+                            const consumedDate = note.consumed_at ? formatDate(note.consumed_at) : null
+                            if (!consumedByLabel || !consumedDate) return null
+                            return (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-gray-700/50 text-gray-400">
+                                {t('notes.consumedBy', { process: consumedByLabel, date: consumedDate })}
+                              </span>
+                            )
+                          })()}
                           <span className="text-xs text-gray-500">
                             {note.target_date && <span className="mr-1">{formatDate(`${note.target_date}T00:00:00`)}</span>}
                             {formatDateTime(note.created_at, { dateStyle: 'short', timeStyle: 'short' })}
