@@ -1002,3 +1002,141 @@ func TestMyFamilyHandlerWithSiblings(t *testing.T) {
 		t.Errorf("expected child_count 2, got %d", resp.ChildCount)
 	}
 }
+
+func TestRequireChildAllowsChild(t *testing.T) {
+	db := setupTestDB(t)
+	_, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	called := false
+	handler := RequireChild(db)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	r := withUser(newRequest(http.MethodGet, "/test", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !called {
+		t.Error("expected next handler to be called")
+	}
+}
+
+func TestRequireChildRejectsNonChild(t *testing.T) {
+	db := setupTestDB(t)
+	// testParent (ID=1) is not a child
+
+	handler := RequireChild(db)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("next handler should not be called")
+	}))
+
+	r := withUser(newRequest(http.MethodGet, "/test", nil), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRequireChildRejectsUnauthenticated(t *testing.T) {
+	db := setupTestDB(t)
+
+	handler := RequireChild(db)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("next handler should not be called")
+	}))
+
+	r := newRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRequireParentOrAdminAllowsParent(t *testing.T) {
+	db := setupTestDB(t)
+	_, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	called := false
+	handler := RequireParentOrAdmin(db)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	r := withUser(newRequest(http.MethodGet, "/test", nil), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !called {
+		t.Error("expected next handler to be called")
+	}
+}
+
+func TestRequireParentOrAdminAllowsAdmin(t *testing.T) {
+	db := setupTestDB(t)
+
+	admin := &auth.User{ID: 99, Email: "admin@test.com", Name: "Admin", IsAdmin: true}
+	called := false
+	handler := RequireParentOrAdmin(db)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	r := withUser(newRequest(http.MethodGet, "/test", nil), admin)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if !called {
+		t.Error("expected next handler to be called")
+	}
+}
+
+func TestRequireParentOrAdminRejectsNonParent(t *testing.T) {
+	db := setupTestDB(t)
+	// testChild (ID=2) is not a parent and not admin
+
+	handler := RequireParentOrAdmin(db)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("next handler should not be called")
+	}))
+
+	r := withUser(newRequest(http.MethodGet, "/test", nil), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRequireParentOrAdminRejectsUnauthenticated(t *testing.T) {
+	db := setupTestDB(t)
+
+	handler := RequireParentOrAdmin(db)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("next handler should not be called")
+	}))
+
+	r := newRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", w.Code, w.Body.String())
+	}
+}
