@@ -751,6 +751,276 @@ func TestHandleParentReviewForbidden(t *testing.T) {
 	}
 }
 
+// --- Student-facing handler tests ---
+
+var testChildUser = &auth.User{ID: 2, Email: "child@test.com", Name: "Child"}
+
+func TestHandleMyProfileEmpty(t *testing.T) {
+	d := setupTestDB(t)
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	handler := HandleMyProfile(d)
+	r := withUser(newRequest(http.MethodGet, "/api/homework/profile", nil), testChildUser)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	decode(t, w.Body.Bytes(), &resp)
+	if resp["profile"] != nil {
+		t.Errorf("expected null profile, got %v", resp["profile"])
+	}
+}
+
+func TestHandleMyProfileWithData(t *testing.T) {
+	d := setupTestDB(t)
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+	if _, err := CreateProfile(d, HomeworkProfile{KidID: 2, Age: 10, GradeLevel: "5th"}); err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+
+	handler := HandleMyProfile(d)
+	r := withUser(newRequest(http.MethodGet, "/api/homework/profile", nil), testChildUser)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Profile HomeworkProfile `json:"profile"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Profile.Age != 10 {
+		t.Errorf("expected age 10, got %d", resp.Profile.Age)
+	}
+}
+
+func TestHandleUpdateMyProfile(t *testing.T) {
+	d := setupTestDB(t)
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	handler := HandleUpdateMyProfile(d)
+	body := map[string]any{
+		"age":                10,
+		"grade_level":        "5th",
+		"subjects":           []string{"math"},
+		"preferred_language": "nb",
+		"school_name":        "Test School",
+		"current_topics":     []string{"fractions"},
+	}
+	r := withUser(newRequest(http.MethodPut, "/api/homework/profile", body), testChildUser)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Profile HomeworkProfile `json:"profile"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Profile.Age != 10 {
+		t.Errorf("expected age 10, got %d", resp.Profile.Age)
+	}
+	if resp.Profile.KidID != 2 {
+		t.Errorf("expected kid_id 2, got %d", resp.Profile.KidID)
+	}
+}
+
+func TestHandleMyConversations(t *testing.T) {
+	d := setupTestDB(t)
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	if _, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "Math"}); err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	handler := HandleMyConversations(d)
+	r := withUser(newRequest(http.MethodGet, "/api/homework/conversations", nil), testChildUser)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Conversations []HomeworkConversation `json:"conversations"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if len(resp.Conversations) != 1 {
+		t.Fatalf("expected 1 conversation, got %d", len(resp.Conversations))
+	}
+}
+
+func TestHandleNewMyConversation(t *testing.T) {
+	d := setupTestDB(t)
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	handler := HandleNewMyConversation(d)
+	body := map[string]any{"subject": "Science"}
+	r := withUser(newRequest(http.MethodPost, "/api/homework/conversations", body), testChildUser)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Conversation HomeworkConversation `json:"conversation"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Conversation.Subject != "Science" {
+		t.Errorf("expected subject 'Science', got %q", resp.Conversation.Subject)
+	}
+	if resp.Conversation.KidID != 2 {
+		t.Errorf("expected kid_id 2, got %d", resp.Conversation.KidID)
+	}
+}
+
+func TestHandleGetMyConversation(t *testing.T) {
+	d := setupTestDB(t)
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "Reading"})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+	if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv.ID, Role: "user", Content: "Help me", HelpLevel: HelpLevelHint}); err != nil {
+		t.Fatalf("add message: %v", err)
+	}
+
+	handler := HandleGetMyConversation(d)
+	r := withChiParams(withUser(newRequest(http.MethodGet, "/api/homework/conversations/1", nil), testChildUser), map[string]string{"id": "1"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Conversation HomeworkConversation `json:"conversation"`
+		Messages     []HomeworkMessage    `json:"messages"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Conversation.Subject != "Reading" {
+		t.Errorf("expected subject 'Reading', got %q", resp.Conversation.Subject)
+	}
+	if len(resp.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(resp.Messages))
+	}
+}
+
+func TestHandleGetMyConversationNotFound(t *testing.T) {
+	d := setupTestDB(t)
+
+	handler := HandleGetMyConversation(d)
+	r := withChiParams(withUser(newRequest(http.MethodGet, "/api/homework/conversations/999", nil), testChildUser), map[string]string{"id": "999"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleSendMyMessageSuccess(t *testing.T) {
+	d := setupTestDB(t)
+
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	// Claude config on the parent (user 1), not the child.
+	_, err = d.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true')`)
+	if err != nil {
+		t.Fatalf("insert pref: %v", err)
+	}
+
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: ""})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	origExec := execCommand
+	execCommand = fakeExecCommand([]string{
+		`{"type":"result","result":"Here is a hint.","session_id":"sess-child","is_error":false}`,
+	})
+	t.Cleanup(func() { execCommand = origExec })
+
+	body, contentType := multipartBody(t, map[string]string{
+		"message": "Help me solve 2+2",
+	}, nil)
+
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/homework/conversations/%d/messages", conv.ID), body)
+	r.Header.Set("Content-Type", contentType)
+	r = withChiParams(withUser(r, testChildUser), map[string]string{"id": fmt.Sprintf("%d", conv.ID)})
+
+	rec := httptest.NewRecorder()
+	HandleSendMyMessage(d).ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	ct := rec.Header().Get("Content-Type")
+	if ct != "text/event-stream" {
+		t.Errorf("expected Content-Type text/event-stream, got %q", ct)
+	}
+
+	respBody := rec.Body.String()
+	if !strings.Contains(respBody, "event: user_message") {
+		t.Errorf("expected user_message event, got: %s", respBody)
+	}
+	if !strings.Contains(respBody, "event: done") {
+		t.Errorf("expected done event, got: %s", respBody)
+	}
+}
+
+func TestHandleSendMyMessageNoParentLink(t *testing.T) {
+	d := setupTestDB(t)
+	// No family link — child has no parent.
+
+	body, contentType := multipartBody(t, map[string]string{"message": "Help"}, nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/homework/conversations/1/messages", body)
+	r.Header.Set("Content-Type", contentType)
+	r = withChiParams(withUser(r, testChildUser), map[string]string{"id": "1"})
+
+	rec := httptest.NewRecorder()
+	HandleSendMyMessage(d).ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandleSendMessageDefaultHelpLevel(t *testing.T) {
 	rec, handler, conv := setupSendMessageTest(t)
 
