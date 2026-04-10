@@ -53,6 +53,7 @@ export default function HomeworkSettings() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<{ age?: string; gradeLevel?: string; preferredLanguage?: string }>({})
 
   const [age, setAge] = useState(0)
   const [gradeLevel, setGradeLevel] = useState('')
@@ -108,8 +109,19 @@ export default function HomeworkSettings() {
     )
   }
 
+  function validate(): boolean {
+    const errors: { age?: string; gradeLevel?: string; preferredLanguage?: string } = {}
+    if (!age || age < 1 || age > 25) errors.age = t('settings.errors.ageInvalid')
+    if (!gradeLevel) errors.gradeLevel = t('settings.errors.gradeRequired')
+    if (!preferredLanguage) errors.preferredLanguage = t('settings.errors.languageRequired')
+    setFieldErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!validate()) return
+
     saveControllerRef.current?.abort()
     const controller = new AbortController()
     saveControllerRef.current = controller
@@ -196,12 +208,16 @@ export default function HomeworkSettings() {
           <input
             id="hw-age"
             type="number"
-            min={0}
+            min={1}
             max={25}
             value={age || ''}
-            onChange={e => { clearSuccess(); setAge(parseInt(e.target.value, 10) || 0) }}
-            className="w-full sm:w-32 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onChange={e => { clearSuccess(); setFieldErrors(prev => ({ ...prev, age: undefined })); setAge(parseInt(e.target.value, 10) || 0) }}
+            className={`w-full sm:w-32 px-3 py-2 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${fieldErrors.age ? 'border-red-600' : 'border-gray-700'}`}
+            aria-describedby={fieldErrors.age ? 'hw-age-error' : undefined}
           />
+          {fieldErrors.age && (
+            <p id="hw-age-error" role="alert" className="mt-1 text-xs text-red-400">{fieldErrors.age}</p>
+          )}
         </div>
 
         {/* Grade level */}
@@ -212,8 +228,9 @@ export default function HomeworkSettings() {
           <select
             id="hw-grade"
             value={gradeLevel}
-            onChange={e => { clearSuccess(); setGradeLevel(e.target.value) }}
-            className="w-full sm:w-48 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onChange={e => { clearSuccess(); setFieldErrors(prev => ({ ...prev, gradeLevel: undefined })); setGradeLevel(e.target.value) }}
+            className={`w-full sm:w-48 px-3 py-2 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${fieldErrors.gradeLevel ? 'border-red-600' : 'border-gray-700'}`}
+            aria-describedby={fieldErrors.gradeLevel ? 'hw-grade-error' : undefined}
           >
             <option value="">{t('settings.selectGrade')}</option>
             {GRADE_LEVELS.map(g => (
@@ -222,6 +239,9 @@ export default function HomeworkSettings() {
               </option>
             ))}
           </select>
+          {fieldErrors.gradeLevel && (
+            <p id="hw-grade-error" role="alert" className="mt-1 text-xs text-red-400">{fieldErrors.gradeLevel}</p>
+          )}
         </div>
 
         {/* Preferred language */}
@@ -232,8 +252,9 @@ export default function HomeworkSettings() {
           <select
             id="hw-lang"
             value={preferredLanguage}
-            onChange={e => { clearSuccess(); setPreferredLanguage(e.target.value) }}
-            className="w-full sm:w-48 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            onChange={e => { clearSuccess(); setFieldErrors(prev => ({ ...prev, preferredLanguage: undefined })); setPreferredLanguage(e.target.value) }}
+            className={`w-full sm:w-48 px-3 py-2 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 ${fieldErrors.preferredLanguage ? 'border-red-600' : 'border-gray-700'}`}
+            aria-describedby={fieldErrors.preferredLanguage ? 'hw-lang-error' : undefined}
           >
             <option value="">{t('settings.selectLanguage')}</option>
             {LANGUAGES.map(lang => (
@@ -242,6 +263,9 @@ export default function HomeworkSettings() {
               </option>
             ))}
           </select>
+          {fieldErrors.preferredLanguage && (
+            <p id="hw-lang-error" role="alert" className="mt-1 text-xs text-red-400">{fieldErrors.preferredLanguage}</p>
+          )}
         </div>
 
         {/* Subjects (multi-select as checkboxes) */}

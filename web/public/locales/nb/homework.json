@@ -73,7 +73,10 @@
     "saved": "Profilen er lagret",
     "errors": {
       "failedToLoad": "Kunne ikke laste profilen",
-      "failedToSave": "Kunne ikke lagre profilen"
+      "failedToSave": "Kunne ikke lagre profilen",
+      "ageInvalid": "Skriv inn en alder mellom 1 og 25",
+      "gradeRequired": "Velg et klassetrinn",
+      "languageRequired": "Velg et foretrukket språk"
     }
   }
 }
