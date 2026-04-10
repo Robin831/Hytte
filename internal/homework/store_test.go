@@ -3,6 +3,7 @@ package homework
 import (
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/db"
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -303,6 +304,9 @@ func TestConversationUpdatedAtOnMessage(t *testing.T) {
 		t.Fatalf("create conversation: %v", err)
 	}
 	originalUpdatedAt := conv.UpdatedAt
+
+	// Ensure a distinct timestamp for the next operation.
+	time.Sleep(2 * time.Millisecond)
 
 	_, err = AddMessage(d, HomeworkMessage{
 		ConversationID: conv.ID,
