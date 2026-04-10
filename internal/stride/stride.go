@@ -468,7 +468,7 @@ func DeleteNote(db *sql.DB, id, userID int64) error {
 // MarkNotesConsumed sets consumed_at and consumed_by for the given note IDs
 // within the provided transaction. This marks notes as having been processed
 // by a consuming process (e.g. weekly plan generation, nightly evaluation).
-func MarkNotesConsumed(ctx context.Context, tx *sql.Tx, noteIDs []int64, consumedBy string) error {
+func MarkNotesConsumed(ctx context.Context, tx *sql.Tx, userID int64, noteIDs []int64, consumedBy string) error {
 	if len(noteIDs) == 0 {
 		return nil
 	}
@@ -476,14 +476,14 @@ func MarkNotesConsumed(ctx context.Context, tx *sql.Tx, noteIDs []int64, consume
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	placeholders := make([]string, len(noteIDs))
-	args := make([]any, 0, len(noteIDs)+2)
-	args = append(args, now, consumedBy)
+	args := make([]any, 0, len(noteIDs)+3)
+	args = append(args, now, consumedBy, userID)
 	for i, id := range noteIDs {
 		placeholders[i] = "?"
 		args = append(args, id)
 	}
 
-	query := `UPDATE stride_notes SET consumed_at = ?, consumed_by = ? WHERE id IN (` + strings.Join(placeholders, ",") + `)`
+	query := `UPDATE stride_notes SET consumed_at = ?, consumed_by = ? WHERE user_id = ? AND id IN (` + strings.Join(placeholders, ",") + `)`
 	_, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("mark notes consumed: %w", err)

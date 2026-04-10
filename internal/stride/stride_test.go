@@ -1180,16 +1180,19 @@ func TestTryMatchRaceForWorkout_CrossUserIsolation(t *testing.T) {
 func TestMarkNotesConsumed(t *testing.T) {
 	db := setupTestDB(t)
 
+	today := time.Now().Format("2006-01-02")
+	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+
 	// Create a few notes.
-	n1, err := CreateNote(db, 1, nil, "Note one", "2026-04-10")
+	n1, err := CreateNote(db, 1, nil, "Note one", today)
 	if err != nil {
 		t.Fatalf("create note 1: %v", err)
 	}
-	n2, err := CreateNote(db, 1, nil, "Note two", "2026-04-10")
+	n2, err := CreateNote(db, 1, nil, "Note two", today)
 	if err != nil {
 		t.Fatalf("create note 2: %v", err)
 	}
-	n3, err := CreateNote(db, 1, nil, "Note three", "2026-04-11")
+	n3, err := CreateNote(db, 1, nil, "Note three", tomorrow)
 	if err != nil {
 		t.Fatalf("create note 3: %v", err)
 	}
@@ -1199,7 +1202,7 @@ func TestMarkNotesConsumed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin tx: %v", err)
 	}
-	if err := MarkNotesConsumed(context.Background(), tx, []int64{n1.ID, n2.ID}, "weekly-plan"); err != nil {
+	if err := MarkNotesConsumed(context.Background(), tx, 1, []int64{n1.ID, n2.ID}, "weekly-plan"); err != nil {
 		t.Fatalf("MarkNotesConsumed: %v", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -1256,7 +1259,7 @@ func TestMarkNotesConsumedEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("begin tx: %v", err)
 	}
-	if err := MarkNotesConsumed(context.Background(), tx, nil, "test"); err != nil {
+	if err := MarkNotesConsumed(context.Background(), tx, 1, nil, "test"); err != nil {
 		t.Fatalf("MarkNotesConsumed with empty slice: %v", err)
 	}
 	if err := tx.Commit(); err != nil {

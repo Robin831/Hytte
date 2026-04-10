@@ -1335,6 +1335,8 @@ func createSchema(db *sql.DB) error {
 		plan_id     INTEGER REFERENCES stride_plans(id) ON DELETE SET NULL,
 		content     TEXT NOT NULL,
 		target_date TEXT NOT NULL DEFAULT '',
+		consumed_at TEXT,
+		consumed_by TEXT,
 		created_at  TEXT NOT NULL DEFAULT ''
 	);
 
