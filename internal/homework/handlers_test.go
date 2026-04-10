@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
+	"strings"
 	"testing"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -321,5 +325,336 @@ func TestHandleInvalidChildID(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// setupSendMessageTest sets up the DB with a family link, profile, user prefs,
+// and a conversation, returning the DB and conversation.
+func setupSendMessageTest(t *testing.T) (*httptest.ResponseRecorder, http.HandlerFunc, HomeworkConversation) {
+	t.Helper()
+	d := setupTestDB(t)
+
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00.000Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	// Create homework profile.
+	_, err = CreateProfile(d, HomeworkProfile{
+		KidID:      2,
+		Age:        10,
+		GradeLevel: "5th",
+		Subjects:   []string{"math"},
+	})
+	if err != nil {
+		t.Fatalf("create profile: %v", err)
+	}
+
+	// Set up Claude config in user_preferences.
+	_, err = d.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true')`)
+	if err != nil {
+		t.Fatalf("insert claude_enabled pref: %v", err)
+	}
+
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: ""})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	handler := HandleSendMessage(d)
+	rec := httptest.NewRecorder()
+	return rec, handler, conv
+}
+
+// multipartBody builds a multipart form body with a message field and optional image.
+func multipartBody(t *testing.T, fields map[string]string, imageData []byte) (*bytes.Buffer, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		if err := writer.WriteField(k, v); err != nil {
+			t.Fatalf("write field %s: %v", k, err)
+		}
+	}
+	if imageData != nil {
+		part, err := writer.CreateFormFile("image", "photo.jpg")
+		if err != nil {
+			t.Fatalf("create form file: %v", err)
+		}
+		part.Write(imageData)
+	}
+	writer.Close()
+	return &buf, writer.FormDataContentType()
+}
+
+// fakeExecCommand returns a function that creates a fake exec.Cmd
+// which writes the given stream-json lines to stdout.
+func fakeExecCommand(lines []string) func(ctx context.Context, name string, args ...string) *exec.Cmd {
+	return func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		output := strings.Join(lines, "\n") + "\n"
+		cmd := exec.CommandContext(ctx, "echo", "-n", output)
+		return cmd
+	}
+}
+
+func TestHandleSendMessageSuccess(t *testing.T) {
+	rec, handler, conv := setupSendMessageTest(t)
+
+	// Stub the Claude CLI execution with stream-json output.
+	origExec := execCommand
+	execCommand = fakeExecCommand([]string{
+		`{"type":"content_block_delta","delta":{"type":"text_delta","text":"Let me help "}}`,
+		`{"type":"content_block_delta","delta":{"type":"text_delta","text":"you with that."}}`,
+		fmt.Sprintf(`{"type":"result","result":"Let me help you with that.","session_id":"sess-123","is_error":false}`),
+	})
+	t.Cleanup(func() { execCommand = origExec })
+
+	body, contentType := multipartBody(t, map[string]string{
+		"message":    "Help me solve this equation: 2x + 3 = 7",
+		"help_level": "hint",
+	}, nil)
+
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/homework/children/2/conversations/%d/messages", conv.ID), body)
+	r.Header.Set("Content-Type", contentType)
+	r = withChiParams(withUser(r, testParent), map[string]string{"childId": "2", "id": fmt.Sprintf("%d", conv.ID)})
+
+	handler.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	ct := rec.Header().Get("Content-Type")
+	if ct != "text/event-stream" {
+		t.Errorf("expected Content-Type text/event-stream, got %q", ct)
+	}
+
+	respBody := rec.Body.String()
+	if !strings.Contains(respBody, "event: user_message") {
+		t.Errorf("expected user_message event, got: %s", respBody)
+	}
+	if !strings.Contains(respBody, "event: done") {
+		t.Errorf("expected done event, got: %s", respBody)
+	}
+	if !strings.Contains(respBody, "event: delta") {
+		t.Errorf("expected delta events, got: %s", respBody)
+	}
+}
+
+func TestHandleSendMessageMissingMessage(t *testing.T) {
+	rec, handler, conv := setupSendMessageTest(t)
+
+	body, contentType := multipartBody(t, map[string]string{
+		"message": "",
+	}, nil)
+
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/homework/children/2/conversations/%d/messages", conv.ID), body)
+	r.Header.Set("Content-Type", contentType)
+	r = withChiParams(withUser(r, testParent), map[string]string{"childId": "2", "id": fmt.Sprintf("%d", conv.ID)})
+
+	handler.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleSendMessageInvalidHelpLevel(t *testing.T) {
+	rec, handler, conv := setupSendMessageTest(t)
+
+	body, contentType := multipartBody(t, map[string]string{
+		"message":    "Help me",
+		"help_level": "invalid",
+	}, nil)
+
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/homework/children/2/conversations/%d/messages", conv.ID), body)
+	r.Header.Set("Content-Type", contentType)
+	r = withChiParams(withUser(r, testParent), map[string]string{"childId": "2", "id": fmt.Sprintf("%d", conv.ID)})
+
+	handler.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleSendMessageNotFound(t *testing.T) {
+	rec, handler, _ := setupSendMessageTest(t)
+
+	body, contentType := multipartBody(t, map[string]string{
+		"message": "Help me",
+	}, nil)
+
+	r := httptest.NewRequest(http.MethodPost, "/api/homework/children/2/conversations/999/messages", body)
+	r.Header.Set("Content-Type", contentType)
+	r = withChiParams(withUser(r, testParent), map[string]string{"childId": "2", "id": "999"})
+
+	handler.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleSendMessageForbidden(t *testing.T) {
+	d := setupTestDB(t)
+	// No family link for parent 1 -> child 3.
+
+	handler := HandleSendMessage(d)
+	body, contentType := multipartBody(t, map[string]string{"message": "Help"}, nil)
+	r := httptest.NewRequest(http.MethodPost, "/api/homework/children/3/conversations/1/messages", body)
+	r.Header.Set("Content-Type", contentType)
+	r = withChiParams(withUser(r, testParent), map[string]string{"childId": "3", "id": "1"})
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandleSendMessageWithImage(t *testing.T) {
+	d := setupTestDB(t)
+
+	// Route uploads to a temp directory that is cleaned up automatically.
+	t.Setenv("HOMEWORK_UPLOADS_DIR", t.TempDir())
+
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00.000Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+	_, err = d.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true')`)
+	if err != nil {
+		t.Fatalf("insert pref: %v", err)
+	}
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 2})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	// Stub the Claude CLI.
+	origExec := execCommand
+	execCommand = fakeExecCommand([]string{
+		`{"type":"result","result":"I can see the image.","session_id":"sess-img","is_error":false}`,
+	})
+	t.Cleanup(func() { execCommand = origExec })
+
+	// Create a minimal valid JPEG (starts with FF D8 FF).
+	jpegData := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46}
+	body, contentType := multipartBody(t, map[string]string{
+		"message": "What does this show?",
+	}, jpegData)
+
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/homework/children/2/conversations/%d/messages", conv.ID), body)
+	r.Header.Set("Content-Type", contentType)
+	r = withChiParams(withUser(r, testParent), map[string]string{"childId": "2", "id": fmt.Sprintf("%d", conv.ID)})
+
+	rec := httptest.NewRecorder()
+	HandleSendMessage(d).ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify user message was persisted with image path.
+	msgs, err := GetMessages(d, conv.ID, 2)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) < 1 {
+		t.Fatal("expected at least 1 message")
+	}
+	if msgs[0].ImagePath == "" {
+		t.Error("expected image path to be set on user message")
+	}
+}
+
+func TestHandleSendMessageSubjectAutoDetection(t *testing.T) {
+	d := setupTestDB(t)
+
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00.000Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+	_, err = d.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true')`)
+	if err != nil {
+		t.Fatalf("insert pref: %v", err)
+	}
+
+	// Create conversation with no subject.
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: ""})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	origExec := execCommand
+	execCommand = fakeExecCommand([]string{
+		`{"type":"result","result":"Let me help with that equation.","session_id":"sess-subj","is_error":false}`,
+	})
+	t.Cleanup(func() { execCommand = origExec })
+
+	body, contentType := multipartBody(t, map[string]string{
+		"message": "Help me solve this equation: 2x + 3 = 7",
+	}, nil)
+
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/homework/children/2/conversations/%d/messages", conv.ID), body)
+	r.Header.Set("Content-Type", contentType)
+	r = withChiParams(withUser(r, testParent), map[string]string{"childId": "2", "id": fmt.Sprintf("%d", conv.ID)})
+
+	rec := httptest.NewRecorder()
+	HandleSendMessage(d).ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify the subject was auto-detected and encrypted in the DB.
+	got, err := GetConversation(d, conv.ID, 2)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if got.Subject != "math" {
+		t.Errorf("expected auto-detected subject 'math', got %q", got.Subject)
+	}
+
+	// Verify raw DB value is encrypted.
+	var rawSubject string
+	err = d.QueryRow(`SELECT subject FROM homework_conversations WHERE id = ?`, conv.ID).Scan(&rawSubject)
+	if err != nil {
+		t.Fatalf("query raw subject: %v", err)
+	}
+	if rawSubject == "math" {
+		t.Error("expected subject to be encrypted in DB, but found plaintext")
+	}
+}
+
+func TestHandleSendMessageDefaultHelpLevel(t *testing.T) {
+	rec, handler, conv := setupSendMessageTest(t)
+
+	origExec := execCommand
+	execCommand = fakeExecCommand([]string{
+		`{"type":"result","result":"Here is a hint.","session_id":"sess-def","is_error":false}`,
+	})
+	t.Cleanup(func() { execCommand = origExec })
+
+	// No help_level specified — should default to "hint".
+	body, contentType := multipartBody(t, map[string]string{
+		"message": "Help me with reading comprehension",
+	}, nil)
+
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/homework/children/2/conversations/%d/messages", conv.ID), body)
+	r.Header.Set("Content-Type", contentType)
+	r = withChiParams(withUser(r, testParent), map[string]string{"childId": "2", "id": fmt.Sprintf("%d", conv.ID)})
+
+	handler.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	respBody := rec.Body.String()
+	if !strings.Contains(respBody, "event: done") {
+		t.Errorf("expected done event in response")
 	}
 }

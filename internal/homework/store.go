@@ -231,6 +231,68 @@ func GetConversation(db *sql.DB, id, kidID int64) (*HomeworkConversation, error)
 	return &c, nil
 }
 
+// UpdateConversationSubject sets the subject on a homework conversation, encrypting it for storage.
+// Returns sql.ErrNoRows if no matching row was found (wrong ID or kid mismatch).
+func UpdateConversationSubject(db *sql.DB, convID, kidID int64, subject string) error {
+	encSubject, err := encryption.EncryptField(subject)
+	if err != nil {
+		return fmt.Errorf("encrypt subject: %w", err)
+	}
+	now := time.Now().UTC().Format(timeFormat)
+	result, err := db.Exec(
+		`UPDATE homework_conversations SET subject = ?, updated_at = ? WHERE id = ? AND kid_id = ?`,
+		encSubject, now, convID, kidID,
+	)
+	if err != nil {
+		return fmt.Errorf("update conversation subject: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// GetSessionID returns the Claude CLI session ID for a homework conversation.
+// Returns ("", nil) when the conversation has no session yet (NULL or no row).
+func GetSessionID(db *sql.DB, conversationID, kidID int64) (string, error) {
+	var sessionID sql.NullString
+	err := db.QueryRow(
+		`SELECT session_id FROM homework_conversations WHERE id = ? AND kid_id = ?`,
+		conversationID, kidID,
+	).Scan(&sessionID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get homework session_id: %w", err)
+	}
+	return sessionID.String, nil
+}
+
+// UpdateSessionID stores the Claude CLI session ID on a homework conversation.
+func UpdateSessionID(db *sql.DB, conversationID, kidID int64, sessionID string) error {
+	now := time.Now().UTC().Format(timeFormat)
+	result, err := db.Exec(
+		`UPDATE homework_conversations SET session_id = ?, updated_at = ? WHERE id = ? AND kid_id = ?`,
+		sessionID, now, conversationID, kidID,
+	)
+	if err != nil {
+		return fmt.Errorf("update homework session_id: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // ListConversationsByKid returns all homework conversations for a child, newest first.
 func ListConversationsByKid(db *sql.DB, kidID int64) ([]HomeworkConversation, error) {
 	rows, err := db.Query(`
