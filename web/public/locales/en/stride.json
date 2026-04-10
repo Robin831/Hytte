@@ -63,7 +63,8 @@
     "add": "Add note",
     "saving": "Saving...",
     "empty": "No notes yet. Add a note for your AI coach.",
-    "delete": "Delete note"
+    "delete": "Delete note",
+    "targetDate": "For date"
   },
   "history": {
     "title": "Plan History",

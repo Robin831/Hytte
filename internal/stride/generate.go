@@ -339,7 +339,7 @@ func upcomingWeek() (weekStart, weekEnd string) {
 // listAllNotes returns all stride notes for a user, most recent first, limit 20.
 func listAllNotes(ctx context.Context, db *sql.DB, userID int64) ([]Note, error) {
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, user_id, plan_id, content, created_at
+		SELECT id, user_id, plan_id, content, target_date, created_at
 		FROM stride_notes
 		WHERE user_id = ?
 		ORDER BY created_at DESC
@@ -353,7 +353,7 @@ func listAllNotes(ctx context.Context, db *sql.DB, userID int64) ([]Note, error)
 	var notes []Note
 	for rows.Next() {
 		var n Note
-		if err := rows.Scan(&n.ID, &n.UserID, &n.PlanID, &n.Content, &n.CreatedAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.UserID, &n.PlanID, &n.Content, &n.TargetDate, &n.CreatedAt); err != nil {
 			return nil, err
 		}
 		if n.Content, err = encryption.DecryptField(n.Content); err != nil {

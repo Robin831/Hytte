@@ -262,7 +262,7 @@ func TestDeleteRaceWrongUser(t *testing.T) {
 func TestCreateAndListNotes(t *testing.T) {
 	db := setupTestDB(t)
 
-	note, err := CreateNote(db, 1, nil, "Feeling tired this week")
+	note, err := CreateNote(db, 1, nil, "Feeling tired this week", "")
 	if err != nil {
 		t.Fatalf("create note: %v", err)
 	}
@@ -288,7 +288,7 @@ func TestCreateAndListNotes(t *testing.T) {
 func TestDeleteNote(t *testing.T) {
 	db := setupTestDB(t)
 
-	note, err := CreateNote(db, 1, nil, "Delete me")
+	note, err := CreateNote(db, 1, nil, "Delete me", "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestDeleteNote(t *testing.T) {
 func TestDeleteNoteWrongUser(t *testing.T) {
 	db := setupTestDB(t)
 
-	note, err := CreateNote(db, 1, nil, "Keep me")
+	note, err := CreateNote(db, 1, nil, "Keep me", "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}

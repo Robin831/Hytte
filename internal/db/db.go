@@ -2018,6 +2018,22 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add target_date column to stride_notes table (Hytte-y9xg).
+	// Allows users to assign notes to a specific date for contextual evaluation.
+	var hasTargetDate int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stride_notes') WHERE name = 'target_date'`).Scan(&hasTargetDate); err != nil {
+		return fmt.Errorf("check stride_notes target_date column: %w", err)
+	}
+	if hasTargetDate == 0 {
+		if _, err := db.Exec(`ALTER TABLE stride_notes ADD COLUMN target_date TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add stride_notes target_date column: %w", err)
+		}
+		// Backfill existing rows: set target_date to the date portion of created_at.
+		if _, err := db.Exec(`UPDATE stride_notes SET target_date = SUBSTR(created_at, 1, 10) WHERE target_date = ''`); err != nil {
+			return fmt.Errorf("backfill stride_notes target_date: %w", err)
+		}
+	}
+
 	// Add race_id FK column to workouts table (Hytte-im9y).
 	// Links a workout to a stride_races entry when the workout is a race result.
 	var hasRaceID int

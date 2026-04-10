@@ -104,10 +104,15 @@ func RunNightlyEvaluation(ctx context.Context, db *sql.DB, httpClient *http.Clie
 	}
 	rows.Close()
 
-	since := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
+	// Evaluate yesterday — the nightly job runs at 03:00, so "today" has barely
+	// started and the user can't have done a workout yet. The day that just ended
+	// (yesterday) is the correct evaluation target.
+	yesterday := time.Now().UTC().AddDate(0, 0, -1)
+	since := yesterday.Format(time.RFC3339)
+	targetDate := yesterday.Format("2006-01-02")
 
 	for _, userID := range userIDs {
-		if err := evaluateUserWorkouts(ctx, db, httpClient, userID, since); err != nil {
+		if err := evaluateUserWorkouts(ctx, db, httpClient, userID, since, targetDate); err != nil {
 			log.Printf("stride eval: user %d: %v", userID, err)
 		}
 	}
@@ -147,8 +152,8 @@ func RunUserEvaluation(ctx context.Context, db *sql.DB, httpClient *http.Client,
 }
 
 // evaluateUserWorkouts processes all unevaluated workouts for a single user since the given timestamp,
-// then checks for rest days and missed sessions.
-func evaluateUserWorkouts(ctx context.Context, db *sql.DB, httpClient *http.Client, userID int64, since string) error {
+// then checks for rest days and missed sessions on the target date (yesterday for nightly runs).
+func evaluateUserWorkouts(ctx context.Context, db *sql.DB, httpClient *http.Client, userID int64, since string, targetDate string) error {
 	claudeCfg, err := training.LoadClaudeConfig(db, userID)
 	if err != nil {
 		return fmt.Errorf("load claude config: %w", err)
@@ -174,8 +179,8 @@ func evaluateUserWorkouts(ctx context.Context, db *sql.DB, httpClient *http.Clie
 		}
 	}
 
-	// Check for rest days and missed sessions regardless of whether workouts were found.
-	if err := evaluateRestDaysAndMissedSessions(ctx, db, userID); err != nil {
+	// Check for rest days and missed sessions on the target date.
+	if err := evaluateRestDaysAndMissedSessions(ctx, db, claudeCfg, userID, targetDate); err != nil {
 		log.Printf("stride eval: rest/missed check for user %d: %v", userID, err)
 	}
 
@@ -381,22 +386,22 @@ func hasDateEvaluation(ctx context.Context, db *sql.DB, userID, planID int64, si
 	return count > 0, nil
 }
 
-// evaluateRestDaysAndMissedSessions checks whether today was a rest day or had a
+// evaluateRestDaysAndMissedSessions checks whether the target date was a rest day or had a
 // planned session with no matching workout, and creates an appropriate evaluation.
-func evaluateRestDaysAndMissedSessions(ctx context.Context, db *sql.DB, userID int64) error {
-	today := time.Now().UTC().Format("2006-01-02")
-
-	plan, err := getPlanContainingDate(ctx, db, userID, today)
+// When user notes exist for the target date, it calls Claude for a contextual evaluation
+// instead of using template strings.
+func evaluateRestDaysAndMissedSessions(ctx context.Context, db *sql.DB, claudeCfg *training.ClaudeConfig, userID int64, date string) error {
+	plan, err := getPlanContainingDate(ctx, db, userID, date)
 	if err != nil {
-		return fmt.Errorf("find plan for today: %w", err)
+		return fmt.Errorf("find plan for date %s: %w", date, err)
 	}
 	if plan == nil {
 		return nil
 	}
 
-	// Check if we already created a non-workout evaluation today (idempotency).
-	todayStart := today + "T00:00:00Z"
-	exists, err := hasDateEvaluation(ctx, db, userID, plan.ID, todayStart)
+	// Check if we already created a non-workout evaluation for this date (idempotency).
+	dateStart := date + "T00:00:00Z"
+	exists, err := hasDateEvaluation(ctx, db, userID, plan.ID, dateStart)
 	if err != nil {
 		return fmt.Errorf("check existing date evaluation: %w", err)
 	}
@@ -404,17 +409,24 @@ func evaluateRestDaysAndMissedSessions(ctx context.Context, db *sql.DB, userID i
 		return nil
 	}
 
-	session, isRestDay := PlannedSessionForDate(*plan, today)
+	session, isRestDay := PlannedSessionForDate(*plan, date)
 
-	// Check if any workout exists for today.
-	hasWorkout, err := hasWorkoutOnDate(ctx, db, userID, today)
+	// Check if any workout exists for this date.
+	hasWorkout, err := hasWorkoutOnDate(ctx, db, userID, date)
 	if err != nil {
-		return fmt.Errorf("check workouts for today: %w", err)
+		return fmt.Errorf("check workouts for date %s: %w", date, err)
 	}
 
 	if hasWorkout {
-		// A workout was uploaded today — the regular evaluation path handles it.
+		// A workout was uploaded for this date — the regular evaluation path handles it.
 		return nil
+	}
+
+	// Fetch user notes targeting this date for contextual evaluation.
+	userNotes, err := GetNotesByTargetDate(db, userID, date)
+	if err != nil {
+		log.Printf("stride eval: fetch notes for user %d date %s: %v", userID, date, err)
+		// Non-fatal — fall through to template evaluation.
 	}
 
 	if isRestDay {
@@ -425,7 +437,15 @@ func evaluateRestDaysAndMissedSessions(ctx context.Context, db *sql.DB, userID i
 			Notes:       noteRestDay,
 			Flags:       []string{},
 			Adjustments: "",
-			Date:        today,
+			Date:        date,
+		}
+		// If the user left notes on a rest day, use Claude for contextual evaluation.
+		if len(userNotes) > 0 && claudeCfg != nil && claudeCfg.Enabled {
+			if aiEval, err := evaluateDateWithNotes(ctx, claudeCfg, *plan, date, nil, userNotes, true); err != nil {
+				log.Printf("stride eval: Claude contextual rest-day eval for user %d date %s: %v; falling back to template", userID, date, err)
+			} else {
+				eval = aiEval
+			}
 		}
 		return storeEvaluationForDate(ctx, db, userID, plan.ID, eval)
 	}
@@ -442,12 +462,105 @@ func evaluateRestDaysAndMissedSessions(ctx context.Context, db *sql.DB, userID i
 			Notes:       fmt.Sprintf(noteMissedSession, sessionType),
 			Flags:       []string{},
 			Adjustments: "",
-			Date:        today,
+			Date:        date,
+		}
+		// If the user left notes explaining the miss, use Claude for contextual evaluation.
+		if len(userNotes) > 0 && claudeCfg != nil && claudeCfg.Enabled {
+			if aiEval, err := evaluateDateWithNotes(ctx, claudeCfg, *plan, date, session, userNotes, false); err != nil {
+				log.Printf("stride eval: Claude contextual missed-session eval for user %d date %s: %v; falling back to template", userID, date, err)
+			} else {
+				eval = aiEval
+			}
 		}
 		return storeEvaluationForDate(ctx, db, userID, plan.ID, eval)
 	}
 
 	return nil
+}
+
+// evaluateDateWithNotes calls Claude to produce a contextual evaluation for a date
+// where the user left notes but did not complete a workout. It considers the planned
+// session, the user's notes, and whether it was a rest day.
+func evaluateDateWithNotes(
+	ctx context.Context,
+	cfg *training.ClaudeConfig,
+	plan Plan,
+	date string,
+	session *PlannedSession,
+	notes []Note,
+	isRestDay bool,
+) (*Evaluation, error) {
+	prompt := buildNoteEvalPrompt(plan, date, session, notes, isRestDay)
+
+	evalCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	response, err := runPromptFunc(evalCtx, cfg, prompt)
+	if err != nil {
+		return nil, fmt.Errorf("claude prompt: %w", err)
+	}
+
+	eval, err := parseEvalResponse(response)
+	if err != nil {
+		return nil, fmt.Errorf("parse eval response: %w", err)
+	}
+
+	if eval.Date == "" {
+		eval.Date = date
+	}
+	return eval, nil
+}
+
+// buildNoteEvalPrompt creates a Claude prompt for evaluating a date where the user
+// left notes but did not complete a workout.
+func buildNoteEvalPrompt(plan Plan, date string, session *PlannedSession, notes []Note, isRestDay bool) string {
+	var sb strings.Builder
+
+	sb.WriteString("You are an expert running coach. Evaluate the following training day based on the user's notes.\n\n")
+
+	sb.WriteString("## Date\n")
+	fmt.Fprintf(&sb, "%s\n\n", date)
+
+	sb.WriteString("## Planned Session\n")
+	if isRestDay {
+		sb.WriteString("Rest day (no workout planned).\n")
+	} else if session != nil && session.Session != nil {
+		s := session.Session
+		if s.Description != "" {
+			fmt.Fprintf(&sb, "- Purpose: %s\n", s.Description)
+		}
+		fmt.Fprintf(&sb, "- Main Set: %s\n", s.MainSet)
+		if s.TargetHRCap > 0 {
+			fmt.Fprintf(&sb, "- Target HR Cap: %d bpm\n", s.TargetHRCap)
+		}
+	} else {
+		sb.WriteString("Unknown.\n")
+	}
+	sb.WriteString("\n")
+
+	sb.WriteString("## User Notes for This Day\n")
+	for _, n := range notes {
+		fmt.Fprintf(&sb, "- %s\n", n.Content)
+	}
+	sb.WriteString("\n")
+
+	sb.WriteString("## No Workout Was Recorded\n")
+	sb.WriteString("The user did not upload any workout for this day. Use their notes to understand why and provide an empathetic, contextual evaluation.\n\n")
+
+	sb.WriteString(`## Output Format
+Return ONLY a JSON object with these fields:
+- "planned_type": string — type of planned session (e.g. "threshold", "easy", "rest", "none")
+- "actual_type": string — "rest" or "none"
+- "compliance": string — one of "compliant", "partial", "missed", "rest_day"
+- "notes": string — 2-4 sentence contextual evaluation considering the user's notes
+- "flags": array of strings — zero or more warning flags (empty array if none)
+- "adjustments": string — 1-2 sentences of suggested adjustments based on the situation
+- "date": string — "` + date + `"
+
+Output ONLY the JSON object, no other text.
+`)
+
+	return sb.String()
 }
 
 // hasWorkoutOnDate checks whether any workout exists for the given user on the specified date.

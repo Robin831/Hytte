@@ -63,7 +63,8 @@
     "add": "Legg til notat",
     "saving": "Lagrer...",
     "empty": "Ingen notater ennå. Legg til et notat til AI-treneren din.",
-    "delete": "Slett notat"
+    "delete": "Slett notat",
+    "targetDate": "For dato"
   },
   "history": {
     "title": "Planhistorikk",
