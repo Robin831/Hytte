@@ -64,7 +64,10 @@
     "saving": "กำลังบันทึก...",
     "empty": "ยังไม่มีบันทึก เพิ่มบันทึกให้โค้ช AI ของคุณ",
     "delete": "ลบบันทึก",
-    "targetDate": "สำหรับวันที่"
+    "targetDate": "สำหรับวันที่",
+    "activeLabel": "ใช้งานอยู่",
+    "historyLabel": "ประวัติ",
+    "consumedBy": "ใช้โดย {{process}} เมื่อ {{date}}"
   },
   "history": {
     "title": "ประวัติแผนการฝึก",

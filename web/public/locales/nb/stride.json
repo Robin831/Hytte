@@ -64,7 +64,10 @@
     "saving": "Lagrer...",
     "empty": "Ingen notater ennå. Legg til et notat til AI-treneren din.",
     "delete": "Slett notat",
-    "targetDate": "For dato"
+    "targetDate": "For dato",
+    "activeLabel": "Aktive",
+    "historyLabel": "Historikk",
+    "consumedBy": "Brukt av {{process}} den {{date}}"
   },
   "history": {
     "title": "Planhistorikk",

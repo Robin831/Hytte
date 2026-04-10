@@ -64,7 +64,10 @@
     "saving": "Saving...",
     "empty": "No notes yet. Add a note for your AI coach.",
     "delete": "Delete note",
-    "targetDate": "For date"
+    "targetDate": "For date",
+    "activeLabel": "Active",
+    "historyLabel": "History",
+    "consumedBy": "Used by {{process}} on {{date}}"
   },
   "history": {
     "title": "Plan History",

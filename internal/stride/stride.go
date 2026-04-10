@@ -376,9 +376,9 @@ func ListNotes(db *sql.DB, userID int64, planID *int64, status string) ([]Note, 
 
 	normalizedStatus := strings.ToLower(strings.TrimSpace(status))
 	switch normalizedStatus {
-	case "", "all":
+	case "all":
 		// No additional filter.
-	case "active":
+	case "", "active":
 		query += ` AND consumed_at IS NULL`
 	case "consumed":
 		query += ` AND consumed_at IS NOT NULL`

@@ -25,6 +25,8 @@ interface Note {
   plan_id: number | null
   content: string
   target_date: string
+  consumed_at: string | null
+  consumed_by: string | null
   created_at: string
 }
 
@@ -471,6 +473,7 @@ export default function StridePage() {
 
   const [races, setRaces] = useState<Race[]>([])
   const [notes, setNotes] = useState<Note[]>([])
+  const [consumedNotes, setConsumedNotes] = useState<Note[]>([])
   const [currentPlan, setCurrentPlan] = useState<Plan | null>(null)
   const [hasAnyPlan, setHasAnyPlan] = useState(false)
   const [completedDates, setCompletedDates] = useState<Set<string>>(new Set())
@@ -524,13 +527,20 @@ export default function StridePage() {
 
   const loadNotes = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/stride/notes', { credentials: 'include', signal })
-      if (!res.ok) {
-        throw new Error(`Failed to load notes: ${res.status} ${res.statusText}`)
+      const [activeRes, consumedRes] = await Promise.all([
+        fetch('/api/stride/notes?status=active', { credentials: 'include', signal }),
+        fetch('/api/stride/notes?status=consumed', { credentials: 'include', signal }),
+      ])
+      if (!activeRes.ok) {
+        throw new Error(`Failed to load notes: ${activeRes.status} ${activeRes.statusText}`)
       }
-      const data = await res.json()
+      if (!consumedRes.ok) {
+        throw new Error(`Failed to load consumed notes: ${consumedRes.status} ${consumedRes.statusText}`)
+      }
+      const [activeData, consumedData] = await Promise.all([activeRes.json(), consumedRes.json()])
       if (!signal?.aborted) {
-        setNotes(data.notes ?? [])
+        setNotes(activeData.notes ?? [])
+        setConsumedNotes(consumedData.notes ?? [])
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return
@@ -790,6 +800,7 @@ export default function StridePage() {
         return
       }
       setNotes(prev => prev.filter(n => n.id !== id))
+      setConsumedNotes(prev => prev.filter(n => n.id !== id))
     } catch (error) {
       console.error('Failed to delete note', error)
     }
@@ -1120,30 +1131,72 @@ export default function StridePage() {
 
         {notesLoading ? (
           <p className="text-sm text-gray-400">{t('loading')}</p>
-        ) : notes.length === 0 ? (
+        ) : notes.length === 0 && consumedNotes.length === 0 ? (
           <p className="text-sm text-gray-500">{t('notes.empty')}</p>
         ) : (
-          <div className="space-y-2">
-            {notes.map(note => (
-              <div key={note.id} className="flex items-start gap-3 p-3 bg-gray-800 rounded-xl border border-gray-700 group">
-                <p className="flex-1 text-sm text-gray-200 whitespace-pre-wrap">{note.content}</p>
-                <div className="flex-shrink-0 flex flex-col items-end gap-1">
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteNote(note.id)}
-                    className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
-                    aria-label={t('notes.delete')}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                  <span className="text-xs text-gray-500">
-                    {note.target_date && <span className="mr-1">{formatDate(`${note.target_date}T00:00:00`)}</span>}
-                    {formatDateTime(note.created_at, { dateStyle: 'short', timeStyle: 'short' })}
-                  </span>
+          <>
+            {notes.length > 0 && (
+              <>
+                <h3 className="text-sm font-medium text-gray-400 mb-2">{t('notes.activeLabel')}</h3>
+                <div className="space-y-2 mb-4">
+                  {notes.map(note => (
+                    <div key={note.id} className="flex items-start gap-3 p-3 bg-gray-800 rounded-xl border border-gray-700 group">
+                      <p className="flex-1 text-sm text-gray-200 whitespace-pre-wrap">{note.content}</p>
+                      <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteNote(note.id)}
+                          className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
+                          aria-label={t('notes.delete')}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                        <span className="text-xs text-gray-500">
+                          {note.target_date && <span className="mr-1">{formatDate(`${note.target_date}T00:00:00`)}</span>}
+                          {formatDateTime(note.created_at, { dateStyle: 'short', timeStyle: 'short' })}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ))}
-          </div>
+              </>
+            )}
+
+            {consumedNotes.length > 0 && (
+              <>
+                <h3 className="text-sm font-medium text-gray-400 mb-2">{t('notes.historyLabel')}</h3>
+                <div className="space-y-2">
+                  {consumedNotes.map(note => (
+                    <div key={note.id} className="flex items-start gap-3 p-3 bg-gray-800/60 rounded-xl border border-gray-700/50 group">
+                      <p className="flex-1 text-sm text-gray-400 whitespace-pre-wrap">{note.content}</p>
+                      <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteNote(note.id)}
+                          className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
+                          aria-label={t('notes.delete')}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-gray-700/50 text-gray-400">
+                            {t('notes.consumedBy', {
+                              process: note.consumed_by ?? '',
+                              date: note.consumed_at ? formatDate(note.consumed_at) : '',
+                            })}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {note.target_date && <span className="mr-1">{formatDate(`${note.target_date}T00:00:00`)}</span>}
+                            {formatDateTime(note.created_at, { dateStyle: 'short', timeStyle: 'short' })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </>
         )}
       </section>
 
