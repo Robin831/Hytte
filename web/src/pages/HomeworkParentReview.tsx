@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Loader2,
   BookOpen,
@@ -73,6 +73,10 @@ export default function HomeworkParentReview() {
     messages: Message[]
   } | null>(null)
   const [transcriptLoading, setTranscriptLoading] = useState(false)
+  const reviewsRef = useRef(reviews)
+  reviewsRef.current = reviews
+  const reviewAbortRef = useRef<AbortController | null>(null)
+  const transcriptAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -97,21 +101,27 @@ export default function HomeworkParentReview() {
   }, [t])
 
   const loadReview = useCallback(async (childId: number) => {
-    if (reviews[childId]) return
+    if (reviewsRef.current[childId]) return
+    reviewAbortRef.current?.abort()
+    const controller = new AbortController()
+    reviewAbortRef.current = controller
     setReviewLoading(prev => ({ ...prev, [childId]: true }))
     try {
       const res = await fetch(`/api/homework/children/${childId}/review`, {
         credentials: 'include',
+        signal: controller.signal,
       })
       if (!res.ok) throw new Error(t('review.errors.failedToLoadReview'))
       const data = await res.json()
       setReviews(prev => ({ ...prev, [childId]: data.review }))
     } catch (err) {
-      if (err instanceof Error) setError(err.message)
+      if (err instanceof Error && err.name !== 'AbortError') setError(err.message)
     } finally {
-      setReviewLoading(prev => ({ ...prev, [childId]: false }))
+      if (!controller.signal.aborted) {
+        setReviewLoading(prev => ({ ...prev, [childId]: false }))
+      }
     }
-  }, [reviews, t])
+  }, [t])
 
   function toggleChild(childId: number) {
     const isExpanding = !expanded[childId]
@@ -122,11 +132,14 @@ export default function HomeworkParentReview() {
   }
 
   async function openTranscript(childId: number, conv: ConversationSummary) {
+    transcriptAbortRef.current?.abort()
+    const controller = new AbortController()
+    transcriptAbortRef.current = controller
     setTranscriptLoading(true)
     try {
       const res = await fetch(
         `/api/homework/children/${childId}/conversations/${conv.id}`,
-        { credentials: 'include' },
+        { credentials: 'include', signal: controller.signal },
       )
       if (!res.ok) throw new Error(t('review.errors.failedToLoadTranscript'))
       const data = await res.json()
@@ -137,9 +150,9 @@ export default function HomeworkParentReview() {
         messages: data.messages ?? [],
       })
     } catch (err) {
-      if (err instanceof Error) setError(err.message)
+      if (err instanceof Error && err.name !== 'AbortError') setError(err.message)
     } finally {
-      setTranscriptLoading(false)
+      if (!controller.signal.aborted) setTranscriptLoading(false)
     }
   }
 
@@ -262,6 +275,7 @@ export default function HomeworkParentReview() {
                                       <span
                                         className="flex items-center gap-1 px-1.5 py-0.5 bg-red-900/50 text-red-300 rounded text-xs shrink-0"
                                         title={t('review.repeatedAnswerAlert')}
+                                        aria-label={t('review.repeatedAnswerAlert')}
                                       >
                                         <AlertTriangle size={12} />
                                       </span>
@@ -283,6 +297,7 @@ export default function HomeworkParentReview() {
                                                 key={level}
                                                 className={`inline-block w-2 h-2 rounded-full ${LEVEL_COLORS[level]}`}
                                                 title={`${helpLevelLabel(level)}: ${c}`}
+                                                aria-label={`${helpLevelLabel(level)}: ${c}`}
                                               />
                                             )
                                           })}
@@ -307,10 +322,10 @@ export default function HomeworkParentReview() {
 
       {/* Transcript modal */}
       {(transcript || transcriptLoading) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="transcript-title">
           <div className="bg-gray-800 rounded-lg w-full max-w-2xl max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-              <h2 className="font-medium truncate">
+              <h2 id="transcript-title" className="font-medium truncate">
                 {transcript?.subject || t('noSubject')}
               </h2>
               <button
