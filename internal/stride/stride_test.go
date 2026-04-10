@@ -67,6 +67,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			plan_id     INTEGER REFERENCES stride_plans(id) ON DELETE SET NULL,
 			content     TEXT NOT NULL,
+			target_date TEXT NOT NULL DEFAULT '',
 			created_at  TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE workouts (
