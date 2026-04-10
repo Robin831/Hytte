@@ -98,10 +98,13 @@ func ageCalibration(profile HomeworkProfile) string {
 	age := profile.Age
 	grade := parseGrade(profile.GradeLevel)
 
-	if age <= 8 || grade <= 3 {
+	isYoung := (age > 0 && age <= 8) || (grade > 0 && grade <= 3)
+	isMiddle := (age > 0 && age <= 13) || (grade > 0 && grade <= 8)
+
+	if isYoung {
 		return "Use simple, clear language appropriate for a young child. Keep sentences short. Use everyday examples and be very encouraging.\n\n"
 	}
-	if age <= 13 || grade <= 8 {
+	if isMiddle {
 		return "Use moderate vocabulary appropriate for a middle-school student. You can introduce subject-specific terms but explain them when first used.\n\n"
 	}
 	return "Use advanced vocabulary appropriate for a high-school student. You can use subject-specific terminology and expect more independent reasoning.\n\n"
