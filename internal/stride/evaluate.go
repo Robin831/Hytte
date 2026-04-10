@@ -104,12 +104,13 @@ func RunNightlyEvaluation(ctx context.Context, db *sql.DB, httpClient *http.Clie
 	}
 	rows.Close()
 
-	// Evaluate yesterday — the nightly job runs at 03:00, so "today" has barely
-	// started and the user can't have done a workout yet. The day that just ended
-	// (yesterday) is the correct evaluation target.
-	yesterday := time.Now().UTC().AddDate(0, 0, -1)
-	since := yesterday.Format(time.RFC3339)
-	targetDate := yesterday.Format("2006-01-02")
+	// Evaluate yesterday using explicit UTC day boundaries. The nightly job runs
+	// at 03:00, but the evaluation target is the full UTC day that just ended,
+	// not the last 24 hours from the current time.
+	todayStart := time.Now().UTC().Truncate(24 * time.Hour)
+	yesterdayStart := todayStart.AddDate(0, 0, -1)
+	since := yesterdayStart.Format(time.RFC3339)
+	targetDate := yesterdayStart.Format("2006-01-02")
 
 	for _, userID := range userIDs {
 		if err := evaluateUserWorkouts(ctx, db, httpClient, userID, since, targetDate); err != nil {

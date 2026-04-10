@@ -274,10 +274,14 @@ func TestCreateAndListNotes(t *testing.T) {
 	if note.PlanID != nil {
 		t.Errorf("plan_id = %v, want nil", note.PlanID)
 	}
-	// When no target_date is provided, it should default to today's date (not empty string).
-	today := time.Now().UTC().Format("2006-01-02")
-	if note.TargetDate != today {
-		t.Errorf("target_date = %q, want %q (should default to today)", note.TargetDate, today)
+	// When no target_date is provided, it should default to the note's creation date.
+	createdAt, err := time.Parse(time.RFC3339, note.CreatedAt)
+	if err != nil {
+		t.Fatalf("parse created_at %q: %v", note.CreatedAt, err)
+	}
+	expectedDate := createdAt.UTC().Format("2006-01-02")
+	if note.TargetDate != expectedDate {
+		t.Errorf("target_date = %q, want %q (should default to creation date)", note.TargetDate, expectedDate)
 	}
 
 	// Create a note with an explicit target_date.

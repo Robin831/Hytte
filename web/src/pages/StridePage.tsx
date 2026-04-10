@@ -1137,7 +1137,7 @@ export default function StridePage() {
                     <Trash2 size={14} />
                   </button>
                   <span className="text-xs text-gray-500">
-                    {note.target_date && <span className="mr-1">{formatDate(note.target_date)}</span>}
+                    {note.target_date && <span className="mr-1">{formatDate(`${note.target_date}T00:00:00`)}</span>}
                     {formatDateTime(note.created_at, { dateStyle: 'short', timeStyle: 'short' })}
                   </span>
                 </div>
