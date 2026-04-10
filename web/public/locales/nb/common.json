@@ -29,7 +29,8 @@
     "stride": "Stride",
     "vault": "Hvelv",
     "skywatch": "Himmelvakt",
-    "grocery": "Handleliste"
+    "grocery": "Handleliste",
+    "homework": "Lekser"
   },
   "actions": {
     "save": "Lagre",

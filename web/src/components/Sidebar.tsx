@@ -32,6 +32,7 @@ import {
   Lock,
   Moon,
   ShoppingCart,
+  BookOpen,
 } from 'lucide-react'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
@@ -75,6 +76,7 @@ const navItems: NavItem[] = [
   { to: '/skywatch', icon: <Moon size={20} />, label: 'nav.skywatch', requiresAuth: true, feature: 'skywatch' },
   { to: '/grocery', icon: <ShoppingCart size={20} />, label: 'nav.grocery', requiresAuth: true, feature: 'grocery' },
   { to: '/wordfeud', icon: <Gamepad2 size={20} />, label: 'nav.wordfeud', requiresAuth: true, feature: 'wordfeud' },
+  { to: '/homework', icon: <BookOpen size={20} />, label: 'nav.homework', requiresAuth: true, feature: 'homework', familyRole: 'child' },
   { to: '/forge', icon: <Hammer size={20} />, label: 'nav.forge', requiresAuth: true, requireAdmin: true },
 ]
 

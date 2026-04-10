@@ -29,7 +29,8 @@
     "stride": "Stride",
     "vault": "ตู้นิรภัย",
     "skywatch": "สังเกตท้องฟ้า",
-    "grocery": "รายการซื้อของ"
+    "grocery": "รายการซื้อของ",
+    "homework": "การบ้าน"
   },
   "actions": {
     "save": "บันทึก",

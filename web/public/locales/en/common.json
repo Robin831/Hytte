@@ -29,7 +29,8 @@
     "stride": "Stride",
     "vault": "Vault",
     "skywatch": "Sky Watch",
-    "grocery": "Grocery List"
+    "grocery": "Grocery List",
+    "homework": "Homework"
   },
   "actions": {
     "save": "Save",

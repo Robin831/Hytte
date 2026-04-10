@@ -1,0 +1,39 @@
+{
+  "title": "Homework",
+  "newConversation": "New conversation",
+  "noSubject": "New topic",
+  "yesterday": "Yesterday",
+  "backToList": "Back to conversations",
+  "empty": {
+    "noConversations": "No homework conversations yet",
+    "startNew": "Start a new conversation to get help"
+  },
+  "welcome": {
+    "title": "Homework Helper",
+    "subtitle": "Ask a question or take a photo of your homework to get started"
+  },
+  "thinking": "Thinking...",
+  "dismissError": "Dismiss error",
+  "imagePreview": "Selected image preview",
+  "removeImage": "Remove image",
+  "cameraButton": "Take photo or select image",
+  "cameraLabel": "Camera or image input",
+  "helpLevel": {
+    "label": "How much help do you want?",
+    "hint": "Hint",
+    "explain": "Explain",
+    "walkthrough": "Walk me through",
+    "answer": "Show answer"
+  },
+  "input": {
+    "placeholder": "Ask about your homework...",
+    "sendLabel": "Send message",
+    "copyMessage": "Copy message"
+  },
+  "errors": {
+    "failedToLoad": "Failed to load conversations",
+    "failedToCreate": "Failed to create conversation",
+    "failedToLoadMessages": "Failed to load messages",
+    "failedToSend": "Failed to send message"
+  }
+}
