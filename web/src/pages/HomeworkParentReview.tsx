@@ -77,7 +77,7 @@ export default function HomeworkParentReview() {
   useEffect(() => {
     reviewsRef.current = reviews
   })
-  const reviewAbortRef = useRef<AbortController | null>(null)
+  const reviewAbortRefs = useRef<Record<number, AbortController>>({})
   const transcriptAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -102,11 +102,21 @@ export default function HomeworkParentReview() {
     return () => { controller.abort() }
   }, [t])
 
+  // Cancel any in-flight requests on unmount
+  useEffect(() => {
+    const abortRefs = reviewAbortRefs
+    const transcriptRef = transcriptAbortRef
+    return () => {
+      Object.values(abortRefs.current).forEach(c => c.abort())
+      transcriptRef.current?.abort()
+    }
+  }, [])
+
   const loadReview = useCallback(async (childId: number) => {
     if (reviewsRef.current[childId]) return
-    reviewAbortRef.current?.abort()
+    reviewAbortRefs.current[childId]?.abort()
     const controller = new AbortController()
-    reviewAbortRef.current = controller
+    reviewAbortRefs.current[childId] = controller
     setReviewLoading(prev => ({ ...prev, [childId]: true }))
     try {
       const res = await fetch(`/api/homework/children/${childId}/review`, {
@@ -115,13 +125,14 @@ export default function HomeworkParentReview() {
       })
       if (!res.ok) throw new Error(t('review.errors.failedToLoadReview'))
       const data = await res.json()
-      setReviews(prev => ({ ...prev, [childId]: data.review }))
+      if (!controller.signal.aborted) {
+        setReviews(prev => ({ ...prev, [childId]: data.review }))
+      }
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') setError(err.message)
     } finally {
-      if (!controller.signal.aborted) {
-        setReviewLoading(prev => ({ ...prev, [childId]: false }))
-      }
+      // Always clear loading for this child, even on abort
+      setReviewLoading(prev => ({ ...prev, [childId]: false }))
     }
   }, [t])
 
@@ -145,17 +156,27 @@ export default function HomeworkParentReview() {
       )
       if (!res.ok) throw new Error(t('review.errors.failedToLoadTranscript'))
       const data = await res.json()
-      setTranscript({
-        childId,
-        conversationId: conv.id,
-        subject: conv.subject,
-        messages: data.messages ?? [],
-      })
+      if (!controller.signal.aborted) {
+        setTranscript({
+          childId,
+          conversationId: conv.id,
+          subject: conv.subject,
+          messages: data.messages ?? [],
+        })
+      }
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') setError(err.message)
     } finally {
+      // Always clear loading; closeTranscript may have already cleared it via abort
       if (!controller.signal.aborted) setTranscriptLoading(false)
     }
+  }
+
+  function closeTranscript() {
+    transcriptAbortRef.current?.abort()
+    transcriptAbortRef.current = null
+    setTranscript(null)
+    setTranscriptLoading(false)
   }
 
   function helpLevelLabel(level: string): string {
@@ -331,7 +352,7 @@ export default function HomeworkParentReview() {
                 {transcript?.subject || t('noSubject')}
               </h2>
               <button
-                onClick={() => setTranscript(null)}
+                onClick={closeTranscript}
                 className="p-1 hover:bg-gray-700 rounded cursor-pointer"
                 aria-label={t('review.closeTranscript')}
               >

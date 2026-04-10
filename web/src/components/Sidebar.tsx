@@ -114,7 +114,7 @@ export default function Sidebar() {
     if (item.requiresAuth && !user) return false
     if (item.requireAdmin && !user?.is_admin) return false
     if (item.feature && !hasFeature(item.feature)) return false
-    if (item.familyRole === 'parent' && !familyStatus?.is_parent) return false
+    if (item.familyRole === 'parent' && !familyStatus?.is_parent && !user?.is_admin) return false
     if (item.familyRole === 'child' && !familyStatus?.is_child) return false
     return true
   })
