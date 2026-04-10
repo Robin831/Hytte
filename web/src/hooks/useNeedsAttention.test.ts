@@ -102,6 +102,14 @@ describe('isPRExhaustion', () => {
   it('is case-insensitive', () => {
     expect(isPRExhaustion(makeStuckBead({ last_error: 'CI_EXHAUSTED' }))).toBe(true)
   })
+
+  it('detects backend "CI fix attempts exhausted" wording', () => {
+    expect(isPRExhaustion(makeStuckBead({ last_error: 'CI fix attempts exhausted' }))).toBe(true)
+  })
+
+  it('detects backend "Review fix attempts exhausted" wording', () => {
+    expect(isPRExhaustion(makeStuckBead({ last_error: 'Review fix attempts exhausted' }))).toBe(true)
+  })
 })
 
 describe('classifyStatuses', () => {
@@ -175,6 +183,16 @@ describe('classifySource', () => {
 
   it('returns "pr" when last_error indicates max_retries', () => {
     expect(classifySource(makeStuckBead({ last_error: 'max_retries reached' }))).toBe('pr')
+  })
+
+  it('returns "pr" for backend "CI fix attempts exhausted" wording', () => {
+    expect(classifySource(makeStuckBead({ last_error: 'CI fix attempts exhausted' }))).toBe('pr')
+  })
+
+  it('returns "pr" for backend "Review fix attempts exhausted" wording', () => {
+    // Synthetic stuck-PR rows must not get source='retry' or Force Smith will 404
+    const bead = makeStuckBead({ needs_human: true, last_error: 'Review fix attempts exhausted' })
+    expect(classifySource(bead)).toBe('pr')
   })
 })
 

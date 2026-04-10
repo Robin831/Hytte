@@ -68,15 +68,17 @@ export function hasExhaustedReason(lastError: string | undefined, kind: 'ci' | '
 }
 
 export function isPRExhaustion(bead: StuckBead): boolean {
-  const lastError = bead.last_error?.toLowerCase() ?? ''
+  const lastError = bead.last_error
+  const normalized = lastError?.toLowerCase() ?? ''
 
+  // Delegate to hasExhaustedReason so backend strings like
+  // "Review fix attempts exhausted" / "CI fix attempts exhausted" are matched
+  // in addition to the short ci_exhausted / review_exhausted forms.
   return (
-    lastError.includes('ci_exhausted') ||
-    lastError.includes('ci exhausted') ||
-    lastError.includes('review_exhausted') ||
-    lastError.includes('review exhausted') ||
-    lastError.includes('max_retries') ||
-    lastError.includes('max retries')
+    hasExhaustedReason(lastError, 'ci') ||
+    hasExhaustedReason(lastError, 'review') ||
+    normalized.includes('max_retries') ||
+    normalized.includes('max retries')
   )
 }
 
