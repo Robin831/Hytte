@@ -60,6 +60,12 @@ export default function HomeworkChat() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const sendAbortRef = useRef<AbortController | null>(null)
+
+  // Abort any in-flight send on unmount
+  useEffect(() => {
+    return () => { sendAbortRef.current?.abort() }
+  }, [])
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -142,6 +148,9 @@ export default function HomeworkChat() {
     }
     setMessages(prev => [...prev, tempUserMsg])
 
+    const controller = new AbortController()
+    sendAbortRef.current = controller
+
     try {
       const formData = new FormData()
       formData.append('message', content)
@@ -154,6 +163,7 @@ export default function HomeworkChat() {
         method: 'POST',
         credentials: 'include',
         body: formData,
+        signal: controller.signal,
       })
 
       if (!res.ok) {
@@ -226,6 +236,7 @@ export default function HomeworkChat() {
         }
       }
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return
       // Remove optimistic message and restore draft
       setMessages(prev => prev.filter(m => m.id !== tempUserMsg.id))
       setStreamingText('')
@@ -238,6 +249,7 @@ export default function HomeworkChat() {
       }
       if (err instanceof Error) setError(err.message)
     } finally {
+      sendAbortRef.current = null
       setSending(false)
       inputRef.current?.focus()
     }
@@ -278,7 +290,7 @@ export default function HomeworkChat() {
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" role="log" aria-live="polite">
         {messages.length === 0 && !streamingText ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-500 px-4">
             <Bot size={48} className="mb-4 opacity-30" />
@@ -339,22 +351,26 @@ export default function HomeworkChat() {
       {/* Help level selector */}
       <div className="border-t border-gray-700 bg-gray-900 px-4 pt-3">
         <div className="max-w-3xl mx-auto">
-          <p className="text-xs text-gray-500 mb-2">{t('helpLevel.label')}</p>
-          <div className="flex gap-2 flex-wrap">
-            {HELP_LEVELS.map(level => (
-              <button
-                key={level}
-                onClick={() => setHelpLevel(level)}
-                disabled={sending}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer disabled:cursor-not-allowed ${
-                  helpLevel === level
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-300'
-                }`}
-              >
-                {t(`helpLevel.${level}`)}
-              </button>
-            ))}
+          <div role="radiogroup" aria-label={t('helpLevel.label')}>
+            <p className="text-xs text-gray-500 mb-2">{t('helpLevel.label')}</p>
+            <div className="flex gap-2 flex-wrap">
+              {HELP_LEVELS.map(level => (
+                <button
+                  key={level}
+                  role="radio"
+                  aria-checked={helpLevel === level}
+                  onClick={() => setHelpLevel(level)}
+                  disabled={sending}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer disabled:cursor-not-allowed ${
+                    helpLevel === level
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-300'
+                  }`}
+                >
+                  {t(`helpLevel.${level}`)}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -408,6 +424,7 @@ export default function HomeworkChat() {
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={t('input.placeholder')}
+            aria-label={t('input.placeholder')}
             rows={1}
             className="flex-1 bg-gray-800 border border-gray-600 rounded-xl px-4 py-3 text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-500 max-h-40 overflow-y-auto"
             style={{ minHeight: '48px' }}
@@ -494,9 +511,11 @@ function MessageBubble({ message }: { message: Message }) {
             remarkPlugins={[remarkGfm]}
             components={{
               a({ href, children }: React.ComponentPropsWithoutRef<'a'>) {
+                const safeHref = href && /^https?:\/\//i.test(href) ? href : undefined
+                if (!safeHref) return <span>{children}</span>
                 return (
                   <a
-                    href={href}
+                    href={safeHref}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-400 hover:text-blue-300 underline"
