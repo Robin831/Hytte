@@ -542,7 +542,9 @@ func sendMessage(db *sql.DB, w http.ResponseWriter, r *http.Request, kidID, conf
 
 	if err != nil {
 		log.Printf("homework: claude error conv %d: %v", conv.ID, err)
-		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Claude failed to respond\"}\n\n")
+		errMsg := "Claude failed to respond: " + err.Error()
+		errJSON, _ := json.Marshal(map[string]string{"error": errMsg})
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", errJSON)
 		flusher.Flush()
 		return
 	}
