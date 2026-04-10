@@ -74,7 +74,9 @@ export default function HomeworkParentReview() {
   } | null>(null)
   const [transcriptLoading, setTranscriptLoading] = useState(false)
   const reviewsRef = useRef(reviews)
-  reviewsRef.current = reviews
+  useEffect(() => {
+    reviewsRef.current = reviews
+  })
   const reviewAbortRef = useRef<AbortController | null>(null)
   const transcriptAbortRef = useRef<AbortController | null>(null)
 
