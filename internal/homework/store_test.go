@@ -67,6 +67,9 @@ func TestProfileCRUD(t *testing.T) {
 	if got.Age != 10 || got.GradeLevel != "5th" {
 		t.Fatalf("unexpected profile values: age=%d grade=%s", got.Age, got.GradeLevel)
 	}
+	if got.PreferredLanguage != "nb" {
+		t.Fatalf("expected preferred_language 'nb', got %q", got.PreferredLanguage)
+	}
 	if got.SchoolName != "Test School" {
 		t.Fatalf("expected school 'Test School', got %q", got.SchoolName)
 	}
@@ -97,6 +100,9 @@ func TestProfileCRUD(t *testing.T) {
 	}
 	if got.Age != 11 || got.GradeLevel != "6th" {
 		t.Fatalf("profile not updated: age=%d grade=%s", got.Age, got.GradeLevel)
+	}
+	if got.PreferredLanguage != "en" {
+		t.Fatalf("expected preferred_language 'en' after update, got %q", got.PreferredLanguage)
 	}
 	if len(got.Subjects) != 3 {
 		t.Fatalf("expected 3 subjects, got %d", len(got.Subjects))

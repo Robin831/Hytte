@@ -20,6 +20,7 @@ import (
 	"github.com/Robin831/Hytte/internal/family"
 	"github.com/Robin831/Hytte/internal/forge"
 	"github.com/Robin831/Hytte/internal/grocery"
+	"github.com/Robin831/Hytte/internal/homework"
 	"github.com/Robin831/Hytte/internal/infra"
 	"github.com/Robin831/Hytte/internal/kiosk"
 	"github.com/Robin831/Hytte/internal/lactate"
@@ -604,6 +605,16 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Put("/allowance/my/goals/{id}", allowance.UpdateMyGoalHandler(db))
 				// Photo serving (accessible to the child who uploaded and the parent).
 				r.Get("/allowance/photos/{completion_id}", allowance.ServePhotoHandler(db))
+			})
+
+			// Homework helper — gated by "homework" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "homework"))
+				r.Get("/homework/children/{childId}/profile", homework.HandleGetProfile(db))
+				r.Put("/homework/children/{childId}/profile", homework.HandleUpdateProfile(db))
+				r.Get("/homework/children/{childId}/conversations", homework.HandleListConversations(db))
+				r.Post("/homework/children/{childId}/conversations", homework.HandleNewConversation(db))
+				r.Get("/homework/children/{childId}/conversations/{id}", homework.HandleGetConversation(db))
 			})
 
 			// Transit departures — gated by "transit" feature.
