@@ -323,8 +323,9 @@ func TestConversationUpdatedAtOnMessage(t *testing.T) {
 	}
 	originalUpdatedAt := conv.UpdatedAt
 
-	// Ensure a distinct timestamp for the next operation.
-	time.Sleep(2 * time.Millisecond)
+	// Ensure a distinct timestamp for the next operation even when the
+	// underlying clock or stored timestamp format has coarse resolution.
+	time.Sleep(1100 * time.Millisecond)
 
 	_, err = AddMessage(d, HomeworkMessage{
 		ConversationID: conv.ID,

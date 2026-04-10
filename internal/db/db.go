@@ -1462,7 +1462,7 @@ func createSchema(db *sql.DB) error {
 		conversation_id INTEGER NOT NULL REFERENCES homework_conversations(id) ON DELETE CASCADE,
 		role            TEXT NOT NULL DEFAULT '',
 		content         TEXT NOT NULL DEFAULT '',
-		help_level      TEXT NOT NULL DEFAULT '',
+		help_level      TEXT NOT NULL DEFAULT '' CHECK (help_level IN ('', 'hint', 'explain', 'walkthrough', 'answer')),
 		image_path      TEXT NOT NULL DEFAULT '',
 		created_at      TEXT NOT NULL DEFAULT ''
 	);

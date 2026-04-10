@@ -242,6 +242,10 @@ func ListConversationsByKid(db *sql.DB, kidID int64) ([]HomeworkConversation, er
 
 // AddMessage inserts a new message into a homework conversation and updates the conversation timestamp.
 func AddMessage(db *sql.DB, msg HomeworkMessage) (HomeworkMessage, error) {
+	if msg.HelpLevel != "" && !ValidHelpLevels[msg.HelpLevel] {
+		return HomeworkMessage{}, fmt.Errorf("invalid help_level %q: must be one of hint, explain, walkthrough, answer", msg.HelpLevel)
+	}
+
 	encContent, err := encryption.EncryptField(msg.Content)
 	if err != nil {
 		return HomeworkMessage{}, fmt.Errorf("encrypt content: %w", err)
@@ -251,8 +255,14 @@ func AddMessage(db *sql.DB, msg HomeworkMessage) (HomeworkMessage, error) {
 		return HomeworkMessage{}, fmt.Errorf("encrypt image_path: %w", err)
 	}
 
+	tx, err := db.Begin()
+	if err != nil {
+		return HomeworkMessage{}, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
 	now := time.Now().UTC().Format(timeFormat)
-	result, err := db.Exec(`
+	result, err := tx.Exec(`
 		INSERT INTO homework_messages (conversation_id, role, content, help_level, image_path, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		msg.ConversationID, msg.Role, encContent, string(msg.HelpLevel), encImagePath, now,
@@ -267,9 +277,13 @@ func AddMessage(db *sql.DB, msg HomeworkMessage) (HomeworkMessage, error) {
 	}
 
 	// Update the conversation's updated_at timestamp.
-	_, err = db.Exec(`UPDATE homework_conversations SET updated_at = ? WHERE id = ?`, now, msg.ConversationID)
+	_, err = tx.Exec(`UPDATE homework_conversations SET updated_at = ? WHERE id = ?`, now, msg.ConversationID)
 	if err != nil {
 		return HomeworkMessage{}, fmt.Errorf("update conversation timestamp: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return HomeworkMessage{}, fmt.Errorf("commit transaction: %w", err)
 	}
 
 	msg.ID = id
