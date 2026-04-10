@@ -58,6 +58,7 @@ func NextNightlyEvaluationRun(now time.Time, loc *time.Location) time.Time {
 // matchedSession may be nil for bonus (unplanned) workouts or when no plan exists.
 // plan is used for weekly context; an empty Plan (ID == 0) is acceptable.
 // profile carries the athlete's HR zones and training context.
+// notes are unconsumed user notes providing context about sickness, fatigue, etc.
 func EvaluateWorkout(
 	ctx context.Context,
 	cfg *training.ClaudeConfig,
@@ -65,8 +66,9 @@ func EvaluateWorkout(
 	matchedSession *PlannedSession,
 	plan Plan,
 	profile training.UserTrainingProfile,
+	notes []Note,
 ) (*Evaluation, error) {
-	prompt := buildEvalPrompt(workout, matchedSession, plan, profile)
+	prompt := buildEvalPrompt(workout, matchedSession, plan, profile, notes)
 
 	response, err := runPromptFunc(ctx, cfg, prompt)
 	if err != nil {
@@ -142,7 +144,7 @@ func RunUserEvaluation(ctx context.Context, db *sql.DB, httpClient *http.Client,
 	evaluated := 0
 	for _, workout := range workouts {
 		evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
-		if err := evaluateSingleWorkout(evalCtx, db, httpClient, userID, workout, claudeCfg, profile); err != nil {
+		if err := evaluateSingleWorkout(evalCtx, db, httpClient, userID, workout, claudeCfg, profile, nil); err != nil {
 			log.Printf("stride eval: workout %d for user %d: %v", workout.ID, userID, err)
 		} else {
 			evaluated++
@@ -168,15 +170,45 @@ func evaluateUserWorkouts(ctx context.Context, db *sql.DB, httpClient *http.Clie
 		return fmt.Errorf("query unevaluated workouts: %w", err)
 	}
 
+	// Fetch unconsumed notes for this user to provide context to Claude.
+	userNotes, err := ListNotes(db, userID, nil, "active")
+	if err != nil {
+		log.Printf("stride eval: fetch notes for user %d: %v", userID, err)
+		// Non-fatal — continue without notes.
+	}
+
 	if len(workouts) > 0 {
 		profile := training.BuildUserTrainingProfile(db, userID)
 
+		anySuccess := false
 		for _, workout := range workouts {
 			evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
-			if err := evaluateSingleWorkout(evalCtx, db, httpClient, userID, workout, claudeCfg, profile); err != nil {
+			if err := evaluateSingleWorkout(evalCtx, db, httpClient, userID, workout, claudeCfg, profile, userNotes); err != nil {
 				log.Printf("stride eval: workout %d for user %d: %v", workout.ID, userID, err)
+			} else {
+				anySuccess = true
 			}
 			cancel()
+		}
+
+		// Mark notes consumed once per user per nightly run, only when notes were
+		// actually sent to Claude (workouts existed and at least one succeeded).
+		if anySuccess && len(userNotes) > 0 {
+			noteIDs := make([]int64, len(userNotes))
+			for i, n := range userNotes {
+				noteIDs[i] = n.ID
+			}
+			tx, err := db.BeginTx(ctx, nil)
+			if err != nil {
+				log.Printf("stride eval: begin tx to mark notes consumed for user %d: %v", userID, err)
+			} else {
+				if err := MarkNotesConsumed(ctx, tx, userID, noteIDs, "nightly"); err != nil {
+					log.Printf("stride eval: mark notes consumed for user %d: %v", userID, err)
+					tx.Rollback()
+				} else {
+					tx.Commit()
+				}
+			}
 		}
 	}
 
@@ -251,6 +283,7 @@ func queryUnevaluatedWorkouts(ctx context.Context, db *sql.DB, userID int64, sin
 
 // evaluateSingleWorkout finds the matching plan+session for a workout, evaluates it via
 // Claude, stores the result, and sends a push notification for critical flags.
+// notes are unconsumed user notes providing context about sickness, fatigue, etc.
 func evaluateSingleWorkout(
 	ctx context.Context,
 	db *sql.DB,
@@ -259,6 +292,7 @@ func evaluateSingleWorkout(
 	workout training.Workout,
 	cfg *training.ClaudeConfig,
 	profile training.UserTrainingProfile,
+	notes []Note,
 ) error {
 	workoutDate := extractDate(workout.StartedAt)
 	if workoutDate == "" {
@@ -278,7 +312,7 @@ func evaluateSingleWorkout(
 		matchedSession = MatchWorkoutToSession(workout, sessions)
 	}
 
-	eval, err := EvaluateWorkout(ctx, cfg, workout, matchedSession, planForEval, profile)
+	eval, err := EvaluateWorkout(ctx, cfg, workout, matchedSession, planForEval, profile, notes)
 	if err != nil {
 		return fmt.Errorf("evaluate workout: %w", err)
 	}
@@ -609,11 +643,13 @@ func buildCriticalNotifBody(eval *Evaluation) string {
 }
 
 // buildEvalPrompt assembles the Claude prompt for evaluating a single workout.
+// notes are unconsumed user notes providing context about sickness, fatigue, etc.
 func buildEvalPrompt(
 	workout training.Workout,
 	matchedSession *PlannedSession,
 	plan Plan,
 	profile training.UserTrainingProfile,
+	notes []Note,
 ) string {
 	var sb strings.Builder
 
@@ -697,6 +733,15 @@ func buildEvalPrompt(
 					fmt.Fprintf(&sb, "- %s: %s\n", dp.Date, dp.Session.Description)
 				}
 			}
+		}
+		sb.WriteString("\n")
+	}
+
+	if len(notes) > 0 {
+		sb.WriteString("## User Notes\n")
+		sb.WriteString("The athlete left the following notes. Consider these for context about sickness, fatigue, skipped workouts, or other factors:\n")
+		for _, n := range notes {
+			fmt.Fprintf(&sb, "- [%s] %s\n", n.TargetDate, n.Content)
 		}
 		sb.WriteString("\n")
 	}

@@ -2,7 +2,9 @@ package stride
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -163,7 +165,7 @@ func TestBuildEvalPrompt_NoSession(t *testing.T) {
 		AvgHeartRate:    145,
 		Title:           "Morning Run",
 	}
-	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{})
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
 	if !strings.Contains(prompt, "bonus/unplanned") {
 		t.Error("expected prompt to mention bonus/unplanned when no session")
 	}
@@ -196,7 +198,7 @@ func TestBuildEvalPrompt_WithSession(t *testing.T) {
 		WeekEnd:   "2026-04-13",
 		Plan:      json.RawMessage(`[]`),
 	}
-	prompt := buildEvalPrompt(workout, session, plan, training.UserTrainingProfile{})
+	prompt := buildEvalPrompt(workout, session, plan, training.UserTrainingProfile{}, nil)
 	if !strings.Contains(prompt, "4x10min threshold") {
 		t.Error("expected prompt to include session main set")
 	}
@@ -211,7 +213,7 @@ func TestBuildEvalPrompt_OmitsEmptyTitle(t *testing.T) {
 		StartedAt: "2026-04-06T07:00:00Z",
 		Title:     "",
 	}
-	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{})
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
 	if strings.Contains(prompt, "Title:") {
 		t.Error("prompt should not include Title line when title is empty")
 	}
@@ -436,7 +438,7 @@ func TestEvaluateWorkout_Success(t *testing.T) {
 	cfg := &training.ClaudeConfig{Enabled: true, Model: "claude-test"}
 	workout := training.Workout{Sport: "running", StartedAt: "2026-04-06T07:00:00Z"}
 
-	eval, err := EvaluateWorkout(context.Background(), cfg, workout, nil, Plan{}, training.UserTrainingProfile{})
+	eval, err := EvaluateWorkout(context.Background(), cfg, workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
 	if err != nil {
 		t.Fatalf("EvaluateWorkout: %v", err)
 	}
@@ -453,7 +455,7 @@ func TestEvaluateWorkout_PromptError(t *testing.T) {
 	t.Cleanup(func() { runPromptFunc = origFn })
 
 	cfg := &training.ClaudeConfig{Enabled: true}
-	_, err := EvaluateWorkout(context.Background(), cfg, training.Workout{}, nil, Plan{}, training.UserTrainingProfile{})
+	_, err := EvaluateWorkout(context.Background(), cfg, training.Workout{}, nil, Plan{}, training.UserTrainingProfile{}, nil)
 	if err == nil {
 		t.Error("expected error from failed prompt, got nil")
 	}
@@ -467,7 +469,7 @@ func TestEvaluateWorkout_InvalidJSON(t *testing.T) {
 	t.Cleanup(func() { runPromptFunc = origFn })
 
 	cfg := &training.ClaudeConfig{Enabled: true}
-	_, err := EvaluateWorkout(context.Background(), cfg, training.Workout{}, nil, Plan{}, training.UserTrainingProfile{})
+	_, err := EvaluateWorkout(context.Background(), cfg, training.Workout{}, nil, Plan{}, training.UserTrainingProfile{}, nil)
 	if err == nil {
 		t.Error("expected error for invalid JSON response, got nil")
 	}
@@ -646,5 +648,193 @@ func TestEvaluateRestDaysAndMissedSessions_Idempotent(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("expected 1 evaluation after two runs (idempotent), got %d", count)
+	}
+}
+
+// --- Notes in nightly evaluation ---
+
+func TestBuildEvalPrompt_IncludesNotes(t *testing.T) {
+	workout := training.Workout{
+		Sport:     "running",
+		StartedAt: "2026-04-08T07:00:00Z",
+	}
+	notes := []Note{
+		{ID: 1, Content: "Feeling sick, sore throat", TargetDate: "2026-04-08"},
+		{ID: 2, Content: "Slept poorly last night", TargetDate: "2026-04-07"},
+	}
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, notes)
+	if !strings.Contains(prompt, "User Notes") {
+		t.Error("expected prompt to contain User Notes section")
+	}
+	if !strings.Contains(prompt, "Feeling sick, sore throat") {
+		t.Error("expected prompt to contain first note content")
+	}
+	if !strings.Contains(prompt, "Slept poorly last night") {
+		t.Error("expected prompt to contain second note content")
+	}
+}
+
+func TestEvaluateUserWorkouts_NotesConsumedAfterSuccess(t *testing.T) {
+	db := setupTestDB(t)
+
+	origFn := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		return `{"planned_type":"easy","actual_type":"easy","compliance":"compliant","notes":"Good.","flags":[],"adjustments":"None."}`, nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFn })
+
+	// Set up Claude config.
+	_, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'stride_enabled', 'true')`)
+	if err != nil {
+		t.Fatalf("insert pref: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true')`)
+	if err != nil {
+		t.Fatalf("insert pref: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_cli_path', '/usr/bin/claude')`)
+	if err != nil {
+		t.Fatalf("insert pref: %v", err)
+	}
+
+	yesterday := time.Now().UTC().AddDate(0, 0, -1)
+	weekStart := yesterday.AddDate(0, 0, -3).Format("2006-01-02")
+	weekEnd := yesterday.AddDate(0, 0, 3).Format("2006-01-02")
+	insertTestPlan(t, db, 1, weekStart, weekEnd, `[]`)
+
+	// Insert a workout from yesterday.
+	workoutStarted := yesterday.Format("2006-01-02") + "T12:00:00Z"
+	_, err = db.Exec(`
+		INSERT INTO workouts (id, user_id, sport, started_at, fit_file_hash, created_at)
+		VALUES (100, 1, 'running', ?, 'hash-notes-test', ?)
+	`, workoutStarted, workoutStarted)
+	if err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	// Insert unconsumed notes.
+	note1, err := CreateNote(db, 1, nil, "Feeling fatigued", yesterday.Format("2006-01-02"))
+	if err != nil {
+		t.Fatalf("create note 1: %v", err)
+	}
+	note2, err := CreateNote(db, 1, nil, "Sore knee after last run", yesterday.Format("2006-01-02"))
+	if err != nil {
+		t.Fatalf("create note 2: %v", err)
+	}
+
+	ctx := context.Background()
+	since := yesterday.Format("2006-01-02") + "T00:00:00Z"
+	targetDate := yesterday.Format("2006-01-02")
+	if err := evaluateUserWorkouts(ctx, db, nil, 1, since, targetDate); err != nil {
+		t.Fatalf("evaluateUserWorkouts: %v", err)
+	}
+
+	// Verify notes are consumed.
+	for _, noteID := range []int64{note1.ID, note2.ID} {
+		var consumedBy sql.NullString
+		if err := db.QueryRow(`SELECT consumed_by FROM stride_notes WHERE id = ?`, noteID).Scan(&consumedBy); err != nil {
+			t.Fatalf("query note %d: %v", noteID, err)
+		}
+		if !consumedBy.Valid || consumedBy.String != "nightly" {
+			t.Errorf("note %d consumed_by = %v, want 'nightly'", noteID, consumedBy)
+		}
+	}
+}
+
+func TestEvaluateUserWorkouts_NotesNotConsumedOnClaudeFailure(t *testing.T) {
+	db := setupTestDB(t)
+
+	origFn := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		return "", errors.New("claude call failed")
+	}
+	t.Cleanup(func() { runPromptFunc = origFn })
+
+	_, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'stride_enabled', 'true')`)
+	if err != nil {
+		t.Fatalf("insert pref: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true')`)
+	if err != nil {
+		t.Fatalf("insert pref: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_cli_path', '/usr/bin/claude')`)
+	if err != nil {
+		t.Fatalf("insert pref: %v", err)
+	}
+
+	yesterday := time.Now().UTC().AddDate(0, 0, -1)
+	weekStart := yesterday.AddDate(0, 0, -3).Format("2006-01-02")
+	weekEnd := yesterday.AddDate(0, 0, 3).Format("2006-01-02")
+	insertTestPlan(t, db, 1, weekStart, weekEnd, `[]`)
+
+	workoutStarted := yesterday.Format("2006-01-02") + "T12:00:00Z"
+	_, err = db.Exec(`
+		INSERT INTO workouts (id, user_id, sport, started_at, fit_file_hash, created_at)
+		VALUES (101, 1, 'running', ?, 'hash-notes-fail', ?)
+	`, workoutStarted, workoutStarted)
+	if err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	note, err := CreateNote(db, 1, nil, "Feeling tired", yesterday.Format("2006-01-02"))
+	if err != nil {
+		t.Fatalf("create note: %v", err)
+	}
+
+	ctx := context.Background()
+	since := yesterday.Format("2006-01-02") + "T00:00:00Z"
+	targetDate := yesterday.Format("2006-01-02")
+	// evaluateUserWorkouts logs errors but doesn't return them for individual workouts.
+	evaluateUserWorkouts(ctx, db, nil, 1, since, targetDate)
+
+	// Notes should NOT be consumed because Claude call failed.
+	var consumedAt sql.NullString
+	if err := db.QueryRow(`SELECT consumed_at FROM stride_notes WHERE id = ?`, note.ID).Scan(&consumedAt); err != nil {
+		t.Fatalf("query note: %v", err)
+	}
+	if consumedAt.Valid {
+		t.Errorf("note should not be consumed when Claude call fails, but consumed_at = %v", consumedAt.String)
+	}
+}
+
+func TestEvaluateUserWorkouts_NotesNotConsumedWhenNoWorkouts(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'stride_enabled', 'true')`)
+	if err != nil {
+		t.Fatalf("insert pref: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true')`)
+	if err != nil {
+		t.Fatalf("insert pref: %v", err)
+	}
+	_, err = db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_cli_path', '/usr/bin/claude')`)
+	if err != nil {
+		t.Fatalf("insert pref: %v", err)
+	}
+
+	yesterday := time.Now().UTC().AddDate(0, 0, -1)
+
+	// Insert unconsumed notes but NO workouts.
+	note, err := CreateNote(db, 1, nil, "Skipped today, feeling unwell", yesterday.Format("2006-01-02"))
+	if err != nil {
+		t.Fatalf("create note: %v", err)
+	}
+
+	ctx := context.Background()
+	since := yesterday.Format("2006-01-02") + "T00:00:00Z"
+	targetDate := yesterday.Format("2006-01-02")
+	if err := evaluateUserWorkouts(ctx, db, nil, 1, since, targetDate); err != nil {
+		t.Fatalf("evaluateUserWorkouts: %v", err)
+	}
+
+	// Notes should NOT be consumed because no workouts exist.
+	var consumedAt sql.NullString
+	if err := db.QueryRow(`SELECT consumed_at FROM stride_notes WHERE id = ?`, note.ID).Scan(&consumedAt); err != nil {
+		t.Fatalf("query note: %v", err)
+	}
+	if consumedAt.Valid {
+		t.Errorf("note should not be consumed when no workouts exist, but consumed_at = %v", consumedAt.String)
 	}
 }
