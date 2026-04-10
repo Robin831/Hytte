@@ -620,15 +620,19 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Get("/homework/conversations/{id}", homework.HandleGetMyConversation(db))
 					r.Post("/homework/conversations/{id}/messages", homework.HandleSendMyMessage(db))
 				})
-				// Parent/admin: access child data via child ID.
+				// Parent-facing: these handlers enforce the parent↔child link.
 				r.Group(func(r chi.Router) {
-					r.Use(family.RequireParentOrAdmin(db))
+					r.Use(family.RequireParent(db))
 					r.Get("/homework/children/{childId}/profile", homework.HandleGetProfile(db))
 					r.Put("/homework/children/{childId}/profile", homework.HandleUpdateProfile(db))
 					r.Get("/homework/children/{childId}/conversations", homework.HandleListConversations(db))
 					r.Post("/homework/children/{childId}/conversations", homework.HandleNewConversation(db))
 					r.Get("/homework/children/{childId}/conversations/{id}", homework.HandleGetConversation(db))
 					r.Post("/homework/children/{childId}/conversations/{id}/messages", homework.HandleSendMessage(db))
+				})
+				// Parent/admin: review handler supports explicit admin access.
+				r.Group(func(r chi.Router) {
+					r.Use(family.RequireParentOrAdmin(db))
 					r.Get("/homework/children/{childId}/review", homework.HandleParentReview(db))
 				})
 			})

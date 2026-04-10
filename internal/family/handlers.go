@@ -50,6 +50,32 @@ func RequireChild(db *sql.DB) func(http.Handler) http.Handler {
 	}
 }
 
+// RequireParent is middleware that checks if the authenticated user is a parent
+// in the family system. Admins are NOT granted access — use RequireParentOrAdmin
+// for routes that support explicit admin access. Returns 403 if not a parent.
+func RequireParent(db *sql.DB) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user := auth.UserFromContext(r.Context())
+			if user == nil {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+				return
+			}
+			isParent, err := IsParent(db, user.ID)
+			if err != nil {
+				log.Printf("family: RequireParent check user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+				return
+			}
+			if !isParent {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "parent access required"})
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // RequireParentOrAdmin is middleware that checks if the authenticated user is
 // either a parent in the family system or an admin. Returns 403 if neither.
 func RequireParentOrAdmin(db *sql.DB) func(http.Handler) http.Handler {
