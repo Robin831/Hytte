@@ -8,6 +8,7 @@ interface Conversation {
   id: number
   kid_id: number
   subject: string
+  last_message_preview?: string
   created_at: string
   updated_at: string
 }
@@ -131,12 +132,19 @@ export default function HomeworkPage() {
             >
               <BookOpen size={20} className="shrink-0 text-blue-400" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">
-                  {conv.subject || t('noSubject')}
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {formatConversationTime(conv.updated_at)}
-                </p>
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="text-sm font-medium truncate">
+                    {conv.subject || t('noSubject')}
+                  </p>
+                  <p className="text-xs text-gray-500 shrink-0">
+                    {formatConversationTime(conv.updated_at)}
+                  </p>
+                </div>
+                {conv.last_message_preview && (
+                  <p className="text-xs text-gray-500 mt-0.5 truncate">
+                    {conv.last_message_preview}
+                  </p>
+                )}
               </div>
             </button>
           ))}

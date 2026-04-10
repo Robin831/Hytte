@@ -127,8 +127,8 @@ export default function HomeworkChat() {
   }
 
   async function sendMessage() {
-    if ((!input.trim() && !selectedImage) || !id || sending) return
     const content = input.trim()
+    if (!content || !id || sending) return
     const image = selectedImage
 
     setInput('')
@@ -215,10 +215,24 @@ export default function HomeworkChat() {
                   const assistantMsg = parsed as Message
                   setMessages(prev => [...prev, assistantMsg])
                   setStreamingText('')
-                  // Update conversation subject if it changed
+                  // Refresh conversation metadata from the server payload when available
                   if (parsed.conversation_id) {
+                    const nextSubject =
+                      typeof parsed.subject === 'string' && parsed.subject.trim() !== ''
+                        ? parsed.subject
+                        : undefined
+                    const nextUpdatedAt =
+                      typeof parsed.updated_at === 'string' && parsed.updated_at.trim() !== ''
+                        ? parsed.updated_at
+                        : new Date().toISOString()
                     setConversation(prev =>
-                      prev ? { ...prev, updated_at: new Date().toISOString() } : prev
+                      prev
+                        ? {
+                            ...prev,
+                            subject: nextSubject ?? prev.subject,
+                            updated_at: nextUpdatedAt,
+                          }
+                        : prev
                     )
                   }
                   break
@@ -437,7 +451,7 @@ export default function HomeworkChat() {
           />
           <button
             onClick={sendMessage}
-            disabled={(!input.trim() && !selectedImage) || sending}
+            disabled={!input.trim() || sending}
             className="self-end p-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
             title={t('input.sendLabel')}
             aria-label={t('input.sendLabel')}
@@ -490,6 +504,12 @@ function MessageBubble({ message }: { message: Message }) {
             </p>
           )}
           <div className="bg-blue-600 rounded-2xl rounded-tr-sm px-4 py-3">
+            {message.image_path && (
+              <div className="flex items-center gap-1.5 mb-2 bg-blue-700/60 rounded-lg px-2.5 py-1.5 text-xs text-blue-200">
+                <Image size={12} />
+                <span>{t('imageAttached')}</span>
+              </div>
+            )}
             <p className="text-sm text-white whitespace-pre-wrap break-words">{message.content}</p>
           </div>
         </div>

@@ -567,8 +567,16 @@ func sendMessage(db *sql.DB, w http.ResponseWriter, r *http.Request, kidID, conf
 		return
 	}
 
-	// Send done event with the full saved assistant message.
-	assistantJSON, _ := json.Marshal(assistantMsg)
+	// Send done event with the full saved assistant message plus updated conversation metadata.
+	assistantJSON, _ := json.Marshal(struct {
+		HomeworkMessage
+		Subject   string `json:"subject,omitempty"`
+		UpdatedAt string `json:"updated_at,omitempty"`
+	}{
+		HomeworkMessage: assistantMsg,
+		Subject:         conv.Subject,
+		UpdatedAt:       assistantMsg.CreatedAt,
+	})
 	fmt.Fprintf(w, "event: done\ndata: %s\n\n", assistantJSON)
 	flusher.Flush()
 }

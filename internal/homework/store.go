@@ -293,13 +293,20 @@ func UpdateSessionID(db *sql.DB, conversationID, kidID int64, sessionID string) 
 	return nil
 }
 
+// maxPreviewLen is the maximum rune length for a last-message preview snippet.
+const maxPreviewLen = 100
+
 // ListConversationsByKid returns all homework conversations for a child, newest first.
+// Each conversation includes a short preview of the last message.
 func ListConversationsByKid(db *sql.DB, kidID int64) ([]HomeworkConversation, error) {
 	rows, err := db.Query(`
-		SELECT id, kid_id, subject, created_at, updated_at
-		FROM homework_conversations
-		WHERE kid_id = ?
-		ORDER BY updated_at DESC, id DESC`,
+		SELECT c.id, c.kid_id, c.subject, c.created_at, c.updated_at,
+		    (SELECT content FROM homework_messages
+		     WHERE conversation_id = c.id
+		     ORDER BY created_at DESC, id DESC LIMIT 1) AS last_message
+		FROM homework_conversations c
+		WHERE c.kid_id = ?
+		ORDER BY c.updated_at DESC, c.id DESC`,
 		kidID,
 	)
 	if err != nil {
@@ -311,7 +318,8 @@ func ListConversationsByKid(db *sql.DB, kidID int64) ([]HomeworkConversation, er
 	for rows.Next() {
 		var c HomeworkConversation
 		var encSubject string
-		if err := rows.Scan(&c.ID, &c.KidID, &encSubject, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		var encLastMessage sql.NullString
+		if err := rows.Scan(&c.ID, &c.KidID, &encSubject, &c.CreatedAt, &c.UpdatedAt, &encLastMessage); err != nil {
 			return nil, err
 		}
 		subject, err := decryptField(encSubject)
@@ -319,6 +327,19 @@ func ListConversationsByKid(db *sql.DB, kidID int64) ([]HomeworkConversation, er
 			return nil, fmt.Errorf("decrypt conversation subject: %w", err)
 		}
 		c.Subject = subject
+		if encLastMessage.Valid && encLastMessage.String != "" {
+			lastMsg, err := decryptField(encLastMessage.String)
+			if err != nil {
+				log.Printf("homework: decrypt last message preview conv %d: %v", c.ID, err)
+			} else {
+				runes := []rune(lastMsg)
+				if len(runes) > maxPreviewLen {
+					c.LastMessagePreview = string(runes[:maxPreviewLen]) + "…"
+				} else {
+					c.LastMessagePreview = lastMsg
+				}
+			}
+		}
 		convos = append(convos, c)
 	}
 	if err := rows.Err(); err != nil {
