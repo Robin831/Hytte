@@ -569,9 +569,12 @@ func HandleParentReview(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load review data"})
 			return
 		}
+		if summaries == nil {
+			summaries = []ConversationSummary{}
+		}
 
 		totalMessages := 0
-		helpTotals := map[string]int{}
+		helpTotals := make(map[string]int)
 		for _, s := range summaries {
 			totalMessages += s.MessageCount
 			for level, count := range s.HelpLevels {
