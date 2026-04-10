@@ -103,6 +103,11 @@ func HandleUpdateProfile(db *sql.DB) http.HandlerFunc {
 			CurrentTopics     []string `json:"current_topics"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
+				return
+			}
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 			return
 		}
@@ -238,12 +243,17 @@ func HandleNewConversation(db *sql.DB) http.HandlerFunc {
 		var body struct {
 			Subject string `json:"subject"`
 		}
-		// Subject is optional — tolerate an empty body.
+		// Subject is optional — tolerate an empty body, including whitespace-only bodies.
 		if data, err := io.ReadAll(r.Body); err != nil {
+			var maxErr *http.MaxBytesError
+			if errors.As(err, &maxErr) {
+				writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
+				return
+			}
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
 			return
-		} else if len(data) > 0 {
-			if err := json.Unmarshal(data, &body); err != nil {
+		} else if trimmed := strings.TrimSpace(string(data)); trimmed != "" {
+			if err := json.Unmarshal([]byte(trimmed), &body); err != nil {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 				return
 			}
