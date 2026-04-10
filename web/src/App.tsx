@@ -61,6 +61,8 @@ import BudgetVariables from './pages/BudgetVariables'
 import Vault from './pages/Vault'
 import SkyWatchPage from './pages/SkyWatchPage'
 import GroceryPage from './pages/GroceryPage'
+import HomeworkPage from './pages/HomeworkPage'
+import HomeworkChat from './pages/HomeworkChat'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -433,6 +435,24 @@ function MainLayout() {
             element={
               <FeatureRoute feature="grocery">
                 <GroceryPage />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Homework routes */}
+          <Route
+            path="/homework"
+            element={
+              <FeatureRoute feature="homework" familyRole="child">
+                <HomeworkPage />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/homework/:id"
+            element={
+              <FeatureRoute feature="homework" familyRole="child">
+                <HomeworkChat />
               </FeatureRoute>
             }
           />

@@ -34,11 +34,12 @@ type HomeworkProfile struct {
 
 // HomeworkConversation groups messages about a single homework topic.
 type HomeworkConversation struct {
-	ID        int64  `json:"id"`
-	KidID     int64  `json:"kid_id"`
-	Subject   string `json:"subject"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID                 int64  `json:"id"`
+	KidID              int64  `json:"kid_id"`
+	Subject            string `json:"subject"`
+	LastMessagePreview string `json:"last_message_preview,omitempty"`
+	CreatedAt          string `json:"created_at"`
+	UpdatedAt          string `json:"updated_at"`
 }
 
 // HomeworkMessage is a single turn in a homework conversation.

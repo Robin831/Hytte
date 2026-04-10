@@ -1,0 +1,40 @@
+{
+  "title": "Lekser",
+  "newConversation": "Ny samtale",
+  "noSubject": "Nytt emne",
+  "yesterday": "I g\u00e5r",
+  "backToList": "Tilbake til samtaler",
+  "empty": {
+    "noConversations": "Ingen leksesamtaler enn\u00e5",
+    "startNew": "Start en ny samtale for \u00e5 f\u00e5 hjelp"
+  },
+  "welcome": {
+    "title": "Leksehjelp",
+    "subtitle": "Still et sp\u00f8rsm\u00e5l eller ta bilde av leksene dine for \u00e5 komme i gang"
+  },
+  "thinking": "Tenker...",
+  "dismissError": "Lukk feilmelding",
+  "imagePreview": "Forh\u00e5ndsvisning av valgt bilde",
+  "imageAttached": "Bilde vedlagt",
+  "removeImage": "Fjern bilde",
+  "cameraButton": "Ta bilde eller velg bilde",
+  "cameraLabel": "Kamera- eller bildeinndata",
+  "helpLevel": {
+    "label": "Hvor mye hjelp vil du ha?",
+    "hint": "Hint",
+    "explain": "Forklar",
+    "walkthrough": "Vis meg steg for steg",
+    "answer": "Vis svaret"
+  },
+  "input": {
+    "placeholder": "Sp\u00f8r om leksene dine...",
+    "sendLabel": "Send melding",
+    "copyMessage": "Kopier melding"
+  },
+  "errors": {
+    "failedToLoad": "Kunne ikke laste samtaler",
+    "failedToCreate": "Kunne ikke opprette samtale",
+    "failedToLoadMessages": "Kunne ikke laste meldinger",
+    "failedToSend": "Kunne ikke sende melding"
+  }
+}

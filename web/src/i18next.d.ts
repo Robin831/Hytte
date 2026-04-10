@@ -21,6 +21,7 @@ import type todayEn from '../public/locales/en/today.json'
 import type vaultEn from '../public/locales/en/vault.json'
 import type skywatchEn from '../public/locales/en/skywatch.json'
 import type groceryEn from '../public/locales/en/grocery.json'
+import type homeworkEn from '../public/locales/en/homework.json'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -49,6 +50,7 @@ declare module 'i18next' {
       vault: typeof vaultEn
       skywatch: typeof skywatchEn
       grocery: typeof groceryEn
+      homework: typeof homeworkEn
     }
   }
 }
