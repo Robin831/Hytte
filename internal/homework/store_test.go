@@ -442,3 +442,39 @@ func TestMessageWithImage(t *testing.T) {
 		t.Fatalf("expected message ID %d, got %d", msg.ID, msgs[0].ID)
 	}
 }
+
+func TestUpdateConversationSubject(t *testing.T) {
+	d := setupTestDB(t)
+
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: ""})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+	if conv.Subject != "" {
+		t.Fatalf("expected empty subject, got %q", conv.Subject)
+	}
+
+	// Update the subject via the store function (which encrypts).
+	if err := UpdateConversationSubject(d, conv.ID, "math"); err != nil {
+		t.Fatalf("update subject: %v", err)
+	}
+
+	// Read back and verify decryption round-trips.
+	got, err := GetConversation(d, conv.ID, 2)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if got.Subject != "math" {
+		t.Errorf("expected subject 'math', got %q", got.Subject)
+	}
+
+	// Verify the raw DB value is encrypted (not plaintext).
+	var rawSubject string
+	err = d.QueryRow(`SELECT subject FROM homework_conversations WHERE id = ?`, conv.ID).Scan(&rawSubject)
+	if err != nil {
+		t.Fatalf("query raw subject: %v", err)
+	}
+	if rawSubject == "math" {
+		t.Error("expected subject to be encrypted in DB, but found plaintext")
+	}
+}

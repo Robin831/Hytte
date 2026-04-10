@@ -572,6 +572,65 @@ func TestHandleSendMessageWithImage(t *testing.T) {
 	}
 }
 
+func TestHandleSendMessageSubjectAutoDetection(t *testing.T) {
+	d := setupTestDB(t)
+
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00.000Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+	_, err = d.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true')`)
+	if err != nil {
+		t.Fatalf("insert pref: %v", err)
+	}
+
+	// Create conversation with no subject.
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: ""})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	origExec := execCommand
+	execCommand = fakeExecCommand([]string{
+		`{"type":"result","result":"Let me help with that equation.","session_id":"sess-subj","is_error":false}`,
+	})
+	t.Cleanup(func() { execCommand = origExec })
+
+	body, contentType := multipartBody(t, map[string]string{
+		"message": "Help me solve this equation: 2x + 3 = 7",
+	}, nil)
+
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/homework/children/2/conversations/%d/messages", conv.ID), body)
+	r.Header.Set("Content-Type", contentType)
+	r = withChiParams(withUser(r, testParent), map[string]string{"childId": "2", "id": fmt.Sprintf("%d", conv.ID)})
+
+	rec := httptest.NewRecorder()
+	HandleSendMessage(d).ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify the subject was auto-detected and encrypted in the DB.
+	got, err := GetConversation(d, conv.ID, 2)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if got.Subject != "math" {
+		t.Errorf("expected auto-detected subject 'math', got %q", got.Subject)
+	}
+
+	// Verify raw DB value is encrypted.
+	var rawSubject string
+	err = d.QueryRow(`SELECT subject FROM homework_conversations WHERE id = ?`, conv.ID).Scan(&rawSubject)
+	if err != nil {
+		t.Fatalf("query raw subject: %v", err)
+	}
+	if rawSubject == "math" {
+		t.Error("expected subject to be encrypted in DB, but found plaintext")
+	}
+}
+
 func TestHandleSendMessageDefaultHelpLevel(t *testing.T) {
 	rec, handler, conv := setupSendMessageTest(t)
 

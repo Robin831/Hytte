@@ -422,10 +422,7 @@ func HandleSendMessage(db *sql.DB) http.HandlerFunc {
 		// Update conversation subject if it was empty.
 		if conv.Subject == "" && detectedSubject != "general" {
 			conv.Subject = detectedSubject
-			if _, err := db.Exec(
-				`UPDATE homework_conversations SET subject = ? WHERE id = ?`,
-				detectedSubject, conv.ID,
-			); err != nil {
+			if err := UpdateConversationSubject(db, conv.ID, detectedSubject); err != nil {
 				log.Printf("homework: update conversation subject conv %d: %v", conv.ID, err)
 			}
 		}

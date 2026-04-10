@@ -231,6 +231,23 @@ func GetConversation(db *sql.DB, id, kidID int64) (*HomeworkConversation, error)
 	return &c, nil
 }
 
+// UpdateConversationSubject sets the subject on a homework conversation, encrypting it for storage.
+func UpdateConversationSubject(db *sql.DB, convID int64, subject string) error {
+	encSubject, err := encryption.EncryptField(subject)
+	if err != nil {
+		return fmt.Errorf("encrypt subject: %w", err)
+	}
+	now := time.Now().UTC().Format(timeFormat)
+	_, err = db.Exec(
+		`UPDATE homework_conversations SET subject = ?, updated_at = ? WHERE id = ?`,
+		encSubject, now, convID,
+	)
+	if err != nil {
+		return fmt.Errorf("update conversation subject: %w", err)
+	}
+	return nil
+}
+
 // GetSessionID returns the Claude CLI session ID for a homework conversation.
 func GetSessionID(db *sql.DB, conversationID, kidID int64) (string, error) {
 	var sessionID string
