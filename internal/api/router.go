@@ -616,6 +616,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/homework/children/{childId}/conversations", homework.HandleNewConversation(db))
 				r.Get("/homework/children/{childId}/conversations/{id}", homework.HandleGetConversation(db))
 				r.Post("/homework/children/{childId}/conversations/{id}/messages", homework.HandleSendMessage(db))
+				r.Get("/homework/children/{childId}/review", homework.HandleParentReview(db))
 			})
 
 			// Transit departures — gated by "transit" feature.

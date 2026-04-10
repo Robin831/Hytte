@@ -629,6 +629,104 @@ func TestHandleSendMessageSubjectAutoDetection(t *testing.T) {
 	}
 }
 
+func TestHandleParentReviewSuccess(t *testing.T) {
+	d := setupTestDB(t)
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00.000Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	// Create two conversations with messages at different help levels.
+	conv1, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "Math"})
+	if err != nil {
+		t.Fatalf("create conversation 1: %v", err)
+	}
+	conv2, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "Reading"})
+	if err != nil {
+		t.Fatalf("create conversation 2: %v", err)
+	}
+
+	// Conv1: 2 hints, 1 explain.
+	for _, hl := range []HelpLevel{HelpLevelHint, HelpLevelHint, HelpLevelExplain} {
+		if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv1.ID, Role: "user", Content: "q", HelpLevel: hl}); err != nil {
+			t.Fatalf("add message: %v", err)
+		}
+	}
+	// Conv2: 1 walkthrough.
+	if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv2.ID, Role: "user", Content: "q", HelpLevel: HelpLevelWalkthrough}); err != nil {
+		t.Fatalf("add message: %v", err)
+	}
+
+	handler := HandleParentReview(d)
+	r := withChiParams(withUser(newRequest(http.MethodGet, "/api/homework/children/2/review", nil), testParent), map[string]string{"childId": "2"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp ParentReviewResponse
+	decode(t, w.Body.Bytes(), &resp)
+
+	if len(resp.Conversations) != 2 {
+		t.Fatalf("expected 2 conversations, got %d", len(resp.Conversations))
+	}
+	if resp.TotalMessages != 4 {
+		t.Errorf("expected 4 total messages, got %d", resp.TotalMessages)
+	}
+	if resp.HelpLevelTotals["hint"] != 2 {
+		t.Errorf("expected 2 hints total, got %d", resp.HelpLevelTotals["hint"])
+	}
+	if resp.HelpLevelTotals["explain"] != 1 {
+		t.Errorf("expected 1 explain total, got %d", resp.HelpLevelTotals["explain"])
+	}
+	if resp.HelpLevelTotals["walkthrough"] != 1 {
+		t.Errorf("expected 1 walkthrough total, got %d", resp.HelpLevelTotals["walkthrough"])
+	}
+}
+
+func TestHandleParentReviewEmpty(t *testing.T) {
+	d := setupTestDB(t)
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00.000Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	handler := HandleParentReview(d)
+	r := withChiParams(withUser(newRequest(http.MethodGet, "/api/homework/children/2/review", nil), testParent), map[string]string{"childId": "2"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp ParentReviewResponse
+	decode(t, w.Body.Bytes(), &resp)
+
+	if len(resp.Conversations) != 0 {
+		t.Errorf("expected 0 conversations, got %d", len(resp.Conversations))
+	}
+	if resp.TotalMessages != 0 {
+		t.Errorf("expected 0 total messages, got %d", resp.TotalMessages)
+	}
+}
+
+func TestHandleParentReviewForbidden(t *testing.T) {
+	d := setupTestDB(t)
+	// No family link.
+
+	handler := HandleParentReview(d)
+	r := withChiParams(withUser(newRequest(http.MethodGet, "/api/homework/children/2/review", nil), testParent), map[string]string{"childId": "2"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestHandleSendMessageDefaultHelpLevel(t *testing.T) {
 	rec, handler, conv := setupSendMessageTest(t)
 

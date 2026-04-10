@@ -545,6 +545,48 @@ func HandleSendMessage(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// ParentReviewResponse is the JSON shape returned by HandleParentReview.
+type ParentReviewResponse struct {
+	Conversations []ConversationSummary `json:"conversations"`
+	TotalMessages int                   `json:"total_messages"`
+	HelpLevelTotals map[string]int      `json:"help_level_totals"`
+}
+
+// HandleParentReview returns an aggregated summary of a child's homework conversations
+// with per-conversation and overall help-level statistics.
+// GET /api/homework/children/{childId}/review
+func HandleParentReview(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		childID, ok := parseChildID(w, r, db, user.ID)
+		if !ok {
+			return
+		}
+
+		summaries, err := GetConversationsForParentReview(db, childID)
+		if err != nil {
+			log.Printf("homework: parent review kid %d: %v", childID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load review data"})
+			return
+		}
+
+		totalMessages := 0
+		helpTotals := map[string]int{}
+		for _, s := range summaries {
+			totalMessages += s.MessageCount
+			for level, count := range s.HelpLevels {
+				helpTotals[level] += count
+			}
+		}
+
+		writeJSON(w, http.StatusOK, ParentReviewResponse{
+			Conversations:   summaries,
+			TotalMessages:   totalMessages,
+			HelpLevelTotals: helpTotals,
+		})
+	}
+}
+
 // claudeStreamLine represents a line from Claude CLI's stream-json output.
 type claudeStreamLine struct {
 	Type      string `json:"type"`
