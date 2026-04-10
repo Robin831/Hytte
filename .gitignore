@@ -21,3 +21,6 @@ node_modules/
 # Beads / Dolt files (added by bd init)
 .beads-credential-key
 data/
+
+# Homework image uploads (runtime data)
+homework-uploads/

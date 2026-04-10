@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -563,9 +564,11 @@ func TestHandleSendMessageWithImage(t *testing.T) {
 	if len(msgs) < 1 {
 		t.Fatal("expected at least 1 message")
 	}
-	// Clean up temp file.
+	// Clean up uploaded image and directory.
 	if msgs[0].ImagePath != "" {
 		os.Remove(msgs[0].ImagePath)
+		os.Remove(filepath.Dir(msgs[0].ImagePath))
+		os.Remove("homework-uploads")
 	}
 }
 

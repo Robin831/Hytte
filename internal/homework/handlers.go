@@ -374,11 +374,15 @@ func HandleSendMessage(db *sql.DB) http.HandlerFunc {
 
 			// Seek back to beginning for full copy.
 			if seeker, ok := file.(io.Seeker); ok {
-				seeker.Seek(0, io.SeekStart)
+				if _, err := seeker.Seek(0, io.SeekStart); err != nil {
+					log.Printf("homework: seek uploaded image: %v", err)
+					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read uploaded image"})
+					return
+				}
 			}
 
-			// Save to temp directory.
-			uploadDir := filepath.Join(os.TempDir(), "hytte-homework-uploads")
+			// Save to permanent upload directory so images are available in conversation history.
+			uploadDir := filepath.Join("homework-uploads", fmt.Sprintf("%d", conv.ID))
 			if err := os.MkdirAll(uploadDir, 0700); err != nil {
 				log.Printf("homework: create upload dir: %v", err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save image"})
@@ -395,21 +399,21 @@ func HandleSendMessage(db *sql.DB) http.HandlerFunc {
 				ext = ".webp"
 			}
 
-			tmpFile, err := os.CreateTemp(uploadDir, fmt.Sprintf("hw-%d-*%s", convID, ext))
+			imgFile, err := os.CreateTemp(uploadDir, fmt.Sprintf("hw-%d-*%s", convID, ext))
 			if err != nil {
-				log.Printf("homework: create temp file: %v", err)
+				log.Printf("homework: create image file: %v", err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save image"})
 				return
 			}
-			defer tmpFile.Close()
+			defer imgFile.Close()
 
-			if _, err := io.Copy(tmpFile, file); err != nil {
+			if _, err := io.Copy(imgFile, file); err != nil {
 				log.Printf("homework: copy image: %v", err)
-				os.Remove(tmpFile.Name())
+				os.Remove(imgFile.Name())
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save image"})
 				return
 			}
-			imagePath = tmpFile.Name()
+			imagePath = imgFile.Name()
 		}
 
 		// Detect subject from message text.
@@ -418,10 +422,12 @@ func HandleSendMessage(db *sql.DB) http.HandlerFunc {
 		// Update conversation subject if it was empty.
 		if conv.Subject == "" && detectedSubject != "general" {
 			conv.Subject = detectedSubject
-			_, _ = db.Exec(
+			if _, err := db.Exec(
 				`UPDATE homework_conversations SET subject = ? WHERE id = ?`,
 				detectedSubject, conv.ID,
-			)
+			); err != nil {
+				log.Printf("homework: update conversation subject conv %d: %v", conv.ID, err)
+			}
 		}
 
 		// Load the child's profile for prompt building.
@@ -485,13 +491,13 @@ func HandleSendMessage(db *sql.DB) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 		defer cancel()
 
-		fullResponse, newSessionID, err := streamClaude(ctx, cfg, systemPrompt, message, sessionID, w, flusher)
+		fullResponse, newSessionID, err := streamClaude(ctx, cfg, systemPrompt, message, imagePath, sessionID, w, flusher)
 		if err != nil && sessionID != "" {
 			// Session may have expired — retry without session.
 			log.Printf("homework: session resume failed, retrying fresh: %v", err)
 			fmt.Fprintf(w, "event: retry\ndata: {\"reason\":\"session expired, retrying\"}\n\n")
 			flusher.Flush()
-			fullResponse, newSessionID, err = streamClaude(ctx, cfg, systemPrompt, message, "", w, flusher)
+			fullResponse, newSessionID, err = streamClaude(ctx, cfg, systemPrompt, message, imagePath, "", w, flusher)
 		}
 
 		if err != nil {
@@ -545,15 +551,27 @@ type claudeStreamLine struct {
 }
 
 // streamClaude runs the Claude CLI with stream-json output and sends text deltas
-// as SSE events. Returns the full response text and session ID.
-func streamClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPrompt, prompt, sessionID string, w http.ResponseWriter, flusher http.Flusher) (string, string, error) {
+// as SSE events. If imagePath is non-empty, the image is included in the prompt
+// using the @path syntax so Claude can analyse it. Returns the full response text
+// and session ID.
+func streamClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPrompt, prompt, imagePath, sessionID string, w http.ResponseWriter, flusher http.Flusher) (string, string, error) {
 	args := []string{"--model", cfg.Model, "-p", "-", "--output-format", "stream-json", "--system-prompt", systemPrompt}
 	if sessionID != "" {
 		args = append(args, "--resume", sessionID)
 	}
 
+	// Build the full prompt: include the image via @path so Claude can see it.
+	fullPrompt := prompt
+	if imagePath != "" {
+		absPath, err := filepath.Abs(imagePath)
+		if err == nil {
+			imagePath = absPath
+		}
+		fullPrompt = prompt + "\n@" + imagePath
+	}
+
 	cmd := execCommand(ctx, cfg.CLIPath, args...)
-	cmd.Stdin = strings.NewReader(prompt)
+	cmd.Stdin = strings.NewReader(fullPrompt)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
