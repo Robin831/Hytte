@@ -36,5 +36,47 @@
     "failedToCreate": "Kunne ikke opprette samtale",
     "failedToLoadMessages": "Kunne ikke laste meldinger",
     "failedToSend": "Kunne ikke sende melding"
+  },
+  "settings": {
+    "title": "Profilinnstillinger",
+    "age": "Alder",
+    "gradeLevel": "Klassetrinn",
+    "selectGrade": "Velg klassetrinn...",
+    "grade": "{{n}}. klasse",
+    "preferredLanguage": "Foretrukket spr\u00e5k",
+    "selectLanguage": "Velg spr\u00e5k...",
+    "languages": {
+      "en": "Engelsk",
+      "nb": "Norsk",
+      "th": "Thai"
+    },
+    "subjects": "N\u00e5v\u00e6rende fag",
+    "subjectNames": {
+      "math": "Matematikk",
+      "reading": "Lesing",
+      "writing": "Skriving",
+      "science": "Naturfag",
+      "social_studies": "Samfunnsfag",
+      "english": "Engelsk",
+      "norwegian": "Norsk",
+      "thai": "Thai",
+      "art": "Kunst og h\u00e5ndverk",
+      "music": "Musikk",
+      "physical_education": "Kropps\u00f8ving"
+    },
+    "schoolName": "Skolenavn",
+    "schoolNamePlaceholder": "Valgfritt",
+    "currentTopics": "N\u00e5v\u00e6rende emner",
+    "currentTopicsHint": "Ett emne per linje",
+    "currentTopicsPlaceholder": "f.eks. Br\u00f8k\nFotosyntese\nAndre verdenskrig",
+    "save": "Lagre",
+    "saved": "Profilen er lagret",
+    "errors": {
+      "failedToLoad": "Kunne ikke laste profilen",
+      "failedToSave": "Kunne ikke lagre profilen",
+      "ageInvalid": "Skriv inn en alder mellom 1 og 25",
+      "gradeRequired": "Velg et klassetrinn",
+      "languageRequired": "Velg et foretrukket språk"
+    }
   }
 }
