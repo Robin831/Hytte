@@ -2072,6 +2072,27 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add consumed_at and consumed_by columns to stride_notes table (Hytte-4xnx).
+	// Tracks when and by what process a note was consumed (e.g. weekly plan generation).
+	var hasConsumedAt int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stride_notes') WHERE name = 'consumed_at'`).Scan(&hasConsumedAt); err != nil {
+		return fmt.Errorf("check stride_notes consumed_at column: %w", err)
+	}
+	if hasConsumedAt == 0 {
+		if _, err := db.Exec(`ALTER TABLE stride_notes ADD COLUMN consumed_at TEXT`); err != nil {
+			return fmt.Errorf("add stride_notes consumed_at column: %w", err)
+		}
+	}
+	var hasConsumedBy int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stride_notes') WHERE name = 'consumed_by'`).Scan(&hasConsumedBy); err != nil {
+		return fmt.Errorf("check stride_notes consumed_by column: %w", err)
+	}
+	if hasConsumedBy == 0 {
+		if _, err := db.Exec(`ALTER TABLE stride_notes ADD COLUMN consumed_by TEXT`); err != nil {
+			return fmt.Errorf("add stride_notes consumed_by column: %w", err)
+		}
+	}
+
 	// Add race_id FK column to workouts table (Hytte-im9y).
 	// Links a workout to a stride_races entry when the workout is a race result.
 	var hasRaceID int

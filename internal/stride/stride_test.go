@@ -69,6 +69,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 			plan_id     INTEGER REFERENCES stride_plans(id) ON DELETE SET NULL,
 			content     TEXT NOT NULL,
 			target_date TEXT NOT NULL DEFAULT '',
+			consumed_at TEXT,
+			consumed_by TEXT,
 			created_at  TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE workouts (
@@ -294,7 +296,7 @@ func TestCreateAndListNotes(t *testing.T) {
 		t.Errorf("target_date = %q, want %q", note2.TargetDate, explicitDate)
 	}
 
-	notes, err := ListNotes(db, 1, nil)
+	notes, err := ListNotes(db, 1, nil, "")
 	if err != nil {
 		t.Fatalf("list notes: %v", err)
 	}
@@ -318,7 +320,7 @@ func TestDeleteNote(t *testing.T) {
 		t.Fatalf("delete: %v", err)
 	}
 
-	notes, err := ListNotes(db, 1, nil)
+	notes, err := ListNotes(db, 1, nil, "")
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -1172,5 +1174,92 @@ func TestTryMatchRaceForWorkout_CrossUserIsolation(t *testing.T) {
 	}
 	if result.Status != "no_match" {
 		t.Errorf("expected no_match for cross-user, got %q", result.Status)
+	}
+}
+
+func TestMarkNotesConsumed(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create a few notes.
+	n1, err := CreateNote(db, 1, nil, "Note one", "2026-04-10")
+	if err != nil {
+		t.Fatalf("create note 1: %v", err)
+	}
+	n2, err := CreateNote(db, 1, nil, "Note two", "2026-04-10")
+	if err != nil {
+		t.Fatalf("create note 2: %v", err)
+	}
+	n3, err := CreateNote(db, 1, nil, "Note three", "2026-04-11")
+	if err != nil {
+		t.Fatalf("create note 3: %v", err)
+	}
+
+	// Mark first two as consumed.
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err := MarkNotesConsumed(context.Background(), tx, []int64{n1.ID, n2.ID}, "weekly-plan"); err != nil {
+		t.Fatalf("MarkNotesConsumed: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	// Verify consumed notes have consumed_at and consumed_by set.
+	allNotes, err := ListNotes(db, 1, nil, "all")
+	if err != nil {
+		t.Fatalf("list all: %v", err)
+	}
+	if len(allNotes) != 3 {
+		t.Fatalf("expected 3 notes, got %d", len(allNotes))
+	}
+
+	// Active filter should return only the unconsumed note.
+	active, err := ListNotes(db, 1, nil, "active")
+	if err != nil {
+		t.Fatalf("list active: %v", err)
+	}
+	if len(active) != 1 {
+		t.Fatalf("expected 1 active note, got %d", len(active))
+	}
+	if active[0].ID != n3.ID {
+		t.Errorf("active note ID = %d, want %d", active[0].ID, n3.ID)
+	}
+	if active[0].ConsumedAt != nil {
+		t.Errorf("active note should have nil ConsumedAt")
+	}
+
+	// Consumed filter should return the two consumed notes.
+	consumed, err := ListNotes(db, 1, nil, "consumed")
+	if err != nil {
+		t.Fatalf("list consumed: %v", err)
+	}
+	if len(consumed) != 2 {
+		t.Fatalf("expected 2 consumed notes, got %d", len(consumed))
+	}
+	for _, cn := range consumed {
+		if cn.ConsumedAt == nil {
+			t.Errorf("consumed note %d should have ConsumedAt set", cn.ID)
+		}
+		if cn.ConsumedBy == nil || *cn.ConsumedBy != "weekly-plan" {
+			t.Errorf("consumed note %d ConsumedBy = %v, want 'weekly-plan'", cn.ID, cn.ConsumedBy)
+		}
+	}
+}
+
+func TestMarkNotesConsumedEmpty(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Marking an empty slice should be a no-op.
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err := MarkNotesConsumed(context.Background(), tx, nil, "test"); err != nil {
+		t.Fatalf("MarkNotesConsumed with empty slice: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
 	}
 }
