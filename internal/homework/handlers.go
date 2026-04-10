@@ -542,8 +542,7 @@ func sendMessage(db *sql.DB, w http.ResponseWriter, r *http.Request, kidID, conf
 
 	if err != nil {
 		log.Printf("homework: claude error conv %d: %v", conv.ID, err)
-		errMsg := "Claude failed to respond: " + err.Error()
-		errJSON, _ := json.Marshal(map[string]string{"error": errMsg})
+		errJSON, _ := json.Marshal(map[string]string{"error": "Claude failed to respond. Please try again."})
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", errJSON)
 		flusher.Flush()
 		return
@@ -750,6 +749,10 @@ func streamClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPrompt,
 		case "result":
 			if ev.IsError {
 				cmd.Wait()
+				stderr := strings.TrimSpace(stderrBuf.String())
+				if stderr != "" {
+					return "", "", fmt.Errorf("claude returned error: %s: %s", ev.Result, stderr)
+				}
 				return "", "", fmt.Errorf("claude returned error: %s", ev.Result)
 			}
 			if ev.Result != "" {
@@ -763,11 +766,17 @@ func streamClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPrompt,
 
 	if err := scanner.Err(); err != nil {
 		cmd.Wait()
-		return "", "", fmt.Errorf("scan claude output: %w: %s", err, strings.TrimSpace(stderrBuf.String()))
+		if stderr := strings.TrimSpace(stderrBuf.String()); stderr != "" {
+			return "", "", fmt.Errorf("scan claude output: %w: %s", err, stderr)
+		}
+		return "", "", fmt.Errorf("scan claude output: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {
-		return "", "", fmt.Errorf("claude exit: %w: %s", err, strings.TrimSpace(stderrBuf.String()))
+		if stderr := strings.TrimSpace(stderrBuf.String()); stderr != "" {
+			return "", "", fmt.Errorf("claude exit: %w: %s", err, stderr)
+		}
+		return "", "", fmt.Errorf("claude exit: %w", err)
 	}
 
 	return strings.TrimSpace(fullText.String()), resultSessionID, nil

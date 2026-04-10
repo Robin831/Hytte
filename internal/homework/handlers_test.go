@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -1178,13 +1179,26 @@ func TestStreamClaudeArgsIncludeVerbose(t *testing.T) {
 	}
 }
 
+// TestHelperProcess is not a real test — it's a subprocess re-entry point used
+// by tests that need a fake CLI command writing to stderr and exiting non-zero,
+// without depending on a POSIX shell.
+func TestHelperProcess(t *testing.T) {
+	if os.Getenv("GO_TEST_HELPER_PROCESS") != "1" {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "Error: --verbose required")
+	os.Exit(1)
+}
+
 func TestStreamClaudeStderrCapturedOnError(t *testing.T) {
 	rec, handler, conv := setupSendMessageTest(t)
 
 	origExec := execCommand
 	execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
-		// Use sh -c to write to stderr and exit 1.
-		cmd := exec.CommandContext(ctx, "sh", "-c", "echo 'Error: --verbose required' >&2; exit 1")
+		// Re-invoke this test binary as a helper subprocess that writes to stderr
+		// and exits non-zero — no POSIX shell required.
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestHelperProcess$")
+		cmd.Env = append(os.Environ(), "GO_TEST_HELPER_PROCESS=1")
 		return cmd
 	}
 	t.Cleanup(func() { execCommand = origExec })
@@ -1201,11 +1215,11 @@ func TestStreamClaudeStderrCapturedOnError(t *testing.T) {
 	handler.ServeHTTP(rec, r)
 
 	respBody := rec.Body.String()
-	// The error event should contain the stderr output.
+	// An error event must be emitted; the message must be generic (no internal detail exposed).
 	if !strings.Contains(respBody, "event: error") {
 		t.Errorf("expected error event, got: %s", respBody)
 	}
-	if !strings.Contains(respBody, "--verbose required") {
-		t.Errorf("expected stderr content in error event, got: %s", respBody)
+	if !strings.Contains(respBody, "Please try again") {
+		t.Errorf("expected generic error message, got: %s", respBody)
 	}
 }
