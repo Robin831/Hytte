@@ -610,13 +610,27 @@ func NewRouter(db *sql.DB) http.Handler {
 			// Homework helper — gated by "homework" feature.
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireFeature(db, "homework"))
-				r.Get("/homework/children/{childId}/profile", homework.HandleGetProfile(db))
-				r.Put("/homework/children/{childId}/profile", homework.HandleUpdateProfile(db))
-				r.Get("/homework/children/{childId}/conversations", homework.HandleListConversations(db))
-				r.Post("/homework/children/{childId}/conversations", homework.HandleNewConversation(db))
-				r.Get("/homework/children/{childId}/conversations/{id}", homework.HandleGetConversation(db))
-				r.Post("/homework/children/{childId}/conversations/{id}/messages", homework.HandleSendMessage(db))
-				r.Get("/homework/children/{childId}/review", homework.HandleParentReview(db))
+				// Student-facing: child accesses their own homework data.
+				r.Group(func(r chi.Router) {
+					r.Use(family.RequireChild(db))
+					r.Get("/homework/profile", homework.HandleMyProfile(db))
+					r.Put("/homework/profile", homework.HandleUpdateMyProfile(db))
+					r.Get("/homework/conversations", homework.HandleMyConversations(db))
+					r.Post("/homework/conversations", homework.HandleNewMyConversation(db))
+					r.Get("/homework/conversations/{id}", homework.HandleGetMyConversation(db))
+					r.Post("/homework/conversations/{id}/messages", homework.HandleSendMyMessage(db))
+				})
+				// Parent/admin: access child data via child ID.
+				r.Group(func(r chi.Router) {
+					r.Use(family.RequireParentOrAdmin(db))
+					r.Get("/homework/children/{childId}/profile", homework.HandleGetProfile(db))
+					r.Put("/homework/children/{childId}/profile", homework.HandleUpdateProfile(db))
+					r.Get("/homework/children/{childId}/conversations", homework.HandleListConversations(db))
+					r.Post("/homework/children/{childId}/conversations", homework.HandleNewConversation(db))
+					r.Get("/homework/children/{childId}/conversations/{id}", homework.HandleGetConversation(db))
+					r.Post("/homework/children/{childId}/conversations/{id}/messages", homework.HandleSendMessage(db))
+					r.Get("/homework/children/{childId}/review", homework.HandleParentReview(db))
+				})
 			})
 
 			// Transit departures — gated by "transit" feature.

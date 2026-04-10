@@ -25,6 +25,60 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
+// RequireChild is middleware that checks if the authenticated user is linked
+// as a child in the family system. Returns 403 if not a child.
+func RequireChild(db *sql.DB) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user := auth.UserFromContext(r.Context())
+			if user == nil {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+				return
+			}
+			isChild, err := IsChild(db, user.ID)
+			if err != nil {
+				log.Printf("family: RequireChild check user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+				return
+			}
+			if !isChild {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "child access required"})
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireParentOrAdmin is middleware that checks if the authenticated user is
+// either a parent in the family system or an admin. Returns 403 if neither.
+func RequireParentOrAdmin(db *sql.DB) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user := auth.UserFromContext(r.Context())
+			if user == nil {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+				return
+			}
+			if user.IsAdmin {
+				next.ServeHTTP(w, r)
+				return
+			}
+			isParent, err := IsParent(db, user.ID)
+			if err != nil {
+				log.Printf("family: RequireParentOrAdmin check user %d: %v", user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+				return
+			}
+			if !isParent {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "parent or admin access required"})
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // StatusHandler returns the family role of the authenticated user.
 // GET /api/family/status
 func StatusHandler(db *sql.DB) http.HandlerFunc {
