@@ -488,7 +488,7 @@ func MarkNotesConsumed(ctx context.Context, tx *sql.Tx, userID int64, noteIDs []
 		args = append(args, id)
 	}
 
-	query := `UPDATE stride_notes SET consumed_at = ?, consumed_by = ? WHERE user_id = ? AND id IN (` + strings.Join(placeholders, ",") + `)`
+	query := `UPDATE stride_notes SET consumed_at = ?, consumed_by = ? WHERE user_id = ? AND consumed_at IS NULL AND id IN (` + strings.Join(placeholders, ",") + `)`
 	_, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("mark notes consumed: %w", err)

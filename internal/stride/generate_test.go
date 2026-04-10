@@ -528,12 +528,15 @@ func insertNote(t *testing.T, db *sql.DB, userID int64, content string) int64 {
 	if err != nil {
 		t.Fatalf("insert note: %v", err)
 	}
-	id, _ := res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("insert note last insert id: %v", err)
+	}
 	return id
 }
 
 // mockClaude sets up runPromptFunc to return a valid 7-day plan for the given
-// weekStart. Returns a cleanup function.
+// weekStart and registers cleanup with t.Cleanup to restore the original function.
 func mockClaude(t *testing.T, weekStart string) {
 	t.Helper()
 	planDays := buildMinimalPlan(weekStart)
