@@ -751,6 +751,74 @@ func TestHandleParentReviewForbidden(t *testing.T) {
 	}
 }
 
+func TestHandleParentReviewRepeatedAnswerAlert(t *testing.T) {
+	d := setupTestDB(t)
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00.000Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	// Conv1: 3 consecutive "answer" levels — should trigger alert.
+	conv1, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "Math"})
+	if err != nil {
+		t.Fatalf("create conversation 1: %v", err)
+	}
+	for range 3 {
+		if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv1.ID, Role: "user", Content: "q", HelpLevel: HelpLevelAnswer}); err != nil {
+			t.Fatalf("add message: %v", err)
+		}
+		if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv1.ID, Role: "assistant", Content: "a", HelpLevel: HelpLevelAnswer}); err != nil {
+			t.Fatalf("add assistant message: %v", err)
+		}
+	}
+
+	// Conv2: only 2 consecutive "answer" levels — should NOT trigger alert.
+	conv2, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "Reading"})
+	if err != nil {
+		t.Fatalf("create conversation 2: %v", err)
+	}
+	for _, hl := range []HelpLevel{HelpLevelAnswer, HelpLevelAnswer, HelpLevelHint} {
+		if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv2.ID, Role: "user", Content: "q", HelpLevel: hl}); err != nil {
+			t.Fatalf("add message: %v", err)
+		}
+		if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv2.ID, Role: "assistant", Content: "a", HelpLevel: hl}); err != nil {
+			t.Fatalf("add assistant message: %v", err)
+		}
+	}
+
+	handler := HandleParentReview(d)
+	r := withChiParams(withUser(newRequest(http.MethodGet, "/api/homework/children/2/review", nil), testParent), map[string]string{"childId": "2"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var envelope struct {
+		Review ParentReviewResponse `json:"review"`
+	}
+	decode(t, w.Body.Bytes(), &envelope)
+
+	// Find conversations by ID.
+	var alertConv, noAlertConv *ConversationSummary
+	for i := range envelope.Review.Conversations {
+		c := &envelope.Review.Conversations[i]
+		if c.ID == conv1.ID {
+			alertConv = c
+		} else if c.ID == conv2.ID {
+			noAlertConv = c
+		}
+	}
+
+	if alertConv == nil || !alertConv.RepeatedAnswerAlert {
+		t.Errorf("expected repeated_answer_alert=true for conv1 (3 consecutive answers)")
+	}
+	if noAlertConv == nil || noAlertConv.RepeatedAnswerAlert {
+		t.Errorf("expected repeated_answer_alert=false for conv2 (only 2 consecutive answers)")
+	}
+}
+
 // --- Student-facing handler tests ---
 
 var testChildUser = &auth.User{ID: 2, Email: "child@test.com", Name: "Child"}

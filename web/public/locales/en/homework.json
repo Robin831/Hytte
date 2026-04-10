@@ -37,6 +37,26 @@
     "failedToLoadMessages": "Failed to load messages",
     "failedToSend": "Failed to send message"
   },
+  "review": {
+    "title": "Homework Review",
+    "noChildren": "No children linked to your account",
+    "conversationCount_one": "{{count}} conversation",
+    "conversationCount_other": "{{count}} conversations",
+    "messageCount_one": "{{count}} message",
+    "messageCount_other": "{{count}} messages",
+    "messages_one": "{{count}} msg",
+    "messages_other": "{{count}} msgs",
+    "helpLevelBreakdown": "Help level usage",
+    "noConversations": "No homework conversations yet",
+    "repeatedAnswerAlert": "Used \"Show answer\" 3+ times in a row",
+    "closeTranscript": "Close transcript",
+    "noMessages": "No messages in this conversation",
+    "errors": {
+      "failedToLoad": "Failed to load children",
+      "failedToLoadReview": "Failed to load review data",
+      "failedToLoadTranscript": "Failed to load conversation"
+    }
+  },
   "settings": {
     "title": "Profile Settings",
     "age": "Age",

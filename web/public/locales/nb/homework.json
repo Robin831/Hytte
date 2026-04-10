@@ -37,6 +37,26 @@
     "failedToLoadMessages": "Kunne ikke laste meldinger",
     "failedToSend": "Kunne ikke sende melding"
   },
+  "review": {
+    "title": "Lekseoversikt",
+    "noChildren": "Ingen barn koblet til kontoen din",
+    "conversationCount_one": "{{count}} samtale",
+    "conversationCount_other": "{{count}} samtaler",
+    "messageCount_one": "{{count}} melding",
+    "messageCount_other": "{{count}} meldinger",
+    "messages_one": "{{count}} mld",
+    "messages_other": "{{count}} mld",
+    "helpLevelBreakdown": "Bruk av hjelpniv\u00e5",
+    "noConversations": "Ingen leksesamtaler enn\u00e5",
+    "repeatedAnswerAlert": "Brukte \u00abVis svaret\u00bb 3+ ganger p\u00e5 rad",
+    "closeTranscript": "Lukk samtale",
+    "noMessages": "Ingen meldinger i denne samtalen",
+    "errors": {
+      "failedToLoad": "Kunne ikke laste barn",
+      "failedToLoadReview": "Kunne ikke laste oversiktsdata",
+      "failedToLoadTranscript": "Kunne ikke laste samtale"
+    }
+  },
   "settings": {
     "title": "Profilinnstillinger",
     "age": "Alder",

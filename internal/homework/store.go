@@ -515,10 +515,57 @@ func GetConversationsForParentReview(db *sql.DB, kidID int64) ([]ConversationSum
 		}
 	}
 
+	// Detect conversations with 3+ consecutive "answer" help levels.
+	if len(summaries) > 0 {
+		if err := markRepeatedAnswerAlerts(db, kidID, summaries, idIndex); err != nil {
+			return nil, err
+		}
+	}
+
 	if summaries == nil {
 		summaries = []ConversationSummary{}
 	}
 	return summaries, nil
+}
+
+// markRepeatedAnswerAlerts flags conversations where a kid used the "answer"
+// help level 3 or more consecutive times without intermediate levels.
+func markRepeatedAnswerAlerts(db *sql.DB, kidID int64, summaries []ConversationSummary, idIndex map[int64]int) error {
+	rows, err := db.Query(`
+		SELECT m.conversation_id, m.help_level
+		FROM homework_messages m
+		JOIN homework_conversations c ON c.id = m.conversation_id
+		WHERE c.kid_id = ? AND m.help_level != '' AND m.role = 'assistant'
+		ORDER BY m.conversation_id, m.id`, kidID)
+	if err != nil {
+		return fmt.Errorf("check repeated answers: %w", err)
+	}
+	defer rows.Close()
+
+	var prevConvID int64
+	var consecutive int
+	for rows.Next() {
+		var convID int64
+		var level string
+		if err := rows.Scan(&convID, &level); err != nil {
+			return err
+		}
+		if convID != prevConvID {
+			prevConvID = convID
+			consecutive = 0
+		}
+		if level == string(HelpLevelAnswer) {
+			consecutive++
+		} else {
+			consecutive = 0
+		}
+		if consecutive >= 3 {
+			if idx, ok := idIndex[convID]; ok {
+				summaries[idx].RepeatedAnswerAlert = true
+			}
+		}
+	}
+	return rows.Err()
 }
 
 // decryptField decrypts a field value. If the value has the "enc:" prefix but

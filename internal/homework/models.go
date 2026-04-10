@@ -56,6 +56,8 @@ type HomeworkMessage struct {
 // ConversationSummary extends HomeworkConversation with review info for parents.
 type ConversationSummary struct {
 	HomeworkConversation
-	MessageCount int            `json:"message_count"`
-	HelpLevels   map[string]int `json:"help_levels"`
+	MessageCount         int            `json:"message_count"`
+	HelpLevels           map[string]int `json:"help_levels"`
+	RepeatedAnswerAlert  bool           `json:"repeated_answer_alert"`
 }
+
