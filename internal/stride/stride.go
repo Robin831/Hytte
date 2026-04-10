@@ -374,11 +374,16 @@ func ListNotes(db *sql.DB, userID int64, planID *int64, status string) ([]Note, 
 		args = append(args, *planID)
 	}
 
-	switch status {
+	normalizedStatus := strings.ToLower(strings.TrimSpace(status))
+	switch normalizedStatus {
+	case "", "all":
+		// No additional filter.
 	case "active":
 		query += ` AND consumed_at IS NULL`
 	case "consumed":
 		query += ` AND consumed_at IS NOT NULL`
+	default:
+		return nil, fmt.Errorf("invalid status %q: must be active, consumed, all, or empty", status)
 	}
 
 	query += ` ORDER BY created_at DESC`

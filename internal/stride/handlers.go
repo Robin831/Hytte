@@ -391,7 +391,13 @@ func ListNotesHandler(db *sql.DB) http.HandlerFunc {
 			planID = &pid
 		}
 
-		status := r.URL.Query().Get("status")
+		status := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("status")))
+		switch status {
+		case "", "active", "consumed", "all":
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid status"})
+			return
+		}
 
 		notes, err := ListNotes(db, user.ID, planID, status)
 		if err != nil {
