@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -12,6 +13,12 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
 )
+
+// maxProfileBodySize is the maximum allowed request body size for profile updates (64 KB).
+const maxProfileBodySize = 64 << 10
+
+// maxConversationBodySize is the maximum allowed request body size for new conversations (8 KB).
+const maxConversationBodySize = 8 << 10
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -84,6 +91,8 @@ func HandleUpdateProfile(db *sql.DB) http.HandlerFunc {
 		if !ok {
 			return
 		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, maxProfileBodySize)
 
 		var body struct {
 			Age               int      `json:"age"`
@@ -224,12 +233,20 @@ func HandleNewConversation(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		r.Body = http.MaxBytesReader(w, r.Body, maxConversationBodySize)
+
 		var body struct {
 			Subject string `json:"subject"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		// Subject is optional — tolerate an empty body.
+		if data, err := io.ReadAll(r.Body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read request body"})
 			return
+		} else if len(data) > 0 {
+			if err := json.Unmarshal(data, &body); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+				return
+			}
 		}
 
 		body.Subject = strings.TrimSpace(body.Subject)

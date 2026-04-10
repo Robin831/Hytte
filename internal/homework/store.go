@@ -35,12 +35,20 @@ func CreateProfile(db *sql.DB, p HomeworkProfile) (HomeworkProfile, error) {
 	if err != nil {
 		return HomeworkProfile{}, fmt.Errorf("encrypt current_topics: %w", err)
 	}
+	encGradeLevel, err := encryption.EncryptField(p.GradeLevel)
+	if err != nil {
+		return HomeworkProfile{}, fmt.Errorf("encrypt grade_level: %w", err)
+	}
+	encLang, err := encryption.EncryptField(p.PreferredLanguage)
+	if err != nil {
+		return HomeworkProfile{}, fmt.Errorf("encrypt preferred_language: %w", err)
+	}
 
 	now := time.Now().UTC().Format(timeFormat)
 	result, err := db.Exec(`
 		INSERT INTO kids_homework_profiles (kid_id, age, grade_level, subjects, preferred_language, school_name, current_topics, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		p.KidID, p.Age, p.GradeLevel, encSubjects, p.PreferredLanguage, encSchool, encTopics, now, now,
+		p.KidID, p.Age, encGradeLevel, encSubjects, encLang, encSchool, encTopics, now, now,
 	)
 	if err != nil {
 		return HomeworkProfile{}, fmt.Errorf("insert homework profile: %w", err)
@@ -80,13 +88,21 @@ func UpdateProfile(db *sql.DB, p HomeworkProfile) error {
 	if err != nil {
 		return fmt.Errorf("encrypt current_topics: %w", err)
 	}
+	encGradeLevel, err := encryption.EncryptField(p.GradeLevel)
+	if err != nil {
+		return fmt.Errorf("encrypt grade_level: %w", err)
+	}
+	encLang, err := encryption.EncryptField(p.PreferredLanguage)
+	if err != nil {
+		return fmt.Errorf("encrypt preferred_language: %w", err)
+	}
 
 	now := time.Now().UTC().Format(timeFormat)
 	result, err := db.Exec(`
 		UPDATE kids_homework_profiles
 		SET age = ?, grade_level = ?, subjects = ?, preferred_language = ?, school_name = ?, current_topics = ?, updated_at = ?
 		WHERE kid_id = ?`,
-		p.Age, p.GradeLevel, encSubjects, p.PreferredLanguage, encSchool, encTopics, now, p.KidID,
+		p.Age, encGradeLevel, encSubjects, encLang, encSchool, encTopics, now, p.KidID,
 	)
 	if err != nil {
 		return fmt.Errorf("update homework profile: %w", err)
@@ -105,19 +121,31 @@ func UpdateProfile(db *sql.DB, p HomeworkProfile) error {
 // GetProfileByKidID returns the homework profile for a given child.
 func GetProfileByKidID(db *sql.DB, kidID int64) (*HomeworkProfile, error) {
 	var p HomeworkProfile
-	var encSubjects, encSchool, encTopics string
+	var encSubjects, encSchool, encTopics, encGradeLevel, encLang string
 	err := db.QueryRow(`
 		SELECT id, kid_id, age, grade_level, subjects, preferred_language, school_name, current_topics, created_at, updated_at
 		FROM kids_homework_profiles
 		WHERE kid_id = ?`,
 		kidID,
-	).Scan(&p.ID, &p.KidID, &p.Age, &p.GradeLevel, &encSubjects, &p.PreferredLanguage, &encSchool, &encTopics, &p.CreatedAt, &p.UpdatedAt)
+	).Scan(&p.ID, &p.KidID, &p.Age, &encGradeLevel, &encSubjects, &encLang, &encSchool, &encTopics, &p.CreatedAt, &p.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get homework profile: %w", err)
 	}
+
+	gradeLevel, err := decryptField(encGradeLevel)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt grade_level: %w", err)
+	}
+	p.GradeLevel = gradeLevel
+
+	lang, err := decryptField(encLang)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt preferred_language: %w", err)
+	}
+	p.PreferredLanguage = lang
 
 	schoolName, err := decryptField(encSchool)
 	if err != nil {

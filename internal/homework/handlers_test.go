@@ -202,6 +202,23 @@ func TestHandleNewConversationNoSubject(t *testing.T) {
 	}
 }
 
+func TestHandleNewConversationEmptyBody(t *testing.T) {
+	d := setupTestDB(t)
+	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00.000Z')`)
+	if err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+
+	handler := HandleNewConversation(d)
+	r := withChiParams(withUser(httptest.NewRequest(http.MethodPost, "/api/homework/children/2/conversations", nil), testParent), map[string]string{"childId": "2"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for empty body, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
 func TestHandleListConversations(t *testing.T) {
 	d := setupTestDB(t)
 	_, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00.000Z')`)
