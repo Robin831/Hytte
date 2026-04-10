@@ -2,6 +2,7 @@ package homework
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -541,7 +542,8 @@ func sendMessage(db *sql.DB, w http.ResponseWriter, r *http.Request, kidID, conf
 
 	if err != nil {
 		log.Printf("homework: claude error conv %d: %v", conv.ID, err)
-		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"Claude failed to respond\"}\n\n")
+		errJSON, _ := json.Marshal(map[string]string{"error": "Claude failed to respond. Please try again."})
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", errJSON)
 		flusher.Flush()
 		return
 	}
@@ -672,7 +674,7 @@ type claudeStreamLine struct {
 // using the @path syntax so Claude can analyse it. Returns the full response text
 // and session ID.
 func streamClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPrompt, prompt, imagePath, sessionID string, w http.ResponseWriter, flusher http.Flusher) (string, string, error) {
-	args := []string{"--model", cfg.Model, "-p", "-", "--output-format", "stream-json", "--system-prompt", systemPrompt}
+	args := []string{"--model", cfg.Model, "-p", "-", "--output-format", "stream-json", "--verbose", "--system-prompt", systemPrompt}
 	if sessionID != "" {
 		args = append(args, "--resume", sessionID)
 	}
@@ -689,6 +691,9 @@ func streamClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPrompt,
 
 	cmd := execCommand(ctx, cfg.CLIPath, args...)
 	cmd.Stdin = strings.NewReader(fullPrompt)
+
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -744,6 +749,10 @@ func streamClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPrompt,
 		case "result":
 			if ev.IsError {
 				cmd.Wait()
+				stderr := strings.TrimSpace(stderrBuf.String())
+				if stderr != "" {
+					return "", "", fmt.Errorf("claude returned error: %s: %s", ev.Result, stderr)
+				}
 				return "", "", fmt.Errorf("claude returned error: %s", ev.Result)
 			}
 			if ev.Result != "" {
@@ -757,10 +766,16 @@ func streamClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPrompt,
 
 	if err := scanner.Err(); err != nil {
 		cmd.Wait()
+		if stderr := strings.TrimSpace(stderrBuf.String()); stderr != "" {
+			return "", "", fmt.Errorf("scan claude output: %w: %s", err, stderr)
+		}
 		return "", "", fmt.Errorf("scan claude output: %w", err)
 	}
 
 	if err := cmd.Wait(); err != nil {
+		if stderr := strings.TrimSpace(stderrBuf.String()); stderr != "" {
+			return "", "", fmt.Errorf("claude exit: %w: %s", err, stderr)
+		}
 		return "", "", fmt.Errorf("claude exit: %w", err)
 	}
 
