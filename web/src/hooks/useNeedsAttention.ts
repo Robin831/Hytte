@@ -130,8 +130,12 @@ export function availableActions(source: NeedsAttentionSource, statuses: NeedsAt
   }
 
   // Force smith lets a human re-run with extra context, but only for items
-  // backed by a retries-table row.
-  if (hasRetryEntry && statuses.includes('clarification_needed')) {
+  // backed by a retries-table row. Available when the smith needs clarification
+  // or the warden rejected the smith's changes (needs_human / review_exhausted).
+  if (
+    hasRetryEntry &&
+    (statuses.includes('clarification_needed') || statuses.includes('needs_human') || statuses.includes('review_exhausted'))
+  ) {
     actions.push('forceSmith')
   }
 

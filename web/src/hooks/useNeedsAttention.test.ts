@@ -213,8 +213,16 @@ describe('availableActions', () => {
     expect(availableActions('pr', ['clarification_needed'])).not.toContain('forceSmith')
   })
 
-  it('does NOT include forceSmith for retry source without clarification_needed', () => {
-    expect(availableActions('retry', ['needs_human'])).not.toContain('forceSmith')
+  it('includes forceSmith for retry source with needs_human', () => {
+    expect(availableActions('retry', ['needs_human'])).toContain('forceSmith')
+  })
+
+  it('includes forceSmith for retry source with review_exhausted', () => {
+    expect(availableActions('retry', ['review_exhausted'])).toContain('forceSmith')
+  })
+
+  it('does NOT include forceSmith for retry source without relevant status', () => {
+    expect(availableActions('retry', ['dispatch_failure'])).not.toContain('forceSmith')
   })
 
   it('includes wardenRerun for retry source with needs_human', () => {
