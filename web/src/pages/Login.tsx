@@ -6,7 +6,7 @@ function Login() {
 
   if (loading) return null
 
-  if (user) return <Navigate to="/" replace />
+  if (user) return <Navigate to="/dashboard" replace />
 
   // Sign-in button is in the header — redirect to home
   return <Navigate to="/" replace />

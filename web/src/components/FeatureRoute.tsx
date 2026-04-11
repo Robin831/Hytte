@@ -22,12 +22,12 @@ export default function FeatureRoute({ feature, requireAdmin, familyRole, childr
 
   if (!user) return <Navigate to="/" replace />
 
-  if (requireAdmin && !user.is_admin) return <Navigate to="/" replace />
+  if (requireAdmin && !user.is_admin) return <Navigate to="/dashboard" replace />
 
-  if (feature && !hasFeature(feature)) return <Navigate to="/" replace />
+  if (feature && !hasFeature(feature)) return <Navigate to="/dashboard" replace />
 
-  if (familyRole === 'parent' && familyStatus?.is_child) return <Navigate to="/" replace />
-  if (familyRole === 'child' && !familyStatus?.is_child) return <Navigate to="/" replace />
+  if (familyRole === 'parent' && familyStatus?.is_child) return <Navigate to="/dashboard" replace />
+  if (familyRole === 'child' && !familyStatus?.is_child) return <Navigate to="/dashboard" replace />
 
   return children
 }

@@ -46,7 +46,7 @@ function Admin() {
 
   useEffect(() => {
     if (user && !user.is_admin) {
-      navigate('/', { replace: true })
+      navigate('/dashboard', { replace: true })
     }
   }, [user, navigate])
 
