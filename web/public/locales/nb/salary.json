@@ -132,6 +132,29 @@
     "incomeFromHeader": "Inntekt fra",
     "rate": "Sats (0–1)"
   },
+  "trekktabellAssignments": {
+    "title": "Tabelltrekk-tilknytninger",
+    "helper": "Hvilken trekktabell gjelder fra hvilken arbeidsmåned. Lønnsslippen 20. april dekker marstimer — for å bytte fra og med den lønnsslippen, sett fra-måned til mars.",
+    "loading": "Henter tilknytninger…",
+    "noneYet": "Ingen tilknytninger ennå — bruker tabell 8050 for alle måneder.",
+    "fromMonth": "Fra arbeidsmåned",
+    "tableNumber": "Tabellnummer",
+    "tableNumberPlaceholder": "8010",
+    "add": "Legg til",
+    "delete": "Slett tilknytning",
+    "invalidMonth": "Måned må være på formatet ÅÅÅÅ-MM",
+    "invalidTable": "Tabellnummer må være 4 siffer"
+  },
+  "trekktabellImport": {
+    "title": "Last opp trekktabell-data (alle tabeller)",
+    "helper": "Kun admin. Last opp filen fra skatteetaten (alleTabelleneIEnFilTilSkatteetatenNo.txt). Månedsrader for alle ca. 96 tabeller importeres for det gitte året. Erstatter eksisterende rader for året.",
+    "year": "År",
+    "file": "Fil",
+    "submit": "Importer",
+    "invalidYear": "År må være mellom 2000 og 2100",
+    "selectFile": "Velg en fil å laste opp",
+    "success": "Importerte {{rows}} rader fra {{tables}} tabeller for år {{year}}"
+  },
   "budgetSync": {
     "title": "Synkroniser til budsjett",
     "sync": "Synkroniser nettoinntekt",

@@ -1,0 +1,3 @@
+category: Added
+- **Per-month trekktabell assignments** - The trekktabell number used for preliminary withholding is now configurable per user per work month from the salary page, replacing the hardcoded `"8050"` lookup. Assignments pick up automatically for the matching month; previous months keep their old table unless an earlier assignment covers them. (Hytte-trekktabell-assignments)
+- **Trekktabell data import (admin)** - New admin-only upload on the salary page accepts the skatteetaten `alleTabelleneIEnFilTilSkatteetatenNo.txt` file and imports monthly rows for all ~96 tables in one pass, replacing existing rows for the chosen year. Removes the need to hand-seed SQL when the tax year rolls over. (Hytte-trekktabell-assignments)

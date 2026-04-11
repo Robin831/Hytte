@@ -122,6 +122,19 @@ func setupTestDB(t *testing.T) *sql.DB {
 			trinnskatt_json       TEXT NOT NULL DEFAULT '[]',
 			UNIQUE(user_id, year)
 		);
+		CREATE TABLE salary_trekktabell_data (
+			table_number TEXT NOT NULL,
+			year         INTEGER NOT NULL,
+			income       INTEGER NOT NULL,
+			tax          INTEGER NOT NULL,
+			PRIMARY KEY (table_number, year, income)
+		);
+		CREATE TABLE salary_trekktabell_assignments (
+			user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			effective_from TEXT NOT NULL,
+			table_number   TEXT NOT NULL,
+			PRIMARY KEY (user_id, effective_from)
+		);
 	`)
 	if err != nil {
 		t.Fatalf("create schema: %v", err)
@@ -758,3 +771,162 @@ func TestGetOrSeedTrekktabellParams_ReturnsExisting(t *testing.T) {
 		t.Errorf("AlminneligSkattRate = %v, want 0.20 (custom row)", got.AlminneligSkattRate)
 	}
 }
+
+func TestGetEffectiveTrekktabellNumber_NoAssignments_ReturnsDefault(t *testing.T) {
+	db := setupTestDB(t)
+	got := GetEffectiveTrekktabellNumber(db, 1, "2026-04")
+	if got != "8050" {
+		t.Errorf("no assignments should default to 8050, got %q", got)
+	}
+}
+
+func TestGetEffectiveTrekktabellNumber_PicksMostRecentOnOrBeforeMonth(t *testing.T) {
+	db := setupTestDB(t)
+	if err := UpsertTrekktabellAssignment(db, 1, "2026-01", "8050"); err != nil {
+		t.Fatalf("seed 8050: %v", err)
+	}
+	if err := UpsertTrekktabellAssignment(db, 1, "2026-03", "8010"); err != nil {
+		t.Fatalf("seed 8010: %v", err)
+	}
+
+	cases := []struct {
+		month string
+		want  string
+	}{
+		{"2025-12", "8050"}, // before first assignment → legacy default
+		{"2026-01", "8050"}, // matches first assignment exactly
+		{"2026-02", "8050"}, // between assignments
+		{"2026-03", "8010"}, // matches second assignment exactly
+		{"2026-04", "8010"}, // after second assignment
+		{"2027-06", "8010"}, // far future → still picks most recent
+	}
+	for _, tc := range cases {
+		got := GetEffectiveTrekktabellNumber(db, 1, tc.month)
+		if got != tc.want {
+			t.Errorf("month %q: got %q, want %q", tc.month, got, tc.want)
+		}
+	}
+}
+
+func TestGetEffectiveTrekktabellNumber_InvalidMonth_ReturnsDefault(t *testing.T) {
+	db := setupTestDB(t)
+	// Even with assignments present, an invalid month string should fall back.
+	if err := UpsertTrekktabellAssignment(db, 1, "2026-01", "8010"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	got := GetEffectiveTrekktabellNumber(db, 1, "not-a-month")
+	if got != "8050" {
+		t.Errorf("invalid month should return default 8050, got %q", got)
+	}
+}
+
+func TestGetEffectiveTrekktabellNumber_ScopedByUser(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := db.Exec(`INSERT INTO users (id, email) VALUES (2, 'other@example.com')`); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if err := UpsertTrekktabellAssignment(db, 1, "2026-01", "8010"); err != nil {
+		t.Fatalf("seed user 1: %v", err)
+	}
+	// User 2 has no assignments — should still get the default.
+	got := GetEffectiveTrekktabellNumber(db, 2, "2026-04")
+	if got != "8050" {
+		t.Errorf("user 2 should return default 8050, got %q", got)
+	}
+	// User 1 should get their assignment.
+	got = GetEffectiveTrekktabellNumber(db, 1, "2026-04")
+	if got != "8010" {
+		t.Errorf("user 1 should return 8010, got %q", got)
+	}
+}
+
+func TestUpsertTrekktabellAssignment_RejectsBadInput(t *testing.T) {
+	db := setupTestDB(t)
+	cases := []struct {
+		effectiveFrom, tableNumber, reason string
+	}{
+		{"", "8050", "empty effective_from"},
+		{"2026", "8050", "wrong date format"},
+		{"2026-13", "8050", "invalid month"},
+		{"2026-04", "", "empty table number"},
+		{"2026-04", "805", "too short"},
+		{"2026-04", "80500", "too long"},
+		{"2026-04", "80AB", "non-digit"},
+	}
+	for _, tc := range cases {
+		err := UpsertTrekktabellAssignment(db, 1, tc.effectiveFrom, tc.tableNumber)
+		if err == nil {
+			t.Errorf("%s: expected error for (%q, %q)", tc.reason, tc.effectiveFrom, tc.tableNumber)
+		}
+	}
+}
+
+func TestUpsertTrekktabellAssignment_ReplacesExisting(t *testing.T) {
+	db := setupTestDB(t)
+	if err := UpsertTrekktabellAssignment(db, 1, "2026-01", "8050"); err != nil {
+		t.Fatalf("first upsert: %v", err)
+	}
+	if err := UpsertTrekktabellAssignment(db, 1, "2026-01", "8010"); err != nil {
+		t.Fatalf("second upsert: %v", err)
+	}
+	got := GetEffectiveTrekktabellNumber(db, 1, "2026-01")
+	if got != "8010" {
+		t.Errorf("upsert should have replaced 8050 with 8010, got %q", got)
+	}
+	assignments, err := ListTrekktabellAssignments(db, 1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(assignments) != 1 {
+		t.Errorf("expected exactly 1 row after upsert-replace, got %d", len(assignments))
+	}
+}
+
+func TestDeleteTrekktabellAssignment_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	if err := DeleteTrekktabellAssignment(db, 1, "2026-04"); err != sql.ErrNoRows {
+		t.Errorf("expected sql.ErrNoRows for missing row, got %v", err)
+	}
+}
+
+func TestDeleteTrekktabellAssignment_RemovesRow(t *testing.T) {
+	db := setupTestDB(t)
+	if err := UpsertTrekktabellAssignment(db, 1, "2026-01", "8050"); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := DeleteTrekktabellAssignment(db, 1, "2026-01"); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	assignments, err := ListTrekktabellAssignments(db, 1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(assignments) != 0 {
+		t.Errorf("expected 0 rows after delete, got %d", len(assignments))
+	}
+}
+
+func TestBulkInsertTrekktabellData_IdempotentOnConflict(t *testing.T) {
+	db := setupTestDB(t)
+	rows := []TrekktabellRow{
+		{TableNumber: "8050", Year: 2026, Income: 40000, Tax: 9258},
+		{TableNumber: "8010", Year: 2026, Income: 40000, Tax: 10096},
+	}
+	n, err := BulkInsertTrekktabellData(db, rows)
+	if err != nil {
+		t.Fatalf("first insert: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("inserted %d, want 2", n)
+	}
+	// Re-insert with updated tax — should replace, not conflict.
+	rows[0].Tax = 9999
+	if _, err := BulkInsertTrekktabellData(db, rows); err != nil {
+		t.Fatalf("second insert: %v", err)
+	}
+	got := LookupTrekktabellTax(db, "8050", 2026, 40000)
+	if got != 9999 {
+		t.Errorf("after replace, got tax %.0f, want 9999", got)
+	}
+}
+

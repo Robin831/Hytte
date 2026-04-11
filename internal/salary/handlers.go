@@ -326,8 +326,12 @@ func buildEstimateWithParams(db *sql.DB, userID int64, month string, today time.
 	record.InternalHours = internalHoursWorked
 
 	// Override tax with actual trekktabell lookup if table data is loaded.
-	if HasTrekktabellData(db, "8050", year) {
-		lookupTax := LookupTrekktabellTax(db, "8050", year, record.Gross)
+	// The trekktabell number is looked up per-user per-work-month via
+	// salary_trekktabell_assignments, falling back to "8050" for users who
+	// haven't configured any assignments yet.
+	tableNumber := GetEffectiveTrekktabellNumber(db, userID, month)
+	if HasTrekktabellData(db, tableNumber, year) {
+		lookupTax := LookupTrekktabellTax(db, tableNumber, year, record.Gross)
 		record.Tax = lookupTax
 		record.Net = record.Gross - lookupTax
 	}
@@ -1403,6 +1407,135 @@ func SyncBudgetHandler(db *sql.DB) http.HandlerFunc {
 			BudgetTransactionID: txn.ID,
 			CategoryID:          categoryID,
 			AccountID:           accountID,
+		})
+	}
+}
+
+// TrekktabellAssignmentsListHandler handles GET /api/salary/trekktabell-assignments.
+// Returns all per-month trekktabell assignments for the authenticated user,
+// most recent effective month first.
+func TrekktabellAssignmentsListHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		assignments, err := ListTrekktabellAssignments(db, user.ID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list assignments"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"assignments": assignments})
+	}
+}
+
+// TrekktabellAssignmentsPutHandler handles PUT /api/salary/trekktabell-assignments.
+// Upserts a single assignment. Body: {"effective_from": "YYYY-MM", "table_number": "8010"}.
+func TrekktabellAssignmentsPutHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		var body struct {
+			EffectiveFrom string `json:"effective_from"`
+			TableNumber   string `json:"table_number"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+		if err := UpsertTrekktabellAssignment(db, user.ID, body.EffectiveFrom, body.TableNumber); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		assignments, err := ListTrekktabellAssignments(db, user.ID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list assignments"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"assignments": assignments})
+	}
+}
+
+// TrekktabellAssignmentsDeleteHandler handles DELETE /api/salary/trekktabell-assignments/{effective_from}.
+func TrekktabellAssignmentsDeleteHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		effectiveFrom := chi.URLParam(r, "effective_from")
+		if err := DeleteTrekktabellAssignment(db, user.ID, effectiveFrom); err != nil {
+			if err == sql.ErrNoRows {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "assignment not found"})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete assignment"})
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// TrekktabellDataImportHandler handles POST /api/salary/trekktabell-data/import.
+// Accepts a multipart upload with a single file field ("file") containing the
+// skatteetaten fixed-width trekktabell file ("alleTabelleneIEnFilTilSkatteetatenNo.txt").
+// Requires a "year" form field (integer, 2000-2100) because the file itself
+// carries no year marker — skatteetaten publishes one file per tax year.
+//
+// The handler parses every monthly row (period code "10") across all ~96
+// tables in the file and inserts them into salary_trekktabell_data, replacing
+// any existing rows with the same (table_number, year, income) key. This is
+// admin-only because loading trekktabell data is shared across all users on
+// the instance.
+func TrekktabellDataImportHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Cap the upload at 50 MB. The real file is ~21 MB; 50 MB leaves headroom
+		// without risking an OOM if someone uploads something huge by mistake.
+		r.Body = http.MaxBytesReader(w, r.Body, 50*1024*1024)
+		if err := r.ParseMultipartForm(50 * 1024 * 1024); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid multipart form or file too large"})
+			return
+		}
+		defer r.MultipartForm.RemoveAll()
+
+		yearStr := r.FormValue("year")
+		year, err := strconv.Atoi(yearStr)
+		if err != nil || year < 2000 || year > 2100 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "year is required and must be between 2000 and 2100"})
+			return
+		}
+
+		fhs := r.MultipartForm.File["file"]
+		if len(fhs) == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "file is required"})
+			return
+		}
+		f, err := fhs[0].Open()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to open uploaded file"})
+			return
+		}
+		defer f.Close()
+
+		rows, err := ParseSkatteetatenMonthly(f, year)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("parse file: %v", err)})
+			return
+		}
+		if len(rows) == 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no monthly rows found in file — wrong format?"})
+			return
+		}
+
+		inserted, err := BulkInsertTrekktabellData(db, rows)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("insert rows: %v", err)})
+			return
+		}
+
+		// Count distinct tables imported so the response is more informative.
+		tableSet := map[string]struct{}{}
+		for _, row := range rows {
+			tableSet[row.TableNumber] = struct{}{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"year":     year,
+			"rows":     inserted,
+			"tables":   len(tableSet),
+			"filename": fhs[0].Filename,
 		})
 	}
 }

@@ -693,3 +693,150 @@ func HasTrekktabellData(db *sql.DB, tableNumber string, year int) bool {
 	).Scan(&count)
 	return count > 0
 }
+
+// TrekktabellAssignment records which trekktabell number applies from a given
+// work month onwards for a single user.
+type TrekktabellAssignment struct {
+	UserID        int64  `json:"user_id"`
+	EffectiveFrom string `json:"effective_from"` // YYYY-MM work month
+	TableNumber   string `json:"table_number"`
+}
+
+// defaultTrekktabellNumber is returned when no assignment exists for a user.
+// Kept in sync with the pre-assignment hardcoded value so existing deployments
+// continue to work without a seeded assignment row.
+const defaultTrekktabellNumber = "8050"
+
+// GetEffectiveTrekktabellNumber returns the trekktabell number in effect for
+// the given user and YYYY-MM work month. It picks the most recent assignment
+// whose effective_from is on or before the target month. Returns the legacy
+// default ("8050") when the user has no assignments at all.
+func GetEffectiveTrekktabellNumber(db *sql.DB, userID int64, month string) string {
+	if _, err := time.Parse("2006-01", month); err != nil {
+		return defaultTrekktabellNumber
+	}
+	var tableNumber string
+	err := db.QueryRow(`
+		SELECT table_number
+		FROM salary_trekktabell_assignments
+		WHERE user_id = ? AND effective_from <= ?
+		ORDER BY effective_from DESC
+		LIMIT 1
+	`, userID, month).Scan(&tableNumber)
+	if err != nil {
+		return defaultTrekktabellNumber
+	}
+	return tableNumber
+}
+
+// ListTrekktabellAssignments returns all assignments for a user, most recent
+// effective month first.
+func ListTrekktabellAssignments(db *sql.DB, userID int64) ([]TrekktabellAssignment, error) {
+	rows, err := db.Query(`
+		SELECT user_id, effective_from, table_number
+		FROM salary_trekktabell_assignments
+		WHERE user_id = ?
+		ORDER BY effective_from DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TrekktabellAssignment
+	for rows.Next() {
+		var a TrekktabellAssignment
+		if err := rows.Scan(&a.UserID, &a.EffectiveFrom, &a.TableNumber); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	if out == nil {
+		out = []TrekktabellAssignment{}
+	}
+	return out, rows.Err()
+}
+
+// UpsertTrekktabellAssignment inserts or replaces an assignment. effectiveFrom
+// must be YYYY-MM. tableNumber must match a 4-digit Norwegian trekktabell
+// identifier.
+func UpsertTrekktabellAssignment(db *sql.DB, userID int64, effectiveFrom, tableNumber string) error {
+	if _, err := time.Parse("2006-01", effectiveFrom); err != nil {
+		return fmt.Errorf("invalid effective_from %q: expected YYYY-MM", effectiveFrom)
+	}
+	tableNumber = strings.TrimSpace(tableNumber)
+	if len(tableNumber) != 4 {
+		return fmt.Errorf("invalid table_number %q: expected 4 digits", tableNumber)
+	}
+	for _, r := range tableNumber {
+		if r < '0' || r > '9' {
+			return fmt.Errorf("invalid table_number %q: expected 4 digits", tableNumber)
+		}
+	}
+	_, err := db.Exec(`
+		INSERT INTO salary_trekktabell_assignments (user_id, effective_from, table_number)
+		VALUES (?, ?, ?)
+		ON CONFLICT(user_id, effective_from) DO UPDATE SET table_number = excluded.table_number
+	`, userID, effectiveFrom, tableNumber)
+	return err
+}
+
+// DeleteTrekktabellAssignment removes a single assignment. Returns sql.ErrNoRows
+// if the row did not exist.
+func DeleteTrekktabellAssignment(db *sql.DB, userID int64, effectiveFrom string) error {
+	res, err := db.Exec(`
+		DELETE FROM salary_trekktabell_assignments
+		WHERE user_id = ? AND effective_from = ?
+	`, userID, effectiveFrom)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// TrekktabellRow is a single (table, year, income → tax) entry parsed from the
+// skatteetaten fixed-width file.
+type TrekktabellRow struct {
+	TableNumber string
+	Year        int
+	Income      int
+	Tax         int
+}
+
+// BulkInsertTrekktabellData inserts rows into salary_trekktabell_data using a
+// single transaction. Existing rows with the same (table_number, year, income)
+// key are replaced. Returns the number of rows written.
+func BulkInsertTrekktabellData(db *sql.DB, rows []TrekktabellRow) (int, error) {
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	stmt, err := tx.Prepare(`
+		INSERT INTO salary_trekktabell_data (table_number, year, income, tax)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(table_number, year, income) DO UPDATE SET tax = excluded.tax
+	`)
+	if err != nil {
+		return 0, err
+	}
+	defer stmt.Close()
+	for _, row := range rows {
+		if _, err := stmt.Exec(row.TableNumber, row.Year, row.Income, row.Tax); err != nil {
+			return 0, fmt.Errorf("insert row %+v: %w", row, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return len(rows), nil
+}

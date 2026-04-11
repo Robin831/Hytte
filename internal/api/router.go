@@ -715,6 +715,10 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/salary/trekktabell", salary.TrekktabellGetHandler(db))
 				r.Put("/salary/trekktabell", salary.TrekktabellPutHandler(db))
 				r.Get("/salary/trekktabell/defaults", salary.TrekktabellDefaultsHandler())
+				r.Get("/salary/trekktabell-assignments", salary.TrekktabellAssignmentsListHandler(db))
+				r.Put("/salary/trekktabell-assignments", salary.TrekktabellAssignmentsPutHandler(db))
+				r.Delete("/salary/trekktabell-assignments/{effective_from}", salary.TrekktabellAssignmentsDeleteHandler(db))
+				r.With(auth.RequireAdmin()).Post("/salary/trekktabell-data/import", salary.TrekktabellDataImportHandler(db))
 				r.Get("/salary/vacation", salary.VacationHandler(db))
 			})
 

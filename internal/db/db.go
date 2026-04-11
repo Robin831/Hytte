@@ -2037,6 +2037,20 @@ func createSchema(db *sql.DB) error {
 		return fmt.Errorf("create salary_trekktabell_data: %w", err)
 	}
 
+	// Per-user, per-month trekktabell assignment. Determines which table_number
+	// applies when looking up the preliminary withholding for a given salary
+	// record month. Rows are keyed by the work month (YYYY-MM) the record
+	// represents — NOT by the payslip date — because the Hytte record model
+	// stores hours by work month and the tax lookup happens at that layer.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS salary_trekktabell_assignments (
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		effective_from TEXT    NOT NULL,
+		table_number   TEXT    NOT NULL,
+		PRIMARY KEY (user_id, effective_from)
+	)`); err != nil {
+		return fmt.Errorf("create salary_trekktabell_assignments: %w", err)
+	}
+
 	var hasSalaryConfigTaxableBenefits int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('salary_config') WHERE name='taxable_benefits'`).Scan(&hasSalaryConfigTaxableBenefits); err != nil {
 		return fmt.Errorf("check salary_config taxable_benefits column: %w", err)

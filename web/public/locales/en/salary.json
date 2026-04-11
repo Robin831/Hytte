@@ -132,6 +132,29 @@
     "incomeFromHeader": "Income from",
     "rate": "Rate (0–1)"
   },
+  "trekktabellAssignments": {
+    "title": "Tabelltrekk assignments",
+    "helper": "Which trekktabell applies from which work month. The April 20 payslip covers March work, so to switch starting with that payslip, set the effective month to March.",
+    "loading": "Loading assignments…",
+    "noneYet": "No assignments yet — defaults to table 8050 for all months.",
+    "fromMonth": "From work month",
+    "tableNumber": "Table number",
+    "tableNumberPlaceholder": "8010",
+    "add": "Add",
+    "delete": "Delete assignment",
+    "invalidMonth": "Month must be in YYYY-MM format",
+    "invalidTable": "Table number must be 4 digits"
+  },
+  "trekktabellImport": {
+    "title": "Upload trekktabell data (all tables)",
+    "helper": "Admin only. Upload the skatteetaten file (alleTabelleneIEnFilTilSkatteetatenNo.txt). Monthly rows for all ~96 tables are imported for the given year. Replaces existing rows for that year.",
+    "year": "Year",
+    "file": "File",
+    "submit": "Import",
+    "invalidYear": "Year must be between 2000 and 2100",
+    "selectFile": "Select a file to upload",
+    "success": "Imported {{rows}} rows across {{tables}} tables for year {{year}}"
+  },
   "budgetSync": {
     "title": "Sync to Budget",
     "sync": "Sync net income",
