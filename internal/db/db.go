@@ -2147,11 +2147,11 @@ func createSchema(db *sql.DB) error {
 
 	// Add chat_session_id column to stride_plans table (Hytte-78qv).
 	// Stores the Claude CLI session ID for --resume continuity within a plan week's chat.
-	var hasChatSessionID int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stride_plans') WHERE name = 'chat_session_id'`).Scan(&hasChatSessionID); err != nil {
+	var hasStrideChatSessionID int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stride_plans') WHERE name = 'chat_session_id'`).Scan(&hasStrideChatSessionID); err != nil {
 		return fmt.Errorf("check stride_plans chat_session_id column: %w", err)
 	}
-	if hasChatSessionID == 0 {
+	if hasStrideChatSessionID == 0 {
 		if _, err := db.Exec(`ALTER TABLE stride_plans ADD COLUMN chat_session_id TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("add stride_plans chat_session_id column: %w", err)
 		}
