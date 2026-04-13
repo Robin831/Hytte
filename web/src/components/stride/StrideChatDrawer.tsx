@@ -147,7 +147,12 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
     if (!content) return
     if (!overrideContent && sending) return
 
-    if (!overrideContent) setInput('')
+    if (!overrideContent) {
+      setInput('')
+      // Reset per-attempt retry guard so each new user send gets one auto-retry.
+      hasRetriedPlanUpdate.current = false
+      planRetryErrorRef.current = null
+    }
     setSending(true)
     setStreamingText('')
     setError('')
@@ -161,7 +166,11 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
       plan_modified: false,
       created_at: new Date().toISOString(),
     }
-    setMessages(prev => [...prev, tempUserMsg])
+    // System-driven retries are invisible to the user — don't show an
+    // optimistic user message bubble for them.
+    if (!overrideContent) {
+      setMessages(prev => [...prev, tempUserMsg])
+    }
 
     const controller = new AbortController()
     sendAbortRef.current = controller
@@ -171,7 +180,7 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, ...(overrideContent ? { is_internal: true } : {}) }),
         signal: controller.signal,
       })
 
@@ -207,9 +216,11 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
 
               switch (eventType) {
                 case 'user_message':
-                  setMessages(prev =>
-                    prev.map(m => m.id === tempUserMsg.id ? (parsed as StrideChatMessage) : m)
-                  )
+                  if (!overrideContent) {
+                    setMessages(prev =>
+                      prev.map(m => m.id === tempUserMsg.id ? (parsed as StrideChatMessage) : m)
+                    )
+                  }
                   break
                 case 'delta':
                   accumulatedText += parsed.text ?? ''
