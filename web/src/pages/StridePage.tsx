@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle, History } from 'lucide-react'
 import { formatDate, formatDateTime } from '../utils/formatDate'
-import type { StrideEvaluation, StrideEvaluationRecord } from '../types/stride'
+import type { StrideEvaluation, StrideEvaluationRecord, DayPlan } from '../types/stride'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { TrainingBlockTimeline } from '../components/stride/TrainingBlockTimeline'
 import StrideChatDrawer from '../components/stride/StrideChatDrawer'
@@ -29,21 +29,6 @@ interface Note {
   consumed_at: string | null
   consumed_by: string | null
   created_at: string
-}
-
-interface Session {
-  warmup: string
-  main_set: string
-  cooldown: string
-  strides: string
-  target_hr_cap: number
-  description: string
-}
-
-interface DayPlan {
-  date: string // YYYY-MM-DD
-  rest_day: boolean
-  session?: Session
 }
 
 interface Plan {

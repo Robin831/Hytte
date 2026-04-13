@@ -2,21 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../auth'
-
-interface StrideSession {
-  warmup: string
-  main_set: string
-  cooldown: string
-  strides: string
-  target_hr_cap: number
-  description: string
-}
-
-interface DayPlan {
-  date: string
-  rest_day: boolean
-  session?: StrideSession
-}
+import type { DayPlan } from '../../types/stride'
 
 interface StridePlan {
   id: number

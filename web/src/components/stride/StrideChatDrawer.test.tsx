@@ -96,6 +96,7 @@ describe('StrideChatDrawer – collapsed/expanded state', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
   it('renders collapsed by default with chat title', () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(chatHistoryResponse())))
     renderDrawer()
     expect(screen.getByText('Chat with your coach')).toBeInTheDocument()
     // Should not show the input area when collapsed

@@ -177,6 +177,7 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
       const decoder = new TextDecoder()
       let buffer = ''
       let accumulatedText = ''
+      let eventType = ''
 
       while (true) {
         const { done, value } = await reader.read()
@@ -187,7 +188,6 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
 
-        let eventType = ''
         for (const line of lines) {
           if (line.startsWith('event: ')) {
             eventType = line.slice(7).trim()
