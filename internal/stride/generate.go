@@ -14,6 +14,20 @@ import (
 	"github.com/Robin831/Hytte/internal/training"
 )
 
+// dayPlanSchemaFields describes the JSON fields for each day object and its
+// session in the weekly training plan. Shared between plan generation and chat
+// prompts so that both stay in sync when the schema changes.
+const dayPlanSchemaFields = `Each day object:
+- "date": string — "YYYY-MM-DD"
+- "rest_day": boolean — true for complete rest (no session needed), false otherwise
+- "session": object (required when rest_day is false):
+  - "warmup": string — warmup description (empty string if none)
+  - "main_set": string — main workout description
+  - "cooldown": string — cooldown description (empty string if none)
+  - "strides": string — strides description (empty string if none)
+  - "target_hr_cap": integer — max HR for this session in bpm (0 if not applicable)
+  - "description": string — 1-2 sentence summary of the session purpose`
+
 // mariusBakkenInstructions contains the Marius Bakken threshold-dominant model
 // coaching instructions injected verbatim into every plan generation prompt.
 const mariusBakkenInstructions = `You are an expert running coach applying the Marius Bakken threshold-dominant training model, adapted for recreational runners doing 3-5 sessions per week.
@@ -85,19 +99,7 @@ const mariusBakkenInstructions = `You are an expert running coach applying the M
 ## Output Format
 Return ONLY a JSON array of day objects for the requested week. No markdown, no explanation, no code fences.
 
-Each day object must have:
-- "date": "YYYY-MM-DD" (the calendar date)
-- "rest_day": true (for complete rest, no session object needed)
-OR
-- "rest_day": false and "session": { ... }
-
-Each session object must have:
-- "warmup": string (warmup description, empty string if none)
-- "main_set": string (main workout description)
-- "cooldown": string (cooldown description, empty string if none)
-- "strides": string (strides description, empty string if none)
-- "target_hr_cap": integer (max HR for this session in bpm, 0 if not applicable)
-- "description": string (1-2 sentence summary of the session purpose)
+` + dayPlanSchemaFields + `
 
 Example output structure:
 [
