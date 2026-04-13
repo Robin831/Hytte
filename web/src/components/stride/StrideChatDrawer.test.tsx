@@ -11,9 +11,12 @@ const TRANSLATIONS: Record<string, string> = {
   'chat.send': 'Send',
   'chat.sending': 'Thinking...',
   'chat.planUpdated': 'Plan updated',
+  'chat.planUpdateFailed': 'Plan update failed — please review the changes manually.',
   'chat.sessionRetry': 'Session expired, retrying...',
   'chat.error': 'Failed to send message',
   'chat.empty': 'No messages yet. Ask your coach anything about this week\'s plan.',
+  'chat.dismissError': 'Dismiss',
+  'chat.collapse': 'Collapse',
 }
 
 function stableT(key: string): string {
@@ -264,5 +267,69 @@ describe('StrideChatDrawer – send message flow', () => {
     await waitFor(() => screen.getByRole('textbox'))
 
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+  })
+})
+
+describe('StrideChatDrawer – plan_update_failed recovery', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  it('auto-retries exactly once when plan_update_failed is received', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(chatHistoryResponse())
+      .mockResolvedValueOnce(makeSSEStream([
+        `event: user_message\ndata: ${JSON.stringify(makeMessage({ id: 11, role: 'user', content: 'Update the plan' }))}\n\n`,
+        `event: plan_update_failed\ndata: ${JSON.stringify({ error: 'invalid dates' })}\n\n`,
+        `event: done\ndata: ${JSON.stringify(makeMessage({ id: 12, role: 'assistant', content: 'First attempt' }))}\n\n`,
+      ]))
+      // The auto-retry sends a correction prompt; respond with a plain done.
+      .mockResolvedValueOnce(makeSSEStream([
+        `event: done\ndata: ${JSON.stringify(makeMessage({ id: 13, role: 'assistant', content: 'Corrected response' }))}\n\n`,
+      ]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDrawer()
+    fireEvent.click(screen.getByText('Chat with your coach'))
+    await waitFor(() => screen.getByRole('textbox'))
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Update the plan' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    // Wait for the corrected response to appear (auto-retry completed)
+    await waitFor(() => {
+      expect(screen.getByText('Corrected response')).toBeInTheDocument()
+    }, { timeout: 3000 })
+
+    // load + first user send + auto-retry = 3 calls
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    // No warning shown when the retry succeeds
+    expect(screen.queryByText('Plan update failed — please review the changes manually.')).not.toBeInTheDocument()
+  })
+
+  it('shows warning banner after a second consecutive plan_update_failed', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(chatHistoryResponse())
+      .mockResolvedValueOnce(makeSSEStream([
+        `event: user_message\ndata: ${JSON.stringify(makeMessage({ id: 14, role: 'user', content: 'Update plan' }))}\n\n`,
+        `event: plan_update_failed\ndata: ${JSON.stringify({ error: 'bad dates' })}\n\n`,
+        `event: done\ndata: ${JSON.stringify(makeMessage({ id: 15, role: 'assistant', content: 'First attempt' }))}\n\n`,
+      ]))
+      // Auto-retry also fails
+      .mockResolvedValueOnce(makeSSEStream([
+        `event: plan_update_failed\ndata: ${JSON.stringify({ error: 'still invalid' })}\n\n`,
+        `event: done\ndata: ${JSON.stringify(makeMessage({ id: 16, role: 'assistant', content: 'Second attempt' }))}\n\n`,
+      ]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDrawer()
+    fireEvent.click(screen.getByText('Chat with your coach'))
+    await waitFor(() => screen.getByRole('textbox'))
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Update plan' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    // Warning banner must appear after the second failure
+    await waitFor(() => {
+      expect(screen.getByText('Plan update failed — please review the changes manually.')).toBeInTheDocument()
+    }, { timeout: 3000 })
   })
 })

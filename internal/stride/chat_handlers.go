@@ -147,7 +147,8 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 
 		// Parse request body.
 		var body struct {
-			Content string `json:"content"`
+			Content    string `json:"content"`
+			IsInternal bool   `json:"is_internal"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -182,17 +183,22 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Store user message.
-		userMsg, err := AddChatMessage(db, ChatMessage{
-			PlanID:  planID,
-			UserID:  user.ID,
-			Role:    "user",
-			Content: body.Content,
-		})
-		if err != nil {
-			log.Printf("stride chat: add user message plan %d: %v", planID, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save message"})
-			return
+		// Store user message (skip for system-internal correction retries so they
+		// don't appear in the chat history visible to the user).
+		var userMsg *ChatMessage
+		if !body.IsInternal {
+			msg, err := AddChatMessage(db, ChatMessage{
+				PlanID:  planID,
+				UserID:  user.ID,
+				Role:    "user",
+				Content: body.Content,
+			})
+			if err != nil {
+				log.Printf("stride chat: add user message plan %d: %v", planID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save message"})
+				return
+			}
+			userMsg = &msg
 		}
 
 		// Get existing session ID for conversation continuity.
@@ -215,10 +221,12 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("X-Accel-Buffering", "no")
 
-		// Send the saved user message first.
-		userMsgJSON, _ := json.Marshal(userMsg)
-		fmt.Fprintf(w, "event: user_message\ndata: %s\n\n", userMsgJSON)
-		flusher.Flush()
+		// Send the saved user message first (not for internal correction retries).
+		if userMsg != nil {
+			userMsgJSON, _ := json.Marshal(userMsg)
+			fmt.Fprintf(w, "event: user_message\ndata: %s\n\n", userMsgJSON)
+			flusher.Flush()
+		}
 
 		// Stream Claude response.
 		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
@@ -256,7 +264,19 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 		if planJSON, found := extractPlanJSON(fullResponse); found {
 			days, err := validatePlanUpdate(planJSON, plan.WeekStart, plan.WeekEnd)
 			if err != nil {
-				log.Printf("stride chat: plan update validation failed plan %d msg %d: %v", planID, userMsg.ID, err)
+				var msgID int64
+				if userMsg != nil {
+					msgID = userMsg.ID
+				}
+				const maxLogPayload = 200
+				logPayload := planJSON
+				if len(logPayload) > maxLogPayload {
+					logPayload = fmt.Sprintf("%s... (%d bytes total)", logPayload[:maxLogPayload], len(planJSON))
+				}
+				log.Printf("stride chat: plan update validation failed plan %d msg %d: %v (payload: %s)", planID, msgID, err, logPayload)
+				failEvt, _ := json.Marshal(map[string]string{"error": err.Error()})
+				fmt.Fprintf(w, "event: plan_update_failed\ndata: %s\n\n", failEvt)
+				flusher.Flush()
 			} else {
 				// Update plan_json in the database.
 				updatedJSON, err := json.Marshal(days)

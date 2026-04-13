@@ -136,6 +136,7 @@
     "error": "Failed to send message",
     "empty": "No messages yet. Ask your coach anything about this week's plan.",
     "collapse": "Collapse chat",
-    "dismissError": "Dismiss error"
+    "dismissError": "Dismiss error",
+    "planUpdateFailed": "Failed to update the plan. Please try again."
   }
 }

@@ -628,6 +628,10 @@ func TestStrideChatSendHandler_InvalidPlanJSON(t *testing.T) {
 	if strings.Contains(body, "event: plan_updated") {
 		t.Error("expected no plan_updated event for invalid plan JSON")
 	}
+	// Should emit plan_update_failed so the frontend can trigger a retry.
+	if !strings.Contains(body, "event: plan_update_failed") {
+		t.Error("expected plan_update_failed event for invalid plan JSON")
+	}
 	// Should still have done event.
 	if !strings.Contains(body, "event: done") {
 		t.Error("expected done event")
@@ -642,6 +646,88 @@ func TestStrideChatSendHandler_InvalidPlanJSON(t *testing.T) {
 		if m.Role == "assistant" && m.PlanModified {
 			t.Error("expected assistant message NOT to have plan_modified for invalid plan JSON")
 		}
+	}
+}
+
+// TestStrideChatSendHandler_PlanUpdateFailedEmitsEvent tests that the
+// plan_update_failed SSE event is emitted (and plan is not updated) when
+// validatePlanUpdate fails, covering the backend side of the retry flow.
+func TestStrideChatSendHandler_PlanUpdateFailedEmitsEvent(t *testing.T) {
+	db := setupTestDB(t)
+
+	for _, kv := range [][2]string{{"claude_enabled", "true"}} {
+		if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`, kv[0], kv[1]); err != nil {
+			t.Fatalf("insert pref: %v", err)
+		}
+	}
+
+	weekStart := "2026-04-13"
+	weekEnd := "2026-04-19"
+	planJSON := buildValidPlanJSON(weekStart)
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := db.Exec(`INSERT INTO stride_plans (user_id, week_start, week_end, plan_json, created_at) VALUES (1, ?, ?, ?, ?)`,
+		weekStart, weekEnd, planJSON, now)
+	if err != nil {
+		t.Fatalf("insert plan: %v", err)
+	}
+	planID, _ := res.LastInsertId()
+
+	// Claude returns plan JSON for the wrong week — validation will fail.
+	wrongPlan := buildValidPlanJSON("2026-05-05")
+	fullResponse := fmt.Sprintf("Here is the plan:\n```json\n%s\n```\n", wrongPlan)
+
+	origExec := execCommand
+	execCommand = fakeExecCommandChat([]string{
+		fmt.Sprintf(`{"type":"result","result":%s,"session_id":"sess-fail","is_error":false}`, mustJSON(t, fullResponse)),
+	})
+	t.Cleanup(func() { execCommand = origExec })
+
+	handler := StrideChatSendHandler(db)
+	rec := httptest.NewRecorder()
+	reqBody := strings.NewReader(`{"content":"Update the plan"}`)
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/stride/plans/%d/chat", planID), reqBody)
+	r.Header.Set("Content-Type", "application/json")
+	r = withUser(r, 1)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("planId", fmt.Sprintf("%d", planID))
+	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+
+	handler.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+
+	// Must emit plan_update_failed so the frontend retry/warning flow can trigger.
+	if !strings.Contains(body, "event: plan_update_failed") {
+		t.Errorf("expected plan_update_failed event; body: %s", body)
+	}
+	// Must NOT emit plan_updated — the plan should be unchanged.
+	if strings.Contains(body, "event: plan_updated") {
+		t.Error("expected no plan_updated event when validation fails")
+	}
+	// Must include a descriptive error payload.
+	if !strings.Contains(body, `"error"`) {
+		t.Error("expected error field in plan_update_failed data")
+	}
+
+	// Verify plan_json in DB was NOT modified.
+	plan, err := GetPlanByID(db, planID, 1)
+	if err != nil {
+		t.Fatalf("get plan: %v", err)
+	}
+	var originalDays []DayPlan
+	if err := json.Unmarshal([]byte(planJSON), &originalDays); err != nil {
+		t.Fatalf("parse original plan: %v", err)
+	}
+	var currentDays []DayPlan
+	if err := json.Unmarshal(plan.Plan, &currentDays); err != nil {
+		t.Fatalf("parse current plan: %v", err)
+	}
+	if len(currentDays) != len(originalDays) {
+		t.Errorf("plan should be unchanged: original %d days, got %d", len(originalDays), len(currentDays))
 	}
 }
 
