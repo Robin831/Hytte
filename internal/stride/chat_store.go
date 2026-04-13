@@ -26,7 +26,7 @@ func ListChatMessages(db *sql.DB, planID, userID int64) ([]ChatMessage, error) {
 		SELECT id, plan_id, user_id, role, content, plan_modified, created_at
 		FROM stride_chat_messages
 		WHERE plan_id = ? AND user_id = ?
-		ORDER BY created_at ASC
+		ORDER BY created_at ASC, id ASC
 	`, planID, userID)
 	if err != nil {
 		return nil, err
@@ -116,9 +116,16 @@ func GetChatSessionID(db *sql.DB, planID, userID int64) (string, error) {
 
 // UpdateChatSessionID updates the chat_session_id on the plan row. Scoped to userID.
 func UpdateChatSessionID(db *sql.DB, planID, userID int64, sessionID string) error {
-	_, err := db.Exec(`UPDATE stride_plans SET chat_session_id = ? WHERE id = ? AND user_id = ?`, sessionID, planID, userID)
+	res, err := db.Exec(`UPDATE stride_plans SET chat_session_id = ? WHERE id = ? AND user_id = ?`, sessionID, planID, userID)
 	if err != nil {
 		return fmt.Errorf("update chat session id: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }

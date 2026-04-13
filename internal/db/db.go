@@ -1321,8 +1321,9 @@ func createSchema(db *sql.DB) error {
 		plan_json   TEXT NOT NULL,
 		prompt      TEXT NOT NULL DEFAULT '',
 		response    TEXT NOT NULL DEFAULT '',
-		model       TEXT NOT NULL DEFAULT '',
-		created_at  TEXT NOT NULL DEFAULT '',
+		model           TEXT NOT NULL DEFAULT '',
+		chat_session_id TEXT NOT NULL DEFAULT '',
+		created_at      TEXT NOT NULL DEFAULT '',
 		UNIQUE(user_id, week_start),
 		UNIQUE(user_id, id)
 	);
