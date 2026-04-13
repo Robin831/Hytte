@@ -5,6 +5,7 @@ import { formatDate, formatDateTime } from '../utils/formatDate'
 import type { StrideEvaluation, StrideEvaluationRecord } from '../types/stride'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { TrainingBlockTimeline } from '../components/stride/TrainingBlockTimeline'
+import StrideChatDrawer from '../components/stride/StrideChatDrawer'
 
 interface Race {
   id: number
@@ -958,6 +959,14 @@ export default function StridePage() {
                 />
               ))}
             </div>
+
+            {/* Chat drawer */}
+            <StrideChatDrawer
+              planId={currentPlan.id}
+              onPlanUpdated={(newPlan) => {
+                setCurrentPlan(prev => prev ? { ...prev, plan: newPlan } : prev)
+              }}
+            />
           </div>
         )}
       </section>

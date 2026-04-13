@@ -125,5 +125,15 @@
       "injury_risk": "Injury risk",
       "pacing_issue": "Pacing issue"
     }
+  },
+  "chat": {
+    "title": "Chat with your coach",
+    "placeholder": "Ask about your plan, request changes...",
+    "send": "Send",
+    "sending": "Thinking...",
+    "planUpdated": "Plan updated",
+    "sessionRetry": "Session expired, retrying...",
+    "error": "Failed to send message",
+    "empty": "No messages yet. Ask your coach anything about this week's plan."
   }
 }
