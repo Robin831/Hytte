@@ -465,6 +465,7 @@ export default function StridePage() {
   const [changedDates, setChangedDates] = useState<Set<string>>(new Set())
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [previousPlanId, setPreviousPlanId] = useState<number | null>(null)
+  const [chatPlanId, setChatPlanId] = useState<number | null>(null)
   const [hasAnyPlan, setHasAnyPlan] = useState(false)
   const [completedDates, setCompletedDates] = useState<Set<string>>(new Set())
   const [workoutIdToDate, setWorkoutIdToDate] = useState<Map<number, string>>(new Map())
@@ -644,6 +645,15 @@ export default function StridePage() {
     }
   }, [])
 
+  // Sync chatPlanId to current plan — when a new plan is generated or loaded,
+  // the chat switches to the fresh conversation automatically.
+  useEffect(() => {
+    if (currentPlan) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- chatPlanId tracks which plan's chat is shown; it can also be toggled to previousPlanId, so it cannot be purely derived
+      setChatPlanId(currentPlan.id)
+    }
+  }, [currentPlan?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const controller = new AbortController()
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
@@ -706,7 +716,18 @@ export default function StridePage() {
         return
       }
       const data = await res.json()
-      setCurrentPlan(data.plan ?? null)
+      const newPlan: Plan | null = data.plan ?? null
+      if (newPlan) {
+        // The current plan becomes the previous one; update before replacing.
+        setCurrentPlan(prev => {
+          if (prev && prev.id !== newPlan.id) {
+            setPreviousPlanId(prev.id)
+          }
+          return newPlan
+        })
+      } else {
+        setCurrentPlan(null)
+      }
     } catch {
       setGenerateError(t('plan.generateError'))
     } finally {
@@ -957,7 +978,13 @@ export default function StridePage() {
 
             {/* Chat drawer */}
             <StrideChatDrawer
-              planId={currentPlan.id}
+              planId={chatPlanId ?? currentPlan.id}
+              currentPlanId={currentPlan.id}
+              onViewPreviousChat={previousPlanId ? () => {
+                setChatPlanId(prev =>
+                  prev === currentPlan.id ? previousPlanId : currentPlan.id
+                )
+              } : undefined}
               onPlanUpdated={(newPlan) => {
                 if (currentPlan) {
                   const oldMap = new Map(currentPlan.plan.map(d => [d.date, JSON.stringify(d)]))

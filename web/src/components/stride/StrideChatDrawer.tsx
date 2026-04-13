@@ -12,6 +12,8 @@ import {
   X,
   ChevronDown,
   RefreshCw,
+  Lock,
+  History,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { DayPlan } from '../../types/stride'
@@ -27,7 +29,9 @@ export interface StrideChatMessage {
 
 interface StrideChatDrawerProps {
   planId: number
+  currentPlanId: number
   onPlanUpdated: (plan: DayPlan[]) => void
+  onViewPreviousChat?: () => void
 }
 
 // Shared link safety policy: allow https, mailto, and tel schemes
@@ -35,8 +39,9 @@ function isSafeLinkHref(href: string | undefined): href is string {
   return typeof href === 'string' && /^(https?:|mailto:|tel:)/i.test(href)
 }
 
-export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDrawerProps) {
+export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated, onViewPreviousChat }: StrideChatDrawerProps) {
   const { t } = useTranslation('stride')
+  const isReadOnly = planId !== currentPlanId
 
   const [messages, setMessages] = useState<StrideChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -56,6 +61,9 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
   const planRetryTimeoutRef = useRef<number | null>(null)
   const hasRetriedPlanUpdate = useRef(false)
   const planRetryErrorRef = useRef<string | null>(null)
+  // Tracks the planId that is currently "active" — used to detect planId changes
+  // while an SSE stream is in-flight and discard stale callbacks.
+  const activePlanIdRef = useRef(planId)
 
   useEffect(() => {
     return () => {
@@ -71,6 +79,21 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
       }
     }
   }, [])
+
+  // Abort any in-flight SSE stream when planId changes to prevent stale updates
+  // from a previous plan's conversation being applied to the new one.
+  // Also clear conversation UI state immediately so the drawer does not briefly
+  // render the previous plan's messages under the new plan banner.
+  useEffect(() => {
+    if (activePlanIdRef.current !== planId) {
+      sendAbortRef.current?.abort()
+      setMessages([])
+      setStreamingText('')
+      setError('')
+      setPlanUpdateWarning('')
+      activePlanIdRef.current = planId
+    }
+  }, [planId])
 
   const isNearBottom = useCallback(() => {
     const container = messagesEndRef.current?.parentElement
@@ -216,7 +239,7 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
 
               switch (eventType) {
                 case 'user_message':
-                  if (!overrideContent) {
+                  if (!overrideContent && activePlanIdRef.current === planId) {
                     setMessages(prev =>
                       prev.map(m => m.id === tempUserMsg.id ? (parsed as StrideChatMessage) : m)
                     )
@@ -227,9 +250,11 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
                   setStreamingText(accumulatedText)
                   break
                 case 'plan_updated':
-                  hasRetriedPlanUpdate.current = false
-                  setPlanUpdateWarning('')
-                  onPlanUpdated(parsed.plan)
+                  if (activePlanIdRef.current === planId) {
+                    hasRetriedPlanUpdate.current = false
+                    setPlanUpdateWarning('')
+                    onPlanUpdated(parsed.plan)
+                  }
                   break
                 case 'plan_update_failed':
                   if (!hasRetriedPlanUpdate.current) {
@@ -241,10 +266,12 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
                   }
                   break
                 case 'done': {
-                  const assistantMsg = parsed as StrideChatMessage
-                  setMessages(prev => [...prev, assistantMsg])
-                  setStreamingText('')
-                  setSending(false)
+                  if (activePlanIdRef.current === planId) {
+                    const assistantMsg = parsed as StrideChatMessage
+                    setMessages(prev => [...prev, assistantMsg])
+                    setStreamingText('')
+                    setSending(false)
+                  }
                   await reader.cancel()
                   return
                 }
@@ -325,15 +352,36 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
           <MessageCircle size={18} />
           <span className="text-sm font-medium">{t('chat.title')}</span>
         </div>
-        <button
-          type="button"
-          onClick={() => setExpanded(false)}
-          className="p-1 text-gray-400 hover:text-white cursor-pointer"
-          aria-label={t('chat.collapse')}
-        >
-          <ChevronDown size={18} />
-        </button>
+        <div className="flex items-center gap-1">
+          {onViewPreviousChat && (
+            <button
+              type="button"
+              onClick={onViewPreviousChat}
+              className="p-1 text-gray-400 hover:text-white cursor-pointer"
+              aria-label={isReadOnly ? t('chat.returnToCurrent') : t('chat.previousWeekChat')}
+              title={isReadOnly ? t('chat.returnToCurrent') : t('chat.previousWeekChat')}
+            >
+              <History size={16} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="p-1 text-gray-400 hover:text-white cursor-pointer"
+            aria-label={t('chat.collapse')}
+          >
+            <ChevronDown size={18} />
+          </button>
+        </div>
       </div>
+
+      {/* Read-only banner */}
+      {isReadOnly && (
+        <div className="px-4 py-2 bg-gray-700/50 border-b border-gray-600 text-gray-400 text-sm flex items-center gap-2">
+          <Lock size={14} className="shrink-0" />
+          <span>{t('chat.readOnly')}</span>
+        </div>
+      )}
 
       {/* Messages area */}
       <div
@@ -440,31 +488,33 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
       )}
 
       {/* Input area */}
-      <div className="border-t border-gray-700 p-3" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
-        <div className="flex gap-2">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={t('chat.placeholder')}
-            aria-label={t('chat.placeholder')}
-            rows={1}
-            className="flex-1 bg-gray-700 border border-gray-600 rounded-xl px-3 py-2 text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-yellow-500 placeholder-gray-500 max-h-28 overflow-y-auto"
-            style={{ minHeight: '40px' }}
-            disabled={sending}
-          />
-          <button
-            onClick={() => sendMessage()}
-            disabled={!input.trim() || sending}
-            className="self-end p-2.5 rounded-xl bg-yellow-600 hover:bg-yellow-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-            title={t('chat.send')}
-            aria-label={t('chat.send')}
-          >
-            {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-          </button>
+      {!isReadOnly && (
+        <div className="border-t border-gray-700 p-3" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+          <div className="flex gap-2">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={t('chat.placeholder')}
+              aria-label={t('chat.placeholder')}
+              rows={1}
+              className="flex-1 bg-gray-700 border border-gray-600 rounded-xl px-3 py-2 text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-yellow-500 placeholder-gray-500 max-h-28 overflow-y-auto"
+              style={{ minHeight: '40px' }}
+              disabled={sending}
+            />
+            <button
+              onClick={() => sendMessage()}
+              disabled={!input.trim() || sending}
+              className="self-end p-2.5 rounded-xl bg-yellow-600 hover:bg-yellow-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              title={t('chat.send')}
+              aria-label={t('chat.send')}
+            >
+              {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
