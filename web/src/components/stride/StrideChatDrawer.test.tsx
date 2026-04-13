@@ -71,6 +71,9 @@ function makeSSEStream(events: string[]) {
             }
             return Promise.resolve({ done: true, value: undefined })
           },
+          cancel(): Promise<void> {
+            return Promise.resolve()
+          },
         }
       },
     },

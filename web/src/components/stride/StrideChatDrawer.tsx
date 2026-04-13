@@ -30,6 +30,11 @@ interface StrideChatDrawerProps {
   onPlanUpdated: (plan: DayPlan[]) => void
 }
 
+// Shared link safety policy: allow https, mailto, and tel schemes
+function isSafeLinkHref(href: string | undefined): href is string {
+  return typeof href === 'string' && /^(https?:|mailto:|tel:)/i.test(href)
+}
+
 export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDrawerProps) {
   const { t } = useTranslation('stride')
 
@@ -44,23 +49,64 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const sendAbortRef = useRef<AbortController | null>(null)
+  const retryTimeoutRef = useRef<number | null>(null)
+  const scrollThrottleTimeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
-    return () => { sendAbortRef.current?.abort() }
+    return () => {
+      sendAbortRef.current?.abort()
+      if (retryTimeoutRef.current !== null) {
+        window.clearTimeout(retryTimeoutRef.current)
+      }
+      if (scrollThrottleTimeoutRef.current !== null) {
+        window.clearTimeout(scrollThrottleTimeoutRef.current)
+      }
+    }
   }, [])
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  const isNearBottom = useCallback(() => {
+    const container = messagesEndRef.current?.parentElement
+    if (!container) return true
+    const threshold = 80
+    const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+    return distanceFromBottom <= threshold
+  }, [])
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' })
   }, [])
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, streamingText, scrollToBottom])
+    if (!isNearBottom()) return
 
-  // Load message history when planId changes or drawer expands
+    const behavior: ScrollBehavior = streamingText ? 'auto' : 'smooth'
+
+    if (scrollThrottleTimeoutRef.current !== null) {
+      window.clearTimeout(scrollThrottleTimeoutRef.current)
+    }
+
+    if (streamingText) {
+      scrollThrottleTimeoutRef.current = window.setTimeout(() => {
+        scrollToBottom(behavior)
+        scrollThrottleTimeoutRef.current = null
+      }, 100)
+
+      return () => {
+        if (scrollThrottleTimeoutRef.current !== null) {
+          window.clearTimeout(scrollThrottleTimeoutRef.current)
+          scrollThrottleTimeoutRef.current = null
+        }
+      }
+    }
+
+    scrollToBottom(behavior)
+  }, [messages, streamingText, isNearBottom, scrollToBottom])
+
+  // Load message history on mount and planId changes; data is pre-fetched and
+  // displayed once the drawer expands (lazy display, eager fetch).
   useEffect(() => {
-    if (!expanded) return
     const controller = new AbortController()
+    setError('')
     ;(async () => {
       try {
         const res = await fetch(`/api/stride/plans/${planId}/chat`, {
@@ -77,7 +123,7 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
       }
     })()
     return () => { controller.abort() }
-  }, [planId, expanded, t])
+  }, [planId, t])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -175,7 +221,13 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
                   throw new Error(parsed.error || t('chat.error'))
                 case 'retry':
                   setRetrying(true)
-                  setTimeout(() => setRetrying(false), 3000)
+                  if (retryTimeoutRef.current !== null) {
+                    window.clearTimeout(retryTimeoutRef.current)
+                  }
+                  retryTimeoutRef.current = window.setTimeout(() => {
+                    setRetrying(false)
+                    retryTimeoutRef.current = null
+                  }, 3000)
                   break
               }
             } catch (parseErr) {
@@ -265,10 +317,7 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
                       remarkPlugins={[remarkGfm]}
                       components={{
                         a: ({ href, children, ...props }) => {
-                          const isSafeHref =
-                            typeof href === 'string' &&
-                            /^(https?:|mailto:|tel:)/i.test(href)
-                          if (!isSafeHref) return <span>{children}</span>
+                          if (!isSafeLinkHref(href)) return <span>{children}</span>
                           return (
                             <a
                               {...props}
@@ -389,11 +438,10 @@ function ChatMessage({ message }: { message: StrideChatMessage }) {
             remarkPlugins={[remarkGfm]}
             components={{
               a({ href, children }: React.ComponentPropsWithoutRef<'a'>) {
-                const safeHref = href && /^https?:\/\//i.test(href) ? href : undefined
-                if (!safeHref) return <span>{children}</span>
+                if (!isSafeLinkHref(href)) return <span>{children}</span>
                 return (
                   <a
-                    href={safeHref}
+                    href={href}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-400 hover:text-blue-300 underline"
