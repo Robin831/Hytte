@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle, History } from 'lucide-react'
 import { formatDate, formatDateTime } from '../utils/formatDate'
@@ -462,6 +462,7 @@ export default function StridePage() {
   const [consumedNotes, setConsumedNotes] = useState<Note[]>([])
   const [currentPlan, setCurrentPlan] = useState<Plan | null>(null)
   const [changedDates, setChangedDates] = useState<Set<string>>(new Set())
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [previousPlanId, setPreviousPlanId] = useState<number | null>(null)
   const [hasAnyPlan, setHasAnyPlan] = useState(false)
   const [completedDates, setCompletedDates] = useState<Set<string>>(new Set())
@@ -635,6 +636,12 @@ export default function StridePage() {
       return []
     }
   }
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -962,7 +969,8 @@ export default function StridePage() {
                   }
                   if (changed.size > 0) {
                     setChangedDates(changed)
-                    setTimeout(() => setChangedDates(new Set()), 3000)
+                    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+                    highlightTimerRef.current = setTimeout(() => setChangedDates(new Set()), 3000)
                   }
                   return { ...prev, plan: newPlan }
                 })
