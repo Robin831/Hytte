@@ -4,6 +4,20 @@ import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import StridePage from './StridePage'
 import enStride from '../../public/locales/en/stride.json'
+import type { DayPlan } from '../types/stride'
+
+// ── StrideChatDrawer mock ─────────────────────────────────────────────────────
+
+const chatDrawerCallbacks = vi.hoisted(() => ({
+  onPlanUpdated: null as ((plan: DayPlan[]) => void) | null,
+}))
+
+vi.mock('../components/stride/StrideChatDrawer', () => ({
+  default: ({ onPlanUpdated }: { planId: number; onPlanUpdated: (plan: DayPlan[]) => void }) => {
+    chatDrawerCallbacks.onPlanUpdated = onPlanUpdated
+    return null
+  },
+}))
 
 // ── Translation helpers ───────────────────────────────────────────────────────
 
@@ -367,5 +381,84 @@ describe('StridePage – delete race', () => {
     await waitFor(() => {
       expect(screen.queryAllByText('Bergen City Marathon')).toHaveLength(0)
     })
+  })
+})
+
+describe('StridePage – plan highlight on update', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+    chatDrawerCallbacks.onPlanUpdated = null
+  })
+
+  it('highlights changed day cards and removes highlight after 3s', async () => {
+    const planDay: DayPlan = { date: '2099-01-13', rest_day: true }
+    const plan = {
+      id: 1,
+      user_id: 1,
+      week_start: '2099-01-13',
+      week_end: '2099-01-19',
+      phase: 'Base',
+      model: 'test',
+      created_at: '2099-01-13T00:00:00Z',
+      plan: [planDay],
+    }
+
+    const fetchMock = vi.fn((url: string) => {
+      const make = (data: unknown) =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response)
+      if (url.includes('/api/stride/plans/current')) return make({ plan })
+      if (url.includes('/api/stride/plans?limit=2')) return make({ plans: [plan] })
+      if (url.includes('/api/stride/plans?limit=1')) return make({ total: 1 })
+      if (url.includes('/api/stride/evaluations')) return make({ evaluations: [] })
+      if (url.includes('/api/training/workouts')) return make({ workouts: [] })
+      if (url.includes('/api/stride/races')) return make({ races: [] })
+      if (url.includes('/api/stride/notes')) return make({ notes: [] })
+      return make({})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { container } = renderPage()
+
+    // Wait for the rest-day card to render (real timers for initial load)
+    await waitFor(() => {
+      expect(screen.getByText('Rest')).toBeInTheDocument()
+    })
+
+    // No highlight ring yet
+    expect(container.querySelector('.ring-2')).toBeNull()
+
+    // Switch to fake timers now that initial load is complete
+    vi.useFakeTimers()
+
+    // Trigger plan update with a changed day
+    const changedDay: DayPlan = {
+      date: '2099-01-13',
+      rest_day: false,
+      session: {
+        description: 'Easy run',
+        warmup: '',
+        main_set: '30 min easy',
+        cooldown: '',
+        strides: '',
+        target_hr_cap: 150,
+      },
+    }
+
+    await act(async () => {
+      chatDrawerCallbacks.onPlanUpdated!([changedDay])
+    })
+
+    // Ring should now be present on the changed card
+    expect(container.querySelector('.ring-2')).not.toBeNull()
+
+    // Advance time past the 3-second timeout
+    await act(async () => {
+      vi.advanceTimersByTime(3001)
+    })
+
+    // Ring should be cleared
+    expect(container.querySelector('.ring-2')).toBeNull()
   })
 })

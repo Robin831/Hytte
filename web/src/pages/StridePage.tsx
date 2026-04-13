@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle, History } from 'lucide-react'
 import { formatDate, formatDateTime } from '../utils/formatDate'
@@ -117,7 +117,7 @@ function flagIsSevere(flag: string): boolean {
   return flag === 'overtraining' || flag === 'injury_risk'
 }
 
-function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: boolean; evaluation?: StrideEvaluationRecord }) {
+function DayCard({ day, completed, evaluation, changedDates }: { day: DayPlan; completed: boolean; evaluation?: StrideEvaluationRecord; changedDates?: Set<string> }) {
   const { t } = useTranslation('stride')
   const [expanded, setExpanded] = useState(false)
 
@@ -127,9 +127,10 @@ function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: bool
 
   const complianceLabel = evaluation ? t(`evaluation.${evaluation.eval.compliance}`) : null
   const hasExpandableContent = (!day.rest_day && !!day.session) || (!!evaluation && (day.rest_day || !day.session))
+  const isHighlighted = changedDates?.has(day.date) ?? false
 
   return (
-    <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+    <div className={`bg-gray-800 rounded-xl border border-gray-700 overflow-hidden transition-all duration-1000 ${isHighlighted ? 'ring-2 ring-yellow-400/50' : ''}`}>
       <button
         type="button"
         onClick={() => hasExpandableContent && setExpanded(v => !v)}
@@ -461,6 +462,8 @@ export default function StridePage() {
   const [notes, setNotes] = useState<Note[]>([])
   const [consumedNotes, setConsumedNotes] = useState<Note[]>([])
   const [currentPlan, setCurrentPlan] = useState<Plan | null>(null)
+  const [changedDates, setChangedDates] = useState<Set<string>>(new Set())
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [previousPlanId, setPreviousPlanId] = useState<number | null>(null)
   const [hasAnyPlan, setHasAnyPlan] = useState(false)
   const [completedDates, setCompletedDates] = useState<Set<string>>(new Set())
@@ -634,6 +637,12 @@ export default function StridePage() {
       return []
     }
   }
+
+  useEffect(() => {
+    return () => {
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -941,6 +950,7 @@ export default function StridePage() {
                   day={day}
                   completed={completedDates.has(day.date)}
                   evaluation={dayEvaluationMap.get(day.date)}
+                  changedDates={changedDates}
                 />
               ))}
             </div>
@@ -949,6 +959,20 @@ export default function StridePage() {
             <StrideChatDrawer
               planId={currentPlan.id}
               onPlanUpdated={(newPlan) => {
+                if (currentPlan) {
+                  const oldMap = new Map(currentPlan.plan.map(d => [d.date, JSON.stringify(d)]))
+                  const changed = new Set<string>()
+                  for (const day of newPlan) {
+                    if (oldMap.get(day.date) !== JSON.stringify(day)) {
+                      changed.add(day.date)
+                    }
+                  }
+                  if (changed.size > 0) {
+                    setChangedDates(changed)
+                    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+                    highlightTimerRef.current = setTimeout(() => setChangedDates(new Set()), 3000)
+                  }
+                }
                 setCurrentPlan(prev => prev ? { ...prev, plan: newPlan } : prev)
               }}
             />
