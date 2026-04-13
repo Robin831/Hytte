@@ -13425,7 +13425,7 @@ rules:
     - id: utc-date-consistency
       category: other
       pattern: >-
-        Frontend code computing today's date using local time (e.g., `new Date().toLocaleDateString()`, `toISOString().slice(0,10)` on local date, or manual year/month/day extraction) when comparing against backend dates
+        Frontend code computing today's date using local time (e.g., `new Date().toLocaleDateString()` or manual year/month/day extraction via local getters like `getFullYear()`, `getMonth()`, and `getDate()`) when comparing against backend dates
       check: >-
         Verify that date strings on the frontend are derived in UTC (e.g., `new Date().toISOString().slice(0, 10)`) when the backend generates or compares dates using UTC. Mismatched timezones cause incorrect results near midnight for non-UTC users.
       source: copilot:PR#595
@@ -13605,13 +13605,6 @@ rules:
       pattern: Calling RowsAffected() on a sql.Result without checking its error return value
       check: >-
         Verify that the error returned by RowsAffected() is checked and handled, not discarded with `_ ,` or ignored, so that update/delete failures are not silently misreported as success or ErrNoRows
-      source: copilot:PR#604
-      added: "2026-04-09"
-    - id: handle-rows-affected-error
-      category: error-handling
-      pattern: Calling RowsAffected() on a sql.Result without checking the returned error
-      check: >-
-        Verify that the error returned by RowsAffected() is checked and propagated before using the count value
       source: copilot:PR#604
       added: "2026-04-09"
     - id: sqlite-memory-connection-pool
