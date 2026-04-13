@@ -19,5 +19,10 @@ export default defineConfig({
   test: {
     setupFiles: ['./src/test-setup.ts'],
     pool: 'vmThreads',
+    server: {
+      deps: {
+        inline: ['refractor'],
+      },
+    },
   },
 })

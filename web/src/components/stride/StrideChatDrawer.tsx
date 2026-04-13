@@ -14,19 +14,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-
-interface DayPlan {
-  date: string
-  rest_day: boolean
-  session?: {
-    warmup: string
-    main_set: string
-    cooldown: string
-    strides: string
-    target_hr_cap: number
-    description: string
-  }
-}
+import { DayPlan } from '../../types/stride'
 
 export interface StrideChatMessage {
   id: number
@@ -179,7 +167,9 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
                   const assistantMsg = parsed as StrideChatMessage
                   setMessages(prev => [...prev, assistantMsg])
                   setStreamingText('')
-                  break
+                  setSending(false)
+                  await reader.cancel()
+                  return
                 }
                 case 'error':
                   throw new Error(parsed.error || t('chat.error'))
@@ -199,7 +189,6 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
-      setMessages(prev => prev.filter(m => m.id !== tempUserMsg.id))
       setStreamingText('')
       setInput(content)
       if (err instanceof Error) setError(err.message)
@@ -242,7 +231,7 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
           type="button"
           onClick={() => setExpanded(false)}
           className="p-1 text-gray-400 hover:text-white cursor-pointer"
-          aria-label="Collapse chat"
+          aria-label={t('chat.collapse')}
         >
           <ChevronDown size={18} />
         </button>
@@ -272,7 +261,27 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
                 </div>
                 <div className="bg-gray-700 rounded-2xl rounded-tl-sm px-3 py-2 max-w-[85%] min-w-0">
                   <div className="prose prose-invert prose-sm max-w-none break-words">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        a: ({ href, children, ...props }) => {
+                          const isSafeHref =
+                            typeof href === 'string' &&
+                            /^(https?:|mailto:|tel:)/i.test(href)
+                          if (!isSafeHref) return <span>{children}</span>
+                          return (
+                            <a
+                              {...props}
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {children}
+                            </a>
+                          )
+                        },
+                      }}
+                    >
                       {streamingText}
                     </ReactMarkdown>
                   </div>
@@ -313,7 +322,7 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
           <button
             onClick={() => setError('')}
             className="text-red-400 hover:text-red-300 cursor-pointer"
-            aria-label="Dismiss error"
+            aria-label={t('chat.dismissError')}
           >
             <X size={14} />
           </button>

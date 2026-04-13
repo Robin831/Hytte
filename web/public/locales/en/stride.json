@@ -134,6 +134,8 @@
     "planUpdated": "Plan updated",
     "sessionRetry": "Session expired, retrying...",
     "error": "Failed to send message",
-    "empty": "No messages yet. Ask your coach anything about this week's plan."
+    "empty": "No messages yet. Ask your coach anything about this week's plan.",
+    "collapse": "Collapse chat",
+    "dismissError": "Dismiss error"
   }
 }

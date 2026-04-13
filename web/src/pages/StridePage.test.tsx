@@ -61,6 +61,15 @@ vi.mock('react-i18next', () => {
   }
 })
 
+vi.mock('react-markdown', () => ({
+  default: ({ children }: { children: string }) => children,
+}))
+vi.mock('remark-gfm', () => ({ default: () => {} }))
+vi.mock('react-syntax-highlighter', () => ({
+  Prism: ({ children }: { children: string }) => children,
+}))
+vi.mock('react-syntax-highlighter/dist/esm/styles/prism', () => ({ vscDarkPlus: {} }))
+
 vi.mock('lucide-react', () => ({
   Trash2: () => null,
   Plus: () => null,
@@ -71,6 +80,16 @@ vi.mock('lucide-react', () => ({
   RefreshCw: () => null,
   CheckCircle2: () => null,
   Circle: () => null,
+  AlertTriangle: () => null,
+  XCircle: () => null,
+  History: () => null,
+  Flag: () => null,
+  MessageCircle: () => null,
+  Send: () => null,
+  Loader2: () => null,
+  Bot: () => null,
+  User: () => null,
+  X: () => null,
 }))
 
 vi.mock('../utils/formatDate', () => ({
@@ -201,7 +220,7 @@ describe('StridePage – rendering data', () => {
   it('renders race name', async () => {
     renderPage()
     await waitFor(() => {
-      expect(screen.getByText('Bergen City Marathon')).toBeInTheDocument()
+      expect(screen.getAllByText('Bergen City Marathon').length).toBeGreaterThan(0)
     })
   })
 
@@ -337,7 +356,7 @@ describe('StridePage – delete race', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText('Bergen City Marathon')).toBeInTheDocument()
+      expect(screen.getAllByText('Bergen City Marathon').length).toBeGreaterThan(0)
     })
 
     const deleteButtons = screen.getAllByLabelText('Delete race')
@@ -346,7 +365,7 @@ describe('StridePage – delete race', () => {
     })
 
     await waitFor(() => {
-      expect(screen.queryByText('Bergen City Marathon')).not.toBeInTheDocument()
+      expect(screen.queryAllByText('Bergen City Marathon')).toHaveLength(0)
     })
   })
 })

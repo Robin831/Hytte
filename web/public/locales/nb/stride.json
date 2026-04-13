@@ -134,6 +134,8 @@
     "planUpdated": "Plan oppdatert",
     "sessionRetry": "Økt utløpt, prøver igjen...",
     "error": "Kunne ikke sende melding",
-    "empty": "Ingen meldinger ennå. Spør treneren din om ukens plan."
+    "empty": "Ingen meldinger ennå. Spør treneren din om ukens plan.",
+    "collapse": "Skjul chat",
+    "dismissError": "Lukk feilmelding"
   }
 }
