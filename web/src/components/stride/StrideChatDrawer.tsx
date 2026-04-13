@@ -53,6 +53,8 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
 
   const [planUpdateWarning, setPlanUpdateWarning] = useState('')
 
+  const [keyboardOffset, setKeyboardOffset] = useState(0)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const sendAbortRef = useRef<AbortController | null>(null)
@@ -80,6 +82,22 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
     }
   }, [])
 
+  // Adjust bottom padding when the virtual keyboard appears (iOS/Android)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    function onResize() {
+      const offset = window.innerHeight - (vv!.height + vv!.offsetTop)
+      setKeyboardOffset(Math.max(0, offset))
+    }
+    vv.addEventListener('resize', onResize)
+    vv.addEventListener('scroll', onResize)
+    return () => {
+      vv.removeEventListener('resize', onResize)
+      vv.removeEventListener('scroll', onResize)
+    }
+  }, [])
+
   // Abort any in-flight SSE stream when planId changes to prevent stale updates
   // from a previous plan's conversation being applied to the new one.
   // Also clear conversation UI state immediately so the drawer does not briefly
@@ -104,7 +122,9 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
   }, [])
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' })
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior, block: 'end' })
+    })
   }, [])
 
   useEffect(() => {
@@ -345,7 +365,7 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
   }
 
   return (
-    <div className="mt-4 bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+    <div className="mt-4 bg-gray-800 border border-gray-700 rounded-xl overflow-hidden" style={keyboardOffset > 0 ? { paddingBottom: `${keyboardOffset}px` } : undefined}>
       {/* Drawer header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
         <div className="flex items-center gap-2 text-gray-300">
@@ -385,8 +405,8 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
 
       {/* Messages area */}
       <div
-        className="overflow-y-auto px-4 py-4 space-y-4 max-h-[50vh] md:max-h-[50vh]"
-        style={{ maxHeight: 'min(50vh, 400px)' }}
+        className="overflow-y-auto px-4 py-4 space-y-4"
+        style={{ maxHeight: 'min(50vh, 400px)', overflowAnchor: 'auto' }}
         role="log"
         aria-live="polite"
       >
@@ -406,7 +426,7 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
                   <Bot size={14} className="text-yellow-400" />
                 </div>
                 <div className="bg-gray-700 rounded-2xl rounded-tl-sm px-3 py-2 max-w-[85%] min-w-0">
-                  <div className="prose prose-invert prose-sm max-w-none break-words">
+                  <div className="prose prose-invert prose-sm max-w-none break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_code]:break-words">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
