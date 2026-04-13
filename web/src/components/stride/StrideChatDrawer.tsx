@@ -53,6 +53,7 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
   const sendAbortRef = useRef<AbortController | null>(null)
   const retryTimeoutRef = useRef<number | null>(null)
   const scrollThrottleTimeoutRef = useRef<number | null>(null)
+  const planRetryTimeoutRef = useRef<number | null>(null)
   const hasRetriedPlanUpdate = useRef(false)
   const planRetryErrorRef = useRef<string | null>(null)
 
@@ -64,6 +65,9 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
       }
       if (scrollThrottleTimeoutRef.current !== null) {
         window.clearTimeout(scrollThrottleTimeoutRef.current)
+      }
+      if (planRetryTimeoutRef.current !== null) {
+        window.clearTimeout(planRetryTimeoutRef.current)
       }
     }
   }, [])
@@ -269,7 +273,8 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
       const retryError = planRetryErrorRef.current
       if (retryError) {
         planRetryErrorRef.current = null
-        setTimeout(() => {
+        planRetryTimeoutRef.current = window.setTimeout(() => {
+          planRetryTimeoutRef.current = null
           sendCorrectionMessage(retryError)
         }, 0)
       }
@@ -399,6 +404,7 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
         <div className="px-4 py-2 bg-yellow-900/30 border-t border-yellow-800/50 text-yellow-300 text-sm flex items-center justify-between">
           <span>{planUpdateWarning}</span>
           <button
+            type="button"
             onClick={() => setPlanUpdateWarning('')}
             className="text-yellow-400 hover:text-yellow-300 cursor-pointer"
             aria-label={t('chat.dismissError')}
