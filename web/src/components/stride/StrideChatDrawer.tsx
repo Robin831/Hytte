@@ -106,8 +106,8 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
   // displayed once the drawer expands (lazy display, eager fetch).
   useEffect(() => {
     const controller = new AbortController()
-    setError('')
     ;(async () => {
+      setError('')
       try {
         const res = await fetch(`/api/stride/plans/${planId}/chat`, {
           credentials: 'include',
