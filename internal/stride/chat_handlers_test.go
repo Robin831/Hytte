@@ -530,7 +530,7 @@ func TestStrideChatSendHandler_ClaudeDisabled(t *testing.T) {
 	weekEnd := "2026-04-19"
 	planJSON := buildValidPlanJSON(weekStart)
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = db.Exec(`INSERT INTO stride_plans (user_id, week_start, week_end, plan_json, created_at) VALUES (1, ?, ?, ?, ?)`,
+	_, err := db.Exec(`INSERT INTO stride_plans (user_id, week_start, week_end, plan_json, created_at) VALUES (1, ?, ?, ?, ?)`,
 		weekStart, weekEnd, planJSON, now)
 	if err != nil {
 		t.Fatalf("insert plan: %v", err)
