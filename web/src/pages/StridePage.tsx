@@ -649,6 +649,7 @@ export default function StridePage() {
   // the chat switches to the fresh conversation automatically.
   useEffect(() => {
     if (currentPlan) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- chatPlanId tracks which plan's chat is shown; it can also be toggled to previousPlanId, so it cannot be purely derived
       setChatPlanId(currentPlan.id)
     }
   }, [currentPlan?.id]) // eslint-disable-line react-hooks/exhaustive-deps
