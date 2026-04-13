@@ -14,7 +14,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { DayPlan } from '../../types/stride'
+import type { DayPlan } from '../../types/stride'
 
 export interface StrideChatMessage {
   id: number
