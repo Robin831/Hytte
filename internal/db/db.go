@@ -1321,8 +1321,9 @@ func createSchema(db *sql.DB) error {
 		plan_json   TEXT NOT NULL,
 		prompt      TEXT NOT NULL DEFAULT '',
 		response    TEXT NOT NULL DEFAULT '',
-		model       TEXT NOT NULL DEFAULT '',
-		created_at  TEXT NOT NULL DEFAULT '',
+		model           TEXT NOT NULL DEFAULT '',
+		chat_session_id TEXT NOT NULL DEFAULT '',
+		created_at      TEXT NOT NULL DEFAULT '',
 		UNIQUE(user_id, week_start),
 		UNIQUE(user_id, id)
 	);
@@ -1353,6 +1354,20 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_stride_evaluations_plan ON stride_evaluations(plan_id);
+
+	-- Stride chat: per-plan coaching conversation messages (Hytte-78qv)
+	CREATE TABLE IF NOT EXISTS stride_chat_messages (
+		id            INTEGER PRIMARY KEY,
+		plan_id       INTEGER NOT NULL REFERENCES stride_plans(id) ON DELETE CASCADE,
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		role          TEXT NOT NULL DEFAULT '',
+		content       TEXT NOT NULL DEFAULT '',
+		plan_modified INTEGER NOT NULL DEFAULT 0,
+		created_at    TEXT NOT NULL DEFAULT '',
+		FOREIGN KEY (user_id, plan_id) REFERENCES stride_plans(user_id, id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_stride_chat_messages_plan ON stride_chat_messages(plan_id);
 
 	-- Vault: encrypted personal file storage (Hytte-r43)
 	CREATE TABLE IF NOT EXISTS vault_files (
@@ -2129,6 +2144,18 @@ func createSchema(db *sql.DB) error {
 	if hasHomeworkSessionID == 0 {
 		if _, err := db.Exec(`ALTER TABLE homework_conversations ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("add homework_conversations session_id column: %w", err)
+		}
+	}
+
+	// Add chat_session_id column to stride_plans table (Hytte-78qv).
+	// Stores the Claude CLI session ID for --resume continuity within a plan week's chat.
+	var hasStrideChatSessionID int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stride_plans') WHERE name = 'chat_session_id'`).Scan(&hasStrideChatSessionID); err != nil {
+		return fmt.Errorf("check stride_plans chat_session_id column: %w", err)
+	}
+	if hasStrideChatSessionID == 0 {
+		if _, err := db.Exec(`ALTER TABLE stride_plans ADD COLUMN chat_session_id TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add stride_plans chat_session_id column: %w", err)
 		}
 	}
 

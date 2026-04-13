@@ -51,17 +51,19 @@ func setupTestDB(t *testing.T) *sql.DB {
 			created_at  TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE stride_plans (
-			id          INTEGER PRIMARY KEY,
-			user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			week_start  TEXT NOT NULL,
-			week_end    TEXT NOT NULL,
-			phase       TEXT NOT NULL DEFAULT '',
-			plan_json   TEXT NOT NULL,
-			prompt      TEXT NOT NULL DEFAULT '',
-			response    TEXT NOT NULL DEFAULT '',
-			model       TEXT NOT NULL DEFAULT '',
-			created_at  TEXT NOT NULL DEFAULT '',
-			UNIQUE(user_id, week_start)
+			id              INTEGER PRIMARY KEY,
+			user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			week_start      TEXT NOT NULL,
+			week_end        TEXT NOT NULL,
+			phase           TEXT NOT NULL DEFAULT '',
+			plan_json       TEXT NOT NULL,
+			prompt          TEXT NOT NULL DEFAULT '',
+			response        TEXT NOT NULL DEFAULT '',
+			model           TEXT NOT NULL DEFAULT '',
+			chat_session_id TEXT NOT NULL DEFAULT '',
+			created_at      TEXT NOT NULL DEFAULT '',
+			UNIQUE(user_id, week_start),
+			UNIQUE(user_id, id)
 		);
 		CREATE TABLE stride_notes (
 			id          INTEGER PRIMARY KEY,
@@ -100,6 +102,17 @@ func setupTestDB(t *testing.T) *sql.DB {
 			race_id             INTEGER REFERENCES stride_races(id) ON DELETE SET NULL,
 			UNIQUE(user_id, fit_file_hash)
 		);
+		CREATE TABLE stride_chat_messages (
+			id            INTEGER PRIMARY KEY,
+			plan_id       INTEGER NOT NULL REFERENCES stride_plans(id) ON DELETE CASCADE,
+			user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			role          TEXT NOT NULL DEFAULT '',
+			content       TEXT NOT NULL DEFAULT '',
+			plan_modified INTEGER NOT NULL DEFAULT 0,
+			created_at    TEXT NOT NULL DEFAULT '',
+			FOREIGN KEY (user_id, plan_id) REFERENCES stride_plans(user_id, id)
+		);
+		CREATE INDEX idx_stride_chat_messages_plan ON stride_chat_messages(plan_id);
 		CREATE TABLE stride_evaluations (
 			id          INTEGER PRIMARY KEY,
 			user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
