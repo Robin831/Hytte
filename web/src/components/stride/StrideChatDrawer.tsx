@@ -82,9 +82,15 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
 
   // Abort any in-flight SSE stream when planId changes to prevent stale updates
   // from a previous plan's conversation being applied to the new one.
+  // Also clear conversation UI state immediately so the drawer does not briefly
+  // render the previous plan's messages under the new plan banner.
   useEffect(() => {
     if (activePlanIdRef.current !== planId) {
       sendAbortRef.current?.abort()
+      setMessages([])
+      setStreamingText('')
+      setError('')
+      setPlanUpdateWarning('')
       activePlanIdRef.current = planId
     }
   }, [planId])
@@ -263,9 +269,9 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
                   if (activePlanIdRef.current === planId) {
                     const assistantMsg = parsed as StrideChatMessage
                     setMessages(prev => [...prev, assistantMsg])
+                    setStreamingText('')
+                    setSending(false)
                   }
-                  setStreamingText('')
-                  setSending(false)
                   await reader.cancel()
                   return
                 }

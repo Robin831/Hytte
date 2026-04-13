@@ -716,7 +716,18 @@ export default function StridePage() {
         return
       }
       const data = await res.json()
-      setCurrentPlan(data.plan ?? null)
+      const newPlan: Plan | null = data.plan ?? null
+      if (newPlan) {
+        // The current plan becomes the previous one; update before replacing.
+        setCurrentPlan(prev => {
+          if (prev && prev.id !== newPlan.id) {
+            setPreviousPlanId(prev.id)
+          }
+          return newPlan
+        })
+      } else {
+        setCurrentPlan(null)
+      }
     } catch {
       setGenerateError(t('plan.generateError'))
     } finally {
@@ -966,9 +977,8 @@ export default function StridePage() {
             </div>
 
             {/* Chat drawer */}
-            {chatPlanId && (
             <StrideChatDrawer
-              planId={chatPlanId}
+              planId={chatPlanId ?? currentPlan.id}
               currentPlanId={currentPlan.id}
               onViewPreviousChat={previousPlanId ? () => {
                 setChatPlanId(prev =>
@@ -993,7 +1003,6 @@ export default function StridePage() {
                 setCurrentPlan(prev => prev ? { ...prev, plan: newPlan } : prev)
               }}
             />
-            )}
           </div>
         )}
       </section>
