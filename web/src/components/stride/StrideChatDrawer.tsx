@@ -86,15 +86,19 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
   useEffect(() => {
     const vv = window.visualViewport
     if (!vv) return
+    const listenerOptions: AddEventListenerOptions = { passive: true }
+
     function onResize() {
-      const offset = window.innerHeight - (vv!.height + vv!.offsetTop)
-      setKeyboardOffset(Math.max(0, offset))
+      const offset = Math.max(0, window.innerHeight - (vv!.height + vv!.offsetTop))
+      setKeyboardOffset((currentOffset) => (currentOffset === offset ? currentOffset : offset))
     }
-    vv.addEventListener('resize', onResize)
-    vv.addEventListener('scroll', onResize)
+
+    vv.addEventListener('resize', onResize, listenerOptions)
+    vv.addEventListener('scroll', onResize, listenerOptions)
+    onResize()
     return () => {
-      vv.removeEventListener('resize', onResize)
-      vv.removeEventListener('scroll', onResize)
+      vv.removeEventListener('resize', onResize, listenerOptions)
+      vv.removeEventListener('scroll', onResize, listenerOptions)
     }
   }, [])
 
@@ -406,7 +410,7 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
       {/* Messages area */}
       <div
         className="overflow-y-auto px-4 py-4 space-y-4"
-        style={{ maxHeight: 'min(50vh, 400px)', overflowAnchor: 'auto' }}
+        style={{ maxHeight: 'min(50vh, 400px)', overflowAnchor: 'none' }}
         role="log"
         aria-live="polite"
       >
