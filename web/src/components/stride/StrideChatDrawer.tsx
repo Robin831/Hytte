@@ -12,6 +12,7 @@ import {
   X,
   ChevronDown,
   RefreshCw,
+  Lock,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { DayPlan } from '../../types/stride'
@@ -27,7 +28,9 @@ export interface StrideChatMessage {
 
 interface StrideChatDrawerProps {
   planId: number
+  currentPlanId: number
   onPlanUpdated: (plan: DayPlan[]) => void
+  onViewPreviousChat?: () => void
 }
 
 // Shared link safety policy: allow https, mailto, and tel schemes
@@ -35,8 +38,9 @@ function isSafeLinkHref(href: string | undefined): href is string {
   return typeof href === 'string' && /^(https?:|mailto:|tel:)/i.test(href)
 }
 
-export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDrawerProps) {
+export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated, onViewPreviousChat }: StrideChatDrawerProps) {
   const { t } = useTranslation('stride')
+  const isReadOnly = planId !== currentPlanId
 
   const [messages, setMessages] = useState<StrideChatMessage[]>([])
   const [input, setInput] = useState('')
@@ -335,6 +339,23 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
         </button>
       </div>
 
+      {/* Read-only banner */}
+      {isReadOnly && (
+        <div className="px-4 py-2 bg-gray-700/50 border-b border-gray-600 text-gray-400 text-sm flex items-center gap-2">
+          <Lock size={14} className="shrink-0" />
+          <span className="flex-1">{t('chat.readOnly')}</span>
+          {onViewPreviousChat && (
+            <button
+              type="button"
+              onClick={onViewPreviousChat}
+              className="text-yellow-400 hover:text-yellow-300 text-xs underline cursor-pointer whitespace-nowrap"
+            >
+              {t('chat.previousWeekChat')}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Messages area */}
       <div
         className="overflow-y-auto px-4 py-4 space-y-4 max-h-[50vh] md:max-h-[50vh]"
@@ -440,31 +461,33 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
       )}
 
       {/* Input area */}
-      <div className="border-t border-gray-700 p-3" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
-        <div className="flex gap-2">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={t('chat.placeholder')}
-            aria-label={t('chat.placeholder')}
-            rows={1}
-            className="flex-1 bg-gray-700 border border-gray-600 rounded-xl px-3 py-2 text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-yellow-500 placeholder-gray-500 max-h-28 overflow-y-auto"
-            style={{ minHeight: '40px' }}
-            disabled={sending}
-          />
-          <button
-            onClick={() => sendMessage()}
-            disabled={!input.trim() || sending}
-            className="self-end p-2.5 rounded-xl bg-yellow-600 hover:bg-yellow-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-            title={t('chat.send')}
-            aria-label={t('chat.send')}
-          >
-            {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-          </button>
+      {!isReadOnly && (
+        <div className="border-t border-gray-700 p-3" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+          <div className="flex gap-2">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={t('chat.placeholder')}
+              aria-label={t('chat.placeholder')}
+              rows={1}
+              className="flex-1 bg-gray-700 border border-gray-600 rounded-xl px-3 py-2 text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-yellow-500 placeholder-gray-500 max-h-28 overflow-y-auto"
+              style={{ minHeight: '40px' }}
+              disabled={sending}
+            />
+            <button
+              onClick={() => sendMessage()}
+              disabled={!input.trim() || sending}
+              className="self-end p-2.5 rounded-xl bg-yellow-600 hover:bg-yellow-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              title={t('chat.send')}
+              aria-label={t('chat.send')}
+            >
+              {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

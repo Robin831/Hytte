@@ -955,9 +955,11 @@ export default function StridePage() {
               ))}
             </div>
 
-            {/* Chat drawer */}
+            {/* Chat drawer — key resets state when plan changes */}
             <StrideChatDrawer
+              key={currentPlan.id}
               planId={currentPlan.id}
+              currentPlanId={currentPlan.id}
               onPlanUpdated={(newPlan) => {
                 if (currentPlan) {
                   const oldMap = new Map(currentPlan.plan.map(d => [d.date, JSON.stringify(d)]))
