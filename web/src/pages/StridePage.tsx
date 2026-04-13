@@ -117,7 +117,7 @@ function flagIsSevere(flag: string): boolean {
   return flag === 'overtraining' || flag === 'injury_risk'
 }
 
-function DayCard({ day, completed, evaluation, isHighlighted }: { day: DayPlan; completed: boolean; evaluation?: StrideEvaluationRecord; isHighlighted?: boolean }) {
+function DayCard({ day, completed, evaluation, changedDates }: { day: DayPlan; completed: boolean; evaluation?: StrideEvaluationRecord; changedDates?: Set<string> }) {
   const { t } = useTranslation('stride')
   const [expanded, setExpanded] = useState(false)
 
@@ -127,6 +127,7 @@ function DayCard({ day, completed, evaluation, isHighlighted }: { day: DayPlan; 
 
   const complianceLabel = evaluation ? t(`evaluation.${evaluation.eval.compliance}`) : null
   const hasExpandableContent = (!day.rest_day && !!day.session) || (!!evaluation && (day.rest_day || !day.session))
+  const isHighlighted = changedDates?.has(day.date) ?? false
 
   return (
     <div className={`bg-gray-800 rounded-xl border border-gray-700 overflow-hidden transition-all duration-1000 ${isHighlighted ? 'ring-2 ring-yellow-400/50' : ''}`}>
@@ -949,7 +950,7 @@ export default function StridePage() {
                   day={day}
                   completed={completedDates.has(day.date)}
                   evaluation={dayEvaluationMap.get(day.date)}
-                  isHighlighted={changedDates.has(day.date)}
+                  changedDates={changedDates}
                 />
               ))}
             </div>
@@ -958,9 +959,8 @@ export default function StridePage() {
             <StrideChatDrawer
               planId={currentPlan.id}
               onPlanUpdated={(newPlan) => {
-                setCurrentPlan(prev => {
-                  if (!prev) return prev
-                  const oldMap = new Map(prev.plan.map(d => [d.date, JSON.stringify(d)]))
+                if (currentPlan) {
+                  const oldMap = new Map(currentPlan.plan.map(d => [d.date, JSON.stringify(d)]))
                   const changed = new Set<string>()
                   for (const day of newPlan) {
                     if (oldMap.get(day.date) !== JSON.stringify(day)) {
@@ -972,8 +972,8 @@ export default function StridePage() {
                     if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
                     highlightTimerRef.current = setTimeout(() => setChangedDates(new Set()), 3000)
                   }
-                  return { ...prev, plan: newPlan }
-                })
+                }
+                setCurrentPlan(prev => prev ? { ...prev, plan: newPlan } : prev)
               }}
             />
           </div>
