@@ -6,11 +6,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -41,20 +41,46 @@ type claudeStreamLine struct {
 	} `json:"message"`
 }
 
-// fencedJSONRe matches fenced ```json ... ``` blocks (with optional language tag).
-var fencedJSONRe = regexp.MustCompile("(?s)```(?:json)?\\s*\\n(\\[.*?\\])\\s*\\n```")
-
-// extractPlanJSON scans the response for a fenced JSON code block containing a
-// JSON array. If multiple fenced blocks exist, the last one is used (Claude
-// sometimes shows a "before" and "after"). Returns the raw JSON string and
-// whether one was found.
+// extractPlanJSON scans the response for the last fenced ```json ... ``` block
+// containing a JSON array. Using the last block means Claude can show a
+// "before" version and an "after" version and we always act on the final one.
+// The extraction finds fence boundaries first and takes the full fenced content,
+// so JSON strings containing ']' are handled correctly. Both \n and \r\n line
+// endings are supported.
 func extractPlanJSON(response string) (string, bool) {
-	matches := fencedJSONRe.FindAllStringSubmatch(response, -1)
-	if len(matches) == 0 {
+	// Find the last closing fence (``` on its own line, \r?\n```).
+	const fence = "```"
+	lastClose := strings.LastIndex(response, "\n"+fence)
+	if lastClose < 0 {
 		return "", false
 	}
-	last := matches[len(matches)-1]
-	return strings.TrimSpace(last[1]), true
+	// Find the opening fence that precedes the closing one.
+	openStart := strings.LastIndex(response[:lastClose], fence)
+	if openStart < 0 {
+		return "", false
+	}
+	// Skip past the opening fence and optional language tag to the newline that
+	// ends the opening fence line.
+	afterTag := response[openStart+len(fence):]
+	nl := strings.IndexByte(afterTag, '\n')
+	if nl < 0 {
+		return "", false
+	}
+	// innerStart is the absolute position in response of the first content line.
+	innerStart := openStart + len(fence) + nl + 1
+	// innerEnd is lastClose (the \n before closing fence); strip trailing \r too.
+	innerEnd := lastClose
+	if innerEnd > innerStart && response[innerEnd-1] == '\r' {
+		innerEnd--
+	}
+	if innerEnd <= innerStart {
+		return "", false
+	}
+	inner := strings.TrimSpace(response[innerStart:innerEnd])
+	if !strings.HasPrefix(inner, "[") {
+		return "", false
+	}
+	return inner, true
 }
 
 // validatePlanUpdate parses the extracted plan JSON and verifies it covers
@@ -83,7 +109,12 @@ func StrideChatListHandler(db *sql.DB) http.HandlerFunc {
 		// Verify plan exists and belongs to user.
 		_, err = GetPlanByID(db, planID, user.ID)
 		if err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "plan not found"})
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "plan not found"})
+				return
+			}
+			log.Printf("stride chat: get plan %d: %v", planID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get plan"})
 			return
 		}
 
@@ -130,7 +161,12 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 		// Verify plan exists and belongs to user.
 		plan, err := GetPlanByID(db, planID, user.ID)
 		if err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "plan not found"})
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "plan not found"})
+				return
+			}
+			log.Printf("stride chat: get plan %d: %v", planID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get plan"})
 			return
 		}
 
@@ -184,12 +220,12 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 		fmt.Fprintf(w, "event: user_message\ndata: %s\n\n", userMsgJSON)
 		flusher.Flush()
 
-		// Load context for the system prompt.
-		systemPrompt := buildChatContext(db, user.ID, *plan)
-
 		// Stream Claude response.
 		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 		defer cancel()
+
+		// Load context for the system prompt.
+		systemPrompt := buildChatContext(ctx, db, user.ID, *plan)
 
 		fullResponse, newSessionID, err := streamChatClaude(ctx, cfg, systemPrompt, body.Content, sessionID, w, flusher)
 		if err != nil && sessionID != "" {
@@ -220,7 +256,7 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 		if planJSON, found := extractPlanJSON(fullResponse); found {
 			days, err := validatePlanUpdate(planJSON, plan.WeekStart, plan.WeekEnd)
 			if err != nil {
-				log.Printf("stride chat: plan update validation failed plan %d: %v (json: %s)", planID, err, planJSON)
+				log.Printf("stride chat: plan update validation failed plan %d msg %d: %v", planID, userMsg.ID, err)
 			} else {
 				// Update plan_json in the database.
 				updatedJSON, err := json.Marshal(days)
@@ -268,7 +304,8 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // buildChatContext loads all context needed for the chat system prompt.
-func buildChatContext(db *sql.DB, userID int64, plan Plan) string {
+// ctx is threaded through to DB calls so they respect request cancellation.
+func buildChatContext(ctx context.Context, db *sql.DB, userID int64, plan Plan) string {
 	profile := training.BuildUserTrainingProfile(db, userID)
 
 	pid := plan.ID
@@ -294,7 +331,7 @@ func buildChatContext(db *sql.DB, userID int64, plan Plan) string {
 		log.Printf("stride chat: compute ACR user %d: %v", userID, acrErr)
 	}
 
-	notes, err := listUnconsumedNotes(context.Background(), db, userID)
+	notes, err := listUnconsumedNotes(ctx, db, userID)
 	if err != nil {
 		log.Printf("stride chat: list notes: %v", err)
 	}
