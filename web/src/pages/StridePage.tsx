@@ -947,70 +947,6 @@ export default function StridePage() {
               </span>
             </div>
 
-            {/* Previous week feedback — evaluations linked to the old plan whose
-                dates fall outside the current plan (e.g. Sunday workout eval). */}
-            {previousPlanEvals.length > 0 && (
-              <div className="mb-3 space-y-2">
-                <p className="text-xs font-semibold text-gray-500 uppercase">{t('plan.previousWeekFeedback')}</p>
-                {previousPlanEvals.map(({ date, eval: rec }) => {
-                  const dateStr = `${date}T00:00:00`
-                  const flags = Array.isArray(rec.eval.flags) ? rec.eval.flags : []
-                  return (
-                    <div key={rec.id} className="bg-gray-800 rounded-xl border border-gray-700 p-3 space-y-2">
-                      <div className="flex items-center gap-3">
-                        {complianceIcon(rec.eval.compliance)}
-                        <div className="flex-shrink-0">
-                          <p className="text-xs font-semibold text-gray-400 uppercase">{formatDate(dateStr, { weekday: 'short' })}</p>
-                          <p className="text-sm text-gray-300">{formatDate(dateStr, { month: 'short', day: 'numeric' })}</p>
-                        </div>
-                        <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-                          <span className="text-sm text-gray-300">{rec.eval.planned_type.replace(/_/g, ' ')}</span>
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${complianceBadgeClass(rec.eval.compliance)}`}>
-                            {t(`evaluation.${rec.eval.compliance}`)}
-                          </span>
-                          {flags.length > 0 && (
-                            <span className="flex items-center gap-1 text-xs text-yellow-400">
-                              <AlertTriangle size={12} />
-                              {flags.length}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      {rec.eval.notes && (
-                        <div>
-                          <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.coachNotes')}</p>
-                          <p className="text-sm text-gray-200">{rec.eval.notes}</p>
-                        </div>
-                      )}
-                      {flags.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {flags.map(flag => (
-                            <span
-                              key={flag}
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${
-                                flagIsSevere(flag)
-                                  ? 'bg-red-500/15 border-red-500/30 text-red-400'
-                                  : 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
-                              }`}
-                            >
-                              <AlertTriangle size={10} />
-                              {t(`evaluation.flagLabels.${flag}`, { defaultValue: flag.replace(/_/g, ' ') })}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {rec.eval.adjustments && (
-                        <div>
-                          <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.adjustments')}</p>
-                          <p className="text-sm text-gray-400">{rec.eval.adjustments}</p>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
             {/* Day cards */}
             <div className="space-y-2">
               {sortedPlanDays.map(day => (
@@ -1332,6 +1268,75 @@ export default function StridePage() {
         </h2>
         <PlanHistory />
       </section>
+
+      {/* Previous week feedback — evaluations linked to the old plan whose
+          dates fall outside the current plan (e.g. Sunday workout eval). */}
+      {previousPlanEvals.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold text-white flex items-center gap-2 mb-4">
+            <AlertTriangle size={18} className="text-yellow-400" />
+            {t('plan.previousWeekFeedback')}
+          </h2>
+          <div className="space-y-2">
+            {previousPlanEvals.map(({ date, eval: rec }) => {
+              const dateStr = `${date}T00:00:00`
+              const flags = Array.isArray(rec.eval.flags) ? rec.eval.flags : []
+              return (
+                <div key={rec.id} className="bg-gray-800 rounded-xl border border-gray-700 p-3 space-y-2">
+                  <div className="flex items-center gap-3">
+                    {complianceIcon(rec.eval.compliance)}
+                    <div className="flex-shrink-0">
+                      <p className="text-xs font-semibold text-gray-400 uppercase">{formatDate(dateStr, { weekday: 'short' })}</p>
+                      <p className="text-sm text-gray-300">{formatDate(dateStr, { month: 'short', day: 'numeric' })}</p>
+                    </div>
+                    <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                      <span className="text-sm text-gray-300">{rec.eval.planned_type.replace(/_/g, ' ')}</span>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${complianceBadgeClass(rec.eval.compliance)}`}>
+                        {t(`evaluation.${rec.eval.compliance}`)}
+                      </span>
+                      {flags.length > 0 && (
+                        <span className="flex items-center gap-1 text-xs text-yellow-400">
+                          <AlertTriangle size={12} />
+                          {flags.length}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {rec.eval.notes && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.coachNotes')}</p>
+                      <p className="text-sm text-gray-200">{rec.eval.notes}</p>
+                    </div>
+                  )}
+                  {flags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {flags.map(flag => (
+                        <span
+                          key={flag}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${
+                            flagIsSevere(flag)
+                              ? 'bg-red-500/15 border-red-500/30 text-red-400'
+                              : 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
+                          }`}
+                        >
+                          <AlertTriangle size={10} />
+                          {t(`evaluation.flagLabels.${flag}`, { defaultValue: flag.replace(/_/g, ' ') })}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {rec.eval.adjustments && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.adjustments')}</p>
+                      <p className="text-sm text-gray-400">{rec.eval.adjustments}</p>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
     </div>
   )
 }
