@@ -256,7 +256,10 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 		if planJSON, found := extractPlanJSON(fullResponse); found {
 			days, err := validatePlanUpdate(planJSON, plan.WeekStart, plan.WeekEnd)
 			if err != nil {
-				log.Printf("stride chat: plan update validation failed plan %d msg %d: %v", planID, userMsg.ID, err)
+				log.Printf("stride chat: plan update validation failed plan %d msg %d: %v\npayload: %s", planID, userMsg.ID, err, planJSON)
+				failEvt, _ := json.Marshal(map[string]string{"error": err.Error()})
+				fmt.Fprintf(w, "event: plan_update_failed\ndata: %s\n\n", failEvt)
+				flusher.Flush()
 			} else {
 				// Update plan_json in the database.
 				updatedJSON, err := json.Marshal(days)

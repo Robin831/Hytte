@@ -46,11 +46,15 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
   const [error, setError] = useState('')
   const [retrying, setRetrying] = useState(false)
 
+  const [planUpdateWarning, setPlanUpdateWarning] = useState('')
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const sendAbortRef = useRef<AbortController | null>(null)
   const retryTimeoutRef = useRef<number | null>(null)
   const scrollThrottleTimeoutRef = useRef<number | null>(null)
+  const hasRetriedPlanUpdate = useRef(false)
+  const planRetryErrorRef = useRef<string | null>(null)
 
   useEffect(() => {
     return () => {
@@ -134,11 +138,12 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
     }
   }, [input])
 
-  async function sendMessage() {
-    const content = input.trim()
-    if (!content || sending) return
+  async function sendMessage(overrideContent?: string) {
+    const content = overrideContent ?? input.trim()
+    if (!content) return
+    if (!overrideContent && sending) return
 
-    setInput('')
+    if (!overrideContent) setInput('')
     setSending(true)
     setStreamingText('')
     setError('')
@@ -207,7 +212,18 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
                   setStreamingText(accumulatedText)
                   break
                 case 'plan_updated':
+                  hasRetriedPlanUpdate.current = false
+                  setPlanUpdateWarning('')
                   onPlanUpdated(parsed.plan)
+                  break
+                case 'plan_update_failed':
+                  if (!hasRetriedPlanUpdate.current) {
+                    hasRetriedPlanUpdate.current = true
+                    // Queue a correction retry after this stream finishes
+                    planRetryErrorRef.current = parsed.error ?? 'unknown error'
+                  } else {
+                    setPlanUpdateWarning(t('chat.planUpdateFailed'))
+                  }
                   break
                 case 'done': {
                   const assistantMsg = parsed as StrideChatMessage
@@ -242,13 +258,27 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
       setStreamingText('')
-      setInput(content)
+      if (!overrideContent) setInput(content)
       if (err instanceof Error) setError(err.message)
     } finally {
       sendAbortRef.current = null
       setSending(false)
       inputRef.current?.focus()
+
+      // If a plan update failed and we haven't retried yet, send a correction prompt.
+      const retryError = planRetryErrorRef.current
+      if (retryError) {
+        planRetryErrorRef.current = null
+        setTimeout(() => {
+          sendCorrectionMessage(retryError)
+        }, 0)
+      }
     }
+  }
+
+  function sendCorrectionMessage(validationError: string) {
+    const correctionPrompt = `The plan update you provided was invalid: ${validationError}. Please output the corrected plan.`
+    sendMessage(correctionPrompt)
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -364,6 +394,20 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
         </div>
       )}
 
+      {/* Plan update warning banner */}
+      {planUpdateWarning && (
+        <div className="px-4 py-2 bg-yellow-900/30 border-t border-yellow-800/50 text-yellow-300 text-sm flex items-center justify-between">
+          <span>{planUpdateWarning}</span>
+          <button
+            onClick={() => setPlanUpdateWarning('')}
+            className="text-yellow-400 hover:text-yellow-300 cursor-pointer"
+            aria-label={t('chat.dismissError')}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* Error banner */}
       {error && (
         <div className="px-4 py-2 bg-red-900/50 border-t border-red-800 text-red-300 text-sm flex items-center justify-between">
@@ -394,7 +438,7 @@ export default function StrideChatDrawer({ planId, onPlanUpdated }: StrideChatDr
             disabled={sending}
           />
           <button
-            onClick={sendMessage}
+            onClick={() => sendMessage()}
             disabled={!input.trim() || sending}
             className="self-end p-2.5 rounded-xl bg-yellow-600 hover:bg-yellow-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
             title={t('chat.send')}
