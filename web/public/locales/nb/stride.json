@@ -139,6 +139,7 @@
     "dismissError": "Lukk feilmelding",
     "planUpdateFailed": "Kunne ikke oppdatere planen. Prøv igjen.",
     "readOnly": "Denne samtalen er skrivebeskyttet. Den tilhører en tidligere plan.",
-    "previousWeekChat": "Se forrige samtale"
+    "previousWeekChat": "Se forrige samtale",
+    "returnToCurrent": "Tilbake til gjeldende chat"
   }
 }

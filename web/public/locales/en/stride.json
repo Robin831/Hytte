@@ -139,6 +139,7 @@
     "dismissError": "Dismiss error",
     "planUpdateFailed": "Failed to update the plan. Please try again.",
     "readOnly": "This conversation is read-only. It belongs to a previous plan.",
-    "previousWeekChat": "View previous conversation"
+    "previousWeekChat": "View previous conversation",
+    "returnToCurrent": "Return to current chat"
   }
 }

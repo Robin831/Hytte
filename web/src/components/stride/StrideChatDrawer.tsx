@@ -13,6 +13,7 @@ import {
   ChevronDown,
   RefreshCw,
   Lock,
+  History,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { DayPlan } from '../../types/stride'
@@ -329,30 +330,34 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
           <MessageCircle size={18} />
           <span className="text-sm font-medium">{t('chat.title')}</span>
         </div>
-        <button
-          type="button"
-          onClick={() => setExpanded(false)}
-          className="p-1 text-gray-400 hover:text-white cursor-pointer"
-          aria-label={t('chat.collapse')}
-        >
-          <ChevronDown size={18} />
-        </button>
+        <div className="flex items-center gap-1">
+          {onViewPreviousChat && (
+            <button
+              type="button"
+              onClick={onViewPreviousChat}
+              className="p-1 text-gray-400 hover:text-white cursor-pointer"
+              aria-label={isReadOnly ? t('chat.returnToCurrent') : t('chat.previousWeekChat')}
+              title={isReadOnly ? t('chat.returnToCurrent') : t('chat.previousWeekChat')}
+            >
+              <History size={16} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="p-1 text-gray-400 hover:text-white cursor-pointer"
+            aria-label={t('chat.collapse')}
+          >
+            <ChevronDown size={18} />
+          </button>
+        </div>
       </div>
 
       {/* Read-only banner */}
       {isReadOnly && (
         <div className="px-4 py-2 bg-gray-700/50 border-b border-gray-600 text-gray-400 text-sm flex items-center gap-2">
           <Lock size={14} className="shrink-0" />
-          <span className="flex-1">{t('chat.readOnly')}</span>
-          {onViewPreviousChat && (
-            <button
-              type="button"
-              onClick={onViewPreviousChat}
-              className="text-yellow-400 hover:text-yellow-300 text-xs underline cursor-pointer whitespace-nowrap"
-            >
-              {t('chat.previousWeekChat')}
-            </button>
-          )}
+          <span>{t('chat.readOnly')}</span>
         </div>
       )}
 

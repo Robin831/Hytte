@@ -465,6 +465,7 @@ export default function StridePage() {
   const [changedDates, setChangedDates] = useState<Set<string>>(new Set())
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [previousPlanId, setPreviousPlanId] = useState<number | null>(null)
+  const [chatPlanId, setChatPlanId] = useState<number | null>(null)
   const [hasAnyPlan, setHasAnyPlan] = useState(false)
   const [completedDates, setCompletedDates] = useState<Set<string>>(new Set())
   const [workoutIdToDate, setWorkoutIdToDate] = useState<Map<number, string>>(new Map())
@@ -643,6 +644,14 @@ export default function StridePage() {
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
     }
   }, [])
+
+  // Sync chatPlanId to current plan — when a new plan is generated or loaded,
+  // the chat switches to the fresh conversation automatically.
+  useEffect(() => {
+    if (currentPlan) {
+      setChatPlanId(currentPlan.id)
+    }
+  }, [currentPlan?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const controller = new AbortController()
@@ -955,11 +964,16 @@ export default function StridePage() {
               ))}
             </div>
 
-            {/* Chat drawer — key resets state when plan changes */}
+            {/* Chat drawer */}
+            {chatPlanId && (
             <StrideChatDrawer
-              key={currentPlan.id}
-              planId={currentPlan.id}
+              planId={chatPlanId}
               currentPlanId={currentPlan.id}
+              onViewPreviousChat={previousPlanId ? () => {
+                setChatPlanId(prev =>
+                  prev === currentPlan.id ? previousPlanId : currentPlan.id
+                )
+              } : undefined}
               onPlanUpdated={(newPlan) => {
                 if (currentPlan) {
                   const oldMap = new Map(currentPlan.plan.map(d => [d.date, JSON.stringify(d)]))
@@ -978,6 +992,7 @@ export default function StridePage() {
                 setCurrentPlan(prev => prev ? { ...prev, plan: newPlan } : prev)
               }}
             />
+            )}
           </div>
         )}
       </section>
