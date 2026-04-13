@@ -21,7 +21,8 @@
     "targetHR": "Target HR Cap",
     "bpm": "{{value}} bpm",
     "sessionCount_one": "{{count}} session",
-    "sessionCount_other": "{{count}} sessions"
+    "sessionCount_other": "{{count}} sessions",
+    "previousWeekFeedback": "Previous week feedback"
   },
   "races": {
     "title": "Race Calendar",

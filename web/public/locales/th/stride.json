@@ -21,7 +21,8 @@
     "targetHR": "อัตราการเต้นหัวใจสูงสุด",
     "bpm": "{{value}} ครั้ง/นาที",
     "sessionCount_one": "{{count}} เซสชัน",
-    "sessionCount_other": "{{count}} เซสชัน"
+    "sessionCount_other": "{{count}} เซสชัน",
+    "previousWeekFeedback": "ข้อเสนอแนะจากสัปดาห์ที่แล้ว"
   },
   "races": {
     "title": "ปฏิทินการแข่งขัน",

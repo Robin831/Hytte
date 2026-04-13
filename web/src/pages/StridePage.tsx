@@ -843,6 +843,31 @@ export default function StridePage() {
     ? [...currentPlan.plan].sort((a, b) => a.date.localeCompare(b.date))
     : []
 
+  // Evaluations from the previous plan that don't match any day in the current
+  // plan (e.g. Sunday workout evaluated Monday 01:00, still linked to old plan).
+  // These would otherwise be invisible because no DayCard renders for their date.
+  const previousPlanEvals = useMemo(() => {
+    if (!currentPlan || !previousPlanId) return []
+    const currentDates = new Set(sortedPlanDays.map(d => d.date))
+    const orphans: Array<{ date: string; eval: StrideEvaluationRecord }> = []
+    for (const rec of evaluations) {
+      if (rec.plan_id !== previousPlanId) continue
+      let date: string | undefined
+      if (rec.workout_id != null) {
+        date = workoutIdToDate.get(rec.workout_id)
+      } else if (rec.eval.date) {
+        date = rec.eval.date
+      }
+      if (date && !currentDates.has(date)) {
+        orphans.push({ date, eval: rec })
+      }
+    }
+    // Only keep evaluations with substantive feedback (skip plain rest_day confirmations).
+    return orphans
+      .filter(o => o.eval.eval.compliance !== 'rest_day' || o.eval.eval.notes || (o.eval.eval.flags && o.eval.eval.flags.length > 0))
+      .sort((a, b) => a.date.localeCompare(b.date))
+  }, [currentPlan, previousPlanId, evaluations, sortedPlanDays, workoutIdToDate])
+
   // Map each plan day date to its newest stride evaluation (via workout date lookup,
   // or via eval.date for rest_day/missed evaluations without a workout).
   // evaluations is ordered created_at DESC so the first entry per date is the newest.
@@ -921,6 +946,70 @@ export default function StridePage() {
                 })}
               </span>
             </div>
+
+            {/* Previous week feedback — evaluations linked to the old plan whose
+                dates fall outside the current plan (e.g. Sunday workout eval). */}
+            {previousPlanEvals.length > 0 && (
+              <div className="mb-3 space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase">{t('plan.previousWeekFeedback')}</p>
+                {previousPlanEvals.map(({ date, eval: rec }) => {
+                  const dateStr = `${date}T00:00:00`
+                  const flags = Array.isArray(rec.eval.flags) ? rec.eval.flags : []
+                  return (
+                    <div key={rec.id} className="bg-gray-800 rounded-xl border border-gray-700 p-3 space-y-2">
+                      <div className="flex items-center gap-3">
+                        {complianceIcon(rec.eval.compliance)}
+                        <div className="flex-shrink-0">
+                          <p className="text-xs font-semibold text-gray-400 uppercase">{formatDate(dateStr, { weekday: 'short' })}</p>
+                          <p className="text-sm text-gray-300">{formatDate(dateStr, { month: 'short', day: 'numeric' })}</p>
+                        </div>
+                        <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                          <span className="text-sm text-gray-300">{rec.eval.planned_type.replace(/_/g, ' ')}</span>
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${complianceBadgeClass(rec.eval.compliance)}`}>
+                            {t(`evaluation.${rec.eval.compliance}`)}
+                          </span>
+                          {flags.length > 0 && (
+                            <span className="flex items-center gap-1 text-xs text-yellow-400">
+                              <AlertTriangle size={12} />
+                              {flags.length}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {rec.eval.notes && (
+                        <div>
+                          <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.coachNotes')}</p>
+                          <p className="text-sm text-gray-200">{rec.eval.notes}</p>
+                        </div>
+                      )}
+                      {flags.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {flags.map(flag => (
+                            <span
+                              key={flag}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${
+                                flagIsSevere(flag)
+                                  ? 'bg-red-500/15 border-red-500/30 text-red-400'
+                                  : 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400'
+                              }`}
+                            >
+                              <AlertTriangle size={10} />
+                              {t(`evaluation.flagLabels.${flag}`, { defaultValue: flag.replace(/_/g, ' ') })}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {rec.eval.adjustments && (
+                        <div>
+                          <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.adjustments')}</p>
+                          <p className="text-sm text-gray-400">{rec.eval.adjustments}</p>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
 
             {/* Day cards */}
             <div className="space-y-2">
