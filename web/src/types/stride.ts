@@ -1,3 +1,18 @@
+export interface StridePlanSession {
+  warmup: string
+  main_set: string
+  cooldown: string
+  strides: string
+  target_hr_cap: number
+  description: string
+}
+
+export interface DayPlan {
+  date: string
+  rest_day: boolean
+  session?: StridePlanSession
+}
+
 export interface StrideEvaluation {
   planned_type: string
   actual_type: string

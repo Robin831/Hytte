@@ -125,5 +125,17 @@
       "injury_risk": "Skaderisiko",
       "pacing_issue": "Tempoproblemer"
     }
+  },
+  "chat": {
+    "title": "Chat med treneren din",
+    "placeholder": "Spør om planen din, be om endringer...",
+    "send": "Send",
+    "sending": "Tenker...",
+    "planUpdated": "Plan oppdatert",
+    "sessionRetry": "Økt utløpt, prøver igjen...",
+    "error": "Kunne ikke sende melding",
+    "empty": "Ingen meldinger ennå. Spør treneren din om ukens plan.",
+    "collapse": "Skjul chat",
+    "dismissError": "Lukk feilmelding"
   }
 }
