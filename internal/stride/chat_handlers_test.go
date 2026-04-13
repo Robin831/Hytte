@@ -159,11 +159,6 @@ func fakeExecCommandChatCapture(lines []string, captured *[][]string) func(ctx c
 func TestStrideChatListHandler_Empty(t *testing.T) {
 	db := setupTestDB(t)
 
-	_, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test', 'g-1')`)
-	if err != nil {
-		t.Fatalf("insert user: %v", err)
-	}
-
 	weekStart := "2026-04-13"
 	weekEnd := "2026-04-19"
 	planJSON := buildValidPlanJSON(weekStart)
@@ -209,13 +204,9 @@ func TestStrideChatListHandler_Empty(t *testing.T) {
 func TestStrideChatListHandler_WrongUser(t *testing.T) {
 	db := setupTestDB(t)
 
-	_, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'a@b.com', 'A', 'g-1')`)
+	_, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (2, 'c@d.com', 'B', 'g-2')`)
 	if err != nil {
-		t.Fatalf("insert user: %v", err)
-	}
-	_, err = db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (2, 'c@d.com', 'B', 'g-2')`)
-	if err != nil {
-		t.Fatalf("insert user: %v", err)
+		t.Fatalf("insert user 2: %v", err)
 	}
 
 	weekStart := "2026-04-13"
@@ -247,11 +238,6 @@ func TestStrideChatListHandler_WrongUser(t *testing.T) {
 // TestStrideChatSendHandler_Success tests streaming a message and getting a response.
 func TestStrideChatSendHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
-
-	_, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test', 'g-1')`)
-	if err != nil {
-		t.Fatalf("insert user: %v", err)
-	}
 
 	for _, kv := range [][2]string{
 		{"claude_enabled", "true"},
@@ -345,11 +331,6 @@ func TestStrideChatSendHandler_Success(t *testing.T) {
 // a valid fenced plan JSON block updates the plan and emits plan_updated.
 func TestStrideChatSendHandler_PlanModification(t *testing.T) {
 	db := setupTestDB(t)
-
-	_, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test', 'g-1')`)
-	if err != nil {
-		t.Fatalf("insert user: %v", err)
-	}
 
 	for _, kv := range [][2]string{
 		{"claude_enabled", "true"},
@@ -473,11 +454,6 @@ func TestStrideChatSendHandler_PlanModification(t *testing.T) {
 func TestStrideChatSendHandler_SessionResume(t *testing.T) {
 	db := setupTestDB(t)
 
-	_, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test', 'g-1')`)
-	if err != nil {
-		t.Fatalf("insert user: %v", err)
-	}
-
 	for _, kv := range [][2]string{{"claude_enabled", "true"}} {
 		if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`, kv[0], kv[1]); err != nil {
 			t.Fatalf("insert pref %s: %v", kv[0], err)
@@ -548,11 +524,6 @@ func TestStrideChatSendHandler_SessionResume(t *testing.T) {
 func TestStrideChatSendHandler_ClaudeDisabled(t *testing.T) {
 	db := setupTestDB(t)
 
-	_, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test', 'g-1')`)
-	if err != nil {
-		t.Fatalf("insert user: %v", err)
-	}
-
 	// No claude_enabled preference — default is disabled.
 
 	weekStart := "2026-04-13"
@@ -586,11 +557,6 @@ func TestStrideChatSendHandler_ClaudeDisabled(t *testing.T) {
 func TestStrideChatSendHandler_PlanNotFound(t *testing.T) {
 	db := setupTestDB(t)
 
-	_, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test', 'g-1')`)
-	if err != nil {
-		t.Fatalf("insert user: %v", err)
-	}
-
 	handler := StrideChatSendHandler(db)
 	rec := httptest.NewRecorder()
 	reqBody := strings.NewReader(`{"content":"Hello"}`)
@@ -613,11 +579,6 @@ func TestStrideChatSendHandler_PlanNotFound(t *testing.T) {
 // no plan_updated event is emitted.
 func TestStrideChatSendHandler_InvalidPlanJSON(t *testing.T) {
 	db := setupTestDB(t)
-
-	_, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'test@example.com', 'Test', 'g-1')`)
-	if err != nil {
-		t.Fatalf("insert user: %v", err)
-	}
 
 	for _, kv := range [][2]string{{"claude_enabled", "true"}} {
 		if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`, kv[0], kv[1]); err != nil {
