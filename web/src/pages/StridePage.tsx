@@ -117,7 +117,7 @@ function flagIsSevere(flag: string): boolean {
   return flag === 'overtraining' || flag === 'injury_risk'
 }
 
-function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: boolean; evaluation?: StrideEvaluationRecord }) {
+function DayCard({ day, completed, evaluation, isHighlighted }: { day: DayPlan; completed: boolean; evaluation?: StrideEvaluationRecord; isHighlighted?: boolean }) {
   const { t } = useTranslation('stride')
   const [expanded, setExpanded] = useState(false)
 
@@ -129,7 +129,7 @@ function DayCard({ day, completed, evaluation }: { day: DayPlan; completed: bool
   const hasExpandableContent = (!day.rest_day && !!day.session) || (!!evaluation && (day.rest_day || !day.session))
 
   return (
-    <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+    <div className={`bg-gray-800 rounded-xl border border-gray-700 overflow-hidden transition-all duration-1000 ${isHighlighted ? 'ring-2 ring-yellow-400/50' : ''}`}>
       <button
         type="button"
         onClick={() => hasExpandableContent && setExpanded(v => !v)}
@@ -461,6 +461,7 @@ export default function StridePage() {
   const [notes, setNotes] = useState<Note[]>([])
   const [consumedNotes, setConsumedNotes] = useState<Note[]>([])
   const [currentPlan, setCurrentPlan] = useState<Plan | null>(null)
+  const [changedDates, setChangedDates] = useState<Set<string>>(new Set())
   const [previousPlanId, setPreviousPlanId] = useState<number | null>(null)
   const [hasAnyPlan, setHasAnyPlan] = useState(false)
   const [completedDates, setCompletedDates] = useState<Set<string>>(new Set())
@@ -941,6 +942,7 @@ export default function StridePage() {
                   day={day}
                   completed={completedDates.has(day.date)}
                   evaluation={dayEvaluationMap.get(day.date)}
+                  isHighlighted={changedDates.has(day.date)}
                 />
               ))}
             </div>
@@ -949,7 +951,21 @@ export default function StridePage() {
             <StrideChatDrawer
               planId={currentPlan.id}
               onPlanUpdated={(newPlan) => {
-                setCurrentPlan(prev => prev ? { ...prev, plan: newPlan } : prev)
+                setCurrentPlan(prev => {
+                  if (!prev) return prev
+                  const oldMap = new Map(prev.plan.map(d => [d.date, JSON.stringify(d)]))
+                  const changed = new Set<string>()
+                  for (const day of newPlan) {
+                    if (oldMap.get(day.date) !== JSON.stringify(day)) {
+                      changed.add(day.date)
+                    }
+                  }
+                  if (changed.size > 0) {
+                    setChangedDates(changed)
+                    setTimeout(() => setChangedDates(new Set()), 3000)
+                  }
+                  return { ...prev, plan: newPlan }
+                })
               }}
             />
           </div>
