@@ -17,6 +17,9 @@ const TRANSLATIONS: Record<string, string> = {
   'chat.empty': 'No messages yet. Ask your coach anything about this week\'s plan.',
   'chat.dismissError': 'Dismiss',
   'chat.collapse': 'Collapse',
+  'chat.readOnly': 'This is a previous week\'s chat. You can\'t send messages here.',
+  'chat.previousWeekChat': 'View previous week\'s chat',
+  'chat.returnToCurrent': 'Return to current chat',
 }
 
 function stableT(key: string): string {
@@ -86,6 +89,7 @@ function makeSSEStream(events: string[]) {
 
 const defaultProps = {
   planId: 10,
+  currentPlanId: 10,
   onPlanUpdated: vi.fn(),
 }
 
@@ -267,6 +271,69 @@ describe('StrideChatDrawer – send message flow', () => {
     await waitFor(() => screen.getByRole('textbox'))
 
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
+  })
+})
+
+describe('StrideChatDrawer – read-only mode', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  it('shows read-only banner when planId !== currentPlanId', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(chatHistoryResponse())))
+    renderDrawer({ planId: 9, currentPlanId: 10 })
+
+    fireEvent.click(screen.getByText('Chat with your coach'))
+
+    await waitFor(() => {
+      expect(screen.getByText("This is a previous week's chat. You can't send messages here.")).toBeInTheDocument()
+    })
+  })
+
+  it('hides input and send button in read-only mode', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(chatHistoryResponse())))
+    renderDrawer({ planId: 9, currentPlanId: 10 })
+
+    fireEvent.click(screen.getByText('Chat with your coach'))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument()
+    })
+  })
+
+  it('does not show read-only banner when planId === currentPlanId', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(chatHistoryResponse())))
+    renderDrawer({ planId: 10, currentPlanId: 10 })
+
+    fireEvent.click(screen.getByText('Chat with your coach'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox')).toBeInTheDocument()
+    })
+    expect(screen.queryByText("This is a previous week's chat. You can't send messages here.")).not.toBeInTheDocument()
+  })
+
+  it('shows history toggle button with returnToCurrent label when in read-only mode', async () => {
+    const onViewPreviousChat = vi.fn()
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(chatHistoryResponse())))
+    renderDrawer({ planId: 9, currentPlanId: 10, onViewPreviousChat })
+
+    fireEvent.click(screen.getByText('Chat with your coach'))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Return to current chat')).toBeInTheDocument()
+    })
+  })
+
+  it('shows history toggle button with previousWeekChat label in normal mode', async () => {
+    const onViewPreviousChat = vi.fn()
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(chatHistoryResponse())))
+    renderDrawer({ planId: 10, currentPlanId: 10, onViewPreviousChat })
+
+    fireEvent.click(screen.getByText('Chat with your coach'))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("View previous week's chat")).toBeInTheDocument()
+    })
   })
 })
 

@@ -61,6 +61,9 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
   const planRetryTimeoutRef = useRef<number | null>(null)
   const hasRetriedPlanUpdate = useRef(false)
   const planRetryErrorRef = useRef<string | null>(null)
+  // Tracks the planId that is currently "active" — used to detect planId changes
+  // while an SSE stream is in-flight and discard stale callbacks.
+  const activePlanIdRef = useRef(planId)
 
   useEffect(() => {
     return () => {
@@ -76,6 +79,15 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
       }
     }
   }, [])
+
+  // Abort any in-flight SSE stream when planId changes to prevent stale updates
+  // from a previous plan's conversation being applied to the new one.
+  useEffect(() => {
+    if (activePlanIdRef.current !== planId) {
+      sendAbortRef.current?.abort()
+      activePlanIdRef.current = planId
+    }
+  }, [planId])
 
   const isNearBottom = useCallback(() => {
     const container = messagesEndRef.current?.parentElement
@@ -221,7 +233,7 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
 
               switch (eventType) {
                 case 'user_message':
-                  if (!overrideContent) {
+                  if (!overrideContent && activePlanIdRef.current === planId) {
                     setMessages(prev =>
                       prev.map(m => m.id === tempUserMsg.id ? (parsed as StrideChatMessage) : m)
                     )
@@ -232,9 +244,11 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
                   setStreamingText(accumulatedText)
                   break
                 case 'plan_updated':
-                  hasRetriedPlanUpdate.current = false
-                  setPlanUpdateWarning('')
-                  onPlanUpdated(parsed.plan)
+                  if (activePlanIdRef.current === planId) {
+                    hasRetriedPlanUpdate.current = false
+                    setPlanUpdateWarning('')
+                    onPlanUpdated(parsed.plan)
+                  }
                   break
                 case 'plan_update_failed':
                   if (!hasRetriedPlanUpdate.current) {
@@ -246,8 +260,10 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
                   }
                   break
                 case 'done': {
-                  const assistantMsg = parsed as StrideChatMessage
-                  setMessages(prev => [...prev, assistantMsg])
+                  if (activePlanIdRef.current === planId) {
+                    const assistantMsg = parsed as StrideChatMessage
+                    setMessages(prev => [...prev, assistantMsg])
+                  }
                   setStreamingText('')
                   setSending(false)
                   await reader.cancel()
