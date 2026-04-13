@@ -40,22 +40,25 @@ type Note struct {
 }
 
 // NextStrideRun returns the next time the weekly Stride cron should fire
-// (Sundays at 18:00 in the given location). If now is Sunday before 18:00,
-// that same day is returned; otherwise the following Sunday is returned.
+// (Mondays at 02:00 in the given location). This runs after the nightly
+// evaluation (~01:00) so Sunday's workout feedback is captured against the
+// outgoing plan before the new plan is generated. If now is Monday before
+// 02:00, that same day is returned; otherwise the following Monday.
 func NextStrideRun(now time.Time, loc *time.Location) time.Time {
 	if loc == nil {
 		loc = time.UTC
 	}
 	now = now.In(loc)
-	daysUntilSunday := (7 - int(now.Weekday())) % 7
-	if daysUntilSunday == 0 {
-		todayRun := time.Date(now.Year(), now.Month(), now.Day(), 18, 0, 0, 0, loc)
+	// time.Monday == 1
+	daysUntilMonday := (8 - int(now.Weekday())) % 7
+	if daysUntilMonday == 0 {
+		todayRun := time.Date(now.Year(), now.Month(), now.Day(), 2, 0, 0, 0, loc)
 		if now.Before(todayRun) {
 			return todayRun
 		}
 		return todayRun.AddDate(0, 0, 7)
 	}
-	return time.Date(now.Year(), now.Month(), now.Day()+daysUntilSunday, 18, 0, 0, 0, loc)
+	return time.Date(now.Year(), now.Month(), now.Day()+daysUntilMonday, 2, 0, 0, 0, loc)
 }
 
 // scanNote scans a note row into a Note struct, handling nullable consumed_at/consumed_by

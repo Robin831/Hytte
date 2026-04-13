@@ -475,6 +475,7 @@ export default function StridePage() {
   const [notes, setNotes] = useState<Note[]>([])
   const [consumedNotes, setConsumedNotes] = useState<Note[]>([])
   const [currentPlan, setCurrentPlan] = useState<Plan | null>(null)
+  const [previousPlanId, setPreviousPlanId] = useState<number | null>(null)
   const [hasAnyPlan, setHasAnyPlan] = useState(false)
   const [completedDates, setCompletedDates] = useState<Set<string>>(new Set())
   const [workoutIdToDate, setWorkoutIdToDate] = useState<Map<number, string>>(new Map())
@@ -566,7 +567,10 @@ export default function StridePage() {
     try {
       const res = await fetch('/api/stride/plans/current', { credentials: 'include', signal })
       if (res.status === 404) {
-        if (!signal?.aborted) setCurrentPlan(null)
+        if (!signal?.aborted) {
+          setCurrentPlan(null)
+          setPreviousPlanId(null)
+        }
         return
       }
       if (!res.ok) {
@@ -574,7 +578,24 @@ export default function StridePage() {
       }
       const data = await res.json()
       if (!signal?.aborted) {
-        setCurrentPlan(data.plan ?? null)
+        const plan: Plan | null = data.plan ?? null
+        setCurrentPlan(plan)
+        // Fetch the two most recent plans so we can identify the previous one.
+        // This lets us load its evaluations (e.g. Sunday workout feedback that
+        // was evaluated after the new plan was generated).
+        if (plan) {
+          try {
+            const listRes = await fetch('/api/stride/plans?limit=2&offset=0', { credentials: 'include', signal })
+            if (listRes.ok) {
+              const listData = await listRes.json()
+              const plans: Plan[] = listData.plans ?? []
+              const prev = plans.find((p: Plan) => p.id !== plan.id)
+              setPreviousPlanId(prev?.id ?? null)
+            }
+          } catch {
+            // Non-fatal — we just won't show previous-plan evaluations.
+          }
+        }
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return
@@ -615,22 +636,18 @@ export default function StridePage() {
     }
   }, [])
 
-  const loadEvaluations = useCallback(async (planId: number, signal?: AbortSignal) => {
+  // Returns evaluations for a plan as a list (doesn't set state).
+  // Used by the merged fetch that combines current + previous plan evals.
+  async function loadEvaluationsForPlan(planId: number, signal?: AbortSignal): Promise<StrideEvaluationRecord[]> {
     try {
       const res = await fetch(`/api/stride/evaluations?plan_id=${planId}`, { credentials: 'include', signal })
-      if (!res.ok) {
-        if (!signal?.aborted) setEvaluations([])
-        return
-      }
+      if (!res.ok) return []
       const data = await res.json()
-      if (!signal?.aborted) {
-        setEvaluations(data.evaluations ?? [])
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return
-      console.error('Failed to load stride evaluations', error)
+      return (data.evaluations ?? []) as StrideEvaluationRecord[]
+    } catch {
+      return []
     }
-  }, [])
+  }
 
   useEffect(() => {
     const controller = new AbortController()
@@ -650,9 +667,24 @@ export default function StridePage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset before fetch; AbortController prevents stale updates on unmount
     setEvaluations([])
     const controller = new AbortController()
-    loadEvaluations(planId, controller.signal)
+    // Load evaluations for both current and previous plan so that feedback
+    // from the outgoing week (e.g. Sunday's workout evaluated Monday 01:00,
+    // still linked to the old plan_id) is visible in the current week view.
+    const fetchAll = async () => {
+      const results = await Promise.all([
+        loadEvaluationsForPlan(planId, controller.signal),
+        previousPlanId ? loadEvaluationsForPlan(previousPlanId, controller.signal) : Promise.resolve([]),
+      ])
+      if (!controller.signal.aborted) {
+        // Merge and de-duplicate by id; current plan takes precedence.
+        const byId = new Map<number, StrideEvaluationRecord>()
+        for (const e of [...results[1], ...results[0]]) byId.set(e.id, e)
+        setEvaluations(Array.from(byId.values()))
+      }
+    }
+    fetchAll()
     return () => { controller.abort() }
-  }, [planId, loadEvaluations])
+  }, [planId, previousPlanId])
 
   // Parse "H:MM:SS" or "M:SS" target time string to seconds
   function parseTargetTime(s: string): number | null {

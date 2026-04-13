@@ -566,33 +566,39 @@ func TestNextStrideRun(t *testing.T) {
 		maxFutureDiff time.Duration
 	}{
 		{
-			name:          "Monday returns next Sunday",
-			now:           time.Date(2026, 4, 6, 10, 0, 0, 0, oslo),  // Monday
-			want:          time.Date(2026, 4, 12, 18, 0, 0, 0, oslo), // Next Sunday 18:00
+			name:          "Monday before 02:00 returns same day",
+			now:           time.Date(2026, 4, 6, 1, 0, 0, 0, oslo),  // Monday 01:00
+			want:          time.Date(2026, 4, 6, 2, 0, 0, 0, oslo),  // Same Monday 02:00
 			maxFutureDiff: 7 * 24 * time.Hour,
 		},
 		{
-			name:          "Sunday before 18:00 returns same day",
-			now:           time.Date(2026, 4, 5, 12, 0, 0, 0, oslo), // Sunday noon
-			want:          time.Date(2026, 4, 5, 18, 0, 0, 0, oslo), // Same Sunday 18:00
+			name:          "Monday exactly 02:00 returns next Monday",
+			now:           time.Date(2026, 4, 6, 2, 0, 0, 0, oslo),   // Monday 02:00
+			want:          time.Date(2026, 4, 13, 2, 0, 0, 0, oslo),  // Next Monday 02:00
 			maxFutureDiff: 7 * 24 * time.Hour,
 		},
 		{
-			name:          "Sunday exactly 18:00 returns next Sunday",
-			now:           time.Date(2026, 4, 5, 18, 0, 0, 0, oslo),  // Sunday 18:00
-			want:          time.Date(2026, 4, 12, 18, 0, 0, 0, oslo), // Next Sunday 18:00
+			name:          "Monday after 02:00 returns next Monday",
+			now:           time.Date(2026, 4, 6, 10, 0, 0, 0, oslo),  // Monday 10:00
+			want:          time.Date(2026, 4, 13, 2, 0, 0, 0, oslo),  // Next Monday 02:00
 			maxFutureDiff: 7 * 24 * time.Hour,
 		},
 		{
-			name:          "Sunday after 18:00 returns next Sunday",
-			now:           time.Date(2026, 4, 5, 19, 0, 0, 0, oslo),  // Sunday 19:00
-			want:          time.Date(2026, 4, 12, 18, 0, 0, 0, oslo), // Next Sunday 18:00
+			name:          "Sunday returns next Monday",
+			now:           time.Date(2026, 4, 5, 12, 0, 0, 0, oslo),  // Sunday noon
+			want:          time.Date(2026, 4, 6, 2, 0, 0, 0, oslo),   // Next day Monday 02:00
 			maxFutureDiff: 7 * 24 * time.Hour,
 		},
 		{
-			name:          "Saturday returns next Sunday",
+			name:          "Saturday returns next Monday",
 			now:           time.Date(2026, 4, 4, 23, 59, 0, 0, oslo), // Saturday
-			want:          time.Date(2026, 4, 5, 18, 0, 0, 0, oslo),  // Next day Sunday 18:00
+			want:          time.Date(2026, 4, 6, 2, 0, 0, 0, oslo),   // Monday 02:00
+			maxFutureDiff: 7 * 24 * time.Hour,
+		},
+		{
+			name:          "Wednesday returns next Monday",
+			now:           time.Date(2026, 4, 8, 15, 0, 0, 0, oslo),  // Wednesday
+			want:          time.Date(2026, 4, 13, 2, 0, 0, 0, oslo),  // Next Monday 02:00
 			maxFutureDiff: 7 * 24 * time.Hour,
 		},
 	}
