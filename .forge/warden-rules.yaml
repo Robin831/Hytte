@@ -14220,3 +14220,295 @@ rules:
         Verify that dynamic values like status codes or process names are mapped to localized labels via translation keys rather than interpolated as raw strings. Also ensure the component handles null/missing metadata gracefully by omitting the element instead of rendering blanks.
       source: copilot:PR#628
       added: "2026-04-10"
+    - id: composite-fk-ownership-consistency
+      category: security
+      pattern: >-
+        A child table references a parent table's primary key AND duplicates a column (like user_id) that already exists on the parent, without a composite foreign key linking both columns
+      check: >-
+        When a child table stores both a parent row ID and an ownership column (e.g. user_id) that also exists on the parent, verify a composite foreign key enforces that the ownership column matches the parent's value. Ensure test schemas mirror the same composite FK constraint.
+      source: copilot:PR#630
+      added: "2026-04-13"
+    - id: consistent-date-format
+      category: style
+      pattern: Fallback date values used in user-facing text or prompt construction
+      check: >-
+        When falling back to a secondary date field (e.g. CreatedAt instead of a dedicated Date field), verify it is formatted consistently with surrounding dates — typically truncate RFC3339 timestamps to YYYY-MM-DD rather than mixing full timestamps with date-only strings.
+      source: copilot:PR#631
+      added: "2026-04-13"
+    - id: prompt-injection-untrusted-content
+      category: security
+      pattern: >-
+        User-generated content (notes, names, free-text fields) interpolated into LLM system prompts or instructions
+      check: >-
+        Verify that untrusted user content interpolated into LLM prompts is wrapped in clear delimiters (e.g., <user-data>...</user-data>) and that the prompt includes an explicit instruction that text within these sections is untrusted and must not override system instructions
+      source: copilot:PR#631
+      added: "2026-04-13"
+    - id: shared-schema-drift
+      category: other
+      pattern: >-
+        Schema definitions, format instructions, or structured output specifications duplicated across multiple files or prompts
+      check: >-
+        Verify that duplicated schema/format definitions are extracted into a shared constant or generated from a single source of truth, so changes propagate automatically and cannot drift out of sync
+      source: copilot:PR#631
+      added: "2026-04-13"
+    - id: distinguish-db-errors-from-not-found
+      category: error-handling
+      pattern: >-
+        Code that calls a DB lookup function and treats any error as a not-found condition
+      check: >-
+        Verify that database lookup errors distinguish sql.ErrNoRows (return 404) from other errors (return 500 and log the error), rather than collapsing all errors into a single not-found response
+      source: copilot:PR#632
+      added: "2026-04-13"
+    - id: robust-fenced-content-extraction
+      category: other
+      pattern: >-
+        Regex used to extract fenced code blocks (e.g. ```...```) from LLM or multiline string output
+      check: >-
+        Verify the regex handles \r\n line endings and does not truncate content on characters that appear inside the fenced block (e.g. ']' or '}' in JSON). Prefer fence-boundary detection over greedy/lazy content capture, and delegate parsing to a dedicated validator.
+      source: copilot:PR#632
+      added: "2026-04-13"
+    - id: thread-request-context
+      category: concurrency
+      pattern: >-
+        Functions that perform DB queries or I/O but use context.Background() instead of the incoming request context
+      check: >-
+        Verify that request-scoped context (r.Context() or a derived timeout context) is threaded through to all DB calls and I/O operations, so work is cancelled when the client disconnects
+      source: copilot:PR#632
+      added: "2026-04-13"
+    - id: no-sensitive-data-in-logs
+      category: security
+      pattern: >-
+        Log statements that include user-generated content, request bodies, or decoded JSON payloads
+      check: >-
+        Verify that log statements do not emit full user content (plans, notes, health data, training details). Log only IDs, truncated prefixes, hashes, or error messages. Gate verbose payload logging behind a debug flag.
+      source: copilot:PR#632
+      added: "2026-04-13"
+    - id: markdown-link-sanitization-consistency
+      category: security
+      pattern: >-
+        ReactMarkdown rendering in streaming/preview contexts separate from persisted message rendering
+      check: >-
+        Verify that all ReactMarkdown instances use the same link sanitization logic, blocking unsafe protocols like javascript: URIs. Streaming previews and persisted messages must apply identical safe-href checks (allowing only https:, http:, mailto:, tel:) to prevent XSS during streaming.
+      source: copilot:PR#633
+      added: "2026-04-13"
+    - id: optimistic-ui-rollback-on-error
+      category: error-handling
+      pattern: >-
+        Optimistic UI updates that remove the optimistic entry from state when an async operation fails
+      check: >-
+        When an optimistic UI update fails, verify the optimistic entry is kept visible (optionally marked as failed) rather than silently removed. Removing it contradicts the user's intent and loses their input. Restore input text or show an error indicator on the entry instead.
+      source: copilot:PR#633
+      added: "2026-04-13"
+    - id: sse-done-state-cleanup
+      category: ui
+      pattern: >-
+        SSE/streaming event handlers that process a terminal event (e.g. 'done') but continue the read loop afterward
+      check: >-
+        When a terminal SSE event (like 'done') is received, verify that all related UI state (loading flags, streaming indicators) is reset immediately and the stream reader is cancelled/aborted, rather than waiting for the stream to fully close — otherwise stale loading states may briefly re-appear or keep inputs disabled
+      source: copilot:PR#633
+      added: "2026-04-13"
+    - id: lazy-load-guard-matches-spec
+      category: ui
+      pattern: >-
+        useEffect or data-fetching hook that early-returns based on UI visibility state (e.g. expanded, open, visible)
+      check: >-
+        Verify that lazy-load guards in effects match the documented/intended behavior. If data is guarded behind a visibility check (e.g. `if (!expanded) return`), confirm the spec intends lazy loading — otherwise load data unconditionally and only hide the UI.
+      source: copilot:PR#633
+      added: "2026-04-13"
+    - id: throttle-streaming-scroll
+      category: performance
+      pattern: >-
+        scrollIntoView called inside useEffect that depends on a rapidly-updating streaming/SSE state variable
+      check: >-
+        Verify that auto-scrolling during streaming updates is throttled (e.g. via setTimeout), uses behavior:'auto' instead of 'smooth' during active streaming, and only triggers when the user is already near the bottom of the scroll container
+      source: copilot:PR#633
+      added: "2026-04-13"
+    - id: clear-timers-on-unmount
+      category: concurrency
+      pattern: >-
+        setTimeout or setInterval called inside a React component or hook without cleanup
+      check: >-
+        Verify that timeout/interval IDs are stored in a ref and cleared both on component unmount (via useEffect cleanup) and before scheduling a new timer, to prevent state updates after unmount and timer leaks
+      source: copilot:PR#633
+      added: "2026-04-13"
+    - id: consistent-link-sanitization
+      category: security
+      pattern: >-
+        Multiple code paths render or sanitize user-facing content (e.g., streaming vs persisted messages, preview vs final render)
+      check: >-
+        Verify that sanitization and allow-list policies (e.g., allowed URL schemes, HTML tags) are defined in a single shared location and reused across all rendering paths, so behavior does not diverge between streaming, persisted, or preview states
+      source: copilot:PR#633
+      added: "2026-04-13"
+    - id: mock-reader-cancel-method
+      category: testing
+      pattern: >-
+        Mocking ReadableStreamDefaultReader (e.g. from fetch Response.body.getReader()) in tests
+      check: >-
+        Verify the mock reader includes a cancel() method returning Promise<void>, since components often call reader.cancel() on stream completion or cleanup. A missing cancel() will throw TypeError at runtime.
+      source: copilot:PR#633
+      added: "2026-04-13"
+    - id: sse-state-across-chunks
+      category: concurrency
+      pattern: >-
+        SSE/streaming response parsing where state variables (event type, partial lines) are declared inside a read loop
+      check: >-
+        Verify that SSE parsing state (event type, partial line buffer) is declared outside the read loop so it persists across chunk boundaries. A stream can split an event: line and its data: line into separate chunks; if state resets each iteration, events will be silently dropped.
+      source: copilot:PR#633
+      added: "2026-04-13"
+    - id: consolidate-duplicate-types
+      category: style
+      pattern: >-
+        New TypeScript interfaces or types that share names or structures with existing local types elsewhere in the codebase
+      check: >-
+        Verify that new shared types are not duplicating existing local interfaces. If similar types already exist in other files, consolidate on a single exported definition and update existing usages to import it, preventing structural divergence over time.
+      source: copilot:PR#633
+      added: "2026-04-13"
+    - id: no-side-effects-in-state-updaters
+      category: concurrency
+      pattern: >-
+        setState(prev => { ... }) updater functions that call other setState, setTimeout, clearTimeout, or other side effects inside the callback
+      check: >-
+        React state updater functions passed to setState must be pure. Move side effects (other setState calls, timers, API calls) outside the updater. Use useRef for latest-value access, or useReducer to compute multiple state changes atomically, so the updater only returns the new state value.
+      source: copilot:PR#634
+      added: "2026-04-13"
+    - id: test-new-ui-behaviors
+      category: testing
+      pattern: >-
+        Adding new interactive UI behavior (e.g. highlights, animations, conditional CSS classes) to an existing component that already has a test file
+      check: >-
+        Verify that the new behavior is covered by tests: trigger the state change, assert the expected classes/styles are applied, advance fake timers if time-based, and assert cleanup occurs
+      source: copilot:PR#634
+      added: "2026-04-13"
+    - id: prop-interface-matches-spec
+      category: other
+      pattern: >-
+        A component's prop interface differs from what the task or PR description specifies
+      check: >-
+        Verify that the implemented component prop interface matches the one described in the task/PR description. If the implementation deviates (e.g., passing a pre-computed boolean instead of a collection), either align the code with the spec or update the spec to match, so downstream consumers aren't surprised.
+      source: copilot:PR#634
+      added: "2026-04-13"
+    - id: reset-retry-guard-per-attempt
+      category: error-handling
+      pattern: >-
+        A boolean retry/guard flag (e.g. `hasRetried*`) that is set on failure but only cleared on success or never cleared
+      check: >-
+        Verify that retry-guard flags are reset at the start of each new user-initiated action (not just on success), so the retry logic applies per attempt rather than per component lifetime. A flag that stays stuck after one failure silently disables retry for all future attempts.
+      source: copilot:PR#635
+      added: "2026-04-13"
+    - id: test-error-recovery-flows
+      category: testing
+      pattern: Adding automatic retry or error recovery behavior to UI components
+      check: >-
+        Verify that new error-recovery flows (auto-retry on failure, fallback UI after repeated failures) have tests covering: (1) the retry is triggered exactly once on first failure, (2) the failure UI (e.g. warning banner) appears only after the retry also fails, and (3) the happy path where the retry succeeds does not show failure UI.
+      source: copilot:PR#635
+      added: "2026-04-13"
+    - id: truncate-sensitive-log-payloads
+      category: security
+      pattern: >-
+        Logging user-provided or sensitive data payloads (e.g., plan JSON, training data, request bodies) in error or warning log statements
+      check: >-
+        Verify that logged payloads containing user data are truncated to a safe length (e.g., first N bytes) or replaced with a hash/size summary, rather than logging the full content which can leak sensitive data and create oversized log lines
+      source: copilot:PR#635
+      added: "2026-04-13"
+    - id: test-new-sse-events
+      category: testing
+      pattern: >-
+        A new SSE event type is emitted from a handler that already has streaming integration tests
+      check: >-
+        Verify that an integration test exists for the new SSE event, covering both the success path and the failure/error path that triggers it
+      source: copilot:PR#635
+      added: "2026-04-13"
+    - id: system-retry-leaks-user-message
+      category: ui
+      pattern: >-
+        A function accepts an override/retry parameter but reuses the normal user-initiated flow (optimistic UI message, persisted as user-authored)
+      check: >-
+        Verify that system-driven retries or internal correction prompts do not create optimistic user messages in the UI or persist as user-authored messages in chat history. Add a flag or separate code path for override/system sends that suppresses user-visible artifacts.
+      source: copilot:PR#635
+      added: "2026-04-13"
+    - id: abort-stale-sse-on-id-change
+      category: concurrency
+      pattern: >-
+        A component holds an SSE/streaming connection whose callbacks update state (setMessages, onPlanUpdated, etc.) scoped to a prop or dependency (e.g. planId) that can change independently of the stream lifecycle
+      check: >-
+        When a key identifier (e.g. planId, chatId) that scopes an SSE/streaming request can change while a stream is in-flight, verify that: (1) the active stream is aborted when the identifier changes, and (2) callbacks from the old stream (state setters, event handlers) are gated on the current identifier via a ref, so stale responses never update state belonging to the new scope.
+      source: copilot:PR#636
+      added: "2026-04-13"
+    - id: update-call-sites-on-required-prop-change
+      category: testing
+      pattern: >-
+        Adding a new required property to a TypeScript interface or props type used by a React component
+      check: >-
+        Verify that all existing call sites, tests, and mock/default prop objects are updated to include the new required property so the build and tests still compile and pass
+      source: copilot:PR#636
+      added: "2026-04-13"
+    - id: test-conditional-ui-states
+      category: testing
+      pattern: >-
+        Adding conditional UI rendering based on state (e.g., read-only mode, disabled states, permission-based visibility)
+      check: >-
+        Verify that new conditional UI states have corresponding test coverage: assert that elements render/hide correctly in each state, that interactive controls are properly enabled/disabled, and that toggling between states restores the expected UI
+      source: copilot:PR#636
+      added: "2026-04-13"
+    - id: stale-state-on-key-change
+      category: ui
+      pattern: >-
+        A component receives a new key prop or ID (e.g., planId, itemId) and fetches data asynchronously based on it, but local state from the previous ID is not cleared synchronously
+      check: >-
+        When a component re-renders with a changed identifier that triggers an async data fetch, verify that all related local state (messages, streaming text, errors, warnings) is cleared synchronously on the ID change — before the new fetch resolves — so the UI does not briefly display stale data from the previous context under the new context's heading
+      source: copilot:PR#636
+      added: "2026-04-13"
+    - id: derived-state-render-gap
+      category: ui
+      pattern: >-
+        A component is conditionally rendered based on derived state that is set in a useEffect after the source state is already available
+      check: >-
+        Verify that conditionally rendered components do not depend on derived state set in a separate effect from the source state. If component B should appear when state A is available, but relies on derived state D (set in an effect watching A), there will be a render gap where A exists but D does not yet. Either compute D synchronously (e.g. useMemo or inline expression with a fallback like `value ?? sourceState.field`), or initialize D at the same time as A, to avoid a flash of missing UI.
+      source: copilot:PR#636
+      added: "2026-04-13"
+    - id: state-sync-on-entity-replacement
+      category: ui
+      pattern: >-
+        When a function creates or replaces a stateful entity (e.g. generating a new plan, creating a new record) but related derived state (previous IDs, parent references, history pointers) is only computed during the initial load/fetch path
+      check: >-
+        Verify that all derived or dependent state variables are updated when the primary entity is replaced outside the normal load path. If state B is derived from state A during initial load, any code path that replaces A must also refresh B—or the code should refetch through the canonical load function that computes both.
+      source: copilot:PR#636
+      added: "2026-04-13"
+    - id: passive-viewport-listeners
+      category: performance
+      pattern: Adding scroll or resize event listeners to visualViewport or window
+      check: >-
+        Verify that scroll/resize listeners on visualViewport or window use { passive: true } to avoid browser warnings and scroll jank. Also check that the handler initializes state on mount (call once immediately) and guards setState with a value comparison to prevent unnecessary re-renders on high-frequency events.
+      source: copilot:PR#637
+      added: "2026-04-13"
+    - id: no-op-css-defaults
+      category: ui
+      pattern: >-
+        Inline or CSS styles that explicitly set a property to its browser default value (e.g., overflowAnchor: 'auto', display: 'inline', visibility: 'visible')
+      check: >-
+        Verify the style declaration actually changes behavior from the default. If the intent is to override or disable a behavior, use the correct non-default value (e.g., 'none' instead of 'auto'). If the default is truly desired, add a comment explaining why the explicit declaration is needed, or remove it entirely.
+      source: copilot:PR#637
+      added: "2026-04-13"
+    - id: changelog-fragment-name-mismatch
+      category: other
+      pattern: PR adds a changelog fragment file in changelog.d/
+      check: >-
+        Verify that the changelog fragment filename matches what is referenced in the PR description and any related issue/bead IDs, so tooling and release notes pick up the intended entry
+      source: copilot:PR#637
+      added: "2026-04-13"
+    - id: utc-vs-local-date-accuracy
+      category: other
+      pattern: >-
+        Review rules or code comments that list date/time API examples as local-time vs UTC-time patterns
+      check: >-
+        Verify that Date API examples are categorized correctly: `toISOString()` and `toUTCString()` are UTC-based, while `toLocaleDateString()`, `getFullYear()`, `getMonth()`, `getDate()` are local-time-based. Do not list UTC methods as examples of local-time date computation.
+      source: copilot:PR#629
+      added: "2026-04-13"
+    - id: deduplicate-warden-rules
+      category: other
+      pattern: >-
+        Multiple warden rules in warden-rules.yaml that cover the same underlying guideline with only minor wording differences
+      check: >-
+        Verify that each warden rule addresses a distinct concern. If two or more rules check for the same underlying issue (e.g., same API misuse, same error-handling pattern), merge them into a single rule or clearly differentiate their trigger patterns to avoid duplicate review feedback.
+      source: copilot:PR#629
+      added: "2026-04-13"
