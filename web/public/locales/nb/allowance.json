@@ -193,6 +193,20 @@
     "historyChart": "Inntektshistorikk"
   },
   "confirmDeactivate": "Deaktiver «{{name}}»? Den kan legges til igjen senere.",
+  "record": {
+    "title": "Registrer som utført",
+    "children": "Barn",
+    "date": "Dato",
+    "notes": "Notater (valgfritt)",
+    "notesPlaceholder": "Eventuelle notater om fullføringen...",
+    "status": "Status",
+    "approved": "Godkjent",
+    "pending": "Avventer",
+    "submit": "Registrer",
+    "submitting": "Registrerer...",
+    "successToast": "Registrert for {{names}}",
+    "skippedWarning": "Allerede registrert for denne datoen for {{name}}"
+  },
   "errors": {
     "loadFailed": "Kunne ikke laste data. Prøv igjen.",
     "actionFailed": "Handlingen mislyktes. Prøv igjen.",
@@ -200,6 +214,8 @@
     "amountInvalid": "Beløp må være et ikke-negativt tall",
     "minTeamSizeInvalid": "Minimum teamstørrelse må være minst 2",
     "teamBonusPctInvalid": "Teambonus må være mellom 0 og 100",
-    "compressionFailed": "Kunne ikke komprimere bildet. Prøv igjen."
+    "compressionFailed": "Kunne ikke komprimere bildet. Prøv igjen.",
+    "teamTooSmall": "Minst {{count}} barn må velges for teamoppgaver",
+    "noChildrenSelected": "Velg minst ett barn"
   }
 }

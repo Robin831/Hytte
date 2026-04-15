@@ -193,6 +193,20 @@
     "historyChart": "Earnings History"
   },
   "confirmDeactivate": "Deactivate \"{{name}}\"? It can be re-added later.",
+  "record": {
+    "title": "Record as Done",
+    "children": "Children",
+    "date": "Date",
+    "notes": "Notes (optional)",
+    "notesPlaceholder": "Any notes about the completion...",
+    "status": "Status",
+    "approved": "Approved",
+    "pending": "Pending",
+    "submit": "Record",
+    "submitting": "Recording...",
+    "successToast": "Recorded for {{names}}",
+    "skippedWarning": "Already recorded for this date for {{name}}"
+  },
   "errors": {
     "loadFailed": "Failed to load data. Please try again.",
     "actionFailed": "Action failed. Please try again.",
@@ -200,6 +214,8 @@
     "amountInvalid": "Amount must be a non-negative number",
     "minTeamSizeInvalid": "Minimum team size must be at least 2",
     "teamBonusPctInvalid": "Team bonus must be between 0 and 100",
-    "compressionFailed": "Failed to compress image. Please try again."
+    "compressionFailed": "Failed to compress image. Please try again.",
+    "teamTooSmall": "At least {{count}} children must be selected for team chores",
+    "noChildrenSelected": "Select at least one child"
   }
 }

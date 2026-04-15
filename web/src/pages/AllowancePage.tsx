@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Camera, CheckCircle, XCircle, Plus, Pencil, Trash2, Star, X } from 'lucide-react'
+import { Camera, CheckCircle, XCircle, Plus, Pencil, Trash2, Star, X, ClipboardCheck } from 'lucide-react'
 import { formatDate, formatNumber } from '../utils/formatDate'
 import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
 import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
+import RecordCompletionModal from '../components/allowance/RecordCompletionModal'
+import ToastList from '../components/ToastList'
+import { useToast } from '../hooks/useToast'
 
 const formatAmount2dp = (amount: number) =>
   formatNumber(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -203,6 +206,14 @@ export default function AllowancePage() {
   const [bonusSaving, setBonusSaving] = useState<BonusType | null>(null)
   const [bonusActionError, setBonusActionError] = useState('')
 
+  // Record completion modal state
+  const [recordChore, setRecordChore] = useState<Chore | null>(null)
+  const [familyChildren, setFamilyChildren] = useState<{ child_id: number; nickname: string; avatar_emoji: string }[]>([])
+  const [familyChildrenLoaded, setFamilyChildrenLoaded] = useState(false)
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
+  const { toasts, showToast } = useToast()
+
   // Action error feedback
   const [actionError, setActionError] = useState('')
   const [saveError, setSaveError] = useState('')
@@ -300,6 +311,51 @@ export default function AllowancePage() {
     })()
     return () => { cancelled = true }
   }, [tab, t])
+
+  useEffect(() => {
+    if (!recordChore || familyChildrenLoaded) return
+    let cancelled = false
+    fetch('/api/family/children', { credentials: 'include' })
+      .then(res => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data: { children: { child_id: number; nickname: string; avatar_emoji: string }[] }) => {
+        if (!cancelled) {
+          setFamilyChildren(data.children ?? [])
+          setFamilyChildrenLoaded(true)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFamilyChildren([])
+          showToast(t('errors.loadFailed'), 'error')
+        }
+      })
+    return () => { cancelled = true }
+  }, [recordChore, familyChildrenLoaded, t, showToast])
+
+  const handleRecordSuccess = () => {
+    setPendingLoading(true)
+    setPendingError('')
+    fetch('/api/allowance/pending', { credentials: 'include' })
+      .then(res => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data: { pending: CompletionWithDetails[] }) => {
+        if (!mountedRef.current) return
+        setPending(data.pending ?? [])
+        setPendingError('')
+      })
+      .catch(() => { if (mountedRef.current) setPendingError(t('errors.loadFailed')) })
+      .finally(() => { if (mountedRef.current) setPendingLoading(false) })
+
+    setPayoutsLoading(true)
+    fetch('/api/allowance/payouts?weeks=8', { credentials: 'include' })
+      .then(res => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data: { payouts: Payout[] }) => {
+        if (!mountedRef.current) return
+        setPayouts(data.payouts ?? [])
+        setPayoutsError('')
+      })
+      .catch(() => { if (mountedRef.current) setPayoutsError(t('errors.loadFailed')) })
+      .finally(() => { if (mountedRef.current) setPayoutsLoading(false) })
+  }
 
   const handleApprove = async (id: number) => {
     setActionError('')
@@ -1023,6 +1079,14 @@ export default function AllowancePage() {
                     <div className="flex gap-1 shrink-0">
                       <button
                         type="button"
+                        onClick={() => setRecordChore(chore)}
+                        className="p-2 text-gray-400 hover:text-green-400 hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
+                        aria-label={t('record.title')}
+                      >
+                        <ClipboardCheck size={16} />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => startEditChore(chore)}
                         className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
                         aria-label={t('actions.edit')}
@@ -1376,6 +1440,20 @@ export default function AllowancePage() {
         title={t('actions.deactivate')}
         message={deactivateConfirmChore ? t('confirmDeactivate', { name: deactivateConfirmChore.name }) : undefined}
       />
+      <RecordCompletionModal
+        open={recordChore !== null}
+        onClose={() => setRecordChore(null)}
+        onSuccess={handleRecordSuccess}
+        onToast={showToast}
+        choreId={recordChore?.id ?? 0}
+        choreName={recordChore?.name ?? ''}
+        choreIcon={recordChore?.icon ?? ''}
+        assignedChildId={recordChore?.child_id ?? null}
+        completionMode={recordChore?.completion_mode ?? 'solo'}
+        minTeamSize={recordChore?.min_team_size ?? 2}
+        children={familyChildren}
+      />
+      <ToastList toasts={toasts} />
     </div>
   )
 }
