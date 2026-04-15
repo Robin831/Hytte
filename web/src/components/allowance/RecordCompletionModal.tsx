@@ -1,4 +1,4 @@
-import { useState, useEffect, useId } from 'react'
+import { useState, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
 
@@ -22,43 +22,48 @@ interface RecordCompletionModalProps {
   children: FamilyChild[]
 }
 
-export default function RecordCompletionModal({
-  open,
+interface RecordCompletionFormProps {
+  onClose: () => void
+  onSuccess: () => void
+  onToast: (message: string, type: 'success' | 'error') => void
+  choreId: number
+  assignedChildId: number | null
+  completionMode: 'solo' | 'team'
+  minTeamSize: number
+  children: FamilyChild[]
+  titleId: string
+  choreName: string
+  choreIcon: string
+}
+
+function localToday() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function RecordCompletionForm({
   onClose,
   onSuccess,
   onToast,
   choreId,
-  choreName,
-  choreIcon,
   assignedChildId,
   completionMode,
   minTeamSize,
   children,
-}: RecordCompletionModalProps) {
+  titleId,
+  choreName,
+  choreIcon,
+}: RecordCompletionFormProps) {
   const { t } = useTranslation('allowance')
-  const titleId = useId()
 
-  function localToday() {
-    const d = new Date()
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  }
-
-  const [selectedChildIds, setSelectedChildIds] = useState<Set<number>>(new Set())
+  const [selectedChildIds, setSelectedChildIds] = useState<Set<number>>(
+    () => assignedChildId != null ? new Set([assignedChildId]) : new Set()
+  )
   const [date, setDate] = useState(localToday)
   const [notes, setNotes] = useState('')
   const [status, setStatus] = useState<'approved' | 'pending'>('approved')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-
-  useEffect(() => {
-    if (open) {
-      setSelectedChildIds(assignedChildId != null ? new Set([assignedChildId]) : new Set())
-      setDate(localToday())
-      setNotes('')
-      setStatus('approved')
-      setError('')
-    }
-  }, [open, assignedChildId])
 
   const isTeam = completionMode === 'team'
   const teamTooSmall = isTeam && selectedChildIds.size < minTeamSize
@@ -74,10 +79,6 @@ export default function RecordCompletionModal({
       }
       return next
     })
-  }
-
-  function handleClose() {
-    onClose()
   }
 
   async function handleSubmit() {
@@ -124,7 +125,7 @@ export default function RecordCompletionModal({
         }
       }
 
-      handleClose()
+      onClose()
       onSuccess()
     } catch {
       setError(t('errors.actionFailed'))
@@ -134,11 +135,11 @@ export default function RecordCompletionModal({
   }
 
   return (
-    <Dialog open={open} onClose={handleClose} aria-labelledby={titleId}>
+    <>
       <DialogHeader
         id={titleId}
         title={`${t('record.title')} — ${choreIcon} ${choreName}`}
-        onClose={handleClose}
+        onClose={onClose}
       />
       <DialogBody>
         <div className="space-y-4">
@@ -229,7 +230,7 @@ export default function RecordCompletionModal({
       <DialogFooter>
         <button
           type="button"
-          onClick={handleClose}
+          onClick={onClose}
           disabled={submitting}
           className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors disabled:opacity-50"
         >
@@ -244,6 +245,42 @@ export default function RecordCompletionModal({
           {submitting ? t('record.submitting') : t('record.submit')}
         </button>
       </DialogFooter>
+    </>
+  )
+}
+
+export default function RecordCompletionModal({
+  open,
+  onClose,
+  onSuccess,
+  onToast,
+  choreId,
+  choreName,
+  choreIcon,
+  assignedChildId,
+  completionMode,
+  minTeamSize,
+  children,
+}: RecordCompletionModalProps) {
+  const titleId = useId()
+
+  return (
+    <Dialog open={open} onClose={onClose} aria-labelledby={titleId}>
+      {open && (
+        <RecordCompletionForm
+          onClose={onClose}
+          onSuccess={onSuccess}
+          onToast={onToast}
+          choreId={choreId}
+          choreName={choreName}
+          choreIcon={choreIcon}
+          assignedChildId={assignedChildId}
+          completionMode={completionMode}
+          minTeamSize={minTeamSize}
+          children={children}
+          titleId={titleId}
+        />
+      )}
     </Dialog>
   )
 }
