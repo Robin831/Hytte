@@ -12,7 +12,7 @@ interface RecordCompletionModalProps {
   open: boolean
   onClose: () => void
   onSuccess: () => void
-  onToast: (message: string, type: 'success' | 'error') => void
+  onToast: (message: string, type: 'success' | 'error' | 'warning') => void
   choreId: number
   choreName: string
   choreIcon: string
@@ -25,7 +25,7 @@ interface RecordCompletionModalProps {
 interface RecordCompletionFormProps {
   onClose: () => void
   onSuccess: () => void
-  onToast: (message: string, type: 'success' | 'error') => void
+  onToast: (message: string, type: 'success' | 'error' | 'warning') => void
   choreId: number
   assignedChildId: number | null
   completionMode: 'solo' | 'team'
@@ -68,6 +68,12 @@ function RecordCompletionForm({
   const isTeam = completionMode === 'team'
   const teamTooSmall = isTeam && selectedChildIds.size < minTeamSize
   const noChildren = selectedChildIds.size === 0
+
+  // For solo chores with an assigned child, only allow selecting that child.
+  // For team chores, all children are selectable (the assigned child is pre-selected).
+  const selectableChildren = !isTeam && assignedChildId != null
+    ? children.filter(c => c.child_id === assignedChildId)
+    : children
 
   function toggleChild(childId: number) {
     setSelectedChildIds(prev => {
@@ -121,7 +127,7 @@ function RecordCompletionForm({
       for (const skippedId of data.skipped ?? []) {
         const child = children.find(c => c.child_id === skippedId)
         if (child) {
-          onToast(t('record.skippedWarning', { name: child.nickname }), 'error')
+          onToast(t('record.skippedWarning', { name: child.nickname }), 'warning')
         }
       }
 
@@ -145,13 +151,14 @@ function RecordCompletionForm({
         <div className="space-y-4">
           <div>
             <label className="block text-sm text-gray-400 mb-2">{t('record.children')}</label>
-            <div className="flex flex-wrap gap-2">
-              {children.map(child => {
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t('record.children')}>
+              {selectableChildren.map(child => {
                 const selected = selectedChildIds.has(child.child_id)
                 return (
                   <button
                     key={child.child_id}
                     type="button"
+                    aria-pressed={selected}
                     onClick={() => toggleChild(child.child_id)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors cursor-pointer
                       ${selected
@@ -199,9 +206,10 @@ function RecordCompletionForm({
             />
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3" role="group" aria-label={t('record.status')}>
             <button
               type="button"
+              aria-pressed={status === 'approved'}
               onClick={() => setStatus('approved')}
               className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer
                 ${status === 'approved'
@@ -213,6 +221,7 @@ function RecordCompletionForm({
             </button>
             <button
               type="button"
+              aria-pressed={status === 'pending'}
               onClick={() => setStatus('pending')}
               className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer
                 ${status === 'pending'

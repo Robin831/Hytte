@@ -3,7 +3,7 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 export interface Toast {
   id: number
   message: string
-  type: 'success' | 'error'
+  type: 'success' | 'error' | 'warning'
 }
 
 const TOAST_DURATION_MS = 3500
@@ -19,7 +19,7 @@ export function useToast() {
     }
   }, [])
 
-  const showToast = useCallback((message: string, type: 'success' | 'error') => {
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'warning') => {
     const id = ++counterRef.current
     setToasts(prev => [...prev, { id, message, type }])
     const timeoutId = setTimeout(() => {

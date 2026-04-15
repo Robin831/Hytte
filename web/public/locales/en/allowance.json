@@ -199,12 +199,13 @@
     "date": "Date",
     "notes": "Notes (optional)",
     "notesPlaceholder": "Any notes about the completion...",
+    "status": "Status",
     "approved": "Approved",
     "pending": "Pending",
     "submit": "Record",
     "submitting": "Recording...",
     "successToast": "Recorded for {{names}}",
-    "skippedWarning": "Already recorded today for {{name}}"
+    "skippedWarning": "Already recorded for this date for {{name}}"
   },
   "errors": {
     "loadFailed": "Failed to load data. Please try again.",

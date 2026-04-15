@@ -199,12 +199,13 @@
     "date": "Dato",
     "notes": "Notater (valgfritt)",
     "notesPlaceholder": "Eventuelle notater om fullføringen...",
+    "status": "Status",
     "approved": "Godkjent",
     "pending": "Avventer",
     "submit": "Registrer",
     "submitting": "Registrerer...",
     "successToast": "Registrert for {{names}}",
-    "skippedWarning": "Allerede registrert i dag for {{name}}"
+    "skippedWarning": "Allerede registrert for denne datoen for {{name}}"
   },
   "errors": {
     "loadFailed": "Kunne ikke laste data. Prøv igjen.",

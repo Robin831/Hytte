@@ -311,7 +311,7 @@ export default function AllowancePage() {
   }, [tab, t])
 
   useEffect(() => {
-    if (familyChildrenLoaded) return
+    if (!recordChore || familyChildrenLoaded) return
     let cancelled = false
     fetch('/api/family/children', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : Promise.reject(res)))
@@ -321,9 +321,15 @@ export default function AllowancePage() {
           setFamilyChildrenLoaded(true)
         }
       })
-      .catch(() => { /* children list is non-critical */ })
+      .catch(() => {
+        if (!cancelled) {
+          setFamilyChildren([])
+          setFamilyChildrenLoaded(true)
+          showToast(t('errors.loadFailed'), 'error')
+        }
+      })
     return () => { cancelled = true }
-  }, [familyChildrenLoaded])
+  }, [recordChore, familyChildrenLoaded, t, showToast])
 
   const handleRecordSuccess = () => {
     setPendingLoading(true)
