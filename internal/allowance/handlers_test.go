@@ -2381,3 +2381,175 @@ func TestMySiblingsHandler_NoSiblings(t *testing.T) {
 	}
 }
 
+// ---- RecordCompletionHandler tests ----
+
+func TestRecordCompletionHandler_ChildNotInFamily(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	chore, err := CreateChore(db, 1, nil, "Dishes", "", 10, "daily", "🍽", true, "solo", 2, 10.0)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (99, 'stranger@test.com', 'Stranger', 'gs99')`); err != nil {
+		t.Fatalf("seed stranger: %v", err)
+	}
+
+	handler := RecordCompletionHandler(db)
+	body := map[string]any{"child_ids": []int64{99}, "date": "2026-04-15"}
+	r := withChiParam(withUser(newRequest(http.MethodPost, "/api/allowance/chores/"+strconv.FormatInt(chore.ID, 10)+"/record", body), testParent), "id", strconv.FormatInt(chore.ID, 10))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRecordCompletionHandler_SoloWithSkippedDuplicates(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	chore, err := CreateChore(db, 1, nil, "Dishes", "", 10, "daily", "🍽", true, "solo", 2, 10.0)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+
+	handler := RecordCompletionHandler(db)
+	id := strconv.FormatInt(chore.ID, 10)
+
+	body := map[string]any{"child_ids": []int64{2}, "date": "2026-04-15"}
+	r := withChiParam(withUser(newRequest(http.MethodPost, "/api/allowance/chores/"+id+"/record", body), testParent), "id", id)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("first call: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Completions []json.RawMessage `json:"completions"`
+		Skipped     []int64           `json:"skipped"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if len(resp.Completions) != 1 {
+		t.Errorf("expected 1 completion, got %d", len(resp.Completions))
+	}
+
+	r = withChiParam(withUser(newRequest(http.MethodPost, "/api/allowance/chores/"+id+"/record", body), testParent), "id", id)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("second call: expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	decode(t, w.Body.Bytes(), &resp)
+	if len(resp.Completions) != 0 {
+		t.Errorf("expected 0 completions on duplicate, got %d", len(resp.Completions))
+	}
+	if len(resp.Skipped) != 1 || resp.Skipped[0] != 2 {
+		t.Errorf("expected skipped=[2], got %v", resp.Skipped)
+	}
+}
+
+func TestRecordCompletionHandler_TeamAutoDispatches(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'child2@test.com', 'Child2', 'gc3')`); err != nil {
+		t.Fatalf("seed child2: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, created_at) VALUES (1, 3, '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("link child2: %v", err)
+	}
+
+	chore, err := CreateChore(db, 1, nil, "Team clean", "", 30, "daily", "🧹", true, "team", 2, 10.0)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+
+	handler := RecordCompletionHandler(db)
+	id := strconv.FormatInt(chore.ID, 10)
+	body := map[string]any{"child_ids": []int64{2, 3}, "date": "2026-04-15", "status": "approved"}
+	r := withChiParam(withUser(newRequest(http.MethodPost, "/api/allowance/chores/"+id+"/record", body), testParent), "id", id)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Completions []struct {
+			ID          int64   `json:"id"`
+			Status      string  `json:"status"`
+			TeamMembers []int64 `json:"team_members"`
+		} `json:"completions"`
+		Skipped []int64 `json:"skipped"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if len(resp.Completions) != 1 {
+		t.Fatalf("expected 1 team completion, got %d", len(resp.Completions))
+	}
+	if resp.Completions[0].Status != "approved" {
+		t.Errorf("expected status approved, got %q", resp.Completions[0].Status)
+	}
+	if len(resp.Completions[0].TeamMembers) != 2 {
+		t.Errorf("expected 2 team members, got %d", len(resp.Completions[0].TeamMembers))
+	}
+}
+
+func TestRecordCompletionHandler_NotParent(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	chore, err := CreateChore(db, 1, nil, "Dishes", "", 10, "daily", "🍽", true, "solo", 2, 10.0)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+
+	handler := RecordCompletionHandler(db)
+	id := strconv.FormatInt(chore.ID, 10)
+	body := map[string]any{"child_ids": []int64{2}, "date": "2026-04-15"}
+	r := withChiParam(withUser(newRequest(http.MethodPost, "/api/allowance/chores/"+id+"/record", body), testChild), "id", id)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRecordCompletionHandler_ChoreOwnedByDifferentParent(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (10, 'parent2@test.com', 'Parent2', 'gp10')`); err != nil {
+		t.Fatalf("seed parent2: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (11, 'child11@test.com', 'Child11', 'gc11')`); err != nil {
+		t.Fatalf("seed child11: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, created_at) VALUES (10, 11, '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("link parent2-child11: %v", err)
+	}
+
+	chore, err := CreateChore(db, 10, nil, "Other chore", "", 15, "daily", "🧹", true, "solo", 2, 10.0)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+
+	handler := RecordCompletionHandler(db)
+	id := strconv.FormatInt(chore.ID, 10)
+	body := map[string]any{"child_ids": []int64{2}, "date": "2026-04-15"}
+	r := withChiParam(withUser(newRequest(http.MethodPost, "/api/allowance/chores/"+id+"/record", body), testParent), "id", id)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+

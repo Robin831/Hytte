@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -1744,5 +1745,134 @@ func UpdateMyGoalHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, goal)
+	}
+}
+
+func RecordCompletionHandler(db *sql.DB) http.HandlerFunc {
+	type request struct {
+		ChildIDs []int64 `json:"child_ids"`
+		Date     string  `json:"date"`
+		Notes    string  `json:"notes"`
+		Status   string  `json:"status"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			writeJSON(w, http.StatusUnauthorized, errResponse("not authenticated"))
+			return
+		}
+		if !requireParent(db, w, user) {
+			return
+		}
+
+		choreID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid chore id"))
+			return
+		}
+
+		var req request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid JSON body"))
+			return
+		}
+
+		if len(req.ChildIDs) == 0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("child_ids is required"))
+			return
+		}
+
+		if req.Date == "" {
+			req.Date = time.Now().Format("2006-01-02")
+		}
+		if req.Status == "" {
+			req.Status = "approved"
+		}
+		if req.Status != "approved" && req.Status != "pending" {
+			writeJSON(w, http.StatusBadRequest, errResponse("status must be 'approved' or 'pending'"))
+			return
+		}
+
+		chore, err := GetChoreByID(db, choreID, user.ID)
+		if err != nil {
+			if errors.Is(err, ErrChoreNotFound) {
+				writeJSON(w, http.StatusNotFound, errResponse("chore not found"))
+				return
+			}
+			log.Printf("allowance: record completion get chore %d: %v", choreID, err)
+			writeJSON(w, http.StatusInternalServerError, errResponse("failed to get chore"))
+			return
+		}
+		if !chore.Active {
+			writeJSON(w, http.StatusBadRequest, errResponse("chore is not active"))
+			return
+		}
+
+		slices.Sort(req.ChildIDs)
+		req.ChildIDs = slices.Compact(req.ChildIDs)
+
+		for _, cid := range req.ChildIDs {
+			if !verifyParentChildLink(db, w, user.ID, cid) {
+				return
+			}
+		}
+
+		if chore.ChildID != nil {
+			for _, cid := range req.ChildIDs {
+				if cid != *chore.ChildID {
+					writeJSON(w, http.StatusBadRequest, errResponse(fmt.Sprintf("child %d is not assigned to this chore", cid)))
+					return
+				}
+			}
+		}
+
+		type completionResult struct {
+			Completion
+			TeamMembers []int64 `json:"team_members,omitempty"`
+		}
+
+		var completions []completionResult
+		var skipped []int64
+
+		if chore.CompletionMode == "team" {
+			comp, err := RecordTeamCompletionByParent(db, choreID, user.ID, req.ChildIDs, req.Date, req.Notes, req.Status)
+			if err != nil {
+				if errors.Is(err, ErrCompletionExists) || errors.Is(err, ErrTeamSessionConflict) {
+					writeJSON(w, http.StatusConflict, errResponse("completion already exists for this chore and date"))
+					return
+				}
+				if errors.Is(err, ErrTeamTooSmall) {
+					writeJSON(w, http.StatusBadRequest, errResponse(fmt.Sprintf("team chore requires at least %d children", chore.MinTeamSize)))
+					return
+				}
+				log.Printf("allowance: record team completion chore %d: %v", choreID, err)
+				writeJSON(w, http.StatusInternalServerError, errResponse("failed to record completion"))
+				return
+			}
+			completions = append(completions, completionResult{
+				Completion:  *comp,
+				TeamMembers: req.ChildIDs,
+			})
+		} else {
+			for _, cid := range req.ChildIDs {
+				comp, err := RecordSoloCompletionByParent(db, choreID, cid, user.ID, req.Date, req.Notes, req.Status)
+				if err != nil {
+					if errors.Is(err, ErrCompletionExists) {
+						skipped = append(skipped, cid)
+						continue
+					}
+					log.Printf("allowance: record solo completion chore %d child %d: %v", choreID, cid, err)
+					writeJSON(w, http.StatusInternalServerError, errResponse("failed to record completion"))
+					return
+				}
+				completions = append(completions, completionResult{Completion: *comp})
+			}
+		}
+
+		writeJSON(w, http.StatusCreated, map[string]any{
+			"completions": completions,
+			"skipped":     skipped,
+		})
 	}
 }
