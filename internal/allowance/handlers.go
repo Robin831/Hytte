@@ -1772,6 +1772,7 @@ func RecordCompletionHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
 		var req request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, errResponse("invalid JSON body"))
@@ -1784,7 +1785,11 @@ func RecordCompletionHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if req.Date == "" {
-			req.Date = time.Now().Format("2006-01-02")
+			req.Date = time.Now().UTC().Format("2006-01-02")
+		}
+		if _, err := time.Parse("2006-01-02", req.Date); err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("date must be in YYYY-MM-DD format"))
+			return
 		}
 		if req.Status == "" {
 			req.Status = "approved"
@@ -1832,8 +1837,8 @@ func RecordCompletionHandler(db *sql.DB) http.HandlerFunc {
 			TeamMembers []int64 `json:"team_members,omitempty"`
 		}
 
-		var completions []completionResult
-		var skipped []int64
+		completions := []completionResult{}
+		skipped := []int64{}
 
 		if chore.CompletionMode == "team" {
 			comp, err := RecordTeamCompletionByParent(db, choreID, user.ID, req.ChildIDs, req.Date, req.Notes, req.Status)
