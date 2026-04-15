@@ -3763,7 +3763,7 @@ func testExternalPRDaemonSuccess(t *testing.T, handler http.Handler, endpoint, e
 func setupExternalPRHandlerDB(t *testing.T) *DB {
 	t.Helper()
 	fdb := setupTestDB(t)
-	insertTestPR(t, fdb, 42, "owner/repo", "ext-42", "forge/ext-42")
+	insertTestPR(t, fdb, 42, "myAnvil", "ext-42", "forge/ext-42")
 	return fdb
 }
 
