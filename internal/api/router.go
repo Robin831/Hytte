@@ -566,6 +566,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/allowance/approve/{id}", allowance.ApproveCompletionHandler(db))
 				r.Post("/allowance/reject/{id}", allowance.RejectCompletionHandler(db))
 				r.Post("/allowance/quality-bonus/{id}", allowance.QualityBonusHandler(db))
+				// Parent: record completions on behalf of children.
+				r.Post("/allowance/chores/{id}/record", allowance.RecordCompletionHandler(db))
 				// Parent: extra tasks.
 				r.Get("/allowance/extras", allowance.ListExtrasHandler(db))
 				r.Post("/allowance/extras", allowance.CreateExtraHandler(db))
