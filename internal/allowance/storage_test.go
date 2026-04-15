@@ -316,6 +316,25 @@ func TestRecordTeamCompletionByParent_BelowMinTeamSize(t *testing.T) {
 	}
 }
 
+func TestRecordTeamCompletionByParent_EmptyChildIDsReturnsErrTeamTooSmall(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 20, 2, 10) // min_team_size=2
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("RecordTeamCompletionByParent panicked for empty childIDs: %v", r)
+		}
+	}()
+
+	_, err := RecordTeamCompletionByParent(db, choreID, 1, []int64{}, "2026-04-15", "", "approved")
+	if err != ErrTeamTooSmall {
+		t.Fatalf("expected ErrTeamTooSmall for empty childIDs, got %v", err)
+	}
+}
+
 func TestRecordTeamCompletionByParent_ExistingActiveSessionConflicts(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)

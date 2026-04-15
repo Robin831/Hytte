@@ -27,7 +27,7 @@ var (
 	ErrSessionNotWaiting    = errors.New("team session is not in waiting_for_team status")
 	ErrNotSessionInitiator  = errors.New("only the child who started the team session can cancel it")
 	ErrTeamTooSmall         = errors.New("not enough children for team completion")
-	ErrTeamSessionConflict  = errors.New("an active team session already exists for this chore and date")
+	ErrTeamSessionConflict  = errors.New("a conflicting team completion already exists for this chore and date")
 )
 
 // decryptOrPlaintext decrypts a stored field value. For enc:-prefixed values
@@ -1740,6 +1740,17 @@ func GetAllFamilyLinksWithAllowance(db *sql.DB) ([]struct{ ParentID, ChildID int
 // When status is "approved", approved_by and approved_at are set immediately.
 // Notes are encrypted at rest. Returns ErrCompletionExists on UNIQUE violation.
 func RecordSoloCompletionByParent(db *sql.DB, choreID, childID, parentID int64, date, notes, status string) (*Completion, error) {
+	chore, err := GetChoreByID(db, choreID, parentID)
+	if err != nil {
+		return nil, err
+	}
+	if !chore.Active {
+		return nil, fmt.Errorf("chore is inactive")
+	}
+	if chore.CompletionMode != "solo" {
+		return nil, fmt.Errorf("chore is not configured for solo completion")
+	}
+
 	encNotes, err := encryption.EncryptField(notes)
 	if err != nil {
 		return nil, err
@@ -1786,9 +1797,19 @@ func RecordSoloCompletionByParent(db *sql.DB, choreID, childID, parentID int64, 
 // Rejects if fewer than min_team_size children are provided or if an active team
 // session already exists for the chore+date.
 func RecordTeamCompletionByParent(db *sql.DB, choreID, parentID int64, childIDs []int64, date, notes, status string) (*Completion, error) {
+	if len(childIDs) == 0 {
+		return nil, ErrTeamTooSmall
+	}
+
 	chore, err := GetChoreByID(db, choreID, parentID)
 	if err != nil {
 		return nil, err
+	}
+	if !chore.Active {
+		return nil, fmt.Errorf("chore is inactive")
+	}
+	if chore.CompletionMode != "team" {
+		return nil, fmt.Errorf("chore is not configured for team completion")
 	}
 	if int64(len(childIDs)) < chore.MinTeamSize {
 		return nil, ErrTeamTooSmall
