@@ -31,11 +31,14 @@ function normalizeUrl(raw: string): string {
 }
 
 async function saveLinks(links: QuickLink[]): Promise<void> {
+  // quick_links is a JSON-typed preference (server accepts arbitrary JSON).
+  // Send the array directly — wrapping it in JSON.stringify() would produce
+  // a JSON-encoded string that the server's validator rejects with 400.
   const res = await fetch('/api/settings/preferences', {
     method: 'PUT',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ preferences: { quick_links: JSON.stringify(links) } }),
+    body: JSON.stringify({ preferences: { quick_links: links } }),
   })
   if (!res.ok) throw new Error(`Failed to save links: ${res.status}`)
 }
@@ -63,7 +66,11 @@ export default function QuickLinksWidget() {
       .then(res => res.ok ? res.json() : Promise.reject(new Error(`${res.status}`)))
       .then(data => {
         const raw: string = data?.preferences?.quick_links ?? '[]'
-        setLinks(JSON.parse(raw) as QuickLink[])
+        // Parse once; if a legacy value is still double-encoded (JSON string
+        // wrapping a JSON array), unwrap once more before committing to state.
+        let parsed: unknown = JSON.parse(raw)
+        if (typeof parsed === 'string') parsed = JSON.parse(parsed)
+        setLinks(Array.isArray(parsed) ? (parsed as QuickLink[]) : [])
       })
       .catch(err => {
         if (err instanceof DOMException && err.name === 'AbortError') return
