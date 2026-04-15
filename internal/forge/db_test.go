@@ -1706,13 +1706,16 @@ func TestPRByNumber_NotFound(t *testing.T) {
 func TestPRByNumber_WrongAnvil(t *testing.T) {
 	fdb := setupTestDB(t)
 	now := time.Now().UTC().Format(time.RFC3339)
-	fdb.db.Exec(`
+	_, err := fdb.db.Exec(`
 		INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
 		                 ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
 		                 has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
 		VALUES (1, 42, 'forge', 'ext-42', 'forge/ext-42', 'main', 'Forge PR', 'open', ?, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-	`, now) //nolint:errcheck
-	_, err := fdb.PRByNumber("hytte", 42)
+	`, now)
+	if err != nil {
+		t.Fatalf("insert prs: %v", err)
+	}
+	_, err = fdb.PRByNumber("hytte", 42)
 	if err == nil {
 		t.Fatal("expected error when querying wrong anvil")
 	}

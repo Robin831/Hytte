@@ -1688,40 +1688,51 @@ func MergeExternalPRHandler() http.HandlerFunc {
 	}
 }
 
-// anvilForRepo resolves a "owner/repo" string to the short anvil name used in
-// the forge DB by scanning configured anvils.
-func anvilForRepo(repo string) (string, error) {
+// loadAnvilRepoMap reads the forge config once and builds a map from lowercase
+// "owner/repo" to short anvil name. Returns nil (not an error) when the forge
+// directory or config file is absent — callers skip enforcement in that case.
+func loadAnvilRepoMap() (map[string]string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("resolve home: %w", err)
+	}
+	forgeDir := filepath.Join(home, ".forge")
+	if err := isRegularDir(forgeDir); err != nil {
+		return nil, nil // No forge dir; treat as unconfigured.
+	}
 	cfgPath, err := configPath()
 	if err != nil {
-		return "", fmt.Errorf("resolve config path: %w", err)
+		return nil, fmt.Errorf("resolve config path: %w", err)
+	}
+	if err := isRegularFile(cfgPath); err != nil {
+		return nil, nil // No config file; treat as unconfigured.
 	}
 	data, err := os.ReadFile(cfgPath)
 	if err != nil {
-		return "", fmt.Errorf("read config: %w", err)
+		return nil, fmt.Errorf("read config: %w", err)
 	}
 	var cfg ForgeConfig
 	if err := parseConfigYAML(data, &cfg); err != nil {
-		return "", fmt.Errorf("parse config: %w", err)
+		return nil, fmt.Errorf("parse config: %w", err)
 	}
 	names := make([]string, 0, len(cfg.Anvils))
 	for name := range cfg.Anvils {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	m := make(map[string]string, len(cfg.Anvils))
 	for _, name := range names {
 		anvil := cfg.Anvils[name]
 		if anvil.Path == "" {
 			continue
 		}
 		r, err := repoFromRemote(anvil.Path)
-		if err != nil || r == "" {
+		if err != nil || r == "" || !strings.Contains(r, "/") {
 			continue
 		}
-		if strings.EqualFold(r, repo) {
-			return name, nil
-		}
+		m[strings.ToLower(r)] = name
 	}
-	return "", fmt.Errorf("no anvil found for repo %s", repo)
+	return m, nil
 }
 
 // externalPRDaemonHandler decodes an external PR request, looks up the PR in
@@ -1733,13 +1744,21 @@ func externalPRDaemonHandler(db *DB, action, failMsg string) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		allowed, err := configuredAnvilRepos()
+		// Load config once: used for both allowlist enforcement and anvil resolution.
+		anvilMap, err := loadAnvilRepoMap()
 		if err != nil {
-			log.Printf("forge: %s external PR: failed to load anvil allowlist: %v", action, err)
+			log.Printf("forge: %s external PR: failed to load anvil config: %v", action, err)
 			writeError(w, http.StatusInternalServerError, "failed to validate repo")
 			return
 		}
-		if len(allowed) > 0 && !allowed[req.Repo] {
+		// nil map means no forge config present; treat as service unavailable.
+		if anvilMap == nil {
+			writeError(w, http.StatusServiceUnavailable, "forge not configured")
+			return
+		}
+		repoKey := strings.ToLower(req.Repo)
+		anvil, inConfig := anvilMap[repoKey]
+		if len(anvilMap) > 0 && !inConfig {
 			writeError(w, http.StatusForbidden, "repo not in configured anvils")
 			return
 		}
@@ -1747,14 +1766,14 @@ func externalPRDaemonHandler(db *DB, action, failMsg string) http.HandlerFunc {
 			writeError(w, http.StatusServiceUnavailable, "forge state DB not available")
 			return
 		}
-		anvil, anvilErr := anvilForRepo(req.Repo)
-		if anvilErr != nil {
-			writeError(w, http.StatusNotFound, "PR not found in forge database")
-			return
-		}
 		pr, err := db.PRByNumber(anvil, req.Number)
 		if err != nil {
-			writeError(w, http.StatusNotFound, "PR not found in forge database")
+			if errors.Is(err, sql.ErrNoRows) {
+				writeError(w, http.StatusNotFound, "PR not found in forge database")
+				return
+			}
+			log.Printf("forge: %s external PR lookup failed for %s#%d: %v", action, req.Repo, req.Number, err)
+			writeError(w, http.StatusInternalServerError, "failed to load PR from forge database")
 			return
 		}
 		if !validatePRForIPC(w, pr, true) {

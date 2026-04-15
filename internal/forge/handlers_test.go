@@ -3713,7 +3713,7 @@ func TestBellowsExternalPRHandler_RepoNotAllowed(t *testing.T) {
 
 // --- success-path tests for externalPRDaemonHandler-based handlers ---
 // Each test spins up a real unix socket, asserts HTTP 200 and ok=true,
-// and verifies the exact command string written to the socket (command + "repo#number").
+// and verifies the IPC command type plus decoded payload fields for the PR action and number.
 
 func testExternalPRDaemonSuccess(t *testing.T, handler http.Handler, endpoint, expectedAction string) {
 	t.Helper()
