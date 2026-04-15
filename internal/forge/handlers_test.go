@@ -3570,7 +3570,7 @@ func TestMergeExternalPRHandler_RepoNotAllowed(t *testing.T) {
 func TestFixCommentsExternalPRHandler_InvalidJSON(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-comments", strings.NewReader("{bad"))
 	rec := httptest.NewRecorder()
-	FixCommentsExternalPRHandler().ServeHTTP(rec, req)
+	FixCommentsExternalPRHandler(nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -3579,7 +3579,7 @@ func TestFixCommentsExternalPRHandler_InvalidJSON(t *testing.T) {
 func TestFixCommentsExternalPRHandler_InvalidRepo(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-comments", strings.NewReader(`{"repo":"../evil","number":1}`))
 	rec := httptest.NewRecorder()
-	FixCommentsExternalPRHandler().ServeHTTP(rec, req)
+	FixCommentsExternalPRHandler(nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -3588,105 +3588,100 @@ func TestFixCommentsExternalPRHandler_InvalidRepo(t *testing.T) {
 func TestFixCommentsExternalPRHandler_ZeroNumber(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-comments", strings.NewReader(`{"repo":"owner/repo","number":0}`))
 	rec := httptest.NewRecorder()
-	FixCommentsExternalPRHandler().ServeHTTP(rec, req)
+	FixCommentsExternalPRHandler(nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestFixCommentsExternalPRHandler_NoDaemon(t *testing.T) {
+func TestFixCommentsExternalPRHandler_NilDB(t *testing.T) {
 	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
 	t.Setenv("PATH", tmpBin)
-	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-comments", strings.NewReader(`{"repo":"owner/repo","number":1}`))
 	rec := httptest.NewRecorder()
-	FixCommentsExternalPRHandler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	FixCommentsExternalPRHandler(nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestFixCIExternalPRHandler_InvalidJSON(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-ci", strings.NewReader("{bad"))
 	rec := httptest.NewRecorder()
-	FixCIExternalPRHandler().ServeHTTP(rec, req)
+	FixCIExternalPRHandler(nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestFixCIExternalPRHandler_NoDaemon(t *testing.T) {
+func TestFixCIExternalPRHandler_NilDB(t *testing.T) {
 	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
 	t.Setenv("PATH", tmpBin)
-	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-ci", strings.NewReader(`{"repo":"owner/repo","number":1}`))
 	rec := httptest.NewRecorder()
-	FixCIExternalPRHandler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	FixCIExternalPRHandler(nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestFixConflictsExternalPRHandler_InvalidJSON(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-conflicts", strings.NewReader("{bad"))
 	rec := httptest.NewRecorder()
-	FixConflictsExternalPRHandler().ServeHTTP(rec, req)
+	FixConflictsExternalPRHandler(nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestFixConflictsExternalPRHandler_NoDaemon(t *testing.T) {
+func TestFixConflictsExternalPRHandler_NilDB(t *testing.T) {
 	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
 	t.Setenv("PATH", tmpBin)
-	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-conflicts", strings.NewReader(`{"repo":"owner/repo","number":1}`))
 	rec := httptest.NewRecorder()
-	FixConflictsExternalPRHandler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	FixConflictsExternalPRHandler(nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestBellowsExternalPRHandler_InvalidJSON(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/bellows", strings.NewReader("{bad"))
 	rec := httptest.NewRecorder()
-	BellowsExternalPRHandler().ServeHTTP(rec, req)
+	BellowsExternalPRHandler(nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestBellowsExternalPRHandler_NoDaemon(t *testing.T) {
+func TestBellowsExternalPRHandler_NilDB(t *testing.T) {
 	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
 	t.Setenv("PATH", tmpBin)
-	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/bellows", strings.NewReader(`{"repo":"owner/repo","number":1}`))
 	rec := httptest.NewRecorder()
-	BellowsExternalPRHandler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	BellowsExternalPRHandler(nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestResetCountersExternalPRHandler_InvalidJSON(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/reset-counters", strings.NewReader("{bad"))
 	rec := httptest.NewRecorder()
-	ResetCountersExternalPRHandler().ServeHTTP(rec, req)
+	ResetCountersExternalPRHandler(nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestResetCountersExternalPRHandler_NoDaemon(t *testing.T) {
+func TestResetCountersExternalPRHandler_NilDB(t *testing.T) {
 	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
 	t.Setenv("PATH", tmpBin)
-	t.Setenv("FORGE_IPC_SOCKET", filepath.Join(t.TempDir(), "no-such.sock"))
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/reset-counters", strings.NewReader(`{"repo":"owner/repo","number":1}`))
 	rec := httptest.NewRecorder()
-	ResetCountersExternalPRHandler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d: %s", rec.Code, rec.Body.String())
+	ResetCountersExternalPRHandler(nil).ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -3697,7 +3692,7 @@ func TestFixCommentsExternalPRHandler_RepoNotAllowed(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-comments", strings.NewReader(`{"repo":"owner/other-repo","number":42}`))
 	rec := httptest.NewRecorder()
-	FixCommentsExternalPRHandler().ServeHTTP(rec, req)
+	FixCommentsExternalPRHandler(nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -3710,7 +3705,7 @@ func TestBellowsExternalPRHandler_RepoNotAllowed(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/bellows", strings.NewReader(`{"repo":"owner/other-repo","number":42}`))
 	rec := httptest.NewRecorder()
-	BellowsExternalPRHandler().ServeHTTP(rec, req)
+	BellowsExternalPRHandler(nil).ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -3718,32 +3713,17 @@ func TestBellowsExternalPRHandler_RepoNotAllowed(t *testing.T) {
 
 // --- success-path tests for externalPRDaemonHandler-based handlers ---
 // Each test spins up a real unix socket, asserts HTTP 200 and ok=true,
-// and verifies the exact command string written to the socket (command + "repo#number").
+// and verifies the IPC command type plus decoded payload fields for the PR action and number.
 
-func testExternalPRDaemonSuccess(t *testing.T, handler http.Handler, endpoint, expectedCmd string) {
+func testExternalPRDaemonSuccess(t *testing.T, handler http.Handler, endpoint, expectedAction string) {
 	t.Helper()
 	socketPath := filepath.Join(t.TempDir(), "forge.sock")
-	ln, err := net.Listen("unix", socketPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 
-	received := make(chan string, 1)
-	go func() {
-		conn, err := ln.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
-		buf := make([]byte, 256)
-		n, _ := conn.Read(buf)
-		received <- strings.TrimSpace(string(buf[:n]))
-	}()
+	received := receiveIPCCommand(t, socketPath)
 
 	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
 	t.Setenv("PATH", tmpBin)
-	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 
 	req := httptest.NewRequest(http.MethodPost, endpoint, strings.NewReader(`{"repo":"owner/repo","number":42}`))
 	rec := httptest.NewRecorder()
@@ -3762,45 +3742,76 @@ func testExternalPRDaemonSuccess(t *testing.T, handler http.Handler, endpoint, e
 
 	select {
 	case cmd := <-received:
-		if cmd != expectedCmd {
-			t.Errorf("expected command %q, got %q", expectedCmd, cmd)
+		if cmd.Type != "pr_action" {
+			t.Errorf("expected command type 'pr_action', got %q", cmd.Type)
+		}
+		var pa prActionPayload
+		if err := json.Unmarshal(cmd.Payload, &pa); err != nil {
+			t.Fatalf("unmarshal payload: %v", err)
+		}
+		if pa.Action != expectedAction {
+			t.Errorf("expected action %q, got %q", expectedAction, pa.Action)
+		}
+		if pa.PRNumber != 42 {
+			t.Errorf("expected pr_number 42, got %d", pa.PRNumber)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("timed out waiting for command on socket")
 	}
 }
 
+func setupExternalPRHandlerDB(t *testing.T) *DB {
+	t.Helper()
+	fdb := setupTestDB(t)
+	insertTestPR(t, fdb, 42, "myAnvil", "ext-42", "forge/ext-42")
+	return fdb
+}
+
 func TestFixCommentsExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, FixCommentsExternalPRHandler(), "/api/forge/ext-prs/fix-comments", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"fix-comments"}}`)
+	fdb := setupExternalPRHandlerDB(t)
+	testExternalPRDaemonSuccess(t, FixCommentsExternalPRHandler(fdb), "/api/forge/ext-prs/fix-comments", "burnish")
 }
 
 func TestFixCIExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, FixCIExternalPRHandler(), "/api/forge/ext-prs/fix-ci", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"fix-ci"}}`)
+	fdb := setupExternalPRHandlerDB(t)
+	testExternalPRDaemonSuccess(t, FixCIExternalPRHandler(fdb), "/api/forge/ext-prs/fix-ci", "quench")
 }
 
 func TestFixConflictsExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, FixConflictsExternalPRHandler(), "/api/forge/ext-prs/fix-conflicts", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"rebase"}}`)
+	fdb := setupExternalPRHandlerDB(t)
+	testExternalPRDaemonSuccess(t, FixConflictsExternalPRHandler(fdb), "/api/forge/ext-prs/fix-conflicts", "rebase")
 }
 
 func TestBellowsExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, BellowsExternalPRHandler(), "/api/forge/ext-prs/bellows", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"bellows"}}`)
+	fdb := setupExternalPRHandlerDB(t)
+	testExternalPRDaemonSuccess(t, BellowsExternalPRHandler(fdb), "/api/forge/ext-prs/bellows", "assign_bellows")
 }
 
 func TestResetCountersExternalPRHandler_Success(t *testing.T) {
-	testExternalPRDaemonSuccess(t, ResetCountersExternalPRHandler(), "/api/forge/ext-prs/reset-counters", `{"type":"external_pr_action","payload":{"repo":"owner/repo","number":42,"action":"reset-counters"}}`)
+	fdb := setupExternalPRHandlerDB(t)
+	testExternalPRDaemonSuccess(t, ResetCountersExternalPRHandler(fdb), "/api/forge/ext-prs/reset-counters", "reset_counters")
+}
+
+func TestExternalPRDaemonHandler_PRNotFound(t *testing.T) {
+	fdb := setupTestDB(t)
+	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/repo.git")
+	t.Setenv("PATH", tmpBin)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/forge/ext-prs/fix-comments", strings.NewReader(`{"repo":"owner/repo","number":999}`))
+	rec := httptest.NewRecorder()
+	FixCommentsExternalPRHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
 }
 
 // --- ext- bead routing through handlers ---
 // These tests verify that handlers for PRs with ext- prefixed bead IDs route
-// through sendExternalPRAction (external_pr_action IPC) instead of the normal
-// forge pipeline IPC.
+// through sendPRAction (pr_action IPC), the same as internal beads.
 
 func setupExtPRTest(t *testing.T, beadID string, prNumber int) (*DB, int, string) {
 	t.Helper()
-	// Set up forge config so repoForAnvil can resolve the anvil.
-	tmpBin := setupForgeConfigWithRepo(t, "https://github.com/owner/myrepo.git")
-	t.Setenv("PATH", tmpBin)
-
 	fdb := setupTestDB(t)
 	prDBID := insertTestPR(t, fdb, prNumber, "myAnvil", beadID, "forge/"+beadID)
 
@@ -3809,29 +3820,31 @@ func setupExtPRTest(t *testing.T, beadID string, prNumber int) (*DB, int, string
 	return fdb, prDBID, socketPath
 }
 
-func assertExternalPRAction(t *testing.T, received <-chan ipcCommand, expectedAction string, expectedNumber int) {
+func assertPRActionForExt(t *testing.T, received <-chan ipcCommand, expectedAction string, expectedNumber int, expectedAnvil, expectedBeadID, expectedBranch string) {
 	t.Helper()
 	select {
 	case cmd := <-received:
-		if cmd.Type != "external_pr_action" {
-			t.Errorf("expected command type 'external_pr_action', got %q", cmd.Type)
+		if cmd.Type != "pr_action" {
+			t.Errorf("expected command type 'pr_action', got %q", cmd.Type)
 		}
-		var pa struct {
-			Repo   string `json:"repo"`
-			Number int    `json:"number"`
-			Action string `json:"action"`
-		}
+		var pa prActionPayload
 		if err := json.Unmarshal(cmd.Payload, &pa); err != nil {
 			t.Fatalf("unmarshal payload: %v", err)
 		}
 		if pa.Action != expectedAction {
 			t.Errorf("expected action %q, got %q", expectedAction, pa.Action)
 		}
-		if pa.Number != expectedNumber {
-			t.Errorf("expected number %d, got %d", expectedNumber, pa.Number)
+		if pa.PRNumber != expectedNumber {
+			t.Errorf("expected pr_number %d, got %d", expectedNumber, pa.PRNumber)
 		}
-		if pa.Repo != "owner/myrepo" {
-			t.Errorf("expected repo 'owner/myrepo', got %q", pa.Repo)
+		if pa.Anvil != expectedAnvil {
+			t.Errorf("expected anvil %q, got %q", expectedAnvil, pa.Anvil)
+		}
+		if pa.BeadID != expectedBeadID {
+			t.Errorf("expected bead_id %q, got %q", expectedBeadID, pa.BeadID)
+		}
+		if pa.Branch != expectedBranch {
+			t.Errorf("expected branch %q, got %q", expectedBranch, pa.Branch)
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("timed out waiting for IPC command")
@@ -3839,7 +3852,11 @@ func assertExternalPRAction(t *testing.T, received <-chan ipcCommand, expectedAc
 }
 
 func TestApprovePRHandler_ExtBead(t *testing.T) {
-	fdb, prDBID, socketPath := setupExtPRTest(t, "ext-warden-1", 55)
+	fdb := setupTestDB(t)
+	prDBID := insertTestPR(t, fdb, 55, "myAnvil", "ext-warden-1", "forge/ext-warden-1")
+
+	socketPath := filepath.Join(t.TempDir(), "forge.sock")
+	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 	received := receiveIPCCommand(t, socketPath)
 
 	rec := httptest.NewRecorder()
@@ -3848,7 +3865,14 @@ func TestApprovePRHandler_ExtBead(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	assertExternalPRAction(t, received, "approve", 55)
+	select {
+	case cmd := <-received:
+		if cmd.Type != "approve_as_is" {
+			t.Errorf("expected command type 'approve_as_is', got %q", cmd.Type)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("timed out waiting for IPC command")
+	}
 }
 
 func TestMergePRHandler_ExtBead(t *testing.T) {
@@ -3861,7 +3885,7 @@ func TestMergePRHandler_ExtBead(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	assertExternalPRAction(t, received, "merge", 66)
+	assertPRActionForExt(t, received, "merge", 66, "myAnvil", "ext-warden-2", "forge/ext-warden-2")
 }
 
 func TestBellowsPRHandler_ExtBead(t *testing.T) {
@@ -3874,7 +3898,7 @@ func TestBellowsPRHandler_ExtBead(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	assertExternalPRAction(t, received, "bellows", 77)
+	assertPRActionForExt(t, received, "assign_bellows", 77, "myAnvil", "ext-warden-3", "forge/ext-warden-3")
 }
 
 func TestFixCommentsPRHandler_ExtBead(t *testing.T) {
@@ -3887,7 +3911,7 @@ func TestFixCommentsPRHandler_ExtBead(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	assertExternalPRAction(t, received, "fix-comments", 88)
+	assertPRActionForExt(t, received, "burnish", 88, "myAnvil", "ext-warden-4", "forge/ext-warden-4")
 }
 
 func TestFixCIPRHandler_ExtBead(t *testing.T) {
@@ -3900,7 +3924,7 @@ func TestFixCIPRHandler_ExtBead(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	assertExternalPRAction(t, received, "fix-ci", 99)
+	assertPRActionForExt(t, received, "quench", 99, "myAnvil", "ext-warden-5", "forge/ext-warden-5")
 }
 
 func TestFixConflictsPRHandler_ExtBead(t *testing.T) {
@@ -3913,7 +3937,7 @@ func TestFixConflictsPRHandler_ExtBead(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	assertExternalPRAction(t, received, "rebase", 101)
+	assertPRActionForExt(t, received, "rebase", 101, "myAnvil", "ext-warden-6", "forge/ext-warden-6")
 }
 
 func closePRRequest(prID string) *http.Request {
@@ -3933,14 +3957,12 @@ func TestClosePRHandler_ExtBead(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	assertExternalPRAction(t, received, "close", 111)
+	assertPRActionForExt(t, received, "close", 111, "myAnvil", "ext-warden-7", "forge/ext-warden-7")
 }
 
 // TestClosePRHandler_ExtBead_OwnerRepo verifies that when pr.Anvil is already
-// stored as an "owner/repo" string, repoForAnvil returns it directly without
-// consulting the forge config.
+// stored as an "owner/repo" string, the handler sends pr_action with that anvil.
 func TestClosePRHandler_ExtBead_OwnerRepo(t *testing.T) {
-	// Use a socket but no forge config — the anvil is already "owner/repo".
 	socketPath := filepath.Join(t.TempDir(), "forge.sock")
 	t.Setenv("FORGE_IPC_SOCKET", socketPath)
 
@@ -3955,31 +3977,7 @@ func TestClosePRHandler_ExtBead_OwnerRepo(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	select {
-	case cmd := <-received:
-		if cmd.Type != "external_pr_action" {
-			t.Errorf("expected command type 'external_pr_action', got %q", cmd.Type)
-		}
-		var pa struct {
-			Repo   string `json:"repo"`
-			Number int    `json:"number"`
-			Action string `json:"action"`
-		}
-		if err := json.Unmarshal(cmd.Payload, &pa); err != nil {
-			t.Fatalf("unmarshal payload: %v", err)
-		}
-		if pa.Action != "close" {
-			t.Errorf("expected action 'close', got %q", pa.Action)
-		}
-		if pa.Number != 112 {
-			t.Errorf("expected number 112, got %d", pa.Number)
-		}
-		if pa.Repo != "owner/myrepo" {
-			t.Errorf("expected repo 'owner/myrepo', got %q", pa.Repo)
-		}
-	case <-time.After(2 * time.Second):
-		t.Error("timed out waiting for IPC command")
-	}
+	assertPRActionForExt(t, received, "close", 112, "owner/myrepo", "ext-warden-8", "forge/ext-warden-8")
 }
 
 // --- RunNowHandler ---
