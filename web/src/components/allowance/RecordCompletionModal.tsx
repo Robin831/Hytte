@@ -1,4 +1,4 @@
-import { useState, useId } from 'react'
+import { useState, useEffect, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
 
@@ -38,18 +38,27 @@ export default function RecordCompletionModal({
   const { t } = useTranslation('allowance')
   const titleId = useId()
 
-  const today = new Date().toISOString().slice(0, 10)
-  const [selectedChildIds, setSelectedChildIds] = useState<Set<number>>(() => {
-    if (assignedChildId != null) {
-      return new Set([assignedChildId])
-    }
-    return new Set()
-  })
-  const [date, setDate] = useState(today)
+  function localToday() {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  const [selectedChildIds, setSelectedChildIds] = useState<Set<number>>(new Set())
+  const [date, setDate] = useState(localToday)
   const [notes, setNotes] = useState('')
   const [status, setStatus] = useState<'approved' | 'pending'>('approved')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (open) {
+      setSelectedChildIds(assignedChildId != null ? new Set([assignedChildId]) : new Set())
+      setDate(localToday())
+      setNotes('')
+      setStatus('approved')
+      setError('')
+    }
+  }, [open, assignedChildId])
 
   const isTeam = completionMode === 'team'
   const teamTooSmall = isTeam && selectedChildIds.size < minTeamSize
@@ -68,11 +77,6 @@ export default function RecordCompletionModal({
   }
 
   function handleClose() {
-    setSelectedChildIds(assignedChildId != null ? new Set([assignedChildId]) : new Set())
-    setDate(today)
-    setNotes('')
-    setStatus('approved')
-    setError('')
     onClose()
   }
 
