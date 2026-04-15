@@ -1643,3 +1643,103 @@ func TestAnvilHealthList_WithData(t *testing.T) {
 		t.Errorf("expected 1 queue depth, got %d", b.QueueDepth)
 	}
 }
+
+func TestPRByNumber_Found(t *testing.T) {
+	fdb := setupTestDB(t)
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := fdb.db.Exec(`
+		INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at, last_checked,
+		                 ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		                 has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES (1, 42, 'hytte', 'ext-42', 'forge/ext-42', 'main', 'Test PR', 'open', ?, ?, 1, 2, 1, 0, 0, 1, 0, 1, 1)
+	`, now, now)
+	if err != nil {
+		t.Fatalf("insert pr: %v", err)
+	}
+	pr, err := fdb.PRByNumber("hytte", 42)
+	if err != nil {
+		t.Fatalf("PRByNumber: %v", err)
+	}
+	if pr.Number != 42 {
+		t.Errorf("expected number 42, got %d", pr.Number)
+	}
+	if pr.Anvil != "hytte" {
+		t.Errorf("expected anvil hytte, got %s", pr.Anvil)
+	}
+	if pr.BeadID != "ext-42" {
+		t.Errorf("expected bead_id ext-42, got %s", pr.BeadID)
+	}
+	if pr.Branch != "forge/ext-42" {
+		t.Errorf("expected branch forge/ext-42, got %s", pr.Branch)
+	}
+	if pr.Title != "Test PR" {
+		t.Errorf("expected title Test PR, got %s", pr.Title)
+	}
+	if !pr.CIPassing {
+		t.Error("expected ci_passing=true")
+	}
+	if !pr.HasApproval {
+		t.Error("expected has_approval=true")
+	}
+	if !pr.HasUnresolvedThreads {
+		t.Error("expected has_unresolved_threads=true")
+	}
+	if !pr.BellowsManaged {
+		t.Error("expected bellows_managed=true")
+	}
+	if pr.CIFixCount != 1 {
+		t.Errorf("expected ci_fix_count=1, got %d", pr.CIFixCount)
+	}
+	if pr.ReviewFixCount != 2 {
+		t.Errorf("expected review_fix_count=2, got %d", pr.ReviewFixCount)
+	}
+}
+
+func TestPRByNumber_NotFound(t *testing.T) {
+	fdb := setupTestDB(t)
+	_, err := fdb.PRByNumber("hytte", 999)
+	if err == nil {
+		t.Fatal("expected error for non-existent PR")
+	}
+}
+
+func TestPRByNumber_WrongAnvil(t *testing.T) {
+	fdb := setupTestDB(t)
+	now := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`
+		INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+		                 ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		                 has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES (1, 42, 'forge', 'ext-42', 'forge/ext-42', 'main', 'Forge PR', 'open', ?, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+	`, now) //nolint:errcheck
+	_, err := fdb.PRByNumber("hytte", 42)
+	if err == nil {
+		t.Fatal("expected error when querying wrong anvil")
+	}
+}
+
+func TestPRByNumber_ReturnsMostRecent(t *testing.T) {
+	fdb := setupTestDB(t)
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := fdb.db.Exec(`
+		INSERT INTO prs (id, number, anvil, bead_id, branch, base_branch, title, status, created_at,
+		                 ci_fix_count, review_fix_count, ci_passing, rebase_count, is_conflicting,
+		                 has_unresolved_threads, has_pending_reviews, has_approval, bellows_managed)
+		VALUES
+		  (1, 42, 'hytte', 'ext-42', 'forge/ext-42', 'main', 'Old PR', 'closed', ?, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+		  (5, 42, 'hytte', 'ext-42b', 'forge/ext-42b', 'main', 'New PR', 'open', ?, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+	`, now, now)
+	if err != nil {
+		t.Fatalf("insert prs: %v", err)
+	}
+	pr, err := fdb.PRByNumber("hytte", 42)
+	if err != nil {
+		t.Fatalf("PRByNumber: %v", err)
+	}
+	if pr.ID != 5 {
+		t.Errorf("expected most recent PR with id=5, got %d", pr.ID)
+	}
+	if pr.Title != "New PR" {
+		t.Errorf("expected title New PR, got %s", pr.Title)
+	}
+}

@@ -1703,7 +1703,13 @@ func anvilForRepo(repo string) (string, error) {
 	if err := parseConfigYAML(data, &cfg); err != nil {
 		return "", fmt.Errorf("parse config: %w", err)
 	}
-	for name, anvil := range cfg.Anvils {
+	names := make([]string, 0, len(cfg.Anvils))
+	for name := range cfg.Anvils {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		anvil := cfg.Anvils[name]
 		if anvil.Path == "" {
 			continue
 		}
@@ -1741,18 +1747,15 @@ func externalPRDaemonHandler(db *DB, action, failMsg string) http.HandlerFunc {
 			writeError(w, http.StatusServiceUnavailable, "forge state DB not available")
 			return
 		}
-		pr, err := db.PRByNumber(req.Repo, req.Number)
+		anvil, anvilErr := anvilForRepo(req.Repo)
+		if anvilErr != nil {
+			writeError(w, http.StatusNotFound, "PR not found in forge database")
+			return
+		}
+		pr, err := db.PRByNumber(anvil, req.Number)
 		if err != nil {
-			anvil, anvilErr := anvilForRepo(req.Repo)
-			if anvilErr != nil {
-				writeError(w, http.StatusNotFound, "PR not found in forge database")
-				return
-			}
-			pr, err = db.PRByNumber(anvil, req.Number)
-			if err != nil {
-				writeError(w, http.StatusNotFound, "PR not found in forge database")
-				return
-			}
+			writeError(w, http.StatusNotFound, "PR not found in forge database")
+			return
 		}
 		if !validatePRForIPC(w, pr, true) {
 			return
