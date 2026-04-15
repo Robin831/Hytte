@@ -197,6 +197,171 @@ func TestGetChildChoresWithStatus_TeamParticipantSeesCompletion(t *testing.T) {
 	}
 }
 
+// ---- RecordSoloCompletionByParent tests ----
+
+func TestRecordSoloCompletionByParent_Approved(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	choreID := insertSoloChore(t, db, 1)
+
+	comp, err := RecordSoloCompletionByParent(db, choreID, 2, 1, "2026-04-15", "great job", "approved")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if comp.Status != "approved" {
+		t.Errorf("status: got %q, want %q", comp.Status, "approved")
+	}
+	if comp.ApprovedBy == nil || *comp.ApprovedBy != 1 {
+		t.Errorf("approved_by: got %v, want 1", comp.ApprovedBy)
+	}
+	if comp.ApprovedAt == nil || *comp.ApprovedAt == "" {
+		t.Error("approved_at should be set")
+	}
+	if comp.Notes != "great job" {
+		t.Errorf("notes: got %q, want %q", comp.Notes, "great job")
+	}
+
+	// Verify the notes are encrypted in the DB.
+	var encNotes string
+	if err := db.QueryRow(`SELECT notes FROM allowance_completions WHERE id = ?`, comp.ID).Scan(&encNotes); err != nil {
+		t.Fatalf("query notes: %v", err)
+	}
+	if encNotes == "great job" {
+		t.Error("notes should be encrypted in the database")
+	}
+}
+
+func TestRecordSoloCompletionByParent_Pending(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	choreID := insertSoloChore(t, db, 1)
+
+	comp, err := RecordSoloCompletionByParent(db, choreID, 2, 1, "2026-04-15", "", "pending")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if comp.Status != "pending" {
+		t.Errorf("status: got %q, want %q", comp.Status, "pending")
+	}
+	if comp.ApprovedBy != nil {
+		t.Errorf("approved_by should be nil for pending, got %v", *comp.ApprovedBy)
+	}
+	if comp.ApprovedAt != nil {
+		t.Errorf("approved_at should be nil for pending, got %v", *comp.ApprovedAt)
+	}
+}
+
+func TestRecordSoloCompletionByParent_DuplicateReturnsExists(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	choreID := insertSoloChore(t, db, 1)
+
+	if _, err := RecordSoloCompletionByParent(db, choreID, 2, 1, "2026-04-15", "", "approved"); err != nil {
+		t.Fatalf("first insert: %v", err)
+	}
+	_, err := RecordSoloCompletionByParent(db, choreID, 2, 1, "2026-04-15", "", "approved")
+	if err != ErrCompletionExists {
+		t.Fatalf("expected ErrCompletionExists, got %v", err)
+	}
+}
+
+// ---- RecordTeamCompletionByParent tests ----
+
+func TestRecordTeamCompletionByParent_Success(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	// Add a second child.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'child2@test.com', 'Child2', 'gc3')`); err != nil {
+		t.Fatalf("insert child2: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, created_at) VALUES (1, 3, '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("link child2: %v", err)
+	}
+
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 20, 2, 10)
+
+	comp, err := RecordTeamCompletionByParent(db, choreID, 1, []int64{2, 3}, "2026-04-15", "team effort", "approved")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if comp.ChildID != 2 {
+		t.Errorf("child_id: got %d, want 2", comp.ChildID)
+	}
+	if comp.Status != "approved" {
+		t.Errorf("status: got %q, want %q", comp.Status, "approved")
+	}
+
+	// Verify team_completions rows.
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM allowance_team_completions WHERE completion_id = ?`, comp.ID).Scan(&count); err != nil {
+		t.Fatalf("count team completions: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("team_completions count: got %d, want 2", count)
+	}
+}
+
+func TestRecordTeamCompletionByParent_BelowMinTeamSize(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 20, 3, 10) // min_team_size=3
+
+	_, err := RecordTeamCompletionByParent(db, choreID, 1, []int64{2}, "2026-04-15", "", "approved")
+	if err != ErrTeamTooSmall {
+		t.Fatalf("expected ErrTeamTooSmall, got %v", err)
+	}
+}
+
+func TestRecordTeamCompletionByParent_EmptyChildIDsReturnsErrTeamTooSmall(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 20, 2, 10) // min_team_size=2
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("RecordTeamCompletionByParent panicked for empty childIDs: %v", r)
+		}
+	}()
+
+	_, err := RecordTeamCompletionByParent(db, choreID, 1, []int64{}, "2026-04-15", "", "approved")
+	if err != ErrTeamTooSmall {
+		t.Fatalf("expected ErrTeamTooSmall for empty childIDs, got %v", err)
+	}
+}
+
+func TestRecordTeamCompletionByParent_ExistingActiveSessionConflicts(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	// Add a second child.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'child2@test.com', 'Child2', 'gc3')`); err != nil {
+		t.Fatalf("insert child2: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, created_at) VALUES (1, 3, '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("link child2: %v", err)
+	}
+
+	childID := int64(2)
+	choreID := insertTeamChore(t, db, 1, &childID, 20, 2, 10)
+
+	// First: create an active session via StartTeamCompletion.
+	if _, err := StartTeamCompletion(db, 1, choreID, 2, "2026-04-15"); err != nil {
+		t.Fatalf("start team session: %v", err)
+	}
+
+	// Second: attempt parent-recorded team completion for the same chore+date.
+	_, err := RecordTeamCompletionByParent(db, choreID, 1, []int64{2, 3}, "2026-04-15", "", "approved")
+	if err != ErrTeamSessionConflict {
+		t.Fatalf("expected ErrTeamSessionConflict, got %v", err)
+	}
+}
+
 // TestGetPendingCompletions_TeamNamesEnriched verifies that GetPendingCompletions
 // populates TeamMemberNames for team completions end-to-end.
 func TestGetPendingCompletions_TeamNamesEnriched(t *testing.T) {

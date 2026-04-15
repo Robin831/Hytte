@@ -26,6 +26,8 @@ var (
 	ErrAlreadyJoined        = errors.New("child has already joined this team session")
 	ErrSessionNotWaiting    = errors.New("team session is not in waiting_for_team status")
 	ErrNotSessionInitiator  = errors.New("only the child who started the team session can cancel it")
+	ErrTeamTooSmall         = errors.New("not enough children for team completion")
+	ErrTeamSessionConflict  = errors.New("a conflicting team completion already exists for this chore and date")
 )
 
 // decryptOrPlaintext decrypts a stored field value. For enc:-prefixed values
@@ -1732,4 +1734,156 @@ func GetAllFamilyLinksWithAllowance(db *sql.DB) ([]struct{ ParentID, ChildID int
 		links = append(links, l)
 	}
 	return links, rows.Err()
+}
+
+// RecordSoloCompletionByParent inserts a completion row on behalf of a parent.
+// When status is "approved", approved_by and approved_at are set immediately.
+// Notes are encrypted at rest. Returns ErrCompletionExists on UNIQUE violation.
+func RecordSoloCompletionByParent(db *sql.DB, choreID, childID, parentID int64, date, notes, status string) (*Completion, error) {
+	chore, err := GetChoreByID(db, choreID, parentID)
+	if err != nil {
+		return nil, err
+	}
+	if !chore.Active {
+		return nil, fmt.Errorf("chore is inactive")
+	}
+	if chore.CompletionMode != "solo" {
+		return nil, fmt.Errorf("chore is not configured for solo completion")
+	}
+
+	encNotes, err := encryption.EncryptField(notes)
+	if err != nil {
+		return nil, err
+	}
+	now := nowRFC3339()
+
+	var approvedBy *int64
+	var approvedAt *string
+	if status == "approved" {
+		approvedBy = &parentID
+		approvedAt = &now
+	}
+
+	res, err := db.Exec(`
+		INSERT INTO allowance_completions (chore_id, child_id, date, status, approved_by, approved_at, notes, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, choreID, childID, date, status, approvedBy, approvedAt, encNotes, now)
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return nil, ErrCompletionExists
+		}
+		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	return &Completion{
+		ID:         id,
+		ChoreID:    choreID,
+		ChildID:    childID,
+		Date:       date,
+		Status:     status,
+		ApprovedBy: approvedBy,
+		ApprovedAt: approvedAt,
+		Notes:      notes,
+		CreatedAt:  now,
+	}, nil
+}
+
+// RecordTeamCompletionByParent inserts a team completion on behalf of a parent.
+// It creates a single allowance_completions row (child_id = first in childIDs)
+// and inserts all childIDs into allowance_team_completions within a transaction.
+// Rejects if fewer than min_team_size children are provided or if an active team
+// session already exists for the chore+date.
+func RecordTeamCompletionByParent(db *sql.DB, choreID, parentID int64, childIDs []int64, date, notes, status string) (*Completion, error) {
+	if len(childIDs) == 0 {
+		return nil, ErrTeamTooSmall
+	}
+
+	chore, err := GetChoreByID(db, choreID, parentID)
+	if err != nil {
+		return nil, err
+	}
+	if !chore.Active {
+		return nil, fmt.Errorf("chore is inactive")
+	}
+	if chore.CompletionMode != "team" {
+		return nil, fmt.Errorf("chore is not configured for team completion")
+	}
+	if int64(len(childIDs)) < chore.MinTeamSize {
+		return nil, ErrTeamTooSmall
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	var existingID int64
+	err = tx.QueryRow(`
+		SELECT id FROM allowance_completions
+		WHERE chore_id = ? AND date = ? AND status IN ('waiting_for_team', 'pending', 'approved')
+		LIMIT 1
+	`, choreID, date).Scan(&existingID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if err == nil {
+		return nil, ErrTeamSessionConflict
+	}
+
+	encNotes, err := encryption.EncryptField(notes)
+	if err != nil {
+		return nil, err
+	}
+	now := nowRFC3339()
+
+	var approvedBy *int64
+	var approvedAt *string
+	if status == "approved" {
+		approvedBy = &parentID
+		approvedAt = &now
+	}
+
+	res, err := tx.Exec(`
+		INSERT INTO allowance_completions (chore_id, child_id, date, status, approved_by, approved_at, notes, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, choreID, childIDs[0], date, status, approvedBy, approvedAt, encNotes, now)
+	if err != nil {
+		if isUniqueConstraintError(err) {
+			return nil, ErrCompletionExists
+		}
+		return nil, err
+	}
+	completionID, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, cid := range childIDs {
+		if _, err := tx.Exec(`
+			INSERT INTO allowance_team_completions (completion_id, child_id, joined_at)
+			VALUES (?, ?, ?)
+		`, completionID, cid, now); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &Completion{
+		ID:         completionID,
+		ChoreID:    choreID,
+		ChildID:    childIDs[0],
+		Date:       date,
+		Status:     status,
+		ApprovedBy: approvedBy,
+		ApprovedAt: approvedAt,
+		Notes:      notes,
+		CreatedAt:  now,
+	}, nil
 }
