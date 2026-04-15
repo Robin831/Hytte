@@ -210,6 +210,8 @@ export default function AllowancePage() {
   const [recordChore, setRecordChore] = useState<Chore | null>(null)
   const [familyChildren, setFamilyChildren] = useState<{ child_id: number; nickname: string; avatar_emoji: string }[]>([])
   const [familyChildrenLoaded, setFamilyChildrenLoaded] = useState(false)
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
   const { toasts, showToast } = useToast()
 
   // Action error feedback
@@ -324,7 +326,6 @@ export default function AllowancePage() {
       .catch(() => {
         if (!cancelled) {
           setFamilyChildren([])
-          setFamilyChildrenLoaded(true)
           showToast(t('errors.loadFailed'), 'error')
         }
       })
@@ -337,21 +338,23 @@ export default function AllowancePage() {
     fetch('/api/allowance/pending', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : Promise.reject(res)))
       .then((data: { pending: CompletionWithDetails[] }) => {
+        if (!mountedRef.current) return
         setPending(data.pending ?? [])
         setPendingError('')
       })
-      .catch(() => setPendingError(t('errors.loadFailed')))
-      .finally(() => setPendingLoading(false))
+      .catch(() => { if (mountedRef.current) setPendingError(t('errors.loadFailed')) })
+      .finally(() => { if (mountedRef.current) setPendingLoading(false) })
 
     setPayoutsLoading(true)
     fetch('/api/allowance/payouts?weeks=8', { credentials: 'include' })
       .then(res => (res.ok ? res.json() : Promise.reject(res)))
       .then((data: { payouts: Payout[] }) => {
+        if (!mountedRef.current) return
         setPayouts(data.payouts ?? [])
         setPayoutsError('')
       })
-      .catch(() => setPayoutsError(t('errors.loadFailed')))
-      .finally(() => setPayoutsLoading(false))
+      .catch(() => { if (mountedRef.current) setPayoutsError(t('errors.loadFailed')) })
+      .finally(() => { if (mountedRef.current) setPayoutsLoading(false) })
   }
 
   const handleApprove = async (id: number) => {

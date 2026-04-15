@@ -55,6 +55,8 @@ function RecordCompletionForm({
   choreIcon,
 }: RecordCompletionFormProps) {
   const { t } = useTranslation('allowance')
+  const dateId = useId()
+  const notesId = useId()
 
   const [selectedChildIds, setSelectedChildIds] = useState<Set<number>>(
     () => assignedChildId != null ? new Set([assignedChildId]) : new Set()
@@ -76,6 +78,8 @@ function RecordCompletionForm({
     : children
 
   function toggleChild(childId: number) {
+    // For team chores, the assigned child must always be included (backend enforces this).
+    if (isTeam && childId === assignedChildId) return
     setSelectedChildIds(prev => {
       const next = new Set(prev)
       if (next.has(childId)) {
@@ -154,13 +158,16 @@ function RecordCompletionForm({
             <div className="flex flex-wrap gap-2" role="group" aria-label={t('record.children')}>
               {selectableChildren.map(child => {
                 const selected = selectedChildIds.has(child.child_id)
+                const locked = isTeam && child.child_id === assignedChildId
                 return (
                   <button
                     key={child.child_id}
                     type="button"
                     aria-pressed={selected}
+                    disabled={locked}
                     onClick={() => toggleChild(child.child_id)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors cursor-pointer
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors
+                      ${locked ? 'cursor-default opacity-80' : 'cursor-pointer'}
                       ${selected
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -180,11 +187,11 @@ function RecordCompletionForm({
           </div>
 
           <div>
-            <label htmlFor="record-date" className="block text-sm text-gray-400 mb-1">
+            <label htmlFor={dateId} className="block text-sm text-gray-400 mb-1">
               {t('record.date')}
             </label>
             <input
-              id="record-date"
+              id={dateId}
               type="date"
               value={date}
               onChange={e => setDate(e.target.value)}
@@ -193,11 +200,11 @@ function RecordCompletionForm({
           </div>
 
           <div>
-            <label htmlFor="record-notes" className="block text-sm text-gray-400 mb-1">
+            <label htmlFor={notesId} className="block text-sm text-gray-400 mb-1">
               {t('record.notes')}
             </label>
             <textarea
-              id="record-notes"
+              id={notesId}
               value={notes}
               onChange={e => setNotes(e.target.value)}
               rows={2}
