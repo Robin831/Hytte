@@ -14251,14 +14251,6 @@ rules:
         Verify that duplicated schema/format definitions are extracted into a shared constant or generated from a single source of truth, so changes propagate automatically and cannot drift out of sync
       source: copilot:PR#631
       added: "2026-04-13"
-    - id: distinguish-db-errors-from-not-found
-      category: error-handling
-      pattern: >-
-        Code that calls a DB lookup function and treats any error as a not-found condition
-      check: >-
-        Verify that database lookup errors distinguish sql.ErrNoRows (return 404) from other errors (return 500 and log the error), rather than collapsing all errors into a single not-found response
-      source: copilot:PR#632
-      added: "2026-04-13"
     - id: robust-fenced-content-extraction
       category: other
       pattern: >-
@@ -14323,20 +14315,12 @@ rules:
         Verify that auto-scrolling during streaming updates is throttled (e.g. via setTimeout), uses behavior:'auto' instead of 'smooth' during active streaming, and only triggers when the user is already near the bottom of the scroll container
       source: copilot:PR#633
       added: "2026-04-13"
-    - id: clear-timers-on-unmount
-      category: concurrency
-      pattern: >-
-        setTimeout or setInterval called inside a React component or hook without cleanup
-      check: >-
-        Verify that timeout/interval IDs are stored in a ref and cleared both on component unmount (via useEffect cleanup) and before scheduling a new timer, to prevent state updates after unmount and timer leaks
-      source: copilot:PR#633
-      added: "2026-04-13"
     - id: consistent-link-sanitization
       category: security
       pattern: >-
-        Multiple code paths render or sanitize user-facing content (e.g., streaming vs persisted messages, preview vs final render)
+        Multiple code paths render or sanitize user-facing rich content other than markdown link hrefs (e.g., HTML/markup sanitization for streaming vs persisted messages, preview vs final render)
       check: >-
-        Verify that sanitization and allow-list policies (e.g., allowed URL schemes, HTML tags) are defined in a single shared location and reused across all rendering paths, so behavior does not diverge between streaming, persisted, or preview states
+        Verify that non-link sanitization policy (e.g., allowed HTML tags, attributes, renderer sanitizer configuration) is defined in a single shared location and reused across all rendering paths, so behavior does not diverge between streaming, persisted, or preview states. Do not use this rule for markdown link URL/href scheme allow-lists; that should be covered by the dedicated markdown-link-sanitization-consistency rule.
       source: copilot:PR#633
       added: "2026-04-13"
     - id: mock-reader-cancel-method
