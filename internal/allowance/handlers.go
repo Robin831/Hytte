@@ -1768,13 +1768,18 @@ func RecordCompletionHandler(db *sql.DB) http.HandlerFunc {
 
 		choreID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, errResponse("invalid chore id"))
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid chore ID"))
 			return
 		}
 
-		r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
+		r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 		var req request
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				writeJSON(w, http.StatusRequestEntityTooLarge, errResponse("request body too large"))
+				return
+			}
 			writeJSON(w, http.StatusBadRequest, errResponse("invalid JSON body"))
 			return
 		}
@@ -1824,10 +1829,22 @@ func RecordCompletionHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if chore.ChildID != nil {
-			for _, cid := range req.ChildIDs {
-				if cid != *chore.ChildID {
-					writeJSON(w, http.StatusBadRequest, errResponse(fmt.Sprintf("child %d is not assigned to this chore", cid)))
+			if chore.CompletionMode == "team" {
+				assignedIdx := slices.Index(req.ChildIDs, *chore.ChildID)
+				if assignedIdx == -1 {
+					writeJSON(w, http.StatusBadRequest, errResponse(fmt.Sprintf("child %d must be included for this chore", *chore.ChildID)))
 					return
+				}
+				if assignedIdx > 0 {
+					assignedChildID := req.ChildIDs[assignedIdx]
+					req.ChildIDs = append([]int64{assignedChildID}, append(req.ChildIDs[:assignedIdx], req.ChildIDs[assignedIdx+1:]...)...)
+				}
+			} else {
+				for _, cid := range req.ChildIDs {
+					if cid != *chore.ChildID {
+						writeJSON(w, http.StatusBadRequest, errResponse(fmt.Sprintf("child %d is not assigned to this chore", cid)))
+						return
+					}
 				}
 			}
 		}
