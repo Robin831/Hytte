@@ -517,6 +517,7 @@ function DayView({
 
   useEffect(() => {
     if (punchStart === null) return
+    setNow(new Date())
     const id = setInterval(() => setNow(new Date()), 60_000)
     return () => clearInterval(id)
   }, [punchStart])

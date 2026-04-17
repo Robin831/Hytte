@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import WorkHoursPage from './WorkHoursPage'
@@ -76,16 +76,24 @@ function renderPage() {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+// Pin clock to 2026-04-17 12:00 so punch-start comparisons are deterministic
+const FIXED_NOW = new Date('2026-04-17T12:00:00')
+
 describe('WorkHoursPage live punch estimate UI', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(FIXED_NOW)
+  })
+
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.useRealTimers()
   })
 
   it('shows estimate section when punched in with a past start time', async () => {
-    // '00:01' is always in the past at any time of day
+    // '08:00' is before the pinned clock of 12:00
     vi.stubGlobal('fetch', buildFetch({
-      '/api/workhours/punch-session': { session: { start_time: '00:01', date: '2026-04-17' } },
+      '/api/workhours/punch-session': { session: { start_time: '08:00', date: '2026-04-17' } },
     }))
     renderPage()
     await waitFor(() => {
@@ -94,9 +102,9 @@ describe('WorkHoursPage live punch estimate UI', () => {
   })
 
   it('shows invalid-start message when punch start is in the future', async () => {
-    // '23:59' is always in the future at any time before midnight
+    // '14:00' is after the pinned clock of 12:00
     vi.stubGlobal('fetch', buildFetch({
-      '/api/workhours/punch-session': { session: { start_time: '23:59', date: '2026-04-17' } },
+      '/api/workhours/punch-session': { session: { start_time: '14:00', date: '2026-04-17' } },
     }))
     renderPage()
     await waitFor(() => {
@@ -105,9 +113,9 @@ describe('WorkHoursPage live punch estimate UI', () => {
   })
 
   it('applies green highlight styling when estimated reported hours meet or exceed the standard', async () => {
-    // Use a 5-minute standard so any run time exceeds it regardless of current clock
+    // Use a 5-minute standard and punch start '08:00' so 4h elapsed (pinned to 12:00) exceeds it
     vi.stubGlobal('fetch', buildFetch({
-      '/api/workhours/punch-session': { session: { start_time: '00:01', date: '2026-04-17' } },
+      '/api/workhours/punch-session': { session: { start_time: '08:00', date: '2026-04-17' } },
       '/api/settings/preferences': {
         preferences: { work_hours_standard_day: '5', work_hours_lunch_minutes: '0', work_hours_rounding: '1' },
       },
@@ -125,7 +133,7 @@ describe('WorkHoursPage live punch estimate UI', () => {
   it('registers a 60-second interval to refresh the live estimate when punched in', async () => {
     const intervalSpy = vi.spyOn(globalThis, 'setInterval')
     vi.stubGlobal('fetch', buildFetch({
-      '/api/workhours/punch-session': { session: { start_time: '00:01', date: '2026-04-17' } },
+      '/api/workhours/punch-session': { session: { start_time: '08:00', date: '2026-04-17' } },
     }))
     const { unmount } = renderPage()
     await waitFor(() => expect(screen.getByText('If punched out now')).toBeInTheDocument())
