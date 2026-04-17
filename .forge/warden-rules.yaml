@@ -14496,3 +14496,271 @@ rules:
         Verify that each warden rule addresses a distinct concern. If two or more rules check for the same underlying issue (e.g., same API misuse, same error-handling pattern), merge them into a single rule or clearly differentiate their trigger patterns to avoid duplicate review feedback.
       source: copilot:PR#629
       added: "2026-04-13"
+    - id: no-duplicate-warden-rules
+      category: other
+      pattern: Adding a new rule to the warden-rules.yaml review checklist
+      check: >-
+        Verify that the new rule does not duplicate or substantially overlap with an existing rule. Search existing rules for similar ids, patterns, and guidance before adding. If overlap is found, merge the improved wording into the existing rule rather than creating a separate entry.
+      source: copilot:PR#638
+      added: "2026-04-15"
+    - id: deduplicate-overlapping-warden-rules
+      category: style
+      pattern: >-
+        Two or more warden rules in .forge/warden-rules.yaml have overlapping trigger patterns or address the same underlying requirement
+      check: >-
+        Verify that no two rules overlap enough to fire on the same change. If rules share the same core concern (e.g., sanitization consistency across render paths), merge them into one rule or tighten their patterns with explicit exclusion clauses so reviews don't produce duplicate comments for a single issue.
+      source: copilot:PR#638
+      added: "2026-04-15"
+    - id: error-message-matches-condition
+      category: error-handling
+      pattern: >-
+        An error variable or message describes a specific condition (e.g., 'active session exists') but the code that returns it matches a broader or different set of conditions
+      check: >-
+        Verify that error messages and variable names accurately describe the full set of conditions that can trigger them, not just one subset. If the query/logic covers multiple states, the error text must reflect that breadth.
+      source: copilot:PR#639
+      added: "2026-04-15"
+    - id: verify-ownership-before-mutation
+      category: security
+      pattern: >-
+        A storage/repository function accepts a parent or owner ID alongside a child resource ID and performs an INSERT, UPDATE, or DELETE without first verifying the child resource belongs to that owner
+      check: >-
+        Verify that mutation functions enforce ownership by loading the resource with the owner ID (e.g., GetChoreByID(db, choreID, parentID)) and validating preconditions (active status, correct mode) before performing the write operation
+      source: copilot:PR#639
+      added: "2026-04-15"
+    - id: validate-entity-state-before-mutation
+      category: error-handling
+      pattern: >-
+        A function fetches an entity by ID and then performs a mutation (insert, update, delete) without checking the entity's state or mode fields
+      check: >-
+        Verify that after fetching an entity, all relevant state invariants (e.g., active status, mode, type) are validated before proceeding with the operation — especially when sibling functions enforce these same checks. Skipping validation can allow invalid operations that break downstream assumptions.
+      source: copilot:PR#639
+      added: "2026-04-15"
+    - id: guard-slice-index
+      category: error-handling
+      pattern: Indexing into a slice parameter (e.g. items[0]) without a preceding length check
+      check: >-
+        Verify that slice/array parameters are checked for emptiness before indexing. If the slice could legally be empty, return a clear validation error instead of risking a panic.
+      source: copilot:PR#639
+      added: "2026-04-15"
+    - id: empty-slice-boundary-test
+      category: testing
+      pattern: >-
+        Function accepts a slice parameter and accesses elements by index (e.g., slice[0]) without a length guard
+      check: >-
+        Verify there is a test for the empty-slice case that asserts a stable error is returned (not a panic), especially when the function indexes into the slice directly
+      source: copilot:PR#639
+      added: "2026-04-15"
+    - id: graceful-missing-config
+      category: error-handling
+      pattern: >-
+        Code that reads configuration files from disk (e.g., forge config, env files) where other code paths already handle the missing-config case gracefully
+      check: >-
+        Verify that new code reading optional config files follows the same missing/absent semantics as existing code paths. If other functions treat a missing config as 'disabled' or 'skip enforcement', new consumers of that config must not unconditionally require it or fail hard when it's absent.
+      source: copilot:PR#640
+      added: "2026-04-15"
+    - id: avoid-redundant-config-iteration
+      category: performance
+      pattern: >-
+        Multiple functions in the same request handler independently iterate over the same configuration list or repeatedly shell out to external commands for the same data
+      check: >-
+        Verify that shared configuration or expensive external lookups (e.g., shelling out to git) are loaded once and reused across the handler, rather than re-iterated or re-invoked by separate helper functions in the same code path
+      source: copilot:PR#640
+      added: "2026-04-15"
+    - id: distinguish-db-not-found-from-errors
+      category: error-handling
+      pattern: >-
+        Database lookup returns a single error that is checked with a simple `if err != nil` and responds with 404
+      check: >-
+        Verify that database lookup errors distinguish `sql.ErrNoRows` (404 Not Found) from other errors (500 Internal Server Error with logging), so operational issues like query failures are not misreported as 'not found' to clients
+      source: copilot:PR#640
+      added: "2026-04-15"
+    - id: test-assert-setup-errors
+      category: testing
+      pattern: >-
+        Test helper or setup code that discards errors from DB inserts, HTTP calls, or other fallible operations (e.g. //nolint:errcheck, _ = expr)
+      check: >-
+        Verify that errors from test setup operations (inserts, creates, etc.) are captured and asserted with t.Fatalf. If setup silently fails, the test may pass for the wrong reason, masking real regressions.
+      source: copilot:PR#640
+      added: "2026-04-15"
+    - id: max-bytes-reader-size-and-error
+      category: error-handling
+      pattern: http.MaxBytesReader with a small limit (e.g. 1<<10) on JSON request bodies
+      check: >-
+        Ensure MaxBytesReader limits are large enough for realistic payloads (64KB+ for JSON APIs with text fields), and that *http.MaxBytesError is mapped to 413 Request Entity Too Large instead of a generic 400
+      source: copilot:PR#641
+      added: "2026-04-15"
+    - id: error-message-casing-consistency
+      category: style
+      pattern: >-
+        Error response strings containing abbreviations or acronyms (e.g., ID, URL, API, HTTP)
+      check: >-
+        Verify that abbreviations and acronyms in error messages use consistent casing (e.g., "ID" not "id") matching the conventions established in surrounding handlers and the broader codebase
+      source: copilot:PR#641
+      added: "2026-04-15"
+    - id: team-chore-assigned-child-validation
+      category: other
+      pattern: >-
+        Validation logic that checks child assignment against request child_ids for chores that support multiple completion modes (e.g., individual vs team)
+      check: >-
+        When a chore has an assigned child_id and supports team completion mode, verify that the validation logic differentiates between modes: for team chores, require the assigned child is *included* in child_ids (not that all IDs match it), and ensure the assigned child is first in the list if downstream code depends on ordering (e.g., childIDs[0]). For individual chores, require all child_ids to match the assigned child. Add test coverage for assigned team chore completions.
+      source: copilot:PR#641
+      added: "2026-04-15"
+    - id: i18n-no-hardcoded-time-references
+      category: ui
+      pattern: >-
+        Translation strings that reference a specific time like 'today', 'now', or 'yesterday' when the underlying feature allows selecting arbitrary dates or times
+      check: >-
+        Verify that user-facing strings do not hardcode temporal references (e.g. 'today', 'i dag', 'วันนี้') when the feature supports arbitrary date/time selection. The copy should be date-agnostic or interpolate the actual selected date, and all locale files must stay consistent with each other.
+      source: copilot:PR#642
+      added: "2026-04-15"
+    - id: lazy-load-modal-dependencies
+      category: performance
+      pattern: >-
+        Data fetched unconditionally on page mount but only used inside a modal or secondary UI
+      check: >-
+        Verify that data needed only for modals or on-demand UI is lazy-loaded when that UI is opened, not on every page visit. Ensure fetch failures surface user-visible feedback (toast/error state) rather than silently leaving the dependent UI broken.
+      source: copilot:PR#642
+      added: "2026-04-15"
+    - id: modal-selection-backend-constraints
+      category: ui
+      pattern: >-
+        Selection UI (checkboxes, multi-select, radio buttons) that submits to an API endpoint with server-side constraints on which options are valid
+      check: >-
+        When a modal or form allows user selection from a list, verify that the selectable options are filtered or constrained to match backend validation rules, so users cannot submit choices the backend will reject
+      source: copilot:PR#642
+      added: "2026-04-15"
+    - id: toast-severity-matches-intent
+      category: ui
+      pattern: >-
+        Code uses toast notifications with severity/type levels (error, warning, info, success) to communicate operation outcomes to users
+      check: >-
+        Verify the toast severity level matches the actual outcome: use 'error' only for failures, 'warning' or 'info' for partial success or skipped items, and 'success' for completed actions. A skipped or non-critical condition displayed as an error misleads users into thinking the action failed.
+      source: copilot:PR#642
+      added: "2026-04-15"
+    - id: toggle-aria-pressed
+      category: ui
+      pattern: >-
+        Two-state toggle buttons or selection controls that visually indicate active/selected state
+      check: >-
+        Verify that toggle buttons communicate their state via `aria-pressed="true"/"false"`, or that mutually exclusive selections use a proper radio group with appropriate ARIA roles, so keyboard and screen-reader users can determine the current selection
+      source: copilot:PR#642
+      added: "2026-04-15"
+    - id: changelog-trailing-newline
+      category: style
+      pattern: Files in changelog.d/ directory
+      check: >-
+        Verify that changelog fragment files end with a trailing blank line after the last bullet entry to stay consistent with existing changelog.d/* format and avoid accidental concatenation in tooling.
+      source: copilot:PR#642
+      added: "2026-04-15"
+    - id: no-retry-after-fetch-failure
+      category: error-handling
+      pattern: >-
+        A loaded/fetched flag is set to true in both success and catch paths of a data-fetching function
+      check: >-
+        Verify that 'loaded' or 'fetched' guard flags are only set on success, so that a transient failure does not permanently prevent retries without a full page reload
+      source: copilot:PR#642
+      added: "2026-04-15"
+    - id: state-update-after-unmount
+      category: concurrency
+      pattern: >-
+        Async operations (fetch, promises) that update component state outside of useEffect with cleanup
+      check: >-
+        Verify that all async operations which call setState have an abort/cancellation guard (AbortController or boolean flag) to prevent state updates after the component unmounts
+      source: copilot:PR#642
+      added: "2026-04-15"
+    - id: assigned-child-must-be-included
+      category: ui
+      pattern: >-
+        Submitting a form where a pre-assigned entity (e.g. assigned child) is part of a multi-select list that the user can modify
+      check: >-
+        When an entity is pre-assigned by the data model and must be included in the submission (e.g. assignedChildId in child_ids for team chores), ensure the UI either prevents deselection of that entity or re-adds it before submit, and shows a clear validation message if the required entity is missing
+      source: copilot:PR#642
+      added: "2026-04-15"
+    - id: unique-element-ids
+      category: ui
+      pattern: >-
+        Component uses hardcoded HTML element IDs (e.g., `id="some-fixed-string"`) in forms or labels
+      check: >-
+        Verify that element IDs are unique per component instance, using React's `useId()` or a similar mechanism, so that multiple instances on the same page do not produce duplicate IDs or broken label associations
+      source: copilot:PR#642
+      added: "2026-04-15"
+    - id: validate-numeric-preferences-before-use
+      category: error-handling
+      pattern: >-
+        Parsing numeric values from user preferences, settings, or other untyped string sources and using them in calculations or UI rendering
+      check: >-
+        Verify each parsed number is validated (e.g. parseInt with radix 10 + Number.isFinite, plus >0 where applicable) before use, with fallback to defaults when invalid; otherwise NaN can propagate into calculations and render as 'NaN:NaN' or diverge from server-side behavior
+      source: copilot:PR#643
+      added: "2026-04-17"
+    - id: mirror-backend-clamping-in-frontend-estimates
+      category: ui
+      pattern: >-
+        Frontend code computes a live preview or estimate that duplicates a calculation also performed on the backend (e.g. summing session durations, totals, or derived metrics)
+      check: >-
+        Verify the frontend mirrors any clamping, flooring, or validation the backend applies (e.g. Math.max(value, 0) for durations) so the preview cannot disagree with server-side results when data is malformed or inconsistent
+      source: copilot:PR#643
+      added: "2026-04-17"
+    - id: test-time-dependent-ui
+      category: testing
+      pattern: >-
+        User-facing UI with time-dependent behavior (live estimates, tick updates, conditional rendering based on time/state)
+      check: >-
+        Verify component-level tests exist using fake timers and mocked fetch responses to cover rendering branches and tick-driven updates, not just pure calculation helpers
+      source: copilot:PR#643
+      added: "2026-04-17"
+    - id: mirror-backend-edge-cases-in-tests
+      category: testing
+      pattern: >-
+        Frontend logic that mirrors backend calculations (e.g. duration/time clamping, validation) with accompanying unit tests
+      check: >-
+        Verify tests cover the same edge cases the backend handles — including invalid inputs like end_time <= start_time — so the frontend estimate stays consistent with backend behavior
+      source: copilot:PR#643
+      added: "2026-04-17"
+    - id: test-file-name-matches-unit
+      category: testing
+      pattern: >-
+        A new test file is added (e.g. *.test.ts/tsx, *_test.go) whose name does not match the module/unit it actually tests
+      check: >-
+        Verify the test file name matches the primary unit under test (e.g. workHoursUtils.test.ts for tests of workHoursUtils, not WorkHoursPage.test.ts). Rename the file if it tests a different module than its name implies, to keep the test suite discoverable and naming consistent.
+      source: copilot:PR#643
+      added: "2026-04-17"
+    - id: refresh-time-state-on-trigger
+      category: ui
+      pattern: >-
+        A `now`/current-time state variable is initialized once via `useState(new Date())` and only updated by a `setInterval` that starts when some condition becomes true (e.g. punched in, timer started, session active).
+      check: >-
+        Verify that `now` (or equivalent time state) is refreshed immediately when the triggering condition becomes true — not just on the next interval tick. Otherwise the first render after activation uses a stale timestamp from when the component mounted, which can produce incorrect elapsed-time displays or invalid-state messages until the interval fires.
+      source: copilot:PR#643
+      added: "2026-04-17"
+    - id: validate-hhmm-parsing
+      category: error-handling
+      pattern: >-
+        Frontend helpers parsing HH:MM time strings with Number() (e.g. workHoursUtils.calculateDayWithLivePunch) that mirror backend validators
+      check: >-
+        Verify the helper explicitly validates HH:MM format (single ':', hour 0–23, minute 0–59) and returns null/skips invalid entries instead of letting Number() produce NaN and silently corrupt downstream calculations or comparisons
+      source: copilot:PR#643
+      added: "2026-04-17"
+    - id: no-unused-imports-tests
+      category: testing
+      pattern: >-
+        Test files importing symbols from testing libraries (e.g., `act`, `render`, `screen`) from `@testing-library/react` or similar
+      check: >-
+        Verify every imported symbol is actually used in the file; unused imports fail TypeScript compilation under `noUnusedLocals: true`. Remove any import that isn't referenced.
+      source: copilot:PR#643
+      added: "2026-04-17"
+    - id: deterministic-time-tests
+      category: testing
+      pattern: >-
+        Tests that depend on the current wall-clock time (e.g., comparing values to 'now', using time-of-day assumptions in comments or assertions)
+      check: >-
+        Verify the test pins the clock with vi.useFakeTimers() and vi.setSystemTime() (advancing timers as needed) so behavior is deterministic regardless of when the test runs
+      source: copilot:PR#643
+      added: "2026-04-17"
+    - id: client-server-parity-on-invalid-input
+      category: error-handling
+      pattern: >-
+        Client-side reimplementation of server logic that silently skips or ignores malformed/invalid data (e.g., `continue` on parse failure) while the server returns an error
+      check: >-
+        Verify that client-side previews/estimates mirroring server computations handle invalid input the same way as the server — return null or surface an error rather than silently skipping records, so the preview stays faithful to what will be saved/shown server-side
+      source: copilot:PR#643
+      added: "2026-04-17"
