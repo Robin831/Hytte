@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculateDayWithLivePunch, type WorkSettings } from './WorkHoursPage'
+import { calculateDayWithLivePunch, type WorkSettings } from './workHoursUtils'
 
 const defaultSettings: WorkSettings = {
   standard_day_minutes: 450,
