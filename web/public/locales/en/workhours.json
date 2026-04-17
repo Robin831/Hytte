@@ -88,5 +88,16 @@
   "markInternal": "Mark as internal (meeting/admin)",
   "markExternal": "Mark as billable client work",
   "redeemFlex": "Redeem {{minutes}} min",
-  "redeemFlexError": "Failed to redeem flex time"
+  "redeemFlexError": "Failed to redeem flex time",
+  "punchEstimate": {
+    "title": "If punched out now",
+    "net": "Net",
+    "reported": "Reported",
+    "gross": "Gross",
+    "lunch": "Lunch",
+    "deductions": "Deductions",
+    "overStandard": "+{{amount}} over standard",
+    "atStandard": "Standard day reached",
+    "invalidStart": "Start time is in the future — cannot estimate"
+  }
 }

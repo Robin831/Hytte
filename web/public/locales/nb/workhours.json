@@ -88,5 +88,16 @@
   "markInternal": "Merk som interntid (møte/admin)",
   "markExternal": "Merk som fakturerbart klientarbeid",
   "redeemFlex": "Bruk {{minutes}} min",
-  "redeemFlexError": "Kunne ikke bruke flekstid"
+  "redeemFlexError": "Kunne ikke bruke flekstid",
+  "punchEstimate": {
+    "title": "Hvis du stempler ut nå",
+    "net": "Netto",
+    "reported": "Rapportert",
+    "gross": "Brutto",
+    "lunch": "Lunsj",
+    "deductions": "Fradrag",
+    "overStandard": "+{{amount}} over standard",
+    "atStandard": "Standarddag oppnådd",
+    "invalidStart": "Starttid er i fremtiden — kan ikke estimere"
+  }
 }

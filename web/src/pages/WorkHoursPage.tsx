@@ -6,25 +6,9 @@ import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
 import { Select, type SelectOption } from '../components/ui/select'
 import { TimePicker } from '../components/ui/time-picker'
+import { calculateDayWithLivePunch, type WorkSession, type WorkDeduction, type WorkSettings } from './workHoursUtils'
 
 // ── Interfaces ──────────────────────────────────────────────────────────────
-
-interface WorkSession {
-  id: number
-  day_id: number
-  start_time: string
-  end_time: string
-  sort_order: number
-  is_internal: boolean
-}
-
-interface WorkDeduction {
-  id: number
-  day_id: number
-  name: string
-  minutes: number
-  preset_id?: number | null
-}
 
 interface WorkDay {
   id: number
@@ -315,6 +299,7 @@ function currentTimeHHMM(): string {
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
 }
 
+
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export default function WorkHoursPage() {
@@ -420,6 +405,8 @@ function DayView({
   const [leaveSaving, setLeaveSaving] = useState(false)
   const [redeemingFlex, setRedeemingFlex] = useState(false)
   const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null)
+  const [workSettings, setWorkSettings] = useState<WorkSettings>({ standard_day_minutes: 450, lunch_minutes: 30, rounding_minutes: 30 })
+  const [now, setNow] = useState(() => new Date())
   const [recentlyUsed, setRecentlyUsed] = useState<number[]>(() => {
     try {
       const stored = localStorage.getItem('workhours_recent_presets')
@@ -507,7 +494,32 @@ function DayView({
         }
       })
       .catch(() => {})
+    fetch('/api/settings/preferences', { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then((data: { preferences?: Record<string, string> } | null) => {
+        const prefs = data?.preferences
+        if (prefs) {
+          const parsePref = (val: string | undefined, fallback: number, requirePositive = false): number => {
+            const n = parseInt(val ?? '', 10)
+            if (!Number.isFinite(n)) return fallback
+            if (requirePositive && n <= 0) return fallback
+            return n
+          }
+          setWorkSettings({
+            standard_day_minutes: parsePref(prefs.work_hours_standard_day, 450, true),
+            lunch_minutes: parsePref(prefs.work_hours_lunch_minutes, 30),
+            rounding_minutes: parsePref(prefs.work_hours_rounding, 30, true),
+          })
+        }
+      })
+      .catch(() => {})
   }, [loadFlex])
+
+  useEffect(() => {
+    if (punchStart === null) return
+    const id = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(id)
+  }, [punchStart])
 
   const loadLeaveDay = useCallback(async (date: string, signal?: AbortSignal) => {
     try {
@@ -1160,6 +1172,57 @@ function DayView({
                 )}
               </div>
             </div>
+
+            {punchStart !== null && (() => {
+              const estimate = calculateDayWithLivePunch(now, punchStart, sessions, lunchChecked, deductions, workSettings)
+              if (!estimate) {
+                return (
+                  <div className="rounded-lg border border-yellow-700/50 bg-yellow-900/20 px-3 py-2 text-xs text-yellow-400">
+                    {t('workhours:punchEstimate.invalidStart')}
+                  </div>
+                )
+              }
+              const overStandard = estimate.reportedMinutes > estimate.standardMinutes
+              const atStandard = estimate.reportedMinutes >= estimate.standardMinutes
+              return (
+                <section
+                  className={`rounded-lg border px-3 py-2.5 text-sm ${atStandard ? 'border-green-700/50 bg-green-900/20' : 'border-gray-700 bg-gray-800/50'}`}
+                >
+                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                    {t('workhours:punchEstimate.title')}
+                  </h3>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    <div>
+                      <span className="text-gray-400 text-xs">{t('workhours:punchEstimate.net')}</span>{' '}
+                      <span className="text-white font-mono text-sm">{formatMins(estimate.netMinutes)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 text-xs">{t('workhours:punchEstimate.reported')}</span>{' '}
+                      <span className="text-white font-mono text-sm">{formatMins(estimate.reportedMinutes)}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-500">
+                    <span>{t('workhours:punchEstimate.gross')}: <span className="font-mono">{formatMins(estimate.grossMinutes)}</span></span>
+                    {estimate.lunchMinutes > 0 && (
+                      <span>{t('workhours:punchEstimate.lunch')}: <span className="font-mono">{formatMins(estimate.lunchMinutes)}</span></span>
+                    )}
+                    {estimate.deductionMinutes > 0 && (
+                      <span>{t('workhours:punchEstimate.deductions')}: <span className="font-mono">{formatMins(estimate.deductionMinutes)}</span></span>
+                    )}
+                  </div>
+                  {overStandard && (
+                    <div className="mt-1 text-xs text-green-400">
+                      {t('workhours:punchEstimate.overStandard', { amount: formatMins(estimate.reportedMinutes - estimate.standardMinutes) })}
+                    </div>
+                  )}
+                  {atStandard && !overStandard && (
+                    <div className="mt-1 text-xs text-green-400">
+                      {t('workhours:punchEstimate.atStandard')}
+                    </div>
+                  )}
+                </section>
+              )
+            })()}
 
             {sessions.length > 0 && (
               <div className="space-y-2">
