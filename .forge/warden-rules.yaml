@@ -1338,9 +1338,9 @@ rules:
     - id: check-test-setup-exec-errors
       category: testing
       pattern: >-
-        Test helper or setup code that calls database Exec/Query and discards the error (`_, _ = db.Exec(...)` or only captures the result without checking `err`)
+        Test helper or setup code that calls database Exec/Query, HTTP calls, or other fallible operations and discards the error (`_, _ = db.Exec(...)`, `//nolint:errcheck`, or only captures the result without checking `err`)
       check: >-
-        Verify that all `db.Exec()` / `db.Query()` calls in test setup and teardown check the returned error and fail the test immediately (e.g., `t.Fatalf`) rather than discarding it with `_`. Ignoring errors in test helpers lets tests proceed in an unexpected state, producing misleading failures far from the root cause.
+        Verify that all fallible operations in test setup and teardown (DB inserts, Exec/Query calls, HTTP calls, creates, etc.) check the returned error and fail the test immediately (e.g., `t.Fatalf`) rather than discarding it with `_` or suppressing it. Ignoring errors in test helpers lets tests proceed in an unexpected state, producing misleading failures far from the root cause.
       source: copilot:PR#136
       added: "2026-03-20"
     - id: check-pragma-exec-errors
@@ -14496,21 +14496,6 @@ rules:
         Verify that each warden rule addresses a distinct concern. If two or more rules check for the same underlying issue (e.g., same API misuse, same error-handling pattern), merge them into a single rule or clearly differentiate their trigger patterns to avoid duplicate review feedback.
       source: copilot:PR#629
       added: "2026-04-13"
-    - id: no-duplicate-warden-rules
-      category: other
-      pattern: Adding a new rule to the warden-rules.yaml review checklist
-      check: >-
-        Verify that the new rule does not duplicate or substantially overlap with an existing rule. Search existing rules for similar ids, patterns, and guidance before adding. If overlap is found, merge the improved wording into the existing rule rather than creating a separate entry.
-      source: copilot:PR#638
-      added: "2026-04-15"
-    - id: deduplicate-overlapping-warden-rules
-      category: style
-      pattern: >-
-        Two or more warden rules in .forge/warden-rules.yaml have overlapping trigger patterns or address the same underlying requirement
-      check: >-
-        Verify that no two rules overlap enough to fire on the same change. If rules share the same core concern (e.g., sanitization consistency across render paths), merge them into one rule or tighten their patterns with explicit exclusion clauses so reviews don't produce duplicate comments for a single issue.
-      source: copilot:PR#638
-      added: "2026-04-15"
     - id: error-message-matches-condition
       category: error-handling
       pattern: >-
@@ -14572,14 +14557,6 @@ rules:
         Database lookup returns a single error that is checked with a simple `if err != nil` and responds with 404
       check: >-
         Verify that database lookup errors distinguish `sql.ErrNoRows` (404 Not Found) from other errors (500 Internal Server Error with logging), so operational issues like query failures are not misreported as 'not found' to clients
-      source: copilot:PR#640
-      added: "2026-04-15"
-    - id: test-assert-setup-errors
-      category: testing
-      pattern: >-
-        Test helper or setup code that discards errors from DB inserts, HTTP calls, or other fallible operations (e.g. //nolint:errcheck, _ = expr)
-      check: >-
-        Verify that errors from test setup operations (inserts, creates, etc.) are captured and asserted with t.Fatalf. If setup silently fails, the test may pass for the wrong reason, masking real regressions.
       source: copilot:PR#640
       added: "2026-04-15"
     - id: max-bytes-reader-size-and-error
