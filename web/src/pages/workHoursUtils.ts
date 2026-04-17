@@ -47,7 +47,8 @@ export function calculateDayWithLivePunch(
   for (const s of sessions) {
     const [sSh, sSm] = s.start_time.split(':').map(Number)
     const [sEh, sEm] = s.end_time.split(':').map(Number)
-    gross += sEh * 60 + sEm - (sSh * 60 + sSm)
+    const sessionDuration = sEh * 60 + sEm - (sSh * 60 + sSm)
+    gross += Math.max(sessionDuration, 0)
   }
 
   const lunchMin = lunch ? settings.lunch_minutes : 0

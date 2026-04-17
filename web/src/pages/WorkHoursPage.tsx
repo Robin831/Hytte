@@ -499,10 +499,16 @@ function DayView({
       .then((data: { preferences?: Record<string, string> } | null) => {
         const prefs = data?.preferences
         if (prefs) {
+          const parsePref = (val: string | undefined, fallback: number, requirePositive = false): number => {
+            const n = parseInt(val ?? '', 10)
+            if (!Number.isFinite(n)) return fallback
+            if (requirePositive && n <= 0) return fallback
+            return n
+          }
           setWorkSettings({
-            standard_day_minutes: prefs.work_hours_standard_day ? parseInt(prefs.work_hours_standard_day, 10) : 450,
-            lunch_minutes: prefs.work_hours_lunch_minutes ? parseInt(prefs.work_hours_lunch_minutes, 10) : 30,
-            rounding_minutes: prefs.work_hours_rounding ? parseInt(prefs.work_hours_rounding, 10) : 30,
+            standard_day_minutes: parsePref(prefs.work_hours_standard_day, 450, true),
+            lunch_minutes: parsePref(prefs.work_hours_lunch_minutes, 30),
+            rounding_minutes: parsePref(prefs.work_hours_rounding, 30, true),
           })
         }
       })

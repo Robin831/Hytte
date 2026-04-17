@@ -134,6 +134,23 @@ describe('calculateDayWithLivePunch', () => {
     expect(result!.reportedMinutes).toBe(225)
   })
 
+  it('ignores completed sessions with end_time at or before start_time', () => {
+    const result = calculateDayWithLivePunch(
+      makeDate(16, 0),
+      '14:00',
+      [
+        { id: 1, day_id: 1, start_time: '12:00', end_time: '11:00', sort_order: 0, is_internal: false },
+      ],
+      true,
+      [],
+      defaultSettings,
+    )
+    // invalid completed session contributes 0min, current=120min, gross=120, lunch=30, net=90, reported=90
+    expect(result!.grossMinutes).toBe(120)
+    expect(result!.netMinutes).toBe(90)
+    expect(result!.reportedMinutes).toBe(90)
+  })
+
   it('reports standardMinutes from settings', () => {
     const result = calculateDayWithLivePunch(
       makeDate(14, 0),
