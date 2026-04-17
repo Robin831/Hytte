@@ -106,7 +106,7 @@ describe('calculateDayWithLivePunch', () => {
     expect(result!.reportedMinutes).toBe(330)
   })
 
-  it('clamps net to zero when deductions exceed gross', () => {
+  it('clamps net to zero when lunch exceeds gross', () => {
     const result = calculateDayWithLivePunch(
       makeDate(10, 15),
       '10:00',

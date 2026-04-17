@@ -57,7 +57,7 @@ export function calculateDayWithLivePunch(
   for (const s of sessions) {
     const sMins = parseHHMM(s.start_time)
     const eMins = parseHHMM(s.end_time)
-    if (sMins === null || eMins === null) continue
+    if (sMins === null || eMins === null) return null
     const sessionDuration = eMins - sMins
     gross += Math.max(sessionDuration, 0)
   }
