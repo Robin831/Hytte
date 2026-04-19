@@ -494,6 +494,7 @@ export default function StridePage() {
   const [generateError, setGenerateError] = useState('')
   const [rerunningDate, setRerunningDate] = useState<string | null>(null)
   const [rerunError, setRerunError] = useState('')
+  const rerunAbortRef = useRef<AbortController | null>(null)
 
   // Race form state
   const [showRaceForm, setShowRaceForm] = useState(false)
@@ -660,6 +661,7 @@ export default function StridePage() {
   useEffect(() => {
     return () => {
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+      if (rerunAbortRef.current) rerunAbortRef.current.abort()
     }
   }, [])
 
@@ -722,11 +724,16 @@ export default function StridePage() {
   async function handleRerunDay(date: string) {
     setRerunError('')
     setRerunningDate(date)
+    if (rerunAbortRef.current) rerunAbortRef.current.abort()
+    const controller = new AbortController()
+    rerunAbortRef.current = controller
     try {
       const res = await fetch(`/api/stride/days/${date}/reevaluate`, {
         method: 'POST',
         credentials: 'include',
+        signal: controller.signal,
       })
+      if (controller.signal.aborted) return
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setRerunError(data.error ?? t('plan.rerunError'))
@@ -737,18 +744,26 @@ export default function StridePage() {
           loadEvaluationsForPlan(currentPlan.id),
           previousPlanId ? loadEvaluationsForPlan(previousPlanId) : Promise.resolve([]),
         ])
+        if (controller.signal.aborted) return
         const byId = new Map<number, StrideEvaluationRecord>()
         for (const e of [...prev, ...curr]) byId.set(e.id, e)
         setEvaluations(Array.from(byId.values()))
       }
       await loadNotes()
+      if (controller.signal.aborted) return
       setChangedDates(new Set([date]))
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
       highlightTimerRef.current = setTimeout(() => setChangedDates(new Set()), 3000)
-    } catch {
+    } catch (err) {
+      if ((err as { name?: string })?.name === 'AbortError') return
       setRerunError(t('plan.rerunError'))
     } finally {
-      setRerunningDate(null)
+      if (rerunAbortRef.current === controller) {
+        rerunAbortRef.current = null
+      }
+      if (!controller.signal.aborted) {
+        setRerunningDate(null)
+      }
     }
   }
 

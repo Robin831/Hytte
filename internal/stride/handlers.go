@@ -130,7 +130,7 @@ func ReEvaluateDayHandler(db *sql.DB) http.HandlerFunc {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 				return
 			}
-			if strings.Contains(err.Error(), "no stride plan") {
+			if errors.Is(err, ErrNoStridePlan) {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 				return
 			}
