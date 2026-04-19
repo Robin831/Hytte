@@ -374,6 +374,10 @@ func ReEvaluateDate(ctx context.Context, db *sql.DB, httpClient *http.Client, us
 		}
 	}
 
+	if len(newRecords) == 0 {
+		return 0, nil
+	}
+
 	// Phase 2: encrypt new payloads up-front so any encryption error fails before
 	// we delete anything.
 	type insertPayload struct {

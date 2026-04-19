@@ -741,15 +741,15 @@ export default function StridePage() {
       }
       if (currentPlan) {
         const [curr, prev] = await Promise.all([
-          loadEvaluationsForPlan(currentPlan.id),
-          previousPlanId ? loadEvaluationsForPlan(previousPlanId) : Promise.resolve([]),
+          loadEvaluationsForPlan(currentPlan.id, controller.signal),
+          previousPlanId ? loadEvaluationsForPlan(previousPlanId, controller.signal) : Promise.resolve([]),
         ])
         if (controller.signal.aborted) return
         const byId = new Map<number, StrideEvaluationRecord>()
         for (const e of [...prev, ...curr]) byId.set(e.id, e)
         setEvaluations(Array.from(byId.values()))
       }
-      await loadNotes()
+      await loadNotes(controller.signal)
       if (controller.signal.aborted) return
       setChangedDates(new Set([date]))
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
