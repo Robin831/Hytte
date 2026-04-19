@@ -220,6 +220,220 @@ func evaluateUserWorkouts(ctx context.Context, db *sql.DB, httpClient *http.Clie
 	return nil
 }
 
+// queryWorkoutsOnDate returns all workouts for a user that started on the given
+// YYYY-MM-DD date. Workout titles are decrypted.
+func queryWorkoutsOnDate(ctx context.Context, db *sql.DB, userID int64, date string) ([]training.Workout, error) {
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return nil, fmt.Errorf("parse date %q: %w", date, err)
+	}
+	dayStart := date + "T00:00:00Z"
+	dayEnd := t.AddDate(0, 0, 1).Format("2006-01-02") + "T00:00:00Z"
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT w.id, w.user_id, w.sport, w.sub_sport, w.is_indoor, w.title, w.started_at,
+		       w.duration_seconds, w.distance_meters, w.avg_heart_rate, w.max_heart_rate,
+		       w.avg_pace_sec_per_km, w.avg_cadence, w.calories,
+		       w.ascent_meters, w.descent_meters, w.fit_file_hash, w.analysis_status, w.title_source,
+		       w.created_at, w.training_load, w.hr_drift_pct, w.pace_cv_pct
+		FROM workouts w
+		WHERE w.user_id = ?
+		  AND w.started_at >= ?
+		  AND w.started_at < ?
+		ORDER BY w.started_at ASC
+	`, userID, dayStart, dayEnd)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var workouts []training.Workout
+	for rows.Next() {
+		var w training.Workout
+		var isIndoor int
+		var trainingLoad, hrDriftPct, paceCVPct sql.NullFloat64
+		if err := rows.Scan(
+			&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
+			&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate, &w.MaxHeartRate,
+			&w.AvgPaceSecPerKm, &w.AvgCadence, &w.Calories,
+			&w.AscentMeters, &w.DescentMeters, &w.FitFileHash, &w.AnalysisStatus, &w.TitleSource,
+			&w.CreatedAt, &trainingLoad, &hrDriftPct, &paceCVPct,
+		); err != nil {
+			log.Printf("stride eval: scan workout: %v", err)
+			continue
+		}
+		w.IsIndoor = isIndoor != 0
+		if trainingLoad.Valid {
+			w.TrainingLoad = &trainingLoad.Float64
+		}
+		if hrDriftPct.Valid {
+			w.HRDriftPct = &hrDriftPct.Float64
+		}
+		if paceCVPct.Valid {
+			w.PaceCVPct = &paceCVPct.Float64
+		}
+		if decTitle, decErr := encryption.DecryptField(w.Title); decErr != nil {
+			log.Printf("stride eval: workout %d: failed to decrypt title: %v; omitting from prompt", w.ID, decErr)
+			w.Title = ""
+		} else {
+			w.Title = decTitle
+		}
+		workouts = append(workouts, w)
+	}
+	return workouts, rows.Err()
+}
+
+// ReEvaluateDate deletes any existing stride evaluations for the given user and
+// date (both workout-linked and date-only entries for plans covering the date)
+// and re-runs the coach evaluation with any currently active notes targeting
+// that date. Active notes used during the re-run are marked consumed_by="manual".
+// It returns the number of new evaluations produced.
+func ReEvaluateDate(ctx context.Context, db *sql.DB, httpClient *http.Client, userID int64, date string) (int, error) {
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return 0, fmt.Errorf("parse date %q: %w", date, err)
+	}
+
+	claudeCfg, err := training.LoadClaudeConfig(db, userID)
+	if err != nil {
+		return 0, fmt.Errorf("load claude config: %w", err)
+	}
+	if !claudeCfg.Enabled {
+		return 0, training.ErrClaudeNotEnabled
+	}
+
+	plan, err := getPlanContainingDate(ctx, db, userID, date)
+	if err != nil {
+		return 0, fmt.Errorf("find plan for date %s: %w", date, err)
+	}
+	if plan == nil {
+		return 0, fmt.Errorf("no stride plan covers date %s", date)
+	}
+
+	workouts, err := queryWorkoutsOnDate(ctx, db, userID, date)
+	if err != nil {
+		return 0, fmt.Errorf("query workouts for date %s: %w", date, err)
+	}
+
+	// Gather active notes targeting this date so the re-run picks up any
+	// correcting context the user added after the original evaluation.
+	allNotes, err := GetNotesByTargetDate(db, userID, date)
+	if err != nil {
+		log.Printf("stride eval: fetch notes for user %d date %s: %v", userID, date, err)
+	}
+	notes := make([]Note, 0, len(allNotes))
+	for _, n := range allNotes {
+		if n.ConsumedAt == nil {
+			notes = append(notes, n)
+		}
+	}
+
+	// Remove any existing evaluations for this date so the re-run produces a
+	// single fresh record per workout (or per plan+date for non-workout days).
+	if len(workouts) > 0 {
+		ids := make([]any, 0, len(workouts)+1)
+		ids = append(ids, userID)
+		placeholders := make([]string, len(workouts))
+		for i, w := range workouts {
+			placeholders[i] = "?"
+			ids = append(ids, w.ID)
+		}
+		q := `DELETE FROM stride_evaluations WHERE user_id = ? AND workout_id IN (` + strings.Join(placeholders, ",") + `)`
+		if _, err := db.ExecContext(ctx, q, ids...); err != nil {
+			return 0, fmt.Errorf("delete existing workout evaluations: %w", err)
+		}
+	}
+	if err := deleteDateEvaluationsForPlan(ctx, db, userID, plan.ID, date); err != nil {
+		return 0, fmt.Errorf("delete existing date evaluations: %w", err)
+	}
+
+	profile := training.BuildUserTrainingProfile(db, userID)
+	produced := 0
+	for _, workout := range workouts {
+		evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+		if err := evaluateSingleWorkout(evalCtx, db, httpClient, userID, workout, claudeCfg, profile, notes); err != nil {
+			cancel()
+			return produced, fmt.Errorf("evaluate workout %d: %w", workout.ID, err)
+		}
+		cancel()
+		produced++
+	}
+
+	// No workout uploaded for the date — run the rest-day / missed-session path
+	// so the evaluation reflects the planned session against an empty slot.
+	if len(workouts) == 0 {
+		if err := evaluateRestDaysAndMissedSessions(ctx, db, claudeCfg, userID, date); err != nil {
+			return produced, fmt.Errorf("evaluate rest/missed for %s: %w", date, err)
+		}
+		produced++
+	}
+
+	if len(notes) > 0 {
+		noteIDs := make([]int64, len(notes))
+		for i, n := range notes {
+			noteIDs[i] = n.ID
+		}
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			log.Printf("stride eval: begin tx to mark notes consumed for user %d: %v", userID, err)
+		} else {
+			defer tx.Rollback() //nolint:errcheck
+			if err := MarkNotesConsumed(ctx, tx, userID, noteIDs, "manual"); err != nil {
+				log.Printf("stride eval: mark notes consumed for user %d: %v", userID, err)
+			} else if err := tx.Commit(); err != nil {
+				log.Printf("stride eval: commit notes consumed for user %d: %v", userID, err)
+			}
+		}
+	}
+
+	return produced, nil
+}
+
+// deleteDateEvaluationsForPlan scans non-workout evaluations for the given plan
+// and removes any whose decrypted Evaluation.Date matches the target date.
+// Used by ReEvaluateDate to clear prior rest-day / missed-session records
+// before generating a fresh one.
+func deleteDateEvaluationsForPlan(ctx context.Context, db *sql.DB, userID, planID int64, date string) error {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, eval_json FROM stride_evaluations
+		WHERE user_id = ? AND plan_id = ? AND workout_id IS NULL
+	`, userID, planID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var toDelete []int64
+	for rows.Next() {
+		var id int64
+		var encJSON string
+		if err := rows.Scan(&id, &encJSON); err != nil {
+			return err
+		}
+		decJSON, derr := encryption.DecryptField(encJSON)
+		if derr != nil {
+			log.Printf("stride eval: decrypt date-eval %d: %v", id, derr)
+			continue
+		}
+		var e Evaluation
+		if err := json.Unmarshal([]byte(decJSON), &e); err != nil {
+			log.Printf("stride eval: unmarshal date-eval %d: %v", id, err)
+			continue
+		}
+		if e.Date == date {
+			toDelete = append(toDelete, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range toDelete {
+		if _, err := db.ExecContext(ctx, `DELETE FROM stride_evaluations WHERE id = ?`, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // queryUnevaluatedWorkouts returns workouts for a user started at or after since
 // that do not yet have a stride_evaluation record.
 func queryUnevaluatedWorkouts(ctx context.Context, db *sql.DB, userID int64, since string) ([]training.Workout, error) {

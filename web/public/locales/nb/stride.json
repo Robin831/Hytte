@@ -10,6 +10,8 @@
     "generating": "Genererer...",
     "loadError": "Kunne ikke laste plan",
     "generateError": "Kunne ikke generere plan",
+    "rerunCoach": "Kjør treneranalysen på nytt for denne dagen",
+    "rerunError": "Kunne ikke kjøre treneranalysen på nytt",
     "weekOf": "Uke {{start}} – {{end}}",
     "phase": "Fase: {{phase}}",
     "generatedAt": "Generert {{date}}",
@@ -71,7 +73,8 @@
     "consumedBy": "Brukt av {{process}} den {{date}}",
     "consumedByProcess": {
       "nightly": "Nattlig",
-      "weekly": "Ukentlig"
+      "weekly": "Ukentlig",
+      "manual": "Manuell ny kjøring"
     }
   },
   "history": {

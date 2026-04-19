@@ -117,7 +117,7 @@ function flagIsSevere(flag: string): boolean {
   return flag === 'overtraining' || flag === 'injury_risk'
 }
 
-function DayCard({ day, completed, evaluation, changedDates }: { day: DayPlan; completed: boolean; evaluation?: StrideEvaluationRecord; changedDates?: Set<string> }) {
+function DayCard({ day, completed, evaluation, changedDates, onRerun, rerunning }: { day: DayPlan; completed: boolean; evaluation?: StrideEvaluationRecord; changedDates?: Set<string>; onRerun?: (date: string) => void; rerunning?: boolean }) {
   const { t } = useTranslation('stride')
   const [expanded, setExpanded] = useState(false)
 
@@ -131,62 +131,78 @@ function DayCard({ day, completed, evaluation, changedDates }: { day: DayPlan; c
 
   return (
     <div className={`bg-gray-800 rounded-xl border border-gray-700 overflow-hidden transition-all duration-1000 ${isHighlighted ? 'ring-2 ring-yellow-400/50' : ''}`}>
-      <button
-        type="button"
-        onClick={() => hasExpandableContent && setExpanded(v => !v)}
-        className={`w-full flex items-center gap-3 p-3 text-left ${hasExpandableContent ? 'hover:bg-gray-700 active:bg-gray-600 cursor-pointer' : 'cursor-default'}`}
-        aria-expanded={expanded && hasExpandableContent}
-        aria-controls={`day-details-${day.date}`}
-        disabled={!hasExpandableContent}
-      >
-        {/* Completion / evaluation indicator */}
-        <div className="flex-shrink-0">
-          {evaluation ? (
-            complianceIcon(evaluation.eval.compliance)
-          ) : completed ? (
-            <CheckCircle2 size={18} className="text-green-400" />
-          ) : (
-            <Circle size={18} className="text-gray-600" />
-          )}
-        </div>
-
-        {/* Day + date */}
-        <div className="flex-shrink-0 w-16">
-          <p className="text-xs font-semibold text-gray-400 uppercase">{dayName}</p>
-          <p className="text-sm text-gray-300">{dateLabel}</p>
-        </div>
-
-        {/* Session summary + compliance badge + flag indicators */}
-        <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
-          {day.rest_day ? (
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">{t('plan.restDay')}</span>
-          ) : day.session ? (
-            <p className="text-sm text-white truncate">{day.session.description}</p>
-          ) : null}
-          {evaluation && complianceLabel && (
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${complianceBadgeClass(evaluation.eval.compliance)}`}>
-              {complianceLabel}
-            </span>
-          )}
-          {evaluation && Array.isArray(evaluation.eval.flags) && evaluation.eval.flags.length > 0 && (
-            <span className="flex items-center gap-1 text-xs text-yellow-400" aria-label={t('evaluation.warnings')}>
-              <AlertTriangle size={12} />
-              {evaluation.eval.flags.length}
-            </span>
-          )}
-        </div>
-
-        {/* Expand chevron */}
-        {hasExpandableContent && (
+      <div className="relative flex items-stretch">
+        <button
+          type="button"
+          onClick={() => hasExpandableContent && setExpanded(v => !v)}
+          className={`flex-1 min-w-0 flex items-center gap-3 p-3 text-left ${hasExpandableContent ? 'hover:bg-gray-700 active:bg-gray-600 cursor-pointer' : 'cursor-default'}`}
+          aria-expanded={expanded && hasExpandableContent}
+          aria-controls={`day-details-${day.date}`}
+          disabled={!hasExpandableContent}
+        >
+          {/* Completion / evaluation indicator */}
           <div className="flex-shrink-0">
-            {expanded ? (
-              <ChevronUp size={16} className="text-gray-500" />
+            {evaluation ? (
+              complianceIcon(evaluation.eval.compliance)
+            ) : completed ? (
+              <CheckCircle2 size={18} className="text-green-400" />
             ) : (
-              <ChevronDown size={16} className="text-gray-500" />
+              <Circle size={18} className="text-gray-600" />
             )}
           </div>
+
+          {/* Day + date */}
+          <div className="flex-shrink-0 w-16">
+            <p className="text-xs font-semibold text-gray-400 uppercase">{dayName}</p>
+            <p className="text-sm text-gray-300">{dateLabel}</p>
+          </div>
+
+          {/* Session summary + compliance badge + flag indicators */}
+          <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+            {day.rest_day ? (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-700 text-gray-400">{t('plan.restDay')}</span>
+            ) : day.session ? (
+              <p className="text-sm text-white truncate">{day.session.description}</p>
+            ) : null}
+            {evaluation && complianceLabel && (
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${complianceBadgeClass(evaluation.eval.compliance)}`}>
+                {complianceLabel}
+              </span>
+            )}
+            {evaluation && Array.isArray(evaluation.eval.flags) && evaluation.eval.flags.length > 0 && (
+              <span className="flex items-center gap-1 text-xs text-yellow-400" aria-label={t('evaluation.warnings')}>
+                <AlertTriangle size={12} />
+                {evaluation.eval.flags.length}
+              </span>
+            )}
+          </div>
+
+          {/* Expand chevron */}
+          {hasExpandableContent && (
+            <div className="flex-shrink-0">
+              {expanded ? (
+                <ChevronUp size={16} className="text-gray-500" />
+              ) : (
+                <ChevronDown size={16} className="text-gray-500" />
+              )}
+            </div>
+          )}
+        </button>
+
+        {/* Rerun coach evaluation for this day */}
+        {onRerun && (
+          <button
+            type="button"
+            onClick={() => onRerun(day.date)}
+            disabled={rerunning}
+            className="flex-shrink-0 px-3 flex items-center text-gray-500 hover:text-yellow-400 disabled:text-gray-600 disabled:cursor-not-allowed transition-colors border-l border-gray-700"
+            aria-label={t('plan.rerunCoach')}
+            title={t('plan.rerunCoach')}
+          >
+            <RefreshCw size={14} className={rerunning ? 'animate-spin' : ''} />
+          </button>
         )}
-      </button>
+      </div>
 
       {/* Accordion panel — CSS grid transition so expand/collapse animates smoothly on mobile */}
       <div
@@ -476,6 +492,8 @@ export default function StridePage() {
   const [planError, setPlanError] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [generateError, setGenerateError] = useState('')
+  const [rerunningDate, setRerunningDate] = useState<string | null>(null)
+  const [rerunError, setRerunError] = useState('')
 
   // Race form state
   const [showRaceForm, setShowRaceForm] = useState(false)
@@ -699,6 +717,39 @@ export default function StridePage() {
     if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
     if (parts.length === 2) return parts[0] * 3600 + parts[1] * 60 // H:MM for race times
     return null
+  }
+
+  async function handleRerunDay(date: string) {
+    setRerunError('')
+    setRerunningDate(date)
+    try {
+      const res = await fetch(`/api/stride/days/${date}/reevaluate`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setRerunError(data.error ?? t('plan.rerunError'))
+        return
+      }
+      if (currentPlan) {
+        const [curr, prev] = await Promise.all([
+          loadEvaluationsForPlan(currentPlan.id),
+          previousPlanId ? loadEvaluationsForPlan(previousPlanId) : Promise.resolve([]),
+        ])
+        const byId = new Map<number, StrideEvaluationRecord>()
+        for (const e of [...prev, ...curr]) byId.set(e.id, e)
+        setEvaluations(Array.from(byId.values()))
+      }
+      await loadNotes()
+      setChangedDates(new Set([date]))
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current)
+      highlightTimerRef.current = setTimeout(() => setChangedDates(new Set()), 3000)
+    } catch {
+      setRerunError(t('plan.rerunError'))
+    } finally {
+      setRerunningDate(null)
+    }
   }
 
   async function handleGeneratePlan() {
@@ -933,6 +984,10 @@ export default function StridePage() {
           <p className="mb-3 text-sm text-red-400">{generateError}</p>
         )}
 
+        {rerunError && (
+          <p className="mb-3 text-sm text-red-400">{rerunError}</p>
+        )}
+
         {planLoading ? (
           <p className="text-sm text-gray-400">{t('loading')}</p>
         ) : planError ? (
@@ -972,6 +1027,8 @@ export default function StridePage() {
                   completed={completedDates.has(day.date)}
                   evaluation={dayEvaluationMap.get(day.date)}
                   changedDates={changedDates}
+                  onRerun={handleRerunDay}
+                  rerunning={rerunningDate === day.date}
                 />
               ))}
             </div>
@@ -1281,7 +1338,9 @@ export default function StridePage() {
                               ? t('notes.consumedByProcess.nightly')
                               : note.consumed_by === 'weekly'
                                 ? t('notes.consumedByProcess.weekly')
-                                : null
+                                : note.consumed_by === 'manual'
+                                  ? t('notes.consumedByProcess.manual')
+                                  : null
                             const consumedDate = note.consumed_at ? formatDate(note.consumed_at) : null
                             if (!consumedByLabel || !consumedDate) return null
                             return (
