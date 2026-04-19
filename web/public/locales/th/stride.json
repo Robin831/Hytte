@@ -10,6 +10,8 @@
     "generating": "กำลังสร้าง...",
     "loadError": "ไม่สามารถโหลดแผนได้",
     "generateError": "ไม่สามารถสร้างแผนได้",
+    "rerunCoach": "รันการประเมินของโค้ชใหม่สำหรับวันนี้",
+    "rerunError": "ไม่สามารถรันการประเมินของโค้ชใหม่ได้",
     "weekOf": "สัปดาห์ {{start}} – {{end}}",
     "phase": "ระยะ: {{phase}}",
     "generatedAt": "สร้างเมื่อ {{date}}",
@@ -71,7 +73,8 @@
     "consumedBy": "ใช้โดย {{process}} เมื่อ {{date}}",
     "consumedByProcess": {
       "nightly": "ทุกคืน",
-      "weekly": "ทุกสัปดาห์"
+      "weekly": "ทุกสัปดาห์",
+      "manual": "รันใหม่ด้วยตนเอง"
     }
   },
   "history": {

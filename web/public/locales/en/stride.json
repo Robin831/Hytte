@@ -10,6 +10,8 @@
     "generating": "Generating...",
     "loadError": "Failed to load plan",
     "generateError": "Failed to generate plan",
+    "rerunCoach": "Re-run coach evaluation for this day",
+    "rerunError": "Failed to re-run coach evaluation",
     "weekOf": "Week of {{start}} – {{end}}",
     "phase": "Phase: {{phase}}",
     "generatedAt": "Generated {{date}}",
@@ -71,7 +73,8 @@
     "consumedBy": "Used by {{process}} on {{date}}",
     "consumedByProcess": {
       "nightly": "Nightly",
-      "weekly": "Weekly"
+      "weekly": "Weekly",
+      "manual": "Manual re-run"
     }
   },
   "history": {

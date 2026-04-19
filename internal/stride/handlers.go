@@ -110,6 +110,42 @@ func ListEvaluationsHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// ReEvaluateDayHandler re-runs the coach evaluation for a single date in the
+// authenticated user's plan week. Any currently active notes targeting that
+// date are fed into the re-run and marked consumed_by="manual" on success.
+// POST /api/stride/days/{date}/reevaluate
+func ReEvaluateDayHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		date := chi.URLParam(r, "date")
+		if _, err := time.Parse("2006-01-02", date); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "date must be in YYYY-MM-DD format"})
+			return
+		}
+
+		produced, err := ReEvaluateDate(r.Context(), db, http.DefaultClient, user.ID, date)
+		if err != nil {
+			if errors.Is(err, training.ErrClaudeNotEnabled) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+			if errors.Is(err, ErrNoStridePlan) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+				return
+			}
+			log.Printf("stride: reevaluate date %s for user %d: %v", date, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "re-evaluation failed"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"evaluated": produced,
+			"status":    "ok",
+		})
+	}
+}
+
 // TriggerEvaluationHandler manually triggers evaluation of the authenticated user's
 // unevaluated workouts from the past 24 hours via the stride AI engine.
 // POST /api/stride/evaluate

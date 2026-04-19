@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -14,6 +15,11 @@ import (
 	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/training"
 )
+
+// ErrNoStridePlan is returned by re-evaluation operations when no stride plan
+// covers the requested date. Handlers can match on this to return 404 without
+// string-matching the error message.
+var ErrNoStridePlan = errors.New("no stride plan covers this date")
 
 // Evaluation note templates for rest days and missed sessions.
 const (
@@ -217,6 +223,355 @@ func evaluateUserWorkouts(ctx context.Context, db *sql.DB, httpClient *http.Clie
 		log.Printf("stride eval: rest/missed check for user %d: %v", userID, err)
 	}
 
+	return nil
+}
+
+// queryWorkoutsOnDate returns all workouts for a user that started on the given
+// YYYY-MM-DD date. Workout titles are decrypted.
+func queryWorkoutsOnDate(ctx context.Context, db *sql.DB, userID int64, date string) ([]training.Workout, error) {
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return nil, fmt.Errorf("parse date %q: %w", date, err)
+	}
+	dayStart := date + "T00:00:00Z"
+	dayEnd := t.AddDate(0, 0, 1).Format("2006-01-02") + "T00:00:00Z"
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT w.id, w.user_id, w.sport, w.sub_sport, w.is_indoor, w.title, w.started_at,
+		       w.duration_seconds, w.distance_meters, w.avg_heart_rate, w.max_heart_rate,
+		       w.avg_pace_sec_per_km, w.avg_cadence, w.calories,
+		       w.ascent_meters, w.descent_meters, w.fit_file_hash, w.analysis_status, w.title_source,
+		       w.created_at, w.training_load, w.hr_drift_pct, w.pace_cv_pct
+		FROM workouts w
+		WHERE w.user_id = ?
+		  AND w.started_at >= ?
+		  AND w.started_at < ?
+		ORDER BY w.started_at ASC
+	`, userID, dayStart, dayEnd)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var workouts []training.Workout
+	for rows.Next() {
+		var w training.Workout
+		var isIndoor int
+		var trainingLoad, hrDriftPct, paceCVPct sql.NullFloat64
+		if err := rows.Scan(
+			&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
+			&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate, &w.MaxHeartRate,
+			&w.AvgPaceSecPerKm, &w.AvgCadence, &w.Calories,
+			&w.AscentMeters, &w.DescentMeters, &w.FitFileHash, &w.AnalysisStatus, &w.TitleSource,
+			&w.CreatedAt, &trainingLoad, &hrDriftPct, &paceCVPct,
+		); err != nil {
+			log.Printf("stride eval: scan workout: %v", err)
+			continue
+		}
+		w.IsIndoor = isIndoor != 0
+		if trainingLoad.Valid {
+			w.TrainingLoad = &trainingLoad.Float64
+		}
+		if hrDriftPct.Valid {
+			w.HRDriftPct = &hrDriftPct.Float64
+		}
+		if paceCVPct.Valid {
+			w.PaceCVPct = &paceCVPct.Float64
+		}
+		if decTitle, decErr := encryption.DecryptField(w.Title); decErr != nil {
+			log.Printf("stride eval: workout %d: failed to decrypt title: %v; omitting from prompt", w.ID, decErr)
+			w.Title = ""
+		} else {
+			w.Title = decTitle
+		}
+		workouts = append(workouts, w)
+	}
+	return workouts, rows.Err()
+}
+
+// reEvalRecord is a Claude-produced evaluation held in memory by ReEvaluateDate
+// before any DB mutation. workoutID == nil indicates a date-only (rest day or
+// missed session) evaluation.
+type reEvalRecord struct {
+	workoutID *int64
+	eval      *Evaluation
+}
+
+// ReEvaluateDate re-runs the coach evaluation for a single date for one user.
+// It first calls Claude to produce all new evaluations in memory, then atomically
+// swaps them in (delete existing + insert new + mark notes consumed) inside a
+// single transaction. If Claude fails for any workout, no DB rows are touched
+// so the prior coach output is preserved. Active notes used during the re-run
+// are marked consumed_by="manual" only when the new evaluations actually persist.
+// Returns the number of new evaluations produced and ErrNoStridePlan when no
+// plan covers the date.
+func ReEvaluateDate(ctx context.Context, db *sql.DB, httpClient *http.Client, userID int64, date string) (int, error) {
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return 0, fmt.Errorf("parse date %q: %w", date, err)
+	}
+
+	claudeCfg, err := training.LoadClaudeConfig(db, userID)
+	if err != nil {
+		return 0, fmt.Errorf("load claude config: %w", err)
+	}
+	if !claudeCfg.Enabled {
+		return 0, training.ErrClaudeNotEnabled
+	}
+
+	plan, err := getPlanContainingDate(ctx, db, userID, date)
+	if err != nil {
+		return 0, fmt.Errorf("find plan for date %s: %w", date, err)
+	}
+	if plan == nil {
+		return 0, ErrNoStridePlan
+	}
+
+	workouts, err := queryWorkoutsOnDate(ctx, db, userID, date)
+	if err != nil {
+		return 0, fmt.Errorf("query workouts for date %s: %w", date, err)
+	}
+
+	// Gather active notes targeting this date so the re-run picks up any
+	// correcting context the user added after the original evaluation.
+	allNotes, err := GetNotesByTargetDate(db, userID, date)
+	if err != nil {
+		log.Printf("stride eval: fetch notes for user %d date %s: %v", userID, date, err)
+	}
+	notes := make([]Note, 0, len(allNotes))
+	for _, n := range allNotes {
+		if n.ConsumedAt == nil {
+			notes = append(notes, n)
+		}
+	}
+
+	// Phase 1: build all new evaluations in memory by calling Claude. If anything
+	// fails we return without touching the existing rows, so the prior coach
+	// output for this date stays intact.
+	profile := training.BuildUserTrainingProfile(db, userID)
+	sessions := extractPlannedSessions(*plan)
+	var newRecords []reEvalRecord
+	for _, workout := range workouts {
+		matchedSession := MatchWorkoutToSession(workout, sessions)
+		evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+		eval, err := EvaluateWorkout(evalCtx, claudeCfg, workout, matchedSession, *plan, profile, notes)
+		cancel()
+		if err != nil {
+			return 0, fmt.Errorf("evaluate workout %d: %w", workout.ID, err)
+		}
+		wid := workout.ID
+		newRecords = append(newRecords, reEvalRecord{workoutID: &wid, eval: eval})
+	}
+
+	if len(workouts) == 0 {
+		evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+		eval, err := buildDateEval(evalCtx, claudeCfg, *plan, date, notes)
+		cancel()
+		if err != nil {
+			return 0, fmt.Errorf("evaluate rest/missed for %s: %w", date, err)
+		}
+		if eval != nil {
+			newRecords = append(newRecords, reEvalRecord{workoutID: nil, eval: eval})
+		}
+	}
+
+	if len(newRecords) == 0 {
+		return 0, nil
+	}
+
+	// Phase 2: encrypt new payloads up-front so any encryption error fails before
+	// we delete anything.
+	type insertPayload struct {
+		workoutID *int64
+		encJSON   string
+	}
+	inserts := make([]insertPayload, 0, len(newRecords))
+	for _, rec := range newRecords {
+		evalBytes, err := json.Marshal(rec.eval)
+		if err != nil {
+			return 0, fmt.Errorf("marshal eval: %w", err)
+		}
+		encEval, err := encryption.EncryptField(string(evalBytes))
+		if err != nil {
+			return 0, fmt.Errorf("encrypt eval: %w", err)
+		}
+		inserts = append(inserts, insertPayload{workoutID: rec.workoutID, encJSON: encEval})
+	}
+
+	// Phase 3: atomically swap in the new records in a single transaction.
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	if len(workouts) > 0 {
+		args := make([]any, 0, len(workouts)+1)
+		args = append(args, userID)
+		placeholders := make([]string, len(workouts))
+		for i, w := range workouts {
+			placeholders[i] = "?"
+			args = append(args, w.ID)
+		}
+		q := `DELETE FROM stride_evaluations WHERE user_id = ? AND workout_id IN (` + strings.Join(placeholders, ",") + `)`
+		if _, err := tx.ExecContext(ctx, q, args...); err != nil {
+			return 0, fmt.Errorf("delete existing workout evaluations: %w", err)
+		}
+	}
+	if err := deleteDateEvaluationsForPlanTx(ctx, tx, userID, plan.ID, date); err != nil {
+		return 0, fmt.Errorf("delete existing date evaluations: %w", err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, ins := range inserts {
+		if ins.workoutID != nil {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO stride_evaluations (user_id, plan_id, workout_id, eval_json, created_at)
+				VALUES (?, ?, ?, ?, ?)
+			`, userID, plan.ID, *ins.workoutID, ins.encJSON, now); err != nil {
+				return 0, fmt.Errorf("insert eval: %w", err)
+			}
+		} else {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO stride_evaluations (user_id, plan_id, workout_id, eval_json, created_at)
+				VALUES (?, ?, NULL, ?, ?)
+			`, userID, plan.ID, ins.encJSON, now); err != nil {
+				return 0, fmt.Errorf("insert date eval: %w", err)
+			}
+		}
+	}
+
+	if len(notes) > 0 {
+		noteIDs := make([]int64, len(notes))
+		for i, n := range notes {
+			noteIDs[i] = n.ID
+		}
+		if err := MarkNotesConsumed(ctx, tx, userID, noteIDs, "manual"); err != nil {
+			return 0, fmt.Errorf("mark notes consumed: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit: %w", err)
+	}
+	committed = true
+
+	// Push notifications fire only after commit, so a flag-laden evaluation that
+	// failed to persist does not page the user.
+	for _, rec := range newRecords {
+		if rec.workoutID == nil || !hasCriticalFlag(rec.eval.Flags) {
+			continue
+		}
+		notif := push.Notification{
+			Title: "Stride Alert",
+			Body:  buildCriticalNotifBody(rec.eval),
+			Tag:   "stride-eval-alert",
+		}
+		payload, err := json.Marshal(notif)
+		if err != nil {
+			log.Printf("stride eval: marshal notification for user %d: %v", userID, err)
+			continue
+		}
+		if _, err := push.SendToUser(db, httpClient, userID, payload); err != nil {
+			log.Printf("stride eval: push notification for user %d: %v", userID, err)
+		}
+	}
+
+	return len(newRecords), nil
+}
+
+// buildDateEval constructs an Evaluation in memory for a date with no workout.
+// Returns nil, nil when the date has neither a planned session nor a rest day
+// (nothing to evaluate). When the user left notes for the date and Claude is
+// available, it asks Claude for a contextual evaluation; otherwise it returns
+// the static template used by the nightly job.
+func buildDateEval(ctx context.Context, claudeCfg *training.ClaudeConfig, plan Plan, date string, notes []Note) (*Evaluation, error) {
+	session, isRestDay := PlannedSessionForDate(plan, date)
+	if !isRestDay && session == nil {
+		return nil, nil
+	}
+
+	if isRestDay {
+		if len(notes) > 0 && claudeCfg != nil && claudeCfg.Enabled {
+			return evaluateDateWithNotes(ctx, claudeCfg, plan, date, nil, notes, true)
+		}
+		return &Evaluation{
+			PlannedType: "rest",
+			ActualType:  "rest",
+			Compliance:  "rest_day",
+			Notes:       noteRestDay,
+			Flags:       []string{},
+			Adjustments: "",
+			Date:        date,
+		}, nil
+	}
+
+	sessionType := "session"
+	if session.Session != nil && session.Session.Description != "" {
+		sessionType = session.Session.Description
+	}
+	if len(notes) > 0 && claudeCfg != nil && claudeCfg.Enabled {
+		return evaluateDateWithNotes(ctx, claudeCfg, plan, date, session, notes, false)
+	}
+	return &Evaluation{
+		PlannedType: sessionType,
+		ActualType:  "none",
+		Compliance:  "missed",
+		Notes:       fmt.Sprintf(noteMissedSession, sessionType),
+		Flags:       []string{},
+		Adjustments: "",
+		Date:        date,
+	}, nil
+}
+
+// deleteDateEvaluationsForPlanTx scans non-workout evaluations for the given plan
+// inside a transaction and removes any whose decrypted Evaluation.Date matches
+// the target date. Used by ReEvaluateDate to clear prior rest-day /
+// missed-session records inside the same transaction that inserts the new ones.
+func deleteDateEvaluationsForPlanTx(ctx context.Context, tx *sql.Tx, userID, planID int64, date string) error {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, eval_json FROM stride_evaluations
+		WHERE user_id = ? AND plan_id = ? AND workout_id IS NULL
+	`, userID, planID)
+	if err != nil {
+		return err
+	}
+	var toDelete []int64
+	for rows.Next() {
+		var id int64
+		var encJSON string
+		if err := rows.Scan(&id, &encJSON); err != nil {
+			rows.Close()
+			return err
+		}
+		decJSON, derr := encryption.DecryptField(encJSON)
+		if derr != nil {
+			log.Printf("stride eval: decrypt date-eval %d: %v", id, derr)
+			continue
+		}
+		var e Evaluation
+		if err := json.Unmarshal([]byte(decJSON), &e); err != nil {
+			log.Printf("stride eval: unmarshal date-eval %d: %v", id, err)
+			continue
+		}
+		if e.Date == date {
+			toDelete = append(toDelete, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, id := range toDelete {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM stride_evaluations WHERE id = ?`, id); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
