@@ -317,6 +317,7 @@
     "deferTransaction": "Utsett til neste måned",
     "undeferTransaction": "Fjern utsettelse",
     "deferredToNextMonth": "Neste måned",
+    "deferredFromPreviousMonth": "Fra forrige måned",
     "resync": "Synkroniser",
     "openingBalance": "Inngående saldo",
     "saveOpeningBalance": "Lagre",

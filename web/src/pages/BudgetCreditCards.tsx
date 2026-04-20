@@ -52,6 +52,7 @@ interface Transaction {
   is_pending: boolean
   is_innbetaling: boolean
   deferred_to_next_month: boolean
+  deferred_from_previous_month: boolean
   group_id: number | null
   group_name: string
 }
@@ -144,8 +145,10 @@ interface GroupSectionProps {
 }
 
 function GroupSection({ title, transactions, groups, currency, t, onAssign, onDelete, onDefer }: GroupSectionProps) {
+  // A carry-over (deferred_from_previous_month) is active in the viewed month and
+  // counts toward its total; a row deferred forward out of this month does not.
   const expenseTotal = transactions
-    .filter(tx => !tx.is_innbetaling && !tx.deferred_to_next_month)
+    .filter(tx => !tx.is_innbetaling && (tx.deferred_from_previous_month || !tx.deferred_to_next_month))
     .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
   const innbetalingTotal = transactions
     .filter(tx => tx.is_innbetaling)
@@ -200,8 +203,13 @@ function TransactionItem({ tx, groups, currency, t, onAssign, onDelete, onDefer 
     tx.belop_i_valuta !== 0 &&
     Math.abs(Math.abs(tx.belop_i_valuta) - Math.abs(tx.belop)) > 0.01
 
+  // During optimistic undefer, `deferred_to_next_month` is toggled immediately,
+  // so require both flags to keep UI semantics in sync before the reload.
+  const isCarryover = tx.deferred_from_previous_month && tx.deferred_to_next_month
+  const isDeferredAway = tx.deferred_to_next_month && !isCarryover
+
   return (
-    <div className={`flex items-start gap-2 px-3 py-2 ${tx.deferred_to_next_month ? 'opacity-60' : ''}`}>
+    <div className={`flex items-start gap-2 px-3 py-2 ${isDeferredAway ? 'opacity-60' : ''}`}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className={`text-sm truncate ${tx.is_innbetaling ? 'text-green-400' : 'text-gray-200'}`}>
@@ -217,9 +225,14 @@ function TransactionItem({ tx, groups, currency, t, onAssign, onDelete, onDefer 
               {t('creditCards.payment')}
             </span>
           )}
-          {tx.deferred_to_next_month && (
+          {isDeferredAway && (
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-900/50 text-purple-300 border border-purple-700/50 flex-shrink-0">
               {t('creditCards.deferredToNextMonth')}
+            </span>
+          )}
+          {isCarryover && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-900/50 text-purple-300 border border-purple-700/50 flex-shrink-0">
+              {t('creditCards.deferredFromPreviousMonth')}
             </span>
           )}
         </div>
@@ -1012,12 +1025,13 @@ export default function BudgetCreditCards() {
   ]
 
   // When a variable bill is linked, derive the monthly total from the backend-computed
-  // closing balance so it stays consistent with SyncCreditCardExpense (which accounts
-  // for deferred carry-overs from the previous month that are not in the transaction list).
+  // closing balance so it stays consistent with SyncCreditCardExpense. Otherwise sum
+  // the visible rows: include carry-overs from the previous month, exclude rows
+  // deferred forward out of this month.
   const expenseTotal = variableBillName !== null
     ? variableBillAmount - openingBalance
     : transactions
-        .filter(tx => !tx.is_innbetaling && !tx.deferred_to_next_month)
+        .filter(tx => !tx.is_innbetaling && (tx.deferred_from_previous_month || !tx.deferred_to_next_month))
         .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
 
   // Groups to show in dropdown for reassignment (include Diverse so any
