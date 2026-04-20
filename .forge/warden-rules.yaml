@@ -14741,3 +14741,27 @@ rules:
         Verify that client-side previews/estimates mirroring server computations handle invalid input the same way as the server — return null or surface an error rather than silently skipping records, so the preview stays faithful to what will be saved/shown server-side
       source: copilot:PR#643
       added: "2026-04-17"
+    - id: abort-signal-propagation
+      category: concurrency
+      pattern: >-
+        Handler creates an AbortController and uses its signal for one fetch, then makes follow-up async calls (refreshes, reloads) without passing the signal
+      check: >-
+        Verify that all async calls in the sequence receive and respect the same AbortController.signal, so the entire operation is cancellable and guarded against setState-after-unmount
+      source: copilot:PR#646
+      added: "2026-04-19"
+    - id: guard-empty-results-before-destructive-ops
+      category: error-handling
+      pattern: >-
+        Code that computes a new set of records and then, within a transaction, deletes existing records and/or consumes upstream inputs before writing the new records
+      check: >-
+        Verify that when the computed result set is empty (e.g., len(newRecords)==0), the function returns early before any delete or consume step, so empty results cannot silently wipe existing data with no replacement
+      source: copilot:PR#646
+      added: "2026-04-19"
+    - id: optimistic-update-flag-consistency
+      category: ui
+      pattern: >-
+        Optimistic UI updates that toggle a single boolean flag on a row where multiple related flags determine the row's display state or category (e.g., carry-over rows with both `deferred_from_previous_month` and `deferred_to_next_month`)
+      check: >-
+        Verify the optimistic update mutates all related flags so derived UI state (labels, filters, categorization) stays consistent immediately, not only after a server reload. If only one flag is flipped, ensure downstream predicates account for the transient state or remove the row from the affected list.
+      source: copilot:PR#647
+      added: "2026-04-20"
