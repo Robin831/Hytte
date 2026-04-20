@@ -317,6 +317,7 @@
     "deferTransaction": "เลื่อนไปเดือนหน้า",
     "undeferTransaction": "ยกเลิกการเลื่อน",
     "deferredToNextMonth": "เดือนหน้า",
+    "deferredFromPreviousMonth": "จากเดือนที่แล้ว",
     "resync": "ซิงค์ใหม่",
     "openingBalance": "ยอดยกมา",
     "saveOpeningBalance": "บันทึก",

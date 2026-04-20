@@ -14,17 +14,24 @@ import (
 )
 
 // TransactionRow is a single credit card transaction returned by the list endpoint.
+//
+// DeferredFromPreviousMonth is true when the row's transaction date is before
+// the requested billing period and the row is being shown only because it was
+// deferred forward into the requested period. The frontend uses this to
+// distinguish a carry-over (active in this month) from a deferral away
+// (greyed out in its source month).
 type TransactionRow struct {
-	ID                   int64   `json:"id"`
-	Transaksjonsdato     string  `json:"transaksjonsdato"`
-	Beskrivelse          string  `json:"beskrivelse"`
-	Belop                float64 `json:"belop"`
-	BelopIValuta         float64 `json:"belop_i_valuta"`
-	IsPending            bool    `json:"is_pending"`
-	IsInnbetaling        bool    `json:"is_innbetaling"`
-	DeferredToNextMonth  bool    `json:"deferred_to_next_month"`
-	GroupID              *int64  `json:"group_id"`
-	GroupName            string  `json:"group_name"`
+	ID                        int64   `json:"id"`
+	Transaksjonsdato          string  `json:"transaksjonsdato"`
+	Beskrivelse               string  `json:"beskrivelse"`
+	Belop                     float64 `json:"belop"`
+	BelopIValuta              float64 `json:"belop_i_valuta"`
+	IsPending                 bool    `json:"is_pending"`
+	IsInnbetaling             bool    `json:"is_innbetaling"`
+	DeferredToNextMonth       bool    `json:"deferred_to_next_month"`
+	DeferredFromPreviousMonth bool    `json:"deferred_from_previous_month"`
+	GroupID                   *int64  `json:"group_id"`
+	GroupName                 string  `json:"group_name"`
 }
 
 // TransactionsListResponse is returned by TransactionsListHandler.
@@ -64,7 +71,13 @@ func TransactionsListHandler(db *sql.DB) http.HandlerFunc {
 		}
 		startStr := periodStart.Format("2006-01-02")
 		endStr := periodStart.AddDate(0, 1, 0).Format("2006-01-02")
+		prevStartStr := periodStart.AddDate(0, -1, 0).Format("2006-01-02")
 
+		// Include transactions dated within the requested period, plus any settled
+		// transactions from the previous period that were deferred forward. The
+		// latter would otherwise be invisible in the period whose statement they
+		// actually belong to (the variable bill total already accounts for them
+		// via SyncCreditCardExpense).
 		rows, err := db.Query(`
 			SELECT t.id, t.transaksjonsdato, t.beskrivelse, t.belop, t.belop_i_valuta,
 			       t.is_pending, t.is_innbetaling, t.deferred_to_next_month,
@@ -72,9 +85,14 @@ func TransactionsListHandler(db *sql.DB) http.HandlerFunc {
 			FROM credit_card_transactions t
 			LEFT JOIN credit_card_groups g ON g.id = t.group_id AND g.user_id = t.user_id
 			WHERE t.user_id = ? AND t.credit_card_id = ?
-			  AND t.transaksjonsdato >= ? AND t.transaksjonsdato < ?
+			  AND (
+			      (t.transaksjonsdato >= ? AND t.transaksjonsdato < ?)
+			      OR
+			      (t.transaksjonsdato >= ? AND t.transaksjonsdato < ?
+			       AND t.deferred_to_next_month = 1 AND t.is_pending = 0)
+			  )
 			ORDER BY t.transaksjonsdato DESC, t.id DESC
-		`, user.ID, creditCardID, startStr, endStr)
+		`, user.ID, creditCardID, startStr, endStr, prevStartStr, startStr)
 		if err != nil {
 			log.Printf("creditcard: transactions list query: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list transactions"})
@@ -106,6 +124,7 @@ func TransactionsListHandler(db *sql.DB) http.HandlerFunc {
 			t.IsPending = isPending == 1
 			t.IsInnbetaling = isInnbetaling == 1
 			t.DeferredToNextMonth = deferredToNextMonth == 1
+			t.DeferredFromPreviousMonth = t.Transaksjonsdato < startStr
 			if groupID.Valid {
 				gid := groupID.Int64
 				t.GroupID = &gid

@@ -317,6 +317,7 @@
     "deferTransaction": "Defer to next month",
     "undeferTransaction": "Remove deferral",
     "deferredToNextMonth": "Next month",
+    "deferredFromPreviousMonth": "From last month",
     "resync": "Resync",
     "openingBalance": "Opening balance",
     "saveOpeningBalance": "Save",

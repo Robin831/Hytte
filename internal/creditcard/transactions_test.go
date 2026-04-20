@@ -146,6 +146,135 @@ func TestTransactionsListHandler_FiltersByMonth(t *testing.T) {
 	}
 }
 
+func TestTransactionsListHandler_DeferredCarryoverShownInTargetMonth(t *testing.T) {
+	db := setupTestDB(t)
+
+	// March transaction deferred forward to April; plus a regular April transaction.
+	encDeferred, err := encryption.EncryptField("Deferred March")
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	encApril, err := encryption.EncryptField("Plain April")
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+
+	if _, err := db.Exec(`
+		INSERT INTO credit_card_transactions
+			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, belop_i_valuta, is_pending, is_innbetaling, deferred_to_next_month)
+		VALUES
+			(1, '1', '2026-03-20', ?, -300, -300, 0, 0, 1),
+			(1, '1', '2026-04-05', ?, -100, -100, 0, 0, 0)
+	`, encDeferred, encApril); err != nil {
+		t.Fatalf("insert transactions: %v", err)
+	}
+
+	handler := TransactionsListHandler(db)
+
+	// April list must include both rows: the regular April txn and the deferred
+	// March txn carried forward, with the carryover flagged appropriately.
+	req := httptest.NewRequest(http.MethodGet, "/api/credit-card/transactions?credit_card_id=1&month=2026-04", nil)
+	req = withUser(req, 1)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp TransactionsListResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Transactions) != 2 {
+		t.Fatalf("expected 2 transactions for April, got %d", len(resp.Transactions))
+	}
+
+	var carryover, plain *TransactionRow
+	for i := range resp.Transactions {
+		switch resp.Transactions[i].Beskrivelse {
+		case "Deferred March":
+			carryover = &resp.Transactions[i]
+		case "Plain April":
+			plain = &resp.Transactions[i]
+		}
+	}
+	if carryover == nil {
+		t.Fatal("deferred March transaction missing from April list")
+	}
+	if !carryover.DeferredToNextMonth {
+		t.Errorf("carryover deferred_to_next_month = false, want true")
+	}
+	if !carryover.DeferredFromPreviousMonth {
+		t.Errorf("carryover deferred_from_previous_month = false, want true")
+	}
+	if plain == nil {
+		t.Fatal("plain April transaction missing from April list")
+	}
+	if plain.DeferredFromPreviousMonth {
+		t.Errorf("plain April transaction deferred_from_previous_month = true, want false")
+	}
+
+	// Source month (March) still shows the deferred row, but flagged as deferred-away,
+	// not as a carryover.
+	reqMar := httptest.NewRequest(http.MethodGet, "/api/credit-card/transactions?credit_card_id=1&month=2026-03", nil)
+	reqMar = withUser(reqMar, 1)
+	rrMar := httptest.NewRecorder()
+	handler.ServeHTTP(rrMar, reqMar)
+
+	if rrMar.Code != http.StatusOK {
+		t.Fatalf("march status = %d; body: %s", rrMar.Code, rrMar.Body.String())
+	}
+	var respMar TransactionsListResponse
+	if err := json.NewDecoder(rrMar.Body).Decode(&respMar); err != nil {
+		t.Fatalf("march decode: %v", err)
+	}
+	if len(respMar.Transactions) != 1 {
+		t.Fatalf("expected 1 transaction for March, got %d", len(respMar.Transactions))
+	}
+	if !respMar.Transactions[0].DeferredToNextMonth {
+		t.Errorf("march row deferred_to_next_month = false, want true")
+	}
+	if respMar.Transactions[0].DeferredFromPreviousMonth {
+		t.Errorf("march row deferred_from_previous_month = true, want false")
+	}
+}
+
+func TestTransactionsListHandler_PendingPreviousMonthNotCarriedOver(t *testing.T) {
+	db := setupTestDB(t)
+
+	// A pending row from the previous month should never appear as a carryover,
+	// matching the rule that only settled transactions can be deferred.
+	encDesc, err := encryption.EncryptField("Pending March")
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO credit_card_transactions
+			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, belop_i_valuta, is_pending, is_innbetaling, deferred_to_next_month)
+		VALUES (1, '1', '2026-03-25', ?, -50, -50, 1, 0, 1)
+	`, encDesc); err != nil {
+		t.Fatalf("insert transaction: %v", err)
+	}
+
+	handler := TransactionsListHandler(db)
+	req := httptest.NewRequest(http.MethodGet, "/api/credit-card/transactions?credit_card_id=1&month=2026-04", nil)
+	req = withUser(req, 1)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rr.Code, rr.Body.String())
+	}
+	var resp TransactionsListResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Transactions) != 0 {
+		t.Errorf("expected 0 transactions for April, got %d", len(resp.Transactions))
+	}
+}
+
 func TestTransactionsListHandler_VariableBillDecrypted(t *testing.T) {
 	db := setupTestDB(t)
 	if _, err := db.Exec(budgetSchema); err != nil {
