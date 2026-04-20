@@ -203,9 +203,9 @@ function TransactionItem({ tx, groups, currency, t, onAssign, onDelete, onDefer 
     tx.belop_i_valuta !== 0 &&
     Math.abs(Math.abs(tx.belop_i_valuta) - Math.abs(tx.belop)) > 0.01
 
-  // Carry-overs are deferred rows shown in their target month — active here,
-  // not greyed out, and labelled to indicate they came from the previous month.
-  const isCarryover = tx.deferred_from_previous_month
+  // During optimistic undefer, `deferred_to_next_month` is toggled immediately,
+  // so require both flags to keep UI semantics in sync before the reload.
+  const isCarryover = tx.deferred_from_previous_month && tx.deferred_to_next_month
   const isDeferredAway = tx.deferred_to_next_month && !isCarryover
 
   return (
