@@ -190,6 +190,28 @@ func MarathonBestHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// BlitzBestHandler returns GET /api/math/blitz/best: the user's
+// highest-scoring finished Blitz run, or {"best": null} if they have not
+// finished one yet. The Blitz UI uses this to decide whether to show a
+// "New PB!" badge after a run.
+func BlitzBestHandler(db *sql.DB) http.HandlerFunc {
+	svc := NewService(db)
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		best, err := svc.BestBlitz(r.Context(), user.ID)
+		if err != nil {
+			log.Printf("math: best blitz: %v", err)
+			writeErr(w, http.StatusInternalServerError, "failed to load best blitz")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"best": best})
+	}
+}
+
 // statsEntry is the per-fact payload in the stats response. Operands are
 // repeated alongside FactStats so the client can render without rebuilding
 // the key.

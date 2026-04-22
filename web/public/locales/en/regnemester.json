@@ -45,9 +45,35 @@
     "playAgain": "Play again",
     "backToModes": "Back to modes"
   },
+  "blitz": {
+    "title": "Blitz",
+    "intro": "You have 60 seconds. Answer as many facts as you can — fast answers and long streaks multiply your score. Wrong answers don't end the run, they just reset your streak.",
+    "start": "Start Blitz",
+    "starting": "Starting…",
+    "priorBestLabel": "Your best score",
+    "priorBestRecap": "Best streak: {{streak}}",
+    "priorBestDetailedRecap": "Previous best: {{score}} points with a {{streak}}-answer streak.",
+    "scoreShort": "Score",
+    "streakShort": "Streak",
+    "fastLabel": "Fast!",
+    "timeLeftAria": "Time remaining",
+    "answerInputLabel": "Your answer",
+    "backspaceAria": "Backspace",
+    "enterAria": "Submit answer",
+    "enter": "Enter",
+    "resultTitle": "Time's up!",
+    "resultSubtitle": "Here's how this run went.",
+    "newPB": "New personal best!",
+    "scoreLabel": "Score",
+    "bestStreakLabel": "Best streak",
+    "correctLabel": "Correct",
+    "wrongLabel": "Wrong",
+    "playAgain": "Play again",
+    "backToModes": "Back to modes"
+  },
   "errors": {
-    "failedToStart": "Could not start the Marathon. Try again.",
+    "failedToStart": "Could not start the run. Try again.",
     "failedToRecord": "Could not record your answer. The run was stopped.",
-    "failedToFinish": "Could not finish the Marathon. Your run was saved but the result could not be loaded."
+    "failedToFinish": "Could not finish the run. Your progress was saved but the result could not be loaded."
   }
 }

@@ -45,9 +45,35 @@
     "playAgain": "เล่นอีกครั้ง",
     "backToModes": "กลับไปยังโหมด"
   },
+  "blitz": {
+    "title": "บลิตซ์",
+    "intro": "คุณมีเวลา 60 วินาที ตอบให้ได้มากที่สุด — ตอบเร็วและตอบถูกติดต่อกันจะเพิ่มตัวคูณคะแนน ตอบผิดไม่ทำให้เกมจบ เพียงแต่จะรีเซ็ตสตรีคของคุณ",
+    "start": "เริ่มบลิตซ์",
+    "starting": "กำลังเริ่ม…",
+    "priorBestLabel": "คะแนนสูงสุดของคุณ",
+    "priorBestRecap": "สตรีคยาวที่สุด: {{streak}}",
+    "priorBestDetailedRecap": "สถิติก่อนหน้า: {{score}} คะแนน สตรีค {{streak}} ข้อ",
+    "scoreShort": "คะแนน",
+    "streakShort": "สตรีค",
+    "fastLabel": "เร็ว!",
+    "timeLeftAria": "เวลาที่เหลือ",
+    "answerInputLabel": "คำตอบของคุณ",
+    "backspaceAria": "ลบ",
+    "enterAria": "ส่งคำตอบ",
+    "enter": "ตกลง",
+    "resultTitle": "หมดเวลา!",
+    "resultSubtitle": "นี่คือผลของรอบนี้",
+    "newPB": "สถิติใหม่!",
+    "scoreLabel": "คะแนน",
+    "bestStreakLabel": "สตรีคยาวที่สุด",
+    "correctLabel": "ถูก",
+    "wrongLabel": "ผิด",
+    "playAgain": "เล่นอีกครั้ง",
+    "backToModes": "กลับไปยังโหมด"
+  },
   "errors": {
-    "failedToStart": "ไม่สามารถเริ่มมาราธอนได้ กรุณาลองใหม่",
+    "failedToStart": "ไม่สามารถเริ่มรอบได้ กรุณาลองใหม่",
     "failedToRecord": "ไม่สามารถบันทึกคำตอบได้ การเล่นถูกหยุด",
-    "failedToFinish": "ไม่สามารถจบมาราธอนได้ การเล่นถูกบันทึกแล้วแต่โหลดผลไม่ได้"
+    "failedToFinish": "ไม่สามารถจบรอบได้ ความคืบหน้าถูกบันทึกแล้วแต่โหลดผลไม่ได้"
   }
 }

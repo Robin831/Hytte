@@ -45,9 +45,35 @@
     "playAgain": "Spill igjen",
     "backToModes": "Tilbake til moduser"
   },
+  "blitz": {
+    "title": "Blitz",
+    "intro": "Du har 60 sekunder. Svar på så mange stykker du klarer — raske svar og lange rekker ganger opp poengsummen. Feil svar avslutter ikke runden, men nullstiller rekka.",
+    "start": "Start Blitz",
+    "starting": "Starter…",
+    "priorBestLabel": "Din beste poengsum",
+    "priorBestRecap": "Lengste rekke: {{streak}}",
+    "priorBestDetailedRecap": "Forrige rekord: {{score}} poeng med en rekke på {{streak}}.",
+    "scoreShort": "Poeng",
+    "streakShort": "Rekke",
+    "fastLabel": "Raskt!",
+    "timeLeftAria": "Tid igjen",
+    "answerInputLabel": "Svaret ditt",
+    "backspaceAria": "Slett",
+    "enterAria": "Send inn svar",
+    "enter": "OK",
+    "resultTitle": "Tiden er ute!",
+    "resultSubtitle": "Slik gikk det denne gangen.",
+    "newPB": "Ny personlig rekord!",
+    "scoreLabel": "Poeng",
+    "bestStreakLabel": "Lengste rekke",
+    "correctLabel": "Riktig",
+    "wrongLabel": "Feil",
+    "playAgain": "Spill igjen",
+    "backToModes": "Tilbake til moduser"
+  },
   "errors": {
-    "failedToStart": "Kunne ikke starte maraton. Prøv igjen.",
+    "failedToStart": "Kunne ikke starte runden. Prøv igjen.",
     "failedToRecord": "Kunne ikke lagre svaret ditt. Runden ble stoppet.",
-    "failedToFinish": "Kunne ikke fullføre maraton. Runden ble lagret, men resultatet kunne ikke lastes."
+    "failedToFinish": "Kunne ikke fullføre runden. Fremgangen ble lagret, men resultatet kunne ikke lastes."
   }
 }

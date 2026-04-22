@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"time"
 )
 
@@ -36,8 +37,12 @@ type Service struct {
 // NewService wraps the given DB handle.
 func NewService(db *sql.DB) *Service { return &Service{db: db} }
 
-// Summary captures the result of finishing a session. ScoreNum currently
-// equals total_correct; the achievements bead can change the formula later.
+// Summary captures the result of finishing a session. ScoreNum's formula
+// depends on the mode: for most modes it equals total_correct; for Blitz
+// it is the streak/speed-weighted sum computed by ComputeBlitzPoints.
+// BestStreak is the longest run of consecutive correct attempts in the
+// session — always computed so the result screen can show it without a
+// second round-trip.
 type Summary struct {
 	SessionID    int64  `json:"session_id"`
 	Mode         string `json:"mode"`
@@ -47,6 +52,38 @@ type Summary struct {
 	TotalCorrect int    `json:"total_correct"`
 	TotalWrong   int    `json:"total_wrong"`
 	ScoreNum     int    `json:"score_num"`
+	BestStreak   int    `json:"best_streak"`
+}
+
+// ComputeBlitzPoints returns the points awarded for one correct Blitz
+// answer. streakBefore is the number of consecutive correct answers
+// immediately preceding this one (0 for the first correct after a wrong
+// or the very first attempt). The formula mirrors the client-side display
+// logic in the Blitz UI so live score and final stored score agree.
+//
+//	speed_bonus       = 1.5 if responseMs < 1000
+//	                    1.2 if responseMs < 2000
+//	                    1.0 otherwise
+//	streak_multiplier = min(3.0, 1.0 + streakBefore/10)
+//	points            = round(1 * speed_bonus * streak_multiplier)
+func ComputeBlitzPoints(responseMs, streakBefore int) int {
+	if streakBefore < 0 {
+		streakBefore = 0
+	}
+	var speedBonus float64
+	switch {
+	case responseMs < 1000:
+		speedBonus = 1.5
+	case responseMs < 2000:
+		speedBonus = 1.2
+	default:
+		speedBonus = 1.0
+	}
+	streakMult := 1.0 + float64(streakBefore)/10.0
+	if streakMult > 3.0 {
+		streakMult = 3.0
+	}
+	return int(math.Round(speedBonus * streakMult))
 }
 
 // Start creates a new math_sessions row, returning its id and the first
@@ -145,19 +182,54 @@ func (s *Service) Finish(ctx context.Context, sessionID, userID int64) (Summary,
 		return Summary{}, ErrSessionNotOwned
 	}
 
-	var (
-		total   int
-		correct sql.NullInt64
-	)
-	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*), SUM(is_correct) FROM math_attempts WHERE session_id = ?`,
+	// Walk attempts in insertion order so we can compute mode-specific
+	// scoring (Blitz weights each correct answer by speed and streak) and
+	// the longest consecutive-correct run in one pass.
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT is_correct, response_ms FROM math_attempts WHERE session_id = ? ORDER BY id ASC`,
 		sessionID,
-	).Scan(&total, &correct); err != nil {
-		return Summary{}, fmt.Errorf("aggregate math_attempts: %w", err)
+	)
+	if err != nil {
+		return Summary{}, fmt.Errorf("select math_attempts: %w", err)
 	}
-	correctCount := int(correct.Int64)
-	wrong := total - correctCount
-	score := correctCount
+	defer rows.Close()
+
+	var (
+		correctCount int
+		wrong        int
+		score        int
+		bestStreak   int
+		curStreak    int
+	)
+	for rows.Next() {
+		var (
+			isCorrect  int
+			responseMs int
+		)
+		if err := rows.Scan(&isCorrect, &responseMs); err != nil {
+			return Summary{}, fmt.Errorf("scan math_attempt: %w", err)
+		}
+		if isCorrect == 1 {
+			// streakBefore is the streak prior to this answer, which is
+			// what the Blitz formula keys on.
+			if mode == ModeBlitz {
+				score += ComputeBlitzPoints(responseMs, curStreak)
+			} else {
+				score++
+			}
+			correctCount++
+			curStreak++
+			if curStreak > bestStreak {
+				bestStreak = curStreak
+			}
+		} else {
+			wrong++
+			curStreak = 0
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return Summary{}, fmt.Errorf("iterate math_attempts: %w", err)
+	}
 
 	// Preserve ended_at and duration_ms if the session was already finished.
 	var endedStr string
@@ -203,6 +275,7 @@ func (s *Service) Finish(ctx context.Context, sessionID, userID int64) (Summary,
 		TotalCorrect: correctCount,
 		TotalWrong:   wrong,
 		ScoreNum:     score,
+		BestStreak:   bestStreak,
 	}, nil
 }
 
@@ -241,6 +314,82 @@ func (s *Service) BestMarathon(ctx context.Context, userID int64) (*MarathonBest
 		return nil, fmt.Errorf("select best marathon: %w", err)
 	}
 	return &best, nil
+}
+
+// BlitzBest holds the personal-best Blitz run for a user. ScoreNum is the
+// primary ranking (higher is better); BestStreak and TotalCorrect are
+// returned for display only, not used as tiebreakers.
+type BlitzBest struct {
+	SessionID    int64  `json:"session_id"`
+	ScoreNum     int    `json:"score_num"`
+	BestStreak   int    `json:"best_streak"`
+	TotalCorrect int    `json:"total_correct"`
+	TotalWrong   int    `json:"total_wrong"`
+	EndedAt      string `json:"ended_at"`
+}
+
+// BestBlitz returns the user's highest-scoring finished Blitz session, or
+// nil if they have not finished one yet. Best_streak is re-derived from
+// math_attempts because math_sessions does not store it as a column.
+func (s *Service) BestBlitz(ctx context.Context, userID int64) (*BlitzBest, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, score_num, total_correct, total_wrong, ended_at
+		FROM math_sessions
+		WHERE user_id = ?
+		  AND mode = ?
+		  AND ended_at IS NOT NULL AND ended_at != ''
+		ORDER BY score_num DESC, duration_ms ASC
+		LIMIT 1`,
+		userID, ModeBlitz,
+	)
+	var best BlitzBest
+	if err := row.Scan(&best.SessionID, &best.ScoreNum, &best.TotalCorrect, &best.TotalWrong, &best.EndedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("select best blitz: %w", err)
+	}
+	// Recover best_streak from the attempts log. Keeping this off the
+	// math_sessions row avoids a schema change; the attempt count per
+	// session is small (≤ a few hundred) so the cost is negligible.
+	streak, err := s.longestCorrectStreak(ctx, best.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	best.BestStreak = streak
+	return &best, nil
+}
+
+// longestCorrectStreak returns the longest run of consecutive correct
+// attempts in the given session, ordered by insertion.
+func (s *Service) longestCorrectStreak(ctx context.Context, sessionID int64) (int, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT is_correct FROM math_attempts WHERE session_id = ? ORDER BY id ASC`,
+		sessionID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("select math_attempts for streak: %w", err)
+	}
+	defer rows.Close()
+	best, cur := 0, 0
+	for rows.Next() {
+		var isCorrect int
+		if err := rows.Scan(&isCorrect); err != nil {
+			return 0, fmt.Errorf("scan is_correct: %w", err)
+		}
+		if isCorrect == 1 {
+			cur++
+			if cur > best {
+				best = cur
+			}
+		} else {
+			cur = 0
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("iterate is_correct: %w", err)
+	}
+	return best, nil
 }
 
 // loadSession returns the owner, mode and finished flag for a session id,

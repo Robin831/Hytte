@@ -119,7 +119,7 @@ func TestNextQuestionRespectsMode(t *testing.T) {
 }
 
 func TestIsValidMode(t *testing.T) {
-	for _, m := range []string{ModeMixed, ModeMultiplication, ModeDivision} {
+	for _, m := range []string{ModeMixed, ModeMultiplication, ModeDivision, ModeMarathon, ModeBlitz} {
 		if !IsValidMode(m) {
 			t.Errorf("expected %q to be a valid mode", m)
 		}
