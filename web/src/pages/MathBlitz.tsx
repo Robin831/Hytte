@@ -269,20 +269,23 @@ export default function MathBlitz() {
         // Streak milestone: every 5 correct in a row gets a small confetti
         // burst and a scale-pop on the streak badge.
         if (nextStreak > 0 && nextStreak % STREAK_MILESTONE_STEP === 0) {
-          burst('small')
-          const badge = streakBadgeRef.current
-          if (badge) {
-            if (streakPopTimerRef.current !== null) {
-              window.clearTimeout(streakPopTimerRef.current)
-              badge.classList.remove(STREAK_POP_CLASS)
-              // Force reflow so the animation restarts cleanly on back-to-back milestones.
-              void badge.offsetWidth
+          const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          if (!prefersReducedMotion) {
+            burst('small')
+            const badge = streakBadgeRef.current
+            if (badge) {
+              if (streakPopTimerRef.current !== null) {
+                window.clearTimeout(streakPopTimerRef.current)
+                badge.classList.remove(STREAK_POP_CLASS)
+                // Force reflow so the animation restarts cleanly on back-to-back milestones.
+                void badge.offsetWidth
+              }
+              badge.classList.add(STREAK_POP_CLASS)
+              streakPopTimerRef.current = window.setTimeout(() => {
+                badge.classList.remove(STREAK_POP_CLASS)
+                streakPopTimerRef.current = null
+              }, STREAK_POP_MS)
             }
-            badge.classList.add(STREAK_POP_CLASS)
-            streakPopTimerRef.current = window.setTimeout(() => {
-              badge.classList.remove(STREAK_POP_CLASS)
-              streakPopTimerRef.current = null
-            }, STREAK_POP_MS)
           }
         }
       } else {

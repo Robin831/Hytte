@@ -190,8 +190,8 @@ func FinishSessionHandler(db *sql.DB) http.HandlerFunc {
 			} else if lb != nil {
 				for _, e := range lb.Entries {
 					if e.UserID == user.ID && e.Rank != nil {
-						r := *e.Rank
-						rank = &r
+						rankVal := *e.Rank
+						rank = &rankVal
 						break
 					}
 				}
