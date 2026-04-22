@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useReducer } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Trophy } from 'lucide-react'
@@ -19,6 +19,18 @@ interface LeaderboardResponse {
 interface Ranks {
   all: number | null
   week: number | null
+}
+
+type RankState = { ranks: Ranks | null; loading: boolean }
+type RankAction =
+  | { type: 'start' }
+  | { type: 'done'; ranks: Ranks }
+
+function rankReducer(_state: RankState, action: RankAction): RankState {
+  switch (action.type) {
+    case 'start': return { ranks: null, loading: true }
+    case 'done': return { ranks: action.ranks, loading: false }
+  }
 }
 
 async function fetchRank(
@@ -45,31 +57,27 @@ async function fetchRank(
 export function FinishRank({ mode, sessionId }: { mode: Mode; sessionId: number | null }) {
   const { t } = useTranslation('regnemester')
   const { user } = useAuth()
-  const [ranks, setRanks] = useState<Ranks | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [{ ranks, loading }, dispatch] = useReducer(rankReducer, { ranks: null, loading: false })
 
   useEffect(() => {
     if (!user || sessionId == null) return
     const controller = new AbortController()
     const { signal } = controller
-    setLoading(true)
+    dispatch({ type: 'start' })
     Promise.all([
       fetchRank(mode, 'all', user.id, signal),
       fetchRank(mode, 'week', user.id, signal),
     ])
       .then(([all, week]) => {
         if (signal.aborted) return
-        setRanks({ all, week })
+        dispatch({ type: 'done', ranks: { all, week } })
       })
       .catch(err => {
         if (signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) return
         // Surface unreachable leaderboard as Unranked instead of a permanent
         // loading spinner. Network errors on the finish screen are
         // non-critical — the run itself has already been recorded.
-        setRanks({ all: null, week: null })
-      })
-      .finally(() => {
-        if (!signal.aborted) setLoading(false)
+        dispatch({ type: 'done', ranks: { all: null, week: null } })
       })
     return () => { controller.abort() }
   }, [mode, sessionId, user])

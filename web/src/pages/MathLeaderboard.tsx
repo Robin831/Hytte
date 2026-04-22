@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useReducer, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Trophy } from 'lucide-react'
@@ -25,6 +25,20 @@ interface LeaderboardResponse {
   entries: LeaderboardEntry[]
 }
 
+type FetchState = { loading: boolean; data: LeaderboardResponse | null; error: string }
+type FetchAction =
+  | { type: 'start' }
+  | { type: 'success'; data: LeaderboardResponse }
+  | { type: 'error'; message: string }
+
+function fetchReducer(_state: FetchState, action: FetchAction): FetchState {
+  switch (action.type) {
+    case 'start': return { loading: true, error: '', data: null }
+    case 'success': return { loading: false, error: '', data: action.data }
+    case 'error': return { loading: false, error: action.message, data: null }
+  }
+}
+
 function formatMarathonScore(ms: number): string {
   const totalSeconds = Math.max(0, ms) / 1000
   const minutes = Math.floor(totalSeconds / 60)
@@ -38,14 +52,11 @@ export default function MathLeaderboard() {
 
   const [mode, setMode] = useState<Mode>('marathon')
   const [period, setPeriod] = useState<Period>('all')
-  const [data, setData] = useState<LeaderboardResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [{ loading, data, error }, dispatch] = useReducer(fetchReducer, { loading: true, data: null, error: '' })
 
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true)
-    setError('')
+    dispatch({ type: 'start' })
     fetch(`/api/math/leaderboard?mode=${mode}&period=${period}`, {
       credentials: 'include',
       signal: controller.signal,
@@ -55,14 +66,11 @@ export default function MathLeaderboard() {
         return res.json() as Promise<LeaderboardResponse>
       })
       .then(json => {
-        if (!controller.signal.aborted) setData(json)
+        if (!controller.signal.aborted) dispatch({ type: 'success', data: json })
       })
       .catch(err => {
         if (controller.signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) return
-        setError(t('leaderboard.errorLoad'))
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
+        dispatch({ type: 'error', message: t('leaderboard.errorLoad') })
       })
     return () => { controller.abort() }
   }, [mode, period, t])
