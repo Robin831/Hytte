@@ -97,6 +97,74 @@
     "unranked": "Uten plassering",
     "loading": "Laster plassering…"
   },
+  "achievements": {
+    "title": "Bragder",
+    "intro": "Milepæler du har klart, og de som fortsatt venter.",
+    "viewLink": "Se bragder",
+    "errorLoad": "Kunne ikke laste bragdene dine.",
+    "emptyState": "Ingen bragder låst opp ennå — fullfør en Maraton- eller Blitz-runde for å komme i gang.",
+    "unlockedOn": "Låst opp {{date}}",
+    "unlockedBannerTitle_one": "{{count}} ny bragd!",
+    "unlockedBannerTitle_other": "{{count}} nye bragder!",
+    "tiers": {
+      "marathon": "Maraton",
+      "blitz": "Blitz",
+      "rivalry": "Familierivalisering"
+    },
+    "progress": {
+      "noMarathon": "Fullfør en maratonrunde for å begynne å spore fremgang.",
+      "noBlitz": "Spill en blitzrunde for å begynne å spore fremgang.",
+      "marathonGap": "Best: {{best}} — {{gap}} igjen",
+      "marathonReady": "Best: {{best}} — fullfør en runde til for å låse den opp",
+      "marathonPerfect": "Færrest feil i én runde: {{wrong}}",
+      "streakGap": "Lengste rekke: {{best}} — {{gap}} til for å låse opp",
+      "streakReady": "Lengste rekke: {{best}} — fullfør en runde til for å låse den opp",
+      "firstBloodHint": "Slå alle andre familiemedlemmer på en resultatliste.",
+      "firstBloodReady": "Du er #1 på en liste — fullfør en runde til for å låse den opp"
+    },
+    "codes": {
+      "marathon_sub_10": {
+        "title": "Maraton under 10",
+        "description": "Fullfør et maraton på under 10:00."
+      },
+      "marathon_sub_7": {
+        "title": "Maraton under 7",
+        "description": "Fullfør et maraton på under 7:00."
+      },
+      "marathon_sub_5": {
+        "title": "Maraton under 5",
+        "description": "Fullfør et maraton på under 5:00."
+      },
+      "marathon_sub_4": {
+        "title": "Maraton under 4",
+        "description": "Fullfør et maraton på under 4:00."
+      },
+      "marathon_sub_3": {
+        "title": "Maraton under 3",
+        "description": "Fullfør et maraton på under 3:00."
+      },
+      "marathon_perfect_100": {
+        "title": "Feilfritt maraton",
+        "description": "Fullfør et maraton uten feil."
+      },
+      "streak_25": {
+        "title": "Rekke 25",
+        "description": "Få en rekke på 25 svar i en blitzrunde."
+      },
+      "streak_50": {
+        "title": "Rekke 50",
+        "description": "Få en rekke på 50 svar i en blitzrunde."
+      },
+      "streak_100": {
+        "title": "Rekke 100",
+        "description": "Få en rekke på 100 svar i en blitzrunde."
+      },
+      "first_blood": {
+        "title": "Første blod",
+        "description": "Bli nummer 1 på en resultatliste for første gang."
+      }
+    }
+  },
   "heatmap": {
     "title": "Mestringskart",
     "intro": "Alle stykker, fargelagt etter hvor godt du kan dem. Trykk på en rute for å se detaljer.",
