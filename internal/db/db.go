@@ -1487,6 +1487,49 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_homework_messages_conversation ON homework_messages(conversation_id);
 
+	-- Regnemester math game tables (Hytte-rh4h).
+	CREATE TABLE IF NOT EXISTS math_sessions (
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		mode           TEXT NOT NULL DEFAULT '',
+		started_at     TEXT NOT NULL DEFAULT '',
+		ended_at       TEXT NOT NULL DEFAULT '',
+		score_num      INTEGER NOT NULL DEFAULT 0,
+		duration_ms    INTEGER NOT NULL DEFAULT 0,
+		total_correct  INTEGER NOT NULL DEFAULT 0,
+		total_wrong    INTEGER NOT NULL DEFAULT 0,
+		meta           TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_math_sessions_user_started ON math_sessions(user_id, started_at);
+
+	CREATE TABLE IF NOT EXISTS math_attempts (
+		id              INTEGER PRIMARY KEY,
+		session_id      INTEGER NOT NULL REFERENCES math_sessions(id) ON DELETE CASCADE,
+		user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		fact_a          INTEGER NOT NULL,
+		fact_b          INTEGER NOT NULL,
+		op              TEXT NOT NULL CHECK(op IN ('*','/')),
+		expected_answer INTEGER NOT NULL,
+		user_answer     INTEGER NOT NULL,
+		is_correct      INTEGER NOT NULL DEFAULT 0,
+		response_ms     INTEGER NOT NULL DEFAULT 0,
+		created_at      TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_math_attempts_user_fact ON math_attempts(user_id, fact_a, fact_b, op);
+	CREATE INDEX IF NOT EXISTS idx_math_attempts_session ON math_attempts(session_id);
+
+	CREATE TABLE IF NOT EXISTS math_achievements (
+		id          INTEGER PRIMARY KEY,
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		code        TEXT NOT NULL,
+		unlocked_at TEXT NOT NULL DEFAULT '',
+		session_id  INTEGER REFERENCES math_sessions(id) ON DELETE SET NULL,
+		meta        TEXT NOT NULL DEFAULT '',
+		UNIQUE(user_id, code)
+	);
+
 	`
 
 	_, err := db.Exec(schema)

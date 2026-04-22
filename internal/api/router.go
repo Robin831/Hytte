@@ -25,6 +25,7 @@ import (
 	"github.com/Robin831/Hytte/internal/kiosk"
 	"github.com/Robin831/Hytte/internal/lactate"
 	"github.com/Robin831/Hytte/internal/links"
+	mathgame "github.com/Robin831/Hytte/internal/math"
 	"github.com/Robin831/Hytte/internal/netatmo"
 	"github.com/Robin831/Hytte/internal/notes"
 	"github.com/Robin831/Hytte/internal/push"
@@ -640,6 +641,15 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Use(family.RequireParentOrAdmin(db))
 					r.Get("/homework/children/{childId}/review", homework.HandleParentReview(db))
 				})
+			})
+
+			// Regnemester math game — gated by "regnemester" feature (Hytte-rh4h).
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "regnemester"))
+				r.Post("/math/sessions", mathgame.StartSessionHandler(db))
+				r.Post("/math/sessions/{id}/attempts", mathgame.RecordAttemptHandler(db))
+				r.Post("/math/sessions/{id}/finish", mathgame.FinishSessionHandler(db))
+				r.Get("/math/stats", mathgame.StatsHandler(db))
 			})
 
 			// Transit departures — gated by "transit" feature.
