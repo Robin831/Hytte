@@ -52,10 +52,23 @@
   box-shadow: 0 0 20px rgba(250, 204, 21, 0.5);
 }
 
+@keyframes regnemester-speed-callout-fade {
+  0% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .regnemester-speed-callout {
-    animation: none;
+    animation: regnemester-speed-callout-fade 900ms ease-out forwards;
     transform: translate(-50%, -56px);
-    opacity: 1;
   }
 }
