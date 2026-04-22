@@ -116,6 +116,12 @@
     "unlockedOn": "Låst opp {{date}}",
     "unlockedBannerTitle_one": "{{count}} ny bragd!",
     "unlockedBannerTitle_other": "{{count}} nye bragder!",
+    "unlockedOverlay": {
+      "eyebrow": "{{tier}}-bragd låst opp",
+      "dismiss": "Fortsett",
+      "queueHint_one": "{{count}} til igjen",
+      "queueHint_other": "{{count}} til igjen"
+    },
     "tiers": {
       "marathon": "Maraton",
       "blitz": "Blitz",

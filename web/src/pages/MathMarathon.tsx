@@ -8,7 +8,7 @@ import { FinishRank } from '../components/math/FinishRank'
 import { UnlockedAchievementsBanner, type UnlockedAchievement } from '../components/math/UnlockedAchievements'
 import { MuteToggle } from '../components/math/MuteToggle'
 import { SpeedCallout, FAST_THRESHOLD_MS } from '../components/regnemester/SpeedCallout'
-import { useFeedback } from '../lib/regnemester/feedback'
+import { useFeedback, emitAchievementUnlock } from '../lib/regnemester/feedback'
 import { burst, screenShake } from '../lib/regnemester/confetti'
 
 const TOTAL = 200
@@ -217,8 +217,13 @@ export default function MathMarathon() {
       const s = data.summary
       setSummary(s)
       setElapsed(s.duration_ms)
-      setUnlocked(data.unlocked_achievements ?? [])
+      const unlockedItems = data.unlocked_achievements ?? []
+      setUnlocked(unlockedItems)
       setPhase('done')
+      // Broadcast to the global AchievementUnlockOverlay so each unlock gets
+      // its own celebration on top of the result screen. The banner below
+      // still renders as the persistent record on the page itself.
+      emitAchievementUnlock(unlockedItems)
       // Celebrate with milestone for a new PB, fanfare otherwise.
       let beatPB: boolean
       if (!priorBest) {

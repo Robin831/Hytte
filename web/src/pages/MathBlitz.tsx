@@ -8,7 +8,7 @@ import { FinishRank } from '../components/math/FinishRank'
 import { UnlockedAchievementsBanner, type UnlockedAchievement } from '../components/math/UnlockedAchievements'
 import { MuteToggle } from '../components/math/MuteToggle'
 import { SpeedCallout, FAST_THRESHOLD_MS } from '../components/regnemester/SpeedCallout'
-import { useFeedback } from '../lib/regnemester/feedback'
+import { useFeedback, emitAchievementUnlock } from '../lib/regnemester/feedback'
 import { burst, blitzIntensityForScore } from '../lib/regnemester/confetti'
 
 const DURATION_MS = 60_000
@@ -137,8 +137,13 @@ export default function MathBlitz() {
       // compare against.
       setScore(s.score_num)
       setTimeLeftMs(0)
-      setUnlocked(data.unlocked_achievements ?? [])
+      const unlockedItems = data.unlocked_achievements ?? []
+      setUnlocked(unlockedItems)
       setPhase('done')
+      // Broadcast to the global AchievementUnlockOverlay so each unlock gets
+      // its own celebration on top of the result screen. The banner below
+      // still renders as the persistent record on the page itself.
+      emitAchievementUnlock(unlockedItems)
       const beatPB = priorBest ? s.score_num > priorBest.score_num : s.score_num > 0
       feedback.play(beatPB ? 'milestone' : 'fanfare')
       // Confetti intensity scales with score; #1 all-time leaderboard rank

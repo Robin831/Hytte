@@ -116,6 +116,12 @@
     "unlockedOn": "Unlocked {{date}}",
     "unlockedBannerTitle_one": "{{count}} new achievement!",
     "unlockedBannerTitle_other": "{{count}} new achievements!",
+    "unlockedOverlay": {
+      "eyebrow": "{{tier}} achievement unlocked",
+      "dismiss": "Continue",
+      "queueHint_one": "{{count}} more to go",
+      "queueHint_other": "{{count}} more to go"
+    },
     "tiers": {
       "marathon": "Marathon",
       "blitz": "Blitz",
