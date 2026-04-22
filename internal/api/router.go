@@ -650,6 +650,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/math/sessions/{id}/attempts", mathgame.RecordAttemptHandler(db))
 				r.Post("/math/sessions/{id}/finish", mathgame.FinishSessionHandler(db))
 				r.Get("/math/stats", mathgame.StatsHandler(db))
+				r.Get("/math/marathon/best", mathgame.MarathonBestHandler(db))
 			})
 
 			// Transit departures — gated by "transit" feature.

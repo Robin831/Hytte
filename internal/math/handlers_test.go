@@ -173,6 +173,57 @@ func TestFinishSessionHandler(t *testing.T) {
 	}
 }
 
+func TestMarathonBestHandlerEmpty(t *testing.T) {
+	d := setupTestDB(t)
+	h := MarathonBestHandler(d)
+	r := withUser(httptest.NewRequest(http.MethodGet, "/api/math/marathon/best", nil), testUser)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Best *MarathonBest `json:"best"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Best != nil {
+		t.Errorf("expected null best, got %+v", resp.Best)
+	}
+}
+
+func TestMarathonBestHandlerReturnsFastest(t *testing.T) {
+	d := setupTestDB(t)
+	if _, err := d.Exec(`INSERT INTO math_sessions
+		(user_id, mode, started_at, ended_at, duration_ms, total_correct, total_wrong)
+		VALUES (1, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:05:00Z', 245000, 200, 0)`,
+		ModeMarathon); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	h := MarathonBestHandler(d)
+	r := withUser(httptest.NewRequest(http.MethodGet, "/api/math/marathon/best", nil), testUser)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Best *MarathonBest `json:"best"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Best == nil {
+		t.Fatal("expected non-nil best")
+	}
+	if resp.Best.DurationMs != 245000 {
+		t.Errorf("DurationMs=%d, want 245000", resp.Best.DurationMs)
+	}
+}
+
 func TestStatsHandlerSorted(t *testing.T) {
 	d := setupTestDB(t)
 	svc := NewService(d)

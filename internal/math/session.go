@@ -206,6 +206,43 @@ func (s *Service) Finish(ctx context.Context, sessionID, userID int64) (Summary,
 	}, nil
 }
 
+// MarathonBest holds the personal-best marathon run for a user. SessionID
+// identifies the row; DurationMs is the primary score (lower is better)
+// and TotalWrong is the tiebreaker (fewer is better).
+type MarathonBest struct {
+	SessionID    int64  `json:"session_id"`
+	DurationMs   int64  `json:"duration_ms"`
+	TotalWrong   int    `json:"total_wrong"`
+	TotalCorrect int    `json:"total_correct"`
+	EndedAt      string `json:"ended_at"`
+}
+
+// BestMarathon returns the user's fastest completed marathon session, or
+// nil if they have not finished one yet. A session counts as "completed"
+// when ended_at is set and the attempt count equals MarathonFactCount —
+// abandoned or partial runs are excluded.
+func (s *Service) BestMarathon(ctx context.Context, userID int64) (*MarathonBest, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, duration_ms, total_wrong, total_correct, ended_at
+		FROM math_sessions
+		WHERE user_id = ?
+		  AND mode = ?
+		  AND ended_at IS NOT NULL AND ended_at != ''
+		  AND (total_correct + total_wrong) = ?
+		ORDER BY duration_ms ASC, total_wrong ASC
+		LIMIT 1`,
+		userID, ModeMarathon, MarathonFactCount,
+	)
+	var best MarathonBest
+	if err := row.Scan(&best.SessionID, &best.DurationMs, &best.TotalWrong, &best.TotalCorrect, &best.EndedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("select best marathon: %w", err)
+	}
+	return &best, nil
+}
+
 // loadSession returns the owner, mode and finished flag for a session id,
 // or ErrSessionNotFound if no row exists.
 func (s *Service) loadSession(ctx context.Context, sessionID int64) (int64, string, bool, error) {

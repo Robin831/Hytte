@@ -32,7 +32,8 @@
     "skywatch": "Himmelvakt",
     "grocery": "Handleliste",
     "homework": "Lekser",
-    "homeworkReview": "Lekseoversikt"
+    "homeworkReview": "Lekseoversikt",
+    "regnemester": "Regnemester"
   },
   "actions": {
     "save": "Lagre",

@@ -32,7 +32,8 @@
     "skywatch": "Sky Watch",
     "grocery": "Grocery List",
     "homework": "Homework",
-    "homeworkReview": "Homework Review"
+    "homeworkReview": "Homework Review",
+    "regnemester": "Regnemester"
   },
   "actions": {
     "save": "Save",

@@ -1,0 +1,53 @@
+{
+  "title": "Regnemester",
+  "tagline": "Sharpen your times tables. Pick a mode to get started.",
+  "modePickerHeading": "Game modes",
+  "comingSoon": "Coming soon",
+  "back": "Back",
+  "modes": {
+    "marathon": {
+      "title": "Marathon",
+      "blurb": "All 200 facts, once each. Pure time competition — beat the clock."
+    },
+    "blitz": {
+      "title": "Blitz",
+      "blurb": "Race against the clock with as many facts as you can answer."
+    },
+    "practice": {
+      "title": "Practice",
+      "blurb": "Targeted practice on the facts you find hardest."
+    },
+    "mastery": {
+      "title": "Mastery",
+      "blurb": "Track your mastery of every fact across multiplication and division."
+    }
+  },
+  "marathon": {
+    "title": "Marathon",
+    "intro": "Answer all {{count}} multiplication and division facts. Wrong answers count against you, but you keep moving — there's no retry. Score is your time; ties are broken by fewer wrongs.",
+    "start": "Start Marathon",
+    "starting": "Starting…",
+    "priorBestLabel": "Your best time",
+    "wrongCount_one": "{{count}} wrong",
+    "wrongCount_other": "{{count}} wrongs",
+    "wrongShort": "Wrong",
+    "answerInputLabel": "Your answer",
+    "backspaceAria": "Backspace",
+    "enterAria": "Submit answer",
+    "enter": "Enter",
+    "resultTitle": "Marathon complete",
+    "resultSubtitle": "Here's how this run went.",
+    "newPB": "New personal best!",
+    "timeLabel": "Time",
+    "wrongLabel": "Wrongs",
+    "outOf": "out of {{total}}",
+    "priorBestRecap": "Previous best: {{time}} with {{wrong}} wrong.",
+    "playAgain": "Play again",
+    "backToModes": "Back to modes"
+  },
+  "errors": {
+    "failedToStart": "Could not start the Marathon. Try again.",
+    "failedToRecord": "Could not record your answer. The run was stopped.",
+    "failedToFinish": "Could not finish the Marathon. Your run was saved but the result could not be loaded."
+  }
+}
