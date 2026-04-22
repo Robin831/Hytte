@@ -16,8 +16,9 @@ function flash(el: HTMLElement | null, cls: string, durationMs: number): void {
   const existing = timers.get(el)
   if (existing !== undefined) {
     window.clearTimeout(existing)
-    el.classList.remove(cls)
   }
+
+  el.classList.remove(CORRECT_CLASS, WRONG_CLASS)
 
   // Re-adding the class in the same tick doesn't restart the CSS transition
   // in most browsers — force a reflow first so the transition restarts cleanly.
