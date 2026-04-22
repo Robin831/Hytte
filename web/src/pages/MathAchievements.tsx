@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from 'react'
+import { useEffect, useMemo, useReducer } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { ParseKeys } from 'i18next'
@@ -240,6 +240,23 @@ function AchievementCard({ code, tier, fallbackTitle, fallbackDescription, earne
   )
 }
 
+// groupByTier partitions earned + locked rows into per-tier buckets in
+// TIER_ORDER, keeping the registry order the server already applied within
+// each tier. Pulling this out of the JSX keeps the render body readable.
+function groupByTier(earned: EarnedRow[], locked: LockedRow[]) {
+  const byTier = new Map<Tier, { earned: EarnedRow[]; locked: LockedRow[] }>()
+  for (const tier of TIER_ORDER) {
+    byTier.set(tier, { earned: [], locked: [] })
+  }
+  for (const row of earned) {
+    byTier.get(row.tier)?.earned.push(row)
+  }
+  for (const row of locked) {
+    byTier.get(row.tier)?.locked.push(row)
+  }
+  return byTier
+}
+
 export default function MathAchievements() {
   const { t } = useTranslation('regnemester')
   const [{ loading, data, error }, dispatch] = useReducer(fetchReducer, {
@@ -265,6 +282,11 @@ export default function MathAchievements() {
       })
     return () => { controller.abort() }
   }, [t])
+
+  const byTier = useMemo(
+    () => (data ? groupByTier(data.earned, data.locked) : null),
+    [data],
+  )
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-5">
@@ -296,65 +318,49 @@ export default function MathAchievements() {
         </div>
       )}
 
-      {!loading && !error && data && (
+      {!loading && !error && data && byTier && (
         <div className="space-y-6">
-          {(() => {
-            // Build per-tier groups from earned + locked collections, then
-            // render each tier section. Doing the partition once here keeps
-            // the JSX tidy and avoids re-iterating the registry per tier.
-            const byTier = new Map<Tier, { earned: EarnedRow[]; locked: LockedRow[] }>()
-            for (const tier of TIER_ORDER) {
-              byTier.set(tier, { earned: [], locked: [] })
+          {TIER_ORDER.map(tier => {
+            const group = byTier.get(tier)
+            if (!group || (group.earned.length === 0 && group.locked.length === 0)) {
+              return null
             }
-            for (const row of data.earned) {
-              byTier.get(row.tier)?.earned.push(row)
-            }
-            for (const row of data.locked) {
-              byTier.get(row.tier)?.locked.push(row)
-            }
-
-            return TIER_ORDER.map(tier => {
-              const group = byTier.get(tier)
-              if (!group || (group.earned.length === 0 && group.locked.length === 0)) {
-                return null
-              }
-              const tierLabelKey = `achievements.tiers.${tier}` as ParseKeys<'regnemester'>
-              return (
-                <section key={tier} aria-labelledby={`tier-${tier}-heading`}>
-                  <h2
-                    id={`tier-${tier}-heading`}
-                    className="text-sm font-semibold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-2"
-                  >
-                    {tierIcon(tier)}
-                    {t(tierLabelKey)}
-                  </h2>
-                  <ul className="space-y-2">
-                    {group.earned.map(row => (
-                      <AchievementCard
-                        key={row.code}
-                        code={row.code}
-                        tier={row.tier}
-                        fallbackTitle={row.title}
-                        fallbackDescription={row.description}
-                        earnedAt={row.unlocked_at}
-                        stats={data.user_stats}
-                      />
-                    ))}
-                    {group.locked.map(row => (
-                      <AchievementCard
-                        key={row.code}
-                        code={row.code}
-                        tier={row.tier}
-                        fallbackTitle={row.title}
-                        fallbackDescription={row.description}
-                        stats={data.user_stats}
-                      />
-                    ))}
-                  </ul>
-                </section>
-              )
-            })
-          })()}
+            const tierLabelKey = `achievements.tiers.${tier}` as ParseKeys<'regnemester'>
+            return (
+              <section key={tier} aria-labelledby={`tier-${tier}-heading`}>
+                <h2
+                  id={`tier-${tier}-heading`}
+                  className="text-sm font-semibold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-2"
+                >
+                  {tierIcon(tier)}
+                  {t(tierLabelKey)}
+                </h2>
+                <ul className="space-y-2">
+                  {group.earned.map(row => (
+                    <AchievementCard
+                      key={row.code}
+                      code={row.code}
+                      tier={row.tier}
+                      fallbackTitle={row.title}
+                      fallbackDescription={row.description}
+                      earnedAt={row.unlocked_at}
+                      stats={data.user_stats}
+                    />
+                  ))}
+                  {group.locked.map(row => (
+                    <AchievementCard
+                      key={row.code}
+                      code={row.code}
+                      tier={row.tier}
+                      fallbackTitle={row.title}
+                      fallbackDescription={row.description}
+                      stats={data.user_stats}
+                    />
+                  ))}
+                </ul>
+              </section>
+            )
+          })}
 
           {data.earned.length === 0 && (
             <div className="rounded-lg border border-gray-700 bg-gray-800/60 p-4 text-sm text-gray-400">

@@ -14,15 +14,21 @@ export interface UnlockedAchievement {
 // UnlockedAchievementsBanner is the in-page notification we show on the
 // session result screen when one or more achievements were unlocked by
 // the run that just finished. It is intentionally lightweight — the full
-// celebration animation is deferred to the polish bead.
+// celebration animation is deferred to the polish bead. role="status" +
+// aria-live="polite" ensures screen readers announce the unlock once the
+// finish response lands, without interrupting the result summary.
 export function UnlockedAchievementsBanner({ items }: { items: UnlockedAchievement[] }) {
   const { t, i18n } = useTranslation('regnemester')
   if (!items || items.length === 0) return null
 
   return (
-    <div className="mb-6 rounded-lg border border-pink-500/40 bg-pink-500/10 px-4 py-3">
+    <div
+      role="status"
+      aria-live="polite"
+      className="mb-6 rounded-lg border border-pink-500/40 bg-pink-500/10 px-4 py-3"
+    >
       <div className="flex items-center gap-2 mb-2">
-        <Sparkles size={20} className="text-pink-300" />
+        <Sparkles size={20} className="text-pink-300" aria-hidden="true" />
         <h2 className="font-semibold text-pink-200">
           {t('achievements.unlockedBannerTitle', { count: items.length })}
         </h2>
@@ -33,7 +39,7 @@ export function UnlockedAchievementsBanner({ items }: { items: UnlockedAchieveme
           const title = i18n.exists(`regnemester:${titleKey}`) ? t(titleKey) : item.title
           return (
             <li key={item.code} className="flex items-start gap-2 text-sm text-white">
-              <Award size={16} className="text-yellow-300 shrink-0 mt-0.5" />
+              <Award size={16} className="text-yellow-300 shrink-0 mt-0.5" aria-hidden="true" />
               <span className="font-medium">{title}</span>
             </li>
           )
