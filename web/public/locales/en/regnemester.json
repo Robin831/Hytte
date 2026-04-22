@@ -73,5 +73,28 @@
     "failedToStart": "Could not start the run. Try again.",
     "failedToRecord": "Could not record your answer. The run was stopped.",
     "failedToFinish": "Could not finish the run. Your progress was saved but the result could not be loaded."
+  },
+  "leaderboard": {
+    "title": "Leaderboard",
+    "viewLink": "View leaderboard",
+    "viewLinkShort": "View",
+    "modeMarathon": "Marathon",
+    "modeBlitz": "Blitz",
+    "modeTabsLabel": "Mode",
+    "periodAll": "All time",
+    "periodWeek": "This week",
+    "periodTabsLabel": "Time window",
+    "rank": "Rank",
+    "player": "Player",
+    "score": "Score",
+    "when": "When",
+    "empty": "Nobody has finished a run yet.",
+    "parentTag": "(parent)",
+    "anonymous": "Unknown",
+    "errorLoad": "Could not load the leaderboard.",
+    "yourRank": "Your rank",
+    "rankSummary": "{{all}} all time · {{week}} this week",
+    "unranked": "Unranked",
+    "loading": "Loading rank…"
   }
 }

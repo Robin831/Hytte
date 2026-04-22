@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Trophy, Zap } from 'lucide-react'
 import { MathAnswerPad } from '../components/math/MathAnswerPad'
 import { appendAnswerDigit } from '../components/math/mathUtils'
+import { FinishRank } from '../components/math/FinishRank'
 
 const DURATION_MS = 60_000
 
@@ -359,6 +360,10 @@ export default function MathBlitz() {
             })}
           </div>
         )}
+
+        <div className="mb-6">
+          <FinishRank mode="blitz" sessionId={summary.session_id} />
+        </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
           <button

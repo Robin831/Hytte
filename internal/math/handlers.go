@@ -257,6 +257,39 @@ func StatsHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// LeaderboardHandler returns GET /api/math/leaderboard?mode=marathon|blitz&period=all|week:
+// the family-scoped leaderboard for the given mode and time window. Family
+// members with no qualifying run appear with a null score.
+func LeaderboardHandler(db *sql.DB) http.HandlerFunc {
+	svc := NewService(db)
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		mode := r.URL.Query().Get("mode")
+		period := r.URL.Query().Get("period")
+		if period == "" {
+			period = PeriodAll
+		}
+		lb, err := svc.BuildLeaderboard(r.Context(), user.ID, mode, period)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrInvalidMode):
+				writeErr(w, http.StatusBadRequest, "invalid mode")
+			case errors.Is(err, ErrInvalidPeriod):
+				writeErr(w, http.StatusBadRequest, "invalid period")
+			default:
+				log.Printf("math: leaderboard: %v", err)
+				writeErr(w, http.StatusInternalServerError, "failed to load leaderboard")
+			}
+			return
+		}
+		writeJSON(w, http.StatusOK, lb)
+	}
+}
+
 // sortStats orders entries by (A, B) ascending. We sort in-place using a
 // simple comparator-based sort rather than pulling in sort.Slice's reflection.
 func sortStats(entries []statsEntry) {

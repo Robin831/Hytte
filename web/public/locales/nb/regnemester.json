@@ -73,5 +73,28 @@
     "failedToStart": "Kunne ikke starte runden. Prøv igjen.",
     "failedToRecord": "Kunne ikke lagre svaret ditt. Runden ble stoppet.",
     "failedToFinish": "Kunne ikke fullføre runden. Fremgangen ble lagret, men resultatet kunne ikke lastes."
+  },
+  "leaderboard": {
+    "title": "Resultatliste",
+    "viewLink": "Se resultatliste",
+    "viewLinkShort": "Se",
+    "modeMarathon": "Maraton",
+    "modeBlitz": "Blitz",
+    "modeTabsLabel": "Modus",
+    "periodAll": "All tid",
+    "periodWeek": "Denne uken",
+    "periodTabsLabel": "Tidsvindu",
+    "rank": "Plass",
+    "player": "Spiller",
+    "score": "Poeng",
+    "when": "Når",
+    "empty": "Ingen har fullført en runde ennå.",
+    "parentTag": "(forelder)",
+    "anonymous": "Ukjent",
+    "errorLoad": "Kunne ikke laste resultatlisten.",
+    "yourRank": "Din plassering",
+    "rankSummary": "{{all}} all tid · {{week}} denne uken",
+    "unranked": "Uten plassering",
+    "loading": "Laster plassering…"
   }
 }
