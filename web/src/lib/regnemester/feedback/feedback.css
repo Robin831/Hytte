@@ -1,0 +1,34 @@
+@keyframes regnemester-flash-correct-fade {
+  from {
+    background-color: rgba(34, 197, 94, 0.25);
+  }
+
+  to {
+    background-color: transparent;
+  }
+}
+
+@keyframes regnemester-flash-wrong-fade {
+  from {
+    background-color: rgba(239, 68, 68, 0.3);
+  }
+
+  to {
+    background-color: transparent;
+  }
+}
+
+.regnemester-flash-correct {
+  animation: regnemester-flash-correct-fade 150ms ease-out;
+}
+
+.regnemester-flash-wrong {
+  animation: regnemester-flash-wrong-fade 250ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .regnemester-flash-correct,
+  .regnemester-flash-wrong {
+    animation: none;
+  }
+}

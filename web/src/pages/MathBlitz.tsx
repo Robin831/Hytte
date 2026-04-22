@@ -6,6 +6,8 @@ import { MathAnswerPad } from '../components/math/MathAnswerPad'
 import { appendAnswerDigit } from '../components/math/mathUtils'
 import { FinishRank } from '../components/math/FinishRank'
 import { UnlockedAchievementsBanner, type UnlockedAchievement } from '../components/math/UnlockedAchievements'
+import { MuteToggle } from '../components/math/MuteToggle'
+import { useFeedback } from '../lib/regnemester/feedback'
 
 const DURATION_MS = 60_000
 
@@ -65,6 +67,8 @@ function formatSeconds(ms: number): string {
 
 export default function MathBlitz() {
   const { t } = useTranslation('regnemester')
+  const feedback = useFeedback()
+  const problemRef = useRef<HTMLDivElement | null>(null)
 
   const [phase, setPhase] = useState<Phase>('idle')
   const [error, setError] = useState('')
@@ -121,12 +125,14 @@ export default function MathBlitz() {
       setTimeLeftMs(0)
       setUnlocked(data.unlocked_achievements ?? [])
       setPhase('done')
+      const beatPB = priorBest ? s.score_num > priorBest.score_num : s.score_num > 0
+      feedback.play(beatPB ? 'milestone' : 'fanfare')
     } catch (err) {
       const message = err instanceof Error ? err.message : t('errors.failedToFinish')
       setError(message)
       setPhase('error')
     }
-  }, [t])
+  }, [t, feedback, priorBest])
 
   // Countdown timer: ticks off the wall-clock deadline so a backgrounded tab
   // still finishes at the right moment when it returns to the foreground.
@@ -228,8 +234,14 @@ export default function MathBlitz() {
         const pointsEarned = computeBlitzPoints(responseMs, streak)
         setScore(prev => prev + pointsEarned)
         setStreak(prev => prev + 1)
+        feedback.play('correct')
+        feedback.vibrateCorrect()
+        feedback.flashCorrect(problemRef.current)
       } else {
         setStreak(0)
+        feedback.play('wrong')
+        feedback.vibrateWrong()
+        feedback.flashWrong(problemRef.current)
       }
       setLastAnswerMs(responseMs)
       setInput('')
@@ -249,7 +261,7 @@ export default function MathBlitz() {
     } finally {
       setSubmitting(false)
     }
-  }, [phase, submitting, sessionId, currentFact, input, streak, t, finishGame])
+  }, [phase, submitting, sessionId, currentFact, input, streak, t, finishGame, feedback])
 
   const appendDigit = useCallback((digit: string) => {
     if (phase !== 'playing' || submitting) return
@@ -434,8 +446,11 @@ export default function MathBlitz() {
         >
           {formatSeconds(timeLeftMs)}
         </div>
-        <div className="text-sm sm:text-base text-gray-400 tabular-nums">
-          {t('blitz.streakShort')} <span className="text-white font-semibold">{streak}</span>
+        <div className="flex items-center gap-3">
+          <div className="text-sm sm:text-base text-gray-400 tabular-nums">
+            {t('blitz.streakShort')} <span className="text-white font-semibold">{streak}</span>
+          </div>
+          <MuteToggle muted={feedback.muted} onToggle={feedback.toggleMute} />
         </div>
       </div>
 
@@ -448,7 +463,10 @@ export default function MathBlitz() {
             </span>
           )}
         </div>
-        <div className="text-4xl sm:text-6xl md:text-7xl font-bold text-white text-center tabular-nums">
+        <div
+          ref={problemRef}
+          className="text-4xl sm:text-6xl md:text-7xl font-bold text-white text-center tabular-nums rounded-lg px-4 py-2"
+        >
           {currentFact ? renderProblem(currentFact) : ''}
         </div>
       </div>

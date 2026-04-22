@@ -1526,3 +1526,76 @@ func TestPreferencesPutHandler_StrideCustomPromptEncryptedRoundtrip(t *testing.T
 		t.Errorf("GET response: expected decrypted %q, got %q", prompt, getResp["preferences"]["stride_custom_prompt"])
 	}
 }
+
+// TestPreferencesPutHandler_RegnemesterMutedRoundtrip verifies that the
+// regnemester_muted preference is accepted by PUT and returned by GET,
+// covering both "true" and "false" values.
+func TestPreferencesPutHandler_RegnemesterMutedRoundtrip(t *testing.T) {
+	database := setupTestDB(t)
+	userID := createTestUser(t, database)
+	token, _, err := CreateSession(database, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	putHandler := RequireAuth(database)(PreferencesPutHandler(database))
+	getHandler := RequireAuth(database)(PreferencesGetHandler(database))
+
+	put := func(value string) map[string]string {
+		body := `{"preferences":{"regnemester_muted":"` + value + `"}}`
+		req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "session", Value: token})
+		rec := httptest.NewRecorder()
+		putHandler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("PUT %q expected 200, got %d; body: %s", value, rec.Code, rec.Body.String())
+		}
+		var resp map[string]map[string]string
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode PUT response: %v", err)
+		}
+		return resp["preferences"]
+	}
+
+	get := func() map[string]string {
+		req := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+		req.AddCookie(&http.Cookie{Name: "session", Value: token})
+		rec := httptest.NewRecorder()
+		getHandler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET expected 200, got %d", rec.Code)
+		}
+		var resp map[string]map[string]string
+		if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode GET response: %v", err)
+		}
+		return resp["preferences"]
+	}
+
+	// PUT true, confirm PUT response and subsequent GET both return "true".
+	putResp := put("true")
+	if putResp["regnemester_muted"] != "true" {
+		t.Errorf("PUT response: expected regnemester_muted=true, got %q", putResp["regnemester_muted"])
+	}
+	if getResp := get(); getResp["regnemester_muted"] != "true" {
+		t.Errorf("GET response: expected regnemester_muted=true, got %q", getResp["regnemester_muted"])
+	}
+
+	// Raw DB value should be stored as plaintext (this preference is non-sensitive).
+	rawPrefs, err := GetPreferences(database, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if rawPrefs["regnemester_muted"] != "true" {
+		t.Errorf("DB value: expected plaintext \"true\", got %q", rawPrefs["regnemester_muted"])
+	}
+
+	// Flip to false and verify the new value is persisted and returned.
+	if putResp := put("false"); putResp["regnemester_muted"] != "false" {
+		t.Errorf("PUT response: expected regnemester_muted=false, got %q", putResp["regnemester_muted"])
+	}
+	if getResp := get(); getResp["regnemester_muted"] != "false" {
+		t.Errorf("GET response: expected regnemester_muted=false, got %q", getResp["regnemester_muted"])
+	}
+}

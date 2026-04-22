@@ -28,6 +28,13 @@
     "enterAria": "Submit answer",
     "enter": "Enter"
   },
+  "feedback": {
+    "muteAria": "Mute sounds",
+    "unmuteAria": "Unmute sounds",
+    "mutedLabel": "Muted",
+    "soundOnLabel": "Sound on",
+    "shortcutHint": "Press M to toggle sound"
+  },
   "marathon": {
     "title": "Marathon",
     "intro": "Answer all {{count}} multiplication and division facts. Wrong answers count against you, but you keep moving — there's no retry. Score is your time; ties are broken by fewer wrongs.",

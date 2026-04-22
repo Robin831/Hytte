@@ -28,6 +28,13 @@
     "enterAria": "Send inn svar",
     "enter": "OK"
   },
+  "feedback": {
+    "muteAria": "Slå av lyd",
+    "unmuteAria": "Slå på lyd",
+    "mutedLabel": "Lyd av",
+    "soundOnLabel": "Lyd på",
+    "shortcutHint": "Trykk M for å slå lyd av/på"
+  },
   "marathon": {
     "title": "Maraton",
     "intro": "Svar på alle {{count}} gange- og delingsstykker. Feil svar teller mot deg, men du går videre — ingen ny sjanse. Tiden din er poengsummen; lik tid avgjøres av færrest feil.",
