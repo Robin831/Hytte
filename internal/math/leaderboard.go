@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/family"
@@ -127,6 +128,11 @@ func (s *Service) BuildLeaderboard(ctx context.Context, userID int64, mode, peri
 		sinceStr = weekStartUTC(time.Now()).Format(timeFormat)
 	}
 
+	bests, err := s.bestForMembers(ctx, members, mode, sinceStr)
+	if err != nil {
+		return nil, err
+	}
+
 	entries := make([]LeaderboardEntry, 0, len(members))
 	for _, m := range members {
 		entry := LeaderboardEntry{
@@ -135,11 +141,7 @@ func (s *Service) BuildLeaderboard(ctx context.Context, userID int64, mode, peri
 			AvatarEmoji: m.AvatarEmoji,
 			IsParent:    m.IsParent,
 		}
-		best, err := s.bestForMember(ctx, m.UserID, mode, sinceStr)
-		if err != nil {
-			return nil, err
-		}
-		if best != nil {
+		if best := bests[m.UserID]; best != nil {
 			score := best.Score
 			sid := best.SessionID
 			at := best.AchievedAt
@@ -162,84 +164,116 @@ type memberBest struct {
 	AchievedAt string
 }
 
-// bestForMember returns the given user's best run for mode, optionally
-// restricted to sessions whose started_at is at or after sinceStr. For
-// Marathon the "best" is the fastest finished run with the canonical attempt
-// count; for Blitz it is the highest-scoring finished run with duration as
-// the tiebreaker. Returns nil when no qualifying run exists.
-func (s *Service) bestForMember(ctx context.Context, userID int64, mode, sinceStr string) (*memberBest, error) {
+// bestForMembers fetches the best qualifying run for each member in a single
+// query, returning a map from user_id to their best. Members with no
+// qualifying run are absent from the map.
+//
+// For Marathon the "best" is the fastest finished run with the canonical
+// attempt count; for Blitz it is the highest-scoring finished run with
+// duration as the tiebreaker. Both modes use ended_at for the weekly window
+// so that a run completed in-week is not excluded because it started just
+// before the Monday boundary.
+func (s *Service) bestForMembers(ctx context.Context, members []FamilyMember, mode, sinceStr string) (map[int64]*memberBest, error) {
+	if len(members) == 0 {
+		return nil, nil
+	}
+
+	// Build "?,?,?" placeholder for the IN clause.
+	placeholders := strings.TrimRight(strings.Repeat("?,", len(members)), ",")
+
+	// Collect member IDs as interface{} for variadic query args.
+	idArgs := make([]any, len(members))
+	for i, m := range members {
+		idArgs[i] = m.UserID
+	}
+
+	// Queries use ROW_NUMBER() OVER (PARTITION BY user_id ...) to pick each
+	// user's single best session without a separate query per member. Rows end
+	// with ORDER BY id ASC as a deterministic tiebreaker so the same session is
+	// always returned when every ranking column ties.
 	var (
-		row *sql.Row
+		rows *sql.Rows
+		err  error
 	)
-	// Queries end with `id ASC` so that if every ranking column ties the
-	// earliest-inserted qualifying run wins. Without this tiebreaker SQLite
-	// is free to return any of the tied rows, which surfaces as flaky
-	// session_id/achieved_at values on the leaderboard.
 	switch mode {
 	case ModeMarathon:
 		if sinceStr == "" {
-			row = s.db.QueryRowContext(ctx, `
-				SELECT id, duration_ms, ended_at
-				FROM math_sessions
-				WHERE user_id = ?
-				  AND mode = ?
-				  AND ended_at IS NOT NULL AND ended_at != ''
-				  AND (total_correct + total_wrong) = ?
-				ORDER BY duration_ms ASC, total_wrong ASC, id ASC
-				LIMIT 1`,
-				userID, ModeMarathon, MarathonFactCount,
-			)
+			args := append(append([]any{}, idArgs...), ModeMarathon, MarathonFactCount)
+			rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
+				SELECT user_id, id, duration_ms, ended_at
+				FROM (
+					SELECT user_id, id, duration_ms, ended_at,
+					       ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY duration_ms ASC, total_wrong ASC, id ASC) AS rn
+					FROM math_sessions
+					WHERE user_id IN (%s)
+					  AND mode = ?
+					  AND ended_at IS NOT NULL AND ended_at != ''
+					  AND (total_correct + total_wrong) = ?
+				)
+				WHERE rn = 1`, placeholders), args...)
 		} else {
-			row = s.db.QueryRowContext(ctx, `
-				SELECT id, duration_ms, ended_at
-				FROM math_sessions
-				WHERE user_id = ?
-				  AND mode = ?
-				  AND ended_at IS NOT NULL AND ended_at != ''
-				  AND (total_correct + total_wrong) = ?
-				  AND started_at >= ?
-				ORDER BY duration_ms ASC, total_wrong ASC, id ASC
-				LIMIT 1`,
-				userID, ModeMarathon, MarathonFactCount, sinceStr,
-			)
+			args := append(append([]any{}, idArgs...), ModeMarathon, MarathonFactCount, sinceStr)
+			rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
+				SELECT user_id, id, duration_ms, ended_at
+				FROM (
+					SELECT user_id, id, duration_ms, ended_at,
+					       ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY duration_ms ASC, total_wrong ASC, id ASC) AS rn
+					FROM math_sessions
+					WHERE user_id IN (%s)
+					  AND mode = ?
+					  AND ended_at IS NOT NULL AND ended_at != ''
+					  AND (total_correct + total_wrong) = ?
+					  AND ended_at >= ?
+				)
+				WHERE rn = 1`, placeholders), args...)
 		}
 	case ModeBlitz:
 		if sinceStr == "" {
-			row = s.db.QueryRowContext(ctx, `
-				SELECT id, score_num, ended_at
-				FROM math_sessions
-				WHERE user_id = ?
-				  AND mode = ?
-				  AND ended_at IS NOT NULL AND ended_at != ''
-				ORDER BY score_num DESC, duration_ms ASC, id ASC
-				LIMIT 1`,
-				userID, ModeBlitz,
-			)
+			args := append(append([]any{}, idArgs...), ModeBlitz)
+			rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
+				SELECT user_id, id, score_num, ended_at
+				FROM (
+					SELECT user_id, id, score_num, ended_at,
+					       ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY score_num DESC, duration_ms ASC, id ASC) AS rn
+					FROM math_sessions
+					WHERE user_id IN (%s)
+					  AND mode = ?
+					  AND ended_at IS NOT NULL AND ended_at != ''
+				)
+				WHERE rn = 1`, placeholders), args...)
 		} else {
-			row = s.db.QueryRowContext(ctx, `
-				SELECT id, score_num, ended_at
-				FROM math_sessions
-				WHERE user_id = ?
-				  AND mode = ?
-				  AND ended_at IS NOT NULL AND ended_at != ''
-				  AND started_at >= ?
-				ORDER BY score_num DESC, duration_ms ASC, id ASC
-				LIMIT 1`,
-				userID, ModeBlitz, sinceStr,
-			)
+			args := append(append([]any{}, idArgs...), ModeBlitz, sinceStr)
+			rows, err = s.db.QueryContext(ctx, fmt.Sprintf(`
+				SELECT user_id, id, score_num, ended_at
+				FROM (
+					SELECT user_id, id, score_num, ended_at,
+					       ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY score_num DESC, duration_ms ASC, id ASC) AS rn
+					FROM math_sessions
+					WHERE user_id IN (%s)
+					  AND mode = ?
+					  AND ended_at IS NOT NULL AND ended_at != ''
+					  AND ended_at >= ?
+				)
+				WHERE rn = 1`, placeholders), args...)
 		}
 	default:
 		return nil, ErrInvalidMode
 	}
-
-	var best memberBest
-	if err := row.Scan(&best.SessionID, &best.Score, &best.AchievedAt); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("scan best for member: %w", err)
+	if err != nil {
+		return nil, fmt.Errorf("query best for members: %w", err)
 	}
-	return &best, nil
+	defer rows.Close()
+
+	result := make(map[int64]*memberBest, len(members))
+	for rows.Next() {
+		var userID int64
+		var best memberBest
+		if err := rows.Scan(&userID, &best.SessionID, &best.Score, &best.AchievedAt); err != nil {
+			return nil, fmt.Errorf("scan best: %w", err)
+		}
+		result[userID] = &best
+	}
+	return result, rows.Err()
 }
 
 // sortLeaderboard orders entries for display. Members without a score go

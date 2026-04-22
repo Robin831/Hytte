@@ -226,6 +226,36 @@ func TestBuildLeaderboardWeeklyExcludesOlderRuns(t *testing.T) {
 	}
 }
 
+// TestBuildLeaderboardWeeklyIncludesBoundaryRun verifies that a run whose
+// started_at falls before Monday 00:00 UTC but whose ended_at falls after is
+// still included in the weekly window. The old started_at filter would have
+// dropped it; the fix uses ended_at >= weekStart instead.
+func TestBuildLeaderboardWeeklyIncludesBoundaryRun(t *testing.T) {
+	d := setupTestDB(t)
+
+	now := time.Now().UTC()
+	weekStart := weekStartUTC(now)
+
+	// A run that starts 5 minutes before this week's Monday cutoff and
+	// finishes 5 minutes after it (duration = 10 minutes = 600 000 ms).
+	// started_at is before the cutoff; ended_at is after it.
+	crossStart := weekStart.Add(-5 * time.Minute)
+	crossID := finishedMarathon(t, d, 1, 600000, 0, crossStart)
+
+	svc := NewService(d)
+	lb, err := svc.BuildLeaderboard(context.Background(), 1, ModeMarathon, PeriodWeek)
+	if err != nil {
+		t.Fatalf("BuildLeaderboard(week): %v", err)
+	}
+	entry := findEntry(t, lb.Entries, 1)
+	if entry.Score == nil {
+		t.Fatal("boundary-crossing run should appear in weekly leaderboard")
+	}
+	if entry.SessionID == nil || *entry.SessionID != crossID {
+		t.Errorf("session = %v, want %d", entry.SessionID, crossID)
+	}
+}
+
 func TestBuildLeaderboardExcludesPartialMarathon(t *testing.T) {
 	d := setupTestDB(t)
 	linkChild(t, d, 1, 2, "Alice", "🐼")

@@ -62,32 +62,31 @@ export default function MathLeaderboard() {
   const periodRefs = useRef<(HTMLButtonElement | null)[]>([])
   const panelId = `${uid}-panel`
 
-  const handleModeKeyDown = (e: React.KeyboardEvent, key: Mode) => {
-    const idx = MODE_KEYS.indexOf(key)
+  const handleRovingTabKeyDown = <T extends string>(
+    e: React.KeyboardEvent,
+    key: T,
+    keys: readonly T[],
+    setValue: React.Dispatch<React.SetStateAction<T>>,
+    refs: React.RefObject<(HTMLButtonElement | null)[]>,
+  ) => {
+    const idx = keys.indexOf(key)
     let next: number | null = null
-    if (e.key === 'ArrowRight') next = (idx + 1) % MODE_KEYS.length
-    else if (e.key === 'ArrowLeft') next = (idx - 1 + MODE_KEYS.length) % MODE_KEYS.length
+    if (e.key === 'ArrowRight') next = (idx + 1) % keys.length
+    else if (e.key === 'ArrowLeft') next = (idx - 1 + keys.length) % keys.length
     else if (e.key === 'Home') next = 0
-    else if (e.key === 'End') next = MODE_KEYS.length - 1
-    if (next !== null) {
-      e.preventDefault()
-      setMode(MODE_KEYS[next])
-      modeRefs.current[next]?.focus()
-    }
+    else if (e.key === 'End') next = keys.length - 1
+    if (next === null) return
+    e.preventDefault()
+    setValue(keys[next])
+    refs.current[next]?.focus()
+  }
+
+  const handleModeKeyDown = (e: React.KeyboardEvent, key: Mode) => {
+    handleRovingTabKeyDown(e, key, MODE_KEYS, setMode, modeRefs)
   }
 
   const handlePeriodKeyDown = (e: React.KeyboardEvent, key: Period) => {
-    const idx = PERIOD_KEYS.indexOf(key)
-    let next: number | null = null
-    if (e.key === 'ArrowRight') next = (idx + 1) % PERIOD_KEYS.length
-    else if (e.key === 'ArrowLeft') next = (idx - 1 + PERIOD_KEYS.length) % PERIOD_KEYS.length
-    else if (e.key === 'Home') next = 0
-    else if (e.key === 'End') next = PERIOD_KEYS.length - 1
-    if (next !== null) {
-      e.preventDefault()
-      setPeriod(PERIOD_KEYS[next])
-      periodRefs.current[next]?.focus()
-    }
+    handleRovingTabKeyDown(e, key, PERIOD_KEYS, setPeriod, periodRefs)
   }
 
   useEffect(() => {
