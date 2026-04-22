@@ -1,0 +1,2 @@
+category: Added
+- **Regnemester math game engine** - Backend foundation for a multiplication (1–10) and division math game. Adds the `regnemester` feature flag, `math_sessions` / `math_attempts` / `math_achievements` tables, an `internal/math` package with question generation, answer validation, session lifecycle and per-fact mastery aggregation, and the authenticated API endpoints `POST /api/math/sessions`, `POST /api/math/sessions/{id}/attempts`, `POST /api/math/sessions/{id}/finish` and `GET /api/math/stats`. UI ships in a follow-up bead. (Hytte-rh4h)
