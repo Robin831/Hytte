@@ -26,7 +26,7 @@ describe('haptics', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
-    delete (navigator as Navigator & { vibrate?: unknown }).vibrate
+    delete (navigator as { vibrate?: unknown }).vibrate
   })
 
   it('prefersReducedMotion returns true when media query matches', () => {

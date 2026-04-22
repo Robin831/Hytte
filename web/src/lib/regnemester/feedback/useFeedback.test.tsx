@@ -92,9 +92,9 @@ describe('useFeedback', () => {
     expect(getByTestId('muted').textContent).toBe('yes')
     expect(window.localStorage.getItem('regnemester_muted')).toBe('true')
     // Expect a PUT to /api/settings/preferences with the new value.
-    const putCall = fetchSpy.mock.calls.find(([, opts]) => (opts as RequestInit)?.method === 'PUT')
+    const putCall = (fetchSpy.mock.calls as unknown as Array<[string, RequestInit]>).find(([, opts]) => opts?.method === 'PUT')
     expect(putCall).toBeTruthy()
-    const body = JSON.parse((putCall![1] as RequestInit).body as string)
+    const body = JSON.parse(putCall![1].body as string)
     expect(body).toEqual({ preferences: { regnemester_muted: 'true' } })
   })
 
