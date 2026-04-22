@@ -80,7 +80,7 @@ export default function MathMarathon() {
   const [phase, setPhase] = useState<Phase>('idle')
   const [error, setError] = useState('')
   const [sessionId, setSessionId] = useState<number | null>(null)
-  const [facts] = useState<Fact[]>(() => shuffle(buildAllFacts()))
+  const [facts, setFacts] = useState<Fact[]>(() => shuffle(buildAllFacts()))
   const [index, setIndex] = useState(0)
   const [wrongCount, setWrongCount] = useState(0)
   const [input, setInput] = useState('')
@@ -110,8 +110,9 @@ export default function MathMarathon() {
 
   // Live-elapsed timer: tick from the wall-clock start, not by accumulating
   // intervals — so a backgrounded tab still reports the correct duration.
+  // Keep ticking through 'finishing' so the display doesn't freeze early.
   useEffect(() => {
-    if (phase !== 'playing') return
+    if (phase !== 'playing' && phase !== 'finishing') return
     const tick = () => setElapsed(performance.now() - startedAtRef.current)
     const id = window.setInterval(tick, 100)
     return () => window.clearInterval(id)
@@ -120,6 +121,9 @@ export default function MathMarathon() {
   const startGame = useCallback(async () => {
     setError('')
     setPhase('starting')
+    // Start wall clock before the server request so the displayed elapsed
+    // time accounts for start-request latency and matches duration_ms.
+    startedAtRef.current = performance.now()
     try {
       const res = await fetch('/api/math/sessions', {
         method: 'POST',
@@ -130,9 +134,8 @@ export default function MathMarathon() {
       if (!res.ok) throw new Error(t('errors.failedToStart'))
       const data = await res.json()
       setSessionId(data.session_id)
-      const now = performance.now()
-      startedAtRef.current = now
-      questionShownAtRef.current = now
+      setFacts(shuffle(buildAllFacts()))
+      questionShownAtRef.current = performance.now()
       setIndex(0)
       setWrongCount(0)
       setInput('')
@@ -143,7 +146,7 @@ export default function MathMarathon() {
       setError(message)
       setPhase('error')
     }
-  }, [t])
+  }, [t, setFacts])
 
   const finishGame = useCallback(async (id: number) => {
     setPhase('finishing')
@@ -155,8 +158,11 @@ export default function MathMarathon() {
       if (!res.ok) throw new Error(t('errors.failedToFinish'))
       const data = await res.json()
       // Trust the server's duration_ms and total_wrong: those are what get
-      // stored and what future PB lookups compare against.
-      setSummary(data.summary as FinishSummary)
+      // stored and what future PB lookups compare against. Sync elapsed so
+      // there's no visible jump between the running timer and the result.
+      const s = data.summary as FinishSummary
+      setSummary(s)
+      setElapsed(s.duration_ms)
       setPhase('done')
     } catch (err) {
       const message = err instanceof Error ? err.message : t('errors.failedToFinish')
