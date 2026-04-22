@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -11,6 +12,12 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
 )
+
+// maxBodyBytes caps incoming JSON payloads for the math handlers. All
+// request shapes are tiny objects with a handful of integer/string fields,
+// so 1 KiB is generous and prevents a caller from exhausting memory by
+// streaming a huge body through json.Decoder.
+const maxBodyBytes = 1 << 10
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -34,10 +41,13 @@ func StartSessionHandler(db *sql.DB) http.HandlerFunc {
 			writeErr(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		var body struct {
 			Mode string `json:"mode"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		// An empty body is allowed (it means "use ModeMixed"); only reject
+		// a body that is present but not valid JSON.
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 			writeErr(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
@@ -73,10 +83,11 @@ func RecordAttemptHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		sessionID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-		if err != nil {
+		if err != nil || sessionID <= 0 {
 			writeErr(w, http.StatusBadRequest, "invalid session id")
 			return
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		var body struct {
 			A          int    `json:"a"`
 			B          int    `json:"b"`
@@ -132,10 +143,13 @@ func FinishSessionHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		sessionID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-		if err != nil {
+		if err != nil || sessionID <= 0 {
 			writeErr(w, http.StatusBadRequest, "invalid session id")
 			return
 		}
+		// Finish takes no body but callers may still send one; cap it so a
+		// client can't stream an arbitrary payload at this endpoint.
+		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		summary, err := svc.Finish(r.Context(), sessionID, user.ID)
 		if err != nil {
 			switch {

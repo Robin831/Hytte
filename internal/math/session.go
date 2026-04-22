@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 )
 
@@ -146,13 +147,19 @@ func (s *Service) Finish(ctx context.Context, sessionID, userID int64) (Summary,
 
 	now := time.Now().UTC()
 	endedStr := now.Format(timeFormat)
+	var duration int64
 	startedT, parseErr := time.Parse(timeFormat, startedAt)
 	if parseErr != nil {
-		startedT = now
-	}
-	duration := now.Sub(startedT).Milliseconds()
-	if duration < 0 {
-		duration = 0
+		// started_at should always be written as RFC3339 by Start, so a parse
+		// failure here means either legacy data or a concurrent writer that
+		// clobbered the value. Log and record zero duration rather than
+		// silently attributing a large duration to clock skew.
+		log.Printf("math: parse started_at %q for session %d: %v", startedAt, sessionID, parseErr)
+	} else {
+		duration = now.Sub(startedT).Milliseconds()
+		if duration < 0 {
+			duration = 0
+		}
 	}
 	score := correctCount
 
