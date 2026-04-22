@@ -21,6 +21,9 @@ const EXIT_ANIM_MS = 180
 // one so it feels like a small drum roll. No-op under reduced motion.
 const VIBRATE_PATTERN = [40, 50, 40, 50, 80]
 
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
 export function AchievementUnlockOverlay() {
   const { t, i18n } = useTranslation('regnemester')
   const [queue, setQueue] = useState<UnlockedAchievement[]>([])
@@ -28,6 +31,12 @@ export function AchievementUnlockOverlay() {
   // Ref-based re-entrancy guard: prevents a rapid double-tap (or tap +
   // auto-advance collision) from slicing the queue twice.
   const exitingRef = useRef(false)
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  const dismissButtonRef = useRef<HTMLButtonElement | null>(null)
+  // Element that held focus before the overlay opened. Captured on the
+  // first shown unlock and cleared once the queue fully drains so focus
+  // is returned to where the user was before the celebration.
+  const previousFocusRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     return subscribeAchievementUnlock(items => {
@@ -58,11 +67,49 @@ export function AchievementUnlockOverlay() {
     soundEngine.play('fanfare')
     vibrate(VIBRATE_PATTERN)
 
+    // Capture the pre-overlay focus target once per sequence, then move
+    // focus into the dialog. aria-modal=true promises a focus trap, so
+    // screen-reader and keyboard users expect focus to land here.
+    if (previousFocusRef.current === null && typeof document !== 'undefined') {
+      const active = document.activeElement as HTMLElement | null
+      previousFocusRef.current = active && active !== document.body ? active : null
+    }
+    dismissButtonRef.current?.focus()
+
     const autoId = window.setTimeout(() => advance(), AUTO_DISMISS_MS)
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
         e.preventDefault()
         advance()
+        return
+      }
+      if (e.key === 'Tab') {
+        // Trap focus inside the dialog. With a single focusable control
+        // Tab/Shift+Tab keep focus parked on it; if we ever add more
+        // controls the cycle still stays inside the card.
+        const container = cardRef.current
+        if (!container) return
+        const focusable = Array.from(
+          container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+        )
+        if (focusable.length === 0) {
+          e.preventDefault()
+          return
+        }
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+        const active = document.activeElement as HTMLElement | null
+        if (e.shiftKey) {
+          if (!active || active === first || !container.contains(active)) {
+            e.preventDefault()
+            last.focus()
+          }
+        } else {
+          if (!active || active === last || !container.contains(active)) {
+            e.preventDefault()
+            first.focus()
+          }
+        }
       }
     }
     window.addEventListener('keydown', onKey)
@@ -72,6 +119,18 @@ export function AchievementUnlockOverlay() {
       window.removeEventListener('keydown', onKey)
     }
   }, [current, advance])
+
+  // Restore focus once the queue has fully drained. Kept in its own effect
+  // so the save/restore bookkeeping stays separate from the per-unlock
+  // setup above.
+  useEffect(() => {
+    if (current) return
+    const prev = previousFocusRef.current
+    previousFocusRef.current = null
+    if (prev && typeof prev.focus === 'function') {
+      prev.focus()
+    }
+  }, [current])
 
   if (!current) return null
 
@@ -100,6 +159,7 @@ export function AchievementUnlockOverlay() {
       data-testid="regnemester-achievement-overlay"
     >
       <div
+        ref={cardRef}
         className={`mx-auto w-full max-w-md rounded-2xl border border-yellow-400/50 bg-gradient-to-br from-yellow-500/20 via-pink-500/15 to-purple-500/20 p-6 text-center shadow-2xl ${cardClass}`}
         onClick={e => e.stopPropagation()}
       >
@@ -125,6 +185,7 @@ export function AchievementUnlockOverlay() {
           </div>
         )}
         <button
+          ref={dismissButtonRef}
           type="button"
           onClick={advance}
           className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/20 active:bg-white/30"

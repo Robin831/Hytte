@@ -184,6 +184,106 @@ describe('AchievementUnlockOverlay', () => {
     expect(screen.getByText(/2 more to go/)).toBeTruthy()
   })
 
+  it('moves focus to the dismiss button when the overlay opens', () => {
+    render(<AchievementUnlockOverlay />)
+    act(() => {
+      emitAchievementUnlock([makeAch('streak_25')])
+    })
+    const button = screen.getByRole('button')
+    expect(document.activeElement).toBe(button)
+  })
+
+  it('restores focus to the previously focused element when closed', () => {
+    const trigger = document.createElement('button')
+    trigger.textContent = 'trigger'
+    document.body.appendChild(trigger)
+    try {
+      trigger.focus()
+      expect(document.activeElement).toBe(trigger)
+
+      render(<AchievementUnlockOverlay />)
+      act(() => {
+        emitAchievementUnlock([makeAch('streak_25')])
+      })
+      // Focus moved into the dialog.
+      expect(document.activeElement).not.toBe(trigger)
+
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      })
+      act(() => { vi.advanceTimersByTime(200) })
+
+      expect(screen.queryByTestId('regnemester-achievement-overlay')).toBeNull()
+      expect(document.activeElement).toBe(trigger)
+    } finally {
+      document.body.removeChild(trigger)
+    }
+  })
+
+  it('keeps focus inside the dialog when Tab is pressed', () => {
+    render(<AchievementUnlockOverlay />)
+    act(() => {
+      emitAchievementUnlock([makeAch('streak_25')])
+    })
+    const button = screen.getByRole('button')
+    expect(document.activeElement).toBe(button)
+
+    const tabEvent = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      bubbles: true,
+      cancelable: true,
+    })
+    act(() => {
+      window.dispatchEvent(tabEvent)
+    })
+    expect(tabEvent.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(button)
+
+    const shiftTabEvent = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    })
+    act(() => {
+      window.dispatchEvent(shiftTabEvent)
+    })
+    expect(shiftTabEvent.defaultPrevented).toBe(true)
+    expect(document.activeElement).toBe(button)
+  })
+
+  it('restores focus only after the full queue has drained', () => {
+    const trigger = document.createElement('button')
+    trigger.textContent = 'trigger'
+    document.body.appendChild(trigger)
+    try {
+      trigger.focus()
+
+      render(<AchievementUnlockOverlay />)
+      act(() => {
+        emitAchievementUnlock([makeAch('a'), makeAch('b')])
+      })
+
+      // Dismiss the first — focus should stay inside the dialog on the
+      // next unlock, not return to the trigger yet.
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      })
+      act(() => { vi.advanceTimersByTime(200) })
+      expect(document.activeElement).not.toBe(trigger)
+      expect(screen.getByText('title:b')).toBeTruthy()
+
+      // Dismiss the second — now the queue is empty and focus restores.
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      })
+      act(() => { vi.advanceTimersByTime(200) })
+      expect(document.activeElement).toBe(trigger)
+    } finally {
+      document.body.removeChild(trigger)
+    }
+  })
+
   it('skips vibration when prefers-reduced-motion is on', () => {
     installMatchMedia(true)
     const vibrateSpy = vi.fn().mockReturnValue(true)
