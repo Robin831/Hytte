@@ -1,7 +1,8 @@
-import React, { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Target, Check, X } from 'lucide-react'
+import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
 
 type Op = '*' | '/'
 type Level = 'unseen' | 'red' | 'yellow' | 'green'
@@ -76,16 +77,12 @@ function levelKey(level: Level): 'heatmap.legend.unseen' | 'heatmap.legend.red' 
 
 export default function MathHeatmap() {
   const { t } = useTranslation('regnemester')
-  const uid = useId()
-  const panelId = `${uid}-panel`
 
   const [tab, setTab] = useState<Tab>('multiplication')
   const [data, setData] = useState<HeatmapResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<{ tab: Tab; row: number; col: number } | null>(null)
-
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -108,30 +105,13 @@ export default function MathHeatmap() {
     return () => { controller.abort() }
   }, [t])
 
-  const grid = useMemo(() => {
-    if (!data) return null
-    return tab === 'multiplication' ? data.multiplication : data.division
-  }, [data, tab])
-
   const selectedCell: HeatmapCell | null = useMemo(() => {
-    if (!grid || !selected || selected.tab !== tab) return null
+    if (!data || !selected || selected.tab !== tab) return null
+    const grid = tab === 'multiplication' ? data.multiplication : data.division
     const row = grid[selected.row]
     if (!row) return null
     return row[selected.col] ?? null
-  }, [grid, selected, tab])
-
-  const handleTabKeyDown = (e: React.KeyboardEvent, currentTab: Tab) => {
-    const idx = TABS.indexOf(currentTab)
-    let next: number | null = null
-    if (e.key === 'ArrowRight') next = (idx + 1) % TABS.length
-    else if (e.key === 'ArrowLeft') next = (idx - 1 + TABS.length) % TABS.length
-    else if (e.key === 'Home') next = 0
-    else if (e.key === 'End') next = TABS.length - 1
-    if (next === null) return
-    e.preventDefault()
-    setTab(TABS[next])
-    tabRefs.current[next]?.focus()
-  }
+  }, [data, selected, tab])
 
   const tabLabel = (key: Tab): string =>
     key === 'multiplication' ? t('heatmap.tabMultiplication') : t('heatmap.tabDivision')
@@ -154,38 +134,17 @@ export default function MathHeatmap() {
 
       <p className="text-sm text-gray-400">{t('heatmap.intro')}</p>
 
-      <div className="flex gap-1 bg-gray-800/60 rounded-lg border border-gray-700 p-1" role="tablist" aria-label={t('heatmap.tabsLabel')}>
-        {TABS.map((key, i) => (
-          <button
-            key={key}
-            ref={el => { tabRefs.current[i] = el }}
-            type="button"
-            role="tab"
-            id={`${uid}-tab-${key}`}
-            aria-selected={tab === key}
-            aria-controls={panelId}
-            tabIndex={tab === key ? 0 : -1}
-            onClick={() => setTab(key)}
-            onKeyDown={e => handleTabKeyDown(e, key)}
-            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-              tab === key
-                ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            {tabLabel(key)}
-          </button>
-        ))}
-      </div>
+      <Tabs value={tab} onChange={v => setTab(v as Tab)} variant="segment" className="space-y-5">
+        <TabList aria-label={t('heatmap.tabsLabel')} className="mb-0">
+          {TABS.map(key => (
+            <TabTrigger key={key} value={key}>
+              {tabLabel(key)}
+            </TabTrigger>
+          ))}
+        </TabList>
 
-      <Legend />
+        <Legend />
 
-      <div
-        id={panelId}
-        role="tabpanel"
-        aria-labelledby={`${uid}-tab-${tab}`}
-        className="space-y-5"
-      >
         {loading && (
           <div className="h-80 rounded-lg bg-gray-800 animate-pulse" aria-hidden="true" />
         )}
@@ -196,18 +155,29 @@ export default function MathHeatmap() {
           </div>
         )}
 
-        {!loading && !error && grid && (
+        {!loading && !error && data && (
           <>
-            <HeatmapGrid
-              grid={grid}
-              selected={selected?.tab === tab ? { row: selected.row, col: selected.col } : null}
-              onSelect={(row, col) => setSelected({ tab, row, col })}
-              op={tab === 'multiplication' ? '*' : '/'}
-            />
-            <CellDetail cell={selectedCell} />
+            <TabPanel value="multiplication" className="space-y-5">
+              <HeatmapGrid
+                grid={data.multiplication}
+                selected={selected?.tab === 'multiplication' ? { row: selected.row, col: selected.col } : null}
+                onSelect={(row, col) => setSelected({ tab: 'multiplication', row, col })}
+                op="*"
+              />
+              <CellDetail cell={selectedCell} />
+            </TabPanel>
+            <TabPanel value="division" className="space-y-5">
+              <HeatmapGrid
+                grid={data.division}
+                selected={selected?.tab === 'division' ? { row: selected.row, col: selected.col } : null}
+                onSelect={(row, col) => setSelected({ tab: 'division', row, col })}
+                op="/"
+              />
+              <CellDetail cell={selectedCell} />
+            </TabPanel>
           </>
         )}
-      </div>
+      </Tabs>
     </div>
   )
 }
