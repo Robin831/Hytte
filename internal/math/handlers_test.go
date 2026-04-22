@@ -292,7 +292,7 @@ func TestBlitzBestHandlerReturnsHighestScore(t *testing.T) {
 	}
 }
 
-func TestStatsHandlerSorted(t *testing.T) {
+func TestStatsHandlerGrid(t *testing.T) {
 	d := setupTestDB(t)
 	svc := NewService(d)
 	ctx := context.Background()
@@ -300,12 +300,15 @@ func TestStatsHandlerSorted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	// Record attempts in random order.
-	pairs := [][2]int{{5, 5}, {2, 3}, {7, 4}}
-	for _, p := range pairs {
-		if _, _, _, err := svc.RecordAttempt(ctx, id, 1, p[0], p[1], OpMultiply, p[0]*p[1], 100); err != nil {
+	// A fast, all-correct run on 3×4 to set up a "green" cell.
+	for i := 0; i < 5; i++ {
+		if _, _, _, err := svc.RecordAttempt(ctx, id, 1, 3, 4, OpMultiply, 12, 1200); err != nil {
 			t.Fatalf("RecordAttempt: %v", err)
 		}
+	}
+	// A correct but slow attempt on 12÷4 — yellow/red depending on avg.
+	if _, _, _, err := svc.RecordAttempt(ctx, id, 1, 12, 4, OpDivide, 3, 2500); err != nil {
+		t.Fatalf("RecordAttempt: %v", err)
 	}
 
 	h := StatsHandler(d)
@@ -317,20 +320,55 @@ func TestStatsHandlerSorted(t *testing.T) {
 		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 	var resp struct {
-		Multiplication []statsEntry `json:"multiplication"`
-		Division       []statsEntry `json:"division"`
+		Multiplication [][]statsCell `json:"multiplication"`
+		Division       [][]statsCell `json:"division"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(resp.Multiplication) != 3 {
-		t.Fatalf("got %d mult entries, want 3", len(resp.Multiplication))
+	if len(resp.Multiplication) != 10 || len(resp.Division) != 10 {
+		t.Fatalf("grid size mult=%d div=%d, want 10×10", len(resp.Multiplication), len(resp.Division))
 	}
-	// Verify ascending (A, B) order.
-	for i := 1; i < len(resp.Multiplication); i++ {
-		prev, cur := resp.Multiplication[i-1], resp.Multiplication[i]
-		if prev.A > cur.A || (prev.A == cur.A && prev.B > cur.B) {
-			t.Errorf("entries not sorted: %+v then %+v", prev, cur)
+	for _, row := range resp.Multiplication {
+		if len(row) != 10 {
+			t.Fatalf("mult row length=%d, want 10", len(row))
 		}
+	}
+	// Every cell must have a level set — even unseen cells.
+	multCell := resp.Multiplication[2][3] // 3×4
+	if multCell.A != 3 || multCell.B != 4 {
+		t.Errorf("mult[2][3] coords=(%d,%d), want (3,4)", multCell.A, multCell.B)
+	}
+	if multCell.Op != OpMultiply {
+		t.Errorf("mult[2][3] op=%q, want %q", multCell.Op, OpMultiply)
+	}
+	if multCell.Level != MasteryGreen {
+		t.Errorf("mult[2][3] level=%q, want %q (count=%d avg5=%v)",
+			multCell.Level, MasteryGreen, multCell.Count, multCell.AvgMsLast5)
+	}
+	if multCell.Count != 5 || multCell.Correct != 5 {
+		t.Errorf("mult[2][3] count/correct=%d/%d, want 5/5", multCell.Count, multCell.Correct)
+	}
+	if multCell.AccuracyPct != 100 {
+		t.Errorf("mult[2][3] accuracy=%v, want 100", multCell.AccuracyPct)
+	}
+
+	// Unseen cell example — 1×1 has no attempts.
+	unseen := resp.Multiplication[0][0]
+	if unseen.Level != MasteryUnseen || unseen.Count != 0 {
+		t.Errorf("mult[0][0] unseen=%+v", unseen)
+	}
+	if unseen.Last5 == nil {
+		t.Error("unseen cell should have an empty (non-nil) last5 slice for JSON stability")
+	}
+
+	// Division cell at display coords (3, 4) means 12÷4=3, so it must
+	// reflect the attempt we recorded.
+	divCell := resp.Division[2][3]
+	if divCell.Op != OpDivide {
+		t.Errorf("div[2][3] op=%q, want %q", divCell.Op, OpDivide)
+	}
+	if divCell.Count != 1 || divCell.Correct != 1 {
+		t.Errorf("div[2][3] count/correct=%d/%d, want 1/1", divCell.Count, divCell.Correct)
 	}
 }

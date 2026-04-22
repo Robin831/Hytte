@@ -212,17 +212,66 @@ func BlitzBestHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// statsEntry is the per-fact payload in the stats response. Operands are
-// repeated alongside FactStats so the client can render without rebuilding
-// the key.
-type statsEntry struct {
-	A int `json:"a"`
-	B int `json:"b"`
-	FactStats
+// statsCell is a single cell in the heatmap response. (A, B) are the
+// display coordinates — the row/column of the grid (1..10). For
+// multiplication, A and B are the factors. For division, A is the quotient
+// and B is the divisor, so the rendered problem is (A*B) ÷ B = A.
+//
+// AccuracyPct is the accuracy over the Last5 window (0-100). Cells with
+// no attempts report AccuracyPct=0 and Level=MasteryUnseen; the frontend
+// distinguishes those from 0%-with-attempts using Count.
+type statsCell struct {
+	A           int            `json:"a"`
+	B           int            `json:"b"`
+	Op          string         `json:"op"`
+	Count       int            `json:"count"`
+	Correct     int            `json:"correct_count"`
+	AccuracyPct float64        `json:"accuracy_pct"`
+	AvgMs       float64        `json:"avg_ms"`
+	AvgMsLast5  float64        `json:"avg_ms_last5"`
+	Last5       []Last5Attempt `json:"last5"`
+	Level       string         `json:"level"`
 }
 
-// StatsHandler returns GET /api/math/stats: the user's per-fact mastery for
-// both ops, sorted (a, b) ascending for a stable client-side render.
+// buildCell converts raw FactStats into the wire-level cell for (a, b, op).
+// For division, (a, b) are the cell's display coordinates — the caller is
+// responsible for looking up the matching FactStats with the underlying
+// fact key (dividend=a*b, divisor=b).
+func buildCell(a, b int, op string, stats FactStats) statsCell {
+	cell := statsCell{
+		A:          a,
+		B:          b,
+		Op:         op,
+		Count:      stats.Count,
+		Correct:    stats.CorrectCount,
+		AvgMs:      stats.AvgMs,
+		AvgMsLast5: stats.AvgMsLast5,
+		Last5:      stats.Last5,
+		Level:      stats.Level,
+	}
+	if len(stats.Last5) > 0 {
+		correct := 0
+		for _, a := range stats.Last5 {
+			if a.Correct {
+				correct++
+			}
+		}
+		cell.AccuracyPct = float64(correct) * 100 / float64(len(stats.Last5))
+	}
+	if cell.Level == "" {
+		cell.Level = MasteryUnseen
+	}
+	if cell.Last5 == nil {
+		cell.Last5 = []Last5Attempt{}
+	}
+	return cell
+}
+
+// StatsHandler returns GET /api/math/stats: the user's per-fact mastery as
+// two 10×10 grids — one for multiplication, one for division — indexed as
+// grid[a-1][b-1]. Every cell is present; cells with zero attempts have
+// Count=0 and Level="unseen". The frontend uses Level directly for cell
+// colouring and drills into Last5 for the detail panel.
 func StatsHandler(db *sql.DB) http.HandlerFunc {
 	svc := NewService(db)
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -237,19 +286,23 @@ func StatsHandler(db *sql.DB) http.HandlerFunc {
 			writeErr(w, http.StatusInternalServerError, "failed to load stats")
 			return
 		}
-		mult := make([]statsEntry, 0)
-		div := make([]statsEntry, 0)
-		for k, v := range mastery {
-			entry := statsEntry{A: k.A, B: k.B, FactStats: v}
-			switch k.Op {
-			case OpMultiply:
-				mult = append(mult, entry)
-			case OpDivide:
-				div = append(div, entry)
+		mult := make([][]statsCell, MaxOperand-MinOperand+1)
+		div := make([][]statsCell, MaxOperand-MinOperand+1)
+		for a := MinOperand; a <= MaxOperand; a++ {
+			row := a - MinOperand
+			mult[row] = make([]statsCell, MaxOperand-MinOperand+1)
+			div[row] = make([]statsCell, MaxOperand-MinOperand+1)
+			for b := MinOperand; b <= MaxOperand; b++ {
+				col := b - MinOperand
+				// Multiplication fact key is (a, b).
+				multStats := mastery[FactKey{A: a, B: b, Op: OpMultiply}]
+				mult[row][col] = buildCell(a, b, OpMultiply, multStats)
+				// Division cell (a, b) represents the problem (a*b) ÷ b = a,
+				// stored with fact key (dividend=a*b, divisor=b).
+				divStats := mastery[FactKey{A: a * b, B: b, Op: OpDivide}]
+				div[row][col] = buildCell(a, b, OpDivide, divStats)
 			}
 		}
-		sortStats(mult)
-		sortStats(div)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"multiplication": mult,
 			"division":       div,
@@ -290,25 +343,3 @@ func LeaderboardHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// sortStats orders entries by (A, B) ascending. We sort in-place using a
-// simple comparator-based sort rather than pulling in sort.Slice's reflection.
-func sortStats(entries []statsEntry) {
-	// Insertion sort — slices are at most 100 long, and this avoids a
-	// reflection-based sort.Slice call.
-	for i := 1; i < len(entries); i++ {
-		for j := i; j > 0; j-- {
-			if statsLess(entries[j], entries[j-1]) {
-				entries[j], entries[j-1] = entries[j-1], entries[j]
-				continue
-			}
-			break
-		}
-	}
-}
-
-func statsLess(a, b statsEntry) bool {
-	if a.A != b.A {
-		return a.A < b.A
-	}
-	return a.B < b.B
-}

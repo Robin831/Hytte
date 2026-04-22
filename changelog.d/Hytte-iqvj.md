@@ -1,0 +1,2 @@
+category: Added
+- **Regnemester: fact-mastery heatmap** - New /math/heatmap page with separate Multiplication and Division tabs, a 10×10 colour-coded grid that marks each fact as unseen/needs-work/getting-there/mastered, and a tap-to-open detail panel with attempt count, accuracy, average response time, and a sparkline of the last 5 attempts. The backend `/api/math/stats` response was reshaped to return the full grid plus per-cell mastery level so the UI doesn't have to recompute. (Hytte-iqvj)
