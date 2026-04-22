@@ -60,8 +60,8 @@ type FactStats struct {
 //
 //   - unseen: no attempts recorded.
 //   - green:  last-5 all correct AND avg response time (over last 5) < 2000ms.
-//   - yellow: last-5 accuracy in [80, 100)% AND avg response in [2000, 3000]ms.
-//   - red:    everything else (accuracy <80%, too slow, or mixed).
+//   - yellow: last-5 accuracy at least 80% AND avg response in [2000, 3000]ms.
+//   - red:    everything else (accuracy <80% or avg response outside the green/yellow thresholds).
 //
 // The function operates on FactStats.Last5 and FactStats.AvgMsLast5 so the
 // classification matches what the frontend detail panel shows.

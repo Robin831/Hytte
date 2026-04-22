@@ -264,6 +264,9 @@ function HeatmapGrid({ grid, selected, onSelect, op }: GridProps) {
                 scope="col"
                 className="w-10 sm:w-12 md:w-14 text-center text-xs text-gray-400 font-medium tabular-nums"
               >
+                <span className="sr-only">
+                  {op === '*' ? t('heatmap.axisB') : t('heatmap.axisDivisor')}{' '}
+                </span>
                 {col + 1}
               </th>
             ))}

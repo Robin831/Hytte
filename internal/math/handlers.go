@@ -251,8 +251,8 @@ func buildCell(a, b int, op string, stats FactStats) statsCell {
 	}
 	if len(stats.Last5) > 0 {
 		correct := 0
-		for _, a := range stats.Last5 {
-			if a.Correct {
+		for _, attempt := range stats.Last5 {
+			if attempt.Correct {
 				correct++
 			}
 		}
