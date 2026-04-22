@@ -134,7 +134,9 @@ func RecordAttemptHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // FinishSessionHandler returns POST /api/math/sessions/:id/finish, response
-// {summary}.
+// {summary, unlocked_achievements}. Achievements are evaluated against the
+// just-finished session — failures during evaluation are logged but do not
+// fail the request, since the session itself has already been committed.
 func FinishSessionHandler(db *sql.DB) http.HandlerFunc {
 	svc := NewService(db)
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -164,7 +166,43 @@ func FinishSessionHandler(db *sql.DB) http.HandlerFunc {
 			}
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"summary": summary})
+		unlocked, achErr := svc.EvaluateAchievements(r.Context(), user.ID, summary)
+		if achErr != nil {
+			// Achievement evaluation is best-effort — the run itself has
+			// already been recorded, so a leaderboard read failing should
+			// not roll back a finished session. Log and return an empty
+			// list so the client still gets the summary.
+			log.Printf("math: evaluate achievements: %v", achErr)
+			unlocked = nil
+		}
+		if unlocked == nil {
+			unlocked = []EarnedAchievementRow{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"summary":               summary,
+			"unlocked_achievements": unlocked,
+		})
+	}
+}
+
+// AchievementsHandler returns GET /api/math/achievements: the user's
+// earned + locked milestone set, plus the aggregate stats the frontend
+// needs to format per-tier progress hints.
+func AchievementsHandler(db *sql.DB) http.HandlerFunc {
+	svc := NewService(db)
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		resp, err := svc.ListAchievements(r.Context(), user.ID)
+		if err != nil {
+			log.Printf("math: list achievements: %v", err)
+			writeErr(w, http.StatusInternalServerError, "failed to load achievements")
+			return
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }
 

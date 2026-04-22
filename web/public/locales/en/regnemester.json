@@ -97,6 +97,75 @@
     "unranked": "Unranked",
     "loading": "Loading rank…"
   },
+  "achievements": {
+    "title": "Achievements",
+    "intro": "Milestones you've earned, plus the ones still ahead.",
+    "viewLink": "View achievements",
+    "errorLoad": "Could not load your achievements.",
+    "emptyState": "No achievements unlocked yet — finish a Marathon or Blitz run to start collecting them.",
+    "unlockedOn": "Unlocked {{date}}",
+    "unlockedBannerTitle_one": "{{count}} new achievement!",
+    "unlockedBannerTitle_other": "{{count}} new achievements!",
+    "tiers": {
+      "marathon": "Marathon",
+      "blitz": "Blitz",
+      "rivalry": "Family rivalry"
+    },
+    "progress": {
+      "noMarathon": "Finish a Marathon run to start tracking progress.",
+      "noBlitz": "Play a Blitz run to start tracking progress.",
+      "marathonGap": "Best: {{best}} — {{gap}} to go",
+      "marathonReady": "Best: {{best}} — finish another run to lock it in",
+      "marathonPerfect": "Fewest wrongs in a run: {{wrong}}",
+      "marathonPerfectReady": "You've had a flawless run — finish another to lock it in",
+      "streakGap": "Best streak: {{best}} — {{gap}} more to unlock",
+      "streakReady": "Best streak: {{best}} — finish another run to lock it in",
+      "firstBloodHint": "Beat every other family member on any leaderboard.",
+      "firstBloodReady": "You're #1 on a board — finish another run to lock it in"
+    },
+    "codes": {
+      "marathon_sub_10": {
+        "title": "Marathon Sub-10",
+        "description": "Finish a Marathon in under 10:00."
+      },
+      "marathon_sub_7": {
+        "title": "Marathon Sub-7",
+        "description": "Finish a Marathon in under 7:00."
+      },
+      "marathon_sub_5": {
+        "title": "Marathon Sub-5",
+        "description": "Finish a Marathon in under 5:00."
+      },
+      "marathon_sub_4": {
+        "title": "Marathon Sub-4",
+        "description": "Finish a Marathon in under 4:00."
+      },
+      "marathon_sub_3": {
+        "title": "Marathon Sub-3",
+        "description": "Finish a Marathon in under 3:00."
+      },
+      "marathon_perfect_100": {
+        "title": "Flawless Marathon",
+        "description": "Finish a Marathon with zero wrong answers."
+      },
+      "streak_25": {
+        "title": "Streak 25",
+        "description": "Reach a 25-answer streak in a single Blitz run."
+      },
+      "streak_50": {
+        "title": "Streak 50",
+        "description": "Reach a 50-answer streak in a single Blitz run."
+      },
+      "streak_100": {
+        "title": "Streak 100",
+        "description": "Reach a 100-answer streak in a single Blitz run."
+      },
+      "first_blood": {
+        "title": "First Blood",
+        "description": "Land at #1 on any leaderboard for the first time."
+      }
+    }
+  },
   "heatmap": {
     "title": "Mastery heatmap",
     "intro": "Every fact, colour-coded by how well you know it. Tap a cell to see details.",

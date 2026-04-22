@@ -5,6 +5,7 @@ import { ArrowLeft, Trophy, Zap } from 'lucide-react'
 import { MathAnswerPad } from '../components/math/MathAnswerPad'
 import { appendAnswerDigit } from '../components/math/mathUtils'
 import { FinishRank } from '../components/math/FinishRank'
+import { UnlockedAchievementsBanner, type UnlockedAchievement } from '../components/math/UnlockedAchievements'
 
 const DURATION_MS = 60_000
 
@@ -77,6 +78,7 @@ export default function MathBlitz() {
   const [priorBest, setPriorBest] = useState<BlitzBest | null>(null)
   const [timeLeftMs, setTimeLeftMs] = useState(DURATION_MS)
   const [submitting, setSubmitting] = useState(false)
+  const [unlocked, setUnlocked] = useState<UnlockedAchievement[]>([])
 
   // Wall-clock anchors; kept in refs so timer updates don't thrash React state.
   const endAtRef = useRef<number>(0)
@@ -109,14 +111,15 @@ export default function MathBlitz() {
         credentials: 'include',
       })
       if (!res.ok) throw new Error(t('errors.failedToFinish'))
-      const data = await res.json()
-      const s = data.summary as FinishSummary
+      const data = await res.json() as { summary: FinishSummary; unlocked_achievements?: UnlockedAchievement[] }
+      const s = data.summary
       setSummary(s)
       // Trust the server's score for the result banner — the client tally
       // should already match, but the stored value is what future PB lookups
       // compare against.
       setScore(s.score_num)
       setTimeLeftMs(0)
+      setUnlocked(data.unlocked_achievements ?? [])
       setPhase('done')
     } catch (err) {
       const message = err instanceof Error ? err.message : t('errors.failedToFinish')
@@ -333,6 +336,8 @@ export default function MathBlitz() {
           </div>
         )}
 
+        <UnlockedAchievementsBanner items={unlocked} />
+
         <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
           <div className="rounded-lg border border-gray-700 bg-gray-800 p-4">
             <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">{t('blitz.scoreLabel')}</div>
@@ -378,6 +383,7 @@ export default function MathBlitz() {
               setLastAnswerMs(null)
               setInput('')
               setTimeLeftMs(DURATION_MS)
+              setUnlocked([])
               setPhase('idle')
               // Refresh prior best so a back-to-back run compares against
               // the run we just stored.

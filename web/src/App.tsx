@@ -71,6 +71,7 @@ import MathMarathon from './pages/MathMarathon'
 import MathBlitz from './pages/MathBlitz'
 import MathLeaderboard from './pages/MathLeaderboard'
 import MathHeatmap from './pages/MathHeatmap'
+import MathAchievements from './pages/MathAchievements'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -529,6 +530,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="regnemester">
                 <MathHeatmap />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/math/achievements"
+            element={
+              <FeatureRoute feature="regnemester">
+                <MathAchievements />
               </FeatureRoute>
             }
           />

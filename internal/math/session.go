@@ -269,11 +269,11 @@ func (s *Service) Finish(ctx context.Context, sessionID, userID int64) (Summary,
 
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE math_sessions
-		SET total_correct = ?, total_wrong = ?, score_num = ?,
+		SET total_correct = ?, total_wrong = ?, score_num = ?, best_streak = ?,
 		    ended_at    = CASE WHEN (ended_at IS NULL OR ended_at = '') THEN ? ELSE ended_at END,
 		    duration_ms = CASE WHEN (ended_at IS NULL OR ended_at = '') THEN ? ELSE duration_ms END
 		WHERE id = ?`,
-		correctCount, wrong, score, endedStr, duration, sessionID,
+		correctCount, wrong, score, bestStreak, endedStr, duration, sessionID,
 	); err != nil {
 		return Summary{}, fmt.Errorf("update math_session: %w", err)
 	}
@@ -341,11 +341,11 @@ type BlitzBest struct {
 }
 
 // BestBlitz returns the user's highest-scoring finished Blitz session, or
-// nil if they have not finished one yet. Best_streak is re-derived from
-// math_attempts because math_sessions does not store it as a column.
+// nil if they have not finished one yet. BestStreak is read from the
+// best_streak column stored by Finish().
 func (s *Service) BestBlitz(ctx context.Context, userID int64) (*BlitzBest, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, score_num, total_correct, total_wrong, ended_at
+		SELECT id, score_num, total_correct, total_wrong, ended_at, best_streak
 		FROM math_sessions
 		WHERE user_id = ?
 		  AND mode = ?
@@ -355,53 +355,13 @@ func (s *Service) BestBlitz(ctx context.Context, userID int64) (*BlitzBest, erro
 		userID, ModeBlitz,
 	)
 	var best BlitzBest
-	if err := row.Scan(&best.SessionID, &best.ScoreNum, &best.TotalCorrect, &best.TotalWrong, &best.EndedAt); err != nil {
+	if err := row.Scan(&best.SessionID, &best.ScoreNum, &best.TotalCorrect, &best.TotalWrong, &best.EndedAt, &best.BestStreak); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("select best blitz: %w", err)
 	}
-	// Recover best_streak from the attempts log. Keeping this off the
-	// math_sessions row avoids a schema change; the attempt count per
-	// session is small (≤ a few hundred) so the cost is negligible.
-	streak, err := s.longestCorrectStreak(ctx, best.SessionID)
-	if err != nil {
-		return nil, err
-	}
-	best.BestStreak = streak
 	return &best, nil
-}
-
-// longestCorrectStreak returns the longest run of consecutive correct
-// attempts in the given session, ordered by insertion.
-func (s *Service) longestCorrectStreak(ctx context.Context, sessionID int64) (int, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT is_correct FROM math_attempts WHERE session_id = ? ORDER BY id ASC`,
-		sessionID,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("select math_attempts for streak: %w", err)
-	}
-	defer rows.Close()
-	best, cur := 0, 0
-	for rows.Next() {
-		var isCorrect int
-		if err := rows.Scan(&isCorrect); err != nil {
-			return 0, fmt.Errorf("scan is_correct: %w", err)
-		}
-		if isCorrect == 1 {
-			cur++
-			if cur > best {
-				best = cur
-			}
-		} else {
-			cur = 0
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("iterate is_correct: %w", err)
-	}
-	return best, nil
 }
 
 // loadSession returns the owner, mode, startedAt and finished flag for a

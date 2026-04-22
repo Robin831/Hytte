@@ -5,6 +5,7 @@ import { ArrowLeft, Trophy } from 'lucide-react'
 import { MathAnswerPad } from '../components/math/MathAnswerPad'
 import { appendAnswerDigit } from '../components/math/mathUtils'
 import { FinishRank } from '../components/math/FinishRank'
+import { UnlockedAchievementsBanner, type UnlockedAchievement } from '../components/math/UnlockedAchievements'
 
 const TOTAL = 200
 
@@ -91,6 +92,7 @@ export default function MathMarathon() {
   const [priorBest, setPriorBest] = useState<MarathonBest | null>(null)
   const [elapsed, setElapsed] = useState(0)
   const [submitting, setSubmitting] = useState(false)
+  const [unlocked, setUnlocked] = useState<UnlockedAchievement[]>([])
 
   // Refs to keep wall-clock bookkeeping out of React state churn.
   const startedAtRef = useRef<number>(0)
@@ -159,13 +161,14 @@ export default function MathMarathon() {
         credentials: 'include',
       })
       if (!res.ok) throw new Error(t('errors.failedToFinish'))
-      const data = await res.json()
+      const data = await res.json() as { summary: FinishSummary; unlocked_achievements?: UnlockedAchievement[] }
       // Trust the server's duration_ms and total_wrong: those are what get
       // stored and what future PB lookups compare against. Sync elapsed so
       // there's no visible jump between the running timer and the result.
-      const s = data.summary as FinishSummary
+      const s = data.summary
       setSummary(s)
       setElapsed(s.duration_ms)
+      setUnlocked(data.unlocked_achievements ?? [])
       setPhase('done')
     } catch (err) {
       const message = err instanceof Error ? err.message : t('errors.failedToFinish')
@@ -311,6 +314,8 @@ export default function MathMarathon() {
           </div>
         )}
 
+        <UnlockedAchievementsBanner items={unlocked} />
+
         <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6">
           <div className="rounded-lg border border-gray-700 bg-gray-800 p-4">
             <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">{t('marathon.timeLabel')}</div>
@@ -351,6 +356,7 @@ export default function MathMarathon() {
               setWrongCount(0)
               setInput('')
               setElapsed(0)
+              setUnlocked([])
               // Refresh prior best so a back-to-back run compares against
               // the run we just stored.
               setPriorBest(prev => {

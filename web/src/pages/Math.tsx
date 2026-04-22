@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { ParseKeys } from 'i18next'
-import { Calculator, Timer, Zap, Target, Trophy, Lock } from 'lucide-react'
+import { Calculator, Timer, Zap, Target, Trophy, Lock, Award } from 'lucide-react'
 
 interface ModeTile {
   to: string | null
@@ -30,13 +30,20 @@ export default function MathLanding() {
         <p className="text-gray-400 text-sm sm:text-base">{t('tagline')}</p>
       </header>
 
-      <div className="mb-6">
+      <div className="mb-6 flex flex-wrap gap-2">
         <Link
           to="/math/leaderboard"
           className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 hover:border-yellow-500/40 hover:bg-gray-800/80 px-4 py-2 text-sm font-medium text-yellow-300 transition-colors"
         >
           <Trophy size={18} />
           {t('leaderboard.viewLink')}
+        </Link>
+        <Link
+          to="/math/achievements"
+          className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 hover:border-yellow-500/40 hover:bg-gray-800/80 px-4 py-2 text-sm font-medium text-yellow-300 transition-colors"
+        >
+          <Award size={18} />
+          {t('achievements.viewLink')}
         </Link>
       </div>
 
