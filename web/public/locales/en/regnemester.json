@@ -117,6 +117,7 @@
       "marathonGap": "Best: {{best}} — {{gap}} to go",
       "marathonReady": "Best: {{best}} — finish another run to lock it in",
       "marathonPerfect": "Fewest wrongs in a run: {{wrong}}",
+      "marathonPerfectReady": "You've had a flawless run — finish another to lock it in",
       "streakGap": "Best streak: {{best}} — {{gap}} more to unlock",
       "streakReady": "Best streak: {{best}} — finish another run to lock it in",
       "firstBloodHint": "Beat every other family member on any leaderboard.",

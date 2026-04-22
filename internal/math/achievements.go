@@ -60,12 +60,13 @@ type Achievement struct {
 // render progress hints on locked rows ("Best: 5:42 — 42s to Sub-5") in
 // the user's locale.
 type UserAchievementStats struct {
-	HasMarathon       bool  `json:"has_marathon"`
-	BestMarathonMs    int64 `json:"best_marathon_ms"`
-	BestMarathonWrong int   `json:"best_marathon_wrong"`
-	HasBlitz          bool  `json:"has_blitz"`
-	BestBlitzStreak   int   `json:"best_blitz_streak"`
-	OnTopAnyBoard     bool  `json:"on_top_any_board"`
+	HasMarathon         bool  `json:"has_marathon"`
+	BestMarathonMs      int64 `json:"best_marathon_ms"`
+	BestMarathonWrong   int   `json:"best_marathon_wrong"`
+	FewestMarathonWrong int   `json:"fewest_marathon_wrong"`
+	HasBlitz            bool  `json:"has_blitz"`
+	BestBlitzStreak     int   `json:"best_blitz_streak"`
+	OnTopAnyBoard       bool  `json:"on_top_any_board"`
 }
 
 func marathonSubCheck(thresholdMs int64) func(CheckContext) bool {
@@ -237,15 +238,42 @@ func (s *Service) LoadAchievementStats(ctx context.Context, userID int64) (UserA
 		stats.HasMarathon = true
 		stats.BestMarathonMs = bestM.DurationMs
 		stats.BestMarathonWrong = bestM.TotalWrong
+
+		// FewestMarathonWrong is the minimum wrong-answer count across all
+		// completed marathons — distinct from BestMarathonWrong (which is the
+		// wrong count on the fastest run). The Flawless Marathon progress hint
+		// needs the true minimum, not the PB run's wrong count.
+		var fewest int
+		if err := s.db.QueryRowContext(ctx, `
+			SELECT MIN(total_wrong) FROM math_sessions
+			WHERE user_id = ? AND mode = ?
+			  AND ended_at IS NOT NULL AND ended_at != ''
+			  AND (total_correct + total_wrong) = ?`,
+			userID, ModeMarathon, MarathonFactCount,
+		).Scan(&fewest); err != nil {
+			return stats, fmt.Errorf("fewest marathon wrong: %w", err)
+		}
+		stats.FewestMarathonWrong = fewest
 	}
 
-	bestB, err := s.BestBlitz(ctx, userID)
-	if err != nil {
-		return stats, fmt.Errorf("best blitz: %w", err)
+	// BestBlitzStreak is the maximum streak across all finished Blitz sessions,
+	// not just the highest-scoring one. Query MAX(best_streak) directly so the
+	// progress hint reflects the user's true personal best.
+	var blitzCount int
+	var maxStreak sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*), MAX(best_streak) FROM math_sessions
+		WHERE user_id = ? AND mode = ?
+		  AND ended_at IS NOT NULL AND ended_at != ''`,
+		userID, ModeBlitz,
+	).Scan(&blitzCount, &maxStreak); err != nil {
+		return stats, fmt.Errorf("blitz stats: %w", err)
 	}
-	if bestB != nil {
+	if blitzCount > 0 {
 		stats.HasBlitz = true
-		stats.BestBlitzStreak = bestB.BestStreak
+		if maxStreak.Valid {
+			stats.BestBlitzStreak = int(maxStreak.Int64)
+		}
 	}
 
 	top, err := s.userOnTopOfAnyBoard(ctx, userID)
@@ -295,18 +323,36 @@ func (s *Service) userOnTopOfAnyBoard(ctx context.Context, userID int64) (bool, 
 	return false, nil
 }
 
+// hasLockedAchievements reports whether any registered achievement has not
+// yet been earned by the user. Used to short-circuit the expensive stats
+// load when all achievements are already unlocked.
+func hasLockedAchievements(earned map[string]bool) bool {
+	for _, ach := range Registry() {
+		if !earned[ach.Code] {
+			return true
+		}
+	}
+	return false
+}
+
 // EvaluateAchievements is called from the finish handler after the session
-// has been committed. It loads the user's aggregate stats, runs every
+// has been committed. It loads already-earned codes first and skips the
+// expensive stats queries when all achievements are already unlocked. For
+// users with locked achievements it loads aggregate stats, runs every
 // registered Check, and inserts any newly-earned rows. The returned slice
 // contains the codes that were actually inserted by this call (i.e. that
 // the user did not already have) — the UNIQUE(user_id, code) constraint
 // guarantees that subsequent calls are no-ops.
 func (s *Service) EvaluateAchievements(ctx context.Context, userID int64, summary Summary) ([]EarnedAchievementRow, error) {
-	stats, err := s.LoadAchievementStats(ctx, userID)
+	earned, err := s.listEarnedCodes(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	earned, err := s.listEarnedCodes(ctx, userID)
+	if !hasLockedAchievements(earned) {
+		return nil, nil
+	}
+
+	stats, err := s.LoadAchievementStats(ctx, userID)
 	if err != nil {
 		return nil, err
 	}

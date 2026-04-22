@@ -2202,6 +2202,19 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add best_streak column to math_sessions (Hytte-ev5d): stores the longest
+	// consecutive-correct run per session so achievements can compute the true
+	// all-time max streak without scanning math_attempts on every request.
+	var hasMathSessionsBestStreak int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('math_sessions') WHERE name = 'best_streak'`).Scan(&hasMathSessionsBestStreak); err != nil {
+		return fmt.Errorf("check math_sessions best_streak column: %w", err)
+	}
+	if hasMathSessionsBestStreak == 0 {
+		if _, err := db.Exec(`ALTER TABLE math_sessions ADD COLUMN best_streak INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add math_sessions best_streak column: %w", err)
+		}
+	}
+
 	return nil
 }
 

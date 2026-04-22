@@ -11,6 +11,7 @@ interface UserStats {
   has_marathon: boolean
   best_marathon_ms: number
   best_marathon_wrong: number
+  fewest_marathon_wrong: number
   has_blitz: boolean
   best_blitz_streak: number
   on_top_any_board: boolean
@@ -137,9 +138,16 @@ function ProgressHint({ code, stats }: ProgressHintProps) {
     if (!stats.has_marathon) {
       return <span className="text-xs text-gray-500">{t('achievements.progress.noMarathon')}</span>
     }
+    if (stats.fewest_marathon_wrong === 0) {
+      return (
+        <span className="text-xs text-blue-300">
+          {t('achievements.progress.marathonPerfectReady')}
+        </span>
+      )
+    }
     return (
       <span className="text-xs text-gray-400">
-        {t('achievements.progress.marathonPerfect', { wrong: stats.best_marathon_wrong })}
+        {t('achievements.progress.marathonPerfect', { wrong: stats.fewest_marathon_wrong })}
       </span>
     )
   }

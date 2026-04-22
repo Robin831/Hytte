@@ -117,6 +117,7 @@
       "marathonGap": "Best: {{best}} — {{gap}} igjen",
       "marathonReady": "Best: {{best}} — fullfør en runde til for å låse den opp",
       "marathonPerfect": "Færrest feil i én runde: {{wrong}}",
+      "marathonPerfectReady": "Du har fullført en feilfri runde — fullfør en til for å låse den opp",
       "streakGap": "Lengste rekke: {{best}} — {{gap}} til for å låse opp",
       "streakReady": "Lengste rekke: {{best}} — fullfør en runde til for å låse den opp",
       "firstBloodHint": "Slå alle andre familiemedlemmer på en resultatliste.",

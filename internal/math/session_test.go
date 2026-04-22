@@ -370,8 +370,8 @@ func TestBestBlitzPicksHighestScore(t *testing.T) {
 	svc := NewService(d)
 	ctx := context.Background()
 
-	// Run three Blitz sessions via the service so math_attempts is populated
-	// (which BestBlitz needs to re-derive best_streak).
+	// Run three Blitz sessions via the service so best_streak is stored in
+	// math_sessions by Finish() for each session.
 	runSession := func(userID int64, steps []struct {
 		a, b, userAnswer, responseMs int
 		op                           string
