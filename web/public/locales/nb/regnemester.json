@@ -18,8 +18,8 @@
       "blurb": "Målrettet trening på de stykkene du synes er vanskeligst."
     },
     "mastery": {
-      "title": "Mestring",
-      "blurb": "Følg med på hvor godt du behersker hver gange- og delingsfakta."
+      "title": "Mestringskart",
+      "blurb": "Se alle stykker fargelagt etter hvor godt du kan dem."
     }
   },
   "keypad": {
@@ -96,5 +96,41 @@
     "rankSummary": "{{all}} all tid · {{week}} denne uken",
     "unranked": "Uten plassering",
     "loading": "Laster plassering…"
+  },
+  "heatmap": {
+    "title": "Mestringskart",
+    "intro": "Alle stykker, fargelagt etter hvor godt du kan dem. Trykk på en rute for å se detaljer.",
+    "tabsLabel": "Regneart",
+    "tabMultiplication": "Multiplikasjon",
+    "tabDivision": "Divisjon",
+    "axisA": "Første faktor",
+    "axisB": "Andre faktor",
+    "axisQuotient": "Kvotient",
+    "axisDivisor": "Divisor",
+    "gridLabel": "{{op}}-rutenett",
+    "cellAria": "{{problem}} er lik {{answer}}. {{level}}, {{count}} forsøk.",
+    "errorLoad": "Kunne ikke laste mestringsdataene dine.",
+    "legend": {
+      "label": "Fargekoder for mestring",
+      "unseen": "Ikke prøvd",
+      "red": "Trenger øving",
+      "yellow": "På god vei",
+      "green": "Mestret"
+    },
+    "detail": {
+      "prompt": "Trykk på en rute for å se historikk for det stykket.",
+      "noAttempts": "Du har ikke prøvd dette stykket ennå.",
+      "attempts": "Forsøk",
+      "accuracy": "Treffprosent",
+      "accuracyHint": "Andel av de siste 5 forsøkene som var riktige.",
+      "avgTime": "Gj.snitt tid",
+      "recentAvg": "Nylig snitt",
+      "recentAvgHint": "Gjennomsnittlig svartid for de siste 5 forsøkene.",
+      "sparkline": "Siste 5 forsøk",
+      "sparklineLabel": "De siste fem forsøkene, eldst først",
+      "correctAttempt": "Riktig på {{ms}}",
+      "wrongAttempt": "Feil på {{ms}}",
+      "noAttempt": "Ingen forsøk ennå"
+    }
   }
 }

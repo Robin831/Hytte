@@ -18,8 +18,8 @@
       "blurb": "Targeted practice on the facts you find hardest."
     },
     "mastery": {
-      "title": "Mastery",
-      "blurb": "Track your mastery of every fact across multiplication and division."
+      "title": "Mastery heatmap",
+      "blurb": "See every fact colour-coded by how well you know it."
     }
   },
   "keypad": {
@@ -96,5 +96,41 @@
     "rankSummary": "{{all}} all time · {{week}} this week",
     "unranked": "Unranked",
     "loading": "Loading rank…"
+  },
+  "heatmap": {
+    "title": "Mastery heatmap",
+    "intro": "Every fact, colour-coded by how well you know it. Tap a cell to see details.",
+    "tabsLabel": "Operation",
+    "tabMultiplication": "Multiplication",
+    "tabDivision": "Division",
+    "axisA": "First factor",
+    "axisB": "Second factor",
+    "axisQuotient": "Quotient",
+    "axisDivisor": "Divisor",
+    "gridLabel": "{{op}} mastery grid",
+    "cellAria": "{{problem}} equals {{answer}}. {{level}}, {{count}} attempts.",
+    "errorLoad": "Could not load your mastery data.",
+    "legend": {
+      "label": "Mastery colour legend",
+      "unseen": "Untouched",
+      "red": "Needs work",
+      "yellow": "Getting there",
+      "green": "Mastered"
+    },
+    "detail": {
+      "prompt": "Tap a cell to see your history for that fact.",
+      "noAttempts": "You haven't tried this fact yet.",
+      "attempts": "Attempts",
+      "accuracy": "Accuracy",
+      "accuracyHint": "Share of the last 5 attempts that were correct.",
+      "avgTime": "Avg time",
+      "recentAvg": "Recent avg",
+      "recentAvgHint": "Average response time across your last 5 attempts.",
+      "sparkline": "Last 5 attempts",
+      "sparklineLabel": "Last five attempts, oldest first",
+      "correctAttempt": "Correct in {{ms}}",
+      "wrongAttempt": "Wrong in {{ms}}",
+      "noAttempt": "No attempt yet"
+    }
   }
 }
