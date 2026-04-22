@@ -18,7 +18,7 @@ export function MathAnswerPad({ input, onDigit, onBackspace, onSubmit, disabled,
   const { t } = useTranslation('regnemester')
 
   useEffect(() => {
-    if (disabled) return
+    if (disabled || busy) return
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
       if (e.key >= '0' && e.key <= '9') {
@@ -34,7 +34,7 @@ export function MathAnswerPad({ input, onDigit, onBackspace, onSubmit, disabled,
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [disabled, onDigit, onBackspace, onSubmit])
+  }, [disabled, busy, onDigit, onBackspace, onSubmit])
 
   const inputsDisabled = disabled || busy
   const submitDisabled = inputsDisabled || input.length === 0

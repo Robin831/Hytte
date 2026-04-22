@@ -109,10 +109,10 @@ func (s *Service) Start(ctx context.Context, userID int64, mode string) (int64, 
 
 // RecordAttempt validates the answer, persists a math_attempts row, and
 // returns the next question. Returns ErrSessionFinished if the session has
-// already been finished, or ErrSessionNotOwned if the session belongs to a
-// different user.
+// already been finished or the Blitz deadline has passed, or
+// ErrSessionNotOwned if the session belongs to a different user.
 func (s *Service) RecordAttempt(ctx context.Context, sessionID, userID int64, a, b int, op string, userAnswer, responseMs int) (bool, int, *Fact, error) {
-	owner, mode, ended, err := s.loadSession(ctx, sessionID)
+	owner, mode, startedAt, ended, err := s.loadSession(ctx, sessionID)
 	if err != nil {
 		return false, 0, nil, err
 	}
@@ -121,6 +121,15 @@ func (s *Service) RecordAttempt(ctx context.Context, sessionID, userID int64, a,
 	}
 	if ended {
 		return false, 0, nil, ErrSessionFinished
+	}
+	if mode == ModeBlitz {
+		startedT, parseErr := time.Parse(timeFormat, startedAt)
+		if parseErr == nil {
+			deadline := startedT.Add(time.Duration(BlitzDurationMs) * time.Millisecond)
+			if time.Now().UTC().After(deadline) {
+				return false, 0, nil, ErrSessionFinished
+			}
+		}
 	}
 
 	isCorrect, expected, err := Validate(a, b, op, userAnswer)
@@ -253,6 +262,9 @@ func (s *Service) Finish(ctx context.Context, sessionID, userID int64) (Summary,
 				duration = 0
 			}
 		}
+	}
+	if mode == ModeBlitz && duration > BlitzDurationMs {
+		duration = BlitzDurationMs
 	}
 
 	if _, err := s.db.ExecContext(ctx, `
@@ -392,23 +404,24 @@ func (s *Service) longestCorrectStreak(ctx context.Context, sessionID int64) (in
 	return best, nil
 }
 
-// loadSession returns the owner, mode and finished flag for a session id,
-// or ErrSessionNotFound if no row exists.
-func (s *Service) loadSession(ctx context.Context, sessionID int64) (int64, string, bool, error) {
+// loadSession returns the owner, mode, startedAt and finished flag for a
+// session id, or ErrSessionNotFound if no row exists.
+func (s *Service) loadSession(ctx context.Context, sessionID int64) (int64, string, string, bool, error) {
 	var (
-		owner   int64
-		mode    string
-		endedAt sql.NullString
+		owner     int64
+		mode      string
+		startedAt string
+		endedAt   sql.NullString
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT user_id, mode, ended_at FROM math_sessions WHERE id = ?`,
+		`SELECT user_id, mode, started_at, ended_at FROM math_sessions WHERE id = ?`,
 		sessionID,
-	).Scan(&owner, &mode, &endedAt)
+	).Scan(&owner, &mode, &startedAt, &endedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, "", false, ErrSessionNotFound
+			return 0, "", "", false, ErrSessionNotFound
 		}
-		return 0, "", false, fmt.Errorf("select math_session: %w", err)
+		return 0, "", "", false, fmt.Errorf("select math_session: %w", err)
 	}
-	return owner, mode, endedAt.Valid && endedAt.String != "", nil
+	return owner, mode, startedAt, endedAt.Valid && endedAt.String != "", nil
 }

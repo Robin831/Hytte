@@ -27,8 +27,9 @@ const (
 const MarathonFactCount = (MaxOperand - MinOperand + 1) * (MaxOperand - MinOperand + 1) * 2
 
 // BlitzDurationMs is the fixed length of a Blitz run in milliseconds — one
-// minute. The client drives the countdown; the server stores duration_ms
-// from the first-attempt-to-last-attempt window when Finish is called.
+// minute. The server enforces this deadline by rejecting RecordAttempt calls
+// after started_at + BlitzDurationMs. Finish computes duration_ms from
+// started_at to ended_at and clamps it to BlitzDurationMs.
 const BlitzDurationMs = 60000
 
 // Mode constants for question generation. New modes can be added without

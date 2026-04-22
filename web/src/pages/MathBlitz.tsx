@@ -188,7 +188,6 @@ export default function MathBlitz() {
     const now = performance.now()
     const responseMs = Math.max(0, Math.round(now - questionShownAtRef.current))
     const fact = currentFact
-    const isCorrect = userAnswer === fact.expected
 
     setSubmitting(true)
     try {
@@ -216,7 +215,7 @@ export default function MathBlitz() {
       }
       const data = await res.json() as { is_correct: boolean; next_question: Fact | null }
 
-      if (isCorrect) {
+      if (data.is_correct) {
         const pointsEarned = computeBlitzPoints(responseMs, streak)
         setScore(prev => prev + pointsEarned)
         setStreak(prev => prev + 1)
