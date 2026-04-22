@@ -35,6 +35,10 @@
     "soundOnLabel": "Lyd på",
     "shortcutHint": "Trykk M for å slå lyd av/på"
   },
+  "speed": {
+    "fast": "Raskt!",
+    "lightning": "Lynrask!"
+  },
   "marathon": {
     "title": "Maraton",
     "intro": "Svar på alle {{count}} gange- og delingsstykker. Feil svar teller mot deg, men du går videre — ingen ny sjanse. Tiden din er poengsummen; lik tid avgjøres av færrest feil.",
@@ -64,7 +68,6 @@
     "priorBestDetailedRecap": "Forrige rekord: {{score}} poeng med en rekke på {{streak}}.",
     "scoreShort": "Poeng",
     "streakShort": "Rekke",
-    "fastLabel": "Raskt!",
     "timeLeftAria": "Tid igjen",
     "resultTitle": "Tiden er ute!",
     "resultSubtitle": "Slik gikk det denne gangen.",
