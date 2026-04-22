@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Trophy } from 'lucide-react'
-import { MathAnswerPad, appendAnswerDigit } from '../components/math/MathAnswerPad'
+import { MathAnswerPad } from '../components/math/MathAnswerPad'
+import { appendAnswerDigit } from '../components/math/mathUtils'
 
 const TOTAL = 200
 

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Trophy, Zap } from 'lucide-react'
-import { MathAnswerPad, appendAnswerDigit } from '../components/math/MathAnswerPad'
+import { MathAnswerPad } from '../components/math/MathAnswerPad'
+import { appendAnswerDigit } from '../components/math/mathUtils'
 
 const DURATION_MS = 60_000
 
