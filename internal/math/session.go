@@ -96,13 +96,24 @@ func (s *Service) RecordAttempt(ctx context.Context, sessionID, userID int64, a,
 		correctInt = 1
 	}
 	now := time.Now().UTC().Format(timeFormat)
-	if _, err := s.db.ExecContext(ctx, `
+	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO math_attempts
 			(session_id, user_id, fact_a, fact_b, op, expected_answer, user_answer, is_correct, response_ms, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		FROM math_sessions
+		WHERE id = ? AND user_id = ? AND (ended_at IS NULL OR ended_at = '')`,
 		sessionID, userID, a, b, op, expected, userAnswer, correctInt, responseMs, now,
-	); err != nil {
+		sessionID, userID,
+	)
+	if err != nil {
 		return false, 0, nil, fmt.Errorf("insert math_attempt: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, 0, nil, fmt.Errorf("rows affected math_attempt: %w", err)
+	}
+	if rowsAffected == 0 {
+		return false, 0, nil, ErrSessionFinished
 	}
 
 	next := NextQuestion(mode, nil)
@@ -110,19 +121,21 @@ func (s *Service) RecordAttempt(ctx context.Context, sessionID, userID int64, a,
 }
 
 // Finish marks the session as completed, computes totals from math_attempts,
-// and returns a Summary. Calling Finish twice is idempotent — the second
-// call just recomputes totals against the latest attempts and returns them
-// without changing started_at.
+// and returns a Summary. ended_at and duration_ms are set only on the first
+// call; subsequent calls recompute totals against the latest attempts while
+// preserving the original completion timestamps.
 func (s *Service) Finish(ctx context.Context, sessionID, userID int64) (Summary, error) {
 	var (
-		owner     int64
-		mode      string
-		startedAt string
+		owner       int64
+		mode        string
+		startedAt   string
+		endedAtSQL  sql.NullString
+		durationSQL sql.NullInt64
 	)
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT user_id, mode, started_at FROM math_sessions WHERE id = ?`,
+		`SELECT user_id, mode, started_at, ended_at, duration_ms FROM math_sessions WHERE id = ?`,
 		sessionID,
-	).Scan(&owner, &mode, &startedAt); err != nil {
+	).Scan(&owner, &mode, &startedAt, &endedAtSQL, &durationSQL); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Summary{}, ErrSessionNotFound
 		}
@@ -144,30 +157,39 @@ func (s *Service) Finish(ctx context.Context, sessionID, userID int64) (Summary,
 	}
 	correctCount := int(correct.Int64)
 	wrong := total - correctCount
+	score := correctCount
 
-	now := time.Now().UTC()
-	endedStr := now.Format(timeFormat)
+	// Preserve ended_at and duration_ms if the session was already finished.
+	var endedStr string
 	var duration int64
-	startedT, parseErr := time.Parse(timeFormat, startedAt)
-	if parseErr != nil {
-		// started_at should always be written as RFC3339 by Start, so a parse
-		// failure here means either legacy data or a concurrent writer that
-		// clobbered the value. Log and record zero duration rather than
-		// silently attributing a large duration to clock skew.
-		log.Printf("math: parse started_at %q for session %d: %v", startedAt, sessionID, parseErr)
+	if endedAtSQL.Valid && endedAtSQL.String != "" {
+		endedStr = endedAtSQL.String
+		duration = durationSQL.Int64
 	} else {
-		duration = now.Sub(startedT).Milliseconds()
-		if duration < 0 {
-			duration = 0
+		now := time.Now().UTC()
+		endedStr = now.Format(timeFormat)
+		startedT, parseErr := time.Parse(timeFormat, startedAt)
+		if parseErr != nil {
+			// started_at should always be written as RFC3339 by Start, so a parse
+			// failure here means either legacy data or a concurrent writer that
+			// clobbered the value. Log and record zero duration rather than
+			// silently attributing a large duration to clock skew.
+			log.Printf("math: parse started_at %q for session %d: %v", startedAt, sessionID, parseErr)
+		} else {
+			duration = now.Sub(startedT).Milliseconds()
+			if duration < 0 {
+				duration = 0
+			}
 		}
 	}
-	score := correctCount
 
 	if _, err := s.db.ExecContext(ctx, `
 		UPDATE math_sessions
-		SET ended_at = ?, duration_ms = ?, total_correct = ?, total_wrong = ?, score_num = ?
+		SET total_correct = ?, total_wrong = ?, score_num = ?,
+		    ended_at    = CASE WHEN (ended_at IS NULL OR ended_at = '') THEN ? ELSE ended_at END,
+		    duration_ms = CASE WHEN (ended_at IS NULL OR ended_at = '') THEN ? ELSE duration_ms END
 		WHERE id = ?`,
-		endedStr, duration, correctCount, wrong, score, sessionID,
+		correctCount, wrong, score, endedStr, duration, sessionID,
 	); err != nil {
 		return Summary{}, fmt.Errorf("update math_session: %w", err)
 	}

@@ -37,7 +37,7 @@ func TestAllFactsEnumeratesEveryMultiplication(t *testing.T) {
 
 func TestAllFactsEnumeratesEveryDivision(t *testing.T) {
 	facts := AllFacts()
-	// Divison facts are keyed by (dividend, divisor); each ordered (a,b) pair
+	// Division facts are keyed by (dividend, divisor); each ordered (a,b) pair
 	// in the multiplication table produces one division fact (c=a*b)÷b=a, so
 	// both divisor variants of every product appear.
 	got := make(map[[2]int]int)

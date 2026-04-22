@@ -73,7 +73,8 @@ func StartSessionHandler(db *sql.DB) http.HandlerFunc {
 
 // RecordAttemptHandler returns POST /api/math/sessions/:id/attempts: body
 // {a, b, op, user_answer, response_ms}, response {is_correct,
-// expected_answer, next_question}.
+// expected_answer, next_question}. next_question is always present; the
+// session continues until the client calls the finish endpoint.
 func RecordAttemptHandler(db *sql.DB) http.HandlerFunc {
 	svc := NewService(db)
 	return func(w http.ResponseWriter, r *http.Request) {
