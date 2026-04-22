@@ -1,0 +1,61 @@
+@keyframes regnemester-speed-callout-float {
+  0% {
+    transform: translate(-50%, 0);
+    opacity: 0;
+  }
+
+  15% {
+    transform: translate(-50%, -16px);
+    opacity: 1;
+  }
+
+  85% {
+    transform: translate(-50%, -60px);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate(-50%, -80px);
+    opacity: 0;
+  }
+}
+
+.regnemester-speed-callout {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translate(-50%, 0);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: regnemester-speed-callout-float 900ms ease-out forwards;
+}
+
+.regnemester-speed-callout-fast {
+  background-color: rgba(250, 204, 21, 0.15);
+  color: rgb(253, 224, 71);
+  border: 1px solid rgba(250, 204, 21, 0.4);
+}
+
+.regnemester-speed-callout-lightning {
+  background-color: rgba(250, 204, 21, 0.25);
+  color: rgb(253, 224, 71);
+  border: 1px solid rgba(250, 204, 21, 0.7);
+  box-shadow: 0 0 20px rgba(250, 204, 21, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .regnemester-speed-callout {
+    animation: none;
+    transform: translate(-50%, -56px);
+    opacity: 1;
+  }
+}

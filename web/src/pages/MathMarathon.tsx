@@ -7,6 +7,7 @@ import { appendAnswerDigit } from '../components/math/mathUtils'
 import { FinishRank } from '../components/math/FinishRank'
 import { UnlockedAchievementsBanner, type UnlockedAchievement } from '../components/math/UnlockedAchievements'
 import { MuteToggle } from '../components/math/MuteToggle'
+import { SpeedCallout, FAST_THRESHOLD_MS } from '../components/regnemester/SpeedCallout'
 import { useFeedback } from '../lib/regnemester/feedback'
 
 const TOTAL = 200
@@ -97,6 +98,8 @@ export default function MathMarathon() {
   const [elapsed, setElapsed] = useState(0)
   const [submitting, setSubmitting] = useState(false)
   const [unlocked, setUnlocked] = useState<UnlockedAchievement[]>([])
+  const [speedMs, setSpeedMs] = useState<number | null>(null)
+  const [speedKey, setSpeedKey] = useState(0)
 
   // Refs to keep wall-clock bookkeeping out of React state churn.
   const startedAtRef = useRef<number>(0)
@@ -149,6 +152,8 @@ export default function MathMarathon() {
       setWrongCount(0)
       setInput('')
       setElapsed(0)
+      setSpeedMs(null)
+      setSpeedKey(0)
       setPhase('playing')
     } catch (err) {
       const message = err instanceof Error ? err.message : t('errors.failedToStart')
@@ -231,6 +236,10 @@ export default function MathMarathon() {
         feedback.play('correct')
         feedback.vibrateCorrect()
         feedback.flashCorrect(problemRef.current)
+        if (responseMs < FAST_THRESHOLD_MS) {
+          setSpeedMs(responseMs)
+          setSpeedKey(prev => prev + 1)
+        }
       } else {
         setWrongCount(nextWrong)
         feedback.play('wrong')
@@ -382,6 +391,8 @@ export default function MathMarathon() {
               setInput('')
               setElapsed(0)
               setUnlocked([])
+              setSpeedMs(null)
+              setSpeedKey(0)
               // Refresh prior best so a back-to-back run compares against
               // the run we just stored.
               setPriorBest(prev => {
@@ -447,11 +458,14 @@ export default function MathMarathon() {
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center mb-6">
-        <div
-          ref={problemRef}
-          className="text-4xl sm:text-6xl md:text-7xl font-bold text-white text-center tabular-nums rounded-lg px-4 py-2"
-        >
-          {currentFact ? renderProblem(currentFact) : ''}
+        <div className="relative">
+          <SpeedCallout key={speedKey} responseMs={speedKey > 0 ? speedMs : null} />
+          <div
+            ref={problemRef}
+            className="text-4xl sm:text-6xl md:text-7xl font-bold text-white text-center tabular-nums rounded-lg px-4 py-2"
+          >
+            {currentFact ? renderProblem(currentFact) : ''}
+          </div>
         </div>
       </div>
 

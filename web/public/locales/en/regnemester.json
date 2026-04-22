@@ -35,6 +35,10 @@
     "soundOnLabel": "Sound on",
     "shortcutHint": "Press M to toggle sound"
   },
+  "speed": {
+    "fast": "Fast!",
+    "lightning": "Lightning!"
+  },
   "marathon": {
     "title": "Marathon",
     "intro": "Answer all {{count}} multiplication and division facts. Wrong answers count against you, but you keep moving — there's no retry. Score is your time; ties are broken by fewer wrongs.",
@@ -64,7 +68,6 @@
     "priorBestDetailedRecap": "Previous best: {{score}} points with a {{streak}}-answer streak.",
     "scoreShort": "Score",
     "streakShort": "Streak",
-    "fastLabel": "Fast!",
     "timeLeftAria": "Time remaining",
     "resultTitle": "Time's up!",
     "resultSubtitle": "Here's how this run went.",

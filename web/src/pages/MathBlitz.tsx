@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Trophy, Zap } from 'lucide-react'
+import { ArrowLeft, Trophy } from 'lucide-react'
 import { MathAnswerPad } from '../components/math/MathAnswerPad'
 import { appendAnswerDigit } from '../components/math/mathUtils'
 import { FinishRank } from '../components/math/FinishRank'
 import { UnlockedAchievementsBanner, type UnlockedAchievement } from '../components/math/UnlockedAchievements'
 import { MuteToggle } from '../components/math/MuteToggle'
+import { SpeedCallout, FAST_THRESHOLD_MS } from '../components/regnemester/SpeedCallout'
 import { useFeedback } from '../lib/regnemester/feedback'
 
 const DURATION_MS = 60_000
@@ -76,7 +77,8 @@ export default function MathBlitz() {
   const [currentFact, setCurrentFact] = useState<Fact | null>(null)
   const [score, setScore] = useState(0)
   const [streak, setStreak] = useState(0)
-  const [lastAnswerMs, setLastAnswerMs] = useState<number | null>(null)
+  const [speedMs, setSpeedMs] = useState<number | null>(null)
+  const [speedKey, setSpeedKey] = useState(0)
   const [input, setInput] = useState('')
   const [summary, setSummary] = useState<FinishSummary | null>(null)
   const [priorBest, setPriorBest] = useState<BlitzBest | null>(null)
@@ -172,7 +174,8 @@ export default function MathBlitz() {
       setCurrentFact(data.first_question as Fact)
       setScore(0)
       setStreak(0)
-      setLastAnswerMs(null)
+      setSpeedMs(null)
+      setSpeedKey(0)
       setInput('')
       setSummary(null)
       // Anchor the countdown to "now" rather than the server-request start —
@@ -217,7 +220,6 @@ export default function MathBlitz() {
         if (res.status === 409) {
           // The session expired server-side while this request was in flight.
           // Immediately sync the UI to the server-authoritative finished state.
-          setLastAnswerMs(responseMs)
           setInput('')
           setCurrentFact(null)
           endAtRef.current = performance.now()
@@ -237,13 +239,16 @@ export default function MathBlitz() {
         feedback.play('correct')
         feedback.vibrateCorrect()
         feedback.flashCorrect(problemRef.current)
+        if (responseMs < FAST_THRESHOLD_MS) {
+          setSpeedMs(responseMs)
+          setSpeedKey(prev => prev + 1)
+        }
       } else {
         setStreak(0)
         feedback.play('wrong')
         feedback.vibrateWrong()
         feedback.flashWrong(problemRef.current)
       }
-      setLastAnswerMs(responseMs)
       setInput('')
       // Use the server-supplied next question so the draw is authoritative.
       if (data.next_question) {
@@ -292,8 +297,6 @@ export default function MathBlitz() {
     if (!priorBest) return true
     return summary.score_num > priorBest.score_num
   }, [summary, priorBest])
-
-  const showFast = phase === 'playing' && lastAnswerMs !== null && lastAnswerMs < 1000
 
   if (phase === 'idle' || phase === 'starting' || phase === 'error') {
     return (
@@ -392,7 +395,8 @@ export default function MathBlitz() {
               setCurrentFact(null)
               setScore(0)
               setStreak(0)
-              setLastAnswerMs(null)
+              setSpeedMs(null)
+              setSpeedKey(0)
               setInput('')
               setTimeLeftMs(DURATION_MS)
               setUnlocked([])
@@ -455,19 +459,14 @@ export default function MathBlitz() {
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center mb-6">
-        <div className="h-6 mb-2 flex items-center justify-center">
-          {showFast && (
-            <span className="inline-flex items-center gap-1 text-sm font-bold text-yellow-300 uppercase tracking-wider">
-              <Zap size={16} />
-              {t('blitz.fastLabel')}
-            </span>
-          )}
-        </div>
-        <div
-          ref={problemRef}
-          className="text-4xl sm:text-6xl md:text-7xl font-bold text-white text-center tabular-nums rounded-lg px-4 py-2"
-        >
-          {currentFact ? renderProblem(currentFact) : ''}
+        <div className="relative">
+          <SpeedCallout key={speedKey} responseMs={speedKey > 0 ? speedMs : null} />
+          <div
+            ref={problemRef}
+            className="text-4xl sm:text-6xl md:text-7xl font-bold text-white text-center tabular-nums rounded-lg px-4 py-2"
+          >
+            {currentFact ? renderProblem(currentFact) : ''}
+          </div>
         </div>
       </div>
 
