@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { soundEngine, type SoundName } from './sound'
 import { flashCorrect as flashCorrectEl, flashWrong as flashWrongEl } from './flash'
 import { vibrate, vibrateCorrect, vibrateWrong } from './haptics'
@@ -46,9 +46,6 @@ export interface UseFeedbackResult {
 
 export function useFeedback(): UseFeedbackResult {
   const [muted, setMutedState] = useState<boolean>(() => readLocalMuted())
-  // Track the latest muted value inside the keydown listener without having
-  // to re-register the handler on every toggle.
-  const mutedRef = useRef(muted)
 
   // Preload sound buffers once on mount so the first play() is snappy.
   useEffect(() => {
@@ -75,7 +72,6 @@ export function useFeedback(): UseFeedbackResult {
 
   // Mirror mute state into the sound engine and local storage as it changes.
   useEffect(() => {
-    mutedRef.current = muted
     soundEngine.setMuted(muted)
     writeLocalMuted(muted)
   }, [muted])
@@ -129,7 +125,7 @@ export function useFeedback(): UseFeedbackResult {
   const vibrateCorrectFn = useCallback(() => { vibrateCorrect() }, [])
   const vibrateWrongFn = useCallback(() => { vibrateWrong() }, [])
 
-  return {
+  return useMemo(() => ({
     play,
     flashCorrect,
     flashWrong,
@@ -139,5 +135,5 @@ export function useFeedback(): UseFeedbackResult {
     muted,
     toggleMute,
     setMuted,
-  }
+  }), [play, flashCorrect, flashWrong, vibrateFn, vibrateCorrectFn, vibrateWrongFn, muted, toggleMute, setMuted])
 }
