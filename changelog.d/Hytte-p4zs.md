@@ -1,0 +1,2 @@
+category: Added
+- **Regnemester feedback primitives** - Answer flashes, haptic feedback, sound effects, and a per-user mute toggle for Marathon and Blitz modes. Each correct/wrong answer plays a short tone, vibrates the device, and flashes the problem green/red; finishing a run triggers a fanfare (or milestone tone for a new personal best). Mute is persisted in user preferences and toggleable with the M key. All effects respect `prefers-reduced-motion`. (Hytte-p4zs)

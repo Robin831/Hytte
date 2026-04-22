@@ -6,6 +6,8 @@ import { MathAnswerPad } from '../components/math/MathAnswerPad'
 import { appendAnswerDigit } from '../components/math/mathUtils'
 import { FinishRank } from '../components/math/FinishRank'
 import { UnlockedAchievementsBanner, type UnlockedAchievement } from '../components/math/UnlockedAchievements'
+import { MuteToggle } from '../components/math/MuteToggle'
+import { useFeedback } from '../lib/regnemester/feedback'
 
 const TOTAL = 200
 
@@ -80,6 +82,8 @@ function renderProblem(fact: Fact): string {
 
 export default function MathMarathon() {
   const { t } = useTranslation('regnemester')
+  const feedback = useFeedback()
+  const problemRef = useRef<HTMLDivElement | null>(null)
 
   const [phase, setPhase] = useState<Phase>('idle')
   const [error, setError] = useState('')
@@ -170,12 +174,24 @@ export default function MathMarathon() {
       setElapsed(s.duration_ms)
       setUnlocked(data.unlocked_achievements ?? [])
       setPhase('done')
+      // Celebrate with milestone for a new PB, fanfare otherwise.
+      let beatPB: boolean
+      if (!priorBest) {
+        beatPB = true
+      } else if (s.duration_ms < priorBest.duration_ms) {
+        beatPB = true
+      } else if (s.duration_ms === priorBest.duration_ms && s.total_wrong < priorBest.total_wrong) {
+        beatPB = true
+      } else {
+        beatPB = false
+      }
+      feedback.play(beatPB ? 'milestone' : 'fanfare')
     } catch (err) {
       const message = err instanceof Error ? err.message : t('errors.failedToFinish')
       setError(message)
       setPhase('error')
     }
-  }, [t])
+  }, [t, feedback, priorBest])
 
   const submitAnswer = useCallback(async () => {
     if (phase !== 'playing' || submitting) return
@@ -211,7 +227,16 @@ export default function MathMarathon() {
       // the next random question, which marathon ignores.
       void res.json().catch(() => null)
 
-      if (!isCorrect) setWrongCount(nextWrong)
+      if (isCorrect) {
+        feedback.play('correct')
+        feedback.vibrateCorrect()
+        feedback.flashCorrect(problemRef.current)
+      } else {
+        setWrongCount(nextWrong)
+        feedback.play('wrong')
+        feedback.vibrateWrong()
+        feedback.flashWrong(problemRef.current)
+      }
       const nextIndex = index + 1
       setInput('')
       if (nextIndex >= facts.length) {
@@ -227,7 +252,7 @@ export default function MathMarathon() {
     } finally {
       setSubmitting(false)
     }
-  }, [phase, submitting, sessionId, input, index, facts, wrongCount, t, finishGame])
+  }, [phase, submitting, sessionId, input, index, facts, wrongCount, t, finishGame, feedback])
 
   const appendDigit = useCallback((digit: string) => {
     if (phase !== 'playing' || submitting) return
@@ -406,20 +431,26 @@ export default function MathMarathon() {
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] md:min-h-screen flex flex-col max-w-3xl mx-auto p-3 sm:p-6">
-      <div className="flex items-center justify-between mb-4 sm:mb-6">
+      <div className="flex items-center justify-between mb-4 sm:mb-6 gap-2">
         <div className="text-sm sm:text-base text-gray-400 tabular-nums">
           <span className="text-white font-semibold">{progressLabel}</span>
         </div>
         <div className="text-sm sm:text-base text-gray-400 tabular-nums">
           <span className="text-white font-semibold">{formatDuration(elapsed)}</span>
         </div>
-        <div className="text-sm sm:text-base text-gray-400 tabular-nums">
-          {t('marathon.wrongShort')} <span className="text-white font-semibold">{wrongCount}</span>
+        <div className="flex items-center gap-3">
+          <div className="text-sm sm:text-base text-gray-400 tabular-nums">
+            {t('marathon.wrongShort')} <span className="text-white font-semibold">{wrongCount}</span>
+          </div>
+          <MuteToggle muted={feedback.muted} onToggle={feedback.toggleMute} />
         </div>
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center mb-6">
-        <div className="text-4xl sm:text-6xl md:text-7xl font-bold text-white text-center tabular-nums">
+        <div
+          ref={problemRef}
+          className="text-4xl sm:text-6xl md:text-7xl font-bold text-white text-center tabular-nums rounded-lg px-4 py-2"
+        >
           {currentFact ? renderProblem(currentFact) : ''}
         </div>
       </div>
