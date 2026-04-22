@@ -18,7 +18,9 @@ function flash(el: HTMLElement | null, cls: string, durationMs: number): void {
     window.clearTimeout(existing)
   }
 
-  el.classList.remove(CORRECT_CLASS, WRONG_CLASS)
+  // Remove cls too so a rapid re-trigger (e.g. two milestone fires in one
+  // tick) always gets a clean reflow and restarts the animation reliably.
+  el.classList.remove(CORRECT_CLASS, WRONG_CLASS, cls)
 
   // Re-adding the class in the same tick doesn't restart the CSS transition
   // in most browsers — force a reflow first so the transition restarts cleanly.

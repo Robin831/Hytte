@@ -148,14 +148,19 @@ export default function MathMarathon() {
       const now = performance.now() - startedAtRef.current
       setElapsed(now)
       if (phase === 'playing') {
-        // Fire timer milestone flashes once per threshold crossed — subtle
-        // gold flash at 3:00, 4:00 and 5:00 marks. Only play the flash when
-        // the user is still actively running, never during finishing.
+        // Fire at most one timer milestone flash per tick. If the tab was
+        // backgrounded and `now` jumps past multiple thresholds at once,
+        // record all newly crossed milestones as fired but only show a single
+        // flash for this timer update.
+        let crossedNewMilestone = false
         for (const ms of TIMER_MILESTONES_MS) {
           if (now >= ms && !firedMilestonesRef.current.has(ms)) {
             firedMilestonesRef.current.add(ms)
-            feedback.flashMilestone(playSurfaceRef.current)
+            crossedNewMilestone = true
           }
+        }
+        if (crossedNewMilestone) {
+          feedback.flashMilestone(playSurfaceRef.current)
         }
       }
     }
