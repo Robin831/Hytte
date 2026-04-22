@@ -83,14 +83,12 @@ export default function MathHeatmap() {
   const [data, setData] = useState<HeatmapResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [selected, setSelected] = useState<{ row: number; col: number } | null>(null)
+  const [selected, setSelected] = useState<{ tab: Tab; row: number; col: number } | null>(null)
 
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
 
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true)
-    setError('')
     fetch('/api/math/stats', { credentials: 'include', signal: controller.signal })
       .then(res => {
         if (!res.ok) throw new Error('fetch failed')
@@ -110,21 +108,17 @@ export default function MathHeatmap() {
     return () => { controller.abort() }
   }, [t])
 
-  // Reset selection when switching tabs so the detail panel doesn't show
-  // stale data from the previous operation's cell.
-  useEffect(() => { setSelected(null) }, [tab])
-
   const grid = useMemo(() => {
     if (!data) return null
     return tab === 'multiplication' ? data.multiplication : data.division
   }, [data, tab])
 
   const selectedCell: HeatmapCell | null = useMemo(() => {
-    if (!grid || !selected) return null
+    if (!grid || !selected || selected.tab !== tab) return null
     const row = grid[selected.row]
     if (!row) return null
     return row[selected.col] ?? null
-  }, [grid, selected])
+  }, [grid, selected, tab])
 
   const handleTabKeyDown = (e: React.KeyboardEvent, currentTab: Tab) => {
     const idx = TABS.indexOf(currentTab)
@@ -206,8 +200,8 @@ export default function MathHeatmap() {
           <>
             <HeatmapGrid
               grid={grid}
-              selected={selected}
-              onSelect={(row, col) => setSelected({ row, col })}
+              selected={selected?.tab === tab ? { row: selected.row, col: selected.col } : null}
+              onSelect={(row, col) => setSelected({ tab, row, col })}
               op={tab === 'multiplication' ? '*' : '/'}
             />
             <CellDetail cell={selectedCell} />
