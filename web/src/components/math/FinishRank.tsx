@@ -21,8 +21,16 @@ interface Ranks {
   week: number | null
 }
 
-async function fetchRank(mode: Mode, period: 'all' | 'week', userID: number): Promise<number | null> {
-  const res = await fetch(`/api/math/leaderboard?mode=${mode}&period=${period}`, { credentials: 'include' })
+async function fetchRank(
+  mode: Mode,
+  period: 'all' | 'week',
+  userID: number,
+  signal: AbortSignal,
+): Promise<number | null> {
+  const res = await fetch(`/api/math/leaderboard?mode=${mode}&period=${period}`, {
+    credentials: 'include',
+    signal,
+  })
   if (!res.ok) return null
   const data = (await res.json()) as LeaderboardResponse
   const me = data.entries.find(e => e.user_id === userID)
@@ -43,15 +51,25 @@ export function FinishRank({ mode, sessionId }: { mode: Mode; sessionId: number 
   useEffect(() => {
     if (!user || sessionId == null) return
     const controller = new AbortController()
+    const { signal } = controller
     setLoading(true)
-    Promise.all([fetchRank(mode, 'all', user.id), fetchRank(mode, 'week', user.id)])
+    Promise.all([
+      fetchRank(mode, 'all', user.id, signal),
+      fetchRank(mode, 'week', user.id, signal),
+    ])
       .then(([all, week]) => {
-        if (controller.signal.aborted) return
+        if (signal.aborted) return
         setRanks({ all, week })
       })
-      .catch(() => { /* non-critical display */ })
+      .catch(err => {
+        if (signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) return
+        // Surface unreachable leaderboard as Unranked instead of a permanent
+        // loading spinner. Network errors on the finish screen are
+        // non-critical — the run itself has already been recorded.
+        setRanks({ all: null, week: null })
+      })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
+        if (!signal.aborted) setLoading(false)
       })
     return () => { controller.abort() }
   }, [mode, sessionId, user])

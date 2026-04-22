@@ -294,6 +294,41 @@ func TestBuildLeaderboardChildCallerSeesWholeFamily(t *testing.T) {
 	}
 }
 
+func TestBuildLeaderboardTieBreaksDeterministically(t *testing.T) {
+	// When every ranking column ties, the earliest-inserted run should win.
+	// Without the id tiebreaker SQLite is free to return any row, which
+	// breaks the stable "my best session" link on the finish screen.
+	d := setupTestDB(t)
+	start := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
+
+	// Marathon: two runs with identical duration and wrongs.
+	firstMarathon := finishedMarathon(t, d, 1, 250000, 0, start)
+	_ = finishedMarathon(t, d, 1, 250000, 0, start.Add(time.Hour))
+
+	// Blitz: two runs with identical score and duration.
+	firstBlitz := finishedBlitz(t, d, 1, 30, start)
+	_ = finishedBlitz(t, d, 1, 30, start.Add(time.Hour))
+
+	svc := NewService(d)
+	lbM, err := svc.BuildLeaderboard(context.Background(), 1, ModeMarathon, PeriodAll)
+	if err != nil {
+		t.Fatalf("BuildLeaderboard(marathon): %v", err)
+	}
+	me := findEntry(t, lbM.Entries, 1)
+	if me.SessionID == nil || *me.SessionID != firstMarathon {
+		t.Errorf("marathon tie: got session %v, want %d (earliest)", me.SessionID, firstMarathon)
+	}
+
+	lbB, err := svc.BuildLeaderboard(context.Background(), 1, ModeBlitz, PeriodAll)
+	if err != nil {
+		t.Fatalf("BuildLeaderboard(blitz): %v", err)
+	}
+	me = findEntry(t, lbB.Entries, 1)
+	if me.SessionID == nil || *me.SessionID != firstBlitz {
+		t.Errorf("blitz tie: got session %v, want %d (earliest)", me.SessionID, firstBlitz)
+	}
+}
+
 func TestLeaderboardHandlerUnknownMode(t *testing.T) {
 	d := setupTestDB(t)
 	h := LeaderboardHandler(d)

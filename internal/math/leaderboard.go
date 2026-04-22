@@ -171,6 +171,10 @@ func (s *Service) bestForMember(ctx context.Context, userID int64, mode, sinceSt
 	var (
 		row *sql.Row
 	)
+	// Queries end with `id ASC` so that if every ranking column ties the
+	// earliest-inserted qualifying run wins. Without this tiebreaker SQLite
+	// is free to return any of the tied rows, which surfaces as flaky
+	// session_id/achieved_at values on the leaderboard.
 	switch mode {
 	case ModeMarathon:
 		if sinceStr == "" {
@@ -181,7 +185,7 @@ func (s *Service) bestForMember(ctx context.Context, userID int64, mode, sinceSt
 				  AND mode = ?
 				  AND ended_at IS NOT NULL AND ended_at != ''
 				  AND (total_correct + total_wrong) = ?
-				ORDER BY duration_ms ASC, total_wrong ASC
+				ORDER BY duration_ms ASC, total_wrong ASC, id ASC
 				LIMIT 1`,
 				userID, ModeMarathon, MarathonFactCount,
 			)
@@ -194,7 +198,7 @@ func (s *Service) bestForMember(ctx context.Context, userID int64, mode, sinceSt
 				  AND ended_at IS NOT NULL AND ended_at != ''
 				  AND (total_correct + total_wrong) = ?
 				  AND started_at >= ?
-				ORDER BY duration_ms ASC, total_wrong ASC
+				ORDER BY duration_ms ASC, total_wrong ASC, id ASC
 				LIMIT 1`,
 				userID, ModeMarathon, MarathonFactCount, sinceStr,
 			)
@@ -207,7 +211,7 @@ func (s *Service) bestForMember(ctx context.Context, userID int64, mode, sinceSt
 				WHERE user_id = ?
 				  AND mode = ?
 				  AND ended_at IS NOT NULL AND ended_at != ''
-				ORDER BY score_num DESC, duration_ms ASC
+				ORDER BY score_num DESC, duration_ms ASC, id ASC
 				LIMIT 1`,
 				userID, ModeBlitz,
 			)
@@ -219,7 +223,7 @@ func (s *Service) bestForMember(ctx context.Context, userID int64, mode, sinceSt
 				  AND mode = ?
 				  AND ended_at IS NOT NULL AND ended_at != ''
 				  AND started_at >= ?
-				ORDER BY score_num DESC, duration_ms ASC
+				ORDER BY score_num DESC, duration_ms ASC, id ASC
 				LIMIT 1`,
 				userID, ModeBlitz, sinceStr,
 			)
