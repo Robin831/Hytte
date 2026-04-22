@@ -22,6 +22,12 @@
       "blurb": "Følg med på hvor godt du behersker hver gange- og delingsfakta."
     }
   },
+  "keypad": {
+    "answerInputLabel": "Svaret ditt",
+    "backspaceAria": "Slett",
+    "enterAria": "Send inn svar",
+    "enter": "OK"
+  },
   "marathon": {
     "title": "Maraton",
     "intro": "Svar på alle {{count}} gange- og delingsstykker. Feil svar teller mot deg, men du går videre — ingen ny sjanse. Tiden din er poengsummen; lik tid avgjøres av færrest feil.",
@@ -31,10 +37,6 @@
     "wrongCount_one": "{{count}} feil",
     "wrongCount_other": "{{count}} feil",
     "wrongShort": "Feil",
-    "answerInputLabel": "Svaret ditt",
-    "backspaceAria": "Slett",
-    "enterAria": "Send inn svar",
-    "enter": "OK",
     "resultTitle": "Maraton fullført",
     "resultSubtitle": "Slik gikk det denne gangen.",
     "newPB": "Ny personlig rekord!",
@@ -57,10 +59,6 @@
     "streakShort": "Rekke",
     "fastLabel": "Raskt!",
     "timeLeftAria": "Tid igjen",
-    "answerInputLabel": "Svaret ditt",
-    "backspaceAria": "Slett",
-    "enterAria": "Send inn svar",
-    "enter": "OK",
     "resultTitle": "Tiden er ute!",
     "resultSubtitle": "Slik gikk det denne gangen.",
     "newPB": "Ny personlig rekord!",

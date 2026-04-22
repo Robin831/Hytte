@@ -22,6 +22,12 @@
       "blurb": "ติดตามความแม่นยำของแต่ละข้อในการคูณและการหาร"
     }
   },
+  "keypad": {
+    "answerInputLabel": "คำตอบของคุณ",
+    "backspaceAria": "ลบ",
+    "enterAria": "ส่งคำตอบ",
+    "enter": "ตกลง"
+  },
   "marathon": {
     "title": "มาราธอน",
     "intro": "ตอบโจทย์การคูณและการหารทั้งหมด {{count}} ข้อ คำตอบที่ผิดจะถูกนับ แต่คุณยังต้องไปต่อ ไม่มีโอกาสแก้ตัว เวลาที่ใช้คือคะแนน หากเสมอกันจะตัดสินด้วยจำนวนข้อที่ผิดน้อยกว่า",
@@ -31,10 +37,6 @@
     "wrongCount_one": "ผิด {{count}} ข้อ",
     "wrongCount_other": "ผิด {{count}} ข้อ",
     "wrongShort": "ผิด",
-    "answerInputLabel": "คำตอบของคุณ",
-    "backspaceAria": "ลบ",
-    "enterAria": "ส่งคำตอบ",
-    "enter": "ตกลง",
     "resultTitle": "มาราธอนจบแล้ว",
     "resultSubtitle": "นี่คือผลของรอบนี้",
     "newPB": "สถิติใหม่!",
@@ -57,10 +59,6 @@
     "streakShort": "สตรีค",
     "fastLabel": "เร็ว!",
     "timeLeftAria": "เวลาที่เหลือ",
-    "answerInputLabel": "คำตอบของคุณ",
-    "backspaceAria": "ลบ",
-    "enterAria": "ส่งคำตอบ",
-    "enter": "ตกลง",
     "resultTitle": "หมดเวลา!",
     "resultSubtitle": "นี่คือผลของรอบนี้",
     "newPB": "สถิติใหม่!",

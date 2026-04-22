@@ -22,6 +22,12 @@
       "blurb": "Track your mastery of every fact across multiplication and division."
     }
   },
+  "keypad": {
+    "answerInputLabel": "Your answer",
+    "backspaceAria": "Backspace",
+    "enterAria": "Submit answer",
+    "enter": "Enter"
+  },
   "marathon": {
     "title": "Marathon",
     "intro": "Answer all {{count}} multiplication and division facts. Wrong answers count against you, but you keep moving — there's no retry. Score is your time; ties are broken by fewer wrongs.",
@@ -31,10 +37,6 @@
     "wrongCount_one": "{{count}} wrong",
     "wrongCount_other": "{{count}} wrongs",
     "wrongShort": "Wrong",
-    "answerInputLabel": "Your answer",
-    "backspaceAria": "Backspace",
-    "enterAria": "Submit answer",
-    "enter": "Enter",
     "resultTitle": "Marathon complete",
     "resultSubtitle": "Here's how this run went.",
     "newPB": "New personal best!",
@@ -57,10 +59,6 @@
     "streakShort": "Streak",
     "fastLabel": "Fast!",
     "timeLeftAria": "Time remaining",
-    "answerInputLabel": "Your answer",
-    "backspaceAria": "Backspace",
-    "enterAria": "Submit answer",
-    "enter": "Enter",
     "resultTitle": "Time's up!",
     "resultSubtitle": "Here's how this run went.",
     "newPB": "New personal best!",
