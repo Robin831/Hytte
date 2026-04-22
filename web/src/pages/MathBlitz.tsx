@@ -9,8 +9,12 @@ import { UnlockedAchievementsBanner, type UnlockedAchievement } from '../compone
 import { MuteToggle } from '../components/math/MuteToggle'
 import { SpeedCallout, FAST_THRESHOLD_MS } from '../components/regnemester/SpeedCallout'
 import { useFeedback } from '../lib/regnemester/feedback'
+import { burst, blitzIntensityForScore } from '../lib/regnemester/confetti'
 
 const DURATION_MS = 60_000
+const STREAK_MILESTONE_STEP = 5
+const STREAK_POP_CLASS = 'regnemester-streak-pop'
+const STREAK_POP_MS = 450
 
 type Op = '*' | '/'
 
@@ -42,6 +46,12 @@ interface FinishSummary {
   best_streak: number
 }
 
+interface FinishResponse {
+  summary: FinishSummary
+  unlocked_achievements?: UnlockedAchievement[]
+  leaderboard_rank?: number | null
+}
+
 type Phase = 'idle' | 'starting' | 'playing' | 'finishing' | 'done' | 'error'
 
 // Mirrors ComputeBlitzPoints in internal/math/session.go so the live score
@@ -70,6 +80,8 @@ export default function MathBlitz() {
   const { t } = useTranslation('regnemester')
   const feedback = useFeedback()
   const problemRef = useRef<HTMLDivElement | null>(null)
+  const streakBadgeRef = useRef<HTMLSpanElement | null>(null)
+  const streakPopTimerRef = useRef<number | null>(null)
 
   const [phase, setPhase] = useState<Phase>('idle')
   const [error, setError] = useState('')
@@ -117,7 +129,7 @@ export default function MathBlitz() {
         credentials: 'include',
       })
       if (!res.ok) throw new Error(t('errors.failedToFinish'))
-      const data = await res.json() as { summary: FinishSummary; unlocked_achievements?: UnlockedAchievement[] }
+      const data = await res.json() as FinishResponse
       const s = data.summary
       setSummary(s)
       // Trust the server's score for the result banner — the client tally
@@ -129,6 +141,16 @@ export default function MathBlitz() {
       setPhase('done')
       const beatPB = priorBest ? s.score_num > priorBest.score_num : s.score_num > 0
       feedback.play(beatPB ? 'milestone' : 'fanfare')
+      // Confetti intensity scales with score; #1 all-time leaderboard rank
+      // earns the full-screen burst regardless of absolute score.
+      if (s.score_num > 0) {
+        const isTopRank = data.leaderboard_rank === 1
+        if (isTopRank) {
+          burst('full', 'rainbow')
+        } else {
+          burst(blitzIntensityForScore(s.score_num), beatPB ? 'golden' : 'default')
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : t('errors.failedToFinish')
       setError(message)
@@ -234,14 +256,34 @@ export default function MathBlitz() {
 
       if (data.is_correct) {
         const pointsEarned = computeBlitzPoints(responseMs, streak)
+        const nextStreak = streak + 1
         setScore(prev => prev + pointsEarned)
-        setStreak(prev => prev + 1)
+        setStreak(nextStreak)
         feedback.play('correct')
         feedback.vibrateCorrect()
         feedback.flashCorrect(problemRef.current)
         if (responseMs < FAST_THRESHOLD_MS) {
           setSpeedMs(responseMs)
           setSpeedKey(prev => prev + 1)
+        }
+        // Streak milestone: every 5 correct in a row gets a small confetti
+        // burst and a scale-pop on the streak badge.
+        if (nextStreak > 0 && nextStreak % STREAK_MILESTONE_STEP === 0) {
+          burst('small')
+          const badge = streakBadgeRef.current
+          if (badge) {
+            if (streakPopTimerRef.current !== null) {
+              window.clearTimeout(streakPopTimerRef.current)
+              badge.classList.remove(STREAK_POP_CLASS)
+              // Force reflow so the animation restarts cleanly on back-to-back milestones.
+              void badge.offsetWidth
+            }
+            badge.classList.add(STREAK_POP_CLASS)
+            streakPopTimerRef.current = window.setTimeout(() => {
+              badge.classList.remove(STREAK_POP_CLASS)
+              streakPopTimerRef.current = null
+            }, STREAK_POP_MS)
+          }
         }
       } else {
         setStreak(0)
@@ -290,6 +332,17 @@ export default function MathBlitz() {
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [phase])
+
+  // Cancel any lingering streak-pop timer when the component unmounts so we
+  // don't touch a detached element after it's gone.
+  useEffect(() => {
+    return () => {
+      if (streakPopTimerRef.current !== null) {
+        window.clearTimeout(streakPopTimerRef.current)
+        streakPopTimerRef.current = null
+      }
+    }
+  }, [])
 
   const isNewPB = useMemo(() => {
     if (!summary) return false
@@ -452,7 +505,8 @@ export default function MathBlitz() {
         </div>
         <div className="flex items-center gap-3">
           <div className="text-sm sm:text-base text-gray-400 tabular-nums">
-            {t('blitz.streakShort')} <span className="text-white font-semibold">{streak}</span>
+            {t('blitz.streakShort')}{' '}
+            <span ref={streakBadgeRef} className="text-white font-semibold">{streak}</span>
           </div>
           <MuteToggle muted={feedback.muted} onToggle={feedback.toggleMute} />
         </div>

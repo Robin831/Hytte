@@ -1,0 +1,46 @@
+@keyframes regnemester-screen-shake {
+  0% { transform: translate3d(0, 0, 0); }
+  10% { transform: translate3d(-6px, -2px, 0); }
+  20% { transform: translate3d(6px, 3px, 0); }
+  30% { transform: translate3d(-5px, 2px, 0); }
+  40% { transform: translate3d(5px, -3px, 0); }
+  50% { transform: translate3d(-4px, 1px, 0); }
+  60% { transform: translate3d(4px, -1px, 0); }
+  70% { transform: translate3d(-2px, 2px, 0); }
+  80% { transform: translate3d(2px, -1px, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+
+.regnemester-screen-shake {
+  animation: regnemester-screen-shake 600ms ease-in-out;
+}
+
+@keyframes regnemester-streak-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); }
+  70% { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+
+.regnemester-streak-pop {
+  animation: regnemester-streak-pop 450ms ease-out;
+  display: inline-block;
+}
+
+@keyframes regnemester-screen-flash {
+  0% { opacity: 0; }
+  40% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.regnemester-screen-flash {
+  animation: regnemester-screen-flash 500ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .regnemester-screen-shake,
+  .regnemester-streak-pop,
+  .regnemester-screen-flash {
+    animation: none;
+  }
+}

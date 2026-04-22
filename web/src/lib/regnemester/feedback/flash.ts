@@ -39,3 +39,12 @@ export function flashCorrect(el: HTMLElement | null): void {
 export function flashWrong(el: HTMLElement | null): void {
   flash(el, WRONG_CLASS, WRONG_MS)
 }
+
+const MILESTONE_CLASS = 'regnemester-flash-milestone'
+const MILESTONE_MS = 500
+
+// flashMilestone applies a short neutral-tone flash, used for timer
+// milestone markers during a Marathon run. Respects prefers-reduced-motion.
+export function flashMilestone(el: HTMLElement | null): void {
+  flash(el, MILESTONE_CLASS, MILESTONE_MS)
+}

@@ -160,7 +160,8 @@ func TestFinishSessionHandler(t *testing.T) {
 		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
 	}
 	var resp struct {
-		Summary Summary `json:"summary"`
+		Summary         Summary `json:"summary"`
+		LeaderboardRank *int    `json:"leaderboard_rank"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -170,6 +171,43 @@ func TestFinishSessionHandler(t *testing.T) {
 	}
 	if resp.Summary.TotalCorrect != 1 {
 		t.Errorf("TotalCorrect=%d, want 1", resp.Summary.TotalCorrect)
+	}
+	// Mixed mode has no leaderboard, so no rank is ever returned.
+	if resp.LeaderboardRank != nil {
+		t.Errorf("LeaderboardRank=%v, want nil for Mixed mode", resp.LeaderboardRank)
+	}
+}
+
+func TestFinishSessionHandlerReturnsBlitzRank(t *testing.T) {
+	d := setupTestDB(t)
+	svc := NewService(d)
+	ctx := context.Background()
+	id, _, err := svc.Start(ctx, 1, ModeBlitz)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, _, _, err := svc.RecordAttempt(ctx, id, 1, 3, 4, OpMultiply, 12, 500); err != nil {
+		t.Fatalf("RecordAttempt: %v", err)
+	}
+
+	h := FinishSessionHandler(d)
+	r := withChi(withUser(newJSONRequest(t, http.MethodPost, "/api/math/sessions/"+strconv.FormatInt(id, 10)+"/finish", nil), testUser), map[string]string{"id": strconv.FormatInt(id, 10)})
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Summary         Summary `json:"summary"`
+		LeaderboardRank *int    `json:"leaderboard_rank"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// A solo user who just finished their only Blitz run should be #1.
+	if resp.LeaderboardRank == nil || *resp.LeaderboardRank != 1 {
+		t.Errorf("LeaderboardRank=%v, want 1", resp.LeaderboardRank)
 	}
 }
 
