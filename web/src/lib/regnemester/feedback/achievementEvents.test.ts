@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import type { UnlockedAchievement } from '../../../components/math/UnlockedAchievements'
+import type { UnlockedAchievement } from '../achievements/types'
 import {
   emitAchievementUnlock,
   subscribeAchievementUnlock,

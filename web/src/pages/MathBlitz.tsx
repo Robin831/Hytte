@@ -145,7 +145,9 @@ export default function MathBlitz() {
       // still renders as the persistent record on the page itself.
       emitAchievementUnlock(unlockedItems)
       const beatPB = priorBest ? s.score_num > priorBest.score_num : s.score_num > 0
-      feedback.play(beatPB ? 'milestone' : 'fanfare')
+      if (unlockedItems.length === 0) {
+        feedback.play(beatPB ? 'milestone' : 'fanfare')
+      }
       // Confetti intensity scales with score; #1 all-time leaderboard rank
       // earns the full-screen burst regardless of absolute score.
       if (s.score_num > 0) {

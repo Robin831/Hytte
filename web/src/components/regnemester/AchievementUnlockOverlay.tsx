@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ParseKeys } from 'i18next'
 import { Award, Sparkles } from 'lucide-react'
-import type { UnlockedAchievement } from '../math/UnlockedAchievements'
+import type { UnlockedAchievement } from '../../lib/regnemester/achievements/types'
 import { subscribeAchievementUnlock } from '../../lib/regnemester/feedback/achievementEvents'
 import { soundEngine } from '../../lib/regnemester/feedback/sound'
 import { vibrate } from '../../lib/regnemester/feedback/haptics'
@@ -78,7 +78,7 @@ export function AchievementUnlockOverlay() {
 
     const autoId = window.setTimeout(() => advance(), AUTO_DISMISS_MS)
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+      if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
         e.preventDefault()
         advance()
         return

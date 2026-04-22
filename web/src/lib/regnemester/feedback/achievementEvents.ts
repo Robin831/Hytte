@@ -1,4 +1,4 @@
-import type { UnlockedAchievement } from '../../../components/math/UnlockedAchievements'
+import type { UnlockedAchievement } from '../achievements/types'
 
 type Handler = (items: UnlockedAchievement[]) => void
 

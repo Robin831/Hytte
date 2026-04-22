@@ -235,7 +235,9 @@ export default function MathMarathon() {
       } else {
         beatPB = false
       }
-      feedback.play(beatPB ? 'milestone' : 'fanfare')
+      if (unlockedItems.length === 0) {
+        feedback.play(beatPB ? 'milestone' : 'fanfare')
+      }
       // Finish confetti fires only on a new PB, so a slower repeat run
       // doesn't get celebrated as if it were an achievement. Within the PB
       // tiers: sub-3 earns the rainbow + screen shake, sub-5 gets a golden
