@@ -192,10 +192,12 @@ func TestBuildLeaderboardWeeklyExcludesOlderRuns(t *testing.T) {
 	// current wall-clock falling within a particular ISO week. Eight days
 	// ago is guaranteed to be before the Monday that starts the current
 	// week (at worst today is Monday, in which case the cutoff is today
-	// 00:00 UTC and a run 8 days ago is still excluded).
+	// 00:00 UTC and a run 8 days ago is still excluded). Derive the
+	// in-week timestamp from the current week's start so it remains inside
+	// the current ISO week even if the test runs just after Monday 00:00 UTC.
 	now := time.Now().UTC()
 	lastWeek := now.Add(-8 * 24 * time.Hour)
-	thisWeek := now.Add(-1 * time.Hour)
+	thisWeek := weekStartUTC(now).Add(1 * time.Hour)
 	finishedMarathon(t, d, 2, 200000, 0, lastWeek) // excluded in weekly view
 	thisID := finishedMarathon(t, d, 2, 260000, 1, thisWeek)
 
