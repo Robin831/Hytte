@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 // real canvas during tests. Use vi.hoisted so the mock handle exists when
 // vi.mock runs during module resolution.
 const { confettiMock } = vi.hoisted(() => ({
-  confettiMock: vi.fn(() => Promise.resolve(undefined)),
+  confettiMock: vi.fn((_opts?: { colors?: string[]; particleCount?: number; origin?: { x?: number; y?: number }; [k: string]: unknown }) => Promise.resolve(undefined)),
 }))
 
 vi.mock('canvas-confetti', () => ({
