@@ -69,6 +69,7 @@ import HomeworkParentReview from './pages/HomeworkParentReview'
 import MathLanding from './pages/Math'
 import MathMarathon from './pages/MathMarathon'
 import MathBlitz from './pages/MathBlitz'
+import MathLeaderboard from './pages/MathLeaderboard'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -511,6 +512,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="regnemester">
                 <MathBlitz />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/math/leaderboard"
+            element={
+              <FeatureRoute feature="regnemester">
+                <MathLeaderboard />
               </FeatureRoute>
             }
           />

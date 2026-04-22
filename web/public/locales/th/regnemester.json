@@ -73,5 +73,28 @@
     "failedToStart": "ไม่สามารถเริ่มรอบได้ กรุณาลองใหม่",
     "failedToRecord": "ไม่สามารถบันทึกคำตอบได้ การเล่นถูกหยุด",
     "failedToFinish": "ไม่สามารถจบรอบได้ ความคืบหน้าถูกบันทึกแล้วแต่โหลดผลไม่ได้"
+  },
+  "leaderboard": {
+    "title": "ตารางคะแนน",
+    "viewLink": "ดูตารางคะแนน",
+    "viewLinkShort": "ดู",
+    "modeMarathon": "มาราธอน",
+    "modeBlitz": "บลิตซ์",
+    "modeTabsLabel": "โหมด",
+    "periodAll": "ตลอดกาล",
+    "periodWeek": "สัปดาห์นี้",
+    "periodTabsLabel": "ช่วงเวลา",
+    "rank": "อันดับ",
+    "player": "ผู้เล่น",
+    "score": "คะแนน",
+    "when": "เมื่อ",
+    "empty": "ยังไม่มีใครทำสำเร็จ",
+    "parentTag": "(ผู้ปกครอง)",
+    "anonymous": "ไม่ทราบ",
+    "errorLoad": "โหลดตารางคะแนนไม่ได้",
+    "yourRank": "อันดับของคุณ",
+    "rankSummary": "{{all}} ตลอดกาล · {{week}} สัปดาห์นี้",
+    "unranked": "ไม่ติดอันดับ",
+    "loading": "กำลังโหลดอันดับ…"
   }
 }

@@ -30,6 +30,16 @@ export default function MathLanding() {
         <p className="text-gray-400 text-sm sm:text-base">{t('tagline')}</p>
       </header>
 
+      <div className="mb-6">
+        <Link
+          to="/math/leaderboard"
+          className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 hover:border-yellow-500/40 hover:bg-gray-800/80 px-4 py-2 text-sm font-medium text-yellow-300 transition-colors"
+        >
+          <Trophy size={18} />
+          {t('leaderboard.viewLink')}
+        </Link>
+      </div>
+
       <section aria-labelledby="modes-heading">
         <h2 id="modes-heading" className="sr-only">{t('modePickerHeading')}</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
