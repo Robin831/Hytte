@@ -12,7 +12,7 @@ interface ModeTile {
 
 const modes: ModeTile[] = [
   { to: '/math/play/marathon', icon: <Timer size={28} />, titleKey: 'modes.marathon.title', blurbKey: 'modes.marathon.blurb' },
-  { to: null, icon: <Zap size={28} />, titleKey: 'modes.blitz.title', blurbKey: 'modes.blitz.blurb' },
+  { to: '/math/play/blitz', icon: <Zap size={28} />, titleKey: 'modes.blitz.title', blurbKey: 'modes.blitz.blurb' },
   { to: null, icon: <Target size={28} />, titleKey: 'modes.practice.title', blurbKey: 'modes.practice.blurb' },
   { to: null, icon: <Trophy size={28} />, titleKey: 'modes.mastery.title', blurbKey: 'modes.mastery.blurb' },
 ]

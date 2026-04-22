@@ -224,6 +224,74 @@ func TestMarathonBestHandlerReturnsFastest(t *testing.T) {
 	}
 }
 
+func TestBlitzBestHandlerEmpty(t *testing.T) {
+	d := setupTestDB(t)
+	h := BlitzBestHandler(d)
+	r := withUser(httptest.NewRequest(http.MethodGet, "/api/math/blitz/best", nil), testUser)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Best *BlitzBest `json:"best"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Best != nil {
+		t.Errorf("expected null best, got %+v", resp.Best)
+	}
+}
+
+func TestBlitzBestHandlerReturnsHighestScore(t *testing.T) {
+	d := setupTestDB(t)
+	svc := NewService(d)
+	ctx := context.Background()
+
+	// Finish a small Blitz run so there's something to rank.
+	id, _, err := svc.Start(ctx, 1, ModeBlitz)
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, _, _, err := svc.RecordAttempt(ctx, id, 1, 3, 4, OpMultiply, 12, 500); err != nil {
+		t.Fatalf("RecordAttempt: %v", err)
+	}
+	if _, _, _, err := svc.RecordAttempt(ctx, id, 1, 5, 5, OpMultiply, 25, 500); err != nil {
+		t.Fatalf("RecordAttempt: %v", err)
+	}
+	if _, err := svc.Finish(ctx, id, 1); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+
+	h := BlitzBestHandler(d)
+	r := withUser(httptest.NewRequest(http.MethodGet, "/api/math/blitz/best", nil), testUser)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Best *BlitzBest `json:"best"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Best == nil {
+		t.Fatal("expected non-nil best")
+	}
+	// Two fast correct answers: streak 0 → round(1.5*1.0)=2, streak 1 →
+	// round(1.5*1.1)=round(1.65)=2. Total = 4.
+	if resp.Best.ScoreNum != 4 {
+		t.Errorf("ScoreNum=%d, want 4", resp.Best.ScoreNum)
+	}
+	if resp.Best.BestStreak != 2 {
+		t.Errorf("BestStreak=%d, want 2", resp.Best.BestStreak)
+	}
+}
+
 func TestStatsHandlerSorted(t *testing.T) {
 	d := setupTestDB(t)
 	svc := NewService(d)

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Delete, Trophy } from 'lucide-react'
+import { ArrowLeft, Trophy } from 'lucide-react'
+import { MathAnswerPad } from '../components/math/MathAnswerPad'
+import { appendAnswerDigit } from '../components/math/mathUtils'
 
 const TOTAL = 200
 
@@ -225,14 +227,7 @@ export default function MathMarathon() {
 
   const appendDigit = useCallback((digit: string) => {
     if (phase !== 'playing' || submitting) return
-    setInput(prev => {
-      // Cap at 3 digits — answers in the 1–100 range never need more.
-      if (prev.length >= 3) return prev
-      // Avoid leading zero (e.g. "07" reads as 7 anyway).
-      if (prev === '' && digit === '0') return '0'
-      if (prev === '0') return digit
-      return prev + digit
-    })
+    setInput(prev => appendAnswerDigit(prev, digit))
   }, [phase, submitting])
 
   const backspace = useCallback(() => {
@@ -240,25 +235,7 @@ export default function MathMarathon() {
     setInput(prev => prev.slice(0, -1))
   }, [phase, submitting])
 
-  // Physical keyboard support for desktop play.
-  useEffect(() => {
-    if (phase !== 'playing') return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return
-      if (e.key >= '0' && e.key <= '9') {
-        appendDigit(e.key)
-        e.preventDefault()
-      } else if (e.key === 'Backspace') {
-        backspace()
-        e.preventDefault()
-      } else if (e.key === 'Enter') {
-        void submitAnswer()
-        e.preventDefault()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [phase, appendDigit, backspace, submitAnswer])
+  const handleSubmit = useCallback(() => { void submitAnswer() }, [submitAnswer])
 
   // Warn before navigating away from a run in progress so a stray back-
   // tap or refresh doesn't silently lose 5 minutes of grinding.
@@ -431,67 +408,19 @@ export default function MathMarathon() {
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center mb-6">
-        <div className="text-4xl sm:text-6xl md:text-7xl font-bold text-white text-center mb-6 sm:mb-8 tabular-nums">
+        <div className="text-4xl sm:text-6xl md:text-7xl font-bold text-white text-center tabular-nums">
           {currentFact ? renderProblem(currentFact) : ''}
         </div>
-        <div
-          aria-live="polite"
-          aria-label={t('marathon.answerInputLabel')}
-          className="w-full max-w-xs h-16 sm:h-20 rounded-lg border-2 border-gray-700 bg-gray-800 flex items-center justify-center text-3xl sm:text-4xl font-bold text-white tabular-nums select-none"
-        >
-          {input || <span className="text-gray-600">_</span>}
-        </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 sm:gap-3 max-w-md mx-auto w-full pb-2">
-        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(d => (
-          <KeypadButton key={d} onClick={() => appendDigit(d)} disabled={isFinishing}>
-            {d}
-          </KeypadButton>
-        ))}
-        <KeypadButton onClick={backspace} disabled={isFinishing} variant="muted" ariaLabel={t('marathon.backspaceAria')}>
-          <Delete size={28} />
-        </KeypadButton>
-        <KeypadButton onClick={() => appendDigit('0')} disabled={isFinishing}>
-          0
-        </KeypadButton>
-        <KeypadButton
-          onClick={() => { void submitAnswer() }}
-          disabled={isFinishing || input.length === 0}
-          variant="primary"
-          ariaLabel={t('marathon.enterAria')}
-        >
-          {isFinishing ? '…' : t('marathon.enter')}
-        </KeypadButton>
-      </div>
+      <MathAnswerPad
+        input={input}
+        onDigit={appendDigit}
+        onBackspace={backspace}
+        onSubmit={handleSubmit}
+        disabled={isFinishing}
+        busy={isFinishing}
+      />
     </div>
-  )
-}
-
-interface KeypadButtonProps {
-  onClick: () => void
-  disabled?: boolean
-  variant?: 'default' | 'primary' | 'muted'
-  ariaLabel?: string
-  children: React.ReactNode
-}
-
-function KeypadButton({ onClick, disabled, variant = 'default', ariaLabel, children }: KeypadButtonProps) {
-  const base = 'h-16 sm:h-20 rounded-lg text-2xl sm:text-3xl font-bold flex items-center justify-center select-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation'
-  const styles = {
-    default: 'bg-gray-800 hover:bg-gray-700 active:bg-gray-600 text-white border border-gray-700',
-    primary: 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white',
-    muted: 'bg-gray-800 hover:bg-gray-700 active:bg-gray-600 text-gray-300 border border-gray-700',
-  }[variant]
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      className={`${base} ${styles}`}
-    >
-      {children}
-    </button>
   )
 }

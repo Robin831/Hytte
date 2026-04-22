@@ -26,6 +26,12 @@ const (
 // recorded a different attempt count.
 const MarathonFactCount = (MaxOperand - MinOperand + 1) * (MaxOperand - MinOperand + 1) * 2
 
+// BlitzDurationMs is the fixed length of a Blitz run in milliseconds — one
+// minute. The server enforces this deadline by rejecting RecordAttempt calls
+// after started_at + BlitzDurationMs. Finish computes duration_ms from
+// started_at to ended_at and clamps it to BlitzDurationMs.
+const BlitzDurationMs = 60000
+
 // Mode constants for question generation. New modes can be added without
 // breaking older sessions because the engine falls back to ModeMixed for
 // unknown values.
@@ -39,6 +45,11 @@ const (
 	// itself — but the mode tag distinguishes marathon sessions from other
 	// modes for personal-best lookups.
 	ModeMarathon = "marathon"
+	// ModeBlitz is a 60-second sprint: questions are drawn uniformly at
+	// random from the full 200-fact pool (repeats allowed) and scoring is
+	// weighted by speed and consecutive-correct streak. Finish computes the
+	// score from the recorded attempts — see ComputeBlitzPoints.
+	ModeBlitz = "blitz"
 )
 
 // Fact represents a single math fact. For multiplication, A and B are the
@@ -111,7 +122,7 @@ func NextQuestion(mode string, _ []Fact) Fact {
 // mixed), but the session layer rejects them at Start time.
 func IsValidMode(mode string) bool {
 	switch mode {
-	case ModeMixed, ModeMultiplication, ModeDivision, ModeMarathon:
+	case ModeMixed, ModeMultiplication, ModeDivision, ModeMarathon, ModeBlitz:
 		return true
 	default:
 		return false
