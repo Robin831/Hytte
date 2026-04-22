@@ -459,6 +459,10 @@ export default function MathBlitz() {
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center mb-6">
+        {/* Reserved vertical space above the problem so the SpeedCallout has room
+            to animate upward without clipping the header, and so the problem
+            sits at the same y-position as before the callout was introduced. */}
+        <div className="h-8" aria-hidden="true" />
         <div className="relative">
           <SpeedCallout key={speedKey} responseMs={speedKey > 0 ? speedMs : null} />
           <div
