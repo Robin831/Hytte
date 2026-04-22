@@ -5,18 +5,24 @@ interface SoundSource {
   type: string
 }
 
-// Every sound maps to an ordered list of candidate encodings — the first
-// the browser claims to support wins. Only formats we actually ship should
-// appear here; otherwise canPlayType will pick a format we don't have on
-// disk and each play() will 404. WAV is safe across all modern browsers
-// (Safari, iOS, Chrome, Firefox) so it's currently the only format we ship.
-// When .ogg / .mp3 assets land, add them above the WAV entry so better
-// formats are preferred where available.
+// Each sound maps to an ordered list of candidate encodings — the first one
+// the browser claims to support wins. WebM (Opus) is the smallest modern
+// format and plays in Chrome/Firefox/Edge; Ogg (Vorbis) is a Firefox-friendly
+// fallback; MP3 is the Safari fallback (Safari does not play WebM/Ogg).
+function build(name: SoundName): SoundSource[] {
+  const base = `/sounds/regnemester/${name}`
+  return [
+    { src: `${base}.webm`, type: 'audio/webm; codecs=opus' },
+    { src: `${base}.ogg`, type: 'audio/ogg; codecs=vorbis' },
+    { src: `${base}.mp3`, type: 'audio/mpeg' },
+  ]
+}
+
 const SOURCES: Record<SoundName, SoundSource[]> = {
-  correct: [{ src: '/sounds/regnemester/correct.wav', type: 'audio/wav' }],
-  wrong: [{ src: '/sounds/regnemester/wrong.wav', type: 'audio/wav' }],
-  fanfare: [{ src: '/sounds/regnemester/fanfare.wav', type: 'audio/wav' }],
-  milestone: [{ src: '/sounds/regnemester/milestone.wav', type: 'audio/wav' }],
+  correct: build('correct'),
+  wrong: build('wrong'),
+  fanfare: build('fanfare'),
+  milestone: build('milestone'),
 }
 
 const SOUND_NAMES: readonly SoundName[] = ['correct', 'wrong', 'fanfare', 'milestone']

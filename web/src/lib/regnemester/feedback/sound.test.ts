@@ -70,11 +70,40 @@ describe('SoundEngine', () => {
     expect(ctor).toHaveBeenCalledTimes(4)
   })
 
-  it('uses the wav source (universal browser support)', () => {
-    const { instances } = installAudioMock(type => (type === 'audio/wav' ? 'maybe' : ''))
+  it('prefers WebM/Opus when supported', () => {
+    const { instances } = installAudioMock(type =>
+      type.startsWith('audio/webm') ? 'probably' : '',
+    )
     const engine = new SoundEngine()
     engine.preload()
-    expect(instances.every(a => a.src.endsWith('.wav'))).toBe(true)
+    expect(instances.every(a => a.src.endsWith('.webm'))).toBe(true)
+  })
+
+  it('falls back to Ogg/Vorbis when WebM is not supported', () => {
+    const { instances } = installAudioMock(type =>
+      type.startsWith('audio/ogg') ? 'probably' : '',
+    )
+    const engine = new SoundEngine()
+    engine.preload()
+    expect(instances.every(a => a.src.endsWith('.ogg'))).toBe(true)
+  })
+
+  it('falls back to MP3 on Safari (no WebM/Ogg support)', () => {
+    const { instances } = installAudioMock(type =>
+      type === 'audio/mpeg' ? 'probably' : '',
+    )
+    const engine = new SoundEngine()
+    engine.preload()
+    expect(instances.every(a => a.src.endsWith('.mp3'))).toBe(true)
+  })
+
+  it('prefers the first supported source (WebM beats MP3 when both work)', () => {
+    const { instances } = installAudioMock(type =>
+      type.startsWith('audio/webm') || type === 'audio/mpeg' ? 'maybe' : '',
+    )
+    const engine = new SoundEngine()
+    engine.preload()
+    expect(instances.every(a => a.src.endsWith('.webm'))).toBe(true)
   })
 
   it('skips sounds the browser cannot play', () => {
