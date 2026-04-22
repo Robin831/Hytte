@@ -204,11 +204,16 @@ export default function MathBlitz() {
         }),
       })
       if (!res.ok) {
-        // If the timer expired between the user pressing Enter and the
-        // request landing, the server will 409 because the session is
-        // finished. Treat that as a benign end-of-run — no need to crash
-        // the result screen.
         if (res.status === 409) {
+          // The session expired server-side while this request was in flight.
+          // Immediately sync the UI to the server-authoritative finished state.
+          setLastAnswerMs(responseMs)
+          setInput('')
+          setCurrentFact(null)
+          endAtRef.current = performance.now()
+          if (phaseRef.current === 'playing') {
+            void finishGame(sessionId)
+          }
           return
         }
         throw new Error(t('errors.failedToRecord'))
@@ -240,7 +245,7 @@ export default function MathBlitz() {
     } finally {
       setSubmitting(false)
     }
-  }, [phase, submitting, sessionId, currentFact, input, streak, t])
+  }, [phase, submitting, sessionId, currentFact, input, streak, t, finishGame])
 
   const appendDigit = useCallback((digit: string) => {
     if (phase !== 'playing' || submitting) return
