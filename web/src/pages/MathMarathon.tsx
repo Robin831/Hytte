@@ -226,17 +226,19 @@ export default function MathMarathon() {
         beatPB = false
       }
       feedback.play(beatPB ? 'milestone' : 'fanfare')
-      // Finish confetti: sub-3 earns the rainbow + screen shake, sub-5 gets
-      // a golden burst, and any other new PB gets a standard burst. A run
-      // that doesn't beat the PB stays quiet on confetti so we don't reward
-      // a slower repeat as if it were an achievement.
-      if (s.duration_ms < SUB_THREE_MS) {
-        burst('large', 'rainbow')
-        screenShake()
-      } else if (s.duration_ms < SUB_FIVE_MS) {
-        burst('medium', 'golden')
-      } else if (beatPB) {
-        burst('medium', 'default')
+      // Finish confetti fires only on a new PB, so a slower repeat run
+      // doesn't get celebrated as if it were an achievement. Within the PB
+      // tiers: sub-3 earns the rainbow + screen shake, sub-5 gets a golden
+      // burst, and any other new PB gets a standard burst.
+      if (beatPB) {
+        if (s.duration_ms < SUB_THREE_MS) {
+          burst('large', 'rainbow')
+          screenShake()
+        } else if (s.duration_ms < SUB_FIVE_MS) {
+          burst('medium', 'golden')
+        } else {
+          burst('medium', 'default')
+        }
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : t('errors.failedToFinish')

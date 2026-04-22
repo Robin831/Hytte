@@ -27,20 +27,9 @@
   display: inline-block;
 }
 
-@keyframes regnemester-screen-flash {
-  0% { opacity: 0; }
-  40% { opacity: 1; }
-  100% { opacity: 0; }
-}
-
-.regnemester-screen-flash {
-  animation: regnemester-screen-flash 500ms ease-out;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .regnemester-screen-shake,
-  .regnemester-streak-pop,
-  .regnemester-screen-flash {
+  .regnemester-streak-pop {
     animation: none;
   }
 }
