@@ -18,7 +18,9 @@ function flash(el: HTMLElement | null, cls: string, durationMs: number): void {
     window.clearTimeout(existing)
   }
 
-  el.classList.remove(CORRECT_CLASS, WRONG_CLASS)
+  // Remove cls too so a rapid re-trigger (e.g. two milestone fires in one
+  // tick) always gets a clean reflow and restarts the animation reliably.
+  el.classList.remove(CORRECT_CLASS, WRONG_CLASS, cls)
 
   // Re-adding the class in the same tick doesn't restart the CSS transition
   // in most browsers — force a reflow first so the transition restarts cleanly.
@@ -38,4 +40,13 @@ export function flashCorrect(el: HTMLElement | null): void {
 
 export function flashWrong(el: HTMLElement | null): void {
   flash(el, WRONG_CLASS, WRONG_MS)
+}
+
+const MILESTONE_CLASS = 'regnemester-flash-milestone'
+const MILESTONE_MS = 500
+
+// flashMilestone applies a short neutral-tone flash, used for timer
+// milestone markers during a Marathon run. Respects prefers-reduced-motion.
+export function flashMilestone(el: HTMLElement | null): void {
+  flash(el, MILESTONE_CLASS, MILESTONE_MS)
 }

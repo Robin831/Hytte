@@ -9,8 +9,17 @@ import { UnlockedAchievementsBanner, type UnlockedAchievement } from '../compone
 import { MuteToggle } from '../components/math/MuteToggle'
 import { SpeedCallout, FAST_THRESHOLD_MS } from '../components/regnemester/SpeedCallout'
 import { useFeedback } from '../lib/regnemester/feedback'
+import { burst, screenShake } from '../lib/regnemester/confetti'
 
 const TOTAL = 200
+
+// Marathon timer milestones at which we flash the play surface to mark a
+// passed threshold. Values are in milliseconds of elapsed time.
+const TIMER_MILESTONES_MS = [3 * 60_000, 4 * 60_000, 5 * 60_000]
+// A run under 5:00 is the "golden" bracket; under 3:00 earns a rainbow
+// finish + screen shake. These match the Marathon achievement thresholds.
+const SUB_FIVE_MS = 5 * 60_000
+const SUB_THREE_MS = 3 * 60_000
 
 type Op = '*' | '/'
 
@@ -38,6 +47,12 @@ interface FinishSummary {
   total_correct: number
   total_wrong: number
   score_num: number
+}
+
+interface FinishResponse {
+  summary: FinishSummary
+  unlocked_achievements?: UnlockedAchievement[]
+  leaderboard_rank?: number | null
 }
 
 type Phase = 'idle' | 'starting' | 'playing' | 'finishing' | 'done' | 'error'
@@ -85,6 +100,10 @@ export default function MathMarathon() {
   const { t } = useTranslation('regnemester')
   const feedback = useFeedback()
   const problemRef = useRef<HTMLDivElement | null>(null)
+  const playSurfaceRef = useRef<HTMLDivElement | null>(null)
+  // Tracks which elapsed-time milestones have already fired for the current
+  // run, so a single threshold doesn't fire repeatedly as the timer ticks.
+  const firedMilestonesRef = useRef<Set<number>>(new Set())
 
   const [phase, setPhase] = useState<Phase>('idle')
   const [error, setError] = useState('')
@@ -125,10 +144,30 @@ export default function MathMarathon() {
   // Keep ticking through 'finishing' so the display doesn't freeze early.
   useEffect(() => {
     if (phase !== 'playing' && phase !== 'finishing') return
-    const tick = () => setElapsed(performance.now() - startedAtRef.current)
+    const tick = () => {
+      const now = performance.now() - startedAtRef.current
+      setElapsed(now)
+      if (phase === 'playing') {
+        // Fire at most one timer milestone flash per tick. If the tab was
+        // backgrounded and `now` jumps past multiple thresholds at once,
+        // record all newly crossed milestones as fired but only show a single
+        // flash for this timer update.
+        let crossedNewMilestone = false
+        for (const ms of TIMER_MILESTONES_MS) {
+          if (now >= ms && !firedMilestonesRef.current.has(ms)) {
+            firedMilestonesRef.current.add(ms)
+            crossedNewMilestone = true
+          }
+        }
+        if (crossedNewMilestone) {
+          feedback.flashMilestone(playSurfaceRef.current)
+        }
+      }
+    }
     const id = window.setInterval(tick, 100)
+    tick()
     return () => window.clearInterval(id)
-  }, [phase])
+  }, [phase, feedback])
 
   const startGame = useCallback(async () => {
     setError('')
@@ -154,6 +193,7 @@ export default function MathMarathon() {
       setElapsed(0)
       setSpeedMs(null)
       setSpeedKey(0)
+      firedMilestonesRef.current = new Set()
       setPhase('playing')
     } catch (err) {
       const message = err instanceof Error ? err.message : t('errors.failedToStart')
@@ -170,7 +210,7 @@ export default function MathMarathon() {
         credentials: 'include',
       })
       if (!res.ok) throw new Error(t('errors.failedToFinish'))
-      const data = await res.json() as { summary: FinishSummary; unlocked_achievements?: UnlockedAchievement[] }
+      const data = await res.json() as FinishResponse
       // Trust the server's duration_ms and total_wrong: those are what get
       // stored and what future PB lookups compare against. Sync elapsed so
       // there's no visible jump between the running timer and the result.
@@ -191,6 +231,20 @@ export default function MathMarathon() {
         beatPB = false
       }
       feedback.play(beatPB ? 'milestone' : 'fanfare')
+      // Finish confetti fires only on a new PB, so a slower repeat run
+      // doesn't get celebrated as if it were an achievement. Within the PB
+      // tiers: sub-3 earns the rainbow + screen shake, sub-5 gets a golden
+      // burst, and any other new PB gets a standard burst.
+      if (beatPB) {
+        if (s.duration_ms < SUB_THREE_MS) {
+          burst('large', 'rainbow')
+          screenShake()
+        } else if (s.duration_ms < SUB_FIVE_MS) {
+          burst('medium', 'golden')
+        } else {
+          burst('medium', 'default')
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : t('errors.failedToFinish')
       setError(message)
@@ -441,7 +495,10 @@ export default function MathMarathon() {
   const isFinishing = phase === 'finishing'
 
   return (
-    <div className="min-h-[calc(100vh-3.5rem)] md:min-h-screen flex flex-col max-w-3xl mx-auto p-3 sm:p-6">
+    <div
+      ref={playSurfaceRef}
+      className="min-h-[calc(100vh-3.5rem)] md:min-h-screen flex flex-col max-w-3xl mx-auto p-3 sm:p-6"
+    >
       <div className="flex items-center justify-between mb-4 sm:mb-6 gap-2">
         <div className="text-sm sm:text-base text-gray-400 tabular-nums">
           <span className="text-white font-semibold">{progressLabel}</span>

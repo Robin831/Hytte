@@ -134,9 +134,12 @@ func RecordAttemptHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // FinishSessionHandler returns POST /api/math/sessions/:id/finish, response
-// {summary, unlocked_achievements}. Achievements are evaluated against the
-// just-finished session — failures during evaluation are logged but do not
-// fail the request, since the session itself has already been committed.
+// {summary, unlocked_achievements, leaderboard_rank}. Achievements are
+// evaluated against the just-finished session — failures during evaluation
+// are logged but do not fail the request, since the session itself has
+// already been committed. leaderboard_rank is the caller's all-time rank
+// in the mode they just finished (nil if unranked or on lookup failure),
+// used by the client to scale finish-of-run celebrations.
 func FinishSessionHandler(db *sql.DB) http.HandlerFunc {
 	svc := NewService(db)
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -178,9 +181,26 @@ func FinishSessionHandler(db *sql.DB) http.HandlerFunc {
 		if unlocked == nil {
 			unlocked = []EarnedAchievementRow{}
 		}
+		var rank *int
+		if summary.Mode == ModeMarathon || summary.Mode == ModeBlitz {
+			if lb, lbErr := svc.BuildLeaderboard(r.Context(), user.ID, summary.Mode, PeriodAll); lbErr != nil {
+				// Leaderboard lookup is best-effort — a failure here just
+				// means the client shows no fullscreen celebration.
+				log.Printf("math: finish leaderboard lookup: %v", lbErr)
+			} else if lb != nil {
+				for _, e := range lb.Entries {
+					if e.UserID == user.ID && e.Rank != nil {
+						rankVal := *e.Rank
+						rank = &rankVal
+						break
+					}
+				}
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"summary":               summary,
 			"unlocked_achievements": unlocked,
+			"leaderboard_rank":      rank,
 		})
 	}
 }

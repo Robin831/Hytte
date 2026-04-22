@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { flashCorrect, flashWrong } from './flash'
+import { flashCorrect, flashWrong, flashMilestone } from './flash'
 
 function setReducedMotion(reduce: boolean) {
   const mql = {
@@ -70,5 +70,23 @@ describe('flash', () => {
   it('tolerates a null element', () => {
     expect(() => flashCorrect(null)).not.toThrow()
     expect(() => flashWrong(null)).not.toThrow()
+    expect(() => flashMilestone(null)).not.toThrow()
+  })
+
+  it('flashMilestone adds and later removes the milestone class', () => {
+    const el = document.createElement('div')
+    flashMilestone(el)
+    expect(el.classList.contains('regnemester-flash-milestone')).toBe(true)
+    vi.advanceTimersByTime(499)
+    expect(el.classList.contains('regnemester-flash-milestone')).toBe(true)
+    vi.advanceTimersByTime(2)
+    expect(el.classList.contains('regnemester-flash-milestone')).toBe(false)
+  })
+
+  it('flashMilestone is a no-op when prefers-reduced-motion is set', () => {
+    setReducedMotion(true)
+    const el = document.createElement('div')
+    flashMilestone(el)
+    expect(el.classList.contains('regnemester-flash-milestone')).toBe(false)
   })
 })

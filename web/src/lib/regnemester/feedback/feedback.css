@@ -18,6 +18,16 @@
   }
 }
 
+@keyframes regnemester-flash-milestone-fade {
+  from {
+    background-color: rgba(250, 204, 21, 0.25);
+  }
+
+  to {
+    background-color: transparent;
+  }
+}
+
 .regnemester-flash-correct {
   animation: regnemester-flash-correct-fade 150ms ease-out;
 }
@@ -26,9 +36,14 @@
   animation: regnemester-flash-wrong-fade 250ms ease-out;
 }
 
+.regnemester-flash-milestone {
+  animation: regnemester-flash-milestone-fade 500ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .regnemester-flash-correct,
-  .regnemester-flash-wrong {
+  .regnemester-flash-wrong,
+  .regnemester-flash-milestone {
     animation: none;
   }
 }

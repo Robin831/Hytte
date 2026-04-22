@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { soundEngine, type SoundName } from './sound'
-import { flashCorrect as flashCorrectEl, flashWrong as flashWrongEl } from './flash'
+import { flashCorrect as flashCorrectEl, flashWrong as flashWrongEl, flashMilestone as flashMilestoneEl } from './flash'
 import { vibrate, vibrateCorrect, vibrateWrong } from './haptics'
 
 const STORAGE_KEY = 'regnemester_muted'
@@ -36,6 +36,7 @@ export interface UseFeedbackResult {
   play: (name: SoundName) => void
   flashCorrect: (el: HTMLElement | null) => void
   flashWrong: (el: HTMLElement | null) => void
+  flashMilestone: (el: HTMLElement | null) => void
   vibrate: (pattern: number | number[]) => void
   vibrateCorrect: () => void
   vibrateWrong: () => void
@@ -121,6 +122,7 @@ export function useFeedback(): UseFeedbackResult {
   const play = useCallback((name: SoundName) => { soundEngine.play(name) }, [])
   const flashCorrect = useCallback((el: HTMLElement | null) => { flashCorrectEl(el) }, [])
   const flashWrong = useCallback((el: HTMLElement | null) => { flashWrongEl(el) }, [])
+  const flashMilestone = useCallback((el: HTMLElement | null) => { flashMilestoneEl(el) }, [])
   const vibrateFn = useCallback((pattern: number | number[]) => { vibrate(pattern) }, [])
   const vibrateCorrectFn = useCallback(() => { vibrateCorrect() }, [])
   const vibrateWrongFn = useCallback(() => { vibrateWrong() }, [])
@@ -129,11 +131,12 @@ export function useFeedback(): UseFeedbackResult {
     play,
     flashCorrect,
     flashWrong,
+    flashMilestone,
     vibrate: vibrateFn,
     vibrateCorrect: vibrateCorrectFn,
     vibrateWrong: vibrateWrongFn,
     muted,
     toggleMute,
     setMuted,
-  }), [play, flashCorrect, flashWrong, vibrateFn, vibrateCorrectFn, vibrateWrongFn, muted, toggleMute, setMuted])
+  }), [play, flashCorrect, flashWrong, flashMilestone, vibrateFn, vibrateCorrectFn, vibrateWrongFn, muted, toggleMute, setMuted])
 }
