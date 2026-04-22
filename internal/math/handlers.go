@@ -168,6 +168,28 @@ func FinishSessionHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// MarathonBestHandler returns GET /api/math/marathon/best: the user's
+// fastest completed Marathon run, or {"best": null} if they have not
+// finished one yet. The Marathon UI uses this to decide whether to show a
+// "New PB!" badge after a finishing run.
+func MarathonBestHandler(db *sql.DB) http.HandlerFunc {
+	svc := NewService(db)
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			writeErr(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		best, err := svc.BestMarathon(r.Context(), user.ID)
+		if err != nil {
+			log.Printf("math: best marathon: %v", err)
+			writeErr(w, http.StatusInternalServerError, "failed to load best marathon")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"best": best})
+	}
+}
+
 // statsEntry is the per-fact payload in the stats response. Operands are
 // repeated alongside FactStats so the client can render without rebuilding
 // the key.

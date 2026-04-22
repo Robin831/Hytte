@@ -1,0 +1,53 @@
+{
+  "title": "Regnemester",
+  "tagline": "Trim gangetabellen. Velg en spillemodus for å begynne.",
+  "modePickerHeading": "Spillemoduser",
+  "comingSoon": "Kommer snart",
+  "back": "Tilbake",
+  "modes": {
+    "marathon": {
+      "title": "Maraton",
+      "blurb": "Alle 200 stykker, én gang hver. Tidskonkurranse — slå klokka."
+    },
+    "blitz": {
+      "title": "Blitz",
+      "blurb": "Kjør mot klokka og svar på så mange stykker du klarer."
+    },
+    "practice": {
+      "title": "Trening",
+      "blurb": "Målrettet trening på de stykkene du synes er vanskeligst."
+    },
+    "mastery": {
+      "title": "Mestring",
+      "blurb": "Følg med på hvor godt du behersker hver gange- og delingsfakta."
+    }
+  },
+  "marathon": {
+    "title": "Maraton",
+    "intro": "Svar på alle {{count}} gange- og delingsstykker. Feil svar teller mot deg, men du går videre — ingen ny sjanse. Tiden din er poengsummen; lik tid avgjøres av færrest feil.",
+    "start": "Start maraton",
+    "starting": "Starter…",
+    "priorBestLabel": "Din beste tid",
+    "wrongCount_one": "{{count}} feil",
+    "wrongCount_other": "{{count}} feil",
+    "wrongShort": "Feil",
+    "answerInputLabel": "Svaret ditt",
+    "backspaceAria": "Slett",
+    "enterAria": "Send inn svar",
+    "enter": "OK",
+    "resultTitle": "Maraton fullført",
+    "resultSubtitle": "Slik gikk det denne gangen.",
+    "newPB": "Ny personlig rekord!",
+    "timeLabel": "Tid",
+    "wrongLabel": "Feil",
+    "outOf": "av {{total}}",
+    "priorBestRecap": "Forrige rekord: {{time}} med {{wrong}} feil.",
+    "playAgain": "Spill igjen",
+    "backToModes": "Tilbake til moduser"
+  },
+  "errors": {
+    "failedToStart": "Kunne ikke starte maraton. Prøv igjen.",
+    "failedToRecord": "Kunne ikke lagre svaret ditt. Runden ble stoppet.",
+    "failedToFinish": "Kunne ikke fullføre maraton. Runden ble lagret, men resultatet kunne ikke lastes."
+  }
+}

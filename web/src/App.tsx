@@ -66,6 +66,8 @@ import HomeworkPage from './pages/HomeworkPage'
 import HomeworkChat from './pages/HomeworkChat'
 import HomeworkSettings from './pages/HomeworkSettings'
 import HomeworkParentReview from './pages/HomeworkParentReview'
+import MathLanding from './pages/Math'
+import MathMarathon from './pages/MathMarathon'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -482,6 +484,24 @@ function MainLayout() {
             element={
               <FeatureRoute feature="salary">
                 <SalaryPage />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Regnemester math game routes */}
+          <Route
+            path="/math"
+            element={
+              <FeatureRoute feature="regnemester">
+                <MathLanding />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/math/play/marathon"
+            element={
+              <FeatureRoute feature="regnemester">
+                <MathMarathon />
               </FeatureRoute>
             }
           />

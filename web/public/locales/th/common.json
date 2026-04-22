@@ -32,7 +32,8 @@
     "skywatch": "สังเกตท้องฟ้า",
     "grocery": "รายการซื้อของ",
     "homework": "\u0e01\u0e32\u0e23\u0e1a\u0e49\u0e32\u0e19",
-    "homeworkReview": "\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a\u0e01\u0e32\u0e23\u0e1a\u0e49\u0e32\u0e19"
+    "homeworkReview": "\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a\u0e01\u0e32\u0e23\u0e1a\u0e49\u0e32\u0e19",
+    "regnemester": "เกมคณิตศาสตร์"
   },
   "actions": {
     "save": "บันทึก",

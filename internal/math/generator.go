@@ -20,6 +20,12 @@ const (
 	MaxOperand = 10
 )
 
+// MarathonFactCount is the number of facts in a single Marathon run: every
+// (a, b) pair in [MinOperand, MaxOperand] for both multiplication and
+// division, exactly once. Server-side PB lookups exclude sessions that
+// recorded a different attempt count.
+const MarathonFactCount = (MaxOperand - MinOperand + 1) * (MaxOperand - MinOperand + 1) * 2
+
 // Mode constants for question generation. New modes can be added without
 // breaking older sessions because the engine falls back to ModeMixed for
 // unknown values.
@@ -27,6 +33,12 @@ const (
 	ModeMixed          = "mixed"
 	ModeMultiplication = "mult"
 	ModeDivision       = "div"
+	// ModeMarathon plays the entire 200-fact universe in a client-side
+	// shuffled order. The engine treats it like ModeMixed for question
+	// sampling — the marathon UI ignores NextQuestion and drives the order
+	// itself — but the mode tag distinguishes marathon sessions from other
+	// modes for personal-best lookups.
+	ModeMarathon = "marathon"
 )
 
 // Fact represents a single math fact. For multiplication, A and B are the
@@ -99,7 +111,7 @@ func NextQuestion(mode string, _ []Fact) Fact {
 // mixed), but the session layer rejects them at Start time.
 func IsValidMode(mode string) bool {
 	switch mode {
-	case ModeMixed, ModeMultiplication, ModeDivision:
+	case ModeMixed, ModeMultiplication, ModeDivision, ModeMarathon:
 		return true
 	default:
 		return false
