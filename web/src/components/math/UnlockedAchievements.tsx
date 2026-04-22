@@ -2,14 +2,9 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { ParseKeys } from 'i18next'
 import { Award, Sparkles } from 'lucide-react'
+import type { UnlockedAchievement } from '../../lib/regnemester/achievements/types'
 
-export interface UnlockedAchievement {
-  code: string
-  title: string
-  description: string
-  tier: string
-  unlocked_at: string
-}
+export type { UnlockedAchievement }
 
 // UnlockedAchievementsBanner is the in-page notification we show on the
 // session result screen when one or more achievements were unlocked by

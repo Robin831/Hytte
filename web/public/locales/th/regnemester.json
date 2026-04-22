@@ -116,6 +116,12 @@
     "unlockedOn": "ปลดล็อกเมื่อ {{date}}",
     "unlockedBannerTitle_one": "ความสำเร็จใหม่ {{count}} รายการ!",
     "unlockedBannerTitle_other": "ความสำเร็จใหม่ {{count}} รายการ!",
+    "unlockedOverlay": {
+      "eyebrow": "ปลดล็อกความสำเร็จ{{tier}}",
+      "dismiss": "ไปต่อ",
+      "queueHint_one": "เหลืออีก {{count}} รายการ",
+      "queueHint_other": "เหลืออีก {{count}} รายการ"
+    },
     "tiers": {
       "marathon": "มาราธอน",
       "blitz": "บลิตซ์",

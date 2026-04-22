@@ -72,6 +72,7 @@ import MathBlitz from './pages/MathBlitz'
 import MathLeaderboard from './pages/MathLeaderboard'
 import MathHeatmap from './pages/MathHeatmap'
 import MathAchievements from './pages/MathAchievements'
+import { AchievementUnlockOverlay } from './components/regnemester/AchievementUnlockOverlay'
 
 function MainLayout() {
   const { user } = useAuth()
@@ -641,6 +642,7 @@ function MainLayout() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+      <AchievementUnlockOverlay />
     </div>
   )
 }
