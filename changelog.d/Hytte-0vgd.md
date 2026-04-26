@@ -1,0 +1,2 @@
+category: Added
+- **Stride note scope routing** - Coach notes can now be routed to a specific consumer (any, nightly evaluation, or weekly plan generation). Notes scoped to one consumer are skipped by the other, fixing the issue where the Sunday→Monday cron transition could eat notes intended for the nightly evaluation. Existing notes default to scope='any' and behave as before. Added a PATCH endpoint and an inline editor so unconsumed notes can have their content, target date, and scope updated. (Hytte-0vgd)

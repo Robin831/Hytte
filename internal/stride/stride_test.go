@@ -73,6 +73,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			target_date TEXT NOT NULL DEFAULT '',
 			consumed_at TEXT,
 			consumed_by TEXT,
+			scope       TEXT NOT NULL DEFAULT 'any',
 			created_at  TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE workouts (
@@ -279,7 +280,7 @@ func TestDeleteRaceWrongUser(t *testing.T) {
 func TestCreateAndListNotes(t *testing.T) {
 	db := setupTestDB(t)
 
-	note, err := CreateNote(db, 1, nil, "Feeling tired this week", "")
+	note, err := CreateNote(db, 1, nil, "Feeling tired this week", "", "")
 	if err != nil {
 		t.Fatalf("create note: %v", err)
 	}
@@ -288,6 +289,9 @@ func TestCreateAndListNotes(t *testing.T) {
 	}
 	if note.PlanID != nil {
 		t.Errorf("plan_id = %v, want nil", note.PlanID)
+	}
+	if note.Scope != NoteScopeAny {
+		t.Errorf("scope = %q, want %q (default)", note.Scope, NoteScopeAny)
 	}
 	// When no target_date is provided, it should default to the note's creation date.
 	createdAt, err := time.Parse(time.RFC3339, note.CreatedAt)
@@ -301,7 +305,7 @@ func TestCreateAndListNotes(t *testing.T) {
 
 	// Create a note with an explicit target_date.
 	explicitDate := "2026-04-15"
-	note2, err := CreateNote(db, 1, nil, "Planned rest day", explicitDate)
+	note2, err := CreateNote(db, 1, nil, "Planned rest day", explicitDate, "")
 	if err != nil {
 		t.Fatalf("create note with target_date: %v", err)
 	}
@@ -309,7 +313,7 @@ func TestCreateAndListNotes(t *testing.T) {
 		t.Errorf("target_date = %q, want %q", note2.TargetDate, explicitDate)
 	}
 
-	notes, err := ListNotes(db, 1, nil, "")
+	notes, err := ListNotes(db, 1, nil, "", "")
 	if err != nil {
 		t.Fatalf("list notes: %v", err)
 	}
@@ -324,7 +328,7 @@ func TestCreateAndListNotes(t *testing.T) {
 func TestDeleteNote(t *testing.T) {
 	db := setupTestDB(t)
 
-	note, err := CreateNote(db, 1, nil, "Delete me", "")
+	note, err := CreateNote(db, 1, nil, "Delete me", "", "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -333,7 +337,7 @@ func TestDeleteNote(t *testing.T) {
 		t.Fatalf("delete: %v", err)
 	}
 
-	notes, err := ListNotes(db, 1, nil, "")
+	notes, err := ListNotes(db, 1, nil, "", "")
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -346,15 +350,15 @@ func TestGetNotesByTargetDate(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Create notes for different dates.
-	_, err := CreateNote(db, 1, nil, "Note for April 10", "2026-04-10")
+	_, err := CreateNote(db, 1, nil, "Note for April 10", "2026-04-10", "")
 	if err != nil {
 		t.Fatalf("create note 1: %v", err)
 	}
-	_, err = CreateNote(db, 1, nil, "Another note for April 10", "2026-04-10")
+	_, err = CreateNote(db, 1, nil, "Another note for April 10", "2026-04-10", "")
 	if err != nil {
 		t.Fatalf("create note 2: %v", err)
 	}
-	_, err = CreateNote(db, 1, nil, "Note for April 11", "2026-04-11")
+	_, err = CreateNote(db, 1, nil, "Note for April 11", "2026-04-11", "")
 	if err != nil {
 		t.Fatalf("create note 3: %v", err)
 	}
@@ -390,7 +394,7 @@ func TestGetNotesByTargetDate(t *testing.T) {
 func TestDeleteNoteWrongUser(t *testing.T) {
 	db := setupTestDB(t)
 
-	note, err := CreateNote(db, 1, nil, "Keep me", "")
+	note, err := CreateNote(db, 1, nil, "Keep me", "", "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -733,7 +737,7 @@ func TestRunNightlyEvaluation_NoteAwareEvaluation(t *testing.T) {
 	planID := insertTestPlan(t, db, 1, weekStart, weekEnd, planJSON)
 
 	// Create a note targeting yesterday explaining the miss.
-	_, err := CreateNote(db, 1, &planID, "Knee is sore today, will do the run tomorrow instead", yesterdayStr)
+	_, err := CreateNote(db, 1, &planID, "Knee is sore today, will do the run tomorrow instead", yesterdayStr, "")
 	if err != nil {
 		t.Fatalf("create note: %v", err)
 	}
@@ -1203,15 +1207,15 @@ func TestMarkNotesConsumed(t *testing.T) {
 	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
 
 	// Create a few notes.
-	n1, err := CreateNote(db, 1, nil, "Note one", today)
+	n1, err := CreateNote(db, 1, nil, "Note one", today, "")
 	if err != nil {
 		t.Fatalf("create note 1: %v", err)
 	}
-	n2, err := CreateNote(db, 1, nil, "Note two", today)
+	n2, err := CreateNote(db, 1, nil, "Note two", today, "")
 	if err != nil {
 		t.Fatalf("create note 2: %v", err)
 	}
-	n3, err := CreateNote(db, 1, nil, "Note three", tomorrow)
+	n3, err := CreateNote(db, 1, nil, "Note three", tomorrow, "")
 	if err != nil {
 		t.Fatalf("create note 3: %v", err)
 	}
@@ -1229,7 +1233,7 @@ func TestMarkNotesConsumed(t *testing.T) {
 	}
 
 	// Verify consumed notes have consumed_at and consumed_by set.
-	allNotes, err := ListNotes(db, 1, nil, "all")
+	allNotes, err := ListNotes(db, 1, nil, "all", "")
 	if err != nil {
 		t.Fatalf("list all: %v", err)
 	}
@@ -1238,7 +1242,7 @@ func TestMarkNotesConsumed(t *testing.T) {
 	}
 
 	// Active filter should return only the unconsumed note.
-	active, err := ListNotes(db, 1, nil, "active")
+	active, err := ListNotes(db, 1, nil, "active", "")
 	if err != nil {
 		t.Fatalf("list active: %v", err)
 	}
@@ -1253,7 +1257,7 @@ func TestMarkNotesConsumed(t *testing.T) {
 	}
 
 	// Consumed filter should return the two consumed notes.
-	consumed, err := ListNotes(db, 1, nil, "consumed")
+	consumed, err := ListNotes(db, 1, nil, "consumed", "")
 	if err != nil {
 		t.Fatalf("list consumed: %v", err)
 	}
@@ -1283,5 +1287,202 @@ func TestMarkNotesConsumedEmpty(t *testing.T) {
 	}
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("commit: %v", err)
+	}
+}
+
+func TestValidateNoteScope(t *testing.T) {
+	for _, ok := range []string{"", "any", "nightly", "weekly"} {
+		if err := ValidateNoteScope(ok); err != nil {
+			t.Errorf("ValidateNoteScope(%q) = %v, want nil", ok, err)
+		}
+	}
+	for _, bad := range []string{"daily", "monthly", "ANY", " any ", "Nightly", "all"} {
+		if err := ValidateNoteScope(bad); err == nil {
+			t.Errorf("ValidateNoteScope(%q) returned nil, want error", bad)
+		}
+	}
+}
+
+func TestCreateNote_ScopePersists(t *testing.T) {
+	db := setupTestDB(t)
+
+	note, err := CreateNote(db, 1, nil, "scoped to nightly", "2026-04-10", NoteScopeNightly)
+	if err != nil {
+		t.Fatalf("create note: %v", err)
+	}
+	if note.Scope != NoteScopeNightly {
+		t.Errorf("scope = %q, want %q", note.Scope, NoteScopeNightly)
+	}
+
+	// Round-trip through ListNotes to confirm the value persists.
+	notes, err := ListNotes(db, 1, nil, "active", "")
+	if err != nil {
+		t.Fatalf("list notes: %v", err)
+	}
+	if len(notes) != 1 || notes[0].Scope != NoteScopeNightly {
+		t.Errorf("listed scope = %v, want %q", notes, NoteScopeNightly)
+	}
+}
+
+func TestCreateNote_RejectsInvalidScope(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateNote(db, 1, nil, "bad scope", "", "monthly"); err == nil {
+		t.Error("expected error for invalid scope, got nil")
+	}
+}
+
+func TestListNotes_ScopeFilter(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateNote(db, 1, nil, "any", "2026-04-10", NoteScopeAny); err != nil {
+		t.Fatalf("create any: %v", err)
+	}
+	if _, err := CreateNote(db, 1, nil, "nightly", "2026-04-10", NoteScopeNightly); err != nil {
+		t.Fatalf("create nightly: %v", err)
+	}
+	if _, err := CreateNote(db, 1, nil, "weekly", "2026-04-10", NoteScopeWeekly); err != nil {
+		t.Fatalf("create weekly: %v", err)
+	}
+
+	tests := []struct {
+		scope string
+		want  []string
+	}{
+		{"", []string{"any", "nightly", "weekly"}},
+		{NoteScopeAny, []string{"any", "nightly", "weekly"}},
+		{NoteScopeNightly, []string{"any", "nightly"}},
+		{NoteScopeWeekly, []string{"any", "weekly"}},
+	}
+	for _, tc := range tests {
+		notes, err := ListNotes(db, 1, nil, "active", tc.scope)
+		if err != nil {
+			t.Fatalf("ListNotes(scope=%q): %v", tc.scope, err)
+		}
+		got := make([]string, 0, len(notes))
+		for _, n := range notes {
+			got = append(got, n.Content)
+		}
+		// Compare as sets — order is created_at DESC.
+		if !sameStringSet(got, tc.want) {
+			t.Errorf("ListNotes(scope=%q) = %v, want %v", tc.scope, got, tc.want)
+		}
+	}
+}
+
+func sameStringSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	m := map[string]int{}
+	for _, s := range a {
+		m[s]++
+	}
+	for _, s := range b {
+		m[s]--
+		if m[s] < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func TestUpdateNote_ContentScopeAndDate(t *testing.T) {
+	db := setupTestDB(t)
+
+	note, err := CreateNote(db, 1, nil, "original", "2026-04-10", NoteScopeAny)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	newContent := "updated content"
+	newDate := "2026-04-12"
+	newScope := NoteScopeWeekly
+	updated, err := UpdateNote(db, note.ID, 1, &newContent, &newDate, &newScope)
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if updated.Content != newContent {
+		t.Errorf("content = %q, want %q", updated.Content, newContent)
+	}
+	if updated.TargetDate != newDate {
+		t.Errorf("target_date = %q, want %q", updated.TargetDate, newDate)
+	}
+	if updated.Scope != newScope {
+		t.Errorf("scope = %q, want %q", updated.Scope, newScope)
+	}
+
+	// Verify content is encrypted at rest (not stored as plaintext).
+	var raw string
+	if err := db.QueryRow(`SELECT content FROM stride_notes WHERE id = ?`, note.ID).Scan(&raw); err != nil {
+		t.Fatalf("query raw: %v", err)
+	}
+	if raw == newContent {
+		t.Error("content should be encrypted at rest, not stored as plaintext")
+	}
+}
+
+func TestUpdateNote_RejectsConsumedNote(t *testing.T) {
+	db := setupTestDB(t)
+
+	note, err := CreateNote(db, 1, nil, "consume me", "2026-04-10", NoteScopeAny)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err := MarkNotesConsumed(context.Background(), tx, 1, []int64{note.ID}, "weekly"); err != nil {
+		t.Fatalf("mark consumed: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	newContent := "should not apply"
+	_, err = UpdateNote(db, note.ID, 1, &newContent, nil, nil)
+	if !errors.Is(err, ErrNoteConsumed) {
+		t.Errorf("expected ErrNoteConsumed, got %v", err)
+	}
+}
+
+func TestUpdateNote_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	newContent := "x"
+	_, err := UpdateNote(db, 9999, 1, &newContent, nil, nil)
+	if !errors.Is(err, ErrNoteNotFound) {
+		t.Errorf("expected ErrNoteNotFound, got %v", err)
+	}
+}
+
+func TestUpdateNote_RejectsWrongUser(t *testing.T) {
+	db := setupTestDB(t)
+
+	note, err := CreateNote(db, 1, nil, "owned by 1", "2026-04-10", NoteScopeAny)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	newContent := "intruder"
+	_, err = UpdateNote(db, note.ID, 999, &newContent, nil, nil)
+	if !errors.Is(err, ErrNoteNotFound) {
+		t.Errorf("expected ErrNoteNotFound for wrong user, got %v", err)
+	}
+}
+
+func TestUpdateNote_RejectsInvalidScope(t *testing.T) {
+	db := setupTestDB(t)
+
+	note, err := CreateNote(db, 1, nil, "scoped", "2026-04-10", NoteScopeAny)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	bad := "monthly"
+	if _, err := UpdateNote(db, note.ID, 1, nil, nil, &bad); err == nil {
+		t.Error("expected error for invalid scope, got nil")
 	}
 }

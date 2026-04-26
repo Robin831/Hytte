@@ -517,13 +517,19 @@ func TestBuildGeneratePrompt_NoRaceHistoryWhenEmpty(t *testing.T) {
 	}
 }
 
-// insertNote is a test helper that inserts a stride note and returns its ID.
+// insertNote is a test helper that inserts a stride note (scope='any') and returns its ID.
 func insertNote(t *testing.T, db *sql.DB, userID int64, content string) int64 {
+	t.Helper()
+	return insertNoteWithScope(t, db, userID, content, "any")
+}
+
+// insertNoteWithScope inserts a stride note with the given scope and returns its ID.
+func insertNoteWithScope(t *testing.T, db *sql.DB, userID int64, content, scope string) int64 {
 	t.Helper()
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := db.Exec(
-		"INSERT INTO stride_notes (user_id, content, target_date, created_at) VALUES (?, ?, '', ?)",
-		userID, content, now,
+		"INSERT INTO stride_notes (user_id, content, target_date, scope, created_at) VALUES (?, ?, '', ?, ?)",
+		userID, content, scope, now,
 	)
 	if err != nil {
 		t.Fatalf("insert note: %v", err)
@@ -717,6 +723,49 @@ func TestGeneratePlan_UnconsumedNotesSurviveAcrossRuns(t *testing.T) {
 	}
 	if unconsumed != 0 {
 		t.Errorf("expected 0 unconsumed notes, got %d", unconsumed)
+	}
+}
+
+// TestGeneratePlan_ScopeFiltering verifies that the weekly generation only
+// consumes notes scoped 'any' or 'weekly' and leaves notes scoped 'nightly'
+// untouched for the nightly evaluator.
+func TestGeneratePlan_ScopeFiltering(t *testing.T) {
+	db := extendedTestDB(t)
+	enableStride(t, db, 1)
+
+	weekStart, _ := upcomingWeek()
+	mockClaude(t, weekStart)
+
+	idAny := insertNoteWithScope(t, db, 1, "any-note", "any")
+	idWeekly := insertNoteWithScope(t, db, 1, "weekly-note", "weekly")
+	idNightly := insertNoteWithScope(t, db, 1, "nightly-note", "nightly")
+
+	if err := GeneratePlan(context.Background(), db, 1, "next"); err != nil {
+		t.Fatalf("GeneratePlan: %v", err)
+	}
+
+	// 'any' and 'weekly' notes should be consumed.
+	for _, id := range []int64{idAny, idWeekly} {
+		var consumedAt sql.NullString
+		var consumedBy sql.NullString
+		if err := db.QueryRow("SELECT consumed_at, consumed_by FROM stride_notes WHERE id = ?", id).Scan(&consumedAt, &consumedBy); err != nil {
+			t.Fatalf("query note %d: %v", id, err)
+		}
+		if !consumedAt.Valid {
+			t.Errorf("note %d should be consumed by weekly run", id)
+		}
+		if !consumedBy.Valid || consumedBy.String != "weekly" {
+			t.Errorf("note %d consumed_by = %q, want 'weekly'", id, consumedBy.String)
+		}
+	}
+
+	// 'nightly' note must remain unconsumed.
+	var consumedAt sql.NullString
+	if err := db.QueryRow("SELECT consumed_at FROM stride_notes WHERE id = ?", idNightly).Scan(&consumedAt); err != nil {
+		t.Fatalf("query nightly note: %v", err)
+	}
+	if consumedAt.Valid {
+		t.Errorf("nightly-scoped note must NOT be consumed by the weekly run, got consumed_at=%v", consumedAt.String)
 	}
 }
 

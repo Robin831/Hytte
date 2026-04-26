@@ -67,7 +67,21 @@
     "saving": "Saving...",
     "empty": "No notes yet. Add a note for your AI coach.",
     "delete": "Delete note",
+    "edit": "Edit note",
+    "editTitle": "Edit note",
+    "save": "Save",
+    "cancel": "Cancel",
     "targetDate": "For date",
+    "scopeLabel": "Send to",
+    "scope": {
+      "any": "Any next run",
+      "nightly": "Nightly evaluation",
+      "weekly": "Weekly plan generation"
+    },
+    "editError": {
+      "consumed": "This note has already been used and can no longer be edited.",
+      "generic": "Failed to update note"
+    },
     "activeLabel": "Active",
     "historyLabel": "History",
     "consumedBy": "Used by {{process}} on {{date}}",

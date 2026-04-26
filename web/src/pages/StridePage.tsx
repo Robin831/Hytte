@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle, History } from 'lucide-react'
+import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle, History, Pencil } from 'lucide-react'
 import { formatDate, formatDateTime } from '../utils/formatDate'
 import type { StrideEvaluation, StrideEvaluationRecord, DayPlan } from '../types/stride'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { TrainingBlockTimeline } from '../components/stride/TrainingBlockTimeline'
 import StrideChatDrawer from '../components/stride/StrideChatDrawer'
+import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../components/ui/dialog'
 
 interface Race {
   id: number
@@ -20,6 +21,8 @@ interface Race {
   created_at: string
 }
 
+type NoteScope = 'any' | 'nightly' | 'weekly'
+
 interface Note {
   id: number
   user_id: number
@@ -28,6 +31,7 @@ interface Note {
   target_date: string
   consumed_at: string | null
   consumed_by: string | null
+  scope: NoteScope
   created_at: string
 }
 
@@ -115,6 +119,18 @@ function complianceBadgeClass(compliance: StrideEvaluation['compliance']): strin
 
 function flagIsSevere(flag: string): boolean {
   return flag === 'overtraining' || flag === 'injury_risk'
+}
+
+function noteScopeBadgeClass(scope: NoteScope): string {
+  switch (scope) {
+    case 'nightly':
+      return 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30'
+    case 'weekly':
+      return 'bg-purple-500/15 text-purple-300 border border-purple-500/30'
+    case 'any':
+    default:
+      return 'bg-gray-500/15 text-gray-300 border border-gray-500/30'
+  }
 }
 
 function DayCard({ day, completed, evaluation, changedDates, onRerun, rerunning }: { day: DayPlan; completed: boolean; evaluation?: StrideEvaluationRecord; changedDates?: Set<string>; onRerun?: (date: string) => void; rerunning?: boolean }) {
@@ -471,6 +487,87 @@ function PlanHistory() {
   )
 }
 
+interface EditNoteDialogProps {
+  open: boolean
+  onClose: () => void
+  onSubmit: (e: React.FormEvent) => void
+  content: string
+  onContentChange: (v: string) => void
+  targetDate: string
+  onTargetDateChange: (v: string) => void
+  scope: NoteScope
+  onScopeChange: (v: NoteScope) => void
+  submitting: boolean
+  error: string
+}
+
+function EditNoteDialog({
+  open, onClose, onSubmit, content, onContentChange, targetDate, onTargetDateChange,
+  scope, onScopeChange, submitting, error,
+}: EditNoteDialogProps) {
+  const { t } = useTranslation('stride')
+  const titleId = useId()
+  return (
+    <Dialog open={open} onClose={onClose} aria-labelledby={titleId}>
+      <DialogHeader id={titleId} title={t('notes.editTitle')} onClose={onClose} />
+      <DialogBody>
+        <form id="edit-note-form" onSubmit={onSubmit} className="space-y-3">
+          <textarea
+            value={content}
+            onChange={e => onContentChange(e.target.value)}
+            rows={4}
+            aria-label={t('notes.editTitle')}
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
+          />
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <label htmlFor="edit-note-target-date" className="text-xs text-gray-400 w-24">{t('notes.targetDate')}</label>
+              <input
+                id="edit-note-target-date"
+                type="date"
+                value={targetDate}
+                onChange={e => onTargetDateChange(e.target.value)}
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label htmlFor="edit-note-scope" className="text-xs text-gray-400 w-24">{t('notes.scopeLabel')}</label>
+              <select
+                id="edit-note-scope"
+                value={scope}
+                onChange={e => onScopeChange(e.target.value as NoteScope)}
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="any">{t('notes.scope.any')}</option>
+                <option value="nightly">{t('notes.scope.nightly')}</option>
+                <option value="weekly">{t('notes.scope.weekly')}</option>
+              </select>
+            </div>
+          </div>
+          {error && <p className="text-sm text-red-400">{error}</p>}
+        </form>
+      </DialogBody>
+      <DialogFooter>
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-4 py-2 text-sm text-gray-300 hover:text-white rounded-lg transition-colors"
+        >
+          {t('notes.cancel')}
+        </button>
+        <button
+          type="submit"
+          form="edit-note-form"
+          disabled={submitting || !content.trim()}
+          className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+        >
+          {submitting ? t('notes.saving') : t('notes.save')}
+        </button>
+      </DialogFooter>
+    </Dialog>
+  )
+}
+
 export default function StridePage() {
   const { t } = useTranslation('stride')
 
@@ -513,7 +610,16 @@ export default function StridePage() {
     const now = new Date()
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
   })
+  const [noteScope, setNoteScope] = useState<NoteScope>('any')
   const [noteSubmitting, setNoteSubmitting] = useState(false)
+
+  // Note edit modal state
+  const [editingNote, setEditingNote] = useState<Note | null>(null)
+  const [editContent, setEditContent] = useState('')
+  const [editTargetDate, setEditTargetDate] = useState('')
+  const [editScope, setEditScope] = useState<NoteScope>('any')
+  const [editSubmitting, setEditSubmitting] = useState(false)
+  const [editError, setEditError] = useState('')
 
   const loadRaces = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -881,7 +987,7 @@ export default function StridePage() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: noteContent, target_date: noteTargetDate }),
+        body: JSON.stringify({ content: noteContent, target_date: noteTargetDate, scope: noteScope }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -889,11 +995,61 @@ export default function StridePage() {
         return
       }
       setNoteContent('')
+      setNoteScope('any')
       await loadNotes()
     } catch (error) {
       console.error('Failed to create note', error)
     } finally {
       setNoteSubmitting(false)
+    }
+  }
+
+  function openEditNote(note: Note) {
+    setEditingNote(note)
+    setEditContent(note.content)
+    setEditTargetDate(note.target_date)
+    setEditScope(note.scope ?? 'any')
+    setEditError('')
+  }
+
+  function closeEditNote() {
+    setEditingNote(null)
+    setEditError('')
+  }
+
+  async function handleEditNoteSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingNote) return
+    if (!editContent.trim()) return
+    setEditSubmitting(true)
+    setEditError('')
+    try {
+      const res = await fetch(`/api/stride/notes/${editingNote.id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: editContent,
+          target_date: editTargetDate,
+          scope: editScope,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        if (res.status === 409) {
+          setEditError(t('notes.editError.consumed'))
+        } else {
+          setEditError(data.error ?? t('notes.editError.generic'))
+        }
+        return
+      }
+      closeEditNote()
+      await loadNotes()
+    } catch (error) {
+      console.error('Failed to update note', error)
+      setEditError(t('notes.editError.generic'))
+    } finally {
+      setEditSubmitting(false)
     }
   }
 
@@ -1277,16 +1433,31 @@ export default function StridePage() {
             rows={3}
             className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-base sm:text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
           />
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <label htmlFor="note-target-date" className="text-xs text-gray-400">{t('notes.targetDate')}</label>
-              <input
-                id="note-target-date"
-                type="date"
-                value={noteTargetDate}
-                onChange={e => setNoteTargetDate(e.target.value)}
-                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
-              />
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <label htmlFor="note-target-date" className="text-xs text-gray-400">{t('notes.targetDate')}</label>
+                <input
+                  id="note-target-date"
+                  type="date"
+                  value={noteTargetDate}
+                  onChange={e => setNoteTargetDate(e.target.value)}
+                  className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label htmlFor="note-scope" className="text-xs text-gray-400">{t('notes.scopeLabel')}</label>
+                <select
+                  id="note-scope"
+                  value={noteScope}
+                  onChange={e => setNoteScope(e.target.value as NoteScope)}
+                  className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+                >
+                  <option value="any">{t('notes.scope.any')}</option>
+                  <option value="nightly">{t('notes.scope.nightly')}</option>
+                  <option value="weekly">{t('notes.scope.weekly')}</option>
+                </select>
+              </div>
             </div>
             <button
               type="submit"
@@ -1308,25 +1479,43 @@ export default function StridePage() {
               <>
                 <h3 className="text-sm font-medium text-gray-400 mb-2">{t('notes.activeLabel')}</h3>
                 <div className="space-y-2 mb-4">
-                  {notes.map(note => (
-                    <div key={note.id} className="flex items-start gap-3 p-3 bg-gray-800 rounded-xl border border-gray-700 group">
-                      <p className="flex-1 text-sm text-gray-200 whitespace-pre-wrap">{note.content}</p>
-                      <div className="flex-shrink-0 flex flex-col items-end gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteNote(note.id)}
-                          className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
-                          aria-label={t('notes.delete')}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                        <span className="text-xs text-gray-500">
-                          {note.target_date && <span className="mr-1">{formatDate(`${note.target_date}T00:00:00`)}</span>}
-                          {formatDateTime(note.created_at, { dateStyle: 'short', timeStyle: 'short' })}
-                        </span>
+                  {notes.map(note => {
+                    const scope: NoteScope = note.scope ?? 'any'
+                    return (
+                      <div key={note.id} className="flex items-start gap-3 p-3 bg-gray-800 rounded-xl border border-gray-700 group">
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <p className="text-sm text-gray-200 whitespace-pre-wrap">{note.content}</p>
+                          <span className={`inline-flex items-center px-1.5 py-0.5 text-xs rounded ${noteScopeBadgeClass(scope)}`}>
+                            {t(`notes.scope.${scope}`)}
+                          </span>
+                        </div>
+                        <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => openEditNote(note)}
+                              className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-blue-400 transition-all"
+                              aria-label={t('notes.edit')}
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteNote(note.id)}
+                              className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
+                              aria-label={t('notes.delete')}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          <span className="text-xs text-gray-500">
+                            {note.target_date && <span className="mr-1">{formatDate(`${note.target_date}T00:00:00`)}</span>}
+                            {formatDateTime(note.created_at, { dateStyle: 'short', timeStyle: 'short' })}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </>
             )}
@@ -1335,9 +1524,16 @@ export default function StridePage() {
               <>
                 <h3 className="text-sm font-medium text-gray-400 mb-2">{t('notes.historyLabel')}</h3>
                 <div className="space-y-2">
-                  {consumedNotes.map(note => (
+                  {consumedNotes.map(note => {
+                    const scope: NoteScope = note.scope ?? 'any'
+                    return (
                     <div key={note.id} className="flex items-start gap-3 p-3 bg-gray-800/60 rounded-xl border border-gray-700/50 group">
-                      <p className="flex-1 text-sm text-gray-400 whitespace-pre-wrap">{note.content}</p>
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <p className="text-sm text-gray-400 whitespace-pre-wrap">{note.content}</p>
+                        <span className={`inline-flex items-center px-1.5 py-0.5 text-xs rounded ${noteScopeBadgeClass(scope)} opacity-70`}>
+                          {t(`notes.scope.${scope}`)}
+                        </span>
+                      </div>
                       <div className="flex-shrink-0 flex flex-col items-end gap-1">
                         <button
                           type="button"
@@ -1371,7 +1567,8 @@ export default function StridePage() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </>
             )}
@@ -1456,6 +1653,21 @@ export default function StridePage() {
           </div>
         </section>
       )}
+
+      {/* Edit-note modal */}
+      <EditNoteDialog
+        open={editingNote !== null}
+        onClose={closeEditNote}
+        onSubmit={handleEditNoteSubmit}
+        content={editContent}
+        onContentChange={setEditContent}
+        targetDate={editTargetDate}
+        onTargetDateChange={setEditTargetDate}
+        scope={editScope}
+        onScopeChange={setEditScope}
+        submitting={editSubmitting}
+        error={editError}
+      />
     </div>
   )
 }

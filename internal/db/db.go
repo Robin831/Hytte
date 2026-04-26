@@ -1338,6 +1338,7 @@ func createSchema(db *sql.DB) error {
 		target_date TEXT NOT NULL DEFAULT '',
 		consumed_at TEXT,
 		consumed_by TEXT,
+		scope       TEXT NOT NULL DEFAULT 'any',
 		created_at  TEXT NOT NULL DEFAULT ''
 	);
 
@@ -2164,6 +2165,19 @@ func createSchema(db *sql.DB) error {
 	if hasConsumedBy == 0 {
 		if _, err := db.Exec(`ALTER TABLE stride_notes ADD COLUMN consumed_by TEXT`); err != nil {
 			return fmt.Errorf("add stride_notes consumed_by column: %w", err)
+		}
+	}
+
+	// Add scope column to stride_notes table (Hytte-0vgd).
+	// Routes notes to a specific consumer: 'any' (default, current behaviour),
+	// 'nightly' (only the nightly evaluation), or 'weekly' (only weekly plan generation).
+	var hasScope int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stride_notes') WHERE name = 'scope'`).Scan(&hasScope); err != nil {
+		return fmt.Errorf("check stride_notes scope column: %w", err)
+	}
+	if hasScope == 0 {
+		if _, err := db.Exec(`ALTER TABLE stride_notes ADD COLUMN scope TEXT NOT NULL DEFAULT 'any'`); err != nil {
+			return fmt.Errorf("add stride_notes scope column: %w", err)
 		}
 	}
 
