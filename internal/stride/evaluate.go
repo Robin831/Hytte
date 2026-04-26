@@ -331,14 +331,15 @@ func ReEvaluateDate(ctx context.Context, db *sql.DB, httpClient *http.Client, us
 		return 0, fmt.Errorf("query workouts for date %s: %w", date, err)
 	}
 
-	// Gather active notes targeting this date so the re-run picks up any
-	// correcting context the user added after the original evaluation.
+	// Gather active nightly-scoped notes targeting this date so the re-run picks
+	// up correcting context the user added after the original evaluation.
+	// Weekly-only notes are excluded — ReEvaluateDate is a nightly-path consumer.
 	allNotes, err := GetNotesByTargetDate(db, userID, date)
 	if err != nil {
 		log.Printf("stride eval: fetch notes for user %d date %s: %v", userID, date, err)
 	}
 	notes := make([]Note, 0, len(allNotes))
-	for _, n := range allNotes {
+	for _, n := range filterNightlyNotes(allNotes) {
 		if n.ConsumedAt == nil {
 			notes = append(notes, n)
 		}
@@ -813,11 +814,13 @@ func evaluateRestDaysAndMissedSessions(ctx context.Context, db *sql.DB, claudeCf
 	}
 
 	// Fetch user notes targeting this date for contextual evaluation.
-	userNotes, err := GetNotesByTargetDate(db, userID, date)
+	// Filter to nightly-scoped notes so weekly-only notes are not consumed here.
+	rawNotes, err := GetNotesByTargetDate(db, userID, date)
 	if err != nil {
 		log.Printf("stride eval: fetch notes for user %d date %s: %v", userID, date, err)
 		// Non-fatal — fall through to template evaluation.
 	}
+	userNotes := filterNightlyNotes(rawNotes)
 
 	if isRestDay {
 		eval := &Evaluation{
@@ -971,6 +974,18 @@ func hasWorkoutOnDate(ctx context.Context, db *sql.DB, userID int64, date string
 		return false, err
 	}
 	return count > 0, nil
+}
+
+// filterNightlyNotes returns only notes whose scope is "any" or "nightly",
+// excluding notes reserved for the weekly plan generator.
+func filterNightlyNotes(notes []Note) []Note {
+	out := notes[:0:0]
+	for _, n := range notes {
+		if n.Scope == NoteScopeAny || n.Scope == NoteScopeNightly {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // hasCriticalFlag returns true if any flag in the list is considered critical.

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle, History, Pencil } from 'lucide-react'
 import { formatDate, formatDateTime } from '../utils/formatDate'
@@ -6,6 +6,7 @@ import type { StrideEvaluation, StrideEvaluationRecord, DayPlan } from '../types
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { TrainingBlockTimeline } from '../components/stride/TrainingBlockTimeline'
 import StrideChatDrawer from '../components/stride/StrideChatDrawer'
+import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../components/ui/dialog'
 
 interface Race {
   id: number
@@ -483,6 +484,87 @@ function PlanHistory() {
         })}
       </div>
     </div>
+  )
+}
+
+interface EditNoteDialogProps {
+  open: boolean
+  onClose: () => void
+  onSubmit: (e: React.FormEvent) => void
+  content: string
+  onContentChange: (v: string) => void
+  targetDate: string
+  onTargetDateChange: (v: string) => void
+  scope: NoteScope
+  onScopeChange: (v: NoteScope) => void
+  submitting: boolean
+  error: string
+}
+
+function EditNoteDialog({
+  open, onClose, onSubmit, content, onContentChange, targetDate, onTargetDateChange,
+  scope, onScopeChange, submitting, error,
+}: EditNoteDialogProps) {
+  const { t } = useTranslation('stride')
+  const titleId = useId()
+  return (
+    <Dialog open={open} onClose={onClose} aria-labelledby={titleId}>
+      <DialogHeader id={titleId} title={t('notes.editTitle')} onClose={onClose} />
+      <DialogBody>
+        <form id="edit-note-form" onSubmit={onSubmit} className="space-y-3">
+          <textarea
+            value={content}
+            onChange={e => onContentChange(e.target.value)}
+            rows={4}
+            aria-label={t('notes.editTitle')}
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
+          />
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <label htmlFor="edit-note-target-date" className="text-xs text-gray-400 w-24">{t('notes.targetDate')}</label>
+              <input
+                id="edit-note-target-date"
+                type="date"
+                value={targetDate}
+                onChange={e => onTargetDateChange(e.target.value)}
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label htmlFor="edit-note-scope" className="text-xs text-gray-400 w-24">{t('notes.scopeLabel')}</label>
+              <select
+                id="edit-note-scope"
+                value={scope}
+                onChange={e => onScopeChange(e.target.value as NoteScope)}
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value="any">{t('notes.scope.any')}</option>
+                <option value="nightly">{t('notes.scope.nightly')}</option>
+                <option value="weekly">{t('notes.scope.weekly')}</option>
+              </select>
+            </div>
+          </div>
+          {error && <p className="text-sm text-red-400">{error}</p>}
+        </form>
+      </DialogBody>
+      <DialogFooter>
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-4 py-2 text-sm text-gray-300 hover:text-white rounded-lg transition-colors"
+        >
+          {t('notes.cancel')}
+        </button>
+        <button
+          type="submit"
+          form="edit-note-form"
+          disabled={submitting || !content.trim()}
+          className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
+        >
+          {submitting ? t('notes.saving') : t('notes.save')}
+        </button>
+      </DialogFooter>
+    </Dialog>
   )
 }
 
@@ -1573,75 +1655,19 @@ export default function StridePage() {
       )}
 
       {/* Edit-note modal */}
-      {editingNote && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="edit-note-title"
-          onClick={closeEditNote}
-        >
-          <div
-            className="w-full sm:max-w-md bg-gray-900 rounded-t-2xl sm:rounded-2xl border border-gray-700 p-4 space-y-3"
-            onClick={e => e.stopPropagation()}
-          >
-            <h2 id="edit-note-title" className="text-base font-semibold text-white">
-              {t('notes.editTitle')}
-            </h2>
-            <form onSubmit={handleEditNoteSubmit} className="space-y-3">
-              <textarea
-                value={editContent}
-                onChange={e => setEditContent(e.target.value)}
-                rows={4}
-                aria-label={t('notes.editTitle')}
-                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-base sm:text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none"
-              />
-              <div className="flex flex-col gap-2">
-                <div className="flex items-center gap-2">
-                  <label htmlFor="edit-note-target-date" className="text-xs text-gray-400 w-24">{t('notes.targetDate')}</label>
-                  <input
-                    id="edit-note-target-date"
-                    type="date"
-                    value={editTargetDate}
-                    onChange={e => setEditTargetDate(e.target.value)}
-                    className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <label htmlFor="edit-note-scope" className="text-xs text-gray-400 w-24">{t('notes.scopeLabel')}</label>
-                  <select
-                    id="edit-note-scope"
-                    value={editScope}
-                    onChange={e => setEditScope(e.target.value as NoteScope)}
-                    className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="any">{t('notes.scope.any')}</option>
-                    <option value="nightly">{t('notes.scope.nightly')}</option>
-                    <option value="weekly">{t('notes.scope.weekly')}</option>
-                  </select>
-                </div>
-              </div>
-              {editError && <p className="text-sm text-red-400">{editError}</p>}
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={closeEditNote}
-                  className="px-4 py-2 text-sm text-gray-300 hover:text-white rounded-lg transition-colors"
-                >
-                  {t('notes.cancel')}
-                </button>
-                <button
-                  type="submit"
-                  disabled={editSubmitting || !editContent.trim()}
-                  className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
-                >
-                  {editSubmitting ? t('notes.saving') : t('notes.save')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <EditNoteDialog
+        open={editingNote !== null}
+        onClose={closeEditNote}
+        onSubmit={handleEditNoteSubmit}
+        content={editContent}
+        onContentChange={setEditContent}
+        targetDate={editTargetDate}
+        onTargetDateChange={setEditTargetDate}
+        scope={editScope}
+        onScopeChange={setEditScope}
+        submitting={editSubmitting}
+        error={editError}
+      />
     </div>
   )
 }
