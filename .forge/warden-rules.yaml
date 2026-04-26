@@ -14765,3 +14765,19 @@ rules:
         Verify the optimistic update mutates all related flags so derived UI state (labels, filters, categorization) stays consistent immediately, not only after a server reload. If only one flag is flipped, ensure downstream predicates account for the transient state or remove the row from the affected list.
       source: copilot:PR#647
       added: "2026-04-20"
+    - id: consistent-scope-filtering
+      category: other
+      pattern: >-
+        Adding a scope/visibility/routing filter to one query path while other queries fetching the same entity remain unfiltered
+      check: >-
+        Verify all consumers that fetch the entity apply the same scope/routing filter (or use a scoped variant), so unscoped fetch paths don't bypass the routing and let out-of-scope records leak into the wrong flow
+      source: copilot:PR#661
+      added: "2026-04-26"
+    - id: use-shared-dialog-component
+      category: ui
+      pattern: >-
+        A modal/dialog is implemented ad-hoc with custom overlay and content markup instead of using the shared Dialog component (web/src/components/ui/dialog.tsx).
+      check: >-
+        Verify the modal uses the shared Dialog component, or otherwise implements Escape-to-close, focus trap with initial focus, body scroll lock, and focus restoration on close so keyboard and screen-reader users can interact reliably.
+      source: copilot:PR#661
+      added: "2026-04-26"
