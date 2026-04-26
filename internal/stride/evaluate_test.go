@@ -729,11 +729,11 @@ func TestEvaluateUserWorkouts_NotesConsumedAfterSuccess(t *testing.T) {
 	}
 
 	// Insert unconsumed notes.
-	note1, err := CreateNote(db, 1, nil, "Feeling fatigued", yesterday.Format("2006-01-02"))
+	note1, err := CreateNote(db, 1, nil, "Feeling fatigued", yesterday.Format("2006-01-02"), "")
 	if err != nil {
 		t.Fatalf("create note 1: %v", err)
 	}
-	note2, err := CreateNote(db, 1, nil, "Sore knee after last run", yesterday.Format("2006-01-02"))
+	note2, err := CreateNote(db, 1, nil, "Sore knee after last run", yesterday.Format("2006-01-02"), "")
 	if err != nil {
 		t.Fatalf("create note 2: %v", err)
 	}
@@ -804,7 +804,7 @@ func TestEvaluateUserWorkouts_NotesNotConsumedOnClaudeFailure(t *testing.T) {
 		t.Fatalf("insert workout: %v", err)
 	}
 
-	note, err := CreateNote(db, 1, nil, "Feeling tired", yesterday.Format("2006-01-02"))
+	note, err := CreateNote(db, 1, nil, "Feeling tired", yesterday.Format("2006-01-02"), "")
 	if err != nil {
 		t.Fatalf("create note: %v", err)
 	}
@@ -822,6 +822,77 @@ func TestEvaluateUserWorkouts_NotesNotConsumedOnClaudeFailure(t *testing.T) {
 	}
 	if consumedAt.Valid {
 		t.Errorf("note should not be consumed when Claude call fails, but consumed_at = %v", consumedAt.String)
+	}
+}
+
+// TestEvaluateUserWorkouts_ScopeFiltering verifies that the nightly evaluation only
+// consumes notes scoped 'any' or 'nightly' and leaves notes scoped 'weekly' untouched
+// for the weekly plan generator.
+func TestEvaluateUserWorkouts_ScopeFiltering(t *testing.T) {
+	db := setupTestDB(t)
+
+	origFn := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		return `{"planned_type":"easy","actual_type":"easy","compliance":"compliant","notes":"Good.","flags":[],"adjustments":"None."}`, nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFn })
+
+	if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'stride_enabled', 'true'), (1, 'claude_enabled', 'true'), (1, 'claude_cli_path', '/usr/bin/claude')`); err != nil {
+		t.Fatalf("insert prefs: %v", err)
+	}
+
+	yesterday := time.Now().UTC().AddDate(0, 0, -1)
+	weekStart := yesterday.AddDate(0, 0, -3).Format("2006-01-02")
+	weekEnd := yesterday.AddDate(0, 0, 3).Format("2006-01-02")
+	insertTestPlan(t, db, 1, weekStart, weekEnd, `[]`)
+
+	workoutStarted := yesterday.Format("2006-01-02") + "T12:00:00Z"
+	if _, err := db.Exec(`
+		INSERT INTO workouts (id, user_id, sport, started_at, fit_file_hash, created_at)
+		VALUES (700, 1, 'running', ?, 'hash-scope-test', ?)
+	`, workoutStarted, workoutStarted); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	// Create three notes — one for each scope.
+	yesterdayStr := yesterday.Format("2006-01-02")
+	noteAny, err := CreateNote(db, 1, nil, "any note", yesterdayStr, "any")
+	if err != nil {
+		t.Fatalf("create any note: %v", err)
+	}
+	noteNightly, err := CreateNote(db, 1, nil, "nightly note", yesterdayStr, "nightly")
+	if err != nil {
+		t.Fatalf("create nightly note: %v", err)
+	}
+	noteWeekly, err := CreateNote(db, 1, nil, "weekly note", yesterdayStr, "weekly")
+	if err != nil {
+		t.Fatalf("create weekly note: %v", err)
+	}
+
+	ctx := context.Background()
+	since := yesterdayStr + "T00:00:00Z"
+	if err := evaluateUserWorkouts(ctx, db, nil, 1, since, yesterdayStr); err != nil {
+		t.Fatalf("evaluateUserWorkouts: %v", err)
+	}
+
+	// 'any' and 'nightly' notes should be consumed by 'nightly'.
+	for _, n := range []*Note{noteAny, noteNightly} {
+		var consumedBy sql.NullString
+		if err := db.QueryRow(`SELECT consumed_by FROM stride_notes WHERE id = ?`, n.ID).Scan(&consumedBy); err != nil {
+			t.Fatalf("query note %d: %v", n.ID, err)
+		}
+		if !consumedBy.Valid || consumedBy.String != "nightly" {
+			t.Errorf("note %d (scope=%s) consumed_by = %v, want 'nightly'", n.ID, n.Scope, consumedBy)
+		}
+	}
+
+	// 'weekly' note must remain unconsumed.
+	var consumedAt sql.NullString
+	if err := db.QueryRow(`SELECT consumed_at FROM stride_notes WHERE id = ?`, noteWeekly.ID).Scan(&consumedAt); err != nil {
+		t.Fatalf("query weekly note: %v", err)
+	}
+	if consumedAt.Valid {
+		t.Errorf("weekly-scoped note must NOT be consumed by nightly run, got consumed_at=%v", consumedAt.String)
 	}
 }
 
@@ -844,7 +915,7 @@ func TestEvaluateUserWorkouts_NotesNotConsumedWhenNoWorkouts(t *testing.T) {
 	yesterday := time.Now().UTC().AddDate(0, 0, -1)
 
 	// Insert unconsumed notes but NO workouts.
-	note, err := CreateNote(db, 1, nil, "Skipped today, feeling unwell", yesterday.Format("2006-01-02"))
+	note, err := CreateNote(db, 1, nil, "Skipped today, feeling unwell", yesterday.Format("2006-01-02"), "")
 	if err != nil {
 		t.Fatalf("create note: %v", err)
 	}

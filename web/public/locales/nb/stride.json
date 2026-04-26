@@ -67,7 +67,21 @@
     "saving": "Lagrer...",
     "empty": "Ingen notater ennå. Legg til et notat til AI-treneren din.",
     "delete": "Slett notat",
+    "edit": "Rediger notat",
+    "editTitle": "Rediger notat",
+    "save": "Lagre",
+    "cancel": "Avbryt",
     "targetDate": "For dato",
+    "scopeLabel": "Send til",
+    "scope": {
+      "any": "Neste kjøring",
+      "nightly": "Nattlig vurdering",
+      "weekly": "Ukentlig planlegging"
+    },
+    "editError": {
+      "consumed": "Dette notatet er allerede brukt og kan ikke redigeres lenger.",
+      "generic": "Kunne ikke oppdatere notatet"
+    },
     "activeLabel": "Aktive",
     "historyLabel": "Historikk",
     "consumedBy": "Brukt av {{process}} den {{date}}",

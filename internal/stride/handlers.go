@@ -435,7 +435,7 @@ func ListNotesHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		notes, err := ListNotes(db, user.ID, planID, status)
+		notes, err := ListNotes(db, user.ID, planID, status, "")
 		if err != nil {
 			log.Printf("stride: list notes: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list notes"})
@@ -446,7 +446,8 @@ func ListNotesHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // CreateNoteHandler creates a new note.
-// Expects JSON body: {"content":"...","plan_id":null,"target_date":"YYYY-MM-DD"}
+// Expects JSON body: {"content":"...","plan_id":null,"target_date":"YYYY-MM-DD","scope":"any"}
+// scope is optional and defaults to "any".
 func CreateNoteHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -455,6 +456,7 @@ func CreateNoteHandler(db *sql.DB) http.HandlerFunc {
 			Content    string `json:"content"`
 			PlanID     *int64 `json:"plan_id"`
 			TargetDate string `json:"target_date"`
+			Scope      string `json:"scope"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -474,6 +476,11 @@ func CreateNoteHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
+		if err := ValidateNoteScope(body.Scope); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+
 		if body.PlanID != nil {
 			var exists int
 			err := db.QueryRow("SELECT 1 FROM stride_plans WHERE id = ? AND user_id = ?", *body.PlanID, user.ID).Scan(&exists)
@@ -488,7 +495,7 @@ func CreateNoteHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		note, err := CreateNote(db, user.ID, body.PlanID, body.Content, body.TargetDate)
+		note, err := CreateNote(db, user.ID, body.PlanID, body.Content, body.TargetDate, body.Scope)
 		if err != nil {
 			log.Printf("stride: create note: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create note"})
@@ -496,6 +503,69 @@ func CreateNoteHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusCreated, map[string]any{"note": note})
+	}
+}
+
+// UpdateNoteHandler updates an unconsumed note owned by the authenticated user.
+// PATCH /api/stride/notes/{id}
+// Expects JSON body with optional fields: {content?, target_date?, scope?}.
+// Returns 404 if not found, 409 if already consumed, 400 for validation errors.
+func UpdateNoteHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid note ID"})
+			return
+		}
+
+		var body struct {
+			Content    *string `json:"content"`
+			TargetDate *string `json:"target_date"`
+			Scope      *string `json:"scope"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+
+		if body.Content != nil {
+			trimmed := strings.TrimSpace(*body.Content)
+			if trimmed == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content must not be empty"})
+				return
+			}
+			body.Content = &trimmed
+		}
+		if body.TargetDate != nil && *body.TargetDate != "" {
+			if _, err := time.Parse("2006-01-02", *body.TargetDate); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "target_date must be in YYYY-MM-DD format"})
+				return
+			}
+		}
+		if body.Scope != nil {
+			if err := ValidateNoteScope(*body.Scope); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+				return
+			}
+		}
+
+		note, err := UpdateNote(db, id, user.ID, body.Content, body.TargetDate, body.Scope)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrNoteNotFound):
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "note not found"})
+			case errors.Is(err, ErrNoteConsumed):
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "note has already been consumed"})
+			default:
+				log.Printf("stride: update note %d: %v", id, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update note"})
+			}
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"note": note})
 	}
 }
 

@@ -36,7 +36,38 @@ type Note struct {
 	TargetDate string     `json:"target_date"`  // YYYY-MM-DD — which date this note applies to
 	ConsumedAt *time.Time `json:"consumed_at"`  // nullable — set when consumed by a process (e.g. plan generation)
 	ConsumedBy *string    `json:"consumed_by"`  // nullable — identifier of the consuming process
+	Scope      string     `json:"scope"`        // 'any' | 'nightly' | 'weekly' — routes the note to a specific consumer
 	CreatedAt  string     `json:"created_at"`
+}
+
+// Allowed values for Note.Scope. 'any' is the default and matches both consumers;
+// 'nightly' restricts the note to the nightly evaluation; 'weekly' restricts it
+// to the weekly plan generation.
+const (
+	NoteScopeAny     = "any"
+	NoteScopeNightly = "nightly"
+	NoteScopeWeekly  = "weekly"
+)
+
+// ErrNoteNotFound is returned when a note lookup or update targets a row that
+// either does not exist or does not belong to the requesting user.
+var ErrNoteNotFound = errors.New("note not found")
+
+// ErrNoteConsumed is returned when the caller attempts to mutate a note that
+// has already been consumed by a process. Consumed notes are immutable so the
+// audit trail stays accurate.
+var ErrNoteConsumed = errors.New("note already consumed")
+
+// ValidateNoteScope returns nil if scope is one of the allowed values
+// ('any', 'nightly', 'weekly') and an error otherwise. An empty string is
+// treated as the default 'any' for callers that opt out of routing.
+func ValidateNoteScope(scope string) error {
+	switch scope {
+	case "", NoteScopeAny, NoteScopeNightly, NoteScopeWeekly:
+		return nil
+	default:
+		return fmt.Errorf("invalid scope %q: must be one of any, nightly, weekly", scope)
+	}
 }
 
 // NextStrideRun returns the next time the weekly Stride cron should fire
@@ -66,7 +97,7 @@ func NextStrideRun(now time.Time, loc *time.Location) time.Time {
 func scanNote(scanner interface{ Scan(...any) error }, n *Note) error {
 	var consumedAt sql.NullString
 	var consumedBy sql.NullString
-	if err := scanner.Scan(&n.ID, &n.UserID, &n.PlanID, &n.Content, &n.TargetDate, &consumedAt, &consumedBy, &n.CreatedAt); err != nil {
+	if err := scanner.Scan(&n.ID, &n.UserID, &n.PlanID, &n.Content, &n.TargetDate, &consumedAt, &consumedBy, &n.Scope, &n.CreatedAt); err != nil {
 		return err
 	}
 	if consumedAt.Valid {
@@ -78,6 +109,9 @@ func scanNote(scanner interface{ Scan(...any) error }, n *Note) error {
 	}
 	if consumedBy.Valid {
 		n.ConsumedBy = &consumedBy.String
+	}
+	if n.Scope == "" {
+		n.Scope = NoteScopeAny
 	}
 	var err error
 	if n.Content, err = encryption.DecryptField(n.Content); err != nil {
@@ -361,13 +395,17 @@ func DeleteRace(db *sql.DB, id, userID int64) error {
 	return nil
 }
 
-// ListNotes returns notes for a user, optionally filtered by plan_id and status.
+// ListNotes returns notes for a user, optionally filtered by plan_id, status, and scope.
 // When planID is nil, notes are not filtered by plan. The status parameter controls
 // consumption filtering: "" or "active" returns only unconsumed notes (consumed_at IS NULL),
 // "consumed" returns only consumed notes, and "all" returns everything.
-func ListNotes(db *sql.DB, userID int64, planID *int64, status string) ([]Note, error) {
+// The scope parameter routes to a specific consumer: when "nightly", matches scope IN ('any','nightly');
+// when "weekly", matches scope IN ('any','weekly'); empty/none applies no scope filter
+// (used by the UI listing). 'any' as a literal scope filter is treated the same as
+// no filter for symmetry.
+func ListNotes(db *sql.DB, userID int64, planID *int64, status, scope string) ([]Note, error) {
 	query := `
-		SELECT id, user_id, plan_id, content, target_date, consumed_at, consumed_by, created_at
+		SELECT id, user_id, plan_id, content, target_date, consumed_at, consumed_by, scope, created_at
 		FROM stride_notes
 		WHERE user_id = ?`
 	args := []any{userID}
@@ -387,6 +425,17 @@ func ListNotes(db *sql.DB, userID int64, planID *int64, status string) ([]Note, 
 		query += ` AND consumed_at IS NOT NULL`
 	default:
 		return nil, fmt.Errorf("invalid status %q: must be active, consumed, or all (empty defaults to active)", status)
+	}
+
+	switch strings.ToLower(strings.TrimSpace(scope)) {
+	case "", NoteScopeAny:
+		// No scope filter — return notes regardless of routing target.
+	case NoteScopeNightly:
+		query += ` AND scope IN ('any','nightly')`
+	case NoteScopeWeekly:
+		query += ` AND scope IN ('any','weekly')`
+	default:
+		return nil, fmt.Errorf("invalid scope %q: must be one of any, nightly, weekly", scope)
 	}
 
 	query += ` ORDER BY created_at DESC`
@@ -414,8 +463,16 @@ func ListNotes(db *sql.DB, userID int64, planID *int64, status string) ([]Note, 
 	return notes, nil
 }
 
-// CreateNote inserts a new note.
-func CreateNote(db *sql.DB, userID int64, planID *int64, content, targetDate string) (*Note, error) {
+// CreateNote inserts a new note. An empty scope defaults to 'any' for backward
+// compatibility; non-empty scopes are validated against the allowed set.
+func CreateNote(db *sql.DB, userID int64, planID *int64, content, targetDate, scope string) (*Note, error) {
+	if err := ValidateNoteScope(scope); err != nil {
+		return nil, err
+	}
+	if scope == "" {
+		scope = NoteScopeAny
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	if targetDate == "" {
@@ -428,9 +485,9 @@ func CreateNote(db *sql.DB, userID int64, planID *int64, content, targetDate str
 	}
 
 	res, err := db.Exec(`
-		INSERT INTO stride_notes (user_id, plan_id, content, target_date, created_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, userID, planID, encContent, targetDate, now)
+		INSERT INTO stride_notes (user_id, plan_id, content, target_date, scope, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, userID, planID, encContent, targetDate, scope, now)
 	if err != nil {
 		return nil, fmt.Errorf("insert note: %w", err)
 	}
@@ -443,11 +500,91 @@ func CreateNote(db *sql.DB, userID int64, planID *int64, content, targetDate str
 	return getNoteByID(db, id, userID)
 }
 
+// UpdateNote modifies an unconsumed note owned by userID. Each pointer parameter
+// is optional: nil leaves the field untouched. Content is re-encrypted on write.
+// Returns ErrNoteNotFound if the note does not exist or belongs to another user,
+// and ErrNoteConsumed if the note has already been consumed by a process.
+func UpdateNote(db *sql.DB, id, userID int64, content, targetDate, scope *string) (*Note, error) {
+	if scope != nil {
+		if err := ValidateNoteScope(*scope); err != nil {
+			return nil, err
+		}
+	}
+	if targetDate != nil && *targetDate != "" {
+		if _, err := time.Parse("2006-01-02", *targetDate); err != nil {
+			return nil, fmt.Errorf("invalid target_date %q: %w", *targetDate, err)
+		}
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	var consumedAt sql.NullString
+	if err := tx.QueryRow(`SELECT consumed_at FROM stride_notes WHERE id = ? AND user_id = ?`, id, userID).Scan(&consumedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNoteNotFound
+		}
+		return nil, fmt.Errorf("lookup note: %w", err)
+	}
+	if consumedAt.Valid {
+		return nil, ErrNoteConsumed
+	}
+
+	sets := make([]string, 0, 3)
+	args := make([]any, 0, 5)
+	if content != nil {
+		enc, err := encryption.EncryptField(*content)
+		if err != nil {
+			return nil, fmt.Errorf("encrypt note content: %w", err)
+		}
+		sets = append(sets, "content = ?")
+		args = append(args, enc)
+	}
+	if targetDate != nil {
+		sets = append(sets, "target_date = ?")
+		args = append(args, *targetDate)
+	}
+	if scope != nil {
+		s := *scope
+		if s == "" {
+			s = NoteScopeAny
+		}
+		sets = append(sets, "scope = ?")
+		args = append(args, s)
+	}
+
+	if len(sets) > 0 {
+		args = append(args, id, userID)
+		query := `UPDATE stride_notes SET ` + strings.Join(sets, ", ") + ` WHERE id = ? AND user_id = ? AND consumed_at IS NULL`
+		res, err := tx.Exec(query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("update note: %w", err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return nil, fmt.Errorf("rows affected: %w", err)
+		}
+		if n == 0 {
+			// Race: the note was consumed between the SELECT and the UPDATE.
+			return nil, ErrNoteConsumed
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+
+	return getNoteByID(db, id, userID)
+}
+
 // getNoteByID returns a single note by ID, scoped to the given user.
 func getNoteByID(db *sql.DB, id, userID int64) (*Note, error) {
 	var n Note
 	row := db.QueryRow(`
-		SELECT id, user_id, plan_id, content, target_date, consumed_at, consumed_by, created_at
+		SELECT id, user_id, plan_id, content, target_date, consumed_at, consumed_by, scope, created_at
 		FROM stride_notes
 		WHERE id = ? AND user_id = ?
 	`, id, userID)
@@ -502,7 +639,7 @@ func MarkNotesConsumed(ctx context.Context, tx *sql.Tx, userID int64, noteIDs []
 // GetNotesByTargetDate returns all notes for a user targeting a specific date.
 func GetNotesByTargetDate(db *sql.DB, userID int64, date string) ([]Note, error) {
 	rows, err := db.Query(`
-		SELECT id, user_id, plan_id, content, target_date, consumed_at, consumed_by, created_at
+		SELECT id, user_id, plan_id, content, target_date, consumed_at, consumed_by, scope, created_at
 		FROM stride_notes
 		WHERE user_id = ? AND target_date = ?
 		ORDER BY created_at ASC

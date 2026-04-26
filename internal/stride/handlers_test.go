@@ -358,7 +358,7 @@ func TestCreateNoteHandler_EmptyContent(t *testing.T) {
 func TestDeleteNoteHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 
-	note, err := CreateNote(db, 1, nil, "Delete me", "")
+	note, err := CreateNote(db, 1, nil, "Delete me", "", "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -1107,5 +1107,146 @@ func TestPlanHistoryHandler_MissedNotCounted(t *testing.T) {
 	}
 	if body.Weeks[0].CompletionRate != 0 {
 		t.Errorf("completion_rate = %.1f, want 0.0", body.Weeks[0].CompletionRate)
+	}
+}
+
+func TestCreateNoteHandler_RejectsInvalidScope(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"content":"hi","scope":"daily"}`
+	req := withUser(httptest.NewRequest("POST", "/api/stride/notes", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	CreateNoteHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid scope, got %d", rec.Code)
+	}
+}
+
+func TestCreateNoteHandler_DefaultsScopeToAny(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"content":"hi"}`
+	req := withUser(httptest.NewRequest("POST", "/api/stride/notes", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	CreateNoteHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rec.Code)
+	}
+	var body struct {
+		Note Note `json:"note"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Note.Scope != NoteScopeAny {
+		t.Errorf("scope = %q, want %q (default)", body.Note.Scope, NoteScopeAny)
+	}
+}
+
+func TestUpdateNoteHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	note, err := CreateNote(db, 1, nil, "before", "2026-04-10", NoteScopeAny)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	payload := `{"content":"after","scope":"weekly","target_date":"2026-04-12"}`
+	idStr := strconv.FormatInt(note.ID, 10)
+	req := withUser(httptest.NewRequest("PATCH", "/api/stride/notes/"+idStr, strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	UpdateNoteHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Note Note `json:"note"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Note.Content != "after" {
+		t.Errorf("content = %q, want after", body.Note.Content)
+	}
+	if body.Note.Scope != NoteScopeWeekly {
+		t.Errorf("scope = %q, want weekly", body.Note.Scope)
+	}
+	if body.Note.TargetDate != "2026-04-12" {
+		t.Errorf("target_date = %q, want 2026-04-12", body.Note.TargetDate)
+	}
+}
+
+func TestUpdateNoteHandler_ConsumedReturns409(t *testing.T) {
+	db := setupTestDB(t)
+
+	note, err := CreateNote(db, 1, nil, "consumed", "2026-04-10", NoteScopeAny)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err := MarkNotesConsumed(context.Background(), tx, 1, []int64{note.ID}, "weekly"); err != nil {
+		t.Fatalf("mark consumed: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	payload := `{"content":"new"}`
+	idStr := strconv.FormatInt(note.ID, 10)
+	req := withUser(httptest.NewRequest("PATCH", "/api/stride/notes/"+idStr, strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	UpdateNoteHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", rec.Code)
+	}
+}
+
+func TestUpdateNoteHandler_InvalidScopeReturns400(t *testing.T) {
+	db := setupTestDB(t)
+
+	note, err := CreateNote(db, 1, nil, "x", "2026-04-10", NoteScopeAny)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	payload := `{"scope":"daily"}`
+	idStr := strconv.FormatInt(note.ID, 10)
+	req := withUser(httptest.NewRequest("PATCH", "/api/stride/notes/"+idStr, strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	UpdateNoteHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestUpdateNoteHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	payload := `{"content":"x"}`
+	req := withUser(httptest.NewRequest("PATCH", "/api/stride/notes/9999", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", "9999")
+	rec := httptest.NewRecorder()
+	UpdateNoteHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 }

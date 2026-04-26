@@ -176,8 +176,8 @@ func evaluateUserWorkouts(ctx context.Context, db *sql.DB, httpClient *http.Clie
 		return fmt.Errorf("query unevaluated workouts: %w", err)
 	}
 
-	// Fetch unconsumed notes for this user to provide context to Claude.
-	userNotes, err := ListNotes(db, userID, nil, "active")
+	// Fetch unconsumed notes routed to the nightly evaluation (or 'any').
+	userNotes, err := ListNotes(db, userID, nil, "active", NoteScopeNightly)
 	if err != nil {
 		log.Printf("stride eval: fetch notes for user %d: %v", userID, err)
 		// Non-fatal — continue without notes.

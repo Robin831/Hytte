@@ -161,7 +161,7 @@ func TestReEvaluateDate_PreservesExistingOnClaudeFailure_RestDay(t *testing.T) {
 	}
 
 	// Add an unconsumed note so ReEvaluateDate calls Claude (notes drive AI path).
-	if _, err := CreateNote(db, 1, nil, "felt great today, took a walk", date); err != nil {
+	if _, err := CreateNote(db, 1, nil, "felt great today, took a walk", date, ""); err != nil {
 		t.Fatalf("create note: %v", err)
 	}
 
@@ -242,7 +242,7 @@ func TestReEvaluateDate_MarksNotesConsumedManual(t *testing.T) {
 		t.Fatalf("insert workout: %v", err)
 	}
 
-	note, err := CreateNote(db, 1, nil, "the coach got it wrong, this was easy not threshold", date)
+	note, err := CreateNote(db, 1, nil, "the coach got it wrong, this was easy not threshold", date, "")
 	if err != nil {
 		t.Fatalf("create note: %v", err)
 	}
@@ -556,7 +556,7 @@ func TestReEvaluateDate_ReplacesExistingDateOnlyEvaluation(t *testing.T) {
 	}
 
 	// Add a note so Claude is invoked (with notes path).
-	if _, err := CreateNote(db, 1, nil, "did some yoga", date); err != nil {
+	if _, err := CreateNote(db, 1, nil, "did some yoga", date, ""); err != nil {
 		t.Fatalf("create note: %v", err)
 	}
 
