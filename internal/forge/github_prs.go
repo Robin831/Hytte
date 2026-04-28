@@ -92,15 +92,24 @@ func ghPRKey(anvil string, number int) string {
 }
 
 // repoFromRemote extracts the GitHub "owner/repo" from a git remote URL.
+// It retries once on failure to tolerate transient subprocess errors (e.g.
+// brief resource contention during parallel test execution on CI).
 func repoFromRemote(repoPath string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "remote", "get-url", "origin")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("git remote get-url: %w; output: %s", err, strings.TrimSpace(string(out)))
+	run := func() (string, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "remote", "get-url", "origin")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return "", fmt.Errorf("git remote get-url: %w; output: %s", err, strings.TrimSpace(string(out)))
+		}
+		return parseGitHubRepo(strings.TrimSpace(string(out))), nil
 	}
-	return parseGitHubRepo(strings.TrimSpace(string(out))), nil
+	r, err := run()
+	if err != nil {
+		r, err = run()
+	}
+	return r, err
 }
 
 // parseGitHubRepo extracts "owner/repo" from a GitHub remote URL.
