@@ -772,9 +772,9 @@ func TestGeneratePlan_ScopeFiltering(t *testing.T) {
 	}
 }
 
-// insertTestEvaluation inserts a stride_evaluations row with the given
+// insertEncryptedEvaluation inserts a stride_evaluations row with the given
 // evaluation payload encrypted, returning the row id.
-func insertTestEvaluation(t *testing.T, db *sql.DB, userID, planID int64, workoutID *int64, eval Evaluation, createdAt string) int64 {
+func insertEncryptedEvaluation(t *testing.T, db *sql.DB, userID, planID int64, workoutID *int64, eval Evaluation, createdAt string) int64 {
 	t.Helper()
 	bytes, err := json.Marshal(eval)
 	if err != nil {
@@ -812,7 +812,7 @@ func TestListRecentEvaluations_FiltersAndOrders(t *testing.T) {
 	// Rest-day eval (workout_id IS NULL) seven days ago — should be returned
 	// and, being older, come first in ascending order.
 	restCreatedAt := now.AddDate(0, 0, -7).Format(time.RFC3339)
-	insertTestEvaluation(t, db, 1, planID, nil, Evaluation{
+	insertEncryptedEvaluation(t, db, 1, planID, nil, Evaluation{
 		PlannedType: "rest", ActualType: "rest",
 		Compliance: "rest_day", Notes: "Rest day taken.",
 		Date: now.AddDate(0, 0, -7).Format("2006-01-02"),
@@ -825,7 +825,7 @@ func TestListRecentEvaluations_FiltersAndOrders(t *testing.T) {
 		t.Fatalf("insert recent workout: %v", err)
 	}
 	wid10 := int64(10)
-	insertTestEvaluation(t, db, 1, planID, &wid10, Evaluation{
+	insertEncryptedEvaluation(t, db, 1, planID, &wid10, Evaluation{
 		PlannedType: "threshold", ActualType: "threshold",
 		Compliance: "compliant", Notes: "Solid threshold session.",
 		Flags: []string{}, Adjustments: "Continue.",
@@ -838,7 +838,7 @@ func TestListRecentEvaluations_FiltersAndOrders(t *testing.T) {
 		t.Fatalf("insert old workout: %v", err)
 	}
 	wid11 := int64(11)
-	insertTestEvaluation(t, db, 1, planID, &wid11, Evaluation{
+	insertEncryptedEvaluation(t, db, 1, planID, &wid11, Evaluation{
 		PlannedType: "easy", ActualType: "easy",
 		Compliance: "compliant", Notes: "Old eval.",
 	}, oldWorkoutStart)
@@ -853,7 +853,7 @@ func TestListRecentEvaluations_FiltersAndOrders(t *testing.T) {
 		t.Fatalf("insert other-user workout: %v", err)
 	}
 	wid12 := int64(12)
-	insertTestEvaluation(t, db, 2, otherPlanID, &wid12, Evaluation{
+	insertEncryptedEvaluation(t, db, 2, otherPlanID, &wid12, Evaluation{
 		PlannedType: "easy", ActualType: "easy", Compliance: "compliant",
 	}, recentWorkoutStart)
 
@@ -1081,7 +1081,7 @@ func TestGeneratePlan_PromptIncludesRecentEvaluations(t *testing.T) {
 		t.Fatalf("insert workout: %v", err)
 	}
 	wid := int64(50)
-	insertTestEvaluation(t, db, 1, planID, &wid, Evaluation{
+	insertEncryptedEvaluation(t, db, 1, planID, &wid, Evaluation{
 		PlannedType: "easy", ActualType: "easy",
 		Compliance: "compliant", Notes: "Easy run completed.",
 		Flags: []string{}, Adjustments: "",
