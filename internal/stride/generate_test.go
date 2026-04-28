@@ -882,6 +882,59 @@ func TestListRecentEvaluations_FiltersAndOrders(t *testing.T) {
 	}
 }
 
+// TestListRecentEvaluations_CrossUserWorkoutJoin verifies that when a
+// stride_evaluations row for user 1 references a workout_id that belongs to
+// user 2, the JOIN does not pull in user 2's workout metadata. The evaluation
+// row must still be returned (it belongs to user 1) but Sport and DistanceM
+// must be zero-valued.
+func TestListRecentEvaluations_CrossUserWorkoutJoin(t *testing.T) {
+	db := extendedTestDB(t)
+
+	// Set up two users.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@x.com', 'Other', 'g2')`); err != nil {
+		t.Fatalf("insert user 2: %v", err)
+	}
+
+	now := time.Now().UTC()
+	since := now.AddDate(0, 0, -14)
+
+	// Insert a workout owned by user 2.
+	workoutStart := now.AddDate(0, 0, -3).Format(time.RFC3339)
+	if _, err := db.Exec(`INSERT INTO workouts (id, user_id, sport, started_at, distance_meters, fit_file_hash)
+		VALUES (20, 2, 'cycling', ?, 50000, 'hash-u2')`, workoutStart); err != nil {
+		t.Fatalf("insert user-2 workout: %v", err)
+	}
+
+	// Insert an evaluation for user 1 that references user 2's workout id.
+	planID := insertTestPlan(t, db, 1, "2026-04-14", "2026-04-20", `[]`)
+	wid20 := int64(20)
+	insertEncryptedEvaluation(t, db, 1, planID, &wid20, Evaluation{
+		PlannedType: "easy", ActualType: "easy", Compliance: "compliant",
+		Notes: "Cross-user workout reference.",
+	}, workoutStart)
+
+	rows, err := listRecentEvaluations(context.Background(), db, 1, since)
+	if err != nil {
+		t.Fatalf("listRecentEvaluations: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 row for user 1, got %d", len(rows))
+	}
+	row := rows[0]
+	// The evaluation belongs to user 1, so it should be returned.
+	if row.WorkoutID == nil || *row.WorkoutID != 20 {
+		t.Errorf("WorkoutID = %v, want pointer to 20", row.WorkoutID)
+	}
+	// The JOIN must not leak user 2's workout metadata.
+	// Note: Date is still set via the e.created_at fallback — that is expected.
+	if row.Sport != "" {
+		t.Errorf("Sport = %q, want empty (cross-user join must not return other user's data)", row.Sport)
+	}
+	if row.DistanceM != 0 {
+		t.Errorf("DistanceM = %v, want 0 (cross-user join must not return other user's data)", row.DistanceM)
+	}
+}
+
 func TestRenderEvaluationsSection_Empty(t *testing.T) {
 	if got := renderEvaluationsSection(nil); got != "" {
 		t.Errorf("expected empty string for nil evals, got %q", got)

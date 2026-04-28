@@ -454,7 +454,7 @@ func listRecentEvaluations(ctx context.Context, db *sql.DB, userID int64, since 
 		SELECT e.workout_id, e.eval_json, e.created_at,
 		       w.started_at, w.sport, w.distance_meters
 		FROM stride_evaluations e
-		LEFT JOIN workouts w ON w.id = e.workout_id
+		LEFT JOIN workouts w ON w.id = e.workout_id AND w.user_id = e.user_id
 		WHERE e.user_id = ?
 		  AND COALESCE(w.started_at, e.created_at) >= ?
 		ORDER BY COALESCE(w.started_at, e.created_at) ASC, e.id ASC
