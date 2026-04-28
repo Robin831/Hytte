@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Robin831/Hytte/internal/encryption"
 	"github.com/Robin831/Hytte/internal/training"
 )
 
@@ -479,6 +480,7 @@ func TestBuildGeneratePrompt_RaceHistorySection(t *testing.T) {
 		nil, 0, 0,
 		nil,
 		"", "", "",
+		nil,
 		"", "",
 		"",
 	)
@@ -508,6 +510,7 @@ func TestBuildGeneratePrompt_NoRaceHistoryWhenEmpty(t *testing.T) {
 		nil, 0, 0,
 		nil,
 		"", "", "",
+		nil,
 		"", "",
 		"",
 	)
@@ -769,3 +772,341 @@ func TestGeneratePlan_ScopeFiltering(t *testing.T) {
 	}
 }
 
+// insertTestEvaluation inserts a stride_evaluations row with the given
+// evaluation payload encrypted, returning the row id.
+func insertTestEvaluation(t *testing.T, db *sql.DB, userID, planID int64, workoutID *int64, eval Evaluation, createdAt string) int64 {
+	t.Helper()
+	bytes, err := json.Marshal(eval)
+	if err != nil {
+		t.Fatalf("marshal eval: %v", err)
+	}
+	enc, err := encryption.EncryptField(string(bytes))
+	if err != nil {
+		t.Fatalf("encrypt eval: %v", err)
+	}
+	var res sql.Result
+	if workoutID != nil {
+		res, err = db.Exec(`
+			INSERT INTO stride_evaluations (user_id, plan_id, workout_id, eval_json, created_at)
+			VALUES (?, ?, ?, ?, ?)`, userID, planID, *workoutID, enc, createdAt)
+	} else {
+		res, err = db.Exec(`
+			INSERT INTO stride_evaluations (user_id, plan_id, workout_id, eval_json, created_at)
+			VALUES (?, ?, NULL, ?, ?)`, userID, planID, enc, createdAt)
+	}
+	if err != nil {
+		t.Fatalf("insert evaluation: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
+func TestListRecentEvaluations_FiltersAndOrders(t *testing.T) {
+	db := extendedTestDB(t)
+
+	planID := insertTestPlan(t, db, 1, "2026-04-07", "2026-04-13", `[]`)
+
+	now := time.Now().UTC()
+	since := now.AddDate(0, 0, -14)
+
+	// Rest-day eval (workout_id IS NULL) seven days ago — should be returned
+	// and, being older, come first in ascending order.
+	restCreatedAt := now.AddDate(0, 0, -7).Format(time.RFC3339)
+	insertTestEvaluation(t, db, 1, planID, nil, Evaluation{
+		PlannedType: "rest", ActualType: "rest",
+		Compliance: "rest_day", Notes: "Rest day taken.",
+		Date: now.AddDate(0, 0, -7).Format("2006-01-02"),
+	}, restCreatedAt)
+
+	// Workout eval three days ago — should be returned and come second.
+	recentWorkoutStart := now.AddDate(0, 0, -3).Format(time.RFC3339)
+	if _, err := db.Exec(`INSERT INTO workouts (id, user_id, sport, started_at, distance_meters, fit_file_hash)
+		VALUES (10, 1, 'running', ?, 8500, 'hash-recent')`, recentWorkoutStart); err != nil {
+		t.Fatalf("insert recent workout: %v", err)
+	}
+	wid10 := int64(10)
+	insertTestEvaluation(t, db, 1, planID, &wid10, Evaluation{
+		PlannedType: "threshold", ActualType: "threshold",
+		Compliance: "compliant", Notes: "Solid threshold session.",
+		Flags: []string{}, Adjustments: "Continue.",
+	}, recentWorkoutStart)
+
+	// Workout outside the window — should be filtered out.
+	oldWorkoutStart := now.AddDate(0, 0, -30).Format(time.RFC3339)
+	if _, err := db.Exec(`INSERT INTO workouts (id, user_id, sport, started_at, distance_meters, fit_file_hash)
+		VALUES (11, 1, 'running', ?, 5000, 'hash-old')`, oldWorkoutStart); err != nil {
+		t.Fatalf("insert old workout: %v", err)
+	}
+	wid11 := int64(11)
+	insertTestEvaluation(t, db, 1, planID, &wid11, Evaluation{
+		PlannedType: "easy", ActualType: "easy",
+		Compliance: "compliant", Notes: "Old eval.",
+	}, oldWorkoutStart)
+
+	// Cross-user evaluation must not leak.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@x.com', 'Other', 'g2')`); err != nil {
+		t.Fatalf("insert user 2: %v", err)
+	}
+	otherPlanID := insertTestPlan(t, db, 2, "2026-04-07", "2026-04-13", `[]`)
+	if _, err := db.Exec(`INSERT INTO workouts (id, user_id, sport, started_at, distance_meters, fit_file_hash)
+		VALUES (12, 2, 'running', ?, 7000, 'hash-other')`, recentWorkoutStart); err != nil {
+		t.Fatalf("insert other-user workout: %v", err)
+	}
+	wid12 := int64(12)
+	insertTestEvaluation(t, db, 2, otherPlanID, &wid12, Evaluation{
+		PlannedType: "easy", ActualType: "easy", Compliance: "compliant",
+	}, recentWorkoutStart)
+
+	rows, err := listRecentEvaluations(context.Background(), db, 1, since)
+	if err != nil {
+		t.Fatalf("listRecentEvaluations: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows in window, got %d", len(rows))
+	}
+	// Ordered ascending by date, so rest-day (older) precedes the workout.
+	if rows[0].WorkoutID != nil {
+		t.Errorf("rows[0] should be the rest-day eval (workout_id nil), got %v", rows[0].WorkoutID)
+	}
+	if rows[0].Eval.Compliance != "rest_day" {
+		t.Errorf("rows[0].Compliance = %q, want rest_day", rows[0].Eval.Compliance)
+	}
+	if rows[1].WorkoutID == nil || *rows[1].WorkoutID != 10 {
+		t.Errorf("rows[1].WorkoutID = %v, want pointer to 10", rows[1].WorkoutID)
+	}
+	if rows[1].Sport != "running" {
+		t.Errorf("rows[1].Sport = %q, want running", rows[1].Sport)
+	}
+	if rows[1].DistanceM != 8500 {
+		t.Errorf("rows[1].DistanceM = %v, want 8500", rows[1].DistanceM)
+	}
+}
+
+func TestRenderEvaluationsSection_Empty(t *testing.T) {
+	if got := renderEvaluationsSection(nil); got != "" {
+		t.Errorf("expected empty string for nil evals, got %q", got)
+	}
+	if got := renderEvaluationsSection([]EvaluationRow{}); got != "" {
+		t.Errorf("expected empty string for empty slice, got %q", got)
+	}
+}
+
+func TestBuildGeneratePrompt_EvaluationsSection(t *testing.T) {
+	wid := int64(42)
+	evals := []EvaluationRow{
+		{
+			WorkoutID: &wid,
+			Date:      "2026-04-15",
+			Sport:     "running",
+			DistanceM: 12000,
+			Eval: Evaluation{
+				PlannedType: "threshold",
+				ActualType:  "threshold",
+				Compliance:  "compliant",
+				Notes:       "Hit the splits cleanly with HR controlled.",
+				Flags:       []string{"hr_too_high"},
+				Adjustments: "Hold pace next session, monitor recovery HR.",
+			},
+		},
+		{
+			WorkoutID: nil,
+			Date:      "2026-04-16",
+			Eval: Evaluation{
+				PlannedType: "rest",
+				ActualType:  "rest",
+				Compliance:  "rest_day",
+				Notes:       "Rest day taken as planned.",
+				Flags:       []string{},
+				Adjustments: "",
+				Date:        "2026-04-16",
+			},
+		},
+	}
+
+	prompt := buildGeneratePrompt(
+		"2026-04-20", "2026-04-26",
+		"", nil, nil,
+		nil,
+		nil, 0, 0,
+		nil,
+		"", "", "",
+		evals,
+		"", "",
+		"",
+	)
+
+	if !strings.Contains(prompt, "## Recent Workout Evaluations (last 14 days)") {
+		t.Error("prompt missing evaluations section heading")
+	}
+	if !strings.Contains(prompt, "[2026-04-15]") {
+		t.Error("prompt missing workout eval date")
+	}
+	if !strings.Contains(prompt, "running, 12.0 km") {
+		t.Error("prompt missing sport + distance label")
+	}
+	if !strings.Contains(prompt, "planned threshold vs actual threshold") {
+		t.Error("prompt missing planned/actual rendering")
+	}
+	if !strings.Contains(prompt, "compliance: compliant") {
+		t.Error("prompt missing compliance rendering")
+	}
+	if !strings.Contains(prompt, "flags: hr_too_high") {
+		t.Error("prompt missing flag rendering")
+	}
+	if !strings.Contains(prompt, "Notes: Hit the splits cleanly") {
+		t.Error("prompt missing notes rendering")
+	}
+	if !strings.Contains(prompt, "Adjustments: Hold pace") {
+		t.Error("prompt missing adjustments rendering")
+	}
+	if !strings.Contains(prompt, "rest day") {
+		t.Error("prompt missing rest day label for workout_id IS NULL row")
+	}
+	if !strings.Contains(prompt, "compliance: rest_day") {
+		t.Error("prompt missing rest_day compliance rendering")
+	}
+}
+
+func TestBuildGeneratePrompt_NoEvaluationsSectionWhenEmpty(t *testing.T) {
+	prompt := buildGeneratePrompt(
+		"2026-04-20", "2026-04-26",
+		"", nil, nil,
+		nil,
+		nil, 0, 0,
+		nil,
+		"", "", "",
+		nil,
+		"", "",
+		"",
+	)
+
+	if strings.Contains(prompt, "## Recent Workout Evaluations") {
+		t.Error("prompt should not contain evaluations section when slice is empty")
+	}
+}
+
+func TestRenderEvaluationsSection_TruncatesLongNotesAndAdjustments(t *testing.T) {
+	longNotes := strings.Repeat("a", 250)
+	longAdj := strings.Repeat("b", 300)
+	wid := int64(7)
+	evals := []EvaluationRow{
+		{
+			WorkoutID: &wid,
+			Date:      "2026-04-15",
+			Sport:     "running",
+			DistanceM: 5000,
+			Eval: Evaluation{
+				PlannedType: "easy",
+				ActualType:  "easy",
+				Compliance:  "compliant",
+				Notes:       longNotes,
+				Adjustments: longAdj,
+			},
+		},
+	}
+	out := renderEvaluationsSection(evals)
+
+	if strings.Contains(out, longNotes) {
+		t.Error("notes should be truncated, but full untruncated string is present")
+	}
+	if strings.Contains(out, longAdj) {
+		t.Error("adjustments should be truncated, but full untruncated string is present")
+	}
+	if !strings.Contains(out, strings.Repeat("a", 200)+"...") {
+		t.Error("notes should be truncated to 200 chars with ellipsis")
+	}
+	if !strings.Contains(out, strings.Repeat("b", 200)+"...") {
+		t.Error("adjustments should be truncated to 200 chars with ellipsis")
+	}
+}
+
+func TestRenderEvaluationsSection_RestDayRendersWithoutSport(t *testing.T) {
+	evals := []EvaluationRow{
+		{
+			WorkoutID: nil,
+			Date:      "2026-04-16",
+			Eval: Evaluation{
+				PlannedType: "rest",
+				ActualType:  "rest",
+				Compliance:  "rest_day",
+				Notes:       "Recovery day complete.",
+				Date:        "2026-04-16",
+			},
+		},
+	}
+	out := renderEvaluationsSection(evals)
+
+	if !strings.Contains(out, "[2026-04-16] rest day") {
+		t.Errorf("rest-day eval should render with 'rest day' label, got %q", out)
+	}
+	if !strings.Contains(out, "Notes: Recovery day complete.") {
+		t.Errorf("rest-day notes missing, got %q", out)
+	}
+}
+
+func TestTruncate(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		n    int
+		want string
+	}{
+		{"short string returned as is", "hello", 200, "hello"},
+		{"exact length returned as is", "abcde", 5, "abcde"},
+		{"longer string truncated with ellipsis", "abcdefghij", 5, "abcde..."},
+		{"empty string returns empty", "", 5, ""},
+		{"non-positive n returns input", "abcdef", 0, "abcdef"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := truncate(tc.in, tc.n); got != tc.want {
+				t.Errorf("truncate(%q, %d) = %q, want %q", tc.in, tc.n, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGeneratePlan_PromptIncludesRecentEvaluations(t *testing.T) {
+	db := extendedTestDB(t)
+	enableStride(t, db, 1)
+
+	// Seed a previous-week plan that listRecentEvaluations can join against.
+	planID := insertTestPlan(t, db, 1, "2026-04-07", "2026-04-13", `[]`)
+
+	// Insert a workout + evaluation inside the 14-day window.
+	now := time.Now().UTC()
+	workoutStart := now.AddDate(0, 0, -2).Format(time.RFC3339)
+	if _, err := db.Exec(`INSERT INTO workouts (id, user_id, sport, started_at, distance_meters, fit_file_hash)
+		VALUES (50, 1, 'running', ?, 9000, 'hash-prompt-include')`, workoutStart); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+	wid := int64(50)
+	insertTestEvaluation(t, db, 1, planID, &wid, Evaluation{
+		PlannedType: "easy", ActualType: "easy",
+		Compliance: "compliant", Notes: "Easy run completed.",
+		Flags: []string{}, Adjustments: "",
+	}, workoutStart)
+
+	weekStart, _ := upcomingWeek()
+	planDays := buildMinimalPlan(weekStart)
+	mockResponse, _ := json.Marshal(planDays)
+
+	var capturedPrompt string
+	origFn := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, prompt string) (string, error) {
+		capturedPrompt = prompt
+		return string(mockResponse), nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFn })
+
+	if err := GeneratePlan(context.Background(), db, 1, "next"); err != nil {
+		t.Fatalf("GeneratePlan: %v", err)
+	}
+
+	if !strings.Contains(capturedPrompt, "## Recent Workout Evaluations (last 14 days)") {
+		t.Error("expected evaluations section in generated prompt")
+	}
+	if !strings.Contains(capturedPrompt, "Notes: Easy run completed.") {
+		t.Error("expected workout-eval notes in generated prompt")
+	}
+}

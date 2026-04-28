@@ -1,0 +1,2 @@
+category: Changed
+- **Stride weekly plan generator now sees recent nightly evaluations** - The plan-generation prompt includes a new "Recent Workout Evaluations (last 14 days)" section listing per-workout adherence, fatigue flags, narrative notes, and adjustment recommendations from `stride_evaluations`. Closes the planning loop so the coach can react to whether prescribed sessions were executed, skipped, missed, or hit with concerning flags. (Hytte-yc9i)
