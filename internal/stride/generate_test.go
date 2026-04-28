@@ -809,14 +809,30 @@ func TestListRecentEvaluations_FiltersAndOrders(t *testing.T) {
 	now := time.Now().UTC()
 	since := now.AddDate(0, 0, -14)
 
-	// Rest-day eval (workout_id IS NULL) seven days ago — should be returned
-	// and, being older, come first in ascending order.
-	restCreatedAt := now.AddDate(0, 0, -7).Format(time.RFC3339)
+	// Rest-day eval (workout_id IS NULL) seven days ago.
+	// eval.Date = D-7 but created_at = D-6T03:00Z, modelling the real nightly
+	// job pattern where the job runs at 03:00 the morning after the evaluated
+	// date. This verifies that filtering and ordering use the effective
+	// eval.Date (D-7) rather than created_at (D-6).
+	restEvalDate := now.AddDate(0, 0, -7)
+	restCreatedAt := restEvalDate.AddDate(0, 0, 1).Truncate(24 * time.Hour).Add(3 * time.Hour)
 	insertEncryptedEvaluation(t, db, 1, planID, nil, Evaluation{
 		PlannedType: "rest", ActualType: "rest",
 		Compliance: "rest_day", Notes: "Rest day taken.",
-		Date: now.AddDate(0, 0, -7).Format("2006-01-02"),
-	}, restCreatedAt)
+		Date: restEvalDate.Format("2006-01-02"),
+	}, restCreatedAt.Format(time.RFC3339))
+
+	// Boundary eval: eval.Date = D-15 (outside the 14-day window) but
+	// created_at = D-14T03:00Z (inside the window by created_at). The old
+	// SQL-based filter on created_at would have included this row; the Go
+	// post-filter must exclude it based on the effective eval.Date.
+	boundaryEvalDate := now.AddDate(0, 0, -15)
+	boundaryCreatedAt := boundaryEvalDate.AddDate(0, 0, 1).Truncate(24 * time.Hour).Add(3 * time.Hour)
+	insertEncryptedEvaluation(t, db, 1, planID, nil, Evaluation{
+		PlannedType: "rest", ActualType: "missed",
+		Compliance: "missed", Notes: "Outside window.",
+		Date: boundaryEvalDate.Format("2006-01-02"),
+	}, boundaryCreatedAt.Format(time.RFC3339))
 
 	// Workout eval three days ago — should be returned and come second.
 	recentWorkoutStart := now.AddDate(0, 0, -3).Format(time.RFC3339)
@@ -864,12 +880,19 @@ func TestListRecentEvaluations_FiltersAndOrders(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("expected 2 rows in window, got %d", len(rows))
 	}
-	// Ordered ascending by date, so rest-day (older) precedes the workout.
+	// Ordered ascending by effective date, so rest-day (D-7) precedes the
+	// workout (D-3). rows[0].Date must be the eval.Date (D-7), not the
+	// created_at date (D-6), proving the Go post-sort uses the effective date.
 	if rows[0].WorkoutID != nil {
 		t.Errorf("rows[0] should be the rest-day eval (workout_id nil), got %v", rows[0].WorkoutID)
 	}
 	if rows[0].Eval.Compliance != "rest_day" {
 		t.Errorf("rows[0].Compliance = %q, want rest_day", rows[0].Eval.Compliance)
+	}
+	wantRestDate := restEvalDate.Format("2006-01-02")
+	if rows[0].Date != wantRestDate {
+		t.Errorf("rows[0].Date = %q, want %q (effective eval.Date, not created_at date %q)",
+			rows[0].Date, wantRestDate, restCreatedAt.Format("2006-01-02"))
 	}
 	if rows[1].WorkoutID == nil || *rows[1].WorkoutID != 10 {
 		t.Errorf("rows[1].WorkoutID = %v, want pointer to 10", rows[1].WorkoutID)

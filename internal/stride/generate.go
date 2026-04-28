@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -442,32 +443,46 @@ type EvaluationRow struct {
 	Eval      Evaluation
 }
 
-// listRecentEvaluations returns evaluation rows for the user whose workout
-// date (or eval creation date for non-workout evaluations) is at or after
-// since, ordered by that date ascending with a stable tiebreak on the eval
-// row id. eval_json is decrypted and unmarshalled into the Evaluation struct.
-// A safety LIMIT bounds the result set even if a user accumulates many evals
-// in the window.
+// listRecentEvaluations returns evaluation rows for the user whose effective
+// date (workout started_at date, or eval.Date for rest-day / missed-session
+// entries) is at or after since, ordered by that date ascending with a stable
+// tiebreak on the eval row id.
+//
+// Filtering and ordering are done in Go rather than SQL because rest-day evals
+// have created_at set to the nightly job run time (D+1 T03:00) while their
+// effective date is eval.Date (D). Using created_at in the SQL WHERE/ORDER
+// would produce a window boundary that is off by one day and an ordering that
+// does not match the dates rendered in the prompt.
+//
+// The SQL pre-filter uses a 2-day buffer to ensure no rest-day evals are
+// dropped before the Go post-filter can evaluate their effective date.
 func listRecentEvaluations(ctx context.Context, db *sql.DB, userID int64, since time.Time) ([]EvaluationRow, error) {
-	sinceStr := since.UTC().Format(time.RFC3339)
+	sinceDate := since.UTC().Format("2006-01-02")
+	// 2-day buffer so rest-day evals (created_at = eval.Date+1 T03:00) are not
+	// dropped by the SQL pre-filter before the Go date check below.
+	sqlSince := since.UTC().AddDate(0, 0, -2).Format(time.RFC3339)
 	rows, err := db.QueryContext(ctx, `
-		SELECT e.workout_id, e.eval_json, e.created_at,
-		       w.started_at, w.sport, w.distance_meters
+		SELECT e.id, e.workout_id, e.eval_json, e.created_at,
+		       NULLIF(w.started_at, ''), w.sport, w.distance_meters
 		FROM stride_evaluations e
 		LEFT JOIN workouts w ON w.id = e.workout_id AND w.user_id = e.user_id
 		WHERE e.user_id = ?
-		  AND COALESCE(w.started_at, e.created_at) >= ?
-		ORDER BY COALESCE(w.started_at, e.created_at) ASC, e.id ASC
+		  AND e.created_at >= ?
 		LIMIT 200
-	`, userID, sinceStr)
+	`, userID, sqlSince)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var out []EvaluationRow
+	type candidate struct {
+		row    EvaluationRow
+		evalID int64
+	}
+	var candidates []candidate
 	for rows.Next() {
 		var (
+			evalID    int64
 			workoutID sql.NullInt64
 			encJSON   string
 			createdAt string
@@ -475,7 +490,7 @@ func listRecentEvaluations(ctx context.Context, db *sql.DB, userID int64, since 
 			sport     sql.NullString
 			distanceM sql.NullFloat64
 		)
-		if err := rows.Scan(&workoutID, &encJSON, &createdAt, &startedAt, &sport, &distanceM); err != nil {
+		if err := rows.Scan(&evalID, &workoutID, &encJSON, &createdAt, &startedAt, &sport, &distanceM); err != nil {
 			return nil, err
 		}
 
@@ -509,9 +524,27 @@ func listRecentEvaluations(ctx context.Context, db *sql.DB, userID int64, since 
 		if distanceM.Valid {
 			row.DistanceM = distanceM.Float64
 		}
-		out = append(out, row)
+		candidates = append(candidates, candidate{row: row, evalID: evalID})
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Sort and post-filter by the computed effective date so that the result
+	// is ordered by the dates actually rendered in the prompt.
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].row.Date != candidates[j].row.Date {
+			return candidates[i].row.Date < candidates[j].row.Date
+		}
+		return candidates[i].evalID < candidates[j].evalID
+	})
+	var out []EvaluationRow
+	for _, c := range candidates {
+		if c.row.Date >= sinceDate {
+			out = append(out, c.row)
+		}
+	}
+	return out, nil
 }
 
 // renderEvaluationsSection formats recent evaluations into a Markdown section
