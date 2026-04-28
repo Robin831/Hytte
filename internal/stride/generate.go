@@ -444,8 +444,10 @@ type EvaluationRow struct {
 
 // listRecentEvaluations returns evaluation rows for the user whose workout
 // date (or eval creation date for non-workout evaluations) is at or after
-// since, ordered by that date ascending. eval_json is decrypted and
-// unmarshalled into the Evaluation struct.
+// since, ordered by that date ascending with a stable tiebreak on the eval
+// row id. eval_json is decrypted and unmarshalled into the Evaluation struct.
+// A safety LIMIT bounds the result set even if a user accumulates many evals
+// in the window.
 func listRecentEvaluations(ctx context.Context, db *sql.DB, userID int64, since time.Time) ([]EvaluationRow, error) {
 	sinceStr := since.UTC().Format(time.RFC3339)
 	rows, err := db.QueryContext(ctx, `
@@ -455,7 +457,8 @@ func listRecentEvaluations(ctx context.Context, db *sql.DB, userID int64, since 
 		LEFT JOIN workouts w ON w.id = e.workout_id
 		WHERE e.user_id = ?
 		  AND COALESCE(w.started_at, e.created_at) >= ?
-		ORDER BY COALESCE(w.started_at, e.created_at) ASC
+		ORDER BY COALESCE(w.started_at, e.created_at) ASC, e.id ASC
+		LIMIT 200
 	`, userID, sinceStr)
 	if err != nil {
 		return nil, err
