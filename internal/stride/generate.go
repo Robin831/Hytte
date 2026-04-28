@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -251,6 +252,17 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 		prevPlanJSON = ""
 	}
 
+	// Load nightly evaluations from the past 14 days so the coach can react to
+	// per-session adherence and any flags raised during nightly evaluation. The
+	// 14-day window covers the previous full week plus a buffer for late evals.
+	evalSince := time.Now().UTC().AddDate(0, 0, -14)
+	evaluations, err := listRecentEvaluations(ctx, db, userID, evalSince)
+	if err != nil {
+		// Non-fatal: log and continue without recent evaluations.
+		log.Printf("stride: load recent evaluations for user %d: %v", userID, err)
+		evaluations = nil
+	}
+
 	// Build the user training profile block.
 	profileBlock := training.BuildUserProfileBlock(db, userID)
 
@@ -263,6 +275,7 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 		acr, acute, chronic,
 		recentSummaries,
 		prevPlanJSON, prevPlanModel, prevPlanCreatedAt,
+		evaluations,
 		availableDays, weeklyDistanceCap,
 		customPrompt,
 	)
@@ -419,6 +432,188 @@ type RaceResult struct {
 	Priority  string
 }
 
+// EvaluationRow is a single nightly evaluation joined with its workout (when
+// present) for prompt rendering. Date is the YYYY-MM-DD of the workout, or of
+// the eval itself for rest-day / missed-session entries.
+type EvaluationRow struct {
+	WorkoutID *int64
+	Date      string
+	Sport     string
+	DistanceM float64
+	Eval      Evaluation
+}
+
+// listRecentEvaluations returns evaluation rows for the user whose effective
+// date (workout started_at date, or eval.Date for rest-day / missed-session
+// entries) is at or after since, ordered by that date ascending with a stable
+// tiebreak on the eval row id.
+//
+// Filtering and ordering are done in Go rather than SQL because rest-day evals
+// have created_at set to the nightly job run time (D+1 T03:00) while their
+// effective date is eval.Date (D). Using created_at in the SQL WHERE/ORDER
+// would produce a window boundary that is off by one day and an ordering that
+// does not match the dates rendered in the prompt.
+//
+// The SQL pre-filter uses a 2-day buffer to ensure no rest-day evals are
+// dropped before the Go post-filter can evaluate their effective date.
+func listRecentEvaluations(ctx context.Context, db *sql.DB, userID int64, since time.Time) ([]EvaluationRow, error) {
+	sinceDate := since.UTC().Format("2006-01-02")
+	// 2-day buffer so rest-day evals (created_at = eval.Date+1 T03:00) are not
+	// dropped by the SQL pre-filter before the Go date check below.
+	sqlSince := since.UTC().AddDate(0, 0, -2).Format(time.RFC3339)
+	rows, err := db.QueryContext(ctx, `
+		SELECT e.id, e.workout_id, e.eval_json, e.created_at,
+		       NULLIF(w.started_at, ''), w.sport, w.distance_meters
+		FROM stride_evaluations e
+		LEFT JOIN workouts w ON w.id = e.workout_id AND w.user_id = e.user_id
+		WHERE e.user_id = ?
+		  AND e.created_at >= ?
+		LIMIT 200
+	`, userID, sqlSince)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type candidate struct {
+		row    EvaluationRow
+		evalID int64
+	}
+	var candidates []candidate
+	for rows.Next() {
+		var (
+			evalID    int64
+			workoutID sql.NullInt64
+			encJSON   string
+			createdAt string
+			startedAt sql.NullString
+			sport     sql.NullString
+			distanceM sql.NullFloat64
+		)
+		if err := rows.Scan(&evalID, &workoutID, &encJSON, &createdAt, &startedAt, &sport, &distanceM); err != nil {
+			return nil, err
+		}
+
+		decJSON, derr := encryption.DecryptField(encJSON)
+		if derr != nil {
+			log.Printf("stride: decrypt eval_json for user %d: %v; skipping", userID, derr)
+			continue
+		}
+		var eval Evaluation
+		if err := json.Unmarshal([]byte(decJSON), &eval); err != nil {
+			log.Printf("stride: unmarshal eval_json for user %d: %v; skipping", userID, err)
+			continue
+		}
+
+		row := EvaluationRow{Eval: eval}
+		if workoutID.Valid {
+			id := workoutID.Int64
+			row.WorkoutID = &id
+		}
+		switch {
+		case startedAt.Valid && startedAt.String != "":
+			row.Date = extractDate(startedAt.String)
+		case eval.Date != "":
+			row.Date = eval.Date
+		default:
+			row.Date = extractDate(createdAt)
+		}
+		if sport.Valid {
+			row.Sport = sport.String
+		}
+		if distanceM.Valid {
+			row.DistanceM = distanceM.Float64
+		}
+		candidates = append(candidates, candidate{row: row, evalID: evalID})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Sort and post-filter by the computed effective date so that the result
+	// is ordered by the dates actually rendered in the prompt.
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].row.Date != candidates[j].row.Date {
+			return candidates[i].row.Date < candidates[j].row.Date
+		}
+		return candidates[i].evalID < candidates[j].evalID
+	})
+	var out []EvaluationRow
+	for _, c := range candidates {
+		if c.row.Date >= sinceDate {
+			out = append(out, c.row)
+		}
+	}
+	return out, nil
+}
+
+// renderEvaluationsSection formats recent evaluations into a Markdown section
+// for inclusion in the plan generation prompt. Returns an empty string when
+// the list is empty so the caller can omit the heading entirely.
+func renderEvaluationsSection(evals []EvaluationRow) string {
+	if len(evals) == 0 {
+		return ""
+	}
+
+	const noteCap = 200
+
+	var sb strings.Builder
+	sb.WriteString("## Recent Workout Evaluations (last 14 days)\n")
+	for _, r := range evals {
+		sportLabel := "rest day"
+		if r.WorkoutID != nil {
+			sportLabel = r.Sport
+			if sportLabel == "" {
+				sportLabel = "workout"
+			}
+			if r.DistanceM > 0 {
+				sportLabel = fmt.Sprintf("%s, %.1f km", sportLabel, r.DistanceM/1000)
+			}
+		}
+
+		planned := r.Eval.PlannedType
+		if planned == "" {
+			planned = "unknown"
+		}
+		actual := r.Eval.ActualType
+		if actual == "" {
+			actual = "unknown"
+		}
+		compliance := r.Eval.Compliance
+		if compliance == "" {
+			compliance = "unknown"
+		}
+
+		fmt.Fprintf(&sb, "- [%s] %s — planned %s vs actual %s — compliance: %s",
+			r.Date, sportLabel, planned, actual, compliance)
+		if len(r.Eval.Flags) > 0 {
+			fmt.Fprintf(&sb, " — flags: %s", strings.Join(r.Eval.Flags, ", "))
+		}
+		sb.WriteString("\n")
+		if notes := truncate(strings.TrimSpace(r.Eval.Notes), noteCap); notes != "" {
+			fmt.Fprintf(&sb, "  Notes: %s\n", notes)
+		}
+		if adj := truncate(strings.TrimSpace(r.Eval.Adjustments), noteCap); adj != "" {
+			fmt.Fprintf(&sb, "  Adjustments: %s\n", adj)
+		}
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+// truncate returns s shortened to at most n runes, appending an ellipsis when
+// truncation occurs. Empty input returns empty output.
+func truncate(s string, n int) string {
+	if n <= 0 || s == "" {
+		return s
+	}
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "..."
+}
+
 // listRaceResults queries completed race results for the user that are linked
 // to at least one workout.
 func listRaceResults(ctx context.Context, db *sql.DB, userID int64) ([]RaceResult, error) {
@@ -469,6 +664,7 @@ func buildGeneratePrompt(
 	acr *float64, acute, chronic float64,
 	summaries []training.WeeklySummary,
 	prevPlanJSON, prevPlanModel, prevPlanCreatedAt string,
+	evaluations []EvaluationRow,
 	availableDays, weeklyDistanceCap string,
 	customPrompt string,
 ) string {
@@ -608,6 +804,13 @@ func buildGeneratePrompt(
 		sb.WriteString("```json\n")
 		sb.WriteString(prevPlanJSON)
 		sb.WriteString("\n```\n\n")
+	}
+
+	// Recent nightly evaluations from the previous ~2 weeks. Closes the planning
+	// loop by surfacing per-session adherence, fatigue flags, and any
+	// adjustments the coach already recommended.
+	if section := renderEvaluationsSection(evaluations); section != "" {
+		sb.WriteString(section)
 	}
 
 	// User's custom prompt additions.
