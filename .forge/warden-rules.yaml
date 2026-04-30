@@ -14765,3 +14765,35 @@ rules:
         Verify the optimistic update mutates all related flags so derived UI state (labels, filters, categorization) stays consistent immediately, not only after a server reload. If only one flag is flipped, ensure downstream predicates account for the transient state or remove the row from the affected list.
       source: copilot:PR#647
       added: "2026-04-20"
+    - id: cross-user-join-predicate
+      category: security
+      pattern: >-
+        SQL JOIN between user-scoped tables (e.g., evaluations/notes/sessions joined to workouts/items) where the join condition only matches on the foreign key id
+      check: >-
+        Verify the JOIN includes a user_id equality predicate (e.g., `w.user_id = e.user_id`) so a stale or mismatched foreign key cannot pull another user's row into the result. Foreign keys alone don't enforce user-scoping; every cross-table join touching user data must constrain by user_id.
+      source: copilot:PR#662
+      added: "2026-04-28"
+    - id: cross-user-data-leak-test
+      category: testing
+      pattern: >-
+        Tests for queries that filter by user_id but join across tables where the joined table's foreign key (e.g., workout_id) could reference rows owned by other users
+      check: >-
+        Verify there is a test that inserts a row for user A referencing a record owned by user B, and asserts the query does not return user B's data — this locks in protection against cross-user leaks via under-constrained JOINs
+      source: copilot:PR#662
+      added: "2026-04-28"
+    - id: sql-order-by-coalesce-mismatch
+      category: other
+      pattern: >-
+        SQL queries that filter or order by COALESCE/fallback expressions across columns (e.g. COALESCE(workout.started_at, eval.created_at)) where the rendered/displayed date is derived from a different field than the one used for ordering
+      check: >-
+        Verify the column used for SQL window filtering and ORDER BY matches the date actually shown to the user/LLM. If the displayed date comes from a different field (e.g. eval.Date) than the sort key, either do filtering/ordering in Go on the computed display date, or add a dedicated sortable column that matches the rendered value. Also confirm COALESCE handles empty strings (use NULLIF) and not just NULL when columns may store ''.
+      source: copilot:PR#662
+      added: "2026-04-28"
+    - id: test-realistic-timestamp-skew
+      category: testing
+      pattern: >-
+        Tests for ordering/filtering/windowing logic that involve records with both a logical date field (e.g., Evaluation.Date) and a separate created_at/inserted_at timestamp
+      check: >-
+        Verify the test inserts rows where the logical date and created_at intentionally differ (matching how the production job actually writes them, e.g., nightly job stamps Date=yesterday but created_at=today's run time), so off-by-one ordering and window-boundary bugs are caught rather than masked by setting both timestamps equal
+      source: copilot:PR#662
+      added: "2026-04-28"
