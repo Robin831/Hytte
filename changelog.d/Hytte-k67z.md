@@ -1,0 +1,2 @@
+category: Changed
+- **Dependency updates** - Bumped Go modules (`github.com/muktihari/fit` 0.27.3→0.28.0, `google.golang.org/api` 0.276.0→0.277.0, `modernc.org/sqlite` 1.49.1→1.50.0) and npm packages (`lucide-react` 1.8.0→1.14.0, `@tailwindcss/vite` 4.2.3→4.2.4, `i18next` 26.0.6→26.0.8, `i18next-http-backend` 3.0.5→3.0.6, `react-i18next` 17.0.4→17.0.6, `react-router-dom` 7.14.1→7.14.2, `tailwindcss` 4.2.3→4.2.4, `terser` 5.46.1→5.46.2, `typescript-eslint` 8.59.0→8.59.1, `vite` 8.0.9→8.0.10, `vitest` 4.1.4→4.1.5). (Hytte-k67z)
