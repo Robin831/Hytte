@@ -10409,9 +10409,9 @@ rules:
     - id: use-accessible-tabs-component
       category: ui
       pattern: >-
-        Custom tab UI built with buttons or divs using onClick and conditional styling to switch between tab panels
+        Custom tab UI built with buttons or divs using onClick and conditional styling to switch between tab panels, OR a new reusable tabs-related component or wrapper added outside web/src/components/ui/tabs.tsx that duplicates the shared Tabs/TabList/TabTrigger/TabPanel API or behavior
       check: >-
-        Verify the tab implementation uses the shared accessible Tabs/TabList/TabTrigger component from web/src/components/ui/tabs.tsx, or at minimum implements ARIA tab roles, roving tabIndex (only active tab tabbable), and keyboard navigation (Arrow keys, Home, End)
+        Verify the tab implementation uses (or composes/re-exports/extends) the shared accessible Tabs/TabList/TabTrigger/TabPanel component from web/src/components/ui/tabs.tsx instead of introducing a second tabs abstraction with overlapping accessibility and keyboard-navigation logic. At minimum, ARIA tab roles, roving tabIndex (only active tab tabbable), and keyboard navigation (Arrow keys, Home, End) must be present.
       source: copilot:PR#512
       added: "2026-04-04"
     - id: invalid-query-param-silent-fallback
@@ -13649,9 +13649,9 @@ rules:
     - id: new-page-needs-tests
       category: testing
       pattern: >-
-        A new page component is added under web/src/pages/ with non-trivial behavior such as data fetching, polling, optimistic updates, or user interactions
+        A new page component is added under web/src/pages/ — whether it contains non-trivial behavior (data fetching, polling, optimistic updates, user interactions) or simpler render logic with conditional display
       check: >-
-        Verify that a corresponding test file (e.g. PageName.test.tsx) exists that mocks fetch and covers at least the happy path plus one failure/revert path
+        Verify that a corresponding test file (e.g. PageName.test.tsx) exists that mocks fetch and covers at least the happy path plus one failure/edge-case path. For simpler pages, a basic render and key-element assertion is acceptable.
       source: copilot:PR#606
       added: "2026-04-09"
     - id: guard-zero-default-values-on-link
@@ -14784,7 +14784,7 @@ rules:
     - id: sql-order-by-coalesce-mismatch
       category: other
       pattern: >-
-        SQL queries that filter or order by COALESCE/fallback expressions across columns (e.g. COALESCE(workout.started_at, eval.created_at)) where the rendered/displayed date is derived from a different field than the one used for ordering
+        SQL queries that filter or order by COALESCE/fallback expressions across columns (e.g. COALESCE(workout.started_at, eval.created_at) where the rendered/displayed date is derived from a different field than the one used for ordering
       check: >-
         Verify the column used for SQL window filtering and ORDER BY matches the date actually shown to the user/LLM. If the displayed date comes from a different field (e.g. eval.Date) than the sort key, either do filtering/ordering in Go on the computed display date, or add a dedicated sortable column that matches the rendered value. Also confirm COALESCE handles empty strings (use NULLIF) and not just NULL when columns may store ''.
       source: copilot:PR#662
