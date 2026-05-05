@@ -288,7 +288,7 @@ describe('Suggestions – Run now flow', () => {
       expect(inFlightBtn).toBeDisabled()
     })
 
-    resolveRun?.({ ok: true, json: () => Promise.resolve({}) })
+    resolveRun!({ ok: true, json: () => Promise.resolve({}) })
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Run now/ })).not.toBeDisabled()
