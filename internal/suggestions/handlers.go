@@ -310,6 +310,14 @@ func PlanHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// bead_created is terminal — a linked bead already exists. Flipping
+		// status back to planned would leave bead_id/bead_created_at behind and
+		// produce an inconsistent row.
+		if existing.Status == StatusBeadCreated {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "cannot plan a suggestion with a linked bead"})
+			return
+		}
+
 		cfg, err := training.LoadClaudeConfig(db, user.ID)
 		if err != nil {
 			log.Printf("suggestions: load claude config for user %d: %v", user.ID, err)

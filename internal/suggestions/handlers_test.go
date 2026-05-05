@@ -777,6 +777,71 @@ func TestPlanHandlerReplacesPriorPlan(t *testing.T) {
 	}
 }
 
+func TestPlanHandlerCannotPlanBeadCreated(t *testing.T) {
+	d := setupTestDB(t)
+
+	id, err := Insert(context.Background(), d, Suggestion{
+		UserID: 1, PageSlug: "weather", Source: SourceClaude,
+		Type: TypeImprovement, Size: SizeS, Title: "X", Body: "b", Status: StatusBeadCreated,
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	router := mountAdmin(PlanHandler(d), http.MethodPost, "/api/suggestions/{id}/plan")
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/plan", id), nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for bead_created suggestion, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPlanHandlerCanPlanRejectedSuggestion(t *testing.T) {
+	d := setupTestDB(t)
+	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		return "recovery plan", nil
+	})()
+
+	id, err := Insert(context.Background(), d, Suggestion{
+		UserID: 1, PageSlug: "weather", Source: SourceClaude,
+		Type: TypeImprovement, Size: SizeS, Title: "X", Body: "b", Status: StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	if err := MarkRejected(context.Background(), d, id); err != nil {
+		t.Fatalf("mark rejected: %v", err)
+	}
+
+	router := mountAdmin(PlanHandler(d), http.MethodPost, "/api/suggestions/{id}/plan")
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/plan", id), nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 when re-planning rejected suggestion, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got Suggestion
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Status != StatusPlanned {
+		t.Fatalf("status: got %q want %q", got.Status, StatusPlanned)
+	}
+	if got.RejectedAt != nil {
+		t.Fatalf("expected rejected_at to be cleared after re-planning, got %v", got.RejectedAt)
+	}
+	if got.Plan != "recovery plan" {
+		t.Fatalf("plan: got %q want %q", got.Plan, "recovery plan")
+	}
+}
+
 func TestPlanHandlerRequiresClaudeEnabled(t *testing.T) {
 	d := setupTestDB(t)
 	// claude_enabled intentionally NOT set.
