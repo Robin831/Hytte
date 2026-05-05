@@ -35,7 +35,7 @@ export interface SuggestionCardProps {
   actionsSlot?: ReactNode
 }
 
-export function typeBadgeClass(type: SuggestionType): string {
+function typeBadgeClass(type: SuggestionType): string {
   switch (type) {
     case 'addition':
       return 'border-green-500/40 bg-green-500/15 text-green-300'
