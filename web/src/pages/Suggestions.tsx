@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../components/ui/skeleton'
 import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
 import { SuggestionCard, type Suggestion } from '../components/suggestions/SuggestionCard'
+import { SuggestionActions } from '../components/suggestions/SuggestionActions'
 
 type TabKey = 'pending' | 'planned' | 'rejected'
 
@@ -29,6 +30,12 @@ export default function Suggestions() {
   const refetch = useCallback(() => {
     setReloadKey(k => k + 1)
   }, [])
+
+  const handlePlanned = useCallback((updated: Suggestion) => {
+    setPending(prev => prev.filter(s => s.id !== updated.id))
+    setPlanned(prev => [updated, ...prev])
+    refetch()
+  }, [refetch])
 
   const failedToLoadMsg = t('suggestions.errors.failedToLoad')
 
@@ -104,7 +111,19 @@ export default function Suggestions() {
     return (
       <div className="space-y-3">
         {list.map(s => (
-          <SuggestionCard key={s.id} suggestion={s} />
+          <SuggestionCard
+            key={s.id}
+            suggestion={s}
+            actionsSlot={
+              s.status === 'rejected' ? null : (
+                <SuggestionActions
+                  suggestion={s}
+                  onPlanned={handlePlanned}
+                  onRejected={refetch}
+                />
+              )
+            }
+          />
         ))}
       </div>
     )
