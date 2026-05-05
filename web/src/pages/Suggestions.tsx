@@ -31,9 +31,9 @@ export default function Suggestions() {
 
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true)
-    setLoadError(null)
     ;(async () => {
+      setLoading(true)
+      setLoadError(null)
       try {
         const res = await fetch('/api/suggestions', {
           credentials: 'include',
