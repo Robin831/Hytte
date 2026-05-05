@@ -1,8 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useAuth } from './auth'
 import Sidebar from './components/Sidebar'
 import ProtectedRoute from './components/ProtectedRoute'
-import AdminRoute from './components/AdminRoute'
 import FeatureRoute from './components/FeatureRoute'
 import KioskPage from './pages/KioskPage'
 import TodayView from './pages/TodayView'
@@ -77,8 +75,6 @@ import MathAchievements from './pages/MathAchievements'
 import { AchievementUnlockOverlay } from './components/regnemester/AchievementUnlockOverlay'
 
 function MainLayout() {
-  const { user } = useAuth()
-
   return (
     <div className="flex min-h-screen bg-gray-900 text-white">
       <Sidebar />
@@ -634,9 +630,9 @@ function MainLayout() {
           <Route
             path="/admin"
             element={
-              <ProtectedRoute>
-                {user?.is_admin ? <Admin /> : <Navigate to="/" replace />}
-              </ProtectedRoute>
+              <FeatureRoute requireAdmin>
+                <Admin />
+              </FeatureRoute>
             }
           />
 
@@ -644,11 +640,9 @@ function MainLayout() {
           <Route
             path="/suggestions"
             element={
-              <ProtectedRoute>
-                <AdminRoute>
-                  <Suggestions />
-                </AdminRoute>
-              </ProtectedRoute>
+              <FeatureRoute requireAdmin>
+                <Suggestions />
+              </FeatureRoute>
             }
           />
 
