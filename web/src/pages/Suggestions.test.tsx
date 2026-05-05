@@ -37,7 +37,6 @@ vi.mock('react-i18next', () => ({
 
 function makeSuggestion(overrides: Partial<Suggestion> & { id: number }): Suggestion {
   return {
-    id: overrides.id,
     user_id: 1,
     generated_at: '2026-05-01T00:00:00Z',
     page_slug: 'dashboard',
@@ -268,7 +267,7 @@ describe('Suggestions – Run now flow', () => {
     let resolveRun: ((v: { ok: boolean; json: () => Promise<unknown> }) => void) | null = null
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       if (url === '/api/suggestions/run' && init?.method === 'POST') {
-        return new Promise(resolve => {
+        return new Promise<{ ok: boolean; json: () => Promise<unknown> }>(resolve => {
           resolveRun = resolve
         })
       }
