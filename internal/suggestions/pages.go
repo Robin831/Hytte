@@ -1,5 +1,7 @@
 package suggestions
 
+import "fmt"
+
 // Page describes a single Hytte page that can receive AI-generated improvement
 // suggestions. The registry is hand-curated rather than auto-discovered so that
 // each page comes with a meaningful description and an explicit list of source
@@ -90,7 +92,9 @@ var Pages = []Page{
 	},
 }
 
-// EnabledPages returns the subset of Pages with Enabled == true.
+// EnabledPages returns the subset of Pages with Enabled == true. This is the
+// canonical filter used at the handler boundary; downstream functions trust
+// that the slice they receive is already filtered.
 func EnabledPages() []Page {
 	out := make([]Page, 0, len(Pages))
 	for _, p := range Pages {
@@ -99,4 +103,16 @@ func EnabledPages() []Page {
 		}
 	}
 	return out
+}
+
+// init enforces that page slugs are unique. A duplicate slug would silently
+// merge prompts and confuse stats — fail loud at startup instead of in prod.
+func init() {
+	seen := make(map[string]struct{}, len(Pages))
+	for _, p := range Pages {
+		if _, dup := seen[p.Slug]; dup {
+			panic(fmt.Sprintf("suggestions: duplicate page slug %q in registry", p.Slug))
+		}
+		seen[p.Slug] = struct{}{}
+	}
 }

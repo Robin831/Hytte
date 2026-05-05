@@ -18,18 +18,14 @@ import (
 const OverallRunTimeout = 10 * time.Minute
 
 // RunHandler triggers a synchronous suggestions-generation pass for all enabled
-// pages in the registry. Admin-only.
+// pages in the registry. Admin-only — relies on auth.RequireAdmin upstream to
+// guarantee a non-nil admin user in the request context.
 //
 // POST /api/suggestions/run
 // Response: { "generated": int, "errors": int }
 func RunHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
-		if user == nil {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-			return
-		}
-
 		cfg, err := training.LoadClaudeConfig(db, user.ID)
 		if err != nil {
 			log.Printf("suggestions: load claude config for user %d: %v", user.ID, err)

@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -67,9 +66,13 @@ var validSizes = map[string]bool{
 // RunSuggestionsForPages iterates over pages, calling Claude once per page to
 // generate three improvement suggestions and inserting them as pending rows
 // owned by userID. Per-page errors are logged but do not abort the run, so a
-// single Claude failure or malformed-JSON page does not lose the rest.
+// single Claude failure or malformed-JSON page does not lose the rest. The
+// caller is responsible for filtering pages by Enabled (see EnabledPages).
 //
-// Returns counts of inserted suggestions and pages that errored.
+// Returns counts of inserted suggestions and total errors. Errors include both
+// page-level failures (Claude call, JSON parse) and per-row insert failures, so
+// "13 generated, 2 errors" tells the operator that two intended suggestions did
+// not land in the DB.
 func RunSuggestionsForPages(
 	ctx context.Context,
 	db *sql.DB,
@@ -80,39 +83,45 @@ func RunSuggestionsForPages(
 	var result RunResult
 
 	for _, page := range pages {
-		if !page.Enabled {
-			continue
+		if err := ctx.Err(); err != nil {
+			log.Printf("suggestions: context done before page %q: %v", page.Slug, err)
+			result.Errors++
+			break
 		}
-		inserted, err := runForPage(ctx, db, cfg, userID, page)
+		inserted, failed, err := runForPage(ctx, db, cfg, userID, page)
+		result.Generated += inserted
+		result.Errors += failed
 		if err != nil {
 			result.Errors++
 			log.Printf("suggestions: page %q errored: %v", page.Slug, err)
-			continue
 		}
-		result.Generated += inserted
 	}
 
 	return result
 }
 
 // runForPage handles a single page end-to-end: build prompt, call Claude (with
-// one retry on malformed JSON), and insert the resulting rows.
+// one retry on malformed JSON), and insert the resulting rows. Returns the
+// number of rows successfully inserted, the number of per-row insert failures,
+// and a page-level error (Claude call / JSON parse). Per-row insert failures
+// are reported via the second return value so the caller can surface them in
+// the overall error count.
 func runForPage(
 	ctx context.Context,
 	db *sql.DB,
 	cfg *training.ClaudeConfig,
 	userID int64,
 	page Page,
-) (int, error) {
+) (inserted int, failed int, err error) {
 	pageCtx, cancel := context.WithTimeout(ctx, PerPageTimeout)
 	defer cancel()
 
 	sources := loadSourceFiles(page.SourceFiles)
 	gitLog := loadGitLog(pageCtx, page.SourceFiles)
 
-	recent, err := recentForPage(pageCtx, db, userID, page.Slug, recentSuggestionsWindowDays)
-	if err != nil {
-		log.Printf("suggestions: load recent for %q: %v; continuing without", page.Slug, err)
+	recent, recentErr := recentForPage(pageCtx, db, userID, page.Slug, recentSuggestionsWindowDays)
+	if recentErr != nil {
+		log.Printf("suggestions: load recent for %q: %v; continuing without", page.Slug, recentErr)
 		recent = nil
 	}
 
@@ -120,11 +129,10 @@ func runForPage(
 
 	suggestions, err := callAndParse(pageCtx, cfg, prompt)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	now := time.Now().UTC()
-	inserted := 0
 	for _, sg := range suggestions {
 		row := Suggestion{
 			UserID:      userID,
@@ -137,16 +145,14 @@ func runForPage(
 			Body:        sg.Body,
 			Status:      StatusPending,
 		}
-		if _, err := Insert(pageCtx, db, row); err != nil {
-			log.Printf("suggestions: insert for %q: %v", page.Slug, err)
+		if _, insErr := Insert(pageCtx, db, row); insErr != nil {
+			log.Printf("suggestions: insert for %q: %v", page.Slug, insErr)
+			failed++
 			continue
 		}
 		inserted++
 	}
-	if inserted == 0 {
-		return 0, errors.New("no suggestions inserted")
-	}
-	return inserted, nil
+	return inserted, failed, nil
 }
 
 // callAndParse calls Claude and parses the response. On a malformed JSON

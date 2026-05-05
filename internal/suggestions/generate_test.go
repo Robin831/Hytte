@@ -3,6 +3,7 @@ package suggestions
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 
@@ -95,7 +96,7 @@ func TestRunSuggestionsForPagesContinuesAfterPerPageError(t *testing.T) {
 	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
 		// Fail entirely on the weather page; succeed on notes.
 		// The prompt embeds the page slug, so we look for it.
-		if contains(prompt, "Slug: weather") {
+		if strings.Contains(prompt, "Slug: weather") {
 			return "", errors.New("simulated claude failure")
 		}
 		return validJSONResponse, nil
@@ -122,6 +123,27 @@ func TestRunSuggestionsForPagesContinuesAfterPerPageError(t *testing.T) {
 	}
 	if notesCount != 3 {
 		t.Fatalf("notes: expected 3 rows, got %d", notesCount)
+	}
+}
+
+func TestRunSuggestionsForPagesCountsPerRowInsertFailures(t *testing.T) {
+	d := setupTestDB(t)
+
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		return validJSONResponse, nil
+	})()
+
+	// Use a non-existent user_id so the FK constraint fails for every Insert.
+	// The Claude call still succeeds, so this isolates per-row failures from
+	// page-level errors.
+	res := RunSuggestionsForPages(context.Background(), d, dummyCfg(), 9999, []Page{
+		{Slug: "weather", Title: "Weather", Enabled: true},
+	})
+	if res.Generated != 0 {
+		t.Fatalf("expected 0 generated, got %d", res.Generated)
+	}
+	if res.Errors != 3 {
+		t.Fatalf("expected 3 per-row errors counted, got %d", res.Errors)
 	}
 }
 
@@ -155,17 +177,4 @@ func TestParseSuggestionsResponseStripsMarkdownFence(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("expected 3 items, got %d", len(got))
 	}
-}
-
-// contains is a small helper kept local to avoid pulling in strings just for one match.
-func contains(haystack, needle string) bool {
-	if len(needle) == 0 {
-		return true
-	}
-	for i := 0; i+len(needle) <= len(haystack); i++ {
-		if haystack[i:i+len(needle)] == needle {
-			return true
-		}
-	}
-	return false
 }

@@ -8,10 +8,20 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/db"
+	"github.com/Robin831/Hytte/internal/encryption"
 )
 
+// setupTestDB returns a fresh in-memory database with a single admin user and
+// pins the encryption key so EncryptField/DecryptField produce stable, hermetic
+// output. Without t.Setenv("ENCRYPTION_KEY", ...) tests would either share the
+// developer's auto-generated key file (non-hermetic, fails on a fresh checkout)
+// or fail outright in CI where the user config dir may not be writable.
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
+	t.Setenv("ENCRYPTION_KEY", "test-encryption-key-for-suggestions-tests")
+	encryption.ResetEncryptionKey()
+	t.Cleanup(func() { encryption.ResetEncryptionKey() })
+
 	d, err := db.Init(":memory:")
 	if err != nil {
 		t.Fatalf("init test db: %v", err)

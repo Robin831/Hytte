@@ -122,8 +122,8 @@ func Insert(ctx context.Context, db *sql.DB, s Suggestion) (int64, error) {
 }
 
 // ListByStatus returns all suggestions for a user filtered by status, newest first.
-// Encrypted fields are decrypted; on decrypt error, the ciphertext is returned and
-// the error is logged (per project convention for legacy plaintext compatibility).
+// Encrypted fields are decrypted; on decrypt error the value is replaced with an
+// empty string and the error is logged (see decryptField for rationale).
 func ListByStatus(ctx context.Context, db *sql.DB, userID int64, status string) ([]Suggestion, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT id, user_id, generated_at, page_slug, source, type, size,
@@ -248,14 +248,14 @@ func recentForPage(ctx context.Context, db *sql.DB, userID int64, pageSlug strin
 // Accepts either *sql.Row or *sql.Rows via the rowScanner interface.
 func scanSuggestion(scanner rowScanner) (Suggestion, error) {
 	var (
-		s            Suggestion
-		generatedAt  string
-		bodyEnc      string
-		feedbackEnc  sql.NullString
-		planEnc      sql.NullString
-		beadID       sql.NullString
-		rejectedAt   sql.NullString
-		plannedAt    sql.NullString
+		s             Suggestion
+		generatedAt   string
+		bodyEnc       string
+		feedbackEnc   sql.NullString
+		planEnc       sql.NullString
+		beadID        sql.NullString
+		rejectedAt    sql.NullString
+		plannedAt     sql.NullString
 		beadCreatedAt sql.NullString
 	)
 	if err := scanner.Scan(
@@ -266,32 +266,32 @@ func scanSuggestion(scanner rowScanner) (Suggestion, error) {
 		return s, err
 	}
 
-	if t, err := parseTimeFlexible(generatedAt); err == nil {
+	if t, err := parseTimestamp(generatedAt); err == nil {
 		s.GeneratedAt = t
 	}
 
-	s.Body = decryptOrFallback(bodyEnc, "body", s.ID)
+	s.Body = decryptField(bodyEnc, "body", s.ID)
 	if feedbackEnc.Valid {
-		s.Feedback = decryptOrFallback(feedbackEnc.String, "feedback", s.ID)
+		s.Feedback = decryptField(feedbackEnc.String, "feedback", s.ID)
 	}
 	if planEnc.Valid {
-		s.Plan = decryptOrFallback(planEnc.String, "plan", s.ID)
+		s.Plan = decryptField(planEnc.String, "plan", s.ID)
 	}
 	if beadID.Valid {
 		s.BeadID = beadID.String
 	}
 	if rejectedAt.Valid {
-		if t, err := parseTimeFlexible(rejectedAt.String); err == nil {
+		if t, err := parseTimestamp(rejectedAt.String); err == nil {
 			s.RejectedAt = &t
 		}
 	}
 	if plannedAt.Valid {
-		if t, err := parseTimeFlexible(plannedAt.String); err == nil {
+		if t, err := parseTimestamp(plannedAt.String); err == nil {
 			s.PlannedAt = &t
 		}
 	}
 	if beadCreatedAt.Valid {
-		if t, err := parseTimeFlexible(beadCreatedAt.String); err == nil {
+		if t, err := parseTimestamp(beadCreatedAt.String); err == nil {
 			s.BeadCreatedAt = &t
 		}
 	}
@@ -303,14 +303,17 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
-// decryptOrFallback returns the decrypted value, or the original ciphertext
-// with a logged warning if decryption fails. This matches the existing project
-// convention for handling legacy plaintext values gracefully.
-func decryptOrFallback(value, field string, id int64) string {
+// decryptField returns the decrypted plaintext, or an empty string with a
+// logged warning if decryption fails. We deliberately do NOT fall back to the
+// ciphertext on error — that would leak unreadable encrypted bytes into the
+// API response. Legacy plaintext values (without the enc: prefix) are passed
+// through transparently by encryption.DecryptField itself, so they never reach
+// this error path.
+func decryptField(value, field string, id int64) string {
 	dec, err := encryption.DecryptField(value)
 	if err != nil {
-		log.Printf("suggestions: decrypt %s for id=%d failed: %v; returning ciphertext", field, id, err)
-		return value
+		log.Printf("suggestions: decrypt %s for id=%d failed (returning empty): %v", field, id, err)
+		return ""
 	}
 	return dec
 }
@@ -336,16 +339,11 @@ func nullableTime(t *time.Time) any {
 	return t.UTC().Format(time.RFC3339)
 }
 
-func parseTimeFlexible(s string) (time.Time, error) {
+func parseTimestamp(s string) (time.Time, error) {
 	if s == "" {
 		return time.Time{}, errors.New("empty time string")
 	}
-	for _, layout := range []string{time.RFC3339, "2006-01-02 15:04:05", "2006-01-02T15:04:05Z"} {
-		if t, err := time.Parse(layout, s); err == nil {
-			return t, nil
-		}
-	}
-	return time.Time{}, fmt.Errorf("unparseable time %q", s)
+	return time.Parse(time.RFC3339, s)
 }
 
 func checkRowsAffected(res sql.Result, id int64) error {
