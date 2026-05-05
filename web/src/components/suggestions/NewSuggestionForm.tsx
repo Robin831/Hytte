@@ -46,7 +46,8 @@ function byteLength(value: string): number {
 }
 
 export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFormProps) {
-  const { t } = useTranslation('common')
+  const { t } = useTranslation('suggestions')
+  const { t: tCommon } = useTranslation('common')
   const titleId = useId()
   const pageId = useId()
   const titleFieldId = useId()
@@ -95,14 +96,14 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
           signal: controller.signal,
         })
         if (!res.ok) {
-          throw new Error(t('suggestions.form.errors.failedToLoadPages'))
+          throw new Error(t('form.errors.failedToLoadPages'))
         }
         const data = (await res.json()) as PageOption[]
         setPages(Array.isArray(data) ? data : [])
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
         setPagesError(
-          err instanceof Error ? err.message : t('suggestions.form.errors.failedToLoadPages'),
+          err instanceof Error ? err.message : t('form.errors.failedToLoadPages'),
         )
       } finally {
         if (!controller.signal.aborted) setPagesLoading(false)
@@ -140,27 +141,27 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
   function validate(): FieldErrors {
     const next: FieldErrors = {}
     if (!type) {
-      next.type = t('suggestions.form.errors.typeRequired')
+      next.type = t('form.errors.typeRequired')
     }
     if (!size) {
-      next.size = t('suggestions.form.errors.sizeRequired')
+      next.size = t('form.errors.sizeRequired')
     }
     if (!pageSlug) {
-      next.page = t('suggestions.form.errors.pageRequired')
+      next.page = t('form.errors.pageRequired')
     } else if ((type === 'new_page') !== (pageSlug === NEW_PAGE_SLUG)) {
-      next.page = t('suggestions.form.errors.newPageMismatch')
+      next.page = t('form.errors.newPageMismatch')
     }
     const trimmedTitle = title.trim()
     if (!trimmedTitle) {
-      next.title = t('suggestions.form.errors.titleRequired')
+      next.title = t('form.errors.titleRequired')
     } else if (trimmedTitle.length > TITLE_MAX) {
-      next.title = t('suggestions.form.errors.titleTooLong', { max: TITLE_MAX })
+      next.title = t('form.errors.titleTooLong', { max: TITLE_MAX })
     }
     const trimmedBody = body.trim()
     if (!trimmedBody) {
-      next.body = t('suggestions.form.errors.bodyRequired')
+      next.body = t('form.errors.bodyRequired')
     } else if (byteLength(trimmedBody) > BODY_MAX_BYTES) {
-      next.body = t('suggestions.form.errors.bodyTooLong', { max: BODY_MAX_BYTES })
+      next.body = t('form.errors.bodyTooLong', { max: BODY_MAX_BYTES })
     }
     return next
   }
@@ -188,7 +189,7 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
         }),
       })
       if (!res.ok) {
-        let msg = t('suggestions.form.errors.failedToCreate')
+        let msg = t('form.errors.failedToCreate')
         try {
           const data = (await res.json()) as { error?: string }
           if (data?.error) msg = data.error
@@ -201,7 +202,7 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
       onCreated(created)
     } catch (err) {
       setSubmitError(
-        err instanceof Error ? err.message : t('suggestions.form.errors.failedToCreate'),
+        err instanceof Error ? err.message : t('form.errors.failedToCreate'),
       )
     } finally {
       setSubmitting(false)
@@ -223,7 +224,7 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
     >
       <DialogHeader
         id={titleId}
-        title={t('suggestions.form.title')}
+        title={t('form.title')}
         onClose={submitting ? () => {} : onClose}
       />
       <form onSubmit={handleSubmit} noValidate>
@@ -231,7 +232,7 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
           <div className="space-y-4">
             <div>
               <label htmlFor={typeId} className="block text-sm font-medium text-gray-300 mb-1">
-                {t('suggestions.form.fields.type')}
+                {t('form.fields.type')}
               </label>
               <select
                 id={typeId}
@@ -242,10 +243,10 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
                 aria-describedby={errors.type ? typeErrId : undefined}
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 disabled:opacity-50 [color-scheme:dark]"
               >
-                <option value="">{t('suggestions.form.placeholders.type')}</option>
+                <option value="">{t('form.placeholders.type')}</option>
                 {TYPE_OPTIONS.map(opt => (
                   <option key={opt} value={opt}>
-                    {t(`suggestions.card.types.${opt}`)}
+                    {t(`card.types.${opt}`)}
                   </option>
                 ))}
               </select>
@@ -258,7 +259,7 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
 
             <div>
               <label htmlFor={pageId} className="block text-sm font-medium text-gray-300 mb-1">
-                {t('suggestions.form.fields.page')}
+                {t('form.fields.page')}
               </label>
               <select
                 id={pageId}
@@ -271,8 +272,8 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
               >
                 <option value="">
                   {pagesLoading
-                    ? t('status.loading')
-                    : t('suggestions.form.placeholders.page')}
+                    ? tCommon('status.loading')
+                    : t('form.placeholders.page')}
                 </option>
                 {visiblePages.map(p => (
                   <option key={p.slug} value={p.slug}>
@@ -294,7 +295,7 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
 
             <div>
               <label htmlFor={sizeId} className="block text-sm font-medium text-gray-300 mb-1">
-                {t('suggestions.form.fields.size')}
+                {t('form.fields.size')}
               </label>
               <select
                 id={sizeId}
@@ -305,10 +306,10 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
                 aria-describedby={errors.size ? sizeErrId : undefined}
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 disabled:opacity-50 [color-scheme:dark]"
               >
-                <option value="">{t('suggestions.form.placeholders.size')}</option>
+                <option value="">{t('form.placeholders.size')}</option>
                 {SIZE_OPTIONS.map(opt => (
                   <option key={opt} value={opt}>
-                    {t(`suggestions.card.sizes.${opt}`)}
+                    {t(`card.sizes.${opt}`)}
                   </option>
                 ))}
               </select>
@@ -321,14 +322,14 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
 
             <div>
               <label htmlFor={titleFieldId} className="block text-sm font-medium text-gray-300 mb-1">
-                {t('suggestions.form.fields.title')}
+                {t('form.fields.title')}
               </label>
               <input
                 id={titleFieldId}
                 type="text"
                 value={title}
                 onChange={e => setTitle(e.target.value)}
-                placeholder={t('suggestions.form.placeholders.title')}
+                placeholder={t('form.placeholders.title')}
                 maxLength={TITLE_MAX}
                 disabled={submitting}
                 aria-invalid={errors.title ? true : undefined}
@@ -348,20 +349,20 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
                     titleLen > TITLE_MAX ? 'text-red-300' : 'text-gray-500'
                   }`}
                 >
-                  {t('suggestions.form.charCount', { count: titleLen, max: TITLE_MAX })}
+                  {t('form.charCount', { count: titleLen, max: TITLE_MAX })}
                 </span>
               </div>
             </div>
 
             <div>
               <label htmlFor={bodyFieldId} className="block text-sm font-medium text-gray-300 mb-1">
-                {t('suggestions.form.fields.body')}
+                {t('form.fields.body')}
               </label>
               <textarea
                 id={bodyFieldId}
                 value={body}
                 onChange={e => setBody(e.target.value)}
-                placeholder={t('suggestions.form.placeholders.body')}
+                placeholder={t('form.placeholders.body')}
                 rows={6}
                 disabled={submitting}
                 aria-invalid={errors.body ? true : undefined}
@@ -381,7 +382,7 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
                     bodyBytes > BODY_MAX_BYTES ? 'text-red-300' : 'text-gray-500'
                   }`}
                 >
-                  {t('suggestions.form.byteCount', { count: bodyBytes, max: BODY_MAX_BYTES })}
+                  {t('form.byteCount', { count: bodyBytes, max: BODY_MAX_BYTES })}
                 </span>
               </div>
             </div>
@@ -404,7 +405,7 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
             disabled={submitting}
             className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors disabled:opacity-50"
           >
-            {t('suggestions.form.actions.cancel')}
+            {t('form.actions.cancel')}
           </button>
           <button
             type="submit"
@@ -414,8 +415,8 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
             {submitting && <Loader2 size={14} className="animate-spin" aria-hidden={true} />}
             <span>
               {submitting
-                ? t('suggestions.form.actions.submitting')
-                : t('suggestions.form.actions.submit')}
+                ? t('form.actions.submitting')
+                : t('form.actions.submit')}
             </span>
           </button>
         </DialogFooter>

@@ -16,7 +16,8 @@ interface ListResponse {
 }
 
 export default function Suggestions() {
-  const { t } = useTranslation('common')
+  const { t } = useTranslation('suggestions')
+  const { t: tCommon } = useTranslation('common')
   const [pending, setPending] = useState<Suggestion[]>([])
   const [planned, setPlanned] = useState<Suggestion[]>([])
   const [rejected, setRejected] = useState<Suggestion[]>([])
@@ -39,7 +40,7 @@ export default function Suggestions() {
     refetch()
   }, [refetch])
 
-  const failedToLoadMsg = t('suggestions.errors.failedToLoad')
+  const failedToLoadMsg = t('errors.failedToLoad')
 
   useEffect(() => {
     const controller = new AbortController()
@@ -88,11 +89,11 @@ export default function Suggestions() {
         credentials: 'include',
       })
       if (!res.ok) {
-        throw new Error(t('suggestions.errors.runFailed'))
+        throw new Error(t('errors.runFailed'))
       }
       refetch()
     } catch (err) {
-      setRunError(err instanceof Error ? err.message : t('suggestions.errors.runFailed'))
+      setRunError(err instanceof Error ? err.message : t('errors.runFailed'))
     } finally {
       setRunning(false)
     }
@@ -112,7 +113,7 @@ export default function Suggestions() {
     if (list.length === 0) {
       return (
         <p className="px-4 py-10 text-center text-sm text-gray-400">
-          {t(`suggestions.empty.${tab}` as const)}
+          {t(`empty.${tab}` as const)}
         </p>
       )
     }
@@ -144,10 +145,10 @@ export default function Suggestions() {
           <div className="flex items-center gap-3">
             <Lightbulb size={24} className="text-yellow-400 shrink-0" />
             <h1 className="text-2xl font-semibold text-white">
-              {t('nav.suggestions')}
+              {t('header.title')}
             </h1>
           </div>
-          <p className="text-sm text-gray-400">{t('suggestions.nextRunHint')}</p>
+          <p className="text-sm text-gray-400">{t('nextRunHint')}</p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -157,7 +158,7 @@ export default function Suggestions() {
             >
               <Play size={16} />
               <span>
-                {running ? t('suggestions.actions.running') : t('suggestions.actions.runNow')}
+                {running ? t('actions.running') : t('actions.runNow')}
               </span>
             </button>
             <button
@@ -166,7 +167,7 @@ export default function Suggestions() {
               className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm font-medium text-gray-200 hover:border-gray-600 hover:text-white"
             >
               <Plus size={16} />
-              <span>{t('suggestions.actions.newSuggestion')}</span>
+              <span>{t('actions.newSuggestion')}</span>
             </button>
           </div>
         </header>
@@ -176,15 +177,15 @@ export default function Suggestions() {
           onChange={v => setActiveTab(v as TabKey)}
           variant="segment"
         >
-          <TabList aria-label={t('nav.suggestions')} className="mb-4">
+          <TabList aria-label={t('header.title')} className="mb-4">
             <TabTrigger value="pending">
-              {t('suggestions.tabs.pending')} ({counts.pending})
+              {t('tabs.pending')} ({counts.pending})
             </TabTrigger>
             <TabTrigger value="planned">
-              {t('suggestions.tabs.planned')} ({counts.planned})
+              {t('tabs.planned')} ({counts.planned})
             </TabTrigger>
             <TabTrigger value="rejected">
-              {t('suggestions.tabs.rejected')} ({counts.rejected})
+              {t('tabs.rejected')} ({counts.rejected})
             </TabTrigger>
           </TabList>
 
@@ -198,7 +199,7 @@ export default function Suggestions() {
             </div>
           )}
           {loading && !hasData ? (
-            <div className="space-y-3" aria-label={t('skeleton.loading')}>
+            <div className="space-y-3" aria-label={tCommon('skeleton.loading')}>
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-24 w-full" />

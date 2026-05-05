@@ -3,6 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { NewSuggestionForm } from './NewSuggestionForm'
 import enCommon from '../../../public/locales/en/common.json'
+import enSuggestions from '../../../public/locales/en/suggestions.json'
 
 type JsonValue = string | number | boolean | null | JsonObject | JsonValue[]
 interface JsonObject { [key: string]: JsonValue }
@@ -29,9 +30,14 @@ function makeT(translations: JsonObject) {
   }
 }
 
+const namespaceMap: Record<string, JsonObject> = {
+  common: enCommon as unknown as JsonObject,
+  suggestions: enSuggestions as unknown as JsonObject,
+}
+
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: makeT(enCommon as unknown as JsonObject),
+  useTranslation: (ns: string = 'common') => ({
+    t: makeT(namespaceMap[ns] ?? (enCommon as unknown as JsonObject)),
     i18n: { language: 'en' },
   }),
   Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,

@@ -61,7 +61,7 @@ function formatLocalDate(dateStr: string, language: string, options?: Intl.DateT
 }
 
 export function SuggestionCard({ suggestion, actionsSlot }: SuggestionCardProps) {
-  const { t, i18n } = useTranslation('common')
+  const { t, i18n } = useTranslation('suggestions')
   const [expanded, setExpanded] = useState(false)
 
   const body = suggestion.body ?? ''
@@ -72,9 +72,9 @@ export function SuggestionCard({ suggestion, actionsSlot }: SuggestionCardProps)
 
   const bodyId = `suggestion-body-${suggestion.id}`
 
-  const typeLabel = t(`suggestions.card.types.${suggestion.type}`)
-  const sizeLabel = t(`suggestions.card.sizes.${suggestion.size}`)
-  const sourceLabel = t(`suggestions.card.source.${suggestion.source}`)
+  const typeLabel = t(`card.types.${suggestion.type}`)
+  const sizeLabel = t(`card.sizes.${suggestion.size}`)
+  const sourceLabel = t(`card.source.${suggestion.source}`)
   const generatedDate = formatLocalDate(suggestion.generated_at, i18n.language, {
     year: 'numeric',
     month: 'short',
@@ -117,7 +117,7 @@ export function SuggestionCard({ suggestion, actionsSlot }: SuggestionCardProps)
             >
               {expanded ? <ChevronUp size={14} aria-hidden={true} /> : <ChevronDown size={14} aria-hidden={true} />}
               <span>
-                {expanded ? t('suggestions.card.showLess') : t('suggestions.card.showMore')}
+                {expanded ? t('card.showLess') : t('card.showMore')}
               </span>
             </button>
           )}
