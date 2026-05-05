@@ -198,7 +198,11 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Delete("/kiosk/tokens/{id}", kiosk.DeleteTokenHandler(db))
 
 				// Suggestions: AI-generated page improvement ideas — admin only.
+				r.Get("/suggestions", suggestions.ListHandler(db))
+				r.Post("/suggestions", suggestions.CreateHandler(db))
 				r.Post("/suggestions/run", suggestions.RunHandler(db))
+				r.Post("/suggestions/{id}/reject", suggestions.RejectHandler(db))
+				r.Get("/suggestions/pages", suggestions.PagesHandler())
 
 				// Forge dashboard — admin only, registered only when FEATURE_FORGE_DASHBOARD=1.
 				// The feature flag is evaluated at startup; when disabled, these routes are
