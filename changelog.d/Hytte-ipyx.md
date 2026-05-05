@@ -1,0 +1,2 @@
+category: Added
+- **Suggestions backend foundation** - Added the database schema, page registry, generator, and admin-only `POST /api/suggestions/run` endpoint that asks Claude for three improvement ideas per curated page (weather, budget, notes, training, links). Suggestion bodies are encrypted at rest; per-page errors are isolated so one failure does not abort the whole run. UI lands in a follow-up bead. (Hytte-ipyx)

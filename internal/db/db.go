@@ -1531,6 +1531,28 @@ func createSchema(db *sql.DB) error {
 		UNIQUE(user_id, code)
 	);
 
+	CREATE TABLE IF NOT EXISTS suggestions (
+		id              INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id         INTEGER NOT NULL,
+		generated_at    TIMESTAMP NOT NULL,
+		page_slug       TEXT NOT NULL,
+		source          TEXT NOT NULL,
+		type            TEXT NOT NULL,
+		size            TEXT NOT NULL,
+		title           TEXT NOT NULL,
+		body_enc        TEXT NOT NULL,
+		status          TEXT NOT NULL,
+		feedback_enc    TEXT,
+		plan_enc        TEXT,
+		bead_id         TEXT,
+		rejected_at     TIMESTAMP,
+		planned_at      TIMESTAMP,
+		bead_created_at TIMESTAMP,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+	);
+	CREATE INDEX IF NOT EXISTS idx_suggestions_user_status ON suggestions(user_id, status);
+	CREATE INDEX IF NOT EXISTS idx_suggestions_page_slug ON suggestions(page_slug);
+
 	`
 
 	_, err := db.Exec(schema)
