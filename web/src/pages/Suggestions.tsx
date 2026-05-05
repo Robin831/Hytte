@@ -5,6 +5,7 @@ import { Skeleton } from '../components/ui/skeleton'
 import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
 import { SuggestionCard, type Suggestion } from '../components/suggestions/SuggestionCard'
 import { SuggestionActions } from '../components/suggestions/SuggestionActions'
+import { NewSuggestionForm } from '../components/suggestions/NewSuggestionForm'
 
 type TabKey = 'pending' | 'planned' | 'rejected'
 
@@ -26,6 +27,7 @@ export default function Suggestions() {
   const [running, setRunning] = useState(false)
   const [activeTab, setActiveTab] = useState<TabKey>('pending')
   const [reloadKey, setReloadKey] = useState(0)
+  const [newOpen, setNewOpen] = useState(false)
 
   const refetch = useCallback(() => {
     setReloadKey(k => k + 1)
@@ -97,8 +99,14 @@ export default function Suggestions() {
   }
 
   function handleNewSuggestion() {
-    // Wired up by a follow-up sub-task that adds the create-suggestion form.
+    setNewOpen(true)
   }
+
+  const handleCreated = useCallback(() => {
+    setNewOpen(false)
+    setActiveTab('pending')
+    refetch()
+  }, [refetch])
 
   function renderPanel(tab: TabKey, list: Suggestion[]) {
     if (list.length === 0) {
@@ -221,6 +229,11 @@ export default function Suggestions() {
           )}
         </Tabs>
       </div>
+      <NewSuggestionForm
+        open={newOpen}
+        onClose={() => setNewOpen(false)}
+        onCreated={handleCreated}
+      />
     </div>
   )
 }
