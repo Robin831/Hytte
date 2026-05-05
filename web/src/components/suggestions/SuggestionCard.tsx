@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { formatDate } from '../../utils/formatDate'
 
 export type SuggestionStatus = 'pending' | 'planned' | 'rejected' | 'bead_created'
 
@@ -52,8 +51,17 @@ function typeBadgeClass(type: SuggestionType): string {
 
 const COLLAPSED_BODY_LIMIT = 240
 
+function formatLocalDate(dateStr: string, language: string, options?: Intl.DateTimeFormatOptions): string {
+  const d = new Date(dateStr)
+  const opts: Intl.DateTimeFormatOptions = { ...options }
+  if (language === 'th' || language.startsWith('th-')) {
+    opts.calendar = 'gregory'
+  }
+  return d.toLocaleDateString(language, opts)
+}
+
 export function SuggestionCard({ suggestion, actionsSlot }: SuggestionCardProps) {
-  const { t } = useTranslation('common')
+  const { t, i18n } = useTranslation('common')
   const [expanded, setExpanded] = useState(false)
 
   const body = suggestion.body ?? ''
@@ -62,10 +70,12 @@ export function SuggestionCard({ suggestion, actionsSlot }: SuggestionCardProps)
     ? `${body.slice(0, COLLAPSED_BODY_LIMIT).trimEnd()}…`
     : body
 
+  const bodyId = `suggestion-body-${suggestion.id}`
+
   const typeLabel = t(`suggestions.card.types.${suggestion.type}`)
   const sizeLabel = t(`suggestions.card.sizes.${suggestion.size}`)
   const sourceLabel = t(`suggestions.card.source.${suggestion.source}`)
-  const generatedDate = formatDate(suggestion.generated_at, {
+  const generatedDate = formatLocalDate(suggestion.generated_at, i18n.language, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -94,7 +104,7 @@ export function SuggestionCard({ suggestion, actionsSlot }: SuggestionCardProps)
 
       {body && (
         <div className="mt-2">
-          <p className="whitespace-pre-wrap break-words text-sm text-gray-300">
+          <p id={bodyId} className="whitespace-pre-wrap break-words text-sm text-gray-300">
             {visibleBody}
           </p>
           {isLong && (
@@ -102,9 +112,10 @@ export function SuggestionCard({ suggestion, actionsSlot }: SuggestionCardProps)
               type="button"
               onClick={() => setExpanded(prev => !prev)}
               aria-expanded={expanded}
+              aria-controls={bodyId}
               className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-300 hover:text-blue-200"
             >
-              {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              {expanded ? <ChevronUp size={14} aria-hidden={true} /> : <ChevronDown size={14} aria-hidden={true} />}
               <span>
                 {expanded ? t('suggestions.card.showLess') : t('suggestions.card.showMore')}
               </span>
