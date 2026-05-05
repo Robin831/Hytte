@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Suggestions from './Suggestions'
 import enCommon from '../../public/locales/en/common.json'
@@ -120,9 +120,10 @@ describe('Suggestions – data fetch', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
 
     await waitFor(() => {
+      const activePanel = screen.getByRole('tabpanel')
       expect(
-        screen.getByText('Nothing planned. Plan a pending suggestion to see it here.'),
-      ).toBeInTheDocument()
+        within(activePanel).getByText('Nothing planned. Plan a pending suggestion to see it here.'),
+      ).toBeVisible()
     })
   })
 
