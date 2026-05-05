@@ -69,6 +69,42 @@
       "rejectFailed": "ปฏิเสธข้อเสนอแนะไม่สำเร็จ",
       "planFailed": "วางแผนข้อเสนอแนะไม่สำเร็จ"
     },
+    "form": {
+      "title": "ข้อเสนอแนะใหม่",
+      "fields": {
+        "page": "หน้า",
+        "title": "หัวข้อ",
+        "body": "เนื้อหา",
+        "type": "ประเภท",
+        "size": "ขนาด"
+      },
+      "placeholders": {
+        "page": "เลือกหน้า",
+        "title": "สรุปสั้น ๆ…",
+        "body": "อธิบายสิ่งที่คุณอยากเห็น",
+        "type": "เลือกประเภท",
+        "size": "เลือกขนาด"
+      },
+      "charCount": "{{count}}/{{max}}",
+      "byteCount": "{{count}} / {{max}} ไบต์",
+      "actions": {
+        "submit": "สร้างข้อเสนอแนะ",
+        "submitting": "กำลังสร้าง…",
+        "cancel": "ยกเลิก"
+      },
+      "errors": {
+        "titleRequired": "ต้องระบุหัวข้อ",
+        "titleTooLong": "หัวข้อต้องมีความยาวไม่เกิน {{max}} ตัวอักษร",
+        "bodyRequired": "ต้องระบุเนื้อหา",
+        "bodyTooLong": "เนื้อหาต้องมีขนาดไม่เกิน {{max}} ไบต์",
+        "pageRequired": "ต้องระบุหน้า",
+        "typeRequired": "ต้องระบุประเภท",
+        "sizeRequired": "ต้องระบุขนาด",
+        "newPageMismatch": "ประเภทหน้าใหม่สามารถเลือกได้เฉพาะรายการหน้าใหม่เท่านั้น",
+        "failedToCreate": "สร้างข้อเสนอแนะไม่สำเร็จ",
+        "failedToLoadPages": "โหลดรายการหน้าไม่สำเร็จ"
+      }
+    },
     "card": {
       "showMore": "แสดงเพิ่มเติม",
       "showLess": "แสดงน้อยลง",

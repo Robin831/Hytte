@@ -69,6 +69,42 @@
       "rejectFailed": "Failed to reject suggestion",
       "planFailed": "Failed to plan suggestion"
     },
+    "form": {
+      "title": "New suggestion",
+      "fields": {
+        "page": "Page",
+        "title": "Title",
+        "body": "Body",
+        "type": "Type",
+        "size": "Size"
+      },
+      "placeholders": {
+        "page": "Select a page",
+        "title": "Short summary…",
+        "body": "Describe what you'd like to see",
+        "type": "Select a type",
+        "size": "Select a size"
+      },
+      "charCount": "{{count}}/{{max}}",
+      "byteCount": "{{count}} / {{max}} bytes",
+      "actions": {
+        "submit": "Create suggestion",
+        "submitting": "Creating…",
+        "cancel": "Cancel"
+      },
+      "errors": {
+        "titleRequired": "Title is required",
+        "titleTooLong": "Title must be at most {{max}} characters",
+        "bodyRequired": "Body is required",
+        "bodyTooLong": "Body must be at most {{max}} bytes",
+        "pageRequired": "Page is required",
+        "typeRequired": "Type is required",
+        "sizeRequired": "Size is required",
+        "newPageMismatch": "New page type can only target the New page entry",
+        "failedToCreate": "Failed to create suggestion",
+        "failedToLoadPages": "Failed to load pages"
+      }
+    },
     "card": {
       "showMore": "Show more",
       "showLess": "Show less",

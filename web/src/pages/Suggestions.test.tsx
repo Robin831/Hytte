@@ -302,7 +302,7 @@ describe('Suggestions – Run now flow', () => {
 })
 
 describe('Suggestions – header', () => {
-  it('renders title, next-run hint and the New suggestion stub', async () => {
+  it('renders title, next-run hint and the New suggestion button', async () => {
     vi.stubGlobal('fetch', vi.fn(() =>
       Promise.resolve({
         ok: true,
@@ -315,6 +315,38 @@ describe('Suggestions – header', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Suggestions' })).toBeInTheDocument()
     expect(screen.getByText('Next run: tonight 03:00')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /New suggestion/ })).toBeInTheDocument()
+  })
+
+  it('opens the new-suggestion form when the New suggestion button is clicked', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/suggestions/pages') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([
+            { slug: 'weather', title: 'Weather' },
+            { slug: '__new_page__', title: 'New page' },
+          ]),
+        })
+      }
+      if (url === '/api/suggestions') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ pending: [], planned: [], rejected: [] }),
+        })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    const button = await screen.findByRole('button', { name: /New suggestion/ })
+    fireEvent.click(button)
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+    expect(screen.getByRole('heading', { name: 'New suggestion' })).toBeInTheDocument()
   })
 })
 

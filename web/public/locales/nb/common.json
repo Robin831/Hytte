@@ -69,6 +69,42 @@
       "rejectFailed": "Kunne ikke avvise forslag",
       "planFailed": "Kunne ikke planlegge forslag"
     },
+    "form": {
+      "title": "Nytt forslag",
+      "fields": {
+        "page": "Side",
+        "title": "Tittel",
+        "body": "Innhold",
+        "type": "Type",
+        "size": "Størrelse"
+      },
+      "placeholders": {
+        "page": "Velg en side",
+        "title": "Kort sammendrag…",
+        "body": "Beskriv hva du ønsker å se",
+        "type": "Velg en type",
+        "size": "Velg en størrelse"
+      },
+      "charCount": "{{count}}/{{max}}",
+      "byteCount": "{{count}} / {{max}} byte",
+      "actions": {
+        "submit": "Opprett forslag",
+        "submitting": "Oppretter…",
+        "cancel": "Avbryt"
+      },
+      "errors": {
+        "titleRequired": "Tittel er påkrevd",
+        "titleTooLong": "Tittelen kan være maks {{max}} tegn",
+        "bodyRequired": "Innhold er påkrevd",
+        "bodyTooLong": "Innhold kan være maks {{max}} byte",
+        "pageRequired": "Side er påkrevd",
+        "typeRequired": "Type er påkrevd",
+        "sizeRequired": "Størrelse er påkrevd",
+        "newPageMismatch": "Type «Ny side» kan bare peke på oppføringen «Ny side»",
+        "failedToCreate": "Kunne ikke opprette forslag",
+        "failedToLoadPages": "Kunne ikke laste sider"
+      }
+    },
     "card": {
       "showMore": "Vis mer",
       "showLess": "Vis mindre",
