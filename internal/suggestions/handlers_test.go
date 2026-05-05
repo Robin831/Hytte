@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/training"
@@ -483,6 +484,383 @@ func TestRejectHandlerIsIdempotent(t *testing.T) {
 	}
 	if got.Status != StatusRejected {
 		t.Fatalf("status: %q", got.Status)
+	}
+}
+
+// --- PlanHandler -------------------------------------------------------------
+
+// withPlanTimeout temporarily shrinks PlanTimeout so the timeout-path test can
+// run in milliseconds rather than the production 120s. Returns a restore fn.
+func withPlanTimeout(d time.Duration) func() {
+	prev := PlanTimeout
+	PlanTimeout = d
+	return func() { PlanTimeout = prev }
+}
+
+func TestPlanHandlerRejectsNonAdmin(t *testing.T) {
+	d := setupTestDB(t)
+	router := mountAdmin(PlanHandler(d), http.MethodPost, "/api/suggestions/{id}/plan")
+
+	req := adminContext(httptest.NewRequest(http.MethodPost, "/api/suggestions/1/plan", nil), 99, false)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-admin, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPlanHandlerSuccess(t *testing.T) {
+	d := setupTestDB(t)
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather", Enabled: true}})()
+
+	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	const cannedPlan = "### Scope\nDo the thing.\n\n### Files to touch\n- foo.go\n\n### Acceptance criteria\n- It works.\n\n### Non-goals\n- Anything else."
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		return cannedPlan, nil
+	})()
+
+	id, err := Insert(context.Background(), d, Suggestion{
+		UserID: 1, PageSlug: "weather", Source: SourceClaude,
+		Type: TypeImprovement, Size: SizeS, Title: "X", Body: "b", Status: StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	router := mountAdmin(PlanHandler(d), http.MethodPost, "/api/suggestions/{id}/plan")
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/plan", id), nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got Suggestion
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Status != StatusPlanned {
+		t.Fatalf("status: got %q want %q", got.Status, StatusPlanned)
+	}
+	if got.Plan != cannedPlan {
+		t.Fatalf("plan round-trip: got %q want %q", got.Plan, cannedPlan)
+	}
+	if got.PlannedAt == nil {
+		t.Fatal("expected planned_at to be set")
+	}
+}
+
+func TestPlanHandlerPassesFeedbackIntoPrompt(t *testing.T) {
+	d := setupTestDB(t)
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather", Enabled: true}})()
+
+	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	const feedback = "Use Redis instead of an in-memory map; we already run Redis."
+	var capturedPrompt string
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		capturedPrompt = prompt
+		return "ok plan", nil
+	})()
+
+	id, err := Insert(context.Background(), d, Suggestion{
+		UserID: 1, PageSlug: "weather", Source: SourceClaude,
+		Type: TypeImprovement, Size: SizeS, Title: "X", Body: "b", Status: StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	payload := fmt.Sprintf(`{"feedback":%q}`, feedback)
+	router := mountAdmin(PlanHandler(d), http.MethodPost, "/api/suggestions/{id}/plan")
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/plan", id), strings.NewReader(payload)), 1, true)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(capturedPrompt, feedback) {
+		t.Fatalf("expected captured prompt to contain feedback verbatim, got:\n%s", capturedPrompt)
+	}
+}
+
+func TestPlanHandlerNotFound(t *testing.T) {
+	d := setupTestDB(t)
+	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	// runPromptFn must NOT be called on the not-found path, but defining it
+	// keeps the test hermetic if the handler ever changes.
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		t.Fatal("runPromptFn should not be called for missing id")
+		return "", nil
+	})()
+
+	router := mountAdmin(PlanHandler(d), http.MethodPost, "/api/suggestions/{id}/plan")
+	req := adminContext(httptest.NewRequest(http.MethodPost, "/api/suggestions/999/plan", nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPlanHandlerInvalidID(t *testing.T) {
+	d := setupTestDB(t)
+	router := mountAdmin(PlanHandler(d), http.MethodPost, "/api/suggestions/{id}/plan")
+	req := adminContext(httptest.NewRequest(http.MethodPost, "/api/suggestions/abc/plan", nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestPlanHandlerOtherUserSuggestionReturns404(t *testing.T) {
+	d := setupTestDB(t)
+	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	id, err := Insert(context.Background(), d, Suggestion{
+		UserID: 1, PageSlug: "weather", Source: SourceClaude,
+		Type: TypeImprovement, Size: SizeS, Title: "X", Body: "b", Status: StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	router := mountAdmin(PlanHandler(d), http.MethodPost, "/api/suggestions/{id}/plan")
+	// User 2 (a different admin) tries to plan user 1's suggestion.
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/plan", id), nil), 2, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for cross-user plan, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPlanHandlerTimeoutDoesNotMarkPlanned(t *testing.T) {
+	d := setupTestDB(t)
+	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	defer withPlanTimeout(50 * time.Millisecond)()
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	})()
+
+	id, err := Insert(context.Background(), d, Suggestion{
+		UserID: 1, PageSlug: "weather", Source: SourceClaude,
+		Type: TypeImprovement, Size: SizeS, Title: "X", Body: "b", Status: StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	router := mountAdmin(PlanHandler(d), http.MethodPost, "/api/suggestions/{id}/plan")
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/plan", id), nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusGatewayTimeout {
+		t.Fatalf("expected 504 on timeout, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify the suggestion was NOT marked planned.
+	got, err := GetByID(context.Background(), d, id)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != StatusPending {
+		t.Fatalf("status should remain pending after timeout, got %q", got.Status)
+	}
+	if got.PlannedAt != nil {
+		t.Fatalf("planned_at should remain nil after timeout, got %v", got.PlannedAt)
+	}
+	if got.Plan != "" {
+		t.Fatalf("plan should remain empty after timeout, got %q", got.Plan)
+	}
+}
+
+func TestPlanHandlerNewPageSlugProducesValidPrompt(t *testing.T) {
+	d := setupTestDB(t)
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather", Enabled: true}})()
+
+	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	var capturedPrompt string
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		capturedPrompt = prompt
+		return "plan body", nil
+	})()
+
+	id, err := Insert(context.Background(), d, Suggestion{
+		UserID: 1, PageSlug: NewPageSlug, Source: SourceUser,
+		Type: TypeNewPage, Size: SizeL, Title: "Brand new page", Body: "details", Status: StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	router := mountAdmin(PlanHandler(d), http.MethodPost, "/api/suggestions/{id}/plan")
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/plan", id), nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(capturedPrompt, NewPageSlug) {
+		t.Fatalf("expected prompt to acknowledge __new_page__, got:\n%s", capturedPrompt)
+	}
+}
+
+func TestPlanHandlerReplacesPriorPlan(t *testing.T) {
+	d := setupTestDB(t)
+	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	id, err := Insert(context.Background(), d, Suggestion{
+		UserID: 1, PageSlug: "weather", Source: SourceClaude,
+		Type: TypeImprovement, Size: SizeS, Title: "X", Body: "b", Status: StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	// First plan.
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		return "first plan", nil
+	})()
+	router := mountAdmin(PlanHandler(d), http.MethodPost, "/api/suggestions/{id}/plan")
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/plan", id), nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first plan: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Second plan replaces the first.
+	runPromptFn = func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		return "second plan", nil
+	}
+	req = adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/plan", id), nil), 1, true)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second plan: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got Suggestion
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Plan != "second plan" {
+		t.Fatalf("expected re-plan to replace plan, got %q", got.Plan)
+	}
+}
+
+func TestPlanHandlerCannotPlanBeadCreated(t *testing.T) {
+	d := setupTestDB(t)
+
+	id, err := Insert(context.Background(), d, Suggestion{
+		UserID: 1, PageSlug: "weather", Source: SourceClaude,
+		Type: TypeImprovement, Size: SizeS, Title: "X", Body: "b", Status: StatusBeadCreated,
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	router := mountAdmin(PlanHandler(d), http.MethodPost, "/api/suggestions/{id}/plan")
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/plan", id), nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for bead_created suggestion, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPlanHandlerCanPlanRejectedSuggestion(t *testing.T) {
+	d := setupTestDB(t)
+	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		return "recovery plan", nil
+	})()
+
+	id, err := Insert(context.Background(), d, Suggestion{
+		UserID: 1, PageSlug: "weather", Source: SourceClaude,
+		Type: TypeImprovement, Size: SizeS, Title: "X", Body: "b", Status: StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	if err := MarkRejected(context.Background(), d, id); err != nil {
+		t.Fatalf("mark rejected: %v", err)
+	}
+
+	router := mountAdmin(PlanHandler(d), http.MethodPost, "/api/suggestions/{id}/plan")
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/plan", id), nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 when re-planning rejected suggestion, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got Suggestion
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Status != StatusPlanned {
+		t.Fatalf("status: got %q want %q", got.Status, StatusPlanned)
+	}
+	if got.RejectedAt != nil {
+		t.Fatalf("expected rejected_at to be cleared after re-planning, got %v", got.RejectedAt)
+	}
+	if got.Plan != "recovery plan" {
+		t.Fatalf("plan: got %q want %q", got.Plan, "recovery plan")
+	}
+}
+
+func TestPlanHandlerRequiresClaudeEnabled(t *testing.T) {
+	d := setupTestDB(t)
+	// claude_enabled intentionally NOT set.
+
+	id, err := Insert(context.Background(), d, Suggestion{
+		UserID: 1, PageSlug: "weather", Source: SourceClaude,
+		Type: TypeImprovement, Size: SizeS, Title: "X", Body: "b", Status: StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	router := mountAdmin(PlanHandler(d), http.MethodPost, "/api/suggestions/{id}/plan")
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/plan", id), nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when claude disabled, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

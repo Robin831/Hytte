@@ -189,7 +189,7 @@ func MarkPlanned(ctx context.Context, db *sql.DB, id int64, plan string) error {
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := db.ExecContext(ctx, `
-		UPDATE suggestions SET status = ?, plan_enc = ?, planned_at = ? WHERE id = ?
+		UPDATE suggestions SET status = ?, plan_enc = ?, planned_at = ?, rejected_at = NULL WHERE id = ?
 	`, StatusPlanned, nullableEncrypted(encPlan), now, id)
 	if err != nil {
 		return fmt.Errorf("mark planned: %w", err)

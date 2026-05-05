@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -20,6 +21,11 @@ import (
 // per-page worst case fits under 10 minutes, but Claude can occasionally
 // stall — we want to return a result rather than hang the request indefinitely.
 const OverallRunTimeout = 10 * time.Minute
+
+// PlanTimeout caps a single PlanHandler Claude invocation. Declared as var so
+// tests can shrink it to verify timeout handling without hanging for two
+// minutes per run. Production callers must not mutate it.
+var PlanTimeout = 120 * time.Second
 
 // NewPageSlug is the synthetic page_slug used for "new page" suggestions that
 // do not target an existing page in the registry.
@@ -253,6 +259,130 @@ func RejectHandler(db *sql.DB) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, updated)
 	}
+}
+
+// PlanHandler asks Claude to produce a concrete implementation plan for a
+// suggestion and persists the result. Synchronous: blocks until Claude returns
+// or PlanTimeout elapses. Not idempotent — re-planning replaces the previous
+// plan and resets planned_at.
+//
+// POST /api/suggestions/{id}/plan
+// Request:  { "feedback"?: string }
+// Response: 200 with the updated Suggestion (status=planned, plan populated).
+func PlanHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		idStr := chi.URLParam(r, "id")
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+			return
+		}
+
+		// Body is optional — an empty/missing body is valid for a fresh plan.
+		var body struct {
+			Feedback string `json:"feedback"`
+		}
+		if r.Body != nil && r.ContentLength != 0 {
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+				return
+			}
+		}
+		body.Feedback = strings.TrimSpace(body.Feedback)
+
+		existing, err := GetByID(r.Context(), db, id)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "suggestion not found"})
+				return
+			}
+			log.Printf("suggestions: load %d for plan: %v", id, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load suggestion"})
+			return
+		}
+
+		// Same enumeration-resistance pattern as RejectHandler: cross-user access
+		// returns 404 so other users' suggestion IDs are not discoverable.
+		if existing.UserID != user.ID {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "suggestion not found"})
+			return
+		}
+
+		// bead_created is terminal — a linked bead already exists. Flipping
+		// status back to planned would leave bead_id/bead_created_at behind and
+		// produce an inconsistent row.
+		if existing.Status == StatusBeadCreated {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "cannot plan a suggestion with a linked bead"})
+			return
+		}
+
+		cfg, err := training.LoadClaudeConfig(db, user.ID)
+		if err != nil {
+			log.Printf("suggestions: load claude config for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load Claude configuration"})
+			return
+		}
+		if !cfg.Enabled {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Claude is not enabled — enable it in settings"})
+			return
+		}
+
+		page := findPageBySlug(existing.PageSlug)
+		prompt := buildPlanPrompt(*existing, page, body.Feedback)
+
+		ctx, cancel := context.WithTimeout(r.Context(), PlanTimeout)
+		defer cancel()
+
+		plan, err := runPromptFn(ctx, cfg, prompt)
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				log.Printf("suggestions: plan %d timed out after %s", id, PlanTimeout)
+				writeJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "Claude timed out generating the plan"})
+				return
+			}
+			log.Printf("suggestions: plan %d claude error: %v", id, err)
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to generate plan"})
+			return
+		}
+
+		plan = strings.TrimSpace(plan)
+		if plan == "" {
+			log.Printf("suggestions: plan %d: empty response from Claude", id)
+			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "Claude returned an empty plan"})
+			return
+		}
+
+		if err := MarkPlanned(r.Context(), db, id, plan); err != nil {
+			log.Printf("suggestions: mark planned %d: %v", id, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save plan"})
+			return
+		}
+
+		updated, err := GetByID(r.Context(), db, id)
+		if err != nil {
+			log.Printf("suggestions: reload planned %d: %v", id, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load suggestion"})
+			return
+		}
+		writeJSON(w, http.StatusOK, updated)
+	}
+}
+
+// findPageBySlug returns the registry entry matching slug, or nil if the slug
+// is the synthetic new-page sentinel or no longer present in the registry.
+// buildPlanPrompt handles a nil result.
+func findPageBySlug(slug string) *Page {
+	if slug == NewPageSlug {
+		return nil
+	}
+	for i := range Pages {
+		if Pages[i].Slug == slug {
+			return &Pages[i]
+		}
+	}
+	return nil
 }
 
 // pageSummary is the lightweight page descriptor returned to the UI.
