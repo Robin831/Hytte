@@ -74,7 +74,7 @@ Each object must have these fields and only these fields:
 - "title": short imperative sentence, max 80 chars, no trailing period
 - "body": 2 to 5 sentences explaining the problem, the proposed change, and the user-visible impact
 
-Distribute types and sizes — do not return three of the same type or three of the same size unless the page genuinely warrants it.
+Use a distinct type for each suggestion — do not return three of the same type. Use a mix of sizes when the work genuinely varies, but it is fine to return three small or three medium suggestions if that reflects the page.
 
 Example shape (do NOT copy these contents):
 [
