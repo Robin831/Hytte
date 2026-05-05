@@ -19,7 +19,8 @@ export default function Suggestions() {
   const [planned, setPlanned] = useState<Suggestion[]>([])
   const [rejected, setRejected] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [runError, setRunError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const [activeTab, setActiveTab] = useState<TabKey>('pending')
   const [reloadKey, setReloadKey] = useState(0)
@@ -31,7 +32,7 @@ export default function Suggestions() {
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
-    setError(null)
+    setLoadError(null)
     ;(async () => {
       try {
         const res = await fetch('/api/suggestions', {
@@ -47,7 +48,7 @@ export default function Suggestions() {
         setRejected(data.rejected ?? [])
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        setError(err instanceof Error ? err.message : t('suggestions.errors.failedToLoad'))
+        setLoadError(err instanceof Error ? err.message : t('suggestions.errors.failedToLoad'))
       } finally {
         if (!controller.signal.aborted) setLoading(false)
       }
@@ -67,7 +68,7 @@ export default function Suggestions() {
   async function handleRunNow() {
     if (running) return
     setRunning(true)
-    setError(null)
+    setRunError(null)
     try {
       const res = await fetch('/api/suggestions/run', {
         method: 'POST',
@@ -78,7 +79,7 @@ export default function Suggestions() {
       }
       refetch()
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('suggestions.errors.runFailed'))
+      setRunError(err instanceof Error ? err.message : t('suggestions.errors.runFailed'))
     } finally {
       setRunning(false)
     }
@@ -175,18 +176,28 @@ export default function Suggestions() {
             </TabTrigger>
           </TabList>
 
+          {runError && (
+            <div
+              role="alert"
+              data-testid="run-error"
+              className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+            >
+              {runError}
+            </div>
+          )}
           {loading ? (
             <div className="space-y-3" aria-label={t('skeleton.loading')}>
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-24 w-full" />
             </div>
-          ) : error ? (
+          ) : loadError ? (
             <div
               role="alert"
+              data-testid="load-error"
               className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300"
             >
-              {error}
+              {loadError}
             </div>
           ) : (
             <>
