@@ -202,6 +202,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/suggestions", suggestions.CreateHandler(db))
 				r.Post("/suggestions/run", suggestions.RunHandler(db))
 				r.Post("/suggestions/{id}/reject", suggestions.RejectHandler(db))
+				r.Post("/suggestions/{id}/plan", suggestions.PlanHandler(db))
 				r.Get("/suggestions/pages", suggestions.PagesHandler())
 
 				// Forge dashboard — admin only, registered only when FEATURE_FORGE_DASHBOARD=1.
