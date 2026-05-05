@@ -41,7 +41,17 @@
     "actions": {
       "runNow": "Kjør nå",
       "running": "Kjører…",
-      "newSuggestion": "Nytt forslag"
+      "newSuggestion": "Nytt forslag",
+      "reject": "Avvis",
+      "rejecting": "Avviser…",
+      "planIt": "Planlegg",
+      "planning": "Planlegger…",
+      "planHint": "Planlegging kan ta opptil to minutter.",
+      "feedbackLabel": "Tilbakemelding (valgfritt)",
+      "feedbackPlaceholder": "Legg til kontekst for planleggeren…",
+      "noPlanYet": "Ingen plan lagret ennå.",
+      "createBead": "Opprett bead",
+      "createBeadDisabledTooltip": "Bead-opprettelse kommer i neste bead."
     },
     "tabs": {
       "pending": "Avventer",
@@ -55,7 +65,9 @@
     },
     "errors": {
       "failedToLoad": "Kunne ikke laste forslag",
-      "runFailed": "Kunne ikke kjøre forslag"
+      "runFailed": "Kunne ikke kjøre forslag",
+      "rejectFailed": "Kunne ikke avvise forslag",
+      "planFailed": "Kunne ikke planlegge forslag"
     },
     "card": {
       "showMore": "Vis mer",

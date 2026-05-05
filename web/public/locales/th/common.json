@@ -41,7 +41,17 @@
     "actions": {
       "runNow": "ทำงานเดี๋ยวนี้",
       "running": "กำลังทำงาน…",
-      "newSuggestion": "ข้อเสนอแนะใหม่"
+      "newSuggestion": "ข้อเสนอแนะใหม่",
+      "reject": "ปฏิเสธ",
+      "rejecting": "กำลังปฏิเสธ…",
+      "planIt": "วางแผน",
+      "planning": "กำลังวางแผน…",
+      "planHint": "การวางแผนอาจใช้เวลานานถึงสองนาที",
+      "feedbackLabel": "ข้อคิดเห็น (ไม่บังคับ)",
+      "feedbackPlaceholder": "เพิ่มบริบทสำหรับผู้วางแผน…",
+      "noPlanYet": "ยังไม่มีการบันทึกแผน",
+      "createBead": "สร้าง bead",
+      "createBeadDisabledTooltip": "การสร้าง bead จะมาในงานถัดไป"
     },
     "tabs": {
       "pending": "รอดำเนินการ",
@@ -55,7 +65,9 @@
     },
     "errors": {
       "failedToLoad": "โหลดข้อเสนอแนะไม่สำเร็จ",
-      "runFailed": "เรียกใช้ข้อเสนอแนะไม่สำเร็จ"
+      "runFailed": "เรียกใช้ข้อเสนอแนะไม่สำเร็จ",
+      "rejectFailed": "ปฏิเสธข้อเสนอแนะไม่สำเร็จ",
+      "planFailed": "วางแผนข้อเสนอแนะไม่สำเร็จ"
     },
     "card": {
       "showMore": "แสดงเพิ่มเติม",

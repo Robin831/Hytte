@@ -41,7 +41,17 @@
     "actions": {
       "runNow": "Run now",
       "running": "Running…",
-      "newSuggestion": "New suggestion"
+      "newSuggestion": "New suggestion",
+      "reject": "Reject",
+      "rejecting": "Rejecting…",
+      "planIt": "Plan it",
+      "planning": "Planning…",
+      "planHint": "Planning may take up to two minutes.",
+      "feedbackLabel": "Feedback (optional)",
+      "feedbackPlaceholder": "Add context for the planner…",
+      "noPlanYet": "No plan saved yet.",
+      "createBead": "Create bead",
+      "createBeadDisabledTooltip": "Bead creation lands in the next bead."
     },
     "tabs": {
       "pending": "Pending",
@@ -55,7 +65,9 @@
     },
     "errors": {
       "failedToLoad": "Failed to load suggestions",
-      "runFailed": "Failed to run suggestions"
+      "runFailed": "Failed to run suggestions",
+      "rejectFailed": "Failed to reject suggestion",
+      "planFailed": "Failed to plan suggestion"
     },
     "card": {
       "showMore": "Show more",
