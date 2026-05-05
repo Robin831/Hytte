@@ -223,6 +223,45 @@ describe('Suggestions – Run now flow', () => {
     expect(screen.queryByTestId('load-error')).not.toBeInTheDocument()
   })
 
+  it('keeps loaded data visible and shows load-error banner when refetch GET fails after successful Run now', async () => {
+    const initial = {
+      pending: [makeSuggestion({ id: 1, title: 'Stays visible' })],
+      planned: [],
+      rejected: [],
+    }
+    let listCalls = 0
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/run' && init?.method === 'POST') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+      }
+      if (url === '/api/suggestions') {
+        listCalls += 1
+        if (listCalls === 1) {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(initial) })
+        }
+        return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Stays visible')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Run now/ }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('load-error')).toBeInTheDocument()
+    })
+    // Data must remain visible after a refetch failure
+    expect(screen.getByText('Stays visible')).toBeInTheDocument()
+    // POST succeeded so no run-error
+    expect(screen.queryByTestId('run-error')).not.toBeInTheDocument()
+  })
+
   it('disables Run now button while in flight', async () => {
     const initial = { pending: [], planned: [], rejected: [] }
     let resolveRun: ((v: { ok: boolean; json: () => Promise<unknown> }) => void) | null = null

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Lightbulb, Plus, Play } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../components/ui/skeleton'
@@ -19,6 +19,7 @@ export default function Suggestions() {
   const [planned, setPlanned] = useState<Suggestion[]>([])
   const [rejected, setRejected] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(true)
+  const hasDataRef = useRef(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [runError, setRunError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
@@ -28,6 +29,8 @@ export default function Suggestions() {
   const refetch = useCallback(() => {
     setReloadKey(k => k + 1)
   }, [])
+
+  const failedToLoadMsg = t('suggestions.errors.failedToLoad')
 
   useEffect(() => {
     const controller = new AbortController()
@@ -40,21 +43,22 @@ export default function Suggestions() {
           signal: controller.signal,
         })
         if (!res.ok) {
-          throw new Error(t('suggestions.errors.failedToLoad'))
+          throw new Error(failedToLoadMsg)
         }
         const data = (await res.json()) as ListResponse
         setPending(data.pending ?? [])
         setPlanned(data.planned ?? [])
         setRejected(data.rejected ?? [])
+        hasDataRef.current = true
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        setLoadError(err instanceof Error ? err.message : t('suggestions.errors.failedToLoad'))
+        setLoadError(err instanceof Error ? err.message : failedToLoadMsg)
       } finally {
         if (!controller.signal.aborted) setLoading(false)
       }
     })()
     return () => controller.abort()
-  }, [reloadKey, t])
+  }, [reloadKey, failedToLoadMsg])
 
   const counts = useMemo(
     () => ({
@@ -185,13 +189,13 @@ export default function Suggestions() {
               {runError}
             </div>
           )}
-          {loading ? (
+          {loading && !hasDataRef.current ? (
             <div className="space-y-3" aria-label={t('skeleton.loading')}>
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-24 w-full" />
             </div>
-          ) : loadError ? (
+          ) : !hasDataRef.current && loadError ? (
             <div
               role="alert"
               data-testid="load-error"
@@ -201,6 +205,15 @@ export default function Suggestions() {
             </div>
           ) : (
             <>
+              {loadError && (
+                <div
+                  role="alert"
+                  data-testid="load-error"
+                  className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+                >
+                  {loadError}
+                </div>
+              )}
               <TabPanel value="pending">{renderPanel('pending', pending)}</TabPanel>
               <TabPanel value="planned">{renderPanel('planned', planned)}</TabPanel>
               <TabPanel value="rejected">{renderPanel('rejected', rejected)}</TabPanel>
