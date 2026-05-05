@@ -33,7 +33,11 @@
     "grocery": "Grocery List",
     "homework": "Homework",
     "homeworkReview": "Homework Review",
-    "regnemester": "Regnemester"
+    "regnemester": "Regnemester",
+    "suggestions": "Suggestions"
+  },
+  "suggestions": {
+    "placeholder": "Suggestions will appear here."
   },
   "actions": {
     "save": "Save",

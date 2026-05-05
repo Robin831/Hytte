@@ -1,5 +1,4 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useAuth } from './auth'
 import Sidebar from './components/Sidebar'
 import ProtectedRoute from './components/ProtectedRoute'
 import FeatureRoute from './components/FeatureRoute'
@@ -26,6 +25,7 @@ import TrainingTrends from './pages/TrainingTrends'
 import StridePage from './pages/StridePage'
 import Infra from './pages/Infra'
 import Admin from './pages/Admin'
+import Suggestions from './pages/Suggestions'
 import Family from './pages/Family'
 import FamilyChildDetail from './pages/FamilyChildDetail'
 import FamilyRewards from './pages/FamilyRewards'
@@ -75,8 +75,6 @@ import MathAchievements from './pages/MathAchievements'
 import { AchievementUnlockOverlay } from './components/regnemester/AchievementUnlockOverlay'
 
 function MainLayout() {
-  const { user } = useAuth()
-
   return (
     <div className="flex min-h-screen bg-gray-900 text-white">
       <Sidebar />
@@ -632,9 +630,19 @@ function MainLayout() {
           <Route
             path="/admin"
             element={
-              <ProtectedRoute>
-                {user?.is_admin ? <Admin /> : <Navigate to="/" replace />}
-              </ProtectedRoute>
+              <FeatureRoute requireAdmin>
+                <Admin />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Suggestions — admin only */}
+          <Route
+            path="/suggestions"
+            element={
+              <FeatureRoute requireAdmin>
+                <Suggestions />
+              </FeatureRoute>
             }
           />
 
