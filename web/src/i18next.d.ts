@@ -23,6 +23,7 @@ import type skywatchEn from '../public/locales/en/skywatch.json'
 import type groceryEn from '../public/locales/en/grocery.json'
 import type homeworkEn from '../public/locales/en/homework.json'
 import type regnemesterEn from '../public/locales/en/regnemester.json'
+import type suggestionsEn from '../public/locales/en/suggestions.json'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -53,6 +54,7 @@ declare module 'i18next' {
       grocery: typeof groceryEn
       homework: typeof homeworkEn
       regnemester: typeof regnemesterEn
+      suggestions: typeof suggestionsEn
     }
   }
 }

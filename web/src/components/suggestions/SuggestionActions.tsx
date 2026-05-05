@@ -56,7 +56,7 @@ function PendingActions({
   onPlanned,
   onRejected,
 }: SuggestionActionsProps) {
-  const { t } = useTranslation('common')
+  const { t } = useTranslation('suggestions')
   const [feedback, setFeedback] = useState('')
   const [submitting, setSubmitting] = useState<'plan' | 'reject' | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -74,11 +74,11 @@ function PendingActions({
         credentials: 'include',
       })
       if (!res.ok) {
-        throw new Error(t('suggestions.errors.rejectFailed'))
+        throw new Error(t('errors.rejectFailed'))
       }
       onRejected?.()
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('suggestions.errors.rejectFailed'))
+      setError(err instanceof Error ? err.message : t('errors.rejectFailed'))
     } finally {
       setSubmitting(null)
     }
@@ -98,7 +98,7 @@ function PendingActions({
         body: JSON.stringify(trimmed ? { feedback: trimmed } : {}),
       })
       if (!res.ok) {
-        let msg = t('suggestions.errors.planFailed')
+        let msg = t('errors.planFailed')
         try {
           const body = await res.json() as { error?: string }
           if (body?.error) msg = body.error
@@ -111,7 +111,7 @@ function PendingActions({
       setFeedback('')
       onPlanned?.(updated)
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('suggestions.errors.planFailed'))
+      setError(err instanceof Error ? err.message : t('errors.planFailed'))
     } finally {
       setSubmitting(null)
     }
@@ -120,18 +120,18 @@ function PendingActions({
   return (
     <form onSubmit={handlePlan} className="w-full space-y-2">
       <label htmlFor={feedbackId} className="block text-xs font-medium text-gray-400">
-        {t('suggestions.actions.feedbackLabel')}
+        {t('actions.feedbackLabel')}
       </label>
       <textarea
         id={feedbackId}
         value={feedback}
         onChange={e => setFeedback(e.target.value)}
         disabled={isBusy}
-        placeholder={t('suggestions.actions.feedbackPlaceholder')}
+        placeholder={t('actions.feedbackPlaceholder')}
         rows={3}
         className="w-full rounded-md border border-gray-700 bg-gray-900/60 px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50"
       />
-      <p className="text-xs text-gray-500">{t('suggestions.actions.planHint')}</p>
+      <p className="text-xs text-gray-500">{t('actions.planHint')}</p>
       {error && (
         <p
           role="alert"
@@ -152,8 +152,8 @@ function PendingActions({
           )}
           <span>
             {submitting === 'plan'
-              ? t('suggestions.actions.planning')
-              : t('suggestions.actions.planIt')}
+              ? t('actions.planning')
+              : t('actions.planIt')}
           </span>
         </button>
         <button
@@ -167,8 +167,8 @@ function PendingActions({
           )}
           <span>
             {submitting === 'reject'
-              ? t('suggestions.actions.rejecting')
-              : t('suggestions.actions.reject')}
+              ? t('actions.rejecting')
+              : t('actions.reject')}
           </span>
         </button>
       </div>
@@ -177,7 +177,7 @@ function PendingActions({
 }
 
 function PlannedActions({ suggestion }: { suggestion: Suggestion }) {
-  const { t } = useTranslation('common')
+  const { t } = useTranslation('suggestions')
   const plan = suggestion.plan ?? ''
   const beadDescId = `suggestion-${suggestion.id}-bead-desc`
 
@@ -194,7 +194,7 @@ function PlannedActions({ suggestion }: { suggestion: Suggestion }) {
         </div>
       ) : (
         <p className="text-xs italic text-gray-500">
-          {t('suggestions.actions.noPlanYet')}
+          {t('actions.noPlanYet')}
         </p>
       )}
       <div className="space-y-1">
@@ -205,10 +205,10 @@ function PlannedActions({ suggestion }: { suggestion: Suggestion }) {
           onClick={e => e.preventDefault()}
           className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/60 px-3 py-1.5 text-xs font-medium text-gray-400 cursor-not-allowed opacity-70"
         >
-          {t('suggestions.actions.createBead')}
+          {t('actions.createBead')}
         </button>
         <p id={beadDescId} className="text-xs text-gray-500">
-          {t('suggestions.actions.createBeadDisabledTooltip')}
+          {t('actions.createBeadDisabledTooltip')}
         </p>
       </div>
     </div>

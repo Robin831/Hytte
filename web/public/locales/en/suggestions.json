@@ -1,0 +1,93 @@
+{
+  "header": {
+    "title": "Suggestions"
+  },
+  "nextRunHint": "Next run: tonight 03:00",
+  "actions": {
+    "runNow": "Run now",
+    "running": "Running…",
+    "newSuggestion": "New suggestion",
+    "reject": "Reject",
+    "rejecting": "Rejecting…",
+    "planIt": "Plan it",
+    "planning": "Planning…",
+    "planHint": "Planning may take up to two minutes.",
+    "feedbackLabel": "Feedback (optional)",
+    "feedbackPlaceholder": "Add context for the planner…",
+    "noPlanYet": "No plan saved yet.",
+    "createBead": "Create bead",
+    "createBeadDisabledTooltip": "Bead creation lands in the next bead."
+  },
+  "tabs": {
+    "pending": "Pending",
+    "planned": "Planned",
+    "rejected": "Rejected"
+  },
+  "empty": {
+    "pending": "No pending suggestions yet — try Run now.",
+    "planned": "Nothing planned. Plan a pending suggestion to see it here.",
+    "rejected": "No rejected suggestions."
+  },
+  "errors": {
+    "failedToLoad": "Failed to load suggestions",
+    "runFailed": "Failed to run suggestions",
+    "rejectFailed": "Failed to reject suggestion",
+    "planFailed": "Failed to plan suggestion"
+  },
+  "form": {
+    "title": "New suggestion",
+    "fields": {
+      "page": "Page",
+      "title": "Title",
+      "body": "Body",
+      "type": "Type",
+      "size": "Size"
+    },
+    "placeholders": {
+      "page": "Select a page",
+      "title": "Short summary…",
+      "body": "Describe what you'd like to see",
+      "type": "Select a type",
+      "size": "Select a size"
+    },
+    "charCount": "{{count}}/{{max}}",
+    "byteCount": "{{count}} / {{max}} bytes",
+    "actions": {
+      "submit": "Create suggestion",
+      "submitting": "Creating…",
+      "cancel": "Cancel"
+    },
+    "errors": {
+      "titleRequired": "Title is required",
+      "titleTooLong": "Title must be at most {{max}} characters",
+      "bodyRequired": "Body is required",
+      "bodyTooLong": "Body must be at most {{max}} bytes",
+      "pageRequired": "Page is required",
+      "typeRequired": "Type is required",
+      "sizeRequired": "Size is required",
+      "newPageMismatch": "New page type can only target the New page entry",
+      "failedToCreate": "Failed to create suggestion",
+      "failedToLoadPages": "Failed to load pages"
+    }
+  },
+  "card": {
+    "showMore": "Show more",
+    "showLess": "Show less",
+    "types": {
+      "addition": "Addition",
+      "bugfix": "Bugfix",
+      "improvement": "Improvement",
+      "refactor": "Refactor",
+      "new_page": "New page"
+    },
+    "sizes": {
+      "s": "S",
+      "m": "M",
+      "l": "L"
+    },
+    "source": {
+      "claude": "by Claude",
+      "user": "by you"
+    }
+  }
+}

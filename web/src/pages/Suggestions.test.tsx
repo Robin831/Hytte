@@ -4,6 +4,7 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom'
 import Suggestions from './Suggestions'
 import enCommon from '../../public/locales/en/common.json'
+import enSuggestions from '../../public/locales/en/suggestions.json'
 import type { Suggestion } from '../components/suggestions/SuggestionCard'
 
 vi.mock('react-markdown', () => ({
@@ -25,15 +26,26 @@ function resolveKey(obj: JsonObject, parts: string[]): JsonValue | undefined {
 }
 
 function makeT(translations: JsonObject) {
-  return function t(key: string): string {
+  return function t(key: string, vars?: Record<string, string | number>): string {
     const val = resolveKey(translations, key.split('.'))
-    return typeof val === 'string' ? val : key
+    let str = typeof val === 'string' ? val : key
+    if (vars) {
+      for (const [name, value] of Object.entries(vars)) {
+        str = str.replace(new RegExp(`{{\\s*${name}\\s*}}`, 'g'), String(value))
+      }
+    }
+    return str
   }
 }
 
+const namespaces: Record<string, JsonObject> = {
+  common: enCommon as unknown as JsonObject,
+  suggestions: enSuggestions as unknown as JsonObject,
+}
+
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: makeT(enCommon as unknown as JsonObject),
+  useTranslation: (ns?: string) => ({
+    t: makeT(namespaces[ns ?? 'common'] ?? namespaces.common),
     i18n: { language: 'en' },
   }),
   Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
@@ -129,6 +141,58 @@ describe('Suggestions – data fetch', () => {
         within(activePanel).getByText('Nothing planned. Plan a pending suggestion to see it here.'),
       ).toBeVisible()
     })
+  })
+
+  it('switching tabs swaps which cards are visible', async () => {
+    const list = {
+      pending: [makeSuggestion({ id: 1, title: 'Only pending card' })],
+      planned: [
+        makeSuggestion({ id: 2, status: 'planned', title: 'Only planned card', plan: 'A plan' }),
+      ],
+      rejected: [
+        makeSuggestion({ id: 3, status: 'rejected', title: 'Only rejected card' }),
+      ],
+    }
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
+
+    renderPage()
+
+    // Initially on the Pending tab — only the pending card is in the active panel.
+    await waitFor(() => {
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).getByText('Only pending card')).toBeInTheDocument()
+    })
+    {
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).queryByText('Only planned card')).not.toBeInTheDocument()
+      expect(within(panel).queryByText('Only rejected card')).not.toBeInTheDocument()
+    }
+
+    // Switch to Planned — only the planned card is now visible in the active panel.
+    fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
+    await waitFor(() => {
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).getByText('Only planned card')).toBeInTheDocument()
+    })
+    {
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).queryByText('Only pending card')).not.toBeInTheDocument()
+      expect(within(panel).queryByText('Only rejected card')).not.toBeInTheDocument()
+    }
+
+    // Switch to Rejected — only the rejected card is now visible in the active panel.
+    fireEvent.click(screen.getByRole('tab', { name: /Rejected/ }))
+    await waitFor(() => {
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).getByText('Only rejected card')).toBeInTheDocument()
+    })
+    {
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).queryByText('Only pending card')).not.toBeInTheDocument()
+      expect(within(panel).queryByText('Only planned card')).not.toBeInTheDocument()
+    }
   })
 
   it('renders the per-tab pending empty state when list is empty', async () => {
@@ -350,6 +414,112 @@ describe('Suggestions – header', () => {
   })
 })
 
+describe('Suggestions – New suggestion happy path', () => {
+  it('loads pages, posts the form, and refreshes the list', async () => {
+    const initial = { pending: [], planned: [], rejected: [] }
+    const created: Suggestion = makeSuggestion({
+      id: 99,
+      title: 'My new idea',
+      body: 'Some body content',
+      page_slug: 'weather',
+      source: 'user',
+      type: 'addition',
+      size: 'm',
+    })
+    const refreshed = {
+      pending: [created],
+      planned: [],
+      rejected: [],
+    }
+
+    let listCalls = 0
+    let postCalls = 0
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/pages') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve([
+            { slug: 'weather', title: 'Weather' },
+            { slug: '__new_page__', title: 'New page' },
+          ]),
+        })
+      }
+      if (url === '/api/suggestions' && init?.method === 'POST') {
+        postCalls += 1
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(created) })
+      }
+      if (url === '/api/suggestions') {
+        listCalls += 1
+        const body = listCalls === 1 ? initial : refreshed
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(body) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    // Wait for initial list load.
+    await waitFor(() => {
+      expect(
+        screen.getByText('No pending suggestions yet — try Run now.'),
+      ).toBeInTheDocument()
+    })
+
+    // Open the form.
+    fireEvent.click(screen.getByRole('button', { name: /New suggestion/ }))
+
+    // The dialog appears and pages have loaded into the page <select>.
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      const pageSelect = screen.getByLabelText('Page') as HTMLSelectElement
+      expect(within(pageSelect).getByRole('option', { name: 'Weather' })).toBeInTheDocument()
+    })
+
+    // Fill the form.
+    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'addition' } })
+    fireEvent.change(screen.getByLabelText('Size'), { target: { value: 'm' } })
+    fireEvent.change(screen.getByLabelText('Page'), { target: { value: 'weather' } })
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'My new idea' } })
+    fireEvent.change(screen.getByLabelText('Body'), {
+      target: { value: 'Some body content' },
+    })
+
+    // Submit.
+    fireEvent.click(screen.getByRole('button', { name: /^Create suggestion$/ }))
+
+    // POST happened with the right payload.
+    await waitFor(() => {
+      expect(postCalls).toBe(1)
+    })
+    const postCall = fetchMock.mock.calls.find(
+      ([url, init]) => url === '/api/suggestions' && (init as RequestInit | undefined)?.method === 'POST',
+    )
+    expect(postCall).toBeTruthy()
+    const init = postCall![1] as RequestInit
+    expect(init.method).toBe('POST')
+    const body = JSON.parse(init.body as string)
+    expect(body).toEqual({
+      type: 'addition',
+      size: 'm',
+      page_slug: 'weather',
+      title: 'My new idea',
+      body: 'Some body content',
+    })
+
+    // Dialog closes and the list refreshes — the new suggestion appears.
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(screen.getByText('My new idea')).toBeInTheDocument()
+    })
+    expect(listCalls).toBeGreaterThanOrEqual(2)
+  })
+})
+
 describe('Suggestions – plan action', () => {
   it('plan it succeeds: moves card from pending to planned optimistically and refetches', async () => {
     const pendingSuggestion = makeSuggestion({ id: 1, title: 'Plan me' })
@@ -386,6 +556,69 @@ describe('Suggestions – plan action', () => {
     })
     expect(listCalls).toBeGreaterThanOrEqual(2)
     expect(screen.queryByTestId('suggestion-1-action-error')).not.toBeInTheDocument()
+  })
+
+  it('plan it loading state: shows spinner, disables button, then re-enables', async () => {
+    const pendingSuggestion = makeSuggestion({ id: 1, title: 'Plan me' })
+    const updatedSuggestion: Suggestion = {
+      ...pendingSuggestion,
+      status: 'planned',
+      plan: 'Plan body',
+    }
+    const initial = { pending: [pendingSuggestion], planned: [], rejected: [] }
+    const refreshed = { pending: [], planned: [updatedSuggestion], rejected: [] }
+
+    let resolvePlan: ((v: { ok: boolean; json: () => Promise<unknown> }) => void) | null = null
+    let listCalls = 0
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/1/plan' && init?.method === 'POST') {
+        return new Promise<{ ok: boolean; json: () => Promise<unknown> }>(resolve => {
+          resolvePlan = resolve
+        })
+      }
+      if (url === '/api/suggestions') {
+        listCalls += 1
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(listCalls === 1 ? initial : refreshed),
+        })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { container } = renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Plan me')).toBeInTheDocument()
+    })
+
+    // Idle state — Plan it button is enabled and there's no spinner inside it.
+    const idleBtn = screen.getByRole('button', { name: /Plan it/ })
+    expect(idleBtn).not.toBeDisabled()
+    expect(idleBtn.querySelector('.animate-spin')).toBeNull()
+
+    fireEvent.click(idleBtn)
+
+    // In-flight: button now reads "Planning…", is disabled, and shows a spinner.
+    await waitFor(() => {
+      const inFlightBtn = screen.getByRole('button', { name: /Planning…/ })
+      expect(inFlightBtn).toBeDisabled()
+      expect(inFlightBtn.querySelector('.animate-spin')).not.toBeNull()
+    })
+    // The Reject button is also disabled while plan is in flight.
+    expect(screen.getByRole('button', { name: /^Reject$/ })).toBeDisabled()
+
+    // Resolve the request; the optimistic update kicks in and the card is removed.
+    resolvePlan!({ ok: true, json: () => Promise.resolve(updatedSuggestion) })
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('No pending suggestions yet — try Run now.'),
+      ).toBeInTheDocument()
+    })
+    // Sanity check: no spinner is rendering in the page anymore for plan.
+    expect(container.querySelectorAll('.animate-spin').length).toBe(0)
   })
 
   it('plan it fails: surfaces actionable error from backend instead of generic message', async () => {
