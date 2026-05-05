@@ -37,7 +37,26 @@
     "suggestions": "Forslag"
   },
   "suggestions": {
-    "placeholder": "Forslag vises her."
+    "nextRunHint": "Neste kjøring: i natt 03:00",
+    "actions": {
+      "runNow": "Kjør nå",
+      "running": "Kjører…",
+      "newSuggestion": "Nytt forslag"
+    },
+    "tabs": {
+      "pending": "Avventer",
+      "planned": "Planlagt",
+      "rejected": "Avvist"
+    },
+    "empty": {
+      "pending": "Ingen forslag ennå — prøv Kjør nå.",
+      "planned": "Ingenting planlagt. Planlegg et forslag for å se det her.",
+      "rejected": "Ingen avviste forslag."
+    },
+    "errors": {
+      "failedToLoad": "Kunne ikke laste forslag",
+      "runFailed": "Kunne ikke kjøre forslag"
+    }
   },
   "actions": {
     "save": "Lagre",
