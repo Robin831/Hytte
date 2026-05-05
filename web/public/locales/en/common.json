@@ -37,7 +37,26 @@
     "suggestions": "Suggestions"
   },
   "suggestions": {
-    "placeholder": "Suggestions will appear here."
+    "nextRunHint": "Next run: tonight 03:00",
+    "actions": {
+      "runNow": "Run now",
+      "running": "Running…",
+      "newSuggestion": "New suggestion"
+    },
+    "tabs": {
+      "pending": "Pending",
+      "planned": "Planned",
+      "rejected": "Rejected"
+    },
+    "empty": {
+      "pending": "No pending suggestions yet — try Run now.",
+      "planned": "Nothing planned. Plan a pending suggestion to see it here.",
+      "rejected": "No rejected suggestions."
+    },
+    "errors": {
+      "failedToLoad": "Failed to load suggestions",
+      "runFailed": "Failed to run suggestions"
+    }
   },
   "actions": {
     "save": "Save",

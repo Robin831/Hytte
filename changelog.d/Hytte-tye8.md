@@ -1,0 +1,2 @@
+category: Added
+- **Suggestions page shell** - Replaced the stub `/suggestions` page with a header (title + "Next run: tonight 03:00" hint), Pending/Planned/Rejected tabs with counts, list fetch from `GET /api/suggestions`, a "Run now" button wired to `POST /api/suggestions/run`, a "New suggestion" stub button, per-tab empty states, and a placeholder `SuggestionCard` slot ready for follow-up sub-tasks. (Hytte-tye8)
