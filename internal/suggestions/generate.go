@@ -196,7 +196,6 @@ func parseSuggestionsResponse(response string) ([]generated, error) {
 		return nil, fmt.Errorf("expected exactly 3 suggestions, got %d", len(items))
 	}
 	seenTypes := make(map[string]bool, len(items))
-	seenSizes := make(map[string]bool, len(items))
 	for i, it := range items {
 		if !validTypes[it.Type] {
 			return nil, fmt.Errorf("item %d: invalid type %q", i, it.Type)
@@ -214,10 +213,6 @@ func parseSuggestionsResponse(response string) ([]generated, error) {
 			return nil, fmt.Errorf("item %d: duplicate type %q", i, it.Type)
 		}
 		seenTypes[it.Type] = true
-		if seenSizes[it.Size] {
-			return nil, fmt.Errorf("item %d: duplicate size %q", i, it.Size)
-		}
-		seenSizes[it.Size] = true
 	}
 	return items, nil
 }

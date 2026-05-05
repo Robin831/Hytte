@@ -18,10 +18,13 @@ func withRunPrompt(fn func(ctx context.Context, cfg *training.ClaudeConfig, prom
 	return func() { runPromptFn = prev }
 }
 
+// validJSONResponse intentionally repeats size "s" twice to exercise the
+// loosened parser: distinct types are still required, but distinct sizes are
+// not.
 const validJSONResponse = `[
   {"type": "improvement", "size": "s", "title": "Cache the forecast", "body": "Add a 10-minute in-memory cache so repeated reloads do not hammer yr.no."},
   {"type": "addition", "size": "m", "title": "Add wind direction", "body": "Render the wind direction next to wind speed using the existing arrow icon."},
-  {"type": "bugfix", "size": "l", "title": "Fix midnight rollover", "body": "Use local time when grouping forecast slots so the day label flips at the right moment."}
+  {"type": "bugfix", "size": "s", "title": "Fix midnight rollover", "body": "Use local time when grouping forecast slots so the day label flips at the right moment."}
 ]`
 
 func dummyCfg() *training.ClaudeConfig {
@@ -165,6 +168,34 @@ func TestParseSuggestionsResponseRejectsInvalidEnum(t *testing.T) {
 	]`)
 	if err == nil {
 		t.Fatal("expected error for invalid type, got nil")
+	}
+}
+
+func TestParseSuggestionsResponseAllowsDuplicateSizes(t *testing.T) {
+	got, err := parseSuggestionsResponse(`[
+		{"type":"improvement","size":"s","title":"A","body":"a"},
+		{"type":"addition","size":"s","title":"B","body":"b"},
+		{"type":"bugfix","size":"s","title":"C","body":"c"}
+	]`)
+	if err != nil {
+		t.Fatalf("expected three same-size suggestions to parse, got error: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(got))
+	}
+}
+
+func TestParseSuggestionsResponseRejectsDuplicateTypes(t *testing.T) {
+	_, err := parseSuggestionsResponse(`[
+		{"type":"improvement","size":"s","title":"A","body":"a"},
+		{"type":"improvement","size":"m","title":"B","body":"b"},
+		{"type":"bugfix","size":"l","title":"C","body":"c"}
+	]`)
+	if err == nil {
+		t.Fatal("expected error for duplicate type, got nil")
+	}
+	if !strings.Contains(err.Error(), "duplicate type") {
+		t.Fatalf("expected duplicate-type error, got: %v", err)
 	}
 }
 
