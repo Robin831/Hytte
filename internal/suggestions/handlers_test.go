@@ -280,6 +280,9 @@ func TestCreateHandlerValidationRejections(t *testing.T) {
 		{"empty title", `{"type":"improvement","size":"s","page_slug":"weather","title":"  ","body":"b"}`},
 		{"empty body", `{"type":"improvement","size":"s","page_slug":"weather","title":"t","body":""}`},
 		{"invalid json", `{not json`},
+		// Cross-validation: new_page type must pair with __new_page__ slug and vice versa.
+		{"new_page type with registered slug", `{"type":"new_page","size":"s","page_slug":"weather","title":"t","body":"b"}`},
+		{"bugfix type with __new_page__ slug", fmt.Sprintf(`{"type":"bugfix","size":"s","page_slug":%q,"title":"t","body":"b"}`, NewPageSlug)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -396,6 +399,52 @@ func TestRejectHandlerInvalidID(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestRejectHandlerOtherUserSuggestionReturns404(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	// Suggestion owned by user 1.
+	id, err := Insert(ctx, d, Suggestion{
+		UserID: 1, PageSlug: "weather", Source: SourceClaude,
+		Type: TypeImprovement, Size: SizeS, Title: "X", Body: "b", Status: StatusPending,
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	router := mountAdmin(RejectHandler(d), http.MethodPost, "/api/suggestions/{id}/reject")
+	// Different admin (user 2) tries to reject user 1's suggestion.
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/reject", id), nil), 2, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for cross-user reject, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRejectHandlerCannotRejectBeadCreated(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	id, err := Insert(ctx, d, Suggestion{
+		UserID: 1, PageSlug: "weather", Source: SourceClaude,
+		Type: TypeImprovement, Size: SizeS, Title: "X", Body: "b", Status: StatusBeadCreated,
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	router := mountAdmin(RejectHandler(d), http.MethodPost, "/api/suggestions/{id}/reject")
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/reject", id), nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for bead_created suggestion, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

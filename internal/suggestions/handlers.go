@@ -98,15 +98,12 @@ func ListHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// validUserSuggestionTypes mirrors validTypes from generate.go but additionally
-// allows "new_page" — a user can author a new-page suggestion explicitly,
-// whereas Claude generation does not produce them per-page.
-var validUserSuggestionTypes = map[string]bool{
-	TypeAddition:    true,
-	TypeBugfix:      true,
-	TypeImprovement: true,
-	TypeRefactor:    true,
-	TypeNewPage:     true,
+// isValidUserSuggestionType reports whether t is valid for user-authored
+// suggestions. It delegates to validTypes from generate.go as the single enum
+// source of truth, extending it with TypeNewPage, which users can propose
+// explicitly but Claude generation does not produce per-page.
+func isValidUserSuggestionType(t string) bool {
+	return validTypes[t] || t == TypeNewPage
 }
 
 // CreateHandler accepts a user-authored suggestion. The row is written with
@@ -139,7 +136,7 @@ func CreateHandler(db *sql.DB) http.HandlerFunc {
 		body.Title = strings.TrimSpace(body.Title)
 		body.Body = strings.TrimSpace(body.Body)
 
-		if !validUserSuggestionTypes[body.Type] {
+		if !isValidUserSuggestionType(body.Type) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid type"})
 			return
 		}
@@ -149,6 +146,14 @@ func CreateHandler(db *sql.DB) http.HandlerFunc {
 		}
 		if !isValidPageSlug(body.PageSlug) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown page_slug"})
+			return
+		}
+		// new_page type and __new_page__ slug are exclusive to each other: one
+		// implies the other. Accepting them independently would produce rows whose
+		// type and target contradict each other (e.g. a "bugfix" aimed at no page,
+		// or a "new_page" targeting an existing page).
+		if (body.Type == TypeNewPage) != (body.PageSlug == NewPageSlug) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type new_page requires page_slug __new_page__ and vice versa"})
 			return
 		}
 		if body.Title == "" {
@@ -195,6 +200,8 @@ func CreateHandler(db *sql.DB) http.HandlerFunc {
 // POST /api/suggestions/{id}/reject
 func RejectHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
 		idStr := chi.URLParam(r, "id")
 		id, err := strconv.ParseInt(idStr, 10, 64)
 		if err != nil {
@@ -213,8 +220,23 @@ func RejectHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Return 404 rather than 403 so that other users' suggestion IDs are
+		// not discoverable by enumeration.
+		if existing.UserID != user.ID {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "suggestion not found"})
+			return
+		}
+
 		if existing.Status == StatusRejected {
 			writeJSON(w, http.StatusOK, existing)
+			return
+		}
+
+		// bead_created is terminal — a linked bead already exists. Allowing a
+		// reject here would silently drop the suggestion from the admin UI while
+		// leaving the bead metadata behind in the row.
+		if existing.Status == StatusBeadCreated {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "cannot reject a suggestion with a linked bead"})
 			return
 		}
 
