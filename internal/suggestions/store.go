@@ -303,17 +303,16 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
-// decryptField returns the decrypted plaintext, or an empty string with a
-// logged warning if decryption fails. We deliberately do NOT fall back to the
-// ciphertext on error — that would leak unreadable encrypted bytes into the
-// API response. Legacy plaintext values (without the enc: prefix) are passed
-// through transparently by encryption.DecryptField itself, so they never reach
-// this error path.
+// decryptField returns the decrypted plaintext. On failure it logs a warning
+// and returns the original ciphertext so the suggestion remains inspectable
+// (the operator can see what was stored and recover it if needed). Legacy
+// plaintext values (without the enc: prefix) are passed through transparently
+// by encryption.DecryptField itself, so they never reach this error path.
 func decryptField(value, field string, id int64) string {
 	dec, err := encryption.DecryptField(value)
 	if err != nil {
-		log.Printf("suggestions: decrypt %s for id=%d failed (returning empty): %v", field, id, err)
-		return ""
+		log.Printf("suggestions: decrypt %s for id=%d failed (returning ciphertext): %v", field, id, err)
+		return value
 	}
 	return dec
 }

@@ -21,7 +21,7 @@ func withRunPrompt(fn func(ctx context.Context, cfg *training.ClaudeConfig, prom
 const validJSONResponse = `[
   {"type": "improvement", "size": "s", "title": "Cache the forecast", "body": "Add a 10-minute in-memory cache so repeated reloads do not hammer yr.no."},
   {"type": "addition", "size": "m", "title": "Add wind direction", "body": "Render the wind direction next to wind speed using the existing arrow icon."},
-  {"type": "bugfix", "size": "s", "title": "Fix midnight rollover", "body": "Use local time when grouping forecast slots so the day label flips at the right moment."}
+  {"type": "bugfix", "size": "l", "title": "Fix midnight rollover", "body": "Use local time when grouping forecast slots so the day label flips at the right moment."}
 ]`
 
 func dummyCfg() *training.ClaudeConfig {

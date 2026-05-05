@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/training"
@@ -194,6 +195,8 @@ func parseSuggestionsResponse(response string) ([]generated, error) {
 	if len(items) != 3 {
 		return nil, fmt.Errorf("expected exactly 3 suggestions, got %d", len(items))
 	}
+	seenTypes := make(map[string]bool, len(items))
+	seenSizes := make(map[string]bool, len(items))
 	for i, it := range items {
 		if !validTypes[it.Type] {
 			return nil, fmt.Errorf("item %d: invalid type %q", i, it.Type)
@@ -207,17 +210,53 @@ func parseSuggestionsResponse(response string) ([]generated, error) {
 		if strings.TrimSpace(it.Body) == "" {
 			return nil, fmt.Errorf("item %d: empty body", i)
 		}
+		if seenTypes[it.Type] {
+			return nil, fmt.Errorf("item %d: duplicate type %q", i, it.Type)
+		}
+		seenTypes[it.Type] = true
+		if seenSizes[it.Size] {
+			return nil, fmt.Errorf("item %d: duplicate size %q", i, it.Size)
+		}
+		seenSizes[it.Size] = true
 	}
 	return items, nil
 }
 
-// loadSourceFiles reads each provided path relative to the current working
-// directory and returns a map of path → contents. Files that cannot be read are
-// silently skipped — the prompt simply omits them rather than failing the run.
+var (
+	repoRootOnce  sync.Once
+	repoRootValue string
+	repoRootErr   error
+)
+
+// repoRoot returns the absolute path to the repository root by running
+// "git rev-parse --show-toplevel". The result is cached after the first call.
+// SourceFiles in the page registry are repo-root-relative, so resolving against
+// this path is necessary when the server or tests run from any other directory.
+func repoRoot() (string, error) {
+	repoRootOnce.Do(func() {
+		out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+		if err != nil {
+			repoRootErr = fmt.Errorf("git rev-parse --show-toplevel: %w", err)
+			return
+		}
+		repoRootValue = strings.TrimSpace(string(out))
+	})
+	return repoRootValue, repoRootErr
+}
+
+// loadSourceFiles reads each provided repo-root-relative path and returns a
+// map of path → contents. Files that cannot be read are skipped with a log
+// warning — the prompt simply omits them rather than failing the run.
 func loadSourceFiles(paths []string) map[string]string {
 	out := make(map[string]string, len(paths))
+	root, err := repoRoot()
+	if err != nil {
+		log.Printf("suggestions: cannot resolve repo root for source files: %v", err)
+		return out
+	}
 	for _, p := range paths {
-		content, err := os.ReadFile(filepath.FromSlash(p))
+		full := filepath.Join(root, filepath.FromSlash(p))
+		content, err := os.ReadFile(full)
 		if err != nil {
 			log.Printf("suggestions: read source %q: %v", p, err)
 			continue
@@ -227,16 +266,24 @@ func loadSourceFiles(paths []string) map[string]string {
 	return out
 }
 
-// loadGitLog returns the recent commit history touching the given files. An
-// empty string is returned (and the failure logged) if git is unavailable —
-// this is a context-only enrichment, not a hard requirement for generation.
+// loadGitLog returns the recent commit history touching the given files. The
+// command runs from the repository root so that repo-root-relative paths in
+// SourceFiles are resolved correctly regardless of the server's working
+// directory. An empty string is returned (and the failure logged) if git is
+// unavailable — this is a context-only enrichment, not a hard requirement.
 func loadGitLog(ctx context.Context, paths []string) string {
 	if len(paths) == 0 {
+		return ""
+	}
+	root, err := repoRoot()
+	if err != nil {
+		log.Printf("suggestions: cannot resolve repo root for git log: %v", err)
 		return ""
 	}
 	args := []string{"log", "-n", "20", "--oneline", "--"}
 	args = append(args, paths...)
 	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = root
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
