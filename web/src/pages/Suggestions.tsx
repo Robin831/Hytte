@@ -93,20 +93,6 @@ export default function Suggestions() {
     // Wired up by a follow-up sub-task that adds the create-suggestion form.
   }
 
-  const handlePlan = useCallback(
-    (_id: number) => {
-      refetch()
-    },
-    [refetch],
-  )
-
-  const handleReject = useCallback(
-    (_id: number) => {
-      refetch()
-    },
-    [refetch],
-  )
-
   function renderPanel(tab: TabKey, list: Suggestion[]) {
     if (list.length === 0) {
       return (
@@ -118,12 +104,7 @@ export default function Suggestions() {
     return (
       <div className="space-y-3">
         {list.map(s => (
-          <SuggestionCard
-            key={s.id}
-            suggestion={s}
-            onPlan={handlePlan}
-            onReject={handleReject}
-          />
+          <SuggestionCard key={s.id} suggestion={s} />
         ))}
       </div>
     )

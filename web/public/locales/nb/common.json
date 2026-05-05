@@ -56,6 +56,26 @@
     "errors": {
       "failedToLoad": "Kunne ikke laste forslag",
       "runFailed": "Kunne ikke kjøre forslag"
+    },
+    "card": {
+      "showMore": "Vis mer",
+      "showLess": "Vis mindre",
+      "types": {
+        "addition": "Tillegg",
+        "bugfix": "Feilretting",
+        "improvement": "Forbedring",
+        "refactor": "Refaktorering",
+        "new_page": "Ny side"
+      },
+      "sizes": {
+        "s": "S",
+        "m": "M",
+        "l": "L"
+      },
+      "source": {
+        "claude": "av Claude",
+        "user": "av deg"
+      }
     }
   },
   "actions": {

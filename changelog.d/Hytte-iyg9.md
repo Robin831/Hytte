@@ -1,0 +1,2 @@
+category: Added
+- **Suggestion card component** - Filled in the `SuggestionCard` placeholder with a page-slug chip, color-coded type badge (addition/bugfix/improvement/refactor/new_page), S/M/L size pill, title, expandable body (collapsed by default with show more/less), source indicator (by Claude/by you), and a formatted generated date. The card accepts an `actionsSlot` prop so a follow-up sub-task can inject status-specific actions without coupling the card to mutations. (Hytte-iyg9)

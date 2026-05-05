@@ -56,6 +56,26 @@
     "errors": {
       "failedToLoad": "โหลดข้อเสนอแนะไม่สำเร็จ",
       "runFailed": "เรียกใช้ข้อเสนอแนะไม่สำเร็จ"
+    },
+    "card": {
+      "showMore": "แสดงเพิ่มเติม",
+      "showLess": "แสดงน้อยลง",
+      "types": {
+        "addition": "เพิ่มเติม",
+        "bugfix": "แก้บั๊ก",
+        "improvement": "ปรับปรุง",
+        "refactor": "ปรับโครงสร้าง",
+        "new_page": "หน้าใหม่"
+      },
+      "sizes": {
+        "s": "S",
+        "m": "M",
+        "l": "L"
+      },
+      "source": {
+        "claude": "โดย Claude",
+        "user": "โดยคุณ"
+      }
     }
   },
   "actions": {

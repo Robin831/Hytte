@@ -56,6 +56,26 @@
     "errors": {
       "failedToLoad": "Failed to load suggestions",
       "runFailed": "Failed to run suggestions"
+    },
+    "card": {
+      "showMore": "Show more",
+      "showLess": "Show less",
+      "types": {
+        "addition": "Addition",
+        "bugfix": "Bugfix",
+        "improvement": "Improvement",
+        "refactor": "Refactor",
+        "new_page": "New page"
+      },
+      "sizes": {
+        "s": "S",
+        "m": "M",
+        "l": "L"
+      },
+      "source": {
+        "claude": "by Claude",
+        "user": "by you"
+      }
     }
   },
   "actions": {
