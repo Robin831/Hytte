@@ -31,6 +31,12 @@ export default function Suggestions() {
     setReloadKey(k => k + 1)
   }, [])
 
+  const handlePlanned = useCallback((updated: Suggestion) => {
+    setPending(prev => prev.filter(s => s.id !== updated.id))
+    setPlanned(prev => [updated, ...prev])
+    refetch()
+  }, [refetch])
+
   const failedToLoadMsg = t('suggestions.errors.failedToLoad')
 
   useEffect(() => {
@@ -112,7 +118,7 @@ export default function Suggestions() {
               s.status === 'rejected' ? null : (
                 <SuggestionActions
                   suggestion={s}
-                  onPlanned={refetch}
+                  onPlanned={handlePlanned}
                   onRejected={refetch}
                 />
               )

@@ -6,6 +6,11 @@ import Suggestions from './Suggestions'
 import enCommon from '../../public/locales/en/common.json'
 import type { Suggestion } from '../components/suggestions/SuggestionCard'
 
+vi.mock('react-markdown', () => ({
+  default: ({ children }: { children: string }) => <span data-testid="markdown">{children}</span>,
+}))
+vi.mock('remark-gfm', () => ({ default: () => {} }))
+
 type JsonValue = string | number | boolean | null | JsonObject | JsonValue[]
 interface JsonObject { [key: string]: JsonValue }
 
@@ -310,5 +315,260 @@ describe('Suggestions – header', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Suggestions' })).toBeInTheDocument()
     expect(screen.getByText('Next run: tonight 03:00')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /New suggestion/ })).toBeInTheDocument()
+  })
+})
+
+describe('Suggestions – plan action', () => {
+  it('plan it succeeds: moves card from pending to planned optimistically and refetches', async () => {
+    const pendingSuggestion = makeSuggestion({ id: 1, title: 'Plan me' })
+    const updatedSuggestion: Suggestion = { ...pendingSuggestion, status: 'planned', plan: '## Plan\n\nDo stuff' }
+    const initial = { pending: [pendingSuggestion], planned: [], rejected: [] }
+    const refreshed = { pending: [], planned: [updatedSuggestion], rejected: [] }
+
+    let listCalls = 0
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/1/plan' && init?.method === 'POST') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(updatedSuggestion) })
+      }
+      if (url === '/api/suggestions') {
+        listCalls += 1
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(listCalls === 1 ? initial : refreshed) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Plan me')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Plan it/ }))
+
+    await waitFor(() => {
+      // Card is optimistically removed from pending; empty state appears
+      expect(
+        screen.getByText('No pending suggestions yet — try Run now.'),
+      ).toBeInTheDocument()
+    })
+    expect(listCalls).toBeGreaterThanOrEqual(2)
+    expect(screen.queryByTestId('suggestion-1-action-error')).not.toBeInTheDocument()
+  })
+
+  it('plan it fails: surfaces actionable error from backend instead of generic message', async () => {
+    const pendingSuggestion = makeSuggestion({ id: 1, title: 'Plan me' })
+    const initial = { pending: [pendingSuggestion], planned: [], rejected: [] }
+
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/1/plan' && init?.method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          status: 400,
+          json: () => Promise.resolve({ error: 'Claude is not enabled' }),
+        })
+      }
+      if (url === '/api/suggestions') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(initial) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Plan me')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Plan it/ }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('suggestion-1-action-error')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('suggestion-1-action-error')).toHaveTextContent('Claude is not enabled')
+    // Card must remain in the pending list
+    expect(screen.getByText('Plan me')).toBeInTheDocument()
+  })
+
+  it('plan it fails without error body: shows generic fallback message', async () => {
+    const pendingSuggestion = makeSuggestion({ id: 1, title: 'Plan me' })
+    const initial = { pending: [pendingSuggestion], planned: [], rejected: [] }
+
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/1/plan' && init?.method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.reject(new Error('no body')),
+        })
+      }
+      if (url === '/api/suggestions') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(initial) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Plan me')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Plan it/ }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('suggestion-1-action-error')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('suggestion-1-action-error')).toHaveTextContent('Failed to plan suggestion')
+  })
+})
+
+describe('Suggestions – reject action', () => {
+  it('reject succeeds: removes card from pending and refetches', async () => {
+    const pendingSuggestion = makeSuggestion({ id: 1, title: 'Reject me' })
+    const initial = { pending: [pendingSuggestion], planned: [], rejected: [] }
+    const refreshed = { pending: [], planned: [], rejected: [{ ...pendingSuggestion, status: 'rejected' as const }] }
+
+    let listCalls = 0
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/1/reject' && init?.method === 'POST') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+      }
+      if (url === '/api/suggestions') {
+        listCalls += 1
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(listCalls === 1 ? initial : refreshed) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Reject me')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Reject$/ }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('No pending suggestions yet — try Run now.'),
+      ).toBeInTheDocument()
+    })
+    expect(listCalls).toBe(2)
+  })
+
+  it('reject fails: shows error message and keeps card visible', async () => {
+    const pendingSuggestion = makeSuggestion({ id: 1, title: 'Reject me' })
+    const initial = { pending: [pendingSuggestion], planned: [], rejected: [] }
+
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/1/reject' && init?.method === 'POST') {
+        return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
+      }
+      if (url === '/api/suggestions') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(initial) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Reject me')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Reject$/ }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('suggestion-1-action-error')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('suggestion-1-action-error')).toHaveTextContent('Failed to reject suggestion')
+    expect(screen.getByText('Reject me')).toBeInTheDocument()
+  })
+})
+
+describe('Suggestions – planned tab', () => {
+  it('renders saved plan markdown for planned suggestions', async () => {
+    const plannedSuggestion = makeSuggestion({
+      id: 2,
+      title: 'My planned item',
+      status: 'planned',
+      plan: '## Implementation plan\n\nStep 1: do the thing',
+    })
+    const list = { pending: [], planned: [plannedSuggestion], rejected: [] }
+
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Planned \(1\)/ })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
+
+    await waitFor(() => {
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).getByTestId('suggestion-2-plan')).toBeInTheDocument()
+    })
+
+    const planEl = screen.getByTestId('suggestion-2-plan')
+    expect(planEl).toHaveTextContent('## Implementation plan')
+    expect(planEl).toHaveTextContent('Step 1: do the thing')
+  })
+
+  it('shows "no plan yet" when planned suggestion has no plan text', async () => {
+    const plannedSuggestion = makeSuggestion({ id: 3, title: 'No plan yet', status: 'planned' })
+    const list = { pending: [], planned: [plannedSuggestion], rejected: [] }
+
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Planned \(1\)/ })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
+
+    await waitFor(() => {
+      expect(screen.getByText('No plan saved yet.')).toBeInTheDocument()
+    })
+  })
+
+  it('Create bead button is keyboard-focusable and shows its description', async () => {
+    const plannedSuggestion = makeSuggestion({ id: 4, title: 'Has plan', status: 'planned', plan: 'A plan' })
+    const list = { pending: [], planned: [plannedSuggestion], rejected: [] }
+
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Planned/ })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Create bead/ })).toBeInTheDocument()
+    })
+
+    const btn = screen.getByRole('button', { name: /Create bead/ })
+    // Must not be natively disabled (so keyboard can reach it)
+    expect(btn).not.toBeDisabled()
+    expect(btn).toHaveAttribute('aria-disabled', 'true')
+    // Visible description text must be present
+    expect(screen.getByText('Bead creation lands in the next bead.')).toBeInTheDocument()
   })
 })

@@ -7,7 +7,7 @@ import type { Suggestion } from './SuggestionCard'
 
 export interface SuggestionActionsProps {
   suggestion: Suggestion
-  onPlanned?: () => void
+  onPlanned?: (updated: Suggestion) => void
   onRejected?: () => void
 }
 
@@ -98,10 +98,18 @@ function PendingActions({
         body: JSON.stringify(trimmed ? { feedback: trimmed } : {}),
       })
       if (!res.ok) {
-        throw new Error(t('suggestions.errors.planFailed'))
+        let msg = t('suggestions.errors.planFailed')
+        try {
+          const body = await res.json() as { error?: string }
+          if (body?.error) msg = body.error
+        } catch {
+          // keep generic message if body parse fails
+        }
+        throw new Error(msg)
       }
+      const updated = await res.json() as Suggestion
       setFeedback('')
-      onPlanned?.()
+      onPlanned?.(updated)
     } catch (err) {
       setError(err instanceof Error ? err.message : t('suggestions.errors.planFailed'))
     } finally {
@@ -171,7 +179,7 @@ function PendingActions({
 function PlannedActions({ suggestion }: { suggestion: Suggestion }) {
   const { t } = useTranslation('common')
   const plan = suggestion.plan ?? ''
-  const tooltip = t('suggestions.actions.createBeadDisabledTooltip')
+  const beadDescId = `suggestion-${suggestion.id}-bead-desc`
 
   return (
     <div className="w-full space-y-3">
@@ -189,15 +197,20 @@ function PlannedActions({ suggestion }: { suggestion: Suggestion }) {
           {t('suggestions.actions.noPlanYet')}
         </p>
       )}
-      <button
-        type="button"
-        disabled
-        title={tooltip}
-        aria-label={tooltip}
-        className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/60 px-3 py-1.5 text-xs font-medium text-gray-400 cursor-not-allowed opacity-70"
-      >
-        {t('suggestions.actions.createBead')}
-      </button>
+      <div className="space-y-1">
+        <button
+          type="button"
+          aria-disabled="true"
+          aria-describedby={beadDescId}
+          onClick={e => e.preventDefault()}
+          className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/60 px-3 py-1.5 text-xs font-medium text-gray-400 cursor-not-allowed opacity-70"
+        >
+          {t('suggestions.actions.createBead')}
+        </button>
+        <p id={beadDescId} className="text-xs text-gray-500">
+          {t('suggestions.actions.createBeadDisabledTooltip')}
+        </p>
+      </div>
     </div>
   )
 }
