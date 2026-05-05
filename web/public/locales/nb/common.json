@@ -33,7 +33,11 @@
     "grocery": "Handleliste",
     "homework": "Lekser",
     "homeworkReview": "Lekseoversikt",
-    "regnemester": "Regnemester"
+    "regnemester": "Regnemester",
+    "suggestions": "Forslag"
+  },
+  "suggestions": {
+    "placeholder": "Forslag vises her."
   },
   "actions": {
     "save": "Lagre",

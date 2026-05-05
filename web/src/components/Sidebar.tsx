@@ -36,6 +36,7 @@ import {
   BookOpen,
   ClipboardList,
   Calculator,
+  Lightbulb,
 } from 'lucide-react'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
@@ -255,6 +256,25 @@ export default function Sidebar() {
           >
             <Shield size={20} className="shrink-0" />
             {!isCollapsed && <span>{t('nav.admin')}</span>}
+          </NavLink>
+        )}
+
+        {/* Suggestions link (only for admin users) */}
+        {!loading && user?.is_admin && (
+          <NavLink
+            to="/suggestions"
+            onClick={closeMobile}
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors ${
+                isActive
+                  ? 'bg-gray-800 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+              } ${isCollapsed ? 'justify-center' : ''}`
+            }
+            title={isCollapsed ? t('nav.suggestions') : undefined}
+          >
+            <Lightbulb size={20} className="shrink-0" />
+            {!isCollapsed && <span>{t('nav.suggestions')}</span>}
           </NavLink>
         )}
 
