@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Lightbulb, Plus, Play } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../components/ui/skeleton'
@@ -19,7 +19,7 @@ export default function Suggestions() {
   const [planned, setPlanned] = useState<Suggestion[]>([])
   const [rejected, setRejected] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(true)
-  const hasDataRef = useRef(false)
+  const [hasData, setHasData] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [runError, setRunError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
@@ -49,7 +49,7 @@ export default function Suggestions() {
         setPending(data.pending ?? [])
         setPlanned(data.planned ?? [])
         setRejected(data.rejected ?? [])
-        hasDataRef.current = true
+        setHasData(true)
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
         setLoadError(err instanceof Error ? err.message : failedToLoadMsg)
@@ -189,13 +189,13 @@ export default function Suggestions() {
               {runError}
             </div>
           )}
-          {loading && !hasDataRef.current ? (
+          {loading && !hasData ? (
             <div className="space-y-3" aria-label={t('skeleton.loading')}>
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-24 w-full" />
               <Skeleton className="h-24 w-full" />
             </div>
-          ) : !hasDataRef.current && loadError ? (
+          ) : !hasData && loadError ? (
             <div
               role="alert"
               data-testid="load-error"
