@@ -33,6 +33,7 @@ import (
 	"github.com/Robin831/Hytte/internal/skywatch"
 	"github.com/Robin831/Hytte/internal/stars"
 	"github.com/Robin831/Hytte/internal/stride"
+	"github.com/Robin831/Hytte/internal/suggestions"
 	"github.com/Robin831/Hytte/internal/training"
 	"github.com/Robin831/Hytte/internal/vault"
 	"github.com/Robin831/Hytte/internal/transit"
@@ -195,6 +196,9 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/kiosk/tokens", kiosk.CreateTokenHandler(db))
 				r.Get("/kiosk/tokens", kiosk.ListTokensHandler(db))
 				r.Delete("/kiosk/tokens/{id}", kiosk.DeleteTokenHandler(db))
+
+				// Suggestions: AI-generated page improvement ideas — admin only.
+				r.Post("/suggestions/run", suggestions.RunHandler(db))
 
 				// Forge dashboard — admin only, registered only when FEATURE_FORGE_DASHBOARD=1.
 				// The feature flag is evaluated at startup; when disabled, these routes are
