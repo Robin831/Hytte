@@ -16,7 +16,18 @@
     "feedbackPlaceholder": "Legg til kontekst for planleggeren…",
     "noPlanYet": "Ingen plan lagret ennå.",
     "createBead": "Opprett bead",
-    "createBeadDisabledTooltip": "Bead-opprettelse kommer i neste bead."
+    "createBeadInProgress": "Oppretter bead…",
+    "createBeadRetry": "Prøv å opprette bead igjen",
+    "createBeadError": "Kunne ikke opprette bead: {{message}}"
+  },
+  "status": {
+    "beadCreated": "Bead opprettet"
+  },
+  "meta": {
+    "beadId": "Bead: {{id}}"
+  },
+  "headings": {
+    "beadCreated": "Opprettede beads"
   },
   "tabs": {
     "pending": "Avventer",
@@ -32,7 +43,8 @@
     "failedToLoad": "Kunne ikke laste forslag",
     "runFailed": "Kunne ikke kjøre forslag",
     "rejectFailed": "Kunne ikke avvise forslag",
-    "planFailed": "Kunne ikke planlegge forslag"
+    "planFailed": "Kunne ikke planlegge forslag",
+    "unknown": "ukjent feil"
   },
   "form": {
     "title": "Nytt forslag",

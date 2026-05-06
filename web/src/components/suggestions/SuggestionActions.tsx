@@ -9,6 +9,7 @@ export interface SuggestionActionsProps {
   suggestion: Suggestion
   onPlanned?: (updated: Suggestion) => void
   onRejected?: () => void
+  onBeadCreated?: (updated: Suggestion) => void
 }
 
 const SAFE_URL_PROTOCOLS = ['http:', 'https:', 'mailto:', 'tel:'] as const
@@ -41,12 +42,15 @@ const markdownComponents = {
   },
 }
 
-export function SuggestionActions({ suggestion, onPlanned, onRejected }: SuggestionActionsProps) {
+export function SuggestionActions({ suggestion, onPlanned, onRejected, onBeadCreated }: SuggestionActionsProps) {
   if (suggestion.status === 'pending') {
     return <PendingActions suggestion={suggestion} onPlanned={onPlanned} onRejected={onRejected} />
   }
   if (suggestion.status === 'planned') {
-    return <PlannedActions suggestion={suggestion} />
+    return <PlannedActions suggestion={suggestion} onBeadCreated={onBeadCreated} />
+  }
+  if (suggestion.status === 'bead_created') {
+    return <BeadCreatedActions suggestion={suggestion} />
   }
   return null
 }
@@ -176,10 +180,46 @@ function PendingActions({
   )
 }
 
-function PlannedActions({ suggestion }: { suggestion: Suggestion }) {
+function PlannedActions({
+  suggestion,
+  onBeadCreated,
+}: {
+  suggestion: Suggestion
+  onBeadCreated?: (updated: Suggestion) => void
+}) {
   const { t } = useTranslation('suggestions')
   const plan = suggestion.plan ?? ''
-  const beadDescId = `suggestion-${suggestion.id}-bead-desc`
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleCreateBead() {
+    if (submitting) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/suggestions/${suggestion.id}/bead`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        let msg = ''
+        try {
+          const body = await res.json() as { error?: string }
+          if (body?.error) msg = body.error
+        } catch {
+          // keep generic fallback
+        }
+        throw new Error(msg)
+      }
+      const updated = await res.json() as Suggestion
+      onBeadCreated?.(updated)
+    } catch (err) {
+      const detail = err instanceof Error && err.message ? err.message : ''
+      setError(t('actions.createBeadError', { message: detail || t('errors.unknown') }))
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <div className="w-full space-y-3">
@@ -197,19 +237,65 @@ function PlannedActions({ suggestion }: { suggestion: Suggestion }) {
           {t('actions.noPlanYet')}
         </p>
       )}
-      <div className="space-y-1">
+      {error && (
+        <p
+          role="alert"
+          data-testid={`suggestion-${suggestion.id}-bead-error`}
+          className="text-xs text-red-300"
+        >
+          {error}
+        </p>
+      )}
+      <div>
         <button
           type="button"
-          aria-disabled="true"
-          aria-describedby={beadDescId}
-          onClick={e => e.preventDefault()}
-          className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800/60 px-3 py-1.5 text-xs font-medium text-gray-400 cursor-not-allowed opacity-70"
+          onClick={handleCreateBead}
+          disabled={submitting}
+          className="inline-flex items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/20 px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {t('actions.createBead')}
+          {submitting && (
+            <Loader2 size={14} className="animate-spin" aria-hidden={true} />
+          )}
+          <span>
+            {submitting
+              ? t('actions.createBeadInProgress')
+              : error
+                ? t('actions.createBeadRetry')
+                : t('actions.createBead')}
+          </span>
         </button>
-        <p id={beadDescId} className="text-xs text-gray-500">
-          {t('actions.createBeadDisabledTooltip')}
-        </p>
+      </div>
+    </div>
+  )
+}
+
+function BeadCreatedActions({ suggestion }: { suggestion: Suggestion }) {
+  const { t } = useTranslation('suggestions')
+  const plan = suggestion.plan ?? ''
+  const beadID = suggestion.bead_id ?? ''
+
+  return (
+    <div className="w-full space-y-3">
+      {plan && (
+        <div
+          className="prose prose-invert prose-sm max-w-none rounded-md border border-gray-700/60 bg-gray-900/40 px-3 py-2"
+          data-testid={`suggestion-${suggestion.id}-plan`}
+        >
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+            {plan}
+          </ReactMarkdown>
+        </div>
+      )}
+      <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+        <p className="font-medium">{t('status.beadCreated')}</p>
+        {beadID && (
+          <p
+            className="mt-1 font-mono text-emerald-300"
+            data-testid={`suggestion-${suggestion.id}-bead-id`}
+          >
+            {t('meta.beadId', { id: beadID })}
+          </p>
+        )}
       </div>
     </div>
   )

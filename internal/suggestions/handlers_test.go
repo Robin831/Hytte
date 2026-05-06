@@ -163,7 +163,7 @@ func TestListHandlerPartitionsByStatus(t *testing.T) {
 	insert(StatusPending, "P2")
 	insert(StatusPlanned, "PL1")
 	insert(StatusRejected, "R1")
-	insert(StatusBeadCreated, "BC1") // should not appear in any bucket
+	insert(StatusBeadCreated, "BC1")
 
 	router := mountAdmin(ListHandler(d), http.MethodGet, "/api/suggestions")
 	req := adminContext(httptest.NewRequest(http.MethodGet, "/api/suggestions", nil), 1, true)
@@ -186,6 +186,9 @@ func TestListHandlerPartitionsByStatus(t *testing.T) {
 	if len(got.Rejected) != 1 || got.Rejected[0].Title != "R1" {
 		t.Fatalf("rejected mismatch: %+v", got.Rejected)
 	}
+	if len(got.BeadCreated) != 1 || got.BeadCreated[0].Title != "BC1" {
+		t.Fatalf("bead_created mismatch: %+v", got.BeadCreated)
+	}
 }
 
 func TestListHandlerEmptyBucketsAreArrays(t *testing.T) {
@@ -199,7 +202,7 @@ func TestListHandlerEmptyBucketsAreArrays(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, key := range []string{`"pending":[]`, `"planned":[]`, `"rejected":[]`} {
+	for _, key := range []string{`"pending":[]`, `"planned":[]`, `"rejected":[]`, `"bead_created":[]`} {
 		if !strings.Contains(body, key) {
 			t.Fatalf("expected empty array for %s, body=%s", key, body)
 		}

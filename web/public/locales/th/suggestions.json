@@ -16,7 +16,18 @@
     "feedbackPlaceholder": "เพิ่มบริบทสำหรับผู้วางแผน…",
     "noPlanYet": "ยังไม่มีการบันทึกแผน",
     "createBead": "สร้าง bead",
-    "createBeadDisabledTooltip": "การสร้าง bead จะมาในงานถัดไป"
+    "createBeadInProgress": "กำลังสร้าง bead…",
+    "createBeadRetry": "ลองสร้าง bead อีกครั้ง",
+    "createBeadError": "สร้าง bead ไม่สำเร็จ: {{message}}"
+  },
+  "status": {
+    "beadCreated": "สร้าง bead แล้ว"
+  },
+  "meta": {
+    "beadId": "Bead: {{id}}"
+  },
+  "headings": {
+    "beadCreated": "Bead ที่สร้างแล้ว"
   },
   "tabs": {
     "pending": "รอดำเนินการ",
@@ -32,7 +43,8 @@
     "failedToLoad": "โหลดข้อเสนอแนะไม่สำเร็จ",
     "runFailed": "เรียกใช้ข้อเสนอแนะไม่สำเร็จ",
     "rejectFailed": "ปฏิเสธข้อเสนอแนะไม่สำเร็จ",
-    "planFailed": "วางแผนข้อเสนอแนะไม่สำเร็จ"
+    "planFailed": "วางแผนข้อเสนอแนะไม่สำเร็จ",
+    "unknown": "ข้อผิดพลาดที่ไม่รู้จัก"
   },
   "form": {
     "title": "ข้อเสนอแนะใหม่",

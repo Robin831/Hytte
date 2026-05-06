@@ -60,12 +60,13 @@ func RunHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // listResponse is the shape returned by GET /api/suggestions: the caller gets
-// one bucket per actionable status. Suggestions in the bead_created status are
-// terminal and not surfaced here.
+// one bucket per status, including the terminal bead_created bucket so the UI
+// can surface what has already shipped.
 type listResponse struct {
-	Pending  []Suggestion `json:"pending"`
-	Planned  []Suggestion `json:"planned"`
-	Rejected []Suggestion `json:"rejected"`
+	Pending     []Suggestion `json:"pending"`
+	Planned     []Suggestion `json:"planned"`
+	Rejected    []Suggestion `json:"rejected"`
+	BeadCreated []Suggestion `json:"bead_created"`
 }
 
 // ListHandler returns the admin user's suggestions partitioned by status. Each
@@ -95,11 +96,18 @@ func ListHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list suggestions"})
 			return
 		}
+		beadCreated, err := ListByStatus(r.Context(), db, user.ID, StatusBeadCreated)
+		if err != nil {
+			log.Printf("suggestions: list bead_created for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list suggestions"})
+			return
+		}
 
 		writeJSON(w, http.StatusOK, listResponse{
-			Pending:  nilToEmpty(pending),
-			Planned:  nilToEmpty(planned),
-			Rejected: nilToEmpty(rejected),
+			Pending:     nilToEmpty(pending),
+			Planned:     nilToEmpty(planned),
+			Rejected:    nilToEmpty(rejected),
+			BeadCreated: nilToEmpty(beadCreated),
 		})
 	}
 }

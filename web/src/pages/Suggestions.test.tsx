@@ -809,9 +809,9 @@ describe('Suggestions – planned tab', () => {
     })
   })
 
-  it('Create bead button is keyboard-focusable and shows its description', async () => {
+  it('Create bead button is enabled on planned suggestions', async () => {
     const plannedSuggestion = makeSuggestion({ id: 4, title: 'Has plan', status: 'planned', plan: 'A plan' })
-    const list = { pending: [], planned: [plannedSuggestion], rejected: [] }
+    const list = { pending: [], planned: [plannedSuggestion], rejected: [], bead_created: [] }
 
     vi.stubGlobal('fetch', vi.fn(() =>
       Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
@@ -826,14 +826,168 @@ describe('Suggestions – planned tab', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Create bead/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^Create bead$/ })).toBeInTheDocument()
     })
 
-    const btn = screen.getByRole('button', { name: /Create bead/ })
-    // Must not be natively disabled (so keyboard can reach it)
+    const btn = screen.getByRole('button', { name: /^Create bead$/ })
     expect(btn).not.toBeDisabled()
-    expect(btn).toHaveAttribute('aria-disabled', 'true')
-    // Visible description text must be present
-    expect(screen.getByText('Bead creation lands in the next bead.')).toBeInTheDocument()
+    expect(btn).not.toHaveAttribute('aria-disabled', 'true')
+  })
+})
+
+describe('Suggestions – create bead action', () => {
+  it('create bead succeeds: surfaces bead id in a Created beads section', async () => {
+    const plannedSuggestion = makeSuggestion({
+      id: 5,
+      title: 'Plan ready',
+      status: 'planned',
+      plan: '## Plan\n\nDo it',
+    })
+    const updatedSuggestion: Suggestion = {
+      ...plannedSuggestion,
+      status: 'bead_created',
+      bead_id: 'Hytte-abcd',
+      bead_created_at: '2026-05-06T10:00:00Z',
+    }
+    const initial = { pending: [], planned: [plannedSuggestion], rejected: [], bead_created: [] }
+    const refreshed = { pending: [], planned: [], rejected: [], bead_created: [updatedSuggestion] }
+
+    let listCalls = 0
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/5/bead' && init?.method === 'POST') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(updatedSuggestion) })
+      }
+      if (url === '/api/suggestions') {
+        listCalls += 1
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(listCalls === 1 ? initial : refreshed) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Planned \(1\)/ })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^Create bead$/ })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Create bead$/ }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('suggestion-5-bead-id')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('suggestion-5-bead-id')).toHaveTextContent('Hytte-abcd')
+    expect(screen.getByTestId('bead-created-section')).toBeInTheDocument()
+    expect(listCalls).toBeGreaterThanOrEqual(2)
+  })
+
+  it('create bead loading state: shows spinner and disables button', async () => {
+    const plannedSuggestion = makeSuggestion({
+      id: 6,
+      title: 'Plan ready',
+      status: 'planned',
+      plan: 'A plan',
+    })
+    const updatedSuggestion: Suggestion = {
+      ...plannedSuggestion,
+      status: 'bead_created',
+      bead_id: 'Hytte-xyz9',
+    }
+    const initial = { pending: [], planned: [plannedSuggestion], rejected: [], bead_created: [] }
+    const refreshed = { pending: [], planned: [], rejected: [], bead_created: [updatedSuggestion] }
+
+    let resolveBead: ((v: { ok: boolean; json: () => Promise<unknown> }) => void) | null = null
+    let listCalls = 0
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/6/bead' && init?.method === 'POST') {
+        return new Promise<{ ok: boolean; json: () => Promise<unknown> }>(resolve => {
+          resolveBead = resolve
+        })
+      }
+      if (url === '/api/suggestions') {
+        listCalls += 1
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(listCalls === 1 ? initial : refreshed),
+        })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Planned/ })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
+
+    const idleBtn = await screen.findByRole('button', { name: /^Create bead$/ })
+    expect(idleBtn).not.toBeDisabled()
+    fireEvent.click(idleBtn)
+
+    await waitFor(() => {
+      const inFlight = screen.getByRole('button', { name: /Creating bead…/ })
+      expect(inFlight).toBeDisabled()
+      expect(inFlight.querySelector('.animate-spin')).not.toBeNull()
+    })
+
+    resolveBead!({ ok: true, json: () => Promise.resolve(updatedSuggestion) })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('suggestion-6-bead-id')).toBeInTheDocument()
+    })
+  })
+
+  it('create bead fails: shows error and keeps card in Planned', async () => {
+    const plannedSuggestion = makeSuggestion({
+      id: 7,
+      title: 'Stays planned',
+      status: 'planned',
+      plan: 'A plan',
+    })
+    const initial = { pending: [], planned: [plannedSuggestion], rejected: [], bead_created: [] }
+
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/7/bead' && init?.method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ error: 'bd create failed: database locked' }),
+        })
+      }
+      if (url === '/api/suggestions') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(initial) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Planned/ })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
+
+    const btn = await screen.findByRole('button', { name: /^Create bead$/ })
+    fireEvent.click(btn)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('suggestion-7-bead-error')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('suggestion-7-bead-error')).toHaveTextContent('database locked')
+    // Card must remain in Planned — the planned-card title is still visible.
+    expect(screen.getByText('Stays planned')).toBeInTheDocument()
+    // No bead-created section because nothing has been created yet.
+    expect(screen.queryByTestId('bead-created-section')).not.toBeInTheDocument()
+    // Button label flips to retry.
+    expect(screen.getByRole('button', { name: /Retry create bead/ })).toBeInTheDocument()
   })
 })
