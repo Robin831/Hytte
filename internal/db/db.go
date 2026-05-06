@@ -1553,6 +1553,12 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_suggestions_user_status ON suggestions(user_id, status);
 	CREATE INDEX IF NOT EXISTS idx_suggestions_page_slug ON suggestions(page_slug);
 
+	CREATE TABLE IF NOT EXISTS suggestion_page_settings (
+		page_slug        TEXT PRIMARY KEY,
+		rotation_enabled INTEGER NOT NULL DEFAULT 1,
+		updated_at       TIMESTAMP NOT NULL
+	);
+
 	`
 
 	_, err := db.Exec(schema)

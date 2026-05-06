@@ -68,7 +68,7 @@ var validSizes = map[string]bool{
 // generate three improvement suggestions and inserting them as pending rows
 // owned by userID. Per-page errors are logged but do not abort the run, so a
 // single Claude failure or malformed-JSON page does not lose the rest. The
-// caller is responsible for filtering pages by Enabled (see EnabledPages).
+// caller is responsible for filtering pages (see RotationEligible).
 //
 // Returns counts of inserted suggestions and total errors. Errors include both
 // page-level failures (Claude call, JSON parse) and per-row insert failures, so

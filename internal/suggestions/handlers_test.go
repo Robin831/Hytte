@@ -27,7 +27,7 @@ func withSavedPages(replacement []Page) func() {
 
 func TestRunHandlerRejectsNonAdmin(t *testing.T) {
 	d := setupTestDB(t)
-	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather", Enabled: true}})()
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
 	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
 		return validJSONResponse, nil
 	})()
@@ -54,8 +54,8 @@ func TestRunHandlerRejectsNonAdmin(t *testing.T) {
 func TestRunHandlerAdminReturnsCounts(t *testing.T) {
 	d := setupTestDB(t)
 	defer withSavedPages([]Page{
-		{Slug: "weather", Title: "Weather", Enabled: true},
-		{Slug: "notes", Title: "Notes", Enabled: true},
+		{Slug: "weather", Title: "Weather"},
+		{Slug: "notes", Title: "Notes"},
 	})()
 	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
 		return validJSONResponse, nil
@@ -100,7 +100,7 @@ func TestRunHandlerAdminReturnsCounts(t *testing.T) {
 
 func TestRunHandlerRequiresClaudeEnabled(t *testing.T) {
 	d := setupTestDB(t)
-	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather", Enabled: true}})()
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
 	// Note: claude_enabled is intentionally NOT set.
 
 	mux := http.NewServeMux()
@@ -226,7 +226,7 @@ func TestCreateHandlerRejectsNonAdmin(t *testing.T) {
 
 func TestCreateHandlerSuccess(t *testing.T) {
 	d := setupTestDB(t)
-	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather", Enabled: true}})()
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
 
 	router := mountAdmin(CreateHandler(d), http.MethodPost, "/api/suggestions")
 	payload := `{"type":"improvement","size":"m","page_slug":"weather","title":"Cache forecasts","body":"Cache yr.no for 10 minutes."}`
@@ -257,7 +257,7 @@ func TestCreateHandlerSuccess(t *testing.T) {
 
 func TestCreateHandlerAllowsNewPageSlug(t *testing.T) {
 	d := setupTestDB(t)
-	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather", Enabled: true}})()
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
 
 	router := mountAdmin(CreateHandler(d), http.MethodPost, "/api/suggestions")
 	payload := fmt.Sprintf(`{"type":"new_page","size":"l","page_slug":%q,"title":"Add expense tracker","body":"A page that..."}`, NewPageSlug)
@@ -272,7 +272,7 @@ func TestCreateHandlerAllowsNewPageSlug(t *testing.T) {
 
 func TestCreateHandlerValidationRejections(t *testing.T) {
 	d := setupTestDB(t)
-	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather", Enabled: true}})()
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
 
 	cases := []struct {
 		name    string
@@ -304,7 +304,7 @@ func TestCreateHandlerValidationRejections(t *testing.T) {
 
 func TestCreateThenListRoundTripsDecryptedBody(t *testing.T) {
 	d := setupTestDB(t)
-	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather", Enabled: true}})()
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
 
 	const plaintext = "Encrypted at rest, decrypted at the boundary."
 	create := mountAdmin(CreateHandler(d), http.MethodPost, "/api/suggestions")
@@ -515,7 +515,7 @@ func TestPlanHandlerRejectsNonAdmin(t *testing.T) {
 
 func TestPlanHandlerSuccess(t *testing.T) {
 	d := setupTestDB(t)
-	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather", Enabled: true}})()
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
 
 	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
 		t.Fatalf("set preference: %v", err)
@@ -559,7 +559,7 @@ func TestPlanHandlerSuccess(t *testing.T) {
 
 func TestPlanHandlerPassesFeedbackIntoPrompt(t *testing.T) {
 	d := setupTestDB(t)
-	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather", Enabled: true}})()
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
 
 	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
 		t.Fatalf("set preference: %v", err)
@@ -702,7 +702,7 @@ func TestPlanHandlerTimeoutDoesNotMarkPlanned(t *testing.T) {
 
 func TestPlanHandlerNewPageSlugProducesValidPrompt(t *testing.T) {
 	d := setupTestDB(t)
-	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather", Enabled: true}})()
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
 
 	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
 		t.Fatalf("set preference: %v", err)
@@ -882,9 +882,8 @@ func TestPagesHandlerRejectsNonAdmin(t *testing.T) {
 
 func TestPagesHandlerReturnsRegistryPlusNewPage(t *testing.T) {
 	defer withSavedPages([]Page{
-		{Slug: "weather", Title: "Weather", Enabled: true},
-		{Slug: "notes", Title: "Notes", Enabled: true},
-		{Slug: "disabled", Title: "Disabled", Enabled: false},
+		{Slug: "weather", Title: "Weather"},
+		{Slug: "notes", Title: "Notes"},
 	})()
 
 	router := mountAdmin(PagesHandler(), http.MethodGet, "/api/suggestions/pages")
@@ -899,9 +898,9 @@ func TestPagesHandlerReturnsRegistryPlusNewPage(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	// Expect 2 enabled pages + 1 synthetic.
+	// Expect 2 registered pages + 1 synthetic.
 	if len(got) != 3 {
-		t.Fatalf("expected 3 entries (2 enabled + new_page), got %d: %+v", len(got), got)
+		t.Fatalf("expected 3 entries (2 registered + new_page), got %d: %+v", len(got), got)
 	}
 	if got[0].Slug != "weather" || got[1].Slug != "notes" {
 		t.Fatalf("registry order broken: %+v", got)

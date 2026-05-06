@@ -1,6 +1,10 @@
 package suggestions
 
-import "fmt"
+import (
+	"context"
+	"database/sql"
+	"fmt"
+)
 
 // Page describes a single Hytte page that can receive AI-generated improvement
 // suggestions. The registry is hand-curated rather than auto-discovered so that
@@ -21,10 +25,6 @@ type Page struct {
 	// FeatureFlag is the user_features key gating the page. Informational only
 	// in this bead — used in the prompt context.
 	FeatureFlag string
-	// Enabled controls whether RunSuggestionsForPages will generate against this
-	// page. The per-page enable toggle UI is a later bead; for now all seeded
-	// pages default to true.
-	Enabled bool
 }
 
 // Pages is the curated registry. This bead seeds five pages; the full registry
@@ -40,7 +40,6 @@ var Pages = []Page{
 			"internal/weather/handler.go",
 		},
 		FeatureFlag: "weather",
-		Enabled:     true,
 	},
 	{
 		Slug:        "budget",
@@ -52,7 +51,6 @@ var Pages = []Page{
 			"internal/budget/handlers.go",
 		},
 		FeatureFlag: "budget",
-		Enabled:     true,
 	},
 	{
 		Slug:        "notes",
@@ -64,7 +62,6 @@ var Pages = []Page{
 			"internal/notes/handlers.go",
 		},
 		FeatureFlag: "notes",
-		Enabled:     true,
 	},
 	{
 		Slug:        "training",
@@ -76,7 +73,6 @@ var Pages = []Page{
 			"internal/training/handlers.go",
 		},
 		FeatureFlag: "training",
-		Enabled:     true,
 	},
 	{
 		Slug:        "links",
@@ -88,21 +84,58 @@ var Pages = []Page{
 			"internal/links/handlers.go",
 		},
 		FeatureFlag: "links",
-		Enabled:     true,
 	},
 }
 
-// EnabledPages returns the subset of Pages with Enabled == true. This is the
-// canonical filter used at the handler boundary; downstream functions trust
-// that the slice they receive is already filtered.
-func EnabledPages() []Page {
-	out := make([]Page, 0, len(Pages))
-	for _, p := range Pages {
-		if p.Enabled {
-			out = append(out, p)
+// AllRegistered returns the unfiltered registry slice. Callers that need a
+// rotation-aware view should use RotationEligible instead.
+func AllRegistered() []Page {
+	out := make([]Page, len(Pages))
+	for i, p := range Pages {
+		out[i] = p
+		if p.SourceFiles != nil {
+			out[i].SourceFiles = append([]string(nil), p.SourceFiles...)
 		}
 	}
 	return out
+}
+
+// RotationEligible returns the subset of Pages that should participate in the
+// rotation scheduler. A page is eligible when no row exists in
+// suggestion_page_settings (the default) or when its rotation_enabled column
+// is 1. The DB is the sole source of truth for rotation state.
+func RotationEligible(ctx context.Context, db *sql.DB) ([]Page, error) {
+	rows, err := db.QueryContext(ctx, `SELECT page_slug, rotation_enabled FROM suggestion_page_settings`)
+	if err != nil {
+		return nil, fmt.Errorf("query suggestion_page_settings: %w", err)
+	}
+	defer rows.Close()
+
+	settings := make(map[string]bool)
+	for rows.Next() {
+		var slug string
+		var enabled int
+		if err := rows.Scan(&slug, &enabled); err != nil {
+			return nil, fmt.Errorf("scan suggestion_page_settings: %w", err)
+		}
+		settings[slug] = enabled == 1
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate suggestion_page_settings: %w", err)
+	}
+
+	out := make([]Page, 0, len(Pages))
+	for _, p := range Pages {
+		enabled, ok := settings[p.Slug]
+		if !ok || enabled {
+			cp := p
+			if p.SourceFiles != nil {
+				cp.SourceFiles = append([]string(nil), p.SourceFiles...)
+			}
+			out = append(out, cp)
+		}
+	}
+	return out, nil
 }
 
 // init enforces that page slugs are unique. A duplicate slug would silently

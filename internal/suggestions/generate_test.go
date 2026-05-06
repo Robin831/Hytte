@@ -33,8 +33,8 @@ func dummyCfg() *training.ClaudeConfig {
 
 func twoPages() []Page {
 	return []Page{
-		{Slug: "weather", Title: "Weather", Enabled: true},
-		{Slug: "notes", Title: "Notes", Enabled: true},
+		{Slug: "weather", Title: "Weather"},
+		{Slug: "notes", Title: "Notes"},
 	}
 }
 
@@ -80,7 +80,7 @@ func TestRunSuggestionsForPagesRetriesOnceOnMalformedJSON(t *testing.T) {
 	})()
 
 	res := RunSuggestionsForPages(context.Background(), d, dummyCfg(), 1, []Page{
-		{Slug: "weather", Title: "Weather", Enabled: true},
+		{Slug: "weather", Title: "Weather"},
 	})
 	if calls != 2 {
 		t.Fatalf("expected exactly 2 calls (1 retry), got %d", calls)
@@ -140,7 +140,7 @@ func TestRunSuggestionsForPagesCountsPerRowInsertFailures(t *testing.T) {
 	// The Claude call still succeeds, so this isolates per-row failures from
 	// page-level errors.
 	res := RunSuggestionsForPages(context.Background(), d, dummyCfg(), 9999, []Page{
-		{Slug: "weather", Title: "Weather", Enabled: true},
+		{Slug: "weather", Title: "Weather"},
 	})
 	if res.Generated != 0 {
 		t.Fatalf("expected 0 generated, got %d", res.Generated)
