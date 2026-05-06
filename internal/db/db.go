@@ -1572,6 +1572,7 @@ func createSchema(db *sql.DB) error {
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 	);
 	CREATE INDEX IF NOT EXISTS idx_suggestion_runs_user_started ON suggestion_runs(user_id, started_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_suggestion_runs_user_inflight ON suggestion_runs(user_id) WHERE finished_at IS NULL;
 
 	`
 

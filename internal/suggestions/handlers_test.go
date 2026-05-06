@@ -3,6 +3,7 @@ package suggestions
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -51,7 +52,7 @@ func TestRunHandlerRejectsNonAdmin(t *testing.T) {
 	}
 }
 
-func TestRunHandlerAdminReturnsCounts(t *testing.T) {
+func TestRunHandlerAdminStreamsEvents(t *testing.T) {
 	d := setupTestDB(t)
 	defer withSavedPages([]Page{
 		{Slug: "weather", Title: "Weather"},
@@ -83,18 +84,81 @@ func TestRunHandlerAdminReturnsCounts(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for admin, got %d: %s", rec.Code, rec.Body.String())
 	}
-
-	var got RunResult
-	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
-		t.Fatalf("decode body: %v", err)
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("expected text/event-stream, got %q", ct)
 	}
-	if got.Errors != 0 {
-		t.Fatalf("expected 0 errors, got %d", got.Errors)
+
+	events := parseSSEEvents(t, rec.Body.String())
+
+	// Expect: started, page_complete×2, new_page_complete, done.
+	if len(events) != 5 {
+		t.Fatalf("expected 5 events (started + 2 page_complete + new_page_complete + done), got %d: %+v", len(events), events)
+	}
+	if events[0].name != "started" {
+		t.Fatalf("event 0: expected started, got %q", events[0].name)
+	}
+	var started startedEvent
+	if err := json.Unmarshal([]byte(events[0].data), &started); err != nil {
+		t.Fatalf("decode started: %v", err)
+	}
+	if started.RunID == 0 {
+		t.Fatalf("started.run_id should be > 0")
+	}
+	if started.TotalPages != 2 {
+		t.Fatalf("started.total_pages: got %d want 2", started.TotalPages)
+	}
+	if len(started.PageSlugs) != 2 || started.PageSlugs[0] != "weather" || started.PageSlugs[1] != "notes" {
+		t.Fatalf("started.page_slugs: got %+v", started.PageSlugs)
+	}
+
+	for i, want := range []string{"weather", "notes"} {
+		ev := events[1+i]
+		if ev.name != "page_complete" {
+			t.Fatalf("event %d: expected page_complete, got %q", 1+i, ev.name)
+		}
+		var pc pageCompleteEvent
+		if err := json.Unmarshal([]byte(ev.data), &pc); err != nil {
+			t.Fatalf("decode page_complete %d: %v", i, err)
+		}
+		if pc.PageSlug != want {
+			t.Errorf("page_complete %d: page_slug got %q want %q", i, pc.PageSlug, want)
+		}
+		if pc.Status != "ok" {
+			t.Errorf("page_complete %d: status got %q want ok", i, pc.Status)
+		}
+		if pc.Generated != 3 {
+			t.Errorf("page_complete %d: generated got %d want 3", i, pc.Generated)
+		}
+	}
+
+	if events[3].name != "new_page_complete" {
+		t.Fatalf("event 3: expected new_page_complete, got %q", events[3].name)
+	}
+	var npc newPageCompleteEvent
+	if err := json.Unmarshal([]byte(events[3].data), &npc); err != nil {
+		t.Fatalf("decode new_page_complete: %v", err)
+	}
+	if npc.PageSlug != NewPageSlug || npc.Status != "ok" || npc.Generated != 1 {
+		t.Errorf("new_page_complete: %+v", npc)
+	}
+
+	if events[4].name != "done" {
+		t.Fatalf("event 4: expected done, got %q", events[4].name)
+	}
+	var done doneEvent
+	if err := json.Unmarshal([]byte(events[4].data), &done); err != nil {
+		t.Fatalf("decode done: %v", err)
+	}
+	if done.RunID != started.RunID {
+		t.Errorf("done.run_id: got %d want %d", done.RunID, started.RunID)
 	}
 	// 3 per page × 2 pages = 6 from per-page rotation, plus 1 from the
 	// new-page pass = 7 total.
-	if got.Generated != 7 {
-		t.Fatalf("expected 7 generated (3 per page × 2 + 1 new_page), got %d", got.Generated)
+	if done.Generated != 7 {
+		t.Errorf("done.generated: got %d want 7", done.Generated)
+	}
+	if done.Errors != 0 {
+		t.Errorf("done.errors: got %d want 0", done.Errors)
 	}
 
 	var rowCount int
@@ -112,6 +176,98 @@ func TestRunHandlerAdminReturnsCounts(t *testing.T) {
 	if newPageCount != 1 {
 		t.Fatalf("expected exactly 1 new_page row, got %d", newPageCount)
 	}
+
+	// The audit row should be marked finished with the same totals as the
+	// done event.
+	var (
+		gotGenerated, gotErrors int
+		gotCost                 float64
+		finishedAt              sql.NullString
+	)
+	if err := d.QueryRow(`SELECT generated, errors, cost_usd, finished_at FROM suggestion_runs WHERE id = ?`, started.RunID).
+		Scan(&gotGenerated, &gotErrors, &gotCost, &finishedAt); err != nil {
+		t.Fatalf("read run row: %v", err)
+	}
+	if !finishedAt.Valid {
+		t.Errorf("finished_at should be set after a successful run")
+	}
+	if gotGenerated != done.Generated || gotErrors != done.Errors {
+		t.Errorf("audit row mismatch: generated=%d errors=%d, want done %+v", gotGenerated, gotErrors, done)
+	}
+}
+
+func TestRunHandlerReturns409WhenInflightRunExists(t *testing.T) {
+	d := setupTestDB(t)
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
+	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	// Seed an in-flight run (finished_at NULL).
+	existingID, err := InsertSuggestionRun(context.Background(), d, SuggestionRun{
+		UserID:    1,
+		StartedAt: time.Now().UTC(),
+		Trigger:   TriggerManual,
+		PageSlugs: "weather",
+	})
+	if err != nil {
+		t.Fatalf("seed run: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/suggestions/run", auth.RequireAdmin()(RunHandler(d)))
+
+	user := &auth.User{ID: 1, IsAdmin: true}
+	req := httptest.NewRequest(http.MethodPost, "/api/suggestions/run", nil)
+	req = req.WithContext(auth.ContextWithUser(req.Context(), user))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 when run in flight, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Error string `json:"error"`
+		RunID int64  `json:"run_id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.RunID != existingID {
+		t.Fatalf("expected run_id %d, got %d", existingID, body.RunID)
+	}
+}
+
+// sseTestEvent is the parsed shape of a single Server-Sent Event used by tests.
+type sseTestEvent struct {
+	name string
+	data string
+}
+
+// parseSSEEvents splits a raw SSE response body into individual events.
+// Only event/data pairs are recognised; comments and other fields are skipped.
+func parseSSEEvents(t *testing.T, body string) []sseTestEvent {
+	t.Helper()
+	var out []sseTestEvent
+	for _, block := range strings.Split(strings.TrimSpace(body), "\n\n") {
+		block = strings.TrimSpace(block)
+		if block == "" {
+			continue
+		}
+		var ev sseTestEvent
+		for _, line := range strings.Split(block, "\n") {
+			switch {
+			case strings.HasPrefix(line, "event: "):
+				ev.name = strings.TrimPrefix(line, "event: ")
+			case strings.HasPrefix(line, "data: "):
+				ev.data = strings.TrimPrefix(line, "data: ")
+			}
+		}
+		if ev.name != "" {
+			out = append(out, ev)
+		}
+	}
+	return out
 }
 
 func TestRunHandlerRequiresClaudeEnabled(t *testing.T) {

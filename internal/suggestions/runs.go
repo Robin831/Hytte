@@ -44,6 +44,51 @@ type SuggestionRun struct {
 	CostUSD    float64    `json:"cost_usd"`
 }
 
+// UpdateSuggestionRun marks an in-flight suggestion-run row as finished and
+// writes the final totals. Used by the SSE RunHandler after the work goroutine
+// completes so the row reflects the actual outcome rather than the in-progress
+// placeholder inserted at start. finished_at is set to the current UTC time.
+func UpdateSuggestionRun(ctx context.Context, db *sql.DB, runID int64, generated, errCount int, costUSD float64) error {
+	finishedAt := time.Now().UTC().Format(time.RFC3339)
+	res, err := db.ExecContext(ctx, `
+		UPDATE suggestion_runs
+		SET finished_at = ?, generated = ?, errors = ?, cost_usd = ?
+		WHERE id = ?
+	`, finishedAt, generated, errCount, costUSD, runID)
+	if err != nil {
+		return fmt.Errorf("update suggestion_run: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("update suggestion_run %d: no rows", runID)
+	}
+	return nil
+}
+
+// InflightRunForUser returns the id of an in-flight suggestion run for userID
+// (one whose finished_at is NULL), or 0 with no error if no such row exists.
+// Used as a concurrency guard so a second RunHandler call cannot start while a
+// previous run is still streaming. A partial index on finished_at IS NULL
+// keeps this lookup cheap as the suggestion_runs table grows.
+func InflightRunForUser(ctx context.Context, db *sql.DB, userID int64) (int64, error) {
+	var id int64
+	err := db.QueryRowContext(ctx, `
+		SELECT id FROM suggestion_runs
+		WHERE user_id = ? AND finished_at IS NULL
+		LIMIT 1
+	`, userID).Scan(&id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("inflight run for user %d: %w", userID, err)
+	}
+	return id, nil
+}
+
 // InsertSuggestionRun persists a completed (or in-progress, when FinishedAt is
 // nil) suggestion-run row. The caller is responsible for assembling the
 // page_slugs CSV; this helper does no formatting beyond storing the supplied
