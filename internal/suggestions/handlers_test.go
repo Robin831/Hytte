@@ -319,7 +319,7 @@ func TestRunHandlerConcurrentRequestsSecondReturns409(t *testing.T) {
 
 	// The reported run_id must match the in-flight row from goroutine #1.
 	var inflightID int64
-	if err := d.QueryRow(`SELECT id FROM suggestion_runs WHERE finished_at IS NULL`).Scan(&inflightID); err != nil {
+	if err := d.QueryRow(`SELECT id FROM suggestion_runs WHERE finished_at IS NULL AND user_id = 1 ORDER BY id DESC LIMIT 1`).Scan(&inflightID); err != nil {
 		close(release)
 		<-done1
 		t.Fatalf("read in-flight run id: %v", err)
@@ -377,7 +377,7 @@ func TestRunHandlerClientDisconnectStillPersists(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	clientCtx, cancel := context.WithCancel(context.Background())
+	clientCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(clientCtx, http.MethodPost, srv.URL, nil)
 	if err != nil {
@@ -388,6 +388,7 @@ func TestRunHandlerClientDisconnectStillPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("do request: %v", err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -468,7 +469,7 @@ func TestRunHandlerClientDisconnectStillPersists(t *testing.T) {
 	// detached persistence covers every page that completed in the goroutine.
 	for _, slug := range []string{"weather", "notes", NewPageSlug} {
 		var n int
-		if err := d.QueryRow(`SELECT COUNT(*) FROM suggestions WHERE page_slug = ?`, slug).Scan(&n); err != nil {
+		if err := d.QueryRow(`SELECT COUNT(*) FROM suggestions WHERE page_slug = ? AND user_id = 1`, slug).Scan(&n); err != nil {
 			t.Fatalf("count %s: %v", slug, err)
 		}
 		if n == 0 {
