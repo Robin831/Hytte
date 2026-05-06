@@ -261,7 +261,8 @@ func TestRunHandlerInsertsSuggestionRunRow(t *testing.T) {
 	if r.Trigger != TriggerManual {
 		t.Errorf("trigger: got %q want %q", r.Trigger, TriggerManual)
 	}
-	// 1 page + new_page sentinel.
+	// 1 page + new_page sentinel — included up-front when the row is first
+	// inserted because the new-page pass always runs.
 	if r.PageSlugs != "weather,"+NewPageSlug {
 		t.Errorf("page_slugs: got %q", r.PageSlugs)
 	}
@@ -277,7 +278,93 @@ func TestRunHandlerInsertsSuggestionRunRow(t *testing.T) {
 		t.Errorf("cost: got %f want 0.07", r.CostUSD)
 	}
 	if r.FinishedAt == nil {
-		t.Errorf("finished_at should be set")
+		t.Errorf("finished_at should be set after UpdateSuggestionRun")
+	}
+}
+
+func TestUpdateSuggestionRunMarksFinishedAndOverwritesTotals(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	id, err := InsertSuggestionRun(ctx, d, SuggestionRun{
+		UserID:    1,
+		StartedAt: time.Now().UTC(),
+		Trigger:   TriggerManual,
+		PageSlugs: "weather",
+	})
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	if err := UpdateSuggestionRun(ctx, d, id, 5, 1, 0.42); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	rows, err := ListSuggestionRuns(ctx, d, 1, 10)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(rows))
+	}
+	r := rows[0]
+	if r.FinishedAt == nil {
+		t.Fatal("finished_at should be set after UpdateSuggestionRun")
+	}
+	if r.Generated != 5 || r.Errors != 1 {
+		t.Errorf("totals: got generated=%d errors=%d, want 5/1", r.Generated, r.Errors)
+	}
+	if math.Abs(r.CostUSD-0.42) > 1e-9 {
+		t.Errorf("cost: got %f want 0.42", r.CostUSD)
+	}
+}
+
+func TestUpdateSuggestionRunErrorsOnUnknownID(t *testing.T) {
+	d := setupTestDB(t)
+	if err := UpdateSuggestionRun(context.Background(), d, 9999, 0, 0, 0); err == nil {
+		t.Fatal("expected error when updating non-existent run, got nil")
+	}
+}
+
+func TestInflightRunForUserDistinguishesInProgressFromFinished(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	// Finished run — must not show up.
+	finished := time.Now().UTC()
+	if _, err := InsertSuggestionRun(ctx, d, SuggestionRun{
+		UserID:     1,
+		StartedAt:  finished.Add(-time.Minute),
+		FinishedAt: &finished,
+		Trigger:    TriggerManual,
+		PageSlugs:  "weather",
+	}); err != nil {
+		t.Fatalf("seed finished: %v", err)
+	}
+
+	if id, err := InflightRunForUser(ctx, d, 1); err != nil {
+		t.Fatalf("inflight: %v", err)
+	} else if id != 0 {
+		t.Fatalf("expected no in-flight run, got id %d", id)
+	}
+
+	// Now insert an in-flight run and confirm it surfaces.
+	inflight, err := InsertSuggestionRun(ctx, d, SuggestionRun{
+		UserID:    1,
+		StartedAt: time.Now().UTC(),
+		Trigger:   TriggerManual,
+		PageSlugs: "weather",
+	})
+	if err != nil {
+		t.Fatalf("seed inflight: %v", err)
+	}
+
+	got, err := InflightRunForUser(ctx, d, 1)
+	if err != nil {
+		t.Fatalf("inflight after seed: %v", err)
+	}
+	if got != inflight {
+		t.Fatalf("expected in-flight id %d, got %d", inflight, got)
 	}
 }
 

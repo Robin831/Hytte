@@ -1,0 +1,2 @@
+category: Changed
+- **Suggestions run streams progress over Server-Sent Events** - `POST /api/suggestions/run` now streams `started`, `page_complete`, `new_page_complete`, and `done` events instead of returning a single JSON blob. The work loop runs on a detached context so a client disconnect mid-run no longer aborts persistence. A second concurrent run for the same user returns 409 with the in-flight `run_id`. (Hytte-lnk1)

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -31,20 +32,81 @@ var PlanTimeout = 120 * time.Second
 // do not target an existing page in the registry.
 const NewPageSlug = "__new_page__"
 
-// RunHandler triggers a synchronous suggestions-generation pass for all enabled
-// pages in the registry. Admin-only — relies on auth.RequireAdmin upstream to
-// guarantee a non-nil admin user in the request context.
+// sseEvent is a single Server-Sent Event the work goroutine emits to the
+// client. Name is the event: line; Data is JSON-marshalled into the data: line.
+type sseEvent struct {
+	Name string
+	Data any
+}
+
+// startedEvent is the first event the SSE stream emits after the run row has
+// been inserted. The frontend uses run_id to correlate later UpdateSuggestionRun
+// audit rows with the in-flight stream.
+type startedEvent struct {
+	RunID      int64    `json:"run_id"`
+	TotalPages int      `json:"total_pages"`
+	PageSlugs  []string `json:"page_slugs"`
+}
+
+// pageCompleteEvent is emitted after each runForPage finishes (success or
+// failure). Status is "ok" when the per-page Claude call returned and at least
+// one row was inserted, "error" otherwise. Error carries the page-level error
+// message (Claude / parse failure) when status != "ok"; per-row insert
+// failures are surfaced via the errors counter.
+type pageCompleteEvent struct {
+	PageSlug  string  `json:"page_slug"`
+	Generated int     `json:"generated"`
+	Errors    int     `json:"errors"`
+	CostUSD   float64 `json:"cost_usd"`
+	ElapsedMS int64   `json:"elapsed_ms"`
+	Status    string  `json:"status"`
+	Error     string  `json:"error,omitempty"`
+}
+
+// newPageCompleteEvent mirrors pageCompleteEvent but for the separate
+// new-page Claude pass. PageSlug is always NewPageSlug.
+type newPageCompleteEvent struct {
+	PageSlug  string  `json:"page_slug"`
+	Generated int     `json:"generated"`
+	Errors    int     `json:"errors"`
+	CostUSD   float64 `json:"cost_usd"`
+	ElapsedMS int64   `json:"elapsed_ms"`
+	Status    string  `json:"status"`
+	Error     string  `json:"error,omitempty"`
+}
+
+// doneEvent is the final event in the stream. Totals match the row written to
+// suggestion_runs by UpdateSuggestionRun, so a client that misses
+// page_complete events can still render the final outcome.
+type doneEvent struct {
+	RunID     int64   `json:"run_id"`
+	Generated int     `json:"generated"`
+	Errors    int     `json:"errors"`
+	CostUSD   float64 `json:"cost_usd"`
+}
+
+// RunHandler triggers a suggestions-generation pass for all rotation-enabled
+// pages in the registry plus a separate new-page idea pass, streaming progress
+// to the client over Server-Sent Events. Admin-only — relies on
+// auth.RequireAdmin upstream to guarantee a non-nil admin user in the request
+// context.
 //
-// On completion (or error after the run has started) a row is inserted into
-// suggestion_runs with trigger='manual' so the operator can audit cost and
-// outcomes from the runs API. The insert uses a fresh background context so
-// a client disconnect after the run finishes does not lose the audit row.
+// The work loop runs on a context derived from context.Background() (not
+// r.Context()) so a client disconnect mid-run does not abort persistence: the
+// suggestion_runs row is still updated with finished_at and per-page
+// suggestions still land in the DB. Concurrency is bounded per-user — a second
+// call while a previous run is in flight returns 409.
 //
 // POST /api/suggestions/run
-// Response: { "generated": int, "errors": int, "cost_usd": float }
+// Response: text/event-stream with events:
+//   - started        {run_id, total_pages, page_slugs}
+//   - page_complete  {page_slug, generated, errors, cost_usd, elapsed_ms, status, error?}
+//   - new_page_complete {…same shape as page_complete, page_slug=__new_page__}
+//   - done           {run_id, generated, errors, cost_usd}
 func RunHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
+
 		cfg, err := training.LoadClaudeConfig(db, user.ID)
 		if err != nil {
 			log.Printf("suggestions: load claude config for user %d: %v", user.ID, err)
@@ -56,64 +118,191 @@ func RunHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), OverallRunTimeout)
-		defer cancel()
+		// Concurrency guard: a single user may have at most one in-flight run
+		// at a time. The partial index idx_suggestion_runs_user_inflight keeps
+		// this lookup O(1). Returning 409 with the in-flight run_id lets the
+		// frontend resume tailing the existing stream rather than fork a
+		// duplicate one.
+		if existing, err := InflightRunForUser(r.Context(), db, user.ID); err != nil {
+			log.Printf("suggestions: check inflight runs for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check in-flight runs"})
+			return
+		} else if existing != 0 {
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error":  "a suggestion run is already in progress",
+				"run_id": existing,
+			})
+			return
+		}
 
-		pages, err := RotationEligible(ctx, db)
+		pages, err := RotationEligible(r.Context(), db)
 		if err != nil {
 			log.Printf("suggestions: load rotation-eligible pages for user %d: %v", user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load page settings"})
 			return
 		}
 
-		startedAt := time.Now().UTC()
-		result := RunSuggestionsForPages(ctx, db, cfg, user.ID, pages)
-
-		// Also run the separate new-page idea pass. Errors are logged and
-		// counted in the aggregated RunResult so a single failure here cannot
-		// hide the per-page totals from the operator.
-		newPageResult, err := RunNewPageSuggestion(ctx, db, cfg, user.ID)
-		newPageRan := true
-		if err != nil {
-			log.Printf("suggestions: new_page run for user %d: %v", user.ID, err)
-			result.Errors++
-			// A pre-flight context error means the new-page pass did not run
-			// at all; in that case we should not list __new_page__ in
-			// page_slugs. Any other error still produced an attempt and the
-			// slug is informative for the operator.
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				newPageRan = false
-			}
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
+			return
 		}
-		result.Generated += newPageResult.Generated
-		result.Errors += newPageResult.Errors
-		result.CostUSD += newPageResult.CostUSD
 
-		finishedAt := time.Now().UTC()
+		startedAt := time.Now().UTC()
 		pageSlugs := make([]string, len(pages))
 		for i, p := range pages {
 			pageSlugs[i] = p.Slug
 		}
-		runRow := SuggestionRun{
-			UserID:     user.ID,
-			StartedAt:  startedAt,
-			FinishedAt: &finishedAt,
-			Trigger:    TriggerManual,
-			PageSlugs:  BuildPageSlugsCSV(pageSlugs, newPageRan),
-			Generated:  result.Generated,
-			Errors:     result.Errors,
-			CostUSD:    result.CostUSD,
-		}
-		// Use a fresh context for the audit insert so a client disconnect
-		// after the run finishes does not drop the row.
-		insertCtx, insertCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if _, err := InsertSuggestionRun(insertCtx, db, runRow); err != nil {
-			log.Printf("suggestions: record manual run for user %d: %v", user.ID, err)
-		}
-		insertCancel()
 
-		writeJSON(w, http.StatusOK, result)
+		// Insert the in-flight row before any header is written so a 500 here
+		// surfaces as a normal JSON error rather than a torn SSE stream.
+		runRow := SuggestionRun{
+			UserID:    user.ID,
+			StartedAt: startedAt,
+			Trigger:   TriggerManual,
+			PageSlugs: BuildPageSlugsCSV(pageSlugs, true),
+		}
+		runID, err := InsertSuggestionRun(r.Context(), db, runRow)
+		if err != nil {
+			log.Printf("suggestions: insert in-flight run for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to start run"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+
+		// Detached context: client disconnect must NOT abort persistence. The
+		// work goroutine uses runCtx so suggestion_runs and per-page rows
+		// continue to be written even after r.Context() cancels.
+		runCtx, cancel := context.WithTimeout(context.Background(), OverallRunTimeout)
+
+		eventCh := make(chan sseEvent, 16)
+
+		go func() {
+			defer close(eventCh)
+			defer cancel()
+
+			eventCh <- sseEvent{Name: "started", Data: startedEvent{
+				RunID:      runID,
+				TotalPages: len(pages),
+				PageSlugs:  pageSlugs,
+			}}
+
+			var totals RunResult
+
+			for _, page := range pages {
+				if err := runCtx.Err(); err != nil {
+					log.Printf("suggestions: context done before page %q: %v", page.Slug, err)
+					totals.Errors++
+					break
+				}
+				pageStart := time.Now()
+				inserted, failed, cost, err := runForPage(runCtx, db, cfg, user.ID, page)
+				elapsed := time.Since(pageStart).Milliseconds()
+				totals.Generated += inserted
+				totals.Errors += failed
+				totals.CostUSD += cost
+
+				ev := pageCompleteEvent{
+					PageSlug:  page.Slug,
+					Generated: inserted,
+					Errors:    failed,
+					CostUSD:   cost,
+					ElapsedMS: elapsed,
+					Status:    "ok",
+				}
+				if err != nil {
+					totals.Errors++
+					log.Printf("suggestions: page %q errored: %v", page.Slug, err)
+					ev.Status = "error"
+					ev.Error = err.Error()
+					ev.Errors++
+				}
+				eventCh <- sseEvent{Name: "page_complete", Data: ev}
+			}
+
+			newPageStart := time.Now()
+			newPageResult, err := RunNewPageSuggestion(runCtx, db, cfg, user.ID)
+			newPageElapsed := time.Since(newPageStart).Milliseconds()
+			totals.Generated += newPageResult.Generated
+			totals.Errors += newPageResult.Errors
+			totals.CostUSD += newPageResult.CostUSD
+
+			npEvent := newPageCompleteEvent{
+				PageSlug:  NewPageSlug,
+				Generated: newPageResult.Generated,
+				Errors:    newPageResult.Errors,
+				CostUSD:   newPageResult.CostUSD,
+				ElapsedMS: newPageElapsed,
+				Status:    "ok",
+			}
+			if err != nil {
+				log.Printf("suggestions: new_page run for user %d: %v", user.ID, err)
+				totals.Errors++
+				npEvent.Status = "error"
+				npEvent.Error = err.Error()
+				npEvent.Errors++
+			}
+			eventCh <- sseEvent{Name: "new_page_complete", Data: npEvent}
+
+			// Update the audit row with the final totals using a fresh
+			// context: runCtx may be near its deadline by now, and we want
+			// the audit write to land regardless.
+			updateCtx, updateCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if err := UpdateSuggestionRun(updateCtx, db, runID, totals.Generated, totals.Errors, totals.CostUSD); err != nil {
+				log.Printf("suggestions: update run %d for user %d: %v", runID, user.ID, err)
+			}
+			updateCancel()
+
+			eventCh <- sseEvent{Name: "done", Data: doneEvent{
+				RunID:     runID,
+				Generated: totals.Generated,
+				Errors:    totals.Errors,
+				CostUSD:   totals.CostUSD,
+			}}
+		}()
+
+	streaming:
+		for {
+			select {
+			case ev, ok := <-eventCh:
+				if !ok {
+					return
+				}
+				writeSSE(w, flusher, ev)
+			case <-r.Context().Done():
+				// Client disconnected. We stop streaming but intentionally do
+				// NOT cancel runCtx — the work goroutine continues so
+				// suggestion_runs and generated suggestions are persisted to
+				// completion.
+				break streaming
+			}
+		}
+		// Keep draining eventCh (without writing) so the work goroutine can
+		// never block on a full channel and leak.
+		for range eventCh {
+		}
 	}
+}
+
+// writeSSE serialises an event in the standard "event: <name>\ndata: <json>\n\n"
+// shape and flushes it to the wire. Errors are swallowed because a write
+// failure means the client is gone and the work goroutine continues anyway.
+func writeSSE(w http.ResponseWriter, flusher http.Flusher, ev sseEvent) {
+	data, err := json.Marshal(ev.Data)
+	if err != nil {
+		log.Printf("suggestions: marshal sse event %q: %v", ev.Name, err)
+		return
+	}
+	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.Name, data); err != nil {
+		return
+	}
+	flusher.Flush()
 }
 
 // listResponse is the shape returned by GET /api/suggestions: the caller gets
