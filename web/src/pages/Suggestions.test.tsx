@@ -1019,6 +1019,26 @@ describe('nextRunHintKey', () => {
     // following day, so the helper must already say "tomorrow".
     expect(nextRunHintKey(new Date('2026-05-06T01:00:00Z'))).toBe('header.nextRunTomorrow')
   })
+
+  it('uses minute accuracy near the 12-hour boundary: 15:59 Oslo (11h01m away) is tonight', () => {
+    // 2026-05-06T13:59:00Z = 15:59 Europe/Oslo (CEST, UTC+2).
+    // minutesSinceMidnight = 15*60+59 = 959; minutesUntil = (180-959+1440)%1440 = 661 < 720 → tonight.
+    // Hour-only math yields hoursUntil=12 → "tomorrow" (wrong). Minute-accurate gives "tonight" (correct).
+    expect(nextRunHintKey(new Date('2026-05-06T13:59:00Z'))).toBe('header.nextRunTonight')
+  })
+
+  it('uses minute accuracy near the 12-hour boundary: 15:01 Oslo (11h59m away) is tonight', () => {
+    // 2026-05-06T13:01:00Z = 15:01 Europe/Oslo (CEST, UTC+2).
+    // minutesSinceMidnight = 901; minutesUntil = (180-901+1440)%1440 = 719 < 720 → tonight.
+    // Hour-only math yields hoursUntil=12 → "tomorrow" (wrong).
+    expect(nextRunHintKey(new Date('2026-05-06T13:01:00Z'))).toBe('header.nextRunTonight')
+  })
+
+  it('uses minute accuracy near the 12-hour boundary: exactly 15:00 Oslo (12h00m away) is tomorrow', () => {
+    // 2026-05-06T13:00:00Z = 15:00 Europe/Oslo (CEST, UTC+2).
+    // minutesSinceMidnight = 900; minutesUntil = (180-900+1440)%1440 = 720, not < 720 → tomorrow.
+    expect(nextRunHintKey(new Date('2026-05-06T13:00:00Z'))).toBe('header.nextRunTomorrow')
+  })
 })
 
 describe('Suggestions – Pages settings tab', () => {

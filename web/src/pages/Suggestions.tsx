@@ -7,7 +7,7 @@ import { SuggestionCard, type Suggestion } from '../components/suggestions/Sugge
 import { SuggestionActions } from '../components/suggestions/SuggestionActions'
 import { NewSuggestionForm } from '../components/suggestions/NewSuggestionForm'
 import { SettingsPanel } from '../components/suggestions/SettingsPanel'
-import { nextRunHintKey } from './suggestionsUtils'
+import { nextRunHintKey, formatRunTime } from './suggestionsUtils'
 
 type TabKey = 'pending' | 'planned' | 'rejected' | 'pages'
 
@@ -19,7 +19,7 @@ interface ListResponse {
 }
 
 export default function Suggestions() {
-  const { t } = useTranslation('suggestions')
+  const { t, i18n } = useTranslation('suggestions')
   const { t: tCommon } = useTranslation('common')
   const [pending, setPending] = useState<Suggestion[]>([])
   const [planned, setPlanned] = useState<Suggestion[]>([])
@@ -197,7 +197,7 @@ export default function Suggestions() {
               {t('header.title')}
             </h1>
           </div>
-          <p className="text-sm text-gray-400">{t(nextRunHintKey(new Date()))}</p>
+          <p className="text-sm text-gray-400">{t(nextRunHintKey(new Date()), { time: formatRunTime(i18n.language) })}</p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"

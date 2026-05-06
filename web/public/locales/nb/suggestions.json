@@ -1,8 +1,8 @@
 {
   "header": {
     "title": "Forslag",
-    "nextRunTonight": "Neste kjøring: i natt klokka 03:00",
-    "nextRunTomorrow": "Neste kjøring: i morgen natt klokka 03:00"
+    "nextRunTonight": "Neste kjøring: i natt klokka {{time}}",
+    "nextRunTomorrow": "Neste kjøring: i morgen natt klokka {{time}}"
   },
   "actions": {
     "runNow": "Kjør nå",

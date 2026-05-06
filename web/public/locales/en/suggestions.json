@@ -1,8 +1,8 @@
 {
   "header": {
     "title": "Suggestions",
-    "nextRunTonight": "Next run: tonight at 03:00",
-    "nextRunTomorrow": "Next run: tomorrow at 03:00"
+    "nextRunTonight": "Next run: tonight at {{time}}",
+    "nextRunTomorrow": "Next run: tomorrow at {{time}}"
   },
   "actions": {
     "runNow": "Run now",
