@@ -96,6 +96,11 @@ func CreateBeadHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		if strings.TrimSpace(existing.Plan) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "suggestion has no plan body; edit and save a plan before creating a bead"})
+			return
+		}
+
 		cwd, err := forge.AnvilDirForBead("Hytte-x")
 		if err != nil {
 			log.Printf("suggestions: resolve Hytte anvil dir: %v", err)
@@ -115,6 +120,10 @@ func CreateBeadHandler(db *sql.DB) http.HandlerFunc {
 			if trimmed == "" {
 				trimmed = runErr.Error()
 			}
+			const maxStderrLen = 500
+			if len(trimmed) > maxStderrLen {
+				trimmed = trimmed[:maxStderrLen] + "…"
+			}
 			log.Printf("suggestions: bd create for suggestion %d failed: %v (stderr=%s)", id, runErr, trimmed)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("bd create failed: %s", trimmed)})
 			return
@@ -127,13 +136,18 @@ func CreateBeadHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if err := MarkBeadCreated(r.Context(), db, id, beadID); err != nil {
+		// Use a fresh context for persistence so a client disconnect after bd create
+		// completes doesn't leave the bead unlinked in the DB.
+		persistCtx, persistCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer persistCancel()
+
+		if err := MarkBeadCreated(persistCtx, db, id, beadID); err != nil {
 			log.Printf("suggestions: mark bead created %d: %v", id, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to record bead creation"})
 			return
 		}
 
-		updated, err := GetByID(r.Context(), db, id)
+		updated, err := GetByID(persistCtx, db, id)
 		if err != nil {
 			log.Printf("suggestions: reload bead-created %d: %v", id, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load suggestion"})
