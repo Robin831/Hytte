@@ -1549,6 +1549,16 @@ func TestCancelHandlerUnknownRunReturns404(t *testing.T) {
 func TestCancelHandlerCrossUserReturns404(t *testing.T) {
 	d := setupTestDB(t)
 
+	// suggestion_runs.user_id has a FK to users(id); seed user 2 before
+	// inserting a run on their behalf, otherwise the insert fails with a
+	// foreign-key constraint and the test never reaches the cross-user
+	// assertion.
+	if _, err := d.Exec(
+		`INSERT INTO users (id, google_id, email, name, picture, is_admin) VALUES (2, 'g2', 'other@example.com', 'Other', '', 0)`,
+	); err != nil {
+		t.Fatalf("seed other user: %v", err)
+	}
+
 	// Seed an in-flight run owned by user 2 and try to cancel as user 1.
 	otherID, err := InsertSuggestionRun(context.Background(), d, SuggestionRun{
 		UserID:    2,
