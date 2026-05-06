@@ -201,6 +201,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/suggestions", suggestions.ListHandler(db))
 				r.Post("/suggestions", suggestions.CreateHandler(db))
 				r.Post("/suggestions/run", suggestions.RunHandler(db))
+				r.Post("/suggestions/run/{id}/cancel", suggestions.CancelHandler(db))
 				r.Get("/suggestions/runs", suggestions.RunsHandler(db))
 				r.Post("/suggestions/{id}/reject", suggestions.RejectHandler(db))
 				r.Post("/suggestions/{id}/plan", suggestions.PlanHandler(db))

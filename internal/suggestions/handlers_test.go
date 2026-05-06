@@ -1507,3 +1507,220 @@ func TestUpdatePageSettingsHandlerInvalidBody(t *testing.T) {
 		})
 	}
 }
+
+// --- CancelHandler -----------------------------------------------------------
+
+func TestCancelHandlerRejectsNonAdmin(t *testing.T) {
+	d := setupTestDB(t)
+	router := mountAdmin(CancelHandler(d), http.MethodPost, "/api/suggestions/run/{id}/cancel")
+
+	req := adminContext(httptest.NewRequest(http.MethodPost, "/api/suggestions/run/1/cancel", nil), 99, false)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-admin, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCancelHandlerInvalidIDReturns400(t *testing.T) {
+	d := setupTestDB(t)
+	router := mountAdmin(CancelHandler(d), http.MethodPost, "/api/suggestions/run/{id}/cancel")
+
+	req := adminContext(httptest.NewRequest(http.MethodPost, "/api/suggestions/run/notanumber/cancel", nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non-numeric id, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCancelHandlerUnknownRunReturns404(t *testing.T) {
+	d := setupTestDB(t)
+	router := mountAdmin(CancelHandler(d), http.MethodPost, "/api/suggestions/run/{id}/cancel")
+
+	req := adminContext(httptest.NewRequest(http.MethodPost, "/api/suggestions/run/9999/cancel", nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown run, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCancelHandlerCrossUserReturns404(t *testing.T) {
+	d := setupTestDB(t)
+
+	// Seed an in-flight run owned by user 2 and try to cancel as user 1.
+	otherID, err := InsertSuggestionRun(context.Background(), d, SuggestionRun{
+		UserID:    2,
+		StartedAt: time.Now().UTC(),
+		Trigger:   TriggerManual,
+		PageSlugs: "weather",
+	})
+	if err != nil {
+		t.Fatalf("seed run: %v", err)
+	}
+	// Register a cancel handle so the test would otherwise succeed if the
+	// cross-user guard were missing.
+	registerRunCancel(otherID, func() {})
+	defer unregisterRunCancel(otherID)
+
+	router := mountAdmin(CancelHandler(d), http.MethodPost, "/api/suggestions/run/{id}/cancel")
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/run/%d/cancel", otherID), nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for cross-user run, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCancelHandlerAlreadyFinishedReturns409(t *testing.T) {
+	d := setupTestDB(t)
+
+	finished := time.Now().UTC().Add(-time.Minute)
+	row := SuggestionRun{
+		UserID:     1,
+		StartedAt:  time.Now().UTC().Add(-2 * time.Minute),
+		FinishedAt: &finished,
+		Trigger:    TriggerManual,
+		PageSlugs:  "weather",
+	}
+	id, err := InsertSuggestionRun(context.Background(), d, row)
+	if err != nil {
+		t.Fatalf("seed finished run: %v", err)
+	}
+
+	router := mountAdmin(CancelHandler(d), http.MethodPost, "/api/suggestions/run/{id}/cancel")
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/run/%d/cancel", id), nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for finished run, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestCancelHandlerNotInRegistryReturns409 covers the orphaned-row case: the
+// suggestion_runs row says in-flight (finished_at NULL) but no cancel handle is
+// registered for it on this process. This happens after a server restart that
+// left the run row stranded.
+func TestCancelHandlerNotInRegistryReturns409(t *testing.T) {
+	d := setupTestDB(t)
+
+	id, err := InsertSuggestionRun(context.Background(), d, SuggestionRun{
+		UserID:    1,
+		StartedAt: time.Now().UTC(),
+		Trigger:   TriggerManual,
+		PageSlugs: "weather",
+	})
+	if err != nil {
+		t.Fatalf("seed run: %v", err)
+	}
+
+	router := mountAdmin(CancelHandler(d), http.MethodPost, "/api/suggestions/run/{id}/cancel")
+	req := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/run/%d/cancel", id), nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for orphaned run, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestCancelHandlerCancelsInflightRunAndPersists fires a real run, blocks the
+// first Claude call until the cancel arrives, then asserts that the goroutine
+// exits cleanly: finished_at is set, remaining pages are skipped, and the
+// cancel handle is unregistered (so a second cancel returns 409).
+func TestCancelHandlerCancelsInflightRunAndPersists(t *testing.T) {
+	d := setupTestDB(t)
+	defer withSavedPages([]Page{
+		{Slug: "weather", Title: "Weather"},
+		{Slug: "notes", Title: "Notes"},
+	})()
+	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	// First mock invocation signals it has been entered, then blocks on ctx
+	// — the cancel signal arrives by way of runCtx propagating into pageCtx.
+	reachedMock := make(chan struct{})
+	var once sync.Once
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		once.Do(func() { close(reachedMock) })
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(5 * time.Second):
+			// Safety bound — fail loudly rather than hang the test.
+			return "", fmt.Errorf("mock never observed cancellation")
+		}
+	})()
+
+	user := &auth.User{ID: 1, IsAdmin: true}
+
+	runMux := http.NewServeMux()
+	runMux.Handle("/api/suggestions/run", auth.RequireAdmin()(RunHandler(d)))
+	cancelRouter := mountAdmin(CancelHandler(d), http.MethodPost, "/api/suggestions/run/{id}/cancel")
+
+	runRec := httptest.NewRecorder()
+	runDone := make(chan struct{})
+	go func() {
+		defer close(runDone)
+		req := httptest.NewRequest(http.MethodPost, "/api/suggestions/run", nil)
+		req = req.WithContext(auth.ContextWithUser(req.Context(), user))
+		runMux.ServeHTTP(runRec, req)
+	}()
+
+	select {
+	case <-reachedMock:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("run did not reach mock in time")
+	}
+
+	var inflightID int64
+	if err := d.QueryRow(`SELECT id FROM suggestion_runs WHERE user_id = 1 AND finished_at IS NULL`).Scan(&inflightID); err != nil {
+		t.Fatalf("read in-flight run: %v", err)
+	}
+
+	cancelReq := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/run/%d/cancel", inflightID), nil), 1, true)
+	cancelRec := httptest.NewRecorder()
+	cancelRouter.ServeHTTP(cancelRec, cancelReq)
+	if cancelRec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 from cancel, got %d: %s", cancelRec.Code, cancelRec.Body.String())
+	}
+
+	// Cancellation is asynchronous; wait for the streaming response to close.
+	select {
+	case <-runDone:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("run did not finish after cancel")
+	}
+	if runRec.Code != http.StatusOK {
+		t.Fatalf("run handler expected 200 (already streaming), got %d", runRec.Code)
+	}
+
+	// Audit row must be marked finished even though the run was aborted.
+	var finishedAt sql.NullString
+	if err := d.QueryRow(`SELECT finished_at FROM suggestion_runs WHERE id = ?`, inflightID).Scan(&finishedAt); err != nil {
+		t.Fatalf("read finished_at: %v", err)
+	}
+	if !finishedAt.Valid {
+		t.Errorf("finished_at should be set after cancellation")
+	}
+
+	// Cancel handle must be unregistered after the goroutine exits, so a
+	// second cancel call sees the row as finished and returns 409.
+	cancelReq2 := adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/run/%d/cancel", inflightID), nil), 1, true)
+	cancelRec2 := httptest.NewRecorder()
+	cancelRouter.ServeHTTP(cancelRec2, cancelReq2)
+	if cancelRec2.Code != http.StatusConflict {
+		t.Fatalf("expected 409 from second cancel, got %d: %s", cancelRec2.Code, cancelRec2.Body.String())
+	}
+
+	// No new_page row should exist — the new-page pass is skipped on
+	// cancellation rather than running with an already-cancelled context.
+	var newPageCount int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM suggestions WHERE page_slug = ? AND user_id = 1`, NewPageSlug).Scan(&newPageCount); err != nil {
+		t.Fatalf("count new_page rows: %v", err)
+	}
+	if newPageCount != 0 {
+		t.Errorf("expected 0 new_page rows on cancelled run, got %d", newPageCount)
+	}
+}

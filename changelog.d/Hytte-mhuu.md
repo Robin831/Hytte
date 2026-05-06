@@ -1,0 +1,2 @@
+category: Added
+- **Cancel an in-flight suggestion run** - `POST /api/suggestions/run/{id}/cancel` (admin-only) signals the streaming work goroutine to abort between pages. The current page's Claude call returns early via context cancellation, the new-page pass is skipped, and `suggestion_runs.finished_at` is still written so the audit row reflects what actually persisted. Caps off the streaming async run epic, which raised the per-page Claude cap to 4 minutes and the rotation default to 20 pages. (Hytte-mhuu)
