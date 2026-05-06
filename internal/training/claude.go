@@ -6,8 +6,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -62,16 +64,71 @@ func LoadClaudeConfig(db *sql.DB, userID int64) (*ClaudeConfig, error) {
 }
 
 // runPromptFunc is the function used to run prompts. Override in tests.
+// Existing callers and tests continue to use this seam; cost-aware callers
+// should use RunPromptWithCost instead.
 var runPromptFunc = runPromptCLI
+
+// runPromptWithCostFunc is the cost-aware seam used by RunPromptWithCost.
+// Override in tests when the caller needs to observe or stub the cost value.
+var runPromptWithCostFunc = runPromptCLIWithCost
+
+// costParseLogOnce ensures the cost-parse-failure warning is logged at most once
+// per process so a malformed CLI envelope cannot flood the logs.
+var costParseLogOnce sync.Once
 
 // RunPrompt sends a prompt to the Claude CLI and returns the text response.
 func RunPrompt(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
 	return runPromptFunc(ctx, cfg, prompt)
 }
 
+// RunPromptWithCost sends a prompt to the Claude CLI using --output-format=json
+// and returns the text response along with the cost in USD parsed from the
+// envelope. If the JSON envelope cannot be parsed (or total_cost_usd is
+// missing), the cost falls back to 0 and a single warning is logged via
+// sync.Once — the call itself still succeeds with the raw stdout as text.
+// CLI invocation errors are propagated as err.
+func RunPromptWithCost(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, float64, error) {
+	return runPromptWithCostFunc(ctx, cfg, prompt)
+}
+
 func runPromptCLI(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
+	text, _, err := runPromptCLIWithCost(ctx, cfg, prompt)
+	return text, err
+}
+
+// claudeCostEnvelope mirrors the subset of the claude --output-format=json
+// envelope that the cost-aware path consumes.
+type claudeCostEnvelope struct {
+	Result       string  `json:"result"`
+	TotalCostUSD float64 `json:"total_cost_usd"`
+	IsError      bool    `json:"is_error"`
+}
+
+// parseClaudeCostEnvelope parses raw JSON from the claude CLI --output-format=json
+// envelope. On success it returns the result text and cost. If is_error is set in
+// a valid envelope, it returns an error. On JSON parse failure it logs once (via
+// costParseLogOnce) and returns the raw bytes as text with cost=0.
+func parseClaudeCostEnvelope(raw []byte) (string, float64, error) {
+	var env claudeCostEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		costParseLogOnce.Do(func() {
+			log.Printf("training: failed to parse claude JSON envelope, falling back to raw stdout (cost=0): %v", err)
+		})
+		return strings.TrimSpace(string(raw)), 0, nil
+	}
+	if env.IsError {
+		return "", 0, fmt.Errorf("claude returned error: %s", env.Result)
+	}
+	text := env.Result
+	if text == "" {
+		text = string(raw)
+	}
+	return strings.TrimSpace(text), env.TotalCostUSD, nil
+}
+
+func runPromptCLIWithCost(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, float64, error) {
 	if !cfg.Enabled {
-		return "", fmt.Errorf("claude is not enabled")
+		return "", 0, fmt.Errorf("claude is not enabled")
 	}
 
 	// Only apply a default timeout if the caller hasn't set a deadline.
@@ -82,7 +139,7 @@ func runPromptCLI(ctx context.Context, cfg *ClaudeConfig, prompt string) (string
 		defer cancel()
 	}
 
-	cmd := exec.CommandContext(ctx, cfg.CLIPath, "--model", cfg.Model, "-p", "-", "--output-format", "text")
+	cmd := exec.CommandContext(ctx, cfg.CLIPath, "--model", cfg.Model, "-p", "-", "--output-format", "json")
 	cmd.Stdin = strings.NewReader(prompt)
 
 	var stdout, stderr bytes.Buffer
@@ -90,10 +147,10 @@ func runPromptCLI(ctx context.Context, cfg *ClaudeConfig, prompt string) (string
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("claude CLI error: %w: %s", err, stderr.String())
+		return "", 0, fmt.Errorf("claude CLI error: %w: %s", err, stderr.String())
 	}
 
-	return strings.TrimSpace(stdout.String()), nil
+	return parseClaudeCostEnvelope(stdout.Bytes())
 }
 
 // SessionResult holds the response text and session ID from a Claude CLI call.
