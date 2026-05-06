@@ -58,13 +58,15 @@ func TestRunHandlerAdminReturnsCounts(t *testing.T) {
 		{Slug: "notes", Title: "Notes"},
 	})()
 	// The run handler now calls both the per-page rotation pass and the
-	// separate new-page pass; respond with the right shape based on the
-	// prompt's distinguishing phrase so both passes succeed.
+	// separate new-page pass. Route by output format: per-page prompts ask for
+	// a JSON array; the new-page pass asks for a single JSON object. Keying on
+	// "JSON array" (per-page characteristic) is stable across prompt wording
+	// changes that do not alter the fundamental array-vs-object output shape.
 	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
-		if strings.Contains(prompt, "Return ONLY a single JSON object") {
-			return validNewPageJSON, nil
+		if strings.Contains(prompt, "Return ONLY a JSON array") {
+			return validJSONResponse, nil
 		}
-		return validJSONResponse, nil
+		return validNewPageJSON, nil
 	})()
 
 	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
