@@ -58,6 +58,7 @@
   },
   "form": {
     "title": "New suggestion",
+    "newPageOption": "New page idea",
     "fields": {
       "page": "Page",
       "title": "Title",
@@ -95,6 +96,7 @@
   "card": {
     "showMore": "Show more",
     "showLess": "Show less",
+    "newPageChip": "New page idea",
     "types": {
       "addition": "Addition",
       "bugfix": "Bugfix",

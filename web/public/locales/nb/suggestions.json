@@ -58,6 +58,7 @@
   },
   "form": {
     "title": "Nytt forslag",
+    "newPageOption": "Ny side-idé",
     "fields": {
       "page": "Side",
       "title": "Tittel",
@@ -95,6 +96,7 @@
   "card": {
     "showMore": "Vis mer",
     "showLess": "Vis mindre",
+    "newPageChip": "Ny side-idé",
     "types": {
       "addition": "Tillegg",
       "bugfix": "Feilretting",

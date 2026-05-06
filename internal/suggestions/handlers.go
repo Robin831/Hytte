@@ -62,6 +62,17 @@ func RunHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		result := RunSuggestionsForPages(ctx, db, cfg, user.ID, pages)
+
+		// Also run the separate new-page idea pass. Errors are logged and
+		// counted in the aggregated RunResult so a single failure here cannot
+		// hide the per-page totals from the operator.
+		newPageResult, err := RunNewPageSuggestion(ctx, db, cfg, user.ID)
+		if err != nil {
+			log.Printf("suggestions: new_page run for user %d: %v", user.ID, err)
+		}
+		result.Generated += newPageResult.Generated
+		result.Errors += newPageResult.Errors
+
 		writeJSON(w, http.StatusOK, result)
 	}
 }
