@@ -11,12 +11,49 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/training"
 	"github.com/go-chi/chi/v5"
 )
+
+// runCancelsMu guards runCancels. The map holds the cancel func of each
+// in-flight run keyed by run_id so CancelHandler can abort the streaming
+// goroutine. Entries are inserted before the goroutine starts and removed by
+// the goroutine's deferred cleanup, so a successful Lookup means the run is
+// still executing on this server instance. After a process restart the map is
+// empty even if suggestion_runs rows are still marked in-flight (those are
+// orphaned and must be reaped by separate housekeeping, not by this endpoint).
+var (
+	runCancelsMu sync.Mutex
+	runCancels   = map[int64]context.CancelFunc{}
+)
+
+// registerRunCancel records the cancel func for an in-flight run.
+func registerRunCancel(runID int64, cancel context.CancelFunc) {
+	runCancelsMu.Lock()
+	runCancels[runID] = cancel
+	runCancelsMu.Unlock()
+}
+
+// unregisterRunCancel drops the cancel func for runID. Safe to call even if no
+// entry exists.
+func unregisterRunCancel(runID int64) {
+	runCancelsMu.Lock()
+	delete(runCancels, runID)
+	runCancelsMu.Unlock()
+}
+
+// lookupRunCancel returns the registered cancel func for runID and whether the
+// run is currently executing on this process.
+func lookupRunCancel(runID int64) (context.CancelFunc, bool) {
+	runCancelsMu.Lock()
+	cancel, ok := runCancels[runID]
+	runCancelsMu.Unlock()
+	return cancel, ok
+}
 
 // OverallRunTimeout caps the entire RunHandler invocation as a safety bound
 // against stalled Claude calls pinning the request indefinitely. It is not
@@ -184,11 +221,18 @@ func RunHandler(db *sql.DB) http.HandlerFunc {
 		// continue to be written even after r.Context() cancels.
 		runCtx, cancel := context.WithTimeout(context.Background(), OverallRunTimeout)
 
+		// Register the cancel func so CancelHandler can abort this run. The
+		// deferred unregister inside the goroutine fires after UpdateSuggestionRun
+		// has written finished_at, so a cancel call after completion sees the row
+		// as finished rather than racing the registry cleanup.
+		registerRunCancel(runID, cancel)
+
 		eventCh := make(chan sseEvent, 16)
 
 		go func() {
 			defer close(eventCh)
 			defer cancel()
+			defer unregisterRunCancel(runID)
 
 			eventCh <- sseEvent{Name: "started", Data: startedEvent{
 				RunID:      runID,
@@ -229,29 +273,36 @@ func RunHandler(db *sql.DB) http.HandlerFunc {
 				eventCh <- sseEvent{Name: "page_complete", Data: ev}
 			}
 
-			newPageStart := time.Now()
-			newPageResult, err := RunNewPageSuggestion(runCtx, db, cfg, user.ID)
-			newPageElapsed := time.Since(newPageStart).Milliseconds()
-			totals.Generated += newPageResult.Generated
-			totals.Errors += newPageResult.Errors
-			totals.CostUSD += newPageResult.CostUSD
+			// Skip the new-page pass entirely when runCtx has been cancelled
+			// (operator-triggered cancel or overall-run timeout). Calling
+			// RunNewPageSuggestion with a cancelled context would just produce a
+			// fast error event and pad the audit row's error count without doing
+			// useful work.
+			if runCtx.Err() == nil {
+				newPageStart := time.Now()
+				newPageResult, err := RunNewPageSuggestion(runCtx, db, cfg, user.ID)
+				newPageElapsed := time.Since(newPageStart).Milliseconds()
+				totals.Generated += newPageResult.Generated
+				totals.Errors += newPageResult.Errors
+				totals.CostUSD += newPageResult.CostUSD
 
-			npEvent := newPageCompleteEvent{
-				PageSlug:  NewPageSlug,
-				Generated: newPageResult.Generated,
-				Errors:    newPageResult.Errors,
-				CostUSD:   newPageResult.CostUSD,
-				ElapsedMS: newPageElapsed,
-				Status:    "ok",
+				npEvent := newPageCompleteEvent{
+					PageSlug:  NewPageSlug,
+					Generated: newPageResult.Generated,
+					Errors:    newPageResult.Errors,
+					CostUSD:   newPageResult.CostUSD,
+					ElapsedMS: newPageElapsed,
+					Status:    "ok",
+				}
+				if err != nil {
+					log.Printf("suggestions: new_page run for user %d: %v", user.ID, err)
+					totals.Errors++
+					npEvent.Status = "error"
+					npEvent.Error = err.Error()
+					npEvent.Errors++
+				}
+				eventCh <- sseEvent{Name: "new_page_complete", Data: npEvent}
 			}
-			if err != nil {
-				log.Printf("suggestions: new_page run for user %d: %v", user.ID, err)
-				totals.Errors++
-				npEvent.Status = "error"
-				npEvent.Error = err.Error()
-				npEvent.Errors++
-			}
-			eventCh <- sseEvent{Name: "new_page_complete", Data: npEvent}
 
 			// Update the audit row with the final totals using a fresh
 			// context: runCtx may be near its deadline by now, and we want
@@ -290,6 +341,79 @@ func RunHandler(db *sql.DB) http.HandlerFunc {
 		// never block on a full channel and leak.
 		for range eventCh {
 		}
+	}
+}
+
+// CancelHandler aborts an in-flight suggestion run for the requesting admin.
+// It cancels the work goroutine's runCtx, which causes the streaming loop to
+// stop after the current page and exit cleanly — UpdateSuggestionRun still
+// fires from the goroutine's deferred cleanup, so suggestion_runs.finished_at
+// is set and counts reflect what was persisted before the cancel.
+//
+// Returns 404 when the id is unknown OR belongs to another user
+// (enumeration-resistant), 409 when the run has already finished or is no
+// longer tracked on this process (e.g. after a server restart, the in-memory
+// cancel handle is gone), and 202 Accepted when the cancel signal was
+// delivered. Cancellation is observed between pages, so the goroutine may take
+// up to one page-completion to exit.
+//
+// POST /api/suggestions/run/{id}/cancel
+// Response: 202 with {run_id, cancelled: true} on success.
+func CancelHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		idStr := chi.URLParam(r, "id")
+		runID, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid id"})
+			return
+		}
+
+		var (
+			ownerID    int64
+			finishedAt sql.NullString
+		)
+		err = db.QueryRowContext(r.Context(), `
+			SELECT user_id, finished_at FROM suggestion_runs WHERE id = ?
+		`, runID).Scan(&ownerID, &finishedAt)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
+				return
+			}
+			log.Printf("suggestions: load run %d for cancel: %v", runID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load run"})
+			return
+		}
+
+		// Cross-user access returns 404 so other users' run IDs are not
+		// discoverable, matching the pattern used by RejectHandler/PlanHandler.
+		if ownerID != user.ID {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "run not found"})
+			return
+		}
+
+		if finishedAt.Valid {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "run has already finished"})
+			return
+		}
+
+		cancel, ok := lookupRunCancel(runID)
+		if !ok {
+			// The DB row says in-flight but no cancel handle exists on this
+			// process. Either the run is on another instance or the process
+			// restarted and orphaned the row. Either way, this handler cannot
+			// stop it — surface 409 rather than silently succeeding.
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "run is not active on this server"})
+			return
+		}
+		cancel()
+
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"run_id":    runID,
+			"cancelled": true,
+		})
 	}
 }
 
