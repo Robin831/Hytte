@@ -3,6 +3,8 @@ package suggestions
 import (
 	"context"
 	"database/sql"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -139,6 +141,25 @@ func TestAllRegisteredReturnsCopy(t *testing.T) {
 	got[0].SourceFiles[0] = "tampered.go"
 	if Pages[0].SourceFiles[0] == "tampered.go" {
 		t.Fatalf("AllRegistered returned SourceFiles that aliases the registry entry")
+	}
+}
+
+// TestPagesSourceFilesExist asserts that every SourceFile path in the
+// production registry resolves to a real file under the repository root. This
+// catches typos and lets future renames fail the suggestions test suite rather
+// than silently dropping context from the prompt at runtime.
+func TestPagesSourceFilesExist(t *testing.T) {
+	root, err := repoRoot()
+	if err != nil {
+		t.Skipf("repoRoot unavailable (likely running outside a git checkout): %v", err)
+	}
+	for _, p := range Pages {
+		for _, sf := range p.SourceFiles {
+			full := filepath.Join(root, filepath.FromSlash(sf))
+			if _, err := os.Stat(full); err != nil {
+				t.Errorf("page %q SourceFile %q does not resolve under repo root: %v", p.Slug, sf, err)
+			}
+		}
 	}
 }
 
