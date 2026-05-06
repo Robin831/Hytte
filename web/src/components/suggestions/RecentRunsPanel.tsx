@@ -50,12 +50,15 @@ export function RecentRunsPanel({ reloadSignal = 0 }: RecentRunsPanelProps = {})
   const [hasError, setHasError] = useState(false)
   const [now] = useState(() => Date.now())
   const [reloadKey, setReloadKey] = useState(0)
+  const [prevReloadSignal, setPrevReloadSignal] = useState(reloadSignal)
 
-  useEffect(() => {
-    if (reloadSignal === 0) return
-    setOpen(true)
-    setReloadKey(k => k + 1)
-  }, [reloadSignal])
+  if (reloadSignal !== prevReloadSignal) {
+    setPrevReloadSignal(reloadSignal)
+    if (reloadSignal > 0) {
+      setOpen(true)
+      setReloadKey(k => k + 1)
+    }
+  }
 
   useEffect(() => {
     if (!open || (loaded && reloadKey === 0)) return
