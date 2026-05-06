@@ -35,8 +35,13 @@ const NewPageSlug = "__new_page__"
 // pages in the registry. Admin-only — relies on auth.RequireAdmin upstream to
 // guarantee a non-nil admin user in the request context.
 //
+// On completion (or error after the run has started) a row is inserted into
+// suggestion_runs with trigger='manual' so the operator can audit cost and
+// outcomes from the runs API. The insert uses a fresh background context so
+// a client disconnect after the run finishes does not lose the audit row.
+//
 // POST /api/suggestions/run
-// Response: { "generated": int, "errors": int }
+// Response: { "generated": int, "errors": int, "cost_usd": float }
 func RunHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -61,18 +66,51 @@ func RunHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		startedAt := time.Now().UTC()
 		result := RunSuggestionsForPages(ctx, db, cfg, user.ID, pages)
 
 		// Also run the separate new-page idea pass. Errors are logged and
 		// counted in the aggregated RunResult so a single failure here cannot
 		// hide the per-page totals from the operator.
 		newPageResult, err := RunNewPageSuggestion(ctx, db, cfg, user.ID)
+		newPageRan := true
 		if err != nil {
 			log.Printf("suggestions: new_page run for user %d: %v", user.ID, err)
 			result.Errors++
+			// A pre-flight context error means the new-page pass did not run
+			// at all; in that case we should not list __new_page__ in
+			// page_slugs. Any other error still produced an attempt and the
+			// slug is informative for the operator.
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				newPageRan = false
+			}
 		}
 		result.Generated += newPageResult.Generated
 		result.Errors += newPageResult.Errors
+		result.CostUSD += newPageResult.CostUSD
+
+		finishedAt := time.Now().UTC()
+		pageSlugs := make([]string, len(pages))
+		for i, p := range pages {
+			pageSlugs[i] = p.Slug
+		}
+		runRow := SuggestionRun{
+			UserID:     user.ID,
+			StartedAt:  startedAt,
+			FinishedAt: &finishedAt,
+			Trigger:    TriggerManual,
+			PageSlugs:  BuildPageSlugsCSV(pageSlugs, newPageRan),
+			Generated:  result.Generated,
+			Errors:     result.Errors,
+			CostUSD:    result.CostUSD,
+		}
+		// Use a fresh context for the audit insert so a client disconnect
+		// after the run finishes does not drop the row.
+		insertCtx, insertCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if _, err := InsertSuggestionRun(insertCtx, db, runRow); err != nil {
+			log.Printf("suggestions: record manual run for user %d: %v", user.ID, err)
+		}
+		insertCancel()
 
 		writeJSON(w, http.StatusOK, result)
 	}
@@ -362,7 +400,7 @@ func PlanHandler(db *sql.DB) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), PlanTimeout)
 		defer cancel()
 
-		plan, err := runPromptFn(ctx, cfg, prompt)
+		plan, _, err := runPromptFn(ctx, cfg, prompt)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				log.Printf("suggestions: plan %d timed out after %s", id, PlanTimeout)

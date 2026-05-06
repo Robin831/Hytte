@@ -1,0 +1,2 @@
+category: Added
+- **Suggestion runs API and audit log** - The suggestion runner now records a row in `suggestion_runs` for every manual or scheduled run, capturing start/finish time, trigger, page slugs (including the `__new_page__` sentinel when the new-page pass ran), generated/error counts, and total Claude cost in USD. A new admin-only `GET /api/suggestions/runs?limit=20` endpoint returns runs newest-first (default 20, hard cap 100). (Hytte-66y0)

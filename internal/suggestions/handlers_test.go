@@ -778,8 +778,8 @@ func TestPlanHandlerReplacesPriorPlan(t *testing.T) {
 	}
 
 	// Second plan replaces the first.
-	runPromptFn = func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
-		return "second plan", nil
+	runPromptFn = func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, float64, error) {
+		return "second plan", 0, nil
 	}
 	req = adminContext(httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/suggestions/%d/plan", id), nil), 1, true)
 	rec = httptest.NewRecorder()

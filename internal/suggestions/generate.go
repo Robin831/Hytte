@@ -17,9 +17,11 @@ import (
 	"github.com/Robin831/Hytte/internal/training"
 )
 
-// runPromptFn is the function used to invoke Claude. Replaced in tests, mirroring
-// the package-level pattern used in chat/handlers.go.
-var runPromptFn = training.RunPrompt
+// runPromptFn is the function used to invoke Claude. It returns the response
+// text, the cost of the call in USD parsed from the CLI envelope, and any
+// error. Replaced in tests, mirroring the package-level pattern used in
+// chat/handlers.go.
+var runPromptFn = training.RunPromptWithCost
 
 // PerPageTimeout is the deadline applied to each individual page's generation
 // attempt. RunSuggestionsForPages caps each Claude call at this duration so a
@@ -34,10 +36,13 @@ const recentSuggestionsWindowDays = 14
 // returns a response that does not parse as the expected JSON shape.
 const MaxRetriesOnMalformedJSON = 1
 
-// RunResult summarises a generation pass.
+// RunResult summarises a generation pass. CostUSD is the total cost in US
+// dollars of all Claude calls made during the pass, summed even across
+// retried-on-malformed-JSON attempts (since each attempt is a paid API call).
 type RunResult struct {
-	Generated int `json:"generated"`
-	Errors    int `json:"errors"`
+	Generated int     `json:"generated"`
+	Errors    int     `json:"errors"`
+	CostUSD   float64 `json:"cost_usd"`
 }
 
 // generated is the per-suggestion shape we expect from Claude.
@@ -89,9 +94,10 @@ func RunSuggestionsForPages(
 			result.Errors++
 			break
 		}
-		inserted, failed, err := runForPage(ctx, db, cfg, userID, page)
+		inserted, failed, cost, err := runForPage(ctx, db, cfg, userID, page)
 		result.Generated += inserted
 		result.Errors += failed
+		result.CostUSD += cost
 		if err != nil {
 			result.Errors++
 			log.Printf("suggestions: page %q errored: %v", page.Slug, err)
@@ -113,7 +119,7 @@ func runForPage(
 	cfg *training.ClaudeConfig,
 	userID int64,
 	page Page,
-) (inserted int, failed int, err error) {
+) (inserted int, failed int, costUSD float64, err error) {
 	pageCtx, cancel := context.WithTimeout(ctx, PerPageTimeout)
 	defer cancel()
 
@@ -128,9 +134,9 @@ func runForPage(
 
 	prompt := buildPagePrompt(page, sources, gitLog, recent)
 
-	suggestions, err := callAndParse(pageCtx, cfg, prompt)
+	suggestions, costUSD, err := callAndParse(pageCtx, cfg, prompt)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, costUSD, err
 	}
 
 	now := time.Now().UTC()
@@ -153,27 +159,33 @@ func runForPage(
 		}
 		inserted++
 	}
-	return inserted, failed, nil
+	return inserted, failed, costUSD, nil
 }
 
 // callAndParse calls Claude and parses the response. On a malformed JSON
 // response it retries up to MaxRetriesOnMalformedJSON times, then returns the
-// last error.
-func callAndParse(ctx context.Context, cfg *training.ClaudeConfig, prompt string) ([]generated, error) {
-	var lastErr error
+// last error. The accumulated cost across all attempts (including the failed
+// attempts that triggered retries) is returned so the caller can fold it into
+// the run total — every attempt is a paid CLI invocation.
+func callAndParse(ctx context.Context, cfg *training.ClaudeConfig, prompt string) ([]generated, float64, error) {
+	var (
+		lastErr   error
+		totalCost float64
+	)
 	for attempt := 0; attempt <= MaxRetriesOnMalformedJSON; attempt++ {
-		resp, err := runPromptFn(ctx, cfg, prompt)
+		resp, cost, err := runPromptFn(ctx, cfg, prompt)
+		totalCost += cost
 		if err != nil {
-			return nil, fmt.Errorf("claude prompt: %w", err)
+			return nil, totalCost, fmt.Errorf("claude prompt: %w", err)
 		}
 		parsed, err := parseSuggestionsResponse(resp)
 		if err == nil {
-			return parsed, nil
+			return parsed, totalCost, nil
 		}
 		lastErr = err
 		log.Printf("suggestions: parse attempt %d failed: %v", attempt+1, err)
 	}
-	return nil, fmt.Errorf("parse response after %d attempts: %w", MaxRetriesOnMalformedJSON+1, lastErr)
+	return nil, totalCost, fmt.Errorf("parse response after %d attempts: %w", MaxRetriesOnMalformedJSON+1, lastErr)
 }
 
 // parseSuggestionsResponse strips an optional markdown fence and decodes the
