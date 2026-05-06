@@ -204,7 +204,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/suggestions/{id}/reject", suggestions.RejectHandler(db))
 				r.Post("/suggestions/{id}/plan", suggestions.PlanHandler(db))
 				r.Post("/suggestions/{id}/bead", suggestions.CreateBeadHandler(db))
-				r.Get("/suggestions/pages", suggestions.PagesHandler())
+				r.Get("/suggestions/pages", suggestions.PagesHandler(db))
+				r.Patch("/suggestions/pages/{slug}", suggestions.UpdatePageSettingsHandler(db))
 
 				// Forge dashboard — admin only, registered only when FEATURE_FORGE_DASHBOARD=1.
 				// The feature flag is evaluated at startup; when disabled, these routes are
