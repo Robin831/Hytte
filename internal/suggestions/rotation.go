@@ -9,10 +9,12 @@ import (
 )
 
 // RotationDefaultN is the default number of pages selected per nightly
-// rotation. Picked to keep one nightly run well under the per-admin time
-// budget while still cycling through the full registry within a couple of
-// weeks.
-const RotationDefaultN = 10
+// rotation. With ~35 eligible pages in the registry, picking 20 cycles
+// through the full set every two nights. Note: 20 × PerPageTimeout (240s)
+// exceeds OverallRunTimeout (30 min) in the absolute worst case; the
+// overall timeout is a safety bound, not a per-page completion guarantee.
+// Tune downward if cost-per-run becomes a problem after observing real spend.
+const RotationDefaultN = 20
 
 // PickRotation selects up to n pages from eligible, ordered so that the most
 // stale pages run first. The ordering is:
