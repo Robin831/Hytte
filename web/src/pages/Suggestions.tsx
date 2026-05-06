@@ -13,6 +13,7 @@ interface ListResponse {
   pending: Suggestion[]
   planned: Suggestion[]
   rejected: Suggestion[]
+  bead_created?: Suggestion[]
 }
 
 export default function Suggestions() {
@@ -21,6 +22,7 @@ export default function Suggestions() {
   const [pending, setPending] = useState<Suggestion[]>([])
   const [planned, setPlanned] = useState<Suggestion[]>([])
   const [rejected, setRejected] = useState<Suggestion[]>([])
+  const [beadCreated, setBeadCreated] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(true)
   const [hasData, setHasData] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -37,6 +39,12 @@ export default function Suggestions() {
   const handlePlanned = useCallback((updated: Suggestion) => {
     setPending(prev => prev.filter(s => s.id !== updated.id))
     setPlanned(prev => [updated, ...prev])
+    refetch()
+  }, [refetch])
+
+  const handleBeadCreated = useCallback((updated: Suggestion) => {
+    setPlanned(prev => prev.filter(s => s.id !== updated.id))
+    setBeadCreated(prev => [updated, ...prev])
     refetch()
   }, [refetch])
 
@@ -59,6 +67,7 @@ export default function Suggestions() {
         setPending(data.pending ?? [])
         setPlanned(data.planned ?? [])
         setRejected(data.rejected ?? [])
+        setBeadCreated(data.bead_created ?? [])
         setHasData(true)
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
@@ -73,10 +82,10 @@ export default function Suggestions() {
   const counts = useMemo(
     () => ({
       pending: pending.length,
-      planned: planned.length,
+      planned: planned.length + beadCreated.length,
       rejected: rejected.length,
     }),
-    [pending, planned, rejected],
+    [pending, planned, rejected, beadCreated],
   )
 
   async function handleRunNow() {
@@ -109,7 +118,59 @@ export default function Suggestions() {
     refetch()
   }, [refetch])
 
+  function renderCard(s: Suggestion) {
+    return (
+      <SuggestionCard
+        key={s.id}
+        suggestion={s}
+        actionsSlot={
+          s.status === 'rejected' ? null : (
+            <SuggestionActions
+              suggestion={s}
+              onPlanned={handlePlanned}
+              onRejected={refetch}
+              onBeadCreated={handleBeadCreated}
+            />
+          )
+        }
+      />
+    )
+  }
+
   function renderPanel(tab: TabKey, list: Suggestion[]) {
+    if (tab === 'planned') {
+      if (list.length === 0 && beadCreated.length === 0) {
+        return (
+          <p className="px-4 py-10 text-center text-sm text-gray-400">
+            {t('empty.planned')}
+          </p>
+        )
+      }
+      return (
+        <div className="space-y-6">
+          {list.length > 0 && (
+            <div className="space-y-3">
+              {list.map(renderCard)}
+            </div>
+          )}
+          {beadCreated.length > 0 && (
+            <section
+              aria-labelledby="bead-created-heading"
+              data-testid="bead-created-section"
+              className="space-y-3"
+            >
+              <h2
+                id="bead-created-heading"
+                className="text-sm font-semibold uppercase tracking-wide text-emerald-300"
+              >
+                {t('headings.beadCreated')}
+              </h2>
+              {beadCreated.map(renderCard)}
+            </section>
+          )}
+        </div>
+      )
+    }
     if (list.length === 0) {
       return (
         <p className="px-4 py-10 text-center text-sm text-gray-400">
@@ -119,21 +180,7 @@ export default function Suggestions() {
     }
     return (
       <div className="space-y-3">
-        {list.map(s => (
-          <SuggestionCard
-            key={s.id}
-            suggestion={s}
-            actionsSlot={
-              s.status === 'rejected' ? null : (
-                <SuggestionActions
-                  suggestion={s}
-                  onPlanned={handlePlanned}
-                  onRejected={refetch}
-                />
-              )
-            }
-          />
-        ))}
+        {list.map(renderCard)}
       </div>
     )
   }

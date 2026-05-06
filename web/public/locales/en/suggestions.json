@@ -16,7 +16,18 @@
     "feedbackPlaceholder": "Add context for the planner…",
     "noPlanYet": "No plan saved yet.",
     "createBead": "Create bead",
-    "createBeadDisabledTooltip": "Bead creation lands in the next bead."
+    "createBeadInProgress": "Creating bead…",
+    "createBeadRetry": "Retry create bead",
+    "createBeadError": "Failed to create bead: {{message}}"
+  },
+  "status": {
+    "beadCreated": "Bead created"
+  },
+  "meta": {
+    "beadId": "Bead: {{id}}"
+  },
+  "headings": {
+    "beadCreated": "Created beads"
   },
   "tabs": {
     "pending": "Pending",
@@ -32,7 +43,8 @@
     "failedToLoad": "Failed to load suggestions",
     "runFailed": "Failed to run suggestions",
     "rejectFailed": "Failed to reject suggestion",
-    "planFailed": "Failed to plan suggestion"
+    "planFailed": "Failed to plan suggestion",
+    "unknown": "unknown error"
   },
   "form": {
     "title": "New suggestion",

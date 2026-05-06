@@ -114,6 +114,19 @@ func resolveCommand(name string) string {
 	return name
 }
 
+// AnvilDirForBead is the exported wrapper around anvilDirForBead so other
+// packages (e.g. suggestions) can resolve the working directory for a bead.
+func AnvilDirForBead(beadID string) (string, error) {
+	return anvilDirForBead(beadID)
+}
+
+// ResolveCommand is the exported wrapper around resolveCommand so other
+// packages (e.g. suggestions) can find user-installed binaries when running
+// under systemd.
+func ResolveCommand(name string) string {
+	return resolveCommand(name)
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
