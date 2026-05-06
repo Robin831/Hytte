@@ -78,6 +78,16 @@
     "planFailed": "วางแผนข้อเสนอแนะไม่สำเร็จ",
     "unknown": "ข้อผิดพลาดที่ไม่รู้จัก"
   },
+  "run": {
+    "inProgress": "กำลังทำงาน: {{done}} / {{total}} หน้า",
+    "pageOk": "{{slug}} ({{count}} ไอเดีย, ${{cost}})",
+    "pageError": "{{slug}} ({{reason}}, {{seconds}} วิ)",
+    "alreadyRunning": "มีการทำงานที่กำลังดำเนินอยู่แล้ว",
+    "alreadyRunningLink": "ดูการทำงานล่าสุด",
+    "reconnect": "เชื่อมต่อใหม่",
+    "streamError": "การเชื่อมต่อกับสตรีมการทำงานหลุด",
+    "dismiss": "ปิด"
+  },
   "form": {
     "title": "ข้อเสนอแนะใหม่",
     "newPageOption": "ไอเดียหน้าใหม่",

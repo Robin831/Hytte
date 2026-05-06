@@ -78,6 +78,16 @@
     "planFailed": "Kunne ikke planlegge forslag",
     "unknown": "ukjent feil"
   },
+  "run": {
+    "inProgress": "Kjøring pågår: {{done}} / {{total}} sider",
+    "pageOk": "{{slug}} ({{count}} idéer, ${{cost}})",
+    "pageError": "{{slug}} ({{reason}}, {{seconds}}s)",
+    "alreadyRunning": "En kjøring pågår allerede.",
+    "alreadyRunningLink": "Vis nylige kjøringer",
+    "reconnect": "Koble til på nytt",
+    "streamError": "Mistet forbindelsen til kjøringsstrømmen.",
+    "dismiss": "Lukk"
+  },
   "form": {
     "title": "Nytt forslag",
     "newPageOption": "Ny side-idé",

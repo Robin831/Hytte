@@ -76,6 +76,58 @@ function renderPage() {
   )
 }
 
+interface SSEFrame {
+  event: string
+  data: unknown
+}
+
+// Build a minimal Response-shaped object whose `body` is a ReadableStream
+// emitting the supplied SSE frames. The Suggestions page only reads
+// res.status, res.ok, and res.body, so the structural shape is sufficient.
+function sseResponse(frames: SSEFrame[]): Response {
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const f of frames) {
+        controller.enqueue(
+          encoder.encode(`event: ${f.event}\ndata: ${JSON.stringify(f.data)}\n\n`),
+        )
+      }
+      controller.close()
+    },
+  })
+  return { ok: true, status: 200, body: stream } as unknown as Response
+}
+
+// Build a streaming SSE response whose frames are pushed manually by the
+// test. Returns helpers to enqueue more frames or close the stream — useful
+// for asserting incremental UI updates between events.
+function manualSSEResponse() {
+  const encoder = new TextEncoder()
+  let controllerRef: ReadableStreamDefaultController<Uint8Array> | null = null
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controllerRef = controller
+    },
+  })
+  return {
+    response: { ok: true, status: 200, body: stream } as unknown as Response,
+    push(frame: SSEFrame) {
+      controllerRef?.enqueue(
+        encoder.encode(
+          `event: ${frame.event}\ndata: ${JSON.stringify(frame.data)}\n\n`,
+        ),
+      )
+    },
+    close() {
+      controllerRef?.close()
+    },
+    error(err: Error) {
+      controllerRef?.error(err)
+    },
+  }
+}
+
 beforeEach(() => {
   // Pin Date so the header next-run helper renders deterministically. We only
   // fake Date — leaving setTimeout/queueMicrotask alive — because React/RTL
@@ -225,7 +277,7 @@ describe('Suggestions – data fetch', () => {
 })
 
 describe('Suggestions – Run now flow', () => {
-  it('refetches list on successful Run now', async () => {
+  it('streams SSE progress and refetches the list on done', async () => {
     const initial = {
       pending: [makeSuggestion({ id: 1, title: 'Old item' })],
       planned: [],
@@ -243,7 +295,29 @@ describe('Suggestions – Run now flow', () => {
     let listCalls = 0
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       if (url === '/api/suggestions/run' && init?.method === 'POST') {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+        return Promise.resolve(
+          sseResponse([
+            {
+              event: 'started',
+              data: { run_id: 1, total_pages: 1, page_slugs: ['weather'] },
+            },
+            {
+              event: 'page_complete',
+              data: {
+                page_slug: 'weather',
+                generated: 3,
+                errors: 0,
+                cost_usd: 0.04,
+                elapsed_ms: 1200,
+                status: 'ok',
+              },
+            },
+            {
+              event: 'done',
+              data: { run_id: 1, generated: 3, errors: 0, cost_usd: 0.04 },
+            },
+          ]),
+        )
       }
       if (url === '/api/suggestions') {
         listCalls += 1
@@ -265,8 +339,276 @@ describe('Suggestions – Run now flow', () => {
     await waitFor(() => {
       expect(screen.getByText('Fresh item')).toBeInTheDocument()
     })
-    expect(listCalls).toBe(2)
+    // page_complete and done both call refetch — at least 3 list loads total.
+    expect(listCalls).toBeGreaterThanOrEqual(2)
     expect(screen.queryByTestId('run-error')).not.toBeInTheDocument()
+    // Progress UI cleared after `done`.
+    expect(screen.queryByTestId('run-progress')).not.toBeInTheDocument()
+  })
+
+  it('shows progress pill and log entries as page_complete events arrive', async () => {
+    const initial = { pending: [], planned: [], rejected: [] }
+
+    const stream = manualSSEResponse()
+    let resolveRun: ((v: Response) => void) | null = null
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/run' && init?.method === 'POST') {
+        return new Promise<Response>(resolve => {
+          resolveRun = resolve
+        })
+      }
+      if (url === '/api/suggestions') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(initial) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Run now/ }))
+    resolveRun!(stream.response)
+
+    // started: pill should read 0 / 2.
+    stream.push({
+      event: 'started',
+      data: { run_id: 7, total_pages: 2, page_slugs: ['weather', 'webhooks'] },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('run-progress-pill')).toHaveTextContent('0 / 2')
+    })
+
+    // First page completes successfully.
+    stream.push({
+      event: 'page_complete',
+      data: {
+        page_slug: 'weather',
+        generated: 3,
+        errors: 0,
+        cost_usd: 0.04,
+        elapsed_ms: 1200,
+        status: 'ok',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('run-progress-pill')).toHaveTextContent('1 / 2')
+    })
+    expect(screen.getByTestId('run-progress-log-weather')).toHaveTextContent(
+      'weather (3 ideas, $0.04)',
+    )
+
+    // Second page errors out.
+    stream.push({
+      event: 'page_complete',
+      data: {
+        page_slug: 'webhooks',
+        generated: 0,
+        errors: 1,
+        cost_usd: 0,
+        elapsed_ms: 240_000,
+        status: 'error',
+        error: 'timeout',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('run-progress-pill')).toHaveTextContent('2 / 2')
+    })
+    expect(screen.getByTestId('run-progress-log-webhooks')).toHaveTextContent(
+      'webhooks (timeout, 240s)',
+    )
+
+    // done clears the progress UI.
+    stream.push({
+      event: 'done',
+      data: { run_id: 7, generated: 3, errors: 1, cost_usd: 0.04 },
+    })
+    stream.close()
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('run-progress')).not.toBeInTheDocument()
+    })
+  })
+
+  it('new_page_complete does not increment done counter beyond total', async () => {
+    const initial = { pending: [], planned: [], rejected: [] }
+
+    const stream = manualSSEResponse()
+    let resolveRun: ((v: Response) => void) | null = null
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/run' && init?.method === 'POST') {
+        return new Promise<Response>(resolve => {
+          resolveRun = resolve
+        })
+      }
+      if (url === '/api/suggestions') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(initial) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Run now/ }))
+    resolveRun!(stream.response)
+
+    // started: total_pages=1 (backend excludes the new-page pass)
+    stream.push({
+      event: 'started',
+      data: { run_id: 5, total_pages: 1, page_slugs: ['weather'] },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('run-progress-pill')).toHaveTextContent('0 / 1')
+    })
+
+    // Regular page completes — counter goes to 1/1.
+    stream.push({
+      event: 'page_complete',
+      data: {
+        page_slug: 'weather',
+        generated: 2,
+        errors: 0,
+        cost_usd: 0.02,
+        elapsed_ms: 800,
+        status: 'ok',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('run-progress-pill')).toHaveTextContent('1 / 1')
+    })
+
+    // new_page_complete fires — counter must stay at 1/1 (not exceed total).
+    stream.push({
+      event: 'new_page_complete',
+      data: {
+        page_slug: '__new_page__',
+        generated: 1,
+        errors: 0,
+        cost_usd: 0.01,
+        elapsed_ms: 500,
+        status: 'ok',
+      },
+    })
+
+    await waitFor(() => {
+      // Counter must not go to 2/1 — it stays at 1/1.
+      expect(screen.getByTestId('run-progress-pill')).toHaveTextContent('1 / 1')
+    })
+    // The new_page_complete entry does appear in the log.
+    expect(screen.getByTestId('run-progress-log-__new_page__')).toBeInTheDocument()
+
+    // Progressbar aria attributes must be valid (valuenow <= valuemax).
+    const progressbar = screen.getByRole('progressbar')
+    const valueNow = Number(progressbar.getAttribute('aria-valuenow'))
+    const valueMax = Number(progressbar.getAttribute('aria-valuemax'))
+    expect(valueNow).toBeLessThanOrEqual(valueMax)
+
+    stream.push({ event: 'done', data: { run_id: 5, generated: 3, errors: 0, cost_usd: 0.03 } })
+    stream.close()
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('run-progress')).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows already-running banner on 409 and does not enter progress state', async () => {
+    const initial = { pending: [], planned: [], rejected: [] }
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/run' && init?.method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          status: 409,
+          json: () => Promise.resolve({ error: 'in progress', run_id: 42 }),
+        })
+      }
+      if (url === '/api/suggestions') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(initial) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Run now/ }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('already-running-banner')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('already-running-banner')).toHaveTextContent(
+      'A run is already in progress',
+    )
+    // Banner has a link/anchor to the recent runs panel.
+    const link = within(screen.getByTestId('already-running-banner')).getByRole(
+      'link',
+    )
+    expect(link).toHaveAttribute('href', '#recent-runs')
+    // No progress state and no run-error banner.
+    expect(screen.queryByTestId('run-progress')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('run-error')).not.toBeInTheDocument()
+  })
+
+  it('shows Reconnect button when stream errors mid-run', async () => {
+    const initial = { pending: [], planned: [], rejected: [] }
+    const stream = manualSSEResponse()
+    let resolveRun: ((v: Response) => void) | null = null
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/run' && init?.method === 'POST') {
+        return new Promise<Response>(resolve => {
+          resolveRun = resolve
+        })
+      }
+      if (url === '/api/suggestions') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(initial) })
+      }
+      if (url === '/api/suggestions/runs?limit=1') {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve([
+              { id: 9, finished_at: '2026-05-06T20:01:00Z' },
+            ]),
+        })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Run now/ }))
+    resolveRun!(stream.response)
+    stream.push({
+      event: 'started',
+      data: { run_id: 9, total_pages: 2, page_slugs: ['weather', 'notes'] },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('run-progress-pill')).toHaveTextContent('0 / 2')
+    })
+
+    // Network drop mid-run.
+    stream.error(new Error('connection reset'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('run-reconnect')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('run-stream-error')).toBeInTheDocument()
+    // Progress UI should still be visible so the user keeps the context.
+    expect(screen.getByTestId('run-progress')).toBeInTheDocument()
+
+    // Clicking Reconnect polls /runs?limit=1; the latest is finished so
+    // progress UI is cleared.
+    fireEvent.click(screen.getByTestId('run-reconnect'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('run-progress')).not.toBeInTheDocument()
+    })
   })
 
   it('keeps loaded data visible and shows banner when Run now fails', async () => {
@@ -312,7 +654,14 @@ describe('Suggestions – Run now flow', () => {
     let listCalls = 0
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       if (url === '/api/suggestions/run' && init?.method === 'POST') {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+        return Promise.resolve(
+          sseResponse([
+            {
+              event: 'done',
+              data: { run_id: 1, generated: 0, errors: 0, cost_usd: 0 },
+            },
+          ]),
+        )
       }
       if (url === '/api/suggestions') {
         listCalls += 1
@@ -342,12 +691,12 @@ describe('Suggestions – Run now flow', () => {
     expect(screen.queryByTestId('run-error')).not.toBeInTheDocument()
   })
 
-  it('disables Run now button while in flight', async () => {
+  it('disables Run now button while a run is in flight', async () => {
     const initial = { pending: [], planned: [], rejected: [] }
-    let resolveRun: ((v: { ok: boolean; json: () => Promise<unknown> }) => void) | null = null
+    let resolveRun: ((v: Response) => void) | null = null
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       if (url === '/api/suggestions/run' && init?.method === 'POST') {
-        return new Promise<{ ok: boolean; json: () => Promise<unknown> }>(resolve => {
+        return new Promise<Response>(resolve => {
           resolveRun = resolve
         })
       }
@@ -368,7 +717,16 @@ describe('Suggestions – Run now flow', () => {
       expect(inFlightBtn).toBeDisabled()
     })
 
-    resolveRun!({ ok: true, json: () => Promise.resolve({}) })
+    // Resolve with a stream that emits a `done` event and closes — the
+    // button should re-enable once the stream is fully consumed.
+    resolveRun!(
+      sseResponse([
+        {
+          event: 'done',
+          data: { run_id: 1, generated: 0, errors: 0, cost_usd: 0 },
+        },
+      ]),
+    )
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Run now/ })).not.toBeDisabled()

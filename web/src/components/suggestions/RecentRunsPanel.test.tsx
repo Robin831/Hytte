@@ -244,6 +244,48 @@ describe('RecentRunsPanel', () => {
     )
   })
 
+  it('reloadSignal > 0 opens the panel and triggers a fetch', async () => {
+    const runs = [
+      {
+        id: 20,
+        user_id: 1,
+        started_at: '2026-05-06T19:00:00Z',
+        finished_at: '2026-05-06T19:01:00Z',
+        trigger: 'manual',
+        page_slugs: 'weather',
+        generated: 1,
+        errors: 0,
+        cost_usd: 0.01,
+      },
+    ]
+    let fetchCalls = 0
+    const fetchMock = vi.fn((url: string) => {
+      if (url === '/api/suggestions/runs?limit=20') {
+        fetchCalls += 1
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(runs) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { rerender } = render(<RecentRunsPanel reloadSignal={0} />)
+
+    // Initially collapsed, no fetch.
+    expect(screen.getByRole('button', { name: /Recent runs/ })).toHaveAttribute('aria-expanded', 'false')
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    // Incrementing reloadSignal should open the panel and trigger a fetch.
+    rerender(<RecentRunsPanel reloadSignal={1} />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Recent runs/ })).toHaveAttribute('aria-expanded', 'true')
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('recent-run-20')).toBeInTheDocument()
+    })
+    expect(fetchCalls).toBeGreaterThanOrEqual(1)
+  })
+
   it('toggling collapses the panel and hides content', async () => {
     vi.stubGlobal(
       'fetch',
