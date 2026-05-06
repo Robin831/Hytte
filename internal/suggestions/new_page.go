@@ -37,10 +37,13 @@ type newPageGenerated struct {
 // status=StatusPending. The function returns counts in a RunResult so the
 // caller can fold them into the overall nightly/run-handler totals.
 //
-// Errors at any step (loading context, calling Claude, parsing JSON, inserting)
-// are logged and surfaced via RunResult.Errors. The returned error is reserved
-// for context cancellation so the scheduler can decide whether to abort the
-// run; all other failures are non-fatal and counted in Errors.
+// Loading the deduplication context (recent new_page suggestions) is non-fatal:
+// a failure is logged and the prompt proceeds without that context; it is not
+// counted in RunResult.Errors. Failures in the Claude call, JSON parsing, or DB
+// insert are logged and counted in RunResult.Errors. If the caller's ctx is
+// cancelled or its deadline exceeded during any of these steps, the context
+// error is returned directly so the scheduler can decide whether to abort the
+// run.
 func RunNewPageSuggestion(
 	ctx context.Context,
 	db *sql.DB,
@@ -68,6 +71,9 @@ func RunNewPageSuggestion(
 
 	parsed, err := callAndParseNewPage(runCtx, cfg, prompt)
 	if err != nil {
+		if ctx.Err() != nil {
+			return result, ctx.Err()
+		}
 		log.Printf("suggestions: new_page generation failed: %v", err)
 		result.Errors++
 		return result, nil
@@ -85,6 +91,9 @@ func RunNewPageSuggestion(
 		Status:      StatusPending,
 	}
 	if _, err := Insert(runCtx, db, row); err != nil {
+		if ctx.Err() != nil {
+			return result, ctx.Err()
+		}
 		log.Printf("suggestions: insert new_page suggestion: %v", err)
 		result.Errors++
 		return result, nil
@@ -129,7 +138,9 @@ func parseNewPageResponse(response string) (newPageGenerated, error) {
 	}
 
 	var item newPageGenerated
-	if err := json.Unmarshal([]byte(response), &item); err != nil {
+	dec := json.NewDecoder(strings.NewReader(response))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&item); err != nil {
 		return newPageGenerated{}, fmt.Errorf("unmarshal: %w", err)
 	}
 	if !validSizes[item.Size] {

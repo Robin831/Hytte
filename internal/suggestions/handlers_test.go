@@ -61,7 +61,7 @@ func TestRunHandlerAdminReturnsCounts(t *testing.T) {
 	// separate new-page pass; respond with the right shape based on the
 	// prompt's distinguishing phrase so both passes succeed.
 	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
-		if strings.Contains(prompt, "brainstorming new pages") {
+		if strings.Contains(prompt, "Return ONLY a single JSON object") {
 			return validNewPageJSON, nil
 		}
 		return validJSONResponse, nil

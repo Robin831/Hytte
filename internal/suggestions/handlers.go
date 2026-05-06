@@ -69,6 +69,7 @@ func RunHandler(db *sql.DB) http.HandlerFunc {
 		newPageResult, err := RunNewPageSuggestion(ctx, db, cfg, user.ID)
 		if err != nil {
 			log.Printf("suggestions: new_page run for user %d: %v", user.ID, err)
+			result.Errors++
 		}
 		result.Generated += newPageResult.Generated
 		result.Errors += newPageResult.Errors

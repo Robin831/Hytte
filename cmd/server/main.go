@@ -258,6 +258,7 @@ func main() {
 					newPageResult, err := suggestions.RunNewPageSuggestion(runCtx, database, cfg, adminID)
 					if err != nil {
 						log.Printf("suggestions: new_page run for admin=%d: %v", adminID, err)
+						result.Errors++
 					}
 					result.Generated += newPageResult.Generated
 					result.Errors += newPageResult.Errors

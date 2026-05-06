@@ -203,3 +203,9 @@ func TestParseNewPageResponseRejectsEmptyBody(t *testing.T) {
 		t.Fatal("expected error for empty body, got nil")
 	}
 }
+
+func TestParseNewPageResponseRejectsUnknownFields(t *testing.T) {
+	if _, err := parseNewPageResponse(`{"size":"s","title":"X","body":"y","extra":"oops"}`); err == nil {
+		t.Fatal("expected error for unknown fields, got nil")
+	}
+}
