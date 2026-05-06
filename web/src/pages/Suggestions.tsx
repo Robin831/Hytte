@@ -163,7 +163,7 @@ export default function Suggestions() {
         })
         return
       }
-      if (eventName === 'page_complete' || eventName === 'new_page_complete') {
+      if (eventName === 'page_complete') {
         const ev = data as PageCompleteEvent
         const entry: RunLogEntry = {
           slug: ev.page_slug,
@@ -180,6 +180,25 @@ export default function Suggestions() {
         )
         // Refetch the Pending tab so newly persisted suggestions appear as
         // soon as each page finishes.
+        refetch()
+        return
+      }
+      if (eventName === 'new_page_complete') {
+        const ev = data as PageCompleteEvent
+        const entry: RunLogEntry = {
+          slug: ev.page_slug,
+          status: ev.status,
+          count: ev.generated,
+          cost: ev.cost_usd,
+          seconds: Math.round((ev.elapsed_ms ?? 0) / 1000),
+        }
+        if (ev.status === 'error' && ev.error) {
+          entry.reason = ev.error
+        }
+        // Don't increment done — this pass is not counted in total_pages from the server.
+        setRunProgress(p =>
+          p ? { ...p, log: [...p.log, entry] } : p,
+        )
         refetch()
         return
       }
@@ -264,7 +283,6 @@ export default function Suggestions() {
   // whether the latest run has finished. If yes, clear the progress UI and
   // refetch everything; if no, just clear the error so the user can wait.
   async function handleReconnect() {
-    setStreamError(false)
     try {
       const res = await fetch('/api/suggestions/runs?limit=1', {
         credentials: 'include',
@@ -273,10 +291,13 @@ export default function Suggestions() {
       const data = (await res.json()) as Array<{ finished_at?: string | null }>
       const latest = Array.isArray(data) ? data[0] : null
       if (latest && latest.finished_at) {
+        setStreamError(false)
         setRunProgress(null)
         refetch()
         setRecentRunsReloadSignal(s => s + 1)
       }
+      // If run is still in progress, leave streamError true so the Reconnect
+      // button stays visible for another retry.
     } catch {
       setStreamError(true)
     }

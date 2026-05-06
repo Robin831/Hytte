@@ -432,6 +432,90 @@ describe('Suggestions – Run now flow', () => {
     })
   })
 
+  it('new_page_complete does not increment done counter beyond total', async () => {
+    const initial = { pending: [], planned: [], rejected: [] }
+
+    const stream = manualSSEResponse()
+    let resolveRun: ((v: Response) => void) | null = null
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/run' && init?.method === 'POST') {
+        return new Promise<Response>(resolve => {
+          resolveRun = resolve
+        })
+      }
+      if (url === '/api/suggestions') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(initial) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Run now/ }))
+    resolveRun!(stream.response)
+
+    // started: total_pages=1 (backend excludes the new-page pass)
+    stream.push({
+      event: 'started',
+      data: { run_id: 5, total_pages: 1, page_slugs: ['weather'] },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('run-progress-pill')).toHaveTextContent('0 / 1')
+    })
+
+    // Regular page completes — counter goes to 1/1.
+    stream.push({
+      event: 'page_complete',
+      data: {
+        page_slug: 'weather',
+        generated: 2,
+        errors: 0,
+        cost_usd: 0.02,
+        elapsed_ms: 800,
+        status: 'ok',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('run-progress-pill')).toHaveTextContent('1 / 1')
+    })
+
+    // new_page_complete fires — counter must stay at 1/1 (not exceed total).
+    stream.push({
+      event: 'new_page_complete',
+      data: {
+        page_slug: '__new_page__',
+        generated: 1,
+        errors: 0,
+        cost_usd: 0.01,
+        elapsed_ms: 500,
+        status: 'ok',
+      },
+    })
+
+    await waitFor(() => {
+      // Counter must not go to 2/1 — it stays at 1/1.
+      expect(screen.getByTestId('run-progress-pill')).toHaveTextContent('1 / 1')
+    })
+    // The new_page_complete entry does appear in the log.
+    expect(screen.getByTestId('run-progress-log-__new_page__')).toBeInTheDocument()
+
+    // Progressbar aria attributes must be valid (valuenow <= valuemax).
+    const progressbar = screen.getByRole('progressbar')
+    const valueNow = Number(progressbar.getAttribute('aria-valuenow'))
+    const valueMax = Number(progressbar.getAttribute('aria-valuemax'))
+    expect(valueNow).toBeLessThanOrEqual(valueMax)
+
+    stream.push({ event: 'done', data: { run_id: 5, generated: 3, errors: 0, cost_usd: 0.03 } })
+    stream.close()
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('run-progress')).not.toBeInTheDocument()
+    })
+  })
+
   it('shows already-running banner on 409 and does not enter progress state', async () => {
     const initial = { pending: [], planned: [], rejected: [] }
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
