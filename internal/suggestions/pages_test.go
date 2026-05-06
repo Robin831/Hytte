@@ -155,9 +155,28 @@ func TestPagesSourceFilesExist(t *testing.T) {
 	}
 	for _, p := range Pages {
 		for _, sf := range p.SourceFiles {
-			full := filepath.Join(root, filepath.FromSlash(sf))
-			if _, err := os.Stat(full); err != nil {
-				t.Errorf("page %q SourceFile %q does not resolve under repo root: %v", p.Slug, sf, err)
+			if filepath.IsAbs(sf) {
+				t.Errorf("page %q SourceFile %q must be a relative path", p.Slug, sf)
+				continue
+			}
+			cleaned := filepath.Clean(filepath.FromSlash(sf))
+			if cleaned == ".." || len(cleaned) >= 3 && cleaned[:3] == ".."+string(filepath.Separator) {
+				t.Errorf("page %q SourceFile %q escapes repo root after Clean", p.Slug, sf)
+				continue
+			}
+			full := filepath.Join(root, cleaned)
+			rel, relErr := filepath.Rel(root, full)
+			if relErr != nil || (len(rel) >= 2 && rel[:2] == "..") {
+				t.Errorf("page %q SourceFile %q resolves outside repo root", p.Slug, sf)
+				continue
+			}
+			info, statErr := os.Stat(full)
+			if statErr != nil {
+				t.Errorf("page %q SourceFile %q does not resolve under repo root: %v", p.Slug, sf, statErr)
+				continue
+			}
+			if info.IsDir() {
+				t.Errorf("page %q SourceFile %q resolves to a directory, not a file", p.Slug, sf)
 			}
 		}
 	}
