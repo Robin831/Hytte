@@ -1559,6 +1559,20 @@ func createSchema(db *sql.DB) error {
 		updated_at       TIMESTAMP NOT NULL
 	);
 
+	CREATE TABLE IF NOT EXISTS suggestion_runs (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id     INTEGER NOT NULL,
+		started_at  TIMESTAMP NOT NULL,
+		finished_at TIMESTAMP,
+		trigger     TEXT NOT NULL CHECK(trigger IN ('manual','scheduled')),
+		page_slugs  TEXT NOT NULL DEFAULT '',
+		generated   INTEGER NOT NULL DEFAULT 0,
+		errors      INTEGER NOT NULL DEFAULT 0,
+		cost_usd    REAL NOT NULL DEFAULT 0,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+	);
+	CREATE INDEX IF NOT EXISTS idx_suggestion_runs_user_started ON suggestion_runs(user_id, started_at DESC);
+
 	`
 
 	_, err := db.Exec(schema)

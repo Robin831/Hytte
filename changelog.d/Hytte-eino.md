@@ -1,0 +1,2 @@
+category: Added
+- **suggestion_runs table and cost-aware Claude helper** - Added the `suggestion_runs` table (with `idx_suggestion_runs_user_started`) to track manual and scheduled suggestion runs, and introduced `training.RunPromptWithCost` which invokes the Claude CLI with `--output-format=json` and returns the parsed `total_cost_usd`. Falls back to cost=0 with a single logged warning on parse failure rather than failing the call. (Hytte-eino)

@@ -744,3 +744,103 @@ func TestBudgetTablesExist(t *testing.T) {
 		t.Error("expected FK violation inserting transaction for user 2 referencing user 1's account")
 	}
 }
+
+func TestSuggestionRunsTable(t *testing.T) {
+	database := initTestDB(t)
+
+	startedAt := time.Now().UTC().Format(time.RFC3339)
+	finishedAt := time.Now().UTC().Add(5 * time.Second).Format(time.RFC3339)
+
+	// Happy path: insert a manual run row.
+	res, err := database.Exec(
+		`INSERT INTO suggestion_runs (user_id, started_at, finished_at, trigger, page_slugs, generated, errors, cost_usd)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		1, startedAt, finishedAt, "manual", "dashboard,__new_page__", 3, 0, 0.0123,
+	)
+	if err != nil {
+		t.Fatalf("insert suggestion_run: %v", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
+
+	// Round-trip the row to verify column types.
+	var (
+		gotUser      int64
+		gotStarted   string
+		gotFinished  sql.NullString
+		gotTrigger   string
+		gotPageSlugs string
+		gotGenerated int
+		gotErrors    int
+		gotCost      float64
+	)
+	err = database.QueryRow(
+		`SELECT user_id, started_at, finished_at, trigger, page_slugs, generated, errors, cost_usd
+		 FROM suggestion_runs WHERE id = ?`, id,
+	).Scan(&gotUser, &gotStarted, &gotFinished, &gotTrigger, &gotPageSlugs, &gotGenerated, &gotErrors, &gotCost)
+	if err != nil {
+		t.Fatalf("read suggestion_run: %v", err)
+	}
+	if gotUser != 1 || gotTrigger != "manual" || gotGenerated != 3 || gotErrors != 0 {
+		t.Errorf("unexpected row: user=%d trigger=%q generated=%d errors=%d", gotUser, gotTrigger, gotGenerated, gotErrors)
+	}
+	if gotPageSlugs != "dashboard,__new_page__" {
+		t.Errorf("expected page_slugs CSV with __new_page__, got %q", gotPageSlugs)
+	}
+	if gotCost < 0.012 || gotCost > 0.013 {
+		t.Errorf("expected cost ≈ 0.0123, got %v", gotCost)
+	}
+
+	// CHECK constraint: trigger must be 'manual' or 'scheduled'.
+	if _, err := database.Exec(
+		`INSERT INTO suggestion_runs (user_id, started_at, trigger, page_slugs)
+		 VALUES (?, ?, 'invalid', '')`, 1, startedAt,
+	); err == nil {
+		t.Error("expected CHECK constraint to reject trigger='invalid'")
+	}
+
+	// 'scheduled' trigger must be accepted.
+	if _, err := database.Exec(
+		`INSERT INTO suggestion_runs (user_id, started_at, trigger, page_slugs)
+		 VALUES (?, ?, 'scheduled', 'notes')`, 1, startedAt,
+	); err != nil {
+		t.Errorf("expected trigger='scheduled' to be accepted: %v", err)
+	}
+
+	// Foreign key: user_id must reference an existing user.
+	if _, err := database.Exec(
+		`INSERT INTO suggestion_runs (user_id, started_at, trigger, page_slugs)
+		 VALUES (?, ?, 'manual', '')`, 9999, startedAt,
+	); err == nil {
+		t.Error("expected FK violation for missing user_id")
+	}
+
+	// Cascade delete: removing the user should remove the run.
+	if _, err := database.Exec(`DELETE FROM users WHERE id = 1`); err != nil {
+		t.Fatalf("delete user: %v", err)
+	}
+	var remaining int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM suggestion_runs WHERE user_id = 1`).Scan(&remaining); err != nil {
+		t.Fatalf("count suggestion_runs after user delete: %v", err)
+	}
+	if remaining != 0 {
+		t.Errorf("expected 0 rows after cascade delete, got %d", remaining)
+	}
+}
+
+func TestSuggestionRunsIndexExists(t *testing.T) {
+	database := initTestDB(t)
+
+	var name string
+	err := database.QueryRow(
+		`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_suggestion_runs_user_started'`,
+	).Scan(&name)
+	if err != nil {
+		t.Fatalf("expected idx_suggestion_runs_user_started to exist: %v", err)
+	}
+	if name != "idx_suggestion_runs_user_started" {
+		t.Errorf("unexpected index name: %q", name)
+	}
+}
