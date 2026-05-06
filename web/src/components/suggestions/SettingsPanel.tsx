@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../ui/skeleton'
+import { NEW_PAGE_SLUG } from './NewSuggestionForm'
 
 export interface PageSummary {
   slug: string
@@ -11,8 +12,6 @@ export interface PageSummary {
 interface SettingsPanelProps {
   active: boolean
 }
-
-const NEW_PAGE_SLUG = '__new_page__'
 
 function pageEnabled(p: PageSummary): boolean {
   return p.rotation_enabled === null || p.rotation_enabled === true
