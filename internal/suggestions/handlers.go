@@ -54,7 +54,14 @@ func RunHandler(db *sql.DB) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), OverallRunTimeout)
 		defer cancel()
 
-		result := RunSuggestionsForPages(ctx, db, cfg, user.ID, EnabledPages())
+		pages, err := RotationEligible(ctx, db)
+		if err != nil {
+			log.Printf("suggestions: load rotation-eligible pages for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load page settings"})
+			return
+		}
+
+		result := RunSuggestionsForPages(ctx, db, cfg, user.ID, pages)
 		writeJSON(w, http.StatusOK, result)
 	}
 }
@@ -402,11 +409,13 @@ type pageSummary struct {
 // PagesHandler returns the registry of pages a user-authored suggestion can
 // target, plus the synthetic "__new_page__" entry for proposing brand-new
 // pages. Order is stable: registry order followed by the new-page sentinel.
+// Rotation eligibility controls auto-generation, not which pages a user can
+// target manually, so this endpoint serves the full registry.
 //
 // GET /api/suggestions/pages
 func PagesHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		pages := EnabledPages()
+		pages := AllRegistered()
 		out := make([]pageSummary, 0, len(pages)+1)
 		for _, p := range pages {
 			out = append(out, pageSummary{Slug: p.Slug, Title: p.Title})
@@ -417,12 +426,13 @@ func PagesHandler() http.HandlerFunc {
 }
 
 // isValidPageSlug returns true if slug is the synthetic new-page sentinel or a
-// slug from the enabled-pages registry.
+// slug from the registry. Users can target any registered page regardless of
+// rotation state.
 func isValidPageSlug(slug string) bool {
 	if slug == NewPageSlug {
 		return true
 	}
-	for _, p := range EnabledPages() {
+	for _, p := range AllRegistered() {
 		if p.Slug == slug {
 			return true
 		}

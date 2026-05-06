@@ -1,0 +1,2 @@
+category: Changed
+- **Suggestions: rotation eligibility moved to the database** - The page registry no longer carries an in-code `Enabled` flag; rotation eligibility is read from a new `suggestion_page_settings` table instead. The synchronous run endpoint now consults `RotationEligible`, defaulting every registered page to eligible until an admin row says otherwise. Foundation for the upcoming per-page admin toggle and rotation scheduler. (Hytte-5aq6)
