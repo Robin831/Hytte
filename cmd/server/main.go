@@ -214,6 +214,27 @@ func main() {
 				}
 				rows.Close()
 
+				eligibleCtx, eligibleCancel := context.WithTimeout(notifCtx, 30*time.Second)
+				eligible, err := suggestions.RotationEligible(eligibleCtx, database)
+				eligibleCancel()
+				if err != nil {
+					log.Printf("suggestions: rotation eligible: %v", err)
+					continue
+				}
+
+				pickCtx, pickCancel := context.WithTimeout(notifCtx, 30*time.Second)
+				rotation, err := suggestions.PickRotation(pickCtx, database, eligible, suggestions.RotationDefaultN)
+				pickCancel()
+				if err != nil {
+					log.Printf("suggestions: pick rotation: %v", err)
+					continue
+				}
+
+				pageSlugs := make([]string, len(rotation))
+				for i, p := range rotation {
+					pageSlugs[i] = p.Slug
+				}
+
 				for _, adminID := range adminIDs {
 					if notifCtx.Err() != nil {
 						break
@@ -226,27 +247,6 @@ func main() {
 					if !cfg.Enabled {
 						log.Printf("suggestions: skip admin=%d (claude disabled)", adminID)
 						continue
-					}
-
-					eligibleCtx, eligibleCancel := context.WithTimeout(notifCtx, 30*time.Second)
-					eligible, err := suggestions.RotationEligible(eligibleCtx, database)
-					eligibleCancel()
-					if err != nil {
-						log.Printf("suggestions: rotation eligible for admin=%d: %v", adminID, err)
-						continue
-					}
-
-					pickCtx, pickCancel := context.WithTimeout(notifCtx, 30*time.Second)
-					rotation, err := suggestions.PickRotation(pickCtx, database, eligible, suggestions.RotationDefaultN)
-					pickCancel()
-					if err != nil {
-						log.Printf("suggestions: pick rotation for admin=%d: %v", adminID, err)
-						continue
-					}
-
-					pageSlugs := make([]string, len(rotation))
-					for i, p := range rotation {
-						pageSlugs[i] = p.Slug
 					}
 
 					runCtx, runCancel := context.WithTimeout(notifCtx, 30*time.Minute)
