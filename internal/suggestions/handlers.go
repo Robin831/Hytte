@@ -18,10 +18,13 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// OverallRunTimeout caps the entire RunHandler invocation. Five pages × 90s
-// per-page worst case fits under 10 minutes, but Claude can occasionally
-// stall — we want to return a result rather than hang the request indefinitely.
-const OverallRunTimeout = 10 * time.Minute
+// OverallRunTimeout caps the entire RunHandler invocation. Sized to fit the
+// worst case of RotationDefaultN (20) pages × PerPageTimeout (240s) ≈ 80
+// minutes of compute, halved by the fact that not every page hits its
+// per-page deadline; 30 minutes leaves headroom for the streaming run to
+// complete while still bounding hangs so a stalled Claude call cannot pin
+// the request indefinitely.
+const OverallRunTimeout = 30 * time.Minute
 
 // PlanTimeout caps a single PlanHandler Claude invocation. Declared as var so
 // tests can shrink it to verify timeout handling without hanging for two

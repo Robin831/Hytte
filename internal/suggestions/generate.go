@@ -25,8 +25,11 @@ var runPromptFn = training.RunPromptWithCost
 
 // PerPageTimeout is the deadline applied to each individual page's generation
 // attempt. RunSuggestionsForPages caps each Claude call at this duration so a
-// single hung page cannot starve the overall run.
-const PerPageTimeout = 90 * time.Second
+// single hung page cannot starve the overall run. Bumped to 240s because
+// Claude calls on large pages (many source files / long git history) can run
+// well past the original 90s budget; the previous value was timing manual
+// runs out before they could finish.
+const PerPageTimeout = 240 * time.Second
 
 // recentSuggestionsWindowDays is the look-back window used when injecting prior
 // suggestion titles into the prompt to discourage repeats.
