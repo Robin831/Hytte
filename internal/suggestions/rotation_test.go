@@ -40,14 +40,6 @@ func seedSuggestion(t *testing.T, db *sql.DB, slug string, generatedAt time.Time
 	}
 }
 
-func slugs(pages []Page) []string {
-	out := make([]string, len(pages))
-	for i, p := range pages {
-		out[i] = p.Slug
-	}
-	return out
-}
-
 func TestPickRotation_SelectsLeastRecentlyRun(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()
