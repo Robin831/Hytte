@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"os"
@@ -250,22 +251,50 @@ func main() {
 					}
 
 					runCtx, runCancel := context.WithTimeout(notifCtx, 30*time.Minute)
+					startedAt := time.Now().UTC()
 					result := suggestions.RunSuggestionsForPages(runCtx, database, cfg, adminID, rotation)
 
 					// Run a separate Claude pass that proposes one new page idea.
 					// Failures are logged and folded into the same RunResult; we
 					// do not abort the rest of the schedule when this pass fails.
 					newPageResult, err := suggestions.RunNewPageSuggestion(runCtx, database, cfg, adminID)
+					newPageRan := true
 					if err != nil {
 						log.Printf("suggestions: new_page run for admin=%d: %v", adminID, err)
 						result.Errors++
+						// Pre-flight context errors mean the new-page pass did
+						// not run at all; in that case we should not list
+						// __new_page__ in page_slugs.
+						if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+							newPageRan = false
+						}
 					}
 					result.Generated += newPageResult.Generated
 					result.Errors += newPageResult.Errors
+					result.CostUSD += newPageResult.CostUSD
 					runCancel()
 
-					log.Printf("suggestions: nightly run for admin=%d generated=%d errors=%d pages=%v",
-						adminID, result.Generated, result.Errors, pageSlugs)
+					finishedAt := time.Now().UTC()
+					runRow := suggestions.SuggestionRun{
+						UserID:     adminID,
+						StartedAt:  startedAt,
+						FinishedAt: &finishedAt,
+						Trigger:    suggestions.TriggerScheduled,
+						PageSlugs:  suggestions.BuildPageSlugsCSV(pageSlugs, newPageRan),
+						Generated:  result.Generated,
+						Errors:     result.Errors,
+						CostUSD:    result.CostUSD,
+					}
+					// Use a background context so a notifCtx cancel between
+					// run and insert does not drop the audit row.
+					insertCtx, insertCancel := context.WithTimeout(context.Background(), 5*time.Second)
+					if _, err := suggestions.InsertSuggestionRun(insertCtx, database, runRow); err != nil {
+						log.Printf("suggestions: record scheduled run for admin=%d: %v", adminID, err)
+					}
+					insertCancel()
+
+					log.Printf("suggestions: nightly run for admin=%d generated=%d errors=%d cost=$%.4f pages=%v",
+						adminID, result.Generated, result.Errors, result.CostUSD, pageSlugs)
 				}
 			}
 		}

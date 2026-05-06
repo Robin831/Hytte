@@ -11,8 +11,22 @@ import (
 )
 
 // withRunPrompt swaps the package-level runPromptFn for the duration of a test
-// and returns a restore function to defer.
+// and returns a restore function to defer. The legacy (string, error) shape is
+// retained here so the existing test bodies do not need rewriting; the wrapper
+// reports a cost of 0 to runPromptFn callers. Tests that need to assert on
+// cost should use withRunPromptWithCost instead.
 func withRunPrompt(fn func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error)) func() {
+	prev := runPromptFn
+	runPromptFn = func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, float64, error) {
+		text, err := fn(ctx, cfg, prompt)
+		return text, 0, err
+	}
+	return func() { runPromptFn = prev }
+}
+
+// withRunPromptWithCost is the cost-aware variant of withRunPrompt for tests
+// that need to verify cost accumulation.
+func withRunPromptWithCost(fn func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, float64, error)) func() {
 	prev := runPromptFn
 	runPromptFn = fn
 	return func() { runPromptFn = prev }

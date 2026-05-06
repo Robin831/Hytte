@@ -69,7 +69,8 @@ func RunNewPageSuggestion(
 
 	prompt := buildNewPagePrompt(registered, recent)
 
-	parsed, err := callAndParseNewPage(runCtx, cfg, prompt)
+	parsed, cost, err := callAndParseNewPage(runCtx, cfg, prompt)
+	result.CostUSD += cost
 	if err != nil {
 		if ctx.Err() != nil {
 			return result, ctx.Err()
@@ -106,22 +107,27 @@ func RunNewPageSuggestion(
 // once on malformed JSON. The retry uses the same prompt — no nudge text is
 // appended because the original prompt already insists on JSON-only output.
 // This mirrors the behaviour in callAndParse for per-page generation so both
-// passes have the same retry semantics.
-func callAndParseNewPage(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (newPageGenerated, error) {
-	var lastErr error
+// passes have the same retry semantics. Returns the accumulated cost across
+// all attempts so callers can fold it into the run total.
+func callAndParseNewPage(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (newPageGenerated, float64, error) {
+	var (
+		lastErr   error
+		totalCost float64
+	)
 	for attempt := 0; attempt <= MaxRetriesOnMalformedJSON; attempt++ {
-		resp, err := runPromptFn(ctx, cfg, prompt)
+		resp, cost, err := runPromptFn(ctx, cfg, prompt)
+		totalCost += cost
 		if err != nil {
-			return newPageGenerated{}, fmt.Errorf("claude prompt: %w", err)
+			return newPageGenerated{}, totalCost, fmt.Errorf("claude prompt: %w", err)
 		}
 		parsed, err := parseNewPageResponse(resp)
 		if err == nil {
-			return parsed, nil
+			return parsed, totalCost, nil
 		}
 		lastErr = err
 		log.Printf("suggestions: new_page parse attempt %d failed: %v", attempt+1, err)
 	}
-	return newPageGenerated{}, fmt.Errorf("parse new_page response after %d attempts: %w", MaxRetriesOnMalformedJSON+1, lastErr)
+	return newPageGenerated{}, totalCost, fmt.Errorf("parse new_page response after %d attempts: %w", MaxRetriesOnMalformedJSON+1, lastErr)
 }
 
 // parseNewPageResponse strips an optional markdown fence and decodes a single
