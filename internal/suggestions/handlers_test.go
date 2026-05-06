@@ -1,6 +1,7 @@
 package suggestions
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -235,6 +237,243 @@ func TestRunHandlerReturns409WhenInflightRunExists(t *testing.T) {
 	}
 	if body.RunID != existingID {
 		t.Fatalf("expected run_id %d, got %d", existingID, body.RunID)
+	}
+}
+
+// TestRunHandlerConcurrentRequestsSecondReturns409 fires two simultaneous POSTs
+// and asserts that the second one observes the first one's in-flight run row
+// and is rejected with 409 + the original run_id. The first request's mock
+// blocks on a channel so its in-flight row is guaranteed to be visible when
+// the second request hits the InflightRunForUser check.
+func TestRunHandlerConcurrentRequestsSecondReturns409(t *testing.T) {
+	d := setupTestDB(t)
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
+	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	// reachedMock signals that goroutine #1's work loop has entered the mock —
+	// at that point the in-flight suggestion_runs row is committed and the
+	// second goroutine is guaranteed to see it. release lets the first
+	// request's mock return so the run can complete cleanly at the end.
+	reachedMock := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		once.Do(func() { close(reachedMock) })
+		<-release
+		if strings.Contains(prompt, "Return ONLY a single JSON object") {
+			return validNewPageJSON, nil
+		}
+		return validJSONResponse, nil
+	})()
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/suggestions/run", auth.RequireAdmin()(RunHandler(d)))
+
+	user := &auth.User{ID: 1, IsAdmin: true}
+
+	// Goroutine #1: holds the in-flight slot until release is closed.
+	rec1 := httptest.NewRecorder()
+	done1 := make(chan struct{})
+	go func() {
+		defer close(done1)
+		req := httptest.NewRequest(http.MethodPost, "/api/suggestions/run", nil)
+		req = req.WithContext(auth.ContextWithUser(req.Context(), user))
+		mux.ServeHTTP(rec1, req)
+	}()
+
+	// Wait until goroutine #1 has reached the mock, ensuring the in-flight
+	// suggestion_runs row is committed before the second POST fires.
+	select {
+	case <-reachedMock:
+	case <-time.After(2 * time.Second):
+		close(release)
+		<-done1
+		t.Fatalf("first request did not reach mock in time")
+	}
+
+	// Goroutine #2: same user, same endpoint, fired while #1 is in flight.
+	req2 := httptest.NewRequest(http.MethodPost, "/api/suggestions/run", nil)
+	req2 = req2.WithContext(auth.ContextWithUser(req2.Context(), user))
+	rec2 := httptest.NewRecorder()
+	mux.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusConflict {
+		close(release)
+		<-done1
+		t.Fatalf("expected 409 from concurrent POST, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+	var body struct {
+		Error string `json:"error"`
+		RunID int64  `json:"run_id"`
+	}
+	if err := json.Unmarshal(rec2.Body.Bytes(), &body); err != nil {
+		close(release)
+		<-done1
+		t.Fatalf("decode 409 body: %v", err)
+	}
+	if body.Error == "" {
+		t.Errorf("expected non-empty error, got %q", body.Error)
+	}
+
+	// The reported run_id must match the in-flight row from goroutine #1.
+	var inflightID int64
+	if err := d.QueryRow(`SELECT id FROM suggestion_runs WHERE finished_at IS NULL`).Scan(&inflightID); err != nil {
+		close(release)
+		<-done1
+		t.Fatalf("read in-flight run id: %v", err)
+	}
+	if body.RunID != inflightID {
+		t.Errorf("run_id: got %d want %d", body.RunID, inflightID)
+	}
+
+	// Release goroutine #1 and let it complete cleanly.
+	close(release)
+	select {
+	case <-done1:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("first request did not finish")
+	}
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("first request expected 200, got %d", rec1.Code)
+	}
+}
+
+// TestRunHandlerClientDisconnectStillPersists verifies that cancelling the
+// client context mid-stream does not abort the work goroutine: the
+// suggestion_runs row is updated with finished_at, the final totals match the
+// rows actually persisted, and per-page suggestions for every completed page
+// land in the DB. This pins the detached-context behaviour described in
+// RunHandler's doc comment.
+func TestRunHandlerClientDisconnectStillPersists(t *testing.T) {
+	d := setupTestDB(t)
+	defer withSavedPages([]Page{
+		{Slug: "weather", Title: "Weather"},
+		{Slug: "notes", Title: "Notes"},
+	})()
+	if err := auth.SetPreference(d, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	// Add a small delay per Claude call so the test has time to disconnect
+	// after seeing the first page_complete event but before the work goroutine
+	// finishes. The detached runCtx is independent of the client context, so
+	// this delay is unaffected by the client cancellation we issue below.
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		time.Sleep(50 * time.Millisecond)
+		if strings.Contains(prompt, "Return ONLY a single JSON object") {
+			return validNewPageJSON, nil
+		}
+		return validJSONResponse, nil
+	})()
+
+	user := &auth.User{ID: 1, IsAdmin: true}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Inject an admin user the same way RequireAuth would in production
+		// so RequireAdmin sees a non-nil admin in context.
+		r = r.WithContext(auth.ContextWithUser(r.Context(), user))
+		auth.RequireAdmin()(RunHandler(d)).ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+
+	clientCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, err := http.NewRequestWithContext(clientCtx, http.MethodPost, srv.URL, nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	// Read the SSE stream until we see the first page_complete event; this
+	// proves the server has actually started streaming and at least one
+	// per-page write has begun.
+	scanner := bufio.NewScanner(resp.Body)
+	var sawStarted, sawPageComplete bool
+	for scanner.Scan() {
+		line := scanner.Text()
+		switch {
+		case strings.HasPrefix(line, "event: started"):
+			sawStarted = true
+		case strings.HasPrefix(line, "event: page_complete"):
+			sawPageComplete = true
+		}
+		if sawPageComplete {
+			break
+		}
+	}
+	if !sawStarted || !sawPageComplete {
+		t.Fatalf("expected to see started + page_complete; sawStarted=%v sawPageComplete=%v err=%v",
+			sawStarted, sawPageComplete, scanner.Err())
+	}
+
+	// Disconnect mid-stream. The handler's streaming loop will observe
+	// r.Context().Done() and stop writing — but the detached work goroutine
+	// must continue persisting per-page suggestions and updating the audit
+	// row with finished_at.
+	cancel()
+	_ = resp.Body.Close()
+
+	// Poll the audit row for finished_at. Generous deadline to absorb the
+	// per-page sleeps and the new-page pass that complete after disconnect.
+	var (
+		finishedAt sql.NullString
+		generated  int
+		errCount   int
+	)
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		err := d.QueryRow(`
+			SELECT finished_at, generated, errors
+			FROM suggestion_runs
+			ORDER BY id DESC
+			LIMIT 1
+		`).Scan(&finishedAt, &generated, &errCount)
+		if err != nil {
+			t.Fatalf("read run row: %v", err)
+		}
+		if finishedAt.Valid {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !finishedAt.Valid {
+		t.Fatalf("expected finished_at to be set after client disconnect (work goroutine should persist independently)")
+	}
+	if errCount != 0 {
+		t.Errorf("expected 0 errors after detached run, got %d", errCount)
+	}
+
+	// Final totals on the audit row must match the suggestions actually
+	// persisted: 3 per page × 2 pages + 1 new_page = 7.
+	var rowCount int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM suggestions WHERE user_id = 1`).Scan(&rowCount); err != nil {
+		t.Fatalf("count rows: %v", err)
+	}
+	if rowCount != generated {
+		t.Errorf("rows persisted (%d) should match suggestion_runs.generated (%d)", rowCount, generated)
+	}
+	if rowCount != 7 {
+		t.Errorf("expected 7 rows after disconnect (2 pages × 3 + 1 new_page), got %d", rowCount)
+	}
+
+	// Both per-page slugs and the synthetic new-page slug must have rows —
+	// detached persistence covers every page that completed in the goroutine.
+	for _, slug := range []string{"weather", "notes", NewPageSlug} {
+		var n int
+		if err := d.QueryRow(`SELECT COUNT(*) FROM suggestions WHERE page_slug = ?`, slug).Scan(&n); err != nil {
+			t.Fatalf("count %s: %v", slug, err)
+		}
+		if n == 0 {
+			t.Errorf("expected suggestions persisted for page_slug=%q after disconnect, got 0", slug)
+		}
 	}
 }
 
