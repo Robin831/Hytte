@@ -139,7 +139,7 @@ export default function Suggestions() {
     )
   }
 
-  function renderPanel(tab: TabKey, list: Suggestion[]) {
+  function renderPanel(tab: Exclude<TabKey, 'pages'>, list: Suggestion[]) {
     if (tab === 'planned') {
       if (list.length === 0 && beadCreated.length === 0) {
         return (
