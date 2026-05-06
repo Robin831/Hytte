@@ -3,7 +3,6 @@ package suggestions
 import (
 	"context"
 	"database/sql"
-	"sort"
 	"testing"
 	"time"
 )
@@ -98,19 +97,10 @@ func TestRotationEligibleMixedSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RotationEligible: %v", err)
 	}
+	// Registry order must be preserved regardless of DB row insertion order.
 	want := []string{"weather", "training"}
-	if diff := slugs(got); !equalStrings(diff, want) {
-		t.Fatalf("expected %v, got %v", want, diff)
-	}
-
-	// Make sure the order of returned pages matches registry order even when
-	// settings rows arrived in a different sequence.
-	wantSorted := append([]string{}, want...)
-	sort.Strings(wantSorted)
-	gotSorted := append([]string{}, slugs(got)...)
-	sort.Strings(gotSorted)
-	if !equalStrings(wantSorted, gotSorted) {
-		t.Fatalf("set mismatch: want %v got %v", wantSorted, gotSorted)
+	if got := slugs(got); !equalStrings(got, want) {
+		t.Fatalf("expected %v, got %v", want, got)
 	}
 }
 
@@ -132,16 +122,23 @@ func TestRotationEligibleIgnoresUnknownSlug(t *testing.T) {
 }
 
 func TestAllRegisteredReturnsCopy(t *testing.T) {
-	defer pinTestRegistry()()
+	defer withSavedPages([]Page{
+		{Slug: "weather", Title: "Weather", SourceFiles: []string{"a.go", "b.go"}},
+	})()
 
 	got := AllRegistered()
-	if len(got) != 3 {
-		t.Fatalf("expected 3 pages, got %d", len(got))
+	if len(got) != 1 {
+		t.Fatalf("expected 1 page, got %d", len(got))
 	}
 	// Mutating the returned slice must not affect the package-level registry.
 	got[0].Slug = "tampered"
 	if Pages[0].Slug == "tampered" {
 		t.Fatalf("AllRegistered returned a slice that aliases Pages")
+	}
+	// Mutating a nested SourceFiles slice must not affect the registry.
+	got[0].SourceFiles[0] = "tampered.go"
+	if Pages[0].SourceFiles[0] == "tampered.go" {
+		t.Fatalf("AllRegistered returned SourceFiles that aliases the registry entry")
 	}
 }
 

@@ -91,7 +91,12 @@ var Pages = []Page{
 // rotation-aware view should use RotationEligible instead.
 func AllRegistered() []Page {
 	out := make([]Page, len(Pages))
-	copy(out, Pages)
+	for i, p := range Pages {
+		out[i] = p
+		if p.SourceFiles != nil {
+			out[i].SourceFiles = append([]string(nil), p.SourceFiles...)
+		}
+	}
 	return out
 }
 
@@ -123,7 +128,11 @@ func RotationEligible(ctx context.Context, db *sql.DB) ([]Page, error) {
 	for _, p := range Pages {
 		enabled, ok := settings[p.Slug]
 		if !ok || enabled {
-			out = append(out, p)
+			cp := p
+			if p.SourceFiles != nil {
+				cp.SourceFiles = append([]string(nil), p.SourceFiles...)
+			}
+			out = append(out, cp)
 		}
 	}
 	return out, nil
