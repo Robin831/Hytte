@@ -105,23 +105,9 @@ func AllRegistered() []Page {
 // suggestion_page_settings (the default) or when its rotation_enabled column
 // is 1. The DB is the sole source of truth for rotation state.
 func RotationEligible(ctx context.Context, db *sql.DB) ([]Page, error) {
-	rows, err := db.QueryContext(ctx, `SELECT page_slug, rotation_enabled FROM suggestion_page_settings`)
+	settings, err := loadPageRotationSettings(ctx, db)
 	if err != nil {
-		return nil, fmt.Errorf("query suggestion_page_settings: %w", err)
-	}
-	defer rows.Close()
-
-	settings := make(map[string]bool)
-	for rows.Next() {
-		var slug string
-		var enabled int
-		if err := rows.Scan(&slug, &enabled); err != nil {
-			return nil, fmt.Errorf("scan suggestion_page_settings: %w", err)
-		}
-		settings[slug] = enabled == 1
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate suggestion_page_settings: %w", err)
+		return nil, fmt.Errorf("load page rotation settings: %w", err)
 	}
 
 	out := make([]Page, 0, len(Pages))

@@ -464,14 +464,7 @@ func UpdatePageSettingsHandler(db *sql.DB) http.HandlerFunc {
 		// Look up the page in the curated registry. Unknown slugs (including
 		// the synthetic __new_page__) return 404 — rotation only applies to
 		// real registered pages.
-		var page *Page
-		for _, p := range AllRegistered() {
-			if p.Slug == slug {
-				cp := p
-				page = &cp
-				break
-			}
-		}
+		page := findPageBySlug(slug)
 		if page == nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown page slug"})
 			return
