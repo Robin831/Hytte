@@ -18,6 +18,8 @@ import (
 	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/stars"
 	"github.com/Robin831/Hytte/internal/stride"
+	"github.com/Robin831/Hytte/internal/suggestions"
+	"github.com/Robin831/Hytte/internal/training"
 )
 
 func main() {
@@ -170,6 +172,90 @@ func main() {
 					log.Println("stride eval: nightly evaluation complete")
 				}
 				evalCancel()
+			}
+		}
+	}()
+
+	// Schedule nightly suggestion rotation at 03:00 Europe/Oslo.
+	// For each admin user with Claude enabled, pick a rotation slice from the
+	// eligible page registry and run RunSuggestionsForPages with a 30-minute
+	// per-admin timeout derived from notifCtx.
+	go func() {
+		oslo, err := time.LoadLocation("Europe/Oslo")
+		if err != nil {
+			log.Printf("suggestions: failed to load Europe/Oslo timezone: %v", err)
+			return
+		}
+		for {
+			next := suggestions.NextScheduledRun(time.Now(), oslo)
+			timer := time.NewTimer(time.Until(next))
+			select {
+			case <-notifCtx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+				rows, err := database.QueryContext(notifCtx,
+					`SELECT id FROM users WHERE is_admin = 1 ORDER BY id`)
+				if err != nil {
+					log.Printf("suggestions: query admin users: %v", err)
+					continue
+				}
+				var adminIDs []int64
+				for rows.Next() {
+					var id int64
+					if err := rows.Scan(&id); err != nil {
+						log.Printf("suggestions: scan admin id: %v", err)
+						continue
+					}
+					adminIDs = append(adminIDs, id)
+				}
+				if err := rows.Err(); err != nil {
+					log.Printf("suggestions: rows iteration error: %v", err)
+				}
+				rows.Close()
+
+				for _, adminID := range adminIDs {
+					if notifCtx.Err() != nil {
+						break
+					}
+					cfg, err := training.LoadClaudeConfig(database, adminID)
+					if err != nil {
+						log.Printf("suggestions: load claude config for admin=%d: %v", adminID, err)
+						continue
+					}
+					if !cfg.Enabled {
+						log.Printf("suggestions: skip admin=%d (claude disabled)", adminID)
+						continue
+					}
+
+					eligibleCtx, eligibleCancel := context.WithTimeout(notifCtx, 30*time.Second)
+					eligible, err := suggestions.RotationEligible(eligibleCtx, database)
+					eligibleCancel()
+					if err != nil {
+						log.Printf("suggestions: rotation eligible for admin=%d: %v", adminID, err)
+						continue
+					}
+
+					pickCtx, pickCancel := context.WithTimeout(notifCtx, 30*time.Second)
+					rotation, err := suggestions.PickRotation(pickCtx, database, eligible, suggestions.RotationDefaultN)
+					pickCancel()
+					if err != nil {
+						log.Printf("suggestions: pick rotation for admin=%d: %v", adminID, err)
+						continue
+					}
+
+					pageSlugs := make([]string, len(rotation))
+					for i, p := range rotation {
+						pageSlugs[i] = p.Slug
+					}
+
+					runCtx, runCancel := context.WithTimeout(notifCtx, 30*time.Minute)
+					result := suggestions.RunSuggestionsForPages(runCtx, database, cfg, adminID, rotation)
+					runCancel()
+
+					log.Printf("suggestions: nightly run for admin=%d generated=%d errors=%d pages=%v",
+						adminID, result.Generated, result.Errors, pageSlugs)
+				}
 			}
 		}
 	}()
