@@ -2,13 +2,14 @@ import { useEffect, useId, useMemo, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from '../ui/dialog'
-import type {
-  Suggestion,
-  SuggestionSize,
-  SuggestionType,
+import {
+  NEW_PAGE_SLUG,
+  type Suggestion,
+  type SuggestionSize,
+  type SuggestionType,
 } from './SuggestionCard'
 
-export const NEW_PAGE_SLUG = '__new_page__'
+export { NEW_PAGE_SLUG }
 export const TITLE_MAX = 120
 export const BODY_MAX_BYTES = 4096
 
@@ -277,7 +278,7 @@ export function NewSuggestionForm({ open, onClose, onCreated }: NewSuggestionFor
                 </option>
                 {visiblePages.map(p => (
                   <option key={p.slug} value={p.slug}>
-                    {p.title}
+                    {p.slug === NEW_PAGE_SLUG ? t('form.newPageOption') : p.title}
                   </option>
                 ))}
               </select>

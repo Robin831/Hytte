@@ -251,6 +251,17 @@ func main() {
 
 					runCtx, runCancel := context.WithTimeout(notifCtx, 30*time.Minute)
 					result := suggestions.RunSuggestionsForPages(runCtx, database, cfg, adminID, rotation)
+
+					// Run a separate Claude pass that proposes one new page idea.
+					// Failures are logged and folded into the same RunResult; we
+					// do not abort the rest of the schedule when this pass fails.
+					newPageResult, err := suggestions.RunNewPageSuggestion(runCtx, database, cfg, adminID)
+					if err != nil {
+						log.Printf("suggestions: new_page run for admin=%d: %v", adminID, err)
+						result.Errors++
+					}
+					result.Generated += newPageResult.Generated
+					result.Errors += newPageResult.Errors
 					runCancel()
 
 					log.Printf("suggestions: nightly run for admin=%d generated=%d errors=%d pages=%v",

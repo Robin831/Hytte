@@ -57,7 +57,13 @@ func TestRunHandlerAdminReturnsCounts(t *testing.T) {
 		{Slug: "weather", Title: "Weather"},
 		{Slug: "notes", Title: "Notes"},
 	})()
+	// The run handler now calls both the per-page rotation pass and the
+	// separate new-page pass; respond with the right shape based on the
+	// prompt's distinguishing phrase so both passes succeed.
 	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		if strings.Contains(prompt, "Return ONLY a single JSON object") {
+			return validNewPageJSON, nil
+		}
 		return validJSONResponse, nil
 	})()
 
@@ -85,16 +91,26 @@ func TestRunHandlerAdminReturnsCounts(t *testing.T) {
 	if got.Errors != 0 {
 		t.Fatalf("expected 0 errors, got %d", got.Errors)
 	}
-	if got.Generated != 6 {
-		t.Fatalf("expected 6 generated (3 per page × 2), got %d", got.Generated)
+	// 3 per page × 2 pages = 6 from per-page rotation, plus 1 from the
+	// new-page pass = 7 total.
+	if got.Generated != 7 {
+		t.Fatalf("expected 7 generated (3 per page × 2 + 1 new_page), got %d", got.Generated)
 	}
 
 	var rowCount int
 	if err := d.QueryRow(`SELECT COUNT(*) FROM suggestions`).Scan(&rowCount); err != nil {
 		t.Fatalf("count rows: %v", err)
 	}
-	if rowCount != 6 {
-		t.Fatalf("expected 6 rows persisted, got %d", rowCount)
+	if rowCount != 7 {
+		t.Fatalf("expected 7 rows persisted, got %d", rowCount)
+	}
+
+	var newPageCount int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM suggestions WHERE page_slug = ?`, NewPageSlug).Scan(&newPageCount); err != nil {
+		t.Fatalf("count new_page rows: %v", err)
+	}
+	if newPageCount != 1 {
+		t.Fatalf("expected exactly 1 new_page row, got %d", newPageCount)
 	}
 }
 

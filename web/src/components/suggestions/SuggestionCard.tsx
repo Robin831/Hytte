@@ -34,6 +34,8 @@ export interface SuggestionCardProps {
   actionsSlot?: ReactNode
 }
 
+export const NEW_PAGE_SLUG = '__new_page__'
+
 function typeBadgeClass(type: SuggestionType): string {
   switch (type) {
     case 'addition':
@@ -87,9 +89,18 @@ export function SuggestionCard({ suggestion, actionsSlot }: SuggestionCardProps)
       className="rounded-lg border border-gray-700 bg-gray-800 p-4 text-sm text-gray-200"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex max-w-full items-center rounded-full border border-gray-600 bg-gray-700/60 px-2 py-0.5 text-xs font-medium text-gray-300 break-all">
-          {suggestion.page_slug}
-        </span>
+        {suggestion.page_slug === NEW_PAGE_SLUG ? (
+          <span
+            data-testid="new-page-chip"
+            className="inline-flex max-w-full items-center rounded-full border border-purple-500/40 bg-purple-500/15 px-2 py-0.5 text-xs font-medium text-purple-300 break-all"
+          >
+            {t('card.newPageChip')}
+          </span>
+        ) : (
+          <span className="inline-flex max-w-full items-center rounded-full border border-gray-600 bg-gray-700/60 px-2 py-0.5 text-xs font-medium text-gray-300 break-all">
+            {suggestion.page_slug}
+          </span>
+        )}
         <span
           className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${typeBadgeClass(suggestion.type)}`}
         >
