@@ -2,7 +2,6 @@ package training
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -246,57 +245,59 @@ func TestRunPromptWithCost_ParsesEnvelope(t *testing.T) {
 	}
 }
 
-// TestParseClaudeCostEnvelope verifies that the JSON envelope parsing extracts
-// total_cost_usd correctly and that malformed input falls back to cost=0 with
-// the raw stdout returned as text.
+// TestParseClaudeCostEnvelope verifies that parseClaudeCostEnvelope extracts
+// result text and total_cost_usd correctly, returns an error for is_error=true,
+// and falls back to returning raw stdout with cost=0 on malformed JSON.
 func TestParseClaudeCostEnvelope(t *testing.T) {
 	cases := []struct {
-		name       string
-		raw        string
-		wantText   string
-		wantCost   float64
-		wantParsed bool
+		name     string
+		raw      string
+		wantText string
+		wantCost float64
+		wantErr  bool
 	}{
 		{
-			name:       "valid envelope",
-			raw:        `{"result":"answer","total_cost_usd":0.0042,"session_id":"s1","is_error":false}`,
-			wantText:   "answer",
-			wantCost:   0.0042,
-			wantParsed: true,
+			name:     "valid envelope",
+			raw:      `{"result":"answer","total_cost_usd":0.0042,"session_id":"s1","is_error":false}`,
+			wantText: "answer",
+			wantCost: 0.0042,
 		},
 		{
-			name:       "missing cost field defaults to zero",
-			raw:        `{"result":"only text"}`,
-			wantText:   "only text",
-			wantCost:   0,
-			wantParsed: true,
+			name:     "missing cost field defaults to zero",
+			raw:      `{"result":"only text"}`,
+			wantText: "only text",
+			wantCost: 0,
 		},
 		{
-			name:       "malformed json falls back to raw",
-			raw:        `not-json {{`,
-			wantText:   "not-json {{",
-			wantCost:   0,
-			wantParsed: false,
+			name:    "is_error true returns error",
+			raw:     `{"result":"something went wrong","total_cost_usd":0,"is_error":true}`,
+			wantErr: true,
+		},
+		{
+			name:     "malformed json falls back to raw stdout with cost=0",
+			raw:      `not-json {{`,
+			wantText: "not-json {{",
+			wantCost: 0,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			var env claudeCostEnvelope
-			err := json.Unmarshal([]byte(tc.raw), &env)
-			if tc.wantParsed && err != nil {
-				t.Fatalf("expected parse to succeed: %v", err)
-			}
-			if !tc.wantParsed && err == nil {
-				t.Fatal("expected parse to fail")
-			}
-			if tc.wantParsed {
-				if env.Result != tc.wantText {
-					t.Errorf("text = %q, want %q", env.Result, tc.wantText)
+			text, cost, err := parseClaudeCostEnvelope([]byte(tc.raw))
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
 				}
-				if env.TotalCostUSD != tc.wantCost {
-					t.Errorf("cost = %v, want %v", env.TotalCostUSD, tc.wantCost)
-				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if text != tc.wantText {
+				t.Errorf("text = %q, want %q", text, tc.wantText)
+			}
+			if cost != tc.wantCost {
+				t.Errorf("cost = %v, want %v", cost, tc.wantCost)
 			}
 		})
 	}

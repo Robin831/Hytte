@@ -101,6 +101,29 @@ func runPromptCLI(ctx context.Context, cfg *ClaudeConfig, prompt string) (string
 type claudeCostEnvelope struct {
 	Result       string  `json:"result"`
 	TotalCostUSD float64 `json:"total_cost_usd"`
+	IsError      bool    `json:"is_error"`
+}
+
+// parseClaudeCostEnvelope parses raw JSON from the claude CLI --output-format=json
+// envelope. On success it returns the result text and cost. If is_error is set in
+// a valid envelope, it returns an error. On JSON parse failure it logs once (via
+// costParseLogOnce) and returns the raw bytes as text with cost=0.
+func parseClaudeCostEnvelope(raw []byte) (string, float64, error) {
+	var env claudeCostEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		costParseLogOnce.Do(func() {
+			log.Printf("training: failed to parse claude JSON envelope, falling back to raw stdout (cost=0): %v", err)
+		})
+		return strings.TrimSpace(string(raw)), 0, nil
+	}
+	if env.IsError {
+		return "", 0, fmt.Errorf("claude returned error: %s", env.Result)
+	}
+	text := env.Result
+	if text == "" {
+		text = string(raw)
+	}
+	return strings.TrimSpace(text), env.TotalCostUSD, nil
 }
 
 func runPromptCLIWithCost(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, float64, error) {
@@ -127,20 +150,7 @@ func runPromptCLIWithCost(ctx context.Context, cfg *ClaudeConfig, prompt string)
 		return "", 0, fmt.Errorf("claude CLI error: %w: %s", err, stderr.String())
 	}
 
-	raw := stdout.Bytes()
-	var env claudeCostEnvelope
-	if err := json.Unmarshal(raw, &env); err != nil {
-		costParseLogOnce.Do(func() {
-			log.Printf("training: failed to parse claude JSON envelope, falling back to raw stdout (cost=0): %v", err)
-		})
-		return strings.TrimSpace(string(raw)), 0, nil
-	}
-
-	text := env.Result
-	if text == "" {
-		text = string(raw)
-	}
-	return strings.TrimSpace(text), env.TotalCostUSD, nil
+	return parseClaudeCostEnvelope(stdout.Bytes())
 }
 
 // SessionResult holds the response text and session ID from a Claude CLI call.
