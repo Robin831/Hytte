@@ -14959,9 +14959,9 @@ rules:
     - id: accurate-cross-references
       category: style
       pattern: >-
-        Comments that reference another component/function's pattern (e.g., "matches X", "same as Y")
+        Code comments that reference another component or function as a pattern (e.g., "matches X", "same as Y", "mirrors Z")
       check: >-
-        Verify the referenced component actually implements the described pattern; if it doesn't, either update the comment to accurately describe the local behavior or change the logic to truly match the reference
+        Verify the referenced component actually implements the described pattern. If the comment claims similarity to another piece of code, confirm the behavior truly matches (e.g., reset-on-open vs reset-on-close, same lifecycle hook, same conditions). Either correct the comment to accurately describe the local behavior or align the implementation with the referenced pattern.
       source: copilot:PR#672
       added: "2026-05-05"
     - id: clear-stale-data-on-modal-open
@@ -14975,33 +14975,9 @@ rules:
     - id: counter-validation-consistency
       category: ui
       pattern: >-
-        Form fields with live character/byte counters where validation or submission uses a normalized value (e.g. trim())
+        Form fields with live character/byte counters or limit indicators where validation or submission uses a normalized value (e.g. trim()) different from the raw input value
       check: >-
-        Verify that live counters are computed from the same normalized value used for validation/submission, so the UI does not show 'over limit' for input that would actually submit successfully (or vice versa).
-      source: copilot:PR#672
-      added: "2026-05-05"
-    - id: validation-counter-consistency
-      category: ui
-      pattern: >-
-        Form fields with live character/byte counters where validation or submission uses a normalized value (e.g. trim()) different from the raw input value
-      check: >-
-        Verify that live counters and limit indicators are computed from the same normalized value used for validation and submission, so the UI doesn't show 'over limit' for input that would actually submit successfully (or vice versa)
-      source: copilot:PR#672
-      added: "2026-05-05"
-    - id: consistent-validation-display
-      category: ui
-      pattern: >-
-        Form fields with character/byte counters or limit indicators where validation uses normalized values (e.g., trim()) but the displayed counter uses raw input
-      check: >-
-        Verify that live counters and limit indicators are computed from the same normalized value used for validation and submission, so users don't see 'over limit' warnings for input that would actually submit successfully (or vice versa)
-      source: copilot:PR#672
-      added: "2026-05-05"
-    - id: accurate-cross-reference-comments
-      category: style
-      pattern: >-
-        Code comments that reference another component or function as a pattern (e.g., 'matches X', 'same as Y', 'mirrors Z')
-      check: >-
-        Verify the referenced component actually implements the described pattern. If the comment claims similarity to another piece of code, confirm the behavior truly matches (e.g., reset-on-open vs reset-on-close, same lifecycle hook, same conditions). Either correct the comment to accurately describe the local behavior or align the implementation with the referenced pattern.
+        Verify that live counters and limit indicators are computed from the same normalized value used for validation and submission, so the UI does not show 'over limit' for input that would actually submit successfully (or vice versa)
       source: copilot:PR#672
       added: "2026-05-05"
     - id: i18n-namespace-test-mocks
@@ -15127,17 +15103,9 @@ rules:
     - id: fold-errors-into-result
       category: error-handling
       pattern: >-
-        Aggregator/runner that calls a sub-task returning both a result struct (with its own error counters) and a non-nil error, then merges only the struct's counters into the overall result
+        Aggregator/runner or scheduled/batch handler that calls a sub-task returning both a result struct (with its own error counters) and a non-nil error, then merges only the struct's counters into the overall result (or only logs the error)
       check: >-
-        Verify that when the sub-call returns a non-nil error, the outer result's error count is incremented (or the sub-task is guaranteed to always report failures via its result struct and never return a separate error). Logging the error alone is insufficient — operators reading the aggregated result must see the failure reflected in the error count.
-      source: copilot:PR#679
-      added: "2026-05-06"
-    - id: aggregate-errors-in-result-counts
-      category: error-handling
-      pattern: >-
-        A scheduled/batch handler invokes a sub-task that returns an error, and the error is only logged (not added to a RunResult/aggregate counter)
-      check: >-
-        Verify that non-nil errors from sub-task calls increment the aggregate error count (e.g., result.Errors++) so the run summary accurately reflects failures, not just the log output
+        Verify that when the sub-call returns a non-nil error, the outer result's error count is incremented (e.g., result.Errors++) so the run summary accurately reflects failures. Logging the error alone is insufficient — operators reading the aggregated result must see the failure reflected in the error count.
       source: copilot:PR#679
       added: "2026-05-06"
     - id: test-prompt-discriminator-stability
@@ -15174,16 +15142,8 @@ rules:
     - id: test-path-validation
       category: testing
       pattern: >-
-        Tests that validate file paths exist within a repo or directory using filepath.Join + os.Stat without verifying the path is safe and relative
+        Tests that validate file paths exist within a repo or root directory using filepath.Join + os.Stat without verifying the path is safe, relative, and constrained to the intended root
       check: >-
-        Ensure path-checking tests assert the input is a clean, relative file path (!filepath.IsAbs, no '..' after Clean, filepath.Rel doesn't start with '..') and verify the stat result is a file, not a directory, to prevent path escape and match test intent
-      source: copilot:PR#683
-      added: "2026-05-06"
-    - id: test-path-traversal-safety
-      category: testing
-      pattern: >-
-        Tests that validate file paths exist relative to a root directory using filepath.Join + os.Stat without verifying the path is actually constrained to that root
-      check: >-
-        Ensure path-existence tests assert the input is a clean, relative file path (!filepath.IsAbs, no '..' segments after Clean, filepath.Rel doesn't start with '..') and verify the stat result is a regular file (not a directory) to prevent accidental escapes outside the intended root
+        Ensure path-checking tests assert the input is a clean, relative file path (!filepath.IsAbs, no '..' segments after Clean, filepath.Rel doesn't start with '..') and verify the stat result is a regular file (not a directory), to prevent path escape outside the intended root and match test intent
       source: copilot:PR#683
       added: "2026-05-06"
