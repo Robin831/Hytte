@@ -401,28 +401,142 @@ func findPageBySlug(slug string) *Page {
 }
 
 // pageSummary is the lightweight page descriptor returned to the UI.
+// RotationEnabled is a pointer so it serializes as JSON null when no row
+// exists in suggestion_page_settings (the default-enabled case) and as a
+// bool when the admin has explicitly opted in or out. The synthetic
+// "__new_page__" entry is also rendered with null since rotation does not
+// apply to it.
 type pageSummary struct {
-	Slug  string `json:"slug"`
-	Title string `json:"title"`
+	Slug            string `json:"slug"`
+	Title           string `json:"title"`
+	RotationEnabled *bool  `json:"rotation_enabled"`
 }
 
 // PagesHandler returns the registry of pages a user-authored suggestion can
 // target, plus the synthetic "__new_page__" entry for proposing brand-new
 // pages. Order is stable: registry order followed by the new-page sentinel.
 // Rotation eligibility controls auto-generation, not which pages a user can
-// target manually, so this endpoint serves the full registry.
+// target manually, so this endpoint serves the full registry. Each registered
+// page also carries its current rotation_enabled override (null when no row
+// exists in suggestion_page_settings — the default is on).
 //
 // GET /api/suggestions/pages
-func PagesHandler() http.HandlerFunc {
+func PagesHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		settings, err := loadPageRotationSettings(r.Context(), db)
+		if err != nil {
+			log.Printf("suggestions: load page rotation settings: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load page settings"})
+			return
+		}
+
 		pages := AllRegistered()
 		out := make([]pageSummary, 0, len(pages)+1)
 		for _, p := range pages {
-			out = append(out, pageSummary{Slug: p.Slug, Title: p.Title})
+			summary := pageSummary{Slug: p.Slug, Title: p.Title}
+			if v, ok := settings[p.Slug]; ok {
+				enabled := v
+				summary.RotationEnabled = &enabled
+			}
+			out = append(out, summary)
 		}
 		out = append(out, pageSummary{Slug: NewPageSlug, Title: "New page"})
 		writeJSON(w, http.StatusOK, out)
 	}
+}
+
+// UpdatePageSettingsHandler upserts the rotation_enabled flag for a single
+// registered page. The slug must be in the curated registry (AllRegistered);
+// the synthetic "__new_page__" sentinel is rejected because rotation does
+// not apply to it. Returns the updated pageSummary on success.
+//
+// PATCH /api/suggestions/pages/{slug}
+// Request:  { "rotation_enabled": bool }
+// Response: 200 with the updated pageSummary.
+func UpdatePageSettingsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		slug := strings.TrimSpace(chi.URLParam(r, "slug"))
+		if slug == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "slug is required"})
+			return
+		}
+
+		// Look up the page in the curated registry. Unknown slugs (including
+		// the synthetic __new_page__) return 404 — rotation only applies to
+		// real registered pages.
+		var page *Page
+		for _, p := range AllRegistered() {
+			if p.Slug == slug {
+				cp := p
+				page = &cp
+				break
+			}
+		}
+		if page == nil {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown page slug"})
+			return
+		}
+
+		// Use a *bool so a missing field is distinguishable from an explicit
+		// false. Either case where the field is absent is a 400.
+		var body struct {
+			RotationEnabled *bool `json:"rotation_enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+		if body.RotationEnabled == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "rotation_enabled is required"})
+			return
+		}
+
+		enabled := 0
+		if *body.RotationEnabled {
+			enabled = 1
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		if _, err := db.ExecContext(r.Context(), `
+			INSERT INTO suggestion_page_settings (page_slug, rotation_enabled, updated_at)
+			VALUES (?, ?, ?)
+			ON CONFLICT(page_slug) DO UPDATE SET
+				rotation_enabled = excluded.rotation_enabled,
+				updated_at = excluded.updated_at
+		`, slug, enabled, now); err != nil {
+			log.Printf("suggestions: upsert page settings %q: %v", slug, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save page settings"})
+			return
+		}
+
+		updated := *body.RotationEnabled
+		writeJSON(w, http.StatusOK, pageSummary{
+			Slug:            page.Slug,
+			Title:           page.Title,
+			RotationEnabled: &updated,
+		})
+	}
+}
+
+// loadPageRotationSettings returns the current per-page rotation_enabled
+// overrides keyed by page_slug. A missing slug means no override exists and
+// the page defaults to enabled.
+func loadPageRotationSettings(ctx context.Context, db *sql.DB) (map[string]bool, error) {
+	rows, err := db.QueryContext(ctx, `SELECT page_slug, rotation_enabled FROM suggestion_page_settings`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[string]bool)
+	for rows.Next() {
+		var slug string
+		var enabled int
+		if err := rows.Scan(&slug, &enabled); err != nil {
+			return nil, err
+		}
+		out[slug] = enabled == 1
+	}
+	return out, rows.Err()
 }
 
 // isValidPageSlug returns true if slug is the synthetic new-page sentinel or a

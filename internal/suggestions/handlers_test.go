@@ -870,7 +870,8 @@ func TestPlanHandlerRequiresClaudeEnabled(t *testing.T) {
 // --- PagesHandler ------------------------------------------------------------
 
 func TestPagesHandlerRejectsNonAdmin(t *testing.T) {
-	router := mountAdmin(PagesHandler(), http.MethodGet, "/api/suggestions/pages")
+	d := setupTestDB(t)
+	router := mountAdmin(PagesHandler(d), http.MethodGet, "/api/suggestions/pages")
 	req := adminContext(httptest.NewRequest(http.MethodGet, "/api/suggestions/pages", nil), 99, false)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -881,12 +882,13 @@ func TestPagesHandlerRejectsNonAdmin(t *testing.T) {
 }
 
 func TestPagesHandlerReturnsRegistryPlusNewPage(t *testing.T) {
+	d := setupTestDB(t)
 	defer withSavedPages([]Page{
 		{Slug: "weather", Title: "Weather"},
 		{Slug: "notes", Title: "Notes"},
 	})()
 
-	router := mountAdmin(PagesHandler(), http.MethodGet, "/api/suggestions/pages")
+	router := mountAdmin(PagesHandler(d), http.MethodGet, "/api/suggestions/pages")
 	req := adminContext(httptest.NewRequest(http.MethodGet, "/api/suggestions/pages", nil), 1, true)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -907,5 +909,189 @@ func TestPagesHandlerReturnsRegistryPlusNewPage(t *testing.T) {
 	}
 	if got[2].Slug != NewPageSlug {
 		t.Fatalf("expected last entry to be %q, got %q", NewPageSlug, got[2].Slug)
+	}
+	// With no rows in suggestion_page_settings, every entry should report
+	// rotation_enabled=null so the frontend can render the default-on state.
+	for _, p := range got {
+		if p.RotationEnabled != nil {
+			t.Fatalf("expected rotation_enabled=nil for %q with no settings row, got %v", p.Slug, *p.RotationEnabled)
+		}
+	}
+}
+
+func TestPagesHandlerIncludesRotationEnabledFromSettings(t *testing.T) {
+	d := setupTestDB(t)
+	defer withSavedPages([]Page{
+		{Slug: "weather", Title: "Weather"},
+		{Slug: "notes", Title: "Notes"},
+		{Slug: "training", Title: "Training"},
+	})()
+
+	// weather has an explicit on row, notes has an explicit off row, training
+	// has no row (default null).
+	insertPageSetting(t, d, "weather", 1)
+	insertPageSetting(t, d, "notes", 0)
+
+	router := mountAdmin(PagesHandler(d), http.MethodGet, "/api/suggestions/pages")
+	req := adminContext(httptest.NewRequest(http.MethodGet, "/api/suggestions/pages", nil), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got []pageSummary
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	bySlug := make(map[string]pageSummary, len(got))
+	for _, p := range got {
+		bySlug[p.Slug] = p
+	}
+
+	w := bySlug["weather"]
+	if w.RotationEnabled == nil || !*w.RotationEnabled {
+		t.Fatalf("weather: expected rotation_enabled=true, got %v", w.RotationEnabled)
+	}
+	n := bySlug["notes"]
+	if n.RotationEnabled == nil || *n.RotationEnabled {
+		t.Fatalf("notes: expected rotation_enabled=false, got %v", n.RotationEnabled)
+	}
+	tr := bySlug["training"]
+	if tr.RotationEnabled != nil {
+		t.Fatalf("training: expected rotation_enabled=nil (default), got %v", *tr.RotationEnabled)
+	}
+	// Synthetic new-page entry never carries a rotation flag.
+	np := bySlug[NewPageSlug]
+	if np.RotationEnabled != nil {
+		t.Fatalf("%s: expected rotation_enabled=nil, got %v", NewPageSlug, *np.RotationEnabled)
+	}
+}
+
+// --- UpdatePageSettingsHandler -----------------------------------------------
+
+func TestUpdatePageSettingsHandlerRejectsNonAdmin(t *testing.T) {
+	d := setupTestDB(t)
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
+	router := mountAdmin(UpdatePageSettingsHandler(d), http.MethodPatch, "/api/suggestions/pages/{slug}")
+
+	req := adminContext(httptest.NewRequest(http.MethodPatch, "/api/suggestions/pages/weather", strings.NewReader(`{"rotation_enabled":true}`)), 99, false)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-admin, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdatePageSettingsHandlerInsertsAndUpdates(t *testing.T) {
+	d := setupTestDB(t)
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
+	router := mountAdmin(UpdatePageSettingsHandler(d), http.MethodPatch, "/api/suggestions/pages/{slug}")
+
+	// First call inserts a row with rotation_enabled=false.
+	req := adminContext(httptest.NewRequest(http.MethodPatch, "/api/suggestions/pages/weather", strings.NewReader(`{"rotation_enabled":false}`)), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first patch: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got pageSummary
+	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Slug != "weather" || got.Title != "Weather" {
+		t.Fatalf("unexpected page summary: %+v", got)
+	}
+	if got.RotationEnabled == nil || *got.RotationEnabled {
+		t.Fatalf("expected rotation_enabled=false, got %v", got.RotationEnabled)
+	}
+
+	// Verify the row landed in the DB with the expected value.
+	var enabled int
+	if err := d.QueryRow(`SELECT rotation_enabled FROM suggestion_page_settings WHERE page_slug = ?`, "weather").Scan(&enabled); err != nil {
+		t.Fatalf("read row: %v", err)
+	}
+	if enabled != 0 {
+		t.Fatalf("expected rotation_enabled=0 in DB, got %d", enabled)
+	}
+
+	// Second call flips it back to true via the upsert path.
+	req = adminContext(httptest.NewRequest(http.MethodPatch, "/api/suggestions/pages/weather", strings.NewReader(`{"rotation_enabled":true}`)), 1, true)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second patch: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := d.QueryRow(`SELECT rotation_enabled FROM suggestion_page_settings WHERE page_slug = ?`, "weather").Scan(&enabled); err != nil {
+		t.Fatalf("read row after upsert: %v", err)
+	}
+	if enabled != 1 {
+		t.Fatalf("expected rotation_enabled=1 after upsert, got %d", enabled)
+	}
+
+	// Only one row should exist for the slug — confirms the upsert path.
+	var count int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM suggestion_page_settings WHERE page_slug = ?`, "weather").Scan(&count); err != nil {
+		t.Fatalf("count rows: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly 1 row for weather, got %d", count)
+	}
+}
+
+func TestUpdatePageSettingsHandlerUnknownSlugReturns404(t *testing.T) {
+	d := setupTestDB(t)
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
+	router := mountAdmin(UpdatePageSettingsHandler(d), http.MethodPatch, "/api/suggestions/pages/{slug}")
+
+	req := adminContext(httptest.NewRequest(http.MethodPatch, "/api/suggestions/pages/nope", strings.NewReader(`{"rotation_enabled":true}`)), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown slug, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdatePageSettingsHandlerNewPageSlugReturns404(t *testing.T) {
+	d := setupTestDB(t)
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
+	router := mountAdmin(UpdatePageSettingsHandler(d), http.MethodPatch, "/api/suggestions/pages/{slug}")
+
+	// The synthetic __new_page__ sentinel is not a registered page; rotation
+	// does not apply to it, so the endpoint must reject it as unknown.
+	req := adminContext(httptest.NewRequest(http.MethodPatch, "/api/suggestions/pages/"+NewPageSlug, strings.NewReader(`{"rotation_enabled":true}`)), 1, true)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for synthetic slug, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdatePageSettingsHandlerInvalidBody(t *testing.T) {
+	d := setupTestDB(t)
+	defer withSavedPages([]Page{{Slug: "weather", Title: "Weather"}})()
+	router := mountAdmin(UpdatePageSettingsHandler(d), http.MethodPatch, "/api/suggestions/pages/{slug}")
+
+	cases := []struct {
+		name    string
+		payload string
+	}{
+		{"malformed json", `{not json`},
+		{"missing field", `{}`},
+		{"wrong type", `{"rotation_enabled":"yes"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := adminContext(httptest.NewRequest(http.MethodPatch, "/api/suggestions/pages/weather", strings.NewReader(tc.payload)), 1, true)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("%s: expected 400, got %d: %s", tc.name, rec.Code, rec.Body.String())
+			}
+		})
 	}
 }
