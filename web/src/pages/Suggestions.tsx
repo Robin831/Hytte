@@ -6,8 +6,23 @@ import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
 import { SuggestionCard, type Suggestion } from '../components/suggestions/SuggestionCard'
 import { SuggestionActions } from '../components/suggestions/SuggestionActions'
 import { NewSuggestionForm } from '../components/suggestions/NewSuggestionForm'
+import { SettingsPanel } from '../components/suggestions/SettingsPanel'
 
-type TabKey = 'pending' | 'planned' | 'rejected'
+type TabKey = 'pending' | 'planned' | 'rejected' | 'pages'
+
+// nextRunHintKey returns the i18n key for the header next-run text. The
+// scheduler fires at 03:00 Europe/Oslo every day; before that hour locally in
+// Oslo the next run is "tonight", otherwise it is "tomorrow".
+export function nextRunHintKey(now: Date): 'header.nextRunTonight' | 'header.nextRunTomorrow' {
+  const hourStr = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Oslo',
+    hour: 'numeric',
+    hour12: false,
+  }).format(now)
+  // Intl can return "24" for midnight in some runtimes — treat it as 0.
+  const hour = parseInt(hourStr, 10) % 24
+  return hour < 3 ? 'header.nextRunTonight' : 'header.nextRunTomorrow'
+}
 
 interface ListResponse {
   pending: Suggestion[]
@@ -195,7 +210,7 @@ export default function Suggestions() {
               {t('header.title')}
             </h1>
           </div>
-          <p className="text-sm text-gray-400">{t('nextRunHint')}</p>
+          <p className="text-sm text-gray-400">{t(nextRunHintKey(new Date()))}</p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -233,6 +248,9 @@ export default function Suggestions() {
             </TabTrigger>
             <TabTrigger value="rejected">
               {t('tabs.rejected')} ({counts.rejected})
+            </TabTrigger>
+            <TabTrigger value="pages">
+              {t('tabs.pages')}
             </TabTrigger>
           </TabList>
 
@@ -273,6 +291,9 @@ export default function Suggestions() {
               <TabPanel value="pending">{renderPanel('pending', pending)}</TabPanel>
               <TabPanel value="planned">{renderPanel('planned', planned)}</TabPanel>
               <TabPanel value="rejected">{renderPanel('rejected', rejected)}</TabPanel>
+              <TabPanel value="pages">
+                <SettingsPanel active={activeTab === 'pages'} />
+              </TabPanel>
             </>
           )}
         </Tabs>

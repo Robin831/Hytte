@@ -1,8 +1,9 @@
 {
   "header": {
-    "title": "Suggestions"
+    "title": "Suggestions",
+    "nextRunTonight": "Next run: tonight at 03:00",
+    "nextRunTomorrow": "Next run: tomorrow at 03:00"
   },
-  "nextRunHint": "Next run: tonight 03:00",
   "actions": {
     "runNow": "Run now",
     "running": "Running…",
@@ -32,12 +33,21 @@
   "tabs": {
     "pending": "Pending",
     "planned": "Planned",
-    "rejected": "Rejected"
+    "rejected": "Rejected",
+    "pages": "Pages"
   },
   "empty": {
     "pending": "No pending suggestions yet — try Run now.",
     "planned": "Nothing planned. Plan a pending suggestion to see it here.",
     "rejected": "No rejected suggestions."
+  },
+  "settings": {
+    "title": "Page rotation",
+    "description": "Toggle which pages the nightly suggestion run covers. Disabling a page only stops auto-generation — you can still write your own suggestions for it from the New suggestion form.",
+    "toggleAria": "Toggle nightly rotation for {{title}}",
+    "loadError": "Failed to load page settings.",
+    "toggleError": "Failed to update page setting.",
+    "empty": "No pages available."
   },
   "errors": {
     "failedToLoad": "Failed to load suggestions",

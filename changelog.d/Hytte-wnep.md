@@ -1,0 +1,2 @@
+category: Added
+- **Suggestions: Pages settings tab and dynamic next-run header** - The Suggestions page now has a Pages tab that lists every registered page with a switch bound to the per-page rotation_enabled override; toggling optimistically updates the UI and PATCHes the new value, reverting on failure with an error toast. The header's "Next run" hint now computes the next 03:00 Europe/Oslo on the client and renders "tonight" before then or "tomorrow" otherwise. (Hytte-wnep)
