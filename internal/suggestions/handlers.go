@@ -358,7 +358,7 @@ func RunHandler(db *sql.DB) http.HandlerFunc {
 // up to one page-completion to exit.
 //
 // POST /api/suggestions/run/{id}/cancel
-// Response: 202 with {run_id} on success.
+// Response: 202 with {run_id, cancelled: true} on success.
 func CancelHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
