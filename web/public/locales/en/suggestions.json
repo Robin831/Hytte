@@ -41,6 +41,28 @@
     "planned": "Nothing planned. Plan a pending suggestion to see it here.",
     "rejected": "No rejected suggestions."
   },
+  "recentRuns": {
+    "title": "Recent runs",
+    "show": "Show recent runs",
+    "hide": "Hide recent runs",
+    "loading": "Loading runs…",
+    "loadError": "Failed to load recent runs.",
+    "empty": "No runs yet — try Run now.",
+    "trigger": {
+      "manual": "manual",
+      "scheduled": "scheduled"
+    },
+    "columns": {
+      "startedAt": "Started",
+      "trigger": "Trigger",
+      "pages": "Pages",
+      "generated": "Generated",
+      "errors": "Errors",
+      "cost": "Cost"
+    },
+    "costUnknown": "—",
+    "summary": "Last 7 days: {{total}} total, {{count}} suggestions."
+  },
   "settings": {
     "title": "Page rotation",
     "description": "Toggle which pages the nightly suggestion run covers. Disabling a page only stops auto-generation — you can still write your own suggestions for it from the New suggestion form.",

@@ -41,6 +41,28 @@
     "planned": "Ingenting planlagt. Planlegg et forslag for å se det her.",
     "rejected": "Ingen avviste forslag."
   },
+  "recentRuns": {
+    "title": "Nylige kjøringer",
+    "show": "Vis nylige kjøringer",
+    "hide": "Skjul nylige kjøringer",
+    "loading": "Laster kjøringer…",
+    "loadError": "Kunne ikke laste nylige kjøringer.",
+    "empty": "Ingen kjøringer ennå — prøv Kjør nå.",
+    "trigger": {
+      "manual": "manuell",
+      "scheduled": "planlagt"
+    },
+    "columns": {
+      "startedAt": "Startet",
+      "trigger": "Utløser",
+      "pages": "Sider",
+      "generated": "Generert",
+      "errors": "Feil",
+      "cost": "Kostnad"
+    },
+    "costUnknown": "—",
+    "summary": "Siste 7 dager: {{total}} totalt, {{count}} forslag."
+  },
   "settings": {
     "title": "Siderotasjon",
     "description": "Velg hvilke sider den nattlige forslagskjøringen skal dekke. Når en side slås av, stoppes kun automatisk generering — du kan fortsatt skrive egne forslag til den fra «Nytt forslag»-skjemaet.",

@@ -7,6 +7,7 @@ import { SuggestionCard, type Suggestion } from '../components/suggestions/Sugge
 import { SuggestionActions } from '../components/suggestions/SuggestionActions'
 import { NewSuggestionForm } from '../components/suggestions/NewSuggestionForm'
 import { SettingsPanel } from '../components/suggestions/SettingsPanel'
+import { RecentRunsPanel } from '../components/suggestions/RecentRunsPanel'
 import { nextRunHintKey, formatRunTime } from './suggestionsUtils'
 
 type TabKey = 'pending' | 'planned' | 'rejected' | 'pages'
@@ -219,6 +220,7 @@ export default function Suggestions() {
               <span>{t('actions.newSuggestion')}</span>
             </button>
           </div>
+          <RecentRunsPanel />
         </header>
 
         <Tabs
