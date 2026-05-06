@@ -1,8 +1,9 @@
 {
   "header": {
-    "title": "Forslag"
+    "title": "Forslag",
+    "nextRunTonight": "Neste kjøring: i natt klokka {{time}}",
+    "nextRunTomorrow": "Neste kjøring: i morgen natt klokka {{time}}"
   },
-  "nextRunHint": "Neste kjøring: i natt 03:00",
   "actions": {
     "runNow": "Kjør nå",
     "running": "Kjører…",
@@ -32,12 +33,21 @@
   "tabs": {
     "pending": "Avventer",
     "planned": "Planlagt",
-    "rejected": "Avvist"
+    "rejected": "Avvist",
+    "pages": "Sider"
   },
   "empty": {
     "pending": "Ingen forslag ennå — prøv Kjør nå.",
     "planned": "Ingenting planlagt. Planlegg et forslag for å se det her.",
     "rejected": "Ingen avviste forslag."
+  },
+  "settings": {
+    "title": "Siderotasjon",
+    "description": "Velg hvilke sider den nattlige forslagskjøringen skal dekke. Når en side slås av, stoppes kun automatisk generering — du kan fortsatt skrive egne forslag til den fra «Nytt forslag»-skjemaet.",
+    "toggleAria": "Slå nattlig rotasjon på/av for {{title}}",
+    "loadError": "Kunne ikke laste sideinnstillinger.",
+    "toggleError": "Kunne ikke oppdatere sideinnstilling.",
+    "empty": "Ingen sider tilgjengelig."
   },
   "errors": {
     "failedToLoad": "Kunne ikke laste forslag",

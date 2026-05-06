@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Suggestions from './Suggestions'
+import { nextRunHintKey } from './suggestionsUtils'
 import enCommon from '../../public/locales/en/common.json'
 import enSuggestions from '../../public/locales/en/suggestions.json'
 import type { Suggestion } from '../components/suggestions/SuggestionCard'
@@ -75,7 +76,17 @@ function renderPage() {
   )
 }
 
+beforeEach(() => {
+  // Pin Date so the header next-run helper renders deterministically. We only
+  // fake Date — leaving setTimeout/queueMicrotask alive — because React/RTL
+  // rely on real timers to flush updates. 2026-05-06T20:00:00Z = 22:00
+  // Europe/Oslo (CEST), before 03:00 → header should say "tonight".
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-05-06T20:00:00Z'))
+})
+
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.clearAllMocks()
 })
@@ -377,7 +388,7 @@ describe('Suggestions – header', () => {
     renderPage()
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Suggestions' })).toBeInTheDocument()
-    expect(screen.getByText('Next run: tonight 03:00')).toBeInTheDocument()
+    expect(screen.getByText('Next run: tonight at 03:00')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /New suggestion/ })).toBeInTheDocument()
   })
 
@@ -989,5 +1000,180 @@ describe('Suggestions – create bead action', () => {
     expect(screen.queryByTestId('bead-created-section')).not.toBeInTheDocument()
     // Button label flips to retry.
     expect(screen.getByRole('button', { name: /Retry create bead/ })).toBeInTheDocument()
+  })
+})
+
+describe('nextRunHintKey', () => {
+  it('returns the tonight key before 03:00 Europe/Oslo', () => {
+    // 2026-05-06T20:00:00Z = 22:00 Europe/Oslo (CEST), before 03:00.
+    expect(nextRunHintKey(new Date('2026-05-06T20:00:00Z'))).toBe('header.nextRunTonight')
+  })
+
+  it('returns the tomorrow key at or after 03:00 Europe/Oslo', () => {
+    // 2026-05-06T05:00:00Z = 07:00 Europe/Oslo (CEST), already past 03:00.
+    expect(nextRunHintKey(new Date('2026-05-06T05:00:00Z'))).toBe('header.nextRunTomorrow')
+  })
+
+  it('handles the boundary: exactly 03:00 Europe/Oslo is "tomorrow"', () => {
+    // 2026-05-06T01:00:00Z = 03:00 Europe/Oslo (CEST). The next 03:00 is the
+    // following day, so the helper must already say "tomorrow".
+    expect(nextRunHintKey(new Date('2026-05-06T01:00:00Z'))).toBe('header.nextRunTomorrow')
+  })
+
+  it('uses minute accuracy near the 12-hour boundary: 15:59 Oslo (11h01m away) is tonight', () => {
+    // 2026-05-06T13:59:00Z = 15:59 Europe/Oslo (CEST, UTC+2).
+    // minutesSinceMidnight = 15*60+59 = 959; minutesUntil = (180-959+1440)%1440 = 661 < 720 → tonight.
+    // Hour-only math yields hoursUntil=12 → "tomorrow" (wrong). Minute-accurate gives "tonight" (correct).
+    expect(nextRunHintKey(new Date('2026-05-06T13:59:00Z'))).toBe('header.nextRunTonight')
+  })
+
+  it('uses minute accuracy near the 12-hour boundary: 15:01 Oslo (11h59m away) is tonight', () => {
+    // 2026-05-06T13:01:00Z = 15:01 Europe/Oslo (CEST, UTC+2).
+    // minutesSinceMidnight = 901; minutesUntil = (180-901+1440)%1440 = 719 < 720 → tonight.
+    // Hour-only math yields hoursUntil=12 → "tomorrow" (wrong).
+    expect(nextRunHintKey(new Date('2026-05-06T13:01:00Z'))).toBe('header.nextRunTonight')
+  })
+
+  it('uses minute accuracy near the 12-hour boundary: exactly 15:00 Oslo (12h00m away) is tomorrow', () => {
+    // 2026-05-06T13:00:00Z = 15:00 Europe/Oslo (CEST, UTC+2).
+    // minutesSinceMidnight = 900; minutesUntil = (180-900+1440)%1440 = 720, not < 720 → tomorrow.
+    expect(nextRunHintKey(new Date('2026-05-06T13:00:00Z'))).toBe('header.nextRunTomorrow')
+  })
+})
+
+describe('Suggestions – Pages settings tab', () => {
+  function pagesFetch(initial: Array<{ slug: string; title: string; rotation_enabled: boolean | null }>) {
+    let pagesCalls = 0
+    const patchCalls: Array<{ slug: string; body: { rotation_enabled: boolean } }> = []
+    let patchResponse: { ok: boolean; status?: number; json?: () => Promise<unknown> } = {
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve({}),
+    }
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ pending: [], planned: [], rejected: [] }),
+        })
+      }
+      if (url === '/api/suggestions/pages' && (!init || init.method === undefined || init.method === 'GET')) {
+        pagesCalls += 1
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve(initial),
+        })
+      }
+      if (url.startsWith('/api/suggestions/pages/') && init?.method === 'PATCH') {
+        const slug = decodeURIComponent(url.slice('/api/suggestions/pages/'.length))
+        patchCalls.push({ slug, body: JSON.parse(init.body as string) })
+        return Promise.resolve(patchResponse)
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    return {
+      fetchMock,
+      patchCalls,
+      get pagesCalls() {
+        return pagesCalls
+      },
+      setPatchResponse(r: typeof patchResponse) {
+        patchResponse = r
+      },
+    }
+  }
+
+  it('toggle off: optimistic update flips switch and PATCH carries the new value', async () => {
+    const { fetchMock, patchCalls } = pagesFetch([
+      { slug: 'weather', title: 'Weather', rotation_enabled: null },
+      { slug: 'notes', title: 'Notes', rotation_enabled: null },
+      { slug: '__new_page__', title: 'New page', rotation_enabled: null },
+    ])
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('tab', { name: /Pages/ }))
+
+    const toggle = await screen.findByTestId('settings-toggle-weather')
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    // The synthetic new-page sentinel must not appear — rotation is N/A there.
+    expect(screen.queryByTestId('settings-toggle-__new_page__')).not.toBeInTheDocument()
+
+    fireEvent.click(toggle)
+
+    // Optimistic flip is immediate.
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+
+    await waitFor(() => {
+      expect(patchCalls).toHaveLength(1)
+    })
+    expect(patchCalls[0]).toEqual({
+      slug: 'weather',
+      body: { rotation_enabled: false },
+    })
+    // Still off after PATCH succeeded — no revert.
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    expect(screen.queryByTestId('settings-toggle-error')).not.toBeInTheDocument()
+  })
+
+  it('failed PATCH reverts the toggle and surfaces an error toast', async () => {
+    const helpers = pagesFetch([
+      { slug: 'weather', title: 'Weather', rotation_enabled: null },
+    ])
+    helpers.setPatchResponse({ ok: false, status: 500, json: () => Promise.resolve({}) })
+    vi.stubGlobal('fetch', helpers.fetchMock)
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('tab', { name: /Pages/ }))
+
+    const toggle = await screen.findByTestId('settings-toggle-weather')
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+
+    fireEvent.click(toggle)
+
+    // Optimistic update: immediately off.
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+
+    // After the failed PATCH the toggle reverts to its prior state and an
+    // error toast appears.
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-toggle-error')).toBeInTheDocument()
+    })
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByTestId('settings-toggle-error')).toHaveTextContent('Failed to update page setting.')
+  })
+
+  it('respects the explicit rotation_enabled=false override on initial render', async () => {
+    const { fetchMock } = pagesFetch([
+      { slug: 'weather', title: 'Weather', rotation_enabled: false },
+      { slug: 'notes', title: 'Notes', rotation_enabled: true },
+    ])
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('tab', { name: /Pages/ }))
+
+    const off = await screen.findByTestId('settings-toggle-weather')
+    const on = await screen.findByTestId('settings-toggle-notes')
+    expect(off).toHaveAttribute('aria-checked', 'false')
+    expect(on).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('renders the explanatory note about user-authored suggestions', async () => {
+    const { fetchMock } = pagesFetch([
+      { slug: 'weather', title: 'Weather', rotation_enabled: null },
+    ])
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('tab', { name: /Pages/ }))
+
+    expect(
+      await screen.findByText(/you can still write your own suggestions/i),
+    ).toBeInTheDocument()
   })
 })

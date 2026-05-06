@@ -6,8 +6,10 @@ import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
 import { SuggestionCard, type Suggestion } from '../components/suggestions/SuggestionCard'
 import { SuggestionActions } from '../components/suggestions/SuggestionActions'
 import { NewSuggestionForm } from '../components/suggestions/NewSuggestionForm'
+import { SettingsPanel } from '../components/suggestions/SettingsPanel'
+import { nextRunHintKey, formatRunTime } from './suggestionsUtils'
 
-type TabKey = 'pending' | 'planned' | 'rejected'
+type TabKey = 'pending' | 'planned' | 'rejected' | 'pages'
 
 interface ListResponse {
   pending: Suggestion[]
@@ -17,7 +19,7 @@ interface ListResponse {
 }
 
 export default function Suggestions() {
-  const { t } = useTranslation('suggestions')
+  const { t, i18n } = useTranslation('suggestions')
   const { t: tCommon } = useTranslation('common')
   const [pending, setPending] = useState<Suggestion[]>([])
   const [planned, setPlanned] = useState<Suggestion[]>([])
@@ -137,7 +139,7 @@ export default function Suggestions() {
     )
   }
 
-  function renderPanel(tab: TabKey, list: Suggestion[]) {
+  function renderPanel(tab: Exclude<TabKey, 'pages'>, list: Suggestion[]) {
     if (tab === 'planned') {
       if (list.length === 0 && beadCreated.length === 0) {
         return (
@@ -195,7 +197,7 @@ export default function Suggestions() {
               {t('header.title')}
             </h1>
           </div>
-          <p className="text-sm text-gray-400">{t('nextRunHint')}</p>
+          <p className="text-sm text-gray-400">{t(nextRunHintKey(new Date()), { time: formatRunTime(i18n.language) })}</p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -233,6 +235,9 @@ export default function Suggestions() {
             </TabTrigger>
             <TabTrigger value="rejected">
               {t('tabs.rejected')} ({counts.rejected})
+            </TabTrigger>
+            <TabTrigger value="pages">
+              {t('tabs.pages')}
             </TabTrigger>
           </TabList>
 
@@ -273,6 +278,9 @@ export default function Suggestions() {
               <TabPanel value="pending">{renderPanel('pending', pending)}</TabPanel>
               <TabPanel value="planned">{renderPanel('planned', planned)}</TabPanel>
               <TabPanel value="rejected">{renderPanel('rejected', rejected)}</TabPanel>
+              <TabPanel value="pages">
+                <SettingsPanel active={activeTab === 'pages'} />
+              </TabPanel>
             </>
           )}
         </Tabs>
