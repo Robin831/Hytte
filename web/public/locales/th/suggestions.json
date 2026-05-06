@@ -61,7 +61,7 @@
       "cost": "ค่าใช้จ่าย"
     },
     "costUnknown": "—",
-    "summary": "7 วันล่าสุด: {{total}} รวม, {{count}} ข้อเสนอแนะ"
+    "summary": "7 วันล่าสุด: {{total}} รวม, {{suggestionCount}} ข้อเสนอแนะ"
   },
   "settings": {
     "title": "การหมุนเวียนหน้า",

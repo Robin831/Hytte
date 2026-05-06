@@ -61,7 +61,7 @@
       "cost": "Kostnad"
     },
     "costUnknown": "—",
-    "summary": "Siste 7 dager: {{total}} totalt, {{count}} forslag."
+    "summary": "Siste 7 dager: {{total}} totalt, {{suggestionCount}} forslag."
   },
   "settings": {
     "title": "Siderotasjon",

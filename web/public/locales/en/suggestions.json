@@ -61,7 +61,7 @@
       "cost": "Cost"
     },
     "costUnknown": "—",
-    "summary": "Last 7 days: {{total}} total, {{count}} suggestions."
+    "summary": "Last 7 days: {{total}} total, {{suggestionCount}} suggestions."
   },
   "settings": {
     "title": "Page rotation",

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../ui/skeleton'
+import { formatDateTime } from '../../utils/formatDate'
 
 export interface SuggestionRun {
   id: number
@@ -31,22 +32,20 @@ function formatCost(cost: number, placeholder: string): string {
 }
 
 export function RecentRunsPanel() {
-  const { t, i18n } = useTranslation('suggestions')
+  const { t } = useTranslation('suggestions')
   const { t: tCommon } = useTranslation('common')
   const [open, setOpen] = useState(false)
   const [runs, setRuns] = useState<SuggestionRun[]>([])
   const [loading, setLoading] = useState(false)
   const [loaded, setLoaded] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
-
-  const loadErrorMsg = t('recentRuns.loadError')
+  const [hasError, setHasError] = useState(false)
 
   useEffect(() => {
     if (!open || loaded) return
     const controller = new AbortController()
     ;(async () => {
       setLoading(true)
-      setLoadError(null)
+      setHasError(false)
       try {
         const res = await fetch('/api/suggestions/runs?limit=20', {
           credentials: 'include',
@@ -58,22 +57,13 @@ export function RecentRunsPanel() {
         setLoaded(true)
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        setLoadError(loadErrorMsg)
+        setHasError(true)
       } finally {
         if (!controller.signal.aborted) setLoading(false)
       }
     })()
     return () => controller.abort()
-  }, [open, loaded, loadErrorMsg])
-
-  const dateFormatter = useMemo(() => {
-    const isThaiLocale = i18n.language.toLowerCase().startsWith('th')
-    return new Intl.DateTimeFormat(i18n.language, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-      ...(isThaiLocale ? { calendar: 'gregory' } : {}),
-    })
-  }, [i18n.language])
+  }, [open, loaded])
 
   const summary = useMemo(() => {
     const cutoff = Date.now() - SEVEN_DAYS_MS
@@ -126,18 +116,19 @@ export function RecentRunsPanel() {
           className="border-t border-gray-800 px-4 py-3"
         >
           {loading && !loaded ? (
-            <div className="space-y-2" aria-label={tCommon('skeleton.loading')}>
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-8 w-full" />
+            <div role="status" aria-live="polite" className="space-y-2">
+              <Skeleton className="h-8 w-full" aria-hidden="true" />
+              <Skeleton className="h-8 w-full" aria-hidden="true" />
+              <Skeleton className="h-8 w-full" aria-hidden="true" />
+              <span className="sr-only">{tCommon('skeleton.loading')}</span>
             </div>
-          ) : loadError ? (
+          ) : hasError ? (
             <div
               role="alert"
               data-testid="recent-runs-error"
               className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300"
             >
-              {loadError}
+              {t('recentRuns.loadError')}
             </div>
           ) : runs.length === 0 ? (
             <p
@@ -177,7 +168,10 @@ export function RecentRunsPanel() {
                       const startedMs = Date.parse(run.started_at)
                       const startedLabel = Number.isNaN(startedMs)
                         ? run.started_at
-                        : dateFormatter.format(new Date(startedMs))
+                        : formatDateTime(new Date(startedMs), {
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          })
                       const triggerKey =
                         run.trigger === 'scheduled'
                           ? 'recentRuns.trigger.scheduled'
@@ -229,7 +223,7 @@ export function RecentRunsPanel() {
               >
                 {t('recentRuns.summary', {
                   total: `$${summary.totalCost.toFixed(2)}`,
-                  count: summary.totalGenerated,
+                  suggestionCount: summary.totalGenerated,
                 })}
               </p>
             </>

@@ -44,6 +44,29 @@ vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
 }))
 
+vi.mock('../../utils/formatDate', () => ({
+  formatDate: (date: Date | string, options?: Intl.DateTimeFormatOptions) => {
+    const d = typeof date === 'string' ? new Date(date) : date
+    return d.toLocaleDateString('en', options)
+  },
+  formatDateTime: (date: Date | string, options?: Intl.DateTimeFormatOptions) => {
+    const d = typeof date === 'string' ? new Date(date) : date
+    return d.toLocaleString('en', options)
+  },
+  formatTime: (date: Date | string, options?: Intl.DateTimeFormatOptions) => {
+    const d = typeof date === 'string' ? new Date(date) : date
+    return d.toLocaleTimeString('en', options)
+  },
+  formatNumber: (n: number, options?: Intl.NumberFormatOptions) => n.toLocaleString('en', options),
+  toLocalDateString: (date?: Date) => {
+    const d = date ?? new Date()
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  },
+}))
+
 beforeEach(() => {
   // Pin Date so the 7-day summary computation is deterministic.
   vi.useFakeTimers({ toFake: ['Date'] })
