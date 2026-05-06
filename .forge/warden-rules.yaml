@@ -14797,3 +14797,353 @@ rules:
         Verify the test inserts rows where the logical date and created_at intentionally differ (matching how the production job actually writes them, e.g., nightly job stamps Date=yesterday but created_at=today's run time), so off-by-one ordering and window-boundary bugs are caught rather than masked by setting both timestamps equal
       source: copilot:PR#662
       added: "2026-04-28"
+    - id: decrypt-failure-preserves-ciphertext
+      category: error-handling
+      pattern: >-
+        Helper functions that decrypt encrypted fields (e.g. notes, plans, feedback, bodies) before returning them to API/UI layers
+      check: >-
+        On decrypt failure, verify the helper logs the error and returns the original ciphertext (or otherwise preserves the stored value) rather than substituting an empty string, so a single corrupt record does not silently blank out the field and destroy the only recoverable copy
+      source: copilot:PR#664
+      added: "2026-05-05"
+    - id: repo-relative-paths-cwd
+      category: error-handling
+      pattern: >-
+        File paths written as repo-root-relative strings (e.g., 'web/...', 'internal/...') and passed to os.Open, os.ReadFile, or similar file I/O
+      check: >-
+        Verify the path is resolved against a known repo root (not the process working directory). Either anchor it to a configured root, embed the file at build time, or fail loudly if the file is missing instead of silently skipping it.
+      source: copilot:PR#664
+      added: "2026-05-05"
+    - id: git-commands-cwd-repo-root
+      category: error-handling
+      pattern: >-
+        Invoking `git` (e.g., `git log`, `git show`) on repo-relative paths without explicitly setting the working directory or using `-C <repo-root>`
+      check: >-
+        Verify git commands run from the repository root (use `cmd.Dir = repoRoot` or `git -C <repoRoot> ...`) when paths are repo-root-relative, so the command does not silently produce empty output when the process is started elsewhere
+      source: copilot:PR#664
+      added: "2026-05-05"
+    - id: enforce-distinct-suggestion-attributes
+      category: other
+      pattern: >-
+        Generator/validator code that produces or persists multiple items expected to have distinct attribute values (e.g. distinct sizes/types per run) but only validates each item individually against an enum
+      check: >-
+        Verify that when acceptance criteria require distinct attribute values across a set of generated items, the code enforces uniqueness across the set (not just per-item enum validation), and that test fixtures cover the duplicate-attribute case rather than passing with duplicates
+      source: copilot:PR#664
+      added: "2026-05-05"
+    - id: prompt-parser-consistency
+      category: other
+      pattern: >-
+        LLM prompt text that specifies constraints which must align with downstream parser/validator rules (e.g., uniqueness, allowed repetitions, size/type combinations)
+      check: >-
+        Verify the prompt wording is unambiguous and fully consistent with the parser's actual requirements: explicitly state what is required vs. allowed vs. forbidden, cover all relevant cases (not just examples), and avoid phrasings that could be read as permitting things the parser will reject or forbidding things the parser allows.
+      source: copilot:PR#665
+      added: "2026-05-05"
+    - id: cross-field-enum-consistency
+      category: error-handling
+      pattern: >-
+        Handler validates two related fields (e.g. a `type` enum and a target identifier like `page_slug`) independently against their own allowed values
+      check: >-
+        Verify cross-field consistency so contradictory combinations are rejected — e.g. a `type` of `new_page` must pair with the new-page sentinel slug, and concrete-page types must pair with a real page slug; reject ambiguous payloads with 400 rather than persisting them
+      source: copilot:PR#666
+      added: "2026-05-05"
+    - id: scope-mutations-to-owner
+      category: security
+      pattern: >-
+        Handler that mutates or deletes a per-user resource by ID without filtering by the authenticated user
+      check: >-
+        Verify the SQL/lookup is scoped to the current user (e.g. WHERE id = ? AND user_id = ?) so one user cannot affect another user's rows by guessing or knowing the ID, consistent with the list/create/run handlers for the same resource
+      source: copilot:PR#666
+      added: "2026-05-05"
+    - id: terminal-state-transition-guard
+      category: error-handling
+      pattern: >-
+        Status mutation endpoints (e.g. reject/approve/cancel) that guard only against the target state and ignore other terminal states
+      check: >-
+        Verify the handler rejects transitions from all terminal states (not just the target one), so endpoints cannot move records out of documented terminal states like `bead_created` and orphan linked entities
+      source: copilot:PR#666
+      added: "2026-05-05"
+    - id: no-duplicate-type-allowlist
+      category: other
+      pattern: >-
+        Validation allowlists or type enumerations duplicated across multiple code paths (e.g., handlers and generators) for the same domain concept
+      check: >-
+        Verify that allowed-type lists are defined in a single shared location rather than duplicated. When a suggestion/entity type enum exists in one file, other entry points must reference that same source of truth instead of maintaining their own parallel allowlist that can drift when types are added or renamed.
+      source: copilot:PR#666
+      added: "2026-05-05"
+    - id: validate-status-transitions
+      category: error-handling
+      pattern: >-
+        Handler or method that mutates a record's status field (e.g. MarkPlanned, MarkRejected) without first checking the current status against allowed source states
+      check: >-
+        Verify the handler rejects transitions from terminal or incompatible statuses (return 409/400) and either forbids the transition or explicitly clears stale fields (timestamps, foreign keys) tied to the previous status, so the resulting row is internally consistent
+      source: copilot:PR#667
+      added: "2026-05-05"
+    - id: reuse-route-gating-components
+      category: style
+      pattern: >-
+        Creating a new route-wrapper component (e.g., AdminRoute) that gates access based on auth or feature flags
+      check: >-
+        Verify the new wrapper does not duplicate existing route-gating logic (ProtectedRoute, FeatureRoute, FeatureRoute with requireAdmin). Reuse existing components where possible, and ensure redirect targets for unauthorized access are consistent with other gated routes across the app.
+      source: copilot:PR#668
+      added: "2026-05-05"
+    - id: consistent-admin-route-gating
+      category: style
+      pattern: >-
+        Adding a new admin-only route in App.tsx (or equivalent router config) using a different gating mechanism than existing admin routes (e.g., mixing FeatureRoute(requireAdmin), inline user?.is_admin checks, and ProtectedRoute+AdminRoute)
+      check: >-
+        Verify all admin-only routes use the same gating pattern and redirect target so that auth invariants and unauthorized-redirect behavior stay consistent across the app
+      source: copilot:PR#668
+      added: "2026-05-05"
+    - id: non-blocking-refetch-errors
+      category: error-handling
+      pattern: >-
+        A page replaces its rendered content with a full-page error state when any fetch (including refetches after initial load) fails
+      check: >-
+        Verify that refetch failures preserve previously loaded data and surface errors as non-blocking banners; reserve full-page error states for the initial load when no data is available
+      source: copilot:PR#669
+      added: "2026-05-05"
+    - id: tab-panel-visibility-assertions
+      category: testing
+      pattern: >-
+        Tests that switch tabs (or other show/hide UI) and then assert on text content using getByText or similar global queries
+      check: >-
+        Verify the test actually proves the active panel changed: either assert visibility (toBeVisible/not.toBeVisible) or scope queries to the active tabpanel via within(screen.getByRole('tabpanel')), since inactive TabPanels are still rendered in the DOM and only hidden via the `hidden` attribute, making getByText assertions pass even before the tab is clicked
+      source: copilot:PR#669
+      added: "2026-05-05"
+    - id: avoid-i18n-import-in-leaf-components
+      category: testing
+      pattern: >-
+        Leaf/presentational UI components importing helpers (e.g. formatDate) that transitively load the global i18n initializer with http backend / language detector side effects
+      check: >-
+        Verify lightweight components don't pull in the i18n module at render time; format dates/numbers locally via Intl.* using the language from useTranslation (with any calendar overrides like Thai gregory) so components stay easy to unit test without mocking i18n utils
+      source: copilot:PR#670
+      added: "2026-05-05"
+    - id: aria-expanded-controls-pairing
+      category: ui
+      pattern: A toggle button with aria-expanded that shows/hides a collapsible content region
+      check: >-
+        Verify the collapsible content has a stable id and the toggle button references it via aria-controls; decorative icons inside the button should be marked aria-hidden, consistent with other collapsible buttons in the codebase
+      source: copilot:PR#670
+      added: "2026-05-05"
+    - id: use-mutation-response-before-refetch
+      category: error-handling
+      pattern: >-
+        After a successful mutation that returns the updated entity, the UI discards the response and relies solely on a follow-up list refetch to update local state
+      check: >-
+        Verify the mutation response is applied to local state immediately (or the item is optimistically removed/updated) so a failed refetch cannot leave the UI showing stale state that allows the user to re-submit the same action and overwrite server-side changes
+      source: copilot:PR#671
+      added: "2026-05-05"
+    - id: preserve-backend-error-messages
+      category: error-handling
+      pattern: >-
+        Frontend catches a non-2xx API response and shows a generic translated error message
+      check: >-
+        Verify the handler surfaces the backend's actionable error (e.g. parse error JSON and display server message) instead of replacing all non-2xx responses with one generic string, so users can distinguish retryable, configuration, and permanent failures
+      source: copilot:PR#671
+      added: "2026-05-05"
+    - id: disabled-button-tooltip-accessibility
+      category: ui
+      pattern: >-
+        A disabled button (or other disabled control) uses a `title` attribute or similar hover-only mechanism to explain why it is unavailable
+      check: >-
+        Verify the explanation is accessible to keyboard users and reliably visible to mouse users — disabled elements are not focusable and many browsers suppress `title` tooltips on them. Use an accessible alternative such as wrapping the button in a focusable element with `aria-describedby`, rendering visible helper text near the control, or keeping the button enabled and showing the reason on click.
+      source: copilot:PR#671
+      added: "2026-05-05"
+    - id: test-new-mutations-and-callbacks
+      category: testing
+      pattern: >-
+        New mutation handlers, refresh callbacks, or status-specific UI branches added to a page that already has a test file
+      check: >-
+        Verify the existing test file is extended to cover the new mutations, their success/error paths, refetch behavior, and any new conditional rendering (e.g. saved markdown plan views) so regressions are caught
+      source: copilot:PR#671
+      added: "2026-05-05"
+    - id: accurate-cross-references
+      category: style
+      pattern: >-
+        Code comments that reference another component or function as a pattern (e.g., "matches X", "same as Y", "mirrors Z")
+      check: >-
+        Verify the referenced component actually implements the described pattern. If the comment claims similarity to another piece of code, confirm the behavior truly matches (e.g., reset-on-open vs reset-on-close, same lifecycle hook, same conditions). Either correct the comment to accurately describe the local behavior or align the implementation with the referenced pattern.
+      source: copilot:PR#672
+      added: "2026-05-05"
+    - id: clear-stale-data-on-modal-open
+      category: ui
+      pattern: >-
+        Modal/dialog component that fetches data on open and stores it in state alongside a loading flag
+      check: >-
+        Verify that previously loaded data arrays are cleared (e.g. setItems([])) when the modal opens and on fetch errors, so stale options aren't shown during loading or after a failed load
+      source: copilot:PR#672
+      added: "2026-05-05"
+    - id: counter-validation-consistency
+      category: ui
+      pattern: >-
+        Form fields with live character/byte counters or limit indicators where validation or submission uses a normalized value (e.g. trim()) different from the raw input value
+      check: >-
+        Verify that live counters and limit indicators are computed from the same normalized value used for validation and submission, so the UI does not show 'over limit' for input that would actually submit successfully (or vice versa)
+      source: copilot:PR#672
+      added: "2026-05-05"
+    - id: i18n-namespace-test-mocks
+      category: testing
+      pattern: >-
+        Component switches to a new i18n namespace (e.g. from `common` to a feature-specific namespace) while existing tests mock translations from only the old namespace
+      check: >-
+        Verify that test files mocking `react-i18next` (or equivalent) load all namespaces the component now uses, so `t('namespace:key')` lookups resolve to actual labels rather than raw keys
+      source: copilot:PR#673
+      added: "2026-05-05"
+    - id: validate-required-fields-before-use
+      category: error-handling
+      pattern: >-
+        Handler reads a stored record and uses one of its text fields as required input for a downstream action (e.g. as a bead description, email body, API payload), gating only on a status/flag column
+      check: >-
+        Verify the handler also validates that the required text field is present and non-empty (e.g. strings.TrimSpace(...) != "") before using it, returning 400 when missing — status checks alone don't guarantee legacy or hand-edited rows have the field populated
+      source: copilot:PR#674
+      added: "2026-05-06"
+    - id: decouple-context-after-external-side-effect
+      category: error-handling
+      pattern: >-
+        After a successful external/side-effecting operation (e.g. shell command, API call that creates a remote resource), follow-up persistence work uses the request context (r.Context()).
+      check: >-
+        Verify that once an irreversible external side effect has occurred, follow-up DB writes or reads use a fresh context (e.g. context.WithTimeout(context.Background(), ...)) so client cancellation cannot leave the system in an inconsistent state.
+      source: copilot:PR#674
+      added: "2026-05-06"
+    - id: cap-external-stderr-in-errors
+      category: error-handling
+      pattern: >-
+        HTTP error responses or logs include raw stderr/output from an external command (e.g., exec.Command, bd create) returned verbatim to clients
+      check: >-
+        Verify external command stderr/stdout is length-capped and whitespace-normalized before being included in error responses or logs to avoid bloated responses and noisy UI errors
+      source: copilot:PR#674
+      added: "2026-05-06"
+    - id: shallow-copy-reference-fields
+      category: other
+      pattern: >-
+        Functions that return a copy of a slice or struct containing reference-type fields (slices, maps, pointers)
+      check: >-
+        Verify that nested reference fields are deep-copied to prevent callers from mutating shared state, or that the returned value is clearly documented as read-only
+      source: copilot:PR#675
+      added: "2026-05-06"
+    - id: test-assertion-matches-comment
+      category: testing
+      pattern: >-
+        Test cases whose comment or name describes verifying ordering, sequence, or other specific behavior
+      check: >-
+        Verify the assertions actually exercise what the comment/name claims — e.g., if the test says it checks order, it must assert exact sequence (not set equality after sorting), and inputs must vary in a way that would expose ordering bugs
+      source: copilot:PR#675
+      added: "2026-05-06"
+    - id: shared-state-in-per-user-loop
+      category: concurrency
+      pattern: >-
+        Computing eligibility/selection from a shared table inside a per-user (or per-entity) loop where earlier iterations mutate the same table
+      check: >-
+        Verify whether the selection should be computed once before the loop (and reused across iterations) or filtered by the per-iteration entity ID; iteration-order-dependent results from shared-state mutations between iterations are a bug
+      source: copilot:PR#676
+      added: "2026-05-06"
+    - id: reuse-existing-helpers
+      category: style
+      pattern: >-
+        Handler or function implements lookup/validation logic by iterating over a registry or collection when a helper function in the same file already performs that lookup
+      check: >-
+        Verify the code reuses the existing helper (or extracts a shared one) instead of duplicating registry-lookup or slug-validation logic, to keep behavior consistent in one place
+      source: copilot:PR#677
+      added: "2026-05-06"
+    - id: extract-shared-db-scan-helper
+      category: style
+      pattern: >-
+        Two or more functions scan the same table and interpret rows into the same in-memory structure (e.g., loading a settings map)
+      check: >-
+        Verify that duplicated table-reading/interpretation logic is extracted into a single shared helper so the two call sites cannot diverge over time
+      source: copilot:PR#677
+      added: "2026-05-06"
+    - id: no-duplicate-sentinel-constants
+      category: style
+      pattern: >-
+        A sentinel value, magic string, or constant is redefined in a new file when an equivalent constant already exists and is exported from another module
+      check: >-
+        Verify that shared sentinel values and constants are imported from their original definition rather than duplicated, so they cannot drift out of sync
+      source: copilot:PR#678
+      added: "2026-05-06"
+    - id: time-boundary-precision
+      category: other
+      pattern: >-
+        Time-of-day comparisons or threshold checks (e.g. 'within N hours of X') that extract only the hour from a Date/Intl.DateTimeFormat result
+      check: >-
+        Verify that time-boundary calculations include minutes (and seconds where relevant), not just the hour, so values close to the boundary classify correctly. Use minutes-since-midnight arithmetic or Intl.formatToParts for hour+minute, and add tests covering near-boundary cases (e.g. 15:59 when the threshold is 12h to 03:00).
+      source: copilot:PR#678
+      added: "2026-05-06"
+    - id: localize-time-formatting
+      category: ui
+      pattern: >-
+        Hardcoded time strings (e.g. '03:00') embedded in i18n translations or UI when claiming locale-aware formatting
+      check: >-
+        Verify that times claimed to be locale-formatted are actually formatted with Intl.DateTimeFormat (passing undefined for the user locale) and interpolated into the i18n string, rather than hardcoded inside translation values; otherwise ensure the PR description matches the simpler implementation
+      source: copilot:PR#678
+      added: "2026-05-06"
+    - id: context-cancellation-error-propagation
+      category: error-handling
+      pattern: >-
+        Functions that accept a context.Context and document or imply specific error semantics around cancellation (e.g., 'returns error only on context cancellation'), where downstream calls (RPC clients, DB operations) may themselves return context.Canceled or context.DeadlineExceeded after the initial ctx.Err() check.
+      check: >-
+        Verify that context.Canceled and context.DeadlineExceeded errors from downstream calls are handled consistently with the function's documented semantics. Either propagate these errors to the caller (so shutdown/cancellation behavior is uniform) or update the docstring to accurately describe how post-check cancellation is treated. Don't silently swallow cancellation errors when the docstring claims they are the sole error path.
+      source: copilot:PR#679
+      added: "2026-05-06"
+    - id: doc-comment-error-handling-consistency
+      category: error-handling
+      pattern: >-
+        Function-level doc comments that describe error-handling behavior (e.g. 'errors are surfaced via X' or 'failures increment Y')
+      check: >-
+        Verify that every error path in the implementation matches the documented behavior — either count/surface the error as the doc claims, or update the doc to clarify which failures are non-fatal and intentionally not counted.
+      source: copilot:PR#679
+      added: "2026-05-06"
+    - id: strict-json-decoding
+      category: error-handling
+      pattern: >-
+        Parsing a JSON response from an LLM or external source where the prompt/spec says the response must contain 'only these fields' (or similar strict-shape language), using json.Unmarshal into a struct
+      check: >-
+        Verify that strict shape is actually enforced — use json.Decoder with DisallowUnknownFields() and reject responses containing extra keys, since json.Unmarshal silently ignores unknown fields and lets shape violations pass through
+      source: copilot:PR#679
+      added: "2026-05-06"
+    - id: fold-errors-into-result
+      category: error-handling
+      pattern: >-
+        Aggregator/runner or scheduled/batch handler that calls a sub-task returning both a result struct (with its own error counters) and a non-nil error, then merges only the struct's counters into the overall result (or only logs the error)
+      check: >-
+        Verify that when the sub-call returns a non-nil error, the outer result's error count is incremented (e.g., result.Errors++) so the run summary accurately reflects failures. Logging the error alone is insufficient — operators reading the aggregated result must see the failure reflected in the error count.
+      source: copilot:PR#679
+      added: "2026-05-06"
+    - id: test-prompt-discriminator-stability
+      category: testing
+      pattern: >-
+        Test fakes/mocks that branch on substring matches against prompt wording to decide which response shape to return
+      check: >-
+        Verify the discriminator is a stable signal (e.g., output-format directive like 'Return ONLY a JSON array' vs 'Return ONLY a single JSON object', or an explicit marker token added by the prompt builder) rather than incidental phrasing that will break when prompts are reworded
+      source: copilot:PR#679
+      added: "2026-05-06"
+    - id: check-cli-json-is-error-flag
+      category: error-handling
+      pattern: >-
+        Code parses a JSON envelope from a CLI subprocess (e.g. `--output-format json`) and checks only the process exit code or absence of unmarshal errors before treating the result as success.
+      check: >-
+        Verify the parsed envelope's error indicator fields (e.g. `is_error`, `error`, `status`) are inspected and surfaced as an error to callers, since the CLI may return a valid JSON envelope describing a failure while still exiting 0.
+      source: copilot:PR#680
+      added: "2026-05-06"
+    - id: test-matches-described-behavior
+      category: testing
+      pattern: Test function with a docstring or comment describing what behavior it verifies
+      check: >-
+        Verify the test actually exercises the function/behavior described in its name and comments. If the comment claims it tests fallback behavior of function X, the test must call X (or a helper that implements that logic), not just re-test a standard library call. Either fix the test to exercise the real code path, or update the comment to match what's actually tested.
+      source: copilot:PR#680
+      added: "2026-05-06"
+    - id: test-json-fallback-paths
+      category: testing
+      pattern: >-
+        Code that parses JSON output (e.g., from a CLI envelope) and falls back to raw stdout or alternate behavior on parse failure
+      check: >-
+        Verify unit tests cover the JSON-parse-failure fallback path (e.g., warning emitted once, trimmed raw output returned). Consider extracting envelope parsing into a small testable helper so the failure path can be exercised directly.
+      source: copilot:PR#680
+      added: "2026-05-06"
+    - id: test-path-validation
+      category: testing
+      pattern: >-
+        Tests that validate file paths exist within a repo or root directory using filepath.Join + os.Stat without verifying the path is safe, relative, and constrained to the intended root
+      check: >-
+        Ensure path-checking tests assert the input is a clean, relative file path (!filepath.IsAbs, no '..' segments after Clean, filepath.Rel doesn't start with '..') and verify the stat result is a regular file (not a directory), to prevent path escape outside the intended root and match test intent
+      source: copilot:PR#683
+      added: "2026-05-06"
