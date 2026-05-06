@@ -59,8 +59,10 @@ func TestNextScheduledRun_BasicSameAndNextDay(t *testing.T) {
 			if !got.After(tc.now) {
 				t.Errorf("result %v is not after now %v", got, tc.now)
 			}
-			if h := got.In(loc).Hour(); loc != nil && h != 3 {
-				t.Errorf("expected hour 3 in loc, got %d", h)
+			if loc != nil {
+				if h := got.In(loc).Hour(); h != 3 {
+					t.Errorf("expected hour 3 in loc, got %d", h)
+				}
 			}
 		})
 	}
