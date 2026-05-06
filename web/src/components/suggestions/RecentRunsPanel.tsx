@@ -31,7 +31,16 @@ function formatCost(cost: number, placeholder: string): string {
   return `$${cost.toFixed(4)}`
 }
 
-export function RecentRunsPanel() {
+interface RecentRunsPanelProps {
+  /**
+   * Incrementing this value forces the panel to refetch from the server
+   * (and to open if it is currently collapsed). Used by the SSE run flow to
+   * surface the just-finished run without making the user toggle the panel.
+   */
+  reloadSignal?: number
+}
+
+export function RecentRunsPanel({ reloadSignal = 0 }: RecentRunsPanelProps = {}) {
   const { t } = useTranslation('suggestions')
   const { t: tCommon } = useTranslation('common')
   const [open, setOpen] = useState(false)
@@ -40,9 +49,16 @@ export function RecentRunsPanel() {
   const [loaded, setLoaded] = useState(false)
   const [hasError, setHasError] = useState(false)
   const [now] = useState(() => Date.now())
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
-    if (!open || loaded) return
+    if (reloadSignal === 0) return
+    setOpen(true)
+    setReloadKey(k => k + 1)
+  }, [reloadSignal])
+
+  useEffect(() => {
+    if (!open || (loaded && reloadKey === 0)) return
     const controller = new AbortController()
     ;(async () => {
       setLoading(true)
@@ -64,7 +80,7 @@ export function RecentRunsPanel() {
       }
     })()
     return () => controller.abort()
-  }, [open, loaded])
+  }, [open, loaded, reloadKey])
 
   const summary = useMemo(() => {
     const cutoff = now - SEVEN_DAYS_MS
@@ -85,6 +101,7 @@ export function RecentRunsPanel() {
 
   return (
     <section
+      id="recent-runs"
       aria-labelledby="recent-runs-heading"
       data-testid="recent-runs-panel"
       className="rounded-lg border border-gray-800 bg-gray-900/40"

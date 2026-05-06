@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Lightbulb, Plus, Play } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Lightbulb, Plus, Play, X, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../components/ui/skeleton'
 import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
@@ -19,6 +19,39 @@ interface ListResponse {
   bead_created?: Suggestion[]
 }
 
+interface RunLogEntry {
+  slug: string
+  status: 'ok' | 'error'
+  count?: number
+  cost?: number
+  reason?: string
+  seconds?: number
+}
+
+interface RunProgress {
+  done: number
+  total: number
+  pageSlugs: string[]
+  log: RunLogEntry[]
+}
+
+// SSE event payloads sent by POST /api/suggestions/run.
+// See internal/suggestions/handlers.go:RunHandler for the source of truth.
+interface StartedEvent {
+  run_id: number
+  total_pages: number
+  page_slugs: string[]
+}
+interface PageCompleteEvent {
+  page_slug: string
+  generated: number
+  errors: number
+  cost_usd: number
+  elapsed_ms: number
+  status: 'ok' | 'error'
+  error?: string
+}
+
 export default function Suggestions() {
   const { t, i18n } = useTranslation('suggestions')
   const { t: tCommon } = useTranslation('common')
@@ -34,6 +67,11 @@ export default function Suggestions() {
   const [activeTab, setActiveTab] = useState<TabKey>('pending')
   const [reloadKey, setReloadKey] = useState(0)
   const [newOpen, setNewOpen] = useState(false)
+  const [runProgress, setRunProgress] = useState<RunProgress | null>(null)
+  const [alreadyRunning, setAlreadyRunning] = useState(false)
+  const [streamError, setStreamError] = useState(false)
+  const [recentRunsReloadSignal, setRecentRunsReloadSignal] = useState(0)
+  const abortRef = useRef<AbortController | null>(null)
 
   const refetch = useCallback(() => {
     setReloadKey(k => k + 1)
@@ -82,6 +120,14 @@ export default function Suggestions() {
     return () => controller.abort()
   }, [reloadKey, failedToLoadMsg])
 
+  // Cancel any in-flight stream when the component unmounts.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort()
+      abortRef.current = null
+    }
+  }, [])
+
   const counts = useMemo(
     () => ({
       pending: pending.length,
@@ -95,19 +141,144 @@ export default function Suggestions() {
     if (running) return
     setRunning(true)
     setRunError(null)
+    setStreamError(false)
+    setAlreadyRunning(false)
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    // Tracked locally so the catch handler can distinguish "stream broke
+    // after we already entered progress mode" from "request never started".
+    let started = false
+
+    const dispatch = (eventName: string, data: unknown) => {
+      if (eventName === 'started') {
+        const ev = data as StartedEvent
+        started = true
+        setRunProgress({
+          done: 0,
+          total: ev.total_pages,
+          pageSlugs: ev.page_slugs ?? [],
+          log: [],
+        })
+        return
+      }
+      if (eventName === 'page_complete' || eventName === 'new_page_complete') {
+        const ev = data as PageCompleteEvent
+        const entry: RunLogEntry = {
+          slug: ev.page_slug,
+          status: ev.status,
+          count: ev.generated,
+          cost: ev.cost_usd,
+          seconds: Math.round((ev.elapsed_ms ?? 0) / 1000),
+        }
+        if (ev.status === 'error' && ev.error) {
+          entry.reason = ev.error
+        }
+        setRunProgress(p =>
+          p ? { ...p, done: p.done + 1, log: [...p.log, entry] } : p,
+        )
+        // Refetch the Pending tab so newly persisted suggestions appear as
+        // soon as each page finishes.
+        refetch()
+        return
+      }
+      if (eventName === 'done') {
+        setRunProgress(null)
+        setStreamError(false)
+        refetch()
+        setRecentRunsReloadSignal(s => s + 1)
+        return
+      }
+    }
+
     try {
       const res = await fetch('/api/suggestions/run', {
         method: 'POST',
         credentials: 'include',
+        signal: controller.signal,
       })
-      if (!res.ok) {
+      if (res.status === 409) {
+        // Surface a banner pointing the user at the recent runs panel.
+        // Don't auto-open it — the banner link is the explicit affordance.
+        setAlreadyRunning(true)
+        return
+      }
+      if (!res.ok || !res.body) {
         throw new Error(t('errors.runFailed'))
       }
-      refetch()
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      // SSE frame parser: events are separated by a blank line. Each event
+      // has zero or more `event:` and `data:` fields. We accumulate partial
+      // chunks in `buffer` and only consume up to the last complete frame.
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const frames = buffer.split('\n\n')
+        buffer = frames.pop() ?? ''
+        for (const frame of frames) {
+          if (!frame.trim()) continue
+          let eventName = 'message'
+          const dataLines: string[] = []
+          for (const line of frame.split('\n')) {
+            if (line.startsWith('event:')) {
+              eventName = line.slice(6).trim()
+            } else if (line.startsWith('data:')) {
+              dataLines.push(line.slice(5).trim())
+            }
+          }
+          if (dataLines.length === 0) continue
+          try {
+            const data = JSON.parse(dataLines.join('\n'))
+            dispatch(eventName, data)
+          } catch {
+            // Ignore malformed SSE frames — server should never emit them
+            // but a partial buffer flush could in theory.
+          }
+        }
+      }
     } catch (err) {
-      setRunError(err instanceof Error ? err.message : t('errors.runFailed'))
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      // If we already received a `started` event, keep the progress UI
+      // visible and surface a Reconnect affordance instead of clobbering
+      // it with the generic banner.
+      if (started) {
+        setStreamError(true)
+      } else {
+        setRunError(err instanceof Error ? err.message : t('errors.runFailed'))
+      }
     } finally {
       setRunning(false)
+      if (abortRef.current === controller) {
+        abortRef.current = null
+      }
+    }
+  }
+
+  // Polled fallback when the SSE stream is interrupted: ask the server
+  // whether the latest run has finished. If yes, clear the progress UI and
+  // refetch everything; if no, just clear the error so the user can wait.
+  async function handleReconnect() {
+    setStreamError(false)
+    try {
+      const res = await fetch('/api/suggestions/runs?limit=1', {
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('failed')
+      const data = (await res.json()) as Array<{ finished_at?: string | null }>
+      const latest = Array.isArray(data) ? data[0] : null
+      if (latest && latest.finished_at) {
+        setRunProgress(null)
+        refetch()
+        setRecentRunsReloadSignal(s => s + 1)
+      }
+    } catch {
+      setStreamError(true)
     }
   }
 
@@ -188,6 +359,11 @@ export default function Suggestions() {
     )
   }
 
+  const progressPercent =
+    runProgress && runProgress.total > 0
+      ? Math.min(100, Math.round((runProgress.done / runProgress.total) * 100))
+      : 0
+
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100">
       <div className="mx-auto w-full max-w-3xl px-4 py-6 space-y-6">
@@ -203,12 +379,12 @@ export default function Suggestions() {
             <button
               type="button"
               onClick={handleRunNow}
-              disabled={running}
+              disabled={running || runProgress !== null}
               className="inline-flex items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/20 px-3 py-2 text-sm font-medium text-blue-300 hover:bg-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Play size={16} />
               <span>
-                {running ? t('actions.running') : t('actions.runNow')}
+                {running || runProgress !== null ? t('actions.running') : t('actions.runNow')}
               </span>
             </button>
             <button
@@ -220,7 +396,119 @@ export default function Suggestions() {
               <span>{t('actions.newSuggestion')}</span>
             </button>
           </div>
-          <RecentRunsPanel />
+
+          {alreadyRunning && (
+            <div
+              role="alert"
+              data-testid="already-running-banner"
+              className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+            >
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <div className="flex-1 space-y-1">
+                <p>{t('run.alreadyRunning')}</p>
+                <a
+                  href="#recent-runs"
+                  className="inline-block text-xs font-medium text-amber-300 underline hover:text-amber-200"
+                >
+                  {t('run.alreadyRunningLink')}
+                </a>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAlreadyRunning(false)}
+                aria-label={t('run.dismiss')}
+                className="text-amber-300/70 hover:text-amber-200"
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
+          )}
+
+          {runProgress && (
+            <div
+              data-testid="run-progress"
+              className="space-y-2 rounded-lg border border-gray-800 bg-gray-900/60 px-4 py-3"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  data-testid="run-progress-pill"
+                  className="inline-flex items-center rounded-full border border-blue-500/40 bg-blue-500/15 px-2.5 py-0.5 text-xs font-medium text-blue-200"
+                >
+                  {t('run.inProgress', {
+                    done: runProgress.done,
+                    total: runProgress.total,
+                  })}
+                </span>
+                {streamError && (
+                  <button
+                    type="button"
+                    onClick={handleReconnect}
+                    data-testid="run-reconnect"
+                    className="inline-flex items-center gap-1 rounded-md border border-yellow-500/40 bg-yellow-500/10 px-2 py-1 text-xs font-medium text-yellow-200 hover:bg-yellow-500/20"
+                  >
+                    {t('run.reconnect')}
+                  </button>
+                )}
+              </div>
+              <div
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={runProgress.total}
+                aria-valuenow={runProgress.done}
+                className="h-1.5 w-full overflow-hidden rounded-full bg-gray-800"
+              >
+                <div
+                  className="h-full bg-blue-500 transition-all"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              {streamError && (
+                <p
+                  data-testid="run-stream-error"
+                  className="text-xs text-yellow-300"
+                >
+                  {t('run.streamError')}
+                </p>
+              )}
+              {runProgress.log.length > 0 && (
+                <ul
+                  data-testid="run-progress-log"
+                  className="space-y-1 text-xs"
+                >
+                  {runProgress.log.map((entry, idx) => (
+                    <li
+                      key={`${entry.slug}-${idx}`}
+                      data-testid={`run-progress-log-${entry.slug}`}
+                      className={`flex items-center gap-2 ${
+                        entry.status === 'ok' ? 'text-emerald-300' : 'text-red-300'
+                      }`}
+                    >
+                      {entry.status === 'ok' ? (
+                        <CheckCircle2 size={14} aria-hidden="true" />
+                      ) : (
+                        <XCircle size={14} aria-hidden="true" />
+                      )}
+                      <span className="font-mono">
+                        {entry.status === 'ok'
+                          ? t('run.pageOk', {
+                              slug: entry.slug,
+                              count: entry.count ?? 0,
+                              cost: (entry.cost ?? 0).toFixed(2),
+                            })
+                          : t('run.pageError', {
+                              slug: entry.slug,
+                              reason: entry.reason ?? t('errors.unknown'),
+                              seconds: entry.seconds ?? 0,
+                            })}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          <RecentRunsPanel reloadSignal={recentRunsReloadSignal} />
         </header>
 
         <Tabs
@@ -295,4 +583,3 @@ export default function Suggestions() {
     </div>
   )
 }
-

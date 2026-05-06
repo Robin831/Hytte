@@ -78,6 +78,16 @@
     "planFailed": "Failed to plan suggestion",
     "unknown": "unknown error"
   },
+  "run": {
+    "inProgress": "Run in progress: {{done}} / {{total}} pages",
+    "pageOk": "{{slug}} ({{count}} ideas, ${{cost}})",
+    "pageError": "{{slug}} ({{reason}}, {{seconds}}s)",
+    "alreadyRunning": "A run is already in progress.",
+    "alreadyRunningLink": "View recent runs",
+    "reconnect": "Reconnect",
+    "streamError": "Lost connection to the run stream.",
+    "dismiss": "Dismiss"
+  },
   "form": {
     "title": "New suggestion",
     "newPageOption": "New page idea",
