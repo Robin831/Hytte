@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../ui/skeleton'
@@ -39,7 +39,7 @@ export function RecentRunsPanel() {
   const [loading, setLoading] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [hasError, setHasError] = useState(false)
-  const nowRef = useRef(Date.now())
+  const [now] = useState(() => Date.now())
 
   useEffect(() => {
     if (!open || loaded) return
@@ -67,7 +67,7 @@ export function RecentRunsPanel() {
   }, [open, loaded])
 
   const summary = useMemo(() => {
-    const cutoff = nowRef.current - SEVEN_DAYS_MS
+    const cutoff = now - SEVEN_DAYS_MS
     let totalCost = 0
     let totalGenerated = 0
     for (const r of runs) {
@@ -77,7 +77,7 @@ export function RecentRunsPanel() {
       totalGenerated += r.generated
     }
     return { totalCost, totalGenerated }
-  }, [runs])
+  }, [runs, now])
 
   const costPlaceholder = t('recentRuns.costUnknown')
 
