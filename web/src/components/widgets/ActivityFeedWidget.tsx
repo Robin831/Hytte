@@ -2,15 +2,19 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Dumbbell, FlaskConical, StickyNote, LinkIcon, Activity } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { useAuth } from '../../auth'
 import Widget from '../Widget'
 import { timeAgo } from '../../utils/timeAgo'
 
 interface ActivityItem {
   type: string
-  title: string
   timestamp: string
   link?: string
+  sport?: string
+  title?: string
+  comment?: string
+  code?: string
 }
 
 const typeIcons: Record<string, typeof Activity> = {
@@ -25,6 +29,45 @@ const typeColors: Record<string, string> = {
   lactate: 'text-purple-400',
   note: 'text-yellow-400',
   link: 'text-blue-400',
+}
+
+function sportLabel(t: TFunction, sport: string | undefined): string {
+  const key = sport && sport.length > 0 ? sport : 'default'
+  const i18nKey = `activity.sports.${key}`
+  const fallback = `activity.sports.default`
+  const translated = t(i18nKey, { defaultValue: '' })
+  return translated || t(fallback)
+}
+
+function renderLabel(t: TFunction, item: ActivityItem): string {
+  switch (item.type) {
+    case 'workout': {
+      const sport = sportLabel(t, item.sport)
+      if (item.title && item.title.length > 0) {
+        return t('activity.workoutWithTitle', { sport, title: item.title })
+      }
+      return t('activity.workout', { sport })
+    }
+    case 'lactate':
+      if (item.comment && item.comment.length > 0) {
+        return t('activity.lactateWithComment', { comment: item.comment })
+      }
+      return t('activity.lactate')
+    case 'note':
+      if (item.title && item.title.length > 0) {
+        return t('activity.noteWithTitle', { title: item.title })
+      }
+      return t('activity.note')
+    case 'link': {
+      const code = item.code ?? ''
+      if (item.title && item.title.length > 0) {
+        return t('activity.linkWithTitle', { code, title: item.title })
+      }
+      return t('activity.shortLink', { code })
+    }
+    default:
+      return ''
+  }
 }
 
 export default function ActivityFeedWidget() {
@@ -62,12 +105,13 @@ export default function ActivityFeedWidget() {
         {items.slice(0, 7).map((item) => {
           const Icon = typeIcons[item.type] || Activity
           const color = typeColors[item.type] || 'text-gray-400'
-          const itemKey = `${item.type}:${item.timestamp}:${item.title}`
+          const label = renderLabel(t, item)
+          const itemKey = `${item.type}:${item.timestamp}:${label}`
           const content = (
             <div className="flex items-start gap-2.5">
               <Icon size={14} className={`${color} mt-0.5 shrink-0`} />
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-gray-300 truncate">{item.title}</p>
+                <p className="text-sm text-gray-300 truncate">{label}</p>
                 <p className="text-xs text-gray-600">{timeAgo(item.timestamp, tCommon)}</p>
               </div>
             </div>

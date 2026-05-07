@@ -1,4 +1,22 @@
 {
+  "activity": {
+    "workout": "{{sport}}-økt registrert",
+    "workoutWithTitle": "{{sport}}: {{title}}",
+    "lactate": "Laktattest registrert",
+    "lactateWithComment": "Laktattest: {{comment}}",
+    "note": "Notat lagt til",
+    "noteWithTitle": "Notat: {{title}}",
+    "shortLink": "Kortlenke opprettet: /go/{{code}}",
+    "linkWithTitle": "Kortlenke /go/{{code}}: {{title}}",
+    "sports": {
+      "running": "Løping",
+      "cycling": "Sykling",
+      "swimming": "Svømming",
+      "walking": "Gange",
+      "hiking": "Tur",
+      "default": "Økt"
+    }
+  },
   "widgets": {
     "weather": {
       "title": "Vær",

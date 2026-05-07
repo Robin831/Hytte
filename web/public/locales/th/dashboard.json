@@ -1,4 +1,22 @@
 {
+  "activity": {
+    "workout": "บันทึกการออกกำลังกาย{{sport}}แล้ว",
+    "workoutWithTitle": "{{sport}}: {{title}}",
+    "lactate": "บันทึกการทดสอบแลคเตทแล้ว",
+    "lactateWithComment": "การทดสอบแลคเตท: {{comment}}",
+    "note": "เพิ่มโน้ตแล้ว",
+    "noteWithTitle": "โน้ต: {{title}}",
+    "shortLink": "สร้างลิงก์สั้นแล้ว: /go/{{code}}",
+    "linkWithTitle": "ลิงก์สั้น /go/{{code}}: {{title}}",
+    "sports": {
+      "running": "วิ่ง",
+      "cycling": "ปั่นจักรยาน",
+      "swimming": "ว่ายน้ำ",
+      "walking": "เดิน",
+      "hiking": "เดินป่า",
+      "default": "กิจกรรม"
+    }
+  },
   "widgets": {
     "weather": {
       "title": "สภาพอากาศ",

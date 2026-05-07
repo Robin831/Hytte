@@ -8,14 +8,20 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/encryption"
 )
 
-// ActivityItem represents a single recent activity entry.
+// ActivityItem represents a single recent activity entry. The frontend is
+// responsible for assembling localized display text from these structured
+// fields via react-i18next.
 type ActivityItem struct {
 	Type      string `json:"type"`
-	Title     string `json:"title"`
 	Timestamp string `json:"timestamp"`
 	Link      string `json:"link,omitempty"`
+	Sport     string `json:"sport,omitempty"`
+	Title     string `json:"title,omitempty"`
+	Comment   string `json:"comment,omitempty"`
+	Code      string `json:"code,omitempty"`
 }
 
 // ActivityHandler returns GET /api/dashboard/activity — recent activity across the app.
@@ -59,15 +65,10 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 		if err := rows.Scan(&sport, &title, &startedAt); err != nil {
 			return nil, err
 		}
-		label := title
-		if label == "" {
-			label = sportLabel(sport) + " workout recorded"
-		} else {
-			label = sportLabel(sport) + ": " + label
-		}
 		items = append(items, ActivityItem{
 			Type:      "workout",
-			Title:     label,
+			Sport:     sport,
+			Title:     title,
 			Timestamp: startedAt,
 			Link:      "/training",
 		})
@@ -92,13 +93,10 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 		if err := rows2.Scan(&date, &comment); err != nil {
 			return nil, err
 		}
-		label := "Lactate test recorded"
-		if comment != "" {
-			label = "Lactate test: " + comment
-		}
+		comment = encryption.DecryptLenient(comment)
 		items = append(items, ActivityItem{
 			Type:      "lactate",
-			Title:     label,
+			Comment:   comment,
 			Timestamp: date + "T00:00:00Z",
 			Link:      "/lactate",
 		})
@@ -123,13 +121,10 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 		if err := rows3.Scan(&title, &createdAt); err != nil {
 			return nil, err
 		}
-		label := "Note created"
-		if title != "" {
-			label = "Note: " + title
-		}
+		title = encryption.DecryptLenient(title)
 		items = append(items, ActivityItem{
 			Type:      "note",
-			Title:     label,
+			Title:     title,
 			Timestamp: createdAt,
 			Link:      "/notes",
 		})
@@ -154,13 +149,10 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 		if err := rows4.Scan(&title, &code, &createdAt); err != nil {
 			return nil, err
 		}
-		label := "Short link created: /go/" + code
-		if title != "" {
-			label = "Link created: " + title
-		}
 		items = append(items, ActivityItem{
 			Type:      "link",
-			Title:     label,
+			Code:      code,
+			Title:     title,
 			Timestamp: createdAt,
 			Link:      "/links",
 		})
@@ -187,24 +179,4 @@ func sortByTimestamp(items []ActivityItem) {
 		}
 		return ti.After(tj)
 	})
-}
-
-func sportLabel(sport string) string {
-	switch sport {
-	case "running":
-		return "Running"
-	case "cycling":
-		return "Cycling"
-	case "swimming":
-		return "Swimming"
-	case "walking":
-		return "Walking"
-	case "hiking":
-		return "Hiking"
-	default:
-		if sport != "" {
-			return sport
-		}
-		return "Workout"
-	}
 }
