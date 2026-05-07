@@ -32,11 +32,12 @@ const typeColors: Record<string, string> = {
 }
 
 function sportLabel(t: TFunction, sport: string | undefined): string {
-  const key = sport && sport.length > 0 ? sport : 'default'
-  const i18nKey = `activity.sports.${key}`
-  const fallback = `activity.sports.default`
-  const translated = t(i18nKey, { defaultValue: '' })
-  return translated || t(fallback)
+  if (!sport) {
+    return t('activity.sports.default')
+  }
+  const translated = t(`activity.sports.${sport}`, { defaultValue: '' })
+  if (translated) return translated
+  return sport.charAt(0).toUpperCase() + sport.slice(1)
 }
 
 function renderLabel(t: TFunction, item: ActivityItem): string {
@@ -102,11 +103,11 @@ export default function ActivityFeedWidget() {
   return (
     <Widget title={t('widgets.activity.title')}>
       <div className="space-y-3">
-        {items.slice(0, 7).map((item) => {
+        {items.slice(0, 7).map((item, index) => {
           const Icon = typeIcons[item.type] || Activity
           const color = typeColors[item.type] || 'text-gray-400'
           const label = renderLabel(t, item)
-          const itemKey = `${item.type}:${item.timestamp}:${label}`
+          const itemKey = `${item.type}:${item.timestamp}:${item.code ?? ''}:${index}`
           const content = (
             <div className="flex items-start gap-2.5">
               <Icon size={14} className={`${color} mt-0.5 shrink-0`} />

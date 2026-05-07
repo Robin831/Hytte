@@ -104,13 +104,17 @@ func TestActivityHandler_WithWorkout(t *testing.T) {
 	now := time.Now().UTC()
 	ts := now.Add(-time.Hour).Format(time.RFC3339)
 
-	// Insert a workout directly.
-	_, err := d.Exec(
+	// Workout title is stored encrypted at rest; the handler must decrypt it.
+	encTitle, err := encryption.EncryptField("Morning Run")
+	if err != nil {
+		t.Fatalf("failed to encrypt workout title: %v", err)
+	}
+	_, err = d.Exec(
 		`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters,
 		 avg_heart_rate, max_heart_rate, avg_pace_sec_per_km, avg_cadence, calories,
 		 ascent_meters, descent_meters, fit_file_hash, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		user.ID, "running", "Morning Run", ts, 1800, 5000,
+		user.ID, "running", encTitle, ts, 1800, 5000,
 		150, 170, 360, 180, 300, 50, 30, "hash123", ts,
 	)
 	if err != nil {

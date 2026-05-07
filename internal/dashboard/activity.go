@@ -65,6 +65,7 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 		if err := rows.Scan(&sport, &title, &startedAt); err != nil {
 			return nil, err
 		}
+		title = encryption.DecryptLenient(title)
 		items = append(items, ActivityItem{
 			Type:      "workout",
 			Sport:     sport,
