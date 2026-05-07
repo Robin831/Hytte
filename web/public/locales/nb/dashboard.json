@@ -1,4 +1,27 @@
 {
+  "activity": {
+    "workout": "{{sport}}-økt registrert",
+    "workoutWithTitle": "{{sport}}: {{title}}",
+    "lactate": "Laktattest registrert",
+    "lactateWithComment": "Laktattest: {{comment}}",
+    "note": "Notat lagt til",
+    "noteWithTitle": "Notat: {{title}}",
+    "shortLink": "Kortlenke opprettet: /go/{{code}}",
+    "linkWithTitle": "Kortlenke /go/{{code}}: {{title}}",
+    "sports": {
+      "running": "Løping",
+      "cycling": "Sykling",
+      "swimming": "Svømming",
+      "walking": "Gange",
+      "hiking": "Tur",
+      "strength": "Styrketrening",
+      "rowing": "Roing",
+      "cross_country_skiing": "Langrenn",
+      "other": "Økt",
+      "default": "Økt"
+    },
+    "unknown": "Aktivitet"
+  },
   "widgets": {
     "weather": {
       "title": "Vær",

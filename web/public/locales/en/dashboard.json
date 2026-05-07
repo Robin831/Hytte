@@ -1,4 +1,27 @@
 {
+  "activity": {
+    "workout": "{{sport}} workout recorded",
+    "workoutWithTitle": "{{sport}}: {{title}}",
+    "lactate": "Lactate test recorded",
+    "lactateWithComment": "Lactate test: {{comment}}",
+    "note": "Note added",
+    "noteWithTitle": "Note: {{title}}",
+    "shortLink": "Short link created: /go/{{code}}",
+    "linkWithTitle": "Short link /go/{{code}}: {{title}}",
+    "sports": {
+      "running": "Running",
+      "cycling": "Cycling",
+      "swimming": "Swimming",
+      "walking": "Walking",
+      "hiking": "Hiking",
+      "strength": "Strength training",
+      "rowing": "Rowing",
+      "cross_country_skiing": "Cross-country skiing",
+      "other": "Workout",
+      "default": "Workout"
+    },
+    "unknown": "Activity"
+  },
   "widgets": {
     "weather": {
       "title": "Weather",
