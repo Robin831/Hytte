@@ -31,16 +31,27 @@ const typeColors: Record<string, string> = {
   link: 'text-blue-400',
 }
 
-function sportLabel(t: TFunction, sport: string | undefined): string {
-  if (!sport) {
-    return t('activity.sports.default')
+type ActivitySportKey = 'activity.sports.running' | 'activity.sports.cycling' | 'activity.sports.swimming' | 'activity.sports.walking' | 'activity.sports.hiking' | 'activity.sports.default'
+
+function sportTranslationKey(sport: string | undefined): ActivitySportKey | null {
+  switch (sport) {
+    case 'running': return 'activity.sports.running'
+    case 'cycling': return 'activity.sports.cycling'
+    case 'swimming': return 'activity.sports.swimming'
+    case 'walking': return 'activity.sports.walking'
+    case 'hiking': return 'activity.sports.hiking'
+    default: return null
   }
-  const translated = t(`activity.sports.${sport}`, { defaultValue: '' })
-  if (translated) return translated
+}
+
+function sportLabel(t: TFunction<'dashboard'>, sport: string | undefined): string {
+  if (!sport) return t('activity.sports.default')
+  const key = sportTranslationKey(sport)
+  if (key) return t(key)
   return sport.charAt(0).toUpperCase() + sport.slice(1)
 }
 
-function renderLabel(t: TFunction, item: ActivityItem): string {
+function renderLabel(t: TFunction<'dashboard'>, item: ActivityItem): string {
   switch (item.type) {
     case 'workout': {
       const sport = sportLabel(t, item.sport)
