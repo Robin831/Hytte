@@ -17,6 +17,14 @@ import (
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
+	// Pin the encryption key so EncryptField/DecryptField produce stable,
+	// hermetic output. Without this the tests share the developer's
+	// auto-generated key file or fail in CI where the config dir may not be
+	// writable. See internal/suggestions/store_test.go for the established pattern.
+	t.Setenv("ENCRYPTION_KEY", "test-encryption-key-for-dashboard-tests")
+	encryption.ResetEncryptionKey()
+	t.Cleanup(func() { encryption.ResetEncryptionKey() })
+
 	d, err := db.Init(":memory:")
 	if err != nil {
 		t.Fatalf("failed to init test db: %v", err)
