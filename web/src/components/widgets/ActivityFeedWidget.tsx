@@ -31,7 +31,7 @@ const typeColors: Record<string, string> = {
   link: 'text-blue-400',
 }
 
-type ActivitySportKey = 'activity.sports.running' | 'activity.sports.cycling' | 'activity.sports.swimming' | 'activity.sports.walking' | 'activity.sports.hiking' | 'activity.sports.default'
+type ActivitySportKey = 'activity.sports.running' | 'activity.sports.cycling' | 'activity.sports.swimming' | 'activity.sports.walking' | 'activity.sports.hiking' | 'activity.sports.strength' | 'activity.sports.rowing' | 'activity.sports.cross_country_skiing' | 'activity.sports.other' | 'activity.sports.default'
 
 function sportTranslationKey(sport: string | undefined): ActivitySportKey | null {
   switch (sport) {
@@ -40,6 +40,10 @@ function sportTranslationKey(sport: string | undefined): ActivitySportKey | null
     case 'swimming': return 'activity.sports.swimming'
     case 'walking': return 'activity.sports.walking'
     case 'hiking': return 'activity.sports.hiking'
+    case 'strength': return 'activity.sports.strength'
+    case 'rowing': return 'activity.sports.rowing'
+    case 'cross_country_skiing': return 'activity.sports.cross_country_skiing'
+    case 'other': return 'activity.sports.other'
     default: return null
   }
 }
@@ -48,7 +52,7 @@ function sportLabel(t: TFunction<'dashboard'>, sport: string | undefined): strin
   if (!sport) return t('activity.sports.default')
   const key = sportTranslationKey(sport)
   if (key) return t(key)
-  return sport.charAt(0).toUpperCase() + sport.slice(1)
+  return sport.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
 function renderLabel(t: TFunction<'dashboard'>, item: ActivityItem): string {
@@ -78,7 +82,7 @@ function renderLabel(t: TFunction<'dashboard'>, item: ActivityItem): string {
       return t('activity.shortLink', { code })
     }
     default:
-      return ''
+      return item.title || t('activity.unknown')
   }
 }
 

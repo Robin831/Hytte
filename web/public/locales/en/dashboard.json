@@ -14,8 +14,13 @@
       "swimming": "Swimming",
       "walking": "Walking",
       "hiking": "Hiking",
+      "strength": "Strength training",
+      "rowing": "Rowing",
+      "cross_country_skiing": "Cross-country skiing",
+      "other": "Workout",
       "default": "Workout"
-    }
+    },
+    "unknown": "Activity"
   },
   "widgets": {
     "weather": {

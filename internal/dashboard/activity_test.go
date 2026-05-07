@@ -67,9 +67,10 @@ func assertNoEnglishLabels(t *testing.T, item ActivityItem) {
 	// The `type` field is a stable enum discriminator ("workout", "lactate",
 	// "note", "link") — those values are machine-readable API keys, not labels,
 	// so they are not subject to this check.
+	// `code` is excluded because short-link codes are user-controlled and may
+	// legitimately contain substrings like "workout" or "running".
 	for _, field := range []struct{ name, value string }{
 		{"sport", item.Sport},
-		{"code", item.Code},
 		{"link", item.Link},
 	} {
 		for _, frag := range englishLabelFragments {

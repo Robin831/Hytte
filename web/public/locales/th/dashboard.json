@@ -14,8 +14,13 @@
       "swimming": "ว่ายน้ำ",
       "walking": "เดิน",
       "hiking": "เดินป่า",
+      "strength": "ฝึกความแข็งแกร่ง",
+      "rowing": "พายเรือ",
+      "cross_country_skiing": "สกีทางเรียบ",
+      "other": "กิจกรรม",
       "default": "กิจกรรม"
-    }
+    },
+    "unknown": "กิจกรรม"
   },
   "widgets": {
     "weather": {

@@ -14,8 +14,13 @@
       "swimming": "Svømming",
       "walking": "Gange",
       "hiking": "Tur",
+      "strength": "Styrketrening",
+      "rowing": "Roing",
+      "cross_country_skiing": "Langrenn",
+      "other": "Økt",
       "default": "Økt"
-    }
+    },
+    "unknown": "Aktivitet"
   },
   "widgets": {
     "weather": {
