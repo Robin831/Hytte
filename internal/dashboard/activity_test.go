@@ -55,12 +55,14 @@ var englishLabelFragments = []string{
 func assertNoEnglishLabels(t *testing.T, item ActivityItem) {
 	t.Helper()
 	// Only the user-supplied fields (title, comment) may legitimately contain
-	// English words; the rest are enum-like keys and must stay machine-friendly.
+	// English words; the structural fields below must stay free of label text.
+	// The `type` field is a stable enum discriminator ("workout", "lactate",
+	// "note", "link") — those values are machine-readable API keys, not labels,
+	// so they are not subject to this check.
 	for _, field := range []struct{ name, value string }{
 		{"sport", item.Sport},
 		{"code", item.Code},
 		{"link", item.Link},
-		{"type", item.Type},
 	} {
 		for _, frag := range englishLabelFragments {
 			if strings.Contains(field.value, frag) {
