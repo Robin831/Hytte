@@ -80,6 +80,16 @@ function expandCard(id: number) {
   fireEvent.click(screen.getByTestId(`suggestion-card-header-${id}`))
 }
 
+// Pending tab page-group sections start collapsed (Hytte-2d7p), so tests that
+// need to interact with cards or assert on card content must expand the
+// surrounding group first.
+async function expandPendingGroup(slug: string = 'dashboard') {
+  const header = await screen.findByTestId(`suggestion-group-header-${slug}`)
+  if (header.getAttribute('aria-expanded') === 'false') {
+    fireEvent.click(header)
+  }
+}
+
 interface SSEFrame {
   event: string
   data: unknown
@@ -169,6 +179,7 @@ describe('Suggestions – data fetch', () => {
     expect(screen.getByRole('tab', { name: /Planned \(2\)/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Created \(0\)/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Rejected \(0\)/ })).toBeInTheDocument()
+    await expandPendingGroup()
     expect(screen.getByText('First pending')).toBeInTheDocument()
   })
 
@@ -197,9 +208,7 @@ describe('Suggestions – data fetch', () => {
 
     renderPage()
 
-    await waitFor(() => {
-      expect(screen.getByText('P1')).toBeInTheDocument()
-    })
+    await screen.findByTestId('suggestion-group-header-dashboard')
 
     fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
 
@@ -227,13 +236,12 @@ describe('Suggestions – data fetch', () => {
 
     renderPage()
 
-    // Initially on the Pending tab — only the pending card is in the active panel.
-    await waitFor(() => {
-      const panel = screen.getByRole('tabpanel')
-      expect(within(panel).getByText('Only pending card')).toBeInTheDocument()
-    })
+    // Initially on the Pending tab — only the pending card is in the active
+    // panel (after expanding the page-group section).
+    await expandPendingGroup()
     {
       const panel = screen.getByRole('tabpanel')
+      expect(within(panel).getByText('Only pending card')).toBeInTheDocument()
       expect(within(panel).queryByText('Only planned card')).not.toBeInTheDocument()
       expect(within(panel).queryByText('Only rejected card')).not.toBeInTheDocument()
     }
@@ -336,13 +344,13 @@ describe('Suggestions – Run now flow', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText('Old item')).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: /Pending \(1\)/ })).toBeInTheDocument()
     })
 
     fireEvent.click(screen.getByRole('button', { name: /Run now/ }))
 
     await waitFor(() => {
-      expect(screen.getByText('Fresh item')).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: /Pending \(2\)/ })).toBeInTheDocument()
     })
     // page_complete and done both call refetch — at least 3 list loads total.
     expect(listCalls).toBeGreaterThanOrEqual(2)
@@ -635,9 +643,8 @@ describe('Suggestions – Run now flow', () => {
 
     renderPage()
 
-    await waitFor(() => {
-      expect(screen.getByText('Stays visible')).toBeInTheDocument()
-    })
+    await expandPendingGroup()
+    expect(screen.getByText('Stays visible')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Run now/ }))
 
@@ -681,9 +688,8 @@ describe('Suggestions – Run now flow', () => {
 
     renderPage()
 
-    await waitFor(() => {
-      expect(screen.getByText('Stays visible')).toBeInTheDocument()
-    })
+    await expandPendingGroup()
+    expect(screen.getByText('Stays visible')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Run now/ }))
 
@@ -916,9 +922,8 @@ describe('Suggestions – plan action', () => {
 
     renderPage()
 
-    await waitFor(() => {
-      expect(screen.getByText('Plan me')).toBeInTheDocument()
-    })
+    await expandPendingGroup()
+    expect(screen.getByText('Plan me')).toBeInTheDocument()
 
     expandCard(1)
     fireEvent.click(screen.getByRole('button', { name: /Plan it/ }))
@@ -964,9 +969,8 @@ describe('Suggestions – plan action', () => {
 
     const { container } = renderPage()
 
-    await waitFor(() => {
-      expect(screen.getByText('Plan me')).toBeInTheDocument()
-    })
+    await expandPendingGroup()
+    expect(screen.getByText('Plan me')).toBeInTheDocument()
 
     expandCard(1)
     // Idle state — Plan it button is enabled and there's no spinner inside it.
@@ -1018,9 +1022,8 @@ describe('Suggestions – plan action', () => {
 
     renderPage()
 
-    await waitFor(() => {
-      expect(screen.getByText('Plan me')).toBeInTheDocument()
-    })
+    await expandPendingGroup()
+    expect(screen.getByText('Plan me')).toBeInTheDocument()
 
     expandCard(1)
     fireEvent.click(screen.getByRole('button', { name: /Plan it/ }))
@@ -1054,9 +1057,8 @@ describe('Suggestions – plan action', () => {
 
     renderPage()
 
-    await waitFor(() => {
-      expect(screen.getByText('Plan me')).toBeInTheDocument()
-    })
+    await expandPendingGroup()
+    expect(screen.getByText('Plan me')).toBeInTheDocument()
 
     expandCard(1)
     fireEvent.click(screen.getByRole('button', { name: /Plan it/ }))
@@ -1089,9 +1091,8 @@ describe('Suggestions – reject action', () => {
 
     renderPage()
 
-    await waitFor(() => {
-      expect(screen.getByText('Reject me')).toBeInTheDocument()
-    })
+    await expandPendingGroup()
+    expect(screen.getByText('Reject me')).toBeInTheDocument()
 
     expandCard(1)
     fireEvent.click(screen.getByRole('button', { name: /^Reject$/ }))
@@ -1121,9 +1122,8 @@ describe('Suggestions – reject action', () => {
 
     renderPage()
 
-    await waitFor(() => {
-      expect(screen.getByText('Reject me')).toBeInTheDocument()
-    })
+    await expandPendingGroup()
+    expect(screen.getByText('Reject me')).toBeInTheDocument()
 
     expandCard(1)
     fireEvent.click(screen.getByRole('button', { name: /^Reject$/ }))
@@ -1412,10 +1412,10 @@ describe('Suggestions – collapsed cards', () => {
 
     renderPage()
 
-    // Title is in the always-visible header.
-    await waitFor(() => {
-      expect(screen.getByText('Collapsed by default')).toBeInTheDocument()
-    })
+    // Title is in the always-visible card header (after expanding the
+    // surrounding page-group section, which is collapsed by default).
+    await expandPendingGroup()
+    expect(screen.getByText('Collapsed by default')).toBeInTheDocument()
 
     // Body, action buttons, and feedback textarea live under the collapsed
     // body and should not be in the DOM yet.
@@ -1448,6 +1448,7 @@ describe('Suggestions – collapsed cards', () => {
 
     renderPage()
 
+    await expandPendingGroup()
     const header = await screen.findByTestId('suggestion-card-header-12')
     expect(header).toHaveAttribute('aria-expanded', 'false')
 
@@ -1476,15 +1477,15 @@ describe('Suggestions – collapsed cards', () => {
 
     renderPage()
 
-    await waitFor(() => {
-      expect(screen.getByText('Persisted toggle')).toBeInTheDocument()
-    })
+    await expandPendingGroup()
+    expect(screen.getByText('Persisted toggle')).toBeInTheDocument()
     expandCard(13)
     await waitFor(() => {
       expect(screen.getByText('Persisted body')).toBeInTheDocument()
     })
 
-    // Switch away and back — the card should still be expanded.
+    // Switch away and back — the card should still be expanded (the page
+    // group also remains expanded across tab switches).
     fireEvent.click(screen.getByRole('tab', { name: /Rejected/ }))
     await waitFor(() => {
       expect(screen.queryByText('Persisted body')).not.toBeInTheDocument()
@@ -1514,7 +1515,7 @@ describe('Suggestions – page-grouped sections', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText('Budget one')).toBeInTheDocument()
+      expect(screen.getByTestId('suggestion-group-budget')).toBeInTheDocument()
     })
 
     const groups = screen.getAllByRole('button', { name: /Toggle .* section/ })
@@ -1548,7 +1549,7 @@ describe('Suggestions – page-grouped sections', () => {
     }
   })
 
-  it('section toggle hides and shows the cards under it', async () => {
+  it('Pending tab sections start collapsed; clicking the header expands them', async () => {
     const list = {
       pending: [makeSuggestion({ id: 41, title: 'Hideable', page_slug: 'budget' })],
       planned: [],
@@ -1560,12 +1561,20 @@ describe('Suggestions – page-grouped sections', () => {
 
     renderPage()
 
-    await waitFor(() => {
-      expect(screen.getByText('Hideable')).toBeInTheDocument()
-    })
+    const groupHeader = await screen.findByTestId('suggestion-group-header-budget')
+    expect(groupHeader).toHaveAttribute('aria-expanded', 'false')
+    // Card body is not rendered while the section is collapsed.
+    expect(screen.queryByText('Hideable')).not.toBeInTheDocument()
+    // Header still surfaces the page title and count even when collapsed.
+    expect(within(groupHeader).getByText('budget')).toBeInTheDocument()
+    expect(within(groupHeader).getByText('1 suggestion')).toBeInTheDocument()
 
-    const groupHeader = screen.getByTestId('suggestion-group-header-budget')
-    expect(groupHeader).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.click(groupHeader)
+
+    await waitFor(() => {
+      expect(groupHeader).toHaveAttribute('aria-expanded', 'true')
+    })
+    expect(screen.getByText('Hideable')).toBeInTheDocument()
 
     fireEvent.click(groupHeader)
 
@@ -1573,12 +1582,38 @@ describe('Suggestions – page-grouped sections', () => {
       expect(groupHeader).toHaveAttribute('aria-expanded', 'false')
     })
     expect(screen.queryByText('Hideable')).not.toBeInTheDocument()
+  })
 
-    fireEvent.click(groupHeader)
+  it('Planned, Created and Rejected tab sections start expanded', async () => {
+    const list = {
+      pending: [],
+      planned: [makeSuggestion({ id: 71, status: 'planned', title: 'Planned card', page_slug: 'budget', plan: 'A plan' })],
+      rejected: [makeSuggestion({ id: 72, status: 'rejected', title: 'Rejected card', page_slug: 'weather' })],
+      bead_created: [makeSuggestion({ id: 73, status: 'bead_created', title: 'Created card', page_slug: 'notes', bead_id: 'Hytte-aaaa' })],
+    }
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
 
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('tab', { name: /Planned/ }))
     await waitFor(() => {
-      expect(screen.getByText('Hideable')).toBeInTheDocument()
+      expect(screen.getByTestId('suggestion-group-header-budget')).toHaveAttribute('aria-expanded', 'true')
     })
+    expect(screen.getByText('Planned card')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: /Created/ }))
+    await waitFor(() => {
+      expect(screen.getByTestId('suggestion-group-header-notes')).toHaveAttribute('aria-expanded', 'true')
+    })
+    expect(screen.getByText('Created card')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: /Rejected/ }))
+    await waitFor(() => {
+      expect(screen.getByTestId('suggestion-group-header-weather')).toHaveAttribute('aria-expanded', 'true')
+    })
+    expect(screen.getByText('Rejected card')).toBeInTheDocument()
   })
 })
 
