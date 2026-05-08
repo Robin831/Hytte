@@ -70,6 +70,13 @@ function sortPageSlugs(slugs: string[]): string[] {
   })
 }
 
+// Pending sections start collapsed because that tab grows long enough to need
+// scrolling even with cards collapsed; other tabs stay expanded so the
+// operator can see at a glance what's planned, created, or rejected.
+function defaultGroupExpanded(tab: GroupTabKey): boolean {
+  return tab !== 'pending'
+}
+
 function groupBySlug(list: Suggestion[]): Map<string, Suggestion[]> {
   const groups = new Map<string, Suggestion[]>()
   for (const s of list) {
@@ -107,9 +114,11 @@ export default function Suggestions() {
   // Per-card expanded state. Cards default to collapsed (absent key). We
   // remember toggled cards across tab switches but not across reloads.
   const [cardExpanded, setCardExpanded] = useState<Map<number, boolean>>(() => new Map())
-  // Per-tab section expanded state. Sections default to expanded (absent key
-  // means open). The map only stores explicit user toggles.
-  const [groupCollapsed, setGroupCollapsed] = useState<Map<string, true>>(() => new Map())
+  // Per-tab section expanded state. Defaults are tab-specific: the Pending tab
+  // starts collapsed (operators scroll a long list, so we want only headers
+  // visible) while other tabs start expanded (shorter, at-a-glance content).
+  // The map only stores explicit user toggles that diverge from the default.
+  const [groupOverrides, setGroupOverrides] = useState<Map<string, boolean>>(() => new Map())
 
   const refetch = useCallback(() => {
     setReloadKey(k => k + 1)
@@ -130,13 +139,13 @@ export default function Suggestions() {
 
   const setGroupExpansion = useCallback(
     (tab: GroupTabKey, slug: string, next: boolean) => {
-      setGroupCollapsed(prev => {
+      setGroupOverrides(prev => {
         const m = new Map(prev)
         const key = `${tab}::${slug}`
-        if (next) {
+        if (next === defaultGroupExpanded(tab)) {
           m.delete(key)
         } else {
-          m.set(key, true)
+          m.set(key, next)
         }
         return m
       })
@@ -145,8 +154,13 @@ export default function Suggestions() {
   )
 
   const isGroupExpanded = useCallback(
-    (tab: GroupTabKey, slug: string) => !groupCollapsed.has(`${tab}::${slug}`),
-    [groupCollapsed],
+    (tab: GroupTabKey, slug: string) => {
+      const key = `${tab}::${slug}`
+      const override = groupOverrides.get(key)
+      if (override !== undefined) return override
+      return defaultGroupExpanded(tab)
+    },
+    [groupOverrides],
   )
 
   const handlePlanned = useCallback((updated: Suggestion) => {
