@@ -61,6 +61,9 @@ func RunNewPageSuggestion(
 
 	pendingCount, err := PendingCountForPage(runCtx, db, userID, NewPageSlug)
 	if err != nil {
+		if runCtx.Err() != nil {
+			return result, runCtx.Err()
+		}
 		log.Printf("suggestions: count pending new_page suggestions: %v", err)
 		result.Errors++
 		return result, nil

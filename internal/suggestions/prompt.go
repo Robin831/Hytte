@@ -99,27 +99,22 @@ func buildPagePrompt(page Page, sourceFiles map[string]string, recentGitLog stri
 	return sb.String()
 }
 
-// exampleShape renders a JSON array example with `target` sample objects so the
-// prompt's example matches the requested count exactly. The first three slots
-// use distinct types; targets above 3 cycle the type field — only the count
-// matters for the example.
+// exampleShape renders a JSON array example with exactly `target` objects so
+// the prompt's example always matches the requested count. The first three
+// slots use distinct types; additional slots cycle through the type list —
+// only the count matters for the example, not the specific types used.
 func exampleShape(target int) string {
-	samples := []string{
-		`{"type": "improvement", "size": "s", "title": "...", "body": "..."}`,
-		`{"type": "addition", "size": "m", "title": "...", "body": "..."}`,
-		`{"type": "bugfix", "size": "s", "title": "...", "body": "..."}`,
-	}
+	types := []string{"improvement", "addition", "bugfix", "refactor"}
+	sizes := []string{"s", "m", "s", "m"}
 	if target < 1 {
 		target = 1
-	}
-	if target > len(samples) {
-		target = len(samples)
 	}
 	var sb strings.Builder
 	sb.WriteString("[\n")
 	for i := 0; i < target; i++ {
-		sb.WriteString("  ")
-		sb.WriteString(samples[i])
+		t := types[i%len(types)]
+		s := sizes[i%len(sizes)]
+		fmt.Fprintf(&sb, "  {\"type\": %q, \"size\": %q, \"title\": \"...\", \"body\": \"...\"}", t, s)
 		if i < target-1 {
 			sb.WriteString(",")
 		}

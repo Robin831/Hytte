@@ -144,10 +144,12 @@ func RunSuggestionsForPages(
 //
 // Recomputes the page's pending-suggestion count and the resulting deficit
 // against MaxPendingPerPage at entry. If the page is already at the cap, the
-// function returns (0, 0, 0, nil) without making a Claude call — this is the
-// second stage of the two-stage filter (see FilterUnderCap) and protects
-// against a page filling between the pre-rotation drop and execution. When
-// the deficit is positive, exactly that many suggestions are requested.
+// function returns (0, 0, 0, *PageAtCapError) without making a Claude call —
+// callers must check err and handle PageAtCapError as a non-failure skip
+// signal (see RunSuggestionsForPages). This is the second stage of the
+// two-stage filter (see FilterUnderCap) and protects against a page filling
+// between the pre-rotation drop and execution. When the deficit is positive,
+// exactly that many suggestions are requested.
 func runForPage(
 	ctx context.Context,
 	db *sql.DB,
