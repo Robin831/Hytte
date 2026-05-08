@@ -3,14 +3,16 @@ import { Lightbulb, Plus, Play, X, AlertTriangle, CheckCircle2, XCircle } from '
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../components/ui/skeleton'
 import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
-import { SuggestionCard, type Suggestion } from '../components/suggestions/SuggestionCard'
+import { SuggestionCard, NEW_PAGE_SLUG, type Suggestion } from '../components/suggestions/SuggestionCard'
+import { SuggestionGroup } from '../components/suggestions/SuggestionGroup'
 import { SuggestionActions } from '../components/suggestions/SuggestionActions'
 import { NewSuggestionForm } from '../components/suggestions/NewSuggestionForm'
 import { SettingsPanel } from '../components/suggestions/SettingsPanel'
 import { RecentRunsPanel } from '../components/suggestions/RecentRunsPanel'
 import { nextRunHintKey, formatRunTime } from './suggestionsUtils'
 
-type TabKey = 'pending' | 'planned' | 'rejected' | 'pages'
+type TabKey = 'pending' | 'planned' | 'created' | 'rejected' | 'pages'
+type GroupTabKey = Exclude<TabKey, 'pages'>
 
 interface ListResponse {
   pending: Suggestion[]
@@ -52,6 +54,28 @@ interface PageCompleteEvent {
   error?: string
 }
 
+function sortPageSlugs(slugs: string[]): string[] {
+  return [...slugs].sort((a, b) => {
+    if (a === NEW_PAGE_SLUG && b === NEW_PAGE_SLUG) return 0
+    if (a === NEW_PAGE_SLUG) return 1
+    if (b === NEW_PAGE_SLUG) return -1
+    return a.localeCompare(b)
+  })
+}
+
+function groupBySlug(list: Suggestion[]): Map<string, Suggestion[]> {
+  const groups = new Map<string, Suggestion[]>()
+  for (const s of list) {
+    const existing = groups.get(s.page_slug)
+    if (existing) {
+      existing.push(s)
+    } else {
+      groups.set(s.page_slug, [s])
+    }
+  }
+  return groups
+}
+
 export default function Suggestions() {
   const { t, i18n } = useTranslation('suggestions')
   const { t: tCommon } = useTranslation('common')
@@ -73,21 +97,66 @@ export default function Suggestions() {
   const [recentRunsReloadSignal, setRecentRunsReloadSignal] = useState(0)
   const abortRef = useRef<AbortController | null>(null)
 
+  // Per-card expanded state. Cards default to collapsed (absent key). We
+  // remember toggled cards across tab switches but not across reloads.
+  const [cardExpanded, setCardExpanded] = useState<Map<number, boolean>>(() => new Map())
+  // Per-tab section expanded state. Sections default to expanded (absent key
+  // means open). The map only stores explicit user toggles.
+  const [groupCollapsed, setGroupCollapsed] = useState<Map<string, true>>(() => new Map())
+
   const refetch = useCallback(() => {
     setReloadKey(k => k + 1)
   }, [])
 
+  const setCardExpansion = useCallback((id: number, next: boolean) => {
+    setCardExpanded(prev => {
+      const m = new Map(prev)
+      m.set(id, next)
+      return m
+    })
+  }, [])
+
+  const isCardExpanded = useCallback(
+    (id: number) => cardExpanded.get(id) === true,
+    [cardExpanded],
+  )
+
+  const setGroupExpansion = useCallback(
+    (tab: GroupTabKey, slug: string, next: boolean) => {
+      setGroupCollapsed(prev => {
+        const m = new Map(prev)
+        const key = `${tab}::${slug}`
+        if (next) {
+          m.delete(key)
+        } else {
+          m.set(key, true)
+        }
+        return m
+      })
+    },
+    [],
+  )
+
+  const isGroupExpanded = useCallback(
+    (tab: GroupTabKey, slug: string) => !groupCollapsed.has(`${tab}::${slug}`),
+    [groupCollapsed],
+  )
+
   const handlePlanned = useCallback((updated: Suggestion) => {
     setPending(prev => prev.filter(s => s.id !== updated.id))
     setPlanned(prev => [updated, ...prev])
+    // Keep the card expanded after the user planned it so the rendered plan is
+    // immediately visible when they switch to the Planned tab.
+    setCardExpansion(updated.id, true)
     refetch()
-  }, [refetch])
+  }, [refetch, setCardExpansion])
 
   const handleBeadCreated = useCallback((updated: Suggestion) => {
     setPlanned(prev => prev.filter(s => s.id !== updated.id))
     setBeadCreated(prev => [updated, ...prev])
+    setCardExpansion(updated.id, true)
     refetch()
-  }, [refetch])
+  }, [refetch, setCardExpansion])
 
   const failedToLoadMsg = t('errors.failedToLoad')
 
@@ -131,7 +200,8 @@ export default function Suggestions() {
   const counts = useMemo(
     () => ({
       pending: pending.length,
-      planned: planned.length + beadCreated.length,
+      planned: planned.length,
+      created: beadCreated.length,
       rejected: rejected.length,
     }),
     [pending, planned, rejected, beadCreated],
@@ -318,6 +388,8 @@ export default function Suggestions() {
       <SuggestionCard
         key={s.id}
         suggestion={s}
+        expanded={isCardExpanded(s.id)}
+        onToggleExpanded={next => setCardExpansion(s.id, next)}
         actionsSlot={
           s.status === 'rejected' ? null : (
             <SuggestionActions
@@ -332,40 +404,7 @@ export default function Suggestions() {
     )
   }
 
-  function renderPanel(tab: Exclude<TabKey, 'pages'>, list: Suggestion[]) {
-    if (tab === 'planned') {
-      if (list.length === 0 && beadCreated.length === 0) {
-        return (
-          <p className="px-4 py-10 text-center text-sm text-gray-400">
-            {t('empty.planned')}
-          </p>
-        )
-      }
-      return (
-        <div className="space-y-6">
-          {list.length > 0 && (
-            <div className="space-y-3">
-              {list.map(renderCard)}
-            </div>
-          )}
-          {beadCreated.length > 0 && (
-            <section
-              aria-labelledby="bead-created-heading"
-              data-testid="bead-created-section"
-              className="space-y-3"
-            >
-              <h2
-                id="bead-created-heading"
-                className="text-sm font-semibold uppercase tracking-wide text-emerald-300"
-              >
-                {t('headings.beadCreated')}
-              </h2>
-              {beadCreated.map(renderCard)}
-            </section>
-          )}
-        </div>
-      )
-    }
+  function renderPanel(tab: GroupTabKey, list: Suggestion[]) {
     if (list.length === 0) {
       return (
         <p className="px-4 py-10 text-center text-sm text-gray-400">
@@ -373,9 +412,27 @@ export default function Suggestions() {
         </p>
       )
     }
+    const groups = groupBySlug(list)
+    const sortedKeys = sortPageSlugs([...groups.keys()])
     return (
-      <div className="space-y-3">
-        {list.map(renderCard)}
+      <div className="space-y-4">
+        {sortedKeys.map(slug => {
+          const items = groups.get(slug) ?? []
+          const expanded = isGroupExpanded(tab, slug)
+          const title = slug === NEW_PAGE_SLUG ? t('groups.newPageIdeas') : slug
+          return (
+            <SuggestionGroup
+              key={slug}
+              groupKey={slug}
+              pageTitle={title}
+              count={items.length}
+              expanded={expanded}
+              onToggle={next => setGroupExpansion(tab, slug, next)}
+            >
+              {items.map(renderCard)}
+            </SuggestionGroup>
+          )
+        })}
       </div>
     )
   }
@@ -544,6 +601,9 @@ export default function Suggestions() {
             <TabTrigger value="planned">
               {t('tabs.planned')} ({counts.planned})
             </TabTrigger>
+            <TabTrigger value="created">
+              {t('tabs.created')} ({counts.created})
+            </TabTrigger>
             <TabTrigger value="rejected">
               {t('tabs.rejected')} ({counts.rejected})
             </TabTrigger>
@@ -588,6 +648,7 @@ export default function Suggestions() {
               )}
               <TabPanel value="pending">{renderPanel('pending', pending)}</TabPanel>
               <TabPanel value="planned">{renderPanel('planned', planned)}</TabPanel>
+              <TabPanel value="created">{renderPanel('created', beadCreated)}</TabPanel>
               <TabPanel value="rejected">{renderPanel('rejected', rejected)}</TabPanel>
               <TabPanel value="pages">
                 <SettingsPanel active={activeTab === 'pages'} />

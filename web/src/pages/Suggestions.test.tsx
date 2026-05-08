@@ -76,6 +76,10 @@ function renderPage() {
   )
 }
 
+function expandCard(id: number) {
+  fireEvent.click(screen.getByTestId(`suggestion-card-header-${id}`))
+}
+
 interface SSEFrame {
   event: string
   data: unknown
@@ -163,6 +167,7 @@ describe('Suggestions – data fetch', () => {
       expect(screen.getByRole('tab', { name: /Pending \(1\)/ })).toBeInTheDocument()
     })
     expect(screen.getByRole('tab', { name: /Planned \(2\)/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Created \(0\)/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Rejected \(0\)/ })).toBeInTheDocument()
     expect(screen.getByText('First pending')).toBeInTheDocument()
   })
@@ -915,6 +920,7 @@ describe('Suggestions – plan action', () => {
       expect(screen.getByText('Plan me')).toBeInTheDocument()
     })
 
+    expandCard(1)
     fireEvent.click(screen.getByRole('button', { name: /Plan it/ }))
 
     await waitFor(() => {
@@ -962,6 +968,7 @@ describe('Suggestions – plan action', () => {
       expect(screen.getByText('Plan me')).toBeInTheDocument()
     })
 
+    expandCard(1)
     // Idle state — Plan it button is enabled and there's no spinner inside it.
     const idleBtn = screen.getByRole('button', { name: /Plan it/ })
     expect(idleBtn).not.toBeDisabled()
@@ -1015,6 +1022,7 @@ describe('Suggestions – plan action', () => {
       expect(screen.getByText('Plan me')).toBeInTheDocument()
     })
 
+    expandCard(1)
     fireEvent.click(screen.getByRole('button', { name: /Plan it/ }))
 
     await waitFor(() => {
@@ -1050,6 +1058,7 @@ describe('Suggestions – plan action', () => {
       expect(screen.getByText('Plan me')).toBeInTheDocument()
     })
 
+    expandCard(1)
     fireEvent.click(screen.getByRole('button', { name: /Plan it/ }))
 
     await waitFor(() => {
@@ -1084,6 +1093,7 @@ describe('Suggestions – reject action', () => {
       expect(screen.getByText('Reject me')).toBeInTheDocument()
     })
 
+    expandCard(1)
     fireEvent.click(screen.getByRole('button', { name: /^Reject$/ }))
 
     await waitFor(() => {
@@ -1115,6 +1125,7 @@ describe('Suggestions – reject action', () => {
       expect(screen.getByText('Reject me')).toBeInTheDocument()
     })
 
+    expandCard(1)
     fireEvent.click(screen.getByRole('button', { name: /^Reject$/ }))
 
     await waitFor(() => {
@@ -1149,10 +1160,12 @@ describe('Suggestions – planned tab', () => {
 
     await waitFor(() => {
       const panel = screen.getByRole('tabpanel')
-      expect(within(panel).getByTestId('suggestion-2-plan')).toBeInTheDocument()
+      expect(within(panel).getByText('My planned item')).toBeInTheDocument()
     })
 
-    const planEl = screen.getByTestId('suggestion-2-plan')
+    expandCard(2)
+
+    const planEl = await screen.findByTestId('suggestion-2-plan')
     expect(planEl).toHaveTextContent('## Implementation plan')
     expect(planEl).toHaveTextContent('Step 1: do the thing')
   })
@@ -1174,8 +1187,10 @@ describe('Suggestions – planned tab', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
 
     await waitFor(() => {
-      expect(screen.getByText('No plan saved yet.')).toBeInTheDocument()
+      expect(screen.getByText('No plan yet')).toBeInTheDocument()
     })
+    expandCard(3)
+    expect(await screen.findByText('No plan saved yet.')).toBeInTheDocument()
   })
 
   it('Create bead button is enabled on planned suggestions', async () => {
@@ -1195,10 +1210,12 @@ describe('Suggestions – planned tab', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^Create bead$/ })).toBeInTheDocument()
+      expect(screen.getByText('Has plan')).toBeInTheDocument()
     })
 
-    const btn = screen.getByRole('button', { name: /^Create bead$/ })
+    expandCard(4)
+
+    const btn = await screen.findByRole('button', { name: /^Create bead$/ })
     expect(btn).not.toBeDisabled()
     expect(btn).not.toHaveAttribute('aria-disabled', 'true')
   })
@@ -1243,16 +1260,22 @@ describe('Suggestions – create bead action', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^Create bead$/ })).toBeInTheDocument()
+      expect(screen.getByText('Plan ready')).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /^Create bead$/ }))
+    expandCard(5)
+    fireEvent.click(await screen.findByRole('button', { name: /^Create bead$/ }))
+
+    // After Create bead succeeds, the card moves into the new Created tab.
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Created \(1\)/ })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('tab', { name: /Created/ }))
 
     await waitFor(() => {
       expect(screen.getByTestId('suggestion-5-bead-id')).toBeInTheDocument()
     })
     expect(screen.getByTestId('suggestion-5-bead-id')).toHaveTextContent('Hytte-abcd')
-    expect(screen.getByTestId('bead-created-section')).toBeInTheDocument()
     expect(listCalls).toBeGreaterThanOrEqual(2)
   })
 
@@ -1297,6 +1320,11 @@ describe('Suggestions – create bead action', () => {
     })
     fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
 
+    await waitFor(() => {
+      expect(screen.getByText('Plan ready')).toBeInTheDocument()
+    })
+    expandCard(6)
+
     const idleBtn = await screen.findByRole('button', { name: /^Create bead$/ })
     expect(idleBtn).not.toBeDisabled()
     fireEvent.click(idleBtn)
@@ -1309,6 +1337,11 @@ describe('Suggestions – create bead action', () => {
 
     resolveBead!({ ok: true, json: () => Promise.resolve(updatedSuggestion) })
 
+    // Card moves into the Created tab; switch over to verify the bead-id chip renders.
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Created \(1\)/ })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('tab', { name: /Created/ }))
     await waitFor(() => {
       expect(screen.getByTestId('suggestion-6-bead-id')).toBeInTheDocument()
     })
@@ -1345,6 +1378,11 @@ describe('Suggestions – create bead action', () => {
     })
     fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
 
+    await waitFor(() => {
+      expect(screen.getByText('Stays planned')).toBeInTheDocument()
+    })
+    expandCard(7)
+
     const btn = await screen.findByRole('button', { name: /^Create bead$/ })
     fireEvent.click(btn)
 
@@ -1354,10 +1392,269 @@ describe('Suggestions – create bead action', () => {
     expect(screen.getByTestId('suggestion-7-bead-error')).toHaveTextContent('database locked')
     // Card must remain in Planned — the planned-card title is still visible.
     expect(screen.getByText('Stays planned')).toBeInTheDocument()
-    // No bead-created section because nothing has been created yet.
-    expect(screen.queryByTestId('bead-created-section')).not.toBeInTheDocument()
+    // Created tab is empty because nothing has been created yet.
+    expect(screen.getByRole('tab', { name: /Created \(0\)/ })).toBeInTheDocument()
     // Button label flips to retry.
     expect(screen.getByRole('button', { name: /Retry create bead/ })).toBeInTheDocument()
+  })
+})
+
+describe('Suggestions – collapsed cards', () => {
+  it('cards render collapsed by default and expand when the header is clicked', async () => {
+    const list = {
+      pending: [makeSuggestion({ id: 11, title: 'Collapsed by default', body: 'Hidden body content' })],
+      planned: [],
+      rejected: [],
+    }
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
+
+    renderPage()
+
+    // Title is in the always-visible header.
+    await waitFor(() => {
+      expect(screen.getByText('Collapsed by default')).toBeInTheDocument()
+    })
+
+    // Body, action buttons, and feedback textarea live under the collapsed
+    // body and should not be in the DOM yet.
+    expect(screen.queryByText('Hidden body content')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Plan it/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Reject$/ })).not.toBeInTheDocument()
+
+    const header = screen.getByTestId('suggestion-card-header-11')
+    expect(header).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(header)
+
+    await waitFor(() => {
+      expect(screen.getByText('Hidden body content')).toBeInTheDocument()
+    })
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: /Plan it/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Reject$/ })).toBeInTheDocument()
+  })
+
+  it('header keyboard activation toggles expansion', async () => {
+    const list = {
+      pending: [makeSuggestion({ id: 12, title: 'Press to expand', body: 'Hidden body' })],
+      planned: [],
+      rejected: [],
+    }
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
+
+    renderPage()
+
+    const header = await screen.findByTestId('suggestion-card-header-12')
+    expect(header).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.keyDown(header, { key: 'Enter' })
+    await waitFor(() => {
+      expect(header).toHaveAttribute('aria-expanded', 'true')
+    })
+    expect(screen.getByText('Hidden body')).toBeInTheDocument()
+
+    fireEvent.keyDown(header, { key: ' ' })
+    await waitFor(() => {
+      expect(header).toHaveAttribute('aria-expanded', 'false')
+    })
+    expect(screen.queryByText('Hidden body')).not.toBeInTheDocument()
+  })
+
+  it('expansion state survives tab switches', async () => {
+    const list = {
+      pending: [makeSuggestion({ id: 13, title: 'Persisted toggle', body: 'Persisted body' })],
+      planned: [],
+      rejected: [],
+    }
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Persisted toggle')).toBeInTheDocument()
+    })
+    expandCard(13)
+    await waitFor(() => {
+      expect(screen.getByText('Persisted body')).toBeInTheDocument()
+    })
+
+    // Switch away and back — the card should still be expanded.
+    fireEvent.click(screen.getByRole('tab', { name: /Rejected/ }))
+    await waitFor(() => {
+      expect(screen.queryByText('Persisted body')).not.toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('tab', { name: /Pending/ }))
+    await waitFor(() => {
+      expect(screen.getByText('Persisted body')).toBeInTheDocument()
+    })
+  })
+})
+
+describe('Suggestions – page-grouped sections', () => {
+  it('renders sections sorted alphabetically with __new_page__ last', async () => {
+    const list = {
+      pending: [
+        makeSuggestion({ id: 21, title: 'New page idea', page_slug: '__new_page__', type: 'new_page' }),
+        makeSuggestion({ id: 22, title: 'Weather one', page_slug: 'weather' }),
+        makeSuggestion({ id: 23, title: 'Budget one', page_slug: 'budget' }),
+      ],
+      planned: [],
+      rejected: [],
+    }
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Budget one')).toBeInTheDocument()
+    })
+
+    const groups = screen.getAllByRole('button', { name: /Toggle .* section/ })
+    // Order should be: budget, weather, __new_page__ (rendered as 'New page ideas')
+    expect(groups).toHaveLength(3)
+    expect(groups[0]).toHaveAttribute('aria-label', 'Toggle budget section')
+    expect(groups[1]).toHaveAttribute('aria-label', 'Toggle weather section')
+    expect(groups[2]).toHaveAttribute('aria-label', 'Toggle New page ideas section')
+  })
+
+  it('sections that have zero items in the active tab are omitted', async () => {
+    const list = {
+      pending: [makeSuggestion({ id: 31, title: 'P1', page_slug: 'budget' })],
+      planned: [makeSuggestion({ id: 32, status: 'planned', title: 'PL1', page_slug: 'weather' })],
+      rejected: [],
+    }
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
+
+    renderPage()
+
+    // Pending tab: only the budget group should render — weather is empty here.
+    await waitFor(() => {
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).getByTestId('suggestion-group-budget')).toBeInTheDocument()
+    })
+    {
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).queryByTestId('suggestion-group-weather')).not.toBeInTheDocument()
+    }
+  })
+
+  it('section toggle hides and shows the cards under it', async () => {
+    const list = {
+      pending: [makeSuggestion({ id: 41, title: 'Hideable', page_slug: 'budget' })],
+      planned: [],
+      rejected: [],
+    }
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Hideable')).toBeInTheDocument()
+    })
+
+    const groupHeader = screen.getByTestId('suggestion-group-header-budget')
+    expect(groupHeader).toHaveAttribute('aria-expanded', 'true')
+
+    fireEvent.click(groupHeader)
+
+    await waitFor(() => {
+      expect(groupHeader).toHaveAttribute('aria-expanded', 'false')
+    })
+    expect(screen.queryByText('Hideable')).not.toBeInTheDocument()
+
+    fireEvent.click(groupHeader)
+
+    await waitFor(() => {
+      expect(screen.getByText('Hideable')).toBeInTheDocument()
+    })
+  })
+})
+
+describe('Suggestions – Created tab', () => {
+  it('contains only bead_created cards; Planned tab no longer does', async () => {
+    const list = {
+      pending: [],
+      planned: [
+        makeSuggestion({ id: 51, status: 'planned', title: 'Still planned', plan: 'A plan' }),
+      ],
+      rejected: [],
+      bead_created: [
+        makeSuggestion({
+          id: 52,
+          status: 'bead_created',
+          title: 'Already created',
+          plan: 'A plan',
+          bead_id: 'Hytte-zzzz',
+        }),
+      ],
+    }
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
+
+    renderPage()
+
+    // Tab counts reflect the new partitioning: planned is 1, created is 1.
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Planned \(1\)/ })).toBeInTheDocument()
+    })
+    expect(screen.getByRole('tab', { name: /Created \(1\)/ })).toBeInTheDocument()
+
+    // Planned tab shows only the planned card, not the bead_created one.
+    fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
+    await waitFor(() => {
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).getByText('Still planned')).toBeInTheDocument()
+    })
+    {
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).queryByText('Already created')).not.toBeInTheDocument()
+    }
+
+    // Created tab shows only the bead_created card.
+    fireEvent.click(screen.getByRole('tab', { name: /Created/ }))
+    await waitFor(() => {
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).getByText('Already created')).toBeInTheDocument()
+    })
+    {
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).queryByText('Still planned')).not.toBeInTheDocument()
+    }
+  })
+
+  it('shows the Created tab empty state when there are no bead-created suggestions', async () => {
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ pending: [], planned: [], rejected: [], bead_created: [] }),
+      }),
+    ))
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Created \(0\)/ })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('tab', { name: /Created/ }))
+
+    await waitFor(() => {
+      const panel = screen.getByRole('tabpanel')
+      expect(within(panel).getByText(/No beads created yet/)).toBeInTheDocument()
+    })
   })
 })
 

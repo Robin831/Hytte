@@ -27,19 +27,24 @@
   "meta": {
     "beadId": "Bead: {{id}}"
   },
-  "headings": {
-    "beadCreated": "Opprettede beads"
-  },
   "tabs": {
     "pending": "Avventer",
     "planned": "Planlagt",
+    "created": "Opprettet",
     "rejected": "Avvist",
     "pages": "Sider"
   },
   "empty": {
     "pending": "Ingen forslag ennå — prøv Kjør nå.",
     "planned": "Ingenting planlagt. Planlegg et forslag for å se det her.",
+    "created": "Ingen beads opprettet ennå. Planlegg et forslag og lag en bead for å se den her.",
     "rejected": "Ingen avviste forslag."
+  },
+  "groups": {
+    "newPageIdeas": "Nye sideforslag",
+    "count": "{{count}} forslag",
+    "count_other": "{{count}} forslag",
+    "toggleAria": "Slå seksjonen {{page}} på/av"
   },
   "recentRuns": {
     "title": "Nylige kjøringer",
@@ -126,9 +131,8 @@
     }
   },
   "card": {
-    "showMore": "Vis mer",
-    "showLess": "Vis mindre",
     "newPageChip": "Ny side-idé",
+    "toggleAria": "Slå {{title}} på/av",
     "types": {
       "addition": "Tillegg",
       "bugfix": "Feilretting",

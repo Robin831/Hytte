@@ -27,19 +27,24 @@
   "meta": {
     "beadId": "Bead: {{id}}"
   },
-  "headings": {
-    "beadCreated": "Created beads"
-  },
   "tabs": {
     "pending": "Pending",
     "planned": "Planned",
+    "created": "Created",
     "rejected": "Rejected",
     "pages": "Pages"
   },
   "empty": {
     "pending": "No pending suggestions yet — try Run now.",
     "planned": "Nothing planned. Plan a pending suggestion to see it here.",
+    "created": "No beads created yet. Plan a suggestion and turn it into a bead to see it here.",
     "rejected": "No rejected suggestions."
+  },
+  "groups": {
+    "newPageIdeas": "New page ideas",
+    "count": "{{count}} suggestion",
+    "count_other": "{{count}} suggestions",
+    "toggleAria": "Toggle {{page}} section"
   },
   "recentRuns": {
     "title": "Recent runs",
@@ -126,9 +131,8 @@
     }
   },
   "card": {
-    "showMore": "Show more",
-    "showLess": "Show less",
     "newPageChip": "New page idea",
+    "toggleAria": "Toggle {{title}}",
     "types": {
       "addition": "Addition",
       "bugfix": "Bugfix",
