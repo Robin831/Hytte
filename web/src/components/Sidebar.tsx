@@ -84,7 +84,7 @@ const navItems: NavItem[] = [
   { to: '/math', icon: <Calculator size={20} />, label: 'nav.regnemester', requiresAuth: true, feature: 'regnemester' },
   { to: '/homework', icon: <BookOpen size={20} />, label: 'nav.homework', requiresAuth: true, feature: 'homework', familyRole: 'child' },
   { to: '/homework/review', icon: <ClipboardList size={20} />, label: 'nav.homeworkReview', requiresAuth: true, feature: 'homework', familyRole: 'parent' },
-  { to: '/forge', icon: <Hammer size={20} />, label: 'nav.forge', requiresAuth: true, requireAdmin: true },
+  { to: '/forge/mezzanine', icon: <Hammer size={20} />, label: 'nav.forge', requiresAuth: true, requireAdmin: true },
 ]
 
 export default function Sidebar() {
