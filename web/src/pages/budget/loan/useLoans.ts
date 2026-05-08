@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useReducer, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Loan } from './types'
 
@@ -12,30 +12,40 @@ export interface UseLoansResult {
   refetch: () => void
 }
 
+type State = { loans: Loan[]; loading: boolean; error: string | null }
+type Action =
+  | { type: 'fetching' }
+  | { type: 'success'; loans: Loan[] }
+  | { type: 'error'; message: string }
+
+function loansReducer(state: State, action: Action): State {
+  switch (action.type) {
+    case 'fetching': return { ...state, loading: true, error: null }
+    case 'success': return { loans: action.loans, loading: false, error: null }
+    case 'error': return { ...state, loading: false, error: action.message }
+  }
+}
+
 export function useLoans(): UseLoansResult {
   const { t } = useTranslation('budget')
-  const [loans, setLoans] = useState<Loan[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [state, dispatch] = useReducer(loansReducer, { loans: [], loading: true, error: null })
   const [refreshKey, setRefreshKey] = useState(0)
 
   const refetch = useCallback(() => setRefreshKey(k => k + 1), [])
 
   useEffect(() => {
     const controller = new AbortController()
-    setError(null)
-    setLoading(true)
+    dispatch({ type: 'fetching' })
     fetch('/api/budget/loans', { credentials: 'include', signal: controller.signal })
       .then(r => {
         if (!r.ok) throw new Error('fetch failed')
         return r.json() as Promise<{ loans: Loan[] }>
       })
-      .then(d => setLoans(d.loans))
+      .then(d => dispatch({ type: 'success', loans: d.loans }))
       .catch(err => {
         if (err instanceof Error && err.name === 'AbortError') return
-        setError(t('loan.errors.loadFailed'))
+        dispatch({ type: 'error', message: t('loan.errors.loadFailed') })
       })
-      .finally(() => setLoading(false))
     return () => controller.abort()
   }, [refreshKey, t])
 
@@ -51,7 +61,7 @@ export function useLoans(): UseLoansResult {
       setRefreshKey(k => k + 1)
       return true
     } catch {
-      setError(t('loan.errors.saveFailed'))
+      dispatch({ type: 'error', message: t('loan.errors.saveFailed') })
       return false
     }
   }, [t])
@@ -68,7 +78,7 @@ export function useLoans(): UseLoansResult {
       setRefreshKey(k => k + 1)
       return true
     } catch {
-      setError(t('loan.errors.saveFailed'))
+      dispatch({ type: 'error', message: t('loan.errors.saveFailed') })
       return false
     }
   }, [t])
@@ -83,10 +93,10 @@ export function useLoans(): UseLoansResult {
       setRefreshKey(k => k + 1)
       return true
     } catch {
-      setError(t('loan.errors.deleteFailed'))
+      dispatch({ type: 'error', message: t('loan.errors.deleteFailed') })
       return false
     }
   }, [t])
 
-  return { loans, loading, error, createLoan, updateLoan, deleteLoan, refetch }
+  return { loans: state.loans, loading: state.loading, error: state.error, createLoan, updateLoan, deleteLoan, refetch }
 }
