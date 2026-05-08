@@ -9,7 +9,7 @@ export interface UseLoansResult {
   createLoan: (form: Omit<Loan, 'id'>) => Promise<boolean>
   updateLoan: (id: number, form: Omit<Loan, 'id'>) => Promise<boolean>
   deleteLoan: (id: number) => Promise<boolean>
-  refetch: () => Promise<void>
+  refetch: () => void
 }
 
 export function useLoans(): UseLoansResult {
@@ -17,25 +17,27 @@ export function useLoans(): UseLoansResult {
   const [loans, setLoans] = useState<Loan[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  const refetch = useCallback(async () => {
-    setError(null)
-    try {
-      const r = await fetch('/api/budget/loans', { credentials: 'include' })
-      if (!r.ok) throw new Error('fetch failed')
-      const d = await r.json() as { loans: Loan[] }
-      setLoans(d.loans)
-    } catch {
-      setError(t('loan.errors.loadFailed'))
-    } finally {
-      setLoading(false)
-    }
-  }, [t])
+  const refetch = useCallback(() => setRefreshKey(k => k + 1), [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
-    void refetch()
-  }, [refetch])
+    const controller = new AbortController()
+    setError(null)
+    setLoading(true)
+    fetch('/api/budget/loans', { credentials: 'include', signal: controller.signal })
+      .then(r => {
+        if (!r.ok) throw new Error('fetch failed')
+        return r.json() as Promise<{ loans: Loan[] }>
+      })
+      .then(d => setLoans(d.loans))
+      .catch(err => {
+        if (err instanceof Error && err.name === 'AbortError') return
+        setError(t('loan.errors.loadFailed'))
+      })
+      .finally(() => setLoading(false))
+    return () => controller.abort()
+  }, [refreshKey, t])
 
   const createLoan = useCallback(async (form: Omit<Loan, 'id'>): Promise<boolean> => {
     try {
@@ -46,13 +48,13 @@ export function useLoans(): UseLoansResult {
         body: JSON.stringify(form),
       })
       if (!r.ok) throw new Error('create failed')
-      await refetch()
+      setRefreshKey(k => k + 1)
       return true
     } catch {
       setError(t('loan.errors.saveFailed'))
       return false
     }
-  }, [refetch, t])
+  }, [t])
 
   const updateLoan = useCallback(async (id: number, form: Omit<Loan, 'id'>): Promise<boolean> => {
     try {
@@ -63,13 +65,13 @@ export function useLoans(): UseLoansResult {
         body: JSON.stringify(form),
       })
       if (!r.ok) throw new Error('update failed')
-      await refetch()
+      setRefreshKey(k => k + 1)
       return true
     } catch {
       setError(t('loan.errors.saveFailed'))
       return false
     }
-  }, [refetch, t])
+  }, [t])
 
   const deleteLoan = useCallback(async (id: number): Promise<boolean> => {
     try {
@@ -78,13 +80,13 @@ export function useLoans(): UseLoansResult {
         credentials: 'include',
       })
       if (!r.ok) throw new Error('delete failed')
-      await refetch()
+      setRefreshKey(k => k + 1)
       return true
     } catch {
       setError(t('loan.errors.deleteFailed'))
       return false
     }
-  }, [refetch, t])
+  }, [t])
 
   return { loans, loading, error, createLoan, updateLoan, deleteLoan, refetch }
 }

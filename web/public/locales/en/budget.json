@@ -106,7 +106,7 @@
     "currentBalance": "Current balance",
     "annualRate": "Annual interest rate",
     "effectiveRateHint": "Effective rate: {{pct}}% (monthly compounding)",
-    "effectiveShort": "Eff. {{pct}}%",
+    "effectiveShort": "Eff. {{pct}}",
     "monthlyPayment": "Monthly payment",
     "monthlyPaymentHint": "Leave 0 to calculate from balance and term.",
     "startDate": "Disbursement date",

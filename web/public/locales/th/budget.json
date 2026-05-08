@@ -106,7 +106,7 @@
     "currentBalance": "ยอดคงเหลือปัจจุบัน",
     "annualRate": "อัตราดอกเบี้ยต่อปี",
     "effectiveRateHint": "อัตราดอกเบี้ยที่แท้จริง: {{pct}}% (คำนวณรายเดือน)",
-    "effectiveShort": "แท้จริง {{pct}}%",
+    "effectiveShort": "แท้จริง {{pct}}",
     "monthlyPayment": "ยอดผ่อนรายเดือน",
     "monthlyPaymentHint": "ใส่ 0 เพื่อคำนวณจากยอดคงเหลือและระยะเวลา",
     "startDate": "วันที่เบิกเงินกู้",

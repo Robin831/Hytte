@@ -26,8 +26,16 @@ export function AmortizationTable({ loanId, version, t }: AmortizationTableProps
     const requestedRows = showAll ? FULL_AMORTIZATION_ROWS : INITIAL_AMORTIZATION_ROWS
     const requestedKey = `${loanId}:${requestedRows}:${version}`
 
-    if (cacheKey === requestedKey) {
-      return
+    // Skip fetch if already-loaded data satisfies the smaller request (e.g. toggling showAll off)
+    if (cacheKey) {
+      const [storedLoanId, storedRows, storedVersion] = cacheKey.split(':')
+      if (
+        storedLoanId === String(loanId) &&
+        storedVersion === String(version) &&
+        Number(storedRows) >= requestedRows
+      ) {
+        return
+      }
     }
 
     const controller = new AbortController()

@@ -106,7 +106,7 @@
     "currentBalance": "Gjenstående saldo",
     "annualRate": "Nominell rente",
     "effectiveRateHint": "Effektiv rente: {{pct}}% (månedlig renteberegning)",
-    "effectiveShort": "Eff. {{pct}}%",
+    "effectiveShort": "Eff. {{pct}}",
     "monthlyPayment": "Månedlig betaling",
     "monthlyPaymentHint": "La stå 0 for å beregne fra saldo og løpetid.",
     "startDate": "Utbetalingsdato",
