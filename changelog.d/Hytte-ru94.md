@@ -1,0 +1,2 @@
+category: Changed
+- **Refactor BudgetLoan page** - Split the BudgetLoan page into per-component files under `web/src/pages/budget/loan/` (CurrencyInput, LoanForm, RateHistoryPanel, AmortizationTable), extracted loans CRUD into a `useLoans` hook, simplified the amortization table cache to a single `cacheKey` string, and collapsed duplicated effective-rate formatting in the rate history panel. No user-visible behavior change. (Hytte-ru94)
