@@ -1,0 +1,2 @@
+category: Changed
+- **Suggestions: cap pending per page and only generate the deficit** - The nightly rotation now caps pending suggestions at 3 per page (configurable in code). Pages already at the cap are skipped pre-rotation, and each picked page only requests the deficit so a backlog cannot grow unbounded across runs. The same cap also gates the new-page pass. The progress UI shows a "skipped — already at 3 pending" entry for any page that hits the cap mid-run. (Hytte-21ph)

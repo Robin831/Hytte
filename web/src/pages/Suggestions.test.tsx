@@ -521,6 +521,78 @@ describe('Suggestions – Run now flow', () => {
     })
   })
 
+  it('renders page_skipped_cap entries and counts them toward done', async () => {
+    const initial = { pending: [], planned: [], rejected: [] }
+
+    const stream = manualSSEResponse()
+    let resolveRun: ((v: Response) => void) | null = null
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/suggestions/run' && init?.method === 'POST') {
+        return new Promise<Response>(resolve => {
+          resolveRun = resolve
+        })
+      }
+      if (url === '/api/suggestions') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(initial) })
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: /Run now/ }))
+    resolveRun!(stream.response)
+
+    stream.push({
+      event: 'started',
+      data: { run_id: 11, total_pages: 2, page_slugs: ['weather', 'webhooks'] },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('run-progress-pill')).toHaveTextContent('0 / 2')
+    })
+
+    stream.push({
+      event: 'page_skipped_cap',
+      data: { page_slug: 'weather', pending_count: 3, cap: 3 },
+    })
+
+    await waitFor(() => {
+      // Skipped pages occupy a rotation slot, so done advances.
+      expect(screen.getByTestId('run-progress-pill')).toHaveTextContent('1 / 2')
+    })
+    expect(screen.getByTestId('run-progress-log-weather')).toHaveTextContent(
+      'weather (skipped — already at 3 pending)',
+    )
+
+    stream.push({
+      event: 'page_complete',
+      data: {
+        page_slug: 'webhooks',
+        generated: 3,
+        errors: 0,
+        cost_usd: 0.05,
+        elapsed_ms: 1500,
+        status: 'ok',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('run-progress-pill')).toHaveTextContent('2 / 2')
+    })
+
+    stream.push({
+      event: 'done',
+      data: { run_id: 11, generated: 3, errors: 0, cost_usd: 0.05 },
+    })
+    stream.close()
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('run-progress')).not.toBeInTheDocument()
+    })
+  })
+
   it('shows already-running banner on 409 and does not enter progress state', async () => {
     const initial = { pending: [], planned: [], rejected: [] }
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {

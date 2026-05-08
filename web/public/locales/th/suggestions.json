@@ -87,6 +87,7 @@
     "inProgress": "กำลังทำงาน: {{done}} / {{total}} หน้า",
     "pageOk": "{{slug}} ({{count}} ไอเดีย, ${{cost}})",
     "pageError": "{{slug}} ({{reason}}, {{seconds}} วิ)",
+    "pageSkippedCap": "↳ {{slug}} (ข้าม — มี {{cap}} รายการที่รออยู่แล้ว)",
     "alreadyRunning": "มีการทำงานที่กำลังดำเนินอยู่แล้ว",
     "alreadyRunningLink": "ดูการทำงานล่าสุด",
     "reconnect": "เชื่อมต่อใหม่",

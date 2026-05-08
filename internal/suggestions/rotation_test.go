@@ -133,6 +133,93 @@ func TestPickRotation_EmptyEligibleReturnsEmpty(t *testing.T) {
 	}
 }
 
+func TestFilterUnderCap_DropsCappedPages(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	// Seed alpha at the cap, charlie one over the cap, leave the rest empty.
+	for i := 0; i < MaxPendingPerPage; i++ {
+		seedSuggestionStatus(t, d, "alpha", time.Now(), StatusPending)
+	}
+	for i := 0; i < MaxPendingPerPage+1; i++ {
+		seedSuggestionStatus(t, d, "charlie", time.Now(), StatusPending)
+	}
+	// Bravo has 2 pending → still under the cap.
+	seedSuggestionStatus(t, d, "bravo", time.Now(), StatusPending)
+	seedSuggestionStatus(t, d, "bravo", time.Now(), StatusPending)
+	// Delta has rejected/planned rows that must NOT count toward the cap.
+	for i := 0; i < MaxPendingPerPage; i++ {
+		seedSuggestionStatus(t, d, "delta", time.Now(), StatusRejected)
+	}
+	for i := 0; i < MaxPendingPerPage; i++ {
+		seedSuggestionStatus(t, d, "delta", time.Now(), StatusPlanned)
+	}
+
+	got, err := FilterUnderCap(ctx, d, 1, rotationFixturePages(), MaxPendingPerPage)
+	if err != nil {
+		t.Fatalf("FilterUnderCap: %v", err)
+	}
+	want := []string{"bravo", "delta", "echo"}
+	if !reflect.DeepEqual(slugs(got), want) {
+		t.Fatalf("slugs mismatch: got %v want %v", slugs(got), want)
+	}
+}
+
+func TestFilterUnderCap_PreservesInputOrder(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	// Re-shuffle input order; we want the function to preserve it.
+	input := []Page{
+		{Slug: "echo", Title: "Echo"},
+		{Slug: "alpha", Title: "Alpha"},
+		{Slug: "delta", Title: "Delta"},
+	}
+	got, err := FilterUnderCap(ctx, d, 1, input, MaxPendingPerPage)
+	if err != nil {
+		t.Fatalf("FilterUnderCap: %v", err)
+	}
+	want := []string{"echo", "alpha", "delta"}
+	if !reflect.DeepEqual(slugs(got), want) {
+		t.Fatalf("slugs mismatch: got %v want %v", slugs(got), want)
+	}
+}
+
+func TestFilterUnderCap_NonPositiveCapReturnsInputAsIs(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	for _, c := range []int{0, -1} {
+		got, err := FilterUnderCap(ctx, d, 1, rotationFixturePages(), c)
+		if err != nil {
+			t.Fatalf("FilterUnderCap c=%d: %v", c, err)
+		}
+		if len(got) != len(rotationFixturePages()) {
+			t.Fatalf("c=%d: expected pass-through, got %v", c, slugs(got))
+		}
+	}
+}
+
+// seedSuggestionStatus inserts a minimal suggestion row with a chosen status,
+// so FilterUnderCap tests can verify that planned/rejected rows do not count
+// toward the cap. The existing seedSuggestion helper hardcodes pending.
+func seedSuggestionStatus(t *testing.T, db *sql.DB, slug string, generatedAt time.Time, status string) {
+	t.Helper()
+	if _, err := Insert(context.Background(), db, Suggestion{
+		UserID:      1,
+		PageSlug:    slug,
+		GeneratedAt: generatedAt,
+		Source:      SourceClaude,
+		Type:        TypeImprovement,
+		Size:        SizeS,
+		Title:       "seed",
+		Body:        "seed body",
+		Status:      status,
+	}); err != nil {
+		t.Fatalf("seed suggestion for %q: %v", slug, err)
+	}
+}
+
 func TestPickRotation_ReturnedSliceIsACopy(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()

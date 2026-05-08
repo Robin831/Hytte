@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -38,6 +39,21 @@ const recentSuggestionsWindowDays = 14
 // MaxRetriesOnMalformedJSON is the number of retries attempted when Claude
 // returns a response that does not parse as the expected JSON shape.
 const MaxRetriesOnMalformedJSON = 1
+
+// PageAtCapError is returned by runForPage when the page already has
+// MaxPendingPerPage pending suggestions, so no Claude call is made. Callers
+// detect this with errors.As and emit a "skipped" signal rather than counting
+// it against the run's error total — it is the expected outcome of the
+// per-page cap, not a failure.
+type PageAtCapError struct {
+	PageSlug     string
+	PendingCount int
+	Cap          int
+}
+
+func (e *PageAtCapError) Error() string {
+	return fmt.Sprintf("page %q at cap (%d pending, cap %d)", e.PageSlug, e.PendingCount, e.Cap)
+}
 
 // RunResult summarises a generation pass. CostUSD is the total cost in US
 // dollars of all Claude calls made during the pass, summed even across
@@ -73,10 +89,13 @@ var validSizes = map[string]bool{
 }
 
 // RunSuggestionsForPages iterates over pages, calling Claude once per page to
-// generate three improvement suggestions and inserting them as pending rows
-// owned by userID. Per-page errors are logged but do not abort the run, so a
-// single Claude failure or malformed-JSON page does not lose the rest. The
-// caller is responsible for filtering pages (see RotationEligible).
+// generate the deficit between MaxPendingPerPage and the page's current
+// pending count and inserting them as pending rows owned by userID. Per-page
+// errors are logged but do not abort the run, so a single Claude failure or
+// malformed-JSON page does not lose the rest. Pages already at the cap are
+// skipped without spending any API budget. The caller is responsible for
+// filtering pages by rotation eligibility (see RotationEligible) and may
+// optionally pre-filter at-cap pages with FilterUnderCap.
 //
 // Returns counts of inserted suggestions and total errors. Errors include both
 // page-level failures (Claude call, JSON parse) and per-row insert failures, so
@@ -102,6 +121,12 @@ func RunSuggestionsForPages(
 		result.Errors += failed
 		result.CostUSD += cost
 		if err != nil {
+			var atCap *PageAtCapError
+			if errors.As(err, &atCap) {
+				// Skipped-at-cap is the expected outcome of the per-page
+				// cap, not a failure — do not increment Errors.
+				continue
+			}
 			result.Errors++
 			log.Printf("suggestions: page %q errored: %v", page.Slug, err)
 		}
@@ -116,6 +141,15 @@ func RunSuggestionsForPages(
 // and a page-level error (Claude call / JSON parse). Per-row insert failures
 // are reported via the second return value so the caller can surface them in
 // the overall error count.
+//
+// Recomputes the page's pending-suggestion count and the resulting deficit
+// against MaxPendingPerPage at entry. If the page is already at the cap, the
+// function returns (0, 0, 0, *PageAtCapError) without making a Claude call —
+// callers must check err and handle PageAtCapError as a non-failure skip
+// signal (see RunSuggestionsForPages). This is the second stage of the
+// two-stage filter (see FilterUnderCap) and protects against a page filling
+// between the pre-rotation drop and execution. When the deficit is positive,
+// exactly that many suggestions are requested.
 func runForPage(
 	ctx context.Context,
 	db *sql.DB,
@@ -126,6 +160,20 @@ func runForPage(
 	pageCtx, cancel := context.WithTimeout(ctx, PerPageTimeout)
 	defer cancel()
 
+	pendingCount, pendingErr := PendingCountForPage(pageCtx, db, userID, page.Slug)
+	if pendingErr != nil {
+		return 0, 0, 0, fmt.Errorf("pending count: %w", pendingErr)
+	}
+	target := MaxPendingPerPage - pendingCount
+	if target <= 0 {
+		log.Printf("suggestions: skip page %q — at cap (%d pending)", page.Slug, pendingCount)
+		return 0, 0, 0, &PageAtCapError{
+			PageSlug:     page.Slug,
+			PendingCount: pendingCount,
+			Cap:          MaxPendingPerPage,
+		}
+	}
+
 	sources := loadSourceFiles(page.SourceFiles)
 	gitLog := loadGitLog(pageCtx, page.SourceFiles)
 
@@ -135,9 +183,9 @@ func runForPage(
 		recent = nil
 	}
 
-	prompt := buildPagePrompt(page, sources, gitLog, recent)
+	prompt := buildPagePrompt(page, sources, gitLog, recent, target)
 
-	suggestions, costUSD, err := callAndParse(pageCtx, cfg, prompt)
+	suggestions, costUSD, err := callAndParse(pageCtx, cfg, prompt, target)
 	if err != nil {
 		return 0, 0, costUSD, err
 	}
@@ -165,12 +213,13 @@ func runForPage(
 	return inserted, failed, costUSD, nil
 }
 
-// callAndParse calls Claude and parses the response. On a malformed JSON
-// response it retries up to MaxRetriesOnMalformedJSON times, then returns the
-// last error. The accumulated cost across all attempts (including the failed
-// attempts that triggered retries) is returned so the caller can fold it into
-// the run total — every attempt is a paid CLI invocation.
-func callAndParse(ctx context.Context, cfg *training.ClaudeConfig, prompt string) ([]generated, float64, error) {
+// callAndParse calls Claude and parses the response into exactly `expected`
+// suggestions. On a malformed JSON response it retries up to
+// MaxRetriesOnMalformedJSON times, then returns the last error. The
+// accumulated cost across all attempts (including the failed attempts that
+// triggered retries) is returned so the caller can fold it into the run total
+// — every attempt is a paid CLI invocation.
+func callAndParse(ctx context.Context, cfg *training.ClaudeConfig, prompt string, expected int) ([]generated, float64, error) {
 	var (
 		lastErr   error
 		totalCost float64
@@ -181,7 +230,7 @@ func callAndParse(ctx context.Context, cfg *training.ClaudeConfig, prompt string
 		if err != nil {
 			return nil, totalCost, fmt.Errorf("claude prompt: %w", err)
 		}
-		parsed, err := parseSuggestionsResponse(resp)
+		parsed, err := parseSuggestionsResponse(resp, expected)
 		if err == nil {
 			return parsed, totalCost, nil
 		}
@@ -192,8 +241,10 @@ func callAndParse(ctx context.Context, cfg *training.ClaudeConfig, prompt string
 }
 
 // parseSuggestionsResponse strips an optional markdown fence and decodes the
-// response into exactly three validated generated suggestions.
-func parseSuggestionsResponse(response string) ([]generated, error) {
+// response into exactly `expected` validated generated suggestions. The
+// distinct-types check applies when expected > 1; for expected == 1 it is
+// vacuously true and skipped.
+func parseSuggestionsResponse(response string, expected int) ([]generated, error) {
 	response = strings.TrimSpace(response)
 
 	if strings.HasPrefix(response, "```") {
@@ -207,8 +258,8 @@ func parseSuggestionsResponse(response string) ([]generated, error) {
 	if err := json.Unmarshal([]byte(response), &items); err != nil {
 		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
-	if len(items) != 3 {
-		return nil, fmt.Errorf("expected exactly 3 suggestions, got %d", len(items))
+	if len(items) != expected {
+		return nil, fmt.Errorf("expected exactly %d suggestions, got %d", expected, len(items))
 	}
 	seenTypes := make(map[string]bool, len(items))
 	for i, it := range items {
@@ -224,10 +275,12 @@ func parseSuggestionsResponse(response string) ([]generated, error) {
 		if strings.TrimSpace(it.Body) == "" {
 			return nil, fmt.Errorf("item %d: empty body", i)
 		}
-		if seenTypes[it.Type] {
-			return nil, fmt.Errorf("item %d: duplicate type %q", i, it.Type)
+		if expected > 1 {
+			if seenTypes[it.Type] {
+				return nil, fmt.Errorf("item %d: duplicate type %q", i, it.Type)
+			}
+			seenTypes[it.Type] = true
 		}
-		seenTypes[it.Type] = true
 	}
 	return items, nil
 }

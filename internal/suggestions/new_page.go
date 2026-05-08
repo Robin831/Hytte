@@ -59,6 +59,20 @@ func RunNewPageSuggestion(
 	runCtx, cancel := context.WithTimeout(ctx, NewPageTimeout)
 	defer cancel()
 
+	pendingCount, err := PendingCountForPage(runCtx, db, userID, NewPageSlug)
+	if err != nil {
+		if runCtx.Err() != nil {
+			return result, runCtx.Err()
+		}
+		log.Printf("suggestions: count pending new_page suggestions: %v", err)
+		result.Errors++
+		return result, nil
+	}
+	if pendingCount >= MaxPendingPerPage {
+		log.Printf("suggestions: skip new_page pass — at cap (%d pending, cap %d)", pendingCount, MaxPendingPerPage)
+		return result, nil
+	}
+
 	registered := AllRegistered()
 
 	recent, err := recentNewPageSuggestions(runCtx, db, userID, NewPageWindowDays)

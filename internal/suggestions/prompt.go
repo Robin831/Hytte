@@ -11,17 +11,26 @@ import (
 const maxSourceFileChars = 6000
 
 // buildPagePrompt assembles a Claude prompt for generating page-improvement
-// suggestions. The model is asked for a strict JSON array of exactly 3 objects,
-// each with the fields {type, size, title, body}.
+// suggestions. The model is asked for a strict JSON array of exactly `target`
+// objects, each with the fields {type, size, title, body}.
+//
+// target is the deficit between the per-page cap and the page's current
+// pending-suggestion count, so the generator can request only what is needed
+// to refill the page rather than always asking for three. Callers must pass
+// target >= 1; the constant MaxPendingPerPage bounds the upper end.
 //
 // sourceFiles is a map of relative path → file contents. Callers truncate
 // large files to keep the prompt within reasonable bounds; this function
 // applies a safety cap regardless.
-func buildPagePrompt(page Page, sourceFiles map[string]string, recentGitLog string, recentSuggestions []Suggestion) string {
+func buildPagePrompt(page Page, sourceFiles map[string]string, recentGitLog string, recentSuggestions []Suggestion, target int) string {
 	var sb strings.Builder
 
 	sb.WriteString("You are a senior software engineer reviewing one page of a personal web app called Hytte.\n")
-	sb.WriteString("Your job: propose three concrete, scoped improvements to that page.\n\n")
+	if target == 1 {
+		sb.WriteString("Your job: propose one concrete, scoped improvement to that page.\n\n")
+	} else {
+		fmt.Fprintf(&sb, "Your job: propose %d concrete, scoped improvements to that page.\n\n", target)
+	}
 
 	sb.WriteString("## Page\n")
 	fmt.Fprintf(&sb, "- Slug: %s\n", page.Slug)
@@ -64,26 +73,54 @@ func buildPagePrompt(page Page, sourceFiles map[string]string, recentGitLog stri
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString(`## Output format
-
-Return ONLY a JSON array of exactly 3 objects. Do not wrap in markdown fences.
-Each object must have these fields and only these fields:
+	sb.WriteString("## Output format\n\n")
+	if target == 1 {
+		sb.WriteString("Return ONLY a JSON array of exactly 1 object. Do not wrap in markdown fences.\n")
+	} else {
+		fmt.Fprintf(&sb, "Return ONLY a JSON array of exactly %d objects. Do not wrap in markdown fences.\n", target)
+	}
+	sb.WriteString(`Each object must have these fields and only these fields:
 
 - "type": one of "addition", "bugfix", "improvement", "refactor"
 - "size": one of "s" (under a day), "m" (one to three days), "l" (more than three days)
 - "title": short imperative sentence, max 80 chars, no trailing period
 - "body": 2 to 5 sentences explaining the problem, the proposed change, and the user-visible impact
 
-Each suggestion must have a unique type — all three types must be different. Sizes may repeat freely: returning all three the same size is fine if that reflects the page.
-
-Example shape (do NOT copy these contents):
-[
-  {"type": "improvement", "size": "s", "title": "...", "body": "..."},
-  {"type": "addition", "size": "m", "title": "...", "body": "..."},
-  {"type": "bugfix", "size": "s", "title": "...", "body": "..."}
-]
 `)
+	if target > 1 {
+		sb.WriteString("Each suggestion must have a unique type — all types must be different. Sizes may repeat freely: returning all of them the same size is fine if that reflects the page.\n\n")
+	} else {
+		sb.WriteString("Pick whichever type best fits the change.\n\n")
+	}
+	sb.WriteString("Example shape (do NOT copy these contents):\n")
+	sb.WriteString(exampleShape(target))
+	sb.WriteString("\n")
 
+	return sb.String()
+}
+
+// exampleShape renders a JSON array example with exactly `target` objects so
+// the prompt's example always matches the requested count. The first three
+// slots use distinct types; additional slots cycle through the type list —
+// only the count matters for the example, not the specific types used.
+func exampleShape(target int) string {
+	types := []string{"improvement", "addition", "bugfix", "refactor"}
+	sizes := []string{"s", "m", "s", "m"}
+	if target < 1 {
+		target = 1
+	}
+	var sb strings.Builder
+	sb.WriteString("[\n")
+	for i := 0; i < target; i++ {
+		t := types[i%len(types)]
+		s := sizes[i%len(sizes)]
+		fmt.Fprintf(&sb, "  {\"type\": %q, \"size\": %q, \"title\": \"...\", \"body\": \"...\"}", t, s)
+		if i < target-1 {
+			sb.WriteString(",")
+		}
+		sb.WriteString("\n")
+	}
+	sb.WriteString("]")
 	return sb.String()
 }
 

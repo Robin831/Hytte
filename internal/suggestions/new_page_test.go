@@ -209,3 +209,50 @@ func TestParseNewPageResponseRejectsUnknownFields(t *testing.T) {
 		t.Fatal("expected error for unknown fields, got nil")
 	}
 }
+
+// TestRunNewPageSuggestionAtCapSkipsClaude verifies that a backlog of pending
+// new_page suggestions at MaxPendingPerPage causes the new-page pass to skip
+// the Claude call entirely.
+func TestRunNewPageSuggestionAtCapSkipsClaude(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	// Seed MaxPendingPerPage pending new_page suggestions.
+	for i := 0; i < MaxPendingPerPage; i++ {
+		if _, err := Insert(ctx, d, Suggestion{
+			UserID:   1,
+			PageSlug: NewPageSlug,
+			Source:   SourceClaude,
+			Type:     TypeNewPage,
+			Size:     SizeM,
+			Title:    "seed",
+			Body:     "seed body",
+			Status:   StatusPending,
+		}); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+
+	var calls int
+	var mu sync.Mutex
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		return validNewPageJSON, nil
+	})()
+
+	res, err := RunNewPageSuggestion(ctx, d, dummyCfg(), 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("expected Claude not to be called when at cap, got %d calls", calls)
+	}
+	if res.Generated != 0 {
+		t.Fatalf("expected 0 generated when at cap, got %d", res.Generated)
+	}
+	if res.Errors != 0 {
+		t.Fatalf("expected at-cap to not count as error, got Errors=%d", res.Errors)
+	}
+}
