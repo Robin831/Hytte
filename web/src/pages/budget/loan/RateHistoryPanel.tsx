@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import type { LoanRateChange } from './types'
-import { effectiveRate, fmtPct } from './format'
+import { effectiveRate } from './format'
 
 /** Collapsible rate history panel with inline add form. */
 export function RateHistoryPanel({ rateChanges, onAdd, onDelete, t }: {
@@ -45,7 +45,7 @@ export function RateHistoryPanel({ rateChanges, onAdd, onDelete, t }: {
               <span className="text-gray-400">{rc.effective_date}</span>
               <span className="font-medium">{(rc.annual_rate * 100).toFixed(2)}%</span>
               <span className="text-xs text-gray-500">
-                ({t('loan.effectiveShort', { pct: fmtPct(effectiveRate(rc.annual_rate)) })})
+                ({t('loan.effectiveShort', { pct: (effectiveRate(rc.annual_rate) * 100).toFixed(2) })})
               </span>
               <button
                 onClick={() => void onDelete(rc.id)}

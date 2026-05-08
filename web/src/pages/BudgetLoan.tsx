@@ -152,7 +152,7 @@ export default function BudgetLoan() {
                   <div>
                     <div className="text-xs text-gray-400">{t('loan.annualRate')}</div>
                     <div className="font-semibold">{(loan.annual_rate * 100).toFixed(2)}%</div>
-                    <div className="text-xs text-gray-500">{t('loan.effectiveShort', { pct: fmtPct(effectiveRate(loan.annual_rate)) })}</div>
+                    <div className="text-xs text-gray-500">{t('loan.effectiveShort', { pct: (effectiveRate(loan.annual_rate) * 100).toFixed(2) })}</div>
                   </div>
                   <div>
                     <div className="text-xs text-gray-400">{t('loan.monthlyPayment')}</div>
