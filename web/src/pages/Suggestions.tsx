@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Lightbulb, Plus, Play, X, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
+import { Lightbulb, Plus, Play, X, AlertTriangle, CheckCircle2, XCircle, MinusCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../components/ui/skeleton'
 import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
@@ -23,11 +23,13 @@ interface ListResponse {
 
 interface RunLogEntry {
   slug: string
-  status: 'ok' | 'error'
+  status: 'ok' | 'error' | 'skipped_cap'
   count?: number
   cost?: number
   reason?: string
   seconds?: number
+  cap?: number
+  pendingCount?: number
 }
 
 interface RunProgress {
@@ -52,6 +54,11 @@ interface PageCompleteEvent {
   elapsed_ms: number
   status: 'ok' | 'error'
   error?: string
+}
+interface PageSkippedCapEvent {
+  page_slug: string
+  pending_count: number
+  cap: number
 }
 
 function sortPageSlugs(slugs: string[]): string[] {
@@ -251,6 +258,21 @@ export default function Suggestions() {
         // Refetch the Pending tab so newly persisted suggestions appear as
         // soon as each page finishes.
         refetch()
+        return
+      }
+      if (eventName === 'page_skipped_cap') {
+        const ev = data as PageSkippedCapEvent
+        const entry: RunLogEntry = {
+          slug: ev.page_slug,
+          status: 'skipped_cap',
+          pendingCount: ev.pending_count,
+          cap: ev.cap,
+        }
+        // The page still occupied a rotation slot, so increment done so
+        // the progress bar tracks against total_pages.
+        setRunProgress(p =>
+          p ? { ...p, done: p.done + 1, log: [...p.log, entry] } : p,
+        )
         return
       }
       if (eventName === 'new_page_complete') {
@@ -553,34 +575,47 @@ export default function Suggestions() {
                   data-testid="run-progress-log"
                   className="space-y-1 text-xs"
                 >
-                  {runProgress.log.map((entry, idx) => (
-                    <li
-                      key={`${entry.slug}-${idx}`}
-                      data-testid={`run-progress-log-${entry.slug}`}
-                      className={`flex items-center gap-2 ${
-                        entry.status === 'ok' ? 'text-emerald-300' : 'text-red-300'
-                      }`}
-                    >
-                      {entry.status === 'ok' ? (
-                        <CheckCircle2 size={14} aria-hidden="true" />
-                      ) : (
-                        <XCircle size={14} aria-hidden="true" />
-                      )}
-                      <span className="font-mono">
-                        {entry.status === 'ok'
-                          ? t('run.pageOk', {
-                              slug: entry.slug,
-                              count: entry.count ?? 0,
-                              cost: (entry.cost ?? 0).toFixed(2),
-                            })
-                          : t('run.pageError', {
-                              slug: entry.slug,
-                              reason: entry.reason ?? t('errors.unknown'),
-                              seconds: entry.seconds ?? 0,
-                            })}
-                      </span>
-                    </li>
-                  ))}
+                  {runProgress.log.map((entry, idx) => {
+                    const tone =
+                      entry.status === 'ok'
+                        ? 'text-emerald-300'
+                        : entry.status === 'skipped_cap'
+                          ? 'text-gray-400'
+                          : 'text-red-300'
+                    return (
+                      <li
+                        key={`${entry.slug}-${idx}`}
+                        data-testid={`run-progress-log-${entry.slug}`}
+                        className={`flex items-center gap-2 ${tone}`}
+                      >
+                        {entry.status === 'ok' ? (
+                          <CheckCircle2 size={14} aria-hidden="true" />
+                        ) : entry.status === 'skipped_cap' ? (
+                          <MinusCircle size={14} aria-hidden="true" />
+                        ) : (
+                          <XCircle size={14} aria-hidden="true" />
+                        )}
+                        <span className="font-mono">
+                          {entry.status === 'ok'
+                            ? t('run.pageOk', {
+                                slug: entry.slug,
+                                count: entry.count ?? 0,
+                                cost: (entry.cost ?? 0).toFixed(2),
+                              })
+                            : entry.status === 'skipped_cap'
+                              ? t('run.pageSkippedCap', {
+                                  slug: entry.slug,
+                                  cap: entry.cap ?? 0,
+                                })
+                              : t('run.pageError', {
+                                  slug: entry.slug,
+                                  reason: entry.reason ?? t('errors.unknown'),
+                                  seconds: entry.seconds ?? 0,
+                                })}
+                        </span>
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </div>

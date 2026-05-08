@@ -223,19 +223,6 @@ func main() {
 					continue
 				}
 
-				pickCtx, pickCancel := context.WithTimeout(notifCtx, 30*time.Second)
-				rotation, err := suggestions.PickRotation(pickCtx, database, eligible, suggestions.RotationDefaultN)
-				pickCancel()
-				if err != nil {
-					log.Printf("suggestions: pick rotation: %v", err)
-					continue
-				}
-
-				pageSlugs := make([]string, len(rotation))
-				for i, p := range rotation {
-					pageSlugs[i] = p.Slug
-				}
-
 				for _, adminID := range adminIDs {
 					if notifCtx.Err() != nil {
 						break
@@ -248,6 +235,32 @@ func main() {
 					if !cfg.Enabled {
 						log.Printf("suggestions: skip admin=%d (claude disabled)", adminID)
 						continue
+					}
+
+					// FilterUnderCap and PickRotation are per-admin because
+					// the cap counts each admin's pending suggestions
+					// independently. Running them inside the per-admin loop
+					// also keeps each admin's rotation fresh against any
+					// suggestions the previous admin's pass may have changed.
+					filterCtx, filterCancel := context.WithTimeout(notifCtx, 30*time.Second)
+					underCap, err := suggestions.FilterUnderCap(filterCtx, database, adminID, eligible, suggestions.MaxPendingPerPage)
+					filterCancel()
+					if err != nil {
+						log.Printf("suggestions: filter under cap for admin=%d: %v", adminID, err)
+						continue
+					}
+
+					pickCtx, pickCancel := context.WithTimeout(notifCtx, 30*time.Second)
+					rotation, err := suggestions.PickRotation(pickCtx, database, underCap, suggestions.RotationDefaultN)
+					pickCancel()
+					if err != nil {
+						log.Printf("suggestions: pick rotation for admin=%d: %v", adminID, err)
+						continue
+					}
+
+					pageSlugs := make([]string, len(rotation))
+					for i, p := range rotation {
+						pageSlugs[i] = p.Slug
 					}
 
 					runCtx, runCancel := context.WithTimeout(notifCtx, 30*time.Minute)

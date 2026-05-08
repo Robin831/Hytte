@@ -210,6 +210,23 @@ func MarkBeadCreated(ctx context.Context, db *sql.DB, id int64, beadID string) e
 	return checkRowsAffected(res, id)
 }
 
+// PendingCountForPage returns the number of pending suggestions a user has for
+// the given page slug. Only status='pending' rows are counted; planned,
+// rejected, and bead_created rows do not contribute. Used to enforce
+// MaxPendingPerPage so a backlog of un-triaged suggestions cannot grow
+// unbounded across nightly rotations.
+func PendingCountForPage(ctx context.Context, db *sql.DB, userID int64, pageSlug string) (int, error) {
+	var n int
+	err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM suggestions
+		WHERE user_id = ? AND page_slug = ? AND status = ?
+	`, userID, pageSlug, StatusPending).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("count pending for page: %w", err)
+	}
+	return n, nil
+}
+
 // recentForPage returns suggestions for a given page slug whose status is not
 // "rejected" and that were generated within the last `days` days. Used by the
 // generator to discourage repeat suggestions in the prompt.

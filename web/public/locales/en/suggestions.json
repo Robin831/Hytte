@@ -87,6 +87,7 @@
     "inProgress": "Run in progress: {{done}} / {{total}} pages",
     "pageOk": "{{slug}} ({{count}} ideas, ${{cost}})",
     "pageError": "{{slug}} ({{reason}}, {{seconds}}s)",
+    "pageSkippedCap": "↳ {{slug}} (skipped — already at {{cap}} pending)",
     "alreadyRunning": "A run is already in progress.",
     "alreadyRunningLink": "View recent runs",
     "reconnect": "Reconnect",

@@ -87,6 +87,7 @@
     "inProgress": "Kjøring pågår: {{done}} / {{total}} sider",
     "pageOk": "{{slug}} ({{count}} idéer, ${{cost}})",
     "pageError": "{{slug}} ({{reason}}, {{seconds}}s)",
+    "pageSkippedCap": "↳ {{slug}} (hoppet over — har allerede {{cap}} ventende)",
     "alreadyRunning": "En kjøring pågår allerede.",
     "alreadyRunningLink": "Vis nylige kjøringer",
     "reconnect": "Koble til på nytt",

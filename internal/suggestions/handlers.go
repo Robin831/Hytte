@@ -103,6 +103,18 @@ type pageCompleteEvent struct {
 	Error     string  `json:"error,omitempty"`
 }
 
+// pageSkippedCapEvent is emitted when a page is skipped because it already
+// has MaxPendingPerPage pending suggestions. No Claude call is made and no
+// row is written, so the event carries only the slug and the cap state.
+// The frontend renders this as a separate "skipped" entry in the run log so
+// the operator sees the page was attempted and intentionally bypassed,
+// rather than mistaking it for a silently-dropped page.
+type pageSkippedCapEvent struct {
+	PageSlug     string `json:"page_slug"`
+	PendingCount int    `json:"pending_count"`
+	Cap          int    `json:"cap"`
+}
+
 // newPageCompleteEvent mirrors pageCompleteEvent but for the separate
 // new-page Claude pass. PageSlug is always NewPageSlug.
 type newPageCompleteEvent struct {
@@ -182,6 +194,17 @@ func RunHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Drop pages already at the per-page cap before scheduling work. The
+		// per-page deficit check inside runForPage is the authoritative guard,
+		// but this filter keeps the rotation slots focused on pages that need
+		// work and prevents wasted "skipped" log spam in nightly runs.
+		pages, err = FilterUnderCap(r.Context(), db, user.ID, pages, MaxPendingPerPage)
+		if err != nil {
+			log.Printf("suggestions: filter under cap for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load page settings"})
+			return
+		}
+
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
@@ -254,6 +277,19 @@ func RunHandler(db *sql.DB) http.HandlerFunc {
 				totals.Generated += inserted
 				totals.Errors += failed
 				totals.CostUSD += cost
+
+				// At-cap is a normal outcome of the deficit check, not an
+				// error. Surface it as its own event so the live progress
+				// log can show the page was skipped intentionally.
+				var atCap *PageAtCapError
+				if errors.As(err, &atCap) {
+					eventCh <- sseEvent{Name: "page_skipped_cap", Data: pageSkippedCapEvent{
+						PageSlug:     atCap.PageSlug,
+						PendingCount: atCap.PendingCount,
+						Cap:          atCap.Cap,
+					}}
+					continue
+				}
 
 				ev := pageCompleteEvent{
 					PageSlug:  page.Slug,

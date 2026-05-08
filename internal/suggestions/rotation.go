@@ -16,6 +16,39 @@ import (
 // Tune downward if cost-per-run becomes a problem after observing real spend.
 const RotationDefaultN = 20
 
+// MaxPendingPerPage caps the number of pending (un-triaged) suggestions any
+// one page may have. The generator counts only status='pending' rows and asks
+// Claude for exactly the deficit, so a page already at the cap is skipped
+// entirely without spending API budget. Planned, bead_created, and rejected
+// rows do not count — those have been acted on, freeing the slot.
+const MaxPendingPerPage = 3
+
+// FilterUnderCap drops any page from pages whose pending-suggestion count for
+// userID is at or above cap. The relative order of the remaining pages is
+// preserved so the caller can compose this with PickRotation without losing
+// staleness ordering. cap <= 0 disables filtering and returns the input as-is.
+//
+// A page-level error from PendingCountForPage aborts the whole call so the
+// caller can decide whether to retry; partially filtering on a transient DB
+// error would silently shrink the rotation.
+func FilterUnderCap(ctx context.Context, db *sql.DB, userID int64, pages []Page, cap int) ([]Page, error) {
+	if cap <= 0 || len(pages) == 0 {
+		return pages, nil
+	}
+	out := make([]Page, 0, len(pages))
+	for _, p := range pages {
+		n, err := PendingCountForPage(ctx, db, userID, p.Slug)
+		if err != nil {
+			return nil, fmt.Errorf("pending count for %q: %w", p.Slug, err)
+		}
+		if n >= cap {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
 // PickRotation selects up to n pages from eligible, ordered so that the most
 // stale pages run first. The ordering is:
 //  1. Pages with no prior suggestions, alphabetical by slug.

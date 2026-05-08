@@ -168,7 +168,7 @@ func TestParseSuggestionsResponseRejectsWrongCount(t *testing.T) {
 	_, err := parseSuggestionsResponse(`[
 		{"type":"improvement","size":"s","title":"X","body":"y"},
 		{"type":"improvement","size":"s","title":"X","body":"y"}
-	]`)
+	]`, 3)
 	if err == nil {
 		t.Fatal("expected error for 2-item response, got nil")
 	}
@@ -179,7 +179,7 @@ func TestParseSuggestionsResponseRejectsInvalidEnum(t *testing.T) {
 		{"type":"weird","size":"s","title":"X","body":"y"},
 		{"type":"improvement","size":"s","title":"X","body":"y"},
 		{"type":"improvement","size":"s","title":"X","body":"y"}
-	]`)
+	]`, 3)
 	if err == nil {
 		t.Fatal("expected error for invalid type, got nil")
 	}
@@ -190,7 +190,7 @@ func TestParseSuggestionsResponseAllowsDuplicateSizes(t *testing.T) {
 		{"type":"improvement","size":"s","title":"A","body":"a"},
 		{"type":"addition","size":"s","title":"B","body":"b"},
 		{"type":"bugfix","size":"s","title":"C","body":"c"}
-	]`)
+	]`, 3)
 	if err != nil {
 		t.Fatalf("expected three same-size suggestions to parse, got error: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestParseSuggestionsResponseRejectsDuplicateTypes(t *testing.T) {
 		{"type":"improvement","size":"s","title":"A","body":"a"},
 		{"type":"improvement","size":"m","title":"B","body":"b"},
 		{"type":"bugfix","size":"l","title":"C","body":"c"}
-	]`)
+	]`, 3)
 	if err == nil {
 		t.Fatal("expected error for duplicate type, got nil")
 	}
@@ -215,11 +215,146 @@ func TestParseSuggestionsResponseRejectsDuplicateTypes(t *testing.T) {
 
 func TestParseSuggestionsResponseStripsMarkdownFence(t *testing.T) {
 	wrapped := "```json\n" + validJSONResponse + "\n```"
-	got, err := parseSuggestionsResponse(wrapped)
+	got, err := parseSuggestionsResponse(wrapped, 3)
 	if err != nil {
 		t.Fatalf("expected fence-stripped parse to succeed: %v", err)
 	}
 	if len(got) != 3 {
 		t.Fatalf("expected 3 items, got %d", len(got))
+	}
+}
+
+// With expected=1 the duplicate-types check is vacuously true and the parser
+// should accept a single item even though there is no second item to compare.
+func TestParseSuggestionsResponseAcceptsSingleItemWhenExpectedOne(t *testing.T) {
+	got, err := parseSuggestionsResponse(`[
+		{"type":"improvement","size":"s","title":"X","body":"y"}
+	]`, 1)
+	if err != nil {
+		t.Fatalf("expected single-item parse to succeed: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(got))
+	}
+}
+
+// singleItemJSON is a one-element response used to exercise the deficit-aware
+// generator path when only one suggestion is requested.
+const singleItemJSON = `[
+  {"type": "improvement", "size": "s", "title": "Cache the forecast", "body": "Add a 10-minute in-memory cache so repeated reloads do not hammer yr.no."}
+]`
+
+// TestRunSuggestionsForPagesAtCapSkipsClaude verifies that a page already at
+// MaxPendingPerPage pending suggestions causes runForPage to short-circuit
+// before any Claude call and is not counted as an error.
+func TestRunSuggestionsForPagesAtCapSkipsClaude(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	// Pre-seed the page at the cap.
+	for i := 0; i < MaxPendingPerPage; i++ {
+		if _, err := Insert(ctx, d, Suggestion{
+			UserID: 1, PageSlug: "weather", Source: SourceClaude,
+			Type: TypeImprovement, Size: SizeS, Title: "seed", Body: "b", Status: StatusPending,
+		}); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+
+	var calls int
+	var mu sync.Mutex
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		return validJSONResponse, nil
+	})()
+
+	res := RunSuggestionsForPages(ctx, d, dummyCfg(), 1, []Page{
+		{Slug: "weather", Title: "Weather"},
+	})
+	if calls != 0 {
+		t.Fatalf("expected Claude not to be called when page is at cap, got %d calls", calls)
+	}
+	if res.Generated != 0 {
+		t.Fatalf("expected 0 generated, got %d", res.Generated)
+	}
+	if res.Errors != 0 {
+		t.Fatalf("expected at-cap to not count as error, got Errors=%d", res.Errors)
+	}
+}
+
+// TestRunSuggestionsForPagesRequestsDeficitOnly seeds the page at 2 pending
+// and asserts that the prompt asks for exactly 1 suggestion and only 1 row
+// is inserted.
+func TestRunSuggestionsForPagesRequestsDeficitOnly(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	// Seed 2 pending so target = MaxPendingPerPage - 2 = 1.
+	for i := 0; i < MaxPendingPerPage-1; i++ {
+		if _, err := Insert(ctx, d, Suggestion{
+			UserID: 1, PageSlug: "weather", Source: SourceClaude,
+			Type: TypeImprovement, Size: SizeS, Title: "seed", Body: "b", Status: StatusPending,
+		}); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+
+	var capturedPrompts []string
+	var mu sync.Mutex
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		mu.Lock()
+		capturedPrompts = append(capturedPrompts, prompt)
+		mu.Unlock()
+		return singleItemJSON, nil
+	})()
+
+	res := RunSuggestionsForPages(ctx, d, dummyCfg(), 1, []Page{
+		{Slug: "weather", Title: "Weather"},
+	})
+	if res.Errors != 0 {
+		t.Fatalf("expected 0 errors, got %d", res.Errors)
+	}
+	if res.Generated != 1 {
+		t.Fatalf("expected 1 generated to refill to cap, got %d", res.Generated)
+	}
+	if len(capturedPrompts) != 1 {
+		t.Fatalf("expected exactly 1 Claude call, got %d", len(capturedPrompts))
+	}
+	if !strings.Contains(capturedPrompts[0], "exactly 1 object") {
+		t.Fatalf("expected prompt to ask for exactly 1 object; prompt was:\n%s", capturedPrompts[0])
+	}
+}
+
+// TestRunSuggestionsForPagesNoPendingRequestsThree verifies the default-shape
+// behaviour: a page at zero pending asks for the full MaxPendingPerPage count.
+func TestRunSuggestionsForPagesNoPendingRequestsThree(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	var capturedPrompts []string
+	var mu sync.Mutex
+	defer withRunPrompt(func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, error) {
+		mu.Lock()
+		capturedPrompts = append(capturedPrompts, prompt)
+		mu.Unlock()
+		return validJSONResponse, nil
+	})()
+
+	res := RunSuggestionsForPages(ctx, d, dummyCfg(), 1, []Page{
+		{Slug: "weather", Title: "Weather"},
+	})
+	if res.Errors != 0 {
+		t.Fatalf("expected 0 errors, got %d", res.Errors)
+	}
+	if res.Generated != MaxPendingPerPage {
+		t.Fatalf("expected %d generated, got %d", MaxPendingPerPage, res.Generated)
+	}
+	if len(capturedPrompts) != 1 {
+		t.Fatalf("expected exactly 1 Claude call, got %d", len(capturedPrompts))
+	}
+	if !strings.Contains(capturedPrompts[0], "exactly 3 objects") {
+		t.Fatalf("expected prompt to ask for exactly 3 objects; prompt was:\n%s", capturedPrompts[0])
 	}
 }
