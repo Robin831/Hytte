@@ -1,19 +1,13 @@
 import { useEffect, useId, useReducer, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
-import SpeedPlanEditor from './SpeedPlanEditor'
+import SpeedPlanEditor, { SpeedPlanSegment } from './SpeedPlanEditor'
 
 export type Surface = 'Treadmill' | 'Outside' | ''
 export type RunType = 'slow' | 'interval' | ''
 export type HRSource = 'chest' | 'watch' | ''
 
-export interface SpeedPlanSegment {
-  kind: string
-  speed_kmph: number
-  duration_sec: number
-  repeats: number
-  same_as_previous: boolean
-}
+export type { SpeedPlanSegment }
 
 export interface WorkoutContext {
   workout_id?: number
@@ -275,6 +269,7 @@ export default function WorkoutContextModal({
               {t('workoutContextModal.speedPlan.label')}
             </span>
             <SpeedPlanEditor
+              key={workoutId}
               value={speedPlan}
               onChange={(segments) => {
                 dispatch({ speedPlan: segments })

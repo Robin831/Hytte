@@ -5,7 +5,7 @@ import { Plus, Trash2 } from 'lucide-react'
 export type SpeedPlanSegmentKind = 'warmup' | 'interval' | 'pause' | 'cooldown'
 
 export interface SpeedPlanSegment {
-  kind: SpeedPlanSegmentKind | string
+  kind: string
   speed_kmph: number
   duration_sec: number
   repeats: number
