@@ -2,6 +2,7 @@ package training
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +28,7 @@ func TestBuildClassificationPrompt(t *testing.T) {
 		},
 	}
 
-	prompt := BuildClassificationPrompt(w, "", "")
+	prompt := BuildClassificationPrompt(w, "", "", nil)
 
 	if prompt == "" {
 		t.Fatal("expected non-empty prompt")
@@ -55,7 +56,7 @@ func TestBuildClassificationPrompt_WithProfile(t *testing.T) {
 	}
 
 	profile := "User Profile:\n- Max HR: 195 bpm\n- Threshold HR: 172 bpm (from lactate test)\n"
-	prompt := BuildClassificationPrompt(w, profile, "")
+	prompt := BuildClassificationPrompt(w, profile, "", nil)
 
 	if !strings.Contains(prompt, "Max HR: 195") {
 		t.Error("prompt should contain user profile block")
@@ -73,7 +74,7 @@ func TestBuildClassificationPrompt_IncludesConfidenceSchema(t *testing.T) {
 		AvgHeartRate:    150,
 	}
 
-	prompt := BuildClassificationPrompt(w, "", "")
+	prompt := BuildClassificationPrompt(w, "", "", nil)
 
 	if !strings.Contains(prompt, "confidence_score") {
 		t.Error("classification prompt should include confidence_score in schema")
@@ -93,7 +94,7 @@ func TestBuildClassificationPrompt_SingleLap(t *testing.T) {
 		},
 	}
 
-	prompt := BuildClassificationPrompt(w, "", "")
+	prompt := BuildClassificationPrompt(w, "", "", nil)
 	// Single lap should NOT include the lap table.
 	if strings.Contains(prompt, "| # |") {
 		t.Error("single lap workout should not include lap table")
@@ -445,6 +446,23 @@ func TestAnalyzeHandler_CachedResult(t *testing.T) {
 	}
 }
 
+// seedWorkoutContext writes a minimal workout_context row so analysis paths
+// gated on context presence can run in tests. Surface, run type, HR source and
+// feel notes default to plausible values; tests that need treadmill behavior
+// pass a tailored *WorkoutContext via seedWorkoutContextFull.
+func seedWorkoutContext(t *testing.T, database *sql.DB, workoutID int64) {
+	t.Helper()
+	if err := saveWorkoutContext(database, &WorkoutContext{
+		WorkoutID: workoutID,
+		Surface:   "road",
+		RunType:   "easy",
+		HRSource:  "wrist",
+		FeelNotes: "Felt fine.",
+	}); err != nil {
+		t.Fatalf("seed workout_context: %v", err)
+	}
+}
+
 func TestAnalyzeHandler_RunsClaudeOnCacheMiss(t *testing.T) {
 	database := setupTestDB(t)
 
@@ -455,6 +473,7 @@ func TestAnalyzeHandler_RunsClaudeOnCacheMiss(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create workout: %v", err)
 	}
+	seedWorkoutContext(t, database, 1)
 
 	// Set up Claude config via preferences.
 	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
@@ -751,6 +770,7 @@ func TestRunClaudeAnalysis_WhenEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create workout: %v", err)
 	}
+	seedWorkoutContext(t, database, 1)
 
 	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
 		t.Fatalf("set pref: %v", err)
@@ -804,6 +824,201 @@ func TestRunClaudeAnalysis_WhenDisabled(t *testing.T) {
 	}
 }
 
+// TestRunClaudeAnalysis_NoContextReturnsSentinel verifies that classification
+// refuses to run until the user has captured workout_context. The sentinel
+// error lets handlers distinguish missing-context from real failures.
+func TestRunClaudeAnalysis_NoContextReturnsSentinel(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash, duration_seconds)
+		VALUES (1, 1, 'running', 'Test Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1', 1800)`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+
+	called := false
+	origFunc := runPromptFunc
+	runPromptFunc = func(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
+		called = true
+		return "", nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	err = RunClaudeAnalysis(context.Background(), database, 1, 1)
+	if !errors.Is(err, ErrWorkoutContextRequired) {
+		t.Fatalf("expected ErrWorkoutContextRequired, got %v", err)
+	}
+	if called {
+		t.Fatal("Claude must not be called when workout_context is missing")
+	}
+}
+
+// TestAnalyzeHandler_NoContext_Returns409 verifies the manual analysis HTTP
+// path returns 409 Conflict with workout_context_required when the user has
+// not yet saved context. The body is checked so frontends can switch on the
+// machine-readable code.
+func TestAnalyzeHandler_NoContext_Returns409(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash, duration_seconds, distance_meters)
+		VALUES (1, 1, 'running', 'Test Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1', 3600, 10000)`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+
+	called := false
+	origFunc := runPromptFunc
+	runPromptFunc = func(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
+		called = true
+		return "", nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	req := withAdminUser(httptest.NewRequest(http.MethodPost, "/api/training/workouts/1/analyze", nil), 1)
+	req = withChiParam(req, "id", "1")
+	w := httptest.NewRecorder()
+
+	AnalyzeHandler(database)(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp["error"] != "workout_context_required" {
+		t.Errorf("error = %v, want 'workout_context_required'", resp["error"])
+	}
+	if called {
+		t.Fatal("Claude must not be called when workout_context is missing")
+	}
+}
+
+// TestAnalyzeHandler_ContextSaved_Returns200 verifies that once context is
+// saved the same workout reaches Claude and stores an analysis exactly once.
+// Combined with TestAnalyzeHandler_NoContext_Returns409 this is the gating
+// contract: one save flips the response from 409 to 200.
+func TestAnalyzeHandler_ContextSaved_Returns200(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash, duration_seconds, distance_meters)
+		VALUES (1, 1, 'running', 'Test Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1', 3600, 10000)`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+
+	calls := 0
+	origFunc := runPromptFunc
+	runPromptFunc = func(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
+		calls++
+		return `{"type":"easy_run","tag":"easy","summary":"Easy run","title":"Easy Run"}`, nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	// First call without context returns 409.
+	req := withAdminUser(httptest.NewRequest(http.MethodPost, "/api/training/workouts/1/analyze", nil), 1)
+	req = withChiParam(req, "id", "1")
+	w := httptest.NewRecorder()
+	AnalyzeHandler(database)(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("first call: expected 409, got %d", w.Code)
+	}
+	if calls != 0 {
+		t.Fatalf("first call: expected 0 Claude calls, got %d", calls)
+	}
+
+	// Save context, then retry — must return 200 and run Claude once.
+	seedWorkoutContext(t, database, 1)
+
+	req = withAdminUser(httptest.NewRequest(http.MethodPost, "/api/training/workouts/1/analyze", nil), 1)
+	req = withChiParam(req, "id", "1")
+	w = httptest.NewRecorder()
+	AnalyzeHandler(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("second call: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if calls != 1 {
+		t.Fatalf("second call: expected exactly 1 Claude call, got %d", calls)
+	}
+
+	// Persisted analysis must reflect the mocked response.
+	got, err := GetAnalysis(database, 1, 1, "tag")
+	if err != nil {
+		t.Fatalf("get analysis: %v", err)
+	}
+	if got.Summary != "Easy run" {
+		t.Errorf("persisted summary = %q, want 'Easy run'", got.Summary)
+	}
+}
+
+// TestBuildClassificationPrompt_TreadmillOverride verifies that when the user
+// reports a treadmill surface, the lap pace column is overridden by the
+// resolved planned speed and the planned-structure block lands in the prompt.
+// Repeats and same_as_previous expansion must be reflected in the table.
+func TestBuildClassificationPrompt_TreadmillOverride(t *testing.T) {
+	w := &Workout{
+		Sport:           "running",
+		DurationSeconds: 1800,
+		DistanceMeters:  6000,
+		Laps: []Lap{
+			// Device pace 6:00/km — should be overridden by planned 12.0 km/h (5:00/km).
+			{LapNumber: 1, DurationSeconds: 600, DistanceMeters: 1500, AvgPaceSecPerKm: 360},
+			// Device pace 5:30/km — overridden by planned 10.0 km/h (6:00/km).
+			{LapNumber: 2, DurationSeconds: 600, DistanceMeters: 1500, AvgPaceSecPerKm: 330},
+			// Repeat of segment 2 via same_as_previous.
+			{LapNumber: 3, DurationSeconds: 600, DistanceMeters: 1500, AvgPaceSecPerKm: 330},
+		},
+	}
+	ctx := &WorkoutContext{
+		Surface:  "treadmill",
+		RunType:  "intervals",
+		HRSource: "chest_strap",
+		SpeedPlan: []SpeedSegment{
+			{Kind: "warmup", SpeedKmph: 12.0, DurationSec: 600, Repeats: 1},
+			{Kind: "work", SpeedKmph: 10.0, DurationSec: 600, Repeats: 1},
+			{Kind: "work", DurationSec: 600, Repeats: 1, SameAsPrevious: true},
+		},
+	}
+
+	prompt := BuildClassificationPrompt(w, "", "", ctx)
+
+	if !strings.Contains(prompt, "Workout Context") {
+		t.Errorf("expected workout context block in prompt")
+	}
+	if !strings.Contains(prompt, "Surface: treadmill") {
+		t.Errorf("expected surface field in prompt")
+	}
+	if !strings.Contains(prompt, "Planned Speed Structure") {
+		t.Errorf("expected planned speed structure block in prompt")
+	}
+	// Lap 1 pace should be 5:00 (planned 12 km/h), not 6:00 (device).
+	if !strings.Contains(prompt, "| 1 | 600s | 1500m | 0 | 5:00 |") {
+		t.Errorf("expected lap 1 pace to be planned 5:00/km, got prompt:\n%s", prompt)
+	}
+	// Lap 2 should match planned 10 km/h → 6:00/km.
+	if !strings.Contains(prompt, "| 2 | 600s | 1500m | 0 | 6:00 |") {
+		t.Errorf("expected lap 2 pace to be planned 6:00/km, got prompt:\n%s", prompt)
+	}
+	// Lap 3 inherits from lap 2 via same_as_previous → 6:00/km.
+	if !strings.Contains(prompt, "| 3 | 600s | 1500m | 0 | 6:00 |") {
+		t.Errorf("expected lap 3 pace to inherit planned 6:00/km, got prompt:\n%s", prompt)
+	}
+}
+
 func TestAnalyzeHandler_ClaudeError(t *testing.T) {
 	database := setupTestDB(t)
 
@@ -813,6 +1028,7 @@ func TestAnalyzeHandler_ClaudeError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create workout: %v", err)
 	}
+	seedWorkoutContext(t, database, 1)
 
 	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
 		t.Fatalf("set pref: %v", err)

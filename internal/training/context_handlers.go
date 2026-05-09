@@ -13,10 +13,10 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// GetWorkoutContext handles GET /api/training/workouts/{id}/context.
+// GetWorkoutContextHandler handles GET /api/training/workouts/{id}/context.
 // Returns 404 when the workout doesn't exist, isn't owned by the user, or has
 // no context row yet.
-func GetWorkoutContext(db *sql.DB) http.HandlerFunc {
+func GetWorkoutContextHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 		workoutID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -34,7 +34,7 @@ func GetWorkoutContext(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		ctx, err := loadWorkoutContext(db, workoutID)
+		ctx, err := GetWorkoutContext(db, workoutID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "context not found"})
@@ -59,11 +59,11 @@ type putWorkoutContextRequest struct {
 	CompletedAt *time.Time      `json:"completed_at"`
 }
 
-// PutWorkoutContext handles PUT /api/training/workouts/{id}/context.
+// PutWorkoutContextHandler handles PUT /api/training/workouts/{id}/context.
 // Creates the context row if it doesn't exist, otherwise merges the provided
 // fields into the existing row so that omitted fields are not wiped.
 // Returns the persisted context (after encryption round-trip).
-func PutWorkoutContext(db *sql.DB) http.HandlerFunc {
+func PutWorkoutContextHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 		workoutID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -89,7 +89,7 @@ func PutWorkoutContext(db *sql.DB) http.HandlerFunc {
 
 		// Load existing context or start with defaults so omitted request
 		// fields preserve their previously saved values.
-		ctx, err := loadWorkoutContext(db, workoutID)
+		ctx, err := GetWorkoutContext(db, workoutID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load context"})
 			return
@@ -125,7 +125,7 @@ func PutWorkoutContext(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		saved, err := loadWorkoutContext(db, workoutID)
+		saved, err := GetWorkoutContext(db, workoutID)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load context"})
 			return
@@ -142,54 +142,6 @@ func assertWorkoutOwnedBy(db *sql.DB, workoutID, userID int64) error {
 		`SELECT 1 FROM workouts WHERE id = ? AND user_id = ?`,
 		workoutID, userID,
 	).Scan(&exists)
-}
-
-// loadWorkoutContext fetches and decrypts the workout_context row for a workout.
-// Returns sql.ErrNoRows when no context exists for the workout.
-func loadWorkoutContext(db *sql.DB, workoutID int64) (*WorkoutContext, error) {
-	var (
-		feelEnc, planEnc string
-		completedAt      string
-	)
-	ctx := &WorkoutContext{WorkoutID: workoutID, SpeedPlan: []SpeedSegment{}}
-	err := db.QueryRow(`
-		SELECT surface, run_type, hr_source, feel_notes, speed_plan, completed_at
-		FROM workout_context
-		WHERE workout_id = ?`, workoutID).Scan(
-		&ctx.Surface, &ctx.RunType, &ctx.HRSource, &feelEnc, &planEnc, &completedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	feelNotes, err := encryption.DecryptField(feelEnc)
-	if err != nil {
-		return nil, err
-	}
-	ctx.FeelNotes = feelNotes
-
-	planJSON, err := encryption.DecryptField(planEnc)
-	if err != nil {
-		return nil, err
-	}
-	if planJSON != "" {
-		var segments []SpeedSegment
-		if err := json.Unmarshal([]byte(planJSON), &segments); err != nil {
-			return nil, err
-		}
-		if segments == nil {
-			segments = []SpeedSegment{}
-		}
-		ctx.SpeedPlan = segments
-	}
-
-	if completedAt != "" {
-		if parsed, err := time.Parse(time.RFC3339, completedAt); err == nil {
-			ctx.CompletedAt = &parsed
-		}
-	}
-
-	return ctx, nil
 }
 
 // saveWorkoutContext upserts the workout_context row. feel_notes and the

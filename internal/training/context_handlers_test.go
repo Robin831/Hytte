@@ -36,7 +36,7 @@ func putContext(t *testing.T, database *sql.DB, userID, workoutID int64, body Wo
 	req = withUser(req, userID)
 	req = withChiParam(req, "id", strconv.FormatInt(workoutID, 10))
 	w := httptest.NewRecorder()
-	PutWorkoutContext(database)(w, req)
+	PutWorkoutContextHandler(database)(w, req)
 	return w
 }
 
@@ -46,7 +46,7 @@ func getContext(t *testing.T, database *sql.DB, userID, workoutID int64) *httpte
 	req = withUser(req, userID)
 	req = withChiParam(req, "id", strconv.FormatInt(workoutID, 10))
 	w := httptest.NewRecorder()
-	GetWorkoutContext(database)(w, req)
+	GetWorkoutContextHandler(database)(w, req)
 	return w
 }
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Robin831/Hytte/internal/encryption"
 	"github.com/Robin831/Hytte/internal/hrzones"
 )
 
@@ -354,6 +355,56 @@ func UpdateMetrics(db *sql.DB, id, userID int64, trainingLoad, hrDriftPct, paceC
 		trainingLoad, hrDriftPct, paceCVPct, id, userID,
 	)
 	return err
+}
+
+// GetWorkoutContext fetches and decrypts the workout_context row for a workout.
+// Returns sql.ErrNoRows when no context exists for the workout. Callers should
+// distinguish "missing context" via errors.Is(err, sql.ErrNoRows) and treat that
+// as the gate: analysis pipelines must skip until the user has saved context.
+func GetWorkoutContext(db *sql.DB, workoutID int64) (*WorkoutContext, error) {
+	var (
+		feelEnc, planEnc string
+		completedAt      string
+	)
+	ctx := &WorkoutContext{WorkoutID: workoutID, SpeedPlan: []SpeedSegment{}}
+	err := db.QueryRow(`
+		SELECT surface, run_type, hr_source, feel_notes, speed_plan, completed_at
+		FROM workout_context
+		WHERE workout_id = ?`, workoutID).Scan(
+		&ctx.Surface, &ctx.RunType, &ctx.HRSource, &feelEnc, &planEnc, &completedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	feelNotes, err := encryption.DecryptField(feelEnc)
+	if err != nil {
+		return nil, err
+	}
+	ctx.FeelNotes = feelNotes
+
+	planJSON, err := encryption.DecryptField(planEnc)
+	if err != nil {
+		return nil, err
+	}
+	if planJSON != "" {
+		var segments []SpeedSegment
+		if err := json.Unmarshal([]byte(planJSON), &segments); err != nil {
+			return nil, err
+		}
+		if segments == nil {
+			segments = []SpeedSegment{}
+		}
+		ctx.SpeedPlan = segments
+	}
+
+	if completedAt != "" {
+		if parsed, perr := time.Parse(time.RFC3339, completedAt); perr == nil {
+			ctx.CompletedAt = &parsed
+		}
+	}
+
+	return ctx, nil
 }
 
 // HashExists checks whether a workout with the given file hash already exists.

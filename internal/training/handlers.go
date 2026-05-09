@@ -241,6 +241,19 @@ func scheduleBackgroundAnalysis(db *sql.DB, userID int64, isAdmin bool, workouts
 
 	for _, w := range workouts {
 		workoutID := w.ID
+		// Skip auto-analysis when no workout_context has been saved yet. The user
+		// must capture surface, run type, HR source, feel notes, and (optionally)
+		// a structured speed plan before Claude is called — those fields are
+		// required inputs to the prompt builder. The user triggers analysis
+		// manually after saving context.
+		if _, err := GetWorkoutContext(db, workoutID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				log.Printf("Skipping auto-analysis for workout %d: no workout_context saved yet", workoutID)
+				continue
+			}
+			log.Printf("Failed to load workout_context for workout %d: %v; skipping auto-analysis", workoutID, err)
+			continue
+		}
 		if err := UpdateAnalysisStatus(db, workoutID, userID, "pending"); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				log.Printf("Workout %d not found when setting pending analysis status: %v", workoutID, err)

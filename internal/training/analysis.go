@@ -19,6 +19,12 @@ var (
 	// ErrClaudeNotEnabled is returned when Claude is disabled in the user's config.
 	ErrClaudeNotEnabled = errors.New("Claude is not enabled — enable it in settings")
 
+	// ErrWorkoutContextRequired is returned when analysis is requested for a
+	// workout that has no workout_context row yet. The user must save surface,
+	// run type, HR source, feel notes, and the planned speed structure before
+	// Claude is called — those fields are required prompt inputs.
+	ErrWorkoutContextRequired = errors.New("workout_context_required")
+
 	// OnRaceClassified is called when a workout is classified as a race by Claude.
 	// It is set by the API layer to avoid an import cycle between training and stride.
 	// It returns an error so RunClaudeAnalysis can log race-matching failures while
@@ -28,7 +34,10 @@ var (
 
 // RunClaudeAnalysis runs Claude classification on a workout: builds the prompt,
 // calls Claude, stores the analysis, applies ai: tags, and sets the AI title.
-// It is safe to call from a goroutine with a detached context.
+// It is safe to call from a goroutine with a detached context. Returns
+// ErrWorkoutContextRequired when the workout has no saved workout_context yet —
+// the user must capture surface, run type, HR source, feel notes, and the
+// planned speed structure before classification can run.
 func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64) error {
 	workout, err := getWorkoutWithLaps(db, workoutID, userID)
 	if err != nil {
@@ -43,9 +52,20 @@ func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64)
 		return ErrClaudeNotEnabled
 	}
 
+	// Workout context is checked after the Claude-enabled gate so users with
+	// Claude disabled get the more informative ErrClaudeNotEnabled rather than
+	// being told to capture context for an analysis that would never run.
+	workoutCtx, err := GetWorkoutContext(db, workoutID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrWorkoutContextRequired
+		}
+		return fmt.Errorf("load workout context: %w", err)
+	}
+
 	userProfileBlock := BuildUserProfileBlock(db, userID)
 	userContext := settings.LoadPrompt(db, "analysis", "")
-	prompt := BuildClassificationPrompt(workout, userProfileBlock, userContext)
+	prompt := BuildClassificationPrompt(workout, userProfileBlock, userContext, workoutCtx)
 	response, err := RunPrompt(ctx, cfg, prompt)
 	if err != nil {
 		return fmt.Errorf("claude prompt: %w", err)
@@ -270,7 +290,10 @@ func AddAITags(db *sql.DB, workoutID, userID int64, aiTags []string) error {
 // BuildClassificationPrompt constructs the structured prompt for Claude.
 // userProfileBlock is an optional pre-built user profile block to inject before workout data.
 // userContext is optional additional context provided by the user that is appended at the end.
-func BuildClassificationPrompt(w *Workout, userProfileBlock string, userContext string) string {
+// workoutCtx carries the user-entered context (surface, run type, HR source,
+// feel notes, planned speed structure) — when surface is treadmill the resolved
+// plan overrides device pace/speed in the prompt.
+func BuildClassificationPrompt(w *Workout, userProfileBlock string, userContext string, workoutCtx *WorkoutContext) string {
 	var sb strings.Builder
 
 	sb.WriteString("Classify this ")
@@ -280,6 +303,10 @@ func BuildClassificationPrompt(w *Workout, userProfileBlock string, userContext 
 	if userProfileBlock != "" {
 		sb.WriteString(userProfileBlock)
 		sb.WriteString("\n")
+	}
+
+	if workoutCtx != nil {
+		writeWorkoutContextBlock(&sb, workoutCtx)
 	}
 
 	fmt.Fprintf(&sb, "Sport: %s\n", w.Sport)
@@ -297,19 +324,39 @@ func BuildClassificationPrompt(w *Workout, userProfileBlock string, userContext 
 		fmt.Fprintf(&sb, "Avg HR: %d bpm\n", w.AvgHeartRate)
 	}
 
+	// On treadmill workouts the device-reported pace/speed is unreliable
+	// (footpods drift, belts mislabel speed), so the user-entered planned
+	// speed plan is the source of truth. We still emit the lap table but
+	// override pace columns with the planned speed.
+	treadmillOverride := workoutCtx != nil && isTreadmillSurface(workoutCtx.Surface)
+	resolvedPlan := resolveSpeedPlan(workoutCtxOrNil(workoutCtx))
+
 	if len(w.Laps) > 1 {
 		sb.WriteString("\nLaps:\n")
 		sb.WriteString("| # | Duration | Distance | Avg HR | Pace/km |\n")
 		sb.WriteString("|---|----------|----------|--------|---------|\n")
-		for _, lap := range w.Laps {
+		for i, lap := range w.Laps {
+			pace := lap.AvgPaceSecPerKm
+			if treadmillOverride {
+				if planned := lookupResolvedPace(resolvedPlan, i); planned > 0 {
+					pace = planned
+				}
+			}
 			fmt.Fprintf(&sb, "| %d | %ds | %dm | %d | %s |\n",
 				lap.LapNumber,
 				int(math.Round(lap.DurationSeconds)),
 				int(math.Round(lap.DistanceMeters)),
 				lap.AvgHeartRate,
-				formatPromptPace(lap.AvgPaceSecPerKm),
+				formatPromptPace(pace),
 			)
 		}
+		if treadmillOverride {
+			sb.WriteString("Note: pace columns reflect the user's planned treadmill speed plan rather than device-reported pace.\n")
+		}
+	}
+
+	if treadmillOverride && len(resolvedPlan) > 0 {
+		writeResolvedSpeedPlan(&sb, resolvedPlan)
 	}
 
 	sb.WriteString("\nRespond with a JSON object like: ")
