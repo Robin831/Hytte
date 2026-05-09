@@ -137,7 +137,10 @@ export default function WorkoutContextModal({
   // edits when the parent re-renders with a new initialContext reference.
   const wasOpenRef = useRef(false)
   const initialContextRef = useRef(initialContext)
-  initialContextRef.current = initialContext
+
+  useEffect(() => {
+    initialContextRef.current = initialContext
+  })
 
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
