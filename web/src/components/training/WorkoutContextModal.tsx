@@ -10,8 +10,8 @@ export interface SpeedPlanSegment {
   kind: string
   speed_kmph: number
   duration_sec: number
-  repeats?: number
-  same_as_previous?: boolean
+  repeats: number
+  same_as_previous: boolean
 }
 
 export interface WorkoutContext {
@@ -128,9 +128,26 @@ export default function WorkoutContextModal({
   )
   const { surface, runType, hrSource, feelNotes, speedPlan, error } = form
   const [saving, setSaving] = useState(false)
+  const [touched, setTouched] = useState<Set<string>>(() => new Set())
 
-  function handleSurfaceChange(next: Surface) {
-    dispatch({ surface: next, ...(next !== 'Treadmill' ? { speedPlan: [] } : {}) })
+  function handleSurfaceChange(nextSurface: Surface) {
+    dispatch({ surface: nextSurface, ...(nextSurface !== 'Treadmill' ? { speedPlan: [] } : {}) })
+    setTouched(prev => {
+      const updated = new Set(prev)
+      updated.add('surface')
+      if (nextSurface !== 'Treadmill') updated.add('speed_plan')
+      return updated
+    })
+  }
+
+  function handleRunTypeChange(v: RunType) {
+    dispatch({ runType: v })
+    setTouched(prev => new Set([...prev, 'run_type']))
+  }
+
+  function handleHRSourceChange(v: HRSource) {
+    dispatch({ hrSource: v })
+    setTouched(prev => new Set([...prev, 'hr_source']))
   }
 
   // Reset form only on the false→true open transition to avoid wiping in-progress
@@ -145,6 +162,7 @@ export default function WorkoutContextModal({
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
       dispatch(initForm(initialContextRef.current))
+      setTouched(new Set())
     }
     wasOpenRef.current = isOpen
   }, [isOpen, workoutId])
@@ -153,17 +171,20 @@ export default function WorkoutContextModal({
     setSaving(true)
     dispatch({ error: '' })
     try {
+      // Only send fields the user has explicitly changed so that
+      // unrecognised values already saved (e.g. 'trail') are not wiped.
+      const body: Record<string, unknown> = {}
+      if (touched.has('surface')) body.surface = surface
+      if (touched.has('run_type')) body.run_type = runType
+      if (touched.has('hr_source')) body.hr_source = hrSource
+      if (touched.has('feel_notes')) body.feel_notes = feelNotes
+      if (touched.has('speed_plan')) body.speed_plan = speedPlan
+
       const res = await fetch(`/api/training/workouts/${workoutId}/context`, {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          surface,
-          run_type: runType,
-          hr_source: hrSource,
-          feel_notes: feelNotes,
-          speed_plan: speedPlan,
-        }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string }
@@ -207,7 +228,7 @@ export default function WorkoutContextModal({
           legend={t('workoutContextModal.runType.label')}
           name="runType"
           value={runType}
-          onChange={(v) => dispatch({ runType: v })}
+          onChange={handleRunTypeChange}
           options={[
             { value: 'slow', label: t('workoutContextModal.runType.slow') },
             { value: 'interval', label: t('workoutContextModal.runType.interval') },
@@ -218,7 +239,7 @@ export default function WorkoutContextModal({
           legend={t('workoutContextModal.hrSource.label')}
           name="hrSource"
           value={hrSource}
-          onChange={(v) => dispatch({ hrSource: v })}
+          onChange={handleHRSourceChange}
           options={[
             { value: 'chest', label: t('workoutContextModal.hrSource.chest') },
             { value: 'watch', label: t('workoutContextModal.hrSource.watch') },
@@ -246,7 +267,10 @@ export default function WorkoutContextModal({
           <textarea
             id={feelNotesId}
             value={feelNotes}
-            onChange={(e) => dispatch({ feelNotes: e.target.value })}
+            onChange={(e) => {
+              dispatch({ feelNotes: e.target.value })
+              setTouched(prev => new Set([...prev, 'feel_notes']))
+            }}
             placeholder={t('workoutContextModal.feelNotes.placeholder')}
             rows={4}
             className="w-full resize-y rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"

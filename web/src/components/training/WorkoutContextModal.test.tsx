@@ -126,7 +126,7 @@ describe('WorkoutContextModal', () => {
           hr_source: 'chest',
           feel_notes: '',
           speed_plan: [
-            { kind: 'warmup', speed_kmph: 8, duration_sec: 600 },
+            { kind: 'warmup', speed_kmph: 8, duration_sec: 600, repeats: 1, same_as_previous: false },
           ],
         }}
       />,
