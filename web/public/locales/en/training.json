@@ -339,5 +339,37 @@
       "injury_risk": "Injury risk",
       "pacing_issue": "Pacing issue"
     }
+  },
+  "workoutContextModal": {
+    "title": "Workout context",
+    "surface": {
+      "label": "Surface",
+      "treadmill": "Treadmill",
+      "outside": "Outside"
+    },
+    "runType": {
+      "label": "Run type",
+      "slow": "Slow",
+      "interval": "Interval"
+    },
+    "hrSource": {
+      "label": "HR source",
+      "chest": "Chest strap",
+      "watch": "Watch"
+    },
+    "feelNotes": {
+      "label": "Feel & notes",
+      "placeholder": "How did the workout feel? Anything notable?"
+    },
+    "speedPlan": {
+      "label": "Speed plan",
+      "placeholder": "Speed plan editor coming soon."
+    },
+    "save": "Save",
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "errors": {
+      "saveFailed": "Failed to save context"
+    }
   }
 }

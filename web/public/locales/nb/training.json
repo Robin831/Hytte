@@ -339,5 +339,37 @@
       "injury_risk": "Skaderisiko",
       "pacing_issue": "Tempoproblemer"
     }
+  },
+  "workoutContextModal": {
+    "title": "Øktkontekst",
+    "surface": {
+      "label": "Underlag",
+      "treadmill": "Tredemølle",
+      "outside": "Ute"
+    },
+    "runType": {
+      "label": "Type økt",
+      "slow": "Rolig",
+      "interval": "Intervall"
+    },
+    "hrSource": {
+      "label": "Pulskilde",
+      "chest": "Brystreim",
+      "watch": "Klokke"
+    },
+    "feelNotes": {
+      "label": "Følelse og notater",
+      "placeholder": "Hvordan kjentes økten? Noe verdt å notere?"
+    },
+    "speedPlan": {
+      "label": "Fartsplan",
+      "placeholder": "Fartsplan-editor kommer snart."
+    },
+    "save": "Lagre",
+    "saving": "Lagrer...",
+    "cancel": "Avbryt",
+    "errors": {
+      "saveFailed": "Kunne ikke lagre kontekst"
+    }
   }
 }
