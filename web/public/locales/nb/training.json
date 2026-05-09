@@ -109,7 +109,12 @@
     "trendStable": "Stabil",
     "trendDeclining": "Nedgang",
     "trendNotableChanges": "Merkbare endringer",
-    "trendInsufficientData": "Utilstrekkelige data"
+    "trendInsufficientData": "Utilstrekkelige data",
+    "contextPending": {
+      "title": "AI-oppsummering venter — fyll inn øktkontekst",
+      "body": "Registrer underlag, type økt, pulskilde, følelsesnotater og planlagt fartsstruktur slik at Claude kan analysere økten.",
+      "provideContextCta": "Fyll inn kontekst"
+    }
   },
   "compare": {
     "title": "Sammenlign økter",
