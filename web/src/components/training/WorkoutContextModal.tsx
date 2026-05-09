@@ -1,18 +1,12 @@
 import { useEffect, useId, useReducer, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
+import SpeedPlanEditor from './SpeedPlanEditor'
+import type { SpeedPlanSegment } from '../../types/training'
 
 export type Surface = 'Treadmill' | 'Outside' | ''
 export type RunType = 'slow' | 'interval' | ''
 export type HRSource = 'chest' | 'watch' | ''
-
-export interface SpeedPlanSegment {
-  kind: string
-  speed_kmph: number
-  duration_sec: number
-  repeats: number
-  same_as_previous: boolean
-}
 
 export interface WorkoutContext {
   workout_id?: number
@@ -100,15 +94,37 @@ function normalizeHRSource(s?: string): HRSource {
   return ''
 }
 
+function normalizeSpeedPlan(segments: SpeedPlanSegment[]): SpeedPlanSegment[] {
+  const pauses = segments.filter(s => s.kind === 'pause')
+  if (pauses.length < 2) return segments
+  const first = pauses[0]
+  if (pauses.every(s => s.speed_kmph === first.speed_kmph && s.duration_sec === first.duration_sec)) {
+    return segments
+  }
+  return segments.map(seg =>
+    seg.kind === 'pause'
+      ? { ...seg, speed_kmph: first.speed_kmph, duration_sec: first.duration_sec }
+      : seg
+  )
+}
+
 function initForm(ctx?: WorkoutContext): FormState {
   return {
     surface: normalizeSurface(ctx?.surface),
     runType: normalizeRunType(ctx?.run_type),
     hrSource: normalizeHRSource(ctx?.hr_source),
     feelNotes: ctx?.feel_notes ?? '',
-    speedPlan: ctx?.speed_plan ?? [],
+    speedPlan: normalizeSpeedPlan(ctx?.speed_plan ?? []),
     error: '',
   }
+}
+
+function initTouched(ctx?: WorkoutContext): Set<string> {
+  const raw = ctx?.speed_plan ?? []
+  const normalized = normalizeSpeedPlan(raw)
+  const s = new Set<string>()
+  if (normalized !== raw) s.add('speed_plan')
+  return s
 }
 
 export default function WorkoutContextModal({
@@ -128,7 +144,7 @@ export default function WorkoutContextModal({
   )
   const { surface, runType, hrSource, feelNotes, speedPlan, error } = form
   const [saving, setSaving] = useState(false)
-  const [touched, setTouched] = useState<Set<string>>(() => new Set())
+  const [touched, setTouched] = useState<Set<string>>(() => initTouched(initialContext))
 
   function handleSurfaceChange(nextSurface: Surface) {
     dispatch({ surface: nextSurface, ...(nextSurface !== 'Treadmill' ? { speedPlan: [] } : {}) })
@@ -162,7 +178,7 @@ export default function WorkoutContextModal({
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
       dispatch(initForm(initialContextRef.current))
-      setTouched(new Set())
+      setTouched(initTouched(initialContextRef.current))
     }
     wasOpenRef.current = isOpen
   }, [isOpen, workoutId])
@@ -247,16 +263,18 @@ export default function WorkoutContextModal({
         />
 
         {surface === 'Treadmill' && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2" data-testid="speed-plan-section">
             <span className="text-sm font-medium text-gray-300">
               {t('workoutContextModal.speedPlan.label')}
             </span>
-            <div
-              data-testid="speed-plan-placeholder"
-              className="rounded border border-gray-700 bg-gray-800/40 p-3 text-sm text-gray-400"
-            >
-              {t('workoutContextModal.speedPlan.placeholder')}
-            </div>
+            <SpeedPlanEditor
+              key={workoutId}
+              value={speedPlan}
+              onChange={(segments) => {
+                dispatch({ speedPlan: segments })
+                setTouched(prev => new Set([...prev, 'speed_plan']))
+              }}
+            />
           </div>
         )}
 

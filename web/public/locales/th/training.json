@@ -340,6 +340,22 @@
       "pacing_issue": "ปัญหาเพส"
     }
   },
+  "speedPlan": {
+    "kinds": {
+      "warmup": "วอร์มอัป",
+      "interval": "อินเทอร์วัล",
+      "pause": "พัก",
+      "cooldown": "คูลดาวน์"
+    },
+    "add": "เพิ่มเซ็กเมนต์",
+    "addKindLabel": "ประเภท",
+    "removeRow": "ลบเซ็กเมนต์",
+    "sameSpeedToggle": "ใช้ความเร็วเดียวกันสำหรับทุกอินเทอร์วัล",
+    "sharedIntervalSpeed": "ความเร็วอินเทอร์วัลร่วม",
+    "sharedPause": "พัก / ช่วงพัก",
+    "kmh": "กม./ชม.",
+    "sec": "วินาที"
+  },
   "workoutContextModal": {
     "title": "บริบทของการฝึกซ้อม",
     "surface": {

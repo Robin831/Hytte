@@ -215,6 +215,16 @@ export interface SummaryAnalysisResponse {
   cached: boolean
 }
 
+export type SpeedPlanSegmentKind = 'warmup' | 'interval' | 'pause' | 'cooldown'
+
+export interface SpeedPlanSegment {
+  kind: SpeedPlanSegmentKind
+  speed_kmph: number
+  duration_sec: number
+  repeats: number
+  same_as_previous: boolean
+}
+
 export interface VO2maxEstimate {
   id: number
   user_id: number

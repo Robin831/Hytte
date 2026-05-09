@@ -340,6 +340,22 @@
       "pacing_issue": "Pacing issue"
     }
   },
+  "speedPlan": {
+    "kinds": {
+      "warmup": "Warm-up",
+      "interval": "Interval",
+      "pause": "Pause",
+      "cooldown": "Cool-down"
+    },
+    "add": "Add segment",
+    "addKindLabel": "Kind",
+    "removeRow": "Remove segment",
+    "sameSpeedToggle": "Same speed for all intervals",
+    "sharedIntervalSpeed": "Shared interval speed",
+    "sharedPause": "Pause / gap",
+    "kmh": "km/h",
+    "sec": "sec"
+  },
   "workoutContextModal": {
     "title": "Workout context",
     "surface": {
@@ -362,8 +378,7 @@
       "placeholder": "How did the workout feel? Anything notable?"
     },
     "speedPlan": {
-      "label": "Speed plan",
-      "placeholder": "Speed plan editor coming soon."
+      "label": "Speed plan"
     },
     "save": "Save",
     "saving": "Saving...",
