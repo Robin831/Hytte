@@ -640,6 +640,9 @@ func queryUnevaluatedWorkouts(ctx context.Context, db *sql.DB, userID int64, sin
 // evaluateSingleWorkout finds the matching plan+session for a workout, evaluates it via
 // Claude, stores the result, and sends a push notification for critical flags.
 // notes are unconsumed user notes providing context about sickness, fatigue, etc.
+// Per-workout context (feel notes + structured speed plan) is fetched and folded
+// into the notes slice so Claude sees the user's reported execution alongside
+// any free-text notes.
 func evaluateSingleWorkout(
 	ctx context.Context,
 	db *sql.DB,
@@ -668,7 +671,9 @@ func evaluateSingleWorkout(
 		matchedSession = MatchWorkoutToSession(workout, sessions)
 	}
 
-	eval, err := EvaluateWorkout(ctx, cfg, workout, matchedSession, planForEval, profile, notes)
+	notesForEval := appendWorkoutContextNote(db, workout, workoutDate, notes)
+
+	eval, err := EvaluateWorkout(ctx, cfg, workout, matchedSession, planForEval, profile, notesForEval)
 	if err != nil {
 		return fmt.Errorf("evaluate workout: %w", err)
 	}
@@ -985,6 +990,33 @@ func filterNightlyNotes(notes []Note) []Note {
 			out = append(out, n)
 		}
 	}
+	return out
+}
+
+// appendWorkoutContextNote fetches the saved workout_context row for a workout
+// and appends a synthetic Note containing the user's feel notes plus a one-line
+// structured plan summary. Returns the input notes unchanged when no context
+// row exists or the resulting summary is empty.
+func appendWorkoutContextNote(db *sql.DB, workout training.Workout, workoutDate string, notes []Note) []Note {
+	wctx, err := training.GetWorkoutContext(db, workout.ID)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("stride eval: load workout_context for workout %d: %v", workout.ID, err)
+		}
+		return notes
+	}
+	summary := training.FormatWorkoutContextNote(wctx)
+	if summary == "" {
+		return notes
+	}
+	out := make([]Note, 0, len(notes)+1)
+	out = append(out, notes...)
+	out = append(out, Note{
+		UserID:     workout.UserID,
+		Content:    summary,
+		TargetDate: workoutDate,
+		Scope:      NoteScopeNightly,
+	})
 	return out
 }
 

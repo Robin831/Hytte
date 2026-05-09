@@ -670,7 +670,8 @@ func TestGetZoneDistribution_BoundaryConditions(t *testing.T) {
 
 // TestScheduleBackgroundAnalysis_AdminEnabled_Fires verifies that
 // scheduleBackgroundAnalysis triggers RunClaudeAnalysis for an admin user
-// with the claude_ai feature and claude_enabled config set.
+// with the claude_ai feature, claude_enabled config set, and a saved
+// workout_context row.
 func TestScheduleBackgroundAnalysis_AdminEnabled_Fires(t *testing.T) {
 	database := setupTestDB(t)
 
@@ -679,6 +680,15 @@ func TestScheduleBackgroundAnalysis_AdminEnabled_Fires(t *testing.T) {
 		VALUES (1, 1, 'running', 'Test Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1', 1800)`)
 	if err != nil {
 		t.Fatalf("create workout: %v", err)
+	}
+	if err := saveWorkoutContext(database, &WorkoutContext{
+		WorkoutID: 1,
+		Surface:   "road",
+		RunType:   "easy",
+		HRSource:  "wrist",
+		FeelNotes: "Felt fine.",
+	}); err != nil {
+		t.Fatalf("seed workout_context: %v", err)
 	}
 
 	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
@@ -704,6 +714,104 @@ func TestScheduleBackgroundAnalysis_AdminEnabled_Fires(t *testing.T) {
 		// success: background analysis fired
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout: background analysis did not fire within 2s")
+	}
+}
+
+// TestScheduleBackgroundAnalysis_NoContext_Skips verifies that the FIT-import
+// auto-trigger does NOT call Claude when no workout_context row has been saved.
+// The user must capture context first; the orchestrator otherwise sends an
+// incomplete prompt that produces low-quality classifications.
+func TestScheduleBackgroundAnalysis_NoContext_Skips(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash, duration_seconds)
+		VALUES (1, 1, 'running', 'Test Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1', 1800)`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+
+	called := false
+	origFunc := runPromptFunc
+	runPromptFunc = func(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
+		called = true
+		return "", nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	scheduleBackgroundAnalysis(database, 1, true, []Workout{{ID: 1}})
+
+	// Allow time for any spurious goroutines.
+	time.Sleep(150 * time.Millisecond)
+	if called {
+		t.Fatal("expected no Claude call when workout_context is missing")
+	}
+
+	// analysis_status must remain unset (no "pending" left behind).
+	var status string
+	if err := database.QueryRow(`SELECT analysis_status FROM workouts WHERE id = 1`).Scan(&status); err != nil {
+		t.Fatalf("query status: %v", err)
+	}
+	if status != "" {
+		t.Errorf("analysis_status = %q, want empty when context missing", status)
+	}
+}
+
+// TestScheduleBackgroundAnalysis_ContextSaved_Fires verifies that once the user
+// saves a workout_context row, a subsequent invocation runs Claude exactly once
+// (matches the pattern from the FIT-import flow where the user uploads, then
+// later saves context, and a re-trigger should now succeed).
+func TestScheduleBackgroundAnalysis_ContextSaved_Fires(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash, duration_seconds)
+		VALUES (1, 1, 'running', 'Test Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1', 1800)`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+
+	// First pass: no context — must not fire.
+	calls := 0
+	origFunc := runPromptFunc
+	runPromptFunc = func(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, error) {
+		calls++
+		return `{"type":"easy_run","tag":"easy","summary":"Easy run","title":"Easy Run"}`, nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	scheduleBackgroundAnalysis(database, 1, true, []Workout{{ID: 1}})
+	time.Sleep(100 * time.Millisecond)
+	if calls != 0 {
+		t.Fatalf("expected 0 Claude calls before context, got %d", calls)
+	}
+
+	// User saves context, then we retry — analysis must run exactly once.
+	if err := saveWorkoutContext(database, &WorkoutContext{
+		WorkoutID: 1,
+		Surface:   "road",
+		RunType:   "tempo",
+		HRSource:  "chest_strap",
+		FeelNotes: "Strong tempo.",
+	}); err != nil {
+		t.Fatalf("seed workout_context: %v", err)
+	}
+
+	scheduleBackgroundAnalysis(database, 1, true, []Workout{{ID: 1}})
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && calls == 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if calls != 1 {
+		t.Fatalf("expected exactly 1 Claude call after context saved, got %d", calls)
 	}
 }
 

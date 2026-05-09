@@ -47,6 +47,19 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Refuse with 409 when no workout_context row exists. The user must
+		// capture surface, run type, HR source, feel notes, and the planned
+		// speed structure before Claude is called.
+		if _, err := GetWorkoutContext(db, id); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "workout_context_required"})
+				return
+			}
+			log.Printf("Failed to load workout context for workout %d: %v", id, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workout context"})
+			return
+		}
+
 		// Set status to pending before running analysis.
 		if err := UpdateAnalysisStatus(db, id, user.ID, "pending"); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
@@ -66,6 +79,8 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("Claude analysis failed for workout %d: %v", id, err)
 			if errors.Is(err, sql.ErrNoRows) {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "workout not found"})
+			} else if errors.Is(err, ErrWorkoutContextRequired) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "workout_context_required"})
 			} else if errors.Is(err, ErrClaudeNotEnabled) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": ErrClaudeNotEnabled.Error()})
 			} else if strings.Contains(err.Error(), "failed to load Claude configuration") {
