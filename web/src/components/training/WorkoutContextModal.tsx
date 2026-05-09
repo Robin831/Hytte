@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useReducer, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
 
@@ -74,6 +74,26 @@ function ToggleGroup<T extends string>({ legend, name, value, options, onChange 
   )
 }
 
+type FormState = {
+  surface: Surface
+  runType: RunType
+  hrSource: HRSource
+  feelNotes: string
+  speedPlan: SpeedPlanSegment[]
+  error: string
+}
+
+function initForm(ctx?: WorkoutContext): FormState {
+  return {
+    surface: (ctx?.surface as Surface) ?? '',
+    runType: (ctx?.run_type as RunType) ?? '',
+    hrSource: (ctx?.hr_source as HRSource) ?? '',
+    feelNotes: ctx?.feel_notes ?? '',
+    speedPlan: ctx?.speed_plan ?? [],
+    error: '',
+  }
+}
+
 export default function WorkoutContextModal({
   workoutId,
   isOpen,
@@ -84,35 +104,27 @@ export default function WorkoutContextModal({
   const titleId = useId()
   const feelNotesId = useId()
 
-  const [surface, setSurface] = useState<Surface>((initialContext?.surface as Surface) ?? '')
-  const [runType, setRunType] = useState<RunType>((initialContext?.run_type as RunType) ?? '')
-  const [hrSource, setHrSource] = useState<HRSource>((initialContext?.hr_source as HRSource) ?? '')
-  const [feelNotes, setFeelNotes] = useState<string>(initialContext?.feel_notes ?? '')
-  const [speedPlan, setSpeedPlan] = useState<SpeedPlanSegment[]>(initialContext?.speed_plan ?? [])
+  const [form, dispatch] = useReducer(
+    (state: FormState, patch: Partial<FormState>) => ({ ...state, ...patch }),
+    undefined,
+    () => initForm(initialContext),
+  )
+  const { surface, runType, hrSource, feelNotes, speedPlan, error } = form
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
 
   function handleSurfaceChange(next: Surface) {
-    setSurface(next)
-    if (next !== 'Treadmill') {
-      setSpeedPlan([])
-    }
+    dispatch({ surface: next, ...(next !== 'Treadmill' ? { speedPlan: [] } : {}) })
   }
 
-  // Reset local state when the modal is reopened with a different context.
+  // Reset form when the modal is reopened with a different context.
   useEffect(() => {
     if (!isOpen) return
-    setSurface((initialContext?.surface as Surface) ?? '')
-    setRunType((initialContext?.run_type as RunType) ?? '')
-    setHrSource((initialContext?.hr_source as HRSource) ?? '')
-    setFeelNotes(initialContext?.feel_notes ?? '')
-    setSpeedPlan(initialContext?.speed_plan ?? [])
-    setError('')
+    dispatch(initForm(initialContext))
   }, [isOpen, initialContext])
 
   async function handleSave() {
     setSaving(true)
-    setError('')
+    dispatch({ error: '' })
     try {
       const res = await fetch(`/api/training/workouts/${workoutId}/context`, {
         method: 'PUT',
@@ -132,7 +144,7 @@ export default function WorkoutContextModal({
       }
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('workoutContextModal.errors.saveFailed'))
+      dispatch({ error: err instanceof Error ? err.message : t('workoutContextModal.errors.saveFailed') })
     } finally {
       setSaving(false)
     }
@@ -168,7 +180,7 @@ export default function WorkoutContextModal({
           legend={t('workoutContextModal.runType.label')}
           name="runType"
           value={runType}
-          onChange={setRunType}
+          onChange={(v) => dispatch({ runType: v })}
           options={[
             { value: 'slow', label: t('workoutContextModal.runType.slow') },
             { value: 'interval', label: t('workoutContextModal.runType.interval') },
@@ -179,7 +191,7 @@ export default function WorkoutContextModal({
           legend={t('workoutContextModal.hrSource.label')}
           name="hrSource"
           value={hrSource}
-          onChange={setHrSource}
+          onChange={(v) => dispatch({ hrSource: v })}
           options={[
             { value: 'chest', label: t('workoutContextModal.hrSource.chest') },
             { value: 'watch', label: t('workoutContextModal.hrSource.watch') },
@@ -207,7 +219,7 @@ export default function WorkoutContextModal({
           <textarea
             id={feelNotesId}
             value={feelNotes}
-            onChange={(e) => setFeelNotes(e.target.value)}
+            onChange={(e) => dispatch({ feelNotes: e.target.value })}
             placeholder={t('workoutContextModal.feelNotes.placeholder')}
             rows={4}
             className="w-full resize-y rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
