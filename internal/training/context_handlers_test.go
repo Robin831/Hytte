@@ -220,7 +220,7 @@ func TestPutWorkoutContext_InvalidJSON(t *testing.T) {
 	req = withUser(req, 1)
 	req = withChiParam(req, "id", strconv.FormatInt(workoutID, 10))
 	w := httptest.NewRecorder()
-	PutWorkoutContext(database)(w, req)
+	PutWorkoutContextHandler(database)(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
 	}
