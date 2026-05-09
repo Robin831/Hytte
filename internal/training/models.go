@@ -334,3 +334,27 @@ type SportDistribution struct {
 	Count         int    `json:"count"`
 	TotalDuration int    `json:"total_duration_seconds"`
 }
+
+// SpeedSegment is one entry in a planned workout's speed_plan: a steady portion,
+// an interval rep, or a recovery block. SameAsPrevious lets the UI compress
+// repeated segments without duplicating their fields.
+type SpeedSegment struct {
+	Kind            string  `json:"kind"`
+	SpeedKmph       float64 `json:"speed_kmph"`
+	DurationSec     int     `json:"duration_sec"`
+	Repeats         int     `json:"repeats"`
+	SameAsPrevious  bool    `json:"same_as_previous"`
+}
+
+// WorkoutContext is the user-entered context for a single workout: surface,
+// run type, HR source, free-text feel notes, and a structured speed plan.
+// Sensitive text fields (feel_notes, speed_plan JSON) are encrypted at rest.
+type WorkoutContext struct {
+	WorkoutID   int64          `json:"workout_id"`
+	Surface     string         `json:"surface"`
+	RunType     string         `json:"run_type"`
+	HRSource    string         `json:"hr_source"`
+	FeelNotes   string         `json:"feel_notes"`
+	SpeedPlan   []SpeedSegment `json:"speed_plan"`
+	CompletedAt *time.Time     `json:"completed_at,omitempty"`
+}

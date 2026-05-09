@@ -1574,6 +1574,21 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_suggestion_runs_user_started ON suggestion_runs(user_id, started_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_suggestion_runs_user_inflight ON suggestion_runs(user_id) WHERE finished_at IS NULL;
 
+	-- Per-workout context entered by the user (Hytte-vj5h): surface, run type,
+	-- HR data source, free-text feel notes, and a structured speed plan.
+	-- feel_notes and speed_plan: empty strings are stored as-is (no data);
+	-- non-empty values are stored as enc:... ciphertext (AES-256-GCM via
+	-- EncryptField). speed_plan is encrypted JSON when non-empty.
+	CREATE TABLE IF NOT EXISTS workout_context (
+		workout_id   INTEGER PRIMARY KEY REFERENCES workouts(id) ON DELETE CASCADE,
+		surface      TEXT NOT NULL DEFAULT '',
+		run_type     TEXT NOT NULL DEFAULT '',
+		hr_source    TEXT NOT NULL DEFAULT '',
+		feel_notes   TEXT NOT NULL DEFAULT '',
+		speed_plan   TEXT NOT NULL DEFAULT '',
+		completed_at TEXT NOT NULL DEFAULT ''
+	);
+
 	`
 
 	_, err := db.Exec(schema)
