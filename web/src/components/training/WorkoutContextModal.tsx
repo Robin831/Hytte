@@ -1,4 +1,4 @@
-import { useEffect, useId, useReducer, useState } from 'react'
+import { useEffect, useId, useReducer, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
 
@@ -90,11 +90,21 @@ function normalizeSurface(s?: string): Surface {
   return ''
 }
 
+function normalizeRunType(s?: string): RunType {
+  if (s === 'slow' || s === 'interval') return s
+  return ''
+}
+
+function normalizeHRSource(s?: string): HRSource {
+  if (s === 'chest' || s === 'watch') return s
+  return ''
+}
+
 function initForm(ctx?: WorkoutContext): FormState {
   return {
     surface: normalizeSurface(ctx?.surface),
-    runType: (ctx?.run_type as RunType) ?? '',
-    hrSource: (ctx?.hr_source as HRSource) ?? '',
+    runType: normalizeRunType(ctx?.run_type),
+    hrSource: normalizeHRSource(ctx?.hr_source),
     feelNotes: ctx?.feel_notes ?? '',
     speedPlan: ctx?.speed_plan ?? [],
     error: '',
@@ -123,11 +133,18 @@ export default function WorkoutContextModal({
     dispatch({ surface: next, ...(next !== 'Treadmill' ? { speedPlan: [] } : {}) })
   }
 
-  // Reset form when the modal is reopened with a different context.
+  // Reset form only on the false→true open transition to avoid wiping in-progress
+  // edits when the parent re-renders with a new initialContext reference.
+  const wasOpenRef = useRef(false)
+  const initialContextRef = useRef(initialContext)
+  initialContextRef.current = initialContext
+
   useEffect(() => {
-    if (!isOpen) return
-    dispatch(initForm(initialContext))
-  }, [isOpen, initialContext])
+    if (isOpen && !wasOpenRef.current) {
+      dispatch(initForm(initialContextRef.current))
+    }
+    wasOpenRef.current = isOpen
+  }, [isOpen, workoutId])
 
   async function handleSave() {
     setSaving(true)
