@@ -1,6 +1,7 @@
 import { useEffect, useId, useReducer, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
+import SpeedPlanEditor from './SpeedPlanEditor'
 
 export type Surface = 'Treadmill' | 'Outside' | ''
 export type RunType = 'slow' | 'interval' | ''
@@ -247,16 +248,17 @@ export default function WorkoutContextModal({
         />
 
         {surface === 'Treadmill' && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2" data-testid="speed-plan-section">
             <span className="text-sm font-medium text-gray-300">
               {t('workoutContextModal.speedPlan.label')}
             </span>
-            <div
-              data-testid="speed-plan-placeholder"
-              className="rounded border border-gray-700 bg-gray-800/40 p-3 text-sm text-gray-400"
-            >
-              {t('workoutContextModal.speedPlan.placeholder')}
-            </div>
+            <SpeedPlanEditor
+              value={speedPlan}
+              onChange={(segments) => {
+                dispatch({ speedPlan: segments })
+                setTouched(prev => new Set([...prev, 'speed_plan']))
+              }}
+            />
           </div>
         )}
 

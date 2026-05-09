@@ -340,6 +340,22 @@
       "pacing_issue": "Tempoproblemer"
     }
   },
+  "speedPlan": {
+    "kinds": {
+      "warmup": "Oppvarming",
+      "interval": "Intervall",
+      "pause": "Pause",
+      "cooldown": "Nedjogg"
+    },
+    "add": "Legg til segment",
+    "addKindLabel": "Type",
+    "removeRow": "Fjern segment",
+    "sameSpeedToggle": "Samme fart for alle intervaller",
+    "sharedIntervalSpeed": "Felles intervallfart",
+    "sharedPause": "Pause / hvile",
+    "kmh": "km/t",
+    "sec": "sek"
+  },
   "workoutContextModal": {
     "title": "Øktkontekst",
     "surface": {
