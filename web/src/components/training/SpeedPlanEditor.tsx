@@ -80,7 +80,7 @@ export default function SpeedPlanEditor({ value, onChange }: SpeedPlanEditorProp
 
   function kindLabel(kind: string): string {
     if (KIND_OPTIONS.includes(kind as SpeedPlanSegmentKind)) {
-      return t(`speedPlan.kinds.${kind}`)
+      return t(`speedPlan.kinds.${kind as SpeedPlanSegmentKind}`)
     }
     return kind
   }
