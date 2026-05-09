@@ -48,7 +48,7 @@ vi.mock('react-i18next', () => {
     const cached = tCache.get(cacheKey)
     if (cached) return cached
     const fn = (key: string, opts?: Record<string, unknown>): string => {
-      let namespace: string | null = null
+      let namespace: string | null
       let localKey = key
       const colonIdx = key.indexOf(':')
       if (colonIdx >= 0) {
