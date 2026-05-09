@@ -1576,8 +1576,9 @@ func createSchema(db *sql.DB) error {
 
 	-- Per-workout context entered by the user (Hytte-vj5h): surface, run type,
 	-- HR data source, free-text feel notes, and a structured speed plan.
-	-- feel_notes and speed_plan store encrypted strings (speed_plan is encrypted
-	-- JSON, since the segment kinds may contain free-text labels).
+	-- feel_notes and speed_plan: empty strings are stored as-is (no data);
+	-- non-empty values are stored as enc:... ciphertext (AES-256-GCM via
+	-- EncryptField). speed_plan is encrypted JSON when non-empty.
 	CREATE TABLE IF NOT EXISTS workout_context (
 		workout_id   INTEGER PRIMARY KEY REFERENCES workouts(id) ON DELETE CASCADE,
 		surface      TEXT NOT NULL DEFAULT '',

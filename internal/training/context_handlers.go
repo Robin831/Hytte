@@ -47,8 +47,21 @@ func GetWorkoutContext(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// putWorkoutContextRequest is the request body for PUT /context. All fields are
+// pointers so that absent JSON fields are distinguishable from zero values.
+// Omitted fields leave the existing persisted value unchanged.
+type putWorkoutContextRequest struct {
+	Surface     *string         `json:"surface"`
+	RunType     *string         `json:"run_type"`
+	HRSource    *string         `json:"hr_source"`
+	FeelNotes   *string         `json:"feel_notes"`
+	SpeedPlan   *[]SpeedSegment `json:"speed_plan"`
+	CompletedAt *time.Time      `json:"completed_at"`
+}
+
 // PutWorkoutContext handles PUT /api/training/workouts/{id}/context.
-// Creates the context row if it doesn't exist, otherwise updates the existing row.
+// Creates the context row if it doesn't exist, otherwise merges the provided
+// fields into the existing row so that omitted fields are not wiped.
 // Returns the persisted context (after encryption round-trip).
 func PutWorkoutContext(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -68,17 +81,46 @@ func PutWorkoutContext(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		var body WorkoutContext
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		var req putWorkoutContextRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 			return
 		}
-		body.WorkoutID = workoutID
-		if body.SpeedPlan == nil {
-			body.SpeedPlan = []SpeedSegment{}
+
+		// Load existing context or start with defaults so omitted request
+		// fields preserve their previously saved values.
+		ctx, err := loadWorkoutContext(db, workoutID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load context"})
+			return
+		}
+		if ctx == nil {
+			ctx = &WorkoutContext{WorkoutID: workoutID, SpeedPlan: []SpeedSegment{}}
 		}
 
-		if err := saveWorkoutContext(db, &body); err != nil {
+		if req.Surface != nil {
+			ctx.Surface = *req.Surface
+		}
+		if req.RunType != nil {
+			ctx.RunType = *req.RunType
+		}
+		if req.HRSource != nil {
+			ctx.HRSource = *req.HRSource
+		}
+		if req.FeelNotes != nil {
+			ctx.FeelNotes = *req.FeelNotes
+		}
+		if req.SpeedPlan != nil {
+			ctx.SpeedPlan = *req.SpeedPlan
+		}
+		if req.CompletedAt != nil {
+			ctx.CompletedAt = req.CompletedAt
+		}
+		if ctx.SpeedPlan == nil {
+			ctx.SpeedPlan = []SpeedSegment{}
+		}
+
+		if err := saveWorkoutContext(db, ctx); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save context"})
 			return
 		}
