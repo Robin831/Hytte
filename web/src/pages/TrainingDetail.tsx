@@ -88,6 +88,7 @@ export default function TrainingDetail() {
   const [contextModalOpen, setContextModalOpen] = useState(false)
   const [contextModalDismissed, setContextModalDismissed] = useState(false)
   const contextAutoOpenedRef = useRef(false)
+  const contextRefetchControllerRef = useRef<AbortController | null>(null)
   const hasContext = workoutContext !== null
 
   function formatDistance(meters: number): string {
@@ -246,22 +247,40 @@ export default function TrainingDetail() {
     setContextModalOpen(true)
   }, [contextLoaded, hasContext, contextModalDismissed])
 
+  // Abort any in-flight context refetch when the page unmounts.
+  useEffect(() => {
+    return () => {
+      contextRefetchControllerRef.current?.abort()
+    }
+  }, [])
+
   const handleContextModalClose = useCallback(() => {
     setContextModalOpen(false)
     setContextModalDismissed(true)
     if (!id) return
-    // Refetch context so a successful save flips the empty state away.
-    fetch(`/api/training/workouts/${id}/context`, { credentials: 'include' })
+    // Cancel any previous refetch and start a new one so a successful save
+    // flips the empty state away.
+    contextRefetchControllerRef.current?.abort()
+    const controller = new AbortController()
+    contextRefetchControllerRef.current = controller
+    fetch(`/api/training/workouts/${id}/context`, {
+      credentials: 'include',
+      signal: controller.signal,
+    })
       .then(async (res) => {
+        if (controller.signal.aborted) return
         if (res.ok) {
           const data = await res.json()
           setWorkoutContext(data.context ?? null)
         } else if (res.status === 404) {
           setWorkoutContext(null)
+        } else {
+          console.warn('Failed to refetch workout context:', res.status)
         }
       })
-      .catch(() => {
-        // Ignore — empty state remains visible and the user can retry via the CTA.
+      .catch((err) => {
+        if ((err as Error).name === 'AbortError') return
+        console.warn('Failed to refetch workout context:', err)
       })
   }, [id])
 
