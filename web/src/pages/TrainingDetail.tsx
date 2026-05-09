@@ -124,6 +124,7 @@ export default function TrainingDetail() {
       setWorkoutContext(null)
       setContextLoaded(false)
       setContextMissing(false)
+      setContextModalOpen(false)
       setContextModalDismissed(false)
       contextAutoOpenedRef.current = false
       contextRefetchControllerRef.current?.abort()
@@ -284,6 +285,7 @@ export default function TrainingDetail() {
           if (ctx !== null) setContextMissing(false)
         } else if (res.status === 404) {
           setWorkoutContext(null)
+          setContextMissing(true)
         } else {
           console.warn('Failed to refetch workout context:', res.status)
         }
