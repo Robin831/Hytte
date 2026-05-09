@@ -101,15 +101,37 @@ function normalizeHRSource(s?: string): HRSource {
   return ''
 }
 
+function normalizeSpeedPlan(segments: SpeedPlanSegment[]): SpeedPlanSegment[] {
+  const pauses = segments.filter(s => s.kind === 'pause')
+  if (pauses.length < 2) return segments
+  const first = pauses[0]
+  if (pauses.every(s => s.speed_kmph === first.speed_kmph && s.duration_sec === first.duration_sec)) {
+    return segments
+  }
+  return segments.map(seg =>
+    seg.kind === 'pause'
+      ? { ...seg, speed_kmph: first.speed_kmph, duration_sec: first.duration_sec }
+      : seg
+  )
+}
+
 function initForm(ctx?: WorkoutContext): FormState {
   return {
     surface: normalizeSurface(ctx?.surface),
     runType: normalizeRunType(ctx?.run_type),
     hrSource: normalizeHRSource(ctx?.hr_source),
     feelNotes: ctx?.feel_notes ?? '',
-    speedPlan: ctx?.speed_plan ?? [],
+    speedPlan: normalizeSpeedPlan(ctx?.speed_plan ?? []),
     error: '',
   }
+}
+
+function initTouched(ctx?: WorkoutContext): Set<string> {
+  const raw = ctx?.speed_plan ?? []
+  const normalized = normalizeSpeedPlan(raw)
+  const s = new Set<string>()
+  if (normalized !== raw) s.add('speed_plan')
+  return s
 }
 
 export default function WorkoutContextModal({
@@ -129,7 +151,7 @@ export default function WorkoutContextModal({
   )
   const { surface, runType, hrSource, feelNotes, speedPlan, error } = form
   const [saving, setSaving] = useState(false)
-  const [touched, setTouched] = useState<Set<string>>(() => new Set())
+  const [touched, setTouched] = useState<Set<string>>(() => initTouched(initialContext))
 
   function handleSurfaceChange(nextSurface: Surface) {
     dispatch({ surface: nextSurface, ...(nextSurface !== 'Treadmill' ? { speedPlan: [] } : {}) })
@@ -163,7 +185,7 @@ export default function WorkoutContextModal({
   useEffect(() => {
     if (isOpen && !wasOpenRef.current) {
       dispatch(initForm(initialContextRef.current))
-      setTouched(new Set())
+      setTouched(initTouched(initialContextRef.current))
     }
     wasOpenRef.current = isOpen
   }, [isOpen, workoutId])

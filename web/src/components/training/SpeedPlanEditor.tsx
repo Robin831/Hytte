@@ -38,7 +38,11 @@ export default function SpeedPlanEditor({ value, onChange }: SpeedPlanEditorProp
   const intervalSegments = useMemo(() => value.filter(s => s.kind === 'interval'), [value])
   const pauseSegments = useMemo(() => value.filter(s => s.kind === 'pause'), [value])
 
-  const [sameSpeedForIntervals, setSameSpeedForIntervals] = useState(true)
+  const [sameSpeedForIntervals, setSameSpeedForIntervals] = useState(() => {
+    const intervals = value.filter(s => s.kind === 'interval')
+    if (intervals.length <= 1) return true
+    return intervals.every(s => s.speed_kmph === intervals[0].speed_kmph)
+  })
   const [addKind, setAddKind] = useState<SpeedPlanSegmentKind>('interval')
 
   const sharedIntervalSpeed = intervalSegments[0]?.speed_kmph ?? 0

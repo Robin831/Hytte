@@ -340,6 +340,38 @@ describe('WorkoutContextModal', () => {
       ])
     })
 
+    it('initializes same-speed toggle to false when interval speeds differ', () => {
+      openTreadmillModal([
+        { kind: 'interval', speed_kmph: 14, duration_sec: 60, repeats: 1, same_as_previous: false },
+        { kind: 'interval', speed_kmph: 16, duration_sec: 60, repeats: 1, same_as_previous: false },
+      ])
+
+      const toggle = screen.getByTestId('speed-plan-same-speed-toggle') as HTMLInputElement
+      expect(toggle.checked).toBe(false)
+      // Per-row speed inputs should be visible for each interval
+      expect(screen.getByTestId('speed-plan-row-0-speed')).toBeTruthy()
+      expect(screen.getByTestId('speed-plan-row-1-speed')).toBeTruthy()
+      // Shared speed input should not be rendered while toggle is off
+      expect(screen.queryByTestId('speed-plan-shared-interval-speed')).toBeNull()
+    })
+
+    it('normalizes inconsistent pause segments to first pause values on mount', async () => {
+      openTreadmillModal([
+        { kind: 'pause', speed_kmph: 5, duration_sec: 30, repeats: 1, same_as_previous: false },
+        { kind: 'pause', speed_kmph: 7, duration_sec: 45, repeats: 1, same_as_previous: false },
+      ])
+
+      // Normalization is synchronous (in initForm) and 'speed_plan' is pre-added to
+      // touched, so saving immediately sends the corrected segments.
+      const body = await saveAndReadBody()
+      const pauses = (body.speed_plan as Array<{ kind: string; speed_kmph: number; duration_sec: number }>)
+        .filter(s => s.kind === 'pause')
+      expect(pauses).toEqual([
+        { kind: 'pause', speed_kmph: 5, duration_sec: 30, repeats: 1, same_as_previous: false },
+        { kind: 'pause', speed_kmph: 5, duration_sec: 30, repeats: 1, same_as_previous: false },
+      ])
+    })
+
     it('supports adding all four kinds via the kind selector', async () => {
       openTreadmillModal()
 
