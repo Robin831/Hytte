@@ -1,11 +1,18 @@
 import { useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
-import SpeedPlanEditor, { type SpeedPlanSegment } from './SpeedPlanEditor'
 
 export type Surface = 'Treadmill' | 'Outside' | ''
 export type RunType = 'slow' | 'interval' | ''
 export type HRSource = 'chest' | 'watch' | ''
+
+export interface SpeedPlanSegment {
+  kind: string
+  speed_kmph: number
+  duration_sec: number
+  repeats?: number
+  same_as_previous?: boolean
+}
 
 export interface WorkoutContext {
   workout_id?: number
@@ -85,6 +92,13 @@ export default function WorkoutContextModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  function handleSurfaceChange(next: Surface) {
+    setSurface(next)
+    if (next !== 'Treadmill') {
+      setSpeedPlan([])
+    }
+  }
+
   // Reset local state when the modal is reopened with a different context.
   useEffect(() => {
     if (!isOpen) return
@@ -143,7 +157,7 @@ export default function WorkoutContextModal({
           legend={t('workoutContextModal.surface.label')}
           name="surface"
           value={surface}
-          onChange={setSurface}
+          onChange={handleSurfaceChange}
           options={[
             { value: 'Treadmill', label: t('workoutContextModal.surface.treadmill') },
             { value: 'Outside', label: t('workoutContextModal.surface.outside') },
@@ -177,7 +191,12 @@ export default function WorkoutContextModal({
             <span className="text-sm font-medium text-gray-300">
               {t('workoutContextModal.speedPlan.label')}
             </span>
-            <SpeedPlanEditor value={speedPlan} onChange={setSpeedPlan} />
+            <div
+              data-testid="speed-plan-placeholder"
+              className="rounded border border-gray-700 bg-gray-800/40 p-3 text-sm text-gray-400"
+            >
+              {t('workoutContextModal.speedPlan.placeholder')}
+            </div>
           </div>
         )}
 

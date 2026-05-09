@@ -363,7 +363,7 @@
     },
     "speedPlan": {
       "label": "Speed plan",
-      "placeholder": "Speed plan editor coming soon ({{count}} segments)"
+      "placeholder": "Speed plan editor coming soon."
     },
     "save": "Save",
     "saving": "Saving...",

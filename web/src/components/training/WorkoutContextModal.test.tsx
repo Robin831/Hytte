@@ -11,11 +11,6 @@ vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
 }))
 
-vi.mock('./SpeedPlanEditor', () => ({
-  __esModule: true,
-  default: () => <div data-testid="speed-plan-editor-mock">speed plan editor</div>,
-}))
-
 describe('WorkoutContextModal', () => {
   let fetchMock: ReturnType<typeof vi.fn>
 
@@ -64,24 +59,21 @@ describe('WorkoutContextModal', () => {
     expect(screen.getByTestId('toggle-hrSource-chest')).toHaveAttribute('aria-checked', 'false')
   })
 
-  it('renders SpeedPlanEditor only when surface is Treadmill', () => {
+  it('renders speed plan section only when surface is Treadmill', () => {
     render(
       <WorkoutContextModal workoutId="42" isOpen={true} onClose={() => {}} />,
     )
 
-    // Initially no surface selected → no speed plan editor.
-    expect(screen.queryByTestId('speed-plan-editor-mock')).toBeNull()
+    expect(screen.queryByTestId('speed-plan-placeholder')).toBeNull()
 
-    // Select Outside → still no editor.
     fireEvent.click(screen.getByTestId('toggle-surface-Outside'))
-    expect(screen.queryByTestId('speed-plan-editor-mock')).toBeNull()
+    expect(screen.queryByTestId('speed-plan-placeholder')).toBeNull()
 
-    // Select Treadmill → editor renders.
     fireEvent.click(screen.getByTestId('toggle-surface-Treadmill'))
-    expect(screen.getByTestId('speed-plan-editor-mock')).toBeTruthy()
+    expect(screen.getByTestId('speed-plan-placeholder')).toBeTruthy()
   })
 
-  it('renders SpeedPlanEditor when initialContext.surface is Treadmill', () => {
+  it('renders speed plan section when initialContext.surface is Treadmill', () => {
     render(
       <WorkoutContextModal
         workoutId="42"
@@ -96,10 +88,39 @@ describe('WorkoutContextModal', () => {
         }}
       />,
     )
-    expect(screen.getByTestId('speed-plan-editor-mock')).toBeTruthy()
+    expect(screen.getByTestId('speed-plan-placeholder')).toBeTruthy()
     expect(screen.getByTestId('toggle-surface-Treadmill')).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByTestId('toggle-runType-interval')).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByTestId('toggle-hrSource-chest')).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('clears the speed plan when surface toggles away from Treadmill', async () => {
+    const onClose = vi.fn()
+    render(
+      <WorkoutContextModal
+        workoutId="42"
+        isOpen={true}
+        onClose={onClose}
+        initialContext={{
+          surface: 'Treadmill',
+          run_type: 'slow',
+          hr_source: 'chest',
+          feel_notes: '',
+          speed_plan: [
+            { kind: 'warmup', speed_kmph: 8, duration_sec: 600 },
+          ],
+        }}
+      />,
+    )
+
+    fireEvent.click(screen.getByTestId('toggle-surface-Outside'))
+    expect(screen.queryByTestId('speed-plan-placeholder')).toBeNull()
+
+    fireEvent.click(screen.getByText('workoutContextModal.save'))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string)
+    expect(body.speed_plan).toEqual([])
   })
 
   it('PUTs the form state to the workout context endpoint and calls onClose on success', async () => {

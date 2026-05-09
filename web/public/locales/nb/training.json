@@ -363,7 +363,7 @@
     },
     "speedPlan": {
       "label": "Fartsplan",
-      "placeholder": "Fartsplan-editor kommer snart ({{count}} segmenter)"
+      "placeholder": "Fartsplan-editor kommer snart."
     },
     "save": "Lagre",
     "saving": "Lagrer...",
