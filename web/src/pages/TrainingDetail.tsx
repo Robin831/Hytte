@@ -85,6 +85,7 @@ export default function TrainingDetail() {
   const [linkedRace, setLinkedRace] = useState<{ name: string; date: string; distance_m: number; target_time: number | null; result_time: number | null } | null>(null)
   const [workoutContext, setWorkoutContext] = useState<WorkoutContext | null>(null)
   const [contextLoaded, setContextLoaded] = useState(false)
+  const [contextMissing, setContextMissing] = useState(false)
   const [contextModalOpen, setContextModalOpen] = useState(false)
   const [contextModalDismissed, setContextModalDismissed] = useState(false)
   const contextAutoOpenedRef = useRef(false)
@@ -122,8 +123,11 @@ export default function TrainingDetail() {
       setStrideEval(null)
       setWorkoutContext(null)
       setContextLoaded(false)
+      setContextMissing(false)
       setContextModalDismissed(false)
       contextAutoOpenedRef.current = false
+      contextRefetchControllerRef.current?.abort()
+      contextRefetchControllerRef.current = null
       try {
         const isAdmin = user?.is_admin ?? false
         const fetches: Promise<Response>[] = [
@@ -168,7 +172,9 @@ export default function TrainingDetail() {
           setWorkoutContext(cData.context ?? null)
         } else if (cRes.status === 404) {
           setWorkoutContext(null)
+          setContextMissing(true)
         }
+        // On 5xx leave contextMissing false so auto-open and empty state don't fire.
         setContextLoaded(true)
         if (aRes && aRes.ok) {
           const aData = await aRes.json()
@@ -238,14 +244,16 @@ export default function TrainingDetail() {
   }, [workout?.race_id])
 
   // Auto-open the workout context modal once per mount when context is missing.
+  // Only for admins: non-admin users have no CTA to reopen after dismissal.
   useEffect(() => {
     if (!contextLoaded) return
-    if (hasContext) return
+    if (!contextMissing) return
+    if (!user?.is_admin) return
     if (contextModalDismissed) return
     if (contextAutoOpenedRef.current) return
     contextAutoOpenedRef.current = true
     setContextModalOpen(true)
-  }, [contextLoaded, hasContext, contextModalDismissed])
+  }, [contextLoaded, contextMissing, user?.is_admin, contextModalDismissed])
 
   // Abort any in-flight context refetch when the page unmounts.
   useEffect(() => {
@@ -271,7 +279,9 @@ export default function TrainingDetail() {
         if (controller.signal.aborted) return
         if (res.ok) {
           const data = await res.json()
-          setWorkoutContext(data.context ?? null)
+          const ctx = data.context ?? null
+          setWorkoutContext(ctx)
+          if (ctx !== null) setContextMissing(false)
         } else if (res.status === 404) {
           setWorkoutContext(null)
         } else {
@@ -634,7 +644,7 @@ export default function TrainingDetail() {
             )}
           </div>
 
-          {!hasContext && (
+          {contextMissing && (
             <div className="space-y-3">
               <p className="text-sm font-medium text-gray-200">
                 {t('analysis.contextPending.title')}

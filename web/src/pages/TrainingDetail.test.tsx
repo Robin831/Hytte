@@ -3,40 +3,37 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import TrainingDetail from './TrainingDetail'
-import enTraining from '../../public/locales/en/training.json'
 
-// ── Translation helpers ───────────────────────────────────────────────────────
+// ── Translation mock ──────────────────────────────────────────────────────────
+// Uses an async factory so enTraining is loaded inside the mock (avoids hoisting issues).
 
-type JsonValue = string | number | boolean | null | JsonObject | JsonValue[]
-interface JsonObject { [key: string]: JsonValue }
+vi.mock('react-i18next', async () => {
+  const { default: enTraining } = await import('../../public/locales/en/training.json')
 
-function resolveKey(obj: JsonObject, parts: string[]): JsonValue | undefined {
-  const [head, ...rest] = parts
-  const val = obj[head]
-  if (rest.length === 0) return val
-  if (val && typeof val === 'object' && !Array.isArray(val)) {
-    return resolveKey(val as JsonObject, rest)
-  }
-  return undefined
-}
-
-function makeT(translations: JsonObject) {
-  return function t(key: string, opts?: Record<string, unknown>): string {
-    if (opts?.defaultValue && typeof opts.defaultValue === 'string') return opts.defaultValue
-    const val = resolveKey(translations, key.split('.'))
-    if (typeof val === 'string') {
-      if (opts) {
-        return val.replace(/\{\{(\w+)\}\}/g, (_, k) => String(opts[k] ?? `{{${k}}}`))
-      }
-      return val
+  function resolveKey(obj: Record<string, unknown>, parts: string[]): unknown {
+    const [head, ...rest] = parts
+    const val = obj[head]
+    if (rest.length === 0) return val
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+      return resolveKey(val as Record<string, unknown>, rest)
     }
-    return key
+    return undefined
   }
-}
 
-vi.mock('react-i18next', () => {
-  const trainingT = makeT(enTraining as unknown as JsonObject)
-  const emptyT = makeT({} as JsonObject)
+  function makeT(translations: Record<string, unknown>) {
+    return function t(key: string, opts?: Record<string, unknown>): string {
+      if (opts?.defaultValue && typeof opts.defaultValue === 'string') return opts.defaultValue
+      const val = resolveKey(translations, key.split('.'))
+      if (typeof val === 'string') {
+        if (opts) return val.replace(/\{\{(\w+)\}\}/g, (_, k) => String(opts[k] ?? `{{${k}}}`))
+        return val
+      }
+      return key
+    }
+  }
+
+  const trainingT = makeT(enTraining as Record<string, unknown>)
+  const emptyT = makeT({})
 
   // useTranslation is called with several different namespace argument shapes
   // throughout TrainingDetail. We must return the SAME `t` reference for each
@@ -128,9 +125,13 @@ vi.mock('../components/TagBadge', () => ({
 
 vi.mock('lucide-react', () => {
   const Stub = () => null
-  return new Proxy({ default: Stub }, {
-    get: () => Stub,
-  })
+  return {
+    ArrowLeft: Stub, Trash2: Stub, Save: Stub, GitCompareArrows: Stub,
+    Sparkles: Stub, RefreshCw: Stub, Loader2: Stub, TrendingUp: Stub,
+    TrendingDown: Stub, ArrowRight: Stub, Minus: Stub, AlertTriangle: Stub,
+    CheckCircle2: Stub, Info: Stub, FlaskConical: Stub, XCircle: Stub,
+    Zap: Stub, Trophy: Stub,
+  }
 })
 
 vi.mock('../utils/formatDate', () => ({
@@ -298,6 +299,30 @@ describe('TrainingDetail – workout context flow', () => {
     await waitFor(() => {
       expect(screen.getByTestId('context-modal')).toBeInTheDocument()
     })
+  })
+
+  it('does not auto-open the modal or show the empty state when the context fetch returns a 5xx error', async () => {
+    vi.stubGlobal('fetch', makeFetchMock({ context: { ok: false, status: 500 } }))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Morning Run')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('context-modal')).toBeNull()
+    expect(
+      screen.queryByText('AI summary pending — provide workout context'),
+    ).toBeNull()
+  })
+
+  it('does not auto-open the modal for non-admin users when context is missing', async () => {
+    authState.user = { id: 1, email: 'a@b.c', name: 'Tester', is_admin: false, features: {} }
+    vi.stubGlobal('fetch', makeFetchMock({ context: { ok: false, status: 404 } }))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Morning Run')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('context-modal')).toBeNull()
   })
 
   it('flips the empty state away when the refetch returns a saved context', async () => {
