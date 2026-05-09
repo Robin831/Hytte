@@ -1,7 +1,8 @@
 import { useEffect, useId, useReducer, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
-import SpeedPlanEditor, { SpeedPlanSegment } from './SpeedPlanEditor'
+import SpeedPlanEditor from './SpeedPlanEditor'
+import type { SpeedPlanSegment } from './SpeedPlanEditor'
 
 export type Surface = 'Treadmill' | 'Outside' | ''
 export type RunType = 'slow' | 'interval' | ''
