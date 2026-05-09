@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import WorkoutContextModal from './WorkoutContextModal'
+import type { SpeedPlanSegment } from '../../types/training'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -177,13 +178,7 @@ describe('WorkoutContextModal', () => {
   })
 
   describe('SpeedPlanEditor integration', () => {
-    function openTreadmillModal(initialSegments: Array<{
-      kind: string
-      speed_kmph: number
-      duration_sec: number
-      repeats: number
-      same_as_previous: boolean
-    }> = []) {
+    function openTreadmillModal(initialSegments: SpeedPlanSegment[] = []) {
       return render(
         <WorkoutContextModal
           workoutId="42"

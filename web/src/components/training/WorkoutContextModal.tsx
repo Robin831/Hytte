@@ -2,13 +2,11 @@ import { useEffect, useId, useReducer, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
 import SpeedPlanEditor from './SpeedPlanEditor'
-import type { SpeedPlanSegment } from './SpeedPlanEditor'
+import type { SpeedPlanSegment } from '../../types/training'
 
 export type Surface = 'Treadmill' | 'Outside' | ''
 export type RunType = 'slow' | 'interval' | ''
 export type HRSource = 'chest' | 'watch' | ''
-
-export type { SpeedPlanSegment }
 
 export interface WorkoutContext {
   workout_id?: number

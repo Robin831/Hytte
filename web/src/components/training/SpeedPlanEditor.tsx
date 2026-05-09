@@ -1,16 +1,9 @@
 import { useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from 'lucide-react'
+import type { SpeedPlanSegment, SpeedPlanSegmentKind } from '../../types/training'
 
-export type SpeedPlanSegmentKind = 'warmup' | 'interval' | 'pause' | 'cooldown'
-
-export interface SpeedPlanSegment {
-  kind: string
-  speed_kmph: number
-  duration_sec: number
-  repeats: number
-  same_as_previous: boolean
-}
+export type { SpeedPlanSegment, SpeedPlanSegmentKind }
 
 interface SpeedPlanEditorProps {
   value: SpeedPlanSegment[]
