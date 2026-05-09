@@ -11,6 +11,7 @@ import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
 import HRZoneCard from '../components/training/HRZoneCard'
 import TrendCard from '../components/training/TrendCard'
 import RacePredictionsCard from '../components/training/RacePredictionsCard'
+import WorkoutContextModal, { type WorkoutContext } from '../components/training/WorkoutContextModal'
 import TagBadge from '../components/TagBadge'
 import { isAutoTag, isAITag } from '../tags'
 import LactateImportDialog from '../components/LactateImportDialog'
@@ -82,6 +83,12 @@ export default function TrainingDetail() {
   const [showLactateImport, setShowLactateImport] = useState(false)
   const [strideEval, setStrideEval] = useState<StrideEvaluationRecord | null>(null)
   const [linkedRace, setLinkedRace] = useState<{ name: string; date: string; distance_m: number; target_time: number | null; result_time: number | null } | null>(null)
+  const [workoutContext, setWorkoutContext] = useState<WorkoutContext | null>(null)
+  const [contextLoaded, setContextLoaded] = useState(false)
+  const [contextModalOpen, setContextModalOpen] = useState(false)
+  const [contextModalDismissed, setContextModalDismissed] = useState(false)
+  const contextAutoOpenedRef = useRef(false)
+  const hasContext = workoutContext !== null
 
   function formatDistance(meters: number): string {
     if (meters < 1000) return `${Math.round(meters)} ${t('units.m')}`
@@ -112,6 +119,10 @@ export default function TrainingDetail() {
       setZones([])
       setSimilar([])
       setStrideEval(null)
+      setWorkoutContext(null)
+      setContextLoaded(false)
+      setContextModalDismissed(false)
+      contextAutoOpenedRef.current = false
       try {
         const isAdmin = user?.is_admin ?? false
         const fetches: Promise<Response>[] = [
@@ -119,6 +130,7 @@ export default function TrainingDetail() {
           fetch(`/api/training/workouts/${id}/zones`, { credentials: 'include', signal }),
           fetch(`/api/training/workouts/${id}/similar`, { credentials: 'include', signal }),
           fetch(`/api/stride/evaluations?workout_id=${id}`, { credentials: 'include', signal }),
+          fetch(`/api/training/workouts/${id}/context`, { credentials: 'include', signal }),
         ]
         if (isAdmin) {
           fetches.push(fetch(`/api/training/workouts/${id}/analysis`, { credentials: 'include', signal }))
@@ -126,7 +138,7 @@ export default function TrainingDetail() {
           fetches.push(fetch('/api/training/predictions', { credentials: 'include', signal }))
         }
 
-        const [wRes, zRes, sRes, eRes, aRes, iRes, rRes] = await Promise.all(fetches)
+        const [wRes, zRes, sRes, eRes, cRes, aRes, iRes, rRes] = await Promise.all(fetches)
 
         if (!wRes.ok) {
           setError(t('errors.workoutNotFound'))
@@ -150,6 +162,13 @@ export default function TrainingDetail() {
           const evals: StrideEvaluationRecord[] = eData.evaluations ?? []
           setStrideEval(evals[0] ?? null)
         }
+        if (cRes.ok) {
+          const cData = await cRes.json()
+          setWorkoutContext(cData.context ?? null)
+        } else if (cRes.status === 404) {
+          setWorkoutContext(null)
+        }
+        setContextLoaded(true)
         if (aRes && aRes.ok) {
           const aData = await aRes.json()
           setAnalysis(aData.analysis || null)
@@ -216,6 +235,35 @@ export default function TrainingDetail() {
     fetchRace()
     return () => controller.abort()
   }, [workout?.race_id])
+
+  // Auto-open the workout context modal once per mount when context is missing.
+  useEffect(() => {
+    if (!contextLoaded) return
+    if (hasContext) return
+    if (contextModalDismissed) return
+    if (contextAutoOpenedRef.current) return
+    contextAutoOpenedRef.current = true
+    setContextModalOpen(true)
+  }, [contextLoaded, hasContext, contextModalDismissed])
+
+  const handleContextModalClose = useCallback(() => {
+    setContextModalOpen(false)
+    setContextModalDismissed(true)
+    if (!id) return
+    // Refetch context so a successful save flips the empty state away.
+    fetch(`/api/training/workouts/${id}/context`, { credentials: 'include' })
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json()
+          setWorkoutContext(data.context ?? null)
+        } else if (res.status === 404) {
+          setWorkoutContext(null)
+        }
+      })
+      .catch(() => {
+        // Ignore — empty state remains visible and the user can retry via the CTA.
+      })
+  }, [id])
 
   // Poll for analysis completion when status is 'pending'.
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -486,6 +534,14 @@ export default function TrainingDetail() {
         />
       )}
 
+      {/* Workout context modal */}
+      <WorkoutContextModal
+        workoutId={workout.id.toString()}
+        isOpen={contextModalOpen}
+        onClose={handleContextModalClose}
+        initialContext={workoutContext ?? undefined}
+      />
+
       {/* Linked Race Info */}
       {linkedRace && (
         <div className="bg-gray-800 rounded-xl p-4 mb-6 flex items-center gap-3">
@@ -520,6 +576,7 @@ export default function TrainingDetail() {
               <Sparkles size={18} className="text-purple-400" />
               {t('analysis.title')}
             </h2>
+            {hasContext && (
             <div className="flex gap-2">
               {analysis ? (
                 <button
@@ -555,24 +612,44 @@ export default function TrainingDetail() {
                 </button>
               )}
             </div>
+            )}
           </div>
 
-          {(analyzing || workout.analysis_status === 'pending') && !analysis && (
+          {!hasContext && (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-gray-200">
+                {t('analysis.contextPending.title')}
+              </p>
+              <p className="text-sm text-gray-400">
+                {t('analysis.contextPending.body')}
+              </p>
+              <button
+                type="button"
+                onClick={() => setContextModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm"
+              >
+                <Sparkles size={14} />
+                {t('analysis.contextPending.provideContextCta')}
+              </button>
+            </div>
+          )}
+
+          {hasContext && (analyzing || workout.analysis_status === 'pending') && !analysis && (
             <div className="flex items-center gap-3 text-gray-400 text-sm">
               <Loader2 size={16} className="animate-spin" />
               {t('analysis.analyzing')}
             </div>
           )}
 
-          {workout.analysis_status === 'failed' && !analysis && !analysisError && (
+          {hasContext && workout.analysis_status === 'failed' && !analysis && !analysisError && (
             <p className="text-red-400 text-sm">{t('analysis.analysisFailed')}</p>
           )}
 
-          {analysisError && (
+          {hasContext && analysisError && (
             <p className="text-red-400 text-sm">{analysisError}</p>
           )}
 
-          {analysis && (
+          {hasContext && analysis && (
             <div className="space-y-3">
               {analysis.title && (
                 <p className="text-sm font-medium text-purple-300">{t('analysis.analysisTitle', { title: analysis.title })}</p>

@@ -109,7 +109,12 @@
     "trendStable": "Stable",
     "trendDeclining": "Declining",
     "trendNotableChanges": "Notable changes",
-    "trendInsufficientData": "Insufficient data"
+    "trendInsufficientData": "Insufficient data",
+    "contextPending": {
+      "title": "AI summary pending — provide workout context",
+      "body": "Capture surface, run type, HR source, feel notes, and the planned speed structure so Claude can analyze this workout.",
+      "provideContextCta": "Provide context"
+    }
   },
   "compare": {
     "title": "Compare Workouts",
