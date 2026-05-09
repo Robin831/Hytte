@@ -94,6 +94,25 @@ describe('WorkoutContextModal', () => {
     expect(screen.getByTestId('toggle-hrSource-chest')).toHaveAttribute('aria-checked', 'true')
   })
 
+  it('normalizes lowercase surface from backend — "treadmill" shows as selected and renders speed plan section', () => {
+    render(
+      <WorkoutContextModal
+        workoutId="42"
+        isOpen={true}
+        onClose={() => {}}
+        initialContext={{
+          surface: 'treadmill',
+          run_type: '',
+          hr_source: '',
+          feel_notes: '',
+          speed_plan: [],
+        }}
+      />,
+    )
+    expect(screen.getByTestId('speed-plan-placeholder')).toBeTruthy()
+    expect(screen.getByTestId('toggle-surface-Treadmill')).toHaveAttribute('aria-checked', 'true')
+  })
+
   it('clears the speed plan when surface toggles away from Treadmill', async () => {
     const onClose = vi.fn()
     render(

@@ -83,9 +83,16 @@ type FormState = {
   error: string
 }
 
+function normalizeSurface(s?: string): Surface {
+  const lower = s?.toLowerCase()
+  if (lower === 'treadmill') return 'Treadmill'
+  if (lower === 'outside') return 'Outside'
+  return ''
+}
+
 function initForm(ctx?: WorkoutContext): FormState {
   return {
-    surface: (ctx?.surface as Surface) ?? '',
+    surface: normalizeSurface(ctx?.surface),
     runType: (ctx?.run_type as RunType) ?? '',
     hrSource: (ctx?.hr_source as HRSource) ?? '',
     feelNotes: ctx?.feel_notes ?? '',
