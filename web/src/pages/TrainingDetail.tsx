@@ -362,15 +362,20 @@ export default function TrainingDetail() {
           setWorkout(wData.workout)
         }
         // /analyze also produces Insights server-side; refetch so the cards render without a reload.
-        const iRes = await fetch(`/api/training/workouts/${workout.id}/insights`, { credentials: 'include' })
-        if (iRes.ok) {
-          const iData = await iRes.json()
-          const raw = iData.insights
-          if (raw) {
-            raw.suggestions = raw.suggestions ?? []
-            raw.confidence_score = raw.confidence_score ?? 0
+        // Isolate from the analyze try/catch so a refetch failure does not surface as an analysis error.
+        try {
+          const iRes = await fetch(`/api/training/workouts/${workout.id}/insights`, { credentials: 'include' })
+          if (iRes.ok) {
+            const iData = await iRes.json()
+            const raw = iData.insights
+            if (raw) {
+              raw.suggestions = raw.suggestions ?? []
+              raw.confidence_score = raw.confidence_score ?? 0
+            }
+            setInsights(raw || null)
           }
-          setInsights(raw || null)
+        } catch (err) {
+          console.warn('Failed to refetch insights after analyze:', err)
         }
       } else {
         const data = await res.json().catch(() => ({})) as { error?: string }
