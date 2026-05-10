@@ -834,31 +834,30 @@ func ListEvaluations(db *sql.DB, userID int64, planID *int64, workoutID *int64) 
 		records = []EvaluationRecord{}
 	}
 
-	// Attach the workout_context summary so the frontend can render
-	// "what coach saw for this day" inline on each evaluation card without
-	// a second fetch. Multiple evaluations sharing a workout reuse the same
-	// formatted string; cache by workout ID to avoid redundant DB hits.
-	contextCache := make(map[int64]string)
+	// Collect distinct workout IDs then batch-load their contexts in a single query
+	// that also verifies ownership via JOIN on workouts.user_id.
+	seenWorkouts := make(map[int64]struct{})
+	for _, rec := range records {
+		if rec.WorkoutID != nil {
+			seenWorkouts[*rec.WorkoutID] = struct{}{}
+		}
+	}
+	distinctIDs := make([]int64, 0, len(seenWorkouts))
+	for wid := range seenWorkouts {
+		distinctIDs = append(distinctIDs, wid)
+	}
+	contextMap, batchErr := training.GetWorkoutContextsBatch(db, userID, distinctIDs)
+	if batchErr != nil {
+		log.Printf("stride: batch-load workout contexts: %v", batchErr)
+		contextMap = map[int64]*training.WorkoutContext{}
+	}
 	for i := range records {
 		if records[i].WorkoutID == nil {
 			continue
 		}
-		wid := *records[i].WorkoutID
-		if cached, ok := contextCache[wid]; ok {
-			records[i].WorkoutContextSummary = cached
-			continue
+		if wctx, ok := contextMap[*records[i].WorkoutID]; ok {
+			records[i].WorkoutContextSummary = training.FormatWorkoutContextNote(wctx)
 		}
-		wctx, err := training.GetWorkoutContext(db, wid)
-		if err != nil {
-			if !errors.Is(err, sql.ErrNoRows) {
-				log.Printf("stride: load workout_context for workout %d: %v", wid, err)
-			}
-			contextCache[wid] = ""
-			continue
-		}
-		summary := training.FormatWorkoutContextNote(wctx)
-		contextCache[wid] = summary
-		records[i].WorkoutContextSummary = summary
 	}
 
 	return records, nil

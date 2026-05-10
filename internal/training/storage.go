@@ -407,6 +407,73 @@ func GetWorkoutContext(db *sql.DB, workoutID int64) (*WorkoutContext, error) {
 	return ctx, nil
 }
 
+// GetWorkoutContextsBatch fetches workout contexts for multiple workouts in a single
+// query, verifying ownership via a JOIN against workouts.user_id. Contexts for
+// workout IDs that belong to a different user are silently excluded.
+// Returns a map of workoutID → *WorkoutContext.
+func GetWorkoutContextsBatch(db *sql.DB, userID int64, workoutIDs []int64) (map[int64]*WorkoutContext, error) {
+	if len(workoutIDs) == 0 {
+		return map[int64]*WorkoutContext{}, nil
+	}
+	placeholders := make([]string, len(workoutIDs))
+	args := make([]interface{}, 0, len(workoutIDs)+1)
+	args = append(args, userID)
+	for i, wid := range workoutIDs {
+		placeholders[i] = "?"
+		args = append(args, wid)
+	}
+	query := `
+		SELECT wc.workout_id, wc.surface, wc.run_type, wc.hr_source, wc.feel_notes, wc.speed_plan, wc.completed_at
+		FROM workout_context wc
+		JOIN workouts w ON w.id = wc.workout_id
+		WHERE w.user_id = ? AND wc.workout_id IN (` + strings.Join(placeholders, ",") + `)`
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[int64]*WorkoutContext)
+	for rows.Next() {
+		var feelEnc, planEnc, completedAt string
+		ctx := &WorkoutContext{SpeedPlan: []SpeedSegment{}}
+		if err := rows.Scan(&ctx.WorkoutID, &ctx.Surface, &ctx.RunType, &ctx.HRSource, &feelEnc, &planEnc, &completedAt); err != nil {
+			return nil, err
+		}
+		feelNotes, err := encryption.DecryptField(feelEnc)
+		if err != nil {
+			return nil, err
+		}
+		ctx.FeelNotes = feelNotes
+
+		planJSON, err := encryption.DecryptField(planEnc)
+		if err != nil {
+			return nil, err
+		}
+		if planJSON != "" {
+			var segments []SpeedSegment
+			if err := json.Unmarshal([]byte(planJSON), &segments); err != nil {
+				return nil, err
+			}
+			if segments == nil {
+				segments = []SpeedSegment{}
+			}
+			ctx.SpeedPlan = segments
+		}
+
+		if completedAt != "" {
+			if parsed, perr := time.Parse(time.RFC3339, completedAt); perr == nil {
+				ctx.CompletedAt = &parsed
+			}
+		}
+		result[ctx.WorkoutID] = ctx
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // HashExists checks whether a workout with the given file hash already exists.
 func HashExists(db *sql.DB, userID int64, hash string) (bool, error) {
 	var count int
