@@ -5,11 +5,6 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import SpeedPlanEditor from './SpeedPlanEditor'
 import type { SpeedPlanSegment } from '../../types/training'
 
-function StatefulEditor({ initial }: { initial: SpeedPlanSegment[] }) {
-  const [segments, setSegments] = useState<SpeedPlanSegment[]>(initial)
-  return <SpeedPlanEditor value={segments} onChange={setSegments} />
-}
-
 function StatefulEditorWithSpy({ initial, spy }: { initial: SpeedPlanSegment[], spy: (s: SpeedPlanSegment[]) => void }) {
   const [segments, setSegments] = useState<SpeedPlanSegment[]>(initial)
   function handleChange(segs: SpeedPlanSegment[]) {
