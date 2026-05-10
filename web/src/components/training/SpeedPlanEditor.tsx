@@ -23,7 +23,7 @@ function safeNumber(raw: string): number {
 
 function safeIntInRange(raw: string, max: number): number {
   if (raw === '') return 0
-  const n = Math.floor(Number(raw))
+  const n = Math.round(Number(raw))
   if (!Number.isFinite(n) || n < 0) return 0
   return n > max ? max : n
 }
