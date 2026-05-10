@@ -10,6 +10,15 @@ function StatefulEditor({ initial }: { initial: SpeedPlanSegment[] }) {
   return <SpeedPlanEditor value={segments} onChange={setSegments} />
 }
 
+function StatefulEditorWithSpy({ initial, spy }: { initial: SpeedPlanSegment[], spy: (s: SpeedPlanSegment[]) => void }) {
+  const [segments, setSegments] = useState<SpeedPlanSegment[]>(initial)
+  function handleChange(segs: SpeedPlanSegment[]) {
+    setSegments(segs)
+    spy(segs)
+  }
+  return <SpeedPlanEditor value={segments} onChange={handleChange} />
+}
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string) => key,
@@ -46,15 +55,14 @@ describe('SpeedPlanEditor duration inputs', () => {
   })
 
   it('combines minutes=2 + seconds=30 into duration_sec=150 on the per-row interval', () => {
-    render(<StatefulEditor initial={[intervalSeg(0)]} />)
+    const spy = vi.fn()
+    render(<StatefulEditorWithSpy initial={[intervalSeg(0)]} spy={spy} />)
 
     fireEvent.change(screen.getByTestId('speed-plan-row-0-duration-minutes'), { target: { value: '2' } })
     fireEvent.change(screen.getByTestId('speed-plan-row-0-duration-seconds'), { target: { value: '30' } })
 
-    const minutes = screen.getByTestId('speed-plan-row-0-duration-minutes') as HTMLInputElement
-    const seconds = screen.getByTestId('speed-plan-row-0-duration-seconds') as HTMLInputElement
-    expect(minutes.value).toBe('2')
-    expect(seconds.value).toBe('30')
+    const lastCall = spy.mock.calls[spy.mock.calls.length - 1][0] as SpeedPlanSegment[]
+    expect(lastCall[0].duration_sec).toBe(150)
   })
 
   it('emits duration_sec=120 when minutes is set to 2 from a zero start', () => {

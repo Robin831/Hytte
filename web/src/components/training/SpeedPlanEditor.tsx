@@ -37,6 +37,7 @@ interface DurationInputsProps {
 }
 
 function DurationInputs({ durationSec, onChange, minLabel, secLabel, testIdPrefix }: DurationInputsProps) {
+  const uid = useId()
   const safeBase = Number.isFinite(durationSec) && durationSec >= 0 ? Math.floor(durationSec) : 0
   const minutesValue = Math.floor(safeBase / 60)
   const secondsValue = safeBase % 60
@@ -44,11 +45,11 @@ function DurationInputs({ durationSec, onChange, minLabel, secLabel, testIdPrefi
   return (
     <>
       <div className="flex flex-col">
-        <label htmlFor={`${testIdPrefix}-minutes`} className="text-[11px] text-gray-400">
+        <label htmlFor={`${uid}-minutes`} className="text-[11px] text-gray-400">
           {minLabel}
         </label>
         <input
-          id={`${testIdPrefix}-minutes`}
+          id={`${uid}-minutes`}
           type="number"
           min={0}
           step={1}
@@ -62,11 +63,11 @@ function DurationInputs({ durationSec, onChange, minLabel, secLabel, testIdPrefi
         />
       </div>
       <div className="flex flex-col">
-        <label htmlFor={`${testIdPrefix}-seconds`} className="text-[11px] text-gray-400">
+        <label htmlFor={`${uid}-seconds`} className="text-[11px] text-gray-400">
           {secLabel}
         </label>
         <input
-          id={`${testIdPrefix}-seconds`}
+          id={`${uid}-seconds`}
           type="number"
           min={0}
           max={59}
