@@ -125,6 +125,11 @@ func PutWorkoutContextHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Auto-trigger Claude analysis now that the prompt inputs are captured.
+		// Mirrors the FIT-import flow; gates on admin + claude_ai and skips when
+		// an analysis is already running or completed.
+		scheduleAnalysisAfterContextSave(db, user.ID, user.IsAdmin, workoutID)
+
 		saved, err := GetWorkoutContext(db, workoutID)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load context"})

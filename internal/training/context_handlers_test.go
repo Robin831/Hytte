@@ -2,13 +2,18 @@ package training
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/Robin831/Hytte/internal/auth"
 )
 
 func createWorkoutForUser(t *testing.T, database *sql.DB, userID int64, hash string) int64 {
@@ -223,5 +228,196 @@ func TestPutWorkoutContext_InvalidJSON(t *testing.T) {
 	PutWorkoutContextHandler(database)(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+// --- scheduleAnalysisAfterContextSave ---
+
+func setWorkoutAnalysisStatus(t *testing.T, database *sql.DB, workoutID int64, status string) {
+	t.Helper()
+	if _, err := database.Exec(`UPDATE workouts SET analysis_status = ? WHERE id = ?`, status, workoutID); err != nil {
+		t.Fatalf("set analysis_status %q for workout %d: %v", status, workoutID, err)
+	}
+}
+
+func getWorkoutAnalysisStatus(t *testing.T, database *sql.DB, workoutID int64) string {
+	t.Helper()
+	var status string
+	if err := database.QueryRow(`SELECT analysis_status FROM workouts WHERE id = ?`, workoutID).Scan(&status); err != nil {
+		t.Fatalf("get analysis_status for workout %d: %v", workoutID, err)
+	}
+	return status
+}
+
+// TestScheduleAnalysisAfterContextSave_Fires_WhenStatusEmpty verifies that
+// Claude analysis is triggered (and status is claimed atomically) when the
+// workout has never been analysed (analysis_status='').
+func TestScheduleAnalysisAfterContextSave_Fires_WhenStatusEmpty(t *testing.T) {
+	database := setupTestDB(t)
+	workoutID := createWorkoutForUser(t, database, 1, "saa-empty-hash")
+	seedWorkoutContext(t, database, workoutID)
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+
+	called := make(chan struct{}, 1)
+	origFunc := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *ClaudeConfig, _ string) (string, error) {
+		select {
+		case called <- struct{}{}:
+		default:
+		}
+		return `{"type":"easy_run","tag":"easy","summary":"Test","title":"Test Run"}`, nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	scheduleAnalysisAfterContextSave(database, 1, true, workoutID)
+
+	select {
+	case <-called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: analysis did not fire within 2s for status=''")
+	}
+}
+
+// TestScheduleAnalysisAfterContextSave_Fires_WhenStatusFailed verifies that
+// Claude analysis is re-triggered when the previous run failed.
+func TestScheduleAnalysisAfterContextSave_Fires_WhenStatusFailed(t *testing.T) {
+	database := setupTestDB(t)
+	workoutID := createWorkoutForUser(t, database, 1, "saa-failed-hash")
+	setWorkoutAnalysisStatus(t, database, workoutID, "failed")
+	seedWorkoutContext(t, database, workoutID)
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+
+	called := make(chan struct{}, 1)
+	origFunc := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *ClaudeConfig, _ string) (string, error) {
+		select {
+		case called <- struct{}{}:
+		default:
+		}
+		return `{"type":"easy_run","tag":"easy","summary":"Test","title":"Test Run"}`, nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	scheduleAnalysisAfterContextSave(database, 1, true, workoutID)
+
+	select {
+	case <-called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: analysis did not fire within 2s for status='failed'")
+	}
+}
+
+// TestScheduleAnalysisAfterContextSave_Skips_WhenStatusPending verifies that
+// the atomic UPDATE returns 0 rows (no goroutine spawned) when analysis is
+// already in progress.
+func TestScheduleAnalysisAfterContextSave_Skips_WhenStatusPending(t *testing.T) {
+	database := setupTestDB(t)
+	workoutID := createWorkoutForUser(t, database, 1, "saa-pending-hash")
+	setWorkoutAnalysisStatus(t, database, workoutID, "pending")
+
+	origFunc := runPromptFunc
+	called := false
+	runPromptFunc = func(_ context.Context, _ *ClaudeConfig, _ string) (string, error) {
+		called = true
+		return "", nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	scheduleAnalysisAfterContextSave(database, 1, true, workoutID)
+	time.Sleep(150 * time.Millisecond)
+
+	if called {
+		t.Fatal("expected no Claude call when analysis_status='pending'")
+	}
+	if status := getWorkoutAnalysisStatus(t, database, workoutID); status != "pending" {
+		t.Errorf("status should remain 'pending', got %q", status)
+	}
+}
+
+// TestScheduleAnalysisAfterContextSave_Skips_WhenStatusCompleted verifies that
+// a completed analysis is not re-run.
+func TestScheduleAnalysisAfterContextSave_Skips_WhenStatusCompleted(t *testing.T) {
+	database := setupTestDB(t)
+	workoutID := createWorkoutForUser(t, database, 1, "saa-completed-hash")
+	setWorkoutAnalysisStatus(t, database, workoutID, "completed")
+
+	origFunc := runPromptFunc
+	called := false
+	runPromptFunc = func(_ context.Context, _ *ClaudeConfig, _ string) (string, error) {
+		called = true
+		return "", nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	scheduleAnalysisAfterContextSave(database, 1, true, workoutID)
+	time.Sleep(150 * time.Millisecond)
+
+	if called {
+		t.Fatal("expected no Claude call when analysis_status='completed'")
+	}
+	if status := getWorkoutAnalysisStatus(t, database, workoutID); status != "completed" {
+		t.Errorf("status should remain 'completed', got %q", status)
+	}
+}
+
+// TestScheduleAnalysisAfterContextSave_Skips_WhenNotAdmin verifies that the
+// function is a no-op for non-admin users.
+func TestScheduleAnalysisAfterContextSave_Skips_WhenNotAdmin(t *testing.T) {
+	database := setupTestDB(t)
+	workoutID := createWorkoutForUser(t, database, 1, "saa-nonadmin-hash")
+
+	origFunc := runPromptFunc
+	called := false
+	runPromptFunc = func(_ context.Context, _ *ClaudeConfig, _ string) (string, error) {
+		called = true
+		return "", nil
+	}
+	t.Cleanup(func() { runPromptFunc = origFunc })
+
+	scheduleAnalysisAfterContextSave(database, 1, false, workoutID)
+	time.Sleep(100 * time.Millisecond)
+
+	if called {
+		t.Fatal("expected no Claude call for non-admin user")
+	}
+}
+
+// TestScheduleAnalysisAfterContextSave_SetsStatusPendingBeforeRun verifies that
+// the atomic UPDATE claims 'pending' synchronously (before the goroutine body
+// executes), so a second concurrent call sees the updated status and does not
+// enqueue a duplicate run.
+func TestScheduleAnalysisAfterContextSave_SetsStatusPendingBeforeRun(t *testing.T) {
+	database := setupTestDB(t)
+	workoutID := createWorkoutForUser(t, database, 1, "saa-claim-hash")
+	seedWorkoutContext(t, database, workoutID)
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+
+	release := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	origFunc := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *ClaudeConfig, _ string) (string, error) {
+		defer wg.Done()
+		<-release
+		return `{"type":"easy_run","tag":"easy","summary":"Test","title":"Test Run"}`, nil
+	}
+	t.Cleanup(func() {
+		close(release)
+		wg.Wait()
+		runPromptFunc = origFunc
+	})
+
+	scheduleAnalysisAfterContextSave(database, 1, true, workoutID)
+
+	// The atomic UPDATE is synchronous — status must be 'pending' before the
+	// goroutine finishes and flips it to 'completed'.
+	if status := getWorkoutAnalysisStatus(t, database, workoutID); status != "pending" {
+		t.Errorf("expected status='pending' immediately after scheduling, got %q", status)
 	}
 }
