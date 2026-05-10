@@ -5,7 +5,7 @@ import SpeedPlanEditor from './SpeedPlanEditor'
 import type { SpeedPlanSegment } from '../../types/training'
 
 export type Surface = 'Treadmill' | 'Outside' | ''
-export type RunType = 'slow' | 'interval' | ''
+export type RunType = 'slow' | 'long' | 'tempo' | 'interval' | ''
 export type HRSource = 'chest' | 'watch' | ''
 
 export interface WorkoutContext {
@@ -85,7 +85,7 @@ function normalizeSurface(s?: string): Surface {
 }
 
 function normalizeRunType(s?: string): RunType {
-  if (s === 'slow' || s === 'interval') return s
+  if (s === 'slow' || s === 'long' || s === 'tempo' || s === 'interval') return s
   return ''
 }
 
@@ -247,6 +247,8 @@ export default function WorkoutContextModal({
           onChange={handleRunTypeChange}
           options={[
             { value: 'slow', label: t('workoutContextModal.runType.slow') },
+            { value: 'long', label: t('workoutContextModal.runType.long') },
+            { value: 'tempo', label: t('workoutContextModal.runType.tempo') },
             { value: 'interval', label: t('workoutContextModal.runType.interval') },
           ]}
         />
