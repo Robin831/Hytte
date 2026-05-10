@@ -273,8 +273,15 @@ function DayCard({ day, completed, evaluation, changedDates, onRerun, rerunning 
             {/* Stride evaluation section */}
             {evaluation && (() => {
               const flags = Array.isArray(evaluation.eval.flags) ? evaluation.eval.flags : []
+              const contextSummary = evaluation.workout_context_summary?.trim()
               return (
                 <div className={`space-y-2 ${!day.rest_day && day.session ? 'mt-3 pt-3 border-t border-gray-700' : ''}`}>
+                  {contextSummary && (
+                    <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-2">
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.contextPanelTitle')}</p>
+                      <p className="text-sm text-gray-300 whitespace-pre-wrap">{contextSummary}</p>
+                    </div>
+                  )}
                   {evaluation.eval.notes && (
                     <div>
                       <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.coachNotes')}</p>
@@ -1597,6 +1604,7 @@ export default function StridePage() {
             {previousPlanEvals.map(({ date, eval: rec }) => {
               const dateStr = `${date}T00:00:00`
               const flags = Array.isArray(rec.eval.flags) ? rec.eval.flags : []
+              const contextSummary = rec.workout_context_summary?.trim()
               return (
                 <div key={rec.id} className="bg-gray-800 rounded-xl border border-gray-700 p-3 space-y-2">
                   <div className="flex items-center gap-3">
@@ -1618,6 +1626,12 @@ export default function StridePage() {
                       )}
                     </div>
                   </div>
+                  {contextSummary && (
+                    <div className="rounded-lg border border-gray-700 bg-gray-900/40 p-2">
+                      <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.contextPanelTitle')}</p>
+                      <p className="text-sm text-gray-300 whitespace-pre-wrap">{contextSummary}</p>
+                    </div>
+                  )}
                   {rec.eval.notes && (
                     <div>
                       <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{t('evaluation.coachNotes')}</p>

@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/Robin831/Hytte/internal/training"
 )
 
 // Race represents an upcoming race in the user's race calendar.
@@ -759,12 +761,13 @@ func GetCurrentPlan(db *sql.DB, userID int64, today string) (*Plan, error) {
 
 // EvaluationRecord represents a stored evaluation from stride_evaluations.
 type EvaluationRecord struct {
-	ID        int64      `json:"id"`
-	UserID    int64      `json:"user_id"`
-	PlanID    int64      `json:"plan_id"`
-	WorkoutID *int64     `json:"workout_id"`
-	Eval      Evaluation `json:"eval"`
-	CreatedAt string     `json:"created_at"`
+	ID                    int64      `json:"id"`
+	UserID                int64      `json:"user_id"`
+	PlanID                int64      `json:"plan_id"`
+	WorkoutID             *int64     `json:"workout_id"`
+	Eval                  Evaluation `json:"eval"`
+	CreatedAt             string     `json:"created_at"`
+	WorkoutContextSummary string     `json:"workout_context_summary,omitempty"`
 }
 
 // ListEvaluations returns evaluation records for a user from stride_evaluations.
@@ -830,6 +833,33 @@ func ListEvaluations(db *sql.DB, userID int64, planID *int64, workoutID *int64) 
 	if records == nil {
 		records = []EvaluationRecord{}
 	}
+
+	// Collect distinct workout IDs then batch-load their contexts in a single query
+	// that also verifies ownership via JOIN on workouts.user_id.
+	seenWorkouts := make(map[int64]struct{})
+	for _, rec := range records {
+		if rec.WorkoutID != nil {
+			seenWorkouts[*rec.WorkoutID] = struct{}{}
+		}
+	}
+	distinctIDs := make([]int64, 0, len(seenWorkouts))
+	for wid := range seenWorkouts {
+		distinctIDs = append(distinctIDs, wid)
+	}
+	contextMap, batchErr := training.GetWorkoutContextsBatch(db, userID, distinctIDs)
+	if batchErr != nil {
+		log.Printf("stride: batch-load workout contexts: %v", batchErr)
+		contextMap = map[int64]*training.WorkoutContext{}
+	}
+	for i := range records {
+		if records[i].WorkoutID == nil {
+			continue
+		}
+		if wctx, ok := contextMap[*records[i].WorkoutID]; ok {
+			records[i].WorkoutContextSummary = training.FormatWorkoutContextNote(wctx)
+		}
+	}
+
 	return records, nil
 }
 

@@ -776,6 +776,97 @@ func TestListEvaluationsHandler_EncryptedEvalJSON(t *testing.T) {
 	}
 }
 
+func TestListEvaluationsHandler_PopulatesWorkoutContextSummary(t *testing.T) {
+	db := setupTestDB(t)
+	planID := insertTestPlan(t, db, 1, "2026-04-06", "2026-04-12", `[]`)
+
+	eval := Evaluation{
+		PlannedType: "easy",
+		ActualType:  "easy",
+		Compliance:  "compliant",
+		Notes:       "Solid",
+		Flags:       []string{},
+	}
+	const workoutID = int64(500)
+	insertTestEvaluation(t, db, 1, planID, workoutID, eval)
+
+	feelEnc, err := encryption.EncryptField("Felt strong, no soreness.")
+	if err != nil {
+		t.Fatalf("encrypt feel: %v", err)
+	}
+	emptyPlanEnc, err := encryption.EncryptField("")
+	if err != nil {
+		t.Fatalf("encrypt empty plan: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO workout_context (workout_id, surface, run_type, hr_source, feel_notes, speed_plan, completed_at)
+		 VALUES (?, ?, ?, ?, ?, ?, '')`,
+		workoutID, "road", "outdoor", "watch", feelEnc, emptyPlanEnc,
+	); err != nil {
+		t.Fatalf("insert workout_context: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/evaluations", nil), 1)
+	rec := httptest.NewRecorder()
+	ListEvaluationsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Evaluations []EvaluationRecord `json:"evaluations"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Evaluations) != 1 {
+		t.Fatalf("expected 1 evaluation, got %d", len(body.Evaluations))
+	}
+	got := body.Evaluations[0].WorkoutContextSummary
+	if got == "" {
+		t.Fatalf("WorkoutContextSummary is empty; expected populated formatted string")
+	}
+	if !strings.Contains(got, "Felt strong, no soreness.") {
+		t.Errorf("summary missing feel notes: %q", got)
+	}
+	if !strings.Contains(got, "surface=road") {
+		t.Errorf("summary missing surface metadata: %q", got)
+	}
+}
+
+func TestListEvaluationsHandler_NoWorkoutContextLeavesSummaryEmpty(t *testing.T) {
+	db := setupTestDB(t)
+	planID := insertTestPlan(t, db, 1, "2026-04-06", "2026-04-12", `[]`)
+
+	eval := Evaluation{
+		PlannedType: "easy",
+		ActualType:  "easy",
+		Compliance:  "compliant",
+		Flags:       []string{},
+	}
+	insertTestEvaluation(t, db, 1, planID, 600, eval)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/evaluations", nil), 1)
+	rec := httptest.NewRecorder()
+	ListEvaluationsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Evaluations []EvaluationRecord `json:"evaluations"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Evaluations) != 1 {
+		t.Fatalf("expected 1 evaluation, got %d", len(body.Evaluations))
+	}
+	if body.Evaluations[0].WorkoutContextSummary != "" {
+		t.Errorf("expected empty summary when no context saved, got %q", body.Evaluations[0].WorkoutContextSummary)
+	}
+}
+
 func TestTriggerEvaluationHandler_ClaudeNotEnabled(t *testing.T) {
 	// claude_enabled is not set → ErrClaudeNotEnabled → 400.
 	db := extendedTestDB(t)

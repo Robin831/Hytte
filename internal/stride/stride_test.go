@@ -128,6 +128,15 @@ func setupTestDB(t *testing.T) *sql.DB {
 			value   TEXT NOT NULL DEFAULT '',
 			PRIMARY KEY (user_id, key)
 		);
+		CREATE TABLE workout_context (
+			workout_id   INTEGER PRIMARY KEY REFERENCES workouts(id) ON DELETE CASCADE,
+			surface      TEXT NOT NULL DEFAULT '',
+			run_type     TEXT NOT NULL DEFAULT '',
+			hr_source    TEXT NOT NULL DEFAULT '',
+			feel_notes   TEXT NOT NULL DEFAULT '',
+			speed_plan   TEXT NOT NULL DEFAULT '',
+			completed_at TEXT NOT NULL DEFAULT ''
+		);
 	`)
 	if err != nil {
 		t.Fatalf("create schema: %v", err)

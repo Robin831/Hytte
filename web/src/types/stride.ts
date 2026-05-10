@@ -30,4 +30,5 @@ export interface StrideEvaluationRecord {
   workout_id: number | null
   eval: StrideEvaluation
   created_at: string
+  workout_context_summary?: string
 }

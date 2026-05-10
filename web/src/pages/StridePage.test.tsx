@@ -384,6 +384,107 @@ describe('StridePage – delete race', () => {
   })
 })
 
+describe('StridePage – workout context panel on evaluation', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  function makePlanFetchMock(evaluation: Record<string, unknown>) {
+    const planDay: DayPlan = {
+      date: '2099-01-13',
+      rest_day: false,
+      session: {
+        description: 'Easy run',
+        warmup: '',
+        main_set: '30 min easy',
+        cooldown: '',
+        strides: '',
+        target_hr_cap: 150,
+      },
+    }
+    const plan = {
+      id: 1,
+      user_id: 1,
+      week_start: '2099-01-13',
+      week_end: '2099-01-19',
+      phase: 'Base',
+      model: 'test',
+      created_at: '2099-01-13T00:00:00Z',
+      plan: [planDay],
+    }
+    return vi.fn((url: string) => {
+      const make = (data: unknown) =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response)
+      if (url.includes('/api/stride/plans/current')) return make({ plan })
+      if (url.includes('/api/stride/plans?limit=2')) return make({ plans: [plan] })
+      if (url.includes('/api/stride/plans?limit=1')) return make({ total: 1 })
+      if (url.includes('/api/stride/evaluations')) return make({ evaluations: [evaluation] })
+      if (url.includes('/api/training/workouts')) {
+        return make({ workouts: [{ id: 42, started_at: '2099-01-13T08:00:00Z' }] })
+      }
+      if (url.includes('/api/stride/races')) return make({ races: [] })
+      if (url.includes('/api/stride/notes')) return make({ notes: [] })
+      return make({})
+    })
+  }
+
+  it('renders the panel title when workout_context_summary is non-empty', async () => {
+    vi.stubGlobal(
+      'fetch',
+      makePlanFetchMock({
+        id: 1,
+        user_id: 1,
+        plan_id: 1,
+        workout_id: 42,
+        eval: {
+          planned_type: 'easy',
+          actual_type: 'easy',
+          compliance: 'compliant',
+          notes: 'Solid easy run',
+          flags: [],
+          adjustments: '',
+        },
+        created_at: '2099-01-13T20:00:00Z',
+        workout_context_summary: 'Feel notes: legs felt fresh | Context: surface=road',
+      }),
+    )
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('What coach saw for this day')).toBeInTheDocument()
+    })
+    expect(
+      screen.getByText('Feel notes: legs felt fresh | Context: surface=road'),
+    ).toBeInTheDocument()
+  })
+
+  it('omits the panel when workout_context_summary is null/empty', async () => {
+    vi.stubGlobal(
+      'fetch',
+      makePlanFetchMock({
+        id: 1,
+        user_id: 1,
+        plan_id: 1,
+        workout_id: 42,
+        eval: {
+          planned_type: 'easy',
+          actual_type: 'easy',
+          compliance: 'compliant',
+          notes: 'Solid easy run',
+          flags: [],
+          adjustments: '',
+        },
+        created_at: '2099-01-13T20:00:00Z',
+      }),
+    )
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Solid easy run')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('What coach saw for this day')).not.toBeInTheDocument()
+  })
+})
+
 describe('StridePage – plan highlight on update', () => {
   afterEach(() => {
     vi.useRealTimers()
