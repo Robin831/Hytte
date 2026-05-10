@@ -359,6 +359,7 @@
     "sharedIntervalSpeed": "Shared interval speed",
     "sharedPause": "Pause / gap",
     "kmh": "km/h",
+    "min": "min",
     "sec": "sec"
   },
   "workoutContextModal": {
