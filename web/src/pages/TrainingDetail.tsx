@@ -361,6 +361,17 @@ export default function TrainingDetail() {
           const wData = await wRes.json()
           setWorkout(wData.workout)
         }
+        // /analyze also produces Insights server-side; refetch so the cards render without a reload.
+        const iRes = await fetch(`/api/training/workouts/${workout.id}/insights`, { credentials: 'include' })
+        if (iRes.ok) {
+          const iData = await iRes.json()
+          const raw = iData.insights
+          if (raw) {
+            raw.suggestions = raw.suggestions ?? []
+            raw.confidence_score = raw.confidence_score ?? 0
+          }
+          setInsights(raw || null)
+        }
       } else {
         const data = await res.json().catch(() => ({})) as { error?: string }
         setAnalysisError(data.error || t('errors.analysisFailed'))

@@ -18,6 +18,10 @@ func sanitizeAnalysis(a *WorkoutAnalysis) {
 	a.ResponseJSON = ""
 }
 
+// runInsightsFunc is the function used to run insights analysis from
+// AnalyzeHandler. Override in tests to observe or stub the call.
+var runInsightsFunc = RunInsightsAnalysis
+
 // AnalyzeHandler handles POST /api/training/workouts/{id}/analyze.
 // Returns cached analysis if available, otherwise runs Claude classification.
 func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
@@ -103,6 +107,15 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("Failed to load analysis after run for workout %d: %v", id, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load analysis"})
 			return
+		}
+
+		// Manual click is explicit consent, so insights run regardless of the
+		// ai_auto_analyze pref (which gates only the upload-time auto-trigger).
+		// Failures are log-only — the tag analysis already succeeded.
+		if insErr := runInsightsFunc(r.Context(), db, id, user.ID); insErr != nil {
+			if !errors.Is(insErr, ErrInsightsAlreadyCached) && !errors.Is(insErr, ErrClaudeNotEnabled) {
+				log.Printf("Insights analysis failed for workout %d after manual analyze: %v", id, insErr)
+			}
 		}
 
 		sanitizeAnalysis(analysis)
