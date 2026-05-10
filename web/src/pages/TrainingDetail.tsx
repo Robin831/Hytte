@@ -294,6 +294,24 @@ export default function TrainingDetail() {
         if ((err as Error).name === 'AbortError') return
         console.warn('Failed to refetch workout context:', err)
       })
+    // The backend auto-triggers Claude analysis once context is saved and flips
+    // analysis_status to 'pending'. Refetch the workout so the existing polling
+    // effect (keyed on workout.analysis_status) picks up the new state.
+    fetch(`/api/training/workouts/${id}`, {
+      credentials: 'include',
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (controller.signal.aborted) return
+        if (res.ok) {
+          const data = await res.json()
+          setWorkout(data.workout)
+        }
+      })
+      .catch((err) => {
+        if ((err as Error).name === 'AbortError') return
+        console.warn('Failed to refetch workout after context save:', err)
+      })
   }, [id])
 
   // Poll for analysis completion when status is 'pending'.

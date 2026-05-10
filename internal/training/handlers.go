@@ -297,6 +297,91 @@ func scheduleBackgroundAnalysis(db *sql.DB, userID int64, isAdmin bool, workouts
 	}
 }
 
+// scheduleAnalysisAfterContextSave triggers async Claude analysis after a
+// workout_context row is saved or updated, mirroring the FIT-import auto-trigger
+// in scheduleBackgroundAnalysis. It gates on:
+//   - admin user with the claude_ai feature flag
+//   - existing analysis_status not 'completed' or 'pending' (re-runs only when
+//     absent or 'failed')
+//
+// The goroutine pattern (semaphore acquisition, RunClaudeAnalysis, status
+// updates, optional RunInsightsAnalysis when ai_auto_analyze is enabled)
+// matches the upload path exactly so the two trigger sites stay in sync.
+func scheduleAnalysisAfterContextSave(db *sql.DB, userID int64, isAdmin bool, workoutID int64) {
+	if !isAdmin {
+		return
+	}
+	features, err := auth.GetUserFeatures(db, userID, isAdmin)
+	if err != nil {
+		log.Printf("Failed to load user features for context-save Claude trigger (user %d): %v", userID, err)
+		return
+	}
+	if !features["claude_ai"] {
+		return
+	}
+
+	// Skip when an analysis is already running or has completed; only re-trigger
+	// when the status is empty (never run) or 'failed' (a previous attempt errored).
+	var status string
+	if err := db.QueryRow(
+		`SELECT analysis_status FROM workouts WHERE id = ? AND user_id = ?`,
+		workoutID, userID,
+	).Scan(&status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return
+		}
+		log.Printf("Failed to read analysis_status for workout %d on context save: %v", workoutID, err)
+		return
+	}
+	if status == "completed" || status == "pending" {
+		return
+	}
+
+	autoInsights := false
+	if prefs, prefErr := auth.GetPreferences(db, userID); prefErr != nil {
+		log.Printf("Failed to load preferences for auto-insights (user %d): %v", userID, prefErr)
+	} else {
+		autoInsights = prefs["ai_auto_analyze"] == "true"
+	}
+
+	if err := UpdateAnalysisStatus(db, workoutID, userID, "pending"); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			log.Printf("Workout %d not found when setting pending analysis status: %v", workoutID, err)
+			return
+		}
+		log.Printf("Failed to set pending analysis status for workout %d (continuing with analysis): %v", workoutID, err)
+	}
+
+	go func() {
+		claudeSemaphore <- struct{}{}
+		defer func() { <-claudeSemaphore }()
+		bgCtx := context.Background()
+		if err := RunClaudeAnalysis(bgCtx, db, workoutID, userID); err != nil {
+			if errors.Is(err, ErrClaudeNotEnabled) {
+				if updateErr := UpdateAnalysisStatus(db, workoutID, userID, ""); updateErr != nil {
+					log.Printf("Failed to reset analysis status for workout %d: %v", workoutID, updateErr)
+				}
+			} else {
+				log.Printf("Background Claude analysis failed for workout %d: %v", workoutID, err)
+				if updateErr := UpdateAnalysisStatus(db, workoutID, userID, "failed"); updateErr != nil {
+					log.Printf("Failed to set failed analysis status for workout %d: %v", workoutID, updateErr)
+				}
+			}
+		} else {
+			if updateErr := UpdateAnalysisStatus(db, workoutID, userID, "completed"); updateErr != nil {
+				log.Printf("Failed to set completed analysis status for workout %d: %v", workoutID, updateErr)
+			}
+		}
+		if autoInsights {
+			if insErr := RunInsightsAnalysis(bgCtx, db, workoutID, userID); insErr != nil {
+				if !errors.Is(insErr, ErrClaudeNotEnabled) && !errors.Is(insErr, ErrInsightsAlreadyCached) {
+					log.Printf("Auto insights analysis failed for workout %d: %v", workoutID, insErr)
+				}
+			}
+		}
+	}()
+}
+
 // ListHandler handles GET /api/training/workouts.
 func ListHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
