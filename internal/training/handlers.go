@@ -301,12 +301,9 @@ func scheduleBackgroundAnalysis(db *sql.DB, userID int64, isAdmin bool, workouts
 // workout_context row is saved or updated, mirroring the FIT-import auto-trigger
 // in scheduleBackgroundAnalysis. It gates on:
 //   - admin user with the claude_ai feature flag
-//   - existing analysis_status not 'completed' or 'pending' (re-runs only when
-//     absent or 'failed')
-//
-// The goroutine pattern (semaphore acquisition, RunClaudeAnalysis, status
-// updates, optional RunInsightsAnalysis when ai_auto_analyze is enabled)
-// matches the upload path exactly so the two trigger sites stay in sync.
+//   - an atomic conditional UPDATE that flips analysis_status '' or 'failed' →
+//     'pending', preventing duplicate runs from concurrent context saves
+//     (TOCTOU-safe; the goroutine is spawned only when RowsAffected == 1)
 func scheduleAnalysisAfterContextSave(db *sql.DB, userID int64, isAdmin bool, workoutID int64) {
 	if !isAdmin {
 		return
@@ -320,20 +317,21 @@ func scheduleAnalysisAfterContextSave(db *sql.DB, userID int64, isAdmin bool, wo
 		return
 	}
 
-	// Skip when an analysis is already running or has completed; only re-trigger
-	// when the status is empty (never run) or 'failed' (a previous attempt errored).
-	var status string
-	if err := db.QueryRow(
-		`SELECT analysis_status FROM workouts WHERE id = ? AND user_id = ?`,
+	// Atomically claim the 'pending' slot. The UPDATE only matches when
+	// analysis_status is '' or 'failed', so two concurrent context saves
+	// cannot both enqueue a duplicate run — the second UPDATE matches 0 rows.
+	res, err := db.Exec(
+		`UPDATE workouts SET analysis_status = 'pending'
+		 WHERE id = ? AND user_id = ?
+		 AND (analysis_status = '' OR analysis_status IS NULL OR analysis_status = 'failed')`,
 		workoutID, userID,
-	).Scan(&status); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return
-		}
-		log.Printf("Failed to read analysis_status for workout %d on context save: %v", workoutID, err)
+	)
+	if err != nil {
+		log.Printf("Failed to claim analysis slot for workout %d on context save: %v", workoutID, err)
 		return
 	}
-	if status == "completed" || status == "pending" {
+	n, _ := res.RowsAffected()
+	if n == 0 {
 		return
 	}
 
@@ -342,14 +340,6 @@ func scheduleAnalysisAfterContextSave(db *sql.DB, userID int64, isAdmin bool, wo
 		log.Printf("Failed to load preferences for auto-insights (user %d): %v", userID, prefErr)
 	} else {
 		autoInsights = prefs["ai_auto_analyze"] == "true"
-	}
-
-	if err := UpdateAnalysisStatus(db, workoutID, userID, "pending"); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			log.Printf("Workout %d not found when setting pending analysis status: %v", workoutID, err)
-			return
-		}
-		log.Printf("Failed to set pending analysis status for workout %d (continuing with analysis): %v", workoutID, err)
 	}
 
 	go func() {
