@@ -371,6 +371,8 @@
     "runType": {
       "label": "Type økt",
       "slow": "Rolig",
+      "long": "Langtur",
+      "tempo": "Tempo",
       "interval": "Intervall"
     },
     "hrSource": {
