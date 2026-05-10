@@ -1057,6 +1057,79 @@ func TestAnalyzeHandler_ClaudeError(t *testing.T) {
 	}
 }
 
+// TestAnalyzeHandler_CachedTagAnalysis_RunsInsightsIfMissing verifies that
+// when AnalyzeHandler serves a cached tag analysis it still triggers Insights
+// generation. This covers the common case of workouts analyzed before the
+// Insights feature was added (tag cached, no insights row). Hytte-a8eb.
+func TestAnalyzeHandler_CachedTagAnalysis_RunsInsightsIfMissing(t *testing.T) {
+	database := setupTestDB(t)
+
+	_, err := database.Exec(`
+		INSERT INTO workouts (id, user_id, sport, title, started_at, created_at, fit_file_hash, duration_seconds, distance_meters)
+		VALUES (1, 1, 'running', 'Test Run', '2024-01-01T10:00:00Z', '2024-01-01T10:00:00Z', 'hash1', 3600, 10000)`)
+	if err != nil {
+		t.Fatalf("create workout: %v", err)
+	}
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+
+	// Seed a cached tag analysis so the handler takes the early-return cache-hit path.
+	if err := UpsertAnalysis(database, &WorkoutAnalysis{
+		UserID:       1,
+		WorkoutID:    1,
+		AnalysisType: "tag",
+		Model:        "claude-test",
+		Prompt:       "test prompt",
+		ResponseJSON: `{}`,
+		Tags:         "easy",
+		Summary:      "Cached easy run",
+		Title:        "Easy Run",
+	}); err != nil {
+		t.Fatalf("seed cached analysis: %v", err)
+	}
+
+	insightsCalls := 0
+	origInsights := runInsightsFunc
+	runInsightsFunc = func(_ context.Context, _ *sql.DB, workoutID, userID int64) error {
+		insightsCalls++
+		if workoutID != 1 || userID != 1 {
+			t.Errorf("insights stub: unexpected workoutID=%d userID=%d", workoutID, userID)
+		}
+		return nil
+	}
+	t.Cleanup(func() { runInsightsFunc = origInsights })
+
+	req := withAdminUser(httptest.NewRequest(http.MethodPost, "/api/training/workouts/1/analyze", nil), 1)
+	req = withChiParam(req, "id", "1")
+	w := httptest.NewRecorder()
+
+	AnalyzeHandler(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if insightsCalls != 1 {
+		t.Errorf("expected 1 insights call on cache-hit path, got %d", insightsCalls)
+	}
+
+	// Response must still carry the cached tag analysis and cached=true.
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if cached, _ := resp["cached"].(bool); !cached {
+		t.Errorf("expected cached=true in response, got %v", resp["cached"])
+	}
+	analysis, ok := resp["analysis"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected analysis object in response, got %v", resp)
+	}
+	if analysis["summary"] != "Cached easy run" {
+		t.Errorf("summary = %v, want 'Cached easy run'", analysis["summary"])
+	}
+}
+
 // TestAnalyzeHandler_AlsoRunsInsights verifies the manual Analyze button now
 // produces both the tag analysis and the richer Insights output. Hytte-a8eb.
 func TestAnalyzeHandler_AlsoRunsInsights(t *testing.T) {

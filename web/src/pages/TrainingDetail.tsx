@@ -373,6 +373,10 @@ export default function TrainingDetail() {
               raw.confidence_score = raw.confidence_score ?? 0
             }
             setInsights(raw || null)
+          } else if (iRes.status === 404) {
+            setInsights(null)
+          } else {
+            console.warn('Failed to refetch insights after analyze:', iRes.status)
           }
         } catch (err) {
           console.warn('Failed to refetch insights after analyze:', err)

@@ -41,6 +41,14 @@ func AnalyzeHandler(db *sql.DB) http.HandlerFunc {
 		// Check for cached result first.
 		cached, err := GetAnalysis(db, user.ID, id, "tag")
 		if err == nil && cached != nil {
+			// Tag analysis is cached. Still attempt insights so workouts analyzed
+			// before this change (tag cached, no insights row) get Insights on the
+			// next Analyze click. Errors are log-only — the cached tag result wins.
+			if insErr := runInsightsFunc(r.Context(), db, id, user.ID); insErr != nil {
+				if !errors.Is(insErr, ErrInsightsAlreadyCached) && !errors.Is(insErr, ErrClaudeNotEnabled) {
+					log.Printf("Insights analysis failed for workout %d after cached analyze: %v", id, insErr)
+				}
+			}
 			sanitizeAnalysis(cached)
 			writeJSON(w, http.StatusOK, map[string]any{"analysis": cached, "cached": true})
 			return
