@@ -60,6 +60,69 @@ describe('WorkoutContextModal', () => {
     expect(screen.getByTestId('toggle-hrSource-chest')).toHaveAttribute('aria-checked', 'false')
   })
 
+  it('renders long and tempo run type toggles and allows selecting them', () => {
+    render(
+      <WorkoutContextModal workoutId="42" isOpen={true} onClose={() => {}} />,
+    )
+
+    const runTypeLong = screen.getByTestId('toggle-runType-long')
+    const runTypeTempo = screen.getByTestId('toggle-runType-tempo')
+    expect(runTypeLong).toBeTruthy()
+    expect(runTypeTempo).toBeTruthy()
+
+    fireEvent.click(runTypeLong)
+    expect(runTypeLong).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByTestId('toggle-runType-slow')).toHaveAttribute('aria-checked', 'false')
+    expect(runTypeTempo).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByTestId('toggle-runType-interval')).toHaveAttribute('aria-checked', 'false')
+
+    fireEvent.click(runTypeTempo)
+    expect(runTypeTempo).toHaveAttribute('aria-checked', 'true')
+    expect(runTypeLong).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('normalizes initialContext.run_type=long to show long selected', () => {
+    render(
+      <WorkoutContextModal
+        workoutId="42"
+        isOpen={true}
+        onClose={() => {}}
+        initialContext={{
+          surface: 'Outside',
+          run_type: 'long',
+          hr_source: '',
+          feel_notes: '',
+          speed_plan: [],
+        }}
+      />,
+    )
+    expect(screen.getByTestId('toggle-runType-long')).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByTestId('toggle-runType-slow')).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByTestId('toggle-runType-tempo')).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByTestId('toggle-runType-interval')).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('normalizes initialContext.run_type=tempo to show tempo selected', () => {
+    render(
+      <WorkoutContextModal
+        workoutId="42"
+        isOpen={true}
+        onClose={() => {}}
+        initialContext={{
+          surface: 'Outside',
+          run_type: 'tempo',
+          hr_source: '',
+          feel_notes: '',
+          speed_plan: [],
+        }}
+      />,
+    )
+    expect(screen.getByTestId('toggle-runType-tempo')).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByTestId('toggle-runType-long')).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByTestId('toggle-runType-slow')).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByTestId('toggle-runType-interval')).toHaveAttribute('aria-checked', 'false')
+  })
+
   it('renders speed plan section only when surface is Treadmill', () => {
     render(
       <WorkoutContextModal workoutId="42" isOpen={true} onClose={() => {}} />,
