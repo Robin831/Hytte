@@ -359,6 +359,7 @@
     "sharedIntervalSpeed": "ความเร็วอินเทอร์วัลร่วม",
     "sharedPause": "พัก / ช่วงพัก",
     "kmh": "กม./ชม.",
+    "min": "นาที",
     "sec": "วินาที"
   },
   "workoutContextModal": {

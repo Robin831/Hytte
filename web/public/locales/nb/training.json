@@ -359,6 +359,7 @@
     "sharedIntervalSpeed": "Felles intervallfart",
     "sharedPause": "Pause / hvile",
     "kmh": "km/t",
+    "min": "min",
     "sec": "sek"
   },
   "workoutContextModal": {

@@ -21,11 +21,74 @@ function safeNumber(raw: string): number {
   return Number.isFinite(n) && n >= 0 ? n : 0
 }
 
+function safeIntInRange(raw: string, max: number): number {
+  if (raw === '') return 0
+  const n = Math.round(Number(raw))
+  if (!Number.isFinite(n) || n < 0) return 0
+  return n > max ? max : n
+}
+
+interface DurationInputsProps {
+  durationSec: number
+  onChange: (nextDurationSec: number) => void
+  minLabel: string
+  secLabel: string
+  testIdPrefix: string
+}
+
+function DurationInputs({ durationSec, onChange, minLabel, secLabel, testIdPrefix }: DurationInputsProps) {
+  const uid = useId()
+  const safeBase = Number.isFinite(durationSec) && durationSec >= 0 ? Math.floor(durationSec) : 0
+  const minutesValue = Math.floor(safeBase / 60)
+  const secondsValue = safeBase % 60
+
+  return (
+    <>
+      <div className="flex flex-col">
+        <label htmlFor={`${uid}-minutes`} className="text-[11px] text-gray-400">
+          {minLabel}
+        </label>
+        <input
+          id={`${uid}-minutes`}
+          type="number"
+          min={0}
+          step={1}
+          value={minutesValue}
+          onChange={(e) => {
+            const minutes = safeIntInRange(e.target.value, Number.MAX_SAFE_INTEGER)
+            onChange(minutes * 60 + secondsValue)
+          }}
+          data-testid={`${testIdPrefix}-minutes`}
+          className="w-20 rounded border border-gray-700 bg-gray-900 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none"
+        />
+      </div>
+      <div className="flex flex-col">
+        <label htmlFor={`${uid}-seconds`} className="text-[11px] text-gray-400">
+          {secLabel}
+        </label>
+        <input
+          id={`${uid}-seconds`}
+          type="number"
+          min={0}
+          max={59}
+          step={1}
+          value={secondsValue}
+          onChange={(e) => {
+            const seconds = safeIntInRange(e.target.value, 59)
+            onChange(minutesValue * 60 + seconds)
+          }}
+          data-testid={`${testIdPrefix}-seconds`}
+          className="w-20 rounded border border-gray-700 bg-gray-900 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none"
+        />
+      </div>
+    </>
+  )
+}
+
 export default function SpeedPlanEditor({ value, onChange }: SpeedPlanEditorProps) {
   const { t } = useTranslation('training')
   const sharedIntervalSpeedId = useId()
   const sharedPauseSpeedId = useId()
-  const sharedPauseDurationId = useId()
   const addKindId = useId()
 
   const intervalSegments = useMemo(() => value.filter(s => s.kind === 'interval'), [value])
@@ -141,23 +204,13 @@ export default function SpeedPlanEditor({ value, onChange }: SpeedPlanEditorProp
                 className="w-24 rounded border border-gray-700 bg-gray-900 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none"
               />
             </div>
-            <div className="flex flex-col">
-              <label htmlFor={sharedPauseDurationId} className="text-[11px] text-gray-400">
-                {t('speedPlan.sec')}
-              </label>
-              <input
-                id={sharedPauseDurationId}
-                type="number"
-                min={0}
-                step={1}
-                value={sharedPauseDuration}
-                onChange={(e) =>
-                  updateAllOfKind('pause', { duration_sec: Math.round(safeNumber(e.target.value)) })
-                }
-                data-testid="speed-plan-shared-pause-duration"
-                className="w-24 rounded border border-gray-700 bg-gray-900 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none"
-              />
-            </div>
+            <DurationInputs
+              durationSec={sharedPauseDuration}
+              onChange={(next) => updateAllOfKind('pause', { duration_sec: next })}
+              minLabel={t('speedPlan.min')}
+              secLabel={t('speedPlan.sec')}
+              testIdPrefix="speed-plan-shared-pause-duration"
+            />
           </div>
         </div>
       )}
@@ -169,7 +222,6 @@ export default function SpeedPlanEditor({ value, onChange }: SpeedPlanEditorProp
           const hideSpeed = (isInterval && sameSpeedForIntervals) || isPause
           const hideDuration = isPause
           const speedInputId = `speed-plan-row-${index}-speed`
-          const durationInputId = `speed-plan-row-${index}-duration`
           return (
             <li
               key={index}
@@ -199,23 +251,13 @@ export default function SpeedPlanEditor({ value, onChange }: SpeedPlanEditorProp
               )}
 
               {!hideDuration && (
-                <div className="flex flex-col">
-                  <label htmlFor={durationInputId} className="text-[11px] text-gray-400">
-                    {t('speedPlan.sec')}
-                  </label>
-                  <input
-                    id={durationInputId}
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={seg.duration_sec}
-                    onChange={(e) =>
-                      updateSegment(index, { duration_sec: Math.round(safeNumber(e.target.value)) })
-                    }
-                    data-testid={`speed-plan-row-${index}-duration`}
-                    className="w-24 rounded border border-gray-700 bg-gray-900 px-2 py-1 text-sm text-white focus:border-blue-500 focus:outline-none"
-                  />
-                </div>
+                <DurationInputs
+                  durationSec={seg.duration_sec}
+                  onChange={(next) => updateSegment(index, { duration_sec: next })}
+                  minLabel={t('speedPlan.min')}
+                  secLabel={t('speedPlan.sec')}
+                  testIdPrefix={`speed-plan-row-${index}-duration`}
+                />
               )}
 
               <button
