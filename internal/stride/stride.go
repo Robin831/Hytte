@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/Robin831/Hytte/internal/training"
 )
 
 // Race represents an upcoming race in the user's race calendar.
@@ -759,12 +761,13 @@ func GetCurrentPlan(db *sql.DB, userID int64, today string) (*Plan, error) {
 
 // EvaluationRecord represents a stored evaluation from stride_evaluations.
 type EvaluationRecord struct {
-	ID        int64      `json:"id"`
-	UserID    int64      `json:"user_id"`
-	PlanID    int64      `json:"plan_id"`
-	WorkoutID *int64     `json:"workout_id"`
-	Eval      Evaluation `json:"eval"`
-	CreatedAt string     `json:"created_at"`
+	ID                    int64      `json:"id"`
+	UserID                int64      `json:"user_id"`
+	PlanID                int64      `json:"plan_id"`
+	WorkoutID             *int64     `json:"workout_id"`
+	Eval                  Evaluation `json:"eval"`
+	CreatedAt             string     `json:"created_at"`
+	WorkoutContextSummary string     `json:"workout_context_summary,omitempty"`
 }
 
 // ListEvaluations returns evaluation records for a user from stride_evaluations.
@@ -830,6 +833,34 @@ func ListEvaluations(db *sql.DB, userID int64, planID *int64, workoutID *int64) 
 	if records == nil {
 		records = []EvaluationRecord{}
 	}
+
+	// Attach the workout_context summary so the frontend can render
+	// "what coach saw for this day" inline on each evaluation card without
+	// a second fetch. Multiple evaluations sharing a workout reuse the same
+	// formatted string; cache by workout ID to avoid redundant DB hits.
+	contextCache := make(map[int64]string)
+	for i := range records {
+		if records[i].WorkoutID == nil {
+			continue
+		}
+		wid := *records[i].WorkoutID
+		if cached, ok := contextCache[wid]; ok {
+			records[i].WorkoutContextSummary = cached
+			continue
+		}
+		wctx, err := training.GetWorkoutContext(db, wid)
+		if err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				log.Printf("stride: load workout_context for workout %d: %v", wid, err)
+			}
+			contextCache[wid] = ""
+			continue
+		}
+		summary := training.FormatWorkoutContextNote(wctx)
+		contextCache[wid] = summary
+		records[i].WorkoutContextSummary = summary
+	}
+
 	return records, nil
 }
 
