@@ -1849,8 +1849,11 @@ const maxParsedLogTail = 5000
 // the cache and forces a full re-parse from offset 0.
 //
 // The ?tail=N query parameter (optional) limits the response to the last N
-// entries. Absent → return all entries. N must be a positive integer no larger
-// than maxParsedLogTail (5000); anything else returns HTTP 400.
+// entries. Absent → return all cached entries (capped by the parser's rolling
+// window at maxParsedLogTail entries, so very long logs may not include
+// entries from the beginning). N must be a non-negative integer no larger than
+// maxParsedLogTail (5000); N=0 returns an empty array. Invalid values return
+// HTTP 400.
 //
 // Returns 404 if the worker or its log file is not found. Log parse errors are
 // tolerated on a best-effort basis (malformed entries are skipped), and the
@@ -2000,10 +2003,16 @@ func readParsedLog(cache *parsedLogCache, workerID, resolvedPath string) ([]LogE
 		return nil, err
 	}
 
-	// Detect rotation/truncation: file shrank or mtime jumped backwards.
-	// In either case the cached state no longer corresponds to the file
+	// Detect rotation/truncation/same-size replacement. Three cases:
+	//   1. File shrank below our read position (truncation).
+	//   2. Mtime changed but no new bytes arrived: a same-size (or smaller)
+	//      atomic replacement that a pure size check would silently miss.
+	//      entry.size (last observed file size) distinguishes a genuine
+	//      append (stat.Size() > entry.size) from a rewrite.
+	// In all cases the cached state no longer corresponds to the file
 	// contents, so reset and re-parse from the beginning.
-	if stat.Size() < entry.nextOffset || (!entry.modTime.IsZero() && stat.ModTime().Before(entry.modTime)) {
+	mtimeChanged := !entry.modTime.IsZero() && !stat.ModTime().Equal(entry.modTime)
+	if stat.Size() < entry.nextOffset || (mtimeChanged && stat.Size() <= entry.size) {
 		entry.reset()
 	}
 

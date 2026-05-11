@@ -97,6 +97,9 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 // Errors from individual malformed log lines are tolerated; only a scanner-
 // level read or buffer error is returned.
 func ParseWorkerLogFrom(r io.Reader, state *LogParseState) error {
+	if state == nil {
+		return fmt.Errorf("ParseWorkerLogFrom: state must not be nil")
+	}
 	if state.ToolUseIndex == nil {
 		state.ToolUseIndex = make(map[string]int)
 	}

@@ -17,8 +17,8 @@ type DB struct {
 	db *sql.DB
 	// parsedLogs caches incremental parser state for worker log files so
 	// that polling endpoints (e.g. WorkerParsedLogHandler) only scan the
-	// bytes appended since the previous request. Lazily initialised; see
-	// parsedLogCache for the LRU semantics.
+	// bytes appended since the previous request. Initialised eagerly by
+	// Open() and New(); see parsedLogCache for the LRU semantics.
 	parsedLogs *parsedLogCache
 }
 
