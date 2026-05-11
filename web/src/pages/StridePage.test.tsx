@@ -55,7 +55,7 @@ function makeT(translations: JsonObject) {
 
     // Key not found — fall back to defaultValue with interpolation
     if (opts?.defaultValue && typeof opts.defaultValue === 'string') {
-      return opts ? interpolate(opts.defaultValue, opts) : opts.defaultValue
+      return interpolate(opts.defaultValue, opts)
     }
     return key
   }
