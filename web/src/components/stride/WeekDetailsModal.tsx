@@ -36,13 +36,7 @@ export function WeekDetailsModal({ week, workoutIdToDate, onClose }: WeekDetails
   const planId = week?.plan_id
 
   useEffect(() => {
-    if (!planId) {
-      setLoading(false)
-      setPlan(null)
-      setEvaluations([])
-      setError(false)
-      return
-    }
+    if (!planId) return
     const controller = new AbortController()
     setLoading(true)
     setError(false)
@@ -157,19 +151,19 @@ export function WeekDetailsModal({ week, workoutIdToDate, onClose }: WeekDetails
             </p>
           </div>
 
-          {loading && (
+          {!!planId && loading && (
             <div className="flex items-center gap-2 text-sm text-gray-400">
               <Loader2 size={16} className="animate-spin" />
               <span>{t('loading')}</span>
             </div>
           )}
 
-          {error && !loading && (
+          {!!planId && error && !loading && (
             <p className="text-sm text-red-400">{t('plan.loadError')}</p>
           )}
 
           {/* Day-by-day plan + evaluations */}
-          {!loading && !error && sortedPlanDays.length > 0 && (
+          {!!planId && !loading && !error && sortedPlanDays.length > 0 && (
             <div>
               {plan?.created_at && (
                 <p className="mb-2 text-xs text-gray-500">
@@ -192,7 +186,7 @@ export function WeekDetailsModal({ week, workoutIdToDate, onClose }: WeekDetails
           )}
 
           {/* Previous-week-style feedback: evaluations whose date falls outside the plan's days. */}
-          {!loading && !error && orphanEvals.length > 0 && (
+          {!!planId && !loading && !error && orphanEvals.length > 0 && (
             <div>
               <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-white">
                 <AlertTriangle size={14} className="text-yellow-400" />
@@ -266,7 +260,7 @@ export function WeekDetailsModal({ week, workoutIdToDate, onClose }: WeekDetails
             </div>
           )}
 
-          {!loading && !error && sortedPlanDays.length === 0 && orphanEvals.length === 0 && (
+          {(!planId || (!loading && !error && sortedPlanDays.length === 0 && orphanEvals.length === 0)) && (
             <p className="text-sm text-gray-500">{t('plan.empty')}</p>
           )}
         </div>
