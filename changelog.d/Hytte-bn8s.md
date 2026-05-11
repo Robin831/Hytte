@@ -1,0 +1,2 @@
+category: Changed
+- **Stride evaluation triggers on workout_context save** - Saving the per-workout context now spawns an immediate Stride re-evaluation for the workout's date (in Europe/Oslo), so users no longer have to wait for the 03:00 nightly cron. Gates on `stride_enabled` and Claude being enabled; the nightly cron remains as a fallback for workouts where context is never saved. (Hytte-bn8s)

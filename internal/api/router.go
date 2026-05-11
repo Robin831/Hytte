@@ -71,6 +71,12 @@ func NewRouter(db *sql.DB) http.Handler {
 		return nil
 	}
 
+	// Wire up the Stride re-evaluation callback so saving a workout_context
+	// triggers an immediate evaluation for the workout's date, short-circuiting
+	// the nightly 03:00 Europe/Oslo cron. Same cycle-breaking pattern as the
+	// race-matching callback above.
+	training.OnContextSavedReevaluateStride = stride.ReEvaluateDate
+
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{

@@ -26,6 +26,78 @@ var claudeSemaphore = make(chan struct{}, 3)
 // starsSemaphore caps the number of concurrent background star evaluation goroutines.
 var starsSemaphore = make(chan struct{}, 5)
 
+// OnContextSavedReevaluateStride is invoked after a workout_context row is
+// persisted to trigger an immediate Stride evaluation for the workout's date,
+// short-circuiting the nightly 03:00 Europe/Oslo cron. It is set by the API
+// layer to avoid an import cycle between training and stride. Tests can swap
+// it to assert call shape and exercise gating without spinning up the real
+// evaluator.
+var OnContextSavedReevaluateStride func(ctx context.Context, db *sql.DB, httpClient *http.Client, userID int64, date string) (int, error)
+
+// strideEvalHTTPClient is the HTTP client used by the context-save Stride
+// trigger to send push notifications for critical evaluation flags. Matches
+// the timeout used by the nightly evaluator.
+var strideEvalHTTPClient = &http.Client{Timeout: 120 * time.Second}
+
+// scheduleStrideEvalAfterContextSave triggers an immediate Stride re-evaluation
+// for the workout's date after its workout_context row is saved. It gates on
+// stride_enabled=true and Claude being enabled — the same conditions the
+// nightly cron enforces — and silently no-ops otherwise. Errors are logged and
+// swallowed so a failed evaluation cannot fail the HTTP save.
+func scheduleStrideEvalAfterContextSave(db *sql.DB, userID, workoutID int64) {
+	hook := OnContextSavedReevaluateStride
+	if hook == nil {
+		return
+	}
+
+	prefs, err := auth.GetPreferences(db, userID)
+	if err != nil {
+		log.Printf("stride trigger: load preferences for user %d: %v", userID, err)
+		return
+	}
+	if prefs["stride_enabled"] != "true" {
+		return
+	}
+
+	cfg, err := LoadClaudeConfig(db, userID)
+	if err != nil {
+		log.Printf("stride trigger: load Claude config for user %d: %v", userID, err)
+		return
+	}
+	if !cfg.Enabled {
+		return
+	}
+
+	var startedAt string
+	if err := db.QueryRow(
+		`SELECT started_at FROM workouts WHERE id = ? AND user_id = ?`,
+		workoutID, userID,
+	).Scan(&startedAt); err != nil {
+		log.Printf("stride trigger: load workout %d started_at: %v", workoutID, err)
+		return
+	}
+
+	parsed, err := time.Parse(time.RFC3339Nano, startedAt)
+	if err != nil {
+		log.Printf("stride trigger: parse workout %d started_at %q: %v", workoutID, startedAt, err)
+		return
+	}
+	// Use UTC date to match Stride's queryWorkoutsOnDate which constructs UTC
+	// day boundaries (date + "T00:00:00Z"). Using an Oslo date for a workout
+	// near midnight would target the wrong UTC window and miss the workout.
+	date := parsed.UTC().Format("2006-01-02")
+
+	go func() {
+		claudeSemaphore <- struct{}{} // blocks until capacity is available
+		defer func() { <-claudeSemaphore }()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		if _, err := hook(ctx, db, strideEvalHTTPClient, userID, date); err != nil {
+			log.Printf("stride trigger: re-evaluate user %d date %s: %v", userID, date, err)
+		}
+	}()
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

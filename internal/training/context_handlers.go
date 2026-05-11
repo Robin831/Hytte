@@ -130,6 +130,12 @@ func PutWorkoutContextHandler(db *sql.DB) http.HandlerFunc {
 		// an analysis is already running or completed.
 		scheduleAnalysisAfterContextSave(db, user.ID, user.IsAdmin, workoutID)
 
+		// Trigger Stride re-evaluation for the workout's date so the user does
+		// not have to wait for the nightly 03:00 cron. Gates on stride_enabled
+		// + Claude enabled; the nightly path remains the fallback when context
+		// is never saved.
+		scheduleStrideEvalAfterContextSave(db, user.ID, workoutID)
+
 		saved, err := GetWorkoutContext(db, workoutID)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load context"})
