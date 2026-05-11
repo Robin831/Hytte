@@ -15,6 +15,11 @@ import (
 // DB wraps a read-only connection to the forge state database.
 type DB struct {
 	db *sql.DB
+	// parsedLogs caches incremental parser state for worker log files so
+	// that polling endpoints (e.g. WorkerParsedLogHandler) only scan the
+	// bytes appended since the previous request. Initialised eagerly by
+	// Open() and New(); see parsedLogCache for the LRU semantics.
+	parsedLogs *parsedLogCache
 }
 
 // Worker represents an active or recently completed forge worker.
@@ -163,12 +168,12 @@ func Open() (*DB, error) {
 		return nil, fmt.Errorf("forge: ping state.db: %w", err)
 	}
 
-	return &DB{db: db}, nil
+	return &DB{db: db, parsedLogs: newParsedLogCache(0)}, nil
 }
 
 // New wraps an existing *sql.DB as a forge DB. Intended for testing.
 func New(db *sql.DB) *DB {
-	return &DB{db: db}
+	return &DB{db: db, parsedLogs: newParsedLogCache(0)}
 }
 
 // Close releases the database connection.

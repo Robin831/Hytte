@@ -2,6 +2,7 @@ package forge
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -1831,13 +1832,33 @@ func ResetCountersExternalPRHandler(db *DB) http.HandlerFunc {
 	return externalPRDaemonHandler(db, "reset_counters", "failed to send reset-counters command")
 }
 
+// maxParsedLogTail caps the ?tail=N query parameter on the parsed-log endpoint.
+// Requests above this cap are rejected with HTTP 400 to avoid pathological
+// allocations from a misbehaving client.
+const maxParsedLogTail = 5000
+
 // WorkerParsedLogHandler returns a worker's stream-json log file as a structured
 // JSON array of LogEntry objects. Each entry has type ("tool_use", "text", "think"),
 // name (tool name for tool_use), content (formatted input/output), and status
 // ("success" or "error" for tool_use entries, set by correlating tool results).
+//
+// Parsed entries are cached per (workerID, resolvedLogPath) on the DB. On each
+// request the handler stats the file, seeks past the previously parsed offset,
+// and only scans the newly appended bytes — so polling endpoints stay O(delta)
+// instead of O(file size). Truncation or backwards-jumping mtime invalidates
+// the cache and forces a full re-parse from offset 0.
+//
+// The ?tail=N query parameter (optional) limits the response to the last N
+// entries. Absent → return all cached entries (capped by the parser's rolling
+// window at maxParsedLogTail entries, so very long logs may not include
+// entries from the beginning). N must be a non-negative integer no larger than
+// maxParsedLogTail (5000); N=0 returns an empty array. Invalid values return
+// HTTP 400.
+//
 // Returns 404 if the worker or its log file is not found. Log parse errors are
-// tolerated on a best-effort basis (malformed entries are skipped), and the handler
-// returns the successfully parsed entries (or an empty array) with HTTP 200.
+// tolerated on a best-effort basis (malformed entries are skipped), and the
+// handler returns the successfully parsed entries (or an empty array) with
+// HTTP 200.
 func WorkerParsedLogHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		workerID := chi.URLParam(r, "id")
@@ -1848,6 +1869,22 @@ func WorkerParsedLogHandler(db *DB) http.HandlerFunc {
 		if db == nil {
 			writeError(w, http.StatusServiceUnavailable, "forge state database not available")
 			return
+		}
+
+		// Validate ?tail=N up front so a bad value short-circuits before any
+		// disk work. tailLimit == -1 means "no limit, return everything".
+		tailLimit := -1
+		if tailParam := r.URL.Query().Get("tail"); tailParam != "" {
+			n, parseErr := strconv.Atoi(tailParam)
+			if parseErr != nil || n < 0 {
+				writeError(w, http.StatusBadRequest, "tail must be a non-negative integer")
+				return
+			}
+			if n > maxParsedLogTail {
+				writeError(w, http.StatusBadRequest, fmt.Sprintf("tail exceeds maximum of %d", maxParsedLogTail))
+				return
+			}
+			tailLimit = n
 		}
 
 		worker, err := db.WorkerByID(workerID)
@@ -1915,31 +1952,115 @@ func WorkerParsedLogHandler(db *DB) http.HandlerFunc {
 			return
 		}
 
-		entries, err := ParseWorkerLog(resolvedPath)
+		entries, err := readParsedLog(db.parsedLogs, workerID, resolvedPath)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to parse log file")
 			return
+		}
+
+		if tailLimit >= 0 && len(entries) > tailLimit {
+			entries = entries[len(entries)-tailLimit:]
 		}
 		if entries == nil {
 			entries = []LogEntry{}
 		}
 
-		// If ?tail=N is provided, return only the last N entries.
-		if tailParam := r.URL.Query().Get("tail"); tailParam != "" {
-			n, err := strconv.Atoi(tailParam)
-			if err != nil || n <= 0 {
-				n = 100
-			}
-			if n > 10000 {
-				n = 10000
-			}
-			if len(entries) > n {
-				entries = entries[len(entries)-n:]
-			}
-		}
-
 		writeJSON(w, http.StatusOK, entries)
 	}
+}
+
+// readParsedLog returns the cumulative parsed entries for resolvedPath, using
+// cache as a per-(workerID, path) cache that only re-scans bytes appended since
+// the previous call. Truncation or a backwards-jumping mtime invalidates the
+// cache and forces a full re-parse.
+//
+// The incremental scan stops at the last newline in the newly available bytes:
+// a trailing partial line (the writer is mid-flush) is intentionally left
+// unconsumed so it gets re-read on the next call once the closing newline
+// arrives. Advancing past it would silently drop the entry, because the
+// underlying bufio.Scanner returns false on EOF without surfacing the partial
+// remainder.
+//
+// The returned slice is a freshly allocated copy, safe to read after the
+// per-entry mutex is released.
+func readParsedLog(cache *parsedLogCache, workerID, resolvedPath string) ([]LogEntry, error) {
+	if cache == nil {
+		// Defensive: callers that bypass the constructors will fall back to
+		// the unconditional full-file parse. The handler always supplies a
+		// non-nil cache via DB.parsedLogs, so this path is unreachable in
+		// production.
+		return ParseWorkerLog(resolvedPath)
+	}
+
+	key := workerID + "|" + resolvedPath
+	entry := cache.getOrCreate(key)
+
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+
+	stat, err := os.Stat(resolvedPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Detect rotation/truncation/same-size replacement. Three cases:
+	//   1. File shrank below our read position (truncation).
+	//   2. Mtime changed but no new bytes arrived: a same-size (or smaller)
+	//      atomic replacement that a pure size check would silently miss.
+	//      entry.size (last observed file size) distinguishes a genuine
+	//      append (stat.Size() > entry.size) from a rewrite.
+	// In all cases the cached state no longer corresponds to the file
+	// contents, so reset and re-parse from the beginning.
+	mtimeChanged := !entry.modTime.IsZero() && !stat.ModTime().Equal(entry.modTime)
+	if stat.Size() < entry.nextOffset || (mtimeChanged && stat.Size() <= entry.size) {
+		entry.reset()
+	}
+
+	if stat.Size() > entry.nextOffset {
+		f, openErr := os.Open(resolvedPath) //nolint:gosec
+		if openErr != nil {
+			return nil, openErr
+		}
+		if entry.nextOffset > 0 {
+			if _, seekErr := f.Seek(entry.nextOffset, io.SeekStart); seekErr != nil {
+				f.Close()
+				return nil, seekErr
+			}
+		}
+		newBytes, readErr := io.ReadAll(f)
+		f.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		// Only consume bytes up to the last newline. A trailing partial line
+		// (the writer is mid-flush) must not be parsed yet — bufio.Scanner
+		// silently drops it on EOF, so advancing nextOffset past it would
+		// permanently lose the entry once the line completes. Re-reading the
+		// partial bytes on the next poll is cheap (bounded by max line size).
+		lastNL := bytes.LastIndexByte(newBytes, '\n')
+		if lastNL >= 0 {
+			consumeLen := lastNL + 1
+			if parseErr := ParseWorkerLogFrom(bytes.NewReader(newBytes[:consumeLen]), entry.state); parseErr != nil {
+				// Reset to avoid cache poisoning: ParseWorkerLogFrom may have
+				// appended partial entries before the scanner errored. Leaving
+				// them in place would double-count on the next call.
+				entry.reset()
+				return nil, parseErr
+			}
+			entry.nextOffset += int64(consumeLen)
+			entry.parseCount++
+		}
+		// modTime/size always advance so the truncation/rotation detector
+		// stays correctly anchored to the file's current metadata.
+		entry.modTime = stat.ModTime()
+		entry.size = stat.Size()
+	}
+
+	// Copy the cumulative entries under the mutex so the caller can JSON-
+	// encode without holding the lock.
+	out := make([]LogEntry, len(entry.state.Entries))
+	copy(out, entry.state.Entries)
+	return out, nil
 }
 
 // RestartForgeHandler runs ~/.forge/restart.sh to rebuild and restart the forge
