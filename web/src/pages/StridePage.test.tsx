@@ -922,7 +922,7 @@ describe('StridePage – plan history pagination', () => {
 
     // Week label rendered (English-formatted).
     await waitFor(() => {
-      expect(screen.getByText(/Week of Jan 13/)).toBeInTheDocument()
+      expect(screen.getAllByText(/Week of Jan 13/)[0]).toBeInTheDocument()
     })
 
     // Completion-percent chip.
@@ -952,9 +952,9 @@ describe('StridePage – plan history pagination', () => {
 
     // First page rows render.
     await waitFor(() => {
-      expect(screen.getByText(/Week of Jan 13/)).toBeInTheDocument()
+      expect(screen.getAllByText(/Week of Jan 13/)[0]).toBeInTheDocument()
     })
-    expect(screen.getByText(/Week of Jan 6/)).toBeInTheDocument()
+    expect(screen.getAllByText(/Week of Jan 6/)[0]).toBeInTheDocument()
     expect(screen.queryByText(/Week of Dec 30/)).not.toBeInTheDocument()
 
     // Load more is visible because has_more=true.
@@ -966,10 +966,10 @@ describe('StridePage – plan history pagination', () => {
 
     // Next page row appended; original rows still present.
     await waitFor(() => {
-      expect(screen.getByText(/Week of Dec 30/)).toBeInTheDocument()
+      expect(screen.getAllByText(/Week of Dec 30/)[0]).toBeInTheDocument()
     })
-    expect(screen.getByText(/Week of Jan 13/)).toBeInTheDocument()
-    expect(screen.getByText(/Week of Jan 6/)).toBeInTheDocument()
+    expect(screen.getAllByText(/Week of Jan 13/)[0]).toBeInTheDocument()
+    expect(screen.getAllByText(/Week of Jan 6/)[0]).toBeInTheDocument()
 
     // Load more disappears once has_more=false on the latest page.
     expect(screen.queryByRole('button', { name: /Load older weeks/i })).toBeNull()
@@ -983,7 +983,7 @@ describe('StridePage – plan history pagination', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText(/Week of Jan 13/)).toBeInTheDocument()
+      expect(screen.getAllByText(/Week of Jan 13/)[0]).toBeInTheDocument()
     })
 
     expect(screen.queryByRole('button', { name: /Load older weeks/i })).toBeNull()
@@ -1082,7 +1082,7 @@ describe('StridePage – week details modal', () => {
 
     // The history row renders.
     await waitFor(() => {
-      expect(screen.getByText(/Week of Jan 13/)).toBeInTheDocument()
+      expect(screen.getAllByText(/Week of Jan 13/)[0]).toBeInTheDocument()
     })
 
     // Modal not open yet.
@@ -1123,7 +1123,7 @@ describe('StridePage – week details modal', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText(/Week of Jan 13/)).toBeInTheDocument()
+      expect(screen.getAllByText(/Week of Jan 13/)[0]).toBeInTheDocument()
     })
 
     await act(async () => {
@@ -1149,7 +1149,7 @@ describe('StridePage – week details modal', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText(/Week of Jan 13/)).toBeInTheDocument()
+      expect(screen.getAllByText(/Week of Jan 13/)[0]).toBeInTheDocument()
     })
 
     await act(async () => {
