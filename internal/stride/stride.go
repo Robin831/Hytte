@@ -1184,7 +1184,7 @@ func computeWeeksZoneSeconds(db *sql.DB, userID int64, weeks []weekRange, zoneBo
 	}
 	endParsed, err := time.Parse("2006-01-02", maxEnd)
 	if err != nil {
-		return result, nil
+		return nil, fmt.Errorf("parse week_end %q: %w", maxEnd, err)
 	}
 	exclusiveEnd := endParsed.AddDate(0, 0, 1).Format("2006-01-02")
 

@@ -1425,6 +1425,51 @@ func TestPlanHistoryHandler_DepthCap(t *testing.T) {
 	}
 }
 
+// TestPlanHistoryHandler_DepthCapBoundaryHasMoreFalse verifies that a page
+// whose offset+limit reaches HistoryDepthCapWeeks returns has_more=false even
+// though a row exists at index HistoryDepthCapWeeks (which the probe query
+// would discover and flag as has_more=true without the cap override).
+func TestPlanHistoryHandler_DepthCapBoundaryHasMoreFalse(t *testing.T) {
+	db := setupTestDB(t)
+
+	planJSON := `[{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true}]`
+	// Insert HistoryDepthCapWeeks+1 plans so a row exists at DB index
+	// HistoryDepthCapWeeks (position 156). The probe query for the last
+	// in-cap page would otherwise return that extra row and set has_more=true.
+	for i := 1; i <= HistoryDepthCapWeeks+1; i++ {
+		ws, we := pastWeekDates(i)
+		insertTestPlan(t, db, 1, ws, we, planJSON)
+	}
+
+	// offset=HistoryDepthCapWeeks-2, limit=10 → handler clamps limit to 2,
+	// making offset+limit == HistoryDepthCapWeeks exactly.
+	offset := HistoryDepthCapWeeks - 2
+	url := "/api/stride/history?limit=10&offset=" + strconv.Itoa(offset)
+	req := withUser(httptest.NewRequest("GET", url, nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Weeks   []WeekSummary `json:"weeks"`
+		HasMore bool          `json:"has_more"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// The clamped page covers the last 2 in-cap slots.
+	if len(body.Weeks) != 2 {
+		t.Errorf("expected 2 weeks at cap boundary, got %d", len(body.Weeks))
+	}
+	// has_more must be false: offset+limit == HistoryDepthCapWeeks, so no
+	// further pages are advertised even though a row exists beyond the cap.
+	if body.HasMore {
+		t.Errorf("has_more = true at cap boundary, want false")
+	}
+}
+
 // TestPlanHistoryHandler_ZoneSecondsPopulated seeds workouts at distinct HR
 // intensities and verifies they land in the correct easy/threshold/hard bucket
 // when bucketed against the user's default zones (computed from max_hr=200).
