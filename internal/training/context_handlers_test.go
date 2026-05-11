@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -420,4 +421,171 @@ func TestScheduleAnalysisAfterContextSave_SetsStatusPendingBeforeRun(t *testing.
 	if status := getWorkoutAnalysisStatus(t, database, workoutID); status != "pending" {
 		t.Errorf("expected status='pending' immediately after scheduling, got %q", status)
 	}
+}
+
+// --- scheduleStrideEvalAfterContextSave ---
+
+// setStrideEvalHook swaps OnContextSavedReevaluateStride for the duration of a
+// test and restores the previous value (typically nil) on cleanup. Returning
+// the swap helper keeps each test focused on its assertions.
+func setStrideEvalHook(t *testing.T, hook func(context.Context, *sql.DB, *http.Client, int64, string) (int, error)) {
+	t.Helper()
+	orig := OnContextSavedReevaluateStride
+	OnContextSavedReevaluateStride = hook
+	t.Cleanup(func() { OnContextSavedReevaluateStride = orig })
+}
+
+// TestScheduleStrideEvalAfterContextSave_Fires verifies the trigger spawns a
+// re-evaluation when both stride_enabled and Claude are on, and that the date
+// passed to the hook is the workout's started_at converted to Europe/Oslo —
+// not the UTC date. 2024-06-15T22:30:00Z is still 2024-06-15 in UTC but
+// 2024-06-16 in CEST, so a UTC-only path would pass the wrong date.
+func TestScheduleStrideEvalAfterContextSave_Fires(t *testing.T) {
+	database := setupTestDB(t)
+	workoutID := createWorkoutForUser(t, database, 1, "stride-fires-hash")
+	if _, err := database.Exec(`UPDATE workouts SET started_at = ? WHERE id = ?`,
+		"2024-06-15T22:30:00Z", workoutID); err != nil {
+		t.Fatalf("update started_at: %v", err)
+	}
+	if err := auth.SetPreference(database, 1, "stride_enabled", "true"); err != nil {
+		t.Fatalf("set stride_enabled: %v", err)
+	}
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set claude_enabled: %v", err)
+	}
+
+	type capture struct {
+		userID int64
+		date   string
+	}
+	captured := make(chan capture, 1)
+	setStrideEvalHook(t, func(_ context.Context, _ *sql.DB, _ *http.Client, userID int64, date string) (int, error) {
+		captured <- capture{userID: userID, date: date}
+		return 1, nil
+	})
+
+	scheduleStrideEvalAfterContextSave(database, 1, workoutID)
+
+	select {
+	case c := <-captured:
+		if c.userID != 1 {
+			t.Errorf("user_id: got %d, want 1", c.userID)
+		}
+		if c.date != "2024-06-16" {
+			t.Errorf("date: got %q, want %q (Europe/Oslo)", c.date, "2024-06-16")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: stride re-evaluation did not fire within 2s")
+	}
+}
+
+// TestScheduleStrideEvalAfterContextSave_Skips_WhenStrideNotEnabled verifies
+// the trigger is a no-op when the user has not opted in to Stride, even if
+// Claude is enabled.
+func TestScheduleStrideEvalAfterContextSave_Skips_WhenStrideNotEnabled(t *testing.T) {
+	database := setupTestDB(t)
+	workoutID := createWorkoutForUser(t, database, 1, "stride-no-stride-hash")
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set claude_enabled: %v", err)
+	}
+
+	called := false
+	setStrideEvalHook(t, func(_ context.Context, _ *sql.DB, _ *http.Client, _ int64, _ string) (int, error) {
+		called = true
+		return 0, nil
+	})
+
+	scheduleStrideEvalAfterContextSave(database, 1, workoutID)
+	time.Sleep(100 * time.Millisecond)
+
+	if called {
+		t.Fatal("expected no stride evaluation when stride_enabled is false")
+	}
+}
+
+// TestScheduleStrideEvalAfterContextSave_Skips_WhenClaudeNotEnabled verifies
+// the trigger is a no-op when Claude is disabled, matching the nightly cron's
+// gating behavior.
+func TestScheduleStrideEvalAfterContextSave_Skips_WhenClaudeNotEnabled(t *testing.T) {
+	database := setupTestDB(t)
+	workoutID := createWorkoutForUser(t, database, 1, "stride-no-claude-hash")
+	if err := auth.SetPreference(database, 1, "stride_enabled", "true"); err != nil {
+		t.Fatalf("set stride_enabled: %v", err)
+	}
+
+	called := false
+	setStrideEvalHook(t, func(_ context.Context, _ *sql.DB, _ *http.Client, _ int64, _ string) (int, error) {
+		called = true
+		return 0, nil
+	})
+
+	scheduleStrideEvalAfterContextSave(database, 1, workoutID)
+	time.Sleep(100 * time.Millisecond)
+
+	if called {
+		t.Fatal("expected no stride evaluation when Claude is not enabled")
+	}
+}
+
+// TestScheduleStrideEvalAfterContextSave_NoOpWhenHookUnset verifies the
+// trigger is safe to call when no hook is registered (e.g. unit tests that
+// don't go through the router wiring).
+func TestScheduleStrideEvalAfterContextSave_NoOpWhenHookUnset(t *testing.T) {
+	database := setupTestDB(t)
+	workoutID := createWorkoutForUser(t, database, 1, "stride-no-hook-hash")
+	if err := auth.SetPreference(database, 1, "stride_enabled", "true"); err != nil {
+		t.Fatalf("set stride_enabled: %v", err)
+	}
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set claude_enabled: %v", err)
+	}
+	setStrideEvalHook(t, nil)
+
+	// Should not panic or block.
+	scheduleStrideEvalAfterContextSave(database, 1, workoutID)
+}
+
+// TestPutWorkoutContext_StrideHookFailure_StillReturns200 verifies the HTTP
+// save succeeds even if the Stride re-evaluation hook returns an error —
+// evaluation runs in a detached goroutine and failures must be logged, not
+// propagated.
+func TestPutWorkoutContext_StrideHookFailure_StillReturns200(t *testing.T) {
+	database := setupTestDB(t)
+	workoutID := createWorkoutForUser(t, database, 1, "stride-failure-hash")
+	if err := auth.SetPreference(database, 1, "stride_enabled", "true"); err != nil {
+		t.Fatalf("set stride_enabled: %v", err)
+	}
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set claude_enabled: %v", err)
+	}
+
+	hookCalled := make(chan struct{}, 1)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	setStrideEvalHook(t, func(_ context.Context, _ *sql.DB, _ *http.Client, _ int64, _ string) (int, error) {
+		defer wg.Done()
+		select {
+		case hookCalled <- struct{}{}:
+		default:
+		}
+		return 0, errors.New("simulated evaluator failure")
+	})
+
+	body := WorkoutContext{
+		Surface:   "road",
+		RunType:   "easy",
+		HRSource:  "wrist",
+		FeelNotes: "Stride trigger failure-path test",
+	}
+	w := putContext(t, database, 1, workoutID, body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 from PUT despite hook failure, got %d (body=%s)", w.Code, w.Body.String())
+	}
+
+	select {
+	case <-hookCalled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout: stride hook never fired")
+	}
+	wg.Wait()
 }
