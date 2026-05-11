@@ -1089,13 +1089,15 @@ describe('StridePage – week details modal', () => {
 
     // Day-by-day cards render the planned session description plus a verdict
     // badge that comes from the linked evaluation.
+    // DayCard renders the description in both the header and the (hidden) expanded
+    // content area, so use getAllByText and check the first (header) element.
     await waitFor(() => {
-      expect(screen.getByText('Easy 45 min')).toBeInTheDocument()
+      expect(screen.getAllByText('Easy 45 min').length).toBeGreaterThan(0)
     })
     expect(screen.getByText('Completed')).toBeInTheDocument()
 
     // Expanding the day reveals the coach notes from the evaluation.
-    const dayButton = screen.getByText('Easy 45 min').closest('button')!
+    const dayButton = screen.getAllByText('Easy 45 min')[0].closest('button')!
     await act(async () => {
       fireEvent.click(dayButton)
     })

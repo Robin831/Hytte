@@ -36,7 +36,13 @@ export function WeekDetailsModal({ week, workoutIdToDate, onClose }: WeekDetails
   const planId = week?.plan_id
 
   useEffect(() => {
-    if (!planId) return
+    if (!planId) {
+      setLoading(false)
+      setPlan(null)
+      setEvaluations([])
+      setError(false)
+      return
+    }
     const controller = new AbortController()
     setLoading(true)
     setError(false)
@@ -62,7 +68,10 @@ export function WeekDetailsModal({ week, workoutIdToDate, onClose }: WeekDetails
         if (!controller.signal.aborted) setLoading(false)
       }
     })()
-    return () => controller.abort()
+    return () => {
+      controller.abort()
+      setLoading(false)
+    }
   }, [planId])
 
   const sortedPlanDays = useMemo(() => {
@@ -128,6 +137,7 @@ export function WeekDetailsModal({ week, workoutIdToDate, onClose }: WeekDetails
       onClose={onClose}
       aria-labelledby={titleId}
       maxWidth="max-w-2xl"
+      overlayClassName="p-0 sm:p-4"
       className="sm:max-h-[90vh] max-h-screen h-full sm:h-auto sm:rounded-lg rounded-none"
     >
       <DialogHeader id={titleId} title={t('history.weekModal.title')} onClose={onClose} closeLabel={t('history.weekModal.close')} />
