@@ -883,16 +883,17 @@ func ListEvaluations(db *sql.DB, userID int64, planID *int64, workoutID *int64) 
 // boundaries (zones 1-2 → easy, zones 3-4 → threshold, zone 5 → hard).
 // Workouts without a usable avg_heart_rate are excluded from these buckets.
 type WeekSummary struct {
-	PlanID            int64   `json:"plan_id"`
-	WeekStart         string  `json:"week_start"`
-	WeekEnd           string  `json:"week_end"`
-	Phase             string  `json:"phase"`
-	SessionsPlanned   int     `json:"sessions_planned"`
-	SessionsCompleted int     `json:"sessions_completed"`
-	CompletionRate    float64 `json:"completion_rate"`
-	EasySeconds       int     `json:"easy_seconds"`
-	ThresholdSeconds  int     `json:"threshold_seconds"`
-	HardSeconds       int     `json:"hard_seconds"`
+	PlanID               int64   `json:"plan_id"`
+	WeekStart            string  `json:"week_start"`
+	WeekEnd              string  `json:"week_end"`
+	Phase                string  `json:"phase"`
+	SessionsPlanned      int     `json:"sessions_planned"`
+	SessionsCompleted    int     `json:"sessions_completed"`
+	CompletionRate       float64 `json:"completion_rate"`
+	EasySeconds          int     `json:"easy_seconds"`
+	ThresholdSeconds     int     `json:"threshold_seconds"`
+	HardSeconds          int     `json:"hard_seconds"`
+	TotalDistanceMeters  float64 `json:"total_distance_meters"`
 }
 
 // MonthSummary aggregates completion data across all weeks in a calendar month.
@@ -1061,6 +1062,10 @@ func GetPlanHistory(db *sql.DB, userID int64, limit, offset int) ([]WeekSummary,
 	if err != nil {
 		return nil, nil, false, fmt.Errorf("compute zone seconds for page: %w", err)
 	}
+	distByWeek, err := computeWeeksDistanceMeters(db, userID, weekRanges)
+	if err != nil {
+		return nil, nil, false, fmt.Errorf("compute distance for page: %w", err)
+	}
 
 	weeks := make([]WeekSummary, 0, len(planRows))
 	for _, pr := range planRows {
@@ -1081,16 +1086,17 @@ func GetPlanHistory(db *sql.DB, userID int64, limit, offset int) ([]WeekSummary,
 		}
 		buckets := zoneByWeek[pr.weekStart]
 		weeks = append(weeks, WeekSummary{
-			PlanID:            pr.id,
-			WeekStart:         pr.weekStart,
-			WeekEnd:           pr.weekEnd,
-			Phase:             pr.phase,
-			SessionsPlanned:   sessionsPlanned,
-			SessionsCompleted: completed,
-			CompletionRate:    rate,
-			EasySeconds:       buckets[0],
-			ThresholdSeconds:  buckets[1],
-			HardSeconds:       buckets[2],
+			PlanID:              pr.id,
+			WeekStart:           pr.weekStart,
+			WeekEnd:             pr.weekEnd,
+			Phase:               pr.phase,
+			SessionsPlanned:     sessionsPlanned,
+			SessionsCompleted:   completed,
+			CompletionRate:      rate,
+			EasySeconds:         buckets[0],
+			ThresholdSeconds:    buckets[1],
+			HardSeconds:         buckets[2],
+			TotalDistanceMeters: distByWeek[pr.weekStart],
 		})
 	}
 
@@ -1234,6 +1240,64 @@ func computeWeeksZoneSeconds(db *sql.DB, userID int64, weeks []weekRange, zoneBo
 		return nil, err
 	}
 	return result, nil
+}
+
+// computeWeeksDistanceMeters sums distance_meters across all workouts for each
+// of the given week ranges, returning a map keyed by weekStart. Workouts with
+// no recorded distance (distance_meters <= 0) are included with zero
+// contribution. All workouts — regardless of HR data — are counted.
+func computeWeeksDistanceMeters(db *sql.DB, userID int64, weeks []weekRange) (map[string]float64, error) {
+	result := make(map[string]float64, len(weeks))
+	if len(weeks) == 0 {
+		return result, nil
+	}
+
+	minStart := weeks[0].start
+	maxEnd := weeks[0].end
+	for _, w := range weeks[1:] {
+		if w.start < minStart {
+			minStart = w.start
+		}
+		if w.end > maxEnd {
+			maxEnd = w.end
+		}
+	}
+	endParsed, err := time.Parse("2006-01-02", maxEnd)
+	if err != nil {
+		return nil, fmt.Errorf("parse week_end %q: %w", maxEnd, err)
+	}
+	exclusiveEnd := endParsed.AddDate(0, 0, 1).Format("2006-01-02")
+
+	rows, err := db.Query(`
+		SELECT started_at, distance_meters
+		FROM workouts
+		WHERE user_id = ?
+		  AND started_at >= ?
+		  AND started_at < ?
+	`, userID, minStart, exclusiveEnd)
+	if err != nil {
+		return nil, fmt.Errorf("query weekly workout distances: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var startedAt string
+		var dist float64
+		if err := rows.Scan(&startedAt, &dist); err != nil {
+			return nil, fmt.Errorf("scan workout distance row: %w", err)
+		}
+		date := startedAt
+		if len(date) > 10 {
+			date = date[:10]
+		}
+		for _, w := range weeks {
+			if date >= w.start && date <= w.end {
+				result[w.start] += dist
+				break
+			}
+		}
+	}
+	return result, rows.Err()
 }
 
 // getPlanByWeekStart returns the plan for a specific week_start, scoped to the user.

@@ -34,24 +34,28 @@ function resolveKey(obj: JsonObject, parts: string[]): JsonValue | undefined {
   return undefined
 }
 
+function interpolate(template: string, opts: Record<string, unknown>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, k) => String(opts[k] ?? `{{${k}}}`))
+}
+
 function makeT(translations: JsonObject) {
   return function t(key: string, opts?: Record<string, unknown>): string {
-    if (opts?.defaultValue && typeof opts.defaultValue === 'string') return opts.defaultValue
-
     if (opts?.count !== undefined) {
       const suffix = Number(opts.count) === 1 ? '_one' : '_other'
       const pluralVal = resolveKey(translations, (key + suffix).split('.'))
       if (typeof pluralVal === 'string') {
-        return pluralVal.replace(/\{\{(\w+)\}\}/g, (_, k) => String(opts[k] ?? `{{${k}}}`))
+        return opts ? interpolate(pluralVal, opts) : pluralVal
       }
     }
 
     const val = resolveKey(translations, key.split('.'))
     if (typeof val === 'string') {
-      if (opts) {
-        return val.replace(/\{\{(\w+)\}\}/g, (_, k) => String(opts[k] ?? `{{${k}}}`))
-      }
-      return val
+      return opts ? interpolate(val, opts) : val
+    }
+
+    // Key not found — fall back to defaultValue with interpolation
+    if (opts?.defaultValue && typeof opts.defaultValue === 'string') {
+      return opts ? interpolate(opts.defaultValue, opts) : opts.defaultValue
     }
     return key
   }
@@ -127,6 +131,7 @@ vi.mock('../utils/formatDate', () => ({
     const d = typeof date === 'string' ? new Date(date) : date
     return d.toLocaleString('en')
   },
+  formatNumber: (n: number, options?: Intl.NumberFormatOptions) => n.toLocaleString('en', options),
 }))
 
 // ── Test data ─────────────────────────────────────────────────────────────────
