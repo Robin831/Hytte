@@ -112,7 +112,8 @@
     },
     "weekModal": {
       "title": "Ukedetaljer",
-      "close": "Lukk"
+      "close": "Lukk",
+      "evalLoadError": "Evalueringer kunne ikke lastes for denne uken."
     },
     "month": {
       "sessions": "{{completed}} / {{planned}} økter"

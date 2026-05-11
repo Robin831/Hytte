@@ -3,38 +3,28 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from '../ui/dialog'
 import { formatDate } from '../../utils/formatDate'
-import type { DayPlan, StrideEvaluationRecord, WeekSummary } from '../../types/stride'
+import type { DayPlan, StridePlan, StrideEvaluationRecord, WeekSummary } from '../../types/stride'
 import { DayCard } from './DayCard'
 import { complianceBadgeClass, complianceIcon, flagIsSevere } from './strideHelpers'
 
-interface PlanResponse {
-  id: number
-  user_id: number
-  week_start: string
-  week_end: string
-  phase: string
-  plan: DayPlan[]
-  model: string
-  created_at: string
-}
-
 type FetchState = {
-  plan: PlanResponse | null
+  plan: StridePlan | null
   evaluations: StrideEvaluationRecord[]
   loading: boolean
   error: boolean
+  evalError: boolean
 }
 
 type FetchAction =
   | { type: 'start' }
-  | { type: 'success'; plan: PlanResponse | null; evaluations: StrideEvaluationRecord[] }
+  | { type: 'success'; plan: StridePlan | null; evaluations: StrideEvaluationRecord[]; evalError: boolean }
   | { type: 'error' }
 
 function fetchReducer(_state: FetchState, action: FetchAction): FetchState {
   switch (action.type) {
-    case 'start': return { plan: null, evaluations: [], loading: true, error: false }
-    case 'success': return { plan: action.plan, evaluations: action.evaluations, loading: false, error: false }
-    case 'error': return { plan: null, evaluations: [], loading: false, error: true }
+    case 'start': return { plan: null, evaluations: [], loading: true, error: false, evalError: false }
+    case 'success': return { plan: action.plan, evaluations: action.evaluations, loading: false, error: false, evalError: action.evalError }
+    case 'error': return { plan: null, evaluations: [], loading: false, error: true, evalError: false }
   }
 }
 
@@ -48,11 +38,12 @@ export function WeekDetailsModal({ week, workoutIdToDate, onClose }: WeekDetails
   const { t } = useTranslation('stride')
   const titleId = useId()
 
-  const [{ plan, evaluations, loading, error }, dispatch] = useReducer(fetchReducer, {
+  const [{ plan, evaluations, loading, error, evalError }, dispatch] = useReducer(fetchReducer, {
     plan: null,
     evaluations: [],
     loading: false,
     error: false,
+    evalError: false,
   })
 
   const planId = week?.plan_id
@@ -70,12 +61,13 @@ export function WeekDetailsModal({ week, workoutIdToDate, onClose }: WeekDetails
         if (controller.signal.aborted) return
         if (!planRes.ok) throw new Error(`plan HTTP ${planRes.status}`)
         const planJson = await planRes.json()
-        const evalJson = evalRes.ok ? await evalRes.json() : { evaluations: [] }
+        const evalJson = evalRes.ok ? await evalRes.json() : null
         if (controller.signal.aborted) return
         dispatch({
           type: 'success',
-          plan: (planJson.plan ?? null) as PlanResponse | null,
-          evaluations: (evalJson.evaluations ?? []) as StrideEvaluationRecord[],
+          plan: (planJson.plan ?? null) as StridePlan | null,
+          evaluations: ((evalJson?.evaluations ?? []) as StrideEvaluationRecord[]),
+          evalError: !evalRes.ok,
         })
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
@@ -179,6 +171,10 @@ export function WeekDetailsModal({ week, workoutIdToDate, onClose }: WeekDetails
 
           {!!planId && error && !loading && (
             <p className="text-sm text-red-400">{t('plan.loadError')}</p>
+          )}
+
+          {!!planId && evalError && !loading && !error && (
+            <p className="text-sm text-yellow-400">{t('history.weekModal.evalLoadError')}</p>
           )}
 
           {/* Day-by-day plan + evaluations */}

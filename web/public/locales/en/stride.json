@@ -112,7 +112,8 @@
     },
     "weekModal": {
       "title": "Week details",
-      "close": "Close"
+      "close": "Close",
+      "evalLoadError": "Evaluations could not be loaded for this week."
     },
     "month": {
       "sessions": "{{completed}} / {{planned}} sessions"

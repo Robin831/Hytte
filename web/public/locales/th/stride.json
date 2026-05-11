@@ -112,7 +112,8 @@
     },
     "weekModal": {
       "title": "รายละเอียดสัปดาห์",
-      "close": "ปิด"
+      "close": "ปิด",
+      "evalLoadError": "ไม่สามารถโหลดการประเมินสำหรับสัปดาห์นี้ได้"
     },
     "month": {
       "sessions": "{{completed}} / {{planned}} เซสชัน"

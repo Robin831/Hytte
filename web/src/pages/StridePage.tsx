@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, Trophy, Zap, ChevronRight, RefreshCw, AlertTriangle, History, Pencil, Loader2 } from 'lucide-react'
 import { formatDate, formatDateTime, formatNumber } from '../utils/formatDate'
-import type { StrideEvaluationRecord, DayPlan, WeekSummary } from '../types/stride'
+import type { StrideEvaluationRecord, DayPlan, StridePlan, WeekSummary } from '../types/stride'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { TrainingBlockTimeline } from '../components/stride/TrainingBlockTimeline'
 import StrideChatDrawer from '../components/stride/StrideChatDrawer'
@@ -35,17 +35,6 @@ interface Note {
   consumed_at: string | null
   consumed_by: string | null
   scope: NoteScope
-  created_at: string
-}
-
-interface Plan {
-  id: number
-  user_id: number
-  week_start: string
-  week_end: string
-  phase: string
-  plan: DayPlan[]
-  model: string
   created_at: string
 }
 
@@ -522,7 +511,7 @@ export default function StridePage() {
   const [races, setRaces] = useState<Race[]>([])
   const [notes, setNotes] = useState<Note[]>([])
   const [consumedNotes, setConsumedNotes] = useState<Note[]>([])
-  const [currentPlan, setCurrentPlan] = useState<Plan | null>(null)
+  const [currentPlan, setCurrentPlan] = useState<StridePlan | null>(null)
   const [changedDates, setChangedDates] = useState<Set<string>>(new Set())
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [previousPlanId, setPreviousPlanId] = useState<number | null>(null)
@@ -645,7 +634,7 @@ export default function StridePage() {
       }
       const data = await res.json()
       if (!signal?.aborted) {
-        const plan: Plan | null = data.plan ?? null
+        const plan: StridePlan | null = data.plan ?? null
         setCurrentPlan(plan)
         // Fetch the two most recent plans so we can identify the previous one.
         // This lets us load its evaluations (e.g. Sunday workout feedback that
@@ -655,8 +644,8 @@ export default function StridePage() {
             const listRes = await fetch('/api/stride/plans?limit=2&offset=0', { credentials: 'include', signal })
             if (listRes.ok) {
               const listData = await listRes.json()
-              const plans: Plan[] = listData.plans ?? []
-              const prev = plans.find((p: Plan) => p.id !== plan.id)
+              const plans: StridePlan[] = listData.plans ?? []
+              const prev = plans.find((p: StridePlan) => p.id !== plan.id)
               setPreviousPlanId(prev?.id ?? null)
             }
           } catch {
@@ -840,7 +829,7 @@ export default function StridePage() {
         return
       }
       const data = await res.json()
-      const newPlan: Plan | null = data.plan ?? null
+      const newPlan: StridePlan | null = data.plan ?? null
       if (newPlan) {
         // The current plan becomes the previous one; update before replacing.
         setCurrentPlan(prev => {

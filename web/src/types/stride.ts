@@ -33,6 +33,17 @@ export interface StrideEvaluationRecord {
   workout_context_summary?: string
 }
 
+export interface StridePlan {
+  id: number
+  user_id: number
+  week_start: string
+  week_end: string
+  phase: string
+  plan: DayPlan[]
+  model: string
+  created_at: string
+}
+
 export interface WeekSummary {
   plan_id: number
   week_start: string
