@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from '../ui/dialog'
 import { formatDate } from '../../utils/formatDate'
-import type { DayPlan, StridePlan, StrideEvaluationRecord, WeekSummary } from '../../types/stride'
+import type { StridePlan, StrideEvaluationRecord, WeekSummary } from '../../types/stride'
 import { DayCard } from './DayCard'
 import { complianceBadgeClass, complianceIcon, flagIsSevere } from './strideHelpers'
 
