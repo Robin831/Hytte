@@ -97,6 +97,7 @@ vi.mock('lucide-react', () => ({
   AlertTriangle: () => null,
   XCircle: () => null,
   History: () => null,
+  Pencil: () => null,
   Flag: () => null,
   MessageCircle: () => null,
   Send: () => null,
@@ -145,11 +146,23 @@ const PAST_RACE = {
   created_at: '2019-12-01T00:00:00Z',
 }
 
+// Build target dates relative to "today" so tests stay deterministic regardless
+// of when they run — Coach Notes now splits on a rolling 7-day window.
+function isoDate(daysFromToday: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() + daysFromToday)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 const NOTE = {
   id: 1,
   user_id: 1,
   plan_id: null,
   content: 'Feeling good this week',
+  target_date: isoDate(0),
+  consumed_at: null,
+  consumed_by: null,
+  scope: 'any',
   created_at: '2024-01-15T10:00:00Z',
 }
 
@@ -561,5 +574,244 @@ describe('StridePage – plan highlight on update', () => {
 
     // Ring should be cleared
     expect(container.querySelector('.ring-2')).toBeNull()
+  })
+})
+
+describe('StridePage – Coach Notes older-bucket collapse', () => {
+  // Pin the system clock so isoDate() is deterministic in both component and fixtures.
+  const FIXED_SYSTEM_TIME = new Date('2024-06-15T12:00:00Z')
+
+  // Factories call isoDate() at test-run time, after fake timers are set in beforeEach.
+  const olderNote = () => ({
+    id: 2,
+    user_id: 1,
+    plan_id: null,
+    content: 'Old reflection from months ago',
+    target_date: isoDate(-60),
+    consumed_at: null,
+    consumed_by: null,
+    scope: 'any',
+    created_at: '2023-11-15T10:00:00Z',
+  })
+  const olderConsumedNote = () => ({
+    id: 3,
+    user_id: 1,
+    plan_id: null,
+    content: 'Long-since-consumed weekly note',
+    target_date: isoDate(-30),
+    consumed_at: '2023-12-15T10:00:00Z',
+    consumed_by: 'weekly',
+    scope: 'weekly',
+    created_at: '2023-12-01T10:00:00Z',
+  })
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(FIXED_SYSTEM_TIME)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  function notesFetch(notes: unknown[]) {
+    return vi.fn((url: string, init?: RequestInit) => {
+      const make = (data: unknown, ok = true) =>
+        Promise.resolve({ ok, json: () => Promise.resolve(data) } as Response)
+      if (url.includes('/api/stride/notes') && (init?.method === 'DELETE' || init?.method === 'PATCH')) {
+        return make({ status: 'ok' })
+      }
+      if (url.includes('/api/stride/notes')) return make({ notes })
+      if (url.includes('/api/stride/races')) return make({ races: [] })
+      return make({})
+    })
+  }
+
+  it('renders active notes inline (visible without expanding)', async () => {
+    vi.stubGlobal('fetch', notesFetch([NOTE, olderNote()]))
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Feeling good this week')).toBeInTheDocument()
+    })
+    // Active note is not inside the <details> wrapper.
+    const activeNote = screen.getByText('Feeling good this week')
+    expect(activeNote.closest('details')).toBeNull()
+  })
+
+  it('hides older notes inside a collapsed <details> by default', async () => {
+    vi.stubGlobal('fetch', notesFetch([NOTE, olderNote(), olderConsumedNote()]))
+    const { container } = renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Feeling good this week')).toBeInTheDocument()
+    })
+
+    // Summary visible with count.
+    expect(screen.getByText('Older notes (2)')).toBeInTheDocument()
+
+    // The older notes are wrapped in a <details> that is closed by default.
+    const olderNoteEl = screen.getByText('Old reflection from months ago')
+    const detailsEl = olderNoteEl.closest('details') as HTMLDetailsElement | null
+    expect(detailsEl).not.toBeNull()
+    expect(detailsEl!.open).toBe(false)
+
+    // Both older entries (active + consumed) live inside the same <details>.
+    expect(container.querySelectorAll('details').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Long-since-consumed weekly note').closest('details')).toBe(detailsEl)
+  })
+
+  it('expands older notes when the summary is clicked', async () => {
+    vi.stubGlobal('fetch', notesFetch([NOTE, olderNote()]))
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Older notes (1)')).toBeInTheDocument()
+    })
+
+    const summary = screen.getByText('Older notes (1)')
+    const detailsEl = summary.closest('details') as HTMLDetailsElement
+    expect(detailsEl.open).toBe(false)
+
+    await act(async () => {
+      fireEvent.click(summary)
+    })
+
+    expect(detailsEl.open).toBe(true)
+  })
+
+  it('counts only older notes in the summary label', async () => {
+    vi.stubGlobal(
+      'fetch',
+      notesFetch([
+        { ...NOTE, id: 10, target_date: isoDate(-1), content: 'within-week note A' },
+        { ...NOTE, id: 11, target_date: isoDate(0), content: 'within-week note B' },
+        { ...olderNote(), id: 12, content: 'older A' },
+        { ...olderNote(), id: 13, content: 'older B' },
+        { ...olderConsumedNote(), id: 14, content: 'older consumed' },
+      ]),
+    )
+    renderPage()
+
+    await waitFor(() => {
+      // 2 older active + 1 older consumed = 3 older
+      expect(screen.getByText('Older notes (3)')).toBeInTheDocument()
+    })
+
+    // Active notes remain outside the collapsible.
+    expect(screen.getByText('within-week note A').closest('details')).toBeNull()
+    expect(screen.getByText('within-week note B').closest('details')).toBeNull()
+  })
+
+  it('deletes an active note from the inline list', async () => {
+    vi.stubGlobal('fetch', notesFetch([NOTE, olderNote()]))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Feeling good this week')).toBeInTheDocument()
+    })
+
+    // Target the active note card specifically (not the older one inside details).
+    const activeNoteCard = screen.getByText('Feeling good this week').closest('div.group')!
+    const deleteBtn = activeNoteCard.querySelectorAll('button[aria-label="Delete note"]')[0] as HTMLButtonElement
+    expect(deleteBtn).toBeDefined()
+
+    await act(async () => {
+      fireEvent.click(deleteBtn)
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText('Feeling good this week')).not.toBeInTheDocument()
+    })
+    // Older note still present.
+    expect(screen.getByText('Old reflection from months ago')).toBeInTheDocument()
+  })
+
+  it('deletes an older note from inside the collapsed group', async () => {
+    vi.stubGlobal('fetch', notesFetch([NOTE, olderNote()]))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Old reflection from months ago')).toBeInTheDocument()
+    })
+
+    const olderCard = screen.getByText('Old reflection from months ago').closest('div.group')!
+    const deleteBtn = olderCard.querySelectorAll('button[aria-label="Delete note"]')[0] as HTMLButtonElement
+    await act(async () => {
+      fireEvent.click(deleteBtn)
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText('Old reflection from months ago')).not.toBeInTheDocument()
+    })
+    // Older-notes summary disappears once the collapsed bucket is empty.
+    expect(screen.queryByText(/Older notes/)).not.toBeInTheDocument()
+    // Active note still rendered.
+    expect(screen.getByText('Feeling good this week')).toBeInTheDocument()
+  })
+
+  it('opens edit dialog for an active note and saves changes', async () => {
+    vi.stubGlobal('fetch', notesFetch([NOTE, olderNote()]))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Feeling good this week')).toBeInTheDocument()
+    })
+
+    const activeNoteCard = screen.getByText('Feeling good this week').closest('div.group')!
+    const editBtn = activeNoteCard.querySelector('button[aria-label="Edit note"]') as HTMLButtonElement
+    expect(editBtn).not.toBeNull()
+
+    await act(async () => {
+      fireEvent.click(editBtn)
+    })
+
+    // Dialog opens with the note content pre-filled.
+    const textarea = screen.getByRole('textbox', { name: 'Edit note' })
+    expect(textarea).toBeInTheDocument()
+    expect((textarea as HTMLTextAreaElement).value).toBe('Feeling good this week')
+
+    // Submit via the Save button.
+    const saveBtn = screen.getByRole('button', { name: 'Save' })
+    await act(async () => {
+      fireEvent.click(saveBtn)
+    })
+
+    // Dialog closes after a successful save.
+    await waitFor(() => {
+      expect(screen.queryByRole('textbox', { name: 'Edit note' })).not.toBeInTheDocument()
+    })
+  })
+
+  it('opens edit dialog for an older note and saves changes', async () => {
+    vi.stubGlobal('fetch', notesFetch([NOTE, olderNote()]))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Old reflection from months ago')).toBeInTheDocument()
+    })
+
+    const olderCard = screen.getByText('Old reflection from months ago').closest('div.group')!
+    const editBtn = olderCard.querySelector('button[aria-label="Edit note"]') as HTMLButtonElement
+    expect(editBtn).not.toBeNull()
+
+    await act(async () => {
+      fireEvent.click(editBtn)
+    })
+
+    // Dialog opens with the older note's content pre-filled.
+    const textarea = screen.getByRole('textbox', { name: 'Edit note' })
+    expect(textarea).toBeInTheDocument()
+    expect((textarea as HTMLTextAreaElement).value).toBe('Old reflection from months ago')
+
+    // Submit via the Save button.
+    const saveBtn = screen.getByRole('button', { name: 'Save' })
+    await act(async () => {
+      fireEvent.click(saveBtn)
+    })
+
+    // Dialog closes after a successful save.
+    await waitFor(() => {
+      expect(screen.queryByRole('textbox', { name: 'Edit note' })).not.toBeInTheDocument()
+    })
   })
 })

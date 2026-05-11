@@ -84,6 +84,10 @@
     },
     "activeLabel": "Aktive",
     "historyLabel": "Historikk",
+    "olderNotes": "Eldre notater ({{count}})",
+    "olderNotes_one": "Eldre notater ({{count}})",
+    "olderNotes_other": "Eldre notater ({{count}})",
+    "toggleOlderAria": "Veksle eldre notater",
     "consumedBy": "Brukt av {{process}} den {{date}}",
     "consumedByProcess": {
       "nightly": "Nattlig",
