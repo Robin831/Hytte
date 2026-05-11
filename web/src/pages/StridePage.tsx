@@ -117,6 +117,7 @@ interface WeekRowProps {
 function WeekRow({ week, onOpen }: WeekRowProps) {
   const { t } = useTranslation('stride')
   const zoneTooltipId = useId()
+  const openDescId = useId()
   const [zoneTooltipVisible, setZoneTooltipVisible] = useState(false)
   const pct = Math.min(Math.max(Math.round(Number(week.completion_rate) || 0), 0), 100)
   const chipClass = pct >= 80
@@ -223,10 +224,11 @@ function WeekRow({ week, onOpen }: WeekRowProps) {
       <button
         type="button"
         onClick={() => onOpen!(week)}
-        aria-label={openLabel}
+        aria-describedby={openDescId}
         className="w-full text-left bg-gray-800 rounded-xl border border-gray-700 hover:border-gray-600 transition-colors"
       >
         {rowInner}
+        <span id={openDescId} className="sr-only">{openLabel}</span>
       </button>
     )
   }

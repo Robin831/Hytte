@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Circle, RefreshCw } from 'lucide-react'
 import { formatDate } from '../../utils/formatDate'
@@ -25,6 +25,7 @@ export function DayCard({ day, completed, evaluation, changedDates, onRerun, rer
   const complianceLabel = evaluation ? t(`evaluation.${evaluation.eval.compliance}`) : null
   const hasExpandableContent = (!day.rest_day && !!day.session) || (!!evaluation && (day.rest_day || !day.session))
   const isHighlighted = changedDates?.has(day.date) ?? false
+  const detailsId = useId()
 
   return (
     <div className={`bg-gray-800 rounded-xl border border-gray-700 overflow-hidden transition-all duration-1000 ${isHighlighted ? 'ring-2 ring-yellow-400/50' : ''}`}>
@@ -34,7 +35,7 @@ export function DayCard({ day, completed, evaluation, changedDates, onRerun, rer
           onClick={() => hasExpandableContent && setExpanded(v => !v)}
           className={`flex-1 min-w-0 flex items-center gap-3 p-3 text-left ${hasExpandableContent ? 'hover:bg-gray-700 active:bg-gray-600 cursor-pointer' : 'cursor-default'}`}
           aria-expanded={expanded && hasExpandableContent}
-          aria-controls={`day-details-${day.date}`}
+          aria-controls={detailsId}
           disabled={!hasExpandableContent}
         >
           <div className="flex-shrink-0">
@@ -97,7 +98,7 @@ export function DayCard({ day, completed, evaluation, changedDates, onRerun, rer
       </div>
 
       <div
-        id={`day-details-${day.date}`}
+        id={detailsId}
         className={`grid transition-[grid-template-rows] duration-200 ease-in-out ${
           expanded && hasExpandableContent ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
         }`}
