@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle, History, Pencil } from 'lucide-react'
+import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, ChevronRight, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle, History, Pencil, Loader2 } from 'lucide-react'
 import { formatDate, formatDateTime } from '../utils/formatDate'
 import type { StrideEvaluation, StrideEvaluationRecord, DayPlan } from '../types/stride'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
@@ -332,6 +332,15 @@ interface WeekSummary {
   sessions_planned: number
   sessions_completed: number
   completion_rate: number
+  // Per-zone moving-time aggregates from /api/stride/history. May be 0 when the
+  // user has no HR zones configured or no workouts in the week have avg_heart_rate.
+  easy_seconds?: number
+  threshold_seconds?: number
+  hard_seconds?: number
+  // Optional total distance across the week's workouts (meters). The backend
+  // pagination response does not yet emit this; consumed defensively so future
+  // additions surface without a frontend change.
+  total_distance_meters?: number
 }
 
 interface MonthSummary {
@@ -341,30 +350,158 @@ interface MonthSummary {
   compliance_rate: number
 }
 
-interface PlanHistoryData {
-  weeks: WeekSummary[]
-  months: MonthSummary[]
+const HISTORY_PAGE_SIZE = 12
+
+// Zone palette: shares the easy/threshold/hard hues with the per-zone HR card on
+// TrainingDetail (#22c55e Z1, #eab308 Z3, #ef4444 Z5).
+const ZONE_COLOR_EASY = '#22c55e'
+const ZONE_COLOR_THRESHOLD = '#eab308'
+const ZONE_COLOR_HARD = '#ef4444'
+
+function formatHHMM(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(totalSeconds))
+  const h = Math.floor(safe / 3600)
+  const m = Math.floor((safe % 3600) / 60)
+  return `${h}:${String(m).padStart(2, '0')}`
+}
+
+interface WeekRowProps {
+  week: WeekSummary
+  onOpen?: (week: WeekSummary) => void
+}
+
+function WeekRow({ week, onOpen }: WeekRowProps) {
+  const { t } = useTranslation('stride')
+  const pct = Math.min(Math.max(Math.round(Number(week.completion_rate) || 0), 0), 100)
+  const chipClass = pct >= 80
+    ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+    : pct >= 50
+      ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+      : 'bg-red-500/20 text-red-300 border border-red-500/30'
+
+  const easy = Math.max(0, week.easy_seconds ?? 0)
+  const threshold = Math.max(0, week.threshold_seconds ?? 0)
+  const hard = Math.max(0, week.hard_seconds ?? 0)
+  const totalSec = easy + threshold + hard
+  const distanceKm = Math.max(0, week.total_distance_meters ?? 0) / 1000
+
+  const easyPct = totalSec > 0 ? Math.round((easy / totalSec) * 100) : 0
+  const thresholdPct = totalSec > 0 ? Math.round((threshold / totalSec) * 100) : 0
+  const hardPct = totalSec > 0 ? Math.max(0, 100 - easyPct - thresholdPct) : 0
+
+  const weekLabel = t('plan.weekOf', {
+    start: formatDate(`${week.week_start}T00:00:00`, { month: 'short', day: 'numeric' }),
+    end: formatDate(`${week.week_end}T00:00:00`, { month: 'short', day: 'numeric' }),
+  })
+  const openLabel = t('history.week.openAria', { week: weekLabel, defaultValue: 'Open week {{week}}' })
+  const zoneTooltip = t('history.week.zoneSplit', {
+    easy: easyPct,
+    threshold: thresholdPct,
+    hard: hardPct,
+    defaultValue: 'Easy {{easy}}% · Threshold {{threshold}}% · Hard {{hard}}%',
+  })
+
+  // Row click handler: parent wires the actual navigation/drawer in the follow-up
+  // sub-task; if no handler is provided we render as a static row instead of a button.
+  const interactive = typeof onOpen === 'function'
+
+  const content = (
+    <>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+        <p className="text-sm font-medium text-white truncate">{weekLabel}</p>
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${chipClass}`}>{pct}%</span>
+        {week.phase && (
+          <span className="text-xs px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded">{week.phase}</span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-gray-400">
+        <span>
+          <span className="text-gray-500">{t('history.week.totalDistance')}:</span>{' '}
+          <span className="text-gray-200">{distanceKm.toFixed(1)} km</span>
+        </span>
+        <span>
+          <span className="text-gray-500">{t('history.week.totalTime')}:</span>{' '}
+          <span className="text-gray-200">{formatHHMM(totalSec)}</span>
+        </span>
+      </div>
+      <div
+        className="mt-2 h-1.5 w-full flex rounded-full overflow-hidden bg-gray-700"
+        role="img"
+        aria-label={zoneTooltip}
+        title={zoneTooltip}
+        tabIndex={0}
+      >
+        {totalSec > 0 ? (
+          <>
+            {easy > 0 && <div style={{ flexBasis: `${(easy / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_EASY }} className="h-full" />}
+            {threshold > 0 && <div style={{ flexBasis: `${(threshold / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_THRESHOLD }} className="h-full" />}
+            {hard > 0 && <div style={{ flexBasis: `${(hard / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_HARD }} className="h-full" />}
+          </>
+        ) : null}
+      </div>
+    </>
+  )
+
+  return (
+    <div className="bg-gray-800 rounded-xl border border-gray-700">
+      <div className="flex items-center gap-3 p-3">
+        <div className="flex-1 min-w-0">{content}</div>
+        {interactive ? (
+          <button
+            type="button"
+            onClick={() => onOpen?.(week)}
+            aria-label={openLabel}
+            className="flex-shrink-0 p-1 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
+          >
+            <ChevronRight size={20} />
+          </button>
+        ) : (
+          <ChevronRight size={20} className="flex-shrink-0 text-gray-600" aria-hidden="true" />
+        )}
+      </div>
+    </div>
+  )
 }
 
 function PlanHistory() {
   const { t } = useTranslation('stride')
-  const [data, setData] = useState<PlanHistoryData | null>(null)
+  const [weeks, setWeeks] = useState<WeekSummary[]>([])
+  const [months, setMonths] = useState<MonthSummary[]>([])
+  const [offset, setOffset] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [loadMoreError, setLoadMoreError] = useState(false)
+
+  const fetchWeeks = useCallback(async (
+    pageOffset: number,
+    signal?: AbortSignal,
+  ): Promise<{ weeks: WeekSummary[]; months: MonthSummary[]; hasMore: boolean } | null> => {
+    const res = await fetch(`/api/stride/history?limit=${HISTORY_PAGE_SIZE}&offset=${pageOffset}`, {
+      credentials: 'include',
+      signal,
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    if (signal?.aborted) return null
+    return {
+      weeks: (json.weeks ?? []) as WeekSummary[],
+      months: (json.months ?? []) as MonthSummary[],
+      hasMore: Boolean(json.has_more),
+    }
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
     ;(async () => {
       try {
-        const res = await fetch('/api/stride/history?limit=12', {
-          credentials: 'include',
-          signal: controller.signal,
-        })
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const json = await res.json()
-        if (!controller.signal.aborted) {
-          setData({ weeks: json.weeks ?? [], months: json.months ?? [] })
-        }
+        const result = await fetchWeeks(0, controller.signal)
+        if (!result || controller.signal.aborted) return
+        setWeeks(result.weeks)
+        setMonths(result.months)
+        setHasMore(result.hasMore)
+        setOffset(result.weeks.length)
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
         if (!controller.signal.aborted) setError(true)
@@ -373,16 +510,32 @@ function PlanHistory() {
       }
     })()
     return () => { controller.abort() }
-  }, [])
+  }, [fetchWeeks])
+
+  const handleLoadMore = useCallback(async () => {
+    setLoadMoreError(false)
+    setLoadingMore(true)
+    try {
+      const result = await fetchWeeks(offset)
+      if (!result) return
+      setWeeks(prev => [...prev, ...result.weeks])
+      setHasMore(result.hasMore)
+      setOffset(prev => prev + result.weeks.length)
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setLoadMoreError(true)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [fetchWeeks, offset])
 
   const chartData = useMemo(() => {
-    if (!data) return []
     // Reverse to chronological order for the chart (oldest first).
-    return [...data.weeks].reverse().map(w => ({
+    return [...weeks].reverse().map(w => ({
       label: formatDate(`${w.week_start}T00:00:00`, { month: 'short', day: 'numeric' }),
       rate: Math.min(Math.round(w.completion_rate), 100),
     }))
-  }, [data])
+  }, [weeks])
 
   const formatMonth = (month: string) => {
     const [year, m] = month.split('-')
@@ -391,7 +544,7 @@ function PlanHistory() {
 
   if (loading) return <p className="text-sm text-gray-400">{t('loading')}</p>
   if (error) return <p className="text-sm text-red-400">{t('history.loadError')}</p>
-  if (!data || data.weeks.length === 0) {
+  if (weeks.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-8 text-center bg-gray-800/50 rounded-xl border border-gray-700 border-dashed">
         <History size={28} className="text-gray-600 mb-2" />
@@ -432,9 +585,9 @@ function PlanHistory() {
       )}
 
       {/* Monthly compliance */}
-      {data.months.length > 0 && (
+      {months.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {data.months.map(m => (
+          {months.map(m => (
             <div key={m.month} className="bg-gray-800 rounded-xl border border-gray-700 p-3 text-center">
               <p className="text-xs text-gray-400 mb-1">{formatMonth(m.month)}</p>
               <p className="text-lg font-bold text-white">{Math.round(m.compliance_rate)}%</p>
@@ -444,52 +597,39 @@ function PlanHistory() {
         </div>
       )}
 
-      {/* Week list — horizontally scrollable with snap so users can swipe between weeks on mobile */}
+      {/* Dense week list — vertical column of summary rows. Wraps cleanly at 375px. */}
       <div
-        className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 sm:flex-col sm:gap-2 sm:overflow-x-visible sm:snap-none"
+        className="flex flex-col gap-2"
         aria-label={t('history.week.listLabel', { defaultValue: 'Weekly completion history' })}
       >
-        {data.weeks.map(w => {
-          const pct = Math.min(Math.max(Math.round(Number(w.completion_rate) || 0), 0), 100)
-          const barColor = pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-yellow-500' : 'bg-red-500'
-          return (
-            <div
-              key={w.plan_id}
-              className="snap-start flex-shrink-0 w-64 sm:w-auto bg-gray-800 rounded-xl border border-gray-700 p-3"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <p className="text-sm font-medium text-white">
-                    {t('plan.weekOf', {
-                      start: formatDate(`${w.week_start}T00:00:00`, { month: 'short', day: 'numeric' }),
-                      end: formatDate(`${w.week_end}T00:00:00`, { month: 'short', day: 'numeric' }),
-                    })}
-                  </p>
-                  {w.phase && (
-                    <span className="text-xs px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded">{w.phase}</span>
-                  )}
-                </div>
-                <div className="text-right">
-                  <p className="text-lg font-bold text-white">{pct}%</p>
-                  <p className="text-xs text-gray-400">{t('history.week.sessions', { completed: w.sessions_completed, planned: w.sessions_planned })}</p>
-                </div>
-              </div>
-              {w.sessions_planned > 0 && (
-                <div
-                  className="h-1.5 bg-gray-700 rounded-full overflow-hidden"
-                  role="progressbar"
-                  aria-valuenow={Math.min(pct, 100)}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-label={t('history.week.completionProgress', { pct: Math.min(pct, 100) })}
-                >
-                  <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
-                </div>
-              )}
-            </div>
-          )
-        })}
+        {weeks.map(w => (
+          <WeekRow key={w.plan_id} week={w} />
+        ))}
       </div>
+
+      {/* Load more / inline error & retry */}
+      {hasMore && (
+        <div className="flex flex-col items-center gap-2">
+          {loadMoreError && (
+            <p className="text-sm text-red-400" role="alert">{t('history.loadError')}</p>
+          )}
+          <button
+            type="button"
+            onClick={handleLoadMore}
+            disabled={loadingMore}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-gray-800 hover:bg-gray-700 disabled:opacity-60 text-white border border-gray-700 rounded-lg transition-colors"
+          >
+            {loadingMore ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                {t('history.week.loadingMore')}
+              </>
+            ) : (
+              t('history.week.loadMore')
+            )}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

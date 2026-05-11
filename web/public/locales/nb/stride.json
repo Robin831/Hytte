@@ -102,7 +102,13 @@
     "week": {
       "listLabel": "Ukentlig gjennomføringshistorikk",
       "sessions": "{{completed}} av {{planned}} økter",
-      "completionProgress": "{{pct}}% gjennomført"
+      "completionProgress": "{{pct}}% gjennomført",
+      "totalDistance": "Distanse",
+      "totalTime": "Tid",
+      "zoneSplit": "Lett {{easy}}% · Terskel {{threshold}}% · Hard {{hard}}%",
+      "openAria": "Åpne uke {{week}}",
+      "loadMore": "Last eldre uker",
+      "loadingMore": "Laster eldre uker…"
     },
     "month": {
       "sessions": "{{completed}} / {{planned}} økter"

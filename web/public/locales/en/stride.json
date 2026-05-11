@@ -102,7 +102,13 @@
     "week": {
       "listLabel": "Weekly completion history",
       "sessions": "{{completed}} of {{planned}} sessions",
-      "completionProgress": "{{pct}}% completion"
+      "completionProgress": "{{pct}}% completion",
+      "totalDistance": "Distance",
+      "totalTime": "Time",
+      "zoneSplit": "Easy {{easy}}% · Threshold {{threshold}}% · Hard {{hard}}%",
+      "openAria": "Open week {{week}}",
+      "loadMore": "Load older weeks",
+      "loadingMore": "Loading older weeks…"
     },
     "month": {
       "sessions": "{{completed}} / {{planned}} sessions"
