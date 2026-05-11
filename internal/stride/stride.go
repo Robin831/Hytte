@@ -1050,6 +1050,18 @@ func GetPlanHistory(db *sql.DB, userID int64, limit, offset int) ([]WeekSummary,
 		zoneBoundaries = nil
 	}
 
+	// Compute easy/threshold/hard seconds for every week on the page in a
+	// single batched workouts query. This avoids an N+1 against the workouts
+	// table (one query per week, up to HistoryMaxLimit per page).
+	weekRanges := make([]weekRange, len(planRows))
+	for i, pr := range planRows {
+		weekRanges[i] = weekRange{start: pr.weekStart, end: pr.weekEnd}
+	}
+	zoneByWeek, err := computeWeeksZoneSeconds(db, userID, weekRanges, zoneBoundaries)
+	if err != nil {
+		return nil, nil, false, fmt.Errorf("compute zone seconds for page: %w", err)
+	}
+
 	weeks := make([]WeekSummary, 0, len(planRows))
 	for _, pr := range planRows {
 		var days []DayPlan
@@ -1067,10 +1079,7 @@ func GetPlanHistory(db *sql.DB, userID int64, limit, offset int) ([]WeekSummary,
 		if sessionsPlanned > 0 {
 			rate = float64(completed) / float64(sessionsPlanned) * 100
 		}
-		easy, threshold, hard, err := computeWeekZoneSeconds(db, userID, pr.weekStart, pr.weekEnd, zoneBoundaries)
-		if err != nil {
-			return nil, nil, false, fmt.Errorf("compute zone seconds for plan %d: %w", pr.id, err)
-		}
+		buckets := zoneByWeek[pr.weekStart]
 		weeks = append(weeks, WeekSummary{
 			PlanID:            pr.id,
 			WeekStart:         pr.weekStart,
@@ -1079,9 +1088,9 @@ func GetPlanHistory(db *sql.DB, userID int64, limit, offset int) ([]WeekSummary,
 			SessionsPlanned:   sessionsPlanned,
 			SessionsCompleted: completed,
 			CompletionRate:    rate,
-			EasySeconds:       easy,
-			ThresholdSeconds:  threshold,
-			HardSeconds:       hard,
+			EasySeconds:       buckets[0],
+			ThresholdSeconds:  buckets[1],
+			HardSeconds:       buckets[2],
 		})
 	}
 
@@ -1113,20 +1122,33 @@ func GetPlanHistory(db *sql.DB, userID int64, limit, offset int) ([]WeekSummary,
 	return weeks, months, hasMore, nil
 }
 
-// computeWeekZoneSeconds sums duration_seconds across the workouts that
-// occurred within [weekStart, weekEnd] inclusive (date-only comparison) for the
-// user, bucketing each workout's full duration by its avg_heart_rate against
-// the provided 5-zone boundaries:
+// weekRange is the (start, end) inclusive date pair used to assign workouts
+// to weeks when bucketing HR-zone seconds across a page of history.
+type weekRange struct {
+	start string // YYYY-MM-DD
+	end   string // YYYY-MM-DD (inclusive)
+}
+
+// computeWeeksZoneSeconds aggregates duration_seconds across workouts for all
+// the given weeks in a single batched query, bucketing each workout's full
+// duration by its avg_heart_rate against the provided 5-zone boundaries:
 //
 //	easy      = zones 1-2 (avg_hr below zone 3's lower bound)
 //	threshold = zones 3-4 (avg_hr below zone 5's lower bound)
 //	hard      = zone  5   (avg_hr at or above zone 5's lower bound)
 //
-// Workouts with avg_heart_rate <= 0 are excluded. When zoneBoundaries is empty
-// (user has no max_hr configured and no custom zones), all buckets return 0.
-func computeWeekZoneSeconds(db *sql.DB, userID int64, weekStart, weekEnd string, zoneBoundaries []hrzones.ZoneBoundary) (int, int, int, error) {
-	if len(zoneBoundaries) == 0 {
-		return 0, 0, 0, nil
+// The returned map is keyed by weekStart with a [3]int of {easy, threshold,
+// hard} seconds. Workouts with avg_heart_rate <= 0 are excluded. When
+// zoneBoundaries lacks zone 3 or 5 lower bounds, every entry resolves to
+// zeros (callers still get a stable response shape).
+//
+// One query is issued spanning [min(weekStart), max(weekEnd)+1day); each row
+// is then assigned to the first matching week by date prefix comparison. Weeks
+// are expected to be non-overlapping (Monday-Sunday in stride plans).
+func computeWeeksZoneSeconds(db *sql.DB, userID int64, weeks []weekRange, zoneBoundaries []hrzones.ZoneBoundary) (map[string][3]int, error) {
+	result := make(map[string][3]int, len(weeks))
+	if len(weeks) == 0 || len(zoneBoundaries) == 0 {
+		return result, nil
 	}
 
 	// Resolve zone 3 and zone 5 lower bounds. Zone numbers are 1-5 and may be
@@ -1144,52 +1166,74 @@ func computeWeekZoneSeconds(db *sql.DB, userID int64, weekStart, weekEnd string,
 		}
 	}
 	if !have3 || !have5 {
-		return 0, 0, 0, nil
+		return result, nil
 	}
 
-	// Compare against the day after week_end so workouts logged late on the
-	// last day of the week are included regardless of timestamp format.
-	endParsed, err := time.Parse("2006-01-02", weekEnd)
+	// Determine the overall query window: from the earliest weekStart to the
+	// day after the latest weekEnd (exclusive upper bound, matching the
+	// single-week semantics).
+	minStart := weeks[0].start
+	maxEnd := weeks[0].end
+	for _, w := range weeks[1:] {
+		if w.start < minStart {
+			minStart = w.start
+		}
+		if w.end > maxEnd {
+			maxEnd = w.end
+		}
+	}
+	endParsed, err := time.Parse("2006-01-02", maxEnd)
 	if err != nil {
-		return 0, 0, 0, nil
+		return result, nil
 	}
 	exclusiveEnd := endParsed.AddDate(0, 0, 1).Format("2006-01-02")
 
 	rows, err := db.Query(`
-		SELECT duration_seconds, avg_heart_rate
+		SELECT started_at, duration_seconds, avg_heart_rate
 		FROM workouts
 		WHERE user_id = ?
 		  AND started_at >= ?
 		  AND started_at < ?
-	`, userID, weekStart, exclusiveEnd)
+	`, userID, minStart, exclusiveEnd)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("query weekly workouts: %w", err)
+		return nil, fmt.Errorf("query weekly workouts (batched): %w", err)
 	}
 	defer rows.Close()
 
-	var easy, threshold, hard int
 	for rows.Next() {
+		var startedAt string
 		var dur int
 		var avgHR int
-		if err := rows.Scan(&dur, &avgHR); err != nil {
-			return 0, 0, 0, fmt.Errorf("scan weekly workout row: %w", err)
+		if err := rows.Scan(&startedAt, &dur, &avgHR); err != nil {
+			return nil, fmt.Errorf("scan weekly workout row (batched): %w", err)
 		}
 		if dur <= 0 || avgHR <= 0 {
 			continue
 		}
-		switch {
-		case avgHR < zone3Min:
-			easy += dur
-		case avgHR < zone5Min:
-			threshold += dur
-		default:
-			hard += dur
+		date := startedAt
+		if len(date) > 10 {
+			date = date[:10]
+		}
+		for _, w := range weeks {
+			if date >= w.start && date <= w.end {
+				bucket := result[w.start]
+				switch {
+				case avgHR < zone3Min:
+					bucket[0] += dur
+				case avgHR < zone5Min:
+					bucket[1] += dur
+				default:
+					bucket[2] += dur
+				}
+				result[w.start] = bucket
+				break
+			}
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return 0, 0, 0, err
+		return nil, err
 	}
-	return easy, threshold, hard, nil
+	return result, nil
 }
 
 // getPlanByWeekStart returns the plan for a specific week_start, scoped to the user.
