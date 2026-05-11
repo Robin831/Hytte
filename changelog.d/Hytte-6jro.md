@@ -1,0 +1,2 @@
+category: Changed
+- **Stride Plan History uses dense summary rows with Load more pagination** - Replaced the large weekly cards with compact rows showing week label, completion-percent chip, total distance, total moving time, and a proportional easy/threshold/hard zone-split bar with hover tooltip. Added a Load older weeks button that pages the new offset/has_more response from /api/stride/history twelve weeks at a time, with inline spinner and inline error+retry on failure. (Hytte-6jro)

@@ -34,24 +34,28 @@ function resolveKey(obj: JsonObject, parts: string[]): JsonValue | undefined {
   return undefined
 }
 
+function interpolate(template: string, opts: Record<string, unknown>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, k) => String(opts[k] ?? `{{${k}}}`))
+}
+
 function makeT(translations: JsonObject) {
   return function t(key: string, opts?: Record<string, unknown>): string {
-    if (opts?.defaultValue && typeof opts.defaultValue === 'string') return opts.defaultValue
-
     if (opts?.count !== undefined) {
       const suffix = Number(opts.count) === 1 ? '_one' : '_other'
       const pluralVal = resolveKey(translations, (key + suffix).split('.'))
       if (typeof pluralVal === 'string') {
-        return pluralVal.replace(/\{\{(\w+)\}\}/g, (_, k) => String(opts[k] ?? `{{${k}}}`))
+        return opts ? interpolate(pluralVal, opts) : pluralVal
       }
     }
 
     const val = resolveKey(translations, key.split('.'))
     if (typeof val === 'string') {
-      if (opts) {
-        return val.replace(/\{\{(\w+)\}\}/g, (_, k) => String(opts[k] ?? `{{${k}}}`))
-      }
-      return val
+      return opts ? interpolate(val, opts) : val
+    }
+
+    // Key not found — fall back to defaultValue with interpolation
+    if (opts?.defaultValue && typeof opts.defaultValue === 'string') {
+      return interpolate(opts.defaultValue, opts)
     }
     return key
   }
@@ -75,6 +79,16 @@ vi.mock('react-i18next', () => {
   }
 })
 
+vi.mock('recharts', () => ({
+  ResponsiveContainer: ({ children }: { children: unknown }) => children,
+  AreaChart: ({ children }: { children: unknown }) => <div data-testid="area-chart">{children as never}</div>,
+  Area: () => null,
+  XAxis: () => null,
+  YAxis: () => null,
+  CartesianGrid: () => null,
+  Tooltip: () => null,
+}))
+
 vi.mock('react-markdown', () => ({
   default: ({ children }: { children: string }) => children,
 }))
@@ -91,6 +105,7 @@ vi.mock('lucide-react', () => ({
   Zap: () => null,
   ChevronDown: () => null,
   ChevronUp: () => null,
+  ChevronRight: () => null,
   RefreshCw: () => null,
   CheckCircle2: () => null,
   Circle: () => null,
@@ -116,6 +131,7 @@ vi.mock('../utils/formatDate', () => ({
     const d = typeof date === 'string' ? new Date(date) : date
     return d.toLocaleString('en')
   },
+  formatNumber: (n: number, options?: Intl.NumberFormatOptions) => n.toLocaleString('en', options),
 }))
 
 // ── Test data ─────────────────────────────────────────────────────────────────
@@ -813,5 +829,151 @@ describe('StridePage – Coach Notes older-bucket collapse', () => {
     await waitFor(() => {
       expect(screen.queryByRole('textbox', { name: 'Edit note' })).not.toBeInTheDocument()
     })
+  })
+})
+
+describe('StridePage – plan history pagination', () => {
+  // Two distinct weeks belong to the first page; the third week is the next page.
+  const week1 = {
+    plan_id: 101,
+    week_start: '2099-01-13',
+    week_end: '2099-01-19',
+    phase: 'Base',
+    sessions_planned: 5,
+    sessions_completed: 4,
+    completion_rate: 80,
+    easy_seconds: 3600,
+    threshold_seconds: 1800,
+    hard_seconds: 600,
+    total_distance_meters: 42000,
+  }
+  const week2 = {
+    plan_id: 102,
+    week_start: '2099-01-06',
+    week_end: '2099-01-12',
+    phase: 'Base',
+    sessions_planned: 4,
+    sessions_completed: 3,
+    completion_rate: 75,
+    easy_seconds: 2700,
+    threshold_seconds: 900,
+    hard_seconds: 300,
+    total_distance_meters: 28500,
+  }
+  const week3 = {
+    plan_id: 103,
+    week_start: '2098-12-30',
+    week_end: '2099-01-05',
+    phase: 'Build',
+    sessions_planned: 5,
+    sessions_completed: 5,
+    completion_rate: 100,
+    easy_seconds: 1800,
+    threshold_seconds: 1800,
+    hard_seconds: 1800,
+    total_distance_meters: 50000,
+  }
+
+  function makeHistoryFetchMock(pages: Array<{ weeks: typeof week1[]; has_more: boolean; offset: number }>) {
+    return vi.fn((url: string) => {
+      const make = (data: unknown) =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response)
+      if (url.includes('/api/stride/history')) {
+        const m = url.match(/offset=(\d+)/)
+        const offset = m ? Number(m[1]) : 0
+        const page = pages.find(p => p.offset === offset) ?? { weeks: [], has_more: false, offset }
+        return make({
+          weeks: page.weeks,
+          months: [],
+          limit: 12,
+          offset,
+          has_more: page.has_more,
+        })
+      }
+      if (url.includes('/api/stride/races')) return make({ races: [] })
+      if (url.includes('/api/stride/notes')) return make({ notes: [] })
+      return make({})
+    })
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('renders rows with the new dense summary shape (label, %, distance, time, zone bar, chevron)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      makeHistoryFetchMock([{ offset: 0, weeks: [week1], has_more: false }]),
+    )
+    const { container } = renderPage()
+
+    // Week label rendered (English-formatted).
+    await waitFor(() => {
+      expect(screen.getByText(/Week of Jan 13/)).toBeInTheDocument()
+    })
+
+    // Completion-percent chip.
+    expect(screen.getByText('80%')).toBeInTheDocument()
+
+    // Distance: 42000m → 42.0 km, 1 decimal.
+    expect(screen.getByText('42.0 km')).toBeInTheDocument()
+
+    // Total moving time: 3600+1800+600 = 6000s → 1:40 (h:mm).
+    expect(screen.getByText('1:40')).toBeInTheDocument()
+
+    // Zone-split bar exists with tooltip-style aria-label and percentages.
+    // Easy 60% (3600/6000), Threshold 30% (1800/6000), Hard 10% (rounded remainder).
+    const zoneBar = container.querySelector('[aria-label*="Easy 60%"][aria-label*="Threshold 30%"][aria-label*="Hard 10%"]')
+    expect(zoneBar).not.toBeNull()
+  })
+
+  it('clicking Load older weeks fetches the next page and appends rows', async () => {
+    vi.stubGlobal(
+      'fetch',
+      makeHistoryFetchMock([
+        { offset: 0, weeks: [week1, week2], has_more: true },
+        { offset: 2, weeks: [week3], has_more: false },
+      ]),
+    )
+    renderPage()
+
+    // First page rows render.
+    await waitFor(() => {
+      expect(screen.getByText(/Week of Jan 13/)).toBeInTheDocument()
+    })
+    expect(screen.getByText(/Week of Jan 6/)).toBeInTheDocument()
+    expect(screen.queryByText(/Week of Dec 30/)).not.toBeInTheDocument()
+
+    // Load more is visible because has_more=true.
+    const loadMoreBtn = screen.getByRole('button', { name: /Load older weeks/i })
+
+    await act(async () => {
+      fireEvent.click(loadMoreBtn)
+    })
+
+    // Next page row appended; original rows still present.
+    await waitFor(() => {
+      expect(screen.getByText(/Week of Dec 30/)).toBeInTheDocument()
+    })
+    expect(screen.getByText(/Week of Jan 13/)).toBeInTheDocument()
+    expect(screen.getByText(/Week of Jan 6/)).toBeInTheDocument()
+
+    // Load more disappears once has_more=false on the latest page.
+    expect(screen.queryByRole('button', { name: /Load older weeks/i })).toBeNull()
+  })
+
+  it('hides the Load more button when has_more=false on the first page', async () => {
+    vi.stubGlobal(
+      'fetch',
+      makeHistoryFetchMock([{ offset: 0, weeks: [week1, week2], has_more: false }]),
+    )
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/Week of Jan 13/)).toBeInTheDocument()
+    })
+
+    expect(screen.queryByRole('button', { name: /Load older weeks/i })).toBeNull()
   })
 })
