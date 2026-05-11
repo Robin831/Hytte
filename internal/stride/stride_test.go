@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
-	"github.com/Robin831/Hytte/internal/training"
 	_ "modernc.org/sqlite"
 )
 
