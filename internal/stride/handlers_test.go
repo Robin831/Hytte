@@ -1236,17 +1236,19 @@ func TestPlanHistoryHandler_MissedNotCounted(t *testing.T) {
 	}
 }
 
-// insertTestWorkout inserts a workout row in the test DB on the given date
-// with the supplied duration and avg HR, returning its ID. It's used by the
-// stride history pagination tests to seed week-level zone aggregation data.
-func insertTestWorkout(t *testing.T, db *sql.DB, userID int64, startedAt string, durationSeconds, avgHR int) int64 {
+// insertTestWorkoutWithHR inserts a workout row in the test DB on the given
+// date with the supplied duration and avg HR, returning its ID. It's used by
+// the stride history pagination tests to seed week-level zone aggregation
+// data. (Distinct from insertTestWorkout in stride_test.go, which takes
+// distance + fit hash and does not set avg HR.)
+func insertTestWorkoutWithHR(t *testing.T, db *sql.DB, userID int64, startedAt string, durationSeconds, avgHR int) int64 {
 	t.Helper()
 	res, err := db.Exec(`
 		INSERT INTO workouts (user_id, started_at, duration_seconds, avg_heart_rate, fit_file_hash)
 		VALUES (?, ?, ?, ?, ?)
 	`, userID, startedAt, durationSeconds, avgHR, "wh-"+startedAt+"-"+strconv.Itoa(durationSeconds)+"-"+strconv.Itoa(avgHR))
 	if err != nil {
-		t.Fatalf("insertTestWorkout: %v", err)
+		t.Fatalf("insertTestWorkoutWithHR: %v", err)
 	}
 	id, _ := res.LastInsertId()
 	return id
@@ -1442,14 +1444,14 @@ func TestPlanHistoryHandler_ZoneSecondsPopulated(t *testing.T) {
 	insertTestPlan(t, db, 1, weekStart, weekEnd, planJSON)
 
 	// Three workouts inside the week, one per bucket.
-	insertTestWorkout(t, db, 1, weekStart+"T08:00:00Z", 3600, 130) // Z2 → easy
-	insertTestWorkout(t, db, 1, weekStart+"T09:00:00Z", 1800, 160) // Z3 → threshold
-	insertTestWorkout(t, db, 1, weekStart+"T10:00:00Z", 900, 190)  // Z5 → hard
+	insertTestWorkoutWithHR(t, db, 1, weekStart+"T08:00:00Z", 3600, 130) // Z2 → easy
+	insertTestWorkoutWithHR(t, db, 1, weekStart+"T09:00:00Z", 1800, 160) // Z3 → threshold
+	insertTestWorkoutWithHR(t, db, 1, weekStart+"T10:00:00Z", 900, 190)  // Z5 → hard
 	// A workout with no HR data should be excluded from the buckets.
-	insertTestWorkout(t, db, 1, weekStart+"T11:00:00Z", 1200, 0)
+	insertTestWorkoutWithHR(t, db, 1, weekStart+"T11:00:00Z", 1200, 0)
 	// A workout outside the week (one day after week_end) should be excluded.
 	parsedEnd, _ := time.Parse("2006-01-02", weekEnd)
-	insertTestWorkout(t, db, 1, parsedEnd.AddDate(0, 0, 1).Format("2006-01-02")+"T08:00:00Z", 1200, 140)
+	insertTestWorkoutWithHR(t, db, 1, parsedEnd.AddDate(0, 0, 1).Format("2006-01-02")+"T08:00:00Z", 1200, 140)
 
 	req := withUser(httptest.NewRequest("GET", "/api/stride/history", nil), 1)
 	rec := httptest.NewRecorder()
