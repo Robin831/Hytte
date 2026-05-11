@@ -84,6 +84,8 @@
     },
     "activeLabel": "Active",
     "historyLabel": "History",
+    "olderNotes": "Older notes ({{count}})",
+    "toggleOlderAria": "Toggle older notes",
     "consumedBy": "Used by {{process}} on {{date}}",
     "consumedByProcess": {
       "nightly": "Nightly",

@@ -1113,6 +1113,25 @@ export default function StridePage() {
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [currentPlan, previousPlanId, evaluations, sortedPlanDays, workoutIdToDate])
 
+  // Partition notes into "active" (target_date within the last 7 days or in the future)
+  // and "older" so the Coach Notes section stays compact when weeks of history accumulate.
+  const noteRecentCutoff = useMemo(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 7)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }, [])
+
+  const { activeNotes, olderNotes, activeConsumedNotes, olderConsumedNotes } = useMemo(() => {
+    const isRecent = (n: Note) => (n.target_date ?? '') >= noteRecentCutoff
+    return {
+      activeNotes: notes.filter(isRecent),
+      olderNotes: notes.filter(n => !isRecent(n)),
+      activeConsumedNotes: consumedNotes.filter(isRecent),
+      olderConsumedNotes: consumedNotes.filter(n => !isRecent(n)),
+    }
+  }, [notes, consumedNotes, noteRecentCutoff])
+  const olderNoteCount = olderNotes.length + olderConsumedNotes.length
+
   // Map each plan day date to its newest stride evaluation (via workout date lookup,
   // or via eval.date for rest_day/missed evaluations without a workout).
   // evaluations is ordered created_at DESC so the first entry per date is the newest.
@@ -1480,107 +1499,128 @@ export default function StridePage() {
           <p className="text-sm text-gray-400">{t('loading')}</p>
         ) : notes.length === 0 && consumedNotes.length === 0 ? (
           <p className="text-sm text-gray-500">{t('notes.empty')}</p>
-        ) : (
-          <>
-            {notes.length > 0 && (
-              <>
-                <h3 className="text-sm font-medium text-gray-400 mb-2">{t('notes.activeLabel')}</h3>
-                <div className="space-y-2 mb-4">
-                  {notes.map(note => {
-                    const scope: NoteScope = note.scope ?? 'any'
-                    return (
-                      <div key={note.id} className="flex items-start gap-3 p-3 bg-gray-800 rounded-xl border border-gray-700 group">
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <p className="text-sm text-gray-200 whitespace-pre-wrap">{note.content}</p>
-                          <span className={`inline-flex items-center px-1.5 py-0.5 text-xs rounded ${noteScopeBadgeClass(scope)}`}>
-                            {t(`notes.scope.${scope}`)}
-                          </span>
-                        </div>
-                        <div className="flex-shrink-0 flex flex-col items-end gap-1">
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => openEditNote(note)}
-                              className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-blue-400 transition-all"
-                              aria-label={t('notes.edit')}
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteNote(note.id)}
-                              className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
-                              aria-label={t('notes.delete')}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                          <span className="text-xs text-gray-500">
-                            {note.target_date && <span className="mr-1">{formatDate(`${note.target_date}T00:00:00`)}</span>}
-                            {formatDateTime(note.created_at, { dateStyle: 'short', timeStyle: 'short' })}
-                          </span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </>
-            )}
-
-            {consumedNotes.length > 0 && (
-              <>
-                <h3 className="text-sm font-medium text-gray-400 mb-2">{t('notes.historyLabel')}</h3>
-                <div className="space-y-2">
-                  {consumedNotes.map(note => {
-                    const scope: NoteScope = note.scope ?? 'any'
-                    return (
-                    <div key={note.id} className="flex items-start gap-3 p-3 bg-gray-800/60 rounded-xl border border-gray-700/50 group">
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <p className="text-sm text-gray-400 whitespace-pre-wrap">{note.content}</p>
-                        <span className={`inline-flex items-center px-1.5 py-0.5 text-xs rounded ${noteScopeBadgeClass(scope)} opacity-70`}>
-                          {t(`notes.scope.${scope}`)}
-                        </span>
-                      </div>
-                      <div className="flex-shrink-0 flex flex-col items-end gap-1">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteNote(note.id)}
-                          className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
-                          aria-label={t('notes.delete')}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                        <div className="flex flex-col items-end gap-0.5">
-                          {(() => {
-                            const consumedByLabel = note.consumed_by === 'nightly'
-                              ? t('notes.consumedByProcess.nightly')
-                              : note.consumed_by === 'weekly'
-                                ? t('notes.consumedByProcess.weekly')
-                                : note.consumed_by === 'manual'
-                                  ? t('notes.consumedByProcess.manual')
-                                  : null
-                            const consumedDate = note.consumed_at ? formatDate(note.consumed_at) : null
-                            if (!consumedByLabel || !consumedDate) return null
-                            return (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-gray-700/50 text-gray-400">
-                                {t('notes.consumedBy', { process: consumedByLabel, date: consumedDate })}
-                              </span>
-                            )
-                          })()}
-                          <span className="text-xs text-gray-500">
-                            {note.target_date && <span className="mr-1">{formatDate(`${note.target_date}T00:00:00`)}</span>}
-                            {formatDateTime(note.created_at, { dateStyle: 'short', timeStyle: 'short' })}
-                          </span>
-                        </div>
-                      </div>
+        ) : (() => {
+            const renderActiveNote = (note: Note) => {
+              const scope: NoteScope = note.scope ?? 'any'
+              return (
+                <div key={note.id} className="flex items-start gap-3 p-3 bg-gray-800 rounded-xl border border-gray-700 group">
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="text-sm text-gray-200 whitespace-pre-wrap">{note.content}</p>
+                    <span className={`inline-flex items-center px-1.5 py-0.5 text-xs rounded ${noteScopeBadgeClass(scope)}`}>
+                      {t(`notes.scope.${scope}`)}
+                    </span>
+                  </div>
+                  <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openEditNote(note)}
+                        className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-blue-400 transition-all"
+                        aria-label={t('notes.edit')}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteNote(note.id)}
+                        className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
+                        aria-label={t('notes.delete')}
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
-                    )
-                  })}
+                    <span className="text-xs text-gray-500">
+                      {note.target_date && <span className="mr-1">{formatDate(`${note.target_date}T00:00:00`)}</span>}
+                      {formatDateTime(note.created_at, { dateStyle: 'short', timeStyle: 'short' })}
+                    </span>
+                  </div>
                 </div>
+              )
+            }
+
+            const renderConsumedNote = (note: Note) => {
+              const scope: NoteScope = note.scope ?? 'any'
+              return (
+                <div key={note.id} className="flex items-start gap-3 p-3 bg-gray-800/60 rounded-xl border border-gray-700/50 group">
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <p className="text-sm text-gray-400 whitespace-pre-wrap">{note.content}</p>
+                    <span className={`inline-flex items-center px-1.5 py-0.5 text-xs rounded ${noteScopeBadgeClass(scope)} opacity-70`}>
+                      {t(`notes.scope.${scope}`)}
+                    </span>
+                  </div>
+                  <div className="flex-shrink-0 flex flex-col items-end gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteNote(note.id)}
+                      className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
+                      aria-label={t('notes.delete')}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                    <div className="flex flex-col items-end gap-0.5">
+                      {(() => {
+                        const consumedByLabel = note.consumed_by === 'nightly'
+                          ? t('notes.consumedByProcess.nightly')
+                          : note.consumed_by === 'weekly'
+                            ? t('notes.consumedByProcess.weekly')
+                            : note.consumed_by === 'manual'
+                              ? t('notes.consumedByProcess.manual')
+                              : null
+                        const consumedDate = note.consumed_at ? formatDate(note.consumed_at) : null
+                        if (!consumedByLabel || !consumedDate) return null
+                        return (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-gray-700/50 text-gray-400">
+                            {t('notes.consumedBy', { process: consumedByLabel, date: consumedDate })}
+                          </span>
+                        )
+                      })()}
+                      <span className="text-xs text-gray-500">
+                        {note.target_date && <span className="mr-1">{formatDate(`${note.target_date}T00:00:00`)}</span>}
+                        {formatDateTime(note.created_at, { dateStyle: 'short', timeStyle: 'short' })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
+
+            return (
+              <>
+                {activeNotes.length > 0 && (
+                  <>
+                    <h3 className="text-sm font-medium text-gray-400 mb-2">{t('notes.activeLabel')}</h3>
+                    <div className="space-y-2 mb-4">
+                      {activeNotes.map(renderActiveNote)}
+                    </div>
+                  </>
+                )}
+
+                {activeConsumedNotes.length > 0 && (
+                  <>
+                    <h3 className="text-sm font-medium text-gray-400 mb-2">{t('notes.historyLabel')}</h3>
+                    <div className="space-y-2">
+                      {activeConsumedNotes.map(renderConsumedNote)}
+                    </div>
+                  </>
+                )}
+
+                {olderNoteCount > 0 && (
+                  <details className="mt-4">
+                    <summary
+                      className="text-sm text-gray-500 cursor-pointer hover:text-gray-300"
+                      aria-label={t('notes.toggleOlderAria')}
+                    >
+                      {t('notes.olderNotes', { count: olderNoteCount })}
+                    </summary>
+                    <div className="mt-2 space-y-2">
+                      {olderNotes.map(renderActiveNote)}
+                      {olderConsumedNotes.map(renderConsumedNote)}
+                    </div>
+                  </details>
+                )}
               </>
-            )}
-          </>
-        )}
+            )
+          })()}
       </section>
 
       {/* Plan History */}

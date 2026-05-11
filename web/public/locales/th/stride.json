@@ -84,6 +84,8 @@
     },
     "activeLabel": "ใช้งานอยู่",
     "historyLabel": "ประวัติ",
+    "olderNotes": "บันทึกเก่า ({{count}})",
+    "toggleOlderAria": "สลับบันทึกเก่า",
     "consumedBy": "ใช้โดย {{process}} เมื่อ {{date}}",
     "consumedByProcess": {
       "nightly": "ทุกคืน",
