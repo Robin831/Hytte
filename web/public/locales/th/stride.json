@@ -110,6 +110,10 @@
       "loadMore": "โหลดสัปดาห์ก่อนหน้า",
       "loadingMore": "กำลังโหลดสัปดาห์ก่อนหน้า…"
     },
+    "weekModal": {
+      "title": "รายละเอียดสัปดาห์",
+      "close": "ปิด"
+    },
     "month": {
       "sessions": "{{completed}} / {{planned}} เซสชัน"
     },

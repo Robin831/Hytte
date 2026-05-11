@@ -977,3 +977,180 @@ describe('StridePage – plan history pagination', () => {
     expect(screen.queryByRole('button', { name: /Load older weeks/i })).toBeNull()
   })
 })
+
+describe('StridePage – week details modal', () => {
+  const week = {
+    plan_id: 101,
+    week_start: '2099-01-13',
+    week_end: '2099-01-19',
+    phase: 'Base',
+    sessions_planned: 5,
+    sessions_completed: 4,
+    completion_rate: 80,
+    easy_seconds: 3600,
+    threshold_seconds: 1800,
+    hard_seconds: 600,
+    total_distance_meters: 42000,
+  }
+
+  const planDayMonday: DayPlan = {
+    date: '2099-01-13',
+    rest_day: false,
+    session: {
+      description: 'Easy 45 min',
+      warmup: '',
+      main_set: '45 min easy',
+      cooldown: '',
+      strides: '',
+      target_hr_cap: 150,
+    },
+  }
+  const planDayTuesday: DayPlan = {
+    date: '2099-01-14',
+    rest_day: true,
+  }
+
+  const historicPlan = {
+    id: 101,
+    user_id: 1,
+    week_start: '2099-01-13',
+    week_end: '2099-01-19',
+    phase: 'Base',
+    model: 'test',
+    created_at: '2099-01-13T00:00:00Z',
+    plan: [planDayMonday, planDayTuesday],
+  }
+
+  const mondayEval = {
+    id: 901,
+    user_id: 1,
+    plan_id: 101,
+    workout_id: null,
+    eval: {
+      planned_type: 'easy',
+      actual_type: 'easy',
+      compliance: 'compliant',
+      date: '2099-01-13',
+      notes: 'Solid easy effort, HR controlled',
+      flags: [],
+      adjustments: '',
+    },
+    created_at: '2099-01-13T18:00:00Z',
+  }
+
+  function makeFetch() {
+    return vi.fn((url: string) => {
+      const make = (data: unknown) =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response)
+      if (url.includes('/api/stride/history')) {
+        return make({ weeks: [week], months: [], limit: 12, offset: 0, has_more: false })
+      }
+      if (url.includes('/api/stride/plans/101')) return make({ plan: historicPlan })
+      if (url.includes('/api/stride/plans/current')) {
+        return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) } as Response)
+      }
+      if (url.includes('/api/stride/plans?limit=1')) return make({ total: 0 })
+      if (url.match(/\/api\/stride\/evaluations\?plan_id=101/)) return make({ evaluations: [mondayEval] })
+      if (url.includes('/api/stride/evaluations')) return make({ evaluations: [] })
+      if (url.includes('/api/training/workouts')) return make({ workouts: [] })
+      if (url.includes('/api/stride/races')) return make({ races: [] })
+      if (url.includes('/api/stride/notes')) return make({ notes: [] })
+      return make({})
+    })
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('opens the modal with day-by-day content when a summary row is clicked', async () => {
+    vi.stubGlobal('fetch', makeFetch())
+    renderPage()
+
+    // The history row renders.
+    await waitFor(() => {
+      expect(screen.getByText(/Week of Jan 13/)).toBeInTheDocument()
+    })
+
+    // Modal not open yet.
+    expect(screen.queryByText('Week details')).not.toBeInTheDocument()
+
+    // Click the row's open button.
+    const openBtn = screen.getByRole('button', { name: /Open week/i })
+    await act(async () => {
+      fireEvent.click(openBtn)
+    })
+
+    // Modal header renders.
+    await waitFor(() => {
+      expect(screen.getByText('Week details')).toBeInTheDocument()
+    })
+
+    // Day-by-day cards render the planned session description plus a verdict
+    // badge that comes from the linked evaluation.
+    await waitFor(() => {
+      expect(screen.getByText('Easy 45 min')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Completed')).toBeInTheDocument()
+
+    // Expanding the day reveals the coach notes from the evaluation.
+    const dayButton = screen.getByText('Easy 45 min').closest('button')!
+    await act(async () => {
+      fireEvent.click(dayButton)
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Solid easy effort, HR controlled')).toBeInTheDocument()
+    })
+  })
+
+  it('dismisses the modal when the Close button is clicked', async () => {
+    vi.stubGlobal('fetch', makeFetch())
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/Week of Jan 13/)).toBeInTheDocument()
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Open week/i }))
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Week details')).toBeInTheDocument()
+    })
+
+    // Footer close button (button labelled Close in the dialog footer).
+    const closeButtons = screen.getAllByRole('button', { name: 'Close' })
+    await act(async () => {
+      fireEvent.click(closeButtons[closeButtons.length - 1])
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText('Week details')).not.toBeInTheDocument()
+    })
+  })
+
+  it('dismisses the modal when Escape is pressed', async () => {
+    vi.stubGlobal('fetch', makeFetch())
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/Week of Jan 13/)).toBeInTheDocument()
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Open week/i }))
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Week details')).toBeInTheDocument()
+    })
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText('Week details')).not.toBeInTheDocument()
+    })
+  })
+})
