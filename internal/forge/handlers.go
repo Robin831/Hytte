@@ -2,6 +2,7 @@ package forge
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -1970,6 +1971,13 @@ func WorkerParsedLogHandler(db *DB) http.HandlerFunc {
 // the previous call. Truncation or a backwards-jumping mtime invalidates the
 // cache and forces a full re-parse.
 //
+// The incremental scan stops at the last newline in the newly available bytes:
+// a trailing partial line (the writer is mid-flush) is intentionally left
+// unconsumed so it gets re-read on the next call once the closing newline
+// arrives. Advancing past it would silently drop the entry, because the
+// underlying bufio.Scanner returns false on EOF without surfacing the partial
+// remainder.
+//
 // The returned slice is a freshly allocated copy, safe to read after the
 // per-entry mutex is released.
 func readParsedLog(cache *parsedLogCache, workerID, resolvedPath string) ([]LogEntry, error) {
@@ -2010,19 +2018,33 @@ func readParsedLog(cache *parsedLogCache, workerID, resolvedPath string) ([]LogE
 				return nil, seekErr
 			}
 		}
-		if parseErr := ParseWorkerLogFrom(f, entry.state); parseErr != nil {
-			f.Close()
-			// Reset to avoid cache poisoning: ParseWorkerLogFrom may have
-			// appended partial entries before the underlying reader errored.
-			// Leaving them in place would double-count on the next call.
-			entry.reset()
-			return nil, parseErr
-		}
+		newBytes, readErr := io.ReadAll(f)
 		f.Close()
-		entry.nextOffset = stat.Size()
+		if readErr != nil {
+			return nil, readErr
+		}
+		// Only consume bytes up to the last newline. A trailing partial line
+		// (the writer is mid-flush) must not be parsed yet — bufio.Scanner
+		// silently drops it on EOF, so advancing nextOffset past it would
+		// permanently lose the entry once the line completes. Re-reading the
+		// partial bytes on the next poll is cheap (bounded by max line size).
+		lastNL := bytes.LastIndexByte(newBytes, '\n')
+		if lastNL >= 0 {
+			consumeLen := lastNL + 1
+			if parseErr := ParseWorkerLogFrom(bytes.NewReader(newBytes[:consumeLen]), entry.state); parseErr != nil {
+				// Reset to avoid cache poisoning: ParseWorkerLogFrom may have
+				// appended partial entries before the scanner errored. Leaving
+				// them in place would double-count on the next call.
+				entry.reset()
+				return nil, parseErr
+			}
+			entry.nextOffset += int64(consumeLen)
+			entry.parseCount++
+		}
+		// modTime/size always advance so the truncation/rotation detector
+		// stays correctly anchored to the file's current metadata.
 		entry.modTime = stat.ModTime()
 		entry.size = stat.Size()
-		entry.parseCount++
 	}
 
 	// Copy the cumulative entries under the mutex so the caller can JSON-

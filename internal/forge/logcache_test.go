@@ -189,6 +189,65 @@ func TestParsedLogCache_AppendOnlyParsesNewBytes(t *testing.T) {
 	}
 }
 
+// TestParsedLogCache_PartialTrailingLineReadOnCompletion verifies that a
+// partial JSON line being written by the smith (no trailing newline yet) is
+// NOT consumed prematurely: the cache stops at the last newline and re-reads
+// the partial bytes once the writer flushes the closing newline. Without
+// this, log entries would be permanently dropped if a poll arrived mid-write.
+func TestParsedLogCache_PartialTrailingLineReadOnCompletion(t *testing.T) {
+	fdb, logPath, key := cacheTestSetup(t, []string{
+		textLine("first"),
+		textLine("second"),
+	})
+
+	// Append a partial line (the closing brace and newline are still buffered
+	// on the writer side, so the reader sees a mid-write JSON line).
+	partial := `{"type":"assistant","message":{"content":[{"type":"text","text":"thi`
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatalf("open append: %v", err)
+	}
+	if _, err := f.WriteString(partial); err != nil {
+		t.Fatalf("write partial: %v", err)
+	}
+	f.Close()
+
+	if _, entries := callHandler(t, fdb, ""); len(entries) != 2 {
+		t.Fatalf("expected 2 entries while last line is partial, got %d", len(entries))
+	}
+	mid := snapshotEntry(t, fdb, key)
+	// nextOffset must stop at the last newline, NOT at stat.Size(). If the
+	// fix is missing, this assertion fires because nextOffset jumps past the
+	// partial bytes and the third entry is permanently lost.
+	stat, err := os.Stat(logPath)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if mid.nextOffset != stat.Size()-int64(len(partial)) {
+		t.Errorf("nextOffset must stop at last newline (want %d, got %d) — partial line was consumed prematurely",
+			stat.Size()-int64(len(partial)), mid.nextOffset)
+	}
+
+	// Complete the partial line — the smith flushed the rest.
+	rest := `rd"}]}}` + "\n"
+	f, err = os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatalf("open append 2: %v", err)
+	}
+	if _, err := f.WriteString(rest); err != nil {
+		t.Fatalf("write rest: %v", err)
+	}
+	f.Close()
+
+	_, entries := callHandler(t, fdb, "")
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries after partial line completes, got %d", len(entries))
+	}
+	if entries[2].Content != "third" {
+		t.Errorf("expected completed entry content=%q, got %q", "third", entries[2].Content)
+	}
+}
+
 // TestParsedLogCache_TruncationInvalidates verifies that truncating the log
 // (size shrinks below the cached offset) resets the cache so the next call
 // re-parses from byte 0.
