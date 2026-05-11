@@ -627,6 +627,7 @@ export default function StridePage() {
   const [editScope, setEditScope] = useState<NoteScope>('any')
   const [editSubmitting, setEditSubmitting] = useState(false)
   const [editError, setEditError] = useState('')
+  const [olderNotesOpen, setOlderNotesOpen] = useState(false)
 
   const loadRaces = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -1115,11 +1116,13 @@ export default function StridePage() {
 
   // Partition notes into "active" (target_date within the last 7 days or in the future)
   // and "older" so the Coach Notes section stays compact when weeks of history accumulate.
+  // Subtract 6 days so the window is exactly 7 calendar days inclusive (today + prior 6).
+  // Depend on `today` so the cutoff updates if the page stays mounted across a day boundary.
   const noteRecentCutoff = useMemo(() => {
     const d = new Date()
-    d.setDate(d.getDate() - 7)
+    d.setDate(d.getDate() - 6)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  }, [])
+  }, [today])
 
   const { activeNotes, olderNotes, activeConsumedNotes, olderConsumedNotes } = useMemo(() => {
     const isRecent = (n: Note) => (n.target_date ?? '') >= noteRecentCutoff
@@ -1605,10 +1608,13 @@ export default function StridePage() {
                 )}
 
                 {olderNoteCount > 0 && (
-                  <details className="mt-4">
+                  <details
+                    className="mt-4"
+                    open={olderNotesOpen}
+                  >
                     <summary
                       className="text-sm text-gray-500 cursor-pointer hover:text-gray-300"
-                      aria-label={t('notes.toggleOlderAria')}
+                      onClick={e => { e.preventDefault(); setOlderNotesOpen(prev => !prev) }}
                     >
                       {t('notes.olderNotes', { count: olderNoteCount })}
                     </summary>

@@ -85,6 +85,8 @@
     "activeLabel": "Active",
     "historyLabel": "History",
     "olderNotes": "Older notes ({{count}})",
+    "olderNotes_one": "Older notes ({{count}})",
+    "olderNotes_other": "Older notes ({{count}})",
     "toggleOlderAria": "Toggle older notes",
     "consumedBy": "Used by {{process}} on {{date}}",
     "consumedByProcess": {
