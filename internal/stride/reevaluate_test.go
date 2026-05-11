@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
 	"github.com/Robin831/Hytte/internal/training"
@@ -42,6 +43,27 @@ func stubRunPrompt(t *testing.T, fn func(ctx context.Context, cfg *training.Clau
 	orig := runPromptFunc
 	runPromptFunc = fn
 	t.Cleanup(func() { runPromptFunc = orig })
+}
+
+// seedDateEvaluation inserts an encrypted non-workout Evaluation row, mirroring
+// how ReEvaluateDate persists date-only evaluations. Used by tests that need to
+// preload prior rest_day or missed records before invoking ReEvaluateDate.
+func seedDateEvaluation(t *testing.T, db *sql.DB, userID, planID int64, eval *Evaluation) {
+	t.Helper()
+	evalBytes, err := json.Marshal(eval)
+	if err != nil {
+		t.Fatalf("marshal eval: %v", err)
+	}
+	encEval, err := encryption.EncryptField(string(evalBytes))
+	if err != nil {
+		t.Fatalf("encrypt eval: %v", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO stride_evaluations (user_id, plan_id, workout_id, eval_json, created_at)
+		VALUES (?, ?, NULL, ?, ?)
+	`, userID, planID, encEval, time.Now().UTC().Format(time.RFC3339)); err != nil {
+		t.Fatalf("seed date eval: %v", err)
+	}
 }
 
 // --- ReEvaluateDate ---
@@ -156,9 +178,7 @@ func TestReEvaluateDate_PreservesExistingOnClaudeFailure_RestDay(t *testing.T) {
 
 	// Seed an existing rest-day evaluation.
 	original := &Evaluation{Compliance: "rest_day", Notes: "PRIOR-REST", Flags: []string{}, Date: date}
-	if err := storeEvaluationForDate(context.Background(), db, 1, planID, original); err != nil {
-		t.Fatalf("seed original: %v", err)
-	}
+	seedDateEvaluation(t, db, 1, planID, original)
 
 	// Add an unconsumed note so ReEvaluateDate calls Claude (notes drive AI path).
 	if _, err := CreateNote(db, 1, nil, "felt great today, took a walk", date, ""); err != nil {
@@ -551,9 +571,7 @@ func TestReEvaluateDate_ReplacesExistingDateOnlyEvaluation(t *testing.T) {
 
 	// Seed a stale rest-day evaluation for the date.
 	stale := &Evaluation{Compliance: "rest_day", Notes: "STALE", Flags: []string{}, Date: date}
-	if err := storeEvaluationForDate(context.Background(), db, 1, planID, stale); err != nil {
-		t.Fatalf("seed stale: %v", err)
-	}
+	seedDateEvaluation(t, db, 1, planID, stale)
 
 	// Add a note so Claude is invoked (with notes path).
 	if _, err := CreateNote(db, 1, nil, "did some yoga", date, ""); err != nil {
