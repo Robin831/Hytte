@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 )
@@ -49,6 +50,27 @@ type rawContentBlock struct {
 	IsError   bool            `json:"is_error"`
 }
 
+// LogParseState holds incremental parser state. A fresh state can be obtained
+// from NewLogParseState. The cache reuses an instance across calls so that
+// tool_use IDs pending correlation and the monotonic seq counter persist
+// between scans of newly appended log bytes.
+type LogParseState struct {
+	// Entries is the cumulative slice of parsed entries. Subject to rolling-
+	// buffer compaction when it grows past compactThreshold.
+	Entries []LogEntry
+	// ToolUseIndex maps tool_use_id → seq number for O(1) correlation of
+	// tool_result events with the originating tool_use entry.
+	ToolUseIndex map[string]int
+	// SeqCounter is the next sequence number to assign. Stable across
+	// rolling-buffer compaction and across incremental parse calls.
+	SeqCounter int
+}
+
+// NewLogParseState returns a fresh, empty parser state.
+func NewLogParseState() *LogParseState {
+	return &LogParseState{ToolUseIndex: make(map[string]int)}
+}
+
 // ParseWorkerLog reads a worker's stream-json log file line by line and returns
 // a slice of structured LogEntry values. Tool results are correlated back to
 // their matching tool_use entries by tool_use_id: the Status field is set to
@@ -60,19 +82,31 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 	}
 	defer f.Close()
 
-	var entries []LogEntry
-	// toolUseIndex maps tool_use_id → seq number for O(1) correlation.
-	toolUseIndex := make(map[string]int)
-	// seqCounter is a monotonic counter that provides stable Seq values
-	// across rolling-buffer compactions.
-	seqCounter := 0
+	state := NewLogParseState()
+	if err := ParseWorkerLogFrom(f, state); err != nil {
+		return nil, err
+	}
+	return state.Entries, nil
+}
 
-	scanner := bufio.NewScanner(f)
+// ParseWorkerLogFrom scans stream-json log entries from r and appends them to
+// state. It continues tool_use correlation and sequence numbering from the
+// existing state, so callers may invoke it repeatedly with newly available
+// bytes (for example after seeking past a previously parsed file offset).
+//
+// Errors from individual malformed log lines are tolerated; only a scanner-
+// level read or buffer error is returned.
+func ParseWorkerLogFrom(r io.Reader, state *LogParseState) error {
+	if state.ToolUseIndex == nil {
+		state.ToolUseIndex = make(map[string]int)
+	}
+
+	scanner := bufio.NewScanner(r)
 	// Increase the buffer for long lines (tool outputs can be large).
 	const maxLineSize = 10 * 1024 * 1024 // 10 MiB
 	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
 	// Maximum entries retained in the result. A rolling buffer keeps memory
-	// bounded while scanning to EOF so that ?tail=N refers to the true tail.
+	// bounded while scanning so that ?tail=N refers to the true tail.
 	const maxEntries = 5000
 	// compactThreshold triggers a compaction that copies the last maxEntries
 	// into a fresh slice, allowing the GC to reclaim evicted entries.
@@ -81,16 +115,16 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 	// compactEntries trims the entries slice to the last maxEntries and
 	// removes stale toolUseIndex references that point to evicted entries.
 	compactEntries := func() {
-		if len(entries) < compactThreshold {
+		if len(state.Entries) < compactThreshold {
 			return
 		}
 		keep := make([]LogEntry, maxEntries)
-		copy(keep, entries[len(entries)-maxEntries:])
-		entries = keep
-		firstSeq := entries[0].Seq
-		for id, seq := range toolUseIndex {
+		copy(keep, state.Entries[len(state.Entries)-maxEntries:])
+		state.Entries = keep
+		firstSeq := state.Entries[0].Seq
+		for id, seq := range state.ToolUseIndex {
 			if seq < firstSeq {
-				delete(toolUseIndex, id)
+				delete(state.ToolUseIndex, id)
 			}
 		}
 	}
@@ -98,12 +132,12 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 	// lookupEntry finds an entry by its Seq number in the rolling buffer.
 	// Returns the slice index and true if found, or -1 and false if evicted.
 	lookupEntry := func(seq int) (int, bool) {
-		if len(entries) == 0 {
+		if len(state.Entries) == 0 {
 			return -1, false
 		}
-		firstSeq := entries[0].Seq
+		firstSeq := state.Entries[0].Seq
 		pos := seq - firstSeq
-		if pos < 0 || pos >= len(entries) {
+		if pos < 0 || pos >= len(state.Entries) {
 			return -1, false
 		}
 		return pos, true
@@ -129,32 +163,32 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 			for _, block := range msg.Content {
 				switch block.Type {
 				case "thinking":
-					entries = append(entries, LogEntry{
-						Seq:     seqCounter,
+					state.Entries = append(state.Entries, LogEntry{
+						Seq:     state.SeqCounter,
 						Type:    "think",
 						Content: block.Thinking,
 					})
-					seqCounter++
+					state.SeqCounter++
 				case "text":
 					if strings.TrimSpace(block.Text) != "" {
-						entries = append(entries, LogEntry{
-							Seq:     seqCounter,
+						state.Entries = append(state.Entries, LogEntry{
+							Seq:     state.SeqCounter,
 							Type:    "text",
 							Content: block.Text,
 						})
-						seqCounter++
+						state.SeqCounter++
 					}
 				case "tool_use":
-					entries = append(entries, LogEntry{
-						Seq:     seqCounter,
+					state.Entries = append(state.Entries, LogEntry{
+						Seq:     state.SeqCounter,
 						Type:    "tool_use",
 						Name:    block.Name,
 						Content: formatToolInput(block.Name, block.Input),
 					})
 					if block.ID != "" {
-						toolUseIndex[block.ID] = seqCounter
+						state.ToolUseIndex[block.ID] = state.SeqCounter
 					}
-					seqCounter++
+					state.SeqCounter++
 				}
 				compactEntries()
 			}
@@ -168,36 +202,36 @@ func ParseWorkerLog(logFilePath string) ([]LogEntry, error) {
 				if block.Type != "tool_result" {
 					continue
 				}
-				targetSeq, ok := toolUseIndex[block.ToolUseID]
+				targetSeq, ok := state.ToolUseIndex[block.ToolUseID]
 				if !ok {
 					continue
 				}
 				// Remove from index once correlated — the result has been
 				// processed so the ID is no longer needed.
-				delete(toolUseIndex, block.ToolUseID)
+				delete(state.ToolUseIndex, block.ToolUseID)
 				pos, found := lookupEntry(targetSeq)
 				if !found {
 					continue // entry was evicted from rolling buffer
 				}
 				if block.IsError {
-					entries[pos].Status = "error"
+					state.Entries[pos].Status = "error"
 				} else {
-					entries[pos].Status = "success"
+					state.Entries[pos].Status = "success"
 				}
 				// Enrich the tool_use entry with a truncated result summary.
 				result := extractResultContent(block.Content)
 				if result != "" {
-					entries[pos].Content = fmt.Sprintf("%s\n\n%s", entries[pos].Content, truncateString(result, 500))
+					state.Entries[pos].Content = fmt.Sprintf("%s\n\n%s", state.Entries[pos].Content, truncateString(result, 500))
 				}
 			}
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, err
+		return err
 	}
 
-	return entries, nil
+	return nil
 }
 
 // formatToolInput renders a tool's JSON input as a concise human-readable string.

@@ -403,25 +403,68 @@ func TestWorkerParsedLogHandler_TailReturnsLastN(t *testing.T) {
 	}
 }
 
-func TestWorkerParsedLogHandler_TailInvalidFallsBackToDefault(t *testing.T) {
+func TestWorkerParsedLogHandler_TailInvalidReturns400(t *testing.T) {
 	fdb := setupParsedLogWorker(t, 5)
 
-	for _, param := range []string{"tail=0", "tail=-5", "tail=abc"} {
+	for _, param := range []string{"tail=-5", "tail=abc"} {
 		rec := httptest.NewRecorder()
 		WorkerParsedLogHandler(fdb).ServeHTTP(rec, workerParsedLogRequest("worker-tail", param))
 
-		if rec.Code != http.StatusOK {
-			t.Fatalf("param=%s: expected 200, got %d", param, rec.Code)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("param=%s: expected 400, got %d: %s", param, rec.Code, rec.Body.String())
 		}
+	}
+}
 
-		var entries []LogEntry
-		if err := json.NewDecoder(rec.Body).Decode(&entries); err != nil {
-			t.Fatalf("param=%s: decode: %v", param, err)
-		}
-		// Default is 100, and we only have 5 entries, so all should be returned.
-		if len(entries) != 5 {
-			t.Errorf("param=%s: expected 5 entries (all, since count < default 100), got %d", param, len(entries))
-		}
+func TestWorkerParsedLogHandler_TailZeroReturnsEmptyArray(t *testing.T) {
+	fdb := setupParsedLogWorker(t, 5)
+
+	rec := httptest.NewRecorder()
+	WorkerParsedLogHandler(fdb).ServeHTTP(rec, workerParsedLogRequest("worker-tail", "tail=0"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var entries []LogEntry
+	if err := json.NewDecoder(rec.Body).Decode(&entries); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if entries == nil {
+		t.Fatal("expected non-nil empty slice for tail=0")
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries for tail=0, got %d", len(entries))
+	}
+}
+
+func TestWorkerParsedLogHandler_TailExceedsCapReturns400(t *testing.T) {
+	fdb := setupParsedLogWorker(t, 5)
+
+	rec := httptest.NewRecorder()
+	WorkerParsedLogHandler(fdb).ServeHTTP(rec, workerParsedLogRequest("worker-tail", "tail=10000"))
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for tail above cap, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWorkerParsedLogHandler_TailAbsentReturnsAll(t *testing.T) {
+	fdb := setupParsedLogWorker(t, 7)
+
+	rec := httptest.NewRecorder()
+	WorkerParsedLogHandler(fdb).ServeHTTP(rec, workerParsedLogRequest("worker-tail"))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var entries []LogEntry
+	if err := json.NewDecoder(rec.Body).Decode(&entries); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(entries) != 7 {
+		t.Fatalf("expected all 7 entries when tail is absent, got %d", len(entries))
 	}
 }
 

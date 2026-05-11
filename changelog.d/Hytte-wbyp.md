@@ -1,0 +1,2 @@
+category: Changed
+- **Forge proxy: incremental worker log parsing** - The `/api/forge/workers/{id}/log/parsed` endpoint now caches parsed entries per worker and only scans bytes appended since the previous request. Polling endpoints stay O(delta) instead of re-parsing the full file each tick, eliminating the CPU/latency blowups observed when long-running smiths produce 1 MB+ stream-json transcripts. The endpoint now treats an absent `tail` parameter as "return all entries" and rejects values above 5000 with HTTP 400. (Hytte-wbyp)
