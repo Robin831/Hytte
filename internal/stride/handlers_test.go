@@ -1082,15 +1082,50 @@ func TestPlanHistoryHandler_InvalidLimit(t *testing.T) {
 	}
 }
 
-func TestPlanHistoryHandler_LimitOutOfRange(t *testing.T) {
+func TestPlanHistoryHandler_LimitClampedToMax(t *testing.T) {
+	// Oversized limit values are silently clamped to HistoryMaxLimit rather than
+	// rejected, so paginating clients don't need to know the server-side cap.
 	db := setupTestDB(t)
 
 	req := withUser(httptest.NewRequest("GET", "/api/stride/history?limit=99", nil), 1)
 	rec := httptest.NewRecorder()
 	PlanHistoryHandler(db).ServeHTTP(rec, req)
 
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 with clamped limit, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Limit int `json:"limit"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Limit != HistoryMaxLimit {
+		t.Errorf("limit = %d, want %d (HistoryMaxLimit)", body.Limit, HistoryMaxLimit)
+	}
+}
+
+func TestPlanHistoryHandler_RejectsNegativeOffset(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history?offset=-1", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for limit > 52, got %d", rec.Code)
+		t.Fatalf("expected 400 for negative offset, got %d", rec.Code)
+	}
+}
+
+func TestPlanHistoryHandler_RejectsInvalidOffset(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history?offset=abc", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non-numeric offset, got %d", rec.Code)
 	}
 }
 
@@ -1198,6 +1233,344 @@ func TestPlanHistoryHandler_MissedNotCounted(t *testing.T) {
 	}
 	if body.Weeks[0].CompletionRate != 0 {
 		t.Errorf("completion_rate = %.1f, want 0.0", body.Weeks[0].CompletionRate)
+	}
+}
+
+// insertTestWorkoutWithHR inserts a workout row in the test DB on the given
+// date with the supplied duration and avg HR, returning its ID. It's used by
+// the stride history pagination tests to seed week-level zone aggregation
+// data. (Distinct from insertTestWorkout in stride_test.go, which takes
+// distance + fit hash and does not set avg HR.)
+func insertTestWorkoutWithHR(t *testing.T, db *sql.DB, userID int64, startedAt string, durationSeconds, avgHR int) int64 {
+	t.Helper()
+	res, err := db.Exec(`
+		INSERT INTO workouts (user_id, started_at, duration_seconds, avg_heart_rate, fit_file_hash)
+		VALUES (?, ?, ?, ?, ?)
+	`, userID, startedAt, durationSeconds, avgHR, "wh-"+startedAt+"-"+strconv.Itoa(durationSeconds)+"-"+strconv.Itoa(avgHR))
+	if err != nil {
+		t.Fatalf("insertTestWorkoutWithHR: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
+// TestPlanHistoryHandler_OffsetPagination verifies that offset skips the most
+// recent N weeks and that legacy response fields are still present alongside
+// the new pagination fields.
+func TestPlanHistoryHandler_OffsetPagination(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Insert 4 past weeks of plans (week 1 = most recent, week 4 = oldest).
+	planJSON := `[{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true}]`
+	var planIDs [5]int64
+	for i := 1; i <= 4; i++ {
+		ws, we := pastWeekDates(i)
+		planIDs[i] = insertTestPlan(t, db, 1, ws, we, planJSON)
+	}
+
+	// Page 1: limit=2, offset=0 → two most recent weeks.
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history?limit=2&offset=0", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("page 1: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var page1 struct {
+		Weeks   []WeekSummary `json:"weeks"`
+		Limit   int           `json:"limit"`
+		Offset  int           `json:"offset"`
+		HasMore bool          `json:"has_more"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&page1); err != nil {
+		t.Fatalf("page 1 decode: %v", err)
+	}
+	if page1.Limit != 2 || page1.Offset != 0 {
+		t.Errorf("page 1 limit/offset = %d/%d, want 2/0", page1.Limit, page1.Offset)
+	}
+	if len(page1.Weeks) != 2 {
+		t.Fatalf("page 1: expected 2 weeks, got %d", len(page1.Weeks))
+	}
+	if page1.Weeks[0].PlanID != planIDs[1] || page1.Weeks[1].PlanID != planIDs[2] {
+		t.Errorf("page 1 plan IDs = [%d,%d], want [%d,%d] (most-recent-first)",
+			page1.Weeks[0].PlanID, page1.Weeks[1].PlanID, planIDs[1], planIDs[2])
+	}
+	if !page1.HasMore {
+		t.Errorf("page 1 has_more = false, want true (2 more weeks remain)")
+	}
+
+	// Page 2: limit=2, offset=2 → the next two (older) weeks.
+	req = withUser(httptest.NewRequest("GET", "/api/stride/history?limit=2&offset=2", nil), 1)
+	rec = httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("page 2: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var page2 struct {
+		Weeks   []WeekSummary `json:"weeks"`
+		Offset  int           `json:"offset"`
+		HasMore bool          `json:"has_more"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&page2); err != nil {
+		t.Fatalf("page 2 decode: %v", err)
+	}
+	if page2.Offset != 2 {
+		t.Errorf("page 2 offset = %d, want 2", page2.Offset)
+	}
+	if len(page2.Weeks) != 2 {
+		t.Fatalf("page 2: expected 2 weeks, got %d", len(page2.Weeks))
+	}
+	if page2.Weeks[0].PlanID != planIDs[3] || page2.Weeks[1].PlanID != planIDs[4] {
+		t.Errorf("page 2 plan IDs = [%d,%d], want [%d,%d]",
+			page2.Weeks[0].PlanID, page2.Weeks[1].PlanID, planIDs[3], planIDs[4])
+	}
+	if page2.HasMore {
+		t.Errorf("page 2 has_more = true, want false (final page)")
+	}
+}
+
+// TestPlanHistoryHandler_HasMoreTrueWhenMoreExist asserts that has_more is true
+// whenever rows exist beyond offset+limit and within the depth cap.
+func TestPlanHistoryHandler_HasMoreTrueWhenMoreExist(t *testing.T) {
+	db := setupTestDB(t)
+
+	planJSON := `[{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true}]`
+	for i := 1; i <= 3; i++ {
+		ws, we := pastWeekDates(i)
+		insertTestPlan(t, db, 1, ws, we, planJSON)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history?limit=1&offset=0", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Weeks   []WeekSummary `json:"weeks"`
+		HasMore bool          `json:"has_more"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Weeks) != 1 {
+		t.Fatalf("expected 1 week, got %d", len(body.Weeks))
+	}
+	if !body.HasMore {
+		t.Errorf("has_more = false, want true (2 more weeks remain)")
+	}
+}
+
+// TestPlanHistoryHandler_HasMoreFalseAtEnd asserts has_more is false on the
+// final page (no rows remain beyond it).
+func TestPlanHistoryHandler_HasMoreFalseAtEnd(t *testing.T) {
+	db := setupTestDB(t)
+
+	planJSON := `[{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true}]`
+	for i := 1; i <= 2; i++ {
+		ws, we := pastWeekDates(i)
+		insertTestPlan(t, db, 1, ws, we, planJSON)
+	}
+
+	// Request a page large enough to swallow everything.
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history?limit=5&offset=0", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Weeks   []WeekSummary `json:"weeks"`
+		HasMore bool          `json:"has_more"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Weeks) != 2 {
+		t.Fatalf("expected 2 weeks, got %d", len(body.Weeks))
+	}
+	if body.HasMore {
+		t.Errorf("has_more = true, want false (no more rows)")
+	}
+}
+
+// TestPlanHistoryHandler_DepthCap verifies that requesting a page entirely
+// beyond HistoryDepthCapWeeks returns an empty page with has_more=false.
+func TestPlanHistoryHandler_DepthCap(t *testing.T) {
+	db := setupTestDB(t)
+
+	url := "/api/stride/history?limit=10&offset=" + strconv.Itoa(HistoryDepthCapWeeks+4)
+	req := withUser(httptest.NewRequest("GET", url, nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Weeks   []WeekSummary `json:"weeks"`
+		HasMore bool          `json:"has_more"`
+		Offset  int           `json:"offset"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Weeks) != 0 {
+		t.Errorf("expected 0 weeks beyond depth cap, got %d", len(body.Weeks))
+	}
+	if body.HasMore {
+		t.Errorf("has_more = true beyond depth cap, want false")
+	}
+	if body.Offset != HistoryDepthCapWeeks+4 {
+		t.Errorf("offset echoed back as %d, want %d", body.Offset, HistoryDepthCapWeeks+4)
+	}
+}
+
+// TestPlanHistoryHandler_DepthCapBoundaryHasMoreFalse verifies that a page
+// whose offset+limit reaches HistoryDepthCapWeeks returns has_more=false even
+// though a row exists at index HistoryDepthCapWeeks (which the probe query
+// would discover and flag as has_more=true without the cap override).
+func TestPlanHistoryHandler_DepthCapBoundaryHasMoreFalse(t *testing.T) {
+	db := setupTestDB(t)
+
+	planJSON := `[{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true}]`
+	// Insert HistoryDepthCapWeeks+1 plans so a row exists at DB index
+	// HistoryDepthCapWeeks (position 156). The probe query for the last
+	// in-cap page would otherwise return that extra row and set has_more=true.
+	for i := 1; i <= HistoryDepthCapWeeks+1; i++ {
+		ws, we := pastWeekDates(i)
+		insertTestPlan(t, db, 1, ws, we, planJSON)
+	}
+
+	// offset=HistoryDepthCapWeeks-2, limit=10 → handler clamps limit to 2,
+	// making offset+limit == HistoryDepthCapWeeks exactly.
+	offset := HistoryDepthCapWeeks - 2
+	url := "/api/stride/history?limit=10&offset=" + strconv.Itoa(offset)
+	req := withUser(httptest.NewRequest("GET", url, nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Weeks   []WeekSummary `json:"weeks"`
+		HasMore bool          `json:"has_more"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// The clamped page covers the last 2 in-cap slots.
+	if len(body.Weeks) != 2 {
+		t.Errorf("expected 2 weeks at cap boundary, got %d", len(body.Weeks))
+	}
+	// has_more must be false: offset+limit == HistoryDepthCapWeeks, so no
+	// further pages are advertised even though a row exists beyond the cap.
+	if body.HasMore {
+		t.Errorf("has_more = true at cap boundary, want false")
+	}
+}
+
+// TestPlanHistoryHandler_ZoneSecondsPopulated seeds workouts at distinct HR
+// intensities and verifies they land in the correct easy/threshold/hard bucket
+// when bucketed against the user's default zones (computed from max_hr=200).
+func TestPlanHistoryHandler_ZoneSecondsPopulated(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Configure the user's max HR so default zones resolve.
+	//   Z1 0-120, Z2 120-144, Z3 144-164, Z4 164-184, Z5 184-200.
+	if _, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'max_hr', '200')`,
+	); err != nil {
+		t.Fatalf("seed max_hr: %v", err)
+	}
+
+	weekStart, weekEnd := pastWeekDates(1)
+	planJSON := `[{"rest_day":false,"session":{"type":"easy","distance_m":5000,"notes":""}},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true}]`
+	insertTestPlan(t, db, 1, weekStart, weekEnd, planJSON)
+
+	// Three workouts inside the week, one per bucket.
+	insertTestWorkoutWithHR(t, db, 1, weekStart+"T08:00:00Z", 3600, 130) // Z2 → easy
+	insertTestWorkoutWithHR(t, db, 1, weekStart+"T09:00:00Z", 1800, 160) // Z3 → threshold
+	insertTestWorkoutWithHR(t, db, 1, weekStart+"T10:00:00Z", 900, 190)  // Z5 → hard
+	// A workout with no HR data should be excluded from the buckets.
+	insertTestWorkoutWithHR(t, db, 1, weekStart+"T11:00:00Z", 1200, 0)
+	// A workout outside the week (one day after week_end) should be excluded.
+	parsedEnd, _ := time.Parse("2006-01-02", weekEnd)
+	insertTestWorkoutWithHR(t, db, 1, parsedEnd.AddDate(0, 0, 1).Format("2006-01-02")+"T08:00:00Z", 1200, 140)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Weeks []WeekSummary `json:"weeks"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Weeks) != 1 {
+		t.Fatalf("expected 1 week, got %d", len(body.Weeks))
+	}
+	w := body.Weeks[0]
+	if w.EasySeconds != 3600 {
+		t.Errorf("easy_seconds = %d, want 3600", w.EasySeconds)
+	}
+	if w.ThresholdSeconds != 1800 {
+		t.Errorf("threshold_seconds = %d, want 1800", w.ThresholdSeconds)
+	}
+	if w.HardSeconds != 900 {
+		t.Errorf("hard_seconds = %d, want 900", w.HardSeconds)
+	}
+}
+
+// TestPlanHistoryHandler_DefaultsPreserveLegacyShape ensures the no-query-param
+// response continues to surface weeks/months exactly as before, with the new
+// fields present as additive metadata that older clients can ignore.
+func TestPlanHistoryHandler_DefaultsPreserveLegacyShape(t *testing.T) {
+	db := setupTestDB(t)
+
+	weekStart, weekEnd := pastWeekDates(1)
+	planJSON := `[{"rest_day":false,"session":{"type":"easy","distance_m":5000,"notes":""}},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true}]`
+	insertTestPlan(t, db, 1, weekStart, weekEnd, planJSON)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	for _, k := range []string{"weeks", "months", "limit", "offset", "has_more"} {
+		if _, ok := raw[k]; !ok {
+			t.Errorf("missing field %q in default response", k)
+		}
+	}
+
+	var body struct {
+		Weeks  []WeekSummary `json:"weeks"`
+		Limit  int           `json:"limit"`
+		Offset int           `json:"offset"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Limit != HistoryDefaultLimit {
+		t.Errorf("default limit = %d, want %d", body.Limit, HistoryDefaultLimit)
+	}
+	if body.Offset != 0 {
+		t.Errorf("default offset = %d, want 0", body.Offset)
+	}
+	if len(body.Weeks) != 1 {
+		t.Fatalf("expected 1 week, got %d", len(body.Weeks))
+	}
+	w := body.Weeks[0]
+	if w.SessionsPlanned != 1 {
+		t.Errorf("sessions_planned = %d, want 1", w.SessionsPlanned)
 	}
 }
 

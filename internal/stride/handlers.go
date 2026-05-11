@@ -174,23 +174,60 @@ func TriggerEvaluationHandler(db *sql.DB) http.HandlerFunc {
 // PlanHistoryHandler returns past weeks' training plans with completion metadata
 // and monthly compliance rollups.
 //
-// GET /api/stride/history?limit=12
-// Response: {"weeks": [...], "months": [...]}
+// GET /api/stride/history?limit=12&offset=0
+//
+// limit defaults to HistoryDefaultLimit (12) and is clamped server-side to
+// HistoryMaxLimit (24). offset defaults to 0 and may not be negative. Pagination
+// is capped at HistoryDepthCapWeeks (156); offsets at or beyond that depth
+// return an empty page with has_more=false.
+//
+// Response: {"weeks": [...], "months": [...], "limit": N, "offset": N, "has_more": bool}.
+// The weeks/months payload shape is unchanged from the pre-pagination response;
+// the additional fields are additive so older clients continue to work.
 func PlanHistoryHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
-		limit := 12
+		limit := HistoryDefaultLimit
 		if raw := r.URL.Query().Get("limit"); raw != "" {
 			n, err := strconv.Atoi(raw)
-			if err != nil || n < 1 || n > 52 {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be between 1 and 52"})
+			if err != nil || n < 1 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "limit must be a positive integer"})
 				return
 			}
 			limit = n
 		}
+		if limit > HistoryMaxLimit {
+			limit = HistoryMaxLimit
+		}
 
-		weeks, months, err := GetPlanHistory(db, user.ID, limit)
+		offset := 0
+		if raw := r.URL.Query().Get("offset"); raw != "" {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n < 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "offset must be a non-negative integer"})
+				return
+			}
+			offset = n
+		}
+
+		// Cap pagination depth: pages beyond HistoryDepthCapWeeks return empty.
+		if offset >= HistoryDepthCapWeeks {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"weeks":    []WeekSummary{},
+				"months":   []MonthSummary{},
+				"limit":    limit,
+				"offset":   offset,
+				"has_more": false,
+			})
+			return
+		}
+		// Clamp the page so it never extends past the depth cap.
+		if offset+limit > HistoryDepthCapWeeks {
+			limit = HistoryDepthCapWeeks - offset
+		}
+
+		weeks, months, hasMore, err := GetPlanHistory(db, user.ID, limit, offset)
 		if err != nil {
 			log.Printf("stride: plan history for user %d: %v", user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load plan history"})
@@ -198,8 +235,11 @@ func PlanHistoryHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
-			"weeks":  weeks,
-			"months": months,
+			"weeks":    weeks,
+			"months":   months,
+			"limit":    limit,
+			"offset":   offset,
+			"has_more": hasMore,
 		})
 	}
 }
