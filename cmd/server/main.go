@@ -148,35 +148,6 @@ func main() {
 		}
 	}()
 
-	// Schedule nightly Stride evaluation at 03:00 Europe/Oslo.
-	// Evaluates workouts from the previous day against their planned sessions
-	// and sends push notifications for critical flags.
-	go func() {
-		oslo, err := time.LoadLocation("Europe/Oslo")
-		if err != nil {
-			log.Printf("stride eval: failed to load Europe/Oslo timezone: %v", err)
-			return
-		}
-		for {
-			next := stride.NextNightlyEvaluationRun(time.Now(), oslo)
-			timer := time.NewTimer(time.Until(next))
-			select {
-			case <-notifCtx.Done():
-				timer.Stop()
-				return
-			case <-timer.C:
-				evalHTTPClient := &http.Client{Timeout: 120 * time.Second}
-				evalCtx, evalCancel := context.WithTimeout(notifCtx, 10*time.Minute)
-				if err := stride.RunNightlyEvaluation(evalCtx, database, evalHTTPClient); err != nil {
-					log.Printf("stride eval: nightly evaluation error: %v", err)
-				} else {
-					log.Println("stride eval: nightly evaluation complete")
-				}
-				evalCancel()
-			}
-		}
-	}()
-
 	// Schedule nightly suggestion rotation at 03:00 Europe/Oslo.
 	// For each admin user with Claude enabled, pick a rotation slice from the
 	// eligible page registry and run RunSuggestionsForPages with a 30-minute

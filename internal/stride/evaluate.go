@@ -45,21 +45,6 @@ type Evaluation struct {
 	Date        string   `json:"date,omitempty"` // date (YYYY-MM-DD) for rest_day/missed evaluations without a workout
 }
 
-// NextNightlyEvaluationRun returns the next time the nightly evaluation cron should fire
-// (daily at 03:00 in the given location). If today's target time is still in the future,
-// it returns today's run; otherwise it returns the next day's run.
-func NextNightlyEvaluationRun(now time.Time, loc *time.Location) time.Time {
-	if loc == nil {
-		loc = time.UTC
-	}
-	now = now.In(loc)
-	todayRun := time.Date(now.Year(), now.Month(), now.Day(), 3, 0, 0, 0, loc)
-	if now.Before(todayRun) {
-		return todayRun
-	}
-	return todayRun.AddDate(0, 0, 1)
-}
-
 // EvaluateWorkout calls Claude to assess how well a completed workout matched its planned session.
 // matchedSession may be nil for bonus (unplanned) workouts or when no plan exists.
 // plan is used for weekly context; an empty Plan (ID == 0) is acceptable.
@@ -87,45 +72,6 @@ func EvaluateWorkout(
 	}
 
 	return eval, nil
-}
-
-// RunNightlyEvaluation queries all users with stride enabled, finds workouts from the
-// past day that have not yet been evaluated, evaluates each one using Claude, stores the
-// result, and sends push notifications for any critical flags.
-func RunNightlyEvaluation(ctx context.Context, db *sql.DB, httpClient *http.Client) error {
-	rows, err := db.QueryContext(ctx,
-		`SELECT DISTINCT user_id FROM user_preferences WHERE key='stride_enabled' AND value='true'`)
-	if err != nil {
-		return fmt.Errorf("query stride users: %w", err)
-	}
-	var userIDs []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			log.Printf("stride eval: scan user id: %v", err)
-			continue
-		}
-		userIDs = append(userIDs, id)
-	}
-	if err := rows.Err(); err != nil {
-		log.Printf("stride eval: rows error: %v", err)
-	}
-	rows.Close()
-
-	// Evaluate yesterday using explicit UTC day boundaries. The nightly job runs
-	// at 03:00, but the evaluation target is the full UTC day that just ended,
-	// not the last 24 hours from the current time.
-	todayStart := time.Now().UTC().Truncate(24 * time.Hour)
-	yesterdayStart := todayStart.AddDate(0, 0, -1)
-	since := yesterdayStart.Format(time.RFC3339)
-	targetDate := yesterdayStart.Format("2006-01-02")
-
-	for _, userID := range userIDs {
-		if err := evaluateUserWorkouts(ctx, db, httpClient, userID, since, targetDate); err != nil {
-			log.Printf("stride eval: user %d: %v", userID, err)
-		}
-	}
-	return nil
 }
 
 // RunUserEvaluation evaluates unevaluated workouts for a single user from the past 24 hours.
@@ -158,72 +104,6 @@ func RunUserEvaluation(ctx context.Context, db *sql.DB, httpClient *http.Client,
 		cancel()
 	}
 	return evaluated, nil
-}
-
-// evaluateUserWorkouts processes all unevaluated workouts for a single user since the given timestamp,
-// then checks for rest days and missed sessions on the target date (yesterday for nightly runs).
-func evaluateUserWorkouts(ctx context.Context, db *sql.DB, httpClient *http.Client, userID int64, since string, targetDate string) error {
-	claudeCfg, err := training.LoadClaudeConfig(db, userID)
-	if err != nil {
-		return fmt.Errorf("load claude config: %w", err)
-	}
-	if !claudeCfg.Enabled {
-		return nil
-	}
-
-	workouts, err := queryUnevaluatedWorkouts(ctx, db, userID, since)
-	if err != nil {
-		return fmt.Errorf("query unevaluated workouts: %w", err)
-	}
-
-	// Fetch unconsumed notes routed to the nightly evaluation (or 'any').
-	userNotes, err := ListNotes(db, userID, nil, "active", NoteScopeNightly)
-	if err != nil {
-		log.Printf("stride eval: fetch notes for user %d: %v", userID, err)
-		// Non-fatal — continue without notes.
-	}
-
-	if len(workouts) > 0 {
-		profile := training.BuildUserTrainingProfile(db, userID)
-
-		anySuccess := false
-		for _, workout := range workouts {
-			evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
-			if err := evaluateSingleWorkout(evalCtx, db, httpClient, userID, workout, claudeCfg, profile, userNotes); err != nil {
-				log.Printf("stride eval: workout %d for user %d: %v", workout.ID, userID, err)
-			} else {
-				anySuccess = true
-			}
-			cancel()
-		}
-
-		// Mark notes consumed once per user per nightly run, only when notes were
-		// actually sent to Claude (workouts existed and at least one succeeded).
-		if anySuccess && len(userNotes) > 0 {
-			noteIDs := make([]int64, len(userNotes))
-			for i, n := range userNotes {
-				noteIDs[i] = n.ID
-			}
-			tx, err := db.BeginTx(ctx, nil)
-			if err != nil {
-				log.Printf("stride eval: begin tx to mark notes consumed for user %d: %v", userID, err)
-			} else {
-				defer tx.Rollback()
-				if err := MarkNotesConsumed(ctx, tx, userID, noteIDs, "nightly"); err != nil {
-					log.Printf("stride eval: mark notes consumed for user %d: %v", userID, err)
-				} else if err := tx.Commit(); err != nil {
-					log.Printf("stride eval: commit notes consumed for user %d: %v", userID, err)
-				}
-			}
-		}
-	}
-
-	// Check for rest days and missed sessions on the target date.
-	if err := evaluateRestDaysAndMissedSessions(ctx, db, claudeCfg, userID, targetDate); err != nil {
-		log.Printf("stride eval: rest/missed check for user %d: %v", userID, err)
-	}
-
-	return nil
 }
 
 // queryWorkoutsOnDate returns all workouts for a user that started on the given
@@ -489,7 +369,7 @@ func ReEvaluateDate(ctx context.Context, db *sql.DB, httpClient *http.Client, us
 // Returns nil, nil when the date has neither a planned session nor a rest day
 // (nothing to evaluate). When the user left notes for the date and Claude is
 // available, it asks Claude for a contextual evaluation; otherwise it returns
-// the static template used by the nightly job.
+// a static template.
 func buildDateEval(ctx context.Context, claudeCfg *training.ClaudeConfig, plan Plan, date string, notes []Note) (*Evaluation, error) {
 	session, isRestDay := PlannedSessionForDate(plan, date)
 	if !isRestDay && session == nil {
@@ -746,136 +626,6 @@ func storeEvaluation(ctx context.Context, db *sql.DB, userID, workoutID, planID 
 	return err
 }
 
-// storeEvaluationForDate encrypts and inserts an Evaluation record with no associated workout.
-// Used for rest day and missed session evaluations.
-func storeEvaluationForDate(ctx context.Context, db *sql.DB, userID, planID int64, eval *Evaluation) error {
-	evalBytes, err := json.Marshal(eval)
-	if err != nil {
-		return fmt.Errorf("marshal eval: %w", err)
-	}
-	encEval, err := encryption.EncryptField(string(evalBytes))
-	if err != nil {
-		return fmt.Errorf("encrypt eval: %w", err)
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO stride_evaluations (user_id, plan_id, workout_id, eval_json, created_at)
-		VALUES (?, ?, NULL, ?, ?)
-	`, userID, planID, encEval, now)
-	return err
-}
-
-// hasDateEvaluation checks whether a non-workout evaluation already exists for
-// the given user and plan created on or after the given timestamp. This prevents
-// duplicate rest_day/missed evaluations when nightly eval runs more than once.
-func hasDateEvaluation(ctx context.Context, db *sql.DB, userID, planID int64, since string) (bool, error) {
-	var count int
-	err := db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM stride_evaluations
-		WHERE user_id = ? AND plan_id = ? AND workout_id IS NULL AND created_at >= ?
-	`, userID, planID, since).Scan(&count)
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
-}
-
-// evaluateRestDaysAndMissedSessions checks whether the target date was a rest day or had a
-// planned session with no matching workout, and creates an appropriate evaluation.
-// When user notes exist for the target date, it calls Claude for a contextual evaluation
-// instead of using template strings.
-func evaluateRestDaysAndMissedSessions(ctx context.Context, db *sql.DB, claudeCfg *training.ClaudeConfig, userID int64, date string) error {
-	plan, err := getPlanContainingDate(ctx, db, userID, date)
-	if err != nil {
-		return fmt.Errorf("find plan for date %s: %w", date, err)
-	}
-	if plan == nil {
-		return nil
-	}
-
-	// Check if we already created a non-workout evaluation for this date (idempotency).
-	dateStart := date + "T00:00:00Z"
-	exists, err := hasDateEvaluation(ctx, db, userID, plan.ID, dateStart)
-	if err != nil {
-		return fmt.Errorf("check existing date evaluation: %w", err)
-	}
-	if exists {
-		return nil
-	}
-
-	session, isRestDay := PlannedSessionForDate(*plan, date)
-
-	// Check if any workout exists for this date.
-	hasWorkout, err := hasWorkoutOnDate(ctx, db, userID, date)
-	if err != nil {
-		return fmt.Errorf("check workouts for date %s: %w", date, err)
-	}
-
-	if hasWorkout {
-		// A workout was uploaded for this date — the regular evaluation path handles it.
-		return nil
-	}
-
-	// Fetch user notes targeting this date for contextual evaluation.
-	// Filter to nightly-scoped notes so weekly-only notes are not consumed here.
-	rawNotes, err := GetNotesByTargetDate(db, userID, date)
-	if err != nil {
-		log.Printf("stride eval: fetch notes for user %d date %s: %v", userID, date, err)
-		// Non-fatal — fall through to template evaluation.
-	}
-	userNotes := filterNightlyNotes(rawNotes)
-
-	if isRestDay {
-		eval := &Evaluation{
-			PlannedType: "rest",
-			ActualType:  "rest",
-			Compliance:  "rest_day",
-			Notes:       noteRestDay,
-			Flags:       []string{},
-			Adjustments: "",
-			Date:        date,
-		}
-		// If the user left notes on a rest day, use Claude for contextual evaluation.
-		if len(userNotes) > 0 && claudeCfg != nil && claudeCfg.Enabled {
-			if aiEval, err := evaluateDateWithNotes(ctx, claudeCfg, *plan, date, nil, userNotes, true); err != nil {
-				log.Printf("stride eval: Claude contextual rest-day eval for user %d date %s: %v; falling back to template", userID, date, err)
-			} else {
-				eval = aiEval
-			}
-		}
-		return storeEvaluationForDate(ctx, db, userID, plan.ID, eval)
-	}
-
-	if session != nil {
-		sessionType := "session"
-		if session.Session != nil && session.Session.Description != "" {
-			sessionType = session.Session.Description
-		}
-		eval := &Evaluation{
-			PlannedType: sessionType,
-			ActualType:  "none",
-			Compliance:  "missed",
-			Notes:       fmt.Sprintf(noteMissedSession, sessionType),
-			Flags:       []string{},
-			Adjustments: "",
-			Date:        date,
-		}
-		// If the user left notes explaining the miss, use Claude for contextual evaluation.
-		if len(userNotes) > 0 && claudeCfg != nil && claudeCfg.Enabled {
-			if aiEval, err := evaluateDateWithNotes(ctx, claudeCfg, *plan, date, session, userNotes, false); err != nil {
-				log.Printf("stride eval: Claude contextual missed-session eval for user %d date %s: %v; falling back to template", userID, date, err)
-			} else {
-				eval = aiEval
-			}
-		}
-		return storeEvaluationForDate(ctx, db, userID, plan.ID, eval)
-	}
-
-	return nil
-}
-
 // evaluateDateWithNotes calls Claude to produce a contextual evaluation for a date
 // where the user left notes but did not complete a workout. It considers the planned
 // session, the user's notes, and whether it was a rest day.
@@ -959,26 +709,6 @@ Output ONLY the JSON object, no other text.
 `)
 
 	return sb.String()
-}
-
-// hasWorkoutOnDate checks whether any workout exists for the given user on the specified date.
-func hasWorkoutOnDate(ctx context.Context, db *sql.DB, userID int64, date string) (bool, error) {
-	dateStart := date + "T00:00:00Z"
-	// Use exclusive upper bound (start of next day) to cover the full 24 hours.
-	t, err := time.Parse("2006-01-02", date)
-	if err != nil {
-		return false, fmt.Errorf("parse date %q: %w", date, err)
-	}
-	nextDay := t.AddDate(0, 0, 1).Format("2006-01-02") + "T00:00:00Z"
-	var count int
-	err = db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM workouts
-		WHERE user_id = ? AND started_at >= ? AND started_at < ?
-	`, userID, dateStart, nextDay).Scan(&count)
-	if err != nil {
-		return false, err
-	}
-	return count > 0, nil
 }
 
 // filterNightlyNotes returns only notes whose scope is "any" or "nightly",
