@@ -77,19 +77,19 @@ func scheduleStrideEvalAfterContextSave(db *sql.DB, userID, workoutID int64) {
 		return
 	}
 
-	parsed, err := time.Parse(time.RFC3339, startedAt)
+	parsed, err := time.Parse(time.RFC3339Nano, startedAt)
 	if err != nil {
 		log.Printf("stride trigger: parse workout %d started_at %q: %v", workoutID, startedAt, err)
 		return
 	}
-	oslo, err := time.LoadLocation("Europe/Oslo")
-	if err != nil {
-		log.Printf("stride trigger: load Europe/Oslo timezone: %v", err)
-		return
-	}
-	date := parsed.In(oslo).Format("2006-01-02")
+	// Use UTC date to match Stride's queryWorkoutsOnDate which constructs UTC
+	// day boundaries (date + "T00:00:00Z"). Using an Oslo date for a workout
+	// near midnight would target the wrong UTC window and miss the workout.
+	date := parsed.UTC().Format("2006-01-02")
 
 	go func() {
+		claudeSemaphore <- struct{}{} // blocks until capacity is available
+		defer func() { <-claudeSemaphore }()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		if _, err := hook(ctx, db, strideEvalHTTPClient, userID, date); err != nil {

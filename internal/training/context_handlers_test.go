@@ -437,9 +437,11 @@ func setStrideEvalHook(t *testing.T, hook func(context.Context, *sql.DB, *http.C
 
 // TestScheduleStrideEvalAfterContextSave_Fires verifies the trigger spawns a
 // re-evaluation when both stride_enabled and Claude are on, and that the date
-// passed to the hook is the workout's started_at converted to Europe/Oslo —
-// not the UTC date. 2024-06-15T22:30:00Z is still 2024-06-15 in UTC but
-// 2024-06-16 in CEST, so a UTC-only path would pass the wrong date.
+// passed to the hook is the workout's UTC calendar day. Stride's
+// queryWorkoutsOnDate uses UTC day boundaries (date+"T00:00:00Z"), so the
+// trigger must pass the UTC date — not a local/Oslo date — to avoid querying
+// the wrong window. 2024-06-15T22:30:00Z is 2024-06-15 in UTC but 2024-06-16
+// in CEST; the hook must receive 2024-06-15.
 func TestScheduleStrideEvalAfterContextSave_Fires(t *testing.T) {
 	database := setupTestDB(t)
 	workoutID := createWorkoutForUser(t, database, 1, "stride-fires-hash")
@@ -471,8 +473,8 @@ func TestScheduleStrideEvalAfterContextSave_Fires(t *testing.T) {
 		if c.userID != 1 {
 			t.Errorf("user_id: got %d, want 1", c.userID)
 		}
-		if c.date != "2024-06-16" {
-			t.Errorf("date: got %q, want %q (Europe/Oslo)", c.date, "2024-06-16")
+		if c.date != "2024-06-15" {
+			t.Errorf("date: got %q, want %q (UTC)", c.date, "2024-06-15")
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout: stride re-evaluation did not fire within 2s")
