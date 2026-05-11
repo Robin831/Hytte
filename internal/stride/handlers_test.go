@@ -1525,6 +1525,102 @@ func TestPlanHistoryHandler_ZoneSecondsPopulated(t *testing.T) {
 	}
 }
 
+// insertTestWorkoutWithDistance inserts a workout row with a specific distance
+// and no HR data, returning its ID. Used for testing the distance bucketing.
+func insertTestWorkoutWithDistance(t *testing.T, db *sql.DB, userID int64, startedAt string, distanceMeters float64) int64 {
+	t.Helper()
+	res, err := db.Exec(`
+		INSERT INTO workouts (user_id, started_at, distance_meters, fit_file_hash)
+		VALUES (?, ?, ?, ?)
+	`, userID, startedAt, distanceMeters, "wd-"+startedAt+"-"+strconv.FormatFloat(distanceMeters, 'f', 0, 64))
+	if err != nil {
+		t.Fatalf("insertTestWorkoutWithDistance: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
+// TestPlanHistoryHandler_DistancePopulated verifies that total_distance_meters
+// sums positive-distance workouts within each week and excludes workouts with
+// distance_meters <= 0 and workouts outside the week range.
+func TestPlanHistoryHandler_DistancePopulated(t *testing.T) {
+	db := setupTestDB(t)
+
+	weekStart, weekEnd := pastWeekDates(1)
+	planJSON := `[{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true}]`
+	insertTestPlan(t, db, 1, weekStart, weekEnd, planJSON)
+
+	// Two workouts inside the week with positive distance.
+	insertTestWorkoutWithDistance(t, db, 1, weekStart+"T08:00:00Z", 5000)
+	insertTestWorkoutWithDistance(t, db, 1, weekStart+"T09:00:00Z", 3000)
+	// A workout with distance_meters <= 0 should be excluded.
+	insertTestWorkoutWithDistance(t, db, 1, weekStart+"T10:00:00Z", 0)
+	insertTestWorkoutWithDistance(t, db, 1, weekStart+"T11:00:00Z", -100)
+	// A workout outside the week (one day after week_end) should be excluded.
+	parsedEnd, _ := time.Parse("2006-01-02", weekEnd)
+	insertTestWorkoutWithDistance(t, db, 1, parsedEnd.AddDate(0, 0, 1).Format("2006-01-02")+"T08:00:00Z", 8000)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Weeks []WeekSummary `json:"weeks"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Weeks) != 1 {
+		t.Fatalf("expected 1 week, got %d", len(body.Weeks))
+	}
+	w := body.Weeks[0]
+	const want = 8000.0
+	if w.TotalDistanceMeters != want {
+		t.Errorf("total_distance_meters = %.1f, want %.1f", w.TotalDistanceMeters, want)
+	}
+}
+
+// TestPlanHistoryHandler_DistanceMultiWeek verifies that distances are bucketed
+// per week when multiple plan weeks are present on the same page.
+func TestPlanHistoryHandler_DistanceMultiWeek(t *testing.T) {
+	db := setupTestDB(t)
+
+	planJSON := `[{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true},{"rest_day":true}]`
+	ws1, we1 := pastWeekDates(1)
+	ws2, we2 := pastWeekDates(2)
+	insertTestPlan(t, db, 1, ws1, we1, planJSON)
+	insertTestPlan(t, db, 1, ws2, we2, planJSON)
+
+	// 10 km in week 1, 6 km in week 2.
+	insertTestWorkoutWithDistance(t, db, 1, ws1+"T08:00:00Z", 10000)
+	insertTestWorkoutWithDistance(t, db, 1, ws2+"T08:00:00Z", 6000)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/history", nil), 1)
+	rec := httptest.NewRecorder()
+	PlanHistoryHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Weeks []WeekSummary `json:"weeks"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Weeks) != 2 {
+		t.Fatalf("expected 2 weeks, got %d", len(body.Weeks))
+	}
+	// Weeks are newest-first.
+	if body.Weeks[0].TotalDistanceMeters != 10000 {
+		t.Errorf("week1 total_distance_meters = %.1f, want 10000", body.Weeks[0].TotalDistanceMeters)
+	}
+	if body.Weeks[1].TotalDistanceMeters != 6000 {
+		t.Errorf("week2 total_distance_meters = %.1f, want 6000", body.Weeks[1].TotalDistanceMeters)
+	}
+}
+
 // TestPlanHistoryHandler_DefaultsPreserveLegacyShape ensures the no-query-param
 // response continues to surface weeks/months exactly as before, with the new
 // fields present as additive metadata that older clients can ignore.

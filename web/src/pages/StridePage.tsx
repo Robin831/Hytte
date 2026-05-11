@@ -337,9 +337,8 @@ interface WeekSummary {
   easy_seconds?: number
   threshold_seconds?: number
   hard_seconds?: number
-  // Optional total distance across the week's workouts (meters). The backend
-  // pagination response does not yet emit this; consumed defensively so future
-  // additions surface without a frontend change.
+  // Optional total distance across the week's workouts (meters). Emitted by
+  // /api/stride/history for all pages; kept optional for type safety.
   total_distance_meters?: number
 }
 
@@ -372,6 +371,8 @@ interface WeekRowProps {
 
 function WeekRow({ week, onOpen }: WeekRowProps) {
   const { t } = useTranslation('stride')
+  const zoneTooltipId = useId()
+  const [zoneTooltipVisible, setZoneTooltipVisible] = useState(false)
   const pct = Math.min(Math.max(Math.round(Number(week.completion_rate) || 0), 0), 100)
   const chipClass = pct >= 80
     ? 'bg-green-500/20 text-green-300 border border-green-500/30'
@@ -424,20 +425,39 @@ function WeekRow({ week, onOpen }: WeekRowProps) {
           <span className="text-gray-200">{formatHHMM(totalSec)}</span>
         </span>
       </div>
-      <div
-        className="mt-2 h-1.5 w-full flex rounded-full overflow-hidden bg-gray-700"
-        role="img"
-        aria-label={zoneTooltip}
-        title={zoneTooltip}
-        tabIndex={0}
-      >
-        {totalSec > 0 ? (
-          <>
-            {easy > 0 && <div style={{ flexBasis: `${(easy / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_EASY }} className="h-full" />}
-            {threshold > 0 && <div style={{ flexBasis: `${(threshold / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_THRESHOLD }} className="h-full" />}
-            {hard > 0 && <div style={{ flexBasis: `${(hard / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_HARD }} className="h-full" />}
-          </>
-        ) : null}
+      <div className="relative mt-2">
+        <div
+          className="h-1.5 w-full flex rounded-full overflow-hidden bg-gray-700"
+          role="img"
+          aria-label={zoneTooltip}
+          aria-describedby={totalSec > 0 ? zoneTooltipId : undefined}
+          tabIndex={0}
+          onMouseEnter={() => setZoneTooltipVisible(true)}
+          onMouseLeave={() => setZoneTooltipVisible(false)}
+          onFocus={() => setZoneTooltipVisible(true)}
+          onBlur={() => setZoneTooltipVisible(false)}
+        >
+          {totalSec > 0 ? (
+            <>
+              {easy > 0 && <div style={{ flexBasis: `${(easy / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_EASY }} className="h-full" />}
+              {threshold > 0 && <div style={{ flexBasis: `${(threshold / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_THRESHOLD }} className="h-full" />}
+              {hard > 0 && <div style={{ flexBasis: `${(hard / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_HARD }} className="h-full" />}
+            </>
+          ) : null}
+        </div>
+        {totalSec > 0 && (
+          <div
+            id={zoneTooltipId}
+            role="tooltip"
+            aria-hidden={!zoneTooltipVisible}
+            className={
+              'absolute left-0 bottom-full mb-2 px-2.5 py-1.5 bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded-lg pointer-events-none z-10 whitespace-nowrap shadow-lg transition-opacity ' +
+              (zoneTooltipVisible ? 'opacity-100 visible' : 'opacity-0 invisible')
+            }
+          >
+            {zoneTooltip}
+          </div>
+        )}
       </div>
     </>
   )

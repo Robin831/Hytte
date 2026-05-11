@@ -1244,8 +1244,8 @@ func computeWeeksZoneSeconds(db *sql.DB, userID int64, weeks []weekRange, zoneBo
 
 // computeWeeksDistanceMeters sums distance_meters across all workouts for each
 // of the given week ranges, returning a map keyed by weekStart. Workouts with
-// no recorded distance (distance_meters <= 0) are included with zero
-// contribution. All workouts — regardless of HR data — are counted.
+// distance_meters <= 0 are skipped. All workouts — regardless of HR data — are
+// counted.
 func computeWeeksDistanceMeters(db *sql.DB, userID int64, weeks []weekRange) (map[string]float64, error) {
 	result := make(map[string]float64, len(weeks))
 	if len(weeks) == 0 {
@@ -1285,6 +1285,9 @@ func computeWeeksDistanceMeters(db *sql.DB, userID int64, weeks []weekRange) (ma
 		var dist float64
 		if err := rows.Scan(&startedAt, &dist); err != nil {
 			return nil, fmt.Errorf("scan workout distance row: %w", err)
+		}
+		if dist <= 0 {
+			continue
 		}
 		date := startedAt
 		if len(date) > 10 {
