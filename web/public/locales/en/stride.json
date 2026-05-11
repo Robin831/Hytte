@@ -110,6 +110,11 @@
       "loadMore": "Load older weeks",
       "loadingMore": "Loading older weeks…"
     },
+    "weekModal": {
+      "title": "Week details",
+      "close": "Close",
+      "evalLoadError": "Evaluations could not be loaded for this week."
+    },
     "month": {
       "sessions": "{{completed}} / {{planned}} sessions"
     },

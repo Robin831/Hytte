@@ -8,6 +8,7 @@ interface DialogProps {
   onClose: () => void
   children: React.ReactNode
   className?: string
+  overlayClassName?: string
   maxWidth?: string
   'aria-labelledby'?: string
   'aria-describedby'?: string
@@ -18,6 +19,7 @@ function Dialog({
   onClose,
   children,
   className,
+  overlayClassName,
   maxWidth = 'max-w-md',
   'aria-labelledby': ariaLabelledby,
   'aria-describedby': ariaDescribedby,
@@ -92,7 +94,7 @@ function Dialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className={cn('fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4', overlayClassName)}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       <div

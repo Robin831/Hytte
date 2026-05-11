@@ -110,6 +110,11 @@
       "loadMore": "Last eldre uker",
       "loadingMore": "Laster eldre uker…"
     },
+    "weekModal": {
+      "title": "Ukedetaljer",
+      "close": "Lukk",
+      "evalLoadError": "Evalueringer kunne ikke lastes for denne uken."
+    },
     "month": {
       "sessions": "{{completed}} / {{planned}} økter"
     },

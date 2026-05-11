@@ -1,0 +1,2 @@
+category: Changed
+- **Stride history rows open a week-details modal** - Click a row in Plan History to open a modal with the week's day-by-day plan, evaluations, coach notes, and any late-evaluated feedback that fell outside the plan's week. Works alongside the paginated dense summary rows on the same view; Escape and a footer Close button dismiss it, and the modal goes full-bleed on mobile. (Hytte-e313)
