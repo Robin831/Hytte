@@ -1,0 +1,2 @@
+category: Added
+- **Paginate `/api/stride/history` with offset and per-week zone seconds** - Added an `offset` query param (default 0), clamped `limit` server-side to 24, capped pagination depth at 156 weeks, and added a `has_more` field plus per-week `easy_seconds` / `threshold_seconds` / `hard_seconds` to the response. The default (no-offset) response shape is preserved so older clients keep working. (Hytte-va3f)

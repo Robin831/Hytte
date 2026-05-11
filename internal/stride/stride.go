@@ -11,7 +11,21 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/Robin831/Hytte/internal/hrzones"
 	"github.com/Robin831/Hytte/internal/training"
+)
+
+// History pagination limits for GetPlanHistory and PlanHistoryHandler.
+const (
+	// HistoryDefaultLimit is the default number of weeks returned per page
+	// when the client does not specify a limit.
+	HistoryDefaultLimit = 12
+	// HistoryMaxLimit is the server-side cap on the per-page weeks limit.
+	// Oversized client requests are clamped to this value.
+	HistoryMaxLimit = 24
+	// HistoryDepthCapWeeks is the maximum total pagination depth in weeks.
+	// Pages beyond this depth return an empty page with has_more=false.
+	HistoryDepthCapWeeks = 156
 )
 
 // Race represents an upcoming race in the user's race calendar.
@@ -864,6 +878,10 @@ func ListEvaluations(db *sql.DB, userID int64, planID *int64, workoutID *int64) 
 }
 
 // WeekSummary holds completion statistics for a single historical training week.
+// EasySeconds/ThresholdSeconds/HardSeconds aggregate duration_seconds across the
+// week's workouts, bucketed by avg_heart_rate against the user's HR zone
+// boundaries (zones 1-2 → easy, zones 3-4 → threshold, zone 5 → hard).
+// Workouts without a usable avg_heart_rate are excluded from these buckets.
 type WeekSummary struct {
 	PlanID            int64   `json:"plan_id"`
 	WeekStart         string  `json:"week_start"`
@@ -872,6 +890,9 @@ type WeekSummary struct {
 	SessionsPlanned   int     `json:"sessions_planned"`
 	SessionsCompleted int     `json:"sessions_completed"`
 	CompletionRate    float64 `json:"completion_rate"`
+	EasySeconds       int     `json:"easy_seconds"`
+	ThresholdSeconds  int     `json:"threshold_seconds"`
+	HardSeconds       int     `json:"hard_seconds"`
 }
 
 // MonthSummary aggregates completion data across all weeks in a calendar month.
@@ -884,8 +905,14 @@ type MonthSummary struct {
 
 // GetPlanHistory returns past weeks' plans with per-week completion metadata
 // and per-month compliance rollups. Plans for the current week are excluded.
-// limit caps the number of weeks returned (most recent first).
-func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []MonthSummary, error) {
+// limit caps the number of weeks returned (most recent first); offset skips
+// that many older weeks from the head of the result set (0 = most recent page).
+// hasMore is true when more weeks exist beyond offset+limit and the next page
+// would still fall within the depth cap.
+//
+// Caller is expected to clamp limit to HistoryMaxLimit and offset to
+// HistoryDepthCapWeeks before invoking — this function trusts its inputs.
+func GetPlanHistory(db *sql.DB, userID int64, limit, offset int) ([]WeekSummary, []MonthSummary, bool, error) {
 	// Compute the Monday of the current week so we exclude the current plan
 	// even on Sunday (when week_end == today). Plans whose week_end falls on
 	// or after this Monday are still active or in the current week.
@@ -896,15 +923,17 @@ func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []Month
 	}
 	currentWeekStart := now.AddDate(0, 0, -(weekday - 1)).Format("2006-01-02")
 
+	// Probe one extra row beyond the requested page to detect more pages.
+	probeLimit := limit + 1
 	rows, err := db.Query(`
 		SELECT id, week_start, week_end, phase, plan_json
 		FROM stride_plans
 		WHERE user_id = ? AND week_end < ?
 		ORDER BY week_start DESC
-		LIMIT ?
-	`, userID, currentWeekStart, limit)
+		LIMIT ? OFFSET ?
+	`, userID, currentWeekStart, probeLimit, offset)
 	if err != nil {
-		return nil, nil, fmt.Errorf("query plan history: %w", err)
+		return nil, nil, false, fmt.Errorf("query plan history: %w", err)
 	}
 	defer rows.Close()
 
@@ -919,17 +948,28 @@ func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []Month
 	for rows.Next() {
 		var pr planRow
 		if err := rows.Scan(&pr.id, &pr.weekStart, &pr.weekEnd, &pr.phase, &pr.planJSON); err != nil {
-			return nil, nil, fmt.Errorf("scan plan row: %w", err)
+			return nil, nil, false, fmt.Errorf("scan plan row: %w", err)
 		}
 		planRows = append(planRows, pr)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
+	}
+
+	// Detect whether more rows exist beyond this page, then trim the probe row.
+	hasMore := len(planRows) > limit
+	if hasMore {
+		planRows = planRows[:limit]
+	}
+	// Cap pagination depth: even if more rows exist, do not advertise pages
+	// beyond HistoryDepthCapWeeks weeks of history.
+	if offset+limit >= HistoryDepthCapWeeks {
+		hasMore = false
 	}
 
 	// Collect all plan IDs for a single evaluations query.
 	if len(planRows) == 0 {
-		return []WeekSummary{}, []MonthSummary{}, nil
+		return []WeekSummary{}, []MonthSummary{}, false, nil
 	}
 
 	planIDs := make([]int64, len(planRows))
@@ -959,7 +999,7 @@ func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []Month
 		inClause...,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("query evaluations for history: %w", err)
+		return nil, nil, false, fmt.Errorf("query evaluations for history: %w", err)
 	}
 	defer evalRows.Close()
 
@@ -971,7 +1011,7 @@ func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []Month
 		var workoutID sql.NullInt64
 		var encJSON string
 		if err := evalRows.Scan(&planID, &workoutID, &encJSON); err != nil {
-			return nil, nil, fmt.Errorf("scan evaluation row: %w", err)
+			return nil, nil, false, fmt.Errorf("scan evaluation row: %w", err)
 		}
 		// Skip duplicate evaluations for the same workout within a plan.
 		if workoutID.Valid {
@@ -985,11 +1025,11 @@ func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []Month
 		}
 		decJSON, err := encryption.DecryptField(encJSON)
 		if err != nil {
-			return nil, nil, fmt.Errorf("decrypt eval_json: %w", err)
+			return nil, nil, false, fmt.Errorf("decrypt eval_json: %w", err)
 		}
 		var eval Evaluation
 		if err := json.Unmarshal([]byte(decJSON), &eval); err != nil {
-			return nil, nil, fmt.Errorf("unmarshal eval: %w", err)
+			return nil, nil, false, fmt.Errorf("unmarshal eval: %w", err)
 		}
 		// Only count planned sessions completed as compliant or partial; exclude bonus workouts.
 		if (eval.Compliance == "compliant" || eval.Compliance == "partial") && eval.PlannedType != "none" {
@@ -997,14 +1037,24 @@ func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []Month
 		}
 	}
 	if err := evalRows.Err(); err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
+	}
+
+	// Load user HR zone boundaries once for bucketing weekly workouts into
+	// easy/threshold/hard buckets. If zones cannot be resolved (no max_hr and
+	// no custom boundaries), zone seconds remain zero — the per-week buckets
+	// are still emitted with zero values for a stable response shape.
+	zoneBoundaries, zoneErr := hrzones.GetUserZones(db, userID)
+	if zoneErr != nil {
+		log.Printf("stride: load HR zones for user %d: %v", userID, zoneErr)
+		zoneBoundaries = nil
 	}
 
 	weeks := make([]WeekSummary, 0, len(planRows))
 	for _, pr := range planRows {
 		var days []DayPlan
 		if err := json.Unmarshal([]byte(pr.planJSON), &days); err != nil {
-			return nil, nil, fmt.Errorf("decode stride plan_json for plan %d: %w", pr.id, err)
+			return nil, nil, false, fmt.Errorf("decode stride plan_json for plan %d: %w", pr.id, err)
 		}
 		sessionsPlanned := 0
 		for _, d := range days {
@@ -1017,6 +1067,10 @@ func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []Month
 		if sessionsPlanned > 0 {
 			rate = float64(completed) / float64(sessionsPlanned) * 100
 		}
+		easy, threshold, hard, err := computeWeekZoneSeconds(db, userID, pr.weekStart, pr.weekEnd, zoneBoundaries)
+		if err != nil {
+			return nil, nil, false, fmt.Errorf("compute zone seconds for plan %d: %w", pr.id, err)
+		}
 		weeks = append(weeks, WeekSummary{
 			PlanID:            pr.id,
 			WeekStart:         pr.weekStart,
@@ -1025,6 +1079,9 @@ func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []Month
 			SessionsPlanned:   sessionsPlanned,
 			SessionsCompleted: completed,
 			CompletionRate:    rate,
+			EasySeconds:       easy,
+			ThresholdSeconds:  threshold,
+			HardSeconds:       hard,
 		})
 	}
 
@@ -1053,7 +1110,86 @@ func GetPlanHistory(db *sql.DB, userID int64, limit int) ([]WeekSummary, []Month
 		months = append(months, *m)
 	}
 
-	return weeks, months, nil
+	return weeks, months, hasMore, nil
+}
+
+// computeWeekZoneSeconds sums duration_seconds across the workouts that
+// occurred within [weekStart, weekEnd] inclusive (date-only comparison) for the
+// user, bucketing each workout's full duration by its avg_heart_rate against
+// the provided 5-zone boundaries:
+//
+//	easy      = zones 1-2 (avg_hr below zone 3's lower bound)
+//	threshold = zones 3-4 (avg_hr below zone 5's lower bound)
+//	hard      = zone  5   (avg_hr at or above zone 5's lower bound)
+//
+// Workouts with avg_heart_rate <= 0 are excluded. When zoneBoundaries is empty
+// (user has no max_hr configured and no custom zones), all buckets return 0.
+func computeWeekZoneSeconds(db *sql.DB, userID int64, weekStart, weekEnd string, zoneBoundaries []hrzones.ZoneBoundary) (int, int, int, error) {
+	if len(zoneBoundaries) == 0 {
+		return 0, 0, 0, nil
+	}
+
+	// Resolve zone 3 and zone 5 lower bounds. Zone numbers are 1-5 and may be
+	// stored in any order; iterate rather than assuming index == zone-1.
+	var zone3Min, zone5Min int
+	var have3, have5 bool
+	for _, z := range zoneBoundaries {
+		switch z.Zone {
+		case 3:
+			zone3Min = z.MinBPM
+			have3 = true
+		case 5:
+			zone5Min = z.MinBPM
+			have5 = true
+		}
+	}
+	if !have3 || !have5 {
+		return 0, 0, 0, nil
+	}
+
+	// Compare against the day after week_end so workouts logged late on the
+	// last day of the week are included regardless of timestamp format.
+	endParsed, err := time.Parse("2006-01-02", weekEnd)
+	if err != nil {
+		return 0, 0, 0, nil
+	}
+	exclusiveEnd := endParsed.AddDate(0, 0, 1).Format("2006-01-02")
+
+	rows, err := db.Query(`
+		SELECT duration_seconds, avg_heart_rate
+		FROM workouts
+		WHERE user_id = ?
+		  AND started_at >= ?
+		  AND started_at < ?
+	`, userID, weekStart, exclusiveEnd)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("query weekly workouts: %w", err)
+	}
+	defer rows.Close()
+
+	var easy, threshold, hard int
+	for rows.Next() {
+		var dur int
+		var avgHR int
+		if err := rows.Scan(&dur, &avgHR); err != nil {
+			return 0, 0, 0, fmt.Errorf("scan weekly workout row: %w", err)
+		}
+		if dur <= 0 || avgHR <= 0 {
+			continue
+		}
+		switch {
+		case avgHR < zone3Min:
+			easy += dur
+		case avgHR < zone5Min:
+			threshold += dur
+		default:
+			hard += dur
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, 0, err
+	}
+	return easy, threshold, hard, nil
 }
 
 // getPlanByWeekStart returns the plan for a specific week_start, scoped to the user.
