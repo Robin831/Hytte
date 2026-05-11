@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, Trophy, Zap, ChevronDown, ChevronUp, ChevronRight, RefreshCw, CheckCircle2, Circle, AlertTriangle, XCircle, History, Pencil, Loader2 } from 'lucide-react'
-import { formatDate, formatDateTime } from '../utils/formatDate'
+import { formatDate, formatDateTime, formatNumber } from '../utils/formatDate'
 import type { StrideEvaluation, StrideEvaluationRecord, DayPlan } from '../types/stride'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { TrainingBlockTimeline } from '../components/stride/TrainingBlockTimeline'
@@ -417,7 +417,7 @@ function WeekRow({ week, onOpen }: WeekRowProps) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-gray-400">
         <span>
           <span className="text-gray-500">{t('history.week.totalDistance')}:</span>{' '}
-          <span className="text-gray-200">{distanceKm.toFixed(1)} km</span>
+          <span className="text-gray-200">{formatNumber(distanceKm, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km</span>
         </span>
         <span>
           <span className="text-gray-500">{t('history.week.totalTime')}:</span>{' '}
@@ -473,6 +473,7 @@ function PlanHistory() {
   const [error, setError] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [loadMoreError, setLoadMoreError] = useState(false)
+  const loadMoreControllerRef = useRef<AbortController | null>(null)
 
   const fetchWeeks = useCallback(async (
     pageOffset: number,
@@ -509,23 +510,33 @@ function PlanHistory() {
         if (!controller.signal.aborted) setLoading(false)
       }
     })()
-    return () => { controller.abort() }
+    return () => {
+      controller.abort()
+      loadMoreControllerRef.current?.abort()
+      loadMoreControllerRef.current = null
+    }
   }, [fetchWeeks])
 
   const handleLoadMore = useCallback(async () => {
+    loadMoreControllerRef.current?.abort()
+    const controller = new AbortController()
+    loadMoreControllerRef.current = controller
     setLoadMoreError(false)
     setLoadingMore(true)
     try {
-      const result = await fetchWeeks(offset)
-      if (!result) return
+      const result = await fetchWeeks(offset, controller.signal)
+      if (!result || controller.signal.aborted) return
       setWeeks(prev => [...prev, ...result.weeks])
       setHasMore(result.hasMore)
       setOffset(prev => prev + result.weeks.length)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
-      setLoadMoreError(true)
+      if (!controller.signal.aborted) setLoadMoreError(true)
     } finally {
-      setLoadingMore(false)
+      if (!controller.signal.aborted) setLoadingMore(false)
+      if (loadMoreControllerRef.current === controller) {
+        loadMoreControllerRef.current = null
+      }
     }
   }, [fetchWeeks, offset])
 
