@@ -4,7 +4,8 @@ import { AlertTriangle, Loader2 } from 'lucide-react'
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from '../ui/dialog'
 import { formatDate } from '../../utils/formatDate'
 import type { DayPlan, StrideEvaluationRecord, WeekSummary } from '../../types/stride'
-import { DayCard, complianceBadgeClass, complianceIcon, flagIsSevere } from './DayCard'
+import { DayCard } from './DayCard'
+import { complianceBadgeClass, complianceIcon, flagIsSevere } from './strideHelpers'
 
 interface PlanResponse {
   id: number
@@ -35,12 +36,7 @@ export function WeekDetailsModal({ week, workoutIdToDate, onClose }: WeekDetails
   const planId = week?.plan_id
 
   useEffect(() => {
-    if (!planId) {
-      setPlan(null)
-      setEvaluations([])
-      setError(false)
-      return
-    }
+    if (!planId) return
     const controller = new AbortController()
     setLoading(true)
     setError(false)
