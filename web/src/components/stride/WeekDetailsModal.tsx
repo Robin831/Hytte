@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useReducer } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { Dialog, DialogBody, DialogFooter, DialogHeader } from '../ui/dialog'
@@ -18,6 +18,26 @@ interface PlanResponse {
   created_at: string
 }
 
+type FetchState = {
+  plan: PlanResponse | null
+  evaluations: StrideEvaluationRecord[]
+  loading: boolean
+  error: boolean
+}
+
+type FetchAction =
+  | { type: 'start' }
+  | { type: 'success'; plan: PlanResponse | null; evaluations: StrideEvaluationRecord[] }
+  | { type: 'error' }
+
+function fetchReducer(_state: FetchState, action: FetchAction): FetchState {
+  switch (action.type) {
+    case 'start': return { plan: null, evaluations: [], loading: true, error: false }
+    case 'success': return { plan: action.plan, evaluations: action.evaluations, loading: false, error: false }
+    case 'error': return { plan: null, evaluations: [], loading: false, error: true }
+  }
+}
+
 interface WeekDetailsModalProps {
   week: WeekSummary | null
   workoutIdToDate: Map<number, string>
@@ -28,20 +48,19 @@ export function WeekDetailsModal({ week, workoutIdToDate, onClose }: WeekDetails
   const { t } = useTranslation('stride')
   const titleId = useId()
 
-  const [plan, setPlan] = useState<PlanResponse | null>(null)
-  const [evaluations, setEvaluations] = useState<StrideEvaluationRecord[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(false)
+  const [{ plan, evaluations, loading, error }, dispatch] = useReducer(fetchReducer, {
+    plan: null,
+    evaluations: [],
+    loading: false,
+    error: false,
+  })
 
   const planId = week?.plan_id
 
   useEffect(() => {
     if (!planId) return
     const controller = new AbortController()
-    setLoading(true)
-    setError(false)
-    setPlan(null)
-    setEvaluations([])
+    dispatch({ type: 'start' })
     ;(async () => {
       try {
         const [planRes, evalRes] = await Promise.all([
@@ -53,13 +72,14 @@ export function WeekDetailsModal({ week, workoutIdToDate, onClose }: WeekDetails
         const planJson = await planRes.json()
         const evalJson = evalRes.ok ? await evalRes.json() : { evaluations: [] }
         if (controller.signal.aborted) return
-        setPlan((planJson.plan ?? null) as PlanResponse | null)
-        setEvaluations((evalJson.evaluations ?? []) as StrideEvaluationRecord[])
+        dispatch({
+          type: 'success',
+          plan: (planJson.plan ?? null) as PlanResponse | null,
+          evaluations: (evalJson.evaluations ?? []) as StrideEvaluationRecord[],
+        })
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        if (!controller.signal.aborted) setError(true)
-      } finally {
-        if (!controller.signal.aborted) setLoading(false)
+        if (!controller.signal.aborted) dispatch({ type: 'error' })
       }
     })()
     return () => {
