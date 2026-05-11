@@ -281,6 +281,18 @@ describe('StridePage – rendering data', () => {
       expect(screen.getByText('Coach Notes')).toBeInTheDocument()
     })
   })
+
+  // Regression guard for Hytte-0atr: the standalone "Previous week feedback"
+  // section was removed in favour of the weekly history modal. The same
+  // i18n string still renders inside the modal once a week row is opened,
+  // so this assertion only holds while no modal is open.
+  it('does not render the standalone previous-week-feedback section', async () => {
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Coach Notes')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Previous week feedback')).not.toBeInTheDocument()
+  })
 })
 
 describe('StridePage – past races', () => {
