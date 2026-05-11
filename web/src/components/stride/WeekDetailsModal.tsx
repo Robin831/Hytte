@@ -64,7 +64,6 @@ export function WeekDetailsModal({ week, workoutIdToDate, onClose }: WeekDetails
     })()
     return () => {
       controller.abort()
-      setLoading(false)
     }
   }, [planId])
 

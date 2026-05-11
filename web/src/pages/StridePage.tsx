@@ -7,7 +7,8 @@ import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tool
 import { TrainingBlockTimeline } from '../components/stride/TrainingBlockTimeline'
 import StrideChatDrawer from '../components/stride/StrideChatDrawer'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../components/ui/dialog'
-import { DayCard, complianceIcon, complianceBadgeClass, flagIsSevere } from '../components/stride/DayCard'
+import { DayCard } from '../components/stride/DayCard'
+import { complianceIcon, complianceBadgeClass, flagIsSevere } from '../components/stride/strideHelpers'
 import { WeekDetailsModal } from '../components/stride/WeekDetailsModal'
 
 interface Race {
@@ -186,7 +187,7 @@ function WeekRow({ week, onOpen }: WeekRowProps) {
           role="img"
           aria-label={zoneTooltip}
           aria-describedby={totalSec > 0 ? zoneTooltipId : undefined}
-          tabIndex={0}
+          tabIndex={interactive ? -1 : 0}
           onMouseEnter={() => setZoneTooltipVisible(true)}
           onMouseLeave={() => setZoneTooltipVisible(false)}
           onFocus={() => setZoneTooltipVisible(true)}
@@ -217,23 +218,33 @@ function WeekRow({ week, onOpen }: WeekRowProps) {
     </>
   )
 
+  const rowInner = (
+    <div className="flex items-center gap-3 p-3">
+      <div className="flex-1 min-w-0">{content}</div>
+      <ChevronRight
+        size={20}
+        className={`flex-shrink-0 ${interactive ? 'text-gray-500' : 'text-gray-600'}`}
+        aria-hidden="true"
+      />
+    </div>
+  )
+
+  if (interactive) {
+    return (
+      <button
+        type="button"
+        onClick={() => onOpen!(week)}
+        aria-label={openLabel}
+        className="w-full text-left bg-gray-800 rounded-xl border border-gray-700 hover:border-gray-600 transition-colors"
+      >
+        {rowInner}
+      </button>
+    )
+  }
+
   return (
     <div className="bg-gray-800 rounded-xl border border-gray-700">
-      <div className="flex items-center gap-3 p-3">
-        <div className="flex-1 min-w-0">{content}</div>
-        {interactive ? (
-          <button
-            type="button"
-            onClick={() => onOpen?.(week)}
-            aria-label={openLabel}
-            className="flex-shrink-0 p-1 rounded-lg text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
-          >
-            <ChevronRight size={20} />
-          </button>
-        ) : (
-          <ChevronRight size={20} className="flex-shrink-0 text-gray-600" aria-hidden="true" />
-        )}
-      </div>
+      {rowInner}
     </div>
   )
 }
