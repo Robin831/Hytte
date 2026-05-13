@@ -5,6 +5,21 @@ import (
 	"time"
 )
 
+// subscriberCount and conversationCount are test-only helpers for verifying
+// hub cleanup. They live here so the production build does not carry them.
+
+func (h *Hub) subscriberCount(convID int64) int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.subs[convID])
+}
+
+func (h *Hub) conversationCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.subs)
+}
+
 // recvWithin waits up to d for an event on sub.Events(). It fails the test
 // if nothing arrives in time.
 func recvWithin(t *testing.T, sub *Subscriber, d time.Duration) Event {

@@ -205,6 +205,106 @@ func TestStreamHandler_UnsubscribesOnClientDisconnect(t *testing.T) {
 	}
 }
 
+// TestStreamHandler_ReceivesEventViaPublishRoute verifies the SSE path
+// end-to-end via an HTTP request rather than a direct hub.Publish call.
+// A stub POST endpoint mimics what the future POST /messages handler will do:
+// persist a row then call hub.Publish. This exercises the full
+// subscribe→receive→decode cycle over the wire.
+func TestStreamHandler_ReceivesEventViaPublishRoute(t *testing.T) {
+	hub := NewHub()
+	const convID int64 = 300
+	mem := newMembershipSet([2]int64{1, convID})
+	user := &auth.User{ID: 1, Email: "a@example.com", Name: "A"}
+
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := auth.ContextWithUser(req.Context(), user)
+			next.ServeHTTP(w, req.WithContext(ctx))
+		})
+	})
+	r.Get("/api/familychat/conversations/{id}/stream", StreamHandler(hub, mem.fn()))
+	// Stub that publishes an event, standing in for a real POST /messages handler.
+	r.Post("/api/familychat/conversations/{id}/publish", func(w http.ResponseWriter, req *http.Request) {
+		hub.Publish(convID, Event{Type: EventMessageNew, Data: map[string]any{"body": "via-post"}})
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL+"/api/familychat/conversations/300/stream", nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for hub.subscriberCount(convID) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("subscriber never registered")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	postResp, err := http.Post(srv.URL+"/api/familychat/conversations/300/publish", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	postResp.Body.Close()
+
+	type result struct {
+		event string
+		data  string
+		err   error
+	}
+	resCh := make(chan result, 1)
+	go func() {
+		scanner := bufio.NewScanner(resp.Body)
+		var event, data string
+		for scanner.Scan() {
+			line := scanner.Text()
+			switch {
+			case strings.HasPrefix(line, "event: "):
+				event = strings.TrimPrefix(line, "event: ")
+			case strings.HasPrefix(line, "data: "):
+				data = strings.TrimPrefix(line, "data: ")
+			case line == "":
+				if event != "" {
+					resCh <- result{event: event, data: data}
+					return
+				}
+			}
+		}
+		resCh <- result{err: scanner.Err()}
+	}()
+
+	select {
+	case r := <-resCh:
+		if r.err != nil {
+			t.Fatalf("scanner: %v", r.err)
+		}
+		if r.event != EventMessageNew {
+			t.Fatalf("expected %q, got %q", EventMessageNew, r.event)
+		}
+		if !strings.Contains(r.data, `"body":"via-post"`) {
+			t.Fatalf("expected body in data, got %q", r.data)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("did not receive SSE event in time")
+	}
+}
+
 func TestStreamHandler_InvalidConversationID(t *testing.T) {
 	hub := NewHub()
 	mem := newMembershipSet()

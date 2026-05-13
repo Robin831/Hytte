@@ -110,22 +110,6 @@ func (s *Subscriber) Events() <-chan Event {
 	return s.ch
 }
 
-// subscriberCount returns the number of active Subscribers for convID.
-// Used by tests to verify cleanup; not part of the public API.
-func (h *Hub) subscriberCount(convID int64) int {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return len(h.subs[convID])
-}
-
-// conversationCount returns the number of conversations with at least one
-// Subscriber. Used by tests to verify map keys are reclaimed.
-func (h *Hub) conversationCount() int {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	return len(h.subs)
-}
-
 // defaultHub is the process-wide hub used by request handlers. Message and
 // read-receipt handlers publish into this hub; the SSE stream handler
 // subscribes to it. Tests construct their own hubs via NewHub and pass them
