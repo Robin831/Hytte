@@ -753,9 +753,9 @@ rules:
     - id: doc-comment-matches-implementation
       category: style
       pattern: >-
-        Doc comments describing file paths, storage locations, or behavioral details of a function or variable
+        Doc comments describing file paths, storage locations, behavioral details, parameter constraints, filtering/special-case logic (e.g. 'values <= 0 contribute zero', 'nil inputs are skipped'), return values, or initialization/lifecycle behavior (e.g. 'lazily initialised', 'nil until X') of a function, variable, or struct field
       check: >-
-        Verify that doc comments accurately reflect the actual implementation — e.g., if a comment says a file is stored 'alongside the executable' but the code uses os.UserConfigDir(), update the comment to match the real path/behavior
+        Verify that doc comments accurately reflect the actual implementation — e.g., if a comment says a file is stored 'alongside the executable' but the code uses os.UserConfigDir(), update the comment; if a comment claims values <= 0 are skipped but no guard exists, add the guard or fix the comment; if a comment describes lazy init but the field is eagerly initialized, reconcile them. Also check edge cases (zero values, empty results, implicit caps or rolling windows) that callers should know about.
       source: copilot:PR#83
       added: "2026-03-16"
     - id: symlink-safe-file-ops
@@ -1357,14 +1357,6 @@ rules:
         Adding a new rule/entry to a list or configuration file where similar entries already exist
       check: >-
         Verify the new entry is not redundant with an existing one. If a rule with the same intent or overlapping scope already exists, merge the wording into the existing entry or delete the duplicate rather than adding a near-duplicate with a slightly different ID.
-      source: copilot:PR#137
-      added: "2026-03-20"
-    - id: no-duplicate-review-rules
-      category: other
-      pattern: >-
-        Adding a new rule to a review/lint rules file (e.g. warden-rules.yaml) whose intent overlaps with an existing rule
-      check: >-
-        Before adding a new review rule, scan the existing ruleset for rules with substantially overlapping intent. If a near-duplicate exists, merge the new guidance into the existing rule instead of creating a separate entry.
       source: copilot:PR#137
       added: "2026-03-20"
     - id: decrypt-failure-omit-not-passthrough
@@ -2029,14 +2021,6 @@ rules:
         Warden rule or review guidance referencing the source or origin of `i18n.language` in React components or locale helpers
       check: >-
         Verify that references to `i18n.language` accurately describe its origin. It is provided by the shared i18next instance configured in `web/src/i18n.ts` and is typically accessed in React components via `useTranslation().i18n.language`, rather than coming directly from react-i18next itself. Avoid restating locale-formatting conventions here; those are covered by dedicated locale rules (e.g. `consistent-locale-usage`, `intl-locale-consistency`) to keep a single source of truth.
-      source: copilot:PR#168
-      added: "2026-03-24"
-    - id: deduplicate-review-rules
-      category: other
-      pattern: >-
-        Multiple review rules in warden-rules.yaml that describe the same underlying check with different wording or examples, or a new rule being added to the ruleset
-      check: >-
-        Before adding a new review rule, verify that no existing rules in the ruleset already overlap or conflict with each other in scope or intent. If a new rule covers the same underlying check as an existing one, merge them into a single rule with a stable ID rather than adding a duplicate. Resolve any existing duplication first so the ruleset remains internally consistent.
       source: copilot:PR#168
       added: "2026-03-24"
     - id: preference-failure-must-not-skip-core-logic
@@ -14491,9 +14475,9 @@ rules:
     - id: deduplicate-warden-rules
       category: other
       pattern: >-
-        Multiple warden rules in warden-rules.yaml that cover the same underlying guideline with only minor wording differences
+        Adding a new rule to warden-rules.yaml whose intent overlaps with an existing rule, or multiple rules in the file that cover the same underlying guideline with only minor wording differences
       check: >-
-        Verify that each warden rule addresses a distinct concern. If two or more rules check for the same underlying issue (e.g., same API misuse, same error-handling pattern), merge them into a single rule or clearly differentiate their trigger patterns to avoid duplicate review feedback.
+        Before adding a new review rule, scan the existing ruleset for rules with substantially overlapping intent. If a near-duplicate exists, merge the new guidance into the existing rule (keeping its stable ID) rather than creating a separate entry. If two or more existing rules check for the same underlying issue, merge them into a single rule with a stable ID and clearly differentiated trigger patterns to avoid duplicate review feedback. Resolve any existing duplication first so the ruleset remains internally consistent.
       source: copilot:PR#629
       added: "2026-04-13"
     - id: error-message-matches-condition
@@ -15337,14 +15321,6 @@ rules:
         Verify tooltips are implemented with an actual tooltip element (e.g., `role="tooltip"`) shown on both hover and focus and wired via `aria-describedby`, rather than relying on `title`, which is not reliably shown on keyboard focus
       source: copilot:PR#712
       added: "2026-05-11"
-    - id: doc-impl-match
-      category: style
-      pattern: >-
-        Function with a doc comment describing filtering or special-case handling of input values (e.g., 'values <= 0 contribute zero', 'nil inputs are skipped')
-      check: >-
-        Verify the implementation actually performs the filtering/special-casing the comment claims — either add the guard (e.g., skip when dist <= 0) or update the comment to match the real behavior
-      source: copilot:PR#712
-      added: "2026-05-11"
     - id: test-new-aggregations
       category: testing
       pattern: >-
@@ -15424,14 +15400,6 @@ rules:
         Ensure DOM ids used for accessibility associations are unique per-instance (e.g., via React's useId() or a passed idPrefix) so concurrently mounted instances for the same data don't produce duplicate ids and break aria associations
       source: copilot:PR#713
       added: "2026-05-11"
-    - id: doc-comment-matches-impl
-      category: style
-      pattern: >-
-        Handler or function doc comments that describe parameter constraints, return values, or semantics (e.g., 'must be positive', 'returns all entries')
-      check: >-
-        Verify the doc comment accurately reflects the implementation's actual behavior — including edge cases like zero values, empty results, and any implicit limits (rolling windows, caps, truncation) that callers should know about
-      source: copilot:PR#714
-      added: "2026-05-11"
     - id: cache-invalidation-file-replacement
       category: error-handling
       pattern: >-
@@ -15452,14 +15420,6 @@ rules:
       pattern: Function accepts a pointer parameter and dereferences it without a nil check
       check: >-
         Verify that pointer parameters are validated for nil before dereferencing, or that the contract clearly documents nil as invalid with an explicit panic guard
-      source: copilot:PR#714
-      added: "2026-05-11"
-    - id: doc-matches-impl
-      category: style
-      pattern: >-
-        Struct field or variable comment describes initialization/lifecycle behavior (e.g., 'lazily initialised', 'set on first use', 'nil until X')
-      check: >-
-        Verify the comment matches actual initialization in constructors and call sites; if the field is eagerly initialized, update the comment or change the implementation to match
       source: copilot:PR#714
       added: "2026-05-11"
     - id: changelog-accurate-limits
