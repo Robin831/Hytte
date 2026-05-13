@@ -2,17 +2,22 @@ package familychat
 
 import (
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/Robin831/Hytte/internal/push"
 	"github.com/go-chi/chi/v5"
 	_ "modernc.org/sqlite"
 )
@@ -662,5 +667,242 @@ func TestDeleteConversationHandler_NonMember(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+// addPushTables creates the vapid_keys and push_subscriptions tables on a
+// test DB that was originally built without them. Used by the push fan-out
+// tests below.
+func addPushTables(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if _, err := db.Exec(`
+		CREATE TABLE vapid_keys (
+			id          INTEGER PRIMARY KEY,
+			public_key  TEXT NOT NULL,
+			private_key TEXT NOT NULL
+		);
+		CREATE TABLE push_subscriptions (
+			id         INTEGER PRIMARY KEY,
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			endpoint   TEXT NOT NULL,
+			p256dh     TEXT NOT NULL,
+			auth       TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT '',
+			UNIQUE(user_id, endpoint)
+		);
+	`); err != nil {
+		t.Fatalf("add push tables: %v", err)
+	}
+}
+
+func TestPostMessageHandler_NotifiesOnlyOfflineRecipients(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com") // sender
+	makeUser(t, db, 2, "bob@example.com")   // online via SSE
+	makeUser(t, db, 3, "carol@example.com") // offline
+	convID := seedConversation(t, db, 1, "Family", 2, 3)
+
+	hub := NewHub()
+	// Bob is live on SSE — fan-out must skip him.
+	bobSub := hub.Subscribe(2, convID)
+	defer hub.Unsubscribe(convID, bobSub)
+	// Drain Bob's events so the hub buffer cannot fill mid-test.
+	go func() {
+		for range bobSub.Events() {
+		}
+	}()
+
+	type call struct {
+		userID  int64
+		payload []byte
+	}
+	var mu sync.Mutex
+	var calls []call
+	sender := func(userID int64, payload []byte) error {
+		mu.Lock()
+		defer mu.Unlock()
+		calls = append(calls, call{userID: userID, payload: append([]byte(nil), payload...)})
+		return nil
+	}
+
+	handler := postMessageHandler(db, hub, sender, true /* notifySync */)
+
+	idStr := strconv.FormatInt(convID, 10)
+	payloadStr := `{"body":"hello family"}`
+	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations/"+idStr+"/messages", strings.NewReader(payloadStr)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(calls) != 1 {
+		t.Fatalf("expected exactly 1 push call (offline recipient), got %d", len(calls))
+	}
+	if calls[0].userID != 3 {
+		t.Fatalf("push went to user %d, want 3 (offline recipient)", calls[0].userID)
+	}
+
+	var note push.Notification
+	if err := json.Unmarshal(calls[0].payload, &note); err != nil {
+		t.Fatalf("decode push payload: %v", err)
+	}
+	// withUser builds users with Name="Test"; that's the sender's display name.
+	if note.Title != "Test" {
+		t.Errorf("title = %q, want %q", note.Title, "Test")
+	}
+	if note.Body != "hello family" {
+		t.Errorf("body = %q, want %q", note.Body, "hello family")
+	}
+	wantTag := fmt.Sprintf("familychat-%d", convID)
+	if note.Tag != wantTag {
+		t.Errorf("tag = %q, want %q", note.Tag, wantTag)
+	}
+}
+
+func TestPostMessageHandler_TruncatesLongBodyInPush(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+
+	var captured []byte
+	sender := func(userID int64, payload []byte) error {
+		captured = append([]byte(nil), payload...)
+		return nil
+	}
+	handler := postMessageHandler(db, NewHub(), sender, true)
+
+	long := strings.Repeat("a", 200)
+	idStr := strconv.FormatInt(convID, 10)
+	payloadStr := fmt.Sprintf(`{"body":%q}`, long)
+	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations/"+idStr+"/messages", strings.NewReader(payloadStr)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if captured == nil {
+		t.Fatal("push sender was not called")
+	}
+	var note push.Notification
+	if err := json.Unmarshal(captured, &note); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if len([]rune(note.Body)) > notificationBodyLimit+1 {
+		t.Errorf("body rune length = %d, want at most %d (limit + ellipsis)", len([]rune(note.Body)), notificationBodyLimit+1)
+	}
+	if !strings.HasSuffix(note.Body, "…") {
+		t.Errorf("expected ellipsis on truncated body, got %q", note.Body)
+	}
+}
+
+func TestPostMessageHandler_StaleSubscriptionRemovedOn410(t *testing.T) {
+	db := setupTestDB(t)
+	addPushTables(t, db)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+
+	// A push endpoint that signals the subscription is gone. The internal/push
+	// package is responsible for deleting the row when this happens; this test
+	// verifies the family-chat fan-out exercises that path end to end.
+	var hitsMu sync.Mutex
+	var hits int
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hitsMu.Lock()
+		hits++
+		hitsMu.Unlock()
+		w.WriteHeader(http.StatusGone)
+	}))
+	defer ts.Close()
+
+	// Real P-256 keypair so the encryption step succeeds before the HTTP layer.
+	curve := ecdh.P256()
+	priv, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	p256dh := base64.RawURLEncoding.EncodeToString(priv.PublicKey().Bytes())
+	authSecret := base64.RawURLEncoding.EncodeToString(make([]byte, 16))
+	if _, err := push.SaveSubscription(db, 2, ts.URL, p256dh, authSecret); err != nil {
+		t.Fatalf("save subscription: %v", err)
+	}
+
+	sender := func(userID int64, payload []byte) error {
+		_, err := push.SendToUser(db, ts.Client(), userID, payload)
+		return err
+	}
+	handler := postMessageHandler(db, NewHub(), sender, true)
+
+	idStr := strconv.FormatInt(convID, 10)
+	payloadStr := `{"body":"hi"}`
+	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations/"+idStr+"/messages", strings.NewReader(payloadStr)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	hitsMu.Lock()
+	gotHits := hits
+	hitsMu.Unlock()
+	if gotHits == 0 {
+		t.Fatal("test push endpoint received no requests")
+	}
+
+	var remaining int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM push_subscriptions WHERE user_id = ?`, int64(2)).Scan(&remaining); err != nil {
+		t.Fatalf("count subs: %v", err)
+	}
+	if remaining != 0 {
+		t.Errorf("expected stale subscription deleted after 410 Gone, still have %d", remaining)
+	}
+}
+
+func TestPostMessageHandler_SkipsPushWhenAllRecipientsOnline(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+
+	hub := NewHub()
+	bobSub := hub.Subscribe(2, convID)
+	defer hub.Unsubscribe(convID, bobSub)
+	go func() {
+		for range bobSub.Events() {
+		}
+	}()
+
+	var calls int
+	sender := func(userID int64, payload []byte) error {
+		calls++
+		return nil
+	}
+	handler := postMessageHandler(db, hub, sender, true)
+
+	idStr := strconv.FormatInt(convID, 10)
+	payloadStr := `{"body":"yo"}`
+	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations/"+idStr+"/messages", strings.NewReader(payloadStr)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rec.Code)
+	}
+	if calls != 0 {
+		t.Errorf("expected no push (every recipient on SSE), got %d", calls)
 	}
 }

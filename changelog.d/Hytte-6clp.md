@@ -1,0 +1,2 @@
+category: Added
+- **Family Chat: webpush on incoming message** - When a new message arrives and a recipient does not currently have a live SSE stream open for the conversation, a webpush notification is sent so their device wakes up. The notification uses the sender's display name as the title, the first ~80 chars of the message as the body, and a `familychat-<conversation_id>` tag so a second message replaces the first banner instead of stacking. Stale (410 Gone) push subscriptions are removed automatically. (Hytte-6clp)
