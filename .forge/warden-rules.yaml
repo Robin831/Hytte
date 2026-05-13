@@ -753,9 +753,9 @@ rules:
     - id: doc-comment-matches-implementation
       category: style
       pattern: >-
-        Doc comments describing file paths, storage locations, or behavioral details of a function or variable
+        Doc comments describing file paths, storage locations, behavioral details, parameter constraints, filtering/special-case logic (e.g. 'values <= 0 contribute zero', 'nil inputs are skipped'), return values, or initialization/lifecycle behavior (e.g. 'lazily initialised', 'nil until X') of a function, variable, or struct field
       check: >-
-        Verify that doc comments accurately reflect the actual implementation — e.g., if a comment says a file is stored 'alongside the executable' but the code uses os.UserConfigDir(), update the comment to match the real path/behavior
+        Verify that doc comments accurately reflect the actual implementation — e.g., if a comment says a file is stored 'alongside the executable' but the code uses os.UserConfigDir(), update the comment; if a comment claims values <= 0 are skipped but no guard exists, add the guard or fix the comment; if a comment describes lazy init but the field is eagerly initialized, reconcile them. Also check edge cases (zero values, empty results, implicit caps or rolling windows) that callers should know about.
       source: copilot:PR#83
       added: "2026-03-16"
     - id: symlink-safe-file-ops
@@ -1357,14 +1357,6 @@ rules:
         Adding a new rule/entry to a list or configuration file where similar entries already exist
       check: >-
         Verify the new entry is not redundant with an existing one. If a rule with the same intent or overlapping scope already exists, merge the wording into the existing entry or delete the duplicate rather than adding a near-duplicate with a slightly different ID.
-      source: copilot:PR#137
-      added: "2026-03-20"
-    - id: no-duplicate-review-rules
-      category: other
-      pattern: >-
-        Adding a new rule to a review/lint rules file (e.g. warden-rules.yaml) whose intent overlaps with an existing rule
-      check: >-
-        Before adding a new review rule, scan the existing ruleset for rules with substantially overlapping intent. If a near-duplicate exists, merge the new guidance into the existing rule instead of creating a separate entry.
       source: copilot:PR#137
       added: "2026-03-20"
     - id: decrypt-failure-omit-not-passthrough
@@ -2029,14 +2021,6 @@ rules:
         Warden rule or review guidance referencing the source or origin of `i18n.language` in React components or locale helpers
       check: >-
         Verify that references to `i18n.language` accurately describe its origin. It is provided by the shared i18next instance configured in `web/src/i18n.ts` and is typically accessed in React components via `useTranslation().i18n.language`, rather than coming directly from react-i18next itself. Avoid restating locale-formatting conventions here; those are covered by dedicated locale rules (e.g. `consistent-locale-usage`, `intl-locale-consistency`) to keep a single source of truth.
-      source: copilot:PR#168
-      added: "2026-03-24"
-    - id: deduplicate-review-rules
-      category: other
-      pattern: >-
-        Multiple review rules in warden-rules.yaml that describe the same underlying check with different wording or examples, or a new rule being added to the ruleset
-      check: >-
-        Before adding a new review rule, verify that no existing rules in the ruleset already overlap or conflict with each other in scope or intent. If a new rule covers the same underlying check as an existing one, merge them into a single rule with a stable ID rather than adding a duplicate. Resolve any existing duplication first so the ruleset remains internally consistent.
       source: copilot:PR#168
       added: "2026-03-24"
     - id: preference-failure-must-not-skip-core-logic
@@ -3344,7 +3328,7 @@ rules:
     - id: read-modify-write-transaction
       category: concurrency
       pattern: >-
-        DEPRECATED: former read-modify-write transaction rule kept only for historical tracking. Use the `read-modify-write-needs-transaction` rule instead, per the no-duplicate-review-rules guidance.
+        DEPRECATED: former read-modify-write transaction rule kept only for historical tracking. Use the `read-modify-write-needs-transaction` rule instead, per the `deduplicate-warden-rules` guidance.
       check: >-
         This rule is intentionally inactive to avoid duplicate matches with `read-modify-write-needs-transaction`. When you see a sequential read + compute + UPDATE on the same row, review it under the `read-modify-write-needs-transaction` rule and ensure the sequence is wrapped in an appropriate transaction (e.g., BEGIN IMMEDIATE) to prevent races and double-firing side-effects.
       source: copilot:PR#241
@@ -14491,9 +14475,9 @@ rules:
     - id: deduplicate-warden-rules
       category: other
       pattern: >-
-        Multiple warden rules in warden-rules.yaml that cover the same underlying guideline with only minor wording differences
+        Adding a new rule to .forge/warden-rules.yaml whose intent overlaps with an existing rule, or multiple rules in the file that cover the same underlying guideline with only minor wording differences
       check: >-
-        Verify that each warden rule addresses a distinct concern. If two or more rules check for the same underlying issue (e.g., same API misuse, same error-handling pattern), merge them into a single rule or clearly differentiate their trigger patterns to avoid duplicate review feedback.
+        Before adding a new review rule, scan the existing ruleset for rules with substantially overlapping intent. If a near-duplicate exists, merge the new guidance into the existing rule (keeping its stable ID) rather than creating a separate entry. If two or more existing rules check for the same underlying issue, merge them into a single rule with a stable ID and clearly differentiated trigger patterns to avoid duplicate review feedback. Resolve any existing duplication first so the ruleset remains internally consistent.
       source: copilot:PR#629
       added: "2026-04-13"
     - id: error-message-matches-condition
@@ -15147,3 +15131,310 @@ rules:
         Ensure path-checking tests assert the input is a clean, relative file path (!filepath.IsAbs, no '..' segments after Clean, filepath.Rel doesn't start with '..') and verify the stat result is a regular file (not a directory), to prevent path escape outside the intended root and match test intent
       source: copilot:PR#683
       added: "2026-05-06"
+    - id: atomic-status-transition-toctou
+      category: concurrency
+      pattern: >-
+        Read-then-write logic that checks a status/state column and then updates it (e.g., skip-if-pending guards before spawning background work like Claude analysis)
+      check: >-
+        Verify the transition is atomic via a single conditional UPDATE (e.g., UPDATE ... SET status='pending' WHERE status IN ('','failed')) and that the side effect (spawning a goroutine, enqueueing a job) only runs when RowsAffected==1, so concurrent callers can't both pass the check and trigger duplicate work
+      source: copilot:PR#702
+      added: "2026-05-10"
+    - id: test-new-analysis-triggers
+      category: testing
+      pattern: >-
+        New code path that triggers background analysis (e.g., after context save) parallel to an existing trigger like FIT-import's scheduleBackgroundAnalysis
+      check: >-
+        Verify unit tests cover: fires when analysis_status is ''/failed and Claude is enabled; skips when status is pending/completed; sets analysis_status to pending before running (or uses an atomic conditional update) to prevent duplicate concurrent runs
+      source: copilot:PR#702
+      added: "2026-05-10"
+    - id: verify-cross-table-ownership
+      category: security
+      pattern: >-
+        Loading related data via foreign key (e.g., workout_id) where the related table also has user_id, without verifying ownership matches the requesting user
+      check: >-
+        Ensure cross-table lookups join on or verify user_id matches the authenticated user, not just the FK, to prevent cross-user data leakage when FK constraints don't enforce user ownership
+      source: copilot:PR#703
+      added: "2026-05-10"
+    - id: avoid-n-plus-1-in-list-endpoints
+      category: performance
+      pattern: >-
+        List/index handlers that load related data by iterating over results and issuing a separate DB query per row (even with per-row caching), especially when the endpoint lacks pagination or limits
+      check: >-
+        Verify related data is batch-loaded for all rows in a single query (e.g., `IN (...)` or JOIN) so the endpoint stays O(1) DB queries instead of O(N), particularly when no pagination caps the result set
+      source: copilot:PR#703
+      added: "2026-05-10"
+    - id: cache-path-side-effects
+      category: error-handling
+      pattern: >-
+        Handler has an early-return cached path alongside a non-cached path that performs additional work (e.g., generating derived/secondary data)
+      check: >-
+        Verify that work needed for the response (such as generating insights, related records, or side-effect outputs) also runs on the cached path when those derived artifacts may be missing — don't gate it solely on the non-cached branch, or cached entries created before the feature existed will never get backfilled
+      source: copilot:PR#704
+      added: "2026-05-10"
+    - id: consistent-fetch-error-handling
+      category: error-handling
+      pattern: >-
+        A component has multiple fetch calls to the same endpoint (e.g., initial load and post-action refetch) that update the same state
+      check: >-
+        Verify all fetch calls to the same endpoint handle non-OK responses consistently — clear stale state on 404 and log/warn on other non-OK statuses, rather than silently keeping stale data on refetch failures
+      source: copilot:PR#704
+      added: "2026-05-10"
+    - id: test-cache-hit-with-missing-secondary-output
+      category: testing
+      pattern: >-
+        Handler returns multiple outputs (e.g., cached primary result + freshly generated secondary result) where the cache lookup and the secondary generation are independent
+      check: >-
+        Verify there is a test for the cache-hit-on-primary + missing-secondary scenario, asserting the secondary output is still generated when only the primary is cached (a common state for records created before the secondary output was introduced)
+      source: copilot:PR#704
+      added: "2026-05-10"
+    - id: test-new-enum-options
+      category: testing
+      pattern: >-
+        Adding new options/values to an existing enum, union type, or set of selectable choices (e.g., new RunType, new status, new category) that has existing component or unit tests
+      check: >-
+        Verify the corresponding test file is extended to cover the new options — assert they render correctly and that initialization/normalization logic selects them properly when passed as input
+      source: copilot:PR#705
+      added: "2026-05-10"
+    - id: unique-html-ids-via-useid
+      category: ui
+      pattern: >-
+        Reusable React components that build element `id` or `htmlFor` attributes from a constant or caller-supplied string (e.g. `testIdPrefix`, hardcoded prefixes)
+      check: >-
+        Verify IDs are unique across multiple instances of the component on the same page. Separate the DOM `id`/`htmlFor` prefix from `data-testid`, and generate the unique prefix via React's `useId()` (optionally combined with an index) while keeping test IDs stable for selectors.
+      source: copilot:PR#706
+      added: "2026-05-10"
+    - id: match-numeric-rounding-behavior
+      category: ui
+      pattern: >-
+        Parsing decimal input from <input type="number"> using Math.floor (or Math.ceil/truncation) when computing a stored numeric value
+      check: >-
+        Verify that the rounding behavior matches the prior/canonical handling for that field (typically Math.round on the safeNumber result) so values like "1.6" don't silently change meaning; if you intentionally diverge, justify it and confirm consistency with sibling inputs writing to the same underlying field.
+      source: copilot:PR#706
+      added: "2026-05-10"
+    - id: timezone-consistency-date-derivation
+      category: other
+      pattern: >-
+        Code derives a YYYY-MM-DD date from a timestamp to pass to another component/function that also derives or queries by date
+      check: >-
+        Verify the date is derived in the same timezone (UTC vs local) as the consuming function expects. Mismatched timezone conversions (e.g., local-tz date vs UTC-day query window) can cause off-by-one-day errors near midnight. Also ensure the timestamp parser handles fractional seconds (RFC3339Nano).
+      source: copilot:PR#708
+      added: "2026-05-11"
+    - id: bound-background-claude-work
+      category: concurrency
+      pattern: >-
+        Spawning a goroutine that invokes Claude CLI / Stride re-evaluation (or other expensive external process) in response to a user-triggered event like a save hook
+      check: >-
+        Verify the background work is bounded by a semaphore (reuse `claudeSemaphore` or add a feature-specific one) so concurrent saves or multiple users cannot spawn unbounded Claude processes and overload the server
+      source: copilot:PR#708
+      added: "2026-05-11"
+    - id: stride-date-tz-consistency
+      category: testing
+      pattern: >-
+        Tests or triggers that derive a Stride evaluation date from a workout timestamp using a specific timezone (e.g. Europe/Oslo local day) when scheduling re-evaluation
+      check: >-
+        Verify the date derivation matches Stride's existing evaluation semantics (currently UTC-based via stored timestamp prefix / UTC day windows). Triggered re-eval must target the same day Stride's nightly path would, or Stride must be updated end-to-end to use the new timezone — otherwise re-eval can target a day that doesn't include the workout.
+      source: copilot:PR#708
+      added: "2026-05-11"
+    - id: stale-memoized-date-boundaries
+      category: ui
+      pattern: >-
+        useMemo with empty dependency array computing a date/time-based value (e.g., cutoff timestamps, 'today', day-bucketing thresholds)
+      check: >-
+        Ensure date-derived values recompute when the day rolls over (depend on a `today`/`now` value computed each render, or recompute per render) and that inclusive day-window arithmetic actually produces the intended number of days (e.g., 'last 7 days' should not span 8 calendar days when combined with `>=`)
+      source: copilot:PR#710
+      added: "2026-05-11"
+    - id: controlled-collapsible-state
+      category: ui
+      pattern: Expand/collapse UI implemented with uncontrolled native <details> element
+      check: >-
+        Verify collapsible state is held in React useState and bound via the open attribute + onToggle handler so it can be controlled and restored deterministically across rerenders
+      source: copilot:PR#710
+      added: "2026-05-11"
+    - id: summary-aria-label-overrides-text
+      category: ui
+      pattern: >-
+        An `aria-label` is set on a `<summary>` element (or other element with meaningful visible text content)
+      check: >-
+        Verify the aria-label does not override important visible text for screen readers (e.g., counts or dynamic content). Prefer letting the visible text be announced, or use aria-labelledby / a visually-hidden helper so screen reader users still hear the full content.
+      source: copilot:PR#710
+      added: "2026-05-11"
+    - id: fake-timers-for-date-tests
+      category: testing
+      pattern: >-
+        Tests that depend on the current date/time via `new Date()` or `Date.now()`, especially around time-window cutoffs (e.g. 7-day, midnight boundaries)
+      check: >-
+        Verify the test uses `vi.useFakeTimers()` + `vi.setSystemTime(...)` (or equivalent) and derives any date values from the fixed time, so behavior is fully deterministic and not flaky around midnight or DST transitions
+      source: copilot:PR#710
+      added: "2026-05-11"
+    - id: test-coverage-acceptance-criteria
+      category: testing
+      pattern: >-
+        New test suite added for a feature whose acceptance criteria covers multiple behaviors (e.g., edit AND delete) across multiple UI states or buckets
+      check: >-
+        Verify the test suite covers all behaviors mentioned in the acceptance criteria across each distinct UI state or bucket — not just a subset. If the feature splits items into groups (e.g., active vs. collapsed), each interactive operation (edit, delete, etc.) should have at least one test per group.
+      source: copilot:PR#710
+      added: "2026-05-11"
+    - id: no-silent-parse-errors
+      category: error-handling
+      pattern: >-
+        Functions that parse data from the database (e.g., time.Parse on a date column) and return (result, nil) when parsing fails, swallowing the error
+      check: >-
+        Verify that parse failures on persisted data return a non-nil error (or at minimum log a warning) rather than silently substituting zero values, so callers can surface corruption instead of producing misleading results
+      source: copilot:PR#711
+      added: "2026-05-11"
+    - id: test-pagination-cap-boundary
+      category: testing
+      pattern: >-
+        Pagination tests for endpoints with a depth/row cap that affects has_more semantics
+      check: >-
+        Verify tests cover the boundary case where offset+limit reaches the cap while additional rows exist beyond it, asserting has_more=false — not just the trivial case where offset is already past the cap
+      source: copilot:PR#711
+      added: "2026-05-11"
+    - id: ui-field-backend-contract
+      category: ui
+      pattern: >-
+        Frontend renders a field from an API response (e.g., total_distance_meters) that is not present in the backend response type
+      check: >-
+        Verify the field exists in the backend response type/handler; if not, either extend the API to include it or hide/conditionally render the UI element when the field is absent/undefined to avoid misleading default values
+      source: copilot:PR#712
+      added: "2026-05-11"
+    - id: mock-all-used-exports
+      category: testing
+      pattern: >-
+        Test file uses vi.mock/jest.mock to replace a module while the code under test imports new functions from that module
+      check: >-
+        Ensure the module mock exports stubs for every function the code under test imports from the mocked module, including newly added ones, so calls don't return undefined at runtime
+      source: copilot:PR#712
+      added: "2026-05-11"
+    - id: stale-api-contract-comments
+      category: style
+      pattern: >-
+        Code comments describing backend/API response shape (e.g., 'backend does not yet emit this field') alongside frontend type definitions or fetch parsing
+      check: >-
+        When the PR changes the backend response to include/remove a field, verify that any frontend comments describing that API contract are updated or removed so they don't contradict current backend behavior.
+      source: copilot:PR#712
+      added: "2026-05-11"
+    - id: tooltip-accessibility-hover-focus
+      category: ui
+      pattern: UI element uses the HTML `title` attribute to provide tooltip/hover information
+      check: >-
+        Verify tooltips are implemented with an actual tooltip element (e.g., `role="tooltip"`) shown on both hover and focus and wired via `aria-describedby`, rather than relying on `title`, which is not reliably shown on keyboard focus
+      source: copilot:PR#712
+      added: "2026-05-11"
+    - id: test-new-aggregations
+      category: testing
+      pattern: >-
+        PR adds a new DB aggregation/computation function and exposes a new field in an API response
+      check: >-
+        Verify backend tests cover the new aggregation logic, including boundary conditions (e.g., excluding rows outside the intended range) and summing/bucketing correctness
+      source: copilot:PR#712
+      added: "2026-05-11"
+    - id: reset-loading-state-on-effect-early-return
+      category: concurrency
+      pattern: >-
+        useEffect that fetches data and toggles a loading flag, with an early-return branch (e.g. when a required prop/id is falsy) that resets other state
+      check: >-
+        Verify the early-return branch also resets the loading flag (and/or the cleanup function does), so an in-flight fetch aborted by the dependency change cannot leave loading stuck at true
+      source: copilot:PR#713
+      added: "2026-05-11"
+    - id: dialog-overlay-padding-prevents-full-bleed
+      category: ui
+      pattern: >-
+        A Dialog/modal component is used to implement a 'full-bleed' or edge-to-edge layout on mobile, but the shared Dialog wrapper applies fixed overlay padding (e.g. `p-4`) that prevents the content from reaching the viewport edges.
+      check: >-
+        Verify that when a feature claims a full-bleed/edge-to-edge modal on mobile, the underlying Dialog actually supports it — either by making overlay padding configurable (e.g. `p-0 sm:p-4`, `overlayClassName`, or a `fullScreen` prop) or by removing the fixed inset. Otherwise the PR description and behavior will diverge.
+      source: copilot:PR#713
+      added: "2026-05-11"
+    - id: verify-import-source-matches-export
+      category: other
+      pattern: Importing named symbols (helpers, utilities, components) from a module path
+      check: >-
+        Verify each named import is actually exported from the specified module; if helpers live in a separate file (e.g., strideHelpers.tsx) from a component (e.g., DayCard.tsx), import them from their actual source rather than the component's module to avoid TS compile errors
+      source: copilot:PR#713
+      added: "2026-05-11"
+    - id: no-state-update-after-abort-in-cleanup
+      category: concurrency
+      pattern: >-
+        useEffect cleanup that aborts an in-flight request and then also calls a state setter (e.g., setLoading(false)) after controller.abort()
+      check: >-
+        Remove state updates from the cleanup function — aborted requests already skip finally-block state updates, and setting state on an unmounting component triggers React warnings. The abort() plus signal.aborted guards in the async flow are sufficient.
+      source: copilot:PR#713
+      added: "2026-05-11"
+    - id: ux-intent-matches-implementation
+      category: ui
+      pattern: >-
+        PR/issue describes a specific user interaction (e.g., 'click a row to open', 'tap card to expand') and the implementation adds an interactive element
+      check: >-
+        Verify the implemented interaction matches the described UX — if the spec says the whole row/card is clickable, the full element should be a semantic interactive control (e.g., <button>), not just a nested icon/chevron button. Update tests to exercise the described interaction.
+      source: copilot:PR#713
+      added: "2026-05-11"
+    - id: surface-partial-fetch-errors
+      category: error-handling
+      pattern: >-
+        Component makes multiple fetch/API calls and treats one as optional by falling back to a default (empty list/null) when !res.ok, then renders as if successful
+      check: >-
+        Verify that non-ok responses from secondary requests are surfaced to the user (error state, partial-warning, or status in error message) rather than silently swallowed, so failures aren't misrepresented as empty/successful results
+      source: copilot:PR#713
+      added: "2026-05-11"
+    - id: shared-types-no-duplicate-interfaces
+      category: style
+      pattern: >-
+        A component defines a local TypeScript interface/type for an API response or domain model that duplicates a shape already declared in another file/component.
+      check: >-
+        Verify shared domain or API response types are defined once in a central types module (e.g. web/src/types/) and imported by all consumers, rather than redeclared per component where they can drift out of sync.
+      source: copilot:PR#713
+      added: "2026-05-11"
+    - id: preserve-button-accessible-name
+      category: ui
+      pattern: >-
+        Interactive element (button/link) with rich visible content (text, badges, metrics) that also sets aria-label
+      check: >-
+        Verify aria-label does not override the accessible name derived from meaningful visible content. Either omit aria-label and let the visible text be the accessible name, or use aria-labelledby/aria-describedby to include the visible details so screen readers announce the full context, not just a generic summary.
+      source: copilot:PR#713
+      added: "2026-05-11"
+    - id: unique-aria-controls-id
+      category: ui
+      pattern: >-
+        aria-controls/id pairs (or other DOM ids) derived from data values like dates that may be rendered by multiple component instances simultaneously
+      check: >-
+        Ensure DOM ids used for accessibility associations are unique per-instance (e.g., via React's useId() or a passed idPrefix) so concurrently mounted instances for the same data don't produce duplicate ids and break aria associations
+      source: copilot:PR#713
+      added: "2026-05-11"
+    - id: cache-invalidation-file-replacement
+      category: error-handling
+      pattern: >-
+        Caching parsed/read content from a file keyed on size and mtime, with invalidation only on size shrink or mtime going backwards
+      check: >-
+        Verify cache invalidation also handles same-size file replacements: invalidate when mtime changes without size growth, or track file identity (inode/device) so a rewritten file with identical size and forward mtime doesn't serve stale cached data indefinitely
+      source: copilot:PR#714
+      added: "2026-05-11"
+    - id: remove-unused-struct-fields
+      category: style
+      pattern: Struct field is assigned but never read anywhere in the codebase
+      check: >-
+        Verify that all struct fields serve a purpose - either remove unused fields to avoid confusion, or wire them into the logic they were intended to support (e.g., using a cached size for rewrite/rotation detection)
+      source: copilot:PR#714
+      added: "2026-05-11"
+    - id: nil-pointer-deref-check
+      category: error-handling
+      pattern: Function accepts a pointer parameter and dereferences it without a nil check
+      check: >-
+        Verify that pointer parameters are validated for nil before dereferencing, or that the contract clearly documents nil as invalid with an explicit panic guard
+      source: copilot:PR#714
+      added: "2026-05-11"
+    - id: changelog-accurate-limits
+      category: other
+      pattern: >-
+        Changelog entry or user-facing doc describes endpoint/feature behavior (e.g. 'returns all', 'unlimited', 'full history') when the implementation enforces a cap, rolling window, or other bound
+      check: >-
+        Verify the changelog wording matches the actual implementation limits — if there's a maximum, rolling window, pagination cap, or other bound, the description should not imply unbounded or complete results
+      source: copilot:PR#714
+      added: "2026-05-11"
+    - id: i18n-key-removal-still-in-use
+      category: other
+      pattern: >-
+        PR description or acceptance criteria states an i18n translation key will be removed from web/public/locales/{en,nb,th}/
+      check: >-
+        Grep the codebase for the key (e.g. `t('namespace:key')`) to confirm no remaining usages exist. If the key is still referenced anywhere, either keep the translations and update the PR description, or migrate the remaining usages to a new key before removing the old translations.
+      source: copilot:PR#715
+      added: "2026-05-11"
