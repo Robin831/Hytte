@@ -18,12 +18,6 @@ import (
 // connection.
 const heartbeatInterval = 30 * time.Second
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
-}
-
 // StreamHandler returns an SSE handler at
 // GET /api/familychat/conversations/{id}/stream that pushes message_new,
 // message_deleted, and read_receipt events as they are published into hub.
