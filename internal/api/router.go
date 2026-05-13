@@ -18,6 +18,7 @@ import (
 	"github.com/Robin831/Hytte/internal/chat"
 	"github.com/Robin831/Hytte/internal/dashboard"
 	"github.com/Robin831/Hytte/internal/family"
+	"github.com/Robin831/Hytte/internal/familychat"
 	"github.com/Robin831/Hytte/internal/forge"
 	"github.com/Robin831/Hytte/internal/grocery"
 	"github.com/Robin831/Hytte/internal/homework"
@@ -513,6 +514,17 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Delete("/chat/conversations/{id}", chat.DeleteHandler(db))
 				r.Put("/chat/conversations/{id}", chat.RenameHandler(db))
 				r.Post("/chat/conversations/{id}/messages", chat.SendMessageHandler(db))
+			})
+
+			// Family Chat — gated by "family_chat" feature.
+			// The SSE live-delivery stream is the only route registered here so
+			// far; REST endpoints (list/create conversations, send/read messages)
+			// land in companion beads and will join this group. Message and read
+			// handlers publish into familychat.DefaultHub() so subscribers see
+			// updates within milliseconds of the row being persisted.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "family_chat"))
+				r.Get("/familychat/conversations/{id}/stream", familychat.StreamHandlerWithDB(db))
 			})
 
 			// Kids Stars: family management — gated by "kids_stars" feature.
