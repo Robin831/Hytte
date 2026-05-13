@@ -516,14 +516,16 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/chat/conversations/{id}/messages", chat.SendMessageHandler(db))
 			})
 
-			// Family Chat — gated by "family_chat" feature.
-			// The SSE live-delivery stream is the only route registered here so
-			// far; REST endpoints (list/create conversations, send/read messages)
-			// land in companion beads and will join this group. Message and read
-			// handlers publish into familychat.DefaultHub() so subscribers see
-			// updates within milliseconds of the row being persisted.
+			// Family Chat — gated by "family_chat" feature (Hytte-56j7).
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireFeature(db, "family_chat"))
+				r.Get("/familychat/conversations", familychat.ListConversationsHandler(db))
+				r.Post("/familychat/conversations", familychat.CreateConversationHandler(db))
+				r.Get("/familychat/conversations/{id}", familychat.GetConversationHandler(db))
+				r.Delete("/familychat/conversations/{id}", familychat.DeleteConversationHandler(db))
+				r.Get("/familychat/conversations/{id}/messages", familychat.ListMessagesHandler(db))
+				r.Post("/familychat/conversations/{id}/messages", familychat.PostMessageHandler(db))
+				r.Post("/familychat/conversations/{id}/read", familychat.MarkReadHandler(db))
 				r.Get("/familychat/conversations/{id}/stream", familychat.StreamHandlerWithDB(db))
 			})
 

@@ -1589,6 +1589,41 @@ func createSchema(db *sql.DB) error {
 		completed_at TEXT NOT NULL DEFAULT ''
 	);
 
+	-- Family Chat (Hytte-56j7): conversations, members, and encrypted messages.
+	-- Trust model is at-rest encryption with the server holding the key (same
+	-- as Notes); body and attachment_path are stored as enc:... ciphertext.
+	CREATE TABLE IF NOT EXISTS family_chat_conversations (
+		id              INTEGER PRIMARY KEY,
+		name            TEXT NOT NULL DEFAULT '',
+		owner_user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		last_message_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_family_chat_conversations_owner ON family_chat_conversations(owner_user_id);
+
+	CREATE TABLE IF NOT EXISTS family_chat_members (
+		conversation_id INTEGER NOT NULL REFERENCES family_chat_conversations(id) ON DELETE CASCADE,
+		user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		joined_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		last_read_at    TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (conversation_id, user_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_family_chat_members_user ON family_chat_members(user_id);
+
+	CREATE TABLE IF NOT EXISTS family_chat_messages (
+		id                INTEGER PRIMARY KEY,
+		conversation_id   INTEGER NOT NULL REFERENCES family_chat_conversations(id) ON DELETE CASCADE,
+		sender_user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		body              TEXT NOT NULL DEFAULT '',
+		attachment_path   TEXT NOT NULL DEFAULT '',
+		attachment_mime   TEXT NOT NULL DEFAULT '',
+		created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_family_chat_messages_conversation_id ON family_chat_messages(conversation_id, id DESC);
+
 	`
 
 	_, err := db.Exec(schema)

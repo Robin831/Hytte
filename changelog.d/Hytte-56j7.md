@@ -1,0 +1,2 @@
+category: Added
+- **Family Chat REST endpoints** - Added `/api/familychat/conversations` and message routes (list/create/get/delete conversation, list/post messages, mark-read) gated by the new `family_chat` feature flag. Message bodies and attachment paths are encrypted at rest, and every endpoint resolves membership via `family_chat_members` so non-members receive 404 instead of 403 to avoid leaking conversation existence. (Hytte-56j7)
