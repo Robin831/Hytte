@@ -562,6 +562,91 @@ func TestDeleteConversationHandler_NonOwnerMember(t *testing.T) {
 	}
 }
 
+func TestCreateConversationHandler_NameTooLong(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+
+	longName := strings.Repeat("a", maxNameLen+1)
+	payload := fmt.Sprintf(`{"name":%q}`, longName)
+	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	CreateConversationHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCreateConversationHandler_InvalidMemberID(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+
+	payload := `{"name":"Family","member_user_ids":[0]}`
+	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	CreateConversationHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestPostMessageHandler_BodyTooLong(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	convID := seedConversation(t, db, 1, "Family")
+
+	idStr := strconv.FormatInt(convID, 10)
+	longBody := strings.Repeat("x", maxBodyLen+1)
+	payload := fmt.Sprintf(`{"body":%q}`, longBody)
+	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations/"+idStr+"/messages", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	PostMessageHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestListMessagesHandler_LimitTooLarge(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	convID := seedConversation(t, db, 1, "Family")
+
+	idStr := strconv.FormatInt(convID, 10)
+	url := fmt.Sprintf("/api/familychat/conversations/%s/messages?limit=%d", idStr, maxMsgLimit+1)
+	req := withUser(httptest.NewRequest("GET", url, nil), 1)
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	ListMessagesHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestMarkReadHandler_InvalidTimestamp(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	convID := seedConversation(t, db, 1, "Family")
+
+	idStr := strconv.FormatInt(convID, 10)
+	payload := `{"at":"not-a-real-timestamp"}`
+	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations/"+idStr+"/read", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	MarkReadHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestDeleteConversationHandler_NonMember(t *testing.T) {
 	db := setupTestDB(t)
 	makeUser(t, db, 1, "alice@example.com")

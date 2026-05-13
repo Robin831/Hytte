@@ -8,9 +8,24 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
+)
+
+// Input validation bounds for the Family Chat handlers. The body cap is a
+// generous safety net to keep one client from filling the DB with one
+// request; clients should enforce friendlier UI limits well below these.
+const (
+	maxNameLen        = 200
+	maxBodyLen        = 8000
+	maxAttachmentPath = 1024
+	maxAttachmentMime = 128
+	maxMembersPerConv = 100
+	defaultMsgLimit   = 50
+	maxMsgLimit       = 500
+	maxRequestBytes   = 1 << 20 // 1 MiB
 )
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -23,6 +38,17 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func notFound(w http.ResponseWriter) {
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+}
+
+// decodeJSON enforces a body-size cap and parses JSON into dst. Returns true
+// on success; on failure it writes a 400 response and returns false.
+func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return false
+	}
+	return true
 }
 
 // parseConvID extracts and validates the {id} path parameter for the
@@ -62,14 +88,27 @@ func CreateConversationHandler(db *sql.DB) http.HandlerFunc {
 			Name          string  `json:"name"`
 			MemberUserIDs []int64 `json:"member_user_ids"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		if !decodeJSON(w, r, &body) {
 			return
 		}
 		body.Name = strings.TrimSpace(body.Name)
 		if body.Name == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
 			return
+		}
+		if len([]rune(body.Name)) > maxNameLen {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is too long"})
+			return
+		}
+		if len(body.MemberUserIDs) > maxMembersPerConv {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many members"})
+			return
+		}
+		for _, uid := range body.MemberUserIDs {
+			if uid <= 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid member id"})
+				return
+			}
 		}
 
 		c, err := CreateConversation(db, user.ID, body.Name, body.MemberUserIDs)
@@ -128,10 +167,10 @@ func ListMessagesHandler(db *sql.DB) http.HandlerFunc {
 			}
 			since = n
 		}
-		limit := 50
+		limit := defaultMsgLimit
 		if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
 			n, err := strconv.Atoi(v)
-			if err != nil || n <= 0 {
+			if err != nil || n <= 0 || n > maxMsgLimit {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid limit parameter"})
 				return
 			}
@@ -168,13 +207,26 @@ func PostMessageHandler(db *sql.DB) http.HandlerFunc {
 			AttachmentPath string `json:"attachment_path"`
 			AttachmentMime string `json:"attachment_mime"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		if !decodeJSON(w, r, &body) {
 			return
 		}
 		body.Body = strings.TrimSpace(body.Body)
+		body.AttachmentPath = strings.TrimSpace(body.AttachmentPath)
+		body.AttachmentMime = strings.TrimSpace(body.AttachmentMime)
 		if body.Body == "" && body.AttachmentPath == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body or attachment_path is required"})
+			return
+		}
+		if len([]rune(body.Body)) > maxBodyLen {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body is too long"})
+			return
+		}
+		if len(body.AttachmentPath) > maxAttachmentPath {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "attachment_path is too long"})
+			return
+		}
+		if len(body.AttachmentMime) > maxAttachmentMime {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "attachment_mime is too long"})
 			return
 		}
 
@@ -208,13 +260,24 @@ func MarkReadHandler(db *sql.DB) http.HandlerFunc {
 		}
 		// An empty body is valid: it just means "mark read up to now".
 		if r.ContentLength > 0 {
-			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			if !decodeJSON(w, r, &body) {
 				return
 			}
 		}
+		at := strings.TrimSpace(body.At)
+		if at != "" {
+			// Accept RFC3339 with optional sub-second precision. Reject anything
+			// unparseable so we never store garbage in last_read_at, which is
+			// compared as a string for unread-count ordering.
+			if _, err := time.Parse(time.RFC3339Nano, at); err != nil {
+				if _, err2 := time.Parse(time.RFC3339, at); err2 != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid at timestamp (expected RFC3339)"})
+					return
+				}
+			}
+		}
 
-		if err := MarkRead(db, convID, user.ID, strings.TrimSpace(body.At)); err != nil {
+		if err := MarkRead(db, convID, user.ID, at); err != nil {
 			if errors.Is(err, ErrNotMember) {
 				notFound(w)
 				return
