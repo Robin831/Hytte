@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -107,6 +109,19 @@ func CreateConversationHandler(db *sql.DB) http.HandlerFunc {
 		for _, uid := range body.MemberUserIDs {
 			if uid <= 0 {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid member id"})
+				return
+			}
+		}
+		// Pre-validate that referenced users exist so FK failures map to 400.
+		for _, uid := range body.MemberUserIDs {
+			var exists int
+			if err := db.QueryRow(`SELECT 1 FROM users WHERE id = ?`, uid).Scan(&exists); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("user %d not found", uid)})
+					return
+				}
+				log.Printf("familychat: lookup user %d: %v", uid, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to validate members"})
 				return
 			}
 		}
@@ -258,23 +273,28 @@ func MarkReadHandler(db *sql.DB) http.HandlerFunc {
 		var body struct {
 			At string `json:"at"`
 		}
-		// An empty body is valid: it just means "mark read up to now".
-		if r.ContentLength > 0 {
-			if !decodeJSON(w, r, &body) {
-				return
-			}
+		// Decode the body unconditionally; an empty body (io.EOF) means "mark
+		// read up to now". Relying on ContentLength is unreliable for chunked
+		// requests where ContentLength == -1.
+		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
 		}
 		at := strings.TrimSpace(body.At)
 		if at != "" {
-			// Accept RFC3339 with optional sub-second precision. Reject anything
-			// unparseable so we never store garbage in last_read_at, which is
-			// compared as a string for unread-count ordering.
-			if _, err := time.Parse(time.RFC3339Nano, at); err != nil {
-				if _, err2 := time.Parse(time.RFC3339, at); err2 != nil {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid at timestamp (expected RFC3339)"})
-					return
-				}
+			// Parse RFC3339 (with or without sub-second precision), then
+			// normalize to UTC with the same fixed-width timeFormat used for
+			// stored created_at values so that string comparisons stay correct.
+			t, err := time.Parse(time.RFC3339Nano, at)
+			if err != nil {
+				t, err = time.Parse(time.RFC3339, at)
 			}
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid at timestamp (expected RFC3339)"})
+				return
+			}
+			at = t.UTC().Format(timeFormat)
 		}
 
 		if err := MarkRead(db, convID, user.ID, at); err != nil {

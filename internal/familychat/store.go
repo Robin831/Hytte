@@ -8,15 +8,15 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"sort"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
 
-// timeFormat is a fixed-width UTC timestamp with millisecond precision so
-// that string comparisons sort chronologically.
-const timeFormat = "2006-01-02T15:04:05.000Z07:00"
+// timeFormat is a fixed-width UTC timestamp with nanosecond precision so
+// that string comparisons sort chronologically without same-millisecond ties.
+const timeFormat = "2006-01-02T15:04:05.000000000Z07:00"
 
 // Conversation is a single family chat conversation as returned to the client.
 type Conversation struct {
@@ -63,11 +63,11 @@ func IsMember(db *sql.DB, convID, userID int64) (bool, error) {
 }
 
 // ListConversations returns every conversation the user belongs to, newest
-// activity first. The unread_count for each conversation is computed against
-// the member's last_read_at watermark.
+// activity first. Member IDs and unread counts are fetched with two batched
+// queries (not N per-conversation queries) to keep response time predictable.
 func ListConversations(db *sql.DB, userID int64) ([]Conversation, error) {
 	rows, err := db.Query(
-		`SELECT c.id, c.name, c.owner_user_id, c.created_at, c.last_message_at, m.last_read_at
+		`SELECT c.id, c.name, c.owner_user_id, c.created_at, c.last_message_at
 		 FROM family_chat_conversations c
 		 JOIN family_chat_members m ON m.conversation_id = c.id
 		 WHERE m.user_id = ?
@@ -79,35 +79,43 @@ func ListConversations(db *sql.DB, userID int64) ([]Conversation, error) {
 	}
 	defer rows.Close()
 
-	type convoRow struct {
-		c          Conversation
-		lastReadAt string
-	}
-	var rowsBuf []convoRow
+	var convBuf []Conversation
 	for rows.Next() {
-		var cr convoRow
-		if err := rows.Scan(&cr.c.ID, &cr.c.Name, &cr.c.OwnerUserID, &cr.c.CreatedAt, &cr.c.LastMessageAt, &cr.lastReadAt); err != nil {
+		var c Conversation
+		if err := rows.Scan(&c.ID, &c.Name, &c.OwnerUserID, &c.CreatedAt, &c.LastMessageAt); err != nil {
 			return nil, err
 		}
-		rowsBuf = append(rowsBuf, cr)
+		convBuf = append(convBuf, c)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if len(convBuf) == 0 {
+		return []Conversation{}, nil
+	}
 
-	out := make([]Conversation, 0, len(rowsBuf))
-	for _, cr := range rowsBuf {
-		members, err := listMemberIDs(db, cr.c.ID)
-		if err != nil {
-			return nil, err
+	convIDs := make([]int64, len(convBuf))
+	for i, c := range convBuf {
+		convIDs[i] = c.ID
+	}
+
+	membersByConv, err := batchMemberIDs(db, convIDs)
+	if err != nil {
+		return nil, err
+	}
+	unreadByConv, err := batchUnreadCounts(db, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]Conversation, 0, len(convBuf))
+	for _, c := range convBuf {
+		c.MemberIDs = membersByConv[c.ID]
+		if c.MemberIDs == nil {
+			c.MemberIDs = []int64{}
 		}
-		unread, err := unreadCount(db, cr.c.ID, userID, cr.lastReadAt)
-		if err != nil {
-			return nil, err
-		}
-		cr.c.MemberIDs = members
-		cr.c.UnreadCount = unread
-		out = append(out, cr.c)
+		c.UnreadCount = unreadByConv[c.ID]
+		out = append(out, c)
 	}
 	return out, nil
 }
@@ -373,11 +381,11 @@ func MarkRead(db *sql.DB, convID, userID int64, at string) error {
 	return nil
 }
 
-// listMemberIDs returns every user_id in convID sorted ascending. Sorting
-// gives the JSON response a stable order regardless of insertion order.
+// listMemberIDs returns every user_id in convID sorted ascending. Used by
+// single-conversation paths (GetConversation, CreateConversation).
 func listMemberIDs(db *sql.DB, convID int64) ([]int64, error) {
 	rows, err := db.Query(
-		`SELECT user_id FROM family_chat_members WHERE conversation_id = ?`,
+		`SELECT user_id FROM family_chat_members WHERE conversation_id = ? ORDER BY user_id`,
 		convID,
 	)
 	if err != nil {
@@ -393,16 +401,71 @@ func listMemberIDs(db *sql.DB, convID int64) ([]int64, error) {
 		}
 		out = append(out, uid)
 	}
-	if err := rows.Err(); err != nil {
+	return out, rows.Err()
+}
+
+// batchMemberIDs fetches all member user IDs for the given conversation IDs in
+// a single query, returning a map keyed by conversation ID.
+func batchMemberIDs(db *sql.DB, convIDs []int64) (map[int64][]int64, error) {
+	result := make(map[int64][]int64, len(convIDs))
+	if len(convIDs) == 0 {
+		return result, nil
+	}
+	placeholders := strings.Repeat("?,", len(convIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(convIDs))
+	for i, id := range convIDs {
+		args[i] = id
+		result[id] = []int64{}
+	}
+	rows, err := db.Query(
+		`SELECT conversation_id, user_id FROM family_chat_members WHERE conversation_id IN (`+placeholders+`) ORDER BY user_id`,
+		args...,
+	)
+	if err != nil {
 		return nil, err
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out, nil
+	defer rows.Close()
+	for rows.Next() {
+		var convID, userID int64
+		if err := rows.Scan(&convID, &userID); err != nil {
+			return nil, err
+		}
+		result[convID] = append(result[convID], userID)
+	}
+	return result, rows.Err()
+}
+
+// batchUnreadCounts returns unread message counts for every conversation the
+// user belongs to in a single JOIN query, keyed by conversation ID.
+func batchUnreadCounts(db *sql.DB, userID int64) (map[int64]int64, error) {
+	result := make(map[int64]int64)
+	rows, err := db.Query(`
+		SELECT m.conversation_id, COUNT(msg.id)
+		FROM family_chat_members m
+		LEFT JOIN family_chat_messages msg
+			ON  msg.conversation_id  = m.conversation_id
+			AND msg.sender_user_id  <> m.user_id
+			AND (m.last_read_at = '' OR msg.created_at > m.last_read_at)
+		WHERE m.user_id = ?
+		GROUP BY m.conversation_id
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var convID, count int64
+		if err := rows.Scan(&convID, &count); err != nil {
+			return nil, err
+		}
+		result[convID] = count
+	}
+	return result, rows.Err()
 }
 
 // unreadCount returns the number of messages in convID newer than lastReadAt
-// that were not authored by userID. An empty lastReadAt counts every message
-// from someone other than the user.
+// that were not authored by userID. Used by single-conversation paths.
 func unreadCount(db *sql.DB, convID, userID int64, lastReadAt string) (int64, error) {
 	var count int64
 	if lastReadAt == "" {
