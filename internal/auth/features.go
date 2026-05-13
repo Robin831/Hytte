@@ -20,6 +20,7 @@ var FeatureDefaults = map[string]bool{
 	"webhooks":   false,
 	"claude_ai":  false,
 	"chat":       false,
+	"family_chat": false,
 	"kids_stars":      false,
 	"kids_allowance":  false,
 	"transit":         true,
