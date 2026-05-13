@@ -120,6 +120,20 @@ func CreateConversationHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("user %d not found", missing)})
 			return
 		}
+		if len([]rune(body.Name)) > maxNameLen {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is too long"})
+			return
+		}
+		if len(body.MemberUserIDs) > maxMembersPerConv {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many members"})
+			return
+		}
+		for _, uid := range body.MemberUserIDs {
+			if uid <= 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid member id"})
+				return
+			}
+		}
 
 		c, err := CreateConversation(db, user.ID, body.Name, body.MemberUserIDs)
 		if err != nil {
