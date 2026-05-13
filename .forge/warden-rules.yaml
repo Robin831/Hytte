@@ -3328,7 +3328,7 @@ rules:
     - id: read-modify-write-transaction
       category: concurrency
       pattern: >-
-        DEPRECATED: former read-modify-write transaction rule kept only for historical tracking. Use the `read-modify-write-needs-transaction` rule instead, per the no-duplicate-review-rules guidance.
+        DEPRECATED: former read-modify-write transaction rule kept only for historical tracking. Use the `read-modify-write-needs-transaction` rule instead, per the `deduplicate-warden-rules` guidance.
       check: >-
         This rule is intentionally inactive to avoid duplicate matches with `read-modify-write-needs-transaction`. When you see a sequential read + compute + UPDATE on the same row, review it under the `read-modify-write-needs-transaction` rule and ensure the sequence is wrapped in an appropriate transaction (e.g., BEGIN IMMEDIATE) to prevent races and double-firing side-effects.
       source: copilot:PR#241
@@ -14475,7 +14475,7 @@ rules:
     - id: deduplicate-warden-rules
       category: other
       pattern: >-
-        Adding a new rule to warden-rules.yaml whose intent overlaps with an existing rule, or multiple rules in the file that cover the same underlying guideline with only minor wording differences
+        Adding a new rule to .forge/warden-rules.yaml whose intent overlaps with an existing rule, or multiple rules in the file that cover the same underlying guideline with only minor wording differences
       check: >-
         Before adding a new review rule, scan the existing ruleset for rules with substantially overlapping intent. If a near-duplicate exists, merge the new guidance into the existing rule (keeping its stable ID) rather than creating a separate entry. If two or more existing rules check for the same underlying issue, merge them into a single rule with a stable ID and clearly differentiated trigger patterns to avoid duplicate review feedback. Resolve any existing duplication first so the ruleset remains internally consistent.
       source: copilot:PR#629
