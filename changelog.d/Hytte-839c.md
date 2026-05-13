@@ -1,0 +1,2 @@
+category: Added
+- **Pokémon TCG metadata + price sync** - New `internal/pokemon` package syncs sets, cards, and per-variant EUR prices from pokemontcg.io. A weekly full sync runs Sunday 04:00 Europe/Oslo and a daily price refresh runs at 07:00 Europe/Oslo; admins can trigger a manual run with `POST /api/pokemon/admin/sync`. Set `POKEMONTCG_API_KEY` for higher rate limits; the client honours `Retry-After` on 429 responses. (Hytte-839c)
