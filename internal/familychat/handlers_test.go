@@ -593,6 +593,21 @@ func TestCreateConversationHandler_InvalidMemberID(t *testing.T) {
 	}
 }
 
+func TestCreateConversationHandler_NonExistentMemberID(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	// user 9999 does not exist — should get 400, not 500.
+	payload := `{"name":"Family","member_user_ids":[9999]}`
+	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	CreateConversationHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non-existent user, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestPostMessageHandler_BodyTooLong(t *testing.T) {
 	db := setupTestDB(t)
 	makeUser(t, db, 1, "alice@example.com")
