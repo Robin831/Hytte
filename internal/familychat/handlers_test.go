@@ -349,6 +349,7 @@ func TestPostMessageHandler_AttachmentEncryption(t *testing.T) {
 	}
 }
 
+
 func TestListMessagesHandler_NonMember(t *testing.T) {
 	db := setupTestDB(t)
 	makeUser(t, db, 1, "alice@example.com")
@@ -709,6 +710,7 @@ func TestMarkReadHandler_InvalidTimestamp(t *testing.T) {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
 
 func TestDeleteConversationHandler_NonMember(t *testing.T) {
 	db := setupTestDB(t)

@@ -30,6 +30,7 @@ const (
 	maxRequestBytes   = 1 << 20 // 1 MiB
 )
 
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -52,6 +53,7 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	}
 	return true
 }
+
 
 // parseConvID extracts and validates the {id} path parameter for the
 // conversation routes. On failure we respond 404 (not 400) because an
