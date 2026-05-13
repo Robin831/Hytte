@@ -66,7 +66,7 @@ func StreamHandler(hub *Hub, membership MembershipFn) http.HandlerFunc {
 		w.Header().Set("X-Accel-Buffering", "no")
 		flusher.Flush()
 
-		sub := hub.Subscribe(convID)
+		sub := hub.Subscribe(user.ID, convID)
 		defer hub.Unsubscribe(convID, sub)
 
 		ticker := time.NewTicker(heartbeatInterval)

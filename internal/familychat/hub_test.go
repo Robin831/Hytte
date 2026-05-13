@@ -38,9 +38,9 @@ func recvWithin(t *testing.T, sub *Subscriber, d time.Duration) Event {
 
 func TestHub_PublishFanout(t *testing.T) {
 	h := NewHub()
-	a := h.Subscribe(42)
+	a := h.Subscribe(1, 42)
 	defer h.Unsubscribe(42, a)
-	b := h.Subscribe(42)
+	b := h.Subscribe(2, 42)
 	defer h.Unsubscribe(42, b)
 
 	h.Publish(42, Event{Type: EventMessageNew, Data: map[string]any{"id": 1}})
@@ -54,9 +54,9 @@ func TestHub_PublishFanout(t *testing.T) {
 
 func TestHub_IsolationBetweenConvs(t *testing.T) {
 	h := NewHub()
-	a := h.Subscribe(1)
+	a := h.Subscribe(10, 1)
 	defer h.Unsubscribe(1, a)
-	b := h.Subscribe(2)
+	b := h.Subscribe(11, 2)
 	defer h.Unsubscribe(2, b)
 
 	h.Publish(2, Event{Type: EventMessageNew, Data: map[string]any{"v": "for-b"}})
@@ -77,8 +77,8 @@ func TestHub_IsolationBetweenConvs(t *testing.T) {
 
 func TestHub_UnsubscribeCleanup(t *testing.T) {
 	h := NewHub()
-	a := h.Subscribe(7)
-	b := h.Subscribe(7)
+	a := h.Subscribe(1, 7)
+	b := h.Subscribe(2, 7)
 
 	if got := h.subscriberCount(7); got != 2 {
 		t.Fatalf("expected 2 subscribers, got %d", got)
@@ -114,13 +114,13 @@ func TestHub_UnsubscribeUnknownSubscriberNoPanic(t *testing.T) {
 	// Unsubscribe with a nil subscriber and one from an unknown conversation
 	// should both be no-ops.
 	h.Unsubscribe(9, nil)
-	stranger := &Subscriber{ch: make(chan Event, 1)}
+	stranger := &Subscriber{userID: 1, ch: make(chan Event, 1)}
 	h.Unsubscribe(9, stranger)
 }
 
 func TestHub_SlowSubscriberDoesNotBlock(t *testing.T) {
 	h := NewHub()
-	slow := h.Subscribe(3)
+	slow := h.Subscribe(1, 3)
 	defer h.Unsubscribe(3, slow)
 
 	// Saturate the slow subscriber's buffer so any further publish would
@@ -130,7 +130,7 @@ func TestHub_SlowSubscriberDoesNotBlock(t *testing.T) {
 	}
 
 	// Add a fast subscriber with an empty buffer.
-	fast := h.Subscribe(3)
+	fast := h.Subscribe(2, 3)
 	defer h.Unsubscribe(3, fast)
 
 	// Publish must return promptly even though slow is full.

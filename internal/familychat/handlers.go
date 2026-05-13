@@ -120,20 +120,6 @@ func CreateConversationHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("user %d not found", missing)})
 			return
 		}
-		if len([]rune(body.Name)) > maxNameLen {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is too long"})
-			return
-		}
-		if len(body.MemberUserIDs) > maxMembersPerConv {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "too many members"})
-			return
-		}
-		for _, uid := range body.MemberUserIDs {
-			if uid <= 0 {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid member id"})
-				return
-			}
-		}
 
 		c, err := CreateConversation(db, user.ID, body.Name, body.MemberUserIDs)
 		if err != nil {
@@ -215,9 +201,18 @@ func ListMessagesHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// PostMessageHandler appends a message to a conversation and returns the
-// inserted row decrypted.
+// PostMessageHandler appends a message to a conversation, broadcasts it on
+// the SSE hub for any live subscriber, and fans webpush notifications out to
+// every recipient who is not currently subscribed via SSE.
 func PostMessageHandler(db *sql.DB) http.HandlerFunc {
+	return postMessageHandler(db, DefaultHub(), defaultPushSender(db), false /* notify async */)
+}
+
+// postMessageHandler is the testable inner constructor. When notifySync is
+// true the webpush fan-out runs inline so tests can assert on it after
+// ServeHTTP returns; in production it runs in a goroutine so a slow push
+// gateway cannot stall the HTTP response.
+func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 		convID, ok := parseConvID(r)
@@ -264,16 +259,26 @@ func PostMessageHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to post message"})
 			return
 		}
-		DefaultHub().Publish(convID, Event{
-			Type: EventMessageNew,
-			Data: map[string]any{
-				"id":              msg.ID,
-				"conversation_id": msg.ConversationID,
-				"sender_user_id":  msg.SenderUserID,
-				"body":            msg.Body,
-				"created_at":      msg.CreatedAt,
-			},
-		})
+
+		// Publish to any live SSE subscribers first so they see the message
+		// without waiting for the webpush round trip.
+		if hub != nil {
+			hub.Publish(convID, Event{Type: EventMessageNew, Data: map[string]any{"message": msg}})
+		}
+
+		// Fan webpush out to recipients who are not currently on SSE. Done
+		// after the DB write and hub publish so the recipient cannot get a
+		// notification for a message that failed to persist.
+		if sender != nil {
+			senderName := senderDisplayName(user)
+			if notifySync {
+				notifyOfflineRecipients(db, hub, sender, convID, msg, senderName)
+			} else {
+				go notifyOfflineRecipients(db, hub, sender, convID, msg, senderName)
+			}
+		}
+
+
 		writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
 	}
 }
