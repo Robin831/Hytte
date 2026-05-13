@@ -1,314 +1,420 @@
+// Package familychat implements the REST handlers and storage for the Family
+// Chat feature. Conversations live in family_chat_conversations, membership in
+// family_chat_members, and messages in family_chat_messages. Message bodies
+// and attachment paths are encrypted at rest via internal/encryption.
 package familychat
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
 
-// isMember reports whether userID is a member of conversationID. It uses the
-// supplied executor (sql.DB or sql.Tx) so callers can check membership inside
-// a transaction. Returns (false, nil) when the user is not a member; any
-// other error is propagated.
-func isMember(ctx context.Context, q sqlQuerier, conversationID, userID int64) (bool, error) {
+// timeFormat is a fixed-width UTC timestamp with millisecond precision so
+// that string comparisons sort chronologically.
+const timeFormat = "2006-01-02T15:04:05.000Z07:00"
+
+// Conversation is a single family chat conversation as returned to the client.
+type Conversation struct {
+	ID            int64   `json:"id"`
+	Name          string  `json:"name"`
+	OwnerUserID   int64   `json:"owner_user_id"`
+	CreatedAt     string  `json:"created_at"`
+	LastMessageAt string  `json:"last_message_at"`
+	UnreadCount   int64   `json:"unread_count"`
+	MemberIDs     []int64 `json:"member_ids"`
+}
+
+// Message is a single chat message returned to the client. Body and
+// AttachmentPath are returned in plaintext after decryption.
+type Message struct {
+	ID             int64  `json:"id"`
+	ConversationID int64  `json:"conversation_id"`
+	SenderUserID   int64  `json:"sender_user_id"`
+	Body           string `json:"body"`
+	AttachmentPath string `json:"attachment_path,omitempty"`
+	AttachmentMime string `json:"attachment_mime,omitempty"`
+	CreatedAt      string `json:"created_at"`
+}
+
+// ErrNotMember is returned when the requesting user is not a member of the
+// target conversation. Handlers convert this into 404 to avoid leaking the
+// existence of conversations the user is not part of.
+var ErrNotMember = errors.New("familychat: not a member")
+
+// IsMember reports whether userID belongs to convID.
+func IsMember(db *sql.DB, convID, userID int64) (bool, error) {
 	var one int
-	err := q.QueryRowContext(ctx,
+	err := db.QueryRow(
 		`SELECT 1 FROM family_chat_members WHERE conversation_id = ? AND user_id = ?`,
-		conversationID, userID,
+		convID, userID,
 	).Scan(&one)
-	if err == nil {
-		return true, nil
-	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
-	return false, err
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
-// sqlQuerier is the minimal interface satisfied by both *sql.DB and *sql.Tx
-// that the store helpers need.
-type sqlQuerier interface {
-	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
-}
-
-// CreateConversation inserts a new conversation with the given (plaintext)
-// name and a membership row for the owner plus each memberID. memberIDs that
-// duplicate ownerID are silently skipped. Returns the new conversation ID.
-func CreateConversation(ctx context.Context, db *sql.DB, ownerID int64, name string, memberIDs []int64) (int64, error) {
-	now := time.Now().UTC()
-	encName, err := encryption.EncryptField(name)
-	if err != nil {
-		return 0, fmt.Errorf("encrypt name: %w", err)
-	}
-
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback() //nolint:errcheck
-
-	res, err := tx.ExecContext(ctx,
-		`INSERT INTO family_chat_conversations (name_enc, owner_id, created_at, updated_at)
-		 VALUES (?, ?, ?, ?)`,
-		encName, ownerID, now, now,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("insert conversation: %w", err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("last insert id: %w", err)
-	}
-
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO family_chat_members (conversation_id, user_id, role, joined_at)
-		 VALUES (?, ?, ?, ?)`,
-		id, ownerID, RoleOwner, now,
-	); err != nil {
-		return 0, fmt.Errorf("insert owner member: %w", err)
-	}
-
-	for _, mid := range memberIDs {
-		if mid == ownerID {
-			continue
-		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT OR IGNORE INTO family_chat_members (conversation_id, user_id, role, joined_at)
-			 VALUES (?, ?, ?, ?)`,
-			id, mid, RoleMember, now,
-		); err != nil {
-			return 0, fmt.Errorf("insert member %d: %w", mid, err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("commit: %w", err)
-	}
-	return id, nil
-}
-
-// ListUserConversations returns every conversation userID is a member of,
-// most-recently-updated first. Names are decrypted.
-func ListUserConversations(ctx context.Context, db *sql.DB, userID int64) ([]Conversation, error) {
-	rows, err := db.QueryContext(ctx,
-		`SELECT c.id, c.name_enc, c.owner_id, c.created_at, c.updated_at
+// ListConversations returns every conversation the user belongs to, newest
+// activity first. The unread_count for each conversation is computed against
+// the member's last_read_at watermark.
+func ListConversations(db *sql.DB, userID int64) ([]Conversation, error) {
+	rows, err := db.Query(
+		`SELECT c.id, c.name, c.owner_user_id, c.created_at, c.last_message_at, m.last_read_at
 		 FROM family_chat_conversations c
 		 JOIN family_chat_members m ON m.conversation_id = c.id
 		 WHERE m.user_id = ?
-		 ORDER BY c.updated_at DESC, c.id DESC`,
+		 ORDER BY CASE WHEN c.last_message_at = '' THEN c.created_at ELSE c.last_message_at END DESC, c.id DESC`,
 		userID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("query conversations: %w", err)
+		return nil, err
 	}
 	defer rows.Close()
 
-	var out []Conversation
+	type convoRow struct {
+		c          Conversation
+		lastReadAt string
+	}
+	var rowsBuf []convoRow
 	for rows.Next() {
-		var c Conversation
-		var nameEnc string
-		if err := rows.Scan(&c.ID, &nameEnc, &c.OwnerID, &c.CreatedAt, &c.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan conversation: %w", err)
+		var cr convoRow
+		if err := rows.Scan(&cr.c.ID, &cr.c.Name, &cr.c.OwnerUserID, &cr.c.CreatedAt, &cr.c.LastMessageAt, &cr.lastReadAt); err != nil {
+			return nil, err
 		}
-		name, err := encryption.DecryptField(nameEnc)
-		if err != nil {
-			return nil, fmt.Errorf("decrypt conversation %d name: %w", c.ID, err)
-		}
-		c.Name = name
-		out = append(out, c)
+		rowsBuf = append(rowsBuf, cr)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	if out == nil {
-		out = []Conversation{}
+
+	out := make([]Conversation, 0, len(rowsBuf))
+	for _, cr := range rowsBuf {
+		members, err := listMemberIDs(db, cr.c.ID)
+		if err != nil {
+			return nil, err
+		}
+		unread, err := unreadCount(db, cr.c.ID, userID, cr.lastReadAt)
+		if err != nil {
+			return nil, err
+		}
+		cr.c.MemberIDs = members
+		cr.c.UnreadCount = unread
+		out = append(out, cr.c)
 	}
 	return out, nil
 }
 
-// GetConversation returns the conversation if askerID is a member of it.
-// Returns ErrForbidden when askerID is not a member or the conversation does
-// not exist — existence is not revealed to non-members.
-func GetConversation(ctx context.Context, db *sql.DB, conversationID, askerID int64) (Conversation, error) {
-	ok, err := isMember(ctx, db, conversationID, askerID)
-	if err != nil {
-		return Conversation{}, fmt.Errorf("check membership: %w", err)
-	}
-	if !ok {
-		return Conversation{}, ErrForbidden
-	}
+// CreateConversation inserts a new conversation owned by ownerID and adds
+// every user in memberIDs (plus the owner) as a member. Duplicate or invalid
+// member IDs are silently coalesced.
+func CreateConversation(db *sql.DB, ownerID int64, name string, memberIDs []int64) (*Conversation, error) {
+	now := time.Now().UTC().Format(timeFormat)
 
-	var c Conversation
-	var nameEnc string
-	err = db.QueryRowContext(ctx,
-		`SELECT id, name_enc, owner_id, created_at, updated_at
-		 FROM family_chat_conversations WHERE id = ?`,
-		conversationID,
-	).Scan(&c.ID, &nameEnc, &c.OwnerID, &c.CreatedAt, &c.UpdatedAt)
+	tx, err := db.Begin()
 	if err != nil {
-		return Conversation{}, err
+		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	name, err := encryption.DecryptField(nameEnc)
-	if err != nil {
-		return Conversation{}, fmt.Errorf("decrypt name: %w", err)
-	}
-	c.Name = name
-	return c, nil
-}
+	defer func() { _ = tx.Rollback() }()
 
-// AppendMessage inserts a new message into the conversation. senderID must be
-// a member of the conversation, otherwise ErrForbidden is returned. body and
-// attachmentPath are encrypted before storage. attachmentMime is stored as-is
-// (it is not user-secret and may be used by attachment-serving handlers).
-// Returns the new message ID.
-func AppendMessage(ctx context.Context, db *sql.DB, conversationID, senderID int64, body, attachmentPath, attachmentMime string) (int64, error) {
-	encBody, err := encryption.EncryptField(body)
-	if err != nil {
-		return 0, fmt.Errorf("encrypt body: %w", err)
-	}
-	encPath, err := encryption.EncryptField(attachmentPath)
-	if err != nil {
-		return 0, fmt.Errorf("encrypt attachment path: %w", err)
-	}
-
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback() //nolint:errcheck
-
-	ok, err := isMember(ctx, tx, conversationID, senderID)
-	if err != nil {
-		return 0, fmt.Errorf("check membership: %w", err)
-	}
-	if !ok {
-		return 0, ErrForbidden
-	}
-
-	now := time.Now().UTC()
-	var pathArg any
-	if attachmentPath == "" {
-		pathArg = nil
-	} else {
-		pathArg = encPath
-	}
-	var mimeArg any
-	if attachmentMime == "" {
-		mimeArg = nil
-	} else {
-		mimeArg = attachmentMime
-	}
-
-	res, err := tx.ExecContext(ctx,
-		`INSERT INTO family_chat_messages (conversation_id, sender_id, body_enc, attachment_path_enc, attachment_mime, sent_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		conversationID, senderID, encBody, pathArg, mimeArg, now,
+	res, err := tx.Exec(
+		`INSERT INTO family_chat_conversations (name, owner_user_id, created_at, last_message_at) VALUES (?, ?, ?, ?)`,
+		name, ownerID, now, "",
 	)
 	if err != nil {
-		return 0, fmt.Errorf("insert message: %w", err)
+		return nil, fmt.Errorf("insert conversation: %w", err)
 	}
-	id, err := res.LastInsertId()
+	convID, err := res.LastInsertId()
 	if err != nil {
-		return 0, fmt.Errorf("last insert id: %w", err)
+		return nil, fmt.Errorf("last insert id: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE family_chat_conversations SET updated_at = ? WHERE id = ?`,
-		now, conversationID,
+	seen := map[int64]struct{}{ownerID: {}}
+	if _, err := tx.Exec(
+		`INSERT INTO family_chat_members (conversation_id, user_id, joined_at, last_read_at) VALUES (?, ?, ?, ?)`,
+		convID, ownerID, now, "",
 	); err != nil {
-		return 0, fmt.Errorf("bump updated_at: %w", err)
+		return nil, fmt.Errorf("insert owner member: %w", err)
+	}
+	for _, uid := range memberIDs {
+		if uid <= 0 {
+			continue
+		}
+		if _, dup := seen[uid]; dup {
+			continue
+		}
+		seen[uid] = struct{}{}
+		if _, err := tx.Exec(
+			`INSERT INTO family_chat_members (conversation_id, user_id, joined_at, last_read_at) VALUES (?, ?, ?, ?)`,
+			convID, uid, now, "",
+		); err != nil {
+			return nil, fmt.Errorf("insert member %d: %w", uid, err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("commit: %w", err)
+		return nil, fmt.Errorf("commit: %w", err)
 	}
-	return id, nil
+
+	return GetConversation(db, convID, ownerID)
 }
 
-// ListMessages returns messages from the conversation whose ID is greater
-// than sinceID (use 0 to start from the beginning), ordered by ID ascending,
-// capped at limit. askerID must be a member of the conversation.
-// limit <= 0 returns an empty slice.
-func ListMessages(ctx context.Context, db *sql.DB, conversationID, askerID, sinceID int64, limit int) ([]Message, error) {
-	ok, err := isMember(ctx, db, conversationID, askerID)
+// GetConversation returns the conversation if userID is a member, otherwise
+// returns ErrNotMember (handlers map to 404).
+func GetConversation(db *sql.DB, convID, userID int64) (*Conversation, error) {
+	ok, err := IsMember(db, convID, userID)
 	if err != nil {
-		return nil, fmt.Errorf("check membership: %w", err)
+		return nil, err
 	}
 	if !ok {
-		return nil, ErrForbidden
-	}
-	if limit <= 0 {
-		return []Message{}, nil
+		return nil, ErrNotMember
 	}
 
-	rows, err := db.QueryContext(ctx,
-		`SELECT id, conversation_id, sender_id, body_enc, attachment_path_enc, attachment_mime, sent_at
-		 FROM family_chat_messages
-		 WHERE conversation_id = ? AND id > ?
-		 ORDER BY id ASC
-		 LIMIT ?`,
-		conversationID, sinceID, limit,
+	var c Conversation
+	var lastReadAt string
+	err = db.QueryRow(
+		`SELECT c.id, c.name, c.owner_user_id, c.created_at, c.last_message_at, m.last_read_at
+		 FROM family_chat_conversations c
+		 JOIN family_chat_members m ON m.conversation_id = c.id
+		 WHERE c.id = ? AND m.user_id = ?`,
+		convID, userID,
+	).Scan(&c.ID, &c.Name, &c.OwnerUserID, &c.CreatedAt, &c.LastMessageAt, &lastReadAt)
+	if err != nil {
+		return nil, err
+	}
+
+	c.MemberIDs, err = listMemberIDs(db, convID)
+	if err != nil {
+		return nil, err
+	}
+	c.UnreadCount, err = unreadCount(db, convID, userID, lastReadAt)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// DeleteConversation removes the conversation, but only if userID is its
+// owner. Non-owners (including other members) receive ErrNotMember so the
+// existence of conversations they do not own is not leaked.
+func DeleteConversation(db *sql.DB, convID, userID int64) error {
+	res, err := db.Exec(
+		`DELETE FROM family_chat_conversations WHERE id = ? AND owner_user_id = ?`,
+		convID, userID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("query messages: %w", err)
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotMember
+	}
+	return nil
+}
+
+// ListMessages returns up to limit messages from convID, newest-first.
+// If since > 0, only messages with id > since are returned (still newest-first)
+// — this lets the client poll for new messages incrementally.
+func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message, error) {
+	ok, err := IsMember(db, convID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, ErrNotMember
+	}
+
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	var (
+		rows     *sql.Rows
+		queryErr error
+	)
+	if since > 0 {
+		rows, queryErr = db.Query(
+			`SELECT id, conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at
+			 FROM family_chat_messages
+			 WHERE conversation_id = ? AND id > ?
+			 ORDER BY id DESC
+			 LIMIT ?`,
+			convID, since, limit,
+		)
+	} else {
+		rows, queryErr = db.Query(
+			`SELECT id, conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at
+			 FROM family_chat_messages
+			 WHERE conversation_id = ?
+			 ORDER BY id DESC
+			 LIMIT ?`,
+			convID, limit,
+		)
+	}
+	if queryErr != nil {
+		return nil, queryErr
 	}
 	defer rows.Close()
 
-	var out []Message
+	out := []Message{}
 	for rows.Next() {
 		var m Message
-		var bodyEnc string
-		var pathEnc, mime sql.NullString
-		if err := rows.Scan(&m.ID, &m.ConversationID, &m.SenderID, &bodyEnc, &pathEnc, &mime, &m.SentAt); err != nil {
-			return nil, fmt.Errorf("scan message: %w", err)
+		if err := rows.Scan(&m.ID, &m.ConversationID, &m.SenderUserID, &m.Body, &m.AttachmentPath, &m.AttachmentMime, &m.CreatedAt); err != nil {
+			return nil, err
 		}
-		body, err := encryption.DecryptField(bodyEnc)
-		if err != nil {
-			return nil, fmt.Errorf("decrypt message %d body: %w", m.ID, err)
+		if m.Body, err = encryption.DecryptField(m.Body); err != nil {
+			return nil, fmt.Errorf("decrypt body: %w", err)
 		}
-		m.Body = body
-		if pathEnc.Valid && pathEnc.String != "" {
-			path, err := encryption.DecryptField(pathEnc.String)
-			if err != nil {
-				return nil, fmt.Errorf("decrypt message %d attachment path: %w", m.ID, err)
-			}
-			m.AttachmentPath = path
-		}
-		if mime.Valid {
-			m.AttachmentMime = mime.String
+		if m.AttachmentPath, err = encryption.DecryptField(m.AttachmentPath); err != nil {
+			return nil, fmt.Errorf("decrypt attachment path: %w", err)
 		}
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	if out == nil {
-		out = []Message{}
-	}
 	return out, nil
 }
 
-// MarkRead updates the membership row's last_read_at timestamp. Returns
-// ErrForbidden if the user is not a member of the conversation.
-func MarkRead(ctx context.Context, db *sql.DB, conversationID, userID int64, ts time.Time) error {
-	res, err := db.ExecContext(ctx,
-		`UPDATE family_chat_members SET last_read_at = ?
-		 WHERE conversation_id = ? AND user_id = ?`,
-		ts.UTC(), conversationID, userID,
+// CreateMessage inserts a new message authored by senderID into convID,
+// touches the conversation's last_message_at, and returns the inserted row
+// in plaintext form. Returns ErrNotMember if the sender is not a member.
+func CreateMessage(db *sql.DB, convID, senderID int64, body, attachmentPath, attachmentMime string) (*Message, error) {
+	ok, err := IsMember(db, convID, senderID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, ErrNotMember
+	}
+
+	encBody, err := encryption.EncryptField(body)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt body: %w", err)
+	}
+	encPath, err := encryption.EncryptField(attachmentPath)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt attachment path: %w", err)
+	}
+	now := time.Now().UTC().Format(timeFormat)
+
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	res, err := tx.Exec(
+		`INSERT INTO family_chat_messages (conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		convID, senderID, encBody, encPath, attachmentMime, now,
 	)
 	if err != nil {
-		return fmt.Errorf("update last_read_at: %w", err)
+		return nil, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(
+		`UPDATE family_chat_conversations SET last_message_at = ? WHERE id = ?`,
+		now, convID,
+	); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &Message{
+		ID:             id,
+		ConversationID: convID,
+		SenderUserID:   senderID,
+		Body:           body,
+		AttachmentPath: attachmentPath,
+		AttachmentMime: attachmentMime,
+		CreatedAt:      now,
+	}, nil
+}
+
+// MarkRead sets the requesting member's last_read_at to at. Returns
+// ErrNotMember if the user is not a member of convID.
+func MarkRead(db *sql.DB, convID, userID int64, at string) error {
+	if at == "" {
+		at = time.Now().UTC().Format(timeFormat)
+	}
+	res, err := db.Exec(
+		`UPDATE family_chat_members SET last_read_at = ? WHERE conversation_id = ? AND user_id = ?`,
+		at, convID, userID,
+	)
+	if err != nil {
+		return err
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("rows affected: %w", err)
+		return err
 	}
 	if n == 0 {
-		return ErrForbidden
+		return ErrNotMember
 	}
 	return nil
+}
+
+// listMemberIDs returns every user_id in convID sorted ascending. Sorting
+// gives the JSON response a stable order regardless of insertion order.
+func listMemberIDs(db *sql.DB, convID int64) ([]int64, error) {
+	rows, err := db.Query(
+		`SELECT user_id FROM family_chat_members WHERE conversation_id = ?`,
+		convID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []int64{}
+	for rows.Next() {
+		var uid int64
+		if err := rows.Scan(&uid); err != nil {
+			return nil, err
+		}
+		out = append(out, uid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out, nil
+}
+
+// unreadCount returns the number of messages in convID newer than lastReadAt
+// that were not authored by userID. An empty lastReadAt counts every message
+// from someone other than the user.
+func unreadCount(db *sql.DB, convID, userID int64, lastReadAt string) (int64, error) {
+	var count int64
+	if lastReadAt == "" {
+		err := db.QueryRow(
+			`SELECT COUNT(*) FROM family_chat_messages WHERE conversation_id = ? AND sender_user_id <> ?`,
+			convID, userID,
+		).Scan(&count)
+		return count, err
+	}
+	err := db.QueryRow(
+		`SELECT COUNT(*) FROM family_chat_messages WHERE conversation_id = ? AND sender_user_id <> ? AND created_at > ?`,
+		convID, userID, lastReadAt,
+	).Scan(&count)
+	return count, err
 }
