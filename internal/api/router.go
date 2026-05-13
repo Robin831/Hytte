@@ -29,6 +29,7 @@ import (
 	mathgame "github.com/Robin831/Hytte/internal/math"
 	"github.com/Robin831/Hytte/internal/netatmo"
 	"github.com/Robin831/Hytte/internal/notes"
+	"github.com/Robin831/Hytte/internal/pokemon"
 	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/settings"
 	"github.com/Robin831/Hytte/internal/skywatch"
@@ -193,6 +194,11 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/admin/users", auth.AdminListUsersHandler(db))
 				r.Put("/admin/users/{id}/features", auth.AdminSetFeatureHandler(db))
 				r.Post("/admin/stars/award", stars.AdminAwardStarsHandler(db))
+
+				// Pokémon TCG: manual full metadata + price sync trigger.
+				// Long-running work runs in a detached goroutine; the handler
+				// returns 202 Accepted immediately (Hytte-839c).
+				r.Post("/pokemon/admin/sync", pokemon.AdminSyncHandler(db))
 
 				// AI prompt management — admin only.
 				r.Get("/settings/ai-prompts", settings.GetAIPromptsHandler(db))

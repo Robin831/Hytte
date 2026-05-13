@@ -1589,6 +1589,42 @@ func createSchema(db *sql.DB) error {
 		completed_at TEXT NOT NULL DEFAULT ''
 	);
 
+	-- Pokémon TCG metadata + variant pricing (Hytte-839c).
+	-- Sets, cards, and per-variant EUR prices synced from pokemontcg.io.
+	-- NOK conversion is handled separately (Hytte-8pzb seeds currency_rates).
+	CREATE TABLE IF NOT EXISTS pokemon_sets (
+		id            TEXT PRIMARY KEY,
+		name          TEXT NOT NULL,
+		series        TEXT NOT NULL,
+		release_date  TEXT NOT NULL,
+		total_cards   INTEGER NOT NULL DEFAULT 0,
+		symbol_url    TEXT NOT NULL DEFAULT '',
+		logo_url      TEXT NOT NULL DEFAULT '',
+		synced_at     TIMESTAMP NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS pokemon_cards (
+		id              TEXT PRIMARY KEY,
+		set_id          TEXT NOT NULL REFERENCES pokemon_sets(id) ON DELETE CASCADE,
+		name            TEXT NOT NULL,
+		collector_no    TEXT NOT NULL,
+		rarity          TEXT NOT NULL DEFAULT '',
+		image_small_url TEXT NOT NULL DEFAULT '',
+		image_large_url TEXT NOT NULL DEFAULT '',
+		synced_at       TIMESTAMP NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_pokemon_cards_set ON pokemon_cards(set_id, collector_no);
+	CREATE INDEX IF NOT EXISTS idx_pokemon_cards_name ON pokemon_cards(name);
+
+	CREATE TABLE IF NOT EXISTS pokemon_card_variants (
+		id        INTEGER PRIMARY KEY AUTOINCREMENT,
+		card_id   TEXT NOT NULL REFERENCES pokemon_cards(id) ON DELETE CASCADE,
+		kind      TEXT NOT NULL,
+		price_eur REAL NOT NULL DEFAULT 0,
+		price_at  TIMESTAMP,
+		UNIQUE(card_id, kind)
+	);
+
 	`
 
 	_, err := db.Exec(schema)

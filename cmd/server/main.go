@@ -16,6 +16,7 @@ import (
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/daemon"
 	"github.com/Robin831/Hytte/internal/db"
+	"github.com/Robin831/Hytte/internal/pokemon"
 	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/stars"
 	"github.com/Robin831/Hytte/internal/stride"
@@ -346,6 +347,56 @@ func main() {
 					}
 				}
 				log.Printf("stride: weekly plan generation complete (%d users)", len(userIDs))
+			}
+		}
+	}()
+
+	// Schedule weekly Pokémon TCG full sync (Sunday 04:00 Europe/Oslo) and
+	// a daily price refresh (07:00 Europe/Oslo). Both run in the same
+	// goroutine to keep startup tidy; whichever timer fires first advances
+	// independently of the other (Hytte-839c).
+	go func() {
+		oslo, err := time.LoadLocation("Europe/Oslo")
+		if err != nil {
+			log.Printf("pokemon: failed to load Europe/Oslo timezone: %v", err)
+			return
+		}
+		for {
+			now := time.Now()
+			nextFull := pokemon.NextWeeklySync(now, oslo)
+			nextPrice := pokemon.NextDailyPriceRefresh(now, oslo)
+
+			var next time.Time
+			full := false
+			if nextFull.Before(nextPrice) {
+				next = nextFull
+				full = true
+			} else {
+				next = nextPrice
+			}
+
+			timer := time.NewTimer(time.Until(next))
+			select {
+			case <-notifCtx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+				ctx, cancel := context.WithTimeout(notifCtx, 60*time.Minute)
+				client := pokemon.NewClient()
+				if full {
+					if err := pokemon.SyncAll(ctx, database, client); err != nil {
+						log.Printf("pokemon: weekly SyncAll error: %v", err)
+					} else {
+						log.Println("pokemon: weekly SyncAll complete")
+					}
+				} else {
+					if err := pokemon.RefreshPrices(ctx, database, client); err != nil {
+						log.Printf("pokemon: daily price refresh error: %v", err)
+					} else {
+						log.Println("pokemon: daily price refresh complete")
+					}
+				}
+				cancel()
 			}
 		}
 	}()
