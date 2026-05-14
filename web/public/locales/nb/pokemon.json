@@ -94,6 +94,18 @@
       "addFailed": "Kunne ikke legge til kort"
     }
   },
+  "top": {
+    "title": "Mest verdifulle kort",
+    "subtitle": "Hva kan ungen finne i en pakke …",
+    "entryButton": "Mest verdifulle",
+    "filter": {
+      "all": "Alle",
+      "owned": "Eide",
+      "missing": "Mangler"
+    },
+    "priceLabel": "{{nok}} kr",
+    "priceLabelDetailed": "{{nok}} kr (€{{eur}})"
+  },
   "scanner": {
     "dialogLabel": "Skann et Pokémon-kort",
     "requesting": "Ber om tilgang til kameraet …",

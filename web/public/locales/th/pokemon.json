@@ -94,6 +94,18 @@
       "addFailed": "เพิ่มการ์ดไม่สำเร็จ"
     }
   },
+  "top": {
+    "title": "การ์ดมูลค่าสูงสุด",
+    "subtitle": "เด็ก ๆ อาจเจออะไรในซอง…",
+    "entryButton": "มูลค่าสูงสุด",
+    "filter": {
+      "all": "ทั้งหมด",
+      "owned": "ที่มี",
+      "missing": "ที่ขาด"
+    },
+    "priceLabel": "{{nok}} kr",
+    "priceLabelDetailed": "{{nok}} kr (€{{eur}})"
+  },
   "scanner": {
     "dialogLabel": "สแกนการ์ดโปเกมอน",
     "requesting": "กำลังขออนุญาตเข้าถึงกล้อง…",

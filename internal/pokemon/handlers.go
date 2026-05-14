@@ -29,6 +29,14 @@ const defaultListLimit = 50
 // list endpoints stay snappy when the upper bound is tight.
 const maxListLimit = 50
 
+// defaultTopLimit is the default page size for the "top valued cards" view.
+const defaultTopLimit = 50
+
+// maxTopLimit caps ?limit= on the top endpoint. The view is meant for a
+// curated highlights list, not a full leaderboard, so the upper bound stays
+// modest to keep the query fast and the response tile-friendly.
+const maxTopLimit = 100
+
 // allowedConditions enumerates the grades we accept for a collection row.
 // An empty string is also permitted (callers may not yet have graded the card).
 var allowedConditions = map[string]bool{
@@ -78,17 +86,22 @@ type VariantDTO struct {
 	AcquiredAt *string  `json:"acquired_at,omitempty"`
 }
 
-// CardDTO is the JSON shape returned for any card listing.
+// CardDTO is the JSON shape returned for any card listing. TopVariantKind is
+// populated only by the Top endpoint; it names the variant with the highest
+// price_eur so the UI can label the tile ("Reverse Holo €123" etc.) without
+// re-deriving it client-side.
 type CardDTO struct {
-	ID            string       `json:"id"`
-	SetID         string       `json:"set_id"`
-	SetName       string       `json:"set_name,omitempty"`
-	Name          string       `json:"name"`
-	CollectorNo   string       `json:"collector_no"`
-	Rarity        string       `json:"rarity"`
-	ImageSmallURL string       `json:"image_small_url"`
-	ImageLargeURL string       `json:"image_large_url"`
-	Variants      []VariantDTO `json:"variants"`
+	ID             string       `json:"id"`
+	SetID          string       `json:"set_id"`
+	SetName        string       `json:"set_name,omitempty"`
+	Name           string       `json:"name"`
+	CollectorNo    string       `json:"collector_no"`
+	Rarity         string       `json:"rarity"`
+	ImageSmallURL  string       `json:"image_small_url"`
+	ImageLargeURL  string       `json:"image_large_url"`
+	Variants       []VariantDTO `json:"variants"`
+	TopVariantKind string       `json:"top_variant_kind,omitempty"`
+	OwnedByMe      *bool        `json:"owned_by_me,omitempty"`
 }
 
 // CollectionRow is the JSON shape for collection CRUD responses. Timestamps
@@ -115,6 +128,7 @@ func RegisterRoutes(r chi.Router, db *sql.DB) {
 		r.Get("/pokemon/sets", ListSetsHandler(db))
 		r.Get("/pokemon/sets/{id}/cards", ListSetCardsHandler(db))
 		r.Get("/pokemon/cards/search", SearchCardsHandler(db))
+		r.Get("/pokemon/top", TopHandler(db))
 		r.Post("/pokemon/collection", UpsertCollectionHandler(db))
 		r.Patch("/pokemon/collection/{id}", UpdateCollectionHandler(db))
 		r.Delete("/pokemon/collection/{id}", DeleteCollectionHandler(db))
@@ -638,6 +652,113 @@ func MissingFromSetHandler(db *sql.DB) http.HandlerFunc {
 		applyNOK(w, missing, rate, ok)
 		respondJSON(w, http.StatusOK, map[string]any{"cards": missing})
 	}
+}
+
+// TopHandler returns the highest-valued cards across the entire catalogue,
+// ranked by the max price_eur among each card's variants. It powers the
+// "Top valued cards" highlights view — a fun "look what could be in here"
+// surface for the kids. The optional ?owned=owned|missing|any filter lets the
+// UI narrow the list to "what I'm still missing" without a second request.
+// ?limit= defaults to 50 and is clamped to [1, 100].
+func TopHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			respondError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		limit := parseLimit(r, defaultTopLimit, maxTopLimit)
+		owned := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("owned")))
+		switch owned {
+		case "", "any", "owned", "missing":
+		default:
+			respondError(w, http.StatusBadRequest, "invalid owned filter")
+			return
+		}
+
+		cards, err := loadTopCards(r, db, user.ID, owned, limit)
+		if err != nil {
+			log.Printf("pokemon: top cards: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to list top cards")
+			return
+		}
+
+		rate, ok := loadRate(r, db)
+		applyNOK(w, cards, rate, ok)
+		respondJSON(w, http.StatusOK, map[string]any{"cards": cards})
+	}
+}
+
+// loadTopCards executes the ranked-variant join and returns CardDTOs with
+// their variants hydrated and the highest-priced variant flagged via
+// TopVariantKind. The owned filter is applied at SQL time so the limit
+// matches the visible card count, not the raw catalogue position.
+func loadTopCards(r *http.Request, db *sql.DB, userID int64, owned string, limit int) ([]CardDTO, error) {
+	// Window function pulls the highest-priced variant per card; the outer
+	// join then filters to top-priced rows and joins the catalogue.
+	query := `
+		WITH ranked AS (
+			SELECT card_id, kind, price_eur,
+			       ROW_NUMBER() OVER (PARTITION BY card_id ORDER BY price_eur DESC, id) AS rn
+			FROM pokemon_card_variants
+		)
+		SELECT c.id, c.set_id, s.name, c.name, c.collector_no, c.rarity,
+		       c.image_small_url, c.image_large_url,
+		       r.kind, r.price_eur,
+		       CASE WHEN EXISTS (
+		         SELECT 1 FROM pokemon_collections col
+		         WHERE col.user_id = ? AND col.card_id = c.id AND col.quantity > 0
+		       ) THEN 1 ELSE 0 END AS owned
+		FROM ranked r
+		JOIN pokemon_cards c ON c.id = r.card_id
+		JOIN pokemon_sets s ON s.id = c.set_id
+		WHERE r.rn = 1 AND r.price_eur > 0
+	`
+	args := []any{userID}
+	switch owned {
+	case "owned":
+		query += ` AND EXISTS (SELECT 1 FROM pokemon_collections col WHERE col.user_id = ? AND col.card_id = c.id AND col.quantity > 0)`
+		args = append(args, userID)
+	case "missing":
+		query += ` AND NOT EXISTS (SELECT 1 FROM pokemon_collections col WHERE col.user_id = ? AND col.card_id = c.id AND col.quantity > 0)`
+		args = append(args, userID)
+	}
+	query += ` ORDER BY r.price_eur DESC, c.id LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := db.QueryContext(r.Context(), query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cards := make([]CardDTO, 0)
+	cardIndex := make(map[string]int)
+	for rows.Next() {
+		var (
+			c        CardDTO
+			topKind  string
+			topPrice float64
+			ownedInt int
+		)
+		if err := rows.Scan(&c.ID, &c.SetID, &c.SetName, &c.Name, &c.CollectorNo, &c.Rarity,
+			&c.ImageSmallURL, &c.ImageLargeURL, &topKind, &topPrice, &ownedInt); err != nil {
+			return nil, err
+		}
+		c.TopVariantKind = topKind
+		ownedBool := ownedInt == 1
+		c.OwnedByMe = &ownedBool
+		c.Variants = []VariantDTO{}
+		cardIndex[c.ID] = len(cards)
+		cards = append(cards, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(cards) == 0 {
+		return cards, nil
+	}
+	return hydrateVariants(r, db, userID, cards, cardIndex)
 }
 
 // loadCardsForSet hydrates every card in a set with its variants and owner
