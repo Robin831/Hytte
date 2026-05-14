@@ -7,7 +7,8 @@
     "work": "งาน",
     "personal": "ส่วนตัว",
     "addCustom": "เพิ่มแท็ก",
-    "customPlaceholder": "เพิ่มแท็ก…"
+    "customPlaceholder": "เพิ่มแท็ก…",
+    "removeTag": "ลบแท็ก {{tag}}"
   },
   "filter": {
     "label": "กรองตามแท็ก",

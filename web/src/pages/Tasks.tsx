@@ -148,7 +148,9 @@ export default function Tasks() {
         throw new Error(msg)
       }
       const data: { task: Task } = await res.json()
-      setTasks(prev => [data.task, ...prev])
+      if (!showArchived) {
+        setTasks(prev => [data.task, ...prev])
+      }
       setNewTaskTitle('')
       setSelectedTags([])
       setCustomTagInput('')
@@ -167,6 +169,7 @@ export default function Tasks() {
     setExpandedId(task.id)
     setBodyDrafts(prev => prev[task.id] !== undefined ? prev : { ...prev, [task.id]: task.body })
     if (notesById[task.id]) return
+    setError('')
     setNotesLoadingId(task.id)
     try {
       const res = await fetch(`/api/tasks/${task.id}/notes`, { credentials: 'include' })
@@ -183,6 +186,7 @@ export default function Tasks() {
   async function saveBody(task: Task) {
     const draft = bodyDrafts[task.id] ?? ''
     if (draft === task.body) return
+    setError('')
     try {
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: 'PATCH',
@@ -200,6 +204,7 @@ export default function Tasks() {
 
   async function toggleArchive(task: Task) {
     const nextArchived = !task.archived
+    setError('')
     try {
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: 'PATCH',
@@ -227,6 +232,7 @@ export default function Tasks() {
   async function addNote(task: Task) {
     const content = (noteDrafts[task.id] ?? '').trim()
     if (!content) return
+    setError('')
     try {
       const res = await fetch(`/api/tasks/${task.id}/notes`, {
         method: 'POST',
@@ -323,7 +329,7 @@ export default function Tasks() {
                   type="button"
                   onClick={() => toggleTag(tag)}
                   className="hover:text-gray-200 cursor-pointer"
-                  aria-label={`Remove tag ${tag}`}
+                  aria-label={t('tags.removeTag', { tag })}
                 >
                   <X size={10} />
                 </button>
