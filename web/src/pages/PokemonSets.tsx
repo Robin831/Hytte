@@ -148,19 +148,32 @@ export default function PokemonSets() {
 
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/pokemon/sets', { credentials: 'include', signal: controller.signal })
-      .then(async res => {
-        if (!res.ok) throw new Error(t('errors.failedToLoad'))
-        const data: { sets?: PokemonSet[] } = await res.json()
-        setSets(data.sets ?? [])
-      })
-      .catch(err => {
+    const limit = 50
+
+    ;(async () => {
+      try {
+        const allSets: PokemonSet[] = []
+        let offset = 0
+        while (true) {
+          const res = await fetch(
+            `/api/pokemon/sets?limit=${limit}&offset=${offset}`,
+            { credentials: 'include', signal: controller.signal },
+          )
+          if (!res.ok) throw new Error(t('errors.failedToLoad'))
+          const data: { sets?: PokemonSet[] } = await res.json()
+          const page = data.sets ?? []
+          allSets.push(...page)
+          if (page.length < limit) break
+          offset += limit
+        }
+        setSets(allSets)
+      } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return
         setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
-      })
-      .finally(() => {
+      } finally {
         if (!controller.signal.aborted) setLoading(false)
-      })
+      }
+    })()
     return () => { controller.abort() }
   }, [t, attempt])
 
@@ -192,7 +205,7 @@ export default function PokemonSets() {
       const bLatest = b[1][0]?.release_date ?? ''
       if (aLatest < bLatest) return 1
       if (aLatest > bLatest) return -1
-      return 0
+      return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0
     })
     return { recent: recentGroups, older: olderGroups }
   }, [sets])
