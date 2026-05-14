@@ -305,7 +305,7 @@ function LightboxActionBar({ card, onSave, onUnmark, saving, t }: LightboxAction
             >
               {CONDITIONS.map(c => (
                 <option key={c} value={c}>
-                  {t(`condition.${c || 'unset'}`)}
+                  {t(`condition.${c || 'unset'}` as never)}
                 </option>
               ))}
             </select>
