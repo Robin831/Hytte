@@ -1,0 +1,2 @@
+category: Added
+- **Pokémon card scanner skeleton** - The Add Card dialog now has a camera scan button that opens a full-screen scanner overlay (modal on desktop) with a live video feed, a card-shaped guide rectangle, a shutter button to capture the current frame, an optional flashlight toggle on supporting devices, and a close button that stops all camera tracks. Falls back to a manual-entry button when camera permission is denied or the browser does not support getUserMedia. This is the foundation for the upcoming card detection and scan-to-add flows. (Hytte-i9tm)

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Search, X } from 'lucide-react'
+import { Camera, Plus, Search, X } from 'lucide-react'
 import { Dialog } from '../ui/dialog'
 import ToastList from '../ToastList'
 import { useToast } from '../../hooks/useToast'
 import { formatNumber } from '../../utils/formatDate'
+import CardScanner from './CardScanner'
 
 interface Variant {
   id: number
@@ -58,6 +59,7 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
   const [error, setError] = useState('')
   const [variantCard, setVariantCard] = useState<Card | null>(null)
   const [adding, setAdding] = useState(false)
+  const [scannerOpen, setScannerOpen] = useState(false)
 
   const close = useCallback(() => {
     setIsOpen(false)
@@ -184,6 +186,15 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
           />
           <button
             type="button"
+            onClick={() => setScannerOpen(true)}
+            aria-label={t('addCard.scan')}
+            data-testid="add-card-scan"
+            className="p-1 text-gray-400 hover:text-white cursor-pointer"
+          >
+            <Camera size={18} />
+          </button>
+          <button
+            type="button"
             onClick={close}
             aria-label={t('addCard.close')}
             className="p-1 text-gray-400 hover:text-white cursor-pointer"
@@ -283,6 +294,17 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
           </div>
         )}
       </Dialog>
+
+      {scannerOpen && (
+        <CardScanner
+          onCapture={() => {
+            // Capture handoff lands in a follow-up sub-task. For now, close the
+            // overlay so the camera tracks stop and the user returns to search.
+            setScannerOpen(false)
+          }}
+          onClose={() => setScannerOpen(false)}
+        />
+      )}
 
       <ToastList toasts={toasts} />
     </>

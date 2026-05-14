@@ -69,6 +69,7 @@
     "inputLabel": "Search by name or collector number",
     "placeholder": "Search by name or number — e.g. \"pika\" or \"025/195\"",
     "close": "Close",
+    "scan": "Scan card with camera",
     "searching": "Searching…",
     "noResults": "No cards match that search.",
     "results": "Card results",
@@ -83,5 +84,16 @@
       "searchFailed": "Failed to search cards",
       "addFailed": "Failed to add card"
     }
+  },
+  "scanner": {
+    "dialogLabel": "Scan a Pokémon card",
+    "requesting": "Requesting camera access…",
+    "permissionDenied": "Camera access was denied. You can still add cards by searching.",
+    "unsupported": "Camera scanning isn't supported in this browser. Use the search instead.",
+    "enterManually": "Enter card manually",
+    "shutter": "Capture card",
+    "torchOn": "Turn flashlight on",
+    "torchOff": "Turn flashlight off",
+    "close": "Close scanner"
   }
 }
