@@ -1589,6 +1589,41 @@ func createSchema(db *sql.DB) error {
 		completed_at TEXT NOT NULL DEFAULT ''
 	);
 
+	-- Tasks (Hytte-u49p): lightweight task list with optional notes/tags.
+	-- title_enc, body_enc, label_enc, content_enc are AES-256-GCM ciphertext.
+	CREATE TABLE IF NOT EXISTS tasks (
+		id            INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		title_enc     TEXT NOT NULL,
+		body_enc      TEXT NOT NULL DEFAULT '',
+		archived      INTEGER NOT NULL DEFAULT 0,
+		created_at    TIMESTAMP NOT NULL,
+		updated_at    TIMESTAMP NOT NULL,
+		archived_at   TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_tasks_user_archived ON tasks(user_id, archived);
+
+	CREATE TABLE IF NOT EXISTS task_tags (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		label_enc  TEXT NOT NULL,
+		UNIQUE(user_id, label_enc)
+	);
+
+	CREATE TABLE IF NOT EXISTS task_tag_assignments (
+		task_id  INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+		tag_id   INTEGER NOT NULL REFERENCES task_tags(id) ON DELETE CASCADE,
+		PRIMARY KEY (task_id, tag_id)
+	);
+
+	CREATE TABLE IF NOT EXISTS task_notes (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		task_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+		content_enc TEXT NOT NULL,
+		created_at  TIMESTAMP NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_task_notes_task ON task_notes(task_id, created_at);
+
 	`
 
 	_, err := db.Exec(schema)
