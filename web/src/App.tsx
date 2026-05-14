@@ -1,5 +1,4 @@
-import { Routes, Route, Navigate, useParams } from 'react-router-dom'
-import { useTranslation } from 'react-i18next'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import ProtectedRoute from './components/ProtectedRoute'
 import FeatureRoute from './components/FeatureRoute'
@@ -75,20 +74,8 @@ import MathLeaderboard from './pages/MathLeaderboard'
 import MathHeatmap from './pages/MathHeatmap'
 import MathAchievements from './pages/MathAchievements'
 import PokemonSets from './pages/PokemonSets'
+import PokemonSet from './pages/PokemonSet'
 import { AchievementUnlockOverlay } from './components/regnemester/AchievementUnlockOverlay'
-
-function PokemonSetDetailPlaceholder() {
-  const { t } = useTranslation('pokemon')
-  const { id } = useParams<{ id: string }>()
-  return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      <div className="max-w-3xl mx-auto px-4 py-6 space-y-2">
-        <h1 className="text-2xl font-semibold">{id}</h1>
-        <p className="text-gray-400 text-sm">{t('setDetail.comingSoon')}</p>
-      </div>
-    </div>
-  )
-}
 
 function MainLayout() {
   return (
@@ -578,7 +565,7 @@ function MainLayout() {
             path="/pokemon/sets/:id"
             element={
               <FeatureRoute feature="pokemon">
-                <PokemonSetDetailPlaceholder />
+                <PokemonSet />
               </FeatureRoute>
             }
           />
