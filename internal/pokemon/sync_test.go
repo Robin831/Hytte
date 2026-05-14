@@ -19,6 +19,7 @@ import (
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
+	t.Setenv("ENCRYPTION_KEY", "test-key-for-pokemon-tests")
 	d, err := db.Init(":memory:")
 	if err != nil {
 		t.Fatalf("init test db: %v", err)
