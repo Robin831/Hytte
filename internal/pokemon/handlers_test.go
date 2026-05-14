@@ -473,6 +473,229 @@ func TestSearchCardsHandler_EmptyQuery(t *testing.T) {
 	}
 }
 
+// --- TopHandler ---------------------------------------------------------------
+
+// TestTopHandler_SortsByMaxVariantPrice asserts the top endpoint orders cards
+// by the highest-priced variant per card, descending. With the seeded
+// catalogue: swsh1-1 (25.0) > sv1-25 (14.5 reverse holo) > swsh1-25 (8.0) >
+// sv1-100 (2.5), and the response should preserve that order.
+func TestTopHandler_SortsByMaxVariantPrice(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/top", nil), u)
+	rec := httptest.NewRecorder()
+	TopHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[struct {
+		Cards []CardDTO `json:"cards"`
+	}](t, rec)
+	if len(body.Cards) != 4 {
+		t.Fatalf("expected 4 cards, got %d", len(body.Cards))
+	}
+	wantOrder := []string{"swsh1-1", "sv1-25", "swsh1-25", "sv1-100"}
+	for i, id := range wantOrder {
+		if body.Cards[i].ID != id {
+			t.Errorf("position %d: expected %q, got %q", i, id, body.Cards[i].ID)
+		}
+	}
+	// The top-priced sv1-25 variant is reverse_holofoil at 14.5 EUR.
+	if body.Cards[1].TopVariantKind != "reverse_holofoil" {
+		t.Errorf("expected top variant for sv1-25 to be reverse_holofoil, got %q", body.Cards[1].TopVariantKind)
+	}
+	if body.Cards[1].SetName != "Scarlet & Violet Base" {
+		t.Errorf("expected set name to be embedded, got %q", body.Cards[1].SetName)
+	}
+}
+
+func TestTopHandler_LimitClamping(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	cases := []struct {
+		query string
+		want  int
+	}{
+		{"limit=2", 2},
+		{"limit=0", 4},
+		{"limit=-5", 4},
+		{"limit=200", 4},
+		{"", 4},
+	}
+	for _, c := range cases {
+		path := "/api/pokemon/top"
+		if c.query != "" {
+			path += "?" + c.query
+		}
+		req := asUser(httptest.NewRequest(http.MethodGet, path, nil), u)
+		rec := httptest.NewRecorder()
+		TopHandler(db).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d: %s", c.query, rec.Code, rec.Body.String())
+		}
+		body := decode[struct {
+			Cards []CardDTO `json:"cards"`
+		}](t, rec)
+		if len(body.Cards) != c.want {
+			t.Errorf("%s: expected %d cards, got %d", c.query, c.want, len(body.Cards))
+		}
+	}
+}
+
+func TestTopHandler_OwnedFilter(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	// User owns the swsh1-1 normal variant (25 EUR, top-priced card).
+	celebiNormal := variantID(t, db, "swsh1-1", "normal")
+	if _, err := db.Exec(`
+		INSERT INTO pokemon_collections (user_id, card_id, variant_id, quantity, condition, acquired_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, u.ID, "swsh1-1", celebiNormal, 1, "near_mint", time.Now().UTC()); err != nil {
+		t.Fatalf("seed collection: %v", err)
+	}
+
+	t.Run("owned only", func(t *testing.T) {
+		req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/top?owned=owned", nil), u)
+		rec := httptest.NewRecorder()
+		TopHandler(db).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		body := decode[struct {
+			Cards []CardDTO `json:"cards"`
+		}](t, rec)
+		if len(body.Cards) != 1 || body.Cards[0].ID != "swsh1-1" {
+			t.Fatalf("expected only swsh1-1 in owned filter, got %+v", body.Cards)
+		}
+		if body.Cards[0].OwnedByMe == nil || !*body.Cards[0].OwnedByMe {
+			t.Errorf("expected owned_by_me=true for owned card, got %+v", body.Cards[0].OwnedByMe)
+		}
+	})
+
+	t.Run("missing only", func(t *testing.T) {
+		req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/top?owned=missing", nil), u)
+		rec := httptest.NewRecorder()
+		TopHandler(db).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		body := decode[struct {
+			Cards []CardDTO `json:"cards"`
+		}](t, rec)
+		ids := make([]string, 0, len(body.Cards))
+		for _, c := range body.Cards {
+			ids = append(ids, c.ID)
+			if c.OwnedByMe == nil || *c.OwnedByMe {
+				t.Errorf("expected owned_by_me=false on missing card %s, got %+v", c.ID, c.OwnedByMe)
+			}
+		}
+		// swsh1-1 owned → filtered out. Remaining 3 cards in price order.
+		want := []string{"sv1-25", "swsh1-25", "sv1-100"}
+		if len(ids) != len(want) {
+			t.Fatalf("expected %d missing cards, got %d (%v)", len(want), len(ids), ids)
+		}
+		for i, id := range want {
+			if ids[i] != id {
+				t.Errorf("missing position %d: expected %q, got %q", i, id, ids[i])
+			}
+		}
+	})
+
+	t.Run("any explicit", func(t *testing.T) {
+		req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/top?owned=any", nil), u)
+		rec := httptest.NewRecorder()
+		TopHandler(db).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", rec.Code)
+		}
+		body := decode[struct {
+			Cards []CardDTO `json:"cards"`
+		}](t, rec)
+		if len(body.Cards) != 4 {
+			t.Errorf("expected 4 cards under owned=any, got %d", len(body.Cards))
+		}
+	})
+
+	t.Run("invalid filter", func(t *testing.T) {
+		req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/top?owned=garbage", nil), u)
+		rec := httptest.NewRecorder()
+		TopHandler(db).ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", rec.Code)
+		}
+	})
+}
+
+func TestTopHandler_NOKConversion(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	seedRate(t, db, 11.5)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/top?limit=1", nil), u)
+	rec := httptest.NewRecorder()
+	TopHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if rec.Header().Get("X-Pokemon-Rate-Missing") != "" {
+		t.Errorf("expected no rate-missing header, got %q", rec.Header().Get("X-Pokemon-Rate-Missing"))
+	}
+	body := decode[struct {
+		Cards []CardDTO `json:"cards"`
+	}](t, rec)
+	if len(body.Cards) != 1 || body.Cards[0].ID != "swsh1-1" {
+		t.Fatalf("expected swsh1-1 first, got %+v", body.Cards)
+	}
+	// swsh1-1 normal variant: 25 EUR × 11.5 → 287.5 NOK.
+	for _, v := range body.Cards[0].Variants {
+		if v.Kind != "normal" {
+			continue
+		}
+		if v.PriceNOK == nil {
+			t.Fatalf("expected non-nil price_nok for top card")
+		}
+		if got := *v.PriceNOK; got != 287.5 {
+			t.Errorf("expected price_nok=287.5, got %v", got)
+		}
+	}
+}
+
+func TestTopHandler_MissingRate(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/top?limit=1", nil), u)
+	rec := httptest.NewRecorder()
+	TopHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if rec.Header().Get("X-Pokemon-Rate-Missing") != "1" {
+		t.Errorf("expected X-Pokemon-Rate-Missing=1 header, got %q", rec.Header().Get("X-Pokemon-Rate-Missing"))
+	}
+}
+
+func TestTopHandler_Unauthorized(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/pokemon/top", nil)
+	rec := httptest.NewRecorder()
+	TopHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
 // --- Collection CRUD ----------------------------------------------------------
 
 func TestUpsertCollectionHandler_CreatesAndUpdates(t *testing.T) {
@@ -730,6 +953,7 @@ func TestFeatureFlagEnforcement_All(t *testing.T) {
 			r.Get("/api/pokemon/sets", ListSetsHandler(db))
 			r.Get("/api/pokemon/sets/{id}/cards", ListSetCardsHandler(db))
 			r.Get("/api/pokemon/cards/search", SearchCardsHandler(db))
+			r.Get("/api/pokemon/top", TopHandler(db))
 			r.Post("/api/pokemon/collection", UpsertCollectionHandler(db))
 			r.Patch("/api/pokemon/collection/{id}", UpdateCollectionHandler(db))
 			r.Delete("/api/pokemon/collection/{id}", DeleteCollectionHandler(db))
@@ -743,6 +967,7 @@ func TestFeatureFlagEnforcement_All(t *testing.T) {
 		{http.MethodGet, "/api/pokemon/sets"},
 		{http.MethodGet, "/api/pokemon/sets/sv1/cards"},
 		{http.MethodGet, "/api/pokemon/cards/search?q=pika"},
+		{http.MethodGet, "/api/pokemon/top"},
 		{http.MethodPost, "/api/pokemon/collection"},
 		{http.MethodPatch, "/api/pokemon/collection/1"},
 		{http.MethodDelete, "/api/pokemon/collection/1"},

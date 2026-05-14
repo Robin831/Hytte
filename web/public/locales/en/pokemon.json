@@ -94,6 +94,27 @@
       "addFailed": "Failed to add card"
     }
   },
+  "top": {
+    "title": "Top valued cards",
+    "subtitle": "What the kid could find in a pack…",
+    "entryButton": "Top valued",
+    "entryLabel": "View the top valued cards",
+    "back": "Back to Pokémon sets",
+    "empty": "No top valued cards match this filter.",
+    "filterLabel": "Filter top valued cards",
+    "filter": {
+      "all": "All",
+      "owned": "Owned",
+      "missing": "Missing"
+    },
+    "ownership": {
+      "owned": "owned",
+      "missing": "not owned"
+    },
+    "priceLabel": "{{nok}} kr",
+    "priceLabelDetailed": "{{nok}} kr (€{{eur}})",
+    "tileLabel": "Open {{name}} from {{set}} (#{{number}}), rank {{rank}}, {{variant}}, {{price}}, {{ownership}}"
+  },
   "scanner": {
     "dialogLabel": "Scan a Pokémon card",
     "requesting": "Requesting camera access…",

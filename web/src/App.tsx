@@ -75,6 +75,7 @@ import MathHeatmap from './pages/MathHeatmap'
 import MathAchievements from './pages/MathAchievements'
 import PokemonSets from './pages/PokemonSets'
 import PokemonSet from './pages/PokemonSet'
+import PokemonTop from './pages/PokemonTop'
 import { AchievementUnlockOverlay } from './components/regnemester/AchievementUnlockOverlay'
 
 function MainLayout() {
@@ -558,6 +559,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="pokemon">
                 <PokemonSets />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/pokemon/top"
+            element={
+              <FeatureRoute feature="pokemon">
+                <PokemonTop />
               </FeatureRoute>
             }
           />

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, Trophy } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
 import AddCardPanel from '../components/pokemon/AddCardPanel'
 import { formatDate } from '../utils/formatDate'
@@ -214,8 +214,17 @@ export default function PokemonSets() {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        <header>
+        <header className="flex items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold">{t('pageTitle')}</h1>
+          <Link
+            to="/pokemon/top"
+            aria-label={t('top.entryLabel')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-200 rounded transition-colors"
+            data-testid="pokemon-top-link"
+          >
+            <Trophy size={16} aria-hidden="true" />
+            <span>{t('top.entryButton')}</span>
+          </Link>
         </header>
 
         {error && (
