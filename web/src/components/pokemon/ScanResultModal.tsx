@@ -65,9 +65,9 @@ function formatNok(amount: number | null | undefined): string {
   })
 }
 
-// firstAddableVariant returns the first variant that isn't already owned. The
-// scanner is meant for adding cards; suggesting an owned variant would just
-// trip the "already owned" toast.
+// firstAddableVariant returns the first not-owned variant, or variants[0] when
+// all are owned. The fallback is only used for price display; callers that add
+// to the collection must check v.owned on the returned value.
 function firstAddableVariant(card: ScanCard): ScanVariant | undefined {
   return card.variants.find(v => !v.owned) ?? card.variants[0]
 }

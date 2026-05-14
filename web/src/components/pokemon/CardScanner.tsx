@@ -479,6 +479,18 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
     closeButtonRef.current?.focus()
   }, [])
 
+  // When the result modal appears, move focus to its first action so keyboard
+  // users land inside the modal rather than staying on the close button behind it.
+  useEffect(() => {
+    if (scanPhase !== 'result') return
+    const modal = dialogRef.current?.querySelector<HTMLElement>('[data-testid="scan-result-modal"]')
+    if (!modal) return
+    const first = modal.querySelector<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )
+    first?.focus()
+  }, [scanPhase])
+
   // Escape to dismiss + Tab focus trap (mirrors Dialog behaviour).
   // When the result modal is overlaying the scanner, Tab is constrained to
   // the modal's own focusable elements so the torch/close buttons behind it
