@@ -175,10 +175,15 @@ var runPromptWithImageFn = runPromptCLIWithImage
 // CLI and returns the text response. The image is referenced inside the prompt
 // so Claude's built-in Read tool can view it — this works around the fact that
 // `claude -p` in v2.1.x does not expose a dedicated `--image` flag. To allow
-// the Read tool to access the image, the temp directory containing it is
-// granted via `--add-dir` and tool permissions are bypassed for the call.
-// Callers are expected to write the image to a short-lived temp file under
-// /tmp and remove it after this returns.
+// the Read tool to access the image, the directory containing it is granted
+// via `--add-dir` and tool permissions are bypassed for the call.
+//
+// Security note: Read access is granted to filepath.Dir(imagePath), so callers
+// MUST place the image inside a dedicated per-call directory (e.g. via
+// os.MkdirTemp) that contains no other files. Passing a path whose parent is
+// a shared location like /tmp would expose every file in that directory to
+// Claude. The caller is responsible for removing the directory after this
+// returns.
 func RunPromptWithImage(ctx context.Context, cfg *ClaudeConfig, prompt, imagePath string) (string, error) {
 	return runPromptWithImageFn(ctx, cfg, prompt, imagePath)
 }

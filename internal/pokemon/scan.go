@@ -41,6 +41,46 @@ var scanAllowedMIMETypes = map[string]bool{
 	"image/heif": true,
 }
 
+// heifBrands is the set of ISOBMFF "ftyp" brand codes that identify a HEIC or
+// HEIF still image. http.DetectContentType does not recognise either format
+// (it returns application/octet-stream), so detectImageMIME falls back to this
+// table when the standard sniffer can't classify the bytes.
+var heifBrands = map[string]string{
+	"heic": "image/heic",
+	"heix": "image/heic",
+	"heim": "image/heic",
+	"heis": "image/heic",
+	"hevc": "image/heic",
+	"hevx": "image/heic",
+	"hevm": "image/heic",
+	"hevs": "image/heic",
+	"mif1": "image/heif",
+	"msf1": "image/heif",
+	"heif": "image/heif",
+}
+
+// detectImageMIME classifies the first bytes of an upload. It defers to
+// http.DetectContentType for the common cases (JPEG, PNG, WebP, …) and only
+// reaches into the HEIF/HEIC ftyp box if the stdlib sniffer fell back to the
+// generic application/octet-stream. The buffer must contain at least 12 bytes
+// to identify HEIC/HEIF; shorter slices simply return the stdlib result.
+func detectImageMIME(buf []byte) string {
+	mime := http.DetectContentType(buf)
+	if mime != "application/octet-stream" {
+		return mime
+	}
+	if len(buf) < 12 {
+		return mime
+	}
+	if string(buf[4:8]) != "ftyp" {
+		return mime
+	}
+	if heif, ok := heifBrands[strings.ToLower(string(buf[8:12]))]; ok {
+		return heif
+	}
+	return mime
+}
+
 // scanPrompt is the exact prompt sent to Claude. It asks for STRICT JSON so
 // the response can be parsed without an LLM-grade post-processor.
 const scanPrompt = `You will be shown a single Pokémon TCG card photo. Identify two things:
@@ -118,20 +158,32 @@ func ScanHandler(db *sql.DB) http.HandlerFunc {
 			respondError(w, http.StatusBadRequest, "failed to read image")
 			return
 		}
-		mime := http.DetectContentType(sniff[:n])
+		mime := detectImageMIME(sniff[:n])
 		if !scanAllowedMIMETypes[mime] {
 			respondError(w, http.StatusBadRequest, "unsupported image type")
 			return
 		}
 
-		tmp, err := os.CreateTemp("", "pokemon-scan-*")
+		// Create a per-scan directory under the OS temp root and place the
+		// image inside it. The Claude wrapper grants Read access to the
+		// containing directory (via --add-dir), so isolating each scan in its
+		// own folder ensures Claude cannot see any other temp files. The
+		// directory and its contents are removed at the end of the request.
+		tmpDir, err := os.MkdirTemp("", "pokemon-scan-*")
+		if err != nil {
+			log.Printf("pokemon: create temp dir: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to create temp dir")
+			return
+		}
+		defer os.RemoveAll(tmpDir)
+
+		tmp, err := os.CreateTemp(tmpDir, "image-*")
 		if err != nil {
 			log.Printf("pokemon: create temp file: %v", err)
 			respondError(w, http.StatusInternalServerError, "failed to create temp file")
 			return
 		}
 		tmpPath := tmp.Name()
-		defer os.Remove(tmpPath)
 
 		if _, err := tmp.Write(sniff[:n]); err != nil {
 			tmp.Close()
