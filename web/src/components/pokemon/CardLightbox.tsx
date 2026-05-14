@@ -114,29 +114,34 @@ function CardLightbox<TCard extends LightboxCard>({
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const swipeTimerRef = useRef<number | null>(null)
 
-  const currentCard = cards[currentIndex]
+  const clampedIndex = cards.length === 0 ? 0 : Math.min(Math.max(0, currentIndex), cards.length - 1)
+  const currentCard = cards[clampedIndex]
 
   const goPrev = useCallback(() => {
     if (cards.length === 0) return
+    setChevronsIdle(false)
     setCurrentIndex(prev => {
-      if (prev <= 0) {
+      const safe = Math.min(Math.max(0, prev), cards.length - 1)
+      if (safe <= 0) {
         setWrapFlash('end')
         setAnnounce(t('lightbox.wrappedToEnd'))
         return cards.length - 1
       }
-      return prev - 1
+      return safe - 1
     })
   }, [cards.length, t])
 
   const goNext = useCallback(() => {
     if (cards.length === 0) return
+    setChevronsIdle(false)
     setCurrentIndex(prev => {
-      if (prev >= cards.length - 1) {
+      const safe = Math.min(Math.max(0, prev), cards.length - 1)
+      if (safe >= cards.length - 1) {
         setWrapFlash('start')
         setAnnounce(t('lightbox.wrappedToStart'))
         return 0
       }
-      return prev + 1
+      return safe + 1
     })
   }, [cards.length, t])
 
@@ -146,19 +151,6 @@ function CardLightbox<TCard extends LightboxCard>({
     lockBodyScroll()
     return () => unlockBodyScroll()
   }, [])
-
-  // Keep currentIndex in range when the cards list shrinks underneath us
-  // (e.g. the parent re-filters its visible grid while the lightbox is open).
-  // Without this, currentIndex could exceed cards.length and the lightbox
-  // would render nothing or silently unmount.
-  useEffect(() => {
-    setCurrentIndex(prev => {
-      if (cards.length === 0) return 0
-      if (prev >= cards.length) return cards.length - 1
-      if (prev < 0) return 0
-      return prev
-    })
-  }, [cards.length])
 
   // Keyboard navigation. Capture-phase so we run before any underlying Dialog
   // listener (e.g. AddCardPanel's surrounding modal) and can stop Escape from
@@ -228,7 +220,6 @@ function CardLightbox<TCard extends LightboxCard>({
   // Fade the chevron hint after the user has had a moment to see it. Reset on
   // every navigation so the cue reappears with the new card.
   useEffect(() => {
-    setChevronsIdle(false)
     const timer = setTimeout(() => setChevronsIdle(true), CHEVRON_IDLE_MS)
     return () => clearTimeout(timer)
   }, [currentIndex])
@@ -415,7 +406,7 @@ function CardLightbox<TCard extends LightboxCard>({
               data-testid="lightbox-action-bar"
               onClick={e => e.stopPropagation()}
             >
-              {renderActionBar(currentCard, currentIndex)}
+              {renderActionBar(currentCard, clampedIndex)}
             </div>
           )}
         </div>

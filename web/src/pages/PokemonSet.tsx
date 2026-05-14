@@ -390,17 +390,12 @@ export default function PokemonSetPage() {
     return cards
   }, [cards, filter])
 
-  // If the visible list shrinks (e.g. the filter changed) below the open
-  // index, clamp it back into range so the lightbox doesn't crash on a stale
-  // pointer; close it entirely when the list becomes empty.
-  useEffect(() => {
-    if (lightboxStartIndex == null) return
-    if (visibleCards.length === 0) {
-      setLightboxStartIndex(null)
-    } else if (lightboxStartIndex >= visibleCards.length) {
-      setLightboxStartIndex(visibleCards.length - 1)
-    }
-  }, [visibleCards, lightboxStartIndex])
+  // Clamp the lightbox start index to the visible list length during render so
+  // we never pass a stale out-of-range pointer to CardLightbox.
+  const lightboxSafeIndex =
+    lightboxStartIndex != null && visibleCards.length > 0
+      ? Math.min(lightboxStartIndex, visibleCards.length - 1)
+      : null
 
   const updateCardVariants = useCallback(
     (cardId: string, mutate: (variants: Variant[]) => Variant[]) => {
@@ -615,10 +610,10 @@ export default function PokemonSetPage() {
           </>
         )}
       </div>
-      {lightboxStartIndex != null && visibleCards.length > 0 && (
+      {lightboxSafeIndex != null && (
         <CardLightbox<Card>
           cards={visibleCards}
-          startIndex={lightboxStartIndex}
+          startIndex={lightboxSafeIndex}
           onClose={() => setLightboxStartIndex(null)}
           showPrice
           renderActionBar={(card) => (
