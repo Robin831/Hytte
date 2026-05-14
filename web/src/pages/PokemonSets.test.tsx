@@ -96,9 +96,11 @@ describe('PokemonSets – expand-older toggle', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
   it('hides legacy era sections behind a toggle by default', async () => {
-    const sv = makeSet({ id: 'sv1', name: 'SV Base', series: 'Scarlet & Violet' })
+    const sv = makeSet({ id: 'sv1', name: 'SV Base', series: 'Scarlet & Violet', release_date: '2023/03/31' })
+    const swsh = makeSet({ id: 'swsh1', name: 'SWSH Base', series: 'Sword & Shield', release_date: '2020/02/07' })
+    const sm = makeSet({ id: 'sm1', name: 'SM Base', series: 'Sun & Moon', release_date: '2017/02/03' })
     const xy = makeSet({ id: 'xy1', name: 'XY Base', series: 'XY', release_date: '2014/02/05' })
-    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(setsResponse([sv, xy]))))
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(setsResponse([sv, swsh, sm, xy]))))
 
     renderPage()
     await waitFor(() => expect(screen.getByText('SV Base')).toBeInTheDocument())
@@ -123,6 +125,64 @@ describe('PokemonSets – expand-older toggle', () => {
     renderPage()
     await waitFor(() => expect(screen.getByText('SV Base')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: 'Show older sets' })).not.toBeInTheDocument()
+  })
+})
+
+describe('PokemonSets – dynamic recent eras', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  it('derives the top 3 expanded eras from the newest release_date per series', async () => {
+    const me = makeSet({ id: 'me1', name: 'Mega Evolution Base', series: 'Mega Evolution', release_date: '2025/09/26' })
+    const sv = makeSet({ id: 'sv1', name: 'SV Base', series: 'Scarlet & Violet', release_date: '2023/03/31' })
+    const swsh = makeSet({ id: 'swsh1', name: 'SWSH Base', series: 'Sword & Shield', release_date: '2020/02/07' })
+    const sm = makeSet({ id: 'sm1', name: 'SM Base', series: 'Sun & Moon', release_date: '2017/02/03' })
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(setsResponse([sm, swsh, sv, me]))))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Mega Evolution Base')).toBeInTheDocument())
+
+    // Top 3 newest series are expanded by default.
+    expect(screen.getByRole('heading', { name: 'Mega Evolution' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Scarlet & Violet' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Sword & Shield' })).toBeInTheDocument()
+
+    // Sun & Moon is the 4th newest, so it falls under the toggle.
+    expect(screen.queryByRole('heading', { name: 'Sun & Moon' })).not.toBeInTheDocument()
+    expect(screen.queryByText('SM Base')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show older sets' }))
+    expect(screen.getByRole('heading', { name: 'Sun & Moon' })).toBeInTheDocument()
+    expect(screen.getByText('SM Base')).toBeInTheDocument()
+  })
+
+  it('shows the single available series expanded when fewer than 3 series exist', async () => {
+    const me = makeSet({ id: 'me1', name: 'Mega Evolution Base', series: 'Mega Evolution', release_date: '2026/03/01' })
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(setsResponse([me]))))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Mega Evolution Base')).toBeInTheDocument())
+
+    expect(screen.getByRole('heading', { name: 'Mega Evolution' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show older sets' })).not.toBeInTheDocument()
+  })
+
+  it('breaks ties on max release_date alphabetically for determinism', async () => {
+    // All three eras share the same latest release_date. With alphabetical
+    // tie-break Alpha < Beta < Gamma should appear in that order; the fourth
+    // era (Delta, older) should fall under the older toggle.
+    const a = makeSet({ id: 'a1', name: 'Alpha Card', series: 'Alpha', release_date: '2025/01/01' })
+    const b = makeSet({ id: 'b1', name: 'Beta Card', series: 'Beta', release_date: '2025/01/01' })
+    const g = makeSet({ id: 'g1', name: 'Gamma Card', series: 'Gamma', release_date: '2025/01/01' })
+    const d = makeSet({ id: 'd1', name: 'Delta Card', series: 'Delta', release_date: '2020/01/01' })
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(setsResponse([g, a, d, b]))))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Alpha Card')).toBeInTheDocument())
+
+    // Assert DOM order: Alpha → Beta → Gamma (alphabetical tie-break), Delta hidden.
+    const eraHeadings = screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent)
+    expect(eraHeadings).toEqual(['Alpha', 'Beta', 'Gamma'])
+    expect(screen.queryByRole('heading', { name: 'Delta' })).not.toBeInTheDocument()
   })
 })
 
