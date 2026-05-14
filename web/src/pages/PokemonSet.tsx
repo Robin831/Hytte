@@ -131,17 +131,29 @@ function computeCompletion(cards: Card[], filter: VariantFilter): Completion {
 }
 
 // computeSetValue sums the NOK price of the owned variants in scope for the
-// active filter. 'any' sums every owned variant on every card (the
-// pre-existing behaviour). Kind filters sum only that variant. 'all' sums
-// every owned variant, same as 'any' — under the strictest filter we still
-// reflect total monetary value.
+// active filter. 'any' picks the single best-priced owned variant per card
+// so multi-variant cards are not double-counted. Kind filters sum only that
+// variant. 'all' sums every owned variant across all cards.
 function computeSetValue(cards: Card[], filter: VariantFilter): number {
   let total = 0
   for (const card of cards) {
-    for (const variant of card.variants) {
-      if (!variant.owned || variant.price_nok == null) continue
-      if (filter !== 'any' && filter !== 'all' && variant.kind !== filter) continue
-      total += variant.price_nok * Math.max(variant.quantity, 1)
+    if (filter === 'any') {
+      let best: number | null = null
+      for (const v of card.variants) {
+        if (!v.owned || v.price_nok == null) continue
+        const value = v.price_nok * Math.max(v.quantity, 1)
+        if (best == null || value > best) best = value
+      }
+      if (best != null) total += best
+    } else if (filter === 'all') {
+      for (const v of card.variants) {
+        if (!v.owned || v.price_nok == null) continue
+        total += v.price_nok * Math.max(v.quantity, 1)
+      }
+    } else {
+      const v = card.variants.find(x => x.kind === filter)
+      if (!v || !v.owned || v.price_nok == null) continue
+      total += v.price_nok * Math.max(v.quantity, 1)
     }
   }
   return total
@@ -176,14 +188,21 @@ function hasMultiVariantCard(cards: Card[]): boolean {
 }
 
 // availableVariantFilters builds the chip list dynamically. 'any' is always
-// present; per-kind chips appear when at least one card carries that kind;
-// 'all' only appears when there is at least one card with multiple variants.
+// present. Per-kind chips are only added when the set has more than one kind
+// or at least one card with multiple variants — if every card has a single
+// variant of a single kind, 'any' and the kind chip are equivalent and the
+// row would be redundant. 'all' only appears when there is at least one card
+// with multiple variants.
 function availableVariantFilters(cards: Card[]): VariantFilter[] {
   const filters: VariantFilter[] = ['any']
-  for (const kind of availableVariantKinds(cards)) {
-    filters.push(kind)
+  const kinds = availableVariantKinds(cards)
+  const multi = hasMultiVariantCard(cards)
+  if (kinds.length > 1 || multi) {
+    for (const kind of kinds) {
+      filters.push(kind)
+    }
   }
-  if (hasMultiVariantCard(cards)) filters.push('all')
+  if (multi) filters.push('all')
   return filters
 }
 
@@ -284,7 +303,7 @@ function CardTile({ card, filter, onClick, t }: TileProps) {
       onClick={onClick}
       data-testid={`card-tile-${card.id}`}
       aria-label={t('tile.openCard', { name: card.name, number: card.collector_no })}
-      aria-pressed={applicable ? owned : false}
+      aria-pressed={applicable ? (owned ? true : partial ? 'mixed' : false) : false}
       data-ownership={!applicable ? 'na' : owned ? 'owned' : partial ? 'partial' : 'missing'}
       className={`flex flex-col gap-2 p-2 rounded-lg border bg-gray-800/40 transition-colors text-left cursor-pointer ${tileClass}`}
     >
