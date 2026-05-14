@@ -95,6 +95,7 @@
     "shutter": "Capture card",
     "torchOn": "Turn flashlight on",
     "torchOff": "Turn flashlight off",
-    "close": "Close scanner"
+    "close": "Close scanner",
+    "holdSteady": "Hold steady…"
   }
 }
