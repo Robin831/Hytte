@@ -63,6 +63,13 @@
     "marked": "เพิ่มเข้าคอลเลกชันแล้ว",
     "unmarked": "ลบออกจากคอลเลกชันแล้ว"
   },
+  "lightbox": {
+    "previousCard": "การ์ดก่อนหน้า",
+    "nextCard": "การ์ดถัดไป",
+    "close": "ปิดมุมมองเต็มจอ",
+    "wrappedToStart": "ย้อนไปการ์ดใบแรก",
+    "wrappedToEnd": "ข้ามไปการ์ดใบสุดท้าย"
+  },
   "addCard": {
     "openLabel": "เพิ่มการ์ดเข้าคอลเลกชัน",
     "dialogLabel": "เพิ่มการ์ด",
@@ -73,7 +80,9 @@
     "searching": "กำลังค้นหา…",
     "noResults": "ไม่พบการ์ดที่ตรงกับคำค้นหา",
     "results": "ผลลัพธ์การ์ด",
+    "previewCard": "ดู {{name}} ขนาดเต็ม",
     "cancel": "ยกเลิก",
+    "alreadyOwnedShort": "มีแล้ว",
     "variantPickerLabel": "เลือกชนิดสำหรับ {{name}}",
     "variantPickerPrompt": "เลือกชนิดสำหรับ {{name}}",
     "toast": {
