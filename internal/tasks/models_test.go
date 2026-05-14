@@ -6,73 +6,33 @@ import (
 	"strings"
 	"testing"
 
+	hyttedb "github.com/Robin831/Hytte/internal/db"
 	"github.com/Robin831/Hytte/internal/encryption"
-	_ "modernc.org/sqlite"
 )
 
-const schemaSQL = `
-CREATE TABLE users (
-	id         INTEGER PRIMARY KEY,
-	email      TEXT UNIQUE NOT NULL,
-	name       TEXT NOT NULL,
-	picture    TEXT NOT NULL DEFAULT '',
-	google_id  TEXT UNIQUE NOT NULL,
-	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-	is_admin   INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE tasks (
-	id            INTEGER PRIMARY KEY AUTOINCREMENT,
-	user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-	title_enc     TEXT NOT NULL,
-	body_enc      TEXT NOT NULL DEFAULT '',
-	archived      INTEGER NOT NULL DEFAULT 0,
-	created_at    TIMESTAMP NOT NULL,
-	updated_at    TIMESTAMP NOT NULL,
-	archived_at   TIMESTAMP
-);
-CREATE INDEX idx_tasks_user_archived ON tasks(user_id, archived);
-CREATE TABLE task_tags (
-	id         INTEGER PRIMARY KEY AUTOINCREMENT,
-	user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-	label_enc  TEXT NOT NULL,
-	UNIQUE(user_id, label_enc)
-);
-CREATE TABLE task_tag_assignments (
-	task_id  INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-	tag_id   INTEGER NOT NULL REFERENCES task_tags(id) ON DELETE CASCADE,
-	PRIMARY KEY (task_id, tag_id)
-);
-CREATE TABLE task_notes (
-	id          INTEGER PRIMARY KEY AUTOINCREMENT,
-	task_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-	content_enc TEXT NOT NULL,
-	created_at  TIMESTAMP NOT NULL
-);
-CREATE INDEX idx_task_notes_task ON task_notes(task_id, created_at);
-`
-
+// setupTestDB creates an in-memory database that uses the real createSchema()
+// (via db.Init) so the test schema cannot drift from production. The connection
+// pool is pinned to a single connection because each new connection opened
+// against a `:memory:` DSN gets its own private database, which causes flaky
+// "no such table" errors.
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	t.Setenv("ENCRYPTION_KEY", "test-key-for-tasks-tests")
 	encryption.ResetEncryptionKey()
 	t.Cleanup(func() { encryption.ResetEncryptionKey() })
 
-	db, err := sql.Open("sqlite", ":memory:")
+	d, err := hyttedb.Init(":memory:")
 	if err != nil {
-		t.Fatalf("open db: %v", err)
+		t.Fatalf("init db: %v", err)
 	}
-	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		t.Fatalf("enable fk: %v", err)
-	}
-	if _, err := db.Exec(schemaSQL); err != nil {
-		t.Fatalf("create schema: %v", err)
-	}
-	t.Cleanup(func() { db.Close() })
+	d.SetMaxOpenConns(1)
+	d.SetMaxIdleConns(1)
+	t.Cleanup(func() { d.Close() })
 
-	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'a@example.com', 'Alice', 'g1'), (2, 'b@example.com', 'Bob', 'g2')`); err != nil {
+	if _, err := d.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'a@example.com', 'Alice', 'g1'), (2, 'b@example.com', 'Bob', 'g2')`); err != nil {
 		t.Fatalf("insert users: %v", err)
 	}
-	return db
+	return d
 }
 
 func TestCreateAndGetTask(t *testing.T) {

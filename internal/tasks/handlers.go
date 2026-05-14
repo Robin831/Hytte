@@ -13,12 +13,36 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// maxTaskBodySize caps the JSON payload accepted by task write endpoints. Tasks
+// are short user notes — 64 KB is plenty for title + body + tag list and stops
+// a misbehaving client from streaming an unbounded body into the decoder.
+const maxTaskBodySize = 64 << 10
+
+// maxTaskNoteBodySize is the upper bound for a single note body.
+const maxTaskNoteBodySize = 64 << 10
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		log.Printf("tasks: writeJSON encode error: %v", err)
 	}
+}
+
+// decodeJSONBody decodes r.Body into dst after capping the body at limit bytes.
+// It writes the appropriate HTTP response and returns false on error.
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, limit int64, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
+			return false
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return false
+	}
+	return true
 }
 
 // ListHandler returns the authenticated user's tasks, filtered by archived state.
@@ -57,8 +81,7 @@ func CreateHandler(db *sql.DB) http.HandlerFunc {
 			Body  string   `json:"body"`
 			Tags  []string `json:"tags"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		if !decodeJSONBody(w, r, maxTaskBodySize, &body) {
 			return
 		}
 
@@ -96,8 +119,7 @@ func UpdateHandler(db *sql.DB) http.HandlerFunc {
 			Tags     *[]string `json:"tags"`
 			Archived *bool     `json:"archived"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		if !decodeJSONBody(w, r, maxTaskBodySize, &body) {
 			return
 		}
 
@@ -167,8 +189,7 @@ func AddNoteHandler(db *sql.DB) http.HandlerFunc {
 		var body struct {
 			Content string `json:"content"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		if !decodeJSONBody(w, r, maxTaskNoteBodySize, &body) {
 			return
 		}
 		if strings.TrimSpace(body.Content) == "" {

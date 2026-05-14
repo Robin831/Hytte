@@ -171,15 +171,20 @@ func GetTask(db *sql.DB, id, userID int64) (*Task, error) {
 }
 
 // ListTasks returns all tasks for the user filtered by archived state.
+// Tag labels and note counts are fetched in two batched queries (not per-task)
+// to keep the cost at O(1) database round-trips.
 func ListTasks(db *sql.DB, userID int64, archived bool) ([]Task, error) {
 	archInt := 0
 	if archived {
 		archInt = 1
 	}
+	// updated_at DESC is the user-facing ordering; id DESC breaks ties so the
+	// order is deterministic even when two tasks share an updated_at value
+	// (e.g. seeded fixtures or rapid back-to-back writes).
 	rows, err := db.Query(
 		`SELECT id, user_id, title_enc, body_enc, archived, created_at, updated_at, archived_at
 		 FROM tasks WHERE user_id = ? AND archived = ?
-		 ORDER BY updated_at DESC`,
+		 ORDER BY updated_at DESC, id DESC`,
 		userID, archInt,
 	)
 	if err != nil {
@@ -187,7 +192,11 @@ func ListTasks(db *sql.DB, userID int64, archived bool) ([]Task, error) {
 	}
 	defer rows.Close()
 
-	var tasks []Task
+	var (
+		tasks   []Task
+		ids     []int64
+		indexBy = map[int64]int{}
+	)
 	for rows.Next() {
 		var (
 			t          Task
@@ -221,28 +230,41 @@ func ListTasks(db *sql.DB, userID int64, archived bool) ([]Task, error) {
 			}
 			t.ArchivedAt = &v
 		}
+		t.Tags = []string{}
+		indexBy[t.ID] = len(tasks)
 		tasks = append(tasks, t)
+		ids = append(ids, t.ID)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	for i := range tasks {
-		tags, err := listTagsForTask(db, tasks[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		tasks[i].Tags = tags
-		count, err := countNotesForTask(db, tasks[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		tasks[i].NoteCount = count
+	if len(tasks) == 0 {
+		return []Task{}, nil
 	}
 
-	if tasks == nil {
-		tasks = []Task{}
+	// Batched tag fetch: one query for all tasks in the page.
+	tagMap, err := listTagsForTasks(db, ids)
+	if err != nil {
+		return nil, err
 	}
+	for taskID, labels := range tagMap {
+		if i, ok := indexBy[taskID]; ok {
+			tasks[i].Tags = labels
+		}
+	}
+
+	// Batched note-count fetch: one COUNT(*) GROUP BY task_id query.
+	countMap, err := countNotesForTasks(db, ids)
+	if err != nil {
+		return nil, err
+	}
+	for taskID, n := range countMap {
+		if i, ok := indexBy[taskID]; ok {
+			tasks[i].NoteCount = n
+		}
+	}
+
 	return tasks, nil
 }
 
@@ -401,7 +423,7 @@ func ListNotes(db *sql.DB, taskID, userID int64) ([]TaskNote, error) {
 		return nil, err
 	}
 	rows, err := db.Query(
-		`SELECT id, task_id, content_enc, created_at FROM task_notes WHERE task_id = ? ORDER BY created_at`,
+		`SELECT id, task_id, content_enc, created_at FROM task_notes WHERE task_id = ? ORDER BY created_at, id`,
 		taskID,
 	)
 	if err != nil {
@@ -565,4 +587,90 @@ func countNotesForTask(db *sql.DB, taskID int64) (int, error) {
 		return 0, err
 	}
 	return n, nil
+}
+
+// listTagsForTasks returns decrypted, sorted tag labels keyed by task ID for
+// the given set of tasks. It runs a single query against task_tag_assignments
+// joined with task_tags, avoiding the per-task N+1 pattern in listTagsForTask.
+func listTagsForTasks(db *sql.DB, taskIDs []int64) (map[int64][]string, error) {
+	out := map[int64][]string{}
+	if len(taskIDs) == 0 {
+		return out, nil
+	}
+	placeholders := make([]string, len(taskIDs))
+	args := make([]any, len(taskIDs))
+	for i, id := range taskIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	query := fmt.Sprintf(
+		`SELECT a.task_id, t.label_enc
+		 FROM task_tag_assignments a
+		 JOIN task_tags t ON t.id = a.tag_id
+		 WHERE a.task_id IN (%s)`,
+		strings.Join(placeholders, ","),
+	)
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			taskID int64
+			enc    string
+		)
+		if err := rows.Scan(&taskID, &enc); err != nil {
+			return nil, err
+		}
+		label, err := encryption.DecryptField(enc)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt tag label: %w", err)
+		}
+		out[taskID] = append(out[taskID], label)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for taskID := range out {
+		sort.Strings(out[taskID])
+	}
+	return out, nil
+}
+
+// countNotesForTasks returns a task_id -> note count map fetched in a single
+// GROUP BY query.
+func countNotesForTasks(db *sql.DB, taskIDs []int64) (map[int64]int, error) {
+	out := map[int64]int{}
+	if len(taskIDs) == 0 {
+		return out, nil
+	}
+	placeholders := make([]string, len(taskIDs))
+	args := make([]any, len(taskIDs))
+	for i, id := range taskIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	query := fmt.Sprintf(
+		`SELECT task_id, COUNT(*) FROM task_notes WHERE task_id IN (%s) GROUP BY task_id`,
+		strings.Join(placeholders, ","),
+	)
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			taskID int64
+			n      int
+		)
+		if err := rows.Scan(&taskID, &n); err != nil {
+			return nil, err
+		}
+		out[taskID] = n
+	}
+	return out, rows.Err()
 }
