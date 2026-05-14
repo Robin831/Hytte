@@ -1,0 +1,2 @@
+category: Changed
+- **Stride: workout context now framed as a post-workout report** - The synthesized note that the Stride nightly evaluator sees for each workout now starts with "Runner's post-workout report —" and labels the structured speed segments as "Executed splits:" instead of "Plan:". This stops the evaluator from misreading after-the-fact context as a prescribed plan and comparing actual lap data against it as a target. The same helper powers the "What coach saw" panel on the Stride page, so the new wording appears there as well. (Hytte-qdqz)

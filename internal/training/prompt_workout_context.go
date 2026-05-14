@@ -144,6 +144,10 @@ func isTreadmillSurface(surface string) bool {
 // stride note string (feel notes + structured plan summary). Returns empty
 // when there is nothing useful to surface. Used by the nightly stride
 // evaluation to fold per-workout context into the notes that go to Claude.
+//
+// The note is framed as a post-workout self-report so the Stride evaluator
+// reads the structured speed data as what the runner actually executed —
+// not as a prescribed plan to be measured against.
 func FormatWorkoutContextNote(ctx *WorkoutContext) string {
 	if ctx == nil {
 		return ""
@@ -153,7 +157,7 @@ func FormatWorkoutContextNote(ctx *WorkoutContext) string {
 		parts = append(parts, "Feel notes: "+notes)
 	}
 	if summary := summarizeSpeedPlan(ctx.SpeedPlan); summary != "" {
-		parts = append(parts, "Plan: "+summary)
+		parts = append(parts, "Executed splits: "+summary)
 	}
 	if ctx.Surface != "" || ctx.RunType != "" || ctx.HRSource != "" {
 		var meta []string
@@ -170,7 +174,10 @@ func FormatWorkoutContextNote(ctx *WorkoutContext) string {
 			parts = append(parts, "Context: "+strings.Join(meta, ", "))
 		}
 	}
-	return strings.Join(parts, " | ")
+	if len(parts) == 0 {
+		return ""
+	}
+	return "Runner's post-workout report — " + strings.Join(parts, " | ")
 }
 
 // summarizeSpeedPlan condenses a SpeedSegment plan into a one-line summary,
