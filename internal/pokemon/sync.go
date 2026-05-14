@@ -120,6 +120,11 @@ func SyncAll(ctx context.Context, db *sql.DB, client *Client) error {
 			continue
 		}
 	}
+	if n, err := backfillNormalVariants(ctx, db); err != nil {
+		log.Printf("pokemon: backfill normal variants: %v", err)
+	} else if n > 0 {
+		log.Printf("pokemon: backfilled %d normal variant rows for cards with no price data", n)
+	}
 	return nil
 }
 
@@ -198,7 +203,16 @@ func upsertCard(ctx context.Context, db *sql.DB, setID string, c Card, now time.
 // upsertVariants persists Cardmarket prices for a card. The cardmarket.prices
 // field is a flat object with named metric keys, so we map the two variant
 // kinds we persist (normal, reverse_holofoil) to their corresponding fields.
+//
+// A placeholder "normal" row is inserted first with price 0 so that every card
+// has at least one variant the user can mark as owned, even when Cardmarket
+// has no pricing data yet (e.g. brand-new sets). The placeholder uses
+// DO NOTHING so it cannot clobber an existing price, while real prices below
+// still upsert with DO UPDATE.
 func upsertVariants(ctx context.Context, db *sql.DB, c Card, now time.Time) error {
+	if err := ensureNormalVariant(ctx, db, c.ID); err != nil {
+		return err
+	}
 	p := c.Cardmarket.Prices
 	type variantRow struct {
 		kind string
@@ -223,6 +237,38 @@ func upsertVariants(ctx context.Context, db *sql.DB, c Card, now time.Time) erro
 		}
 	}
 	return nil
+}
+
+// ensureNormalVariant inserts a placeholder normal-kind row with price 0 if
+// none exists for the card. The UNIQUE(card_id, kind) constraint with
+// DO NOTHING guarantees an existing priced row is left untouched.
+func ensureNormalVariant(ctx context.Context, db *sql.DB, cardID string) error {
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO pokemon_card_variants (card_id, kind, price_eur, price_at)
+		VALUES (?, 'normal', 0, NULL)
+		ON CONFLICT(card_id, kind) DO NOTHING
+	`, cardID)
+	return err
+}
+
+// backfillNormalVariants ensures every card has at least one variant row by
+// inserting a placeholder normal-kind row (price 0) for any card without one.
+// This is the self-healing pass run at the end of SyncAll to repair historical
+// gaps where Cardmarket had no price data when the card was first synced.
+func backfillNormalVariants(ctx context.Context, db *sql.DB) (int64, error) {
+	res, err := db.ExecContext(ctx, `
+		INSERT INTO pokemon_card_variants (card_id, kind, price_eur, price_at)
+		SELECT c.id, 'normal', 0, NULL
+		FROM pokemon_cards c
+		WHERE NOT EXISTS (
+			SELECT 1 FROM pokemon_card_variants v WHERE v.card_id = c.id
+		)
+	`)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
 }
 
 // pickPrice returns trend when non-zero, otherwise avg.

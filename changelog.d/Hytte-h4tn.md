@@ -1,0 +1,2 @@
+category: Fixed
+- **Pokémon sync now always creates a `normal` variant row for every card** - For very new sets where Cardmarket has no price data yet (e.g. the Mega Evolution era), the sync no longer skips creating variants entirely. Each card gets a placeholder `normal` variant at price 0 so the user can mark it as owned, and a self-healing backfill pass at the end of `SyncAll` repairs historical gaps. Real Cardmarket prices arriving on a later re-sync still overwrite the placeholder. (Hytte-h4tn)
