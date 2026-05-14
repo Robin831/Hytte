@@ -192,7 +192,7 @@ export default function Tasks() {
       })
       if (!res.ok) throw new Error(t('errors.failedToUpdate'))
       const data: { task: Task } = await res.json()
-      setTasks(prev => prev.map(t => t.id === data.task.id ? data.task : t))
+      setTasks(prev => prev.map(existing => existing.id === data.task.id ? data.task : existing))
     } catch (err) {
       setError(err instanceof Error ? err.message : t('errors.failedToUpdate'))
     }
@@ -212,9 +212,9 @@ export default function Tasks() {
       // Remove from view if it no longer matches the showArchived filter.
       setTasks(prev => {
         if (data.task.archived === showArchived) {
-          return prev.map(t => t.id === data.task.id ? data.task : t)
+          return prev.map(existing => existing.id === data.task.id ? data.task : existing)
         }
-        return prev.filter(t => t.id !== data.task.id)
+        return prev.filter(existing => existing.id !== data.task.id)
       })
       if (data.task.archived !== showArchived) {
         setExpandedId(prev => prev === data.task.id ? null : prev)
@@ -241,8 +241,8 @@ export default function Tasks() {
         [task.id]: [...(prev[task.id] ?? []), data.note],
       }))
       setNoteDrafts(prev => ({ ...prev, [task.id]: '' }))
-      setTasks(prev => prev.map(t =>
-        t.id === task.id ? { ...t, note_count: t.note_count + 1 } : t,
+      setTasks(prev => prev.map(existing =>
+        existing.id === task.id ? { ...existing, note_count: existing.note_count + 1 } : existing,
       ))
     } catch (err) {
       setError(err instanceof Error ? err.message : t('errors.failedToAddNote'))
@@ -310,10 +310,10 @@ export default function Tasks() {
                     : 'bg-gray-800 text-gray-400 hover:text-white'
                 }`}
               >
-                {t(`tags.${tag}` as never)}
+                {tag === 'work' ? t('tags.work') : t('tags.personal')}
               </button>
             ))}
-            {selectedTags.filter(tag => !BUILT_IN_TAGS.includes(tag as typeof BUILT_IN_TAGS[number])).map(tag => (
+            {selectedTags.filter(tag => !(BUILT_IN_TAGS as readonly string[]).includes(tag)).map(tag => (
               <span
                 key={tag}
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-600 text-white"
