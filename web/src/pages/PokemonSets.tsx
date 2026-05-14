@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
+import AddCardPanel from '../components/pokemon/AddCardPanel'
 import { formatDate } from '../utils/formatDate'
 
 interface PokemonSet {
@@ -270,6 +271,7 @@ export default function PokemonSets() {
           </>
         )}
       </div>
+      <AddCardPanel onAdded={load} />
     </div>
   )
 }

@@ -61,5 +61,25 @@
   "toast": {
     "marked": "Lagt til i samlingen",
     "unmarked": "Fjernet fra samlingen"
+  },
+  "addCard": {
+    "openLabel": "Legg til kort i samlingen",
+    "dialogLabel": "Legg til kort",
+    "inputLabel": "Søk etter navn eller samlernummer",
+    "placeholder": "Søk på navn eller nummer — f.eks. «pika» eller «025/195»",
+    "close": "Lukk",
+    "searching": "Søker …",
+    "noResults": "Ingen kort matcher søket.",
+    "results": "Kortresultater",
+    "cancel": "Avbryt",
+    "variantPickerLabel": "Velg variant for {{name}}",
+    "variantPickerPrompt": "Velg variant for {{name}}",
+    "toast": {
+      "added": "La til {{name}}"
+    },
+    "errors": {
+      "searchFailed": "Kunne ikke søke etter kort",
+      "addFailed": "Kunne ikke legge til kort"
+    }
   }
 }
