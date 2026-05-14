@@ -147,11 +147,14 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
   }, [torchOn])
 
   return (
+    // Outer layer always covers the full viewport so clicks on the uncovered
+    // area (desktop inset) cannot reach the Dialog mounted behind the scanner.
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black md:bg-black/70">
     <div
       role="dialog"
       aria-modal="true"
       aria-label={t('scanner.dialogLabel')}
-      className="fixed inset-0 z-50 bg-black flex items-center justify-center md:inset-8 md:rounded-lg md:overflow-hidden md:max-w-2xl md:mx-auto md:my-auto md:h-[80vh] md:shadow-2xl"
+      className="relative bg-black flex items-center justify-center w-full h-full md:h-[80vh] md:max-w-2xl md:rounded-lg md:overflow-hidden md:shadow-2xl"
     >
       {permissionState === 'prompting' && (
         <p className="px-6 text-center text-sm text-gray-200">
@@ -256,6 +259,7 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
       </button>
 
       <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
+    </div>
     </div>
   )
 }

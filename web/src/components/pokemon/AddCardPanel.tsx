@@ -63,6 +63,7 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
 
   const close = useCallback(() => {
     setIsOpen(false)
+    setScannerOpen(false)
     setQuery('')
     setResults([])
     setError('')
@@ -167,7 +168,7 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
       </button>
 
       <Dialog
-        open={isOpen}
+        open={isOpen && !scannerOpen}
         onClose={close}
         maxWidth="sm:max-w-lg"
         overlayClassName="items-end sm:items-center p-0 sm:p-4"

@@ -63,8 +63,20 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
-  if (savedMediaDevicesDescriptor) {
+  if (savedMediaDevicesDescriptor !== undefined) {
     Object.defineProperty(navigator, 'mediaDevices', savedMediaDevicesDescriptor)
+  } else {
+    // mediaDevices was not originally an own property; remove the mock added by
+    // each describe's beforeEach so it doesn't leak into subsequent test files.
+    try {
+      delete (navigator as unknown as Record<string, unknown>).mediaDevices
+    } catch {
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        writable: true,
+        value: undefined,
+      })
+    }
   }
 })
 
