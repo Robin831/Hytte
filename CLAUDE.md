@@ -169,3 +169,5 @@ cp -f source dest
 rm -f file
 rm -rf dir
 ```
+
+<!-- bd-doctor-divergence: ok -->
