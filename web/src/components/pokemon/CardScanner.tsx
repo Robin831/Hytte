@@ -38,6 +38,7 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
 
   // Acquire the camera on mount; stop tracks on unmount so the camera LED
   // turns off even if the parent unmounts the scanner without calling onClose.
@@ -93,16 +94,47 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
     onClose()
   }, [onClose])
 
+  // Lock body scroll while the scanner is mounted, just like Dialog does.
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [])
+
   // Focus the close button on mount so keyboard/screen-reader users can
   // immediately dismiss the overlay without needing to tab to it.
   useEffect(() => {
     closeButtonRef.current?.focus()
   }, [])
 
-  // Dismiss on Escape so the overlay behaves like a native modal.
+  // Escape to dismiss + Tab focus trap (mirrors Dialog behaviour).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleClose()
+      if (e.key === 'Escape') {
+        handleClose()
+        return
+      }
+      if (e.key !== 'Tab' || !dialogRef.current) return
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      )
+      if (focusable.length === 0) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
@@ -151,6 +183,7 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
     // area (desktop inset) cannot reach the Dialog mounted behind the scanner.
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black md:bg-black/70">
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={t('scanner.dialogLabel')}
