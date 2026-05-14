@@ -69,6 +69,7 @@
     "inputLabel": "Søk etter navn eller samlernummer",
     "placeholder": "Søk på navn eller nummer — f.eks. «pika» eller «025/195»",
     "close": "Lukk",
+    "scan": "Skann kort med kamera",
     "searching": "Søker …",
     "noResults": "Ingen kort matcher søket.",
     "results": "Kortresultater",
@@ -83,5 +84,17 @@
       "searchFailed": "Kunne ikke søke etter kort",
       "addFailed": "Kunne ikke legge til kort"
     }
+  },
+  "scanner": {
+    "dialogLabel": "Skann et Pokémon-kort",
+    "requesting": "Ber om tilgang til kameraet …",
+    "permissionDenied": "Kameratilgang ble avslått. Du kan fortsatt legge til kort ved å søke.",
+    "cameraUnavailable": "Kameraet er utilgjengelig — det kan være opptatt av en annen app eller ikke funnet. Du kan fortsatt legge til kort ved å søke.",
+    "unsupported": "Kameraskanning støttes ikke i denne nettleseren. Bruk søk i stedet.",
+    "enterManually": "Legg til kort manuelt",
+    "shutter": "Ta bilde av kort",
+    "torchOn": "Slå på lommelykt",
+    "torchOff": "Slå av lommelykt",
+    "close": "Lukk skanner"
   }
 }
