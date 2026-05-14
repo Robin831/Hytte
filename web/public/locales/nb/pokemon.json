@@ -56,6 +56,7 @@
   },
   "variantKind": {
     "normal": "Normal",
+    "holofoil": "Holo",
     "reverse_holofoil": "Reverse holo"
   },
   "toast": {
@@ -75,7 +76,8 @@
     "variantPickerLabel": "Velg variant for {{name}}",
     "variantPickerPrompt": "Velg variant for {{name}}",
     "toast": {
-      "added": "La til {{name}}"
+      "added": "La til {{name}}",
+      "alreadyOwned": "{{name}} finnes allerede i samlingen din"
     },
     "errors": {
       "searchFailed": "Kunne ikke søke etter kort",

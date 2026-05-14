@@ -137,7 +137,12 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
   const handleResultClick = (card: Card) => {
     if (card.variants.length === 0) return
     if (card.variants.length === 1) {
-      void addCard(card, card.variants[0].id)
+      const v = card.variants[0]
+      if (v.owned) {
+        showToast(t('addCard.toast.alreadyOwned', { name: card.name }), 'info')
+        return
+      }
+      void addCard(card, v.id)
     } else {
       setVariantCard(card)
     }
@@ -250,12 +255,19 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
                 <button
                   key={v.id}
                   type="button"
-                  onClick={() => addCard(variantCard, v.id)}
+                  onClick={() => {
+                    if (v.owned) {
+                      showToast(t('addCard.toast.alreadyOwned', { name: variantCard.name }), 'info')
+                      return
+                    }
+                    void addCard(variantCard, v.id)
+                  }}
                   disabled={adding}
                   data-testid={`add-card-variant-${v.id}`}
                   className="flex items-center gap-2 px-3 py-1.5 rounded border border-gray-700 hover:border-emerald-500 hover:bg-emerald-500/10 disabled:cursor-not-allowed text-sm text-white cursor-pointer"
                 >
                   <span>{t(`variantKind.${v.kind}`, { defaultValue: v.kind })}</span>
+                  {v.owned && <span className="text-xs text-emerald-400">✓</span>}
                   <span className="text-xs text-gray-400">{formatNok(v.price_nok)}</span>
                 </button>
               ))}

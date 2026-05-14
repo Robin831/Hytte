@@ -24,6 +24,7 @@ const TRANSLATIONS: Record<string, string> = {
 
 function mockT(key: string, opts?: Record<string, string | number> & { defaultValue?: string }): string {
   if (key === 'addCard.toast.added') return `Added ${opts?.name ?? ''}`
+  if (key === 'addCard.toast.alreadyOwned') return `${opts?.name ?? ''} already owned`
   if (key === 'addCard.variantPickerLabel') return `Pick a variant for ${opts?.name ?? ''}`
   if (key === 'addCard.variantPickerPrompt') return `Pick a variant for ${opts?.name ?? ''}`
   if (key === 'tile.collectorNo') return `#${opts?.number ?? ''}`
@@ -262,6 +263,60 @@ describe('AddCardPanel — single variant adds immediately', () => {
     fireEvent.click(await screen.findByTestId('add-card-result-sv1-25'))
 
     await waitFor(() => expect(onAdded).toHaveBeenCalledTimes(1))
+  })
+})
+
+describe('AddCardPanel — already owned guard', () => {
+  it('shows "already owned" toast and skips POST for a single owned variant', async () => {
+    const card = makeCard({
+      id: 'sv1-25',
+      name: 'Pikachu',
+      variants: [makeVariant({ id: 11, owned: true, quantity: 2 })],
+    })
+    const fetchMock = makeFetchMock([card])
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<AddCardPanel />)
+    openPanel()
+    fireEvent.change(screen.getByLabelText('Search cards'), { target: { value: 'pika' } })
+
+    fireEvent.click(await screen.findByTestId('add-card-result-sv1-25'))
+
+    expect(await screen.findByText('Pikachu already owned')).toBeInTheDocument()
+    expect(
+      fetchMock.mock.calls.find(
+        ([url, init]) => url === '/api/pokemon/collection' && (init as RequestInit | undefined)?.method === 'POST',
+      ),
+    ).toBeFalsy()
+  })
+
+  it('shows "already owned" toast and skips POST when picking an owned variant', async () => {
+    const card = makeCard({
+      id: 'sv1-25',
+      name: 'Pikachu',
+      variants: [
+        makeVariant({ id: 11, kind: 'normal', owned: true, quantity: 1 }),
+        makeVariant({ id: 12, kind: 'reverse_holofoil', owned: false }),
+      ],
+    })
+    const fetchMock = makeFetchMock([card])
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<AddCardPanel />)
+    openPanel()
+    fireEvent.change(screen.getByLabelText('Search cards'), { target: { value: 'pika' } })
+
+    fireEvent.click(await screen.findByTestId('add-card-result-sv1-25'))
+    expect(await screen.findByText('Pick a variant for Pikachu')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('add-card-variant-11'))
+
+    expect(await screen.findByText('Pikachu already owned')).toBeInTheDocument()
+    expect(
+      fetchMock.mock.calls.find(
+        ([url, init]) => url === '/api/pokemon/collection' && (init as RequestInit | undefined)?.method === 'POST',
+      ),
+    ).toBeFalsy()
   })
 })
 
