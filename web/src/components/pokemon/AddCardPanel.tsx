@@ -73,19 +73,13 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
   // of each search so the dropdown never shows results that don't match the
   // current input value while loading.
   useEffect(() => {
-    if (!isOpen) return
     const q = query.trim()
-    if (q === '') {
-      setResults([])
-      setError('')
-      setLoading(false)
-      return
-    }
-    setLoading(true)
-    setResults([])
-    setError('')
+    if (!isOpen || q === '') return
     const controller = new AbortController()
     const timer = setTimeout(() => {
+      setLoading(true)
+      setResults([])
+      setError('')
       void (async () => {
         try {
           const res = await fetch(
@@ -150,7 +144,7 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
   }
 
   const trimmedQuery = query.trim()
-  const showResults = !loading && !error && results.length > 0
+  const showResults = !loading && !error && trimmedQuery !== '' && results.length > 0
   const showEmpty = !loading && !error && trimmedQuery !== '' && results.length === 0
 
   return (
@@ -194,7 +188,7 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto" aria-busy={loading}>
-          {error && (
+          {error && trimmedQuery !== '' && (
             <p role="alert" className="px-4 py-3 text-sm text-red-300">{error}</p>
           )}
           {!error && loading && trimmedQuery !== '' && (
