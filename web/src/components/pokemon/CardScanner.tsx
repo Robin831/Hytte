@@ -28,7 +28,9 @@ interface ExtendedMediaTrackConstraintSet extends MediaTrackConstraintSet {
 export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
   const { t } = useTranslation('pokemon')
 
-  const [permissionState, setPermissionState] = useState<PermissionState>('prompting')
+  const [permissionState, setPermissionState] = useState<PermissionState>(() =>
+    navigator.mediaDevices?.getUserMedia ? 'prompting' : 'unsupported',
+  )
   const [torchOn, setTorchOn] = useState(false)
   const [torchSupported, setTorchSupported] = useState(false)
 
@@ -41,10 +43,7 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
   useEffect(() => {
     let cancelled = false
 
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setPermissionState('unsupported')
-      return
-    }
+    if (!navigator.mediaDevices?.getUserMedia) return
 
     void (async () => {
       try {
