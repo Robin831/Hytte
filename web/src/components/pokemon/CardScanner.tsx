@@ -220,7 +220,7 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
         // shutter remains available as a fallback.
       }
 
-      if (!cancelled && scanStatusRef.current !== 'captured') {
+      if (!cancelled) {
         rafIdRef.current = window.requestAnimationFrame(tick)
       }
     }
