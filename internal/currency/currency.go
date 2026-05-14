@@ -30,6 +30,17 @@ var httpClient = &http.Client{Timeout: 30 * time.Second}
 // overrideURL, when non-empty, replaces norgesBankEURNOKURL. Used by tests.
 var overrideURL string
 
+// maxResponseBytes caps the response body fed to the CSV parser. The real
+// Norges Bank response is well under 1 KB; 1 MiB leaves comfortable headroom
+// while bounding memory if the upstream misbehaves.
+const maxResponseBytes int64 = 1 << 20
+
+// maxErrorBodyBytes caps how much of an HTTP error body we include in the
+// returned error message. Truncation is intentional here (it's only for
+// diagnostics), so the parser uses io.LimitedReader with limit+1 to detect
+// and signal overflow rather than silently swallow it.
+const maxErrorBodyBytes int64 = 1024
+
 // SyncEURNOK fetches the latest EUR/NOK observation from Norges Bank and
 // upserts a row into currency_rates keyed by (pair, observed). Calling it
 // multiple times on the same observation date is idempotent — the row is
@@ -51,13 +62,22 @@ func SyncEURNOK(ctx context.Context, db *sql.DB) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return fmt.Errorf("norges bank: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		limited := &io.LimitedReader{R: resp.Body, N: maxErrorBodyBytes + 1}
+		body, _ := io.ReadAll(limited)
+		truncated := ""
+		if int64(len(body)) > maxErrorBodyBytes {
+			body = body[:maxErrorBodyBytes]
+			truncated = " (truncated)"
+		}
+		return fmt.Errorf("norges bank: HTTP %d: %s%s", resp.StatusCode, strings.TrimSpace(string(body)), truncated)
 	}
 
-	observed, rate, err := parseEURNOKCSV(resp.Body)
+	observed, rate, err := parseEURNOKCSV(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return fmt.Errorf("parse norges bank csv: %w", err)
+	}
+	if rate <= 0 {
+		return fmt.Errorf("norges bank: invalid rate %v for %s", rate, PairEURNOK)
 	}
 
 	_, err = db.ExecContext(ctx, `

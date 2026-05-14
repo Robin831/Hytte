@@ -356,10 +356,13 @@ func main() {
 	// a rate available, then ticks daily. Failures are logged; downstream
 	// readers fall back to the latest stored rate.
 	go func() {
-		oslo, err := time.LoadLocation("Europe/Oslo")
+		loc, err := time.LoadLocation("Europe/Oslo")
 		if err != nil {
-			log.Printf("currency: failed to load Europe/Oslo timezone: %v", err)
-			return
+			// Missing tzdata shouldn't disable the sync entirely — fall back
+			// to UTC so the daily tick still fires (just shifted by Oslo's
+			// UTC offset). Downstream code only needs a fresh-ish rate.
+			log.Printf("currency: failed to load Europe/Oslo timezone, falling back to UTC: %v", err)
+			loc = time.UTC
 		}
 		startupCtx, startupCancel := context.WithTimeout(notifCtx, 30*time.Second)
 		if err := currency.SyncEURNOK(startupCtx, database); err != nil {
@@ -368,7 +371,7 @@ func main() {
 		startupCancel()
 
 		for {
-			next := currency.NextDailyRun(time.Now(), oslo)
+			next := currency.NextDailyRun(time.Now(), loc)
 			timer := time.NewTimer(time.Until(next))
 			select {
 			case <-notifCtx.Done():

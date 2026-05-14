@@ -18,6 +18,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	// Each sql.DB connection to ":memory:" opens its own private in-memory
+	// database in modernc.org/sqlite, so unbounded pooling causes flakiness
+	// (writes on one conn aren't visible on another). Pin to a single conn.
+	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { db.Close() })
 	if _, err := db.Exec(`
 		CREATE TABLE currency_rates (
@@ -158,6 +162,26 @@ func TestParseEURNOKCSV_RejectsBadDate(t *testing.T) {
 	_, _, err := parseEURNOKCSV(strings.NewReader(bad))
 	if err == nil {
 		t.Fatal("expected error for invalid date, got nil")
+	}
+}
+
+func TestSyncEURNOK_RejectsNonPositiveRate(t *testing.T) {
+	db := setupTestDB(t)
+	// Norges Bank should never serve a zero rate, but if it ever does we
+	// must not store it — downstream NOK conversion would produce zeros.
+	zeroCSV := "TIME_PERIOD;OBS_VALUE\n2026-05-14;0,0000\n"
+	srv := startFixtureServer(t, zeroCSV)
+	withOverrideURL(t, srv.URL)
+
+	if err := SyncEURNOK(context.Background(), db); err == nil {
+		t.Fatal("expected error for zero rate, got nil")
+	}
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM currency_rates`).Scan(&n); err != nil {
+		t.Fatalf("count rows: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("row count = %d, want 0 (invalid rate should not be persisted)", n)
 	}
 }
 
