@@ -179,9 +179,9 @@ describe('PokemonSets – dynamic recent eras', () => {
     renderPage()
     await waitFor(() => expect(screen.getByText('Alpha Card')).toBeInTheDocument())
 
-    expect(screen.getByRole('heading', { name: 'Alpha' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Beta' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Gamma' })).toBeInTheDocument()
+    // Assert DOM order: Alpha → Beta → Gamma (alphabetical tie-break), Delta hidden.
+    const eraHeadings = screen.getAllByRole('heading', { level: 2 }).map(h => h.textContent)
+    expect(eraHeadings).toEqual(['Alpha', 'Beta', 'Gamma'])
     expect(screen.queryByRole('heading', { name: 'Delta' })).not.toBeInTheDocument()
   })
 })
