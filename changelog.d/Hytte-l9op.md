@@ -1,0 +1,2 @@
+category: Added
+- **Pokémon Collection REST API** - New endpoints under `/api/pokemon/*` for listing sets, browsing cards in a set, autocomplete search by collector number or name fragment, and per-user collection CRUD. Variant prices are returned in both EUR and NOK using the latest cached Norges Bank rate; an `X-Pokemon-Rate-Missing` header signals when no rate is available. All endpoints are gated by the `pokemon` feature flag. (Hytte-l9op)

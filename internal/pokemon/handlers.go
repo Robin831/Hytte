@@ -1,0 +1,808 @@
+package pokemon
+
+import (
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"log"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/currency"
+	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/go-chi/chi/v5"
+)
+
+// maxBodySize caps request bodies for collection write endpoints. Notes are
+// short free-text fields; 16 KB leaves room for long parent annotations
+// without exposing the decoder to unbounded streams.
+const maxBodySize = 16 << 10
+
+// defaultListLimit is the default page size for set/search/card listings.
+const defaultListLimit = 50
+
+// maxListLimit caps the explicit ?limit= a caller may request. The search and
+// list endpoints stay snappy when the upper bound is tight.
+const maxListLimit = 50
+
+// allowedConditions enumerates the grades we accept for a collection row.
+// An empty string is also permitted (callers may not yet have graded the card).
+var allowedConditions = map[string]bool{
+	"":                  true,
+	"mint":              true,
+	"near_mint":         true,
+	"lightly_played":    true,
+	"moderately_played": true,
+	"heavily_played":    true,
+	"damaged":           true,
+}
+
+// collectorNumberPattern matches a collector-number query like "25" or
+// "025/195". The slash form lets callers paste the printed "n/total" notation
+// straight from a card.
+var collectorNumberPattern = regexp.MustCompile(`^\d+(/\d+)?$`)
+
+// SetDTO is the JSON shape used by /api/pokemon/sets.
+type SetDTO struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Series      string `json:"series"`
+	ReleaseDate string `json:"release_date"`
+	TotalCards  int    `json:"total_cards"`
+	SymbolURL   string `json:"symbol_url"`
+	LogoURL     string `json:"logo_url"`
+}
+
+// VariantDTO is the JSON shape of a card variant, including ownership state
+// for the current user. Quantity, Condition, Notes are zero values when the
+// user does not own the variant.
+type VariantDTO struct {
+	ID         int64    `json:"id"`
+	Kind       string   `json:"kind"`
+	PriceEUR   float64  `json:"price_eur"`
+	PriceNOK   *float64 `json:"price_nok"`
+	PriceAt    *string  `json:"price_at,omitempty"`
+	Owned      bool     `json:"owned"`
+	OwnedID    *int64   `json:"owned_id,omitempty"`
+	Quantity   int      `json:"quantity"`
+	Condition  string   `json:"condition,omitempty"`
+	Notes      string   `json:"notes,omitempty"`
+	AcquiredAt *string  `json:"acquired_at,omitempty"`
+}
+
+// CardDTO is the JSON shape returned for any card listing.
+type CardDTO struct {
+	ID            string       `json:"id"`
+	SetID         string       `json:"set_id"`
+	SetName       string       `json:"set_name,omitempty"`
+	Name          string       `json:"name"`
+	CollectorNo   string       `json:"collector_no"`
+	Rarity        string       `json:"rarity"`
+	ImageSmallURL string       `json:"image_small_url"`
+	ImageLargeURL string       `json:"image_large_url"`
+	Variants      []VariantDTO `json:"variants"`
+}
+
+// CollectionRow is the JSON shape for collection CRUD responses. Timestamps
+// are returned as the database-stored string (RFC3339-style) so we don't have
+// to translate between driver representations on every read.
+type CollectionRow struct {
+	ID         int64  `json:"id"`
+	UserID     int64  `json:"user_id"`
+	CardID     string `json:"card_id"`
+	VariantID  int64  `json:"variant_id"`
+	Quantity   int    `json:"quantity"`
+	Condition  string `json:"condition"`
+	Notes      string `json:"notes,omitempty"`
+	AcquiredAt string `json:"acquired_at"`
+}
+
+func respondJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("pokemon: encode response: %v", err)
+	}
+}
+
+func respondError(w http.ResponseWriter, status int, msg string) {
+	respondJSON(w, status, map[string]string{"error": msg})
+}
+
+// decodeBody decodes r.Body into dst after capping the body at limit bytes.
+// Returns false and writes the appropriate error response on failure.
+func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
+	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			respondError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return false
+		}
+		respondError(w, http.StatusBadRequest, "invalid JSON")
+		return false
+	}
+	return true
+}
+
+// parseLimit reads ?limit= with a default and cap. Returns the default when
+// the parameter is missing or invalid (to keep the API forgiving for
+// hand-crafted URLs).
+func parseLimit(r *http.Request, def, upper int) int {
+	q := strings.TrimSpace(r.URL.Query().Get("limit"))
+	if q == "" {
+		return def
+	}
+	n, err := strconv.Atoi(q)
+	if err != nil || n <= 0 {
+		return def
+	}
+	if n > upper {
+		return upper
+	}
+	return n
+}
+
+// parseOffset reads ?offset= with a 0 default.
+func parseOffset(r *http.Request) int {
+	q := strings.TrimSpace(r.URL.Query().Get("offset"))
+	if q == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(q)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
+// loadRate fetches the latest EUR/NOK rate. When no rate is available it
+// returns ok=false so callers can flag the response with the
+// X-Pokemon-Rate-Missing header. Unexpected (non sql.ErrNoRows) errors are
+// logged so a misconfigured DB or schema mismatch is visible in operations.
+func loadRate(r *http.Request, db *sql.DB) (rate float64, ok bool) {
+	rate, _, err := currency.LatestRate(r.Context(), db, currency.PairEURNOK)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("pokemon: load EUR/NOK rate: %v", err)
+		}
+		return 0, false
+	}
+	return rate, true
+}
+
+// applyNOK fills the price_nok field on every variant when the rate is
+// available, and sets the X-Pokemon-Rate-Missing header otherwise. The header
+// must be set before the response body is written.
+func applyNOK(w http.ResponseWriter, cards []CardDTO, rate float64, rateOK bool) {
+	if !rateOK {
+		w.Header().Set("X-Pokemon-Rate-Missing", "1")
+		return
+	}
+	for ci := range cards {
+		for vi := range cards[ci].Variants {
+			nok := cards[ci].Variants[vi].PriceEUR * rate
+			cards[ci].Variants[vi].PriceNOK = &nok
+		}
+	}
+}
+
+// ListSetsHandler returns the catalogue of sets, ordered newest-first and
+// optionally filtered by series via ?era=<name>.
+func ListSetsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		era := strings.TrimSpace(r.URL.Query().Get("era"))
+		limit := parseLimit(r, defaultListLimit, maxListLimit)
+		offset := parseOffset(r)
+
+		var (
+			rows *sql.Rows
+			err  error
+		)
+		if era != "" {
+			rows, err = db.QueryContext(r.Context(), `
+				SELECT id, name, series, release_date, total_cards, symbol_url, logo_url
+				FROM pokemon_sets
+				WHERE series = ?
+				ORDER BY release_date DESC, id DESC
+				LIMIT ? OFFSET ?
+			`, era, limit, offset)
+		} else {
+			rows, err = db.QueryContext(r.Context(), `
+				SELECT id, name, series, release_date, total_cards, symbol_url, logo_url
+				FROM pokemon_sets
+				ORDER BY release_date DESC, id DESC
+				LIMIT ? OFFSET ?
+			`, limit, offset)
+		}
+		if err != nil {
+			log.Printf("pokemon: list sets: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to list sets")
+			return
+		}
+		defer rows.Close()
+
+		sets := make([]SetDTO, 0)
+		for rows.Next() {
+			var s SetDTO
+			if err := rows.Scan(&s.ID, &s.Name, &s.Series, &s.ReleaseDate, &s.TotalCards, &s.SymbolURL, &s.LogoURL); err != nil {
+				log.Printf("pokemon: scan set: %v", err)
+				respondError(w, http.StatusInternalServerError, "failed to list sets")
+				return
+			}
+			sets = append(sets, s)
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("pokemon: iterate sets: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to list sets")
+			return
+		}
+
+		respondJSON(w, http.StatusOK, map[string]any{"sets": sets})
+	}
+}
+
+// ListSetCardsHandler returns every card in a set with variants and per-user
+// ownership flags. Caller must be authenticated; the URL must contain {id}.
+func ListSetCardsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			respondError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		setID := strings.TrimSpace(chi.URLParam(r, "id"))
+		if setID == "" {
+			respondError(w, http.StatusBadRequest, "set id is required")
+			return
+		}
+
+		cards, err := loadCardsForSet(r, db, user.ID, setID)
+		if err != nil {
+			log.Printf("pokemon: list set cards: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to list cards")
+			return
+		}
+
+		rate, ok := loadRate(r, db)
+		applyNOK(w, cards, rate, ok)
+		respondJSON(w, http.StatusOK, map[string]any{"cards": cards})
+	}
+}
+
+// SearchCardsHandler powers autocomplete by collector number or name fragment.
+// The query parameter is ?q=<text>. The optional ?limit= caps the response at
+// up to 50 cards.
+func SearchCardsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			respondError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		if q == "" {
+			respondJSON(w, http.StatusOK, map[string]any{"cards": []CardDTO{}})
+			return
+		}
+		limit := parseLimit(r, defaultListLimit, maxListLimit)
+
+		cards, err := searchCards(r, db, user.ID, q, limit)
+		if err != nil {
+			log.Printf("pokemon: search cards: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to search cards")
+			return
+		}
+
+		rate, ok := loadRate(r, db)
+		applyNOK(w, cards, rate, ok)
+		respondJSON(w, http.StatusOK, map[string]any{"cards": cards})
+	}
+}
+
+// UpsertCollectionHandler inserts or updates a collection row for the current
+// user. The (user_id, card_id, variant_id) tuple is unique, so calling this
+// endpoint twice with the same payload updates instead of duplicating.
+func UpsertCollectionHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			respondError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		var body struct {
+			CardID    string `json:"card_id"`
+			VariantID int64  `json:"variant_id"`
+			Quantity  int    `json:"quantity"`
+			Condition string `json:"condition"`
+			Notes     string `json:"notes"`
+		}
+		if !decodeBody(w, r, &body) {
+			return
+		}
+		body.CardID = strings.TrimSpace(body.CardID)
+		body.Condition = strings.TrimSpace(body.Condition)
+		if body.CardID == "" || body.VariantID == 0 {
+			respondError(w, http.StatusBadRequest, "card_id and variant_id are required")
+			return
+		}
+		if body.Quantity < 0 {
+			respondError(w, http.StatusBadRequest, "quantity must be non-negative")
+			return
+		}
+		if body.Quantity == 0 {
+			body.Quantity = 1
+		}
+		if !allowedConditions[body.Condition] {
+			respondError(w, http.StatusBadRequest, "invalid condition")
+			return
+		}
+
+		// Verify the variant belongs to the card so the FK relationship is
+		// well-formed before we encrypt + write.
+		var variantCard string
+		err := db.QueryRowContext(r.Context(),
+			`SELECT card_id FROM pokemon_card_variants WHERE id = ?`, body.VariantID,
+		).Scan(&variantCard)
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(w, http.StatusNotFound, "variant not found")
+			return
+		}
+		if err != nil {
+			log.Printf("pokemon: lookup variant: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to verify variant")
+			return
+		}
+		if variantCard != body.CardID {
+			respondError(w, http.StatusBadRequest, "variant does not belong to card")
+			return
+		}
+
+		notesEnc, err := encryptNotes(body.Notes)
+		if err != nil {
+			log.Printf("pokemon: encrypt notes: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to encrypt notes")
+			return
+		}
+		now := time.Now().UTC()
+		// Determine whether an existing row already covers (user, card, variant) so
+		// we can return the correct status code (200 vs 201) and re-read the row.
+		// We only care whether a row exists, not its id, so EXISTS() is enough.
+		var rowExists bool
+		err = db.QueryRowContext(r.Context(),
+			`SELECT EXISTS(SELECT 1 FROM pokemon_collections WHERE user_id = ? AND card_id = ? AND variant_id = ?)`,
+			user.ID, body.CardID, body.VariantID,
+		).Scan(&rowExists)
+		if err != nil {
+			log.Printf("pokemon: lookup collection: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to upsert collection")
+			return
+		}
+		isNew := !rowExists
+
+		_, err = db.ExecContext(r.Context(), `
+			INSERT INTO pokemon_collections (user_id, card_id, variant_id, quantity, condition, acquired_at, notes_enc)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(user_id, card_id, variant_id) DO UPDATE SET
+				quantity   = excluded.quantity,
+				condition  = excluded.condition,
+				notes_enc  = excluded.notes_enc
+		`, user.ID, body.CardID, body.VariantID, body.Quantity, body.Condition, now, notesEnc)
+		if err != nil {
+			log.Printf("pokemon: upsert collection: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to upsert collection")
+			return
+		}
+
+		row, err := loadCollectionRow(r, db, user.ID, body.CardID, body.VariantID)
+		if err != nil {
+			log.Printf("pokemon: reload collection: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to read collection")
+			return
+		}
+		status := http.StatusOK
+		if isNew {
+			status = http.StatusCreated
+		}
+		respondJSON(w, status, map[string]any{"item": row})
+	}
+}
+
+// UpdateCollectionHandler patches an existing collection row. Only fields
+// present in the request body are updated. The row must belong to the
+// authenticated user.
+func UpdateCollectionHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			respondError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil || id <= 0 {
+			respondError(w, http.StatusBadRequest, "invalid collection id")
+			return
+		}
+		var body struct {
+			Quantity  *int    `json:"quantity"`
+			Condition *string `json:"condition"`
+			Notes     *string `json:"notes"`
+		}
+		if !decodeBody(w, r, &body) {
+			return
+		}
+
+		// Read-modify-write under the user_id scope to enforce ownership.
+		// A row that does not exist or belongs to another user looks the same
+		// to the caller: 404.
+		var existing CollectionRow
+		var encNotes sql.NullString
+		err = db.QueryRowContext(r.Context(), `
+			SELECT id, user_id, card_id, variant_id, quantity, condition, acquired_at, notes_enc
+			FROM pokemon_collections
+			WHERE id = ? AND user_id = ?
+		`, id, user.ID).Scan(&existing.ID, &existing.UserID, &existing.CardID, &existing.VariantID,
+			&existing.Quantity, &existing.Condition, &existing.AcquiredAt, &encNotes)
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(w, http.StatusNotFound, "collection item not found")
+			return
+		}
+		if err != nil {
+			log.Printf("pokemon: load collection: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to load collection")
+			return
+		}
+		existing.Notes = decryptNotes(encNotes)
+
+		if body.Quantity != nil {
+			if *body.Quantity < 0 {
+				respondError(w, http.StatusBadRequest, "quantity must be non-negative")
+				return
+			}
+			existing.Quantity = *body.Quantity
+		}
+		if body.Condition != nil {
+			cond := strings.TrimSpace(*body.Condition)
+			if !allowedConditions[cond] {
+				respondError(w, http.StatusBadRequest, "invalid condition")
+				return
+			}
+			existing.Condition = cond
+		}
+		if body.Notes != nil {
+			existing.Notes = *body.Notes
+		}
+
+		notesEnc, err := encryptNotes(existing.Notes)
+		if err != nil {
+			log.Printf("pokemon: encrypt notes: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to encrypt notes")
+			return
+		}
+		if _, err := db.ExecContext(r.Context(), `
+			UPDATE pokemon_collections
+			SET quantity = ?, condition = ?, notes_enc = ?
+			WHERE id = ? AND user_id = ?
+		`, existing.Quantity, existing.Condition, notesEnc, id, user.ID); err != nil {
+			log.Printf("pokemon: update collection: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to update collection")
+			return
+		}
+
+		respondJSON(w, http.StatusOK, map[string]any{"item": existing})
+	}
+}
+
+// DeleteCollectionHandler removes a collection row owned by the current user.
+// Returns 204 on success, 404 when the row does not exist or belongs to a
+// different user.
+func DeleteCollectionHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			respondError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil || id <= 0 {
+			respondError(w, http.StatusBadRequest, "invalid collection id")
+			return
+		}
+		res, err := db.ExecContext(r.Context(),
+			`DELETE FROM pokemon_collections WHERE id = ? AND user_id = ?`,
+			id, user.ID,
+		)
+		if err != nil {
+			log.Printf("pokemon: delete collection: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to delete collection")
+			return
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			respondError(w, http.StatusNotFound, "collection item not found")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// MissingFromSetHandler returns the cards in a set that the current user does
+// not yet own (no variant present in their collection). Useful for "what's
+// left to find?" UIs.
+func MissingFromSetHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			respondError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		setID := strings.TrimSpace(r.URL.Query().Get("set_id"))
+		if setID == "" {
+			respondError(w, http.StatusBadRequest, "set_id is required")
+			return
+		}
+		cards, err := loadCardsForSet(r, db, user.ID, setID)
+		if err != nil {
+			log.Printf("pokemon: missing-from-set: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to list cards")
+			return
+		}
+		missing := make([]CardDTO, 0, len(cards))
+		for _, c := range cards {
+			owned := false
+			for _, v := range c.Variants {
+				if v.Owned {
+					owned = true
+					break
+				}
+			}
+			if !owned {
+				missing = append(missing, c)
+			}
+		}
+
+		rate, ok := loadRate(r, db)
+		applyNOK(w, missing, rate, ok)
+		respondJSON(w, http.StatusOK, map[string]any{"cards": missing})
+	}
+}
+
+// loadCardsForSet hydrates every card in a set with its variants and owner
+// flags for the given user. A set is bounded by its printed total, so no
+// pagination is applied here — silently truncating would hide cards from a
+// caller building a "what's missing?" view.
+func loadCardsForSet(r *http.Request, db *sql.DB, userID int64, setID string) ([]CardDTO, error) {
+	cardRows, err := db.QueryContext(r.Context(), `
+		SELECT id, set_id, name, collector_no, rarity, image_small_url, image_large_url
+		FROM pokemon_cards
+		WHERE set_id = ?
+		ORDER BY CAST(collector_no AS INTEGER), collector_no
+	`, setID)
+	if err != nil {
+		return nil, err
+	}
+	defer cardRows.Close()
+
+	cards := make([]CardDTO, 0)
+	cardIndex := make(map[string]int)
+	for cardRows.Next() {
+		var c CardDTO
+		if err := cardRows.Scan(&c.ID, &c.SetID, &c.Name, &c.CollectorNo, &c.Rarity, &c.ImageSmallURL, &c.ImageLargeURL); err != nil {
+			return nil, err
+		}
+		c.Variants = []VariantDTO{}
+		cardIndex[c.ID] = len(cards)
+		cards = append(cards, c)
+	}
+	if err := cardRows.Err(); err != nil {
+		return nil, err
+	}
+	if len(cards) == 0 {
+		return cards, nil
+	}
+	return hydrateVariants(r, db, userID, cards, cardIndex)
+}
+
+// searchCards executes either a collector-number or name-fragment lookup.
+func searchCards(r *http.Request, db *sql.DB, userID int64, q string, limit int) ([]CardDTO, error) {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	if collectorNumberPattern.MatchString(q) {
+		// "025/195" → split into number and total; "025" → number only.
+		numPart := q
+		totalPart := ""
+		if idx := strings.Index(q, "/"); idx >= 0 {
+			numPart = q[:idx]
+			totalPart = q[idx+1:]
+		}
+		numInt, _ := strconv.Atoi(numPart)
+		if totalPart != "" {
+			totalInt, _ := strconv.Atoi(totalPart)
+			rows, err = db.QueryContext(r.Context(), `
+				SELECT c.id, c.set_id, s.name, c.name, c.collector_no, c.rarity, c.image_small_url, c.image_large_url
+				FROM pokemon_cards c
+				JOIN pokemon_sets s ON s.id = c.set_id
+				WHERE CAST(c.collector_no AS INTEGER) = ?
+				  AND s.total_cards = ?
+				ORDER BY s.release_date DESC, c.id
+				LIMIT ?
+			`, numInt, totalInt, limit)
+		} else {
+			rows, err = db.QueryContext(r.Context(), `
+				SELECT c.id, c.set_id, s.name, c.name, c.collector_no, c.rarity, c.image_small_url, c.image_large_url
+				FROM pokemon_cards c
+				JOIN pokemon_sets s ON s.id = c.set_id
+				WHERE CAST(c.collector_no AS INTEGER) = ?
+				ORDER BY s.release_date DESC, c.id
+				LIMIT ?
+			`, numInt, limit)
+		}
+	} else {
+		// Name fragment: case-insensitive LIKE with %fragment%.
+		pattern := "%" + strings.ToLower(q) + "%"
+		rows, err = db.QueryContext(r.Context(), `
+			SELECT c.id, c.set_id, s.name, c.name, c.collector_no, c.rarity, c.image_small_url, c.image_large_url
+			FROM pokemon_cards c
+			JOIN pokemon_sets s ON s.id = c.set_id
+			WHERE LOWER(c.name) LIKE ?
+			ORDER BY s.release_date DESC, c.id
+			LIMIT ?
+		`, pattern, limit)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cards := make([]CardDTO, 0)
+	cardIndex := make(map[string]int)
+	for rows.Next() {
+		var c CardDTO
+		if err := rows.Scan(&c.ID, &c.SetID, &c.SetName, &c.Name, &c.CollectorNo, &c.Rarity, &c.ImageSmallURL, &c.ImageLargeURL); err != nil {
+			return nil, err
+		}
+		c.Variants = []VariantDTO{}
+		cardIndex[c.ID] = len(cards)
+		cards = append(cards, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(cards) == 0 {
+		return cards, nil
+	}
+	return hydrateVariants(r, db, userID, cards, cardIndex)
+}
+
+// hydrateVariants fetches every variant for the cards in cardIndex and merges
+// ownership data from pokemon_collections for the given user.
+func hydrateVariants(r *http.Request, db *sql.DB, userID int64, cards []CardDTO, cardIndex map[string]int) ([]CardDTO, error) {
+	ids := make([]any, 0, len(cardIndex))
+	placeholders := make([]string, 0, len(cardIndex))
+	for id := range cardIndex {
+		ids = append(ids, id)
+		placeholders = append(placeholders, "?")
+	}
+	query := `
+		SELECT v.id, v.card_id, v.kind, v.price_eur, v.price_at,
+		       c.id, c.quantity, c.condition, c.acquired_at, c.notes_enc
+		FROM pokemon_card_variants v
+		LEFT JOIN pokemon_collections c
+		  ON c.variant_id = v.id AND c.user_id = ?
+		WHERE v.card_id IN (` + strings.Join(placeholders, ",") + `)
+		ORDER BY v.card_id, v.kind
+	`
+	args := append([]any{userID}, ids...)
+	rows, err := db.QueryContext(r.Context(), query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			vID         int64
+			cardID      string
+			kind        string
+			priceEUR    float64
+			priceAt     sql.NullString
+			collID      sql.NullInt64
+			collQty     sql.NullInt64
+			collCond    sql.NullString
+			collAcq     sql.NullString
+			collNotesEn sql.NullString
+		)
+		if err := rows.Scan(&vID, &cardID, &kind, &priceEUR, &priceAt,
+			&collID, &collQty, &collCond, &collAcq, &collNotesEn); err != nil {
+			return nil, err
+		}
+		idx, ok := cardIndex[cardID]
+		if !ok {
+			continue
+		}
+		v := VariantDTO{
+			ID:       vID,
+			Kind:     kind,
+			PriceEUR: priceEUR,
+		}
+		if priceAt.Valid && priceAt.String != "" {
+			ts := priceAt.String
+			v.PriceAt = &ts
+		}
+		if collID.Valid {
+			id := collID.Int64
+			v.Owned = true
+			v.OwnedID = &id
+			if collQty.Valid {
+				v.Quantity = int(collQty.Int64)
+			}
+			if collCond.Valid {
+				v.Condition = collCond.String
+			}
+			if collAcq.Valid && collAcq.String != "" {
+				ts := collAcq.String
+				v.AcquiredAt = &ts
+			}
+			v.Notes = decryptNotes(collNotesEn)
+		}
+		cards[idx].Variants = append(cards[idx].Variants, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return cards, nil
+}
+
+// loadCollectionRow re-reads a single collection row after an upsert so the
+// response reflects the persisted state (including the generated id and
+// acquired_at timestamp).
+func loadCollectionRow(r *http.Request, db *sql.DB, userID int64, cardID string, variantID int64) (*CollectionRow, error) {
+	var row CollectionRow
+	var encNotes sql.NullString
+	err := db.QueryRowContext(r.Context(), `
+		SELECT id, user_id, card_id, variant_id, quantity, condition, acquired_at, notes_enc
+		FROM pokemon_collections
+		WHERE user_id = ? AND card_id = ? AND variant_id = ?
+	`, userID, cardID, variantID).Scan(
+		&row.ID, &row.UserID, &row.CardID, &row.VariantID,
+		&row.Quantity, &row.Condition, &row.AcquiredAt, &encNotes,
+	)
+	if err != nil {
+		return nil, err
+	}
+	row.Notes = decryptNotes(encNotes)
+	return &row, nil
+}
+
+// encryptNotes encrypts plaintext notes for storage. Empty notes are stored
+// as NULL so the column remains queryable for "has notes" filters.
+func encryptNotes(plain string) (any, error) {
+	if plain == "" {
+		return nil, nil
+	}
+	return encryption.EncryptField(plain)
+}
+
+// decryptNotes returns the plaintext notes for a nullable encrypted column.
+// On decrypt failure it returns an empty string and logs a warning: returning
+// the raw column value would leak ciphertext (or legacy plaintext from another
+// user) into the API response, which the Warden rules explicitly forbid. This
+// feature is new and has never stored plaintext, so there is no legacy path
+// to preserve.
+func decryptNotes(enc sql.NullString) string {
+	if !enc.Valid || enc.String == "" {
+		return ""
+	}
+	plain, err := encryption.DecryptField(enc.String)
+	if err != nil {
+		log.Printf("pokemon: decrypt notes: %v", err)
+		return ""
+	}
+	return plain
+}
