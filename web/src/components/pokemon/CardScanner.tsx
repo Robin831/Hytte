@@ -1,19 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Camera, Flashlight, FlashlightOff, X } from 'lucide-react'
+import { Camera, Flashlight, FlashlightOff, Loader2, X } from 'lucide-react'
 import {
   detectCardRectangle,
   isWithinTolerance,
   type DetectedRectangle,
   type RectangleDetectorStatus,
 } from './rectangleDetector'
+import ScanResultModal, { type ScanCandidate, type ScanResult } from './ScanResultModal'
+import ToastList from '../ToastList'
+import { useToast } from '../../hooks/useToast'
+
+export interface CardScannerPrefill {
+  setName?: string
+  collectorNumber?: string
+}
 
 export interface CardScannerProps {
-  onCapture: (blob: Blob) => void
   onClose: () => void
+  onEnterManually?: (prefill: CardScannerPrefill) => void
+  onAdded?: () => void
 }
 
 type PermissionState = 'prompting' | 'granted' | 'denied' | 'unavailable' | 'unsupported'
+
+// scanPhase tracks the lifecycle of the scan POST/result flow, layered on top
+// of the rectangle-detector state machine. idle = no submission in flight;
+// submitting = POST to /api/pokemon/scan pending; result = modal showing;
+// cooldown = post-add debounce window during which auto-triggered scans are
+// suppressed.
+type ScanPhase = 'idle' | 'submitting' | 'result' | 'cooldown'
 
 // Throttle the auto-detect tick to ~2/sec. Two consecutive matching ticks
 // (~1s of stable framing) promote a candidate to `locked`.
@@ -21,6 +37,16 @@ const DETECT_TICK_MS = 500
 const TICKS_TO_LOCK = 2
 // Allow up to ±5% drift between consecutive candidate detections.
 const CANDIDATE_TOLERANCE = 0.05
+
+// SCAN_TIMEOUT_MS is the hard cap on a single /api/pokemon/scan call. Claude
+// vision can be slow; 30s lets the slow path finish but still surfaces a
+// timeout before the user gives up.
+const SCAN_TIMEOUT_MS = 30000
+
+// COOLDOWN_MS is the debounce window after a successful add. The rAF loop will
+// not trigger another POST until this window elapses, so a card lingering in
+// the frame cannot double-submit while the user is still moving on.
+const COOLDOWN_MS = 2000
 
 // Pokémon TCG cards are 63x88mm — aspect ratio ≈ 0.716. The guide overlay
 // uses 5/7 (≈0.714) which is close enough and renders crisply on all viewports.
@@ -38,8 +64,9 @@ interface ExtendedMediaTrackConstraints extends MediaTrackConstraints {
   advanced?: TorchConstraint[]
 }
 
-export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
+export default function CardScanner({ onClose, onEnterManually, onAdded }: CardScannerProps) {
   const { t } = useTranslation('pokemon')
+  const { toasts, showToast } = useToast()
 
   const [permissionState, setPermissionState] = useState<PermissionState>(() =>
     typeof navigator.mediaDevices?.getUserMedia === 'function' ? 'prompting' : 'unsupported',
@@ -47,6 +74,9 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
   const [torchOn, setTorchOn] = useState(false)
   const [torchSupported, setTorchSupported] = useState(false)
   const [scanStatus, setScanStatus] = useState<RectangleDetectorStatus>('searching')
+  const [scanPhase, setScanPhase] = useState<ScanPhase>('idle')
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null)
+  const [addingCandidateId, setAddingCandidateId] = useState<string | null>(null)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -65,10 +95,23 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
   // Allows captureLocked's failure recovery path to restart the rAF loop
   // without a circular const dependency on `tick`.
   const tickFnRef = useRef<FrameRequestCallback | null>(null)
-  const onCaptureRef = useRef(onCapture)
-  useEffect(() => {
-    onCaptureRef.current = onCapture
-  }, [onCapture])
+  // scanPhaseRef mirrors scanPhase so the rAF callback can read the freshest
+  // value without re-creating itself on every phase transition.
+  const scanPhaseRef = useRef<ScanPhase>('idle')
+  // cooldownUntilRef holds the timestamp (Date.now()) until which auto scans
+  // are suppressed. Both manual and auto callers consult it; manual scans
+  // intentionally bypass this check.
+  const cooldownUntilRef = useRef(0)
+  // scanAbortRef is used to abort the in-flight scan when the component
+  // unmounts mid-submission.
+  const scanAbortRef = useRef<AbortController | null>(null)
+  // Track the latest performScan callback in a ref so the rAF loop always
+  // calls the current version without needing to be re-installed.
+  const performScanRef = useRef<(blob: Blob, manual: boolean) => void>(() => {})
+  // cooldownTimerRef holds the id of the pending timer that transitions
+  // scanPhase from 'cooldown' back to 'idle'. Keeping it in a ref lets us
+  // cancel it on unmount or close so the callback never fires on a dead component.
+  const cooldownTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
 
   // Acquire the camera on mount; stop tracks on unmount so the camera LED
   // turns off even if the parent unmounts the scanner without calling onClose.
@@ -112,8 +155,123 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
         stream.getTracks().forEach(track => track.stop())
         streamRef.current = null
       }
+      const ctl = scanAbortRef.current
+      if (ctl) {
+        ctl.abort()
+        scanAbortRef.current = null
+      }
+      if (cooldownTimerRef.current !== null) {
+        window.clearTimeout(cooldownTimerRef.current)
+        cooldownTimerRef.current = null
+      }
     }
   }, [])
+
+  // resumeScanning resets all refs and React state to the initial scanning
+  // posture: clears the detector candidates, lifts the captured/locked freeze,
+  // and restarts video playback + the rAF loop. Called after timeout/error,
+  // Try Again, or when the cooldown elapses post-add. The rAF restart cancels
+  // any stale id first because the captureLocked success path leaves the ref
+  // pointing at the last-scheduled callback without a live rAF in the queue.
+  const resumeScanning = useCallback(() => {
+    scanStatusRef.current = 'searching'
+    candidateBoundsRef.current = null
+    candidateTicksRef.current = 0
+    lastTickRef.current = 0
+    setScanStatus('searching')
+    setScanResult(null)
+    const video = videoRef.current
+    if (video && typeof video.play === 'function') {
+      try {
+        void video.play()
+      } catch {
+        // best-effort — pause/play can throw on some mobile browsers
+      }
+    }
+    if (typeof window !== 'undefined' && tickFnRef.current) {
+      if (rafIdRef.current !== null) {
+        window.cancelAnimationFrame(rafIdRef.current)
+      }
+      rafIdRef.current = window.requestAnimationFrame(tickFnRef.current)
+    }
+  }, [])
+
+  // performScan is the single entry point for both auto- and manual-triggered
+  // scans. It owns the AbortController, the 30s timeout, and the
+  // submitting → result/idle phase transitions. Failures show a toast and
+  // resume the scanning loop.
+  const performScan = useCallback(
+    (blob: Blob, manual: boolean) => {
+      if (scanPhaseRef.current !== 'idle' && scanPhaseRef.current !== 'cooldown') return
+      // Auto-triggered scans honor the post-add cooldown. The manual shutter
+      // button intentionally bypasses both the lock requirement and the
+      // cooldown — the user is asking explicitly.
+      if (!manual && Date.now() < cooldownUntilRef.current) {
+        resumeScanning()
+        return
+      }
+
+      scanPhaseRef.current = 'submitting'
+      setScanPhase('submitting')
+
+      const controller = new AbortController()
+      scanAbortRef.current = controller
+      // timedOut distinguishes the timeout fire from a programmatic abort
+      // (e.g. component unmount). Only the timeout case surfaces a toast.
+      let timedOut = false
+      const timer = window.setTimeout(() => {
+        timedOut = true
+        controller.abort()
+      }, SCAN_TIMEOUT_MS)
+
+      const formData = new FormData()
+      formData.append('image', blob, 'card.jpg')
+
+      void (async () => {
+        try {
+          const res = await fetch('/api/pokemon/scan', {
+            method: 'POST',
+            credentials: 'include',
+            body: formData,
+            signal: controller.signal,
+          })
+          if (!res.ok) throw new Error(t('scanner.errors.scanFailed'))
+          const data = (await res.json()) as ScanResult
+          if (controller.signal.aborted) return
+          scanPhaseRef.current = 'result'
+          setScanResult(data)
+          setScanPhase('result')
+        } catch (err) {
+          if (controller.signal.aborted) {
+            if (timedOut) {
+              showToast(t('scanner.errors.timedOut'), 'error')
+              scanPhaseRef.current = 'idle'
+              setScanPhase('idle')
+              resumeScanning()
+            }
+            // If aborted without timing out (component unmount), the cleanup
+            // already tore everything down — do nothing.
+            return
+          }
+          showToast(
+            err instanceof Error ? err.message : t('scanner.errors.scanFailed'),
+            'error',
+          )
+          scanPhaseRef.current = 'idle'
+          setScanPhase('idle')
+          resumeScanning()
+        } finally {
+          window.clearTimeout(timer)
+          if (scanAbortRef.current === controller) scanAbortRef.current = null
+        }
+      })()
+    },
+    [resumeScanning, showToast, t],
+  )
+
+  useEffect(() => {
+    performScanRef.current = performScan
+  }, [performScan])
 
   // Auto-detection rAF loop. Activates once camera permission is granted and
   // runs until the component unmounts or a successful capture freezes the
@@ -142,7 +300,7 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
 
       const dispatchBlob = (blob: Blob | null) => {
         if (blob) {
-          onCaptureRef.current(blob)
+          performScanRef.current(blob, false)
         } else {
           // toBlob yielded null (or toBlob was unavailable and toDataURL failed).
           // Revert so the scanner is not permanently frozen.
@@ -184,6 +342,12 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
 
     const tick = (timestamp: number) => {
       if (cancelled) return
+      // Stop the loop entirely once we are submitting or showing a result —
+      // it will be restarted by resumeScanning when the user moves on.
+      if (scanPhaseRef.current === 'submitting' || scanPhaseRef.current === 'result') {
+        rafIdRef.current = null
+        return
+      }
       if (scanStatusRef.current === 'captured') return
 
       if (timestamp - lastTickRef.current < DETECT_TICK_MS) {
@@ -238,6 +402,16 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
             if (candidateTicksRef.current >= TICKS_TO_LOCK) {
               scanStatusRef.current = 'locked'
               setScanStatus('locked')
+              // Auto-trigger respects the post-add cooldown — if we are still
+              // in the debounce window, drop back to searching instead.
+              if (Date.now() < cooldownUntilRef.current) {
+                scanStatusRef.current = 'searching'
+                setScanStatus('searching')
+                candidateBoundsRef.current = null
+                candidateTicksRef.current = 0
+                rafIdRef.current = window.requestAnimationFrame(tick)
+                return
+              }
               captureLocked(canvas)
               return
             }
@@ -279,6 +453,15 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
       stream.getTracks().forEach(track => track.stop())
       streamRef.current = null
     }
+    const ctl = scanAbortRef.current
+    if (ctl) {
+      ctl.abort()
+      scanAbortRef.current = null
+    }
+    if (cooldownTimerRef.current !== null) {
+      window.clearTimeout(cooldownTimerRef.current)
+      cooldownTimerRef.current = null
+    }
     onClose()
   }, [onClose])
 
@@ -296,7 +479,22 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
     closeButtonRef.current?.focus()
   }, [])
 
+  // When the result modal appears, move focus to its first action so keyboard
+  // users land inside the modal rather than staying on the close button behind it.
+  useEffect(() => {
+    if (scanPhase !== 'result') return
+    const modal = dialogRef.current?.querySelector<HTMLElement>('[data-testid="scan-result-modal"]')
+    if (!modal) return
+    const first = modal.querySelector<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    )
+    first?.focus()
+  }, [scanPhase])
+
   // Escape to dismiss + Tab focus trap (mirrors Dialog behaviour).
+  // When the result modal is overlaying the scanner, Tab is constrained to
+  // the modal's own focusable elements so the torch/close buttons behind it
+  // are not reachable via keyboard even though they remain enabled in the DOM.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -304,8 +502,12 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
         return
       }
       if (e.key !== 'Tab' || !dialogRef.current) return
+      const trapRoot: ParentNode =
+        scanPhaseRef.current === 'result'
+          ? (dialogRef.current.querySelector('[data-testid="scan-result-modal"]') ?? dialogRef.current)
+          : dialogRef.current
       const focusable = Array.from(
-        dialogRef.current.querySelectorAll<HTMLElement>(
+        trapRoot.querySelectorAll<HTMLElement>(
           'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ),
       )
@@ -328,7 +530,8 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [handleClose])
 
-  const handleCapture = useCallback(() => {
+  const handleManualCapture = useCallback(() => {
+    if (scanPhaseRef.current === 'submitting' || scanPhaseRef.current === 'result') return
     // Stop the auto-detect loop before the async toBlob call to prevent a race
     // where the rAF fires an extra auto-capture while this capture is in progress.
     scanStatusRef.current = 'captured'
@@ -353,7 +556,7 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
     canvas.toBlob(
       blob => {
         if (blob) {
-          onCapture(blob)
+          performScanRef.current(blob, true)
         } else {
           revertToSearching()
         }
@@ -361,7 +564,7 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
       'image/jpeg',
       0.92,
     )
-  }, [onCapture])
+  }, [])
 
   const handleTorchToggle = useCallback(async () => {
     const stream = streamRef.current
@@ -379,6 +582,74 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
       // capability; surface no error UI — the button simply does nothing.
     }
   }, [torchOn])
+
+  const handleAddCandidate = useCallback(
+    async (candidate: ScanCandidate) => {
+      const card = candidate.card
+      const variant = card.variants.find(v => !v.owned) ?? card.variants[0]
+      if (!variant) {
+        showToast(t('scanner.errors.noVariant'), 'error')
+        return
+      }
+      if (variant.owned) {
+        showToast(t('addCard.toast.alreadyOwned', { name: card.name }), 'warning')
+        return
+      }
+      setAddingCandidateId(card.id)
+      try {
+        const res = await fetch('/api/pokemon/collection', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            card_id: card.id,
+            variant_id: variant.id,
+            quantity: 1,
+            condition: '',
+            notes: '',
+          }),
+        })
+        if (!res.ok) throw new Error(t('addCard.errors.addFailed'))
+        showToast(t('addCard.toast.added', { name: card.name }), 'success')
+        onAdded?.()
+        // Start the 2s cooldown so the auto-detector doesn't immediately
+        // re-fire on the same card sitting in the frame. Cooldown is enforced
+        // both at trigger-time (in the rAF) and inside performScan.
+        cooldownUntilRef.current = Date.now() + COOLDOWN_MS
+        scanPhaseRef.current = 'cooldown'
+        setScanPhase('cooldown')
+        resumeScanning()
+        cooldownTimerRef.current = window.setTimeout(() => {
+          cooldownTimerRef.current = null
+          if (scanPhaseRef.current === 'cooldown') {
+            scanPhaseRef.current = 'idle'
+            setScanPhase('idle')
+          }
+        }, COOLDOWN_MS)
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : t('addCard.errors.addFailed'),
+          'error',
+        )
+      } finally {
+        setAddingCandidateId(null)
+      }
+    },
+    [onAdded, resumeScanning, showToast, t],
+  )
+
+  const handleTryAgain = useCallback(() => {
+    scanPhaseRef.current = 'idle'
+    setScanPhase('idle')
+    resumeScanning()
+  }, [resumeScanning])
+
+  const handleEnterManually = useCallback(
+    (prefill: CardScannerPrefill) => {
+      onEnterManually?.(prefill)
+    },
+    [onEnterManually],
+  )
 
   return (
     // Outer layer always covers the full viewport so clicks on the uncovered
@@ -457,7 +728,7 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
             />
           </div>
 
-          {(scanStatus === 'candidate' || scanStatus === 'locked') && (
+          {(scanStatus === 'candidate' || scanStatus === 'locked') && scanPhase === 'idle' && (
             <div
               data-testid="card-scanner-status"
               aria-live="polite"
@@ -467,12 +738,25 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
             </div>
           )}
 
+          {scanPhase === 'submitting' && (
+            <div
+              data-testid="card-scanner-spinner"
+              role="status"
+              aria-live="polite"
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/70 text-white"
+            >
+              <Loader2 size={32} className="animate-spin" aria-hidden="true" />
+              <p className="text-sm">{t('scanner.scanning')}</p>
+            </div>
+          )}
+
           <button
             type="button"
-            onClick={handleCapture}
+            onClick={handleManualCapture}
+            disabled={scanPhase === 'submitting' || scanPhase === 'result'}
             aria-label={t('scanner.shutter')}
             data-testid="card-scanner-shutter"
-            className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center justify-center h-16 w-16 rounded-full bg-white text-gray-900 shadow-lg ring-4 ring-white/30 hover:bg-gray-100 cursor-pointer"
+            className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center justify-center h-16 w-16 rounded-full bg-white text-gray-900 shadow-lg ring-4 ring-white/30 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
           >
             <Camera size={28} />
           </button>
@@ -489,6 +773,16 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
               {torchOn ? <Flashlight size={20} /> : <FlashlightOff size={20} />}
             </button>
           )}
+
+          {scanPhase === 'result' && scanResult && (
+            <ScanResultModal
+              result={scanResult}
+              busy={addingCandidateId !== null}
+              onAddCandidate={candidate => { void handleAddCandidate(candidate) }}
+              onTryAgain={handleTryAgain}
+              onEnterManually={handleEnterManually}
+            />
+          )}
         </>
       )}
 
@@ -498,13 +792,14 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
         onClick={handleClose}
         aria-label={t('scanner.close')}
         data-testid="card-scanner-close"
-        className="absolute top-4 right-4 flex items-center justify-center h-10 w-10 rounded-full bg-black/60 hover:bg-black/80 text-white cursor-pointer"
+        className="absolute top-4 right-4 z-20 flex items-center justify-center h-10 w-10 rounded-full bg-black/60 hover:bg-black/80 text-white cursor-pointer"
       >
         <X size={20} />
       </button>
 
       <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
     </div>
+    <ToastList toasts={toasts} />
     </div>
   )
 }

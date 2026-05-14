@@ -96,6 +96,24 @@
     "torchOn": "Slå på lommelykt",
     "torchOff": "Slå av lommelykt",
     "close": "Lukk skanner",
-    "holdSteady": "Hold stille …"
+    "holdSteady": "Hold stille …",
+    "scanning": "Identifiserer kort …",
+    "errors": {
+      "scanFailed": "Skanningen feilet, prøv på nytt",
+      "timedOut": "Skanningen tok for lang tid, prøv på nytt",
+      "noVariant": "Dette kortet har ingen varianter å legge til"
+    },
+    "result": {
+      "singleLabel": "Skannetreff: {{name}}",
+      "multiLabel": "Flere treff",
+      "unmatchedLabel": "Kortet ble ikke gjenkjent",
+      "pickCandidate": "Flere treff — velg riktig kort.",
+      "candidatesList": "Mulige kort",
+      "yesAdd": "Ja, legg til i samlingen",
+      "tryAgain": "Prøv på nytt",
+      "enterManually": "Legg inn manuelt",
+      "noMatch": "Klarte ikke å lese kortet.",
+      "confidence": "Sikkerhet: {{percent}} %"
+    }
   }
 }

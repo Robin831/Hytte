@@ -5,6 +5,7 @@ import { Dialog } from '../ui/dialog'
 import ToastList from '../ToastList'
 import { useToast } from '../../hooks/useToast'
 import { formatNumber } from '../../utils/formatDate'
+import { useAuth } from '../../auth'
 import CardScanner from './CardScanner'
 
 interface Variant {
@@ -51,6 +52,7 @@ interface AddCardPanelProps {
 export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
   const { t } = useTranslation('pokemon')
   const { toasts, showToast } = useToast()
+  const { user } = useAuth()
 
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -185,15 +187,17 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
             aria-label={t('addCard.inputLabel')}
             className="flex-1 min-w-0 bg-transparent border-0 outline-none text-white placeholder-gray-500"
           />
-          <button
-            type="button"
-            onClick={() => setScannerOpen(true)}
-            aria-label={t('addCard.scan')}
-            data-testid="add-card-scan"
-            className="p-1 text-gray-400 hover:text-white cursor-pointer"
-          >
-            <Camera size={18} />
-          </button>
+          {user?.is_admin && (
+            <button
+              type="button"
+              onClick={() => setScannerOpen(true)}
+              aria-label={t('addCard.scan')}
+              data-testid="add-card-scan"
+              className="p-1 text-gray-400 hover:text-white cursor-pointer"
+            >
+              <Camera size={18} />
+            </button>
+          )}
           <button
             type="button"
             onClick={close}
@@ -296,14 +300,18 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
         )}
       </Dialog>
 
-      {scannerOpen && (
+      {scannerOpen && user?.is_admin && (
         <CardScanner
-          onCapture={() => {
-            // Capture handoff lands in a follow-up sub-task. For now, close the
-            // overlay so the camera tracks stop and the user returns to search.
-            setScannerOpen(false)
-          }}
           onClose={() => setScannerOpen(false)}
+          onAdded={onAdded}
+          onEnterManually={prefill => {
+            setScannerOpen(false)
+            const seed = prefill.collectorNumber?.trim() || prefill.setName?.trim() || ''
+            setQuery(seed)
+            setResults([])
+            setError('')
+            setVariantCard(null)
+          }}
         />
       )}
 

@@ -245,9 +245,11 @@ func ScanHandler(db *sql.DB) http.HandlerFunc {
 		}
 		if result.Confidence < scanConfidenceThreshold {
 			respondJSON(w, http.StatusOK, map[string]any{
-				"matched":    false,
-				"confidence": result.Confidence,
-				"reason":     "low confidence",
+				"matched":          false,
+				"confidence":       result.Confidence,
+				"reason":           "low confidence",
+				"set_name":         result.SetName,
+				"collector_number": result.CollectorNumber,
 			})
 			return
 		}
@@ -262,9 +264,11 @@ func ScanHandler(db *sql.DB) http.HandlerFunc {
 		rate, rateOK := loadRate(r, db)
 		if len(candidates) == 0 {
 			respondJSON(w, http.StatusOK, map[string]any{
-				"matched":    false,
-				"confidence": result.Confidence,
-				"reason":     reason,
+				"matched":          false,
+				"confidence":       result.Confidence,
+				"reason":           reason,
+				"set_name":         result.SetName,
+				"collector_number": result.CollectorNumber,
 			})
 			return
 		}

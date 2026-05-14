@@ -1,0 +1,2 @@
+category: Added
+- **Pokémon scanner result modal and scan POST flow** - The card scanner now POSTs locked frames to `/api/pokemon/scan` (with a 30s timeout and a 2s post-add cooldown to prevent double-submission), shows a spinner while waiting, and surfaces the result as a modal: single match offers Yes/Try again, multi-match lists tappable candidates, and an unrecognised card offers Try again or Enter manually (prefilling the search panel with whatever Claude could read). The manual shutter button bypasses both the lock and cooldown gates. (Hytte-acxq)

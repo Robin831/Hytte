@@ -96,6 +96,24 @@
     "torchOn": "Turn flashlight on",
     "torchOff": "Turn flashlight off",
     "close": "Close scanner",
-    "holdSteady": "Hold steady…"
+    "holdSteady": "Hold steady…",
+    "scanning": "Identifying card…",
+    "errors": {
+      "scanFailed": "Scan failed, try again",
+      "timedOut": "Scan timed out, try again",
+      "noVariant": "This card has no variants to add"
+    },
+    "result": {
+      "singleLabel": "Scan match: {{name}}",
+      "multiLabel": "Multiple matches",
+      "unmatchedLabel": "Card not recognised",
+      "pickCandidate": "Multiple matches — pick the right card.",
+      "candidatesList": "Candidate cards",
+      "yesAdd": "Yes, add to collection",
+      "tryAgain": "Try again",
+      "enterManually": "Enter manually",
+      "noMatch": "Couldn't read the card.",
+      "confidence": "Confidence: {{percent}}%"
+    }
   }
 }
