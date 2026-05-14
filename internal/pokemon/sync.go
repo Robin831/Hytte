@@ -120,9 +120,11 @@ func SyncAll(ctx context.Context, db *sql.DB, client *Client) error {
 			continue
 		}
 	}
-	if n, err := backfillNormalVariants(ctx, db); err != nil {
-		log.Printf("pokemon: backfill normal variants: %v", err)
-	} else if n > 0 {
+	n, err := backfillNormalVariants(ctx, db)
+	if err != nil {
+		return fmt.Errorf("backfill normal variants: %w", err)
+	}
+	if n > 0 {
 		log.Printf("pokemon: backfilled %d normal variant rows for cards with no price data", n)
 	}
 	return nil
@@ -251,17 +253,17 @@ func ensureNormalVariant(ctx context.Context, db *sql.DB, cardID string) error {
 	return err
 }
 
-// backfillNormalVariants ensures every card has at least one variant row by
-// inserting a placeholder normal-kind row (price 0) for any card without one.
-// This is the self-healing pass run at the end of SyncAll to repair historical
-// gaps where Cardmarket had no price data when the card was first synced.
+// backfillNormalVariants ensures every card has a kind='normal' variant row by
+// inserting a placeholder (price 0) for any card that lacks one. Cards that
+// already have other variants (e.g. reverse_holofoil) but no normal row are
+// also repaired. This is the self-healing pass run at the end of SyncAll.
 func backfillNormalVariants(ctx context.Context, db *sql.DB) (int64, error) {
 	res, err := db.ExecContext(ctx, `
 		INSERT INTO pokemon_card_variants (card_id, kind, price_eur, price_at)
 		SELECT c.id, 'normal', 0, NULL
 		FROM pokemon_cards c
 		WHERE NOT EXISTS (
-			SELECT 1 FROM pokemon_card_variants v WHERE v.card_id = c.id
+			SELECT 1 FROM pokemon_card_variants v WHERE v.card_id = c.id AND v.kind = 'normal'
 		)
 	`)
 	if err != nil {

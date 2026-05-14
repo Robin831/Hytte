@@ -360,6 +360,69 @@ func TestSyncAll_BackfillCreatesNormalVariantForOrphanCards(t *testing.T) {
 	}
 }
 
+func TestSyncAll_BackfillAddsNormalWhenOnlyNonNormalVariantExists(t *testing.T) {
+	d := setupTestDB(t)
+	now := time.Now().UTC()
+	if _, err := d.Exec(`INSERT INTO pokemon_sets (id, name, series, release_date, total_cards, synced_at)
+		VALUES (?, ?, ?, ?, ?, ?)`, "me2", "Mega Evolution 2", "Mega Evolution", "2026/02/01", 1, now); err != nil {
+		t.Fatalf("seed set: %v", err)
+	}
+	if _, err := d.Exec(`INSERT INTO pokemon_cards (id, set_id, name, collector_no, rarity, image_small_url, image_large_url, synced_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"me2-1", "me2", "Mega Blastoise ex", "1", "Rare", "", "", now); err != nil {
+		t.Fatalf("seed card: %v", err)
+	}
+	// Card already has a reverse_holofoil variant but no normal variant.
+	if _, err := d.Exec(`INSERT INTO pokemon_card_variants (card_id, kind, price_eur, price_at) VALUES (?, 'reverse_holofoil', 3.5, ?)`,
+		"me2-1", now); err != nil {
+		t.Fatalf("seed reverse_holofoil variant: %v", err)
+	}
+
+	n, err := backfillNormalVariants(context.Background(), d)
+	if err != nil {
+		t.Fatalf("backfillNormalVariants: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("expected 1 row backfilled, got %d", n)
+	}
+
+	rows, err := d.Query(`SELECT kind, price_eur FROM pokemon_card_variants WHERE card_id = ? ORDER BY kind`, "me2-1")
+	if err != nil {
+		t.Fatalf("query variants: %v", err)
+	}
+	defer rows.Close()
+	got := map[string]float64{}
+	for rows.Next() {
+		var k string
+		var p float64
+		if err := rows.Scan(&k, &p); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got[k] = p
+	}
+	want := map[string]float64{
+		"normal":           0,
+		"reverse_holofoil": 3.5,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d variants, got %d: %+v", len(want), len(got), got)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("variant %s: expected %v, got %v", k, v, got[k])
+		}
+	}
+
+	// Idempotent: reverse_holofoil price must not be touched.
+	n2, err := backfillNormalVariants(context.Background(), d)
+	if err != nil {
+		t.Fatalf("second backfill: %v", err)
+	}
+	if n2 != 0 {
+		t.Fatalf("expected 0 rows on second pass, got %d", n2)
+	}
+}
+
 func TestSyncCards_VariantUpsertUpdatesPrice(t *testing.T) {
 	d := setupTestDB(t)
 	if _, err := d.Exec(`INSERT INTO pokemon_sets (id, name, series, release_date, total_cards, synced_at)
