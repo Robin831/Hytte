@@ -7,13 +7,59 @@
     "totalCards_one": "{{count}} ใบ",
     "totalCards_other": "{{count}} ใบ",
     "ownership": "{{owned}} / {{total}} — {{percent}}%",
-    "openSet": "เปิด {{name}}"
+    "openSet": "เปิด {{name}}",
+    "openCard": "เปิด {{name}} (#{{number}})",
+    "collectorNo": "#{{number}}"
   },
   "errors": {
-    "failedToLoad": "โหลดชุดโปเกมอนไม่สำเร็จ"
+    "failedToLoad": "โหลดชุดโปเกมอนไม่สำเร็จ",
+    "markFailed": "ทำเครื่องหมายว่ามีในคอลเลกชันไม่สำเร็จ",
+    "unmarkFailed": "เอาออกจากคอลเลกชันไม่สำเร็จ"
   },
   "retry": "ลองอีกครั้ง",
   "setDetail": {
     "comingSoon": "รายละเอียดชุดเร็ว ๆ นี้"
+  },
+  "detail": {
+    "back": "กลับไปยังชุด",
+    "ownership": "ที่มี",
+    "ownedOf": "{{owned}} / {{total}}",
+    "setValue": "มูลค่าชุด",
+    "totalCards": "จำนวนใบทั้งหมด",
+    "filter": "กรองการ์ด",
+    "filters": {
+      "all": "ทั้งหมด",
+      "owned": "เฉพาะที่มี",
+      "missing": "เฉพาะที่ขาด"
+    },
+    "empty": "ไม่มีการ์ดที่ตรงกับตัวกรองนี้",
+    "close": "ปิดรายละเอียด",
+    "variant": "ชนิด",
+    "quantity": "จำนวน",
+    "increaseQuantity": "เพิ่มจำนวน",
+    "decreaseQuantity": "ลดจำนวน",
+    "condition": "สภาพ",
+    "notes": "บันทึก",
+    "notesPlaceholder": "บันทึกเพิ่มเติม — ที่มา รายละเอียดสภาพ ฯลฯ",
+    "markOwned": "ทำเครื่องหมายว่ามี",
+    "update": "อัปเดต",
+    "unmark": "ลบออกจากคอลเลกชัน"
+  },
+  "condition": {
+    "unset": "ไม่ระบุ",
+    "mint": "Mint",
+    "near_mint": "Near mint",
+    "lightly_played": "เล่นเล็กน้อย",
+    "moderately_played": "เล่นปานกลาง",
+    "heavily_played": "เล่นมาก",
+    "damaged": "เสียหาย"
+  },
+  "variantKind": {
+    "normal": "ปกติ",
+    "reverse_holofoil": "Reverse holo"
+  },
+  "toast": {
+    "marked": "เพิ่มเข้าคอลเลกชันแล้ว",
+    "unmarked": "ลบออกจากคอลเลกชันแล้ว"
   }
 }

@@ -293,10 +293,14 @@ func TestListSetCardsHandler_Success_WithNOK(t *testing.T) {
 		t.Errorf("expected no rate-missing header, got %q", rec.Header().Get("X-Pokemon-Rate-Missing"))
 	}
 	body := decode[struct {
+		Set   *SetDTO   `json:"set"`
 		Cards []CardDTO `json:"cards"`
 	}](t, rec)
 	if len(body.Cards) != 2 {
 		t.Fatalf("expected 2 cards in sv1, got %d", len(body.Cards))
+	}
+	if body.Set == nil || body.Set.ID != "sv1" || body.Set.Name != "Scarlet & Violet Base" {
+		t.Errorf("expected embedded set sv1, got %+v", body.Set)
 	}
 	// Cards are ordered by collector_no — Pikachu (25) before Eevee (100).
 	if body.Cards[0].CollectorNo != "025" {

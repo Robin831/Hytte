@@ -267,7 +267,9 @@ func ListSetsHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // ListSetCardsHandler returns every card in a set with variants and per-user
-// ownership flags. Caller must be authenticated; the URL must contain {id}.
+// ownership flags, plus the set's metadata so the frontend does not need a
+// second request to render the page header. Caller must be authenticated; the
+// URL must contain {id}.
 func ListSetCardsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -281,6 +283,13 @@ func ListSetCardsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		set, err := loadSet(r, db, user.ID, setID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("pokemon: load set: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to load set")
+			return
+		}
+
 		cards, err := loadCardsForSet(r, db, user.ID, setID)
 		if err != nil {
 			log.Printf("pokemon: list set cards: %v", err)
@@ -290,8 +299,29 @@ func ListSetCardsHandler(db *sql.DB) http.HandlerFunc {
 
 		rate, ok := loadRate(r, db)
 		applyNOK(w, cards, rate, ok)
-		respondJSON(w, http.StatusOK, map[string]any{"cards": cards})
+		respondJSON(w, http.StatusOK, map[string]any{"set": set, "cards": cards})
 	}
+}
+
+// loadSet returns the set DTO for setID with the current user's owned_count, or
+// sql.ErrNoRows if the set is not in the catalogue. Returning a *SetDTO lets
+// the handler embed null in the JSON response when the set is unknown rather
+// than fabricating a placeholder.
+func loadSet(r *http.Request, db *sql.DB, userID int64, setID string) (*SetDTO, error) {
+	var s SetDTO
+	err := db.QueryRowContext(r.Context(), `
+		SELECT s.id, s.name, s.series, s.release_date, s.total_cards, s.symbol_url, s.logo_url,
+		       (SELECT COUNT(DISTINCT pc.card_id)
+		        FROM pokemon_collections pc
+		        JOIN pokemon_cards c ON c.id = pc.card_id
+		        WHERE c.set_id = s.id AND pc.user_id = ? AND pc.quantity > 0) AS owned_count
+		FROM pokemon_sets s
+		WHERE s.id = ?
+	`, userID, setID).Scan(&s.ID, &s.Name, &s.Series, &s.ReleaseDate, &s.TotalCards, &s.SymbolURL, &s.LogoURL, &s.OwnedCount)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
 }
 
 // SearchCardsHandler powers autocomplete by collector number or name fragment.

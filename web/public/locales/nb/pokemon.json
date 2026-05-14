@@ -7,13 +7,59 @@
     "totalCards_one": "{{count}} kort",
     "totalCards_other": "{{count}} kort",
     "ownership": "{{owned}} / {{total}} — {{percent}} %",
-    "openSet": "Åpne {{name}}"
+    "openSet": "Åpne {{name}}",
+    "openCard": "Åpne {{name}} (#{{number}})",
+    "collectorNo": "#{{number}}"
   },
   "errors": {
-    "failedToLoad": "Kunne ikke laste Pokémon-sett"
+    "failedToLoad": "Kunne ikke laste Pokémon-sett",
+    "markFailed": "Kunne ikke markere kort som eid",
+    "unmarkFailed": "Kunne ikke fjerne markering"
   },
   "retry": "Prøv på nytt",
   "setDetail": {
     "comingSoon": "Settdetaljer kommer snart"
+  },
+  "detail": {
+    "back": "Tilbake til sett",
+    "ownership": "Eid",
+    "ownedOf": "{{owned}} / {{total}}",
+    "setValue": "Settverdi",
+    "totalCards": "Antall kort",
+    "filter": "Filtrer kort",
+    "filters": {
+      "all": "Alle",
+      "owned": "Kun eide",
+      "missing": "Kun manglende"
+    },
+    "empty": "Ingen kort matcher dette filteret.",
+    "close": "Lukk detaljer",
+    "variant": "Variant",
+    "quantity": "Antall",
+    "increaseQuantity": "Øk antall",
+    "decreaseQuantity": "Reduser antall",
+    "condition": "Tilstand",
+    "notes": "Notater",
+    "notesPlaceholder": "Valgfrie notater — hvor du fant det, tilstandsdetaljer osv.",
+    "markOwned": "Marker som eid",
+    "update": "Oppdater",
+    "unmark": "Fjern fra samlingen"
+  },
+  "condition": {
+    "unset": "Uspesifisert",
+    "mint": "Mint",
+    "near_mint": "Near mint",
+    "lightly_played": "Lett spilt",
+    "moderately_played": "Moderat spilt",
+    "heavily_played": "Hardt spilt",
+    "damaged": "Skadet"
+  },
+  "variantKind": {
+    "normal": "Normal",
+    "reverse_holofoil": "Reverse holo"
+  },
+  "toast": {
+    "marked": "Lagt til i samlingen",
+    "unmarked": "Fjernet fra samlingen"
   }
 }

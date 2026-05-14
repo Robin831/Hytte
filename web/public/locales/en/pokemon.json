@@ -7,13 +7,59 @@
     "totalCards_one": "{{count}} card",
     "totalCards_other": "{{count}} cards",
     "ownership": "{{owned}} / {{total}} — {{percent}}%",
-    "openSet": "Open {{name}}"
+    "openSet": "Open {{name}}",
+    "openCard": "Open {{name}} (#{{number}})",
+    "collectorNo": "#{{number}}"
   },
   "errors": {
-    "failedToLoad": "Failed to load Pokémon sets"
+    "failedToLoad": "Failed to load Pokémon sets",
+    "markFailed": "Failed to mark card as owned",
+    "unmarkFailed": "Failed to unmark card"
   },
   "retry": "Retry",
   "setDetail": {
     "comingSoon": "Set detail coming soon"
+  },
+  "detail": {
+    "back": "Back to sets",
+    "ownership": "Owned",
+    "ownedOf": "{{owned}} / {{total}}",
+    "setValue": "Set value",
+    "totalCards": "Total cards",
+    "filter": "Filter cards",
+    "filters": {
+      "all": "All",
+      "owned": "Owned only",
+      "missing": "Missing only"
+    },
+    "empty": "No cards match this filter.",
+    "close": "Close detail",
+    "variant": "Variant",
+    "quantity": "Quantity",
+    "increaseQuantity": "Increase quantity",
+    "decreaseQuantity": "Decrease quantity",
+    "condition": "Condition",
+    "notes": "Notes",
+    "notesPlaceholder": "Optional notes — where you got it, condition details, etc.",
+    "markOwned": "Mark as owned",
+    "update": "Update",
+    "unmark": "Remove from collection"
+  },
+  "condition": {
+    "unset": "Unspecified",
+    "mint": "Mint",
+    "near_mint": "Near mint",
+    "lightly_played": "Lightly played",
+    "moderately_played": "Moderately played",
+    "heavily_played": "Heavily played",
+    "damaged": "Damaged"
+  },
+  "variantKind": {
+    "normal": "Normal",
+    "reverse_holofoil": "Reverse holo"
+  },
+  "toast": {
+    "marked": "Added to collection",
+    "unmarked": "Removed from collection"
   }
 }
