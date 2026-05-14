@@ -7,6 +7,7 @@ const TRANSLATIONS: Record<string, string> = {
   'scanner.dialogLabel': 'Scan a Pokémon card',
   'scanner.requesting': 'Requesting camera access…',
   'scanner.permissionDenied': 'Camera access was denied. You can still add cards by searching.',
+  'scanner.cameraUnavailable': 'Camera is unavailable. You can still add cards by searching.',
   'scanner.unsupported': "Camera scanning isn't supported in this browser. Use the search instead.",
   'scanner.enterManually': 'Enter card manually',
   'scanner.shutter': 'Capture card',
@@ -50,10 +51,21 @@ function makeStream(track: ReturnType<typeof makeTrack>['track']) {
   } as unknown as MediaStream
 }
 
+// Save/restore navigator.mediaDevices descriptor so each describe block's
+// Object.defineProperty call doesn't leak into subsequent tests.
+let savedMediaDevicesDescriptor: PropertyDescriptor | undefined
+
+beforeEach(() => {
+  savedMediaDevicesDescriptor = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices')
+})
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  if (savedMediaDevicesDescriptor) {
+    Object.defineProperty(navigator, 'mediaDevices', savedMediaDevicesDescriptor)
+  }
 })
 
 describe('CardScanner — unsupported browser', () => {
@@ -147,6 +159,34 @@ describe('CardScanner — granted', () => {
       expect(trackHandle.applyConstraints).toHaveBeenCalledWith({
         advanced: [{ torch: true }],
       })
+    })
+  })
+
+  it('calls onCapture with a Blob when the shutter is clicked and video has dimensions', async () => {
+    const onCapture = vi.fn()
+    render(<CardScanner onCapture={onCapture} onClose={vi.fn()} />)
+
+    await waitFor(() => expect(screen.getByTestId('card-scanner-shutter')).toBeInTheDocument())
+
+    const video = screen.getByTestId('card-scanner-video') as HTMLVideoElement
+    Object.defineProperty(video, 'videoWidth', { value: 640, configurable: true })
+    Object.defineProperty(video, 'videoHeight', { value: 480, configurable: true })
+
+    const mockCtx = { drawImage: vi.fn() }
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      mockCtx as unknown as CanvasRenderingContext2D,
+    )
+
+    const fakeBlob = new Blob(['img'], { type: 'image/jpeg' })
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (cb) {
+      cb(fakeBlob)
+    })
+
+    fireEvent.click(screen.getByTestId('card-scanner-shutter'))
+
+    await waitFor(() => {
+      expect(onCapture).toHaveBeenCalledOnce()
+      expect(onCapture).toHaveBeenCalledWith(fakeBlob)
     })
   })
 })

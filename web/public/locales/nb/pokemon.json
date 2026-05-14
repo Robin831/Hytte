@@ -89,6 +89,7 @@
     "dialogLabel": "Skann et Pokémon-kort",
     "requesting": "Ber om tilgang til kameraet …",
     "permissionDenied": "Kameratilgang ble avslått. Du kan fortsatt legge til kort ved å søke.",
+    "cameraUnavailable": "Kameraet er utilgjengelig — det kan være opptatt av en annen app eller ikke funnet. Du kan fortsatt legge til kort ved å søke.",
     "unsupported": "Kameraskanning støttes ikke i denne nettleseren. Bruk søk i stedet.",
     "enterManually": "Legg til kort manuelt",
     "shutter": "Ta bilde av kort",

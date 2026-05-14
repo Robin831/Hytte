@@ -7,7 +7,7 @@ export interface CardScannerProps {
   onClose: () => void
 }
 
-type PermissionState = 'prompting' | 'granted' | 'denied' | 'unsupported'
+type PermissionState = 'prompting' | 'granted' | 'denied' | 'unavailable' | 'unsupported'
 
 // Pokémon TCG cards are 63x88mm — aspect ratio ≈ 0.716. The guide overlay
 // uses 5/7 (≈0.714) which is close enough and renders crisply on all viewports.
@@ -37,6 +37,7 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
 
   // Acquire the camera on mount; stop tracks on unmount so the camera LED
   // turns off even if the parent unmounts the scanner without calling onClose.
@@ -64,8 +65,12 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
           if (caps.torch === true) setTorchSupported(true)
         }
         setPermissionState('granted')
-      } catch {
-        if (!cancelled) setPermissionState('denied')
+      } catch (err) {
+        if (cancelled) return
+        const isDenied =
+          err instanceof DOMException &&
+          (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')
+        setPermissionState(isDenied ? 'denied' : 'unavailable')
       }
     })()
 
@@ -87,6 +92,21 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
     }
     onClose()
   }, [onClose])
+
+  // Focus the close button on mount so keyboard/screen-reader users can
+  // immediately dismiss the overlay without needing to tab to it.
+  useEffect(() => {
+    closeButtonRef.current?.focus()
+  }, [])
+
+  // Dismiss on Escape so the overlay behaves like a native modal.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [handleClose])
 
   const handleCapture = useCallback(() => {
     const video = videoRef.current
@@ -142,6 +162,20 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
       {permissionState === 'denied' && (
         <div className="px-6 text-center space-y-4 max-w-sm">
           <p className="text-sm text-gray-200">{t('scanner.permissionDenied')}</p>
+          <button
+            type="button"
+            onClick={handleClose}
+            data-testid="card-scanner-manual-entry"
+            className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm cursor-pointer"
+          >
+            {t('scanner.enterManually')}
+          </button>
+        </div>
+      )}
+
+      {permissionState === 'unavailable' && (
+        <div className="px-6 text-center space-y-4 max-w-sm">
+          <p className="text-sm text-gray-200">{t('scanner.cameraUnavailable')}</p>
           <button
             type="button"
             onClick={handleClose}
@@ -211,6 +245,7 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
       )}
 
       <button
+        ref={closeButtonRef}
         type="button"
         onClick={handleClose}
         aria-label={t('scanner.close')}
