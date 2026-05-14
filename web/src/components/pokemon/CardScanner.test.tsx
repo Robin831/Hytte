@@ -413,6 +413,11 @@ describe('CardScanner — auto-detect → POST → result', () => {
   it('Add → POST /collection, success toast, and 2s cooldown gates auto rescans', async () => {
     const { fetchMock } = lockAndCapture(singleMatchPayload())
     const onAdded = vi.fn()
+    // Pin Date.now so the 2s cooldown window is deterministic regardless of
+    // how long the test runner takes to reach the rAF assertions below.
+    const pinnedNow = 1_000_000
+    const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(pinnedNow)
+
     render(<CardScanner onClose={vi.fn()} onAdded={onAdded} />)
 
     await primeVideoAndLoop()
@@ -435,15 +440,76 @@ describe('CardScanner — auto-detect → POST → result', () => {
 
     expect(await screen.findByText('Added Pikachu')).toBeInTheDocument()
     expect(onAdded).toHaveBeenCalledTimes(1)
-    // The 2s cooldown is timestamp-based and the test runs well under 2s
-    // wall time, so the rAF gate should still suppress a second /scan POST
-    // even after the detector reports a locked candidate again.
+    // cooldownUntilRef.current = pinnedNow + 2000 = 1_002_000. Date.now() is
+    // still pinnedNow = 1_000_000 < 1_002_000, so the rAF gate is active and
+    // a second /scan POST must be suppressed.
     const scanCallsBefore = fetchMock.mock.calls.filter(([u]) => u === '/api/pokemon/scan').length
     await act(async () => { pendingRafs.shift()?.(1800) })
     await act(async () => { pendingRafs.shift()?.(2400) })
     await act(async () => { pendingRafs.shift()?.(3000) })
     const scanCallsAfter = fetchMock.mock.calls.filter(([u]) => u === '/api/pokemon/scan').length
     expect(scanCallsAfter).toBe(scanCallsBefore)
+
+    dateNowSpy.mockRestore()
+  })
+
+  it('aborts in-flight scan after 30 s, shows timeout toast, and resumes scanning', async () => {
+    // Spy on window.setTimeout to capture the 30 s abort callback without
+    // activating vi.useFakeTimers() (which conflicts with React 19's scheduler).
+    let capturedAbortFn: (() => void) | null = null
+    const realSetTimeout = globalThis.setTimeout
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(
+      (fn: TimerHandler, delay?: number, ...args: unknown[]) => {
+        if (delay === 30_000) {
+          capturedAbortFn = fn as () => void
+          return -1 as unknown as ReturnType<typeof setTimeout>
+        }
+        return realSetTimeout(fn as TimerHandler, delay, ...(args as []))
+      },
+    )
+
+    const fakeDetection: DetectedRectangle = { x: 100, y: 80, w: 200, h: 280, score: 0.9 }
+    vi.mocked(detectCardRectangle).mockReturnValue(fakeDetection)
+    vi.mocked(isWithinTolerance).mockReturnValue(true)
+    const fakeBlob = new Blob(['img'], { type: 'image/jpeg' })
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (cb) { cb(fakeBlob) })
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: vi.fn(),
+      getImageData: vi.fn().mockReturnValue({
+        data: new Uint8ClampedArray(640 * 480 * 4),
+        width: 640,
+        height: 480,
+        colorSpace: 'srgb',
+      }),
+    } as unknown as CanvasRenderingContext2D)
+
+    // fetch for /scan respects the AbortSignal but never otherwise resolves,
+    // simulating a Claude vision response that takes longer than the 30 s cap.
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) =>
+      new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(new DOMException('The operation was aborted.', 'AbortError')),
+        )
+      }),
+    ))
+
+    render(<CardScanner onClose={vi.fn()} />)
+    await primeVideoAndLoop()
+
+    // Tick1 throttle, tick2 candidate, tick3 locked → capture → POST.
+    await act(async () => { pendingRafs.shift()?.(0) })
+    await act(async () => { pendingRafs.shift()?.(600) })
+    await act(async () => { pendingRafs.shift()?.(1200) })
+
+    // Spinner shows while the in-flight POST is waiting on Claude.
+    await screen.findByTestId('card-scanner-spinner')
+    expect(capturedAbortFn).not.toBeNull()
+
+    // Simulate the 30 s elapsing: fires abort → fetch rejects → toast + resume.
+    await act(async () => { capturedAbortFn!() })
+
+    expect(screen.getByText('Scan timed out, try again')).toBeInTheDocument()
+    expect(screen.queryByTestId('card-scanner-spinner')).not.toBeInTheDocument()
   })
 
   it('multi-candidate response renders each card as a tappable row', async () => {

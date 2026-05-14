@@ -115,7 +115,7 @@ func TestScanHandler_LowConfidenceSkipsLookup(t *testing.T) {
 	u := seedUser(t, db, 1, "scan@example.com")
 	enableClaudeForUser(t, db, u.ID)
 
-	calls := stubScanPrompt(t, `{"set_name":"","set_id_hint":"","collector_number":"???","confidence":0.30}`, nil)
+	calls := stubScanPrompt(t, `{"set_name":"Scarlet & Violet Base","set_id_hint":"","collector_number":"025","confidence":0.30}`, nil)
 
 	req := buildScanRequest(t, append(pngMagic, []byte("padding")...), "card.png")
 	req = asUser(req, u)
@@ -126,9 +126,11 @@ func TestScanHandler_LowConfidenceSkipsLookup(t *testing.T) {
 		t.Fatalf("expected 200 even on low confidence, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := decode[struct {
-		Matched    bool    `json:"matched"`
-		Confidence float64 `json:"confidence"`
-		Reason     string  `json:"reason"`
+		Matched         bool    `json:"matched"`
+		Confidence      float64 `json:"confidence"`
+		Reason          string  `json:"reason"`
+		SetName         string  `json:"set_name"`
+		CollectorNumber string  `json:"collector_number"`
 	}](t, rec)
 	if body.Matched {
 		t.Errorf("expected matched=false on low confidence, got true")
@@ -138,6 +140,12 @@ func TestScanHandler_LowConfidenceSkipsLookup(t *testing.T) {
 	}
 	if body.Reason == "" {
 		t.Errorf("expected a reason string, got empty")
+	}
+	if body.SetName != "Scarlet & Violet Base" {
+		t.Errorf("expected set_name to pass through, got %q", body.SetName)
+	}
+	if body.CollectorNumber != "025" {
+		t.Errorf("expected collector_number to pass through, got %q", body.CollectorNumber)
 	}
 	if calls.Load() != 1 {
 		t.Errorf("expected exactly one Claude call, got %d", calls.Load())
@@ -315,9 +323,11 @@ func TestScanHandler_NoCardMatch(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := decode[struct {
-		Matched    bool    `json:"matched"`
-		Confidence float64 `json:"confidence"`
-		Reason     string  `json:"reason"`
+		Matched         bool    `json:"matched"`
+		Confidence      float64 `json:"confidence"`
+		Reason          string  `json:"reason"`
+		SetName         string  `json:"set_name"`
+		CollectorNumber string  `json:"collector_number"`
 	}](t, rec)
 	if body.Matched {
 		t.Errorf("expected matched=false when no card matches, got true")
@@ -327,6 +337,12 @@ func TestScanHandler_NoCardMatch(t *testing.T) {
 	}
 	if !strings.Contains(body.Reason, "collector '999'") {
 		t.Errorf("expected reason to include collector number, got %q", body.Reason)
+	}
+	if body.SetName != "Scarlet & Violet Base" {
+		t.Errorf("expected set_name to pass through, got %q", body.SetName)
+	}
+	if body.CollectorNumber != "999" {
+		t.Errorf("expected collector_number to pass through, got %q", body.CollectorNumber)
 	}
 }
 

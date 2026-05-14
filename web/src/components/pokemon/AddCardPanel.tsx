@@ -301,12 +301,12 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
           onClose={() => setScannerOpen(false)}
           onAdded={onAdded}
           onEnterManually={prefill => {
-            // Close the scanner and prefill the search input with whichever
-            // identifier Claude recovered. Collector number is the more
-            // selective hit when both are available.
             setScannerOpen(false)
             const seed = prefill.collectorNumber ?? prefill.setName ?? ''
             setQuery(seed)
+            setResults([])
+            setError('')
+            setVariantCard(null)
           }}
         />
       )}

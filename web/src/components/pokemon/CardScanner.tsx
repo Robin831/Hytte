@@ -108,6 +108,10 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
   // Track the latest performScan callback in a ref so the rAF loop always
   // calls the current version without needing to be re-installed.
   const performScanRef = useRef<(blob: Blob, manual: boolean) => void>(() => {})
+  // cooldownTimerRef holds the id of the pending timer that transitions
+  // scanPhase from 'cooldown' back to 'idle'. Keeping it in a ref lets us
+  // cancel it on unmount or close so the callback never fires on a dead component.
+  const cooldownTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
 
   // Acquire the camera on mount; stop tracks on unmount so the camera LED
   // turns off even if the parent unmounts the scanner without calling onClose.
@@ -155,6 +159,10 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
       if (ctl) {
         ctl.abort()
         scanAbortRef.current = null
+      }
+      if (cooldownTimerRef.current !== null) {
+        window.clearTimeout(cooldownTimerRef.current)
+        cooldownTimerRef.current = null
       }
     }
   }, [])
@@ -450,6 +458,10 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
       ctl.abort()
       scanAbortRef.current = null
     }
+    if (cooldownTimerRef.current !== null) {
+      window.clearTimeout(cooldownTimerRef.current)
+      cooldownTimerRef.current = null
+    }
     onClose()
   }, [onClose])
 
@@ -468,6 +480,9 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
   }, [])
 
   // Escape to dismiss + Tab focus trap (mirrors Dialog behaviour).
+  // When the result modal is overlaying the scanner, Tab is constrained to
+  // the modal's own focusable elements so the torch/close buttons behind it
+  // are not reachable via keyboard even though they remain enabled in the DOM.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -475,8 +490,12 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
         return
       }
       if (e.key !== 'Tab' || !dialogRef.current) return
+      const trapRoot: ParentNode =
+        scanPhaseRef.current === 'result'
+          ? (dialogRef.current.querySelector('[data-testid="scan-result-modal"]') ?? dialogRef.current)
+          : dialogRef.current
       const focusable = Array.from(
-        dialogRef.current.querySelectorAll<HTMLElement>(
+        trapRoot.querySelectorAll<HTMLElement>(
           'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
         ),
       )
@@ -588,7 +607,8 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
         scanPhaseRef.current = 'cooldown'
         setScanPhase('cooldown')
         resumeScanning()
-        window.setTimeout(() => {
+        cooldownTimerRef.current = window.setTimeout(() => {
+          cooldownTimerRef.current = null
           if (scanPhaseRef.current === 'cooldown') {
             scanPhaseRef.current = 'idle'
             setScanPhase('idle')
