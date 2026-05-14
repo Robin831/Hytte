@@ -22,8 +22,8 @@ type Client struct {
 	apiKey     string
 	// maxRetries bounds 429 retry attempts. Defaults to 3 in NewClient.
 	maxRetries int
-	// sleep is used in place of time.Sleep so tests can avoid real waits.
-	sleep func(time.Duration)
+	// sleep is used in place of a context-aware timer so tests can avoid real waits.
+	sleep func(ctx context.Context, d time.Duration) error
 }
 
 // NewClient returns a client preconfigured with the POKEMONTCG_API_KEY env var
@@ -34,7 +34,16 @@ func NewClient() *Client {
 		baseURL:    DefaultBaseURL,
 		apiKey:     os.Getenv("POKEMONTCG_API_KEY"),
 		maxRetries: 3,
-		sleep:      time.Sleep,
+		sleep: func(ctx context.Context, d time.Duration) error {
+			t := time.NewTimer(d)
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				return ctx.Err()
+			case <-t.C:
+				return nil
+			}
+		},
 	}
 }
 
@@ -51,7 +60,7 @@ func (c *Client) WithHTTPClient(hc *http.Client) *Client {
 }
 
 // withSleep is exposed for tests to bypass real sleeps on 429 retries.
-func (c *Client) withSleep(fn func(time.Duration)) *Client {
+func (c *Client) withSleep(fn func(context.Context, time.Duration) error) *Client {
 	c.sleep = fn
 	return c
 }
@@ -83,7 +92,9 @@ func (c *Client) doRequest(ctx context.Context, url string, out any) error {
 			if retryAfter <= 0 {
 				retryAfter = time.Duration(attempt+1) * time.Second
 			}
-			c.sleep(retryAfter)
+			if err := c.sleep(ctx, retryAfter); err != nil {
+				return err
+			}
 			continue
 		}
 

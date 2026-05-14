@@ -14,17 +14,6 @@ import (
 // 250 is the maximum the API allows and minimises total HTTP requests.
 const PageSize = 250
 
-// variantKindMap normalises the API's price-block keys to the internal `kind`
-// stored in pokemon_card_variants. Anything not in this map is left as-is.
-var variantKindMap = map[string]string{
-	"normal":             "normal",
-	"holofoil":           "holofoil",
-	"reverseHolofoil":    "reverse_holofoil",
-	"1stEditionHolofoil": "1st_edition_holofoil",
-	"1stEditionNormal":   "1st_edition_normal",
-	"unlimited":          "unlimited",
-	"unlimitedHolofoil":  "unlimited_holofoil",
-}
 
 // SyncSets paginates /v2/sets and upserts each set into pokemon_sets.
 func SyncSets(ctx context.Context, db *sql.DB, client *Client) error {
@@ -206,15 +195,22 @@ func upsertCard(ctx context.Context, db *sql.DB, setID string, c Card, now time.
 	return err
 }
 
+// upsertVariants persists Cardmarket prices for a card. The cardmarket.prices
+// field is a flat object with named metric keys, so we map the two variant
+// kinds we persist (normal, reverse_holofoil) to their corresponding fields.
 func upsertVariants(ctx context.Context, db *sql.DB, c Card, now time.Time) error {
-	for apiKind, price := range c.Cardmarket.Prices {
-		kind := mapVariantKind(apiKind)
-		if kind == "" {
+	p := c.Cardmarket.Prices
+	type variantRow struct {
+		kind string
+		eur  float64
+	}
+	variants := []variantRow{
+		{"normal", pickPrice(p.TrendPrice, p.AverageSellPrice)},
+		{"reverse_holofoil", pickPrice(p.ReverseHoloTrend, p.ReverseHoloSell)},
+	}
+	for _, v := range variants {
+		if v.eur == 0 {
 			continue
-		}
-		eur := price.TrendPrice
-		if eur == 0 {
-			eur = price.AverageSellPrice
 		}
 		if _, err := db.ExecContext(ctx, `
 			INSERT INTO pokemon_card_variants (card_id, kind, price_eur, price_at)
@@ -222,24 +218,17 @@ func upsertVariants(ctx context.Context, db *sql.DB, c Card, now time.Time) erro
 			ON CONFLICT(card_id, kind) DO UPDATE SET
 				price_eur = excluded.price_eur,
 				price_at  = excluded.price_at
-		`, c.ID, kind, eur, now); err != nil {
+		`, c.ID, v.kind, v.eur, now); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// mapVariantKind normalises an API price-block key to the internal `kind`
-// value persisted in pokemon_card_variants. Empty result means "skip".
-func mapVariantKind(apiKind string) string {
-	if apiKind == "" {
-		return ""
+// pickPrice returns trend when non-zero, otherwise avg.
+func pickPrice(trend, avg float64) float64 {
+	if trend > 0 {
+		return trend
 	}
-	if mapped, ok := variantKindMap[apiKind]; ok {
-		return mapped
-	}
-	// Pass unknown kinds through unchanged — the API occasionally adds new
-	// promo / event variants, and persisting them as-is is preferable to
-	// dropping the price data silently.
-	return apiKind
+	return avg
 }

@@ -51,17 +51,21 @@ type CardImages struct {
 	Large string `json:"large"`
 }
 
-// Cardmarket is the price block from the API. Prices are keyed by variant
-// name (normal, reverseHolofoil, holofoil, 1stEditionHolofoil, ...).
+// Cardmarket is the price block from the API. Prices is a flat object of
+// metric fields (not a map of variant objects) — see CardmarketPrices.
 type Cardmarket struct {
-	URL       string                    `json:"url"`
-	UpdatedAt string                    `json:"updatedAt"`
-	Prices    map[string]CardmarketPrice `json:"prices"`
+	URL       string           `json:"url"`
+	UpdatedAt string           `json:"updatedAt"`
+	Prices    CardmarketPrices `json:"prices"`
 }
 
-// CardmarketPrice contains the price quotes for one variant. We persist
-// trendPrice when available and fall back to averageSellPrice.
-type CardmarketPrice struct {
+// CardmarketPrices is the flat price object from cardmarket.prices in the
+// pokemontcg.io /v2/cards response. The API returns a single JSON object
+// where each key is a price metric, not a map of variant → price objects.
+// We capture the fields that map to our two persisted variant kinds.
+type CardmarketPrices struct {
 	AverageSellPrice float64 `json:"averageSellPrice"`
 	TrendPrice       float64 `json:"trendPrice"`
+	ReverseHoloSell  float64 `json:"reverseHoloSell"`
+	ReverseHoloTrend float64 `json:"reverseHoloTrend"`
 }

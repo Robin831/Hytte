@@ -33,7 +33,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 // stubbed so 429 retries don't block real wall-clock time.
 func newTestClient(srv *httptest.Server) *Client {
 	c := NewClient().WithBaseURL(srv.URL).WithHTTPClient(srv.Client())
-	c.withSleep(func(time.Duration) {})
+	c.withSleep(func(_ context.Context, _ time.Duration) error { return nil })
 	c.maxRetries = 2
 	return c
 }
@@ -163,10 +163,11 @@ func TestSyncCards_InsertsCardsAndVariants(t *testing.T) {
 			Large: "https://example/lg.png",
 		},
 		Cardmarket: Cardmarket{
-			Prices: map[string]CardmarketPrice{
-				"normal":          {AverageSellPrice: 1.5, TrendPrice: 1.7},
-				"reverseHolofoil": {AverageSellPrice: 2.0, TrendPrice: 0}, // trend missing -> fallback
-				"holofoil":        {AverageSellPrice: 3.0, TrendPrice: 3.4},
+			Prices: CardmarketPrices{
+				AverageSellPrice: 1.5,
+				TrendPrice:       1.7,
+				ReverseHoloSell:  2.0,
+				ReverseHoloTrend: 0, // trend missing -> fallback to ReverseHoloSell
 			},
 		},
 	}
@@ -216,8 +217,7 @@ func TestSyncCards_InsertsCardsAndVariants(t *testing.T) {
 
 	want := map[string]float64{
 		"normal":           1.7, // trendPrice preferred
-		"reverse_holofoil": 2.0, // trendPrice=0 -> fallback to averageSellPrice
-		"holofoil":         3.4,
+		"reverse_holofoil": 2.0, // reverseHoloTrend=0 -> fallback to reverseHoloSell
 	}
 	if len(got) != len(want) {
 		t.Fatalf("expected %d variants, got %d: %+v", len(want), len(got), got)
@@ -237,9 +237,9 @@ func TestSyncCards_VariantUpsertUpdatesPrice(t *testing.T) {
 	}
 
 	var hits int32
-	prices := []map[string]CardmarketPrice{
-		{"normal": {TrendPrice: 1.0}},
-		{"normal": {TrendPrice: 2.5}},
+	prices := []CardmarketPrices{
+		{TrendPrice: 1.0},
+		{TrendPrice: 2.5},
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		idx := atomic.AddInt32(&hits, 1) - 1
@@ -301,22 +301,67 @@ func TestDoRequest_RetriesOn429(t *testing.T) {
 	}
 }
 
-func TestMapVariantKind(t *testing.T) {
-	cases := []struct {
-		in, want string
-	}{
-		{"normal", "normal"},
-		{"reverseHolofoil", "reverse_holofoil"},
-		{"holofoil", "holofoil"},
-		{"1stEditionHolofoil", "1st_edition_holofoil"},
-		{"unknownPromo", "unknownPromo"}, // unknown passes through
-		{"", ""},
+func TestAdminSyncHandler_Returns202(t *testing.T) {
+	d := setupTestDB(t)
+	handler := adminSyncHandler(d, func(_ context.Context, _ *sql.DB) error {
+		return nil
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/pokemon/admin/sync", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", w.Code)
 	}
-	for _, tc := range cases {
-		if got := mapVariantKind(tc.in); got != tc.want {
-			t.Errorf("mapVariantKind(%q) = %q, want %q", tc.in, got, tc.want)
-		}
+	var body map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
 	}
+	if body["status"] != "started" {
+		t.Fatalf("expected status=started, got %q", body["status"])
+	}
+}
+
+func TestAdminSyncHandler_Returns409WhenAlreadyRunning(t *testing.T) {
+	d := setupTestDB(t)
+	started := make(chan struct{})
+	done := make(chan struct{})
+
+	handler := adminSyncHandler(d, func(_ context.Context, _ *sql.DB) error {
+		close(started)
+		<-done
+		return nil
+	})
+
+	// First request — starts the sync.
+	req1 := httptest.NewRequest(http.MethodPost, "/pokemon/admin/sync", nil)
+	w1 := httptest.NewRecorder()
+	handler.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusAccepted {
+		t.Fatalf("first request: expected 202, got %d", w1.Code)
+	}
+
+	// Wait for the goroutine to be inside doSync.
+	<-started
+
+	// Second request — should conflict.
+	req2 := httptest.NewRequest(http.MethodPost, "/pokemon/admin/sync", nil)
+	w2 := httptest.NewRecorder()
+	handler.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusConflict {
+		t.Fatalf("second request: expected 409, got %d", w2.Code)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(w2.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["error"] == "" {
+		t.Fatalf("expected non-empty error field in 409 response")
+	}
+
+	// Unblock the sync goroutine.
+	close(done)
 }
 
 func TestNextWeeklySync_SundayAtFourOslo(t *testing.T) {
