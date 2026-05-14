@@ -1,0 +1,2 @@
+category: Added
+- **Pokémon nav entry and smoke coverage** - The Pokémon Collection feature is now reachable from the sidebar (Sparkles icon, gated on the `pokemon` user feature so each kid can have an independent setting). Added `nav.pokemon` to all three locales (en, nb, th) and a Go test that proves toggling the `pokemon` flag for one kid does not affect the other, plus a Vitest+RTL smoke test that drives the full end-to-end flow (sets browser → set detail → mark a card owned → owned count increments). (Hytte-mec4)
