@@ -358,7 +358,7 @@ describe('CardScanner — auto-detect → POST → result', () => {
       }),
     } as unknown as CanvasRenderingContext2D)
 
-    const fetchMock = vi.fn((url: string) => {
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
       if (url === '/api/pokemon/scan') {
         return Promise.resolve({
           ok: true,
