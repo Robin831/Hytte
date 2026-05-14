@@ -141,13 +141,13 @@ export default function PokemonSets() {
   const [attempt, setAttempt] = useState(0)
 
   const load = useCallback(() => {
+    setLoading(true)
+    setError('')
     setAttempt(a => a + 1)
   }, [])
 
   useEffect(() => {
     const controller = new AbortController()
-    setLoading(true)
-    setError('')
     fetch('/api/pokemon/sets', { credentials: 'include', signal: controller.signal })
       .then(async res => {
         if (!res.ok) throw new Error(t('errors.failedToLoad'))
