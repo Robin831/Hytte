@@ -1,0 +1,19 @@
+{
+  "pageTitle": "Pokémon-sett",
+  "showOlder": "Vis eldre sett",
+  "hideOlder": "Skjul eldre sett",
+  "olderSets": "Eldre sett",
+  "tile": {
+    "totalCards_one": "{{count}} kort",
+    "totalCards_other": "{{count}} kort",
+    "ownership": "{{owned}} / {{total}} — {{percent}} %",
+    "openSet": "Åpne {{name}}"
+  },
+  "errors": {
+    "failedToLoad": "Kunne ikke laste Pokémon-sett"
+  },
+  "retry": "Prøv på nytt",
+  "setDetail": {
+    "comingSoon": "Settdetaljer kommer snart"
+  }
+}

@@ -207,6 +207,72 @@ func TestListSetsHandler_LimitOffset(t *testing.T) {
 	}
 }
 
+func TestListSetsHandler_OwnedCount(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+	other := seedUser(t, db, 2, "b@example.com")
+
+	// User 1 owns two distinct cards from sv1 (across both variants of one,
+	// plus the second card) — owned_count should still be 2.
+	pikaNormal := variantID(t, db, "sv1-25", "normal")
+	pikaReverse := variantID(t, db, "sv1-25", "reverse_holofoil")
+	eeveeNormal := variantID(t, db, "sv1-100", "normal")
+	for _, vid := range []struct {
+		card    string
+		variant int64
+	}{{"sv1-25", pikaNormal}, {"sv1-25", pikaReverse}, {"sv1-100", eeveeNormal}} {
+		if _, err := db.Exec(`
+			INSERT INTO pokemon_collections (user_id, card_id, variant_id, quantity, condition, acquired_at, notes_enc)
+			VALUES (?, ?, ?, 1, '', ?, NULL)
+		`, u.ID, vid.card, vid.variant, time.Now().UTC()); err != nil {
+			t.Fatalf("seed collection: %v", err)
+		}
+	}
+	// Other user's collection must not leak into user 1's owned_count.
+	celebiNormal := variantID(t, db, "swsh1-1", "normal")
+	if _, err := db.Exec(`
+		INSERT INTO pokemon_collections (user_id, card_id, variant_id, quantity, condition, acquired_at, notes_enc)
+		VALUES (?, ?, ?, 1, '', ?, NULL)
+	`, other.ID, "swsh1-1", celebiNormal, time.Now().UTC()); err != nil {
+		t.Fatalf("seed other collection: %v", err)
+	}
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/sets", nil), u)
+	rec := httptest.NewRecorder()
+	ListSetsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[struct {
+		Sets []SetDTO `json:"sets"`
+	}](t, rec)
+	bySet := map[string]int{}
+	for _, s := range body.Sets {
+		bySet[s.ID] = s.OwnedCount
+	}
+	if bySet["sv1"] != 2 {
+		t.Errorf("expected sv1 owned_count=2, got %d", bySet["sv1"])
+	}
+	if bySet["swsh1"] != 0 {
+		t.Errorf("expected swsh1 owned_count=0 (other user's collection), got %d", bySet["swsh1"])
+	}
+}
+
+func TestListSetsHandler_Unauthorized(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/pokemon/sets", nil)
+	rec := httptest.NewRecorder()
+	ListSetsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
 // --- ListSetCardsHandler ------------------------------------------------------
 
 func TestListSetCardsHandler_Success_WithNOK(t *testing.T) {

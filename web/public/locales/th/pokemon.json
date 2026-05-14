@@ -1,0 +1,19 @@
+{
+  "pageTitle": "ชุดโปเกมอน",
+  "showOlder": "แสดงชุดเก่ากว่า",
+  "hideOlder": "ซ่อนชุดเก่ากว่า",
+  "olderSets": "ชุดเก่ากว่า",
+  "tile": {
+    "totalCards_one": "{{count}} ใบ",
+    "totalCards_other": "{{count}} ใบ",
+    "ownership": "{{owned}} / {{total}} — {{percent}}%",
+    "openSet": "เปิด {{name}}"
+  },
+  "errors": {
+    "failedToLoad": "โหลดชุดโปเกมอนไม่สำเร็จ"
+  },
+  "retry": "ลองอีกครั้ง",
+  "setDetail": {
+    "comingSoon": "รายละเอียดชุดเร็ว ๆ นี้"
+  }
+}
