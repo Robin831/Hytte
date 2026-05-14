@@ -298,12 +298,16 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
 
       {scannerOpen && (
         <CardScanner
-          onCapture={() => {
-            // Capture handoff lands in a follow-up sub-task. For now, close the
-            // overlay so the camera tracks stop and the user returns to search.
-            setScannerOpen(false)
-          }}
           onClose={() => setScannerOpen(false)}
+          onAdded={onAdded}
+          onEnterManually={prefill => {
+            // Close the scanner and prefill the search input with whichever
+            // identifier Claude recovered. Collector number is the more
+            // selective hit when both are available.
+            setScannerOpen(false)
+            const seed = prefill.collectorNumber ?? prefill.setName ?? ''
+            setQuery(seed)
+          }}
         />
       )}
 
