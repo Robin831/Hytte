@@ -466,3 +466,84 @@ func TestParseEvalResponse_RestDayCompliance(t *testing.T) {
 	}
 }
 
+// --- appendWorkoutContextNote ---
+
+func TestAppendWorkoutContextNote_FramesAsPostWorkoutReport(t *testing.T) {
+	db := setupTestDB(t)
+
+	const workoutID = int64(600)
+	if _, err := db.Exec(`
+		INSERT INTO workouts (id, user_id, sport, started_at, fit_file_hash, created_at)
+		VALUES (?, 1, 'running', '2026-04-08T07:00:00Z', 'append-ctx-hash', '2026-04-08T08:00:00Z')
+	`, workoutID); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	feelEnc, err := encryption.EncryptField("Tough but controlled")
+	if err != nil {
+		t.Fatalf("encrypt feel: %v", err)
+	}
+	// Encode the speed plan with a non-empty entry so summarizeSpeedPlan emits
+	// the new "Executed splits:" label and we can assert against it.
+	planEnc, err := encryption.EncryptField(`[{"kind":"steady","speed_kmph":10,"duration_sec":1800,"repeats":1,"same_as_previous":false}]`)
+	if err != nil {
+		t.Fatalf("encrypt plan: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO workout_context (workout_id, surface, run_type, hr_source, feel_notes, speed_plan, completed_at)
+		 VALUES (?, ?, ?, ?, ?, ?, '')`,
+		workoutID, "Treadmill", "long", "chest", feelEnc, planEnc,
+	); err != nil {
+		t.Fatalf("insert workout_context: %v", err)
+	}
+
+	workout := training.Workout{ID: workoutID, UserID: 1, Sport: "running", StartedAt: "2026-04-08T07:00:00Z"}
+	got := appendWorkoutContextNote(db, workout, "2026-04-08", nil)
+
+	if len(got) != 1 {
+		t.Fatalf("expected exactly one synthetic note appended, got %d", len(got))
+	}
+	note := got[0]
+	if !strings.Contains(note.Content, "Runner's post-workout report") {
+		t.Errorf("note content missing post-workout framing, got %q", note.Content)
+	}
+	if !strings.Contains(note.Content, "Executed splits:") {
+		t.Errorf("note content missing 'Executed splits:' prefix, got %q", note.Content)
+	}
+	if strings.Contains(note.Content, "Plan:") {
+		t.Errorf("note content must not include 'Plan:' prefix (misleads evaluator), got %q", note.Content)
+	}
+	if !strings.Contains(note.Content, "Feel notes: Tough but controlled") {
+		t.Errorf("note content missing feel notes, got %q", note.Content)
+	}
+	if note.Scope != NoteScopeNightly {
+		t.Errorf("expected nightly scope on synthetic note, got %q", note.Scope)
+	}
+	if note.TargetDate != "2026-04-08" {
+		t.Errorf("expected target_date=2026-04-08, got %q", note.TargetDate)
+	}
+}
+
+func TestAppendWorkoutContextNote_NoContextLeavesNotesUnchanged(t *testing.T) {
+	db := setupTestDB(t)
+
+	const workoutID = int64(601)
+	if _, err := db.Exec(`
+		INSERT INTO workouts (id, user_id, sport, started_at, fit_file_hash, created_at)
+		VALUES (?, 1, 'running', '2026-04-09T07:00:00Z', 'append-ctx-none', '2026-04-09T08:00:00Z')
+	`, workoutID); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	original := []Note{{ID: 1, Content: "Pre-existing note", TargetDate: "2026-04-09"}}
+	workout := training.Workout{ID: workoutID, UserID: 1, Sport: "running"}
+	got := appendWorkoutContextNote(db, workout, "2026-04-09", original)
+
+	if len(got) != 1 {
+		t.Fatalf("expected notes unchanged when no context row exists, got %d", len(got))
+	}
+	if got[0].Content != "Pre-existing note" {
+		t.Errorf("expected original note preserved, got %q", got[0].Content)
+	}
+}
+
