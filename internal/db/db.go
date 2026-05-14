@@ -1625,6 +1625,65 @@ func createSchema(db *sql.DB) error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_task_notes_task ON task_notes(task_id, created_at);
 
+	-- Pokémon Collection (Hytte-8pzb): per-kid collection of TCG cards with
+	-- pricing in EUR (converted to NOK via currency_rates at read time).
+	CREATE TABLE IF NOT EXISTS pokemon_sets (
+		id            TEXT PRIMARY KEY,
+		name          TEXT NOT NULL,
+		series        TEXT NOT NULL,
+		release_date  TEXT NOT NULL,
+		total_cards   INTEGER NOT NULL DEFAULT 0,
+		symbol_url    TEXT NOT NULL DEFAULT '',
+		logo_url      TEXT NOT NULL DEFAULT '',
+		synced_at     TIMESTAMP NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS pokemon_cards (
+		id              TEXT PRIMARY KEY,
+		set_id          TEXT NOT NULL REFERENCES pokemon_sets(id) ON DELETE CASCADE,
+		name            TEXT NOT NULL,
+		collector_no    TEXT NOT NULL,
+		rarity          TEXT NOT NULL DEFAULT '',
+		image_small_url TEXT NOT NULL DEFAULT '',
+		image_large_url TEXT NOT NULL DEFAULT '',
+		synced_at       TIMESTAMP NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_pokemon_cards_set ON pokemon_cards(set_id, collector_no);
+	CREATE INDEX IF NOT EXISTS idx_pokemon_cards_name ON pokemon_cards(name);
+
+	CREATE TABLE IF NOT EXISTS pokemon_card_variants (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		card_id     TEXT NOT NULL REFERENCES pokemon_cards(id) ON DELETE CASCADE,
+		kind        TEXT NOT NULL,
+		price_eur   REAL NOT NULL DEFAULT 0,
+		price_at    TIMESTAMP,
+		UNIQUE(card_id, kind)
+	);
+
+	CREATE TABLE IF NOT EXISTS pokemon_collections (
+		id            INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		card_id       TEXT NOT NULL REFERENCES pokemon_cards(id) ON DELETE CASCADE,
+		variant_id    INTEGER NOT NULL REFERENCES pokemon_card_variants(id) ON DELETE CASCADE,
+		quantity      INTEGER NOT NULL DEFAULT 1,
+		condition     TEXT NOT NULL DEFAULT '',
+		acquired_at   TIMESTAMP NOT NULL,
+		notes_enc     TEXT,
+		UNIQUE(user_id, card_id, variant_id)
+	);
+	CREATE INDEX IF NOT EXISTS idx_pokemon_collections_user ON pokemon_collections(user_id);
+
+	-- currency_rates (Hytte-8pzb): daily reference exchange rates, sourced
+	-- from Norges Bank. observed is the observation date (YYYY-MM-DD) reported
+	-- by the upstream; fetched_at is the wall clock time of the local upsert.
+	CREATE TABLE IF NOT EXISTS currency_rates (
+		pair       TEXT NOT NULL,
+		rate       REAL NOT NULL,
+		observed   TEXT NOT NULL,
+		fetched_at TIMESTAMP NOT NULL,
+		PRIMARY KEY(pair, observed)
+	);
+
 	`
 
 	_, err := db.Exec(schema)

@@ -14,6 +14,7 @@ import (
 	"github.com/Robin831/Hytte/internal/allowance"
 	"github.com/Robin831/Hytte/internal/api"
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/currency"
 	"github.com/Robin831/Hytte/internal/daemon"
 	"github.com/Robin831/Hytte/internal/db"
 	"github.com/Robin831/Hytte/internal/push"
@@ -346,6 +347,44 @@ func main() {
 					}
 				}
 				log.Printf("stride: weekly plan generation complete (%d users)", len(userIDs))
+			}
+		}
+	}()
+
+	// Daily EUR/NOK rate sync from Norges Bank at 06:00 Europe/Oslo
+	// (Hytte-8pzb). Runs a best-effort fetch at startup so a fresh deploy has
+	// a rate available, then ticks daily. Failures are logged; downstream
+	// readers fall back to the latest stored rate.
+	go func() {
+		loc, err := time.LoadLocation("Europe/Oslo")
+		if err != nil {
+			// Missing tzdata shouldn't disable the sync entirely — fall back
+			// to UTC so the daily tick still fires (just shifted by Oslo's
+			// UTC offset). Downstream code only needs a fresh-ish rate.
+			log.Printf("currency: failed to load Europe/Oslo timezone, falling back to UTC: %v", err)
+			loc = time.UTC
+		}
+		startupCtx, startupCancel := context.WithTimeout(notifCtx, 30*time.Second)
+		if err := currency.SyncEURNOK(startupCtx, database); err != nil {
+			log.Printf("currency: startup EUR/NOK sync failed: %v", err)
+		}
+		startupCancel()
+
+		for {
+			next := currency.NextDailyRun(time.Now(), loc)
+			timer := time.NewTimer(time.Until(next))
+			select {
+			case <-notifCtx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+				syncCtx, syncCancel := context.WithTimeout(notifCtx, 30*time.Second)
+				if err := currency.SyncEURNOK(syncCtx, database); err != nil {
+					log.Printf("currency: scheduled EUR/NOK sync failed: %v", err)
+				} else {
+					log.Println("currency: EUR/NOK rate synced")
+				}
+				syncCancel()
 			}
 		}
 	}()

@@ -1,0 +1,2 @@
+category: Added
+- **Pokémon Collection: schema + EUR/NOK rate sync** - Added schema for `pokemon_sets`, `pokemon_cards`, `pokemon_card_variants`, `pokemon_collections`, and `currency_rates`, a new `pokemon` feature flag (off by default), and a daily Norges Bank EUR/NOK sync that fires at 06:00 Europe/Oslo so the Pokémon Collection can convert prices to NOK without hitting the API on every page load. (Hytte-8pzb)
