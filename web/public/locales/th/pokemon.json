@@ -59,6 +59,22 @@
     "holofoil": "Holo",
     "reverse_holofoil": "Reverse holo"
   },
+  "set": {
+    "variantFilter": {
+      "label": "ชนิด:",
+      "any": "ใดก็ได้",
+      "normal": "ปกติ",
+      "reverseHolo": "Reverse holo",
+      "allVariants": "ทุกชนิด"
+    },
+    "completion": {
+      "any": "{{owned}} / {{total}} ใบ (ชนิดใดก็ได้)",
+      "normal": "{{owned}} / {{total}} ใบที่มีฉบับปกติ",
+      "reverseHolo": "{{owned}} / {{total}} ใบที่มี reverse holo",
+      "allVariants": "{{owned}} / {{total}} ใบที่มีครบทุกชนิด",
+      "kind": "{{owned}} / {{total}} ใบ (ชนิดนี้)"
+    }
+  },
   "toast": {
     "marked": "เพิ่มเข้าคอลเลกชันแล้ว",
     "unmarked": "ลบออกจากคอลเลกชันแล้ว"

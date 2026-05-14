@@ -59,6 +59,22 @@
     "holofoil": "Holo",
     "reverse_holofoil": "Reverse holo"
   },
+  "set": {
+    "variantFilter": {
+      "label": "Variant:",
+      "any": "Any",
+      "normal": "Normal",
+      "reverseHolo": "Reverse Holo",
+      "allVariants": "All variants"
+    },
+    "completion": {
+      "any": "{{owned}} / {{total}} cards (any variant)",
+      "normal": "{{owned}} / {{total}} cards with normal print owned",
+      "reverseHolo": "{{owned}} / {{total}} cards with reverse holo owned",
+      "allVariants": "{{owned}} / {{total}} cards with every variant owned",
+      "kind": "{{owned}} / {{total}} cards (this variant)"
+    }
+  },
   "toast": {
     "marked": "Added to collection",
     "unmarked": "Removed from collection"
