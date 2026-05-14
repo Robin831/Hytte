@@ -31,7 +31,7 @@ type Filter = 'all' | 'owned' | 'missing'
 const FILTERS: Filter[] = ['all', 'owned', 'missing']
 
 // filterToQuery maps a UI filter to the ?owned= query value expected by the
-// backend. The "All" filter sends no parameter so the server defaults to "any".
+// backend. The "All" filter sends owned=any so the server returns all cards.
 function filterToQuery(filter: Filter): string {
   if (filter === 'owned') return 'owned'
   if (filter === 'missing') return 'missing'
@@ -58,10 +58,15 @@ function formatEur(amount: number | null | undefined): string {
   })
 }
 
-// topVariant returns the variant with the highest price_eur, falling back to
-// the first variant when prices are missing.
+// topVariant returns the variant identified by top_variant_kind, so the label
+// and price always refer to the same variant. Falls back to max-price selection
+// only when top_variant_kind is absent (e.g. legacy data with no kind set).
 function topVariant(card: TopCard): Variant | undefined {
   if (card.variants.length === 0) return undefined
+  if (card.top_variant_kind) {
+    const match = card.variants.find(v => v.kind === card.top_variant_kind)
+    if (match) return match
+  }
   return card.variants.reduce((best, current) =>
     current.price_eur > best.price_eur ? current : best,
   )

@@ -128,6 +128,8 @@ func RegisterRoutes(r chi.Router, db *sql.DB) {
 		r.Get("/pokemon/sets", ListSetsHandler(db))
 		r.Get("/pokemon/sets/{id}/cards", ListSetCardsHandler(db))
 		r.Get("/pokemon/cards/search", SearchCardsHandler(db))
+		// /pokemon/top is intentionally accessible to all pokemon-feature users,
+		// not admin-only — it's a fun highlights surface for every collector.
 		r.Get("/pokemon/top", TopHandler(db))
 		r.Post("/pokemon/collection", UpsertCollectionHandler(db))
 		r.Patch("/pokemon/collection/{id}", UpdateCollectionHandler(db))
@@ -659,7 +661,7 @@ func MissingFromSetHandler(db *sql.DB) http.HandlerFunc {
 // "Top valued cards" highlights view — a fun "look what could be in here"
 // surface for the kids. The optional ?owned=owned|missing|any filter lets the
 // UI narrow the list to "what I'm still missing" without a second request.
-// ?limit= defaults to 50 and is clamped to [1, 100].
+// ?limit= defaults to 50 and is upper-bounded at 100; missing or invalid values use the default.
 func TopHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
