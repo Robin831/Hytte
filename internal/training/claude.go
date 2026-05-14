@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -164,6 +165,66 @@ type claudeJSONResponse struct {
 	Result    string `json:"result"`
 	SessionID string `json:"session_id"`
 	IsError   bool   `json:"is_error"`
+}
+
+// runPromptWithImageFn is the seam used by RunPromptWithImage. Tests override
+// this to stub out the CLI invocation.
+var runPromptWithImageFn = runPromptCLIWithImage
+
+// RunPromptWithImage sends a prompt plus a single image file path to the Claude
+// CLI and returns the text response. The image is referenced inside the prompt
+// so Claude's built-in Read tool can view it — this works around the fact that
+// `claude -p` in v2.1.x does not expose a dedicated `--image` flag. To allow
+// the Read tool to access the image, the directory containing it is granted
+// via `--add-dir` and tool permissions are bypassed for the call.
+//
+// Security note: Read access is granted to filepath.Dir(imagePath), so callers
+// MUST place the image inside a dedicated per-call directory (e.g. via
+// os.MkdirTemp) that contains no other files. Passing a path whose parent is
+// a shared location like /tmp would expose every file in that directory to
+// Claude. The caller is responsible for removing the directory after this
+// returns.
+func RunPromptWithImage(ctx context.Context, cfg *ClaudeConfig, prompt, imagePath string) (string, error) {
+	return runPromptWithImageFn(ctx, cfg, prompt, imagePath)
+}
+
+func runPromptCLIWithImage(ctx context.Context, cfg *ClaudeConfig, prompt, imagePath string) (string, error) {
+	if !cfg.Enabled {
+		return "", fmt.Errorf("claude is not enabled")
+	}
+	if imagePath == "" {
+		return "", fmt.Errorf("image path is required")
+	}
+
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, DefaultCLITimeout)
+		defer cancel()
+	}
+
+	dir := filepath.Dir(imagePath)
+	augmented := fmt.Sprintf("Read the image at %s, then answer:\n\n%s", imagePath, prompt)
+
+	cmd := exec.CommandContext(ctx, cfg.CLIPath,
+		"--model", cfg.Model,
+		"-p", "-",
+		"--output-format", "json",
+		"--add-dir", dir,
+		"--allowedTools", "Read",
+		"--permission-mode", "bypassPermissions",
+	)
+	cmd.Stdin = strings.NewReader(augmented)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("claude CLI error: %w: %s", err, stderr.String())
+	}
+
+	text, _, err := parseClaudeCostEnvelope(stdout.Bytes())
+	return text, err
 }
 
 // RunPromptWithSession sends a prompt to the Claude CLI with optional session resumption.
