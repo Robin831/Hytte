@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ArrowLeft, Check } from 'lucide-react'
+import { ArrowLeft, Check, Minus } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
 import ToastList from '../components/ToastList'
 import AddCardPanel from '../components/pokemon/AddCardPanel'
@@ -50,6 +50,184 @@ type Filter = 'all' | 'owned' | 'missing'
 const FILTERS: Filter[] = ['all', 'owned', 'missing']
 const CONDITIONS = ['', 'mint', 'near_mint', 'lightly_played', 'moderately_played', 'heavily_played', 'damaged']
 
+// VariantFilter narrows what "owned" means for the at-a-glance grid and the
+// header completion stat. 'any' counts a card as owned if any variant is owned
+// (today's default). 'all' is stricter: every variant must be owned. Any other
+// value is a specific variant kind from the set (e.g. 'normal',
+// 'reverse_holofoil').
+type VariantKind = string
+type VariantFilter = 'any' | 'all' | VariantKind
+
+// KNOWN_VARIANT_KIND_ORDER controls the chip ordering for the kinds we
+// recognise; unknown kinds fall through to the end in alphabetical order.
+const KNOWN_VARIANT_KIND_ORDER = ['normal', 'holofoil', 'reverse_holofoil', '1st_edition']
+
+// computeCardOwnership returns the ownership view of a card under the active
+// variant filter. `applicable` is false when the filter targets a specific
+// kind and the card has no variant of that kind — the card is excluded from
+// the completion denominator and rendered with a muted "not applicable"
+// indicator.
+interface CardOwnership {
+  owned: boolean
+  partial: boolean
+  applicable: boolean
+}
+
+function computeCardOwnership(card: Card, filter: VariantFilter): CardOwnership {
+  if (filter === 'any') {
+    return {
+      owned: card.variants.some(v => v.owned),
+      partial: false,
+      applicable: true,
+    }
+  }
+  if (filter === 'all') {
+    if (card.variants.length === 0) return { owned: false, partial: false, applicable: true }
+    const ownedCount = card.variants.reduce((n, v) => (v.owned ? n + 1 : n), 0)
+    return {
+      owned: ownedCount === card.variants.length,
+      partial: ownedCount > 0 && ownedCount < card.variants.length,
+      applicable: true,
+    }
+  }
+  const variant = card.variants.find(v => v.kind === filter)
+  if (!variant) return { owned: false, partial: false, applicable: false }
+  return { owned: variant.owned, partial: false, applicable: true }
+}
+
+// computeCompletion returns the owned / total counts under the active filter.
+// 'any' counts every card; specific-kind filters only count cards that have
+// that kind in their variants list (so unique variants like Reverse Holo
+// don't drag the denominator down for ultra rares).
+interface Completion {
+  owned: number
+  total: number
+}
+
+function computeCompletion(cards: Card[], filter: VariantFilter): Completion {
+  if (filter === 'any') {
+    let owned = 0
+    for (const card of cards) {
+      if (card.variants.some(v => v.owned)) owned++
+    }
+    return { owned, total: cards.length }
+  }
+  if (filter === 'all') {
+    let owned = 0
+    for (const card of cards) {
+      if (card.variants.length === 0) continue
+      if (card.variants.every(v => v.owned)) owned++
+    }
+    return { owned, total: cards.length }
+  }
+  let owned = 0
+  let total = 0
+  for (const card of cards) {
+    const variant = card.variants.find(v => v.kind === filter)
+    if (!variant) continue
+    total++
+    if (variant.owned) owned++
+  }
+  return { owned, total }
+}
+
+// computeSetValue sums the NOK price of the owned variants in scope for the
+// active filter. 'any' picks the single best-priced owned variant per card
+// so multi-variant cards are not double-counted. Kind filters sum only that
+// variant. 'all' sums every owned variant across all cards.
+function computeSetValue(cards: Card[], filter: VariantFilter): number {
+  let total = 0
+  for (const card of cards) {
+    if (filter === 'any') {
+      let best: number | null = null
+      for (const v of card.variants) {
+        if (!v.owned || v.price_nok == null) continue
+        const value = v.price_nok * Math.max(v.quantity, 1)
+        if (best == null || value > best) best = value
+      }
+      if (best != null) total += best
+    } else if (filter === 'all') {
+      for (const v of card.variants) {
+        if (!v.owned || v.price_nok == null) continue
+        total += v.price_nok * Math.max(v.quantity, 1)
+      }
+    } else {
+      const v = card.variants.find(x => x.kind === filter)
+      if (!v || !v.owned || v.price_nok == null) continue
+      total += v.price_nok * Math.max(v.quantity, 1)
+    }
+  }
+  return total
+}
+
+// availableVariantKinds returns the variant kinds present in the set, ordered
+// by KNOWN_VARIANT_KIND_ORDER then alphabetically. Empty when no card has any
+// variant (a degenerate set).
+function availableVariantKinds(cards: Card[]): string[] {
+  const seen = new Set<string>()
+  for (const card of cards) {
+    for (const variant of card.variants) {
+      if (variant.kind) seen.add(variant.kind)
+    }
+  }
+  return Array.from(seen).sort((a, b) => {
+    const ia = KNOWN_VARIANT_KIND_ORDER.indexOf(a)
+    const ib = KNOWN_VARIANT_KIND_ORDER.indexOf(b)
+    const ra = ia === -1 ? KNOWN_VARIANT_KIND_ORDER.length : ia
+    const rb = ib === -1 ? KNOWN_VARIANT_KIND_ORDER.length : ib
+    if (ra !== rb) return ra - rb
+    return a.localeCompare(b)
+  })
+}
+
+// hasMultiVariantCard returns true when at least one card in the set carries
+// more than one variant — used to decide whether the "All variants" chip
+// would be meaningfully different from "Any" (it would not, if every card has
+// a single variant).
+function hasMultiVariantCard(cards: Card[]): boolean {
+  return cards.some(c => c.variants.length > 1)
+}
+
+// availableVariantFilters builds the chip list dynamically. 'any' is always
+// present. Per-kind chips are only added when the set has more than one kind
+// or at least one card with multiple variants — if every card has a single
+// variant of a single kind, 'any' and the kind chip are equivalent and the
+// row would be redundant. 'all' only appears when there is at least one card
+// with multiple variants.
+function availableVariantFilters(cards: Card[]): VariantFilter[] {
+  const filters: VariantFilter[] = ['any']
+  const kinds = availableVariantKinds(cards)
+  const multi = hasMultiVariantCard(cards)
+  if (kinds.length > 1 || multi) {
+    for (const kind of kinds) {
+      filters.push(kind)
+    }
+  }
+  if (multi) filters.push('all')
+  return filters
+}
+
+// variantFilterLabelKey maps a filter slug to its i18n key. Aggregate filters
+// have explicit keys; per-kind filters reuse variantKind.* with a fallback
+// for kinds we don't have a localized label for.
+function variantFilterLabelKey(filter: VariantFilter): string {
+  if (filter === 'any') return 'set.variantFilter.any'
+  if (filter === 'all') return 'set.variantFilter.allVariants'
+  if (filter === 'normal') return 'set.variantFilter.normal'
+  if (filter === 'reverse_holofoil') return 'set.variantFilter.reverseHolo'
+  return `variantKind.${filter}`
+}
+
+// variantCompletionLabelKey selects which sentence to render below the owned
+// count, e.g. "12 / 195 cards (any variant)".
+function variantCompletionLabelKey(filter: VariantFilter): string {
+  if (filter === 'any') return 'set.completion.any'
+  if (filter === 'all') return 'set.completion.allVariants'
+  if (filter === 'normal') return 'set.completion.normal'
+  if (filter === 'reverse_holofoil') return 'set.completion.reverseHolo'
+  return 'set.completion.kind'
+}
+
 // parseReleaseDate accepts the "YYYY/MM/DD" or "YYYY-MM-DD" formats returned
 // by pokemontcg.io and renders a localized date. Falls back to the raw string
 // when parsing fails so we never render "Invalid Date".
@@ -81,60 +259,53 @@ function formatNok(amount: number | null | undefined): string {
 
 // defaultVariant returns the variant we display on a card tile. The backend
 // orders variants by kind, so "normal" precedes "reverse_holofoil"; we treat
-// the first variant as the canonical one.
-function defaultVariant(card: Card): Variant | undefined {
+// the first variant as the canonical one. When a per-kind filter is active
+// we prefer that variant so the tile's price reflects what the user is
+// looking at.
+function defaultVariant(card: Card, filter: VariantFilter): Variant | undefined {
+  if (filter !== 'any' && filter !== 'all') {
+    const v = card.variants.find(x => x.kind === filter)
+    if (v) return v
+  }
   return card.variants[0]
-}
-
-function cardIsOwned(card: Card): boolean {
-  return card.variants.some(v => v.owned)
-}
-
-// ownedSetValue sums the NOK price of every owned variant. Missing rates are
-// silently skipped — the caller already surfaces "rate unavailable" via the
-// X-Pokemon-Rate-Missing response header, so we don't double-warn here.
-function ownedSetValue(cards: Card[]): number {
-  let total = 0
-  for (const card of cards) {
-    for (const variant of card.variants) {
-      if (variant.owned && variant.price_nok != null) {
-        total += variant.price_nok * Math.max(variant.quantity, 1)
-      }
-    }
-  }
-  return total
-}
-
-function ownedCardCount(cards: Card[]): number {
-  let count = 0
-  for (const card of cards) {
-    if (cardIsOwned(card)) count++
-  }
-  return count
 }
 
 interface TileProps {
   card: Card
+  filter: VariantFilter
   onClick: () => void
   t: TFunction<'pokemon'>
 }
 
-function CardTile({ card, onClick, t }: TileProps) {
-  const owned = cardIsOwned(card)
-  const variant = defaultVariant(card)
+function CardTile({ card, filter, onClick, t }: TileProps) {
+  const ownership = computeCardOwnership(card, filter)
+  const { owned, partial, applicable } = ownership
+  const variant = defaultVariant(card, filter)
   const price = variant?.price_nok
+  // Border state:
+  // - `owned` → emerald ring
+  // - `partial` (under 'all' filter, some but not every variant) → amber ring
+  // - `!applicable` (per-kind filter, kind not present on this card) → muted
+  //   border, no checkmark; tile is informative but not counted
+  // - otherwise → default missing styling
+  let tileClass: string
+  if (!applicable) {
+    tileClass = 'border-gray-800 opacity-40 hover:opacity-70 hover:border-gray-700 hover:bg-gray-800/70'
+  } else if (owned) {
+    tileClass = 'border-emerald-500/70 ring-1 ring-emerald-500/40 hover:bg-gray-800/70'
+  } else if (partial) {
+    tileClass = 'border-amber-500/70 ring-1 ring-amber-500/40 hover:bg-gray-800/70'
+  } else {
+    tileClass = 'border-gray-800 opacity-60 hover:opacity-100 hover:border-gray-700 hover:bg-gray-800/70'
+  }
   return (
     <button
       type="button"
       onClick={onClick}
       data-testid={`card-tile-${card.id}`}
       aria-label={t('tile.openCard', { name: card.name, number: card.collector_no })}
-      aria-pressed={owned}
-      className={`flex flex-col gap-2 p-2 rounded-lg border bg-gray-800/40 transition-colors text-left cursor-pointer
-        ${owned
-          ? 'border-emerald-500/70 ring-1 ring-emerald-500/40 hover:bg-gray-800/70'
-          : 'border-gray-800 opacity-60 hover:opacity-100 hover:border-gray-700 hover:bg-gray-800/70'
-        }`}
+      data-ownership={!applicable ? 'na' : owned ? 'owned' : partial ? 'partial' : 'missing'}
+      className={`flex flex-col gap-2 p-2 rounded-lg border bg-gray-800/40 transition-colors text-left cursor-pointer ${tileClass}`}
     >
       <div className="relative aspect-[5/7] flex items-center justify-center bg-gray-900/40 rounded overflow-hidden">
         {card.image_small_url ? (
@@ -147,12 +318,20 @@ function CardTile({ card, onClick, t }: TileProps) {
         ) : (
           <span className="text-xs text-gray-500">{card.collector_no}</span>
         )}
-        {owned && (
+        {applicable && owned && (
           <span
             aria-hidden="true"
             className="absolute top-1 right-1 flex items-center justify-center h-5 w-5 rounded-full bg-emerald-500 text-white shadow"
           >
             <Check size={12} />
+          </span>
+        )}
+        {applicable && !owned && partial && (
+          <span
+            aria-hidden="true"
+            className="absolute top-1 right-1 flex items-center justify-center h-5 w-5 rounded-full bg-amber-500 text-white shadow"
+          >
+            <Minus size={12} />
           </span>
         )}
       </div>
@@ -161,6 +340,15 @@ function CardTile({ card, onClick, t }: TileProps) {
         <p className="text-xs text-gray-500">{t('tile.collectorNo', { number: card.collector_no })}</p>
         <p className="text-xs text-gray-300 mt-0.5">{formatNok(price)}</p>
       </div>
+      <span className="sr-only">
+        {!applicable
+          ? t('tile.status.na')
+          : owned
+            ? t('tile.status.owned')
+            : partial
+              ? t('tile.status.partial')
+              : t('tile.status.missing')}
+      </span>
     </button>
   )
 }
@@ -380,6 +568,7 @@ export default function PokemonSetPage() {
   const { id } = useParams<{ id: string }>()
   const setId = id ?? ''
   const { toasts, showToast } = useToast()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [set, setSet] = useState<PokemonSet | null>(null)
   const [cards, setCards] = useState<Card[]>([])
@@ -392,6 +581,7 @@ export default function PokemonSetPage() {
   const cardsRef = useRef<Card[]>([])
   useLayoutEffect(() => { cardsRef.current = cards })
   const filterButtonRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const variantFilterButtonRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   // selectFilter implements the WAI-ARIA radiogroup keyboard pattern: focus the
   // target radio and select it. Used by both pointer clicks and arrow/Home/End
@@ -459,15 +649,85 @@ export default function PokemonSetPage() {
     return () => { controller.abort() }
   }, [setId, attempt, t])
 
-  const ownedCount = useMemo(() => ownedCardCount(cards), [cards])
-  const setValueNok = useMemo(() => ownedSetValue(cards), [cards])
+  // Variant filter state lives in the URL (?variant=...). Default is 'any'.
+  // We read raw, then validate against the set's available filters on render
+  // so an unknown or stale value gracefully falls back to 'any' without
+  // touching the URL until the user picks a real chip.
+  const rawVariantParam = searchParams.get('variant')
+  const variantFilters = useMemo(() => availableVariantFilters(cards), [cards])
+  const variantFilter: VariantFilter =
+    rawVariantParam && variantFilters.includes(rawVariantParam) ? rawVariantParam : 'any'
+
+  const selectVariantFilter = useCallback(
+    (next: VariantFilter) => {
+      setSearchParams(
+        prev => {
+          const params = new URLSearchParams(prev)
+          if (next === 'any') {
+            params.delete('variant')
+          } else {
+            params.set('variant', next)
+          }
+          return params
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
+
+  const handleVariantFilterKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+      const move = (next: number) => {
+        const f = variantFilters[next]
+        if (!f) return
+        e.preventDefault()
+        selectVariantFilter(f)
+        variantFilterButtonRefs.current[next]?.focus()
+      }
+      switch (e.key) {
+        case 'ArrowRight':
+        case 'ArrowDown':
+          move((index + 1) % variantFilters.length)
+          break
+        case 'ArrowLeft':
+        case 'ArrowUp':
+          move((index - 1 + variantFilters.length) % variantFilters.length)
+          break
+        case 'Home':
+          move(0)
+          break
+        case 'End':
+          move(variantFilters.length - 1)
+          break
+      }
+    },
+    [variantFilters, selectVariantFilter],
+  )
+
+  const completion = useMemo(() => computeCompletion(cards, variantFilter), [cards, variantFilter])
+  const setValueNok = useMemo(() => computeSetValue(cards, variantFilter), [cards, variantFilter])
+  // We expose the variant-aware denominator on the header so the user always
+  // knows what they're looking at. For the "Total cards" tile we still show
+  // the printed set total when known, since that's a property of the set
+  // itself rather than the active filter.
   const totalCards = set?.total_cards ?? cards.length
 
   const visibleCards = useMemo(() => {
-    if (filter === 'owned') return cards.filter(cardIsOwned)
-    if (filter === 'missing') return cards.filter(c => !cardIsOwned(c))
+    if (filter === 'owned') {
+      return cards.filter(c => {
+        const o = computeCardOwnership(c, variantFilter)
+        return o.applicable && o.owned
+      })
+    }
+    if (filter === 'missing') {
+      return cards.filter(c => {
+        const o = computeCardOwnership(c, variantFilter)
+        return o.applicable && !o.owned
+      })
+    }
     return cards
-  }, [cards, filter])
+  }, [cards, filter, variantFilter])
 
   // Clamp the lightbox start index to the visible list length during render so
   // we never pass a stale out-of-range pointer to CardLightbox.
@@ -612,7 +872,16 @@ export default function PokemonSetPage() {
                 className="text-sm font-medium text-white"
                 data-testid="owned-count"
               >
-                {t('detail.ownedOf', { owned: ownedCount, total: totalCards })}
+                {t('detail.ownedOf', { owned: completion.owned, total: completion.total })}
+              </dd>
+              <dd
+                className="text-[11px] text-gray-400 mt-0.5"
+                data-testid="owned-count-label"
+              >
+                {t(variantCompletionLabelKey(variantFilter) as 'set.completion.any', {
+                  owned: completion.owned,
+                  total: completion.total,
+                })}
               </dd>
             </div>
             <div className="px-3 py-2 bg-gray-800/40 border border-gray-800 rounded">
@@ -624,6 +893,46 @@ export default function PokemonSetPage() {
               <dd className="text-sm font-medium text-white">{totalCards}</dd>
             </div>
           </dl>
+
+          {variantFilters.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                id="variant-filter-label"
+                className="text-xs text-gray-400"
+              >
+                {t('set.variantFilter.label')}
+              </span>
+              <div
+                role="radiogroup"
+                aria-labelledby="variant-filter-label"
+                className="flex flex-wrap gap-1.5"
+                data-testid="variant-filter"
+              >
+                {variantFilters.map((f, i) => {
+                  const checked = f === variantFilter
+                  return (
+                    <button
+                      key={f}
+                      ref={el => { variantFilterButtonRefs.current[i] = el }}
+                      type="button"
+                      role="radio"
+                      aria-checked={checked}
+                      tabIndex={checked ? 0 : -1}
+                      onClick={() => selectVariantFilter(f)}
+                      onKeyDown={e => handleVariantFilterKeyDown(e, i)}
+                      data-variant={f}
+                      className={`px-2.5 py-1 text-xs rounded-full border cursor-pointer transition-colors
+                        ${checked
+                          ? 'bg-emerald-600/30 border-emerald-500/70 text-white'
+                          : 'bg-gray-800/60 border-gray-700 text-gray-300 hover:text-white hover:border-gray-600'}`}
+                    >
+                      {t(variantFilterLabelKey(f), { defaultValue: f })}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           <div
             role="radiogroup"
@@ -680,6 +989,7 @@ export default function PokemonSetPage() {
                   <CardTile
                     key={card.id}
                     card={card}
+                    filter={variantFilter}
                     onClick={() => setLightboxStartIndex(i)}
                     t={t}
                   />

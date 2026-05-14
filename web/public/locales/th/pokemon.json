@@ -9,7 +9,13 @@
     "ownership": "{{owned}} / {{total}} — {{percent}}%",
     "openSet": "เปิด {{name}}",
     "openCard": "เปิด {{name}} (#{{number}})",
-    "collectorNo": "#{{number}}"
+    "collectorNo": "#{{number}}",
+    "status": {
+      "owned": "มีแล้ว",
+      "partial": "มีบางส่วน",
+      "missing": "ยังไม่มี",
+      "na": "ไม่เกี่ยวข้อง"
+    }
   },
   "errors": {
     "failedToLoad": "โหลดชุดโปเกมอนไม่สำเร็จ",
@@ -58,6 +64,22 @@
     "normal": "ปกติ",
     "holofoil": "Holo",
     "reverse_holofoil": "Reverse holo"
+  },
+  "set": {
+    "variantFilter": {
+      "label": "ชนิด:",
+      "any": "ใดก็ได้",
+      "normal": "ปกติ",
+      "reverseHolo": "Reverse holo",
+      "allVariants": "ทุกชนิด"
+    },
+    "completion": {
+      "any": "{{owned}} / {{total}} ใบ (ชนิดใดก็ได้)",
+      "normal": "{{owned}} / {{total}} ใบที่มีฉบับปกติ",
+      "reverseHolo": "{{owned}} / {{total}} ใบที่มี reverse holo",
+      "allVariants": "{{owned}} / {{total}} ใบที่มีครบทุกชนิด",
+      "kind": "{{owned}} / {{total}} ใบ (ชนิดนี้)"
+    }
   },
   "toast": {
     "marked": "เพิ่มเข้าคอลเลกชันแล้ว",

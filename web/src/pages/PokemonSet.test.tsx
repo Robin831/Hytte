@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import PokemonSet from './PokemonSet'
 
 // Lightweight i18n mock — return predictable English strings keyed off the
@@ -41,14 +41,25 @@ const TRANSLATIONS: Record<string, string> = {
   'condition.damaged': 'Damaged',
   'variantKind.normal': 'Normal',
   'variantKind.reverse_holofoil': 'Reverse holo',
+  'variantKind.holofoil': 'Holo',
   'toast.marked': 'Added to collection',
   'toast.unmarked': 'Removed from collection',
+  'set.variantFilter.label': 'Variant:',
+  'set.variantFilter.any': 'Any',
+  'set.variantFilter.normal': 'Normal',
+  'set.variantFilter.reverseHolo': 'Reverse Holo',
+  'set.variantFilter.allVariants': 'All variants',
 }
 
 function mockT(key: string, opts?: Record<string, string | number> & { defaultValue?: string }): string {
   if (key === 'detail.ownedOf') return `${opts?.owned ?? 0} / ${opts?.total ?? 0}`
   if (key === 'tile.openCard') return `Open ${opts?.name ?? ''} (#${opts?.number ?? ''})`
   if (key === 'tile.collectorNo') return `#${opts?.number ?? ''}`
+  if (key === 'set.completion.any') return `${opts?.owned ?? 0} / ${opts?.total ?? 0} cards (any variant)`
+  if (key === 'set.completion.normal') return `${opts?.owned ?? 0} / ${opts?.total ?? 0} cards with normal print owned`
+  if (key === 'set.completion.reverseHolo') return `${opts?.owned ?? 0} / ${opts?.total ?? 0} cards with reverse holo owned`
+  if (key === 'set.completion.allVariants') return `${opts?.owned ?? 0} / ${opts?.total ?? 0} cards with every variant owned`
+  if (key === 'set.completion.kind') return `${opts?.owned ?? 0} / ${opts?.total ?? 0} cards (this variant)`
   if (key.startsWith('variantKind.')) return TRANSLATIONS[key] ?? opts?.defaultValue ?? key
   return TRANSLATIONS[key] ?? key
 }
@@ -190,11 +201,37 @@ function makeFetchMock(spec: FetchSpec, overrides?: (url: string, init?: Request
   })
 }
 
-function renderPage() {
+function renderPage(initialPath = '/pokemon/sets/sv1') {
   return render(
-    <MemoryRouter initialEntries={['/pokemon/sets/sv1']}>
+    <MemoryRouter initialEntries={[initialPath]}>
       <Routes>
         <Route path="/pokemon/sets/:id" element={<PokemonSet />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+// LocationProbe exposes the current router location to assertions by writing
+// `?...` into a hidden DOM node. We use it to verify the variant filter
+// round-trips through the URL.
+function LocationProbe() {
+  const loc = useLocation()
+  return <div data-testid="location-probe" data-pathname={loc.pathname} data-search={loc.search} />
+}
+
+function renderPageWithProbe(initialPath = '/pokemon/sets/sv1') {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <Routes>
+        <Route
+          path="/pokemon/sets/:id"
+          element={
+            <>
+              <PokemonSet />
+              <LocationProbe />
+            </>
+          }
+        />
       </Routes>
     </MemoryRouter>,
   )
@@ -261,7 +298,7 @@ describe('PokemonSet – mark owned (POST)', () => {
 
     await waitFor(() => expect(screen.getByTestId('owned-count')).toHaveTextContent('1 / 1'))
     const tile = screen.getByTestId('card-tile-sv1-1')
-    expect(tile).toHaveAttribute('aria-pressed', 'true')
+    expect(tile).toHaveAttribute('data-ownership', 'owned')
   })
 })
 
@@ -293,7 +330,7 @@ describe('PokemonSet – unmark owned (DELETE)', () => {
     })
 
     await waitFor(() => expect(screen.getByTestId('owned-count')).toHaveTextContent('0 / 1'))
-    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('data-ownership', 'missing')
   })
 })
 
@@ -352,7 +389,7 @@ describe('PokemonSet – mark error reverts optimistic UI', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Mark as owned' }))
 
     await waitFor(() => expect(screen.getByTestId('owned-count')).toHaveTextContent('0 / 1'))
-    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('data-ownership', 'missing')
   })
 })
 
@@ -425,5 +462,208 @@ describe('PokemonSet – lightbox', () => {
     // Sanity: the prev/next zones from the lightbox should be present.
     expect(screen.getByTestId('lightbox-prev-zone')).toBeInTheDocument()
     expect(screen.getByTestId('lightbox-next-zone')).toBeInTheDocument()
+  })
+})
+
+describe('PokemonSet – variant filter chip', () => {
+  // Fixture: three cards.
+  //  sv1-1 Pikachu: normal owned, reverse_holofoil missing
+  //  sv1-2 Eevee:   normal missing, reverse_holofoil owned
+  //  sv1-3 Mew:     ultra rare with only normal (no reverse)
+  function mixedCards() {
+    return [
+      makeCard({
+        id: 'sv1-1',
+        name: 'Pikachu',
+        variants: [
+          makeVariant({ id: 1, kind: 'normal', owned: true, owned_id: 11, quantity: 1, price_nok: 50 }),
+          makeVariant({ id: 2, kind: 'reverse_holofoil', owned: false, price_nok: 80 }),
+        ],
+      }),
+      makeCard({
+        id: 'sv1-2',
+        name: 'Eevee',
+        variants: [
+          makeVariant({ id: 3, kind: 'normal', owned: false, price_nok: 60 }),
+          makeVariant({ id: 4, kind: 'reverse_holofoil', owned: true, owned_id: 12, quantity: 1, price_nok: 100 }),
+        ],
+      }),
+      makeCard({
+        id: 'sv1-3',
+        name: 'Mew',
+        variants: [
+          makeVariant({ id: 5, kind: 'normal', owned: false, price_nok: 500 }),
+        ],
+      }),
+    ]
+  }
+
+  it('renders chips dynamically for the kinds in the set', async () => {
+    const set = makeSet({ total_cards: 3 })
+    vi.stubGlobal('fetch', makeFetchMock({ set, cards: mixedCards() }))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    const group = screen.getByTestId('variant-filter')
+    expect(within(group).getByRole('radio', { name: 'Any' })).toBeInTheDocument()
+    expect(within(group).getByRole('radio', { name: 'Normal' })).toBeInTheDocument()
+    expect(within(group).getByRole('radio', { name: 'Reverse Holo' })).toBeInTheDocument()
+    expect(within(group).getByRole('radio', { name: 'All variants' })).toBeInTheDocument()
+  })
+
+  it('hides chips for kinds not present in the set', async () => {
+    // Only normal variants in this set — no Reverse Holo chip, and no "All
+    // variants" chip because no card has more than one variant.
+    const set = makeSet({ total_cards: 1 })
+    const cards = [makeCard({ id: 'sv1-1', variants: [makeVariant({ id: 1, kind: 'normal' })] })]
+    vi.stubGlobal('fetch', makeFetchMock({ set, cards }))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    // With a single-kind, single-variant set the chip row collapses entirely.
+    expect(screen.queryByTestId('variant-filter')).not.toBeInTheDocument()
+  })
+
+  it('Any (default) counts a card as owned when any variant is owned', async () => {
+    const set = makeSet({ total_cards: 3 })
+    vi.stubGlobal('fetch', makeFetchMock({ set, cards: mixedCards() }))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    // Pikachu owns normal, Eevee owns reverse → 2/3 owned, Mew missing.
+    expect(screen.getByTestId('owned-count')).toHaveTextContent('2 / 3')
+    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('data-ownership', 'owned')
+    expect(screen.getByTestId('card-tile-sv1-2')).toHaveAttribute('data-ownership', 'owned')
+    expect(screen.getByTestId('card-tile-sv1-3')).toHaveAttribute('data-ownership', 'missing')
+  })
+
+  it('Normal filter shows owned only for cards whose normal is owned', async () => {
+    const set = makeSet({ total_cards: 3 })
+    vi.stubGlobal('fetch', makeFetchMock({ set, cards: mixedCards() }))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    fireEvent.click(within(screen.getByTestId('variant-filter')).getByRole('radio', { name: 'Normal' }))
+
+    // Only Pikachu owns normal → 1/3.
+    expect(screen.getByTestId('owned-count')).toHaveTextContent('1 / 3')
+    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('data-ownership', 'owned')
+    expect(screen.getByTestId('card-tile-sv1-2')).toHaveAttribute('data-ownership', 'missing')
+    expect(screen.getByTestId('card-tile-sv1-3')).toHaveAttribute('data-ownership', 'missing')
+  })
+
+  it('Reverse Holo filter excludes cards without a reverse variant from the denominator', async () => {
+    const set = makeSet({ total_cards: 3 })
+    vi.stubGlobal('fetch', makeFetchMock({ set, cards: mixedCards() }))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    fireEvent.click(
+      within(screen.getByTestId('variant-filter')).getByRole('radio', { name: 'Reverse Holo' }),
+    )
+
+    // Two cards have a reverse_holofoil variant (Pikachu, Eevee). Eevee owns it.
+    expect(screen.getByTestId('owned-count')).toHaveTextContent('1 / 2')
+    // Mew has no reverse variant — tile is marked not-applicable.
+    expect(screen.getByTestId('card-tile-sv1-3')).toHaveAttribute('data-ownership', 'na')
+  })
+
+  it('All variants filter only counts cards where every variant is owned', async () => {
+    const set = makeSet({ total_cards: 3 })
+    vi.stubGlobal('fetch', makeFetchMock({ set, cards: mixedCards() }))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    fireEvent.click(
+      within(screen.getByTestId('variant-filter')).getByRole('radio', { name: 'All variants' }),
+    )
+
+    // No card has every variant owned → 0/3.
+    expect(screen.getByTestId('owned-count')).toHaveTextContent('0 / 3')
+    // Partial ownership indicator on cards with some variants owned.
+    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('data-ownership', 'partial')
+    expect(screen.getByTestId('card-tile-sv1-2')).toHaveAttribute('data-ownership', 'partial')
+    // Mew has only one variant and isn't owned → fully missing.
+    expect(screen.getByTestId('card-tile-sv1-3')).toHaveAttribute('data-ownership', 'missing')
+  })
+
+  it('initializes from URL ?variant=reverse_holofoil', async () => {
+    const set = makeSet({ total_cards: 3 })
+    vi.stubGlobal('fetch', makeFetchMock({ set, cards: mixedCards() }))
+
+    renderPageWithProbe('/pokemon/sets/sv1?variant=reverse_holofoil')
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    expect(
+      within(screen.getByTestId('variant-filter')).getByRole('radio', { name: 'Reverse Holo' }),
+    ).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByTestId('owned-count')).toHaveTextContent('1 / 2')
+  })
+
+  it('writes the active filter back to the URL', async () => {
+    const set = makeSet({ total_cards: 3 })
+    vi.stubGlobal('fetch', makeFetchMock({ set, cards: mixedCards() }))
+
+    renderPageWithProbe()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    // Default 'any' should not appear in the URL.
+    expect(screen.getByTestId('location-probe')).toHaveAttribute('data-search', '')
+
+    fireEvent.click(
+      within(screen.getByTestId('variant-filter')).getByRole('radio', { name: 'Reverse Holo' }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location-probe')).toHaveAttribute(
+        'data-search',
+        '?variant=reverse_holofoil',
+      )
+    })
+
+    // Switching back to Any clears the param.
+    fireEvent.click(within(screen.getByTestId('variant-filter')).getByRole('radio', { name: 'Any' }))
+    await waitFor(() => {
+      expect(screen.getByTestId('location-probe')).toHaveAttribute('data-search', '')
+    })
+  })
+
+  it('falls back to Any when the URL contains an unknown variant', async () => {
+    const set = makeSet({ total_cards: 3 })
+    vi.stubGlobal('fetch', makeFetchMock({ set, cards: mixedCards() }))
+
+    renderPage('/pokemon/sets/sv1?variant=holofoil')
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    // holofoil isn't in this set's kinds → no chip rendered, Any stays checked.
+    expect(
+      within(screen.getByTestId('variant-filter')).getByRole('radio', { name: 'Any' }),
+    ).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('Set value updates to the active variants only', async () => {
+    const set = makeSet({ total_cards: 3 })
+    vi.stubGlobal('fetch', makeFetchMock({ set, cards: mixedCards() }))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    // Default 'any': owned variants are Pikachu-normal (50) and Eevee-reverse
+    // (100) → 150.
+    expect(screen.getByTestId('set-value').textContent ?? '').toMatch(/150/)
+
+    fireEvent.click(within(screen.getByTestId('variant-filter')).getByRole('radio', { name: 'Normal' }))
+    // Only Pikachu-normal counted under the Normal filter → 50.
+    await waitFor(() => {
+      const text = screen.getByTestId('set-value').textContent ?? ''
+      expect(text).toMatch(/50/)
+      expect(text).not.toMatch(/150/)
+    })
   })
 })

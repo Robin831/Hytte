@@ -9,7 +9,13 @@
     "ownership": "{{owned}} / {{total}} — {{percent}} %",
     "openSet": "Åpne {{name}}",
     "openCard": "Åpne {{name}} (#{{number}})",
-    "collectorNo": "#{{number}}"
+    "collectorNo": "#{{number}}",
+    "status": {
+      "owned": "eid",
+      "partial": "delvis eid",
+      "missing": "ikke eid",
+      "na": "ikke aktuelt"
+    }
   },
   "errors": {
     "failedToLoad": "Kunne ikke laste Pokémon-sett",
@@ -58,6 +64,22 @@
     "normal": "Normal",
     "holofoil": "Holo",
     "reverse_holofoil": "Reverse holo"
+  },
+  "set": {
+    "variantFilter": {
+      "label": "Variant:",
+      "any": "Alle",
+      "normal": "Normal",
+      "reverseHolo": "Reverse holo",
+      "allVariants": "Alle varianter"
+    },
+    "completion": {
+      "any": "{{owned}} / {{total}} kort (en hvilken som helst variant)",
+      "normal": "{{owned}} / {{total}} kort med normal utgave eid",
+      "reverseHolo": "{{owned}} / {{total}} kort med reverse holo eid",
+      "allVariants": "{{owned}} / {{total}} kort med alle varianter eid",
+      "kind": "{{owned}} / {{total}} kort (denne varianten)"
+    }
   },
   "toast": {
     "marked": "Lagt til i samlingen",

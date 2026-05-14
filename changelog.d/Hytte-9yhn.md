@@ -1,0 +1,2 @@
+category: Added
+- **Pokémon set view: variant-aware ownership filter** - Set-detail pages now expose a chip row (Any / Normal / Reverse Holo / All variants / other kinds present in the set) that controls how each tile's ownership indicator and the header completion stat are computed. Per-kind chips render dynamically based on the variants the set actually has; cards without the active variant kind are excluded from the denominator and shown as not-applicable. The active filter round-trips through the URL as `?variant=...`. (Hytte-9yhn)
