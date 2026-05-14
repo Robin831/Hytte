@@ -6,6 +6,7 @@ import type infraEn from '../public/locales/en/infra.json'
 import type kioskEn from '../public/locales/en/kiosk.json'
 import type lactateEn from '../public/locales/en/lactate.json'
 import type notesEn from '../public/locales/en/notes.json'
+import type tasksEn from '../public/locales/en/tasks.json'
 import type settingsEn from '../public/locales/en/settings.json'
 import type trainingEn from '../public/locales/en/training.json'
 import type transitEn from '../public/locales/en/transit.json'
@@ -37,6 +38,7 @@ declare module 'i18next' {
       kiosk: typeof kioskEn
       lactate: typeof lactateEn
       notes: typeof notesEn
+      tasks: typeof tasksEn
       settings: typeof settingsEn
       training: typeof trainingEn
       transit: typeof transitEn

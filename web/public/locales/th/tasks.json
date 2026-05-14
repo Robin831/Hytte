@@ -1,0 +1,54 @@
+{
+  "pageTitle": "งาน",
+  "inputPlaceholder": "ต้องทำอะไรบ้าง?",
+  "addTask": "เพิ่มงาน",
+  "tags": {
+    "label": "แท็ก",
+    "work": "งาน",
+    "personal": "ส่วนตัว",
+    "addCustom": "เพิ่มแท็ก",
+    "customPlaceholder": "เพิ่มแท็ก…",
+    "removeTag": "ลบแท็ก {{tag}}"
+  },
+  "filter": {
+    "label": "กรองตามแท็ก",
+    "clearLabel": "ล้างตัวกรองแท็ก"
+  },
+  "showArchived": "แสดงที่เก็บถาวร",
+  "archivedLabel": "เก็บถาวรแล้ว",
+  "archive": "เก็บถาวร",
+  "unarchive": "ยกเลิกเก็บถาวร",
+  "delete": "ลบ",
+  "expand": "ขยายงาน",
+  "collapse": "ย่องาน",
+  "body": {
+    "label": "รายละเอียด",
+    "placeholder": "เพิ่มรายละเอียด…"
+  },
+  "notes": {
+    "heading": "บันทึก",
+    "badge_one": "+{{count}} บันทึก",
+    "badge_other": "+{{count}} บันทึก",
+    "composerPlaceholder": "เพิ่มบันทึก…",
+    "add": "เพิ่มบันทึก",
+    "delete": "ลบบันทึก",
+    "empty": "ยังไม่มีบันทึก"
+  },
+  "empty": {
+    "active": "ยังไม่มีงาน เพิ่มงานด้านบนเพื่อเริ่มต้น",
+    "archived": "ยังไม่มีงานที่เก็บถาวร",
+    "filtered": "ไม่มีงานที่ตรงกับแท็กที่เลือก"
+  },
+  "time": {
+    "created": "สร้างเมื่อ {{relative}}",
+    "updated": "อัปเดตเมื่อ {{relative}}",
+    "justNow": "เมื่อสักครู่"
+  },
+  "errors": {
+    "failedToLoad": "ไม่สามารถโหลดงาน",
+    "failedToCreate": "ไม่สามารถสร้างงาน",
+    "failedToUpdate": "ไม่สามารถอัปเดตงาน",
+    "failedToAddNote": "ไม่สามารถเพิ่มบันทึก",
+    "failedToLoadNotes": "ไม่สามารถโหลดบันทึก"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "pageTitle": "Oppgaver",
+  "inputPlaceholder": "Hva må gjøres?",
+  "addTask": "Legg til oppgave",
+  "tags": {
+    "label": "Etiketter",
+    "work": "jobb",
+    "personal": "personlig",
+    "addCustom": "Legg til etikett",
+    "customPlaceholder": "Legg til en etikett…",
+    "removeTag": "Fjern etikett {{tag}}"
+  },
+  "filter": {
+    "label": "Filtrer etter etikett",
+    "clearLabel": "Fjern etikettfilter"
+  },
+  "showArchived": "Vis arkiverte",
+  "archivedLabel": "Arkivert",
+  "archive": "Arkiver",
+  "unarchive": "Gjenopprett",
+  "delete": "Slett",
+  "expand": "Utvid oppgave",
+  "collapse": "Lukk oppgave",
+  "body": {
+    "label": "Detaljer",
+    "placeholder": "Legg til flere detaljer…"
+  },
+  "notes": {
+    "heading": "Notater",
+    "badge_one": "+{{count}} notat",
+    "badge_other": "+{{count}} notater",
+    "composerPlaceholder": "Legg til et notat…",
+    "add": "Legg til notat",
+    "delete": "Slett notat",
+    "empty": "Ingen notater enda."
+  },
+  "empty": {
+    "active": "Ingen oppgaver enda. Legg til en over for å komme i gang.",
+    "archived": "Ingenting arkivert enda.",
+    "filtered": "Ingen oppgaver matcher den valgte etiketten."
+  },
+  "time": {
+    "created": "Opprettet {{relative}}",
+    "updated": "Oppdatert {{relative}}",
+    "justNow": "akkurat nå"
+  },
+  "errors": {
+    "failedToLoad": "Kunne ikke laste oppgaver",
+    "failedToCreate": "Kunne ikke opprette oppgave",
+    "failedToUpdate": "Kunne ikke oppdatere oppgave",
+    "failedToAddNote": "Kunne ikke legge til notat",
+    "failedToLoadNotes": "Kunne ikke laste notater"
+  }
+}

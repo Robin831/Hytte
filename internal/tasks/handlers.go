@@ -175,6 +175,31 @@ func DeleteHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// ListNotesHandler returns every note attached to a task in chronological order.
+func ListNotesHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		taskID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid task ID"})
+			return
+		}
+
+		notes, err := ListNotes(db, taskID, user.ID)
+		if err != nil {
+			if errors.Is(err, ErrTaskNotFound) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "task not found"})
+				return
+			}
+			log.Printf("tasks: list notes failed: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list notes"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"notes": notes})
+	}
+}
+
 // AddNoteHandler appends a note to a task.
 func AddNoteHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

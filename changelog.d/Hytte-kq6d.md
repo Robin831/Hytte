@@ -1,0 +1,2 @@
+category: Added
+- **Tasks page (frontend)** - Added a new Tasks page where users with the `tasks` feature flag can capture quick to-dos with built-in `work`/`personal` chips or free-text tags, expand a card to edit the body and attach chronological notes, archive/unarchive tasks, and filter the list by tag. Routed at `/tasks` with a `ListTodo` sidebar entry, full i18n in en/nb/th, and a small `GET /api/tasks/{id}/notes` backend endpoint to power the notes list. (Hytte-kq6d)

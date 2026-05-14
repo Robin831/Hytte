@@ -406,6 +406,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/tasks", tasks.CreateHandler(db))
 				r.Patch("/tasks/{id}", tasks.UpdateHandler(db))
 				r.Delete("/tasks/{id}", tasks.DeleteHandler(db))
+				r.Get("/tasks/{id}/notes", tasks.ListNotesHandler(db))
 				r.Post("/tasks/{id}/notes", tasks.AddNoteHandler(db))
 				r.Delete("/tasks/{id}/notes/{note_id}", tasks.DeleteNoteHandler(db))
 			})
