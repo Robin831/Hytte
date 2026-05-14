@@ -56,10 +56,32 @@
   },
   "variantKind": {
     "normal": "ปกติ",
+    "holofoil": "Holo",
     "reverse_holofoil": "Reverse holo"
   },
   "toast": {
     "marked": "เพิ่มเข้าคอลเลกชันแล้ว",
     "unmarked": "ลบออกจากคอลเลกชันแล้ว"
+  },
+  "addCard": {
+    "openLabel": "เพิ่มการ์ดเข้าคอลเลกชัน",
+    "dialogLabel": "เพิ่มการ์ด",
+    "inputLabel": "ค้นหาด้วยชื่อหรือหมายเลขนักสะสม",
+    "placeholder": "ค้นหาด้วยชื่อหรือหมายเลข — เช่น \"pika\" หรือ \"025/195\"",
+    "close": "ปิด",
+    "searching": "กำลังค้นหา…",
+    "noResults": "ไม่พบการ์ดที่ตรงกับคำค้นหา",
+    "results": "ผลลัพธ์การ์ด",
+    "cancel": "ยกเลิก",
+    "variantPickerLabel": "เลือกชนิดสำหรับ {{name}}",
+    "variantPickerPrompt": "เลือกชนิดสำหรับ {{name}}",
+    "toast": {
+      "added": "เพิ่ม {{name}} แล้ว",
+      "alreadyOwned": "{{name}} มีอยู่ในคอลเลกชันของคุณแล้ว"
+    },
+    "errors": {
+      "searchFailed": "ค้นหาการ์ดไม่สำเร็จ",
+      "addFailed": "เพิ่มการ์ดไม่สำเร็จ"
+    }
   }
 }

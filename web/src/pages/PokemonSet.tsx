@@ -5,6 +5,7 @@ import type { TFunction } from 'i18next'
 import { ArrowLeft, Check, X } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
 import ToastList from '../components/ToastList'
+import AddCardPanel from '../components/pokemon/AddCardPanel'
 import { useToast } from '../hooks/useToast'
 import { formatDate, formatNumber } from '../utils/formatDate'
 
@@ -718,6 +719,7 @@ export default function PokemonSetPage() {
         )}
       </div>
       <ToastList toasts={toasts} />
+      <AddCardPanel onAdded={load} />
     </div>
   )
 }
