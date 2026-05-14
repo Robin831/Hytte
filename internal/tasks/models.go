@@ -47,10 +47,11 @@ var ErrTaskNotFound = errors.New("task not found")
 var ErrNoteNotFound = errors.New("task note not found")
 
 // formatTimestamp renders a time.Time for storage in a TIMESTAMP column.
-// The codebase historically stores times as RFC3339 strings; this keeps the
-// roundtrip predictable across the modernc.org/sqlite driver and tests.
+// RFC3339 (second precision, always UTC "Z" suffix) produces a fixed-width
+// string so ORDER BY updated_at sorts correctly in SQLite without mixed
+// fractional-second widths breaking lexicographic order.
 func formatTimestamp(t time.Time) string {
-	return t.UTC().Format(time.RFC3339Nano)
+	return t.UTC().Format(time.RFC3339)
 }
 
 // parseTimestamp parses a database-stored timestamp back to time.Time. It is
@@ -471,11 +472,11 @@ func ensureTaskOwned(db *sql.DB, taskID, userID int64) error {
 	return nil
 }
 
-// setTaskTags replaces the tag set for a task. New labels are upserted into
-// task_tags (reusing existing IDs when a plaintext label already exists for
-// the user); removed labels are unlinked. The encryption nonce is random, so
-// uniqueness is enforced in Go by decrypting and comparing plaintexts rather
-// than relying on the UNIQUE(user_id, label_enc) constraint.
+// setTaskTags replaces the tag set for a task. Each label is upserted via
+// INSERT OR IGNORE keyed on the deterministic (user_id, label_hmac) unique
+// index, so concurrent creates for the same label collide on the index rather
+// than inserting duplicate encrypted rows (which would differ in ciphertext due
+// to the random AES-GCM nonce).
 func setTaskTags(tx *sql.Tx, userID, taskID int64, tags []string) error {
 	if _, err := tx.Exec(`DELETE FROM task_tag_assignments WHERE task_id = ?`, taskID); err != nil {
 		return fmt.Errorf("clear tag assignments: %w", err)
@@ -485,65 +486,46 @@ func setTaskTags(tx *sql.Tx, userID, taskID int64, tags []string) error {
 		return nil
 	}
 
-	// Build a map of plaintext label -> tag ID for this user's existing tags.
-	existing, err := loadUserTags(tx, userID)
-	if err != nil {
-		return err
-	}
-
 	for _, raw := range tags {
 		label := strings.TrimSpace(raw)
 		if label == "" {
 			continue
 		}
-		tagID, ok := existing[label]
-		if !ok {
-			enc, err := encryption.EncryptField(label)
-			if err != nil {
-				return fmt.Errorf("encrypt tag label: %w", err)
-			}
-			res, err := tx.Exec(`INSERT INTO task_tags (user_id, label_enc) VALUES (?, ?)`, userID, enc)
-			if err != nil {
-				return fmt.Errorf("insert tag: %w", err)
-			}
-			tagID, err = res.LastInsertId()
-			if err != nil {
-				return fmt.Errorf("last insert id: %w", err)
-			}
-			existing[label] = tagID
+
+		hmacVal, err := encryption.HMACField(userID, label)
+		if err != nil {
+			return fmt.Errorf("hmac tag label: %w", err)
 		}
-		if _, err := tx.Exec(`INSERT OR IGNORE INTO task_tag_assignments (task_id, tag_id) VALUES (?, ?)`, taskID, tagID); err != nil {
+		enc, err := encryption.EncryptField(label)
+		if err != nil {
+			return fmt.Errorf("encrypt tag label: %w", err)
+		}
+
+		// INSERT OR IGNORE: if a concurrent request already created this tag the
+		// unique (user_id, label_hmac) index rejects the duplicate silently.
+		if _, err := tx.Exec(
+			`INSERT OR IGNORE INTO task_tags (user_id, label_enc, label_hmac) VALUES (?, ?, ?)`,
+			userID, enc, hmacVal,
+		); err != nil {
+			return fmt.Errorf("upsert tag: %w", err)
+		}
+
+		var tagID int64
+		if err := tx.QueryRow(
+			`SELECT id FROM task_tags WHERE user_id = ? AND label_hmac = ?`,
+			userID, hmacVal,
+		).Scan(&tagID); err != nil {
+			return fmt.Errorf("lookup tag: %w", err)
+		}
+
+		if _, err := tx.Exec(
+			`INSERT OR IGNORE INTO task_tag_assignments (task_id, tag_id) VALUES (?, ?)`,
+			taskID, tagID,
+		); err != nil {
 			return fmt.Errorf("assign tag: %w", err)
 		}
 	}
 	return nil
-}
-
-// loadUserTags returns a plaintext label -> tag ID map for the given user.
-func loadUserTags(tx *sql.Tx, userID int64) (map[string]int64, error) {
-	rows, err := tx.Query(`SELECT id, label_enc FROM task_tags WHERE user_id = ?`, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	out := make(map[string]int64)
-	for rows.Next() {
-		var (
-			id  int64
-			enc string
-		)
-		if err := rows.Scan(&id, &enc); err != nil {
-			return nil, err
-		}
-		label, err := encryption.DecryptField(enc)
-		if err != nil {
-			return nil, fmt.Errorf("decrypt tag label: %w", err)
-		}
-		// Last one wins if duplicates leak through (e.g. legacy plaintext).
-		out[label] = id
-	}
-	return out, rows.Err()
 }
 
 // listTagsForTask returns the decrypted, sorted tag labels for a task.

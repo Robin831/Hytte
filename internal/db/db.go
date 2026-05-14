@@ -1607,8 +1607,9 @@ func createSchema(db *sql.DB) error {
 		id         INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		label_enc  TEXT NOT NULL,
-		UNIQUE(user_id, label_enc)
+		label_hmac TEXT NOT NULL DEFAULT ''
 	);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_task_tags_user_label_hmac ON task_tags(user_id, label_hmac) WHERE label_hmac != '';
 
 	CREATE TABLE IF NOT EXISTS task_tag_assignments (
 		task_id  INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
@@ -2320,6 +2321,22 @@ func createSchema(db *sql.DB) error {
 		if _, err := db.Exec(`ALTER TABLE math_sessions ADD COLUMN best_streak INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return fmt.Errorf("add math_sessions best_streak column: %w", err)
 		}
+	}
+
+	// Add label_hmac to task_tags (Hytte-u49p): deterministic per-user lookup key
+	// so concurrent tag creates hit the unique index rather than inserting duplicate
+	// encrypted rows (random nonces make label_enc non-deterministic).
+	var hasTaskTagLabelHmac int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('task_tags') WHERE name = 'label_hmac'`).Scan(&hasTaskTagLabelHmac); err != nil {
+		return fmt.Errorf("check task_tags label_hmac column: %w", err)
+	}
+	if hasTaskTagLabelHmac == 0 {
+		if _, err := db.Exec(`ALTER TABLE task_tags ADD COLUMN label_hmac TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add task_tags label_hmac column: %w", err)
+		}
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_task_tags_user_label_hmac ON task_tags(user_id, label_hmac) WHERE label_hmac != ''`); err != nil {
+		return fmt.Errorf("create task_tags label_hmac index: %w", err)
 	}
 
 	return nil
