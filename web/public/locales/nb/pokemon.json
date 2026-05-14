@@ -98,13 +98,22 @@
     "title": "Mest verdifulle kort",
     "subtitle": "Hva kan ungen finne i en pakke …",
     "entryButton": "Mest verdifulle",
+    "entryLabel": "Vis de mest verdifulle kortene",
+    "back": "Tilbake til Pokémon-sett",
+    "empty": "Ingen verdifulle kort matcher dette filteret.",
+    "filterLabel": "Filtrer mest verdifulle kort",
     "filter": {
       "all": "Alle",
       "owned": "Eide",
       "missing": "Mangler"
     },
+    "ownership": {
+      "owned": "eid",
+      "missing": "ikke eid"
+    },
     "priceLabel": "{{nok}} kr",
-    "priceLabelDetailed": "{{nok}} kr (€{{eur}})"
+    "priceLabelDetailed": "{{nok}} kr (€{{eur}})",
+    "tileLabel": "Åpne {{name}} fra {{set}} (#{{number}}), plass {{rank}}, {{variant}}, {{price}}, {{ownership}}"
   },
   "scanner": {
     "dialogLabel": "Skann et Pokémon-kort",

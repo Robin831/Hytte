@@ -218,6 +218,7 @@ export default function PokemonSets() {
           <h1 className="text-2xl font-semibold">{t('pageTitle')}</h1>
           <Link
             to="/pokemon/top"
+            aria-label={t('top.entryLabel')}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-200 rounded transition-colors"
             data-testid="pokemon-top-link"
           >

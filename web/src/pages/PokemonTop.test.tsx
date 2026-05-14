@@ -7,23 +7,30 @@ import PokemonTop from './PokemonTop'
 const TRANSLATIONS: Record<string, string> = {
   'retry': 'Retry',
   'errors.failedToLoad': 'Failed to load Pokémon cards',
-  'detail.back': 'Back to sets',
-  'detail.empty': 'No cards match this filter.',
-  'detail.filter': 'Filter cards',
   'top.title': 'Top valued cards',
   'top.subtitle': 'What the kid could find in a pack…',
   'top.entryButton': 'Top valued',
+  'top.entryLabel': 'View the top valued cards',
+  'top.back': 'Back to Pokémon sets',
+  'top.empty': 'No top valued cards match this filter.',
+  'top.filterLabel': 'Filter top valued cards',
   'top.filter.all': 'All',
   'top.filter.owned': 'Owned',
   'top.filter.missing': 'Missing',
+  'top.ownership.owned': 'owned',
+  'top.ownership.missing': 'not owned',
   'variantKind.normal': 'Normal',
   'variantKind.holofoil': 'Holo',
   'variantKind.reverse_holofoil': 'Reverse holo',
 }
 
 function mockT(key: string, opts?: Record<string, string | number> & { defaultValue?: string }): string {
-  if (key === 'tile.openCard') return `Open ${opts?.name ?? ''} (#${opts?.number ?? ''})`
   if (key === 'tile.collectorNo') return `#${opts?.number ?? ''}`
+  if (key === 'top.priceLabel') return `${opts?.nok ?? ''} kr`
+  if (key === 'top.priceLabelDetailed') return `${opts?.nok ?? ''} kr (€${opts?.eur ?? ''})`
+  if (key === 'top.tileLabel') {
+    return `Open ${opts?.name ?? ''} from ${opts?.set ?? ''} (#${opts?.number ?? ''}), rank ${opts?.rank ?? ''}, ${opts?.variant ?? ''}, ${opts?.price ?? ''}, ${opts?.ownership ?? ''}`
+  }
   if (key.startsWith('variantKind.')) return TRANSLATIONS[key] ?? opts?.defaultValue ?? key
   return TRANSLATIONS[key] ?? key
 }
@@ -209,7 +216,63 @@ describe('PokemonTop – empty state', () => {
     renderPage()
 
     await waitFor(() => {
-      expect(screen.getByText('No cards match this filter.')).toBeInTheDocument()
+      expect(screen.getByText('No top valued cards match this filter.')).toBeInTheDocument()
     })
+  })
+})
+
+describe('PokemonTop – accessible tile label', () => {
+  it('includes rank, set, variant, price, and ownership in the aria-label', async () => {
+    const cards: TopCard[] = [
+      makeCard({
+        id: 'sv1-25',
+        set_id: 'sv1',
+        set_name: 'Scarlet & Violet Base',
+        name: 'Pikachu',
+        collector_no: '025',
+        top_variant_kind: 'reverse_holofoil',
+        owned_by_me: false,
+        variants: [
+          { id: 2, kind: 'normal', price_eur: 10, price_nok: 115 },
+          { id: 3, kind: 'reverse_holofoil', price_eur: 14.5, price_nok: 166 },
+        ],
+      }),
+      makeCard({
+        id: 'swsh1-1',
+        set_id: 'swsh1',
+        set_name: 'Sword & Shield Base',
+        name: 'Celebi V',
+        collector_no: '001',
+        top_variant_kind: 'normal',
+        owned_by_me: true,
+        variants: [{ id: 1, kind: 'normal', price_eur: 25, price_nok: 287 }],
+      }),
+    ]
+    vi.stubGlobal('fetch', makeFetchMock(cards))
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Pikachu')).toBeInTheDocument()
+    })
+
+    const pikachuTile = screen.getByTestId('top-card-tile-sv1-25')
+    const pikachuLabel = pikachuTile.getAttribute('aria-label') ?? ''
+    expect(pikachuLabel).toMatch(/Pikachu/)
+    expect(pikachuLabel).toMatch(/Scarlet & Violet Base/)
+    expect(pikachuLabel).toMatch(/#025/)
+    expect(pikachuLabel).toMatch(/rank 1/)
+    expect(pikachuLabel).toMatch(/Reverse holo/)
+    expect(pikachuLabel).toMatch(/166 kr/)
+    expect(pikachuLabel).toMatch(/not owned/)
+    // Should not advertise toggle semantics — this is a navigation button.
+    expect(pikachuTile.hasAttribute('aria-pressed')).toBe(false)
+
+    const celebiTile = screen.getByTestId('top-card-tile-swsh1-1')
+    const celebiLabel = celebiTile.getAttribute('aria-label') ?? ''
+    expect(celebiLabel).toMatch(/rank 2/)
+    // Owned cards must report "owned" (not "not owned") as the ownership suffix.
+    expect(celebiLabel).toMatch(/, owned$/)
+    expect(celebiTile.hasAttribute('aria-pressed')).toBe(false)
   })
 })

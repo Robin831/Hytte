@@ -74,6 +74,40 @@ interface TileProps {
   t: TFunction<'pokemon'>
 }
 
+// buildTileLabel composes a rich accessible name from the rank, card metadata,
+// top variant, price, and ownership state so screen-reader users get the same
+// information as sighted users (rank badge, checkmark, prominent price).
+function buildTileLabel(card: TopCard, rank: number, t: TFunction<'pokemon'>): string {
+  const top = topVariant(card)
+  const variantKey = card.top_variant_kind || top?.kind || ''
+  const variantLabel = variantKey
+    ? t(`variantKind.${variantKey}`, { defaultValue: variantKey })
+    : ''
+  const priceNok = top?.price_nok ?? null
+  const priceEur = top?.price_eur ?? null
+  let priceText = ''
+  if (priceNok != null && priceEur != null) {
+    priceText = t('top.priceLabelDetailed', {
+      nok: Math.round(priceNok),
+      eur: Math.round(priceEur),
+    })
+  } else if (priceNok != null) {
+    priceText = t('top.priceLabel', { nok: Math.round(priceNok) })
+  } else if (priceEur != null) {
+    priceText = `€${Math.round(priceEur)}`
+  }
+  const ownership = t(card.owned_by_me ? 'top.ownership.owned' : 'top.ownership.missing')
+  return t('top.tileLabel', {
+    rank,
+    name: card.name,
+    set: card.set_name,
+    number: card.collector_no,
+    variant: variantLabel,
+    price: priceText,
+    ownership,
+  })
+}
+
 function TopCardTile({ card, rank, onClick, t }: TileProps) {
   const top = topVariant(card)
   const priceNok = top?.price_nok ?? null
@@ -86,8 +120,7 @@ function TopCardTile({ card, rank, onClick, t }: TileProps) {
       type="button"
       onClick={onClick}
       data-testid={`top-card-tile-${card.id}`}
-      aria-label={t('tile.openCard', { name: card.name, number: card.collector_no })}
-      aria-pressed={card.owned_by_me}
+      aria-label={buildTileLabel(card, rank, t)}
       className={`flex flex-col gap-2 p-2 rounded-lg border bg-gray-800/40 transition-colors text-left cursor-pointer
         ${card.owned_by_me
           ? 'border-emerald-500/70 ring-1 ring-emerald-500/40 hover:bg-gray-800/70'
@@ -241,8 +274,8 @@ export default function PokemonTopPage() {
             to="/pokemon"
             className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors"
           >
-            <ArrowLeft size={16} />
-            {t('detail.back')}
+            <ArrowLeft size={16} aria-hidden="true" />
+            {t('top.back')}
           </Link>
           <div className="flex items-center gap-3">
             <Trophy size={28} className="text-amber-400 shrink-0" aria-hidden="true" />
@@ -254,7 +287,7 @@ export default function PokemonTopPage() {
 
           <div
             role="radiogroup"
-            aria-label={t('detail.filter')}
+            aria-label={t('top.filterLabel')}
             className="inline-flex p-0.5 rounded-md bg-gray-800/60 border border-gray-800"
           >
             {FILTERS.map((f, i) => {
@@ -298,7 +331,7 @@ export default function PokemonTopPage() {
         {!loading && !error && (
           <>
             {visibleCards.length === 0 ? (
-              <p className="text-sm text-gray-400">{t('detail.empty')}</p>
+              <p className="text-sm text-gray-400">{t('top.empty')}</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                 {visibleCards.map((card, i) => (

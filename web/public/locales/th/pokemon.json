@@ -98,13 +98,22 @@
     "title": "การ์ดมูลค่าสูงสุด",
     "subtitle": "เด็ก ๆ อาจเจออะไรในซอง…",
     "entryButton": "มูลค่าสูงสุด",
+    "entryLabel": "ดูการ์ดมูลค่าสูงสุด",
+    "back": "กลับไปยังชุดโปเกมอน",
+    "empty": "ไม่พบการ์ดมูลค่าสูงที่ตรงกับตัวกรองนี้",
+    "filterLabel": "กรองการ์ดมูลค่าสูงสุด",
     "filter": {
       "all": "ทั้งหมด",
       "owned": "ที่มี",
       "missing": "ที่ขาด"
     },
+    "ownership": {
+      "owned": "มีในคอลเลกชัน",
+      "missing": "ยังไม่มี"
+    },
     "priceLabel": "{{nok}} kr",
-    "priceLabelDetailed": "{{nok}} kr (€{{eur}})"
+    "priceLabelDetailed": "{{nok}} kr (€{{eur}})",
+    "tileLabel": "เปิด {{name}} จาก {{set}} (#{{number}}), อันดับ {{rank}}, {{variant}}, {{price}}, {{ownership}}"
   },
   "scanner": {
     "dialogLabel": "สแกนการ์ดโปเกมอน",
