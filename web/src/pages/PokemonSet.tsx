@@ -408,6 +408,43 @@ export default function PokemonSetPage() {
   const [attempt, setAttempt] = useState(0)
   const cardsRef = useRef<Card[]>([])
   cardsRef.current = cards
+  const filterButtonRefs = useRef<Array<HTMLButtonElement | null>>([])
+
+  // selectFilter implements the WAI-ARIA radiogroup keyboard pattern: focus the
+  // target radio and select it. Used by both pointer clicks and arrow/Home/End
+  // keys so the visible state and DOM focus stay in lockstep.
+  const selectFilter = useCallback((index: number) => {
+    const next = FILTERS[index]
+    if (!next) return
+    setFilter(next)
+    filterButtonRefs.current[index]?.focus()
+  }, [])
+
+  const handleFilterKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
+      switch (e.key) {
+        case 'ArrowRight':
+        case 'ArrowDown':
+          e.preventDefault()
+          selectFilter((index + 1) % FILTERS.length)
+          break
+        case 'ArrowLeft':
+        case 'ArrowUp':
+          e.preventDefault()
+          selectFilter((index - 1 + FILTERS.length) % FILTERS.length)
+          break
+        case 'Home':
+          e.preventDefault()
+          selectFilter(0)
+          break
+        case 'End':
+          e.preventDefault()
+          selectFilter(FILTERS.length - 1)
+          break
+      }
+    },
+    [selectFilter],
+  )
 
   const load = useCallback(() => {
     setLoading(true)
@@ -425,30 +462,10 @@ export default function PokemonSetPage() {
           signal: controller.signal,
         })
         if (!cardsRes.ok) throw new Error(t('errors.failedToLoad'))
-        const cardsData: { cards?: Card[] } = await cardsRes.json()
+        const data: { set?: PokemonSet | null; cards?: Card[] } = await cardsRes.json()
 
-        const limit = 50
-        let offset = 0
-        let found: PokemonSet | null = null
-        while (true) {
-          const setsRes = await fetch(`/api/pokemon/sets?limit=${limit}&offset=${offset}`, {
-            credentials: 'include',
-            signal: controller.signal,
-          })
-          if (!setsRes.ok) throw new Error(t('errors.failedToLoad'))
-          const setsData: { sets?: PokemonSet[] } = await setsRes.json()
-          const page = setsData.sets ?? []
-          const match = page.find(s => s.id === setId)
-          if (match) {
-            found = match
-            break
-          }
-          if (page.length < limit) break
-          offset += limit
-        }
-
-        setCards(cardsData.cards ?? [])
-        setSet(found)
+        setCards(data.cards ?? [])
+        setSet(data.set ?? null)
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return
         setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
@@ -628,15 +645,21 @@ export default function PokemonSetPage() {
             aria-label={t('detail.filter')}
             className="inline-flex p-0.5 rounded-md bg-gray-800/60 border border-gray-800"
           >
-            {FILTERS.map(f => {
+            {FILTERS.map((f, i) => {
               const checked = f === filter
               return (
                 <button
                   key={f}
+                  ref={el => { filterButtonRefs.current[i] = el }}
                   type="button"
                   role="radio"
                   aria-checked={checked}
-                  onClick={() => setFilter(f)}
+                  // Only the checked radio is in the tab sequence so Tab moves
+                  // focus into and out of the group as a single stop; arrow
+                  // keys then move between radios per the WAI-ARIA pattern.
+                  tabIndex={checked ? 0 : -1}
+                  onClick={() => selectFilter(i)}
+                  onKeyDown={e => handleFilterKeyDown(e, i)}
                   className={`px-3 py-1 text-xs rounded cursor-pointer transition-colors
                     ${checked ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}
                 >

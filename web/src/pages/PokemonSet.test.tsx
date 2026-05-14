@@ -168,10 +168,7 @@ function makeFetchMock(spec: FetchSpec, overrides?: (url: string, init?: Request
       if (o) return Promise.resolve(o)
     }
     if (url.startsWith('/api/pokemon/sets/') && url.endsWith('/cards')) {
-      return Promise.resolve(jsonResponse({ cards: spec.cards }))
-    }
-    if (url.startsWith('/api/pokemon/sets')) {
-      return Promise.resolve(jsonResponse({ sets: spec.set ? [spec.set] : [] }))
+      return Promise.resolve(jsonResponse({ set: spec.set, cards: spec.cards }))
     }
     if (url.startsWith('/api/pokemon/collection/')) {
       // DELETE
