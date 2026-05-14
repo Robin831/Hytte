@@ -415,6 +415,11 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Patch("/pokemon/collection/{id}", pokemon.UpdateCollectionHandler(db))
 				r.Delete("/pokemon/collection/{id}", pokemon.DeleteCollectionHandler(db))
 				r.Get("/pokemon/collection/missing", pokemon.MissingFromSetHandler(db))
+				// Vision scan (Phase 2) is admin-only on top of the feature gate.
+				// The Claude CLI call lives behind RequireAdmin so non-admin kids
+				// can still browse and edit their collection without exposing the
+				// vision endpoint, which costs money to run.
+				r.With(auth.RequireAdmin()).Post("/pokemon/scan", pokemon.ScanHandler(db))
 			})
 
 			// Tasks — gated by "tasks" feature.
