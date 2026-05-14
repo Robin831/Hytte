@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Search, X } from 'lucide-react'
+import { Dialog } from '../ui/dialog'
 import ToastList from '../ToastList'
 import { useToast } from '../../hooks/useToast'
 import { formatNumber } from '../../utils/formatDate'
@@ -58,9 +59,6 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
   const [variantCard, setVariantCard] = useState<Card | null>(null)
   const [adding, setAdding] = useState(false)
 
-  const inputRef = useRef<HTMLInputElement | null>(null)
-  const overlayRef = useRef<HTMLDivElement | null>(null)
-
   const close = useCallback(() => {
     setIsOpen(false)
     setQuery('')
@@ -69,20 +67,11 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
     setVariantCard(null)
   }, [])
 
-  // Autofocus the input when the panel opens and listen for Esc to close.
-  useEffect(() => {
-    if (!isOpen) return
-    inputRef.current?.focus()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [isOpen, close])
-
   // Debounced autocomplete: each keystroke schedules a 200ms timer; the
   // previous timer and any in-flight request are cancelled when the query
-  // changes, so only the latest non-empty query reaches the API.
+  // changes. Stale results from the previous query are cleared at the start
+  // of each search so the dropdown never shows results that don't match the
+  // current input value while loading.
   useEffect(() => {
     if (!isOpen) return
     const q = query.trim()
@@ -93,6 +82,8 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
       return
     }
     setLoading(true)
+    setResults([])
+    setError('')
     const controller = new AbortController()
     const timer = setTimeout(() => {
       void (async () => {
@@ -119,12 +110,6 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
       clearTimeout(timer)
     }
   }, [query, isOpen, t])
-
-  // Outside-click: ignore clicks whose target is inside the dialog. We compare
-  // against overlayRef.current so clicks on the input or buttons don't close.
-  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === overlayRef.current) close()
-  }
 
   const addCard = useCallback(
     async (card: Card, variantId: number) => {
@@ -165,6 +150,8 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
   }
 
   const trimmedQuery = query.trim()
+  const showResults = !loading && !error && results.length > 0
+  const showEmpty = !loading && !error && trimmedQuery !== '' && results.length === 0
 
   return (
     <>
@@ -178,127 +165,118 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
         <Plus size={24} />
       </button>
 
-      {isOpen && (
-        <div
-          ref={overlayRef}
-          onClick={handleOverlayClick}
-          role="presentation"
-          data-testid="add-card-overlay"
-          className="fixed inset-0 z-40 bg-black/60 flex items-end sm:items-center justify-center"
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={t('addCard.dialogLabel')}
-            className="w-full sm:max-w-lg bg-gray-900 border border-gray-800 rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col max-h-[85vh] sm:max-h-[80vh]"
+      <Dialog
+        open={isOpen}
+        onClose={close}
+        maxWidth="sm:max-w-lg"
+        overlayClassName="items-end sm:items-center p-0 sm:p-4"
+        className="rounded-t-2xl sm:rounded-2xl border-gray-800 max-h-[85vh] sm:max-h-[80vh]"
+        aria-label={t('addCard.dialogLabel')}
+      >
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-800 shrink-0">
+          <Search size={18} className="text-gray-400 shrink-0" aria-hidden="true" />
+          <input
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder={t('addCard.placeholder')}
+            aria-label={t('addCard.inputLabel')}
+            className="flex-1 min-w-0 bg-transparent border-0 outline-none text-white placeholder-gray-500"
+          />
+          <button
+            type="button"
+            onClick={close}
+            aria-label={t('addCard.close')}
+            className="p-1 text-gray-400 hover:text-white cursor-pointer"
           >
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-800">
-              <Search size={18} className="text-gray-400 shrink-0" aria-hidden="true" />
-              <input
-                ref={inputRef}
-                type="text"
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder={t('addCard.placeholder')}
-                aria-label={t('addCard.inputLabel')}
-                className="flex-1 min-w-0 bg-transparent border-0 outline-none text-white placeholder-gray-500"
-              />
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto" aria-busy={loading}>
+          {error && (
+            <p role="alert" className="px-4 py-3 text-sm text-red-300">{error}</p>
+          )}
+          {!error && loading && trimmedQuery !== '' && (
+            <p className="px-4 py-3 text-sm text-gray-400">{t('addCard.searching')}</p>
+          )}
+          {showEmpty && (
+            <p className="px-4 py-3 text-sm text-gray-400">{t('addCard.noResults')}</p>
+          )}
+          {showResults && (
+            <ul aria-label={t('addCard.results')}>
+              {results.map(card => {
+                const variant = card.variants[0]
+                return (
+                  <li key={card.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleResultClick(card)}
+                      disabled={adding}
+                      data-testid={`add-card-result-${card.id}`}
+                      className="flex w-full items-center gap-3 px-3 py-2 hover:bg-gray-800/60 disabled:cursor-not-allowed text-left cursor-pointer border-b border-gray-800 last:border-b-0"
+                    >
+                      <div className="h-14 w-10 shrink-0 flex items-center justify-center bg-gray-800/40 rounded overflow-hidden">
+                        {card.image_small_url ? (
+                          <img
+                            src={card.image_small_url}
+                            alt=""
+                            loading="lazy"
+                            className="max-h-full max-w-full object-contain"
+                          />
+                        ) : null}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-white truncate">{card.name}</p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {t('tile.collectorNo', { number: card.collector_no })}
+                          {card.set_name ? ` · ${card.set_name}` : ''}
+                        </p>
+                      </div>
+                      <span className="text-xs text-gray-300 shrink-0">{formatNok(variant?.price_nok)}</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+
+        {variantCard && (
+          <div
+            role="group"
+            aria-label={t('addCard.variantPickerLabel', { name: variantCard.name })}
+            className="border-t border-gray-800 p-3 bg-gray-900/95 space-y-2 shrink-0"
+          >
+            <p className="text-sm text-gray-300">
+              {t('addCard.variantPickerPrompt', { name: variantCard.name })}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {variantCard.variants.map(v => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => addCard(variantCard, v.id)}
+                  disabled={adding}
+                  data-testid={`add-card-variant-${v.id}`}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded border border-gray-700 hover:border-emerald-500 hover:bg-emerald-500/10 disabled:cursor-not-allowed text-sm text-white cursor-pointer"
+                >
+                  <span>{t(`variantKind.${v.kind}`, { defaultValue: v.kind })}</span>
+                  <span className="text-xs text-gray-400">{formatNok(v.price_nok)}</span>
+                </button>
+              ))}
               <button
                 type="button"
-                onClick={close}
-                aria-label={t('addCard.close')}
-                className="p-1 text-gray-400 hover:text-white cursor-pointer"
+                onClick={() => setVariantCard(null)}
+                disabled={adding}
+                className="ml-auto px-3 py-1.5 text-sm text-gray-400 hover:text-white cursor-pointer"
               >
-                <X size={18} />
+                {t('addCard.cancel')}
               </button>
             </div>
-
-            <div className="flex-1 overflow-y-auto">
-              {error && (
-                <p role="alert" className="px-4 py-3 text-sm text-red-300">{error}</p>
-              )}
-              {!error && loading && trimmedQuery !== '' && (
-                <p className="px-4 py-3 text-sm text-gray-400">{t('addCard.searching')}</p>
-              )}
-              {!error && !loading && trimmedQuery !== '' && results.length === 0 && (
-                <p className="px-4 py-3 text-sm text-gray-400">{t('addCard.noResults')}</p>
-              )}
-              {!error && results.length > 0 && (
-                <ul aria-label={t('addCard.results')}>
-                  {results.map(card => {
-                    const variant = card.variants[0]
-                    return (
-                      <li key={card.id}>
-                        <button
-                          type="button"
-                          onClick={() => handleResultClick(card)}
-                          disabled={adding}
-                          data-testid={`add-card-result-${card.id}`}
-                          className="flex w-full items-center gap-3 px-3 py-2 hover:bg-gray-800/60 disabled:cursor-not-allowed text-left cursor-pointer border-b border-gray-800 last:border-b-0"
-                        >
-                          <div className="h-14 w-10 shrink-0 flex items-center justify-center bg-gray-800/40 rounded overflow-hidden">
-                            {card.image_small_url ? (
-                              <img
-                                src={card.image_small_url}
-                                alt=""
-                                loading="lazy"
-                                className="max-h-full max-w-full object-contain"
-                              />
-                            ) : null}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-white truncate">{card.name}</p>
-                            <p className="text-xs text-gray-500 truncate">
-                              {t('tile.collectorNo', { number: card.collector_no })}
-                              {card.set_name ? ` · ${card.set_name}` : ''}
-                            </p>
-                          </div>
-                          <span className="text-xs text-gray-300 shrink-0">{formatNok(variant?.price_nok)}</span>
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </div>
-
-            {variantCard && (
-              <div
-                role="group"
-                aria-label={t('addCard.variantPickerLabel', { name: variantCard.name })}
-                className="border-t border-gray-800 p-3 bg-gray-900/95 space-y-2"
-              >
-                <p className="text-sm text-gray-300">
-                  {t('addCard.variantPickerPrompt', { name: variantCard.name })}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {variantCard.variants.map(v => (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => addCard(variantCard, v.id)}
-                      disabled={adding}
-                      data-testid={`add-card-variant-${v.id}`}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded border border-gray-700 hover:border-emerald-500 hover:bg-emerald-500/10 disabled:cursor-not-allowed text-sm text-white cursor-pointer"
-                    >
-                      <span>{t(`variantKind.${v.kind}`, { defaultValue: v.kind })}</span>
-                      <span className="text-xs text-gray-400">{formatNok(v.price_nok)}</span>
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setVariantCard(null)}
-                    disabled={adding}
-                    className="ml-auto px-3 py-1.5 text-sm text-gray-400 hover:text-white cursor-pointer"
-                  >
-                    {t('addCard.cancel')}
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
-        </div>
-      )}
+        )}
+      </Dialog>
 
       <ToastList toasts={toasts} />
     </>

@@ -10,6 +10,7 @@ interface DialogProps {
   className?: string
   overlayClassName?: string
   maxWidth?: string
+  'aria-label'?: string
   'aria-labelledby'?: string
   'aria-describedby'?: string
 }
@@ -21,6 +22,7 @@ function Dialog({
   className,
   overlayClassName,
   maxWidth = 'max-w-md',
+  'aria-label': ariaLabel,
   'aria-labelledby': ariaLabelledby,
   'aria-describedby': ariaDescribedby,
 }: DialogProps) {
@@ -101,6 +103,7 @@ function Dialog({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-label={ariaLabel}
         aria-labelledby={ariaLabelledby}
         aria-describedby={ariaDescribedby}
         className={cn(

@@ -167,7 +167,9 @@ describe('AddCardPanel — opening and closing', () => {
     render(<AddCardPanel />)
 
     openPanel()
-    const overlay = await screen.findByTestId('add-card-overlay')
+    const dialog = await screen.findByRole('dialog', { name: 'Add a card' })
+    const overlay = dialog.parentElement
+    if (!overlay) throw new Error('dialog has no overlay parent')
     fireEvent.click(overlay)
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: 'Add a card' })).not.toBeInTheDocument()
