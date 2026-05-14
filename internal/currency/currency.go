@@ -21,7 +21,11 @@ const PairEURNOK = "EUR/NOK"
 // norgesBankEURNOKURL is the public Norges Bank API endpoint that returns the
 // most recent EUR/NOK observation as semicolon-separated CSV with Norwegian
 // decimal commas.
-const norgesBankEURNOKURL = "https://data.norges-bank.no/api/data/EXR/B.EUR.NOK.SP?lastNObservations=1&format=csv-no-utf8"
+// Norges Bank's SDMX endpoint deprecated `format=csv-no-utf8` in May 2026 — it
+// returns HTTP 500 "Could not resolve delimiter 'utf8'". Use plain `format=csv`,
+// which still returns semicolon-delimited UTF-8 with the same column headers
+// (TIME_PERIOD, OBS_VALUE, etc.) and a dot-decimal OBS_VALUE.
+const norgesBankEURNOKURL = "https://data.norges-bank.no/api/data/EXR/B.EUR.NOK.SP?lastNObservations=1&format=csv"
 
 // httpClient is the HTTP client used for upstream requests. Tests can replace
 // it (typically together with overrideURL) to point at a httptest server.
