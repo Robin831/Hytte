@@ -82,6 +82,7 @@
     "results": "Kortresultater",
     "previewCard": "Forhåndsvis {{name}} i full størrelse",
     "cancel": "Avbryt",
+    "alreadyOwnedShort": "Allerede eid",
     "variantPickerLabel": "Velg variant for {{name}}",
     "variantPickerPrompt": "Velg variant for {{name}}",
     "toast": {

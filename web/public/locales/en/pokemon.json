@@ -82,6 +82,7 @@
     "results": "Card results",
     "previewCard": "Preview {{name}} in full size",
     "cancel": "Cancel",
+    "alreadyOwnedShort": "Already owned",
     "variantPickerLabel": "Pick a variant for {{name}}",
     "variantPickerPrompt": "Pick a variant for {{name}}",
     "toast": {

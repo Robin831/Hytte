@@ -378,7 +378,7 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
                     data-testid="lightbox-add-card"
                     className="flex items-center gap-2 px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800/60 disabled:cursor-not-allowed text-sm text-white cursor-pointer"
                   >
-                    {ownedAlready ? t('addCard.toast.alreadyOwned', { name: card.name }) : t('detail.markOwned')}
+                    {ownedAlready ? t('addCard.alreadyOwnedShort') : t('detail.markOwned')}
                   </button>
                 )}
               </div>

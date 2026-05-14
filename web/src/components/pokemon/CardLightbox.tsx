@@ -113,6 +113,9 @@ function CardLightbox<TCard extends LightboxCard>({
   const previousFocusRef = useRef<Element | null>(null)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const swipeTimerRef = useRef<number | null>(null)
+  // Set to true when a swipe gesture is committed so the synthetic click that
+  // fires after touchend doesn't also trigger onClose via the image's onClick.
+  const swipedRef = useRef(false)
 
   const clampedIndex = cards.length === 0 ? 0 : Math.min(Math.max(0, currentIndex), cards.length - 1)
   const currentCard = cards[clampedIndex]
@@ -272,6 +275,7 @@ function CardLightbox<TCard extends LightboxCard>({
     }
     const direction: 'next' | 'prev' = dx < 0 ? 'next' : 'prev'
     const viewportW = typeof window !== 'undefined' ? window.innerWidth : 800
+    swipedRef.current = true
     setSwipeAnimating(true)
     setSwipeOffset(direction === 'next' ? -viewportW : viewportW)
     if (swipeTimerRef.current !== null) {
@@ -283,6 +287,7 @@ function CardLightbox<TCard extends LightboxCard>({
       else goPrev()
       setSwipeAnimating(false)
       setSwipeOffset(0)
+      swipedRef.current = false
     }, SWIPE_ANIMATE_MS)
   }, [goNext, goPrev])
 
@@ -361,7 +366,7 @@ function CardLightbox<TCard extends LightboxCard>({
                 alt={currentCard.name}
                 loading="eager"
                 decoding="sync"
-                onClick={onClose}
+                onClick={() => { if (swipedRef.current) return; onClose() }}
                 style={imageStyle}
                 data-testid="lightbox-image"
                 className={`max-h-full max-w-full object-contain rounded shadow-2xl cursor-pointer ${wrapFlashClass}`}

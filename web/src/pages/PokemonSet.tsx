@@ -48,6 +48,7 @@ interface PokemonSet {
 
 type Filter = 'all' | 'owned' | 'missing'
 const FILTERS: Filter[] = ['all', 'owned', 'missing']
+const CONDITIONS = ['', 'mint', 'near_mint', 'lightly_played', 'moderately_played', 'heavily_played', 'damaged']
 
 // parseReleaseDate accepts the "YYYY/MM/DD" or "YYYY-MM-DD" formats returned
 // by pokemontcg.io and renders a localized date. Falls back to the raw string
@@ -178,9 +179,7 @@ interface LightboxActionBarProps {
   t: TFunction<'pokemon'>
 }
 
-// LightboxActionBar renders the compact add/remove-owned controls inside the
-// CardLightbox. It defaults quantity/condition/notes to sensible values — the
-// full edit form lives elsewhere (kept off the lightbox by design).
+// LightboxActionBar renders the add/edit/remove controls inside the CardLightbox.
 function LightboxActionBar({ card, onSave, onUnmark, saving, t }: LightboxActionBarProps) {
   const initialVariantId = useMemo(() => {
     const ownedV = card.variants.find(v => v.owned)
@@ -192,12 +191,24 @@ function LightboxActionBar({ card, onSave, onUnmark, saving, t }: LightboxAction
     [card, selectedVariantId],
   )
 
-  // Re-sync the selection when the user navigates to a different card in the
-  // lightbox so the variant picker reflects the new card's owned state.
+  // Re-sync the selection when the user navigates to a different card.
   const [prevCardId, setPrevCardId] = useState(card.id)
   if (card.id !== prevCardId) {
     setPrevCardId(card.id)
     setSelectedVariantId(initialVariantId)
+  }
+
+  // Editable fields — kept in local state so the user can change them before saving.
+  const [editQuantity, setEditQuantity] = useState(Math.max(selected?.quantity || 1, 1))
+  const [editCondition, setEditCondition] = useState(selected?.condition || '')
+  const [editNotes, setEditNotes] = useState(selected?.notes || '')
+  // Sync edit fields whenever the selected variant changes (card navigation or variant pick).
+  const [prevSelectedId, setPrevSelectedId] = useState(selectedVariantId)
+  if (selectedVariantId !== prevSelectedId) {
+    setPrevSelectedId(selectedVariantId)
+    setEditQuantity(Math.max(selected?.quantity || 1, 1))
+    setEditCondition(selected?.condition || '')
+    setEditNotes(selected?.notes || '')
   }
 
   if (!selected) return null
@@ -205,9 +216,9 @@ function LightboxActionBar({ card, onSave, onUnmark, saving, t }: LightboxAction
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault()
     void onSave(selected.id, {
-      quantity: Math.max(selected.quantity || 1, 1),
-      condition: selected.condition || '',
-      notes: selected.notes || '',
+      quantity: editQuantity,
+      condition: editCondition,
+      notes: editNotes,
     })
   }
 
@@ -254,6 +265,65 @@ function LightboxActionBar({ card, onSave, onUnmark, saving, t }: LightboxAction
         </fieldset>
       )}
 
+      {selected.owned && (
+        <>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-300 w-20 shrink-0">{t('detail.quantity')}</span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setEditQuantity(q => Math.max(1, q - 1))}
+                disabled={saving || editQuantity <= 1}
+                aria-label={t('detail.decreaseQuantity')}
+                className="w-7 h-7 flex items-center justify-center rounded border border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >−</button>
+              <input
+                type="number"
+                min={1}
+                max={99}
+                value={editQuantity}
+                onChange={e => setEditQuantity(Math.max(1, Math.min(99, Number(e.target.value) || 1)))}
+                disabled={saving}
+                className="w-12 text-center bg-gray-800 border border-gray-700 rounded text-sm text-white py-0.5"
+              />
+              <button
+                type="button"
+                onClick={() => setEditQuantity(q => Math.min(99, q + 1))}
+                disabled={saving || editQuantity >= 99}
+                aria-label={t('detail.increaseQuantity')}
+                className="w-7 h-7 flex items-center justify-center rounded border border-gray-700 text-gray-300 hover:border-gray-500 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >+</button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-300 w-20 shrink-0">{t('detail.condition')}</span>
+            <select
+              value={editCondition}
+              onChange={e => setEditCondition(e.target.value)}
+              disabled={saving}
+              className="flex-1 bg-gray-800 border border-gray-700 rounded text-sm text-white py-0.5 px-1"
+            >
+              {CONDITIONS.map(c => (
+                <option key={c} value={c}>
+                  {t(`condition.${c || 'unset'}`)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-gray-300">{t('detail.notes')}</span>
+            <textarea
+              value={editNotes}
+              onChange={e => setEditNotes(e.target.value)}
+              disabled={saving}
+              rows={2}
+              placeholder={t('detail.notesPlaceholder')}
+              className="w-full bg-gray-800 border border-gray-700 rounded text-sm text-white px-2 py-1 resize-none"
+            />
+          </div>
+        </>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         {!selected.owned && (
           <button
@@ -262,6 +332,15 @@ function LightboxActionBar({ card, onSave, onUnmark, saving, t }: LightboxAction
             className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800/60 disabled:cursor-not-allowed text-white rounded text-sm cursor-pointer"
           >
             {t('detail.markOwned')}
+          </button>
+        )}
+        {selected.owned && (
+          <button
+            type="submit"
+            disabled={saving}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800/60 disabled:cursor-not-allowed text-white rounded text-sm cursor-pointer"
+          >
+            {t('detail.update')}
           </button>
         )}
         {selected.owned && selected.owned_id != null && (

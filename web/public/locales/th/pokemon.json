@@ -82,6 +82,7 @@
     "results": "ผลลัพธ์การ์ด",
     "previewCard": "ดู {{name}} ขนาดเต็ม",
     "cancel": "ยกเลิก",
+    "alreadyOwnedShort": "มีแล้ว",
     "variantPickerLabel": "เลือกชนิดสำหรับ {{name}}",
     "variantPickerPrompt": "เลือกชนิดสำหรับ {{name}}",
     "toast": {
