@@ -139,7 +139,7 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
     if (card.variants.length === 1) {
       const v = card.variants[0]
       if (v.owned) {
-        showToast(t('addCard.toast.alreadyOwned', { name: card.name }), 'info')
+        showToast(t('addCard.toast.alreadyOwned', { name: card.name }), 'warning')
         return
       }
       void addCard(card, v.id)
@@ -257,7 +257,7 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
                   type="button"
                   onClick={() => {
                     if (v.owned) {
-                      showToast(t('addCard.toast.alreadyOwned', { name: variantCard.name }), 'info')
+                      showToast(t('addCard.toast.alreadyOwned', { name: variantCard.name }), 'warning')
                       return
                     }
                     void addCard(variantCard, v.id)
