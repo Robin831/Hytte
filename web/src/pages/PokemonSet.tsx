@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -201,15 +201,16 @@ function DetailPanel({ card, onClose, onSave, onUnmark, saving, t }: DetailPanel
   const [condition, setCondition] = useState<string>(selected?.condition ?? '')
   const [notes, setNotes] = useState<string>(selected?.notes ?? '')
 
-  // Re-sync form when caller selects a different variant. We track the variant
-  // id so toggling between "normal" and "reverse_holofoil" loads each variant's
-  // own ownership state instead of stale values from the previous variant.
-  useEffect(() => {
-    if (!selected) return
+  // Re-sync form when the selected variant changes. Using the "adjust during
+  // render" pattern (store prev id, update state inline) avoids an extra
+  // render cycle compared to a useEffect approach.
+  const [prevVariantId, setPrevVariantId] = useState(selectedVariantId)
+  if (selectedVariantId !== prevVariantId && selected) {
+    setPrevVariantId(selectedVariantId)
     setQuantity(Math.max(selected.quantity || 1, 1))
     setCondition(selected.condition || '')
     setNotes(selected.notes || '')
-  }, [selected])
+  }
 
   if (!selected) return null
 
@@ -407,7 +408,7 @@ export default function PokemonSetPage() {
   const [savingCardId, setSavingCardId] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const cardsRef = useRef<Card[]>([])
-  cardsRef.current = cards
+  useLayoutEffect(() => { cardsRef.current = cards })
   const filterButtonRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   // selectFilter implements the WAI-ARIA radiogroup keyboard pattern: focus the
