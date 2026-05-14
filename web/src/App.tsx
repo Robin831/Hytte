@@ -12,6 +12,7 @@ import Weather from './pages/Weather'
 import CalendarPage from './pages/CalendarPage'
 import Webhooks from './pages/Webhooks'
 import Notes from './pages/Notes'
+import Tasks from './pages/Tasks'
 import Links from './pages/Links'
 import LactateTests from './pages/LactateTests'
 import LactateNewTest from './pages/LactateNewTest'
@@ -109,6 +110,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="notes">
                 <Notes />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/tasks"
+            element={
+              <FeatureRoute feature="tasks">
+                <Tasks />
               </FeatureRoute>
             }
           />

@@ -220,6 +220,56 @@ func TestDeleteHandler_NotFoundForOtherUser(t *testing.T) {
 	}
 }
 
+func TestListNotesHandler_ReturnsChronological(t *testing.T) {
+	db := setupTestDB(t)
+	task, err := CreateTask(db, 1, "Owner", "", nil)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := AddNote(db, task.ID, 1, "first"); err != nil {
+		t.Fatalf("add note: %v", err)
+	}
+	if _, err := AddNote(db, task.ID, 1, "second"); err != nil {
+		t.Fatalf("add note: %v", err)
+	}
+	idStr := strconv.FormatInt(task.ID, 10)
+	req := withUser(httptest.NewRequest("GET", "/api/tasks/"+idStr+"/notes", nil), 1)
+	req = withChiParams(req, map[string]string{"id": idStr})
+	rec := httptest.NewRecorder()
+	ListNotesHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Notes []TaskNote `json:"notes"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Notes) != 2 {
+		t.Fatalf("expected 2 notes, got %d", len(body.Notes))
+	}
+	if body.Notes[0].Content != "first" || body.Notes[1].Content != "second" {
+		t.Errorf("unexpected ordering: %+v", body.Notes)
+	}
+}
+
+func TestListNotesHandler_TaskOwnedByAnotherUser(t *testing.T) {
+	db := setupTestDB(t)
+	task, err := CreateTask(db, 1, "Owner", "", nil)
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	idStr := strconv.FormatInt(task.ID, 10)
+	req := withUser(httptest.NewRequest("GET", "/api/tasks/"+idStr+"/notes", nil), 2)
+	req = withChiParams(req, map[string]string{"id": idStr})
+	rec := httptest.NewRecorder()
+	ListNotesHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
 func TestAddNoteHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 	task, err := CreateTask(db, 1, "Owner", "", nil)

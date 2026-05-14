@@ -1,0 +1,53 @@
+{
+  "pageTitle": "Tasks",
+  "inputPlaceholder": "What needs doing?",
+  "addTask": "Add task",
+  "tags": {
+    "label": "Tags",
+    "work": "work",
+    "personal": "personal",
+    "addCustom": "Add tag",
+    "customPlaceholder": "Add a tag…"
+  },
+  "filter": {
+    "label": "Filter by tag",
+    "clearLabel": "Clear tag filter"
+  },
+  "showArchived": "Show archived",
+  "archivedLabel": "Archived",
+  "archive": "Archive",
+  "unarchive": "Unarchive",
+  "delete": "Delete",
+  "expand": "Expand task",
+  "collapse": "Collapse task",
+  "body": {
+    "label": "Details",
+    "placeholder": "Add more detail…"
+  },
+  "notes": {
+    "heading": "Notes",
+    "badge_one": "+{{count}} note",
+    "badge_other": "+{{count}} notes",
+    "composerPlaceholder": "Add a note…",
+    "add": "Add note",
+    "delete": "Delete note",
+    "empty": "No notes yet."
+  },
+  "empty": {
+    "active": "No tasks yet. Add one above to get started.",
+    "archived": "Nothing archived yet.",
+    "filtered": "No tasks match the selected tag."
+  },
+  "time": {
+    "created": "Created {{relative}}",
+    "updated": "Updated {{relative}}",
+    "justNow": "just now"
+  },
+  "errors": {
+    "failedToLoad": "Failed to load tasks",
+    "failedToCreate": "Failed to create task",
+    "failedToUpdate": "Failed to update task",
+    "failedToAddNote": "Failed to add note",
+    "failedToLoadNotes": "Failed to load notes"
+  }
+}

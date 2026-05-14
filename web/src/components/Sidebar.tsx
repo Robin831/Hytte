@@ -35,6 +35,7 @@ import {
   ShoppingCart,
   BookOpen,
   ClipboardList,
+  ListTodo,
   Calculator,
   Lightbulb,
 } from 'lucide-react'
@@ -63,6 +64,7 @@ const navItems: NavItem[] = [
   { to: '/calendar', icon: <Calendar size={20} />, label: 'nav.calendar', requiresAuth: true, feature: 'calendar' },
   { to: '/webhooks', icon: <Webhook size={20} />, label: 'nav.webhooks', requiresAuth: true, feature: 'webhooks' },
   { to: '/notes', icon: <FileText size={20} />, label: 'nav.notes', requiresAuth: true, feature: 'notes' },
+  { to: '/tasks', icon: <ListTodo size={20} />, label: 'nav.tasks', requiresAuth: true, feature: 'tasks' },
   { to: '/vault', icon: <Lock size={20} />, label: 'nav.vault', requiresAuth: true, feature: 'vault' },
   { to: '/chat', icon: <MessageSquare size={20} />, label: 'nav.chat', requiresAuth: true, feature: 'chat' },
   { to: '/training', icon: <Dumbbell size={20} />, label: 'nav.training', requiresAuth: true, feature: 'training' },
