@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Camera, Flashlight, FlashlightOff, X } from 'lucide-react'
+import {
+  detectCardRectangle,
+  isWithinTolerance,
+  type DetectedRectangle,
+  type RectangleDetectorStatus,
+} from './rectangleDetector'
 
 export interface CardScannerProps {
   onCapture: (blob: Blob) => void
@@ -8,6 +14,13 @@ export interface CardScannerProps {
 }
 
 type PermissionState = 'prompting' | 'granted' | 'denied' | 'unavailable' | 'unsupported'
+
+// Throttle the auto-detect tick to ~2/sec. Two consecutive matching ticks
+// (~1s of stable framing) promote a candidate to `locked`.
+const DETECT_TICK_MS = 500
+const TICKS_TO_LOCK = 2
+// Allow up to ±5% drift between consecutive candidate detections.
+const CANDIDATE_TOLERANCE = 0.05
 
 // Pokémon TCG cards are 63x88mm — aspect ratio ≈ 0.716. The guide overlay
 // uses 5/7 (≈0.714) which is close enough and renders crisply on all viewports.
@@ -33,12 +46,26 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
   )
   const [torchOn, setTorchOn] = useState(false)
   const [torchSupported, setTorchSupported] = useState(false)
+  const [scanStatus, setScanStatus] = useState<RectangleDetectorStatus>('searching')
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
+
+  // Auto-detect refs — kept outside React state so the rAF loop reads the
+  // freshest values without triggering re-renders on every tick.
+  const detectCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const scanStatusRef = useRef<RectangleDetectorStatus>('searching')
+  const candidateBoundsRef = useRef<DetectedRectangle | null>(null)
+  const candidateTicksRef = useRef(0)
+  const lastTickRef = useRef(0)
+  const rafIdRef = useRef<number | null>(null)
+  const onCaptureRef = useRef(onCapture)
+  useEffect(() => {
+    onCaptureRef.current = onCapture
+  }, [onCapture])
 
   // Acquire the camera on mount; stop tracks on unmount so the camera LED
   // turns off even if the parent unmounts the scanner without calling onClose.
@@ -84,6 +111,130 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
       }
     }
   }, [])
+
+  // Auto-detection rAF loop. Activates once camera permission is granted and
+  // runs until the component unmounts or a successful capture freezes the
+  // scanner. Each tick downsamples the current frame, runs Sobel edges, and
+  // drives the searching → candidate → locked → captured state machine.
+  useEffect(() => {
+    if (permissionState !== 'granted') return
+    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') return
+
+    let cancelled = false
+
+    const captureLocked = (canvas: HTMLCanvasElement) => {
+      // Synchronous transition to `captured` guards against double-fire if
+      // the rAF callback is invoked again before toBlob resolves.
+      scanStatusRef.current = 'captured'
+      setScanStatus('captured')
+      const video = videoRef.current
+      if (video && typeof video.pause === 'function') {
+        try {
+          video.pause()
+        } catch {
+          // Pausing can throw on some mobile browsers if the element is in
+          // an unexpected state — visually freezing is best-effort.
+        }
+      }
+      if (typeof canvas.toBlob === 'function') {
+        canvas.toBlob(
+          blob => {
+            if (blob) onCaptureRef.current(blob)
+          },
+          'image/jpeg',
+          0.85,
+        )
+      }
+    }
+
+    const tick = (timestamp: number) => {
+      if (cancelled) return
+      if (scanStatusRef.current === 'captured') return
+
+      if (timestamp - lastTickRef.current < DETECT_TICK_MS) {
+        rafIdRef.current = window.requestAnimationFrame(tick)
+        return
+      }
+      lastTickRef.current = timestamp
+
+      try {
+        const video = videoRef.current
+        if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+          rafIdRef.current = window.requestAnimationFrame(tick)
+          return
+        }
+
+        let canvas = detectCanvasRef.current
+        if (!canvas) {
+          canvas = document.createElement('canvas')
+          detectCanvasRef.current = canvas
+        }
+        const w = video.videoWidth
+        const h = video.videoHeight
+        if (canvas.width !== w) canvas.width = w
+        if (canvas.height !== h) canvas.height = h
+
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })
+        if (!ctx || typeof ctx.drawImage !== 'function' || typeof ctx.getImageData !== 'function') {
+          rafIdRef.current = window.requestAnimationFrame(tick)
+          return
+        }
+
+        ctx.drawImage(video, 0, 0, w, h)
+        const imageData = ctx.getImageData(0, 0, w, h)
+        const detection = detectCardRectangle(imageData)
+
+        if (!detection) {
+          if (scanStatusRef.current !== 'searching') {
+            scanStatusRef.current = 'searching'
+            setScanStatus('searching')
+          }
+          candidateBoundsRef.current = null
+          candidateTicksRef.current = 0
+        } else {
+          const prev = candidateBoundsRef.current
+          if (
+            prev &&
+            scanStatusRef.current === 'candidate' &&
+            isWithinTolerance(prev, detection, CANDIDATE_TOLERANCE, w, h)
+          ) {
+            candidateTicksRef.current += 1
+            candidateBoundsRef.current = detection
+            if (candidateTicksRef.current >= TICKS_TO_LOCK) {
+              scanStatusRef.current = 'locked'
+              setScanStatus('locked')
+              captureLocked(canvas)
+              return
+            }
+          } else {
+            candidateBoundsRef.current = detection
+            candidateTicksRef.current = 1
+            if (scanStatusRef.current !== 'candidate') {
+              scanStatusRef.current = 'candidate'
+              setScanStatus('candidate')
+            }
+          }
+        }
+      } catch {
+        // Any unexpected error in the detect path is swallowed — the manual
+        // shutter remains available as a fallback.
+      }
+
+      if (!cancelled && scanStatusRef.current !== 'captured') {
+        rafIdRef.current = window.requestAnimationFrame(tick)
+      }
+    }
+
+    rafIdRef.current = window.requestAnimationFrame(tick)
+
+    return () => {
+      cancelled = true
+      if (rafIdRef.current !== null) {
+        window.cancelAnimationFrame(rafIdRef.current)
+        rafIdRef.current = null
+      }
+    }
+  }, [permissionState])
 
   const handleClose = useCallback(() => {
     const stream = streamRef.current
@@ -254,6 +405,16 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
               style={{ aspectRatio: CARD_GUIDE_ASPECT }}
             />
           </div>
+
+          {(scanStatus === 'candidate' || scanStatus === 'locked') && (
+            <div
+              data-testid="card-scanner-status"
+              aria-live="polite"
+              className="pointer-events-none absolute top-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-black/70 text-white text-sm font-medium shadow-lg"
+            >
+              {t('scanner.holdSteady')}
+            </div>
+          )}
 
           <button
             type="button"
