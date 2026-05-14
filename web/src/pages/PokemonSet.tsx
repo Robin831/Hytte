@@ -850,7 +850,7 @@ export default function PokemonSetPage() {
                 className="text-[11px] text-gray-400 mt-0.5"
                 data-testid="owned-count-label"
               >
-                {t(variantCompletionLabelKey(variantFilter), {
+                {t(variantCompletionLabelKey(variantFilter) as 'set.completion.any', {
                   owned: completion.owned,
                   total: completion.total,
                 })}
