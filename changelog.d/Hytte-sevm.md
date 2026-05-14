@@ -1,0 +1,2 @@
+category: Added
+- **Pokémon card lightbox** - Tap a card thumbnail on the Pokémon set detail page or in the add-card search to open a full-screen lightbox of the high-resolution image. Navigate adjacent cards with arrow keys, left/right tap zones, or horizontal swipe; the list wraps at the edges with a brief flash. Mark/remove owned and add-to-collection actions stay reachable in a bottom action bar inside the lightbox. (Hytte-sevm)

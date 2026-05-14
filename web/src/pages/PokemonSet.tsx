@@ -2,10 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ArrowLeft, Check, X } from 'lucide-react'
+import { ArrowLeft, Check } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
 import ToastList from '../components/ToastList'
 import AddCardPanel from '../components/pokemon/AddCardPanel'
+import CardLightbox from '../components/pokemon/CardLightbox'
 import { useToast } from '../hooks/useToast'
 import { formatDate, formatNumber } from '../utils/formatDate'
 
@@ -47,16 +48,6 @@ interface PokemonSet {
 
 type Filter = 'all' | 'owned' | 'missing'
 const FILTERS: Filter[] = ['all', 'owned', 'missing']
-
-const CONDITIONS = [
-  '',
-  'mint',
-  'near_mint',
-  'lightly_played',
-  'moderately_played',
-  'heavily_played',
-  'damaged',
-] as const
 
 // parseReleaseDate accepts the "YYYY/MM/DD" or "YYYY-MM-DD" formats returned
 // by pokemontcg.io and renders a localized date. Falls back to the raw string
@@ -173,22 +164,24 @@ function CardTile({ card, onClick, t }: TileProps) {
   )
 }
 
-interface DetailPanelProps {
-  card: Card
-  onClose: () => void
-  onSave: (variantId: number, payload: SavePayload) => Promise<void>
-  onUnmark: (collectionId: number) => Promise<void>
-  saving: boolean
-  t: TFunction<'pokemon'>
-}
-
 interface SavePayload {
   quantity: number
   condition: string
   notes: string
 }
 
-function DetailPanel({ card, onClose, onSave, onUnmark, saving, t }: DetailPanelProps) {
+interface LightboxActionBarProps {
+  card: Card
+  onSave: (variantId: number, payload: SavePayload) => Promise<void>
+  onUnmark: (collectionId: number) => Promise<void>
+  saving: boolean
+  t: TFunction<'pokemon'>
+}
+
+// LightboxActionBar renders the compact add/remove-owned controls inside the
+// CardLightbox. It defaults quantity/condition/notes to sensible values — the
+// full edit form lives elsewhere (kept off the lightbox by design).
+function LightboxActionBar({ card, onSave, onUnmark, saving, t }: LightboxActionBarProps) {
   const initialVariantId = useMemo(() => {
     const ownedV = card.variants.find(v => v.owned)
     return (ownedV ?? card.variants[0])?.id ?? 0
@@ -198,26 +191,24 @@ function DetailPanel({ card, onClose, onSave, onUnmark, saving, t }: DetailPanel
     () => card.variants.find(v => v.id === selectedVariantId) ?? card.variants[0],
     [card, selectedVariantId],
   )
-  const [quantity, setQuantity] = useState<number>(Math.max(selected?.quantity ?? 1, 1))
-  const [condition, setCondition] = useState<string>(selected?.condition ?? '')
-  const [notes, setNotes] = useState<string>(selected?.notes ?? '')
 
-  // Re-sync form when the selected variant changes. Using the "adjust during
-  // render" pattern (store prev id, update state inline) avoids an extra
-  // render cycle compared to a useEffect approach.
-  const [prevVariantId, setPrevVariantId] = useState(selectedVariantId)
-  if (selectedVariantId !== prevVariantId && selected) {
-    setPrevVariantId(selectedVariantId)
-    setQuantity(Math.max(selected.quantity || 1, 1))
-    setCondition(selected.condition || '')
-    setNotes(selected.notes || '')
+  // Re-sync the selection when the user navigates to a different card in the
+  // lightbox so the variant picker reflects the new card's owned state.
+  const [prevCardId, setPrevCardId] = useState(card.id)
+  if (card.id !== prevCardId) {
+    setPrevCardId(card.id)
+    setSelectedVariantId(initialVariantId)
   }
 
   if (!selected) return null
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault()
-    void onSave(selected.id, { quantity, condition, notes })
+    void onSave(selected.id, {
+      quantity: Math.max(selected.quantity || 1, 1),
+      condition: selected.condition || '',
+      notes: selected.notes || '',
+    })
   }
 
   const handleUnmark = () => {
@@ -227,153 +218,64 @@ function DetailPanel({ card, onClose, onSave, onUnmark, saving, t }: DetailPanel
   }
 
   return (
-    <div className="bg-gray-800/60 border border-gray-700 rounded-lg p-4 space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-white truncate">{card.name}</h2>
-          <p className="text-xs text-gray-400">
-            {t('tile.collectorNo', { number: card.collector_no })}
-            {card.rarity ? ` · ${card.rarity}` : ''}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label={t('detail.close')}
-          className="p-1 text-gray-400 hover:text-white cursor-pointer"
-        >
-          <X size={18} />
-        </button>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="sm:w-48 shrink-0">
-          {card.image_large_url ? (
-            <img
-              src={card.image_large_url}
-              alt=""
-              loading="lazy"
-              className="w-full rounded shadow"
-            />
-          ) : (
-            <div className="aspect-[5/7] bg-gray-900/60 rounded" />
-          )}
-        </div>
-
-        <form onSubmit={handleSave} className="flex-1 min-w-0 space-y-3">
-          <fieldset className="space-y-1.5">
-            <legend className="text-sm font-medium text-gray-200">{t('detail.variant')}</legend>
-            <div className="flex flex-wrap gap-2">
-              {card.variants.map(v => {
-                const checked = v.id === selectedVariantId
-                return (
-                  <label
-                    key={v.id}
-                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded border cursor-pointer text-sm
-                      ${checked ? 'border-emerald-500 bg-emerald-500/10 text-white' : 'border-gray-700 bg-gray-900/40 text-gray-300 hover:border-gray-600'}`}
-                  >
-                    <input
-                      type="radio"
-                      name={`variant-${card.id}`}
-                      value={v.id}
-                      checked={checked}
-                      onChange={() => setSelectedVariantId(v.id)}
-                      className="sr-only"
-                    />
-                    <span>{t(`variantKind.${v.kind}`, { defaultValue: v.kind })}</span>
-                    <span className="text-xs text-gray-400">{formatNok(v.price_nok)}</span>
-                    {v.owned && (
-                      <span aria-hidden="true" className="text-emerald-400"><Check size={14} /></span>
-                    )}
-                  </label>
-                )
-              })}
-            </div>
-          </fieldset>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="block text-sm">
-              <span className="block text-gray-200 mb-1">{t('detail.quantity')}</span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                  aria-label={t('detail.decreaseQuantity')}
-                  className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded cursor-pointer"
+    <form
+      onSubmit={handleSave}
+      className="flex flex-col gap-2 bg-gray-900/80 border border-gray-700 rounded-lg p-3 backdrop-blur-sm"
+    >
+      {card.variants.length > 1 && (
+        <fieldset className="space-y-1.5">
+          <legend className="text-xs font-medium text-gray-300">{t('detail.variant')}</legend>
+          <div className="flex flex-wrap gap-2">
+            {card.variants.map(v => {
+              const checked = v.id === selectedVariantId
+              return (
+                <label
+                  key={v.id}
+                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded border cursor-pointer text-sm
+                    ${checked ? 'border-emerald-500 bg-emerald-500/10 text-white' : 'border-gray-700 bg-gray-900/40 text-gray-300 hover:border-gray-600'}`}
                 >
-                  −
-                </button>
-                <input
-                  type="number"
-                  min={1}
-                  value={quantity}
-                  onChange={e => {
-                    const n = Number.parseInt(e.target.value, 10)
-                    setQuantity(Number.isFinite(n) && n > 0 ? n : 1)
-                  }}
-                  className="w-16 px-2 py-1 bg-gray-900 border border-gray-700 rounded text-white text-center"
-                  aria-label={t('detail.quantity')}
-                />
-                <button
-                  type="button"
-                  onClick={() => setQuantity(q => q + 1)}
-                  aria-label={t('detail.increaseQuantity')}
-                  className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-white rounded cursor-pointer"
-                >
-                  +
-                </button>
-              </div>
-            </label>
-
-            <label className="block text-sm">
-              <span className="block text-gray-200 mb-1">{t('detail.condition')}</span>
-              <select
-                value={condition}
-                onChange={e => setCondition(e.target.value)}
-                className="w-full px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-white"
-              >
-                {CONDITIONS.map(c => (
-                  <option key={c || 'unset'} value={c}>
-                    {c ? t(`condition.${c}`) : t('condition.unset')}
-                  </option>
-                ))}
-              </select>
-            </label>
+                  <input
+                    type="radio"
+                    name={`variant-${card.id}`}
+                    value={v.id}
+                    checked={checked}
+                    onChange={() => setSelectedVariantId(v.id)}
+                    className="sr-only"
+                  />
+                  <span>{t(`variantKind.${v.kind}`, { defaultValue: v.kind })}</span>
+                  <span className="text-xs text-gray-400">{formatNok(v.price_nok)}</span>
+                  {v.owned && (
+                    <span aria-hidden="true" className="text-emerald-400"><Check size={14} /></span>
+                  )}
+                </label>
+              )
+            })}
           </div>
+        </fieldset>
+      )}
 
-          <label className="block text-sm">
-            <span className="block text-gray-200 mb-1">{t('detail.notes')}</span>
-            <textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              rows={2}
-              className="w-full px-2 py-1.5 bg-gray-900 border border-gray-700 rounded text-white"
-              placeholder={t('detail.notesPlaceholder')}
-            />
-          </label>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800/60 disabled:cursor-not-allowed text-white rounded text-sm cursor-pointer"
-            >
-              {selected.owned ? t('detail.update') : t('detail.markOwned')}
-            </button>
-            {selected.owned && selected.owned_id != null && (
-              <button
-                type="button"
-                onClick={handleUnmark}
-                disabled={saving}
-                className="px-3 py-1.5 bg-red-700/80 hover:bg-red-600 disabled:bg-red-900/60 disabled:cursor-not-allowed text-white rounded text-sm cursor-pointer"
-              >
-                {t('detail.unmark')}
-              </button>
-            )}
-          </div>
-        </form>
+      <div className="flex flex-wrap items-center gap-2">
+        {!selected.owned && (
+          <button
+            type="submit"
+            disabled={saving}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800/60 disabled:cursor-not-allowed text-white rounded text-sm cursor-pointer"
+          >
+            {t('detail.markOwned')}
+          </button>
+        )}
+        {selected.owned && selected.owned_id != null && (
+          <button
+            type="button"
+            onClick={handleUnmark}
+            disabled={saving}
+            className="px-3 py-1.5 bg-red-700/80 hover:bg-red-600 disabled:bg-red-900/60 disabled:cursor-not-allowed text-white rounded text-sm cursor-pointer"
+          >
+            {t('detail.unmark')}
+          </button>
+        )}
       </div>
-    </div>
+    </form>
   )
 }
 
@@ -405,7 +307,7 @@ export default function PokemonSetPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
-  const [expandedCardId, setExpandedCardId] = useState<string | null>(null)
+  const [lightboxStartIndex, setLightboxStartIndex] = useState<number | null>(null)
   const [savingCardId, setSavingCardId] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
   const cardsRef = useRef<Card[]>([])
@@ -488,10 +390,17 @@ export default function PokemonSetPage() {
     return cards
   }, [cards, filter])
 
-  const expandedCard = useMemo(
-    () => (expandedCardId ? cards.find(c => c.id === expandedCardId) ?? null : null),
-    [cards, expandedCardId],
-  )
+  // If the visible list shrinks (e.g. the filter changed) below the open
+  // index, clamp it back into range so the lightbox doesn't crash on a stale
+  // pointer; close it entirely when the list becomes empty.
+  useEffect(() => {
+    if (lightboxStartIndex == null) return
+    if (visibleCards.length === 0) {
+      setLightboxStartIndex(null)
+    } else if (lightboxStartIndex >= visibleCards.length) {
+      setLightboxStartIndex(visibleCards.length - 1)
+    }
+  }, [visibleCards, lightboxStartIndex])
 
   const updateCardVariants = useCallback(
     (cardId: string, mutate: (variants: Variant[]) => Variant[]) => {
@@ -693,31 +602,36 @@ export default function PokemonSetPage() {
               <p className="text-sm text-gray-400">{t('detail.empty')}</p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                {visibleCards.map(card => (
+                {visibleCards.map((card, i) => (
                   <CardTile
                     key={card.id}
                     card={card}
-                    onClick={() => setExpandedCardId(prev => (prev === card.id ? null : card.id))}
+                    onClick={() => setLightboxStartIndex(i)}
                     t={t}
                   />
                 ))}
               </div>
             )}
-
-            {expandedCard && (
-              <DetailPanel
-                key={expandedCard.id}
-                card={expandedCard}
-                onClose={() => setExpandedCardId(null)}
-                onSave={(variantId, payload) => handleSave(expandedCard.id, variantId, payload)}
-                onUnmark={(collectionId) => handleUnmark(expandedCard.id, collectionId)}
-                saving={savingCardId === expandedCard.id}
-                t={t}
-              />
-            )}
           </>
         )}
       </div>
+      {lightboxStartIndex != null && visibleCards.length > 0 && (
+        <CardLightbox
+          cards={visibleCards}
+          startIndex={lightboxStartIndex}
+          onClose={() => setLightboxStartIndex(null)}
+          showPrice
+          renderActionBar={(card) => (
+            <LightboxActionBar
+              card={card as Card}
+              onSave={(variantId, payload) => handleSave(card.id, variantId, payload)}
+              onUnmark={(collectionId) => handleUnmark(card.id, collectionId)}
+              saving={savingCardId === card.id}
+              t={t}
+            />
+          )}
+        />
+      )}
       <ToastList toasts={toasts} />
       <AddCardPanel onAdded={load} />
     </div>

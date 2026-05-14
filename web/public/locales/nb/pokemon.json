@@ -63,6 +63,13 @@
     "marked": "Lagt til i samlingen",
     "unmarked": "Fjernet fra samlingen"
   },
+  "lightbox": {
+    "previousCard": "Forrige kort",
+    "nextCard": "Neste kort",
+    "close": "Lukk lyskasse",
+    "wrappedToStart": "Hoppet til første kort",
+    "wrappedToEnd": "Hoppet til siste kort"
+  },
   "addCard": {
     "openLabel": "Legg til kort i samlingen",
     "dialogLabel": "Legg til kort",
@@ -73,6 +80,7 @@
     "searching": "Søker …",
     "noResults": "Ingen kort matcher søket.",
     "results": "Kortresultater",
+    "previewCard": "Forhåndsvis {{name}} i full størrelse",
     "cancel": "Avbryt",
     "variantPickerLabel": "Velg variant for {{name}}",
     "variantPickerPrompt": "Velg variant for {{name}}",

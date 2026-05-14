@@ -7,6 +7,7 @@ import { useToast } from '../../hooks/useToast'
 import { formatNumber } from '../../utils/formatDate'
 import { useAuth } from '../../auth'
 import CardScanner from './CardScanner'
+import CardLightbox from './CardLightbox'
 
 interface Variant {
   id: number
@@ -62,6 +63,7 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
   const [variantCard, setVariantCard] = useState<Card | null>(null)
   const [adding, setAdding] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
+  const [lightboxStartIndex, setLightboxStartIndex] = useState<number | null>(null)
 
   const close = useCallback(() => {
     setIsOpen(false)
@@ -70,6 +72,7 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
     setResults([])
     setError('')
     setVariantCard(null)
+    setLightboxStartIndex(null)
   }, [])
 
   // Debounced autocomplete: each keystroke schedules a 200ms timer; the
@@ -220,16 +223,16 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
           )}
           {showResults && (
             <ul aria-label={t('addCard.results')}>
-              {results.map(card => {
+              {results.map((card, i) => {
                 const variant = card.variants[0]
                 return (
-                  <li key={card.id}>
+                  <li key={card.id} className="flex items-stretch border-b border-gray-800 last:border-b-0 hover:bg-gray-800/60">
                     <button
                       type="button"
-                      onClick={() => handleResultClick(card)}
-                      disabled={adding}
-                      data-testid={`add-card-result-${card.id}`}
-                      className="flex w-full items-center gap-3 px-3 py-2 hover:bg-gray-800/60 disabled:cursor-not-allowed text-left cursor-pointer border-b border-gray-800 last:border-b-0"
+                      onClick={() => setLightboxStartIndex(i)}
+                      aria-label={t('addCard.previewCard', { name: card.name })}
+                      data-testid={`add-card-preview-${card.id}`}
+                      className="shrink-0 flex items-center justify-center px-3 py-2 cursor-pointer"
                     >
                       <div className="h-14 w-10 shrink-0 flex items-center justify-center bg-gray-800/40 rounded overflow-hidden">
                         {card.image_small_url ? (
@@ -241,6 +244,14 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
                           />
                         ) : null}
                       </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleResultClick(card)}
+                      disabled={adding}
+                      data-testid={`add-card-result-${card.id}`}
+                      className="flex flex-1 min-w-0 items-center gap-3 pr-3 py-2 disabled:cursor-not-allowed text-left cursor-pointer"
+                    >
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-white truncate">{card.name}</p>
                         <p className="text-xs text-gray-500 truncate">
@@ -311,6 +322,68 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
             setResults([])
             setError('')
             setVariantCard(null)
+          }}
+        />
+      )}
+
+      {lightboxStartIndex != null && results.length > 0 && (
+        <CardLightbox
+          cards={results}
+          startIndex={lightboxStartIndex}
+          onClose={() => setLightboxStartIndex(null)}
+          showPrice
+          renderActionBar={(card) => {
+            const lightCard = card as Card
+            const ownedAlready = lightCard.variants.length === 1 && lightCard.variants[0]?.owned
+            return (
+              <div className="flex flex-wrap items-center gap-2 bg-gray-900/80 border border-gray-700 rounded-lg p-3 backdrop-blur-sm">
+                {lightCard.variants.length > 1 ? (
+                  <>
+                    <span className="text-xs text-gray-300 mr-1">
+                      {t('addCard.variantPickerPrompt', { name: lightCard.name })}
+                    </span>
+                    {lightCard.variants.map(v => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => {
+                          if (v.owned) {
+                            showToast(t('addCard.toast.alreadyOwned', { name: lightCard.name }), 'warning')
+                            return
+                          }
+                          void addCard(lightCard, v.id)
+                        }}
+                        disabled={adding}
+                        data-testid={`lightbox-add-variant-${v.id}`}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded border border-gray-700 hover:border-emerald-500 hover:bg-emerald-500/10 disabled:cursor-not-allowed text-sm text-white cursor-pointer"
+                      >
+                        <span>{t(`variantKind.${v.kind}`, { defaultValue: v.kind })}</span>
+                        {v.owned && <span className="text-xs text-emerald-400">✓</span>}
+                        <span className="text-xs text-gray-400">{formatNok(v.price_nok)}</span>
+                      </button>
+                    ))}
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const v = lightCard.variants[0]
+                      if (!v) return
+                      if (v.owned) {
+                        showToast(t('addCard.toast.alreadyOwned', { name: lightCard.name }), 'warning')
+                        return
+                      }
+                      void addCard(lightCard, v.id)
+                    }}
+                    disabled={adding || ownedAlready}
+                    data-testid="lightbox-add-card"
+                    className="flex items-center gap-2 px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800/60 disabled:cursor-not-allowed text-sm text-white cursor-pointer"
+                  >
+                    {ownedAlready ? t('addCard.toast.alreadyOwned', { name: lightCard.name }) : t('detail.markOwned')}
+                  </button>
+                )}
+              </div>
+            )
           }}
         />
       )}

@@ -405,3 +405,25 @@ describe('PokemonSet – detail panel variant selection', () => {
     expect(within(fieldset).getByText('Reverse holo')).toBeInTheDocument()
   })
 })
+
+describe('PokemonSet – lightbox', () => {
+  it('clicking a tile opens the CardLightbox dialog with the card name', async () => {
+    const set = makeSet({ total_cards: 2 })
+    const cards = [
+      makeCard({ id: 'sv1-1', name: 'Pikachu' }),
+      makeCard({ id: 'sv1-2', name: 'Eevee' }),
+    ]
+    vi.stubGlobal('fetch', makeFetchMock({ set, cards }))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId('card-tile-sv1-2'))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Eevee' })
+    expect(dialog).toBeInTheDocument()
+    // Sanity: the prev/next zones from the lightbox should be present.
+    expect(screen.getByTestId('lightbox-prev-zone')).toBeInTheDocument()
+    expect(screen.getByTestId('lightbox-next-zone')).toBeInTheDocument()
+  })
+})

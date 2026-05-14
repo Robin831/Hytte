@@ -362,6 +362,22 @@ describe('AddCardPanel — multi-variant picker', () => {
   })
 })
 
+describe('AddCardPanel — lightbox preview', () => {
+  it('clicking the result thumbnail opens the CardLightbox dialog', async () => {
+    const card = makeCard({ id: 'sv1-25', name: 'Pikachu' })
+    vi.stubGlobal('fetch', makeFetchMock([card]))
+
+    render(<AddCardPanel />)
+    openPanel()
+    fireEvent.change(screen.getByLabelText('Search cards'), { target: { value: 'pika' } })
+
+    fireEvent.click(await screen.findByTestId('add-card-preview-sv1-25'))
+
+    expect(await screen.findByRole('dialog', { name: 'Pikachu' })).toBeInTheDocument()
+    expect(screen.getByTestId('lightbox-prev-zone')).toBeInTheDocument()
+  })
+})
+
 describe('AddCardPanel — search error', () => {
   it('shows the failure message when the search endpoint errors', async () => {
     const fetchMock = makeFetchMock([], (url) => {
