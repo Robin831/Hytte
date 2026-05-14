@@ -38,6 +38,7 @@ import {
   ListTodo,
   Calculator,
   Lightbulb,
+  Sparkles,
 } from 'lucide-react'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
@@ -84,6 +85,7 @@ const navItems: NavItem[] = [
   { to: '/grocery', icon: <ShoppingCart size={20} />, label: 'nav.grocery', requiresAuth: true, feature: 'grocery' },
   { to: '/wordfeud', icon: <Gamepad2 size={20} />, label: 'nav.wordfeud', requiresAuth: true, feature: 'wordfeud' },
   { to: '/math', icon: <Calculator size={20} />, label: 'nav.regnemester', requiresAuth: true, feature: 'regnemester' },
+  { to: '/pokemon', icon: <Sparkles size={20} />, label: 'nav.pokemon', requiresAuth: true, feature: 'pokemon' },
   { to: '/homework', icon: <BookOpen size={20} />, label: 'nav.homework', requiresAuth: true, feature: 'homework', familyRole: 'child' },
   { to: '/homework/review', icon: <ClipboardList size={20} />, label: 'nav.homeworkReview', requiresAuth: true, feature: 'homework', familyRole: 'parent' },
   { to: '/forge/mezzanine', icon: <Hammer size={20} />, label: 'nav.forge', requiresAuth: true, requireAdmin: true },

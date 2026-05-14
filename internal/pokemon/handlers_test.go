@@ -761,6 +761,113 @@ func TestFeatureFlagEnforcement_All(t *testing.T) {
 	}
 }
 
+// TestFeatureFlagEnforcement_PerKid asserts the pokemon flag is independent
+// per user — toggling it for kid A must not change the gate for kid B. Kids
+// are normal users, so the existing user_features mechanism gives us this for
+// free; this test guards against future regressions that would conflate them.
+func TestFeatureFlagEnforcement_PerKid(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+
+	if _, err := db.Exec(`
+		INSERT INTO users (id, email, name, google_id) VALUES (1, 'kid-a@example.com', 'Kid A', 'g-kid-a');
+		INSERT INTO users (id, email, name, google_id) VALUES (2, 'kid-b@example.com', 'Kid B', 'g-kid-b');
+	`); err != nil {
+		t.Fatalf("seed users: %v", err)
+	}
+
+	// Kid A has pokemon enabled; Kid B does not.
+	if err := auth.SetUserFeature(db, 1, "pokemon", true); err != nil {
+		t.Fatalf("enable pokemon for kid A: %v", err)
+	}
+	if err := auth.SetUserFeature(db, 2, "pokemon", false); err != nil {
+		t.Fatalf("disable pokemon for kid B: %v", err)
+	}
+
+	featsA, err := auth.GetUserFeatures(db, 1, false)
+	if err != nil {
+		t.Fatalf("get features A: %v", err)
+	}
+	featsB, err := auth.GetUserFeatures(db, 2, false)
+	if err != nil {
+		t.Fatalf("get features B: %v", err)
+	}
+	if !featsA["pokemon"] {
+		t.Errorf("kid A should have pokemon enabled, got %v", featsA["pokemon"])
+	}
+	if featsB["pokemon"] {
+		t.Errorf("kid B should have pokemon disabled, got %v", featsB["pokemon"])
+	}
+
+	tokenA, _, err := auth.CreateSession(db, 1)
+	if err != nil {
+		t.Fatalf("create session A: %v", err)
+	}
+	tokenB, _, err := auth.CreateSession(db, 2)
+	if err != nil {
+		t.Fatalf("create session B: %v", err)
+	}
+
+	r := chi.NewRouter()
+	r.Group(func(r chi.Router) {
+		r.Use(auth.RequireAuth(db))
+		r.Use(auth.WithFeatures(db))
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireFeature(db, "pokemon"))
+			r.Get("/api/pokemon/sets", ListSetsHandler(db))
+		})
+	})
+
+	// Kid A: pokemon=true → 200.
+	reqA := httptest.NewRequest(http.MethodGet, "/api/pokemon/sets", nil)
+	reqA.AddCookie(&http.Cookie{Name: "session", Value: tokenA})
+	recA := httptest.NewRecorder()
+	r.ServeHTTP(recA, reqA)
+	if recA.Code != http.StatusOK {
+		t.Errorf("kid A expected 200 with pokemon enabled, got %d (%s)", recA.Code, recA.Body.String())
+	}
+
+	// Kid B: pokemon=false → 403.
+	reqB := httptest.NewRequest(http.MethodGet, "/api/pokemon/sets", nil)
+	reqB.AddCookie(&http.Cookie{Name: "session", Value: tokenB})
+	recB := httptest.NewRecorder()
+	r.ServeHTTP(recB, reqB)
+	if recB.Code != http.StatusForbidden {
+		t.Errorf("kid B expected 403 with pokemon disabled, got %d (%s)", recB.Code, recB.Body.String())
+	}
+
+	// Flip kid B on — kid A's gate should be unaffected.
+	if err := auth.SetUserFeature(db, 2, "pokemon", true); err != nil {
+		t.Fatalf("re-enable pokemon for kid B: %v", err)
+	}
+	reqB2 := httptest.NewRequest(http.MethodGet, "/api/pokemon/sets", nil)
+	reqB2.AddCookie(&http.Cookie{Name: "session", Value: tokenB})
+	recB2 := httptest.NewRecorder()
+	r.ServeHTTP(recB2, reqB2)
+	if recB2.Code != http.StatusOK {
+		t.Errorf("kid B expected 200 after enabling pokemon, got %d (%s)", recB2.Code, recB2.Body.String())
+	}
+
+	// Toggle kid A off — kid B should remain enabled.
+	if err := auth.SetUserFeature(db, 1, "pokemon", false); err != nil {
+		t.Fatalf("disable pokemon for kid A: %v", err)
+	}
+	reqA2 := httptest.NewRequest(http.MethodGet, "/api/pokemon/sets", nil)
+	reqA2.AddCookie(&http.Cookie{Name: "session", Value: tokenA})
+	recA2 := httptest.NewRecorder()
+	r.ServeHTTP(recA2, reqA2)
+	if recA2.Code != http.StatusForbidden {
+		t.Errorf("kid A expected 403 after disabling pokemon, got %d (%s)", recA2.Code, recA2.Body.String())
+	}
+	reqB3 := httptest.NewRequest(http.MethodGet, "/api/pokemon/sets", nil)
+	reqB3.AddCookie(&http.Cookie{Name: "session", Value: tokenB})
+	recB3 := httptest.NewRecorder()
+	r.ServeHTTP(recB3, reqB3)
+	if recB3.Code != http.StatusOK {
+		t.Errorf("kid B should still be 200 after toggling kid A, got %d (%s)", recB3.Code, recB3.Body.String())
+	}
+}
+
 // callJSON encodes payload as JSON, attaches the user + optional chi params,
 // and runs the handler against the resulting request/recorder pair.
 func callJSON(t *testing.T, method, path string, payload any, user *auth.User, params map[string]string, h http.HandlerFunc) *httptest.ResponseRecorder {
