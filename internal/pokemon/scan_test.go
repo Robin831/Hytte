@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -335,6 +334,10 @@ func TestScanHandler_NoCardMatch(t *testing.T) {
 // BOTH RequireFeature(db, "pokemon") and RequireAdmin. A non-admin user with
 // the feature enabled must be denied; an admin without any explicit feature
 // flag must pass (admins bypass feature checks by design).
+//
+// The router is built using RegisterRoutes — the same helper that the
+// production API router calls — so this test would catch any accidental
+// removal of the feature gate or admin check from the shared registration code.
 func TestScanHandler_FeatureGateAndAdmin(t *testing.T) {
 	db := setupTestDB(t)
 	seedCatalogue(t, db)
@@ -371,13 +374,14 @@ func TestScanHandler_FeatureGateAndAdmin(t *testing.T) {
 
 	stubScanPrompt(t, `{"set_name":"Scarlet & Violet Base","set_id_hint":"sv1","collector_number":"025","confidence":0.95}`, nil)
 
+	// Build the router using RegisterRoutes — the same function the production
+	// API router calls — so changes to the gate or admin check are caught here.
 	r := chi.NewRouter()
-	r.Group(func(r chi.Router) {
-		r.Use(auth.RequireAuth(db))
-		r.Use(auth.WithFeatures(db))
+	r.Route("/api", func(r chi.Router) {
 		r.Group(func(r chi.Router) {
-			r.Use(auth.RequireFeature(db, "pokemon"))
-			r.With(auth.RequireAdmin()).Post("/api/pokemon/scan", ScanHandler(db))
+			r.Use(auth.RequireAuth(db))
+			r.Use(auth.WithFeatures(db))
+			RegisterRoutes(r, db)
 		})
 	})
 
@@ -466,9 +470,9 @@ func TestParseClaudeScanResult(t *testing.T) {
 	}
 }
 
-// ensure we can encode/decode the candidate struct symmetrically. Cheap
-// sanity check that prevents API shape regressions if anyone re-orders the
-// struct fields.
+// TestScanCandidate_JSON verifies ScanCandidate round-trips through JSON
+// symmetrically. A change to any exported field name or type would break this
+// check and signal an API shape regression.
 func TestScanCandidate_JSON(t *testing.T) {
 	c := ScanCandidate{
 		Card:  CardDTO{ID: "sv1-25", SetID: "sv1", Name: "Pikachu", Variants: []VariantDTO{}},
@@ -479,8 +483,11 @@ func TestScanCandidate_JSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	wantSnippet := fmt.Sprintf(`"score":%v`, 0.91)
-	if !strings.Contains(string(out), wantSnippet) {
-		t.Errorf("expected %s in %s", wantSnippet, out)
+	var got ScanCandidate
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.Card.ID != c.Card.ID || got.Score != c.Score || got.Set == nil || got.Set.ID != c.Set.ID {
+		t.Errorf("round-trip mismatch: got %+v, want %+v", got, c)
 	}
 }

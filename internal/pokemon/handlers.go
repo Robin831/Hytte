@@ -105,6 +105,25 @@ type CollectionRow struct {
 	AcquiredAt string `json:"acquired_at"`
 }
 
+// RegisterRoutes mounts all Pokémon Collection routes on r under the "pokemon"
+// feature gate. It is called by both the production API router and tests so
+// both exercise the same middleware chain — if the gate or admin check changes
+// here, the tests automatically reflect that change.
+func RegisterRoutes(r chi.Router, db *sql.DB) {
+	r.Group(func(r chi.Router) {
+		r.Use(auth.RequireFeature(db, "pokemon"))
+		r.Get("/pokemon/sets", ListSetsHandler(db))
+		r.Get("/pokemon/sets/{id}/cards", ListSetCardsHandler(db))
+		r.Get("/pokemon/cards/search", SearchCardsHandler(db))
+		r.Post("/pokemon/collection", UpsertCollectionHandler(db))
+		r.Patch("/pokemon/collection/{id}", UpdateCollectionHandler(db))
+		r.Delete("/pokemon/collection/{id}", DeleteCollectionHandler(db))
+		r.Get("/pokemon/collection/missing", MissingFromSetHandler(db))
+		// Vision scan: admin-only on top of the feature gate.
+		r.With(auth.RequireAdmin()).Post("/pokemon/scan", ScanHandler(db))
+	})
+}
+
 func respondJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

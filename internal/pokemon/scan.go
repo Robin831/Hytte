@@ -132,10 +132,12 @@ func ScanHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		r.Body = http.MaxBytesReader(w, r.Body, scanParseFormBytes)
 		if err := r.ParseMultipartForm(scanParseFormBytes); err != nil {
 			respondError(w, http.StatusBadRequest, "failed to parse multipart form")
 			return
 		}
+		defer r.MultipartForm.RemoveAll()
 
 		file, header, err := r.FormFile("image")
 		if err != nil {
@@ -348,15 +350,17 @@ func findScanCandidates(ctx context.Context, db *sql.DB, userID int64, result *c
 			if err != nil {
 				return nil, "", fmt.Errorf("set name lookup: %w", err)
 			}
+			defer rows.Close()
 			for rows.Next() {
 				var id string
 				if err := rows.Scan(&id); err != nil {
-					rows.Close()
 					return nil, "", fmt.Errorf("scan set id: %w", err)
 				}
 				setFilter = append(setFilter, id)
 			}
-			rows.Close()
+			if err := rows.Err(); err != nil {
+				return nil, "", fmt.Errorf("set name rows: %w", err)
+			}
 			setLabel = name
 		}
 	}

@@ -405,22 +405,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Delete("/notes/{id}", notes.DeleteHandler(db))
 			})
 
-			// Pokémon Collection — gated by "pokemon" feature.
-			r.Group(func(r chi.Router) {
-				r.Use(auth.RequireFeature(db, "pokemon"))
-				r.Get("/pokemon/sets", pokemon.ListSetsHandler(db))
-				r.Get("/pokemon/sets/{id}/cards", pokemon.ListSetCardsHandler(db))
-				r.Get("/pokemon/cards/search", pokemon.SearchCardsHandler(db))
-				r.Post("/pokemon/collection", pokemon.UpsertCollectionHandler(db))
-				r.Patch("/pokemon/collection/{id}", pokemon.UpdateCollectionHandler(db))
-				r.Delete("/pokemon/collection/{id}", pokemon.DeleteCollectionHandler(db))
-				r.Get("/pokemon/collection/missing", pokemon.MissingFromSetHandler(db))
-				// Vision scan (Phase 2) is admin-only on top of the feature gate.
-				// The Claude CLI call lives behind RequireAdmin so non-admin kids
-				// can still browse and edit their collection without exposing the
-				// vision endpoint, which costs money to run.
-				r.With(auth.RequireAdmin()).Post("/pokemon/scan", pokemon.ScanHandler(db))
-			})
+			// Pokémon Collection — gated by "pokemon" feature (routes in pokemon.RegisterRoutes).
+			pokemon.RegisterRoutes(r, db)
 
 			// Tasks — gated by "tasks" feature.
 			r.Group(func(r chi.Router) {
