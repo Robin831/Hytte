@@ -18,10 +18,6 @@ interface PokemonSet {
   owned_count: number
 }
 
-// RECENT_ERAS lists the series that stay expanded by default. Any set whose
-// `series` does not appear here is hidden behind the "Show older sets" toggle.
-const RECENT_ERAS = ['Scarlet & Violet', 'Sword & Shield', 'Sun & Moon'] as const
-
 // eraSlug converts a series name into a safe HTML id fragment so values like
 // "Scarlet & Violet" don't break aria-labelledby (ids may not contain spaces
 // and ampersands are awkward to reference).
@@ -178,9 +174,10 @@ export default function PokemonSets() {
     return () => { controller.abort() }
   }, [t, attempt])
 
-  // groupedRecent and groupedOlder preserve the canonical order of RECENT_ERAS
-  // and sort older series newest-first by the most-recent release_date in each
-  // series. This keeps the page deterministic regardless of API ordering.
+  // The top 3 series ranked by the most-recent release_date in each series are
+  // shown expanded; everything else is hidden behind the "Show older sets"
+  // toggle. Older series are sorted newest-first by their max release_date,
+  // with ties broken alphabetically for determinism.
   const { recent, older } = useMemo(() => {
     const byEra = new Map<string, PokemonSet[]>()
     for (const s of sets) {
@@ -191,23 +188,16 @@ export default function PokemonSets() {
     for (const list of byEra.values()) {
       list.sort((a, b) => (a.release_date < b.release_date ? 1 : a.release_date > b.release_date ? -1 : 0))
     }
-    const recentGroups: Array<[string, PokemonSet[]]> = []
-    for (const era of RECENT_ERAS) {
-      const list = byEra.get(era)
-      if (list && list.length > 0) recentGroups.push([era, list])
-    }
-    const olderGroups: Array<[string, PokemonSet[]]> = []
-    for (const [era, list] of byEra.entries()) {
-      if ((RECENT_ERAS as readonly string[]).includes(era)) continue
-      olderGroups.push([era, list])
-    }
-    olderGroups.sort((a, b) => {
+    const erasByLatest: Array<[string, PokemonSet[]]> = [...byEra.entries()]
+    erasByLatest.sort((a, b) => {
       const aLatest = a[1][0]?.release_date ?? ''
       const bLatest = b[1][0]?.release_date ?? ''
       if (aLatest < bLatest) return 1
       if (aLatest > bLatest) return -1
       return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0
     })
+    const recentGroups = erasByLatest.slice(0, 3)
+    const olderGroups = erasByLatest.slice(3)
     return { recent: recentGroups, older: olderGroups }
   }, [sets])
 
