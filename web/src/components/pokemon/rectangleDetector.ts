@@ -91,15 +91,16 @@ export function detectCardRectangle(image: ImageData): DetectedRectangle | null 
   if (edgeCount < pixelCount * 0.01) return null
   if (edgeCount > pixelCount * 0.6) return null
 
-  edgesX.sort((a, b) => a - b)
-  edgesY.sort((a, b) => a - b)
+  // Sort copies so the original paired arrays remain intact for density scoring.
+  const sortedX = edgesX.slice().sort((a, b) => a - b)
+  const sortedY = edgesY.slice().sort((a, b) => a - b)
 
-  const loIdx = Math.floor(edgesX.length * PERCENTILE_LO)
-  const hiIdx = Math.min(edgesX.length - 1, Math.floor(edgesX.length * PERCENTILE_HI))
-  const x0 = edgesX[loIdx]
-  const x1 = edgesX[hiIdx]
-  const y0 = edgesY[loIdx]
-  const y1 = edgesY[hiIdx]
+  const loIdx = Math.floor(sortedX.length * PERCENTILE_LO)
+  const hiIdx = Math.min(sortedX.length - 1, Math.floor(sortedX.length * PERCENTILE_HI))
+  const x0 = sortedX[loIdx]
+  const x1 = sortedX[hiIdx]
+  const y0 = sortedY[loIdx]
+  const y1 = sortedY[hiIdx]
   const rectW = x1 - x0
   const rectH = y1 - y0
   if (rectW <= 0 || rectH <= 0) return null
@@ -125,11 +126,13 @@ export function detectCardRectangle(image: ImageData): DetectedRectangle | null 
   const score = aspectScore * 0.6 + densityScore * 0.4
   if (score < MIN_SCORE) return null
 
+  const rx = Math.max(0, Math.round(x0 / scale))
+  const ry = Math.max(0, Math.round(y0 / scale))
   return {
-    x: Math.max(0, Math.round(x0 / scale)),
-    y: Math.max(0, Math.round(y0 / scale)),
-    w: Math.min(srcW, Math.round(rectW / scale)),
-    h: Math.min(srcH, Math.round(rectH / scale)),
+    x: rx,
+    y: ry,
+    w: Math.min(srcW - rx, Math.round(rectW / scale)),
+    h: Math.min(srcH - ry, Math.round(rectH / scale)),
     score,
   }
 }

@@ -333,20 +333,30 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
     // where the rAF fires an extra auto-capture while this capture is in progress.
     scanStatusRef.current = 'captured'
     setScanStatus('captured')
+
+    const revertToSearching = () => {
+      scanStatusRef.current = 'searching'
+      setScanStatus('searching')
+    }
+
     const video = videoRef.current
     const canvas = canvasRef.current
-    if (!video || !canvas) return
+    if (!video || !canvas) { revertToSearching(); return }
     const width = video.videoWidth
     const height = video.videoHeight
-    if (width === 0 || height === 0) return
+    if (width === 0 || height === 0) { revertToSearching(); return }
     canvas.width = width
     canvas.height = height
     const ctx = canvas.getContext('2d')
-    if (!ctx) return
+    if (!ctx) { revertToSearching(); return }
     ctx.drawImage(video, 0, 0, width, height)
     canvas.toBlob(
       blob => {
-        if (blob) onCapture(blob)
+        if (blob) {
+          onCapture(blob)
+        } else {
+          revertToSearching()
+        }
       },
       'image/jpeg',
       0.92,
