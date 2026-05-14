@@ -298,7 +298,7 @@ describe('PokemonSet – mark owned (POST)', () => {
 
     await waitFor(() => expect(screen.getByTestId('owned-count')).toHaveTextContent('1 / 1'))
     const tile = screen.getByTestId('card-tile-sv1-1')
-    expect(tile).toHaveAttribute('aria-pressed', 'true')
+    expect(tile).toHaveAttribute('data-ownership', 'owned')
   })
 })
 
@@ -330,7 +330,7 @@ describe('PokemonSet – unmark owned (DELETE)', () => {
     })
 
     await waitFor(() => expect(screen.getByTestId('owned-count')).toHaveTextContent('0 / 1'))
-    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('data-ownership', 'missing')
   })
 })
 
@@ -389,7 +389,7 @@ describe('PokemonSet – mark error reverts optimistic UI', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Mark as owned' }))
 
     await waitFor(() => expect(screen.getByTestId('owned-count')).toHaveTextContent('0 / 1'))
-    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('data-ownership', 'missing')
   })
 })
 
@@ -535,9 +535,9 @@ describe('PokemonSet – variant filter chip', () => {
 
     // Pikachu owns normal, Eevee owns reverse → 2/3 owned, Mew missing.
     expect(screen.getByTestId('owned-count')).toHaveTextContent('2 / 3')
-    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByTestId('card-tile-sv1-2')).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByTestId('card-tile-sv1-3')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('data-ownership', 'owned')
+    expect(screen.getByTestId('card-tile-sv1-2')).toHaveAttribute('data-ownership', 'owned')
+    expect(screen.getByTestId('card-tile-sv1-3')).toHaveAttribute('data-ownership', 'missing')
   })
 
   it('Normal filter shows owned only for cards whose normal is owned', async () => {
@@ -551,9 +551,9 @@ describe('PokemonSet – variant filter chip', () => {
 
     // Only Pikachu owns normal → 1/3.
     expect(screen.getByTestId('owned-count')).toHaveTextContent('1 / 3')
-    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByTestId('card-tile-sv1-2')).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByTestId('card-tile-sv1-3')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('data-ownership', 'owned')
+    expect(screen.getByTestId('card-tile-sv1-2')).toHaveAttribute('data-ownership', 'missing')
+    expect(screen.getByTestId('card-tile-sv1-3')).toHaveAttribute('data-ownership', 'missing')
   })
 
   it('Reverse Holo filter excludes cards without a reverse variant from the denominator', async () => {

@@ -9,7 +9,13 @@
     "ownership": "{{owned}} / {{total}} — {{percent}}%",
     "openSet": "เปิด {{name}}",
     "openCard": "เปิด {{name}} (#{{number}})",
-    "collectorNo": "#{{number}}"
+    "collectorNo": "#{{number}}",
+    "status": {
+      "owned": "มีแล้ว",
+      "partial": "มีบางส่วน",
+      "missing": "ยังไม่มี",
+      "na": "ไม่เกี่ยวข้อง"
+    }
   },
   "errors": {
     "failedToLoad": "โหลดชุดโปเกมอนไม่สำเร็จ",

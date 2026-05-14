@@ -9,7 +9,13 @@
     "ownership": "{{owned}} / {{total}} — {{percent}} %",
     "openSet": "Åpne {{name}}",
     "openCard": "Åpne {{name}} (#{{number}})",
-    "collectorNo": "#{{number}}"
+    "collectorNo": "#{{number}}",
+    "status": {
+      "owned": "eid",
+      "partial": "delvis eid",
+      "missing": "ikke eid",
+      "na": "ikke aktuelt"
+    }
   },
   "errors": {
     "failedToLoad": "Kunne ikke laste Pokémon-sett",

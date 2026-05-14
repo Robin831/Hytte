@@ -55,7 +55,8 @@ const CONDITIONS = ['', 'mint', 'near_mint', 'lightly_played', 'moderately_playe
 // (today's default). 'all' is stricter: every variant must be owned. Any other
 // value is a specific variant kind from the set (e.g. 'normal',
 // 'reverse_holofoil').
-type VariantFilter = 'any' | 'all' | string
+type VariantKind = string
+type VariantFilter = 'any' | 'all' | VariantKind
 
 // KNOWN_VARIANT_KIND_ORDER controls the chip ordering for the kinds we
 // recognise; unknown kinds fall through to the end in alphabetical order.
@@ -303,7 +304,6 @@ function CardTile({ card, filter, onClick, t }: TileProps) {
       onClick={onClick}
       data-testid={`card-tile-${card.id}`}
       aria-label={t('tile.openCard', { name: card.name, number: card.collector_no })}
-      aria-pressed={applicable ? (owned ? true : partial ? 'mixed' : false) : false}
       data-ownership={!applicable ? 'na' : owned ? 'owned' : partial ? 'partial' : 'missing'}
       className={`flex flex-col gap-2 p-2 rounded-lg border bg-gray-800/40 transition-colors text-left cursor-pointer ${tileClass}`}
     >
@@ -340,6 +340,15 @@ function CardTile({ card, filter, onClick, t }: TileProps) {
         <p className="text-xs text-gray-500">{t('tile.collectorNo', { number: card.collector_no })}</p>
         <p className="text-xs text-gray-300 mt-0.5">{formatNok(price)}</p>
       </div>
+      <span className="sr-only">
+        {!applicable
+          ? t('tile.status.na')
+          : owned
+            ? t('tile.status.owned')
+            : partial
+              ? t('tile.status.partial')
+              : t('tile.status.missing')}
+      </span>
     </button>
   )
 }

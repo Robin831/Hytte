@@ -9,7 +9,13 @@
     "ownership": "{{owned}} / {{total}} — {{percent}}%",
     "openSet": "Open {{name}}",
     "openCard": "Open {{name}} (#{{number}})",
-    "collectorNo": "#{{number}}"
+    "collectorNo": "#{{number}}",
+    "status": {
+      "owned": "owned",
+      "partial": "partially owned",
+      "missing": "not owned",
+      "na": "not applicable"
+    }
   },
   "errors": {
     "failedToLoad": "Failed to load Pokémon sets",
