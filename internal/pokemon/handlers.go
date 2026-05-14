@@ -46,7 +46,10 @@ var allowedConditions = map[string]bool{
 // straight from a card.
 var collectorNumberPattern = regexp.MustCompile(`^\d+(/\d+)?$`)
 
-// SetDTO is the JSON shape used by /api/pokemon/sets.
+// SetDTO is the JSON shape used by /api/pokemon/sets. OwnedCount is the number
+// of distinct cards from the set that the current user owns at least one
+// variant of, so the sets browser can render "{owned} / {total}" without
+// fetching every card list up front.
 type SetDTO struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -55,6 +58,7 @@ type SetDTO struct {
 	TotalCards  int    `json:"total_cards"`
 	SymbolURL   string `json:"symbol_url"`
 	LogoURL     string `json:"logo_url"`
+	OwnedCount  int    `json:"owned_count"`
 }
 
 // VariantDTO is the JSON shape of a card variant, including ownership state
@@ -192,9 +196,17 @@ func applyNOK(w http.ResponseWriter, cards []CardDTO, rate float64, rateOK bool)
 }
 
 // ListSetsHandler returns the catalogue of sets, ordered newest-first and
-// optionally filtered by series via ?era=<name>.
+// optionally filtered by series via ?era=<name>. The OwnedCount column is
+// computed per set for the authenticated user via a correlated subquery — the
+// catalogue is small (a few dozen sets), so the extra cost is negligible
+// compared to making a follow-up request per set.
 func ListSetsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			respondError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
 		era := strings.TrimSpace(r.URL.Query().Get("era"))
 		limit := parseLimit(r, defaultListLimit, maxListLimit)
 		offset := parseOffset(r)
@@ -205,19 +217,27 @@ func ListSetsHandler(db *sql.DB) http.HandlerFunc {
 		)
 		if era != "" {
 			rows, err = db.QueryContext(r.Context(), `
-				SELECT id, name, series, release_date, total_cards, symbol_url, logo_url
-				FROM pokemon_sets
-				WHERE series = ?
-				ORDER BY release_date DESC, id DESC
+				SELECT s.id, s.name, s.series, s.release_date, s.total_cards, s.symbol_url, s.logo_url,
+				       (SELECT COUNT(DISTINCT pc.card_id)
+				        FROM pokemon_collections pc
+				        JOIN pokemon_cards c ON c.id = pc.card_id
+				        WHERE c.set_id = s.id AND pc.user_id = ?) AS owned_count
+				FROM pokemon_sets s
+				WHERE s.series = ?
+				ORDER BY s.release_date DESC, s.id DESC
 				LIMIT ? OFFSET ?
-			`, era, limit, offset)
+			`, user.ID, era, limit, offset)
 		} else {
 			rows, err = db.QueryContext(r.Context(), `
-				SELECT id, name, series, release_date, total_cards, symbol_url, logo_url
-				FROM pokemon_sets
-				ORDER BY release_date DESC, id DESC
+				SELECT s.id, s.name, s.series, s.release_date, s.total_cards, s.symbol_url, s.logo_url,
+				       (SELECT COUNT(DISTINCT pc.card_id)
+				        FROM pokemon_collections pc
+				        JOIN pokemon_cards c ON c.id = pc.card_id
+				        WHERE c.set_id = s.id AND pc.user_id = ?) AS owned_count
+				FROM pokemon_sets s
+				ORDER BY s.release_date DESC, s.id DESC
 				LIMIT ? OFFSET ?
-			`, limit, offset)
+			`, user.ID, limit, offset)
 		}
 		if err != nil {
 			log.Printf("pokemon: list sets: %v", err)
@@ -229,7 +249,7 @@ func ListSetsHandler(db *sql.DB) http.HandlerFunc {
 		sets := make([]SetDTO, 0)
 		for rows.Next() {
 			var s SetDTO
-			if err := rows.Scan(&s.ID, &s.Name, &s.Series, &s.ReleaseDate, &s.TotalCards, &s.SymbolURL, &s.LogoURL); err != nil {
+			if err := rows.Scan(&s.ID, &s.Name, &s.Series, &s.ReleaseDate, &s.TotalCards, &s.SymbolURL, &s.LogoURL, &s.OwnedCount); err != nil {
 				log.Printf("pokemon: scan set: %v", err)
 				respondError(w, http.StatusInternalServerError, "failed to list sets")
 				return

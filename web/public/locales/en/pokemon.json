@@ -1,0 +1,19 @@
+{
+  "pageTitle": "Pokémon Sets",
+  "showOlder": "Show older sets",
+  "hideOlder": "Hide older sets",
+  "olderSets": "Older sets",
+  "tile": {
+    "totalCards_one": "{{count}} card",
+    "totalCards_other": "{{count}} cards",
+    "ownership": "{{owned}} / {{total}} — {{percent}}%",
+    "openSet": "Open {{name}}"
+  },
+  "errors": {
+    "failedToLoad": "Failed to load Pokémon sets"
+  },
+  "retry": "Retry",
+  "setDetail": {
+    "comingSoon": "Set detail coming soon"
+  }
+}

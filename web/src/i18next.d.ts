@@ -25,6 +25,7 @@ import type groceryEn from '../public/locales/en/grocery.json'
 import type homeworkEn from '../public/locales/en/homework.json'
 import type regnemesterEn from '../public/locales/en/regnemester.json'
 import type suggestionsEn from '../public/locales/en/suggestions.json'
+import type pokemonEn from '../public/locales/en/pokemon.json'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -57,6 +58,7 @@ declare module 'i18next' {
       homework: typeof homeworkEn
       regnemester: typeof regnemesterEn
       suggestions: typeof suggestionsEn
+      pokemon: typeof pokemonEn
     }
   }
 }
