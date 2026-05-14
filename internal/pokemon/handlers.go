@@ -221,7 +221,7 @@ func ListSetsHandler(db *sql.DB) http.HandlerFunc {
 				       (SELECT COUNT(DISTINCT pc.card_id)
 				        FROM pokemon_collections pc
 				        JOIN pokemon_cards c ON c.id = pc.card_id
-				        WHERE c.set_id = s.id AND pc.user_id = ?) AS owned_count
+				        WHERE c.set_id = s.id AND pc.user_id = ? AND pc.quantity > 0) AS owned_count
 				FROM pokemon_sets s
 				WHERE s.series = ?
 				ORDER BY s.release_date DESC, s.id DESC
@@ -233,7 +233,7 @@ func ListSetsHandler(db *sql.DB) http.HandlerFunc {
 				       (SELECT COUNT(DISTINCT pc.card_id)
 				        FROM pokemon_collections pc
 				        JOIN pokemon_cards c ON c.id = pc.card_id
-				        WHERE c.set_id = s.id AND pc.user_id = ?) AS owned_count
+				        WHERE c.set_id = s.id AND pc.user_id = ? AND pc.quantity > 0) AS owned_count
 				FROM pokemon_sets s
 				ORDER BY s.release_date DESC, s.id DESC
 				LIMIT ? OFFSET ?
