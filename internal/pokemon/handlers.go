@@ -29,10 +29,6 @@ const defaultListLimit = 50
 // list endpoints stay snappy when the upper bound is tight.
 const maxListLimit = 50
 
-// maxSetCardsLimit caps the per-set cards listing. A single set is typically
-// 200–300 cards, so the limit is intentionally generous.
-const maxSetCardsLimit = 500
-
 // allowedConditions enumerates the grades we accept for a collection row.
 // An empty string is also permitted (callers may not yet have graded the card).
 var allowedConditions = map[string]bool{
@@ -136,7 +132,7 @@ func decodeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
 // parseLimit reads ?limit= with a default and cap. Returns the default when
 // the parameter is missing or invalid (to keep the API forgiving for
 // hand-crafted URLs).
-func parseLimit(r *http.Request, def, max int) int {
+func parseLimit(r *http.Request, def, upper int) int {
 	q := strings.TrimSpace(r.URL.Query().Get("limit"))
 	if q == "" {
 		return def
@@ -145,8 +141,8 @@ func parseLimit(r *http.Request, def, max int) int {
 	if err != nil || n <= 0 {
 		return def
 	}
-	if n > max {
-		return max
+	if n > upper {
+		return upper
 	}
 	return n
 }
@@ -166,10 +162,14 @@ func parseOffset(r *http.Request) int {
 
 // loadRate fetches the latest EUR/NOK rate. When no rate is available it
 // returns ok=false so callers can flag the response with the
-// X-Pokemon-Rate-Missing header.
+// X-Pokemon-Rate-Missing header. Unexpected (non sql.ErrNoRows) errors are
+// logged so a misconfigured DB or schema mismatch is visible in operations.
 func loadRate(r *http.Request, db *sql.DB) (rate float64, ok bool) {
 	rate, _, err := currency.LatestRate(r.Context(), db, currency.PairEURNOK)
 	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			log.Printf("pokemon: load EUR/NOK rate: %v", err)
+		}
 		return 0, false
 	}
 	return rate, true
@@ -371,17 +371,18 @@ func UpsertCollectionHandler(db *sql.DB) http.HandlerFunc {
 		now := time.Now().UTC()
 		// Determine whether an existing row already covers (user, card, variant) so
 		// we can return the correct status code (200 vs 201) and re-read the row.
-		var existingID int64
+		// We only care whether a row exists, not its id, so EXISTS() is enough.
+		var rowExists bool
 		err = db.QueryRowContext(r.Context(),
-			`SELECT id FROM pokemon_collections WHERE user_id = ? AND card_id = ? AND variant_id = ?`,
+			`SELECT EXISTS(SELECT 1 FROM pokemon_collections WHERE user_id = ? AND card_id = ? AND variant_id = ?)`,
 			user.ID, body.CardID, body.VariantID,
-		).Scan(&existingID)
-		isNew := errors.Is(err, sql.ErrNoRows)
-		if err != nil && !isNew {
+		).Scan(&rowExists)
+		if err != nil {
 			log.Printf("pokemon: lookup collection: %v", err)
 			respondError(w, http.StatusInternalServerError, "failed to upsert collection")
 			return
 		}
+		isNew := !rowExists
 
 		_, err = db.ExecContext(r.Context(), `
 			INSERT INTO pokemon_collections (user_id, card_id, variant_id, quantity, condition, acquired_at, notes_enc)
@@ -571,15 +572,16 @@ func MissingFromSetHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // loadCardsForSet hydrates every card in a set with its variants and owner
-// flags for the given user.
+// flags for the given user. A set is bounded by its printed total, so no
+// pagination is applied here — silently truncating would hide cards from a
+// caller building a "what's missing?" view.
 func loadCardsForSet(r *http.Request, db *sql.DB, userID int64, setID string) ([]CardDTO, error) {
 	cardRows, err := db.QueryContext(r.Context(), `
 		SELECT id, set_id, name, collector_no, rarity, image_small_url, image_large_url
 		FROM pokemon_cards
 		WHERE set_id = ?
 		ORDER BY CAST(collector_no AS INTEGER), collector_no
-		LIMIT ?
-	`, setID, maxSetCardsLimit)
+	`, setID)
 	if err != nil {
 		return nil, err
 	}
@@ -788,8 +790,11 @@ func encryptNotes(plain string) (any, error) {
 }
 
 // decryptNotes returns the plaintext notes for a nullable encrypted column.
-// Legacy plaintext values are returned as-is with a log warning, matching the
-// rest of the codebase's tolerant decryption strategy.
+// On decrypt failure it returns an empty string and logs a warning: returning
+// the raw column value would leak ciphertext (or legacy plaintext from another
+// user) into the API response, which the Warden rules explicitly forbid. This
+// feature is new and has never stored plaintext, so there is no legacy path
+// to preserve.
 func decryptNotes(enc sql.NullString) string {
 	if !enc.Valid || enc.String == "" {
 		return ""
@@ -797,7 +802,7 @@ func decryptNotes(enc sql.NullString) string {
 	plain, err := encryption.DecryptField(enc.String)
 	if err != nil {
 		log.Printf("pokemon: decrypt notes: %v", err)
-		return enc.String
+		return ""
 	}
 	return plain
 }
