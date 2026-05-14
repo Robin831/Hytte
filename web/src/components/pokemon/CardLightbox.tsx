@@ -21,12 +21,12 @@ export interface LightboxCard {
   variants: LightboxVariant[]
 }
 
-export interface CardLightboxProps {
-  cards: LightboxCard[]
+export interface CardLightboxProps<TCard extends LightboxCard = LightboxCard> {
+  cards: TCard[]
   startIndex: number
   onClose: () => void
   showPrice?: boolean
-  renderActionBar?: (card: LightboxCard, index: number) => ReactNode
+  renderActionBar?: (card: TCard, index: number) => ReactNode
 }
 
 const SWIPE_THRESHOLD_PX = 40
@@ -34,6 +34,29 @@ const SWIPE_MAX_VERTICAL_RATIO = Math.tan((30 * Math.PI) / 180)
 const SWIPE_ANIMATE_MS = 150
 const WRAP_FLASH_MS = 250
 const CHEVRON_IDLE_MS = 1500
+
+// Module-scoped lock so stacked lightboxes (or rapid mount/unmount during
+// concurrent rendering) coordinate on body.style.overflow rather than each
+// instance racing to capture/restore the value.
+let bodyScrollLockCount = 0
+let bodyScrollLockPrevious = ''
+
+function lockBodyScroll() {
+  if (bodyScrollLockCount === 0) {
+    bodyScrollLockPrevious = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+  }
+  bodyScrollLockCount += 1
+}
+
+function unlockBodyScroll() {
+  if (bodyScrollLockCount === 0) return
+  bodyScrollLockCount -= 1
+  if (bodyScrollLockCount === 0) {
+    document.body.style.overflow = bodyScrollLockPrevious
+    bodyScrollLockPrevious = ''
+  }
+}
 
 function formatNok(amount: number | null | undefined): string {
   if (amount == null) return '—'
@@ -63,13 +86,13 @@ function topVariant(card: LightboxCard): LightboxVariant | undefined {
   return card.variants[0]
 }
 
-export default function CardLightbox({
+function CardLightbox<TCard extends LightboxCard>({
   cards,
   startIndex,
   onClose,
   showPrice = false,
   renderActionBar,
-}: CardLightboxProps) {
+}: CardLightboxProps<TCard>) {
   const { t } = useTranslation('pokemon')
 
   const safeStart = useMemo(() => {
@@ -86,10 +109,10 @@ export default function CardLightbox({
   const [chevronsIdle, setChevronsIdle] = useState(false)
   const [announce, setAnnounce] = useState('')
 
-  const overlayRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
   const previousFocusRef = useRef<Element | null>(null)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
+  const swipeTimerRef = useRef<number | null>(null)
 
   const currentCard = cards[currentIndex]
 
@@ -117,15 +140,25 @@ export default function CardLightbox({
     })
   }, [cards.length, t])
 
-  // Body scroll lock — restore the previous overflow value on unmount so we
-  // don't trample over a parent that already locked scrolling.
+  // Body scroll lock — routed through a module-scoped counter so a parent
+  // modal's lock isn't clobbered if this instance unmounts first.
   useEffect(() => {
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previous
-    }
+    lockBodyScroll()
+    return () => unlockBodyScroll()
   }, [])
+
+  // Keep currentIndex in range when the cards list shrinks underneath us
+  // (e.g. the parent re-filters its visible grid while the lightbox is open).
+  // Without this, currentIndex could exceed cards.length and the lightbox
+  // would render nothing or silently unmount.
+  useEffect(() => {
+    setCurrentIndex(prev => {
+      if (cards.length === 0) return 0
+      if (prev >= cards.length) return cards.length - 1
+      if (prev < 0) return 0
+      return prev
+    })
+  }, [cards.length])
 
   // Keyboard navigation. Capture-phase so we run before any underlying Dialog
   // listener (e.g. AddCardPanel's surrounding modal) and can stop Escape from
@@ -250,13 +283,28 @@ export default function CardLightbox({
     const viewportW = typeof window !== 'undefined' ? window.innerWidth : 800
     setSwipeAnimating(true)
     setSwipeOffset(direction === 'next' ? -viewportW : viewportW)
-    window.setTimeout(() => {
+    if (swipeTimerRef.current !== null) {
+      clearTimeout(swipeTimerRef.current)
+    }
+    swipeTimerRef.current = window.setTimeout(() => {
+      swipeTimerRef.current = null
       if (direction === 'next') goNext()
       else goPrev()
       setSwipeAnimating(false)
       setSwipeOffset(0)
     }, SWIPE_ANIMATE_MS)
   }, [goNext, goPrev])
+
+  // Cancel any pending swipe-commit on unmount so we don't run setState after
+  // the component is gone.
+  useEffect(() => {
+    return () => {
+      if (swipeTimerRef.current !== null) {
+        clearTimeout(swipeTimerRef.current)
+        swipeTimerRef.current = null
+      }
+    }
+  }, [])
 
   if (cards.length === 0 || !currentCard) return null
 
@@ -283,7 +331,6 @@ export default function CardLightbox({
 
   const dialog = (
     <div
-      ref={overlayRef}
       className="fixed inset-0 z-[60] flex bg-black/95"
       style={{
         paddingTop: 'env(safe-area-inset-top)',
@@ -309,7 +356,7 @@ export default function CardLightbox({
           onClick={goPrev}
           aria-label={t('lightbox.previousCard')}
           data-testid="lightbox-prev-zone"
-          className={`group flex w-[22%] min-w-[44px] items-center justify-start pl-2 cursor-pointer transition-opacity ${chevronOpacityClass} hover:!opacity-80`}
+          className={`group flex w-[22%] min-w-[44px] items-center justify-start pl-2 cursor-pointer transition-opacity ${chevronOpacityClass} hover:!opacity-80 focus-visible:!opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400`}
         >
           <ChevronLeft size={48} className="text-white drop-shadow" aria-hidden="true" />
         </button>
@@ -378,7 +425,7 @@ export default function CardLightbox({
           onClick={goNext}
           aria-label={t('lightbox.nextCard')}
           data-testid="lightbox-next-zone"
-          className={`group flex w-[22%] min-w-[44px] items-center justify-end pr-2 cursor-pointer transition-opacity ${chevronOpacityClass} hover:!opacity-80`}
+          className={`group flex w-[22%] min-w-[44px] items-center justify-end pr-2 cursor-pointer transition-opacity ${chevronOpacityClass} hover:!opacity-80 focus-visible:!opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400`}
         >
           <ChevronRight size={48} className="text-white drop-shadow" aria-hidden="true" />
         </button>
@@ -408,3 +455,5 @@ export default function CardLightbox({
   if (typeof document === 'undefined') return dialog
   return createPortal(dialog, document.body)
 }
+
+export default CardLightbox

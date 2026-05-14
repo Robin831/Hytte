@@ -616,14 +616,14 @@ export default function PokemonSetPage() {
         )}
       </div>
       {lightboxStartIndex != null && visibleCards.length > 0 && (
-        <CardLightbox
+        <CardLightbox<Card>
           cards={visibleCards}
           startIndex={lightboxStartIndex}
           onClose={() => setLightboxStartIndex(null)}
           showPrice
           renderActionBar={(card) => (
             <LightboxActionBar
-              card={card as Card}
+              card={card}
               onSave={(variantId, payload) => handleSave(card.id, variantId, payload)}
               onUnmark={(collectionId) => handleUnmark(card.id, collectionId)}
               saving={savingCardId === card.id}

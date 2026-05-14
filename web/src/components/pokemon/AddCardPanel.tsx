@@ -327,31 +327,30 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
       )}
 
       {lightboxStartIndex != null && results.length > 0 && (
-        <CardLightbox
+        <CardLightbox<Card>
           cards={results}
           startIndex={lightboxStartIndex}
           onClose={() => setLightboxStartIndex(null)}
           showPrice
           renderActionBar={(card) => {
-            const lightCard = card as Card
-            const ownedAlready = lightCard.variants.length === 1 && lightCard.variants[0]?.owned
+            const ownedAlready = card.variants.length === 1 && card.variants[0]?.owned
             return (
               <div className="flex flex-wrap items-center gap-2 bg-gray-900/80 border border-gray-700 rounded-lg p-3 backdrop-blur-sm">
-                {lightCard.variants.length > 1 ? (
+                {card.variants.length > 1 ? (
                   <>
                     <span className="text-xs text-gray-300 mr-1">
-                      {t('addCard.variantPickerPrompt', { name: lightCard.name })}
+                      {t('addCard.variantPickerPrompt', { name: card.name })}
                     </span>
-                    {lightCard.variants.map(v => (
+                    {card.variants.map(v => (
                       <button
                         key={v.id}
                         type="button"
                         onClick={() => {
                           if (v.owned) {
-                            showToast(t('addCard.toast.alreadyOwned', { name: lightCard.name }), 'warning')
+                            showToast(t('addCard.toast.alreadyOwned', { name: card.name }), 'warning')
                             return
                           }
-                          void addCard(lightCard, v.id)
+                          void addCard(card, v.id)
                         }}
                         disabled={adding}
                         data-testid={`lightbox-add-variant-${v.id}`}
@@ -367,19 +366,19 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
                   <button
                     type="button"
                     onClick={() => {
-                      const v = lightCard.variants[0]
+                      const v = card.variants[0]
                       if (!v) return
                       if (v.owned) {
-                        showToast(t('addCard.toast.alreadyOwned', { name: lightCard.name }), 'warning')
+                        showToast(t('addCard.toast.alreadyOwned', { name: card.name }), 'warning')
                         return
                       }
-                      void addCard(lightCard, v.id)
+                      void addCard(card, v.id)
                     }}
                     disabled={adding || ownedAlready}
                     data-testid="lightbox-add-card"
                     className="flex items-center gap-2 px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800/60 disabled:cursor-not-allowed text-sm text-white cursor-pointer"
                   >
-                    {ownedAlready ? t('addCard.toast.alreadyOwned', { name: lightCard.name }) : t('detail.markOwned')}
+                    {ownedAlready ? t('addCard.toast.alreadyOwned', { name: card.name }) : t('detail.markOwned')}
                   </button>
                 )}
               </div>

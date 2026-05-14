@@ -211,4 +211,25 @@ describe('CardLightbox – body scroll lock', () => {
     unmount()
     expect(document.body.style.overflow).toBe('')
   })
+
+  it('does not unlock body overflow when an outer lock is still active', () => {
+    // Simulate an outer modal that locked the body before the lightbox
+    // mounted; the lightbox must not stomp on that value when it closes.
+    document.body.style.overflow = 'hidden'
+    const { unmount } = render(<CardLightbox cards={fixture} startIndex={0} onClose={vi.fn()} />)
+    expect(document.body.style.overflow).toBe('hidden')
+    unmount()
+    expect(document.body.style.overflow).toBe('hidden')
+    document.body.style.overflow = ''
+  })
+})
+
+describe('CardLightbox – cards shrink', () => {
+  it('clamps currentIndex when the cards list shrinks past it', () => {
+    const { rerender } = render(<CardLightbox cards={fixture} startIndex={2} onClose={vi.fn()} />)
+    expect(getImage().src).toBe('https://example.com/2.png')
+
+    rerender(<CardLightbox cards={fixture.slice(0, 1)} startIndex={2} onClose={vi.fn()} />)
+    expect(getImage().src).toBe('https://example.com/0.png')
+  })
 })
