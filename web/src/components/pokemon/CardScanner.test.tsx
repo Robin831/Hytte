@@ -2,6 +2,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react'
 import CardScanner from './CardScanner'
+import { detectCardRectangle, isWithinTolerance } from './rectangleDetector'
+import type { DetectedRectangle } from './rectangleDetector'
+
+vi.mock('./rectangleDetector', () => ({
+  detectCardRectangle: vi.fn().mockReturnValue(null),
+  isWithinTolerance: vi.fn().mockReturnValue(false),
+  TARGET_ASPECT_RATIO: 0.716,
+}))
 
 const TRANSLATIONS: Record<string, string> = {
   'scanner.dialogLabel': 'Scan a Pokémon card',
@@ -14,6 +22,7 @@ const TRANSLATIONS: Record<string, string> = {
   'scanner.torchOn': 'Turn flashlight on',
   'scanner.torchOff': 'Turn flashlight off',
   'scanner.close': 'Close scanner',
+  'scanner.holdSteady': 'Hold steady…',
 }
 
 vi.mock('react-i18next', () => ({
@@ -218,5 +227,120 @@ describe('CardScanner — torch not supported', () => {
 
     await waitFor(() => expect(screen.getByTestId('card-scanner-shutter')).toBeInTheDocument())
     expect(screen.queryByTestId('card-scanner-torch')).not.toBeInTheDocument()
+  })
+})
+
+describe('CardScanner — auto-detect state machine', () => {
+  let pendingRafs: FrameRequestCallback[]
+
+  beforeEach(() => {
+    const trackHandle = makeTrack({ torch: false })
+    const stream = makeStream(trackHandle.track)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+    })
+
+    pendingRafs = []
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      pendingRafs.push(cb)
+      return pendingRafs.length
+    })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+
+    vi.mocked(detectCardRectangle).mockReturnValue(null)
+    vi.mocked(isWithinTolerance).mockReturnValue(false)
+  })
+
+  it('drives searching → candidate → locked, shows holdSteady banner, and fires onCapture', async () => {
+    const fakeDetection: DetectedRectangle = { x: 100, y: 80, w: 200, h: 280, score: 0.9 }
+    vi.mocked(detectCardRectangle).mockReturnValue(fakeDetection)
+    vi.mocked(isWithinTolerance).mockReturnValue(true)
+
+    const fakeBlob = new Blob(['img'], { type: 'image/jpeg' })
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (cb) {
+      cb(fakeBlob)
+    })
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: vi.fn(),
+      getImageData: vi.fn().mockReturnValue({
+        data: new Uint8ClampedArray(640 * 480 * 4),
+        width: 640,
+        height: 480,
+        colorSpace: 'srgb',
+      }),
+    } as unknown as CanvasRenderingContext2D)
+
+    const onCapture = vi.fn()
+    render(<CardScanner onCapture={onCapture} onClose={vi.fn()} />)
+
+    await waitFor(() => expect(screen.getByTestId('card-scanner-video')).toBeInTheDocument())
+
+    const video = screen.getByTestId('card-scanner-video') as HTMLVideoElement
+    Object.defineProperty(video, 'videoWidth', { value: 640, configurable: true })
+    Object.defineProperty(video, 'videoHeight', { value: 480, configurable: true })
+    Object.defineProperty(video, 'readyState', { value: 4, configurable: true })
+
+    // Tick 1 (ts=0): throttle fires (0 - 0 < DETECT_TICK_MS=500), schedules next rAF
+    pendingRafs.shift()?.(0)
+
+    // Tick 2 (ts=600): first detection → candidate state, holdSteady banner appears
+    pendingRafs.shift()?.(600)
+    await waitFor(() => {
+      expect(screen.getByTestId('card-scanner-status')).toBeInTheDocument()
+      expect(screen.getByTestId('card-scanner-status').textContent).toBe('Hold steady…')
+    })
+
+    // Tick 3 (ts=1200): second matching detection → locked → captured, onCapture fires
+    pendingRafs.shift()?.(1200)
+    await waitFor(() => {
+      expect(onCapture).toHaveBeenCalledOnce()
+      expect(onCapture).toHaveBeenCalledWith(fakeBlob)
+    })
+  })
+
+  it('reverts to searching when toBlob returns null and does not freeze the scanner', async () => {
+    const fakeDetection: DetectedRectangle = { x: 100, y: 80, w: 200, h: 280, score: 0.9 }
+    vi.mocked(detectCardRectangle).mockReturnValue(fakeDetection)
+    vi.mocked(isWithinTolerance).mockReturnValue(true)
+
+    // toBlob returns null — simulates an environment that can't encode
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (cb) {
+      cb(null)
+    })
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: vi.fn(),
+      getImageData: vi.fn().mockReturnValue({
+        data: new Uint8ClampedArray(640 * 480 * 4),
+        width: 640,
+        height: 480,
+        colorSpace: 'srgb',
+      }),
+    } as unknown as CanvasRenderingContext2D)
+
+    const onCapture = vi.fn()
+    render(<CardScanner onCapture={onCapture} onClose={vi.fn()} />)
+
+    await waitFor(() => expect(screen.getByTestId('card-scanner-video')).toBeInTheDocument())
+
+    const video = screen.getByTestId('card-scanner-video') as HTMLVideoElement
+    Object.defineProperty(video, 'videoWidth', { value: 640, configurable: true })
+    Object.defineProperty(video, 'videoHeight', { value: 480, configurable: true })
+    Object.defineProperty(video, 'readyState', { value: 4, configurable: true })
+
+    // Advance through throttle tick and two detection ticks to trigger captureLocked
+    pendingRafs.shift()?.(0)
+    pendingRafs.shift()?.(600)
+    pendingRafs.shift()?.(1200)
+
+    // onCapture must NOT have been called (blob was null)
+    await waitFor(() => expect(onCapture).not.toHaveBeenCalled())
+
+    // Scanner must have recovered: status element gone (back to searching) and
+    // the rAF loop restarted (a new callback is queued)
+    await waitFor(() => {
+      expect(screen.queryByTestId('card-scanner-status')).not.toBeInTheDocument()
+      expect(pendingRafs.length).toBeGreaterThan(0)
+    })
   })
 })

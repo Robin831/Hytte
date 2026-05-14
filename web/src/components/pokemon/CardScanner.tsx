@@ -62,6 +62,9 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
   const candidateTicksRef = useRef(0)
   const lastTickRef = useRef(0)
   const rafIdRef = useRef<number | null>(null)
+  // Allows captureLocked's failure recovery path to restart the rAF loop
+  // without a circular const dependency on `tick`.
+  const tickFnRef = useRef<FrameRequestCallback | null>(null)
   const onCaptureRef = useRef(onCapture)
   useEffect(() => {
     onCaptureRef.current = onCapture
@@ -136,14 +139,46 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
           // an unexpected state — visually freezing is best-effort.
         }
       }
+
+      const dispatchBlob = (blob: Blob | null) => {
+        if (blob) {
+          onCaptureRef.current(blob)
+        } else {
+          // toBlob yielded null (or toBlob was unavailable and toDataURL failed).
+          // Revert so the scanner is not permanently frozen.
+          scanStatusRef.current = 'searching'
+          setScanStatus('searching')
+          candidateBoundsRef.current = null
+          candidateTicksRef.current = 0
+          lastTickRef.current = 0
+          if (video && typeof video.play === 'function') {
+            try {
+              void video.play()
+            } catch {
+              // best-effort
+            }
+          }
+          if (!cancelled && tickFnRef.current) {
+            rafIdRef.current = window.requestAnimationFrame(tickFnRef.current)
+          }
+        }
+      }
+
       if (typeof canvas.toBlob === 'function') {
-        canvas.toBlob(
-          blob => {
-            if (blob) onCaptureRef.current(blob)
-          },
-          'image/jpeg',
-          0.85,
-        )
+        canvas.toBlob(dispatchBlob, 'image/jpeg', 0.85)
+      } else {
+        // toDataURL fallback for environments where toBlob is unavailable.
+        try {
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+          const [header, b64] = dataUrl.split(',')
+          const mime = header.match(/:(.*?);/)?.[1] ?? 'image/jpeg'
+          const bytes = atob(b64)
+          const u8 = new Uint8Array(bytes.length)
+          for (let i = 0; i < bytes.length; i++) u8[i] = bytes.charCodeAt(i)
+          dispatchBlob(new Blob([u8], { type: mime }))
+        } catch {
+          dispatchBlob(null)
+        }
       }
     }
 
@@ -225,10 +260,12 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
       }
     }
 
+    tickFnRef.current = tick
     rafIdRef.current = window.requestAnimationFrame(tick)
 
     return () => {
       cancelled = true
+      tickFnRef.current = null
       if (rafIdRef.current !== null) {
         window.cancelAnimationFrame(rafIdRef.current)
         rafIdRef.current = null
@@ -292,6 +329,10 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
   }, [handleClose])
 
   const handleCapture = useCallback(() => {
+    // Stop the auto-detect loop before the async toBlob call to prevent a race
+    // where the rAF fires an extra auto-capture while this capture is in progress.
+    scanStatusRef.current = 'captured'
+    setScanStatus('captured')
     const video = videoRef.current
     const canvas = canvasRef.current
     if (!video || !canvas) return
