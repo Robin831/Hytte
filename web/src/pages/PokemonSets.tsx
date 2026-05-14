@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
+import { formatDate } from '../utils/formatDate'
 
 interface PokemonSet {
   id: string
@@ -20,14 +21,35 @@ interface PokemonSet {
 // `series` does not appear here is hidden behind the "Show older sets" toggle.
 const RECENT_ERAS = ['Scarlet & Violet', 'Sword & Shield', 'Sun & Moon'] as const
 
-function formatReleaseDate(raw: string, language: string): string {
-  // pokemontcg.io releases dates as "YYYY/MM/DD"; new Date understands "/" and
-  // "-" forms. Fall back to the raw string when parsing fails so we never
-  // render "Invalid Date".
-  const normalised = raw.replace(/\//g, '-')
-  const d = new Date(normalised)
+// eraSlug converts a series name into a safe HTML id fragment so values like
+// "Scarlet & Violet" don't break aria-labelledby (ids may not contain spaces
+// and ampersands are awkward to reference).
+function eraSlug(era: string): string {
+  return era
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function formatReleaseDate(raw: string): string {
+  // pokemontcg.io releases dates as "YYYY/MM/DD". `new Date('YYYY-MM-DD')`
+  // parses as UTC midnight, which becomes the previous day in any negative-UTC
+  // timezone, so we construct the Date from local components instead. Fall
+  // back to the raw string when parsing fails so we never render
+  // "Invalid Date".
+  const m = raw.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/)
+  let d: Date
+  if (m) {
+    d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+  } else {
+    d = new Date(raw)
+  }
   if (Number.isNaN(d.getTime())) return raw
-  return new Intl.DateTimeFormat(language, { dateStyle: 'medium' }).format(d)
+  try {
+    return formatDate(d, { dateStyle: 'medium' })
+  } catch {
+    return raw
+  }
 }
 
 function ownershipPercent(owned: number, total: number): number {
@@ -37,11 +59,10 @@ function ownershipPercent(owned: number, total: number): number {
 
 interface SetTileProps {
   set: PokemonSet
-  language: string
   t: TFunction<'pokemon'>
 }
 
-function SetTile({ set, language, t }: SetTileProps) {
+function SetTile({ set, t }: SetTileProps) {
   const percent = ownershipPercent(set.owned_count, set.total_cards)
   return (
     <Link
@@ -64,7 +85,10 @@ function SetTile({ set, language, t }: SetTileProps) {
       </div>
       <div className="min-w-0">
         <p className="text-sm font-medium text-white truncate" title={set.name}>{set.name}</p>
-        <p className="text-xs text-gray-500">{formatReleaseDate(set.release_date, language)}</p>
+        <p className="text-xs text-gray-500">{formatReleaseDate(set.release_date)}</p>
+        <p className="text-xs text-gray-500">
+          {t('tile.totalCards', { count: set.total_cards })}
+        </p>
         <p className="mt-1 text-xs text-gray-300">
           {t('tile.ownership', {
             owned: set.owned_count,
@@ -79,15 +103,14 @@ function SetTile({ set, language, t }: SetTileProps) {
 
 interface SetGridProps {
   sets: PokemonSet[]
-  language: string
   t: TFunction<'pokemon'>
 }
 
-function SetGrid({ sets, language, t }: SetGridProps) {
+function SetGrid({ sets, t }: SetGridProps) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
       {sets.map(set => (
-        <SetTile key={set.id} set={set} language={language} t={t} />
+        <SetTile key={set.id} set={set} t={t} />
       ))}
     </div>
   )
@@ -109,7 +132,7 @@ function SkeletonGrid() {
 }
 
 export default function PokemonSets() {
-  const { t, i18n } = useTranslation('pokemon')
+  const { t } = useTranslation('pokemon')
 
   const [sets, setSets] = useState<PokemonSet[]>([])
   const [loading, setLoading] = useState(true)
@@ -198,12 +221,15 @@ export default function PokemonSets() {
 
         {!loading && !error && (
           <>
-            {recent.map(([era, list]) => (
-              <section key={era} aria-labelledby={`era-${era}`} className="space-y-3">
-                <h2 id={`era-${era}`} className="text-lg font-semibold text-gray-200">{era}</h2>
-                <SetGrid sets={list} language={i18n.language} t={t} />
-              </section>
-            ))}
+            {recent.map(([era, list]) => {
+              const slug = eraSlug(era)
+              return (
+                <section key={era} aria-labelledby={`era-${slug}`} className="space-y-3">
+                  <h2 id={`era-${slug}`} className="text-lg font-semibold text-gray-200">{era}</h2>
+                  <SetGrid sets={list} t={t} />
+                </section>
+              )
+            })}
 
             {older.length > 0 && (
               <section className="space-y-3 pt-2 border-t border-gray-800">
@@ -217,12 +243,15 @@ export default function PokemonSets() {
                   <span>{showOlder ? t('hideOlder') : t('showOlder')}</span>
                 </button>
 
-                {showOlder && older.map(([era, list]) => (
-                  <section key={era} aria-labelledby={`era-${era}`} className="space-y-3">
-                    <h2 id={`era-${era}`} className="text-lg font-semibold text-gray-200">{era}</h2>
-                    <SetGrid sets={list} language={i18n.language} t={t} />
-                  </section>
-                ))}
+                {showOlder && older.map(([era, list]) => {
+                  const slug = eraSlug(era)
+                  return (
+                    <section key={era} aria-labelledby={`era-${slug}`} className="space-y-3">
+                      <h2 id={`era-${slug}`} className="text-lg font-semibold text-gray-200">{era}</h2>
+                      <SetGrid sets={list} t={t} />
+                    </section>
+                  )
+                })}
               </section>
             )}
           </>

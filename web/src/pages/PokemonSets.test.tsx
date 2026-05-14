@@ -17,8 +17,10 @@ const TRANSLATIONS: Record<string, string> = {
 function mockT(key: string, opts?: Record<string, string | number>): string {
   if (key === 'tile.ownership') return `${opts?.owned ?? 0} / ${opts?.total ?? 0} — ${opts?.percent ?? 0}%`
   if (key === 'tile.openSet') return `Open ${opts?.name ?? ''}`
-  if (key === 'tile.totalCards_one') return `${opts?.count ?? 0} card`
-  if (key === 'tile.totalCards_other') return `${opts?.count ?? 0} cards`
+  if (key === 'tile.totalCards') {
+    const count = Number(opts?.count ?? 0)
+    return count === 1 ? `${count} card` : `${count} cards`
+  }
   return TRANSLATIONS[key] ?? key
 }
 
