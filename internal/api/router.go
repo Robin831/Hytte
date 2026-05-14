@@ -35,6 +35,7 @@ import (
 	"github.com/Robin831/Hytte/internal/stars"
 	"github.com/Robin831/Hytte/internal/stride"
 	"github.com/Robin831/Hytte/internal/suggestions"
+	"github.com/Robin831/Hytte/internal/tasks"
 	"github.com/Robin831/Hytte/internal/training"
 	"github.com/Robin831/Hytte/internal/vault"
 	"github.com/Robin831/Hytte/internal/transit"
@@ -396,6 +397,17 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/notes/{id}", notes.GetHandler(db))
 				r.Put("/notes/{id}", notes.UpdateHandler(db))
 				r.Delete("/notes/{id}", notes.DeleteHandler(db))
+			})
+
+			// Tasks — gated by "tasks" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "tasks"))
+				r.Get("/tasks", tasks.ListHandler(db))
+				r.Post("/tasks", tasks.CreateHandler(db))
+				r.Patch("/tasks/{id}", tasks.UpdateHandler(db))
+				r.Delete("/tasks/{id}", tasks.DeleteHandler(db))
+				r.Post("/tasks/{id}/notes", tasks.AddNoteHandler(db))
+				r.Delete("/tasks/{id}/notes/{note_id}", tasks.DeleteNoteHandler(db))
 			})
 
 			// Calendar — Google Calendar integration, gated by "calendar" feature.

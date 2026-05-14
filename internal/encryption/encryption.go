@@ -3,6 +3,7 @@ package encryption
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -222,6 +223,21 @@ func DecryptLenient(value string) string {
 		return ""
 	}
 	return result
+}
+
+// HMACField returns a deterministic hex-encoded HMAC-SHA256 of value scoped to
+// userID. Use it as a stable lookup key for fields that are stored encrypted
+// with a random nonce (where the same plaintext produces different ciphertexts).
+// The HMAC key is derived from the encryption key so it cannot be computed
+// without access to the key material.
+func HMACField(userID int64, value string) (string, error) {
+	key, err := getEncryptionKey()
+	if err != nil {
+		return "", err
+	}
+	h := hmac.New(sha256.New, key)
+	fmt.Fprintf(h, "%d:%s", userID, value)
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // Decrypt decrypts a base64-encoded AES-256-GCM ciphertext back to

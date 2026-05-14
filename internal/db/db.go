@@ -1589,6 +1589,42 @@ func createSchema(db *sql.DB) error {
 		completed_at TEXT NOT NULL DEFAULT ''
 	);
 
+	-- Tasks (Hytte-u49p): lightweight task list with optional notes/tags.
+	-- title_enc, body_enc, label_enc, content_enc are AES-256-GCM ciphertext.
+	CREATE TABLE IF NOT EXISTS tasks (
+		id            INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		title_enc     TEXT NOT NULL,
+		body_enc      TEXT NOT NULL DEFAULT '',
+		archived      INTEGER NOT NULL DEFAULT 0,
+		created_at    TIMESTAMP NOT NULL,
+		updated_at    TIMESTAMP NOT NULL,
+		archived_at   TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_tasks_user_archived ON tasks(user_id, archived);
+
+	CREATE TABLE IF NOT EXISTS task_tags (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		label_enc  TEXT NOT NULL,
+		label_hmac TEXT NOT NULL DEFAULT ''
+	);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_task_tags_user_label_hmac ON task_tags(user_id, label_hmac) WHERE label_hmac != '';
+
+	CREATE TABLE IF NOT EXISTS task_tag_assignments (
+		task_id  INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+		tag_id   INTEGER NOT NULL REFERENCES task_tags(id) ON DELETE CASCADE,
+		PRIMARY KEY (task_id, tag_id)
+	);
+
+	CREATE TABLE IF NOT EXISTS task_notes (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		task_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+		content_enc TEXT NOT NULL,
+		created_at  TIMESTAMP NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_task_notes_task ON task_notes(task_id, created_at);
+
 	`
 
 	_, err := db.Exec(schema)
@@ -2285,6 +2321,22 @@ func createSchema(db *sql.DB) error {
 		if _, err := db.Exec(`ALTER TABLE math_sessions ADD COLUMN best_streak INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return fmt.Errorf("add math_sessions best_streak column: %w", err)
 		}
+	}
+
+	// Add label_hmac to task_tags (Hytte-u49p): deterministic per-user lookup key
+	// so concurrent tag creates hit the unique index rather than inserting duplicate
+	// encrypted rows (random nonces make label_enc non-deterministic).
+	var hasTaskTagLabelHmac int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('task_tags') WHERE name = 'label_hmac'`).Scan(&hasTaskTagLabelHmac); err != nil {
+		return fmt.Errorf("check task_tags label_hmac column: %w", err)
+	}
+	if hasTaskTagLabelHmac == 0 {
+		if _, err := db.Exec(`ALTER TABLE task_tags ADD COLUMN label_hmac TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add task_tags label_hmac column: %w", err)
+		}
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_task_tags_user_label_hmac ON task_tags(user_id, label_hmac) WHERE label_hmac != ''`); err != nil {
+		return fmt.Errorf("create task_tags label_hmac index: %w", err)
 	}
 
 	return nil
