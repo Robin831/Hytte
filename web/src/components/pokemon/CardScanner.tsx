@@ -17,11 +17,11 @@ interface ExtendedMediaTrackCapabilities extends MediaTrackCapabilities {
   torch?: boolean
 }
 
-interface TorchConstraint {
+interface TorchConstraint extends MediaTrackConstraintSet {
   torch: boolean
 }
 
-interface ExtendedMediaTrackConstraintSet extends MediaTrackConstraintSet {
+interface ExtendedMediaTrackConstraints extends MediaTrackConstraints {
   advanced?: TorchConstraint[]
 }
 
@@ -29,7 +29,7 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
   const { t } = useTranslation('pokemon')
 
   const [permissionState, setPermissionState] = useState<PermissionState>(() =>
-    navigator.mediaDevices?.getUserMedia ? 'prompting' : 'unsupported',
+    typeof navigator.mediaDevices?.getUserMedia === 'function' ? 'prompting' : 'unsupported',
   )
   const [torchOn, setTorchOn] = useState(false)
   const [torchSupported, setTorchSupported] = useState(false)
@@ -138,7 +138,7 @@ export default function CardScanner({ onCapture, onClose }: CardScannerProps) {
     try {
       await track.applyConstraints({
         advanced: [{ torch: next }],
-      } as ExtendedMediaTrackConstraintSet)
+      } as ExtendedMediaTrackConstraints)
       setTorchOn(next)
     } catch {
       // Torch toggling can fail mid-session if the device hot-revokes the
