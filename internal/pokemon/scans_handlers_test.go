@@ -1049,6 +1049,7 @@ func TestScanCounts_AggregatesUnresolvedAndToday(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("UPLOAD_ROOT", root)
 	db := setupTestDB(t)
+	seedCatalogue(t, db)
 	u := seedUser(t, db, 1, "counts@example.com")
 	setScanCapPref(t, db, u.ID, 42)
 
@@ -1084,6 +1085,7 @@ func TestScanCounts_OtherUsersDoNotLeak(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("UPLOAD_ROOT", root)
 	db := setupTestDB(t)
+	seedCatalogue(t, db)
 	uA := seedUser(t, db, 1, "a@example.com")
 	uB := seedUser(t, db, 2, "b@example.com")
 
