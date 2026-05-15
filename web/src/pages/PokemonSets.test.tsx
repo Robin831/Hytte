@@ -12,6 +12,8 @@ const TRANSLATIONS: Record<string, string> = {
   'errors.failedToLoad': 'Failed to load Pokémon sets',
   'retry': 'Retry',
   'setDetail.comingSoon': 'Set detail coming soon',
+  'sets.filterOwnedOnly': 'Owned only',
+  'sets.emptyOwned': "You don't own any cards yet — go scan some!",
 }
 
 function mockT(key: string, opts?: Record<string, string | number>): string {
@@ -61,9 +63,9 @@ function setsResponse(sets: SetShape[]) {
   return { ok: true, json: () => Promise.resolve({ sets }) }
 }
 
-function renderPage() {
+function renderPage(initialEntries: string[] = ['/pokemon/sets']) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <PokemonSets />
     </MemoryRouter>,
   )
@@ -230,6 +232,87 @@ describe('PokemonSets – tile link', () => {
 
     const link = screen.getByRole('link', { name: 'Open SV Base' })
     expect(link).toHaveAttribute('href', '/pokemon/sets/sv1')
+  })
+})
+
+describe('PokemonSets – owned-only filter', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  function setsUrls(mock: ReturnType<typeof vi.fn>): string[] {
+    return mock.mock.calls
+      .map(c => String(c[0]))
+      .filter(u => u.startsWith('/api/pokemon/sets'))
+  }
+
+  it('toggling owned only re-fetches with ?owned=true and back', async () => {
+    const sv = makeSet({ id: 'sv1', name: 'SV Base', owned_count: 3 })
+    const swsh = makeSet({ id: 'swsh1', name: 'SWSH Base', series: 'Sword & Shield', release_date: '2020/02/07' })
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/pokemon/sets')) return Promise.resolve(setsResponse([sv, swsh]))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ unresolved: 0 }) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('SV Base')).toBeInTheDocument())
+
+    // Initial sets fetch must not include owned=true.
+    const initialSetsUrls = setsUrls(fetchMock)
+    expect(initialSetsUrls.length).toBeGreaterThan(0)
+    expect(initialSetsUrls.every(u => !u.includes('owned=true'))).toBe(true)
+
+    fetchMock.mockClear()
+    const toggle = screen.getByTestId('pokemon-sets-owned-toggle') as HTMLInputElement
+    expect(toggle.checked).toBe(false)
+    fireEvent.click(toggle)
+
+    await waitFor(() => {
+      expect(setsUrls(fetchMock).some(u => u.includes('owned=true'))).toBe(true)
+    })
+    expect((screen.getByTestId('pokemon-sets-owned-toggle') as HTMLInputElement).checked).toBe(true)
+
+    // Toggle off restores the unfiltered fetch.
+    fetchMock.mockClear()
+    fireEvent.click(screen.getByTestId('pokemon-sets-owned-toggle'))
+    await waitFor(() => {
+      const urls = setsUrls(fetchMock)
+      expect(urls.length).toBeGreaterThan(0)
+      expect(urls.every(u => !u.includes('owned=true'))).toBe(true)
+    })
+    expect((screen.getByTestId('pokemon-sets-owned-toggle') as HTMLInputElement).checked).toBe(false)
+  })
+
+  it('initialises the toggle from ?owned=true in the URL', async () => {
+    const sv = makeSet({ id: 'sv1', name: 'SV Base', owned_count: 3 })
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/pokemon/sets')) return Promise.resolve(setsResponse([sv]))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ unresolved: 0 }) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage(['/pokemon/sets?owned=true'])
+
+    await waitFor(() => expect(screen.getByText('SV Base')).toBeInTheDocument())
+    expect((screen.getByTestId('pokemon-sets-owned-toggle') as HTMLInputElement).checked).toBe(true)
+    expect(setsUrls(fetchMock).every(u => u.includes('owned=true'))).toBe(true)
+  })
+
+  it('shows the empty state when owned filter is on and no sets match', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/pokemon/sets')) return Promise.resolve(setsResponse([]))
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ unresolved: 0 }) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage(['/pokemon/sets?owned=true'])
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pokemon-sets-empty-owned')).toBeInTheDocument()
+    })
+    expect(screen.getByText("You don't own any cards yet — go scan some!")).toBeInTheDocument()
   })
 })
 

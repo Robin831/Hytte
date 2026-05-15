@@ -247,10 +247,12 @@ func applyNOK(w http.ResponseWriter, cards []CardDTO, rate float64, rateOK bool)
 }
 
 // ListSetsHandler returns the catalogue of sets, ordered newest-first and
-// optionally filtered by series via ?era=<name>. The OwnedCount column is
-// computed per set for the authenticated user via a correlated subquery — the
-// catalogue is small (a few dozen sets), so the extra cost is negligible
-// compared to making a follow-up request per set.
+// optionally filtered by series via ?era=<name>. When ?owned=true is set,
+// only sets containing at least one card in the authenticated user's
+// collection are returned. The OwnedCount column is computed per set for the
+// authenticated user via a correlated subquery — the catalogue is small (a
+// few dozen sets), so the extra cost is negligible compared to making a
+// follow-up request per set.
 func ListSetsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -259,37 +261,48 @@ func ListSetsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		era := strings.TrimSpace(r.URL.Query().Get("era"))
+		ownedOnly := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("owned")), "true")
 		limit := parseLimit(r, defaultListLimit, maxListLimit)
 		offset := parseOffset(r)
 
+		// Build the WHERE clause and argument list dynamically so the era +
+		// owned filters can combine freely. The owned_count subquery argument
+		// is always first (it appears in SELECT before WHERE).
 		var (
-			rows *sql.Rows
-			err  error
+			whereParts []string
+			args       []any
 		)
+		args = append(args, user.ID) // owned_count subquery
 		if era != "" {
-			rows, err = db.QueryContext(r.Context(), `
-				SELECT s.id, s.name, s.series, s.release_date, s.total_cards, s.symbol_url, s.logo_url,
-				       (SELECT COUNT(DISTINCT pc.card_id)
-				        FROM pokemon_collections pc
-				        JOIN pokemon_cards c ON c.id = pc.card_id
-				        WHERE c.set_id = s.id AND pc.user_id = ? AND pc.quantity > 0) AS owned_count
-				FROM pokemon_sets s
-				WHERE s.series = ?
-				ORDER BY s.release_date DESC, s.id DESC
-				LIMIT ? OFFSET ?
-			`, user.ID, era, limit, offset)
-		} else {
-			rows, err = db.QueryContext(r.Context(), `
-				SELECT s.id, s.name, s.series, s.release_date, s.total_cards, s.symbol_url, s.logo_url,
-				       (SELECT COUNT(DISTINCT pc.card_id)
-				        FROM pokemon_collections pc
-				        JOIN pokemon_cards c ON c.id = pc.card_id
-				        WHERE c.set_id = s.id AND pc.user_id = ? AND pc.quantity > 0) AS owned_count
-				FROM pokemon_sets s
-				ORDER BY s.release_date DESC, s.id DESC
-				LIMIT ? OFFSET ?
-			`, user.ID, limit, offset)
+			whereParts = append(whereParts, "s.series = ?")
+			args = append(args, era)
 		}
+		if ownedOnly {
+			whereParts = append(whereParts, `EXISTS (
+				SELECT 1 FROM pokemon_collections col
+				JOIN pokemon_cards c ON c.id = col.card_id
+				WHERE col.user_id = ? AND c.set_id = s.id AND col.quantity > 0
+			)`)
+			args = append(args, user.ID)
+		}
+		where := ""
+		if len(whereParts) > 0 {
+			where = "WHERE " + strings.Join(whereParts, " AND ")
+		}
+		args = append(args, limit, offset)
+
+		query := `
+			SELECT s.id, s.name, s.series, s.release_date, s.total_cards, s.symbol_url, s.logo_url,
+			       (SELECT COUNT(DISTINCT pc.card_id)
+			        FROM pokemon_collections pc
+			        JOIN pokemon_cards c ON c.id = pc.card_id
+			        WHERE c.set_id = s.id AND pc.user_id = ? AND pc.quantity > 0) AS owned_count
+			FROM pokemon_sets s
+			` + where + `
+			ORDER BY s.release_date DESC, s.id DESC
+			LIMIT ? OFFSET ?
+		`
+		rows, err := db.QueryContext(r.Context(), query, args...)
 		if err != nil {
 			log.Printf("pokemon: list sets: %v", err)
 			respondError(w, http.StatusInternalServerError, "failed to list sets")
