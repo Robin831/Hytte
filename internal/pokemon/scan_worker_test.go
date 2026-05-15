@@ -2,9 +2,16 @@ package pokemon
 
 import (
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,7 +20,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/training"
 )
 
@@ -542,4 +551,234 @@ func stubScanPromptFn(t *testing.T, fn func() (string, error)) {
 		defer stubScanPromptMu.Unlock()
 		scanRunPromptFn = orig
 	})
+}
+
+// capturedPush is a single (userID, payload) pair sent to scanPushSendFn while
+// a test has the seam stubbed.
+type capturedPush struct {
+	userID  int64
+	payload []byte
+}
+
+// pushCapture serialises writes to its underlying slice so concurrent tests
+// (e.g. TestStartScanWorker_ProcessesQueuedJobs) can collect pushes without
+// racing.
+type pushCapture struct {
+	mu    sync.Mutex
+	calls []capturedPush
+}
+
+func (c *pushCapture) record(userID int64, payload []byte) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// Copy the payload because callers reuse the buffer.
+	cp := make([]byte, len(payload))
+	copy(cp, payload)
+	c.calls = append(c.calls, capturedPush{userID: userID, payload: cp})
+}
+
+func (c *pushCapture) snapshot() []capturedPush {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]capturedPush, len(c.calls))
+	copy(out, c.calls)
+	return out
+}
+
+// stubScanPushCapture replaces scanPushSendFn with a no-op recorder that
+// returns a single successful SendResult so callers in production code see a
+// healthy response. The original function is restored on cleanup.
+func stubScanPushCapture(t *testing.T) *pushCapture {
+	t.Helper()
+	rec := &pushCapture{}
+	orig := scanPushSendFn
+	scanPushSendFn = func(_ *sql.DB, userID int64, payload []byte) ([]push.SendResult, error) {
+		rec.record(userID, payload)
+		return []push.SendResult{{SubscriptionID: 1, StatusCode: http.StatusCreated}}, nil
+	}
+	t.Cleanup(func() { scanPushSendFn = orig })
+	return rec
+}
+
+// decodeNotification unmarshals a captured payload, failing the test if the
+// JSON is invalid.
+func decodeNotification(t *testing.T, payload []byte) push.Notification {
+	t.Helper()
+	var n push.Notification
+	if err := json.Unmarshal(payload, &n); err != nil {
+		t.Fatalf("decode notification payload: %v (raw=%q)", err, payload)
+	}
+	return n
+}
+
+// TestProcessScanJob_PushEnabled_Matched verifies the matched terminal status
+// fires a push with the expected title, body, tag, and click URL.
+func TestProcessScanJob_PushEnabled_Matched(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "scan@example.com")
+	enableClaudeForUser(t, db, u.ID)
+	pushed := stubScanPushCapture(t)
+
+	imagePath, imageHash := writeTempScanImage(t)
+	jobID := enqueueScanJob(t, db, u.ID, imagePath, imageHash)
+
+	stubScanPrompt(t, `{"set_name":"Scarlet & Violet Base","set_id_hint":"sv1","collector_number":"025","confidence":0.92}`, nil)
+	processScanJob(context.Background(), db, scanJob{ID: jobID, UserID: u.ID, ImagePathEnc: encryptPath(t, imagePath)})
+
+	calls := pushed.snapshot()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 push call, got %d", len(calls))
+	}
+	if calls[0].userID != u.ID {
+		t.Errorf("push userID = %d, want %d", calls[0].userID, u.ID)
+	}
+	notif := decodeNotification(t, calls[0].payload)
+	if notif.Title != "Scan result" {
+		t.Errorf("title = %q, want %q", notif.Title, "Scan result")
+	}
+	wantBody := "Found: Pikachu (Scarlet & Violet Base)"
+	if notif.Body != wantBody {
+		t.Errorf("body = %q, want %q", notif.Body, wantBody)
+	}
+	wantTag := fmt.Sprintf("pokemon-scan-%d", jobID)
+	if notif.Tag != wantTag {
+		t.Errorf("tag = %q, want %q", notif.Tag, wantTag)
+	}
+	wantURL := fmt.Sprintf("/pokemon/scanned?focus=%d", jobID)
+	if notif.URL != wantURL {
+		t.Errorf("url = %q, want %q", notif.URL, wantURL)
+	}
+}
+
+// TestProcessScanJob_PushEnabled_NoMatch verifies the no_match terminal status
+// fires a push with the friendly retry copy.
+func TestProcessScanJob_PushEnabled_NoMatch(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "scan@example.com")
+	enableClaudeForUser(t, db, u.ID)
+	pushed := stubScanPushCapture(t)
+
+	imagePath, imageHash := writeTempScanImage(t)
+	jobID := enqueueScanJob(t, db, u.ID, imagePath, imageHash)
+
+	stubScanPrompt(t, "i give up", nil)
+	processScanJob(context.Background(), db, scanJob{ID: jobID, UserID: u.ID, ImagePathEnc: encryptPath(t, imagePath)})
+
+	calls := pushed.snapshot()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 push call, got %d", len(calls))
+	}
+	notif := decodeNotification(t, calls[0].payload)
+	if notif.Body != "Couldn't read the card — try another angle" {
+		t.Errorf("body = %q", notif.Body)
+	}
+	if notif.Tag != fmt.Sprintf("pokemon-scan-%d", jobID) {
+		t.Errorf("tag = %q", notif.Tag)
+	}
+}
+
+// TestProcessScanJob_PushEnabled_Failed verifies the failed terminal status
+// (Claude CLI error here) fires a push with the failure copy.
+func TestProcessScanJob_PushEnabled_Failed(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "scan@example.com")
+	enableClaudeForUser(t, db, u.ID)
+	pushed := stubScanPushCapture(t)
+
+	imagePath, imageHash := writeTempScanImage(t)
+	jobID := enqueueScanJob(t, db, u.ID, imagePath, imageHash)
+
+	stubScanPrompt(t, "", &stubError{msg: "claude CLI exploded"})
+	processScanJob(context.Background(), db, scanJob{ID: jobID, UserID: u.ID, ImagePathEnc: encryptPath(t, imagePath)})
+
+	calls := pushed.snapshot()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 push call, got %d", len(calls))
+	}
+	notif := decodeNotification(t, calls[0].payload)
+	if notif.Body != "Scan failed — try again" {
+		t.Errorf("body = %q", notif.Body)
+	}
+}
+
+// TestProcessScanJob_PushDisabled_NoSend verifies the opt-out preference
+// suppresses the push entirely.
+func TestProcessScanJob_PushDisabled_NoSend(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "scan@example.com")
+	enableClaudeForUser(t, db, u.ID)
+	if err := auth.SetPreference(db, u.ID, scanPushPreferenceKey, "false"); err != nil {
+		t.Fatalf("set pref: %v", err)
+	}
+	pushed := stubScanPushCapture(t)
+
+	imagePath, imageHash := writeTempScanImage(t)
+	jobID := enqueueScanJob(t, db, u.ID, imagePath, imageHash)
+
+	stubScanPrompt(t, `{"set_name":"Scarlet & Violet Base","set_id_hint":"sv1","collector_number":"025","confidence":0.92}`, nil)
+	processScanJob(context.Background(), db, scanJob{ID: jobID, UserID: u.ID, ImagePathEnc: encryptPath(t, imagePath)})
+
+	if calls := pushed.snapshot(); len(calls) != 0 {
+		t.Errorf("expected no push calls when disabled, got %d", len(calls))
+	}
+}
+
+// TestProcessScanJob_PushStaleSubscriptionDeleted exercises the real
+// push.SendToUser path against a test endpoint that returns 410 Gone. After
+// the worker finishes, the stale subscription must be gone from the DB and
+// the worker must not have errored out.
+func TestProcessScanJob_PushStaleSubscriptionDeleted(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "scan@example.com")
+	enableClaudeForUser(t, db, u.ID)
+
+	// Test push endpoint that always responds 410 Gone — RFC 8030 marker for
+	// a subscription the user agent has unregistered.
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusGone)
+	}))
+	t.Cleanup(ts.Close)
+
+	curve := ecdh.P256()
+	priv, err := curve.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	p256dh := base64.RawURLEncoding.EncodeToString(priv.PublicKey().Bytes())
+	authSecret := base64.RawURLEncoding.EncodeToString(make([]byte, 16))
+
+	if _, err := push.SaveSubscription(db, u.ID, ts.URL, p256dh, authSecret); err != nil {
+		t.Fatalf("save subscription: %v", err)
+	}
+
+	// Point the worker's push HTTP client at the test server so TLS verifies.
+	origClient := scanPushHTTPClient
+	scanPushHTTPClient = ts.Client()
+	t.Cleanup(func() { scanPushHTTPClient = origClient })
+
+	imagePath, imageHash := writeTempScanImage(t)
+	jobID := enqueueScanJob(t, db, u.ID, imagePath, imageHash)
+
+	stubScanPrompt(t, `{"set_name":"Scarlet & Violet Base","set_id_hint":"sv1","collector_number":"025","confidence":0.92}`, nil)
+	processScanJob(context.Background(), db, scanJob{ID: jobID, UserID: u.ID, ImagePathEnc: encryptPath(t, imagePath)})
+
+	// Worker must still finalize the row normally.
+	row := readScanJob(t, db, jobID)
+	if row.Status != scanJobStatusMatched {
+		t.Errorf("expected matched status despite stale push subscription, got %q", row.Status)
+	}
+
+	// Subscription must be deleted by SendToUser's 410 handling.
+	subs, err := push.GetSubscriptionsByUser(db, u.ID)
+	if err != nil {
+		t.Fatalf("get subscriptions: %v", err)
+	}
+	if len(subs) != 0 {
+		t.Errorf("expected stale subscription to be deleted, got %d remaining", len(subs))
+	}
 }

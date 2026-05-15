@@ -241,6 +241,13 @@
     "disableFeature": "ปิดใช้งาน {{feature}} สำหรับ {{name}}",
     "toggleError": "อัปเดต {{feature}} สำหรับผู้ใช้ไม่สำเร็จ — {{error}}"
   },
+  "pokemon": {
+    "heading": "โปเกมอน",
+    "scanPushTitle": "การแจ้งเตือนผลการสแกน",
+    "scanPushDescription": "รับการแจ้งเตือนเมื่อการสแกนการ์ดเสร็จสิ้น (พบ ไม่พบ หรือสแกนไม่สำเร็จ)",
+    "enableScanPush": "เปิดการแจ้งเตือนผลการสแกน",
+    "disableScanPush": "ปิดการแจ้งเตือนผลการสแกน"
+  },
   "kioskTokens": {
     "heading": "Kiosk Tokens",
     "description": "จัดการ access token สำหรับหน้าจอ kiosk สาธารณะ",

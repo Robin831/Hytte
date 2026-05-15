@@ -214,6 +214,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"calendar_visible_ids":               true,
 			"regnemester_muted":                  true,
 			"pokemon_scan_daily_cap":             true,
+			"pokemon_scan_push_enabled":          true,
 		}
 
 		// Integer range keys: HR/pace, work hours, budget preferences, and other numeric settings.
