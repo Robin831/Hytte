@@ -347,11 +347,11 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
       }
 
       if (typeof canvas.toBlob === 'function') {
-        canvas.toBlob(dispatchBlob, 'image/jpeg', 0.85)
+        canvas.toBlob(dispatchBlob, 'image/jpeg', 0.95)
       } else {
         // toDataURL fallback for environments where toBlob is unavailable.
         try {
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
           const [header, b64] = dataUrl.split(',')
           const mime = header.match(/:(.*?);/)?.[1] ?? 'image/jpeg'
           const bytes = atob(b64)
