@@ -189,10 +189,10 @@ export default function PokemonSets() {
   useEffect(() => {
     const controller = new AbortController()
     const limit = 50
-    setLoading(true)
-    setError('')
 
     ;(async () => {
+      setLoading(true)
+      setError('')
       try {
         const allSets: PokemonSet[] = []
         let offset = 0
