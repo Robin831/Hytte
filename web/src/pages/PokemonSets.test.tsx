@@ -320,9 +320,16 @@ describe('PokemonSets – error state', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
   it('shows an inline alert with a retry button when the API fails', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: false })
-      .mockResolvedValueOnce(setsResponse([makeSet({ id: 'sv1', name: 'SV Base' })]))
+    let setsCallCount = 0
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/pokemon/sets')) {
+        setsCallCount++
+        if (setsCallCount === 1) return Promise.resolve({ ok: false })
+        return Promise.resolve(setsResponse([makeSet({ id: 'sv1', name: 'SV Base' })]))
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ unresolved: 0 }) })
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     renderPage()

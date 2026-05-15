@@ -250,8 +250,8 @@ func applyNOK(w http.ResponseWriter, cards []CardDTO, rate float64, rateOK bool)
 // optionally filtered by series via ?era=<name>. When ?owned=true is set,
 // only sets containing at least one card in the authenticated user's
 // collection are returned. The OwnedCount column is computed per set for the
-// authenticated user via a correlated subquery — the catalogue is small (a
-// few dozen sets), so the extra cost is negligible compared to making a
+// authenticated user via a correlated subquery — the catalogue is a few
+// hundred sets at most, so the extra cost is negligible compared to making a
 // follow-up request per set.
 func ListSetsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
