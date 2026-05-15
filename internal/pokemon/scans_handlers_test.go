@@ -245,7 +245,9 @@ func nullableTime(ts time.Time) any {
 }
 
 // writeOnDiskImage drops a file at the requested path so HasImage / image
-// streaming tests run against a real disk artifact.
+// streaming tests run against a real disk artifact. The bytes start with a
+// real JPEG SOI marker so http.DetectContentType (used by the image handler
+// to label the response Content-Type) classifies them as image/jpeg.
 func writeOnDiskImage(t *testing.T, root string, userID int64, name string) string {
 	t.Helper()
 	dir := filepath.Join(root, "pokemon-scans", strconv.FormatInt(userID, 10))
@@ -253,7 +255,8 @@ func writeOnDiskImage(t *testing.T, root string, userID int64, name string) stri
 		t.Fatalf("mkdir: %v", err)
 	}
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte("image-bytes"), 0600); err != nil {
+	jpegBytes := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 'J', 'F', 'I', 'F', 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00}
+	if err := os.WriteFile(path, jpegBytes, 0600); err != nil {
 		t.Fatalf("write image: %v", err)
 	}
 	return path
