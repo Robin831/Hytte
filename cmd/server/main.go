@@ -395,6 +395,11 @@ func main() {
 	// so it stops cleanly on shutdown.
 	go pokemon.StartScanWorker(notifCtx, database)
 
+	// Pokémon scan cleanup loop (Hytte-sx2t): wakes every hour to auto-discard
+	// unresolved matched/no_match/failed scans past the user's retention
+	// window and to force stuck queued/processing rows to 'failed'.
+	go pokemon.StartScanCleanupLoop(notifCtx, database)
+
 	// Schedule weekly Pokémon TCG full sync (Sunday 04:00 Europe/Oslo) and
 	// a daily price refresh (07:00 Europe/Oslo). Both run in the same
 	// goroutine to keep startup tidy; whichever timer fires first advances

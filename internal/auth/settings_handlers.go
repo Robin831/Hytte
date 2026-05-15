@@ -215,6 +215,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"regnemester_muted":                  true,
 			"pokemon_scan_daily_cap":             true,
 			"pokemon_scan_push_enabled":          true,
+			"pokemon_scan_auto_discard_hours":    true,
 		}
 
 		// Integer range keys: HR/pace, work hours, budget preferences, and other numeric settings.
@@ -234,6 +235,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"income_day":                      {1, 31},       // day of month; must match budget.defaultIncomeDay
 			"partner_income_day":              {1, 31},
 			"pokemon_scan_daily_cap":          {1, 100000}, // override for ScanDailyCap (600); upper bound keeps a typo from disabling the cap
+			"pokemon_scan_auto_discard_hours": {0, 168},    // 0 disables auto-discard for this user; cap at one week
 		}
 
 		allowedEvents := allowedEventKeys()
