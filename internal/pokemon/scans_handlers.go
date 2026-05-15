@@ -549,13 +549,25 @@ func ResolveScanHandler(db *sql.DB) http.HandlerFunc {
 			deleteScanImage(pathEnc)
 
 		case "discard":
-			if _, err := db.ExecContext(r.Context(), `
+			discardRes, err := db.ExecContext(r.Context(), `
 				UPDATE pokemon_scan_jobs
 				SET status = ?, resolved_at = ?, image_path_enc = ''
-				WHERE id = ? AND user_id = ?
-			`, scanJobStatusDiscarded, now, jobID, user.ID); err != nil {
+				WHERE id = ? AND user_id = ? AND status IN (?, ?, ?, ?)
+			`, scanJobStatusDiscarded, now, jobID, user.ID,
+				scanJobStatusQueued, scanJobStatusMatched, scanJobStatusNoMatch, scanJobStatusFailed)
+			if err != nil {
 				log.Printf("pokemon: resolve discard: %v", err)
 				respondError(w, http.StatusInternalServerError, "failed to resolve scan")
+				return
+			}
+			discardAffected, err := discardRes.RowsAffected()
+			if err != nil {
+				log.Printf("pokemon: resolve discard rows affected: %v", err)
+				respondError(w, http.StatusInternalServerError, "failed to resolve scan")
+				return
+			}
+			if discardAffected == 0 {
+				respondError(w, http.StatusConflict, "scan is not in a resolvable status")
 				return
 			}
 			deleteScanImage(pathEnc)
@@ -565,14 +577,25 @@ func ResolveScanHandler(db *sql.DB) http.HandlerFunc {
 				respondError(w, http.StatusBadRequest, "scan can only be retried from 'no_match' or 'failed' status")
 				return
 			}
-			if _, err := db.ExecContext(r.Context(), `
+			retryRes, err := db.ExecContext(r.Context(), `
 				UPDATE pokemon_scan_jobs
 				SET status = ?, error_message = NULL, processed_at = NULL, matched_card_id = NULL,
 				    confidence = NULL, claude_response_enc = NULL
-				WHERE id = ? AND user_id = ?
-			`, scanJobStatusQueued, jobID, user.ID); err != nil {
+				WHERE id = ? AND user_id = ? AND status IN (?, ?)
+			`, scanJobStatusQueued, jobID, user.ID, scanJobStatusNoMatch, scanJobStatusFailed)
+			if err != nil {
 				log.Printf("pokemon: resolve retry: %v", err)
 				respondError(w, http.StatusInternalServerError, "failed to retry scan")
+				return
+			}
+			retryAffected, err := retryRes.RowsAffected()
+			if err != nil {
+				log.Printf("pokemon: resolve retry rows affected: %v", err)
+				respondError(w, http.StatusInternalServerError, "failed to retry scan")
+				return
+			}
+			if retryAffected == 0 {
+				respondError(w, http.StatusConflict, "scan is no longer in a retryable status")
 				return
 			}
 
@@ -581,7 +604,7 @@ func ResolveScanHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		dto, err := loadScanJob(r, db, user.ID, jobID)
+		dto, err := loadScanJob(r, w, db, user.ID, jobID)
 		if err != nil {
 			log.Printf("pokemon: reload scan after resolve: %v", err)
 			respondError(w, http.StatusInternalServerError, "failed to read scan")
@@ -694,7 +717,7 @@ func loadCardsByIDs(ctx context.Context, db *sql.DB, userID int64, ids []string)
 // loadScanJob re-reads a single scan job after a resolve so the response
 // reflects the persisted state (status, resolved_at, etc.). Hydrates the
 // matched card and set the same way the list endpoint does.
-func loadScanJob(r *http.Request, db *sql.DB, userID, jobID int64) (*ScanJobDTO, error) {
+func loadScanJob(r *http.Request, w http.ResponseWriter, db *sql.DB, userID, jobID int64) (*ScanJobDTO, error) {
 	var (
 		id           int64
 		status       string
@@ -744,12 +767,7 @@ func loadScanJob(r *http.Request, db *sql.DB, userID, jobID int64) (*ScanJobDTO,
 		}
 		if len(cards) > 0 {
 			rate, rateOK := loadRate(r, db)
-			if rateOK {
-				for vi := range cards[0].Variants {
-					nok := cards[0].Variants[vi].PriceEUR * rate
-					cards[0].Variants[vi].PriceNOK = &nok
-				}
-			}
+			applyNOK(w, cards, rate, rateOK)
 			c := cards[0]
 			dto.MatchedCard = &c
 			if c.SetID != "" {

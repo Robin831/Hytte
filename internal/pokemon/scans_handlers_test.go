@@ -664,3 +664,103 @@ func TestUpsertCollection_HelperExposesSentinels(t *testing.T) {
 		t.Errorf("expected isNew=true on first insert")
 	}
 }
+
+// TestResolveScan_Retry_OnNoMatchRequeues verifies that a no_match scan can be
+// retried just like a failed one — both are the two allowed retry sources.
+func TestResolveScan_Retry_OnNoMatchRequeues(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "retry@example.com")
+	path := writeOnDiskImage(t, root, u.ID, "retry.jpg")
+	jobID := insertScanJob(t, db, u.ID, scanJobStatusNoMatch, path, withError("no match found"))
+
+	rec := callJSON(t, http.MethodPost, "/api/pokemon/scans/"+strconv.FormatInt(jobID, 10)+"/resolve",
+		map[string]any{"action": "retry"}, u,
+		map[string]string{"id": strconv.FormatInt(jobID, 10)}, ResolveScanHandler(db))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	status, _, errMsg, _, _, _ := readScanJobByID(t, db, jobID)
+	if status != scanJobStatusQueued {
+		t.Errorf("expected status=queued after retry from no_match, got %q", status)
+	}
+	if errMsg.Valid {
+		t.Errorf("expected error_message to be cleared, got %q", errMsg.String)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("expected image to be retained on retry, got %v", err)
+	}
+}
+
+// TestResolveScan_Add_UpsertFailures checks that collection-upsert sentinel
+// errors surface as the right HTTP status codes through the handler.
+func TestResolveScan_Add_UpsertFailures(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "fail@example.com")
+	path := writeOnDiskImage(t, root, u.ID, "card.jpg")
+
+	correctVid := variantID(t, db, "sv1-25", "normal")
+	wrongVid := variantID(t, db, "sv1-100", "normal")
+
+	t.Run("variant not found → 404", func(t *testing.T) {
+		jobID := insertScanJob(t, db, u.ID, scanJobStatusMatched, path, withMatchedCard("sv1-25", 0.9))
+		rec := callJSON(t, http.MethodPost, "/api/pokemon/scans/"+strconv.FormatInt(jobID, 10)+"/resolve",
+			map[string]any{"action": "add", "variant_id": int64(99999), "quantity": 1}, u,
+			map[string]string{"id": strconv.FormatInt(jobID, 10)}, ResolveScanHandler(db))
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected 404 for unknown variant, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("variant mismatch → 400", func(t *testing.T) {
+		jobID := insertScanJob(t, db, u.ID, scanJobStatusMatched, path, withMatchedCard("sv1-25", 0.9))
+		rec := callJSON(t, http.MethodPost, "/api/pokemon/scans/"+strconv.FormatInt(jobID, 10)+"/resolve",
+			map[string]any{"action": "add", "variant_id": wrongVid, "quantity": 1}, u,
+			map[string]string{"id": strconv.FormatInt(jobID, 10)}, ResolveScanHandler(db))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 for variant mismatch, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("invalid condition → 400", func(t *testing.T) {
+		jobID := insertScanJob(t, db, u.ID, scanJobStatusMatched, path, withMatchedCard("sv1-25", 0.9))
+		rec := callJSON(t, http.MethodPost, "/api/pokemon/scans/"+strconv.FormatInt(jobID, 10)+"/resolve",
+			map[string]any{"action": "add", "variant_id": correctVid, "quantity": 1, "condition": "perfect"}, u,
+			map[string]string{"id": strconv.FormatInt(jobID, 10)}, ResolveScanHandler(db))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 for invalid condition, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("invalid quantity → 400", func(t *testing.T) {
+		jobID := insertScanJob(t, db, u.ID, scanJobStatusMatched, path, withMatchedCard("sv1-25", 0.9))
+		rec := callJSON(t, http.MethodPost, "/api/pokemon/scans/"+strconv.FormatInt(jobID, 10)+"/resolve",
+			map[string]any{"action": "add", "variant_id": correctVid, "quantity": -1}, u,
+			map[string]string{"id": strconv.FormatInt(jobID, 10)}, ResolveScanHandler(db))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 for negative quantity, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+}
+
+// TestResolveScan_Discard_ConflictsOnProcessing verifies that discarding a
+// processing scan returns 409 — the worker may still be finalising the job.
+func TestResolveScan_Discard_ConflictsOnProcessing(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "discard@example.com")
+	path := writeOnDiskImage(t, root, u.ID, "processing.jpg")
+	jobID := insertScanJob(t, db, u.ID, scanJobStatusProcessing, path)
+
+	rec := callJSON(t, http.MethodPost, "/api/pokemon/scans/"+strconv.FormatInt(jobID, 10)+"/resolve",
+		map[string]any{"action": "discard"}, u,
+		map[string]string{"id": strconv.FormatInt(jobID, 10)}, ResolveScanHandler(db))
+	if rec.Code != http.StatusConflict {
+		t.Errorf("expected 409 for processing scan, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
