@@ -1,2 +1,3 @@
 category: Added
 - **Pokémon scanned cards review page** - New `/pokemon/scanned` page lets the kid review queued, matched, no-match and failed scans, with per-row Add / Discard / Try again / Enter manually actions and a "today {used}/{cap}" badge. Polls every 30 s while visible so queued → processing → matched updates without a manual refresh. (Hytte-b1b1)
+- **Pre-fill AddCardPanel from a no-match scan** - "Enter manually" on a no-match scan row now opens the Add card dialog with the partial set name and collector number Claude could read seeded into the search input, so the kid does not have to retype what the scanner already saw. (Hytte-b1b1)

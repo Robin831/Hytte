@@ -1,11 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import ToastList from '../components/ToastList'
 import { useToast } from '../hooks/useToast'
 import { formatNumber } from '../utils/formatDate'
+
+// buildManualEntryQuery joins whatever partial fields Claude could read into a
+// single search string for AddCardPanel. Empty hints collapse to an empty
+// return so the panel just opens blank rather than searching for "  ".
+function buildManualEntryQuery(setName?: string, collectorNo?: string): string {
+  const parts: string[] = []
+  const trimmedSet = setName?.trim()
+  const trimmedNo = collectorNo?.trim()
+  if (trimmedSet) parts.push(trimmedSet)
+  if (trimmedNo) parts.push(trimmedNo)
+  return parts.join(' ')
+}
 
 // SCAN_POLL_MS keeps the page roughly in sync with the worker's progress.
 // 30 s is fast enough that queued→processing→matched feels responsive while
@@ -66,6 +78,11 @@ interface ScanJob {
   set?: SetDTO | null
   error_message?: string
   has_image: boolean
+  // Partial info Claude could read on a no_match scan. Either field may be
+  // empty — the "Enter manually" action concatenates whatever is present into
+  // an AddCardPanel pre-fill query.
+  parsed_set_name?: string
+  parsed_collector_no?: string
 }
 
 interface TodayUsage {
@@ -107,6 +124,16 @@ function elapsedSeconds(since: string, now: number): number {
   const t = Date.parse(since)
   if (Number.isNaN(t)) return 0
   return Math.max(0, Math.round((now - t) / 1000))
+}
+
+// confidencePercent converts the 0-1 model confidence into a 0-100 integer for
+// display, returning null when the upstream value is missing or non-finite
+// (NaN / Infinity) so we don't render "NaN%" if the backend ever sends a
+// malformed number.
+function confidencePercent(confidence: number | null | undefined): number | null {
+  if (confidence == null || !Number.isFinite(confidence)) return null
+  const pct = Math.round(confidence * 100)
+  return Math.max(0, Math.min(100, pct))
 }
 
 interface StatusPillProps {
@@ -191,6 +218,7 @@ interface ScanRowProps {
   busy: boolean
   now: number
   onResolve: (scan: ScanJob, body: ResolveBody) => Promise<void>
+  onEnterManually: (scan: ScanJob) => void
   t: TFunction<'pokemon'>
 }
 
@@ -202,7 +230,7 @@ interface ResolveBody {
   notes?: string
 }
 
-function ScanRow({ scan, busy, now, onResolve, t }: ScanRowProps) {
+function ScanRow({ scan, busy, now, onResolve, onEnterManually, t }: ScanRowProps) {
   const [pickingVariant, setPickingVariant] = useState(false)
   const variants = scan.matched_card?.variants ?? []
   const hasMultiVariant = variants.length > 1
@@ -242,7 +270,7 @@ function ScanRow({ scan, busy, now, onResolve, t }: ScanRowProps) {
     if (scan.status === 'matched' && scan.matched_card) {
       const card = scan.matched_card
       const variant = variants[0]
-      const pct = scan.confidence != null ? Math.round(scan.confidence * 100) : null
+      const pct = confidencePercent(scan.confidence)
       return (
         <div className="min-w-0 flex flex-col gap-0.5">
           <p className="text-sm font-medium text-white truncate" title={card.name}>
@@ -261,7 +289,7 @@ function ScanRow({ scan, busy, now, onResolve, t }: ScanRowProps) {
       )
     }
     if (scan.status === 'no_match') {
-      const pct = scan.confidence != null ? Math.round(scan.confidence * 100) : null
+      const pct = confidencePercent(scan.confidence)
       return (
         <div className="min-w-0 flex flex-col gap-0.5">
           {pct != null && (
@@ -402,13 +430,14 @@ function ScanRow({ scan, busy, now, onResolve, t }: ScanRowProps) {
           >
             {t('scanned.action.discard')}
           </button>
-          <Link
-            to="/pokemon"
+          <button
+            type="button"
+            onClick={() => onEnterManually(scan)}
             data-testid={`scan-action-manual-${scan.id}`}
-            className="px-3 py-1.5 text-xs rounded border border-gray-700 hover:border-gray-500 text-gray-200"
+            className="px-3 py-1.5 text-xs rounded border border-gray-700 hover:border-gray-500 text-gray-200 cursor-pointer"
           >
             {t('scanned.action.enterManually')}
-          </Link>
+          </button>
         </div>
       )
     }
@@ -464,6 +493,7 @@ function ScanRow({ scan, busy, now, onResolve, t }: ScanRowProps) {
 export default function PokemonScannedPage() {
   const { t } = useTranslation('pokemon')
   const { toasts, showToast } = useToast()
+  const navigate = useNavigate()
 
   const [filter, setFilter] = useState<FilterKey>('needsReview')
   const [scans, setScans] = useState<ScanJob[]>([])
@@ -557,6 +587,14 @@ export default function PokemonScannedPage() {
       return !Number.isNaN(ts) && ts >= cutoff
     })
   }, [scans, filter])
+
+  const handleEnterManually = useCallback(
+    (scan: ScanJob) => {
+      const query = buildManualEntryQuery(scan.parsed_set_name, scan.parsed_collector_no)
+      navigate('/pokemon', { state: { addCardQuery: query } })
+    },
+    [navigate],
+  )
 
   const handleResolve = useCallback(
     async (scan: ScanJob, body: ResolveBody) => {
@@ -688,6 +726,7 @@ export default function PokemonScannedPage() {
                 busy={busyId === scan.id}
                 now={now}
                 onResolve={handleResolve}
+                onEnterManually={handleEnterManually}
                 t={t}
               />
             ))}

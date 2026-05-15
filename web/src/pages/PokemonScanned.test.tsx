@@ -1,8 +1,23 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import PokemonScanned from './PokemonScanned'
+
+// LocationProbe mirrors the current location's state into a data attribute so
+// the "Enter manually" test can assert that PokemonScanned navigates to
+// /pokemon with the expected pre-fill query.
+function LocationProbe() {
+  const loc = useLocation()
+  const state = (loc.state as { addCardQuery?: string } | null) ?? null
+  return (
+    <div
+      data-testid="location-probe"
+      data-pathname={loc.pathname}
+      data-addcard-query={state?.addCardQuery ?? ''}
+    />
+  )
+}
 
 // Lightweight i18n mock so assertions can read predictable English strings
 // without pulling in the real HttpBackend.
@@ -108,6 +123,8 @@ interface ScanFixture {
   set?: { id: string; name: string } | null
   error_message?: string
   has_image: boolean
+  parsed_set_name?: string
+  parsed_collector_no?: string
 }
 
 function makeMatched(over: Partial<ScanFixture> = {}): ScanFixture {
@@ -206,6 +223,7 @@ function renderPage() {
     <MemoryRouter initialEntries={['/pokemon/scanned']}>
       <Routes>
         <Route path="/pokemon/scanned" element={<PokemonScanned />} />
+        <Route path="/pokemon" element={<LocationProbe />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -383,6 +401,41 @@ describe('PokemonScanned – resolve actions', () => {
       const body = JSON.parse(((post?.[1] as FetchInit | undefined)?.body as string) ?? '{}')
       expect(body).toMatchObject({ action: 'retry' })
     })
+  })
+
+  it('Enter manually navigates to /pokemon with the parsed hints as addCardQuery', async () => {
+    const noMatch = makeNoMatch({
+      parsed_set_name: 'Scarlet & Violet Base',
+      parsed_collector_no: '055',
+    })
+    const fetchMock = makeFetchMock({ needsReview: [noMatch] })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId('scan-row-2')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId('scan-action-manual-2'))
+
+    await waitFor(() => expect(screen.getByTestId('location-probe')).toBeInTheDocument())
+    const probe = screen.getByTestId('location-probe')
+    expect(probe).toHaveAttribute('data-pathname', '/pokemon')
+    expect(probe).toHaveAttribute('data-addcard-query', 'Scarlet & Violet Base 055')
+  })
+
+  it('Enter manually still navigates with an empty query when Claude could not read any hint', async () => {
+    const noMatch = makeNoMatch()
+    const fetchMock = makeFetchMock({ needsReview: [noMatch] })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId('scan-row-2')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId('scan-action-manual-2'))
+
+    await waitFor(() => expect(screen.getByTestId('location-probe')).toBeInTheDocument())
+    const probe = screen.getByTestId('location-probe')
+    expect(probe).toHaveAttribute('data-pathname', '/pokemon')
+    expect(probe).toHaveAttribute('data-addcard-query', '')
   })
 
   it('shows the variant picker on a matched row with multiple variants', async () => {

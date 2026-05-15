@@ -47,9 +47,16 @@ function formatNok(amount: number | null | undefined): string {
 
 interface AddCardPanelProps {
   onAdded?: () => void
+  // initialQuery, when set, auto-opens the panel and seeds the search field on
+  // mount. Used by the scan review page's "Enter manually" action so the kid
+  // lands on the search dialog pre-filled with whatever Claude could read.
+  // After the panel closes the parent is expected to clear this prop so a
+  // refresh / back navigation doesn't re-open the dialog.
+  initialQuery?: string
+  onInitialQueryConsumed?: () => void
 }
 
-export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
+export default function AddCardPanel({ onAdded, initialQuery, onInitialQueryConsumed }: AddCardPanelProps) {
   const { t } = useTranslation('pokemon')
   const { toasts, showToast } = useToast()
 
@@ -62,6 +69,18 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
   const [adding, setAdding] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
   const [lightboxStartIndex, setLightboxStartIndex] = useState<number | null>(null)
+
+  // Consume initialQuery once on mount (and whenever the parent supplies a new
+  // non-empty value). Notify the parent so it can drop the value from its own
+  // state / location.state — otherwise the dialog would re-open on every
+  // re-render.
+  useEffect(() => {
+    const seed = initialQuery?.trim()
+    if (!seed) return
+    setQuery(seed)
+    setIsOpen(true)
+    onInitialQueryConsumed?.()
+  }, [initialQuery, onInitialQueryConsumed])
 
   const close = useCallback(() => {
     setIsOpen(false)
