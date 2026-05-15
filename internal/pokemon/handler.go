@@ -12,7 +12,7 @@ import (
 
 // AdminSyncHandler kicks off a full SyncAll in a detached goroutine and
 // returns 202 Accepted. Returns 409 Conflict if a sync is already running.
-// Wrap with auth.RequireAdmin() at the router level.
+// Gated by RequireFeature("pokemon") at the router level.
 func AdminSyncHandler(db *sql.DB) http.HandlerFunc {
 	return adminSyncHandler(db, func(ctx context.Context, d *sql.DB) error {
 		return SyncAll(ctx, d, NewClient())

@@ -346,15 +346,16 @@ func TestScanHandler_NoCardMatch(t *testing.T) {
 	}
 }
 
-// TestScanHandler_FeatureGateAndAdmin asserts the route is wired up behind
-// BOTH RequireFeature(db, "pokemon") and RequireAdmin. A non-admin user with
-// the feature enabled must be denied; an admin without any explicit feature
-// flag must pass (admins bypass feature checks by design).
+// TestScanHandler_FeatureGate asserts the route is wired up behind
+// RequireFeature(db, "pokemon"). A non-admin user with the feature enabled
+// must be allowed through (kids are the primary scanner users), and an admin
+// without any explicit feature flag also passes (admins bypass feature checks
+// by design).
 //
 // The router is built using RegisterRoutes — the same helper that the
 // production API router calls — so this test would catch any accidental
-// removal of the feature gate or admin check from the shared registration code.
-func TestScanHandler_FeatureGateAndAdmin(t *testing.T) {
+// removal of the feature gate from the shared registration code.
+func TestScanHandler_FeatureGate(t *testing.T) {
 	db := setupTestDB(t)
 	seedCatalogue(t, db)
 
@@ -407,11 +408,12 @@ func TestScanHandler_FeatureGateAndAdmin(t *testing.T) {
 		return req
 	}
 
-	// Kid (non-admin) with pokemon=true → 403 because RequireAdmin denies them.
+	// Kid (non-admin) with pokemon=true → 200 because the feature gate is the
+	// only requirement; kids are the primary scanner users.
 	recKid := httptest.NewRecorder()
 	r.ServeHTTP(recKid, makeReq(kidToken))
-	if recKid.Code != http.StatusForbidden {
-		t.Errorf("kid expected 403 on scan, got %d (%s)", recKid.Code, recKid.Body.String())
+	if recKid.Code != http.StatusOK {
+		t.Errorf("kid expected 200 on scan, got %d (%s)", recKid.Code, recKid.Body.String())
 	}
 
 	// Admin → 200.

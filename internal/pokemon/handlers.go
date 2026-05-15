@@ -135,8 +135,11 @@ func RegisterRoutes(r chi.Router, db *sql.DB) {
 		r.Patch("/pokemon/collection/{id}", UpdateCollectionHandler(db))
 		r.Delete("/pokemon/collection/{id}", DeleteCollectionHandler(db))
 		r.Get("/pokemon/collection/missing", MissingFromSetHandler(db))
-		// Vision scan: admin-only on top of the feature gate.
-		r.With(auth.RequireAdmin()).Post("/pokemon/scan", ScanHandler(db))
+		// Vision scan: feature-gated only (no admin requirement). The whole
+		// point of scanning is so the kids — who are not admin — can add
+		// cards by pointing a camera. The expensive Claude vision call is
+		// gated by the per-user "pokemon" feature flag instead.
+		r.Post("/pokemon/scan", ScanHandler(db))
 	})
 }
 

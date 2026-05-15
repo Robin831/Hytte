@@ -1,0 +1,2 @@
+category: Fixed
+- **Pokémon scan endpoint accessible to kids** - Removed the admin gate from `POST /api/pokemon/scan` and the corresponding camera-button visibility check in `AddCardPanel`. Kids (with the `pokemon` feature flag enabled) can now use the card scanner — which was the whole point of the feature. Previously the scanner was visible to admins only, so kids on mobile couldn't see the camera icon.

@@ -5,7 +5,6 @@ import { Dialog } from '../ui/dialog'
 import ToastList from '../ToastList'
 import { useToast } from '../../hooks/useToast'
 import { formatNumber } from '../../utils/formatDate'
-import { useAuth } from '../../auth'
 import CardScanner from './CardScanner'
 import CardLightbox from './CardLightbox'
 
@@ -53,7 +52,6 @@ interface AddCardPanelProps {
 export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
   const { t } = useTranslation('pokemon')
   const { toasts, showToast } = useToast()
-  const { user } = useAuth()
 
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -190,17 +188,15 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
             aria-label={t('addCard.inputLabel')}
             className="flex-1 min-w-0 bg-transparent border-0 outline-none text-white placeholder-gray-500"
           />
-          {user?.is_admin && (
-            <button
-              type="button"
-              onClick={() => setScannerOpen(true)}
-              aria-label={t('addCard.scan')}
-              data-testid="add-card-scan"
-              className="p-1 text-gray-400 hover:text-white cursor-pointer"
-            >
-              <Camera size={18} />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setScannerOpen(true)}
+            aria-label={t('addCard.scan')}
+            data-testid="add-card-scan"
+            className="p-1 text-gray-400 hover:text-white cursor-pointer"
+          >
+            <Camera size={18} />
+          </button>
           <button
             type="button"
             onClick={close}
@@ -311,7 +307,7 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
         )}
       </Dialog>
 
-      {scannerOpen && user?.is_admin && (
+      {scannerOpen && (
         <CardScanner
           onClose={() => setScannerOpen(false)}
           onAdded={onAdded}
