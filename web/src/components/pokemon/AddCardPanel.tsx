@@ -60,8 +60,8 @@ export default function AddCardPanel({ onAdded, initialQuery, onInitialQueryCons
   const { t } = useTranslation('pokemon')
   const { toasts, showToast } = useToast()
 
-  const [isOpen, setIsOpen] = useState(false)
-  const [query, setQuery] = useState('')
+  const [isOpen, setIsOpen] = useState(() => !!(initialQuery?.trim()))
+  const [query, setQuery] = useState(() => initialQuery?.trim() ?? '')
   const [results, setResults] = useState<Card[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -70,15 +70,21 @@ export default function AddCardPanel({ onAdded, initialQuery, onInitialQueryCons
   const [scannerOpen, setScannerOpen] = useState(false)
   const [lightboxStartIndex, setLightboxStartIndex] = useState<number | null>(null)
 
-  // Consume initialQuery once on mount (and whenever the parent supplies a new
-  // non-empty value). Notify the parent so it can drop the value from its own
-  // state / location.state — otherwise the dialog would re-open on every
-  // re-render.
+  // Sync query/open state when parent supplies a new initialQuery after mount.
+  // Using derived state (setState during render) rather than useEffect to avoid
+  // the react-hooks/set-state-in-effect lint rule.
+  const [prevInitialQuery, setPrevInitialQuery] = useState(initialQuery)
+  if (initialQuery !== prevInitialQuery) {
+    setPrevInitialQuery(initialQuery)
+    if (initialQuery?.trim()) {
+      setQuery(initialQuery.trim())
+      setIsOpen(true)
+    }
+  }
+
+  // Side effect only: notify parent that the initial query has been consumed.
   useEffect(() => {
-    const seed = initialQuery?.trim()
-    if (!seed) return
-    setQuery(seed)
-    setIsOpen(true)
+    if (!initialQuery?.trim()) return
     onInitialQueryConsumed?.()
   }, [initialQuery, onInitialQueryConsumed])
 

@@ -596,14 +596,15 @@ export default function PokemonScannedPage() {
     }
   }, [silentRefetch])
 
+  const [now] = useState(Date.now)
   const visibleScans = useMemo(() => {
     if (filter !== 'resolved') return scans
-    const cutoff = Date.now() - RESOLVED_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    const cutoff = now - RESOLVED_WINDOW_DAYS * 24 * 60 * 60 * 1000
     return scans.filter(s => {
       const ts = s.resolved_at ? Date.parse(s.resolved_at) : Date.parse(s.created_at)
       return !Number.isNaN(ts) && ts >= cutoff
     })
-  }, [scans, filter])
+  }, [scans, filter, now])
 
   const handleEnterManually = useCallback(
     (scan: ScanJob) => {
