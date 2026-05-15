@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { ChevronDown, ChevronUp, Trophy } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
 import AddCardPanel from '../components/pokemon/AddCardPanel'
 import { formatDate } from '../utils/formatDate'
+
+// PokemonSetsLocationState carries the optional "open AddCardPanel pre-filled
+// with this query" hint that the /pokemon/scanned page passes through
+// React Router's location state when the user clicks "Enter manually" on a
+// no_match row. Once consumed by the panel it is cleared via navigate(..., {
+// replace: true }) so refresh / back navigation doesn't re-open the dialog.
+interface PokemonSetsLocationState {
+  addCardQuery?: string
+}
 
 interface PokemonSet {
   id: string
@@ -130,12 +139,26 @@ function SkeletonGrid() {
 
 export default function PokemonSets() {
   const { t } = useTranslation('pokemon')
+  const location = useLocation()
+  const navigate = useNavigate()
 
   const [sets, setSets] = useState<PokemonSet[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showOlder, setShowOlder] = useState(false)
   const [attempt, setAttempt] = useState(0)
+
+  const locState = location.state as PokemonSetsLocationState | null
+  const initialAddCardQuery = locState?.addCardQuery ?? undefined
+
+  // After the AddCardPanel consumes its initialQuery we strip the hint from
+  // history so a subsequent back/forward navigation doesn't re-open the
+  // dialog. `replace: true` swaps the current history entry in place.
+  const handleInitialQueryConsumed = useCallback(() => {
+    if (locState?.addCardQuery) {
+      navigate(location.pathname + location.search, { replace: true, state: null })
+    }
+  }, [locState?.addCardQuery, navigate, location.pathname, location.search])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -270,7 +293,11 @@ export default function PokemonSets() {
           </>
         )}
       </div>
-      <AddCardPanel onAdded={load} />
+      <AddCardPanel
+        onAdded={load}
+        initialQuery={initialAddCardQuery}
+        onInitialQueryConsumed={handleInitialQueryConsumed}
+      />
     </div>
   )
 }

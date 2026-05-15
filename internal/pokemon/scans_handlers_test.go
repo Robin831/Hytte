@@ -177,13 +177,21 @@ func insertScanJob(t *testing.T, db *sql.DB, userID int64, status, imagePath str
 	for _, o := range opts {
 		o(&cfg)
 	}
+	respEnc := ""
+	if cfg.claudeResponse != "" {
+		var err error
+		respEnc, err = encryption.EncryptField(cfg.claudeResponse)
+		if err != nil {
+			t.Fatalf("encrypt claude response: %v", err)
+		}
+	}
 	res, err := db.Exec(`
 		INSERT INTO pokemon_scan_jobs (user_id, status, image_path_enc, image_hash, matched_card_id,
-			confidence, error_message, created_at, processed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			confidence, error_message, created_at, processed_at, claude_response_enc)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, cfg.userID, cfg.status, cfg.pathEnc, cfg.imageHash, nullableString(cfg.matchedCard),
 		nullableFloat(cfg.confidence), nullableString(cfg.errorMessage), cfg.createdAt,
-		nullableTime(cfg.processedAt))
+		nullableTime(cfg.processedAt), nullableString(respEnc))
 	if err != nil {
 		t.Fatalf("insert scan job: %v", err)
 	}
@@ -195,15 +203,22 @@ func insertScanJob(t *testing.T, db *sql.DB, userID int64, status, imagePath str
 }
 
 type scanJobInsert struct {
-	userID       int64
-	status       string
-	pathEnc      string
-	imageHash    string
-	matchedCard  string
-	confidence   float64
-	errorMessage string
-	createdAt    time.Time
-	processedAt  time.Time
+	userID         int64
+	status         string
+	pathEnc        string
+	imageHash      string
+	matchedCard    string
+	confidence     float64
+	errorMessage   string
+	createdAt      time.Time
+	processedAt    time.Time
+	claudeResponse string
+}
+
+// withClaudeResponse stores the raw Claude JSON the worker captured so the
+// list endpoint can surface the parsed partial info on no_match rows.
+func withClaudeResponse(raw string) func(*scanJobInsert) {
+	return func(s *scanJobInsert) { s.claudeResponse = raw }
 }
 
 func withMatchedCard(id string, confidence float64) func(*scanJobInsert) {
@@ -300,6 +315,103 @@ func TestListScans_NewestFirst_DefaultFilter(t *testing.T) {
 	}
 	if body.Scans[0].MatchedCard == nil || body.Scans[0].MatchedCard.ID != "sv1-25" {
 		t.Errorf("expected matched card to be hydrated, got %+v", body.Scans[0].MatchedCard)
+	}
+}
+
+func TestListScans_NoMatchExposesParsedHints(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "hints@example.com")
+
+	p := writeOnDiskImage(t, root, u.ID, "no-match.jpg")
+	rawResp := `{"set_name":"Scarlet & Violet Base","set_id_hint":"sv1","collector_number":"055","confidence":0.42}`
+	jobID := insertScanJob(t, db, u.ID, scanJobStatusNoMatch, p,
+		withError("no candidate found"),
+		withClaudeResponse(rawResp))
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/scans?status=no_match", nil), u)
+	rec := httptest.NewRecorder()
+	ListScansHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[struct {
+		Scans []ScanJobDTO `json:"scans"`
+	}](t, rec)
+	if len(body.Scans) != 1 || body.Scans[0].ID != jobID {
+		t.Fatalf("expected single no_match row, got %+v", body.Scans)
+	}
+	got := body.Scans[0]
+	if got.ParsedSetName != "Scarlet & Violet Base" {
+		t.Errorf("expected parsed_set_name to be surfaced, got %q", got.ParsedSetName)
+	}
+	if got.ParsedCollectorNo != "055" {
+		t.Errorf("expected parsed_collector_no to be surfaced, got %q", got.ParsedCollectorNo)
+	}
+}
+
+func TestListScans_MatchedDoesNotExposeHints(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "matched-hints@example.com")
+
+	p := writeOnDiskImage(t, root, u.ID, "matched.jpg")
+	rawResp := `{"set_name":"Scarlet & Violet Base","collector_number":"025","confidence":0.95}`
+	insertScanJob(t, db, u.ID, scanJobStatusMatched, p,
+		withMatchedCard("sv1-25", 0.95),
+		withClaudeResponse(rawResp))
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/scans?status=matched", nil), u)
+	rec := httptest.NewRecorder()
+	ListScansHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	body := decode[struct {
+		Scans []ScanJobDTO `json:"scans"`
+	}](t, rec)
+	if len(body.Scans) != 1 {
+		t.Fatalf("expected one matched scan, got %d", len(body.Scans))
+	}
+	if body.Scans[0].ParsedSetName != "" || body.Scans[0].ParsedCollectorNo != "" {
+		t.Errorf("hints should only appear on no_match rows, got set=%q collector=%q",
+			body.Scans[0].ParsedSetName, body.Scans[0].ParsedCollectorNo)
+	}
+}
+
+func TestListScans_NoMatchWithCorruptResponse_OmitsHints(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "corrupt-hints@example.com")
+
+	p := writeOnDiskImage(t, root, u.ID, "corrupt.jpg")
+	// Garbage that parseClaudeScanResult will fail to unmarshal — the handler
+	// must still respond 200 with an empty hint pair rather than blowing up.
+	insertScanJob(t, db, u.ID, scanJobStatusNoMatch, p,
+		withError("low confidence"),
+		withClaudeResponse("not valid json"))
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/scans?status=no_match", nil), u)
+	rec := httptest.NewRecorder()
+	ListScansHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[struct {
+		Scans []ScanJobDTO `json:"scans"`
+	}](t, rec)
+	if len(body.Scans) != 1 {
+		t.Fatalf("expected one no_match scan, got %d", len(body.Scans))
+	}
+	if body.Scans[0].ParsedSetName != "" || body.Scans[0].ParsedCollectorNo != "" {
+		t.Errorf("expected empty hints when claude_response_enc is corrupt, got set=%q collector=%q",
+			body.Scans[0].ParsedSetName, body.Scans[0].ParsedCollectorNo)
 	}
 }
 

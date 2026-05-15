@@ -47,14 +47,21 @@ function formatNok(amount: number | null | undefined): string {
 
 interface AddCardPanelProps {
   onAdded?: () => void
+  // initialQuery, when set, auto-opens the panel and seeds the search field on
+  // mount. Used by the scan review page's "Enter manually" action so the kid
+  // lands on the search dialog pre-filled with whatever Claude could read.
+  // After the panel closes the parent is expected to clear this prop so a
+  // refresh / back navigation doesn't re-open the dialog.
+  initialQuery?: string
+  onInitialQueryConsumed?: () => void
 }
 
-export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
+export default function AddCardPanel({ onAdded, initialQuery, onInitialQueryConsumed }: AddCardPanelProps) {
   const { t } = useTranslation('pokemon')
   const { toasts, showToast } = useToast()
 
-  const [isOpen, setIsOpen] = useState(false)
-  const [query, setQuery] = useState('')
+  const [isOpen, setIsOpen] = useState(() => !!(initialQuery?.trim()))
+  const [query, setQuery] = useState(() => initialQuery?.trim() ?? '')
   const [results, setResults] = useState<Card[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -62,6 +69,24 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
   const [adding, setAdding] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
   const [lightboxStartIndex, setLightboxStartIndex] = useState<number | null>(null)
+
+  // Sync query/open state when parent supplies a new initialQuery after mount.
+  // Using derived state (setState during render) rather than useEffect to avoid
+  // the react-hooks/set-state-in-effect lint rule.
+  const [prevInitialQuery, setPrevInitialQuery] = useState(initialQuery)
+  if (initialQuery !== prevInitialQuery) {
+    setPrevInitialQuery(initialQuery)
+    if (initialQuery?.trim()) {
+      setQuery(initialQuery.trim())
+      setIsOpen(true)
+    }
+  }
+
+  // Side effect only: notify parent that the initial query has been consumed.
+  useEffect(() => {
+    if (!initialQuery?.trim()) return
+    onInitialQueryConsumed?.()
+  }, [initialQuery, onInitialQueryConsumed])
 
   const close = useCallback(() => {
     setIsOpen(false)

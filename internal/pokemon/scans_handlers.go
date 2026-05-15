@@ -65,17 +65,42 @@ const maxScanListLimit = 200
 // ScanJobDTO is the JSON shape returned by the list and resolve endpoints. It
 // captures the lifecycle state plus enough card metadata that the frontend
 // can render a matched job without a second request.
+//
+// ParsedSetName / ParsedCollectorNo carry whatever set name + collector number
+// Claude could read from a no_match scan, so the "Enter manually" flow can
+// pre-fill the AddCardPanel search even when the lookup itself failed.
 type ScanJobDTO struct {
-	ID           int64    `json:"id"`
-	Status       string   `json:"status"`
-	CreatedAt    string   `json:"created_at"`
-	ProcessedAt  *string  `json:"processed_at,omitempty"`
-	ResolvedAt   *string  `json:"resolved_at,omitempty"`
-	Confidence   *float64 `json:"confidence,omitempty"`
-	MatchedCard  *CardDTO `json:"matched_card,omitempty"`
-	Set          *SetDTO  `json:"set,omitempty"`
-	ErrorMessage string   `json:"error_message,omitempty"`
-	HasImage     bool     `json:"has_image"`
+	ID                int64    `json:"id"`
+	Status            string   `json:"status"`
+	CreatedAt         string   `json:"created_at"`
+	ProcessedAt       *string  `json:"processed_at,omitempty"`
+	ResolvedAt        *string  `json:"resolved_at,omitempty"`
+	Confidence        *float64 `json:"confidence,omitempty"`
+	MatchedCard       *CardDTO `json:"matched_card,omitempty"`
+	Set               *SetDTO  `json:"set,omitempty"`
+	ErrorMessage      string   `json:"error_message,omitempty"`
+	HasImage          bool     `json:"has_image"`
+	ParsedSetName     string   `json:"parsed_set_name,omitempty"`
+	ParsedCollectorNo string   `json:"parsed_collector_no,omitempty"`
+}
+
+// extractScanHints decrypts the stored Claude response (if any) and returns
+// the partial set name + collector number it managed to read. Used by the
+// no_match path to pre-fill manual entry — failures collapse to empty
+// strings so a corrupt blob never blocks the list response.
+func extractScanHints(claudeResponseEnc sql.NullString) (string, string) {
+	if !claudeResponseEnc.Valid || claudeResponseEnc.String == "" {
+		return "", ""
+	}
+	raw, err := encryption.DecryptField(claudeResponseEnc.String)
+	if err != nil || raw == "" {
+		return "", ""
+	}
+	res, err := parseClaudeScanResult(raw)
+	if err != nil || res == nil {
+		return "", ""
+	}
+	return strings.TrimSpace(res.SetName), strings.TrimSpace(res.CollectorNumber)
 }
 
 // scanUUID returns a 32-character hex string suitable for a per-scan image
@@ -337,7 +362,8 @@ func ListScansHandler(db *sql.DB) http.HandlerFunc {
 
 		query := `
 			SELECT id, status, image_path_enc, matched_card_id, confidence,
-			       error_message, created_at, processed_at, resolved_at
+			       error_message, created_at, processed_at, resolved_at,
+			       claude_response_enc
 			FROM pokemon_scan_jobs
 			WHERE user_id = ? AND status IN (` + strings.Join(placeholders, ",") + `)
 			ORDER BY created_at DESC, id DESC
@@ -356,18 +382,19 @@ func ListScansHandler(db *sql.DB) http.HandlerFunc {
 		jobMatched := make(map[int64]string)
 		for rows.Next() {
 			var (
-				id           int64
-				status       string
-				pathEnc      string
-				matchedCard  sql.NullString
-				confidence   sql.NullFloat64
-				errorMessage sql.NullString
-				createdAt    time.Time
-				processedAt  sql.NullTime
-				resolvedAt   sql.NullTime
+				id             int64
+				status         string
+				pathEnc        string
+				matchedCard    sql.NullString
+				confidence     sql.NullFloat64
+				errorMessage   sql.NullString
+				createdAt      time.Time
+				processedAt    sql.NullTime
+				resolvedAt     sql.NullTime
+				claudeResponse sql.NullString
 			)
 			if err := rows.Scan(&id, &status, &pathEnc, &matchedCard, &confidence,
-				&errorMessage, &createdAt, &processedAt, &resolvedAt); err != nil {
+				&errorMessage, &createdAt, &processedAt, &resolvedAt, &claudeResponse); err != nil {
 				log.Printf("pokemon: scan list row: %v", err)
 				respondError(w, http.StatusInternalServerError, "failed to list scans")
 				return
@@ -392,6 +419,9 @@ func ListScansHandler(db *sql.DB) http.HandlerFunc {
 			}
 			if errorMessage.Valid {
 				dto.ErrorMessage = errorMessage.String
+			}
+			if status == scanJobStatusNoMatch {
+				dto.ParsedSetName, dto.ParsedCollectorNo = extractScanHints(claudeResponse)
 			}
 			if matchedCard.Valid && matchedCard.String != "" {
 				jobMatched[id] = matchedCard.String
@@ -823,23 +853,25 @@ func loadCardsByIDs(ctx context.Context, db *sql.DB, userID int64, ids []string)
 // matched card and set the same way the list endpoint does.
 func loadScanJob(r *http.Request, w http.ResponseWriter, db *sql.DB, userID, jobID int64) (*ScanJobDTO, error) {
 	var (
-		id           int64
-		status       string
-		pathEnc      string
-		matchedCard  sql.NullString
-		confidence   sql.NullFloat64
-		errorMessage sql.NullString
-		createdAt    time.Time
-		processedAt  sql.NullTime
-		resolvedAt   sql.NullTime
+		id             int64
+		status         string
+		pathEnc        string
+		matchedCard    sql.NullString
+		confidence     sql.NullFloat64
+		errorMessage   sql.NullString
+		createdAt      time.Time
+		processedAt    sql.NullTime
+		resolvedAt     sql.NullTime
+		claudeResponse sql.NullString
 	)
 	err := db.QueryRowContext(r.Context(), `
 		SELECT id, status, image_path_enc, matched_card_id, confidence,
-		       error_message, created_at, processed_at, resolved_at
+		       error_message, created_at, processed_at, resolved_at,
+		       claude_response_enc
 		FROM pokemon_scan_jobs
 		WHERE id = ? AND user_id = ?
 	`, jobID, userID).Scan(&id, &status, &pathEnc, &matchedCard, &confidence,
-		&errorMessage, &createdAt, &processedAt, &resolvedAt)
+		&errorMessage, &createdAt, &processedAt, &resolvedAt, &claudeResponse)
 	if err != nil {
 		return nil, err
 	}
@@ -863,6 +895,9 @@ func loadScanJob(r *http.Request, w http.ResponseWriter, db *sql.DB, userID, job
 	}
 	if errorMessage.Valid {
 		dto.ErrorMessage = errorMessage.String
+	}
+	if status == scanJobStatusNoMatch {
+		dto.ParsedSetName, dto.ParsedCollectorNo = extractScanHints(claudeResponse)
 	}
 	if matchedCard.Valid && matchedCard.String != "" {
 		cards, loadErr := loadCardsByIDs(r.Context(), db, userID, []string{matchedCard.String})
