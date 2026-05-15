@@ -1,0 +1,2 @@
+category: Added
+- **Pokémon scan auto-discard** - Unresolved Pokémon scans in matched/no_match/failed status are now auto-discarded after 24 hours: the image file is removed from disk, the row is marked discarded with resolved_at stamped, and the per-user preference `pokemon_scan_auto_discard_hours` (default 24, 0 disables, max 168) can override the window. A separate pass forces queued or processing jobs stuck for more than an hour to fail with "stale — worker did not complete in time" so a crashed worker no longer blocks the queue. (Hytte-sx2t)

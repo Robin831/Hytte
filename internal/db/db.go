@@ -1703,9 +1703,10 @@ func createSchema(db *sql.DB) error {
 		confidence          REAL,
 		claude_response_enc TEXT,
 		error_message       TEXT,
-		created_at          TIMESTAMP NOT NULL,
-		processed_at        TIMESTAMP,
-		resolved_at         TIMESTAMP,
+		created_at               TIMESTAMP NOT NULL,
+		processing_started_at    TIMESTAMP,
+		processed_at             TIMESTAMP,
+		resolved_at              TIMESTAMP,
 		FOREIGN KEY (matched_card_id) REFERENCES pokemon_cards(id) ON DELETE SET NULL
 	);
 	CREATE INDEX IF NOT EXISTS idx_pokemon_scan_jobs_user_status ON pokemon_scan_jobs(user_id, status);
@@ -2423,6 +2424,20 @@ func createSchema(db *sql.DB) error {
 	}
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_task_tags_user_label_hmac ON task_tags(user_id, label_hmac) WHERE label_hmac != ''`); err != nil {
 		return fmt.Errorf("create task_tags label_hmac index: %w", err)
+	}
+
+	// Add processing_started_at to pokemon_scan_jobs (Hytte-sx2t): stamped when
+	// the worker claims a row (queued → processing) so the cleanup pass can
+	// distinguish a job that has been processing for 5 minutes from one that was
+	// merely created 5 minutes ago and is still queued.
+	var hasPokemonProcessingStartedAt int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('pokemon_scan_jobs') WHERE name = 'processing_started_at'`).Scan(&hasPokemonProcessingStartedAt); err != nil {
+		return fmt.Errorf("check pokemon_scan_jobs processing_started_at column: %w", err)
+	}
+	if hasPokemonProcessingStartedAt == 0 {
+		if _, err := db.Exec(`ALTER TABLE pokemon_scan_jobs ADD COLUMN processing_started_at TIMESTAMP`); err != nil {
+			return fmt.Errorf("add pokemon_scan_jobs processing_started_at column: %w", err)
+		}
 	}
 
 	return nil

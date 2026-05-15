@@ -173,15 +173,17 @@ func pollQueuedScanJobs(ctx context.Context, db *sql.DB, limit int) ([]scanJob, 
 // already picked the row (or it has moved on to a terminal state). Using
 // status as part of the WHERE clause means concurrent workers — including
 // future horizontally-scaled instances — never both process the same job.
+// processing_started_at is stamped here so the cleanup pass can distinguish
+// a briefly-processing job from one that has been stuck for over an hour.
 // processed_at is intentionally NOT set here — it is written by the finalize
 // helpers when the job reaches a terminal state so the column reflects
 // completion time, not claim time.
-func claimScanJob(ctx context.Context, db *sql.DB, jobID int64) (bool, error) {
+func claimScanJob(ctx context.Context, db *sql.DB, jobID int64, now time.Time) (bool, error) {
 	res, err := db.ExecContext(ctx, `
 		UPDATE pokemon_scan_jobs
-		SET status = ?
+		SET status = ?, processing_started_at = ?
 		WHERE id = ? AND status = ?
-	`, scanJobStatusProcessing, jobID, scanJobStatusQueued)
+	`, scanJobStatusProcessing, now.UTC(), jobID, scanJobStatusQueued)
 	if err != nil {
 		return false, fmt.Errorf("claim scan job %d: %w", jobID, err)
 	}
@@ -209,7 +211,7 @@ func processScanJob(ctx context.Context, db *sql.DB, job scanJob) {
 		}
 	}()
 
-	claimed, err := claimScanJob(ctx, db, job.ID)
+	claimed, err := claimScanJob(ctx, db, job.ID, time.Now())
 	if err != nil {
 		log.Printf("pokemon: scan worker claim job %d: %v", job.ID, err)
 		return
