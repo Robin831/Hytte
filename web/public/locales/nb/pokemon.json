@@ -141,6 +141,10 @@
     "pendingBadgeAria_one": "{{count}} skanneresultat å se gjennom",
     "pendingBadgeAria_other": "{{count}} skanneresultater å se gjennom"
   },
+  "scannedBanner": {
+    "linkText_one": "{{count}} skanning venter",
+    "linkText_other": "{{count}} skanninger venter"
+  },
   "scanned": {
     "title": "Skannede kort",
     "subtitle": "Se gjennom nylige skanninger",

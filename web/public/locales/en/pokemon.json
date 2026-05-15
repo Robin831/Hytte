@@ -141,6 +141,10 @@
     "pendingBadgeAria_one": "{{count}} scan result to review",
     "pendingBadgeAria_other": "{{count}} scan results to review"
   },
+  "scannedBanner": {
+    "linkText_one": "{{count}} scan waiting",
+    "linkText_other": "{{count}} scans waiting"
+  },
   "scanned": {
     "title": "Scanned cards",
     "subtitle": "Review your recent scans",

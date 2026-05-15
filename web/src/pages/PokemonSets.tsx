@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ChevronDown, ChevronUp, Trophy } from 'lucide-react'
+import { ArrowRight, ChevronDown, ChevronUp, ScanLine, Trophy } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
 import AddCardPanel from '../components/pokemon/AddCardPanel'
 import { formatDate } from '../utils/formatDate'
@@ -147,6 +147,7 @@ export default function PokemonSets() {
   const [error, setError] = useState('')
   const [showOlder, setShowOlder] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  const [unresolvedCount, setUnresolvedCount] = useState(0)
 
   const locState = location.state as PokemonSetsLocationState | null
   const initialAddCardQuery = locState?.addCardQuery ?? undefined
@@ -197,6 +198,22 @@ export default function PokemonSets() {
     return () => { controller.abort() }
   }, [t, attempt])
 
+  // Fetch the unresolved scan count once when the page mounts (and after a
+  // reload triggered by AddCardPanel) so the banner reflects scans that
+  // resolved while the user was elsewhere. The sidebar polls every 30 s; one
+  // shot is enough here since clicking through to /pokemon/scanned is the
+  // user's next move when count > 0.
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/pokemon/scans/counts', { credentials: 'include', signal: controller.signal })
+      .then(res => (res.ok ? res.json() : { unresolved: 0 }))
+      .then((data: { unresolved?: number }) => {
+        if (!controller.signal.aborted) setUnresolvedCount(data.unresolved ?? 0)
+      })
+      .catch(() => { /* badge stays at 0; no-op */ })
+    return () => { controller.abort() }
+  }, [attempt])
+
   // The top 3 series ranked by the most-recent release_date in each series are
   // shown expanded; everything else is hidden behind the "Show older sets"
   // toggle. Older series are sorted newest-first by their max release_date,
@@ -239,6 +256,20 @@ export default function PokemonSets() {
             <span>{t('top.entryButton')}</span>
           </Link>
         </header>
+
+        {unresolvedCount > 0 && (
+          <Link
+            to="/pokemon/scanned"
+            data-testid="pokemon-scanned-banner"
+            className="flex items-center justify-between gap-3 px-3 py-2 bg-amber-600/15 hover:bg-amber-600/25 border border-amber-500/40 text-amber-200 rounded transition-colors"
+          >
+            <span className="inline-flex items-center gap-2 text-sm">
+              <ScanLine size={16} aria-hidden="true" />
+              <span>{t('scannedBanner.linkText', { count: unresolvedCount })}</span>
+            </span>
+            <ArrowRight size={16} aria-hidden="true" />
+          </Link>
+        )}
 
         {error && (
           <div role="alert" className="px-3 py-2 bg-red-900/40 border border-red-800 text-red-300 text-sm rounded flex items-center justify-between gap-3">

@@ -140,6 +140,9 @@
   "nav": {
     "pendingBadgeAria_other": "ผลการสแกน {{count}} รายการรอการตรวจสอบ"
   },
+  "scannedBanner": {
+    "linkText_other": "การสแกน {{count}} รายการรออยู่"
+  },
   "scanned": {
     "title": "การ์ดที่สแกน",
     "subtitle": "ตรวจสอบการสแกนล่าสุดของคุณ",
