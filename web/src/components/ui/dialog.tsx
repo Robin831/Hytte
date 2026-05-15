@@ -29,7 +29,10 @@ function Dialog({
   const dialogRef = useRef<HTMLDivElement>(null)
   const previousFocusRef = useRef<Element | null>(null)
 
-  // Save previously focused element and lock body scroll on open
+  // Save previously focused element and lock body scroll on open. Focus
+  // restoration also runs in the cleanup so consumers that conditionally
+  // mount/unmount the Dialog (instead of toggling `open`) still hand focus
+  // back to whatever was focused before the dialog appeared.
   useEffect(() => {
     if (open) {
       previousFocusRef.current = document.activeElement
@@ -42,6 +45,9 @@ function Dialog({
     }
     return () => {
       document.body.style.overflow = ''
+      if (open && previousFocusRef.current instanceof HTMLElement) {
+        previousFocusRef.current.focus()
+      }
     }
   }, [open])
 

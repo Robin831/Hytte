@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronUp, Search, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Search } from 'lucide-react'
+import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
 import { formatNumber } from '../../utils/formatDate'
 
 const SEARCH_DEBOUNCE_MS = 250
@@ -78,9 +78,11 @@ function confidencePercent(confidence: number | null | undefined): number | null
 // metadata, variant pickers + Discard, and an opt-in "Wrong match?" section
 // that lets them reassign the scan to a different card without having to
 // discard and re-shoot. The reassignment posts a `card_id` override on the
-// existing resolve endpoint.
+// existing resolve endpoint. Scaffolding (focus trap, focus restoration,
+// scroll lock, escape-to-close) is delegated to the shared Dialog component.
 export default function ScanDetailModal({ scan, busy, onClose, onResolve }: ScanDetailModalProps) {
   const { t } = useTranslation('pokemon')
+  const titleId = useId()
   const [wrongMatchOpen, setWrongMatchOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<ScanDetailCard[]>([])
@@ -92,28 +94,6 @@ export default function ScanDetailModal({ scan, busy, onClose, onResolve }: Scan
   const activeCard = overrideCard ?? autoCard
   const autoVariant = autoCard?.variants?.[0]
   const pct = confidencePercent(scan.confidence)
-
-  // Lock body scroll while the modal is open so the underlying list doesn't
-  // peek through on long pages.
-  useEffect(() => {
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previous
-    }
-  }, [])
-
-  // Escape closes the modal so the kid can dismiss with a single tap.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onClose()
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
 
   // Debounced /cards/search lookup. The previous timer and the in-flight
   // request are cancelled on every keystroke so stale results never overwrite
@@ -191,34 +171,24 @@ export default function ScanDetailModal({ scan, busy, onClose, onResolve }: Scan
     return `${autoCard.name} · ${setLabel} · ${t('tile.collectorNo', { number: autoCard.collector_no })}`
   }, [autoCard, scan.set?.name, t])
 
-  const dialog = (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4"
-      onClick={e => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-      data-testid="scan-detail-modal"
+  return (
+    <Dialog
+      open={true}
+      onClose={onClose}
+      maxWidth="sm:max-w-lg"
+      overlayClassName="items-end sm:items-center p-0 sm:p-4 bg-black/70"
+      className="rounded-t-2xl sm:rounded-2xl border-gray-800 max-h-[95vh] sm:max-h-[90vh]"
+      aria-labelledby={titleId}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('scanned.detail.dialogLabel')}
-        className="w-full sm:max-w-lg max-h-[95vh] sm:max-h-[90vh] flex flex-col bg-gray-900 border border-gray-800 rounded-t-2xl sm:rounded-2xl shadow-xl"
-      >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 shrink-0">
-          <h2 className="text-base font-semibold text-white">{t('scanned.detail.title')}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t('scanned.detail.close')}
-            data-testid="scan-detail-close"
-            className="p-1.5 text-gray-400 hover:text-white cursor-pointer"
-          >
-            <X size={20} />
-          </button>
-        </div>
+      <div data-testid="scan-detail-modal" className="contents">
+        <DialogHeader
+          id={titleId}
+          title={t('scanned.detail.title')}
+          onClose={onClose}
+          closeLabel={t('scanned.detail.close')}
+        />
 
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        <DialogBody className="space-y-4">
           <div className="flex justify-center bg-black/40 rounded-lg overflow-hidden">
             {scan.has_image ? (
               <img
@@ -394,9 +364,9 @@ export default function ScanDetailModal({ scan, busy, onClose, onResolve }: Scan
               </div>
             )}
           </div>
-        </div>
+        </DialogBody>
 
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-gray-800 shrink-0">
+        <DialogFooter>
           <button
             type="button"
             onClick={handleDiscard}
@@ -406,11 +376,8 @@ export default function ScanDetailModal({ scan, busy, onClose, onResolve }: Scan
           >
             {t('scanned.action.discard')}
           </button>
-        </div>
+        </DialogFooter>
       </div>
-    </div>
+    </Dialog>
   )
-
-  if (typeof document === 'undefined') return dialog
-  return createPortal(dialog, document.body)
 }
