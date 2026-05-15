@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -305,8 +306,8 @@ func TestStartScanWorker_ProcessesQueuedJobs(t *testing.T) {
 	if r2.Status != scanJobStatusMatched {
 		t.Errorf("job2 expected matched, got %q (err=%q)", r2.Status, r2.ErrorMessage.String)
 	}
-	if maxObserved.Load() < 1 {
-		t.Errorf("expected stub to have been called at least once, got max in-flight %d", maxObserved.Load())
+	if maxObserved.Load() < int32(scanWorkerMaxConcurrent) {
+		t.Errorf("expected max in-flight to reach %d (scanWorkerMaxConcurrent), got %d", scanWorkerMaxConcurrent, maxObserved.Load())
 	}
 
 	cancel()
@@ -338,6 +339,65 @@ func TestStartScanWorker_ShutsDownOnCancel(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatalf("worker did not shut down after context cancel")
+	}
+}
+
+// TestStartScanWorker_CancelMidJob verifies the worker shuts down cleanly and
+// leaves no row stuck in 'processing' when the context is cancelled while a
+// Claude call is in-flight.
+func TestStartScanWorker_CancelMidJob(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "scan@example.com")
+	enableClaudeForUser(t, db, u.ID)
+
+	imagePath, imageHash := writeTempScanImage(t)
+	jobID := enqueueScanJob(t, db, u.ID, imagePath, imageHash)
+
+	// entered is closed the moment the stub is entered so the test knows the
+	// job is in-flight before it cancels the worker context.
+	entered := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	stubScanPromptFn(t, func() (string, error) {
+		close(entered)
+		// Block until the worker context is cancelled, simulating a long-running
+		// Claude call that is interrupted mid-flight.
+		<-ctx.Done()
+		return "", ctx.Err()
+	})
+
+	done := make(chan struct{})
+	go func() {
+		StartScanWorker(ctx, db)
+		close(done)
+	}()
+
+	// Wait until the job is actually in-flight before pulling the plug.
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("stub never entered — job was not picked up by the worker")
+	}
+
+	// Cancel the worker context while the Claude call is still blocking.
+	cancel()
+
+	// The worker must drain in-flight goroutines and then exit.
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("worker did not shut down after context cancel")
+	}
+
+	// The row must be in a terminal state — never stuck in 'processing'.
+	row := readScanJob(t, db, jobID)
+	if row.Status == scanJobStatusProcessing {
+		t.Errorf("job left in 'processing' state after worker shutdown — expected a terminal state")
+	}
+	if row.Status == scanJobStatusQueued {
+		t.Errorf("job left in 'queued' state — worker should have claimed and finalized it")
 	}
 }
 
@@ -412,9 +472,10 @@ func TestScanImagePath_CreatesPerUserDir(t *testing.T) {
 	if !info.IsDir() {
 		t.Errorf("expected directory, got %s", info.Mode())
 	}
-	// Permission check skipped on Windows.
-	if info.Mode().Perm()&0077 != 0 {
-		t.Errorf("expected 0700 perms (no group/other), got %o", info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		if info.Mode().Perm()&0077 != 0 {
+			t.Errorf("expected 0700 perms (no group/other), got %o", info.Mode().Perm())
+		}
 	}
 }
 
