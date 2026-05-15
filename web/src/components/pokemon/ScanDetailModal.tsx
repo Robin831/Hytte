@@ -127,6 +127,7 @@ export default function ScanDetailModal({ scan, busy, onClose, onResolve }: Scan
     return () => {
       controller.abort()
       window.clearTimeout(timer)
+      setSearching(false)
     }
   }, [query, wrongMatchOpen, t])
 

@@ -37,11 +37,6 @@ function Dialog({
     if (open) {
       previousFocusRef.current = document.activeElement
       document.body.style.overflow = 'hidden'
-    } else {
-      document.body.style.overflow = ''
-      if (previousFocusRef.current instanceof HTMLElement) {
-        previousFocusRef.current.focus()
-      }
     }
     return () => {
       document.body.style.overflow = ''
