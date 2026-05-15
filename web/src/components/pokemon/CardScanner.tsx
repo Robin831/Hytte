@@ -365,6 +365,9 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
   // Resets scanPhaseRef to 'idle' before delegating because performScan's own
   // guard refuses to run from any other state.
   const sendPreview = useCallback(() => {
+    // Guard against double-invocation (double-tap or timer + button race): if
+    // the phase has already moved on, this call is a stale duplicate — drop it.
+    if (scanPhaseRef.current !== 'preview') return
     if (previewTimerRef.current !== null) {
       window.clearTimeout(previewTimerRef.current)
       previewTimerRef.current = null
@@ -698,16 +701,25 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
     closeButtonRef.current?.focus()
   }, [])
 
-  // When the result modal appears, move focus to its first action so keyboard
-  // users land inside the modal rather than staying on the close button behind it.
+  // When the result modal or preview overlay appears, move focus to its first
+  // action so keyboard/screen-reader users land inside it rather than staying
+  // on whichever control was focused before the overlay rendered.
   useEffect(() => {
-    if (scanPhase !== 'result') return
-    const modal = dialogRef.current?.querySelector<HTMLElement>('[data-testid="scan-result-modal"]')
-    if (!modal) return
-    const first = modal.querySelector<HTMLElement>(
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    )
-    first?.focus()
+    if (scanPhase === 'result') {
+      const modal = dialogRef.current?.querySelector<HTMLElement>('[data-testid="scan-result-modal"]')
+      if (!modal) return
+      const first = modal.querySelector<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      first?.focus()
+    } else if (scanPhase === 'preview') {
+      const overlay = dialogRef.current?.querySelector<HTMLElement>('[data-testid="card-scanner-preview"]')
+      if (!overlay) return
+      const first = overlay.querySelector<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      first?.focus()
+    }
   }, [scanPhase])
 
   // Escape to dismiss + Tab focus trap (mirrors Dialog behaviour).
