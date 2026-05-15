@@ -349,9 +349,11 @@ func ListScansHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // GetScanImageHandler streams the raw image bytes for a scan the caller
-// owns. The Content-Type is always image/jpeg (queue stores JPEG-extension
-// files; the bytes themselves may be PNG/WebP/HEIC but browsers handle the
-// mismatch and the file is also accessed via <img src> in practice).
+// owns. The Content-Type is sniffed from the actual file bytes (the queue
+// stores PNG/WebP/HEIC under a .jpg extension) so a JPEG-only header doesn't
+// misrepresent the payload — and X-Content-Type-Options: nosniff is set so
+// browsers do not second-guess the type and treat unexpected bytes as e.g.
+// HTML.
 func GetScanImageHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -386,15 +388,39 @@ func GetScanImageHandler(db *sql.DB) http.HandlerFunc {
 			respondError(w, http.StatusNotFound, "scan image not available")
 			return
 		}
-		info, err := os.Stat(path)
+		f, err := os.Open(path)
+		if err != nil {
+			respondError(w, http.StatusNotFound, "scan image not available")
+			return
+		}
+		defer f.Close()
+		info, err := f.Stat()
 		if err != nil || info.IsDir() {
 			respondError(w, http.StatusNotFound, "scan image not available")
 			return
 		}
 
-		w.Header().Set("Content-Type", "image/jpeg")
+		// Sniff the actual MIME from the first 512 bytes (the window
+		// http.DetectContentType reads) so the response header matches
+		// the bytes on disk regardless of the .jpg extension. Anything
+		// outside the upload allow-list collapses to octet-stream so a
+		// surprise payload type cannot be served as a known image type.
+		sniff := make([]byte, 512)
+		n, _ := io.ReadFull(f, sniff)
+		ctype := detectImageMIME(sniff[:n])
+		if !scanAllowedMIMETypes[ctype] {
+			ctype = "application/octet-stream"
+		}
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			log.Printf("pokemon: seek scan image: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to read scan image")
+			return
+		}
+
+		w.Header().Set("Content-Type", ctype)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "private, max-age=300")
-		http.ServeFile(w, r, path)
+		http.ServeContent(w, r, filepath.Base(path), info.ModTime(), f)
 	}
 }
 
@@ -463,7 +489,43 @@ func ResolveScanHandler(db *sql.DB) http.HandlerFunc {
 				respondError(w, http.StatusBadRequest, "variant_id is required for action=add")
 				return
 			}
-			if _, err := upsertCollection(r.Context(), db, user.ID, matchedCard.String, body.VariantID, body.Quantity, body.Condition, body.Notes); err != nil {
+			// Run the conditional status flip and the collection upsert in
+			// one transaction so two concurrent /resolve calls can't both
+			// observe status='matched' from the earlier SELECT and both
+			// double-add. The UPDATE's `status = scanJobStatusMatched`
+			// predicate is the atomic claim: only one tx will see a row
+			// affected; the loser sees 0 rows and returns 409.
+			tx, err := db.BeginTx(r.Context(), nil)
+			if err != nil {
+				log.Printf("pokemon: resolve add begin tx: %v", err)
+				respondError(w, http.StatusInternalServerError, "failed to resolve scan")
+				return
+			}
+			res, err := tx.ExecContext(r.Context(), `
+				UPDATE pokemon_scan_jobs
+				SET status = ?, matched_variant_id = ?, resolved_at = ?, image_path_enc = ''
+				WHERE id = ? AND user_id = ? AND status = ?
+			`, scanJobStatusAdded, body.VariantID, now, jobID, user.ID, scanJobStatusMatched)
+			if err != nil {
+				tx.Rollback()
+				log.Printf("pokemon: resolve add claim: %v", err)
+				respondError(w, http.StatusInternalServerError, "failed to resolve scan")
+				return
+			}
+			affected, err := res.RowsAffected()
+			if err != nil {
+				tx.Rollback()
+				log.Printf("pokemon: resolve add rows affected: %v", err)
+				respondError(w, http.StatusInternalServerError, "failed to resolve scan")
+				return
+			}
+			if affected == 0 {
+				tx.Rollback()
+				respondError(w, http.StatusConflict, "scan is no longer in 'matched' status")
+				return
+			}
+			if _, err := upsertCollection(r.Context(), tx, user.ID, matchedCard.String, body.VariantID, body.Quantity, body.Condition, body.Notes); err != nil {
+				tx.Rollback()
 				switch {
 				case errors.Is(err, errVariantNotFound):
 					respondError(w, http.StatusNotFound, "variant not found")
@@ -471,18 +533,16 @@ func ResolveScanHandler(db *sql.DB) http.HandlerFunc {
 					respondError(w, http.StatusBadRequest, "variant does not belong to matched card")
 				case errors.Is(err, errInvalidCondition):
 					respondError(w, http.StatusBadRequest, "invalid condition")
+				case errors.Is(err, errInvalidQuantity):
+					respondError(w, http.StatusBadRequest, "quantity must be non-negative")
 				default:
 					log.Printf("pokemon: resolve add upsert: %v", err)
 					respondError(w, http.StatusInternalServerError, "failed to add to collection")
 				}
 				return
 			}
-			if _, err := db.ExecContext(r.Context(), `
-				UPDATE pokemon_scan_jobs
-				SET status = ?, matched_variant_id = ?, resolved_at = ?, image_path_enc = ''
-				WHERE id = ? AND user_id = ?
-			`, scanJobStatusAdded, body.VariantID, now, jobID, user.ID); err != nil {
-				log.Printf("pokemon: resolve add update: %v", err)
+			if err := tx.Commit(); err != nil {
+				log.Printf("pokemon: resolve add commit: %v", err)
 				respondError(w, http.StatusInternalServerError, "failed to resolve scan")
 				return
 			}

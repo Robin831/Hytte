@@ -469,11 +469,20 @@ func UpsertCollectionHandler(db *sql.DB) http.HandlerFunc {
 // HTTP 400 without sprinkling string checks.
 var errInvalidQuantity = errors.New("quantity must be non-negative")
 
+// dbExecQuerier is the subset of *sql.DB / *sql.Tx that upsertCollection needs.
+// Accepting an interface lets the scan-resolve "add" path execute the upsert
+// inside a transaction that also flips the job state atomically, while the
+// legacy collection endpoint keeps passing the bare *sql.DB.
+type dbExecQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
 // upsertCollection persists a (user, card, variant) row, returning whether
 // the row was created (true) or updated (false). The shared logic lives here
 // so both the legacy collection endpoint and the new scan-resolve "add"
 // action go through the same validation and encryption path.
-func upsertCollection(ctx context.Context, db *sql.DB, userID int64, cardID string, variantID int64, quantity int, condition, notes string) (bool, error) {
+func upsertCollection(ctx context.Context, db dbExecQuerier, userID int64, cardID string, variantID int64, quantity int, condition, notes string) (bool, error) {
 	condition = strings.TrimSpace(condition)
 	if quantity < 0 {
 		return false, errInvalidQuantity
