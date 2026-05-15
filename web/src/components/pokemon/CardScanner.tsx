@@ -68,6 +68,37 @@ const CAPTURE_CROP_PAD = 0.05
 // uses 5/7 (≈0.714) which is close enough and renders crisply on all viewports.
 const CARD_GUIDE_ASPECT = '5 / 7'
 
+// ScanJobPoll mirrors the server's ScanJobDTO (internal/pokemon/scans_handlers.go).
+// Only the fields the bridge polling loop actually reads are declared.
+interface ScanJobPoll {
+  id: number
+  status: string
+  confidence?: number
+  error_message?: string
+  matched_card?: {
+    id: string
+    set_id: string
+    set_name?: string
+    name: string
+    collector_no: string
+    rarity: string
+    image_small_url: string
+    image_large_url: string
+    variants: Array<{
+      id: number
+      kind: string
+      price_eur: number
+      price_nok: number | null
+      owned: boolean
+      owned_id?: number | null
+      quantity: number
+      condition: string
+      notes: string
+    }>
+  }
+  set?: { id: string; name: string }
+}
+
 interface ExtendedMediaTrackCapabilities extends MediaTrackCapabilities {
   torch?: boolean
 }
@@ -315,14 +346,73 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
 
       void (async () => {
         try {
-          const res = await fetch('/api/pokemon/scan', {
+          // Bridge: POST to the new async queue endpoint, then poll the list
+          // endpoint until the job leaves the queued/processing states. This
+          // preserves the existing result-modal UX while the chain catches up
+          // — the full fire-and-forget rewrite lands in Hytte-b7vl.
+          const queueRes = await fetch('/api/pokemon/scans/queue', {
             method: 'POST',
             credentials: 'include',
             body: formData,
             signal: controller.signal,
           })
-          if (!res.ok) throw new Error(t('scanner.errors.scanFailed'))
-          const data = (await res.json()) as ScanResult
+          if (!queueRes.ok) throw new Error(t('scanner.errors.scanFailed'))
+          const queued = (await queueRes.json()) as { id: number; status?: string }
+          const jobID = queued.id
+
+          // Poll every 2s for the job to land in matched/no_match/failed.
+          let job: ScanJobPoll | null = null
+          while (!controller.signal.aborted) {
+            await new Promise(resolve => window.setTimeout(resolve, 2000))
+            if (controller.signal.aborted) return
+            const listRes = await fetch(
+              '/api/pokemon/scans?status=matched,no_match,failed&limit=50',
+              { credentials: 'include', signal: controller.signal },
+            )
+            if (!listRes.ok) continue
+            const listData = (await listRes.json()) as { scans: ScanJobPoll[] }
+            const found = (listData.scans ?? []).find(j => j.id === jobID)
+            if (found) {
+              job = found
+              break
+            }
+          }
+          if (!job) return
+
+          // Translate the async job shape into the legacy ScanResult that the
+          // result modal expects. ListScansHandler hydrates matched_card + set
+          // on matched rows, so we can rebuild the single-candidate shape the
+          // modal already knows how to render. The proper one-card-detail view
+          // lands with Hytte-b7vl.
+          let data: ScanResult
+          if (job.status === 'matched' && job.matched_card) {
+            const candidate: ScanCandidate = {
+              card: {
+                id: job.matched_card.id,
+                set_id: job.matched_card.set_id,
+                set_name: job.matched_card.set_name,
+                name: job.matched_card.name,
+                collector_no: job.matched_card.collector_no,
+                rarity: job.matched_card.rarity,
+                image_small_url: job.matched_card.image_small_url,
+                image_large_url: job.matched_card.image_large_url,
+                variants: job.matched_card.variants ?? [],
+              },
+              set: job.set ? { id: job.set.id, name: job.set.name } : undefined,
+              score: job.confidence ?? 1,
+            }
+            data = {
+              matched: true,
+              confidence: job.confidence ?? 1,
+              candidates: [candidate],
+            }
+          } else {
+            data = {
+              matched: false,
+              confidence: job.confidence ?? 0,
+              reason: job.error_message || t('scanner.result.noMatch'),
+            }
+          }
           if (controller.signal.aborted) return
           scanPhaseRef.current = 'result'
           setScanResult(data)
