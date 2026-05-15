@@ -399,15 +399,6 @@ function ScanRow({ scan, busy, now, highlighted, rowRef, onResolve, onEnterManua
           >
             {t('scanned.action.discard')}
           </button>
-          <button
-            type="button"
-            onClick={handleRetry}
-            disabled={busy}
-            data-testid={`scan-action-retry-${scan.id}`}
-            className="px-3 py-1.5 text-xs rounded border border-gray-700 hover:border-gray-500 disabled:opacity-60 disabled:cursor-not-allowed text-gray-200 cursor-pointer"
-          >
-            {t('scanned.action.retry')}
-          </button>
         </div>
       )
     }
