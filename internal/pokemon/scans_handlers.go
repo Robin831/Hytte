@@ -581,12 +581,20 @@ func ResolveScanHandler(db *sql.DB) http.HandlerFunc {
 			Condition string `json:"condition"`
 			Notes     string `json:"notes"`
 			Quantity  int    `json:"quantity"`
+			// CardID, when non-empty on action=add, overrides the auto-matched
+			// card. Used by the scan detail "Wrong match?" flow so the user can
+			// reassign a misclassified scan to the right card without
+			// discarding it. The override card is also persisted back to
+			// pokemon_scan_jobs.matched_card_id so the resolved row reflects
+			// what was actually added.
+			CardID string `json:"card_id"`
 		}
 		if !decodeBody(w, r, &body) {
 			return
 		}
 		body.Action = strings.TrimSpace(strings.ToLower(body.Action))
 		body.Condition = strings.TrimSpace(body.Condition)
+		body.CardID = strings.TrimSpace(body.CardID)
 
 		var (
 			status      string
@@ -623,12 +631,36 @@ func ResolveScanHandler(db *sql.DB) http.HandlerFunc {
 				respondError(w, http.StatusBadRequest, "variant_id is required for action=add")
 				return
 			}
+			// Resolve the effective card: when the client overrides via
+			// body.CardID (the "Wrong match?" flow), validate the override
+			// exists in the catalogue before touching the job. A bad id is a
+			// 404 — same shape the collection endpoint would return.
+			targetCardID := matchedCard.String
+			if body.CardID != "" {
+				var exists bool
+				if err := db.QueryRowContext(r.Context(),
+					`SELECT EXISTS(SELECT 1 FROM pokemon_cards WHERE id = ?)`, body.CardID,
+				).Scan(&exists); err != nil {
+					log.Printf("pokemon: resolve add lookup override card: %v", err)
+					respondError(w, http.StatusInternalServerError, "failed to resolve scan")
+					return
+				}
+				if !exists {
+					respondError(w, http.StatusNotFound, "override card not found")
+					return
+				}
+				targetCardID = body.CardID
+			}
 			// Run the conditional status flip and the collection upsert in
 			// one transaction so two concurrent /resolve calls can't both
 			// observe status='matched' from the earlier SELECT and both
 			// double-add. The UPDATE's `status = scanJobStatusMatched`
 			// predicate is the atomic claim: only one tx will see a row
 			// affected; the loser sees 0 rows and returns 409.
+			//
+			// When the client overrides the auto-match we also rewrite
+			// matched_card_id in the same UPDATE so the resolved row reflects
+			// what was actually added rather than the original (wrong) guess.
 			tx, err := db.BeginTx(r.Context(), nil)
 			if err != nil {
 				log.Printf("pokemon: resolve add begin tx: %v", err)
@@ -637,9 +669,9 @@ func ResolveScanHandler(db *sql.DB) http.HandlerFunc {
 			}
 			res, err := tx.ExecContext(r.Context(), `
 				UPDATE pokemon_scan_jobs
-				SET status = ?, matched_variant_id = ?, resolved_at = ?, image_path_enc = ''
+				SET status = ?, matched_card_id = ?, matched_variant_id = ?, resolved_at = ?, image_path_enc = ''
 				WHERE id = ? AND user_id = ? AND status = ?
-			`, scanJobStatusAdded, body.VariantID, now, jobID, user.ID, scanJobStatusMatched)
+			`, scanJobStatusAdded, targetCardID, body.VariantID, now, jobID, user.ID, scanJobStatusMatched)
 			if err != nil {
 				tx.Rollback()
 				log.Printf("pokemon: resolve add claim: %v", err)
@@ -658,7 +690,7 @@ func ResolveScanHandler(db *sql.DB) http.HandlerFunc {
 				respondError(w, http.StatusConflict, "scan is no longer in 'matched' status")
 				return
 			}
-			if _, err := upsertCollection(r.Context(), tx, user.ID, matchedCard.String, body.VariantID, body.Quantity, body.Condition, body.Notes); err != nil {
+			if _, err := upsertCollection(r.Context(), tx, user.ID, targetCardID, body.VariantID, body.Quantity, body.Condition, body.Notes); err != nil {
 				tx.Rollback()
 				switch {
 				case errors.Is(err, errVariantNotFound):

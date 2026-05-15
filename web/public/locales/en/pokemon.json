@@ -156,6 +156,7 @@
     "elapsed": "{{seconds}} s",
     "loadError": "Failed to load scans",
     "noPriceYet": "Price unavailable",
+    "tapToReview": "Tap to review",
     "filter": {
       "label": "Filter scans",
       "needsReview": "Needs review",
@@ -183,6 +184,22 @@
       "added": "Added to collection",
       "discarded": "Discarded",
       "retried": "Sent back to the scanner queue"
+    },
+    "detail": {
+      "title": "Scan detail",
+      "dialogLabel": "Scan detail",
+      "openLabel": "Open scan detail for {{name}}",
+      "close": "Close scan detail",
+      "autoMatchLabel": "Auto-match",
+      "noMatchInfo": "No match details available.",
+      "addToAutoMatch": "Add this card",
+      "addToOverride": "Add via the picked card",
+      "wrongMatch": "Wrong match?",
+      "autoMatchHint": "Auto-match: {{match}}",
+      "overrideActive": "Adding via {{name}} instead of the auto-match.",
+      "useAutoMatchInstead": "Use auto-match instead",
+      "searchPlaceholder": "Search for the right card — name or number",
+      "searchFailed": "Failed to search cards"
     }
   },
   "scanner": {
