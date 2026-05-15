@@ -64,6 +64,46 @@ var allowedConditions = map[string]bool{
 // straight from a card.
 var collectorNumberPattern = regexp.MustCompile(`^\d+(/\d+)?$`)
 
+// buildSearchPredicate parses a free-form search query into SQL WHERE clauses
+// (joined with AND) and their args. It accepts whitespace-separated tokens
+// where each token is classified as either a collector-number form (pure
+// digits, optionally with /denominator) or a name fragment. The combined
+// shape lets users type things like "021 pansear" or "pikachu 25"; pure
+// number and pure name queries keep their previous behavior. Returns ok=false
+// when q is empty after trimming.
+func buildSearchPredicate(q string) (clauses []string, args []any, ok bool) {
+	tokens := strings.Fields(q)
+	if len(tokens) == 0 {
+		return nil, nil, false
+	}
+	for _, tok := range tokens {
+		if collectorNumberPattern.MatchString(tok) {
+			numPart := tok
+			totalPart := ""
+			if idx := strings.Index(tok, "/"); idx >= 0 {
+				numPart = tok[:idx]
+				totalPart = tok[idx+1:]
+			}
+			numInt, _ := strconv.Atoi(numPart)
+			clauses = append(clauses, "CAST(c.collector_no AS INTEGER) = ?")
+			args = append(args, numInt)
+			if totalPart != "" {
+				totalInt, _ := strconv.Atoi(totalPart)
+				// printed_total reflects what's actually on the card face;
+				// total_cards is the secret-rare-inclusive count. Match either
+				// so both "025/198" (Claude reads the printed denominator) and
+				// "025/258" (someone typed the full total) resolve.
+				clauses = append(clauses, "(s.printed_total = ? OR s.total_cards = ?)")
+				args = append(args, totalInt, totalInt)
+			}
+		} else {
+			clauses = append(clauses, "LOWER(c.name) LIKE ?")
+			args = append(args, "%"+strings.ToLower(tok)+"%")
+		}
+	}
+	return clauses, args, true
+}
+
 // SetDTO is the JSON shape used by /api/pokemon/sets. OwnedCount is the number
 // of distinct cards from the set that the current user owns at least one
 // variant of, so the sets browser can render "{owned} / {total}" without
@@ -853,54 +893,33 @@ func loadCardsForSet(r *http.Request, db *sql.DB, userID int64, setID string) ([
 	return hydrateVariants(r, db, userID, cards, cardIndex)
 }
 
-// searchCards executes either a collector-number or name-fragment lookup.
+// searchCards executes a flexible lookup that accepts:
+//   - a pure collector number ("25" / "025")
+//   - a collector-number/total pair ("025/198")
+//   - a pure name fragment ("pikachu")
+//   - a combined "<number> <name>" or "<name> <number>" query ("021 pansear",
+//     "pikachu 25") where the tokens are AND-ed
+//
+// For the N/M form the denominator is matched against `printed_total`
+// (what is actually on the card face) and, as a back-compat fallback, the
+// inclusive `total_cards`. printed_total wins for the realistic case of a
+// user / Claude reading the literal printed number off a card.
 func searchCards(r *http.Request, db *sql.DB, userID int64, q string, limit int) ([]CardDTO, error) {
-	var (
-		rows *sql.Rows
-		err  error
-	)
-	if collectorNumberPattern.MatchString(q) {
-		// "025/195" → split into number and total; "025" → number only.
-		numPart := q
-		totalPart := ""
-		if idx := strings.Index(q, "/"); idx >= 0 {
-			numPart = q[:idx]
-			totalPart = q[idx+1:]
-		}
-		numInt, _ := strconv.Atoi(numPart)
-		if totalPart != "" {
-			totalInt, _ := strconv.Atoi(totalPart)
-			rows, err = db.QueryContext(r.Context(), `
-				SELECT c.id, c.set_id, s.name, c.name, c.collector_no, c.rarity, c.image_small_url, c.image_large_url
-				FROM pokemon_cards c
-				JOIN pokemon_sets s ON s.id = c.set_id
-				WHERE CAST(c.collector_no AS INTEGER) = ?
-				  AND s.total_cards = ?
-				ORDER BY s.release_date DESC, c.id
-				LIMIT ?
-			`, numInt, totalInt, limit)
-		} else {
-			rows, err = db.QueryContext(r.Context(), `
-				SELECT c.id, c.set_id, s.name, c.name, c.collector_no, c.rarity, c.image_small_url, c.image_large_url
-				FROM pokemon_cards c
-				JOIN pokemon_sets s ON s.id = c.set_id
-				WHERE CAST(c.collector_no AS INTEGER) = ?
-				ORDER BY s.release_date DESC, c.id
-				LIMIT ?
-			`, numInt, limit)
-		}
-	} else {
-		// Name fragment: case-insensitive LIKE with %fragment%.
-		pattern := "%" + strings.ToLower(q) + "%"
-		rows, err = db.QueryContext(r.Context(), `
-			SELECT c.id, c.set_id, s.name, c.name, c.collector_no, c.rarity, c.image_small_url, c.image_large_url
-			FROM pokemon_cards c
-			JOIN pokemon_sets s ON s.id = c.set_id
-			WHERE LOWER(c.name) LIKE ?
-			ORDER BY s.release_date DESC, c.id
-			LIMIT ?
-		`, pattern, limit)
+	clauses, args, ok := buildSearchPredicate(q)
+	if !ok {
+		// Whitespace-only / empty after trimming — no constraint, return empty.
+		return []CardDTO{}, nil
 	}
+	query := `
+		SELECT c.id, c.set_id, s.name, c.name, c.collector_no, c.rarity, c.image_small_url, c.image_large_url
+		FROM pokemon_cards c
+		JOIN pokemon_sets s ON s.id = c.set_id
+		WHERE ` + strings.Join(clauses, " AND ") + `
+		ORDER BY s.release_date DESC, c.id
+		LIMIT ?
+	`
+	args = append(args, limit)
+	rows, err := db.QueryContext(r.Context(), query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -60,9 +60,13 @@ func TestSyncSets_SinglePage(t *testing.T) {
 					Name:         "Base Set",
 					Series:       "Base",
 					PrintedTotal: 102,
-					Total:        102,
-					ReleaseDate:  "1999/01/09",
-					Images:       SetImages{Symbol: "https://example/sym.png", Logo: "https://example/logo.png"},
+					// Total exceeds PrintedTotal so the assertion below can
+					// verify the two columns are written independently
+					// (printed_total = card-face denominator, total_cards =
+					// full secret-rare-inclusive count).
+					Total:       110,
+					ReleaseDate: "1999/01/09",
+					Images:      SetImages{Symbol: "https://example/sym.png", Logo: "https://example/logo.png"},
 				},
 				{
 					ID:          "jungle",
@@ -90,12 +94,12 @@ func TestSyncSets_SinglePage(t *testing.T) {
 	}
 
 	var name, logo string
-	var total int
-	if err := d.QueryRow(`SELECT name, total_cards, logo_url FROM pokemon_sets WHERE id = ?`, "base1").Scan(&name, &total, &logo); err != nil {
+	var total, printedTotal int
+	if err := d.QueryRow(`SELECT name, total_cards, printed_total, logo_url FROM pokemon_sets WHERE id = ?`, "base1").Scan(&name, &total, &printedTotal, &logo); err != nil {
 		t.Fatalf("read base1: %v", err)
 	}
-	if name != "Base Set" || total != 102 || logo != "https://example/logo.png" {
-		t.Fatalf("unexpected base1 row: name=%q total=%d logo=%q", name, total, logo)
+	if name != "Base Set" || total != 110 || printedTotal != 102 || logo != "https://example/logo.png" {
+		t.Fatalf("unexpected base1 row: name=%q total=%d printed=%d logo=%q", name, total, printedTotal, logo)
 	}
 }
 

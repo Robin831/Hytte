@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Robin831/Hytte/internal/training"
@@ -149,8 +150,23 @@ func findScanCandidates(ctx context.Context, db *sql.DB, userID int64, result *c
 	// numerator ("108"). Strip the "/<total>" suffix so the lookup matches.
 	// Preserve everything before the slash to keep variants like "025a/195" or
 	// promo formats like "SWSH123" — only the trailing /total goes away.
+	// Capture the denominator before stripping: it identifies the set's
+	// printed_total and lets us reject confidently-wrong matches (a Stellar
+	// Crown card prints "108/142", which is sv7's printed_total — using that
+	// rules out sv1 / Scarlet & Violet whose printed_total is 198).
+	var printedDenom int
 	if idx := strings.Index(collector, "/"); idx > 0 {
+		if n, err := strconv.Atoi(strings.TrimSpace(collector[idx+1:])); err == nil {
+			printedDenom = n
+		}
 		collector = strings.TrimSpace(collector[:idx])
+	}
+	// Normalize a purely-numeric collector by stripping leading zeros:
+	// pokemontcg.io stores plain "21", while Claude reads "021" off the card
+	// face. Atoi/Itoa is a safe round-trip when the whole string is digits;
+	// leave promo/variant formats like "025a" or "SWSH123" untouched.
+	if n, err := strconv.Atoi(collector); err == nil && collector != "" {
+		collector = strconv.Itoa(n)
 	}
 
 	var setFilter []string
@@ -196,6 +212,42 @@ func findScanCandidates(ctx context.Context, db *sql.DB, userID int64, result *c
 		}
 	}
 
+	// If Claude read a printed denominator off the card, intersect the
+	// set filter with sets whose printed_total matches. Two cases:
+	//   1. setFilter already has candidates from the id-hint or name-match —
+	//      keep only those whose printed_total matches the denominator (this
+	//      is the disambiguation that rules out a wrong sv1 guess for an
+	//      sv7 card).
+	//   2. setFilter is empty (no usable hint) — populate it with every set
+	//      whose printed_total matches, narrowing what otherwise would have
+	//      been an "any set, collector=N" search.
+	// Skip when printed_total is unknown (column was 0 because the sync
+	// hasn't been re-run since the schema migration) to avoid filtering
+	// every set out and producing spurious no_match results.
+	if printedDenom > 0 {
+		ids, err := loadSetIDsByPrintedTotal(ctx, db, printedDenom)
+		if err != nil {
+			return nil, "", fmt.Errorf("printed_total lookup: %w", err)
+		}
+		if len(ids) > 0 {
+			if len(setFilter) == 0 {
+				setFilter = ids
+			} else {
+				want := make(map[string]struct{}, len(ids))
+				for _, id := range ids {
+					want[id] = struct{}{}
+				}
+				kept := setFilter[:0]
+				for _, id := range setFilter {
+					if _, ok := want[id]; ok {
+						kept = append(kept, id)
+					}
+				}
+				setFilter = kept
+			}
+		}
+	}
+
 	cards, err := loadScanCards(ctx, db, userID, collector, setFilter)
 	if err != nil {
 		return nil, "", err
@@ -225,16 +277,50 @@ func findScanCandidates(ctx context.Context, db *sql.DB, userID int64, result *c
 	return out, "", nil
 }
 
+// loadSetIDsByPrintedTotal returns every set whose printed_total matches the
+// supplied denominator. Used by the scan worker to disambiguate sets when
+// Claude reads the printed "n/total" off the card face.
+func loadSetIDsByPrintedTotal(ctx context.Context, db *sql.DB, denom int) ([]string, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT id FROM pokemon_sets WHERE printed_total = ?`, denom,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // loadScanCards fetches cards matching the collector number, optionally
 // restricted to one or more set ids. Variants and ownership flags are
 // hydrated the same way as the other listing endpoints.
+//
+// When the collector is purely numeric, the SQL compares against
+// CAST(collector_no AS INTEGER) so "21", "021" and the DB-stored value
+// (which the upstream pokemontcg.io sync stores either zero-padded or not,
+// depending on the set) all collapse to the same integer. Non-numeric forms
+// like "025a" or "SWSH123" keep their literal string comparison.
 func loadScanCards(ctx context.Context, db *sql.DB, userID int64, collector string, setIDs []string) ([]CardDTO, error) {
+	collectorClause := "c.collector_no = ?"
+	var collectorArg any = collector
+	if n, err := strconv.Atoi(collector); err == nil {
+		collectorClause = "CAST(c.collector_no AS INTEGER) = ?"
+		collectorArg = n
+	}
 	query := `
 		SELECT c.id, c.set_id, c.name, c.collector_no, c.rarity, c.image_small_url, c.image_large_url
 		FROM pokemon_cards c
-		WHERE c.collector_no = ?
+		WHERE ` + collectorClause + `
 	`
-	args := []any{collector}
+	args := []any{collectorArg}
 	if len(setIDs) > 0 {
 		placeholders := strings.Repeat("?,", len(setIDs))
 		placeholders = placeholders[:len(placeholders)-1]

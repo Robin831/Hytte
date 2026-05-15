@@ -89,6 +89,36 @@ func TestParseClaudeScanResult(t *testing.T) {
 	}
 }
 
+// TestFindScanCandidates_PrintedTotalOverridesWrongSetHint exercises the
+// disambiguation path that was the original motivation for the bead. Claude
+// vision sometimes mis-identifies the set (returning sv1 / "Scarlet & Violet"
+// when looking at a Stellar Crown card), but the printed "n/142" on the card
+// face is reliable. The denominator is intersected with the set hint, so a
+// hint that disagrees with the denominator gets rejected and the search falls
+// back to whichever sets actually have printed_total=142.
+func TestFindScanCandidates_PrintedTotalOverridesWrongSetHint(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	result := &claudeScanResult{
+		SetIDHint:       "sv1",
+		SetName:         "Scarlet & Violet",
+		CollectorNumber: "021/142",
+		Confidence:      0.96,
+	}
+	candidates, reason, err := findScanCandidates(context.Background(), db, u.ID, result)
+	if err != nil {
+		t.Fatalf("findScanCandidates: %v", err)
+	}
+	if reason != "" {
+		t.Fatalf("expected match, got reason=%q", reason)
+	}
+	if len(candidates) != 1 || candidates[0].Card.ID != "sv7-21" {
+		t.Fatalf("expected single sv7-21 candidate, got %+v", candidates)
+	}
+}
+
 // TestScanCandidate_JSON verifies ScanCandidate round-trips through JSON
 // symmetrically. A change to any exported field name or type would break this
 // check and signal an API shape regression.

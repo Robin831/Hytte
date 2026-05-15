@@ -47,23 +47,27 @@ func SyncSets(ctx context.Context, db *sql.DB, client *Client) error {
 }
 
 func upsertSet(ctx context.Context, db *sql.DB, s Set, now time.Time) error {
-	// Prefer Total (full set incl. secret rares); fall back to PrintedTotal.
+	// total_cards is the full set incl. secret rares (used to drive ownership
+	// counts). printed_total is what is actually printed on the card face
+	// (e.g. "021/142") and is what the search + scan worker match against the
+	// denominator the user / Claude reads off a scan.
 	total := s.Total
 	if total == 0 {
 		total = s.PrintedTotal
 	}
 	_, err := db.ExecContext(ctx, `
-		INSERT INTO pokemon_sets (id, name, series, release_date, total_cards, symbol_url, logo_url, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO pokemon_sets (id, name, series, release_date, total_cards, printed_total, symbol_url, logo_url, synced_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
-			name         = excluded.name,
-			series       = excluded.series,
-			release_date = excluded.release_date,
-			total_cards  = excluded.total_cards,
-			symbol_url   = excluded.symbol_url,
-			logo_url     = excluded.logo_url,
-			synced_at    = excluded.synced_at
-	`, s.ID, s.Name, s.Series, s.ReleaseDate, total, s.Images.Symbol, s.Images.Logo, now)
+			name          = excluded.name,
+			series        = excluded.series,
+			release_date  = excluded.release_date,
+			total_cards   = excluded.total_cards,
+			printed_total = excluded.printed_total,
+			symbol_url    = excluded.symbol_url,
+			logo_url      = excluded.logo_url,
+			synced_at     = excluded.synced_at
+	`, s.ID, s.Name, s.Series, s.ReleaseDate, total, s.PrintedTotal, s.Images.Symbol, s.Images.Logo, now)
 	return err
 }
 

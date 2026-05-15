@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -42,16 +43,22 @@ func seedCatalogue(t *testing.T, db *sql.DB) {
 	now := time.Now().UTC()
 	sets := []struct {
 		id, name, series, releaseDate string
-		total                         int
+		total, printedTotal           int
 	}{
-		{"sv1", "Scarlet & Violet Base", "Scarlet & Violet", "2023/03/31", 198},
-		{"swsh1", "Sword & Shield Base", "Sword & Shield", "2020/02/07", 202},
+		// total_cards = full inclusive count (secret rares etc); printed_total
+		// = denominator on the card face. For sv1/swsh1 the fixture keeps them
+		// equal so existing search-by-total assertions continue to pass; sv7
+		// has them deliberately different (175 vs 142) to exercise the new
+		// printed_total disambiguation path.
+		{"sv1", "Scarlet & Violet Base", "Scarlet & Violet", "2023/03/31", 198, 198},
+		{"swsh1", "Sword & Shield Base", "Sword & Shield", "2020/02/07", 202, 202},
+		{"sv7", "Stellar Crown", "Scarlet & Violet", "2024/09/13", 175, 142},
 	}
 	for _, s := range sets {
 		if _, err := db.Exec(`
-			INSERT INTO pokemon_sets (id, name, series, release_date, total_cards, symbol_url, logo_url, synced_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`, s.id, s.name, s.series, s.releaseDate, s.total, "", "", now); err != nil {
+			INSERT INTO pokemon_sets (id, name, series, release_date, total_cards, printed_total, symbol_url, logo_url, synced_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, s.id, s.name, s.series, s.releaseDate, s.total, s.printedTotal, "", "", now); err != nil {
 			t.Fatalf("seed set %s: %v", s.id, err)
 		}
 	}
@@ -63,6 +70,9 @@ func seedCatalogue(t *testing.T, db *sql.DB) {
 		{"sv1-100", "sv1", "Eevee", "100", "Common"},
 		{"swsh1-1", "swsh1", "Celebi V", "001", "Rare Holo V"},
 		{"swsh1-25", "swsh1", "Pikachu V", "025", "Rare Holo V"},
+		// sv7-21 is the real-world Pansear that triggered this bead — its
+		// printed denominator (142) doesn't equal sv7.total_cards (175).
+		{"sv7-21", "sv7", "Pansear", "21", "Common"},
 	}
 	for _, c := range cards {
 		if _, err := db.Exec(`
@@ -82,6 +92,7 @@ func seedCatalogue(t *testing.T, db *sql.DB) {
 		{"sv1-100", "normal", 2.5},
 		{"swsh1-1", "normal", 25.0},
 		{"swsh1-25", "normal", 8.0},
+		{"sv7-21", "normal", 0.5},
 	}
 	for _, v := range variants {
 		if _, err := db.Exec(`
@@ -159,10 +170,10 @@ func TestListSetsHandler_NewestFirst(t *testing.T) {
 	body := decode[struct {
 		Sets []SetDTO `json:"sets"`
 	}](t, rec)
-	if len(body.Sets) != 2 {
-		t.Fatalf("expected 2 sets, got %d", len(body.Sets))
+	if len(body.Sets) != 3 {
+		t.Fatalf("expected 3 sets, got %d", len(body.Sets))
 	}
-	if body.Sets[0].ID != "sv1" {
+	if body.Sets[0].ID != "sv7" {
 		t.Errorf("expected newest set first, got %q", body.Sets[0].ID)
 	}
 }
@@ -202,7 +213,7 @@ func TestListSetsHandler_LimitOffset(t *testing.T) {
 	body := decode[struct {
 		Sets []SetDTO `json:"sets"`
 	}](t, rec)
-	if len(body.Sets) != 1 || body.Sets[0].ID != "swsh1" {
+	if len(body.Sets) != 1 || body.Sets[0].ID != "sv1" {
 		t.Errorf("expected second set after offset, got %+v", body.Sets)
 	}
 }
@@ -311,8 +322,8 @@ func TestListSetsHandler_OwnedFilter(t *testing.T) {
 		body := decode[struct {
 			Sets []SetDTO `json:"sets"`
 		}](t, rec)
-		if len(body.Sets) != 2 {
-			t.Errorf("expected 2 sets, got %d", len(body.Sets))
+		if len(body.Sets) != 3 {
+			t.Errorf("expected 3 sets, got %d", len(body.Sets))
 		}
 	})
 
@@ -326,8 +337,8 @@ func TestListSetsHandler_OwnedFilter(t *testing.T) {
 		body := decode[struct {
 			Sets []SetDTO `json:"sets"`
 		}](t, rec)
-		if len(body.Sets) != 2 {
-			t.Errorf("expected 2 sets, got %d", len(body.Sets))
+		if len(body.Sets) != 3 {
+			t.Errorf("expected 3 sets, got %d", len(body.Sets))
 		}
 	})
 
@@ -542,6 +553,71 @@ func TestSearchCardsHandler_ByNameFragment(t *testing.T) {
 	}
 }
 
+func TestSearchCardsHandler_ByPrintedTotal(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	// "021/142" matches sv7-21 (Pansear) via printed_total — sv7.total_cards
+	// is 175, so the old total_cards-only path returned nothing for /142.
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/cards/search?q=021/142", nil), u)
+	rec := httptest.NewRecorder()
+	SearchCardsHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[struct {
+		Cards []CardDTO `json:"cards"`
+	}](t, rec)
+	if len(body.Cards) != 1 || body.Cards[0].ID != "sv7-21" {
+		t.Errorf("expected single sv7-21 hit, got %+v", body.Cards)
+	}
+}
+
+func TestSearchCardsHandler_CombinedNumberAndName(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	// "021 pan" combines the collector-number filter (21) with a name LIKE
+	// filter (%pan%) — only sv7-21 (Pansear) qualifies. Token order doesn't
+	// matter, so "pan 021" should yield the same result.
+	for _, q := range []string{"021 pan", "pan 021"} {
+		req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/cards/search?q="+url.QueryEscape(q), nil), u)
+		rec := httptest.NewRecorder()
+		SearchCardsHandler(db).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("q=%q: expected 200, got %d: %s", q, rec.Code, rec.Body.String())
+		}
+		body := decode[struct {
+			Cards []CardDTO `json:"cards"`
+		}](t, rec)
+		if len(body.Cards) != 1 || body.Cards[0].ID != "sv7-21" {
+			t.Errorf("q=%q: expected single sv7-21 hit, got %+v", q, body.Cards)
+		}
+	}
+}
+
+func TestSearchCardsHandler_CombinedNumberAndNameNoMatch(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	// "021 pikachu" should match nothing: no Pikachu has collector_no 21.
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/cards/search?q="+url.QueryEscape("021 pikachu"), nil), u)
+	rec := httptest.NewRecorder()
+	SearchCardsHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	body := decode[struct {
+		Cards []CardDTO `json:"cards"`
+	}](t, rec)
+	if len(body.Cards) != 0 {
+		t.Errorf("expected empty result, got %+v", body.Cards)
+	}
+}
+
 func TestSearchCardsHandler_EmptyQuery(t *testing.T) {
 	db := setupTestDB(t)
 	seedCatalogue(t, db)
@@ -582,10 +658,10 @@ func TestTopHandler_SortsByMaxVariantPrice(t *testing.T) {
 	body := decode[struct {
 		Cards []CardDTO `json:"cards"`
 	}](t, rec)
-	if len(body.Cards) != 4 {
-		t.Fatalf("expected 4 cards, got %d", len(body.Cards))
+	if len(body.Cards) != 5 {
+		t.Fatalf("expected 5 cards, got %d", len(body.Cards))
 	}
-	wantOrder := []string{"swsh1-1", "sv1-25", "swsh1-25", "sv1-100"}
+	wantOrder := []string{"swsh1-1", "sv1-25", "swsh1-25", "sv1-100", "sv7-21"}
 	for i, id := range wantOrder {
 		if body.Cards[i].ID != id {
 			t.Errorf("position %d: expected %q, got %q", i, id, body.Cards[i].ID)
@@ -610,10 +686,10 @@ func TestTopHandler_LimitClamping(t *testing.T) {
 		want  int
 	}{
 		{"limit=2", 2},
-		{"limit=0", 4},
-		{"limit=-5", 4},
-		{"limit=200", 4},
-		{"", 4},
+		{"limit=0", 5},
+		{"limit=-5", 5},
+		{"limit=200", 5},
+		{"", 5},
 	}
 	for _, c := range cases {
 		path := "/api/pokemon/top"
@@ -684,8 +760,8 @@ func TestTopHandler_OwnedFilter(t *testing.T) {
 				t.Errorf("expected owned_by_me=false on missing card %s, got %+v", c.ID, c.OwnedByMe)
 			}
 		}
-		// swsh1-1 owned → filtered out. Remaining 3 cards in price order.
-		want := []string{"sv1-25", "swsh1-25", "sv1-100"}
+		// swsh1-1 owned → filtered out. Remaining 4 cards in price order.
+		want := []string{"sv1-25", "swsh1-25", "sv1-100", "sv7-21"}
 		if len(ids) != len(want) {
 			t.Fatalf("expected %d missing cards, got %d (%v)", len(want), len(ids), ids)
 		}
@@ -706,8 +782,8 @@ func TestTopHandler_OwnedFilter(t *testing.T) {
 		body := decode[struct {
 			Cards []CardDTO `json:"cards"`
 		}](t, rec)
-		if len(body.Cards) != 4 {
-			t.Errorf("expected 4 cards under owned=any, got %d", len(body.Cards))
+		if len(body.Cards) != 5 {
+			t.Errorf("expected 5 cards under owned=any, got %d", len(body.Cards))
 		}
 	})
 

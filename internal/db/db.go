@@ -1633,6 +1633,7 @@ func createSchema(db *sql.DB) error {
 		series        TEXT NOT NULL,
 		release_date  TEXT NOT NULL,
 		total_cards   INTEGER NOT NULL DEFAULT 0,
+		printed_total INTEGER NOT NULL DEFAULT 0,
 		symbol_url    TEXT NOT NULL DEFAULT '',
 		logo_url      TEXT NOT NULL DEFAULT '',
 		synced_at     TIMESTAMP NOT NULL
@@ -2437,6 +2438,20 @@ func createSchema(db *sql.DB) error {
 	if hasPokemonProcessingStartedAt == 0 {
 		if _, err := db.Exec(`ALTER TABLE pokemon_scan_jobs ADD COLUMN processing_started_at TIMESTAMP`); err != nil {
 			return fmt.Errorf("add pokemon_scan_jobs processing_started_at column: %w", err)
+		}
+	}
+
+	// Add printed_total to pokemon_sets (Hytte-9b24): the denominator on the
+	// printed card (e.g. "021/142") is the set's printed_total, not total_cards
+	// (which includes secret rares). Persisting it lets searches like
+	// "021/142" and the scan worker's denominator disambiguation work.
+	var hasPrintedTotal int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('pokemon_sets') WHERE name = 'printed_total'`).Scan(&hasPrintedTotal); err != nil {
+		return fmt.Errorf("check pokemon_sets printed_total column: %w", err)
+	}
+	if hasPrintedTotal == 0 {
+		if _, err := db.Exec(`ALTER TABLE pokemon_sets ADD COLUMN printed_total INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add pokemon_sets printed_total column: %w", err)
 		}
 	}
 
