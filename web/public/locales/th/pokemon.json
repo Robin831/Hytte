@@ -158,6 +158,7 @@
     "elapsed": "{{seconds}} วินาที",
     "loadError": "โหลดรายการสแกนไม่สำเร็จ",
     "noPriceYet": "ไม่มีราคา",
+    "tapToReview": "แตะเพื่อตรวจสอบ",
     "filter": {
       "label": "กรองการสแกน",
       "needsReview": "ต้องตรวจสอบ",
@@ -185,6 +186,22 @@
       "added": "เพิ่มเข้าคอลเลกชันแล้ว",
       "discarded": "ทิ้งแล้ว",
       "retried": "ส่งกลับเข้าคิวสแกนแล้ว"
+    },
+    "detail": {
+      "title": "รายละเอียดการสแกน",
+      "dialogLabel": "รายละเอียดการสแกน",
+      "openLabel": "เปิดรายละเอียดการสแกนของ {{name}}",
+      "close": "ปิดรายละเอียดการสแกน",
+      "autoMatchLabel": "ผลที่ตรงอัตโนมัติ",
+      "noMatchInfo": "ไม่มีข้อมูลการจับคู่",
+      "addToAutoMatch": "เพิ่มการ์ดนี้",
+      "addToOverride": "เพิ่มผ่านการ์ดที่เลือก",
+      "wrongMatch": "ตรงผิดใบ?",
+      "autoMatchHint": "ผลตรงอัตโนมัติ: {{match}}",
+      "overrideActive": "กำลังเพิ่มผ่าน {{name}} แทนผลที่ตรงอัตโนมัติ",
+      "useAutoMatchInstead": "ใช้ผลที่ตรงอัตโนมัติแทน",
+      "searchPlaceholder": "ค้นหาการ์ดที่ถูกต้อง — ชื่อหรือหมายเลข",
+      "searchFailed": "ค้นหาการ์ดไม่สำเร็จ"
     }
   },
   "scanner": {

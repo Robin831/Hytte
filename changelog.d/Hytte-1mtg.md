@@ -1,0 +1,2 @@
+category: Changed
+- **Pokémon scanned: tap-to-detail view + manual reassign on wrong match** - Matched scan tiles are now a tap target that opens a fuller detail view with the large scan image, match info, variant buttons, and Discard. A "Wrong match?" section lets you search and reassign the scan to a different card before adding it to your collection — no more discard-and-rescan when the auto-match was off. (Hytte-1mtg)

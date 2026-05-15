@@ -328,7 +328,7 @@ describe('PokemonScanned – filter chips', () => {
 })
 
 describe('PokemonScanned – resolve actions', () => {
-  it('Add posts action=add with variant_id and refetches the list', async () => {
+  it('Add via the detail modal posts action=add with variant_id (no override) and refetches the list', async () => {
     const fetchMock = makeFetchMock({ needsReview: [makeMatched()] })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -339,7 +339,12 @@ describe('PokemonScanned – resolve actions', () => {
       ([url]) => typeof url === 'string' && (url as string).startsWith('/api/pokemon/scans?'),
     ).length
 
-    fireEvent.click(screen.getByTestId('scan-action-add-1'))
+    // Matched tile is a clickable launchpad — opening it surfaces the modal.
+    fireEvent.click(screen.getByTestId('scan-open-detail-1'))
+    expect(screen.getByTestId('scan-detail-modal')).toBeInTheDocument()
+
+    // Variant picker now lives in the modal.
+    fireEvent.click(screen.getByTestId('scan-detail-variant-11'))
 
     await waitFor(() => {
       const post = fetchMock.mock.calls.find(
@@ -350,6 +355,8 @@ describe('PokemonScanned – resolve actions', () => {
       expect(post).toBeTruthy()
       const body = JSON.parse(((post?.[1] as FetchInit | undefined)?.body as string) ?? '{}')
       expect(body).toMatchObject({ action: 'add', variant_id: 11, quantity: 1 })
+      // No override card_id when the auto-match is accepted.
+      expect(body.card_id).toBeUndefined()
     })
 
     // Refetched after resolve.
@@ -358,6 +365,28 @@ describe('PokemonScanned – resolve actions', () => {
         ([url]) => typeof url === 'string' && (url as string).startsWith('/api/pokemon/scans?'),
       ).length
       expect(afterCalls).toBeGreaterThan(initialListCalls)
+    })
+  })
+
+  it('Discarding from the detail modal posts action=discard', async () => {
+    const fetchMock = makeFetchMock({ needsReview: [makeMatched()] })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId('scan-row-1')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId('scan-open-detail-1'))
+    fireEvent.click(screen.getByTestId('scan-detail-discard'))
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          (url as string) === '/api/pokemon/scans/1/resolve' &&
+          (init as FetchInit | undefined)?.method === 'POST',
+      )
+      expect(post).toBeTruthy()
+      const body = JSON.parse(((post?.[1] as FetchInit | undefined)?.body as string) ?? '{}')
+      expect(body).toMatchObject({ action: 'discard' })
     })
   })
 
@@ -438,7 +467,7 @@ describe('PokemonScanned – resolve actions', () => {
     expect(probe).toHaveAttribute('data-addcard-query', '')
   })
 
-  it('shows the variant picker on a matched row with multiple variants', async () => {
+  it('detail modal lists all variants for a matched card and posts the picked variant', async () => {
     const matched = makeMatched({
       matched_card: {
         id: 'sv1-1',
@@ -461,11 +490,12 @@ describe('PokemonScanned – resolve actions', () => {
     renderPage()
     await waitFor(() => expect(screen.getByTestId('scan-row-1')).toBeInTheDocument())
 
-    // First click opens the picker; the POST should not have fired yet.
-    fireEvent.click(screen.getByTestId('scan-action-add-1'))
-    expect(screen.getByTestId('scan-variant-picker-1')).toBeInTheDocument()
+    // Open the detail modal — the variant buttons live inside it now.
+    fireEvent.click(screen.getByTestId('scan-open-detail-1'))
+    expect(screen.getByTestId('scan-detail-variant-11')).toBeInTheDocument()
+    expect(screen.getByTestId('scan-detail-variant-12')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByTestId('scan-variant-1-12'))
+    fireEvent.click(screen.getByTestId('scan-detail-variant-12'))
 
     await waitFor(() => {
       const post = fetchMock.mock.calls.find(
@@ -476,6 +506,122 @@ describe('PokemonScanned – resolve actions', () => {
       expect(post).toBeTruthy()
       const body = JSON.parse(((post?.[1] as FetchInit | undefined)?.body as string) ?? '{}')
       expect(body).toMatchObject({ action: 'add', variant_id: 12 })
+      expect(body.card_id).toBeUndefined()
+    })
+  })
+
+  it('expanding "Wrong match?" lets the user pick a different card and adds via that card with card_id in the body', async () => {
+    const overrideCard = {
+      id: 'sv1-100',
+      set_id: 'sv1',
+      set_name: 'Scarlet & Violet Base',
+      name: 'Eevee',
+      collector_no: '100',
+      rarity: 'Common',
+      image_small_url: 'https://example.com/eevee.png',
+      image_large_url: 'https://example.com/eevee-l.png',
+      variants: [{ id: 99, kind: 'normal', price_eur: 3, price_nok: 30 }],
+    }
+    const fetchMock = makeFetchMock({ needsReview: [makeMatched()] }, (url) => {
+      if (url.startsWith('/api/pokemon/cards/search?')) {
+        return jsonResponse({ cards: [overrideCard] })
+      }
+      return null
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId('scan-row-1')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId('scan-open-detail-1'))
+    fireEvent.click(screen.getByTestId('scan-detail-wrong-match-toggle'))
+    expect(screen.getByTestId('scan-detail-wrong-match-panel')).toBeInTheDocument()
+
+    // Typing triggers the debounced /cards/search call — use fake timers to
+    // advance past the debounce deterministically without real-time waiting.
+    vi.useFakeTimers()
+    fireEvent.change(screen.getByTestId('scan-detail-search-input'), { target: { value: 'eevee' } })
+    vi.advanceTimersByTime(250)
+    vi.useRealTimers()
+
+    await waitFor(() => {
+      const searchCall = fetchMock.mock.calls.find(
+        ([url]) => typeof url === 'string' && (url as string).startsWith('/api/pokemon/cards/search?'),
+      )
+      expect(searchCall).toBeTruthy()
+    })
+
+    await waitFor(() => expect(screen.getByTestId('scan-detail-pick-sv1-100')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('scan-detail-pick-sv1-100'))
+
+    // The variant row now reflects the override card's variants.
+    await waitFor(() => expect(screen.getByTestId('scan-detail-variant-99')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId('scan-detail-variant-99'))
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          (url as string) === '/api/pokemon/scans/1/resolve' &&
+          (init as FetchInit | undefined)?.method === 'POST',
+      )
+      expect(post).toBeTruthy()
+      const body = JSON.parse(((post?.[1] as FetchInit | undefined)?.body as string) ?? '{}')
+      // Override path: the POST body must carry the picked card_id alongside
+      // the variant_id from that card.
+      expect(body).toMatchObject({ action: 'add', variant_id: 99, card_id: 'sv1-100', quantity: 1 })
+    })
+  })
+
+  it('"Use auto-match instead" reverts the override and adds without a card_id', async () => {
+    const overrideCard = {
+      id: 'sv1-100',
+      set_id: 'sv1',
+      set_name: 'Scarlet & Violet Base',
+      name: 'Eevee',
+      collector_no: '100',
+      rarity: 'Common',
+      image_small_url: 'https://example.com/eevee.png',
+      image_large_url: 'https://example.com/eevee-l.png',
+      variants: [{ id: 99, kind: 'normal', price_eur: 3, price_nok: 30 }],
+    }
+    const fetchMock = makeFetchMock({ needsReview: [makeMatched()] }, (url) => {
+      if (url.startsWith('/api/pokemon/cards/search?')) {
+        return jsonResponse({ cards: [overrideCard] })
+      }
+      return null
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId('scan-row-1')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId('scan-open-detail-1'))
+    fireEvent.click(screen.getByTestId('scan-detail-wrong-match-toggle'))
+    vi.useFakeTimers()
+    fireEvent.change(screen.getByTestId('scan-detail-search-input'), { target: { value: 'eevee' } })
+    vi.advanceTimersByTime(250)
+    vi.useRealTimers()
+    await waitFor(() => expect(screen.getByTestId('scan-detail-pick-sv1-100')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('scan-detail-pick-sv1-100'))
+    await waitFor(() => expect(screen.getByTestId('scan-detail-override-banner')).toBeInTheDocument())
+
+    // Revert restores the auto-match's variants.
+    fireEvent.click(screen.getByTestId('scan-detail-revert'))
+    expect(screen.queryByTestId('scan-detail-override-banner')).not.toBeInTheDocument()
+    expect(screen.getByTestId('scan-detail-variant-11')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('scan-detail-variant-11'))
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          (url as string) === '/api/pokemon/scans/1/resolve' &&
+          (init as FetchInit | undefined)?.method === 'POST',
+      )
+      expect(post).toBeTruthy()
+      const body = JSON.parse(((post?.[1] as FetchInit | undefined)?.body as string) ?? '{}')
+      expect(body).toMatchObject({ action: 'add', variant_id: 11 })
+      expect(body.card_id).toBeUndefined()
     })
   })
 })

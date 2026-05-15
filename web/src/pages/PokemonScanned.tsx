@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Loader2 } from 'lucide-react'
 import ToastList from '../components/ToastList'
 import { useToast } from '../hooks/useToast'
-import { formatNumber } from '../utils/formatDate'
+import ScanDetailModal from '../components/pokemon/ScanDetailModal'
+import type { ScanDetailResolveBody } from '../components/pokemon/ScanDetailModal'
 
 // buildManualEntryQuery joins whatever partial fields Claude could read into a
 // single search string for AddCardPanel. Empty hints collapse to an empty
@@ -105,16 +106,6 @@ function statusForFilter(filter: FilterKey): string[] {
     case 'resolved':
       return ['added', 'discarded']
   }
-}
-
-function formatNok(amount: number | null | undefined): string {
-  if (amount == null) return '—'
-  return formatNumber(amount, {
-    style: 'currency',
-    currency: 'NOK',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })
 }
 
 // elapsedSeconds returns the integer seconds elapsed between `since` and now,
@@ -221,6 +212,7 @@ interface ScanRowProps {
   rowRef?: (el: HTMLLIElement | null) => void
   onResolve: (scan: ScanJob, body: ResolveBody) => Promise<void>
   onEnterManually: (scan: ScanJob) => void
+  onOpenDetail: (scan: ScanJob) => void
   t: TFunction<'pokemon'>
 }
 
@@ -230,36 +222,13 @@ interface ResolveBody {
   quantity?: number
   condition?: string
   notes?: string
+  // card_id, when set on action=add, asks the backend to override the
+  // auto-matched card with this one before adding to the collection. Used by
+  // the scan detail modal's "Wrong match?" flow.
+  card_id?: string
 }
 
-function ScanRow({ scan, busy, now, highlighted, rowRef, onResolve, onEnterManually, t }: ScanRowProps) {
-  const [pickingVariant, setPickingVariant] = useState(false)
-  const variants = scan.matched_card?.variants ?? []
-  const hasMultiVariant = variants.length > 1
-
-  const handleAddSingle = () => {
-    const v = variants[0]
-    if (!v) return
-    void onResolve(scan, {
-      action: 'add',
-      variant_id: v.id,
-      quantity: 1,
-      condition: '',
-      notes: '',
-    })
-  }
-
-  const handleAddVariant = (variantId: number) => {
-    setPickingVariant(false)
-    void onResolve(scan, {
-      action: 'add',
-      variant_id: variantId,
-      quantity: 1,
-      condition: '',
-      notes: '',
-    })
-  }
-
+function ScanRow({ scan, busy, now, highlighted, rowRef, onResolve, onEnterManually, onOpenDetail, t }: ScanRowProps) {
   const handleDiscard = () => {
     void onResolve(scan, { action: 'discard' })
   }
@@ -271,7 +240,6 @@ function ScanRow({ scan, busy, now, highlighted, rowRef, onResolve, onEnterManua
   const renderBody = () => {
     if (scan.status === 'matched' && scan.matched_card) {
       const card = scan.matched_card
-      const variant = variants[0]
       const pct = confidencePercent(scan.confidence)
       return (
         <div className="min-w-0 flex flex-col gap-0.5">
@@ -283,10 +251,10 @@ function ScanRow({ scan, busy, now, highlighted, rowRef, onResolve, onEnterManua
             {' · '}
             {t('tile.collectorNo', { number: card.collector_no })}
           </p>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-300">
-            {pct != null && <span>{t('scanned.confidence', { pct })}</span>}
-            <span>{variant ? formatNok(variant.price_nok) : t('scanned.noPriceYet')}</span>
-          </div>
+          {pct != null && (
+            <p className="text-xs text-gray-300">{t('scanned.confidence', { pct })}</p>
+          )}
+          <p className="text-xs text-gray-500">{t('scanned.tapToReview')}</p>
         </div>
       )
     }
@@ -342,65 +310,10 @@ function ScanRow({ scan, busy, now, highlighted, rowRef, onResolve, onEnterManua
 
   const renderActions = () => {
     if (scan.status === 'matched') {
-      return (
-        <div className="flex flex-wrap items-center gap-2 mt-2">
-          {hasMultiVariant ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setPickingVariant(prev => !prev)}
-                disabled={busy}
-                data-testid={`scan-action-add-${scan.id}`}
-                aria-expanded={pickingVariant}
-                className="px-3 py-1.5 text-xs rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800/60 disabled:cursor-not-allowed text-white cursor-pointer"
-              >
-                {t('scanned.action.add')}
-              </button>
-              {pickingVariant && (
-                <div
-                  data-testid={`scan-variant-picker-${scan.id}`}
-                  role="group"
-                  aria-label={t('scanned.action.pickVariant')}
-                  className="flex flex-wrap gap-1.5 basis-full"
-                >
-                  {variants.map(v => (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => handleAddVariant(v.id)}
-                      disabled={busy}
-                      data-testid={`scan-variant-${scan.id}-${v.id}`}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-gray-700 hover:border-emerald-500 hover:bg-emerald-500/10 disabled:cursor-not-allowed text-xs text-white cursor-pointer"
-                    >
-                      <span>{t(`variantKind.${v.kind}`, { defaultValue: v.kind })}</span>
-                      <span className="text-[10px] text-gray-400">{formatNok(v.price_nok)}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={handleAddSingle}
-              disabled={busy || variants.length === 0}
-              data-testid={`scan-action-add-${scan.id}`}
-              className="px-3 py-1.5 text-xs rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800/60 disabled:cursor-not-allowed text-white cursor-pointer"
-            >
-              {t('scanned.action.add')}
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={handleDiscard}
-            disabled={busy}
-            data-testid={`scan-action-discard-${scan.id}`}
-            className="px-3 py-1.5 text-xs rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-60 disabled:cursor-not-allowed text-white cursor-pointer"
-          >
-            {t('scanned.action.discard')}
-          </button>
-        </div>
-      )
+      // The matched-tile action row was moved into the detail modal so the
+      // tile is just a clickable launchpad. The detail modal owns the variant
+      // picker, Discard, and the "Wrong match?" reassign flow.
+      return null
     }
     if (scan.status === 'no_match') {
       return (
@@ -461,30 +374,54 @@ function ScanRow({ scan, busy, now, highlighted, rowRef, onResolve, onEnterManua
     return null
   }
 
+  const isMatched = scan.status === 'matched' && scan.matched_card != null
+  const containerClass = `flex flex-col sm:flex-row gap-3 p-3 bg-gray-800/40 border rounded-lg transition-shadow duration-700 ${
+    highlighted
+      ? 'border-emerald-400 ring-2 ring-emerald-400/70 shadow-lg shadow-emerald-500/20'
+      : 'border-gray-800'
+  }`
+
   return (
     <li
       ref={rowRef}
       data-testid={`scan-row-${scan.id}`}
       data-status={scan.status}
       data-highlighted={highlighted ? 'true' : undefined}
-      className={`flex flex-col sm:flex-row gap-3 p-3 bg-gray-800/40 border rounded-lg transition-shadow duration-700 ${
-        highlighted
-          ? 'border-emerald-400 ring-2 ring-emerald-400/70 shadow-lg shadow-emerald-500/20'
-          : 'border-gray-800'
-      }`}
+      className={containerClass}
     >
-      <div className="flex gap-3 min-w-0 flex-1">
-        <Thumbnail
-          scan={scan}
-          alt={t('scanned.thumbnailAlt')}
-          placeholder={t('scanned.thumbnailPlaceholder')}
-        />
-        <div className="flex flex-col gap-1.5 min-w-0 flex-1">
-          <StatusPill status={scan.status} t={t} />
-          {renderBody()}
-          {renderActions()}
+      {isMatched ? (
+        <button
+          type="button"
+          onClick={() => onOpenDetail(scan)}
+          aria-label={t('scanned.detail.openLabel', { name: scan.matched_card?.name ?? '' })}
+          data-testid={`scan-open-detail-${scan.id}`}
+          className="flex gap-3 min-w-0 flex-1 text-left cursor-pointer hover:bg-gray-800/20 -m-1 p-1 rounded"
+        >
+          <Thumbnail
+            scan={scan}
+            alt={t('scanned.thumbnailAlt')}
+            placeholder={t('scanned.thumbnailPlaceholder')}
+          />
+          <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+            <StatusPill status={scan.status} t={t} />
+            {renderBody()}
+          </div>
+          <ChevronRight size={18} className="self-center text-gray-500 shrink-0" aria-hidden="true" />
+        </button>
+      ) : (
+        <div className="flex gap-3 min-w-0 flex-1">
+          <Thumbnail
+            scan={scan}
+            alt={t('scanned.thumbnailAlt')}
+            placeholder={t('scanned.thumbnailPlaceholder')}
+          />
+          <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+            <StatusPill status={scan.status} t={t} />
+            {renderBody()}
+            {renderActions()}
+          </div>
         </div>
-      </div>
+      )}
     </li>
   )
 }
@@ -510,6 +447,7 @@ export default function PokemonScannedPage() {
   const [busyId, setBusyId] = useState<number | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [highlightedId, setHighlightedId] = useState<number | null>(null)
+  const [detailScanId, setDetailScanId] = useState<number | null>(null)
   const rowRefs = useRef<Map<number, HTMLLIElement>>(new Map())
   const focusHandledRef = useRef<number | null>(null)
 
@@ -655,6 +593,14 @@ export default function PokemonScannedPage() {
     [navigate],
   )
 
+  const handleOpenDetail = useCallback((scan: ScanJob) => {
+    setDetailScanId(scan.id)
+  }, [])
+
+  const handleCloseDetail = useCallback(() => {
+    setDetailScanId(null)
+  }, [])
+
   const handleResolve = useCallback(
     async (scan: ScanJob, body: ResolveBody) => {
       setBusyId(scan.id)
@@ -680,6 +626,17 @@ export default function PokemonScannedPage() {
       }
     },
     [refetch, showToast, t],
+  )
+
+  const detailScan = detailScanId != null ? (scans.find(s => s.id === detailScanId) ?? null) : null
+
+  const handleDetailResolve = useCallback(
+    async (body: ScanDetailResolveBody) => {
+      if (!detailScan) return
+      await handleResolve(detailScan, body)
+      handleCloseDetail()
+    },
+    [detailScan, handleResolve, handleCloseDetail],
   )
 
   return (
@@ -794,12 +751,21 @@ export default function PokemonScannedPage() {
                 }}
                 onResolve={handleResolve}
                 onEnterManually={handleEnterManually}
+                onOpenDetail={handleOpenDetail}
                 t={t}
               />
             ))}
           </ul>
         )}
       </div>
+      {detailScan != null && (
+        <ScanDetailModal
+          scan={detailScan}
+          busy={busyId === detailScan.id}
+          onClose={handleCloseDetail}
+          onResolve={handleDetailResolve}
+        />
+      )}
       <ToastList toasts={toasts} />
     </div>
   )

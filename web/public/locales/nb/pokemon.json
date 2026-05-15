@@ -160,6 +160,7 @@
     "elapsed": "{{seconds}} s",
     "loadError": "Kunne ikke laste skanninger",
     "noPriceYet": "Pris utilgjengelig",
+    "tapToReview": "Trykk for å se gjennom",
     "filter": {
       "label": "Filtrer skanninger",
       "needsReview": "Trenger gjennomgang",
@@ -187,6 +188,22 @@
       "added": "Lagt til i samlingen",
       "discarded": "Forkastet",
       "retried": "Lagt tilbake i skannerkøen"
+    },
+    "detail": {
+      "title": "Skannedetaljer",
+      "dialogLabel": "Skannedetaljer",
+      "openLabel": "Åpne skannedetaljer for {{name}}",
+      "close": "Lukk skannedetaljer",
+      "autoMatchLabel": "Auto-treff",
+      "noMatchInfo": "Ingen treffdetaljer tilgjengelig.",
+      "addToAutoMatch": "Legg til dette kortet",
+      "addToOverride": "Legg til via valgt kort",
+      "wrongMatch": "Feil treff?",
+      "autoMatchHint": "Auto-treff: {{match}}",
+      "overrideActive": "Legger til via {{name}} i stedet for auto-treffet.",
+      "useAutoMatchInstead": "Bruk auto-treffet i stedet",
+      "searchPlaceholder": "Søk etter riktig kort — navn eller nummer",
+      "searchFailed": "Kunne ikke søke etter kort"
     }
   },
   "scanner": {

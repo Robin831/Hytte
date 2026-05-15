@@ -1193,6 +1193,125 @@ func TestScanCounts_AggregatesUnresolvedAndToday(t *testing.T) {
 	}
 }
 
+// TestResolveScanAdd_WithCardOverride exercises the "Wrong match?" reassign
+// flow: the scan was auto-matched to card A but the user picks card B during
+// review. The collection upsert must land on B, the job row must be rewritten
+// so matched_card_id reflects B, and the image must be deleted as on a normal
+// add.
+func TestResolveScanAdd_WithCardOverride(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "override@example.com")
+	path := writeOnDiskImage(t, root, u.ID, "matched.jpg")
+	// Auto-match landed on sv1-25, but the actual card was sv1-100.
+	jobID := insertScanJob(t, db, u.ID, scanJobStatusMatched, path, withMatchedCard("sv1-25", 0.55))
+	overrideVid := variantID(t, db, "sv1-100", "normal")
+
+	rec := callJSON(t, http.MethodPost, "/api/pokemon/scans/"+strconv.FormatInt(jobID, 10)+"/resolve",
+		map[string]any{"action": "add", "card_id": "sv1-100", "variant_id": overrideVid, "quantity": 1, "condition": "near_mint"},
+		u, map[string]string{"id": strconv.FormatInt(jobID, 10)}, ResolveScanHandler(db))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Collection row should be on the override card, not the original.
+	var qty int
+	if err := db.QueryRow(
+		`SELECT quantity FROM pokemon_collections WHERE user_id = ? AND card_id = ? AND variant_id = ?`,
+		u.ID, "sv1-100", overrideVid,
+	).Scan(&qty); err != nil {
+		t.Fatalf("expected collection row on override card sv1-100: %v", err)
+	}
+	if qty != 1 {
+		t.Errorf("expected quantity=1 on override card, got %d", qty)
+	}
+
+	// And no row should exist for the original (wrong) match.
+	var leak int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM pokemon_collections WHERE user_id = ? AND card_id = ?`,
+		u.ID, "sv1-25",
+	).Scan(&leak); err != nil {
+		t.Fatalf("count leak: %v", err)
+	}
+	if leak != 0 {
+		t.Errorf("expected no collection row on auto-matched card, got %d", leak)
+	}
+
+	// Job row should be 'added' with matched_card_id rewritten to the override.
+	status, pathEnc, _, resolvedAt, matchedCard, matchedVariant := readScanJobByID(t, db, jobID)
+	if status != scanJobStatusAdded {
+		t.Errorf("expected status=added, got %q", status)
+	}
+	if !matchedCard.Valid || matchedCard.String != "sv1-100" {
+		t.Errorf("expected matched_card_id rewritten to override sv1-100, got %+v", matchedCard)
+	}
+	if !matchedVariant.Valid || matchedVariant.Int64 != overrideVid {
+		t.Errorf("expected matched_variant_id=%d, got %+v", overrideVid, matchedVariant)
+	}
+	if !resolvedAt.Valid {
+		t.Errorf("expected resolved_at to be set")
+	}
+	if pathEnc != "" {
+		t.Errorf("expected image_path_enc to be cleared, got %q", pathEnc)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("expected image file to be deleted: stat err=%v", err)
+	}
+}
+
+// TestResolveScanAdd_OverrideUnknownCard_404 covers the case where the client
+// supplies an override card_id that does not exist in the catalogue.
+func TestResolveScanAdd_OverrideUnknownCard_404(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "override404@example.com")
+	path := writeOnDiskImage(t, root, u.ID, "matched.jpg")
+	jobID := insertScanJob(t, db, u.ID, scanJobStatusMatched, path, withMatchedCard("sv1-25", 0.9))
+	vid := variantID(t, db, "sv1-25", "normal")
+
+	rec := callJSON(t, http.MethodPost, "/api/pokemon/scans/"+strconv.FormatInt(jobID, 10)+"/resolve",
+		map[string]any{"action": "add", "card_id": "definitely-not-a-card", "variant_id": vid, "quantity": 1},
+		u, map[string]string{"id": strconv.FormatInt(jobID, 10)}, ResolveScanHandler(db))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown override card, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Job row should be untouched — still matched, image still on disk.
+	status, _, _, _, _, _ := readScanJobByID(t, db, jobID)
+	if status != scanJobStatusMatched {
+		t.Errorf("expected status to stay matched after 404, got %q", status)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("expected image preserved on 404, got %v", err)
+	}
+}
+
+// TestResolveScanAdd_OverrideVariantMismatch_400 covers the case where the
+// supplied variant_id belongs to a different card than the override card.
+func TestResolveScanAdd_OverrideVariantMismatch_400(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "overrideMismatch@example.com")
+	path := writeOnDiskImage(t, root, u.ID, "matched.jpg")
+	jobID := insertScanJob(t, db, u.ID, scanJobStatusMatched, path, withMatchedCard("sv1-25", 0.9))
+	// Variant belongs to sv1-25 (auto-match), but we override to sv1-100.
+	wrongVid := variantID(t, db, "sv1-25", "normal")
+
+	rec := callJSON(t, http.MethodPost, "/api/pokemon/scans/"+strconv.FormatInt(jobID, 10)+"/resolve",
+		map[string]any{"action": "add", "card_id": "sv1-100", "variant_id": wrongVid, "quantity": 1},
+		u, map[string]string{"id": strconv.FormatInt(jobID, 10)}, ResolveScanHandler(db))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for variant mismatch with override, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestScanCounts_OtherUsersDoNotLeak(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("UPLOAD_ROOT", root)
