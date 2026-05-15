@@ -27,6 +27,10 @@ const TRANSLATIONS: Record<string, string> = {
   'scanner.errors.scanFailed': 'Scan failed, try again',
   'scanner.errors.timedOut': 'Scan timed out, try again',
   'scanner.errors.noVariant': 'This card has no variants to add',
+  'scanner.preview.title': 'Preview captured card',
+  'scanner.preview.imageAlt': 'Captured card preview',
+  'scanner.preview.send': 'Send',
+  'scanner.preview.retake': 'Retake',
   'scanner.result.multiLabel': 'Multiple matches',
   'scanner.result.unmatchedLabel': 'Card not recognised',
   'scanner.result.pickCandidate': 'Multiple matches — pick the right card.',
@@ -326,6 +330,11 @@ describe('CardScanner — auto-detect → POST → result', () => {
     })
     vi.stubGlobal('cancelAnimationFrame', vi.fn())
 
+    // Stub URL.createObjectURL / revokeObjectURL so the preview overlay can
+    // produce a usable src without needing real Blob URL plumbing in happy-dom.
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:mock')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+
     vi.mocked(detectCardRectangle).mockReturnValue(null)
     vi.mocked(isWithinTolerance).mockReturnValue(false)
   })
@@ -339,17 +348,20 @@ describe('CardScanner — auto-detect → POST → result', () => {
     return video
   }
 
-  function lockAndCapture(payload: unknown) {
-    const fakeDetection: DetectedRectangle = { x: 100, y: 80, w: 200, h: 280, score: 0.9 }
-    vi.mocked(detectCardRectangle).mockReturnValue(fakeDetection)
+  function lockAndCapture(
+    payload: unknown,
+    detection: DetectedRectangle = { x: 100, y: 80, w: 200, h: 280, score: 0.9 },
+  ) {
+    vi.mocked(detectCardRectangle).mockReturnValue(detection)
     vi.mocked(isWithinTolerance).mockReturnValue(true)
 
     const fakeBlob = new Blob(['img'], { type: 'image/jpeg' })
     vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (cb) {
       cb(fakeBlob)
     })
+    const drawImageSpy = vi.fn()
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
-      drawImage: vi.fn(),
+      drawImage: drawImageSpy,
       getImageData: vi.fn().mockReturnValue({
         data: new Uint8ClampedArray(640 * 480 * 4),
         width: 640,
@@ -377,10 +389,20 @@ describe('CardScanner — auto-detect → POST → result', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    return { fetchMock, fakeBlob }
+    return { fetchMock, fakeBlob, drawImageSpy }
   }
 
-  it('POSTs only after lock, then renders single-candidate result modal', async () => {
+  // Common helper: advance the rAF loop to the lock+capture point, then click
+  // through the preview overlay so the scan POST is actually sent.
+  async function advanceToPostThroughPreview() {
+    await act(async () => { pendingRafs.shift()?.(0) })
+    await act(async () => { pendingRafs.shift()?.(600) })
+    await act(async () => { pendingRafs.shift()?.(1200) })
+    await screen.findByTestId('card-scanner-preview-send')
+    fireEvent.click(screen.getByTestId('card-scanner-preview-send'))
+  }
+
+  it('POSTs only after lock + preview Send, then renders single-candidate result modal', async () => {
     const { fetchMock } = lockAndCapture(singleMatchPayload())
     render(<CardScanner onClose={vi.fn()} />)
 
@@ -395,8 +417,12 @@ describe('CardScanner — auto-detect → POST → result', () => {
     expect(fetchMock).not.toHaveBeenCalled()
 
     // Tick 3 (ts=1200): second matching detection → locked → captureLocked
-    // → performScan → POST.
+    // → presentPreview. No POST until the user (or the auto-timer) confirms.
     await act(async () => { pendingRafs.shift()?.(1200) })
+    await screen.findByTestId('card-scanner-preview-send')
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByTestId('card-scanner-preview-send'))
 
     await waitFor(() => {
       const scanCalls = fetchMock.mock.calls.filter(([url]) => url === '/api/pokemon/scan')
@@ -422,9 +448,7 @@ describe('CardScanner — auto-detect → POST → result', () => {
 
     await primeVideoAndLoop()
 
-    await act(async () => { pendingRafs.shift()?.(0) })
-    await act(async () => { pendingRafs.shift()?.(600) })
-    await act(async () => { pendingRafs.shift()?.(1200) })
+    await advanceToPostThroughPreview()
 
     await screen.findByTestId('scan-result-add')
 
@@ -453,14 +477,15 @@ describe('CardScanner — auto-detect → POST → result', () => {
     dateNowSpy.mockRestore()
   })
 
-  it('aborts in-flight scan after 30 s, shows timeout toast, and resumes scanning', async () => {
-    // Spy on window.setTimeout to capture the 30 s abort callback without
-    // activating vi.useFakeTimers() (which conflicts with React 19's scheduler).
+  it('aborts in-flight scan after the timeout fires, shows timeout toast, and resumes scanning', async () => {
+    // Spy on window.setTimeout to capture the scan-timeout abort callback
+    // without activating vi.useFakeTimers() (which conflicts with React 19's
+    // scheduler). The scan timeout is currently 120 s (see SCAN_TIMEOUT_MS).
     let capturedAbortFn: (() => void) | null = null
     const realSetTimeout = globalThis.setTimeout
     vi.spyOn(globalThis, 'setTimeout').mockImplementation(
       (fn: TimerHandler, delay?: number, ...args: unknown[]) => {
-        if (delay === 30_000) {
+        if (delay === 120_000) {
           capturedAbortFn = fn as () => void
           return -1 as unknown as ReturnType<typeof setTimeout>
         }
@@ -484,7 +509,7 @@ describe('CardScanner — auto-detect → POST → result', () => {
     } as unknown as CanvasRenderingContext2D)
 
     // fetch for /scan respects the AbortSignal but never otherwise resolves,
-    // simulating a Claude vision response that takes longer than the 30 s cap.
+    // simulating a Claude vision response that takes longer than the timeout.
     vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) =>
       new Promise<Response>((_, reject) => {
         init?.signal?.addEventListener('abort', () =>
@@ -496,16 +521,20 @@ describe('CardScanner — auto-detect → POST → result', () => {
     render(<CardScanner onClose={vi.fn()} />)
     await primeVideoAndLoop()
 
-    // Tick1 throttle, tick2 candidate, tick3 locked → capture → POST.
+    // Tick1 throttle, tick2 candidate, tick3 locked → capture → preview.
     await act(async () => { pendingRafs.shift()?.(0) })
     await act(async () => { pendingRafs.shift()?.(600) })
     await act(async () => { pendingRafs.shift()?.(1200) })
+
+    // Click Send so the preview commits to the scan POST.
+    await screen.findByTestId('card-scanner-preview-send')
+    fireEvent.click(screen.getByTestId('card-scanner-preview-send'))
 
     // Spinner shows while the in-flight POST is waiting on Claude.
     await screen.findByTestId('card-scanner-spinner')
     expect(capturedAbortFn).not.toBeNull()
 
-    // Simulate the 30 s elapsing: fires abort → fetch rejects → toast + resume.
+    // Simulate the timeout elapsing: fires abort → fetch rejects → toast + resume.
     await act(async () => { capturedAbortFn!() })
 
     expect(screen.getByText('Scan timed out, try again')).toBeInTheDocument()
@@ -517,9 +546,7 @@ describe('CardScanner — auto-detect → POST → result', () => {
     render(<CardScanner onClose={vi.fn()} />)
 
     await primeVideoAndLoop()
-    await act(async () => { pendingRafs.shift()?.(0) })
-    await act(async () => { pendingRafs.shift()?.(600) })
-    await act(async () => { pendingRafs.shift()?.(1200) })
+    await advanceToPostThroughPreview()
 
     await screen.findByTestId('scan-result-modal')
     expect(screen.getByTestId('scan-result-candidate-sv1-25')).toBeInTheDocument()
@@ -532,9 +559,7 @@ describe('CardScanner — auto-detect → POST → result', () => {
     render(<CardScanner onClose={vi.fn()} onEnterManually={onEnterManually} />)
 
     await primeVideoAndLoop()
-    await act(async () => { pendingRafs.shift()?.(0) })
-    await act(async () => { pendingRafs.shift()?.(600) })
-    await act(async () => { pendingRafs.shift()?.(1200) })
+    await advanceToPostThroughPreview()
 
     await screen.findByTestId('scan-result-modal')
     expect(screen.getByText('Confidence: 22%')).toBeInTheDocument()
@@ -552,9 +577,7 @@ describe('CardScanner — auto-detect → POST → result', () => {
     render(<CardScanner onClose={vi.fn()} />)
 
     await primeVideoAndLoop()
-    await act(async () => { pendingRafs.shift()?.(0) })
-    await act(async () => { pendingRafs.shift()?.(600) })
-    await act(async () => { pendingRafs.shift()?.(1200) })
+    await advanceToPostThroughPreview()
 
     await screen.findByTestId('scan-result-try-again')
     fireEvent.click(screen.getByTestId('scan-result-try-again'))
@@ -564,10 +587,10 @@ describe('CardScanner — auto-detect → POST → result', () => {
     })
   })
 
-  it('manual capture button bypasses the lock and triggers a POST', async () => {
+  it('manual capture button bypasses the lock, previews, then triggers a POST', async () => {
     const { fetchMock } = lockAndCapture(singleMatchPayload())
     // Override the detector to NEVER lock — but the manual shutter should
-    // still produce a scan POST.
+    // still produce a scan POST via the preview overlay.
     vi.mocked(detectCardRectangle).mockReturnValue(null)
     vi.mocked(isWithinTolerance).mockReturnValue(false)
     render(<CardScanner onClose={vi.fn()} />)
@@ -576,10 +599,161 @@ describe('CardScanner — auto-detect → POST → result', () => {
 
     fireEvent.click(screen.getByTestId('card-scanner-shutter'))
 
+    // Preview overlay appears for the manual capture path too.
+    await screen.findByTestId('card-scanner-preview-send')
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/pokemon/scan').length).toBe(0)
+
+    fireEvent.click(screen.getByTestId('card-scanner-preview-send'))
+
     await waitFor(() => {
       const scanCalls = fetchMock.mock.calls.filter(([url]) => url === '/api/pokemon/scan')
       expect(scanCalls.length).toBe(1)
     })
     await screen.findByTestId('scan-result-modal')
+  })
+
+  it('Retake on the preview discards the capture and returns to searching without POST', async () => {
+    const { fetchMock } = lockAndCapture(singleMatchPayload())
+    render(<CardScanner onClose={vi.fn()} />)
+
+    await primeVideoAndLoop()
+    await act(async () => { pendingRafs.shift()?.(0) })
+    await act(async () => { pendingRafs.shift()?.(600) })
+    await act(async () => { pendingRafs.shift()?.(1200) })
+
+    await screen.findByTestId('card-scanner-preview-retake')
+    fireEvent.click(screen.getByTestId('card-scanner-preview-retake'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('card-scanner-preview-send')).not.toBeInTheDocument()
+    })
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/pokemon/scan').length).toBe(0)
+    // Scanner is back to its searching UI — the shutter is enabled again.
+    expect(screen.getByTestId('card-scanner-shutter')).not.toBeDisabled()
+  })
+
+  it('preview auto-send timer triggers the scan POST without user input', async () => {
+    let previewAutoSend: (() => void) | null = null
+    const realSetTimeout = globalThis.setTimeout
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(
+      (fn: TimerHandler, delay?: number, ...args: unknown[]) => {
+        if (delay === 1500) {
+          previewAutoSend = fn as () => void
+          return -1 as unknown as ReturnType<typeof setTimeout>
+        }
+        return realSetTimeout(fn as TimerHandler, delay, ...(args as []))
+      },
+    )
+
+    const { fetchMock } = lockAndCapture(singleMatchPayload())
+    render(<CardScanner onClose={vi.fn()} />)
+
+    await primeVideoAndLoop()
+    await act(async () => { pendingRafs.shift()?.(0) })
+    await act(async () => { pendingRafs.shift()?.(600) })
+    await act(async () => { pendingRafs.shift()?.(1200) })
+
+    await screen.findByTestId('card-scanner-preview-send')
+    expect(previewAutoSend).not.toBeNull()
+
+    // Fire the captured auto-send timer — proceeds without the user clicking.
+    await act(async () => { previewAutoSend!() })
+
+    await waitFor(() => {
+      const scanCalls = fetchMock.mock.calls.filter(([url]) => url === '/api/pokemon/scan')
+      expect(scanCalls.length).toBe(1)
+    })
+  })
+
+  it('crops the captured frame to the padded detection bounds', async () => {
+    // Detection at (100,80,200,280) in a 640x480 frame. 5% padding:
+    //   padX = 200 * 0.05 = 10; padY = 280 * 0.05 = 14
+    //   sx = 100 - 10 = 90, sy = 80 - 14 = 66
+    //   sw = 200 + 20 = 220, sh = 280 + 28 = 308
+    // No clamping needed (sx+sw=310<640, sy+sh=374<480).
+    const detection: DetectedRectangle = { x: 100, y: 80, w: 200, h: 280, score: 0.9 }
+    const { drawImageSpy } = lockAndCapture(singleMatchPayload(), detection)
+    render(<CardScanner onClose={vi.fn()} />)
+
+    await primeVideoAndLoop()
+    await act(async () => { pendingRafs.shift()?.(0) })
+    await act(async () => { pendingRafs.shift()?.(600) })
+    await act(async () => { pendingRafs.shift()?.(1200) })
+
+    await screen.findByTestId('card-scanner-preview-send')
+
+    // Find the crop call: the 9-arg drawImage form (source + sx/sy/sw/sh + dx/dy/dw/dh).
+    const cropCall = drawImageSpy.mock.calls.find(args => args.length === 9)
+    expect(cropCall).toBeDefined()
+    const [, sx, sy, sw, sh, dx, dy, dw, dh] = cropCall as [
+      unknown, number, number, number, number, number, number, number, number,
+    ]
+    expect(sx).toBe(90)
+    expect(sy).toBe(66)
+    expect(sw).toBe(220)
+    expect(sh).toBe(308)
+    expect(dx).toBe(0)
+    expect(dy).toBe(0)
+    expect(dw).toBe(220)
+    expect(dh).toBe(308)
+  })
+
+  it('clamps a detection that overflows the frame to the canvas bounds', async () => {
+    // Detection at (600,400,200,200) in a 640x480 frame extends past both edges.
+    // After 5% padding (padX=10, padY=10):
+    //   sx = 600 - 10 = 590, sy = 400 - 10 = 390
+    //   sw = 200 + 20 = 220, sh = 200 + 20 = 220
+    // Right edge: sx+sw = 810 > 640 → sw = 640 - 590 = 50.
+    // Bottom edge: sy+sh = 610 > 480 → sh = 480 - 390 = 90.
+    const detection: DetectedRectangle = { x: 600, y: 400, w: 200, h: 200, score: 0.9 }
+    const { drawImageSpy } = lockAndCapture(singleMatchPayload(), detection)
+    render(<CardScanner onClose={vi.fn()} />)
+
+    await primeVideoAndLoop()
+    await act(async () => { pendingRafs.shift()?.(0) })
+    await act(async () => { pendingRafs.shift()?.(600) })
+    await act(async () => { pendingRafs.shift()?.(1200) })
+
+    await screen.findByTestId('card-scanner-preview-send')
+
+    const cropCall = drawImageSpy.mock.calls.find(args => args.length === 9)
+    expect(cropCall).toBeDefined()
+    const [, sx, sy, sw, sh] = cropCall as [
+      unknown, number, number, number, number, number, number, number, number,
+    ]
+    expect(sx).toBe(590)
+    expect(sy).toBe(390)
+    expect(sw).toBe(50)
+    expect(sh).toBe(90)
+  })
+})
+
+describe('CardScanner — getUserMedia constraints', () => {
+  let getUserMediaMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    const trackHandle = makeTrack({ torch: false })
+    const stream = makeStream(trackHandle.track)
+    getUserMediaMock = vi.fn().mockResolvedValue(stream)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: getUserMediaMock },
+    })
+  })
+
+  it('requests 1080p video so the cropped card has enough pixels for Claude vision', async () => {
+    render(<CardScanner onClose={vi.fn()} />)
+
+    await waitFor(() => expect(getUserMediaMock).toHaveBeenCalledTimes(1))
+    const constraints = getUserMediaMock.mock.calls[0][0] as {
+      video?: {
+        facingMode?: { ideal?: string }
+        width?: { ideal?: number }
+        height?: { ideal?: number }
+      }
+    }
+    expect(constraints.video?.width?.ideal).toBe(1920)
+    expect(constraints.video?.height?.ideal).toBe(1080)
+    expect(constraints.video?.facingMode?.ideal).toBe('environment')
   })
 })

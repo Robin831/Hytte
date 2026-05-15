@@ -155,6 +155,12 @@
       "timedOut": "Skanningen tok for lang tid, prøv på nytt",
       "noVariant": "Dette kortet har ingen varianter å legge til"
     },
+    "preview": {
+      "title": "Forhåndsvis kortbildet",
+      "imageAlt": "Forhåndsvisning av kortet",
+      "send": "Send",
+      "retake": "Ta på nytt"
+    },
     "result": {
       "singleLabel": "Skannetreff: {{name}}",
       "multiLabel": "Flere treff",
