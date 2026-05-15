@@ -147,7 +147,7 @@ export default function PokemonSets() {
   // from the current URL on every render of the search string.
   const ownedOnly = useMemo(() => {
     const params = new URLSearchParams(location.search)
-    return params.get('owned') === 'true'
+    return params.get('owned')?.toLowerCase() === 'true'
   }, [location.search])
 
   const [sets, setSets] = useState<PokemonSet[]>([])
@@ -168,7 +168,7 @@ export default function PokemonSets() {
       params.set('owned', 'true')
     }
     const next = params.toString()
-    navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: false })
+    navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: false, state: location.state })
   }, [ownedOnly, navigate, location.pathname, location.search])
 
   // After the AddCardPanel consumes its initialQuery we strip the hint from
