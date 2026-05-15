@@ -25,7 +25,22 @@ jobs:
             set -euo pipefail
             export PATH=$PATH:/usr/local/go/bin:/home/robin/go/bin
             cd /home/robin/Hytte
-            git pull origin main
+            # Forge's bd export rewrites .beads/issues.jsonl in this working
+            # tree, so deploys repeatedly hit "local changes would be
+            # overwritten" on git pull. Stash any dirty tracked state (untracked
+            # SQLite WAL files are left alone), pull, then drop the stash —
+            # the beads JSONL is canonical-from-Dolt and gets regenerated on
+            # the next bd command, so discarding the stash is safe.
+            if ! git diff --quiet || ! git diff --cached --quiet; then
+              git stash push -m "deploy-auto-stash-$(date +%s)"
+              STASHED=1
+            else
+              STASHED=0
+            fi
+            git pull --ff-only origin main
+            if [ "$STASHED" = "1" ]; then
+              git stash drop || true
+            fi
             cd web
             npm ci
             nice -n 15 npm run build -- --outDir dist-new
