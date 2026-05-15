@@ -411,8 +411,17 @@ func notifyScanResult(db *sql.DB, userID, jobID int64, status, cardName, setName
 		log.Printf("pokemon: marshal scan push for job %d: %v", jobID, err)
 		return
 	}
-	if _, err := scanPushSendFn(db, userID, payload); err != nil {
+	results, err := scanPushSendFn(db, userID, payload)
+	if err != nil {
 		log.Printf("pokemon: send scan push for job %d: %v", jobID, err)
+		return
+	}
+	for _, r := range results {
+		if r.Err != nil {
+			log.Printf("pokemon: scan push delivery failed for job %d subscription %d: %v", jobID, r.SubscriptionID, r.Err)
+		} else if r.StatusCode != 0 && r.StatusCode != 201 && r.StatusCode != 200 {
+			log.Printf("pokemon: scan push non-2xx for job %d subscription %d: status %d", jobID, r.SubscriptionID, r.StatusCode)
+		}
 	}
 }
 
@@ -421,6 +430,13 @@ func notifyScanResult(db *sql.DB, userID, jobID int64, status, cardName, setName
 // scanned page focused on the row so a notification click takes the kid
 // straight to the result. Unknown statuses return ok=false so callers can
 // skip the send.
+//
+// Strings are intentionally in English: backend push payloads are opaque bytes
+// delivered before the browser renders them, and there is no server-side
+// translation mechanism. This matches the existing pattern in
+// internal/webhooks/push_dispatch.go. Localisation of notification text would
+// require a server-side translation helper keyed on the user's language
+// preference — a separate concern outside the scope of this feature.
 func buildScanResultNotification(status string, jobID int64, cardName, setName string) (push.Notification, bool) {
 	var body string
 	switch status {
