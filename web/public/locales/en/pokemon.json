@@ -169,7 +169,6 @@
     },
     "action": {
       "add": "Add to collection",
-      "addVariant": "Add as {{variant}}",
       "discard": "Discard",
       "retry": "Try again",
       "enterManually": "Enter manually",

@@ -169,7 +169,6 @@
     },
     "action": {
       "add": "Legg til i samlingen",
-      "addVariant": "Legg til som {{variant}}",
       "discard": "Forkast",
       "retry": "Prøv igjen",
       "enterManually": "Legg inn manuelt",

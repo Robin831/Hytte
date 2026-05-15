@@ -168,7 +168,6 @@
     },
     "action": {
       "add": "เพิ่มเข้าคอลเลกชัน",
-      "addVariant": "เพิ่มเป็น {{variant}}",
       "discard": "ทิ้ง",
       "retry": "ลองอีกครั้ง",
       "enterManually": "ใส่ด้วยตนเอง",

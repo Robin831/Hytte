@@ -77,11 +77,9 @@ export default function AddCardPanel({ onAdded, initialQuery, onInitialQueryCons
   useEffect(() => {
     const seed = initialQuery?.trim()
     if (!seed) return
-    ;(async () => {
-      setQuery(seed)
-      setIsOpen(true)
-      onInitialQueryConsumed?.()
-    })()
+    setQuery(seed)
+    setIsOpen(true)
+    onInitialQueryConsumed?.()
   }, [initialQuery, onInitialQueryConsumed])
 
   const close = useCallback(() => {
