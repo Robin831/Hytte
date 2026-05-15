@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -102,6 +103,7 @@ func TestFindScanCandidates_PrintedTotalOverridesWrongSetHint(t *testing.T) {
 	u := seedUser(t, db, 1, "a@example.com")
 
 	result := &claudeScanResult{
+		CardName:        "Pansear",
 		SetIDHint:       "sv1",
 		SetName:         "Scarlet & Violet",
 		CollectorNumber: "021/142",
@@ -116,6 +118,128 @@ func TestFindScanCandidates_PrintedTotalOverridesWrongSetHint(t *testing.T) {
 	}
 	if len(candidates) != 1 || candidates[0].Card.ID != "sv7-21" {
 		t.Fatalf("expected single sv7-21 candidate, got %+v", candidates)
+	}
+}
+
+// TestFindScanCandidates_NameRejectsWrongSetMatch exercises the name-as-
+// sanity-check path: when Claude's (set_id_hint, collector) tuple would pin
+// to a card whose stored name disagrees with what Claude read at the top of
+// the card, the worker drops the match instead of silently keeping a wrong
+// one. The catalogue's sv1-25 is Pikachu; Claude saying "Charizard" at #25
+// of sv1 is a clear set-symbol misread.
+func TestFindScanCandidates_NameRejectsWrongSetMatch(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	result := &claudeScanResult{
+		CardName:        "Charizard",
+		SetIDHint:       "sv1",
+		SetName:         "Scarlet & Violet Base",
+		CollectorNumber: "025",
+		Confidence:      0.91,
+	}
+	candidates, reason, err := findScanCandidates(context.Background(), db, u.ID, result)
+	if err != nil {
+		t.Fatalf("findScanCandidates: %v", err)
+	}
+	if reason == "" || len(candidates) != 0 {
+		t.Fatalf("expected no_match with reason, got candidates=%+v reason=%q", candidates, reason)
+	}
+	// The reason should surface both the catalogue name (Pikachu) and what
+	// Claude said it read, so the user can tell which side is wrong.
+	if !strings.Contains(strings.ToLower(reason), "charizard") || !strings.Contains(strings.ToLower(reason), "pikachu") {
+		t.Errorf("expected reason to mention both Charizard and Pikachu, got %q", reason)
+	}
+}
+
+// TestFindScanCandidates_NameTolerantOfSuffix verifies the name check accepts
+// minor printed-vs-catalogue differences. Catalogue has "Pikachu V" but
+// Claude reads just "Pikachu" (or the other way around) — substring match in
+// either direction lets that pass.
+func TestFindScanCandidates_NameTolerantOfSuffix(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	cases := []struct {
+		name string
+		hint string
+	}{
+		{"Pikachu", "swsh1"},    // catalogue has "Pikachu V"
+		{"Pikachu V", "swsh1"},  // exact
+		{"Pikachu VMAX", "sv1"}, // catalogue "Pikachu" — Claude added VMAX; "pikachu" still contained
+	}
+	for _, c := range cases {
+		result := &claudeScanResult{
+			CardName:        c.name,
+			SetIDHint:       c.hint,
+			CollectorNumber: "025",
+			Confidence:      0.9,
+		}
+		got, reason, err := findScanCandidates(context.Background(), db, u.ID, result)
+		if err != nil {
+			t.Fatalf("%q: %v", c.name, err)
+		}
+		if reason != "" || len(got) != 1 {
+			t.Errorf("%q (hint=%s): expected single match, got candidates=%+v reason=%q", c.name, c.hint, got, reason)
+		}
+	}
+}
+
+// TestFindScanCandidates_NameDisambiguatesAcrossSets verifies that when the
+// set hint is ambiguous (or absent) and multiple candidates share the same
+// collector number, the name reading narrows to the right one. Both sv1-25
+// (Pikachu) and swsh1-25 (Pikachu V) match collector 25; Claude reading
+// "Pikachu V" should drop sv1-25 because the catalogue's Pikachu doesn't
+// contain "Pikachu V" and the substring-either-way check rejects it.
+func TestFindScanCandidates_NameDisambiguatesAcrossSets(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	result := &claudeScanResult{
+		CardName:        "Pikachu V",
+		CollectorNumber: "025",
+		Confidence:      0.9,
+	}
+	got, reason, err := findScanCandidates(context.Background(), db, u.ID, result)
+	if err != nil {
+		t.Fatalf("findScanCandidates: %v", err)
+	}
+	if reason != "" {
+		t.Fatalf("expected match, got reason=%q", reason)
+	}
+	if len(got) != 1 || got[0].Card.ID != "swsh1-25" {
+		t.Errorf("expected only swsh1-25, got %+v", got)
+	}
+}
+
+// TestFindScanCandidates_NameNarrowsWhenSetUnknown covers the realistic
+// failure mode of last-resort matching: Claude can't read the set symbol or
+// denominator clearly (empty set_id_hint, empty set_name, no /n in the
+// collector), but can read both the card name and the collector number. The
+// name filter narrows the otherwise-cross-set candidate list to the single
+// card that actually matches.
+func TestFindScanCandidates_NameNarrowsWhenSetUnknown(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	result := &claudeScanResult{
+		CardName:        "Pansear",
+		CollectorNumber: "21",
+		Confidence:      0.88,
+	}
+	got, reason, err := findScanCandidates(context.Background(), db, u.ID, result)
+	if err != nil {
+		t.Fatalf("findScanCandidates: %v", err)
+	}
+	if reason != "" {
+		t.Fatalf("expected match, got reason=%q", reason)
+	}
+	if len(got) != 1 || got[0].Card.ID != "sv7-21" {
+		t.Errorf("expected only sv7-21, got %+v", got)
 	}
 }
 

@@ -80,12 +80,14 @@ func detectImageMIME(buf []byte) string {
 
 // scanPrompt is the exact prompt sent to Claude. It asks for STRICT JSON so
 // the response can be parsed without an LLM-grade post-processor.
-const scanPrompt = `You will be shown a single Pokémon TCG card photo. Identify two things:
-1. The set, by reading the small set symbol on the bottom-right of the card AND any visible set name printed near it.
-2. The collector number on the bottom-left, in the format "025/195" (numerator/denominator).
+const scanPrompt = `You will be shown a single Pokémon TCG card photo. Identify three things:
+1. The card name, the LARGE text printed at the top of the card (e.g. "Pikachu", "Pansear", "Charizard ex"). This is the most reliable identifier — always fill it in when you can read it. Include suffix words like " ex", " V", " VMAX", " GX" exactly as printed.
+2. The set, by reading the small set symbol on the bottom-right AND any visible set name printed near it. The set symbol is tiny and easy to misread — when in doubt, prefer leaving set_id_hint empty over guessing.
+3. The collector number on the bottom-left, in the format "025/195" (numerator/denominator).
 
 Respond as STRICT JSON, no markdown fence, no prose:
 {
+  "card_name": "...",        // exact card name as printed at the top; empty only if unreadable
   "set_name": "...",         // best guess for the set's English name
   "set_id_hint": "...",      // optional pokemontcg.io set id if recognised (e.g. "sv4"), otherwise empty
   "collector_number": "...", // exact string from the card, e.g. "025/195"
@@ -94,6 +96,7 @@ Respond as STRICT JSON, no markdown fence, no prose:
 
 // claudeScanResult mirrors the STRICT JSON shape we ask Claude to return.
 type claudeScanResult struct {
+	CardName        string  `json:"card_name"`
 	SetName         string  `json:"set_name"`
 	SetIDHint       string  `json:"set_id_hint"`
 	CollectorNumber string  `json:"collector_number"`
@@ -261,6 +264,45 @@ func findScanCandidates(ctx context.Context, db *sql.DB, userID int64, result *c
 		return nil, fmt.Sprintf("no card matches set '%s' collector '%s'", label, collector), nil
 	}
 
+	// Use the card name Claude read off the top of the card as a tiebreaker /
+	// sanity check. The name is the largest, most readable element; the set
+	// symbol that drove the (collector, set) filter is the smallest. So when
+	// Claude returns a name, drop any candidate whose stored name doesn't
+	// match it case-insensitively in either direction (this tolerates promo
+	// suffixes like " ex" / " V" appearing on one side but not the other).
+	// Empty card_name leaves the list as-is — preserves the older response
+	// shape for in-flight requests during deploy.
+	claudeName := strings.TrimSpace(result.CardName)
+	if claudeName != "" {
+		// Two-pass narrowing: first try exact case-insensitive match (handles
+		// the common ambiguity between "Pikachu" and "Pikachu V" sharing a
+		// collector number across sets), and only fall back to the looser
+		// substring-either-way match if the exact pass produced nothing
+		// (catalogue suffix vs Claude reading differs slightly, e.g. " ex").
+		exact := cards[:0]
+		loose := make([]CardDTO, 0, len(cards))
+		for _, c := range cards {
+			if cardNamesEqual(c.Name, claudeName) {
+				exact = append(exact, c)
+			} else if cardNameLooksRight(c.Name, claudeName) {
+				loose = append(loose, c)
+			}
+		}
+		switch {
+		case len(exact) > 0:
+			cards = exact
+		case len(loose) > 0:
+			cards = loose
+		default:
+			label := setLabel
+			if label == "" {
+				label = "any set"
+			}
+			return nil, fmt.Sprintf("set '%s' collector '%s' resolved to %s, but the card reads '%s'",
+				label, collector, candidateNamesSummary(cards), claudeName), nil
+		}
+	}
+
 	out := make([]ScanCandidate, 0, len(cards))
 	for i := range cards {
 		card := cards[i]
@@ -275,6 +317,53 @@ func findScanCandidates(ctx context.Context, db *sql.DB, userID int64, result *c
 		})
 	}
 	return out, "", nil
+}
+
+// cardNamesEqual is the strict half of the name check — case-insensitive
+// exact match after trimming. Used as the first-pass filter so a Claude
+// reading of "Pikachu V" disambiguates between catalogue rows "Pikachu" and
+// "Pikachu V" instead of accepting both via the looser substring check.
+func cardNamesEqual(dbName, claudeName string) bool {
+	a := strings.ToLower(strings.TrimSpace(dbName))
+	b := strings.ToLower(strings.TrimSpace(claudeName))
+	return a != "" && a == b
+}
+
+// cardNameLooksRight returns true when the catalogue card name and the name
+// Claude read off the photo are case-insensitively the same or one contains
+// the other. The substring tolerance handles the common cases where Claude
+// drops/adds a suffix word like " ex", " V", " VMAX", " GX" relative to the
+// catalogue entry, without opening up false positives — substrings of less
+// than three characters wouldn't reach this code path anyway because the
+// candidate list is already narrowed by collector number.
+func cardNameLooksRight(dbName, claudeName string) bool {
+	a := strings.ToLower(strings.TrimSpace(dbName))
+	b := strings.ToLower(strings.TrimSpace(claudeName))
+	if a == "" || b == "" {
+		return false
+	}
+	if a == b {
+		return true
+	}
+	return strings.Contains(a, b) || strings.Contains(b, a)
+}
+
+// candidateNamesSummary renders a short comma-separated list of card-name
+// (set-id) pairs, capped at a few items, for surfacing in match-failure
+// reasons. Lets the UI explain why a confidently-read collector number was
+// rejected: "set 'sv1' collector '025' resolved to Pikachu (sv1), Pikachu V
+// (swsh1), but the card reads 'Charizard'".
+func candidateNamesSummary(cards []CardDTO) string {
+	const max = 3
+	parts := make([]string, 0, len(cards))
+	for i, c := range cards {
+		if i == max {
+			parts = append(parts, fmt.Sprintf("+%d more", len(cards)-max))
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s (%s)", c.Name, c.SetID))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // loadSetIDsByPrintedTotal returns every set whose printed_total matches the

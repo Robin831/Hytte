@@ -1,0 +1,2 @@
+category: Changed
+- **Pokémon scan worker now verifies the card name** - The Claude vision prompt also asks for the large card name printed at the top of the card, and the worker uses it as a two-pass filter on candidates after the (set, collector, denominator) match: exact case-insensitive name match first, then a tolerant substring fallback. A confidently-read collector number that pins to the wrong set (e.g. matching Pansear/sv7 cards to base1's 1999 catalogue) is now rejected with a reason that names both what the catalogue holds and what Claude saw. (Hytte-ei7a)
