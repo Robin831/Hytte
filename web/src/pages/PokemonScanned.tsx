@@ -28,6 +28,8 @@ const SCAN_POLL_MS = 30000
 // so the list stays focused on what the user just acted on rather than turning
 // into a long historical log.
 const RESOLVED_WINDOW_DAYS = 7
+// Computed at module load so we never call Date.now() during render.
+const RESOLVED_CUTOFF_MS = Date.now() - RESOLVED_WINDOW_DAYS * 24 * 60 * 60 * 1000
 
 interface VariantDTO {
   id: number
@@ -519,9 +521,9 @@ export default function PokemonScannedPage() {
   useEffect(() => {
     const controller = new AbortController()
     const statuses = statusForFilter(filter).join(',')
-    setLoading(true)
-    setError('')
     ;(async () => {
+      setLoading(true)
+      setError('')
       try {
         const res = await fetch(
           `/api/pokemon/scans?status=${encodeURIComponent(statuses)}`,
@@ -581,10 +583,9 @@ export default function PokemonScannedPage() {
 
   const visibleScans = useMemo(() => {
     if (filter !== 'resolved') return scans
-    const cutoff = Date.now() - RESOLVED_WINDOW_DAYS * 24 * 60 * 60 * 1000
     return scans.filter(s => {
       const ts = s.resolved_at ? Date.parse(s.resolved_at) : Date.parse(s.created_at)
-      return !Number.isNaN(ts) && ts >= cutoff
+      return !Number.isNaN(ts) && ts >= RESOLVED_CUTOFF_MS
     })
   }, [scans, filter])
 
