@@ -325,6 +325,14 @@ func findScanCandidates(ctx context.Context, db *sql.DB, userID int64, result *c
 	if collector == "" {
 		return nil, "no collector number identified", nil
 	}
+	// Claude returns the full printed format from the card face (e.g. "108/142"
+	// — numerator/total-in-set), but pokemontcg.io and our DB store just the
+	// numerator ("108"). Strip the "/<total>" suffix so the lookup matches.
+	// Preserve everything before the slash to keep variants like "025a/195" or
+	// promo formats like "SWSH123" — only the trailing /total goes away.
+	if idx := strings.Index(collector, "/"); idx > 0 {
+		collector = strings.TrimSpace(collector[:idx])
+	}
 
 	var setFilter []string
 	var setLabel string
