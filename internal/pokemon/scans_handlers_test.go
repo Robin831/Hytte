@@ -3,7 +3,9 @@ package pokemon
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"mime/multipart"
 	"net/http"
@@ -762,5 +764,283 @@ func TestResolveScan_Discard_ConflictsOnProcessing(t *testing.T) {
 		map[string]string{"id": strconv.FormatInt(jobID, 10)}, ResolveScanHandler(db))
 	if rec.Code != http.StatusConflict {
 		t.Errorf("expected 409 for processing scan, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// setScanCapPref sets the per-user pokemon_scan_daily_cap override directly
+// in the DB so the cap-related tests do not need to round-trip through the
+// settings handler.
+func setScanCapPref(t *testing.T, db *sql.DB, userID int64, value int) {
+	t.Helper()
+	if _, err := db.Exec(`
+		INSERT INTO user_preferences (user_id, key, value)
+		VALUES (?, ?, ?)
+		ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value
+	`, userID, "pokemon_scan_daily_cap", strconv.Itoa(value)); err != nil {
+		t.Fatalf("set scan cap pref: %v", err)
+	}
+}
+
+// scanJobCount returns how many pokemon_scan_jobs rows exist for the user —
+// used by dedupe tests to confirm a duplicate upload did not insert a new row.
+func scanJobCount(t *testing.T, db *sql.DB, userID int64) int {
+	t.Helper()
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pokemon_scan_jobs WHERE user_id = ?`, userID).Scan(&n); err != nil {
+		t.Fatalf("count scan jobs: %v", err)
+	}
+	return n
+}
+
+// seedScanJobsToday backfills a count of rows dated to "right now" so the
+// cap tests can put a user at the threshold without uploading hundreds of
+// times through the handler.
+func seedScanJobsToday(t *testing.T, db *sql.DB, userID int64, count int) {
+	t.Helper()
+	now := time.Now().UTC()
+	for i := 0; i < count; i++ {
+		insertScanJob(t, db, userID, scanJobStatusAdded, "", withCreatedAt(now))
+	}
+}
+
+func TestQueueScan_AtCapReturns429(t *testing.T) {
+	t.Setenv("UPLOAD_ROOT", t.TempDir())
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "cap@example.com")
+
+	// Drop the cap to a tiny value so we don't have to seed 600 rows.
+	setScanCapPref(t, db, u.ID, 3)
+	seedScanJobsToday(t, db, u.ID, 3)
+
+	payload := append([]byte{}, jpegMagic...)
+	payload = append(payload, []byte("over-cap")...)
+
+	req := asUser(buildQueueRequest(t, payload, "card.jpg"), u)
+	rec := httptest.NewRecorder()
+	QueueScanHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[struct {
+		Error string `json:"error"`
+		Cap   int    `json:"cap"`
+		Used  int    `json:"used"`
+	}](t, rec)
+	if body.Error != "daily scan cap reached" {
+		t.Errorf("unexpected error message: %q", body.Error)
+	}
+	if body.Cap != 3 || body.Used != 3 {
+		t.Errorf("expected cap=3 used=3, got cap=%d used=%d", body.Cap, body.Used)
+	}
+	if got := scanJobCount(t, db, u.ID); got != 3 {
+		t.Errorf("expected no new row on 429, got count=%d", got)
+	}
+}
+
+func TestQueueScan_Dedupe_Within10s(t *testing.T) {
+	t.Setenv("UPLOAD_ROOT", t.TempDir())
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "dedupe@example.com")
+
+	payload := append([]byte{}, jpegMagic...)
+	payload = append(payload, []byte("identical-bytes")...)
+
+	rec1 := httptest.NewRecorder()
+	QueueScanHandler(db).ServeHTTP(rec1, asUser(buildQueueRequest(t, payload, "card.jpg"), u))
+	if rec1.Code != http.StatusAccepted {
+		t.Fatalf("first upload: expected 202, got %d: %s", rec1.Code, rec1.Body.String())
+	}
+	first := decode[struct {
+		ID     int64  `json:"id"`
+		Status string `json:"status"`
+	}](t, rec1)
+	if rec1.Header().Get("X-Pokemon-Scan-Dedupe") == "true" {
+		t.Errorf("first upload should not be flagged as a dedupe")
+	}
+
+	rec2 := httptest.NewRecorder()
+	QueueScanHandler(db).ServeHTTP(rec2, asUser(buildQueueRequest(t, payload, "card.jpg"), u))
+	if rec2.Code != http.StatusAccepted {
+		t.Fatalf("second upload: expected 202, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+	second := decode[struct {
+		ID     int64  `json:"id"`
+		Status string `json:"status"`
+	}](t, rec2)
+	if rec2.Header().Get("X-Pokemon-Scan-Dedupe") != "true" {
+		t.Errorf("second upload missing X-Pokemon-Scan-Dedupe header")
+	}
+	if second.ID != first.ID {
+		t.Errorf("expected dedupe to return original job id=%d, got %d", first.ID, second.ID)
+	}
+	if got := scanJobCount(t, db, u.ID); got != 1 {
+		t.Errorf("expected exactly 1 row after dedupe, got %d", got)
+	}
+}
+
+func TestQueueScan_Dedupe_AfterWindowExpires(t *testing.T) {
+	t.Setenv("UPLOAD_ROOT", t.TempDir())
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "stale@example.com")
+
+	// Compute the SHA-256 the handler will derive from the upload bytes,
+	// then seed a row with that same hash dated *outside* the dedupe
+	// window. The handler must treat the incoming upload as fresh (no
+	// dedupe header) and insert a second row alongside the stale one.
+	payload := append([]byte{}, jpegMagic...)
+	payload = append(payload, []byte("identical-but-stale")...)
+	sum := sha256.Sum256(payload)
+	imageHash := hex.EncodeToString(sum[:])
+
+	if _, err := db.Exec(`
+		INSERT INTO pokemon_scan_jobs (user_id, status, image_path_enc, image_hash, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, u.ID, scanJobStatusQueued, "", imageHash, time.Now().UTC().Add(-scanDedupeWindow-time.Second)); err != nil {
+		t.Fatalf("seed old row: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	QueueScanHandler(db).ServeHTTP(rec, asUser(buildQueueRequest(t, payload, "card.jpg"), u))
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("X-Pokemon-Scan-Dedupe") == "true" {
+		t.Errorf("expected fresh insert after window expiry, got dedupe flag")
+	}
+	if got := scanJobCount(t, db, u.ID); got != 2 {
+		t.Errorf("expected 2 rows (stale + new), got %d", got)
+	}
+}
+
+// TestFindRecentDuplicateScan_OutsideWindow exercises the helper directly:
+// a row created beyond scanDedupeWindow ago must not match.
+func TestFindRecentDuplicateScan_OutsideWindow(t *testing.T) {
+	t.Setenv("UPLOAD_ROOT", t.TempDir())
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "stale@example.com")
+
+	imageHash := "feedfacefeedface"
+	if _, err := db.Exec(`
+		INSERT INTO pokemon_scan_jobs (user_id, status, image_path_enc, image_hash, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, u.ID, scanJobStatusQueued, "", imageHash, time.Now().UTC().Add(-scanDedupeWindow-time.Second)); err != nil {
+		t.Fatalf("seed old row: %v", err)
+	}
+
+	id, found, err := findRecentDuplicateScan(context.Background(), db, u.ID, imageHash)
+	if err != nil {
+		t.Fatalf("findRecentDuplicateScan: %v", err)
+	}
+	if found {
+		t.Errorf("expected no dedupe hit outside window, got id=%d", id)
+	}
+}
+
+func TestQueueScan_PreferenceOverride_RaisesCapForUser(t *testing.T) {
+	t.Setenv("UPLOAD_ROOT", t.TempDir())
+	db := setupTestDB(t)
+	uA := seedUser(t, db, 1, "raised@example.com")
+	uB := seedUser(t, db, 2, "default@example.com")
+
+	// uA gets a generous override; uB gets a much lower one. This proves
+	// the preference is read per-user rather than globally — same
+	// queue-count for both users yields different cap outcomes. Both are
+	// kept small so the test does not have to seed hundreds of rows.
+	setScanCapPref(t, db, uA.ID, 10)
+	setScanCapPref(t, db, uB.ID, 2)
+
+	// Push both users right up to their respective caps.
+	seedScanJobsToday(t, db, uA.ID, 2)
+	seedScanJobsToday(t, db, uB.ID, 2)
+
+	payload := append([]byte{}, jpegMagic...)
+	payload = append(payload, []byte("a-bytes")...)
+
+	// User A: still well under 10, should succeed.
+	recA := httptest.NewRecorder()
+	QueueScanHandler(db).ServeHTTP(recA, asUser(buildQueueRequest(t, payload, "a.jpg"), uA))
+	if recA.Code != http.StatusAccepted {
+		t.Errorf("expected user A to be under raised cap, got %d: %s", recA.Code, recA.Body.String())
+	}
+
+	// User B: at cap, should be rejected.
+	payloadB := append([]byte{}, jpegMagic...)
+	payloadB = append(payloadB, []byte("b-bytes")...)
+	recB := httptest.NewRecorder()
+	QueueScanHandler(db).ServeHTTP(recB, asUser(buildQueueRequest(t, payloadB, "b.jpg"), uB))
+	if recB.Code != http.StatusTooManyRequests {
+		t.Errorf("expected user B to be at default-low cap (429), got %d: %s", recB.Code, recB.Body.String())
+	}
+}
+
+func TestListScans_IncludesTodayCounts(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "today@example.com")
+	setScanCapPref(t, db, u.ID, 25)
+	seedScanJobsToday(t, db, u.ID, 4)
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/scans", nil), u)
+	rec := httptest.NewRecorder()
+	ListScansHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[struct {
+		Scans []ScanJobDTO   `json:"scans"`
+		Today map[string]int `json:"today"`
+	}](t, rec)
+	if body.Today == nil {
+		t.Fatalf("expected today metadata in response")
+	}
+	if body.Today["cap"] != 25 {
+		t.Errorf("expected today.cap=25 (from pref), got %d", body.Today["cap"])
+	}
+	if body.Today["used"] != 4 {
+		t.Errorf("expected today.used=4, got %d", body.Today["used"])
+	}
+}
+
+func TestListScans_TodayCounts_DefaultCap(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "default@example.com")
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/scans", nil), u)
+	rec := httptest.NewRecorder()
+	ListScansHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	body := decode[struct {
+		Today map[string]int `json:"today"`
+	}](t, rec)
+	if body.Today["cap"] != ScanDailyCap {
+		t.Errorf("expected default cap=%d, got %d", ScanDailyCap, body.Today["cap"])
+	}
+	if body.Today["used"] != 0 {
+		t.Errorf("expected used=0 for new user, got %d", body.Today["used"])
+	}
+}
+
+func TestGetUserScanDailyCap_FallsBackOnInvalidPref(t *testing.T) {
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "bad@example.com")
+
+	// A non-integer value must collapse to the default rather than 0/error.
+	if _, err := db.Exec(`
+		INSERT INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)
+	`, u.ID, "pokemon_scan_daily_cap", "nonsense"); err != nil {
+		t.Fatalf("seed bad pref: %v", err)
+	}
+	got, err := getUserScanDailyCap(context.Background(), db, u.ID)
+	if err != nil {
+		t.Fatalf("getUserScanDailyCap: %v", err)
+	}
+	if got != ScanDailyCap {
+		t.Errorf("expected fallback=%d, got %d", ScanDailyCap, got)
 	}
 }
