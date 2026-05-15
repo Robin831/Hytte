@@ -30,7 +30,6 @@ const TRANSLATIONS: Record<string, string> = {
   'scanner.dailyLimit': 'Daily scan limit reached',
   'scanner.errors.scanFailed': 'Scan failed, try again',
   'scanner.errors.timedOut': 'Scan timed out, try again',
-  'scanner.errors.noVariant': 'This card has no variants to add',
   'scanner.preview.title': 'Preview captured card',
   'scanner.preview.imageAlt': 'Captured card preview',
   'scanner.preview.send': 'Send',

@@ -138,7 +138,8 @@
     "tileLabel": "Åpne {{name}} fra {{set}} (#{{number}}), plass {{rank}}, {{variant}}, {{price}}, {{ownership}}"
   },
   "nav": {
-    "pendingBadgeAria": "{{count}} skanneresultater å se gjennom"
+    "pendingBadgeAria_one": "{{count}} skanneresultat å se gjennom",
+    "pendingBadgeAria_other": "{{count}} skanneresultater å se gjennom"
   },
   "scanner": {
     "dialogLabel": "Skann et Pokémon-kort",
@@ -158,26 +159,13 @@
     "dailyLimit": "Daglig skannegrense nådd",
     "errors": {
       "scanFailed": "Skanningen feilet, prøv på nytt",
-      "timedOut": "Skanningen tok for lang tid, prøv på nytt",
-      "noVariant": "Dette kortet har ingen varianter å legge til"
+      "timedOut": "Skanningen tok for lang tid, prøv på nytt"
     },
     "preview": {
       "title": "Forhåndsvis kortbildet",
       "imageAlt": "Forhåndsvisning av kortet",
       "send": "Send",
       "retake": "Ta på nytt"
-    },
-    "result": {
-      "singleLabel": "Skannetreff: {{name}}",
-      "multiLabel": "Flere treff",
-      "unmatchedLabel": "Kortet ble ikke gjenkjent",
-      "pickCandidate": "Flere treff — velg riktig kort.",
-      "candidatesList": "Mulige kort",
-      "yesAdd": "Ja, legg til i samlingen",
-      "tryAgain": "Prøv på nytt",
-      "enterManually": "Legg inn manuelt",
-      "noMatch": "Klarte ikke å lese kortet.",
-      "confidence": "Sikkerhet: {{percent}} %"
     }
   }
 }
