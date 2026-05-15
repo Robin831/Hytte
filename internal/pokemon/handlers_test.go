@@ -958,6 +958,10 @@ func TestFeatureFlagEnforcement_All(t *testing.T) {
 			r.Patch("/api/pokemon/collection/{id}", UpdateCollectionHandler(db))
 			r.Delete("/api/pokemon/collection/{id}", DeleteCollectionHandler(db))
 			r.Get("/api/pokemon/collection/missing", MissingFromSetHandler(db))
+			r.Post("/api/pokemon/scans/queue", QueueScanHandler(db))
+			r.Get("/api/pokemon/scans", ListScansHandler(db))
+			r.Get("/api/pokemon/scans/{id}/image", GetScanImageHandler(db))
+			r.Post("/api/pokemon/scans/{id}/resolve", ResolveScanHandler(db))
 		})
 	})
 
@@ -972,6 +976,10 @@ func TestFeatureFlagEnforcement_All(t *testing.T) {
 		{http.MethodPatch, "/api/pokemon/collection/1"},
 		{http.MethodDelete, "/api/pokemon/collection/1"},
 		{http.MethodGet, "/api/pokemon/collection/missing?set_id=sv1"},
+		{http.MethodPost, "/api/pokemon/scans/queue"},
+		{http.MethodGet, "/api/pokemon/scans"},
+		{http.MethodGet, "/api/pokemon/scans/1/image"},
+		{http.MethodPost, "/api/pokemon/scans/1/resolve"},
 	}
 	for _, c := range calls {
 		req := httptest.NewRequest(c.method, c.path, strings.NewReader(`{}`))

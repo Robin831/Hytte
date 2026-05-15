@@ -1,6 +1,7 @@
 package pokemon
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,15 @@ import (
 	"github.com/Robin831/Hytte/internal/currency"
 	"github.com/Robin831/Hytte/internal/encryption"
 	"github.com/go-chi/chi/v5"
+)
+
+// Sentinel errors returned by upsertCollection so callers can map them to
+// HTTP status codes. Keeping them sentinel keeps the handler decoupled from
+// the underlying SQL error surface.
+var (
+	errVariantNotFound  = errors.New("variant not found")
+	errVariantMismatch  = errors.New("variant does not belong to card")
+	errInvalidCondition = errors.New("invalid condition")
 )
 
 // maxBodySize caps request bodies for collection write endpoints. Notes are
@@ -135,11 +145,13 @@ func RegisterRoutes(r chi.Router, db *sql.DB) {
 		r.Patch("/pokemon/collection/{id}", UpdateCollectionHandler(db))
 		r.Delete("/pokemon/collection/{id}", DeleteCollectionHandler(db))
 		r.Get("/pokemon/collection/missing", MissingFromSetHandler(db))
-		// Vision scan: feature-gated only (no admin requirement). The whole
-		// point of scanning is so the kids — who are not admin — can add
-		// cards by pointing a camera. The expensive Claude vision call is
-		// gated by the per-user "pokemon" feature flag instead.
-		r.Post("/pokemon/scan", ScanHandler(db))
+		// Async scan queue (Hytte-7fgp). The sync /api/pokemon/scan endpoint
+		// is gone; uploads enqueue a job that the background worker picks up.
+		// Kids hit /queue from the camera page, then poll /scans for results.
+		r.Post("/pokemon/scans/queue", QueueScanHandler(db))
+		r.Get("/pokemon/scans", ListScansHandler(db))
+		r.Get("/pokemon/scans/{id}/image", GetScanImageHandler(db))
+		r.Post("/pokemon/scans/{id}/resolve", ResolveScanHandler(db))
 	})
 }
 
@@ -413,76 +425,28 @@ func UpsertCollectionHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		body.CardID = strings.TrimSpace(body.CardID)
-		body.Condition = strings.TrimSpace(body.Condition)
 		if body.CardID == "" || body.VariantID == 0 {
 			respondError(w, http.StatusBadRequest, "card_id and variant_id are required")
 			return
 		}
-		if body.Quantity < 0 {
-			respondError(w, http.StatusBadRequest, "quantity must be non-negative")
-			return
-		}
-		if body.Quantity == 0 {
-			body.Quantity = 1
-		}
-		if !allowedConditions[body.Condition] {
-			respondError(w, http.StatusBadRequest, "invalid condition")
-			return
-		}
 
-		// Verify the variant belongs to the card so the FK relationship is
-		// well-formed before we encrypt + write.
-		var variantCard string
-		err := db.QueryRowContext(r.Context(),
-			`SELECT card_id FROM pokemon_card_variants WHERE id = ?`, body.VariantID,
-		).Scan(&variantCard)
-		if errors.Is(err, sql.ErrNoRows) {
-			respondError(w, http.StatusNotFound, "variant not found")
-			return
-		}
+		isNew, err := upsertCollection(r.Context(), db, user.ID, body.CardID, body.VariantID, body.Quantity, body.Condition, body.Notes)
 		if err != nil {
-			log.Printf("pokemon: lookup variant: %v", err)
-			respondError(w, http.StatusInternalServerError, "failed to verify variant")
-			return
-		}
-		if variantCard != body.CardID {
-			respondError(w, http.StatusBadRequest, "variant does not belong to card")
-			return
-		}
-
-		notesEnc, err := encryptNotes(body.Notes)
-		if err != nil {
-			log.Printf("pokemon: encrypt notes: %v", err)
-			respondError(w, http.StatusInternalServerError, "failed to encrypt notes")
-			return
-		}
-		now := time.Now().UTC()
-		// Determine whether an existing row already covers (user, card, variant) so
-		// we can return the correct status code (200 vs 201) and re-read the row.
-		// We only care whether a row exists, not its id, so EXISTS() is enough.
-		var rowExists bool
-		err = db.QueryRowContext(r.Context(),
-			`SELECT EXISTS(SELECT 1 FROM pokemon_collections WHERE user_id = ? AND card_id = ? AND variant_id = ?)`,
-			user.ID, body.CardID, body.VariantID,
-		).Scan(&rowExists)
-		if err != nil {
-			log.Printf("pokemon: lookup collection: %v", err)
-			respondError(w, http.StatusInternalServerError, "failed to upsert collection")
-			return
-		}
-		isNew := !rowExists
-
-		_, err = db.ExecContext(r.Context(), `
-			INSERT INTO pokemon_collections (user_id, card_id, variant_id, quantity, condition, acquired_at, notes_enc)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(user_id, card_id, variant_id) DO UPDATE SET
-				quantity   = excluded.quantity,
-				condition  = excluded.condition,
-				notes_enc  = excluded.notes_enc
-		`, user.ID, body.CardID, body.VariantID, body.Quantity, body.Condition, now, notesEnc)
-		if err != nil {
-			log.Printf("pokemon: upsert collection: %v", err)
-			respondError(w, http.StatusInternalServerError, "failed to upsert collection")
+			switch {
+			case errors.Is(err, errVariantNotFound):
+				respondError(w, http.StatusNotFound, "variant not found")
+			case errors.Is(err, errVariantMismatch):
+				respondError(w, http.StatusBadRequest, "variant does not belong to card")
+			case errors.Is(err, errInvalidCondition):
+				respondError(w, http.StatusBadRequest, "invalid condition")
+			default:
+				if errors.Is(err, errInvalidQuantity) {
+					respondError(w, http.StatusBadRequest, "quantity must be non-negative")
+					return
+				}
+				log.Printf("pokemon: upsert collection: %v", err)
+				respondError(w, http.StatusInternalServerError, "failed to upsert collection")
+			}
 			return
 		}
 
@@ -498,6 +462,79 @@ func UpsertCollectionHandler(db *sql.DB) http.HandlerFunc {
 		}
 		respondJSON(w, status, map[string]any{"item": row})
 	}
+}
+
+// errInvalidQuantity signals a negative quantity in the upsert payload. Used
+// alongside the other sentinel errors so the handler can map it cleanly to
+// HTTP 400 without sprinkling string checks.
+var errInvalidQuantity = errors.New("quantity must be non-negative")
+
+// dbExecQuerier is the subset of *sql.DB / *sql.Tx that upsertCollection needs.
+// Accepting an interface lets the scan-resolve "add" path execute the upsert
+// inside a transaction that also flips the job state atomically, while the
+// legacy collection endpoint keeps passing the bare *sql.DB.
+type dbExecQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// upsertCollection persists a (user, card, variant) row, returning whether
+// the row was created (true) or updated (false). The shared logic lives here
+// so both the legacy collection endpoint and the new scan-resolve "add"
+// action go through the same validation and encryption path.
+func upsertCollection(ctx context.Context, db dbExecQuerier, userID int64, cardID string, variantID int64, quantity int, condition, notes string) (bool, error) {
+	condition = strings.TrimSpace(condition)
+	if quantity < 0 {
+		return false, errInvalidQuantity
+	}
+	if quantity == 0 {
+		quantity = 1
+	}
+	if !allowedConditions[condition] {
+		return false, errInvalidCondition
+	}
+
+	var variantCard string
+	err := db.QueryRowContext(ctx,
+		`SELECT card_id FROM pokemon_card_variants WHERE id = ?`, variantID,
+	).Scan(&variantCard)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, errVariantNotFound
+	}
+	if err != nil {
+		return false, err
+	}
+	if variantCard != cardID {
+		return false, errVariantMismatch
+	}
+
+	notesEnc, err := encryptNotes(notes)
+	if err != nil {
+		return false, err
+	}
+	now := time.Now().UTC()
+	var rowExists bool
+	err = db.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM pokemon_collections WHERE user_id = ? AND card_id = ? AND variant_id = ?)`,
+		userID, cardID, variantID,
+	).Scan(&rowExists)
+	if err != nil {
+		return false, err
+	}
+	isNew := !rowExists
+
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO pokemon_collections (user_id, card_id, variant_id, quantity, condition, acquired_at, notes_enc)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, card_id, variant_id) DO UPDATE SET
+			quantity   = excluded.quantity,
+			condition  = excluded.condition,
+			notes_enc  = excluded.notes_enc
+	`, userID, cardID, variantID, quantity, condition, now, notesEnc)
+	if err != nil {
+		return false, err
+	}
+	return isNew, nil
 }
 
 // UpdateCollectionHandler patches an existing collection row. Only fields
