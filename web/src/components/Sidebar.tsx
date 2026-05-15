@@ -125,7 +125,6 @@ export default function Sidebar() {
   // sense paying a 401/403 round trip for users without access.
   useEffect(() => {
     if (!user || !hasFeature('pokemon')) {
-      setPokemonUnresolvedCount(0)
       return
     }
     let cancelled = false
