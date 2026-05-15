@@ -1,0 +1,2 @@
+category: Added
+- **Async Pokémon scan job queue + worker** - Introduced the `pokemon_scan_jobs` table and a background worker goroutine in Hytte. The worker polls for queued vision-scan jobs, runs Claude over each card image, and writes the match outcome (`matched` / `no_match` / `failed`) back to the row. This is the foundation for the async scanner refactor — subsequent beads will swap the synchronous `/api/pokemon/scan` endpoint over to enqueue jobs and add the resolution UI. (Hytte-cgsl)

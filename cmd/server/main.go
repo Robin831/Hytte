@@ -390,6 +390,11 @@ func main() {
 		}
 	}()
 
+	// Pokémon async scan worker (Hytte-cgsl): polls pokemon_scan_jobs for
+	// queued rows and runs Claude vision in the background. Honours notifCtx
+	// so it stops cleanly on shutdown.
+	go pokemon.StartScanWorker(notifCtx, database)
+
 	// Schedule weekly Pokémon TCG full sync (Sunday 04:00 Europe/Oslo) and
 	// a daily price refresh (07:00 Europe/Oslo). Both run in the same
 	// goroutine to keep startup tidy; whichever timer fires first advances
