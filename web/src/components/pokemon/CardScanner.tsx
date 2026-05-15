@@ -26,10 +26,11 @@ type PermissionState = 'prompting' | 'granted' | 'denied' | 'unavailable' | 'uns
 
 // scanPhase tracks the lifecycle of the scan POST/result flow, layered on top
 // of the rectangle-detector state machine. idle = no submission in flight;
+// preview = captured frame on-screen awaiting user confirm or auto-send;
 // submitting = POST to /api/pokemon/scan pending; result = modal showing;
 // cooldown = post-add debounce window during which auto-triggered scans are
 // suppressed.
-type ScanPhase = 'idle' | 'submitting' | 'result' | 'cooldown'
+type ScanPhase = 'idle' | 'preview' | 'submitting' | 'result' | 'cooldown'
 
 // Throttle the auto-detect tick to ~2/sec. Two consecutive matching ticks
 // (~1s of stable framing) promote a candidate to `locked`.
@@ -51,6 +52,17 @@ const SCAN_TIMEOUT_MS = 120000
 // not trigger another POST until this window elapses, so a card lingering in
 // the frame cannot double-submit while the user is still moving on.
 const COOLDOWN_MS = 2000
+
+// PREVIEW_AUTO_SEND_MS is how long the captured-card preview lingers before
+// automatically proceeding to POST. Kids tend to keep scanning rather than
+// interact, so default-proceed prevents friction; Retake gives a quick out
+// when the capture was bad.
+const PREVIEW_AUTO_SEND_MS = 1500
+
+// CAPTURE_CROP_PAD is the fraction of the detected card bounds added on each
+// axis before cropping. Keeps the card border / set symbol / collector number
+// from being clipped if the detection rectangle hugs the card too tightly.
+const CAPTURE_CROP_PAD = 0.05
 
 // Pokémon TCG cards are 63x88mm — aspect ratio ≈ 0.716. The guide overlay
 // uses 5/7 (≈0.714) which is close enough and renders crisply on all viewports.
@@ -81,6 +93,7 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle')
   const [scanResult, setScanResult] = useState<ScanResult | null>(null)
   const [addingCandidateId, setAddingCandidateId] = useState<string | null>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -116,6 +129,20 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
   // scanPhase from 'cooldown' back to 'idle'. Keeping it in a ref lets us
   // cancel it on unmount or close so the callback never fires on a dead component.
   const cooldownTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
+  // lockedBoundsRef captures the detected card rectangle (in source-canvas /
+  // full-video-resolution coordinates) at the moment the rAF loop transitions
+  // to `locked`. The capture step uses these bounds to crop the JPEG so only
+  // the card itself — not the kid's hand, the table, or glare — is sent to
+  // Claude vision.
+  const lockedBoundsRef = useRef<DetectedRectangle | null>(null)
+  // Preview state: the blob is held in a ref so the auto-send timer can read
+  // it without depending on stale closure state, and the object URL is tracked
+  // separately so revocation is guaranteed even if the rendered URL state has
+  // already cleared.
+  const previewBlobRef = useRef<Blob | null>(null)
+  const previewWasManualRef = useRef<boolean>(false)
+  const previewUrlRef = useRef<string | null>(null)
+  const previewTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
 
   // Acquire the camera on mount; stop tracks on unmount so the camera LED
   // turns off even if the parent unmounts the scanner without calling onClose.
@@ -126,8 +153,15 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
 
     void (async () => {
       try {
+        // Request 1080p so the cropped card (post-detection) has enough pixels
+        // for Claude vision to read the set symbol and collector number. The
+        // browser falls back to the closest available preset automatically.
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
         })
         if (cancelled) {
           stream.getTracks().forEach(track => track.stop())
@@ -168,6 +202,15 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
         window.clearTimeout(cooldownTimerRef.current)
         cooldownTimerRef.current = null
       }
+      if (previewTimerRef.current !== null) {
+        window.clearTimeout(previewTimerRef.current)
+        previewTimerRef.current = null
+      }
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current)
+        previewUrlRef.current = null
+      }
+      previewBlobRef.current = null
     }
   }, [])
 
@@ -191,6 +234,23 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
     }
   }, [permissionState])
 
+  // clearPreview tears down the preview overlay: revokes the object URL,
+  // clears the auto-send timer, and drops the cached blob. Used by Retake,
+  // resumeScanning, unmount, and close.
+  const clearPreview = useCallback(() => {
+    if (previewTimerRef.current !== null) {
+      window.clearTimeout(previewTimerRef.current)
+      previewTimerRef.current = null
+    }
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current)
+      previewUrlRef.current = null
+    }
+    previewBlobRef.current = null
+    previewWasManualRef.current = false
+    setPreviewUrl(null)
+  }, [])
+
   // resumeScanning resets all refs and React state to the initial scanning
   // posture: clears the detector candidates, lifts the captured/locked freeze,
   // and restarts video playback + the rAF loop. Called after timeout/error,
@@ -202,6 +262,8 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
     candidateBoundsRef.current = null
     candidateTicksRef.current = 0
     lastTickRef.current = 0
+    lockedBoundsRef.current = null
+    clearPreview()
     setScanStatus('searching')
     setScanResult(null)
     const video = videoRef.current
@@ -218,7 +280,7 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
       }
       rafIdRef.current = window.requestAnimationFrame(tickFnRef.current)
     }
-  }, [])
+  }, [clearPreview])
 
   // performScan is the single entry point for both auto- and manual-triggered
   // scans. It owns the AbortController, the 30s timeout, and the
@@ -297,6 +359,76 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
     performScanRef.current = performScan
   }, [performScan])
 
+  // sendPreview is the "proceed" path out of preview: clears the timer, drops
+  // the overlay, and forwards the cached blob to performScan. Reads the cached
+  // manual flag so a shutter-triggered preview still bypasses the cooldown.
+  // Resets scanPhaseRef to 'idle' before delegating because performScan's own
+  // guard refuses to run from any other state.
+  const sendPreview = useCallback(() => {
+    // Guard against double-invocation (double-tap or timer + button race): if
+    // the phase has already moved on, this call is a stale duplicate — drop it.
+    if (scanPhaseRef.current !== 'preview') return
+    if (previewTimerRef.current !== null) {
+      window.clearTimeout(previewTimerRef.current)
+      previewTimerRef.current = null
+    }
+    const blob = previewBlobRef.current
+    const manual = previewWasManualRef.current
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current)
+      previewUrlRef.current = null
+    }
+    previewBlobRef.current = null
+    previewWasManualRef.current = false
+    setPreviewUrl(null)
+    scanPhaseRef.current = 'idle'
+    setScanPhase('idle')
+    if (!blob) {
+      // Defensive — should not happen, but if it does, drop back to scanning.
+      resumeScanning()
+      return
+    }
+    performScanRef.current(blob, manual)
+  }, [resumeScanning])
+
+  const sendPreviewRef = useRef<() => void>(sendPreview)
+  useEffect(() => {
+    sendPreviewRef.current = sendPreview
+  }, [sendPreview])
+
+  // presentPreview accepts a freshly captured (and cropped, when bounds were
+  // available) blob and surfaces it as an overlay so the user can confirm or
+  // retake. After PREVIEW_AUTO_SEND_MS the auto-timer proceeds with Send so
+  // the fire-and-forget feel is preserved when the kid keeps scanning.
+  const presentPreview = useCallback((blob: Blob, manual: boolean) => {
+    previewBlobRef.current = blob
+    previewWasManualRef.current = manual
+    const url = URL.createObjectURL(blob)
+    previewUrlRef.current = url
+    setPreviewUrl(url)
+    scanPhaseRef.current = 'preview'
+    setScanPhase('preview')
+    previewTimerRef.current = window.setTimeout(() => {
+      previewTimerRef.current = null
+      sendPreviewRef.current()
+    }, PREVIEW_AUTO_SEND_MS)
+  }, [])
+
+  const presentPreviewRef = useRef<(blob: Blob, manual: boolean) => void>(presentPreview)
+  useEffect(() => {
+    presentPreviewRef.current = presentPreview
+  }, [presentPreview])
+
+  const handlePreviewSend = useCallback(() => {
+    sendPreview()
+  }, [sendPreview])
+
+  const handlePreviewRetake = useCallback(() => {
+    scanPhaseRef.current = 'idle'
+    setScanPhase('idle')
+    resumeScanning()
+  }, [resumeScanning])
+
   // Auto-detection rAF loop. Activates once camera permission is granted and
   // runs until the component unmounts or a successful capture freezes the
   // scanner. Each tick downsamples the current frame, runs Sobel edges, and
@@ -307,7 +439,7 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
 
     let cancelled = false
 
-    const captureLocked = (canvas: HTMLCanvasElement) => {
+    const captureLocked = (sourceCanvas: HTMLCanvasElement) => {
       // Synchronous transition to `captured` guards against double-fire if
       // the rAF callback is invoked again before toBlob resolves.
       scanStatusRef.current = 'captured'
@@ -322,36 +454,94 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
         }
       }
 
-      const dispatchBlob = (blob: Blob | null) => {
-        if (blob) {
-          performScanRef.current(blob, false)
-        } else {
-          // toBlob yielded null (or toBlob was unavailable and toDataURL failed).
-          // Revert so the scanner is not permanently frozen.
-          scanStatusRef.current = 'searching'
-          setScanStatus('searching')
-          candidateBoundsRef.current = null
-          candidateTicksRef.current = 0
-          lastTickRef.current = 0
-          if (video && typeof video.play === 'function') {
-            try {
-              void video.play()
-            } catch {
-              // best-effort
-            }
+      const revertToSearching = () => {
+        scanStatusRef.current = 'searching'
+        setScanStatus('searching')
+        candidateBoundsRef.current = null
+        candidateTicksRef.current = 0
+        lastTickRef.current = 0
+        lockedBoundsRef.current = null
+        if (video && typeof video.play === 'function') {
+          try {
+            void video.play()
+          } catch {
+            // best-effort
           }
-          if (!cancelled && tickFnRef.current) {
-            rafIdRef.current = window.requestAnimationFrame(tickFnRef.current)
-          }
+        }
+        if (!cancelled && tickFnRef.current) {
+          rafIdRef.current = window.requestAnimationFrame(tickFnRef.current)
         }
       }
 
-      if (typeof canvas.toBlob === 'function') {
-        canvas.toBlob(dispatchBlob, 'image/jpeg', 0.95)
+      // Compute the crop rectangle from the locked bounds. detectCardRectangle
+      // returns bounds in the same coordinate space as its input ImageData,
+      // which is the source canvas at full video resolution — no extra scaling
+      // needed. Pad by 5% on each axis to avoid clipping the card border / set
+      // symbol / collector number, then clamp to the canvas frame.
+      const bounds = lockedBoundsRef.current
+      const fullW = sourceCanvas.width
+      const fullH = sourceCanvas.height
+      let sx = 0
+      let sy = 0
+      let sw = fullW
+      let sh = fullH
+      if (bounds && fullW > 0 && fullH > 0) {
+        const padX = bounds.w * CAPTURE_CROP_PAD
+        const padY = bounds.h * CAPTURE_CROP_PAD
+        sx = bounds.x - padX
+        sy = bounds.y - padY
+        sw = bounds.w + padX * 2
+        sh = bounds.h + padY * 2
+        if (sx < 0) { sw += sx; sx = 0 }
+        if (sy < 0) { sh += sy; sy = 0 }
+        if (sx + sw > fullW) sw = fullW - sx
+        if (sy + sh > fullH) sh = fullH - sy
+        // Defensive: if clamping produced a degenerate or invalid rect, fall
+        // back to the uncropped frame so capture still proceeds.
+        if (!Number.isFinite(sw) || !Number.isFinite(sh) || sw <= 0 || sh <= 0) {
+          sx = 0; sy = 0; sw = fullW; sh = fullH
+        }
+      }
+
+      const outCanvas = canvasRef.current
+      if (!outCanvas) {
+        revertToSearching()
+        return
+      }
+      outCanvas.width = Math.max(1, Math.round(sw))
+      outCanvas.height = Math.max(1, Math.round(sh))
+      const outCtx = outCanvas.getContext('2d')
+      if (!outCtx || typeof outCtx.drawImage !== 'function') {
+        revertToSearching()
+        return
+      }
+      try {
+        outCtx.drawImage(
+          sourceCanvas,
+          sx, sy, sw, sh,
+          0, 0, outCanvas.width, outCanvas.height,
+        )
+      } catch {
+        revertToSearching()
+        return
+      }
+
+      const dispatchBlob = (blob: Blob | null) => {
+        if (blob) {
+          presentPreviewRef.current(blob, false)
+        } else {
+          // toBlob yielded null (or toBlob was unavailable and toDataURL failed).
+          // Revert so the scanner is not permanently frozen.
+          revertToSearching()
+        }
+      }
+
+      if (typeof outCanvas.toBlob === 'function') {
+        outCanvas.toBlob(dispatchBlob, 'image/jpeg', 0.95)
       } else {
         // toDataURL fallback for environments where toBlob is unavailable.
         try {
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
+          const dataUrl = outCanvas.toDataURL('image/jpeg', 0.95)
           const [header, b64] = dataUrl.split(',')
           const mime = header.match(/:(.*?);/)?.[1] ?? 'image/jpeg'
           const bytes = atob(b64)
@@ -366,9 +556,13 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
 
     const tick = (timestamp: number) => {
       if (cancelled) return
-      // Stop the loop entirely once we are submitting or showing a result —
-      // it will be restarted by resumeScanning when the user moves on.
-      if (scanPhaseRef.current === 'submitting' || scanPhaseRef.current === 'result') {
+      // Stop the loop entirely once we are submitting, previewing, or showing
+      // a result — it will be restarted by resumeScanning when the user moves on.
+      if (
+        scanPhaseRef.current === 'preview' ||
+        scanPhaseRef.current === 'submitting' ||
+        scanPhaseRef.current === 'result'
+      ) {
         rafIdRef.current = null
         return
       }
@@ -436,6 +630,9 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
                 rafIdRef.current = window.requestAnimationFrame(tick)
                 return
               }
+              // Remember the bounds we locked on so captureLocked can crop the
+              // JPEG to just the card region.
+              lockedBoundsRef.current = detection
               captureLocked(canvas)
               return
             }
@@ -486,8 +683,9 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
       window.clearTimeout(cooldownTimerRef.current)
       cooldownTimerRef.current = null
     }
+    clearPreview()
     onClose()
-  }, [onClose])
+  }, [clearPreview, onClose])
 
   // Lock body scroll while the scanner is mounted, just like Dialog does.
   useEffect(() => {
@@ -503,16 +701,25 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
     closeButtonRef.current?.focus()
   }, [])
 
-  // When the result modal appears, move focus to its first action so keyboard
-  // users land inside the modal rather than staying on the close button behind it.
+  // When the result modal or preview overlay appears, move focus to its first
+  // action so keyboard/screen-reader users land inside it rather than staying
+  // on whichever control was focused before the overlay rendered.
   useEffect(() => {
-    if (scanPhase !== 'result') return
-    const modal = dialogRef.current?.querySelector<HTMLElement>('[data-testid="scan-result-modal"]')
-    if (!modal) return
-    const first = modal.querySelector<HTMLElement>(
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    )
-    first?.focus()
+    if (scanPhase === 'result') {
+      const modal = dialogRef.current?.querySelector<HTMLElement>('[data-testid="scan-result-modal"]')
+      if (!modal) return
+      const first = modal.querySelector<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      first?.focus()
+    } else if (scanPhase === 'preview') {
+      const overlay = dialogRef.current?.querySelector<HTMLElement>('[data-testid="card-scanner-preview"]')
+      if (!overlay) return
+      const first = overlay.querySelector<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      first?.focus()
+    }
   }, [scanPhase])
 
   // Escape to dismiss + Tab focus trap (mirrors Dialog behaviour).
@@ -555,7 +762,11 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
   }, [handleClose])
 
   const handleManualCapture = useCallback(() => {
-    if (scanPhaseRef.current === 'submitting' || scanPhaseRef.current === 'result') return
+    if (
+      scanPhaseRef.current === 'preview' ||
+      scanPhaseRef.current === 'submitting' ||
+      scanPhaseRef.current === 'result'
+    ) return
     // Stop the auto-detect loop before the async toBlob call to prevent a race
     // where the rAF fires an extra auto-capture while this capture is in progress.
     scanStatusRef.current = 'captured'
@@ -580,7 +791,7 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
     canvas.toBlob(
       blob => {
         if (blob) {
-          performScanRef.current(blob, true)
+          presentPreviewRef.current(blob, true)
         } else {
           revertToSearching()
         }
@@ -777,13 +988,49 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
           <button
             type="button"
             onClick={handleManualCapture}
-            disabled={scanPhase === 'submitting' || scanPhase === 'result'}
+            disabled={
+              scanPhase === 'preview' || scanPhase === 'submitting' || scanPhase === 'result'
+            }
             aria-label={t('scanner.shutter')}
             data-testid="card-scanner-shutter"
             className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center justify-center h-16 w-16 rounded-full bg-white text-gray-900 shadow-lg ring-4 ring-white/30 hover:bg-gray-100 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
           >
             <Camera size={28} />
           </button>
+
+          {scanPhase === 'preview' && previewUrl && (
+            <div
+              data-testid="card-scanner-preview"
+              role="dialog"
+              aria-label={t('scanner.preview.title')}
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/85 p-4"
+            >
+              <img
+                src={previewUrl}
+                alt={t('scanner.preview.imageAlt')}
+                data-testid="card-scanner-preview-image"
+                className="max-h-[60vh] max-w-full rounded-lg shadow-xl object-contain"
+              />
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  data-testid="card-scanner-preview-retake"
+                  onClick={handlePreviewRetake}
+                  className="px-5 py-2 rounded bg-gray-700 hover:bg-gray-600 text-white text-sm cursor-pointer"
+                >
+                  {t('scanner.preview.retake')}
+                </button>
+                <button
+                  type="button"
+                  data-testid="card-scanner-preview-send"
+                  onClick={handlePreviewSend}
+                  className="px-5 py-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-sm cursor-pointer"
+                >
+                  {t('scanner.preview.send')}
+                </button>
+              </div>
+            </div>
+          )}
 
           {torchSupported && (
             <button

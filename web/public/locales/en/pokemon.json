@@ -155,6 +155,12 @@
       "timedOut": "Scan timed out, try again",
       "noVariant": "This card has no variants to add"
     },
+    "preview": {
+      "title": "Preview captured card",
+      "imageAlt": "Captured card preview",
+      "send": "Send",
+      "retake": "Retake"
+    },
     "result": {
       "singleLabel": "Scan match: {{name}}",
       "multiLabel": "Multiple matches",
