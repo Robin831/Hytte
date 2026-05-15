@@ -1,0 +1,700 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
+import { ArrowLeft, Loader2 } from 'lucide-react'
+import ToastList from '../components/ToastList'
+import { useToast } from '../hooks/useToast'
+import { formatNumber } from '../utils/formatDate'
+
+// SCAN_POLL_MS keeps the page roughly in sync with the worker's progress.
+// 30 s is fast enough that queued→processing→matched feels responsive while
+// keeping the API chatter modest.
+const SCAN_POLL_MS = 30000
+
+// RESOLVED_WINDOW_DAYS scopes the "Recently resolved" filter to the past week
+// so the list stays focused on what the user just acted on rather than turning
+// into a long historical log.
+const RESOLVED_WINDOW_DAYS = 7
+
+interface VariantDTO {
+  id: number
+  kind: string
+  price_eur: number
+  price_nok: number | null
+  owned?: boolean
+  owned_id?: number | null
+  quantity?: number
+  condition?: string
+  notes?: string
+}
+
+interface CardDTO {
+  id: string
+  set_id: string
+  set_name?: string
+  name: string
+  collector_no: string
+  rarity: string
+  image_small_url: string
+  image_large_url: string
+  variants: VariantDTO[]
+}
+
+interface SetDTO {
+  id: string
+  name: string
+}
+
+type ScanStatus =
+  | 'queued'
+  | 'processing'
+  | 'matched'
+  | 'no_match'
+  | 'failed'
+  | 'added'
+  | 'discarded'
+
+interface ScanJob {
+  id: number
+  status: ScanStatus
+  created_at: string
+  processed_at?: string | null
+  resolved_at?: string | null
+  confidence?: number | null
+  matched_card?: CardDTO | null
+  set?: SetDTO | null
+  error_message?: string
+  has_image: boolean
+}
+
+interface TodayUsage {
+  used: number
+  cap: number
+}
+
+type FilterKey = 'needsReview' | 'pending' | 'resolved'
+const FILTERS: FilterKey[] = ['needsReview', 'pending', 'resolved']
+
+// statusForFilter maps a UI filter chip to the server-side status set passed in
+// ?status=. The backend will return resolved rows without time-windowing; we
+// clip to the last RESOLVED_WINDOW_DAYS client-side for the resolved tab.
+function statusForFilter(filter: FilterKey): string[] {
+  switch (filter) {
+    case 'needsReview':
+      return ['matched', 'no_match', 'failed']
+    case 'pending':
+      return ['queued', 'processing']
+    case 'resolved':
+      return ['added', 'discarded']
+  }
+}
+
+function formatNok(amount: number | null | undefined): string {
+  if (amount == null) return '—'
+  return formatNumber(amount, {
+    style: 'currency',
+    currency: 'NOK',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })
+}
+
+// elapsedSeconds returns the integer seconds elapsed between `since` and now,
+// clamped to >= 0 so a slightly-skewed server clock doesn't render negative
+// numbers in the pending spinner caption.
+function elapsedSeconds(since: string, now: number): number {
+  const t = Date.parse(since)
+  if (Number.isNaN(t)) return 0
+  return Math.max(0, Math.round((now - t) / 1000))
+}
+
+interface StatusPillProps {
+  status: ScanStatus
+  t: TFunction<'pokemon'>
+}
+
+function StatusPill({ status, t }: StatusPillProps) {
+  const colorClass = ((): string => {
+    switch (status) {
+      case 'queued':
+        return 'bg-gray-700 text-gray-200'
+      case 'processing':
+        return 'bg-blue-600/30 text-blue-200 border border-blue-500/40'
+      case 'matched':
+        return 'bg-emerald-600/30 text-emerald-200 border border-emerald-500/40'
+      case 'no_match':
+        return 'bg-amber-600/30 text-amber-200 border border-amber-500/40'
+      case 'failed':
+        return 'bg-red-700/40 text-red-200 border border-red-600/50'
+      case 'added':
+        return 'bg-gray-700 text-gray-300'
+      case 'discarded':
+        return 'bg-gray-800 text-gray-400'
+    }
+  })()
+  const labelKey = ((): string => {
+    switch (status) {
+      case 'no_match':
+        return 'scanned.status.noMatch'
+      default:
+        return `scanned.status.${status}`
+    }
+  })()
+  return (
+    <span
+      data-testid={`scan-status-pill-${status}`}
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colorClass}`}
+    >
+      {t(labelKey as 'scanned.status.queued')}
+    </span>
+  )
+}
+
+interface ThumbnailProps {
+  scan: ScanJob
+  alt: string
+  placeholder: string
+}
+
+// Thumbnail renders the scan image when the backend reports has_image; falls
+// back to a neutral placeholder for resolved rows whose image was deleted or
+// for rows whose <img> errors at load time (e.g. file removed between the list
+// fetch and the actual image GET).
+function Thumbnail({ scan, alt, placeholder }: ThumbnailProps) {
+  const [errored, setErrored] = useState(false)
+  const showImage = scan.has_image && !errored
+  return (
+    <div
+      data-testid={`scan-thumbnail-${scan.id}`}
+      className="h-16 w-12 sm:h-20 sm:w-14 shrink-0 rounded overflow-hidden bg-gray-800/60 border border-gray-800 flex items-center justify-center"
+    >
+      {showImage ? (
+        <img
+          src={`/api/pokemon/scans/${scan.id}/image`}
+          alt={alt}
+          loading="lazy"
+          onError={() => setErrored(true)}
+          className="max-h-full max-w-full object-cover"
+        />
+      ) : (
+        <span className="px-1 text-[10px] text-center text-gray-500 leading-tight">
+          {placeholder}
+        </span>
+      )}
+    </div>
+  )
+}
+
+interface ScanRowProps {
+  scan: ScanJob
+  busy: boolean
+  now: number
+  onResolve: (scan: ScanJob, body: ResolveBody) => Promise<void>
+  t: TFunction<'pokemon'>
+}
+
+interface ResolveBody {
+  action: 'add' | 'discard' | 'retry'
+  variant_id?: number
+  quantity?: number
+  condition?: string
+  notes?: string
+}
+
+function ScanRow({ scan, busy, now, onResolve, t }: ScanRowProps) {
+  const [pickingVariant, setPickingVariant] = useState(false)
+  const variants = scan.matched_card?.variants ?? []
+  const hasMultiVariant = variants.length > 1
+
+  const handleAddSingle = () => {
+    const v = variants[0]
+    if (!v) return
+    void onResolve(scan, {
+      action: 'add',
+      variant_id: v.id,
+      quantity: 1,
+      condition: '',
+      notes: '',
+    })
+  }
+
+  const handleAddVariant = (variantId: number) => {
+    setPickingVariant(false)
+    void onResolve(scan, {
+      action: 'add',
+      variant_id: variantId,
+      quantity: 1,
+      condition: '',
+      notes: '',
+    })
+  }
+
+  const handleDiscard = () => {
+    void onResolve(scan, { action: 'discard' })
+  }
+
+  const handleRetry = () => {
+    void onResolve(scan, { action: 'retry' })
+  }
+
+  const renderBody = () => {
+    if (scan.status === 'matched' && scan.matched_card) {
+      const card = scan.matched_card
+      const variant = variants[0]
+      const pct = scan.confidence != null ? Math.round(scan.confidence * 100) : null
+      return (
+        <div className="min-w-0 flex flex-col gap-0.5">
+          <p className="text-sm font-medium text-white truncate" title={card.name}>
+            {card.name}
+          </p>
+          <p className="text-xs text-gray-400 truncate">
+            {scan.set?.name ?? card.set_name ?? card.set_id}
+            {' · '}
+            {t('tile.collectorNo', { number: card.collector_no })}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-300">
+            {pct != null && <span>{t('scanned.confidence', { pct })}</span>}
+            <span>{variant ? formatNok(variant.price_nok) : t('scanned.noPriceYet')}</span>
+          </div>
+        </div>
+      )
+    }
+    if (scan.status === 'no_match') {
+      const pct = scan.confidence != null ? Math.round(scan.confidence * 100) : null
+      return (
+        <div className="min-w-0 flex flex-col gap-0.5">
+          {pct != null && (
+            <p className="text-sm text-gray-200">{t('scanned.confidence', { pct })}</p>
+          )}
+          {scan.error_message && (
+            <p className="text-xs text-amber-200/80 break-words">{scan.error_message}</p>
+          )}
+        </div>
+      )
+    }
+    if (scan.status === 'failed') {
+      return (
+        <div className="min-w-0 flex flex-col gap-0.5">
+          <p className="text-xs text-red-200 break-words">
+            {scan.error_message || t('scanner.errors.scanFailed')}
+          </p>
+        </div>
+      )
+    }
+    if (scan.status === 'queued' || scan.status === 'processing') {
+      const seconds = elapsedSeconds(scan.created_at, now)
+      return (
+        <div className="min-w-0 flex items-center gap-2 text-xs text-gray-400">
+          <Loader2 size={14} className="animate-spin shrink-0" aria-hidden="true" />
+          <span>{t('scanned.elapsed', { seconds })}</span>
+        </div>
+      )
+    }
+    if (scan.status === 'added' && scan.matched_card) {
+      const card = scan.matched_card
+      return (
+        <div className="min-w-0 flex flex-col gap-0.5">
+          <p className="text-sm text-gray-200 truncate" title={card.name}>
+            {card.name}
+          </p>
+          <p className="text-xs text-gray-500 truncate">
+            {scan.set?.name ?? card.set_name ?? card.set_id}
+            {' · '}
+            {t('tile.collectorNo', { number: card.collector_no })}
+          </p>
+        </div>
+      )
+    }
+    // discarded or added without matched_card (defensive)
+    return null
+  }
+
+  const renderActions = () => {
+    if (scan.status === 'matched') {
+      return (
+        <div className="flex flex-wrap items-center gap-2 mt-2">
+          {hasMultiVariant ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setPickingVariant(prev => !prev)}
+                disabled={busy}
+                data-testid={`scan-action-add-${scan.id}`}
+                aria-expanded={pickingVariant}
+                className="px-3 py-1.5 text-xs rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800/60 disabled:cursor-not-allowed text-white cursor-pointer"
+              >
+                {t('scanned.action.add')}
+              </button>
+              {pickingVariant && (
+                <div
+                  data-testid={`scan-variant-picker-${scan.id}`}
+                  role="group"
+                  aria-label={t('scanned.action.pickVariant')}
+                  className="flex flex-wrap gap-1.5 basis-full"
+                >
+                  {variants.map(v => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => handleAddVariant(v.id)}
+                      disabled={busy}
+                      data-testid={`scan-variant-${scan.id}-${v.id}`}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-gray-700 hover:border-emerald-500 hover:bg-emerald-500/10 disabled:cursor-not-allowed text-xs text-white cursor-pointer"
+                    >
+                      <span>{t(`variantKind.${v.kind}`, { defaultValue: v.kind })}</span>
+                      <span className="text-[10px] text-gray-400">{formatNok(v.price_nok)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={handleAddSingle}
+              disabled={busy || variants.length === 0}
+              data-testid={`scan-action-add-${scan.id}`}
+              className="px-3 py-1.5 text-xs rounded bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800/60 disabled:cursor-not-allowed text-white cursor-pointer"
+            >
+              {t('scanned.action.add')}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleDiscard}
+            disabled={busy}
+            data-testid={`scan-action-discard-${scan.id}`}
+            className="px-3 py-1.5 text-xs rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-60 disabled:cursor-not-allowed text-white cursor-pointer"
+          >
+            {t('scanned.action.discard')}
+          </button>
+          <button
+            type="button"
+            onClick={handleRetry}
+            disabled={busy}
+            data-testid={`scan-action-retry-${scan.id}`}
+            className="px-3 py-1.5 text-xs rounded border border-gray-700 hover:border-gray-500 disabled:opacity-60 disabled:cursor-not-allowed text-gray-200 cursor-pointer"
+          >
+            {t('scanned.action.retry')}
+          </button>
+        </div>
+      )
+    }
+    if (scan.status === 'no_match') {
+      return (
+        <div className="flex flex-wrap items-center gap-2 mt-2">
+          <button
+            type="button"
+            onClick={handleRetry}
+            disabled={busy}
+            data-testid={`scan-action-retry-${scan.id}`}
+            className="px-3 py-1.5 text-xs rounded border border-gray-700 hover:border-gray-500 disabled:opacity-60 disabled:cursor-not-allowed text-gray-200 cursor-pointer"
+          >
+            {t('scanned.action.retry')}
+          </button>
+          <button
+            type="button"
+            onClick={handleDiscard}
+            disabled={busy}
+            data-testid={`scan-action-discard-${scan.id}`}
+            className="px-3 py-1.5 text-xs rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-60 disabled:cursor-not-allowed text-white cursor-pointer"
+          >
+            {t('scanned.action.discard')}
+          </button>
+          <Link
+            to="/pokemon"
+            data-testid={`scan-action-manual-${scan.id}`}
+            className="px-3 py-1.5 text-xs rounded border border-gray-700 hover:border-gray-500 text-gray-200"
+          >
+            {t('scanned.action.enterManually')}
+          </Link>
+        </div>
+      )
+    }
+    if (scan.status === 'failed') {
+      return (
+        <div className="flex flex-wrap items-center gap-2 mt-2">
+          <button
+            type="button"
+            onClick={handleRetry}
+            disabled={busy}
+            data-testid={`scan-action-retry-${scan.id}`}
+            className="px-3 py-1.5 text-xs rounded border border-gray-700 hover:border-gray-500 disabled:opacity-60 disabled:cursor-not-allowed text-gray-200 cursor-pointer"
+          >
+            {t('scanned.action.retry')}
+          </button>
+          <button
+            type="button"
+            onClick={handleDiscard}
+            disabled={busy}
+            data-testid={`scan-action-discard-${scan.id}`}
+            className="px-3 py-1.5 text-xs rounded bg-gray-700 hover:bg-gray-600 disabled:opacity-60 disabled:cursor-not-allowed text-white cursor-pointer"
+          >
+            {t('scanned.action.discard')}
+          </button>
+        </div>
+      )
+    }
+    return null
+  }
+
+  return (
+    <li
+      data-testid={`scan-row-${scan.id}`}
+      data-status={scan.status}
+      className="flex flex-col sm:flex-row gap-3 p-3 bg-gray-800/40 border border-gray-800 rounded-lg"
+    >
+      <div className="flex gap-3 min-w-0 flex-1">
+        <Thumbnail
+          scan={scan}
+          alt={t('scanned.thumbnailAlt')}
+          placeholder={t('scanned.thumbnailPlaceholder')}
+        />
+        <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+          <StatusPill status={scan.status} t={t} />
+          {renderBody()}
+          {renderActions()}
+        </div>
+      </div>
+    </li>
+  )
+}
+
+export default function PokemonScannedPage() {
+  const { t } = useTranslation('pokemon')
+  const { toasts, showToast } = useToast()
+
+  const [filter, setFilter] = useState<FilterKey>('needsReview')
+  const [scans, setScans] = useState<ScanJob[]>([])
+  const [today, setToday] = useState<TodayUsage | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [busyId, setBusyId] = useState<number | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+
+  // tick the clock once per second so the "elapsed time" caption on pending
+  // rows updates without forcing a full refetch.
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  // attemptRef bumps on every explicit refetch (mount, filter change, resolve,
+  // poll tick) so the fetch effect re-runs without us needing a separate
+  // useEffect for each trigger.
+  const [attempt, setAttempt] = useState(0)
+  const refetch = useCallback(() => setAttempt(a => a + 1), [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    const statuses = statusForFilter(filter).join(',')
+    setLoading(true)
+    setError('')
+    ;(async () => {
+      try {
+        const res = await fetch(
+          `/api/pokemon/scans?status=${encodeURIComponent(statuses)}`,
+          { credentials: 'include', signal: controller.signal },
+        )
+        if (!res.ok) throw new Error(t('scanned.loadError'))
+        const data: { scans?: ScanJob[]; today?: TodayUsage } = await res.json()
+        setScans(data.scans ?? [])
+        setToday(data.today ?? null)
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        setError(err instanceof Error ? err.message : t('scanned.loadError'))
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    })()
+    return () => controller.abort()
+  }, [filter, attempt, t])
+
+  // Poll while the page is visible so the kid sees queued→processing→matched
+  // transitions without manually refreshing. We pause polling when the tab is
+  // hidden to avoid wasting bandwidth on background tabs.
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    let intervalId: ReturnType<typeof window.setInterval> | null = null
+
+    const start = () => {
+      if (intervalId !== null) return
+      intervalId = window.setInterval(() => {
+        if (document.visibilityState !== 'visible') return
+        refetch()
+      }, SCAN_POLL_MS)
+    }
+    const stop = () => {
+      if (intervalId !== null) {
+        window.clearInterval(intervalId)
+        intervalId = null
+      }
+    }
+
+    if (document.visibilityState === 'visible') start()
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        start()
+        refetch()
+      } else {
+        stop()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      stop()
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [refetch])
+
+  const visibleScans = useMemo(() => {
+    if (filter !== 'resolved') return scans
+    const cutoff = Date.now() - RESOLVED_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    return scans.filter(s => {
+      const ts = s.resolved_at ? Date.parse(s.resolved_at) : Date.parse(s.created_at)
+      return !Number.isNaN(ts) && ts >= cutoff
+    })
+  }, [scans, filter])
+
+  const handleResolve = useCallback(
+    async (scan: ScanJob, body: ResolveBody) => {
+      setBusyId(scan.id)
+      try {
+        const res = await fetch(`/api/pokemon/scans/${scan.id}/resolve`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) throw new Error(t('scanned.action.actionFailed'))
+        if (body.action === 'add') showToast(t('scanned.toast.added'), 'success')
+        else if (body.action === 'discard') showToast(t('scanned.toast.discarded'), 'success')
+        else if (body.action === 'retry') showToast(t('scanned.toast.retried'), 'success')
+        refetch()
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : t('scanned.action.actionFailed'),
+          'error',
+        )
+      } finally {
+        setBusyId(prev => (prev === scan.id ? null : prev))
+      }
+    },
+    [refetch, showToast, t],
+  )
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white">
+      <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
+        <header className="space-y-3">
+          <Link
+            to="/pokemon"
+            className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-white transition-colors"
+          >
+            <ArrowLeft size={16} />
+            {t('detail.back')}
+          </Link>
+
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+            <div>
+              <h1 className="text-2xl font-semibold">{t('scanned.title')}</h1>
+              <p className="text-sm text-gray-400">{t('scanned.subtitle')}</p>
+            </div>
+            {today && (
+              <span
+                data-testid="scanned-today-usage"
+                className="inline-flex items-center px-3 py-1 rounded-full bg-gray-800/60 border border-gray-700 text-xs text-gray-200"
+              >
+                {t('scanned.todayUsage', { used: today.used, cap: today.cap })}
+              </span>
+            )}
+          </div>
+
+          <div
+            role="radiogroup"
+            aria-label={t('scanned.filter.label')}
+            data-testid="scanned-filter"
+            className="inline-flex flex-wrap gap-1.5"
+          >
+            {FILTERS.map(f => {
+              const checked = f === filter
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  role="radio"
+                  aria-checked={checked}
+                  data-filter={f}
+                  data-testid={`scanned-filter-${f}`}
+                  onClick={() => setFilter(f)}
+                  className={`px-3 py-1.5 text-xs rounded-full border cursor-pointer transition-colors ${
+                    checked
+                      ? 'bg-emerald-600/30 border-emerald-500/70 text-white'
+                      : 'bg-gray-800/60 border-gray-700 text-gray-300 hover:text-white hover:border-gray-600'
+                  }`}
+                >
+                  {t(`scanned.filter.${f}` as 'scanned.filter.needsReview')}
+                </button>
+              )
+            })}
+          </div>
+        </header>
+
+        {error && (
+          <div
+            role="alert"
+            className="px-3 py-2 bg-red-900/40 border border-red-800 text-red-300 text-sm rounded flex items-center justify-between gap-3"
+          >
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={refetch}
+              className="px-2 py-1 text-xs bg-red-800/60 hover:bg-red-700 text-white rounded transition-colors cursor-pointer"
+            >
+              {t('retry')}
+            </button>
+          </div>
+        )}
+
+        {loading && !error && (
+          <ul aria-busy="true" className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <li
+                key={i}
+                className="h-24 rounded-lg bg-gray-800/40 border border-gray-800 animate-pulse"
+                data-testid="scanned-skeleton"
+              />
+            ))}
+          </ul>
+        )}
+
+        {!loading && !error && visibleScans.length === 0 && (
+          <p
+            data-testid="scanned-empty"
+            className="text-sm text-gray-400 py-6 text-center"
+          >
+            {t('scanned.empty')}
+          </p>
+        )}
+
+        {!loading && !error && visibleScans.length > 0 && (
+          <ul className="space-y-3" data-testid="scanned-list">
+            {visibleScans.map(scan => (
+              <ScanRow
+                key={scan.id}
+                scan={scan}
+                busy={busyId === scan.id}
+                now={now}
+                onResolve={handleResolve}
+                t={t}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+      <ToastList toasts={toasts} />
+    </div>
+  )
+}

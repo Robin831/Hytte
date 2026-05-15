@@ -141,6 +141,47 @@
     "pendingBadgeAria_one": "{{count}} scan result to review",
     "pendingBadgeAria_other": "{{count}} scan results to review"
   },
+  "scanned": {
+    "title": "Scanned cards",
+    "subtitle": "Review your recent scans",
+    "empty": "No scans yet — open the camera scanner from Add card.",
+    "todayUsage": "{{used}} / {{cap}} scans today",
+    "confidence": "{{pct}}% confidence",
+    "thumbnailAlt": "Scanned card preview",
+    "thumbnailPlaceholder": "Image no longer available",
+    "elapsed": "{{seconds}} s",
+    "loadError": "Failed to load scans",
+    "noPriceYet": "Price unavailable",
+    "filter": {
+      "label": "Filter scans",
+      "needsReview": "Needs review",
+      "pending": "Pending",
+      "resolved": "Recently resolved"
+    },
+    "status": {
+      "queued": "Queued",
+      "processing": "Processing",
+      "matched": "Matched",
+      "noMatch": "No match",
+      "failed": "Failed",
+      "added": "Added",
+      "discarded": "Discarded"
+    },
+    "action": {
+      "add": "Add to collection",
+      "addVariant": "Add as {{variant}}",
+      "discard": "Discard",
+      "retry": "Try again",
+      "enterManually": "Enter manually",
+      "pickVariant": "Pick a variant",
+      "actionFailed": "Action failed, try again"
+    },
+    "toast": {
+      "added": "Added to collection",
+      "discarded": "Discarded",
+      "retried": "Sent back to the scanner queue"
+    }
+  },
   "scanner": {
     "dialogLabel": "Scan a Pokémon card",
     "requesting": "Requesting camera access…",

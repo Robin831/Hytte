@@ -140,6 +140,47 @@
   "nav": {
     "pendingBadgeAria_other": "ผลการสแกน {{count}} รายการรอการตรวจสอบ"
   },
+  "scanned": {
+    "title": "การ์ดที่สแกน",
+    "subtitle": "ตรวจสอบการสแกนล่าสุดของคุณ",
+    "empty": "ยังไม่มีการสแกน — เปิดเครื่องสแกนกล้องจากเมนูเพิ่มการ์ด",
+    "todayUsage": "{{used}} / {{cap}} ครั้งวันนี้",
+    "confidence": "ความมั่นใจ {{pct}}%",
+    "thumbnailAlt": "ตัวอย่างการ์ดที่สแกน",
+    "thumbnailPlaceholder": "ไม่มีภาพแล้ว",
+    "elapsed": "{{seconds}} วินาที",
+    "loadError": "โหลดรายการสแกนไม่สำเร็จ",
+    "noPriceYet": "ไม่มีราคา",
+    "filter": {
+      "label": "กรองการสแกน",
+      "needsReview": "ต้องตรวจสอบ",
+      "pending": "กำลังประมวลผล",
+      "resolved": "เพิ่งจัดการเสร็จ"
+    },
+    "status": {
+      "queued": "เข้าคิว",
+      "processing": "กำลังประมวลผล",
+      "matched": "พบการ์ดที่ตรง",
+      "noMatch": "ไม่พบที่ตรง",
+      "failed": "ล้มเหลว",
+      "added": "เพิ่มแล้ว",
+      "discarded": "ทิ้งแล้ว"
+    },
+    "action": {
+      "add": "เพิ่มเข้าคอลเลกชัน",
+      "addVariant": "เพิ่มเป็น {{variant}}",
+      "discard": "ทิ้ง",
+      "retry": "ลองอีกครั้ง",
+      "enterManually": "ใส่ด้วยตนเอง",
+      "pickVariant": "เลือกชนิด",
+      "actionFailed": "การดำเนินการล้มเหลว ลองอีกครั้ง"
+    },
+    "toast": {
+      "added": "เพิ่มเข้าคอลเลกชันแล้ว",
+      "discarded": "ทิ้งแล้ว",
+      "retried": "ส่งกลับเข้าคิวสแกนแล้ว"
+    }
+  },
   "scanner": {
     "dialogLabel": "สแกนการ์ดโปเกมอน",
     "requesting": "กำลังขออนุญาตเข้าถึงกล้อง…",

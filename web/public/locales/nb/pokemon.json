@@ -141,6 +141,47 @@
     "pendingBadgeAria_one": "{{count}} skanneresultat å se gjennom",
     "pendingBadgeAria_other": "{{count}} skanneresultater å se gjennom"
   },
+  "scanned": {
+    "title": "Skannede kort",
+    "subtitle": "Se gjennom nylige skanninger",
+    "empty": "Ingen skanninger ennå — åpne kameraskanneren fra Legg til kort.",
+    "todayUsage": "{{used}} / {{cap}} skanninger i dag",
+    "confidence": "{{pct}} % sikkerhet",
+    "thumbnailAlt": "Forhåndsvisning av skannet kort",
+    "thumbnailPlaceholder": "Bilde ikke lenger tilgjengelig",
+    "elapsed": "{{seconds}} s",
+    "loadError": "Kunne ikke laste skanninger",
+    "noPriceYet": "Pris utilgjengelig",
+    "filter": {
+      "label": "Filtrer skanninger",
+      "needsReview": "Trenger gjennomgang",
+      "pending": "Behandler",
+      "resolved": "Nylig fullført"
+    },
+    "status": {
+      "queued": "I kø",
+      "processing": "Behandler",
+      "matched": "Treff",
+      "noMatch": "Ingen treff",
+      "failed": "Mislyktes",
+      "added": "Lagt til",
+      "discarded": "Forkastet"
+    },
+    "action": {
+      "add": "Legg til i samlingen",
+      "addVariant": "Legg til som {{variant}}",
+      "discard": "Forkast",
+      "retry": "Prøv igjen",
+      "enterManually": "Legg inn manuelt",
+      "pickVariant": "Velg variant",
+      "actionFailed": "Handlingen mislyktes, prøv igjen"
+    },
+    "toast": {
+      "added": "Lagt til i samlingen",
+      "discarded": "Forkastet",
+      "retried": "Lagt tilbake i skannerkøen"
+    }
+  },
   "scanner": {
     "dialogLabel": "Skann et Pokémon-kort",
     "requesting": "Ber om tilgang til kameraet …",
