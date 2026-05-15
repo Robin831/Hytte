@@ -1044,3 +1044,64 @@ func TestGetUserScanDailyCap_FallsBackOnInvalidPref(t *testing.T) {
 		t.Errorf("expected fallback=%d, got %d", ScanDailyCap, got)
 	}
 }
+
+func TestScanCounts_AggregatesUnresolvedAndToday(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "counts@example.com")
+	setScanCapPref(t, db, u.ID, 42)
+
+	// 1 matched + 1 no_match + 1 failed → unresolved=3.
+	// 1 queued (counts toward today_used but NOT unresolved).
+	// 1 added (terminal → not unresolved).
+	insertScanJob(t, db, u.ID, scanJobStatusMatched, "", withMatchedCard("sv1-25", 0.9))
+	insertScanJob(t, db, u.ID, scanJobStatusNoMatch, "")
+	insertScanJob(t, db, u.ID, scanJobStatusFailed, "", withError("boom"))
+	insertScanJob(t, db, u.ID, scanJobStatusQueued, "")
+	insertScanJob(t, db, u.ID, scanJobStatusAdded, "")
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/scans/counts", nil), u)
+	rec := httptest.NewRecorder()
+	ScanCountsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[map[string]int](t, rec)
+	if body["unresolved"] != 3 {
+		t.Errorf("expected unresolved=3, got %d", body["unresolved"])
+	}
+	if body["today_used"] != 5 {
+		t.Errorf("expected today_used=5 (all 5 rows created today), got %d", body["today_used"])
+	}
+	if body["today_cap"] != 42 {
+		t.Errorf("expected today_cap=42 (from pref), got %d", body["today_cap"])
+	}
+}
+
+func TestScanCounts_OtherUsersDoNotLeak(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	uA := seedUser(t, db, 1, "a@example.com")
+	uB := seedUser(t, db, 2, "b@example.com")
+
+	insertScanJob(t, db, uB.ID, scanJobStatusMatched, "", withMatchedCard("sv1-25", 0.9))
+	insertScanJob(t, db, uB.ID, scanJobStatusFailed, "", withError("boom"))
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/scans/counts", nil), uA)
+	rec := httptest.NewRecorder()
+	ScanCountsHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[map[string]int](t, rec)
+	if body["unresolved"] != 0 {
+		t.Errorf("expected unresolved=0 for user A (no jobs of their own), got %d", body["unresolved"])
+	}
+	if body["today_cap"] != ScanDailyCap {
+		t.Errorf("expected today_cap=%d (default), got %d", ScanDailyCap, body["today_cap"])
+	}
+}

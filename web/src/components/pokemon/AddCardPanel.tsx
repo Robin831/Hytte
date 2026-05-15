@@ -311,14 +311,6 @@ export default function AddCardPanel({ onAdded }: AddCardPanelProps) {
         <CardScanner
           onClose={() => setScannerOpen(false)}
           onAdded={onAdded}
-          onEnterManually={prefill => {
-            setScannerOpen(false)
-            const seed = prefill.collectorNumber?.trim() || prefill.setName?.trim() || ''
-            setQuery(seed)
-            setResults([])
-            setError('')
-            setVariantCard(null)
-          }}
         />
       )}
 

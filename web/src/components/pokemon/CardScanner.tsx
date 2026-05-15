@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Camera, Flashlight, FlashlightOff, Loader2, X } from 'lucide-react'
 import {
@@ -7,30 +8,23 @@ import {
   type DetectedRectangle,
   type RectangleDetectorStatus,
 } from './rectangleDetector'
-import ScanResultModal, { type ScanCandidate, type ScanResult } from './ScanResultModal'
 import ToastList from '../ToastList'
 import { useToast } from '../../hooks/useToast'
 
-export interface CardScannerPrefill {
-  setName?: string
-  collectorNumber?: string
-}
-
 export interface CardScannerProps {
   onClose: () => void
-  onEnterManually?: (prefill: CardScannerPrefill) => void
   onAdded?: () => void
 }
 
 type PermissionState = 'prompting' | 'granted' | 'denied' | 'unavailable' | 'unsupported'
 
-// scanPhase tracks the lifecycle of the scan POST/result flow, layered on top
+// scanPhase tracks the lifecycle of the scan POST flow, layered on top
 // of the rectangle-detector state machine. idle = no submission in flight;
 // preview = captured frame on-screen awaiting user confirm or auto-send;
-// submitting = POST to /api/pokemon/scan pending; result = modal showing;
-// cooldown = post-add debounce window during which auto-triggered scans are
-// suppressed.
-type ScanPhase = 'idle' | 'preview' | 'submitting' | 'result' | 'cooldown'
+// submitting = POST to /api/pokemon/scans/queue pending;
+// cooldown = post-queue debounce window during which auto-triggered scans
+// are suppressed so the same card sitting in the frame doesn't double-queue.
+type ScanPhase = 'idle' | 'preview' | 'submitting' | 'cooldown'
 
 // Throttle the auto-detect tick to ~2/sec. Two consecutive matching ticks
 // (~1s of stable framing) promote a candidate to `locked`.
@@ -39,19 +33,20 @@ const TICKS_TO_LOCK = 2
 // Allow up to ±5% drift between consecutive candidate detections.
 const CANDIDATE_TOLERANCE = 0.05
 
-// SCAN_TIMEOUT_MS is the hard cap on a single /api/pokemon/scan call. Claude
-// vision can be slow; 30s lets the slow path finish but still surfaces a
-// timeout before the user gives up.
-// Claude vision on a card image consistently takes 60–90s in production
-// (see the 91s real-world request that prompted bumping this). 30s was too
-// short and caused every scan to time out. 120s gives the model headroom
-// without making a genuinely stuck request feel infinite.
-const SCAN_TIMEOUT_MS = 120000
+// SCAN_TIMEOUT_MS is the hard cap on the /api/pokemon/scans/queue POST.
+// The queue endpoint just persists the upload and returns 202, so 30 s is
+// plenty — anything longer suggests a network or server problem.
+const SCAN_TIMEOUT_MS = 30000
 
-// COOLDOWN_MS is the debounce window after a successful add. The rAF loop will
-// not trigger another POST until this window elapses, so a card lingering in
-// the frame cannot double-submit while the user is still moving on.
+// COOLDOWN_MS is the debounce window after a successful queue. The rAF loop
+// will not trigger another POST until this window elapses, so a card
+// lingering in the frame cannot double-queue while the user is moving on.
 const COOLDOWN_MS = 2000
+
+// QUEUED_TOAST_MS is how long the inline "Sent ✓" toast lingers over the
+// scanner overlay after a successful queue. Short enough to stay out of the
+// way while the kid moves on to the next card, long enough to register.
+const QUEUED_TOAST_MS = 1500
 
 // PREVIEW_AUTO_SEND_MS is how long the captured-card preview lingers before
 // automatically proceeding to POST. Kids tend to keep scanning rather than
@@ -68,37 +63,6 @@ const CAPTURE_CROP_PAD = 0.05
 // uses 5/7 (≈0.714) which is close enough and renders crisply on all viewports.
 const CARD_GUIDE_ASPECT = '5 / 7'
 
-// ScanJobPoll mirrors the server's ScanJobDTO (internal/pokemon/scans_handlers.go).
-// Only the fields the bridge polling loop actually reads are declared.
-interface ScanJobPoll {
-  id: number
-  status: string
-  confidence?: number
-  error_message?: string
-  matched_card?: {
-    id: string
-    set_id: string
-    set_name?: string
-    name: string
-    collector_no: string
-    rarity: string
-    image_small_url: string
-    image_large_url: string
-    variants: Array<{
-      id: number
-      kind: string
-      price_eur: number
-      price_nok: number | null
-      owned: boolean
-      owned_id?: number | null
-      quantity: number
-      condition: string
-      notes: string
-    }>
-  }
-  set?: { id: string; name: string }
-}
-
 interface ExtendedMediaTrackCapabilities extends MediaTrackCapabilities {
   torch?: boolean
 }
@@ -111,7 +75,7 @@ interface ExtendedMediaTrackConstraints extends MediaTrackConstraints {
   advanced?: TorchConstraint[]
 }
 
-export default function CardScanner({ onClose, onEnterManually, onAdded }: CardScannerProps) {
+export default function CardScanner({ onClose, onAdded }: CardScannerProps) {
   const { t } = useTranslation('pokemon')
   const { toasts, showToast } = useToast()
 
@@ -122,9 +86,15 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
   const [torchSupported, setTorchSupported] = useState(false)
   const [scanStatus, setScanStatus] = useState<RectangleDetectorStatus>('searching')
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle')
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null)
-  const [addingCandidateId, setAddingCandidateId] = useState<string | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  // dailyLimitReached freezes the scanner when the queue endpoint returns 429.
+  // The auto-detect loop and shutter both refuse to fire while this is true;
+  // the kid has to close + come back tomorrow (or ask Robin to lift the cap).
+  const [dailyLimitReached, setDailyLimitReached] = useState(false)
+  // queuedToastVisible drives the inline "Sent ✓ — view in Scanned" banner.
+  // It's a separate piece of UI (not a global toast) so it can carry a link
+  // to /pokemon/scanned without going through the ToastList plumbing.
+  const [queuedToastVisible, setQueuedToastVisible] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -160,6 +130,13 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
   // scanPhase from 'cooldown' back to 'idle'. Keeping it in a ref lets us
   // cancel it on unmount or close so the callback never fires on a dead component.
   const cooldownTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
+  // queuedToastTimerRef hides the inline "Sent ✓" banner after QUEUED_TOAST_MS.
+  // Stored in a ref so unmount can cancel it and the timer's setter doesn't
+  // run after the component has been torn down.
+  const queuedToastTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
+  // dailyLimitReachedRef mirrors dailyLimitReached so the rAF callback can
+  // halt itself without forcing the effect to re-install on state change.
+  const dailyLimitReachedRef = useRef(false)
   // lockedBoundsRef captures the detected card rectangle (in source-canvas /
   // full-video-resolution coordinates) at the moment the rAF loop transitions
   // to `locked`. The capture step uses these bounds to crop the JPEG so only
@@ -233,6 +210,10 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
         window.clearTimeout(cooldownTimerRef.current)
         cooldownTimerRef.current = null
       }
+      if (queuedToastTimerRef.current !== null) {
+        window.clearTimeout(queuedToastTimerRef.current)
+        queuedToastTimerRef.current = null
+      }
       if (previewTimerRef.current !== null) {
         window.clearTimeout(previewTimerRef.current)
         previewTimerRef.current = null
@@ -296,7 +277,6 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
     lockedBoundsRef.current = null
     clearPreview()
     setScanStatus('searching')
-    setScanResult(null)
     const video = videoRef.current
     if (video && typeof video.play === 'function') {
       try {
@@ -314,13 +294,16 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
   }, [clearPreview])
 
   // performScan is the single entry point for both auto- and manual-triggered
-  // scans. It owns the AbortController, the 30s timeout, and the
-  // submitting → result/idle phase transitions. Failures show a toast and
-  // resume the scanning loop.
+  // scans. It POSTs the JPEG to /api/pokemon/scans/queue and immediately
+  // resumes scanning on 202 — no waiting for Claude vision. The Scanned page
+  // is where the kid (or a parent) resolves matched/no_match/failed jobs.
+  // 429 freezes the scanner until close so the kid stops auto-firing into
+  // the daily cap.
   const performScan = useCallback(
     (blob: Blob, manual: boolean) => {
       if (scanPhaseRef.current !== 'idle' && scanPhaseRef.current !== 'cooldown') return
-      // Auto-triggered scans honor the post-add cooldown. The manual shutter
+      if (dailyLimitReachedRef.current) return
+      // Auto-triggered scans honor the post-queue cooldown. The manual shutter
       // button intentionally bypasses both the lock requirement and the
       // cooldown — the user is asking explicitly.
       if (!manual && Date.now() < cooldownUntilRef.current) {
@@ -346,77 +329,56 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
 
       void (async () => {
         try {
-          // Bridge: POST to the new async queue endpoint, then poll the list
-          // endpoint until the job leaves the queued/processing states. This
-          // preserves the existing result-modal UX while the chain catches up
-          // — the full fire-and-forget rewrite lands in Hytte-b7vl.
           const queueRes = await fetch('/api/pokemon/scans/queue', {
             method: 'POST',
             credentials: 'include',
             body: formData,
             signal: controller.signal,
           })
+          if (queueRes.status === 429) {
+            dailyLimitReachedRef.current = true
+            setDailyLimitReached(true)
+            scanPhaseRef.current = 'idle'
+            setScanPhase('idle')
+            return
+          }
           if (!queueRes.ok) throw new Error(t('scanner.errors.scanFailed'))
-          const queued = (await queueRes.json()) as { id: number; status?: string }
-          const jobID = queued.id
 
-          // Poll every 2s for the job to land in matched/no_match/failed.
-          let job: ScanJobPoll | null = null
-          while (!controller.signal.aborted) {
-            await new Promise(resolve => window.setTimeout(resolve, 2000))
-            if (controller.signal.aborted) return
-            const listRes = await fetch(
-              '/api/pokemon/scans?status=matched,no_match,failed&limit=50',
-              { credentials: 'include', signal: controller.signal },
-            )
-            if (!listRes.ok) continue
-            const listData = (await listRes.json()) as { scans: ScanJobPoll[] }
-            const found = (listData.scans ?? []).find(j => j.id === jobID)
-            if (found) {
-              job = found
-              break
-            }
-          }
-          if (!job) return
+          // Drain the body so the connection can be reused — we don't read
+          // any fields off the response (id, dedupe header) because the
+          // fire-and-forget flow doesn't need them.
+          try { await queueRes.json() } catch { /* ignore empty/invalid body */ }
 
-          // Translate the async job shape into the legacy ScanResult that the
-          // result modal expects. ListScansHandler hydrates matched_card + set
-          // on matched rows, so we can rebuild the single-candidate shape the
-          // modal already knows how to render. The proper one-card-detail view
-          // lands with Hytte-b7vl.
-          let data: ScanResult
-          if (job.status === 'matched' && job.matched_card) {
-            const candidate: ScanCandidate = {
-              card: {
-                id: job.matched_card.id,
-                set_id: job.matched_card.set_id,
-                set_name: job.matched_card.set_name,
-                name: job.matched_card.name,
-                collector_no: job.matched_card.collector_no,
-                rarity: job.matched_card.rarity,
-                image_small_url: job.matched_card.image_small_url,
-                image_large_url: job.matched_card.image_large_url,
-                variants: job.matched_card.variants ?? [],
-              },
-              set: job.set ? { id: job.set.id, name: job.set.name } : undefined,
-              score: job.confidence ?? 1,
-            }
-            data = {
-              matched: true,
-              confidence: job.confidence ?? 1,
-              candidates: [candidate],
-            }
-          } else {
-            data = {
-              matched: false,
-              confidence: job.confidence ?? 0,
-              reason: job.error_message || t('scanner.result.noMatch'),
-            }
+          onAdded?.()
+          // Show the inline "Sent ✓ — view in Scanned" toast over the
+          // scanner overlay so the kid sees an acknowledgement without the
+          // scanner ever leaving the searching state.
+          if (queuedToastTimerRef.current !== null) {
+            window.clearTimeout(queuedToastTimerRef.current)
           }
-          if (controller.signal.aborted) return
-          scanPhaseRef.current = 'result'
-          setScanResult(data)
-          setScanPhase('result')
+          setQueuedToastVisible(true)
+          queuedToastTimerRef.current = window.setTimeout(() => {
+            queuedToastTimerRef.current = null
+            setQueuedToastVisible(false)
+          }, QUEUED_TOAST_MS)
+
+          // Start the 2 s cooldown so the auto-detector doesn't immediately
+          // re-fire on the same card sitting in the frame. Cooldown is
+          // enforced both at trigger-time (in the rAF) and inside performScan.
+          cooldownUntilRef.current = Date.now() + COOLDOWN_MS
+          scanPhaseRef.current = 'cooldown'
+          setScanPhase('cooldown')
+          resumeScanning()
+          if (cooldownTimerRef.current !== null) {
+            window.clearTimeout(cooldownTimerRef.current)
+          }
+          cooldownTimerRef.current = window.setTimeout(() => {
+            cooldownTimerRef.current = null
+            if (scanPhaseRef.current === 'cooldown') {
+              scanPhaseRef.current = 'idle'
+              setScanPhase('idle')
+            }
+          }, COOLDOWN_MS)
         } catch (err) {
           if (controller.signal.aborted) {
             if (timedOut) {
@@ -442,7 +404,7 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
         }
       })()
     },
-    [resumeScanning, showToast, t],
+    [onAdded, resumeScanning, showToast, t],
   )
 
   useEffect(() => {
@@ -646,13 +608,18 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
 
     const tick = (timestamp: number) => {
       if (cancelled) return
-      // Stop the loop entirely once we are submitting, previewing, or showing
-      // a result — it will be restarted by resumeScanning when the user moves on.
+      // Stop the loop entirely once we are submitting or previewing — it
+      // will be restarted by resumeScanning when the user moves on. The
+      // daily-limit gate also halts the loop so a kid who has hit the cap
+      // can't keep auto-firing into 429s.
       if (
         scanPhaseRef.current === 'preview' ||
-        scanPhaseRef.current === 'submitting' ||
-        scanPhaseRef.current === 'result'
+        scanPhaseRef.current === 'submitting'
       ) {
+        rafIdRef.current = null
+        return
+      }
+      if (dailyLimitReachedRef.current) {
         rafIdRef.current = null
         return
       }
@@ -773,6 +740,10 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
       window.clearTimeout(cooldownTimerRef.current)
       cooldownTimerRef.current = null
     }
+    if (queuedToastTimerRef.current !== null) {
+      window.clearTimeout(queuedToastTimerRef.current)
+      queuedToastTimerRef.current = null
+    }
     clearPreview()
     onClose()
   }, [clearPreview, onClose])
@@ -791,18 +762,11 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
     closeButtonRef.current?.focus()
   }, [])
 
-  // When the result modal or preview overlay appears, move focus to its first
-  // action so keyboard/screen-reader users land inside it rather than staying
-  // on whichever control was focused before the overlay rendered.
+  // When the preview overlay appears, move focus to its first action so
+  // keyboard/screen-reader users land inside it rather than staying on
+  // whichever control was focused before the overlay rendered.
   useEffect(() => {
-    if (scanPhase === 'result') {
-      const modal = dialogRef.current?.querySelector<HTMLElement>('[data-testid="scan-result-modal"]')
-      if (!modal) return
-      const first = modal.querySelector<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      )
-      first?.focus()
-    } else if (scanPhase === 'preview') {
+    if (scanPhase === 'preview') {
       const overlay = dialogRef.current?.querySelector<HTMLElement>('[data-testid="card-scanner-preview"]')
       if (!overlay) return
       const first = overlay.querySelector<HTMLElement>(
@@ -813,9 +777,6 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
   }, [scanPhase])
 
   // Escape to dismiss + Tab focus trap (mirrors Dialog behaviour).
-  // When the result modal is overlaying the scanner, Tab is constrained to
-  // the modal's own focusable elements so the torch/close buttons behind it
-  // are not reachable via keyboard even though they remain enabled in the DOM.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -823,10 +784,7 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
         return
       }
       if (e.key !== 'Tab' || !dialogRef.current) return
-      const trapRoot: ParentNode =
-        scanPhaseRef.current === 'result'
-          ? (dialogRef.current.querySelector('[data-testid="scan-result-modal"]') ?? dialogRef.current)
-          : dialogRef.current
+      const trapRoot: ParentNode = dialogRef.current
       const focusable = Array.from(
         trapRoot.querySelectorAll<HTMLElement>(
           'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
@@ -854,9 +812,9 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
   const handleManualCapture = useCallback(() => {
     if (
       scanPhaseRef.current === 'preview' ||
-      scanPhaseRef.current === 'submitting' ||
-      scanPhaseRef.current === 'result'
+      scanPhaseRef.current === 'submitting'
     ) return
+    if (dailyLimitReachedRef.current) return
     // Stop the auto-detect loop before the async toBlob call to prevent a race
     // where the rAF fires an extra auto-capture while this capture is in progress.
     scanStatusRef.current = 'captured'
@@ -907,74 +865,6 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
       // capability; surface no error UI — the button simply does nothing.
     }
   }, [torchOn])
-
-  const handleAddCandidate = useCallback(
-    async (candidate: ScanCandidate) => {
-      const card = candidate.card
-      const variant = card.variants.find(v => !v.owned) ?? card.variants[0]
-      if (!variant) {
-        showToast(t('scanner.errors.noVariant'), 'error')
-        return
-      }
-      if (variant.owned) {
-        showToast(t('addCard.toast.alreadyOwned', { name: card.name }), 'warning')
-        return
-      }
-      setAddingCandidateId(card.id)
-      try {
-        const res = await fetch('/api/pokemon/collection', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            card_id: card.id,
-            variant_id: variant.id,
-            quantity: 1,
-            condition: '',
-            notes: '',
-          }),
-        })
-        if (!res.ok) throw new Error(t('addCard.errors.addFailed'))
-        showToast(t('addCard.toast.added', { name: card.name }), 'success')
-        onAdded?.()
-        // Start the 2s cooldown so the auto-detector doesn't immediately
-        // re-fire on the same card sitting in the frame. Cooldown is enforced
-        // both at trigger-time (in the rAF) and inside performScan.
-        cooldownUntilRef.current = Date.now() + COOLDOWN_MS
-        scanPhaseRef.current = 'cooldown'
-        setScanPhase('cooldown')
-        resumeScanning()
-        cooldownTimerRef.current = window.setTimeout(() => {
-          cooldownTimerRef.current = null
-          if (scanPhaseRef.current === 'cooldown') {
-            scanPhaseRef.current = 'idle'
-            setScanPhase('idle')
-          }
-        }, COOLDOWN_MS)
-      } catch (err) {
-        showToast(
-          err instanceof Error ? err.message : t('addCard.errors.addFailed'),
-          'error',
-        )
-      } finally {
-        setAddingCandidateId(null)
-      }
-    },
-    [onAdded, resumeScanning, showToast, t],
-  )
-
-  const handleTryAgain = useCallback(() => {
-    scanPhaseRef.current = 'idle'
-    setScanPhase('idle')
-    resumeScanning()
-  }, [resumeScanning])
-
-  const handleEnterManually = useCallback(
-    (prefill: CardScannerPrefill) => {
-      onEnterManually?.(prefill)
-    },
-    [onEnterManually],
-  )
 
   return (
     // Outer layer always covers the full viewport so clicks on the uncovered
@@ -1063,6 +953,36 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
             </div>
           )}
 
+          {queuedToastVisible && !dailyLimitReached && (
+            <div
+              data-testid="card-scanner-queued-toast"
+              role="status"
+              aria-live="polite"
+              className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-600 text-white text-sm font-medium shadow-lg"
+            >
+              <span>{t('scanner.queuedToast')}</span>
+              <Link
+                to="/pokemon/scanned"
+                onClick={handleClose}
+                className="underline hover:no-underline"
+                data-testid="card-scanner-queued-toast-link"
+              >
+                {t('scanner.queuedToastLink')}
+              </Link>
+            </div>
+          )}
+
+          {dailyLimitReached && (
+            <div
+              data-testid="card-scanner-daily-limit"
+              role="alert"
+              aria-live="assertive"
+              className="absolute top-20 left-1/2 -translate-x-1/2 z-10 px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium shadow-lg max-w-[80%] text-center"
+            >
+              {t('scanner.dailyLimit')}
+            </div>
+          )}
+
           {scanPhase === 'submitting' && (
             <div
               data-testid="card-scanner-spinner"
@@ -1079,7 +999,7 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
             type="button"
             onClick={handleManualCapture}
             disabled={
-              scanPhase === 'preview' || scanPhase === 'submitting' || scanPhase === 'result'
+              scanPhase === 'preview' || scanPhase === 'submitting' || dailyLimitReached
             }
             aria-label={t('scanner.shutter')}
             data-testid="card-scanner-shutter"
@@ -1135,15 +1055,6 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
             </button>
           )}
 
-          {scanPhase === 'result' && scanResult && (
-            <ScanResultModal
-              result={scanResult}
-              busy={addingCandidateId !== null}
-              onAddCandidate={candidate => { void handleAddCandidate(candidate) }}
-              onTryAgain={handleTryAgain}
-              onEnterManually={handleEnterManually}
-            />
-          )}
         </>
       )}
 

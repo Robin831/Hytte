@@ -91,14 +91,21 @@ const navItems: NavItem[] = [
   { to: '/forge/mezzanine', icon: <Hammer size={20} />, label: 'nav.forge', requiresAuth: true, requireAdmin: true },
 ]
 
+// POKEMON_COUNTS_POLL_MS controls how often the sidebar refreshes the Pokémon
+// pending-resolution count. 30 s keeps the badge fresh while a kid is actively
+// scanning and resolving without hammering the server in the background.
+const POKEMON_COUNTS_POLL_MS = 30000
+
 export default function Sidebar() {
   const { t } = useTranslation('common')
+  const { t: tPokemon } = useTranslation('pokemon')
   const { user, loading, logout, hasFeature, familyStatus } = useAuth()
   const [collapsed, setCollapsed] = useState(() => {
     return localStorage.getItem(COLLAPSED_KEY) === 'true'
   })
   const [mobileOpen, setMobileOpen] = useState(false)
   const [pendingClaimsCount, setPendingClaimsCount] = useState(0)
+  const [pokemonUnresolvedCount, setPokemonUnresolvedCount] = useState(0)
 
   useEffect(() => {
     if (!user || !familyStatus?.is_parent) return
@@ -111,6 +118,32 @@ export default function Sidebar() {
       .catch(() => { /* badge is non-critical */ })
     return () => { cancelled = true }
   }, [user, familyStatus])
+
+  // Poll the Pokémon scan counts endpoint while the sidebar is mounted so the
+  // pending-resolution badge stays roughly in sync with the worker's progress.
+  // Only fires when the user actually has the pokemon feature enabled — no
+  // sense paying a 401/403 round trip for users without access.
+  useEffect(() => {
+    if (!user || !hasFeature('pokemon')) {
+      setPokemonUnresolvedCount(0)
+      return
+    }
+    let cancelled = false
+    const fetchCounts = () => {
+      fetch('/api/pokemon/scans/counts', { credentials: 'include' })
+        .then(res => (res.ok ? res.json() : { unresolved: 0 }))
+        .then((data: { unresolved?: number }) => {
+          if (!cancelled) setPokemonUnresolvedCount(data.unresolved ?? 0)
+        })
+        .catch(() => { /* badge is non-critical */ })
+    }
+    fetchCounts()
+    const interval = window.setInterval(fetchCounts, POKEMON_COUNTS_POLL_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [user, hasFeature])
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, String(collapsed))
@@ -154,37 +187,59 @@ export default function Sidebar() {
 
       {/* Nav items */}
       <nav className="flex-1 py-2 overflow-y-auto">
-        {filteredItems.map(item => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.to === '/'}
-            onClick={closeMobile}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors ${
-                isActive
-                  ? 'bg-gray-800 text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
-              } ${isCollapsed ? 'justify-center' : ''}`
-            }
-            title={isCollapsed ? t(item.label) : undefined}
-          >
-            <span className="relative shrink-0">
-              {item.icon}
-              {item.to === '/family' && pendingClaimsCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none px-0.5">
+        {filteredItems.map(item => {
+          const showPokemonBadge = item.to === '/pokemon' && pokemonUnresolvedCount > 0
+          const pokemonBadgeText = pokemonUnresolvedCount > 9 ? '9+' : String(pokemonUnresolvedCount)
+          const pokemonBadgeAria = tPokemon('nav.pendingBadgeAria', { count: pokemonUnresolvedCount })
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === '/'}
+              onClick={closeMobile}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-colors ${
+                  isActive
+                    ? 'bg-gray-800 text-white'
+                    : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+                } ${isCollapsed ? 'justify-center' : ''}`
+              }
+              title={isCollapsed ? t(item.label) : undefined}
+            >
+              <span className="relative shrink-0">
+                {item.icon}
+                {item.to === '/family' && pendingClaimsCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none px-0.5">
+                    {pendingClaimsCount > 99 ? '99+' : pendingClaimsCount}
+                  </span>
+                )}
+                {showPokemonBadge && (
+                  <span
+                    aria-label={pokemonBadgeAria}
+                    data-testid="sidebar-pokemon-badge"
+                    className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-red-500 text-white text-[9px] font-bold leading-none px-0.5"
+                  >
+                    {pokemonBadgeText}
+                  </span>
+                )}
+              </span>
+              {!isCollapsed && <span>{t(item.label)}</span>}
+              {!isCollapsed && item.to === '/family' && pendingClaimsCount > 0 && (
+                <span className="ml-auto min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none px-1">
                   {pendingClaimsCount > 99 ? '99+' : pendingClaimsCount}
                 </span>
               )}
-            </span>
-            {!isCollapsed && <span>{t(item.label)}</span>}
-            {!isCollapsed && item.to === '/family' && pendingClaimsCount > 0 && (
-              <span className="ml-auto min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none px-1">
-                {pendingClaimsCount > 99 ? '99+' : pendingClaimsCount}
-              </span>
-            )}
-          </NavLink>
-        ))}
+              {!isCollapsed && showPokemonBadge && (
+                <span
+                  aria-label={pokemonBadgeAria}
+                  className="ml-auto min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold leading-none px-1"
+                >
+                  {pokemonBadgeText}
+                </span>
+              )}
+            </NavLink>
+          )
+        })}
       </nav>
 
       {/* Bottom section: Profile + Settings */}

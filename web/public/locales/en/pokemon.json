@@ -137,6 +137,9 @@
     "priceLabelDetailed": "{{nok}} kr (€{{eur}})",
     "tileLabel": "Open {{name}} from {{set}} (#{{number}}), rank {{rank}}, {{variant}}, {{price}}, {{ownership}}"
   },
+  "nav": {
+    "pendingBadgeAria": "{{count}} scan results to review"
+  },
   "scanner": {
     "dialogLabel": "Scan a Pokémon card",
     "requesting": "Requesting camera access…",
@@ -149,7 +152,10 @@
     "torchOff": "Turn flashlight off",
     "close": "Close scanner",
     "holdSteady": "Hold steady…",
-    "scanning": "Identifying card…",
+    "scanning": "Sending…",
+    "queuedToast": "Sent ✓",
+    "queuedToastLink": "View in Scanned",
+    "dailyLimit": "Daily scan limit reached",
     "errors": {
       "scanFailed": "Scan failed, try again",
       "timedOut": "Scan timed out, try again",

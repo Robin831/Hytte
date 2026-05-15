@@ -250,6 +250,48 @@ func QueueScanHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// ScanCountsHandler returns the small badge-shaped counts the sidebar polls
+// for: how many jobs are sitting in a needs-attention state (matched,
+// no_match, failed) and the daily-cap usage so the camera UI can flag the
+// limit without a separate request. Cheap on purpose — a single COUNT over
+// the user's rows plus the cached daily counters.
+func ScanCountsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			respondError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		var unresolved int
+		err := db.QueryRowContext(r.Context(), `
+			SELECT COUNT(*) FROM pokemon_scan_jobs
+			WHERE user_id = ? AND status IN (?, ?, ?)
+		`, user.ID, scanJobStatusMatched, scanJobStatusNoMatch, scanJobStatusFailed).Scan(&unresolved)
+		if err != nil {
+			log.Printf("pokemon: count unresolved scans: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to count scans")
+			return
+		}
+		used, err := countScansToday(r.Context(), db, user.ID)
+		if err != nil {
+			log.Printf("pokemon: count scans today: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to count scans")
+			return
+		}
+		dailyCap, err := getUserScanDailyCap(r.Context(), db, user.ID)
+		if err != nil {
+			log.Printf("pokemon: load scan daily cap: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to count scans")
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]int{
+			"unresolved": unresolved,
+			"today_used": used,
+			"today_cap":  dailyCap,
+		})
+	}
+}
+
 // ListScansHandler returns the current user's scan jobs newest-first, scoped
 // to the comma-separated ?status= filter (defaults to "not yet resolved").
 func ListScansHandler(db *sql.DB) http.HandlerFunc {

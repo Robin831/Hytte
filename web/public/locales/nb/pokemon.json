@@ -137,6 +137,9 @@
     "priceLabelDetailed": "{{nok}} kr (€{{eur}})",
     "tileLabel": "Åpne {{name}} fra {{set}} (#{{number}}), plass {{rank}}, {{variant}}, {{price}}, {{ownership}}"
   },
+  "nav": {
+    "pendingBadgeAria": "{{count}} skanneresultater å se gjennom"
+  },
   "scanner": {
     "dialogLabel": "Skann et Pokémon-kort",
     "requesting": "Ber om tilgang til kameraet …",
@@ -149,7 +152,10 @@
     "torchOff": "Slå av lommelykt",
     "close": "Lukk skanner",
     "holdSteady": "Hold stille …",
-    "scanning": "Identifiserer kort …",
+    "scanning": "Sender …",
+    "queuedToast": "Sendt ✓",
+    "queuedToastLink": "Se i Skannede",
+    "dailyLimit": "Daglig skannegrense nådd",
     "errors": {
       "scanFailed": "Skanningen feilet, prøv på nytt",
       "timedOut": "Skanningen tok for lang tid, prøv på nytt",

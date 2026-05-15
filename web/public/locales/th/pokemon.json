@@ -137,6 +137,9 @@
     "priceLabelDetailed": "{{nok}} kr (€{{eur}})",
     "tileLabel": "เปิด {{name}} จาก {{set}} (#{{number}}), อันดับ {{rank}}, {{variant}}, {{price}}, {{ownership}}"
   },
+  "nav": {
+    "pendingBadgeAria": "ผลการสแกน {{count}} รายการรอการตรวจสอบ"
+  },
   "scanner": {
     "dialogLabel": "สแกนการ์ดโปเกมอน",
     "requesting": "กำลังขออนุญาตเข้าถึงกล้อง…",
@@ -149,7 +152,10 @@
     "torchOff": "ปิดไฟฉาย",
     "close": "ปิดเครื่องสแกน",
     "holdSteady": "ถือให้นิ่ง…",
-    "scanning": "กำลังระบุการ์ด…",
+    "scanning": "กำลังส่ง…",
+    "queuedToast": "ส่งแล้ว ✓",
+    "queuedToastLink": "ดูในรายการสแกน",
+    "dailyLimit": "ถึงขีดจำกัดการสแกนรายวันแล้ว",
     "errors": {
       "scanFailed": "การสแกนล้มเหลว ลองอีกครั้ง",
       "timedOut": "การสแกนใช้เวลานานเกินไป ลองอีกครั้ง",
