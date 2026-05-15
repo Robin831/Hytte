@@ -101,12 +101,7 @@ export default function ScanDetailModal({ scan, busy, onClose, onResolve }: Scan
   useEffect(() => {
     if (!wrongMatchOpen) return
     const q = query.trim()
-    if (q === '') {
-      setResults([])
-      setSearchError('')
-      setSearching(false)
-      return
-    }
+    if (q === '') return
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
       setSearching(true)
@@ -163,6 +158,11 @@ export default function ScanDetailModal({ scan, busy, onClose, onResolve }: Scan
   }, [onResolve])
 
   const variantsToShow = activeCard?.variants ?? []
+
+  const trimmedQuery = query.trim()
+  const displayResults = trimmedQuery !== '' ? results : []
+  const displaySearching = trimmedQuery !== '' ? searching : false
+  const displaySearchError = trimmedQuery !== '' ? searchError : ''
 
   // Auto-match summary line shared by the header and the override revert hint.
   const autoMatchSummary = useMemo(() => {
@@ -312,24 +312,24 @@ export default function ScanDetailModal({ scan, busy, onClose, onResolve }: Scan
                     className="flex-1 min-w-0 bg-transparent border-0 outline-none text-sm text-white placeholder-gray-500"
                   />
                 </div>
-                {searchError && (
+                {displaySearchError && (
                   <p role="alert" className="text-sm text-red-300">
-                    {searchError}
+                    {displaySearchError}
                   </p>
                 )}
-                {!searchError && searching && (
+                {!displaySearchError && displaySearching && (
                   <p className="text-sm text-gray-400">{t('addCard.searching')}</p>
                 )}
-                {!searchError && !searching && query.trim() !== '' && results.length === 0 && (
+                {!displaySearchError && !displaySearching && trimmedQuery !== '' && displayResults.length === 0 && (
                   <p className="text-sm text-gray-400">{t('addCard.noResults')}</p>
                 )}
-                {results.length > 0 && (
+                {displayResults.length > 0 && (
                   <ul
                     aria-label={t('addCard.results')}
                     data-testid="scan-detail-search-results"
                     className="divide-y divide-gray-800 border border-gray-800 rounded"
                   >
-                    {results.map(card => (
+                    {displayResults.map(card => (
                       <li key={card.id} className="flex items-center gap-3 px-2 py-2 hover:bg-gray-800/60">
                         <div className="h-14 w-10 shrink-0 flex items-center justify-center bg-gray-800/40 rounded overflow-hidden">
                           {card.image_small_url ? (

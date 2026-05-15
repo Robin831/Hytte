@@ -628,6 +628,17 @@ export default function PokemonScannedPage() {
     [refetch, showToast, t],
   )
 
+  const detailScan = detailScanId != null ? (scans.find(s => s.id === detailScanId) ?? null) : null
+
+  const handleDetailResolve = useCallback(
+    async (body: ScanDetailResolveBody) => {
+      if (!detailScan) return
+      await handleResolve(detailScan, body)
+      handleCloseDetail()
+    },
+    [detailScan, handleResolve, handleCloseDetail],
+  )
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
@@ -747,21 +758,14 @@ export default function PokemonScannedPage() {
           </ul>
         )}
       </div>
-      {detailScanId != null && (() => {
-        const scan = scans.find(s => s.id === detailScanId)
-        if (!scan) return null
-        return (
-          <ScanDetailModal
-            scan={scan}
-            busy={busyId === scan.id}
-            onClose={handleCloseDetail}
-            onResolve={async (body: ScanDetailResolveBody) => {
-              await handleResolve(scan, body)
-              handleCloseDetail()
-            }}
-          />
-        )
-      })()}
+      {detailScan != null && (
+        <ScanDetailModal
+          scan={detailScan}
+          busy={busyId === detailScan.id}
+          onClose={handleCloseDetail}
+          onResolve={handleDetailResolve}
+        />
+      )}
       <ToastList toasts={toasts} />
     </div>
   )
