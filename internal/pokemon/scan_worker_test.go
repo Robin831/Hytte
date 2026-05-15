@@ -441,7 +441,8 @@ func TestClaimScanJob_OnceOnly(t *testing.T) {
 	u := seedUser(t, db, 1, "scan@example.com")
 	jobID := mustInsertScanJob(t, db, u.ID, "img.png", "h", time.Now().UTC())
 
-	ok, err := claimScanJob(context.Background(), db, jobID)
+	now := time.Now().UTC()
+	ok, err := claimScanJob(context.Background(), db, jobID, now)
 	if err != nil {
 		t.Fatalf("first claim: %v", err)
 	}
@@ -449,7 +450,7 @@ func TestClaimScanJob_OnceOnly(t *testing.T) {
 		t.Fatalf("first claim should succeed")
 	}
 
-	ok, err = claimScanJob(context.Background(), db, jobID)
+	ok, err = claimScanJob(context.Background(), db, jobID, now)
 	if err != nil {
 		t.Fatalf("second claim: %v", err)
 	}

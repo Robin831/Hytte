@@ -94,17 +94,34 @@ func RunScanCleanup(ctx context.Context, db *sql.DB, now time.Time) (ScanCleanup
 	var result ScanCleanupResult
 
 	staleCutoff := now.Add(-scanStaleQueuedHours)
-	staleRes, err := db.ExecContext(ctx, `
+	// Queued jobs: measure staleness from created_at (they have never been
+	// claimed, so that is the only relevant timestamp).
+	staleQueuedRes, err := db.ExecContext(ctx, `
 		UPDATE pokemon_scan_jobs
 		SET status = ?, error_message = ?, processed_at = ?
-		WHERE status IN (?, ?) AND created_at < ?
+		WHERE status = ? AND created_at < ?
 	`, scanJobStatusFailed, scanStaleErrorMessage, now.UTC(),
-		scanJobStatusQueued, scanJobStatusProcessing, staleCutoff.UTC())
+		scanJobStatusQueued, staleCutoff.UTC())
 	if err != nil {
-		return result, fmt.Errorf("mark stale scan jobs failed: %w", err)
+		return result, fmt.Errorf("mark stale queued scan jobs failed: %w", err)
 	}
-	if n, err := staleRes.RowsAffected(); err == nil {
-		result.StaleFailed = int(n)
+	if n, err := staleQueuedRes.RowsAffected(); err == nil {
+		result.StaleFailed += int(n)
+	}
+	// Processing jobs: measure staleness from processing_started_at (stamped
+	// when the worker claims the row). Fall back to created_at for rows that
+	// pre-date the column so existing stuck jobs are still cleaned up.
+	staleProcessingRes, err := db.ExecContext(ctx, `
+		UPDATE pokemon_scan_jobs
+		SET status = ?, error_message = ?, processed_at = ?
+		WHERE status = ? AND COALESCE(processing_started_at, created_at) < ?
+	`, scanJobStatusFailed, scanStaleErrorMessage, now.UTC(),
+		scanJobStatusProcessing, staleCutoff.UTC())
+	if err != nil {
+		return result, fmt.Errorf("mark stale processing scan jobs failed: %w", err)
+	}
+	if n, err := staleProcessingRes.RowsAffected(); err == nil {
+		result.StaleFailed += int(n)
 	}
 
 	rows, err := db.QueryContext(ctx, `
@@ -164,13 +181,25 @@ func RunScanCleanup(ctx context.Context, db *sql.DB, now time.Time) (ScanCleanup
 		if c.errorMessage.Valid && c.errorMessage.String != "" {
 			newErr = c.errorMessage.String
 		}
-		if _, err := db.ExecContext(ctx, `
+		discardRes, err := db.ExecContext(ctx, `
 			UPDATE pokemon_scan_jobs
 			SET status = ?, resolved_at = ?, error_message = ?, image_path_enc = ''
 			WHERE id = ? AND resolved_at IS NULL AND status IN (?, ?, ?)
 		`, scanJobStatusDiscarded, now.UTC(), newErr, c.id,
-			scanJobStatusMatched, scanJobStatusNoMatch, scanJobStatusFailed); err != nil {
+			scanJobStatusMatched, scanJobStatusNoMatch, scanJobStatusFailed)
+		if err != nil {
 			log.Printf("pokemon: scan cleanup discard job=%d: %v", c.id, err)
+			continue
+		}
+		// Guard against the race where the user resolved or retried the scan
+		// between our SELECT and this UPDATE. Only delete the image and count the
+		// discard when the UPDATE actually changed the row.
+		n, err := discardRes.RowsAffected()
+		if err != nil {
+			log.Printf("pokemon: scan cleanup discard job=%d rows affected: %v", c.id, err)
+			continue
+		}
+		if n == 0 {
 			continue
 		}
 		deleteScanImageBestEffort(c.pathEnc)

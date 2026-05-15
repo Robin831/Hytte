@@ -201,6 +201,38 @@ func TestRunScanCleanup_LeavesYoungProcessingAlone(t *testing.T) {
 	}
 }
 
+// TestRunScanCleanup_ProcessingUsesStartedAt verifies that the stale-processing
+// check uses processing_started_at (not created_at). A job that was queued long
+// ago but only recently claimed by the worker must not be killed.
+func TestRunScanCleanup_ProcessingUsesStartedAt(t *testing.T) {
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "recent-claim@example.com")
+
+	now := time.Now().UTC()
+	// Row is old (created 3 hours ago) but was only claimed 5 minutes ago.
+	res, err := db.Exec(`
+		INSERT INTO pokemon_scan_jobs (user_id, status, image_path_enc, image_hash, created_at, processing_started_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, u.ID, scanJobStatusProcessing, "", "deadbeef",
+		now.Add(-3*time.Hour).UTC(), now.Add(-5*time.Minute).UTC())
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	id, _ := res.LastInsertId()
+
+	cleanupRes, err := RunScanCleanup(context.Background(), db, now)
+	if err != nil {
+		t.Fatalf("RunScanCleanup: %v", err)
+	}
+	if cleanupRes.StaleFailed != 0 {
+		t.Errorf("expected stale_failed=0 (worker is active), got %d", cleanupRes.StaleFailed)
+	}
+	status, _, _, _ := readCleanupRow(t, db, id)
+	if status != scanJobStatusProcessing {
+		t.Errorf("expected status=processing (untouched), got %q", status)
+	}
+}
+
 func TestRunScanCleanup_UserPrefZeroDisables(t *testing.T) {
 	root := t.TempDir()
 	db := setupTestDB(t)
