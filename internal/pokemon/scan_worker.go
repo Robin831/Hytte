@@ -169,12 +169,15 @@ func pollQueuedScanJobs(ctx context.Context, db *sql.DB, limit int) ([]scanJob, 
 // already picked the row (or it has moved on to a terminal state). Using
 // status as part of the WHERE clause means concurrent workers — including
 // future horizontally-scaled instances — never both process the same job.
+// processed_at is intentionally NOT set here — it is written by the finalize
+// helpers when the job reaches a terminal state so the column reflects
+// completion time, not claim time.
 func claimScanJob(ctx context.Context, db *sql.DB, jobID int64) (bool, error) {
 	res, err := db.ExecContext(ctx, `
 		UPDATE pokemon_scan_jobs
-		SET status = ?, processed_at = ?
+		SET status = ?
 		WHERE id = ? AND status = ?
-	`, scanJobStatusProcessing, time.Now().UTC(), jobID, scanJobStatusQueued)
+	`, scanJobStatusProcessing, jobID, scanJobStatusQueued)
 	if err != nil {
 		return false, fmt.Errorf("claim scan job %d: %w", jobID, err)
 	}
@@ -283,44 +286,47 @@ func processScanJob(ctx context.Context, db *sql.DB, job scanJob) {
 
 // finalizeScanJobMatched sets the terminal 'matched' state. Uses a short
 // background deadline so a cancelled parent context does not lose the result.
+// processed_at is stamped here (not at claim time) so it reflects when the
+// worker actually finished the job.
 func finalizeScanJobMatched(db *sql.DB, jobID int64, cardID string, confidence float64, respEnc string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if _, err := db.ExecContext(ctx, `
 		UPDATE pokemon_scan_jobs
-		SET status = ?, matched_card_id = ?, confidence = ?, claude_response_enc = ?, error_message = NULL
+		SET status = ?, matched_card_id = ?, confidence = ?, claude_response_enc = ?, error_message = NULL, processed_at = ?
 		WHERE id = ?
-	`, scanJobStatusMatched, cardID, confidence, nullIfEmpty(respEnc), jobID); err != nil {
+	`, scanJobStatusMatched, cardID, confidence, nullIfEmpty(respEnc), time.Now().UTC(), jobID); err != nil {
 		log.Printf("pokemon: finalize matched scan job %d: %v", jobID, err)
 	}
 }
 
 // finalizeScanJobNoMatch sets the terminal 'no_match' state with the supplied
 // reason in error_message. The Claude response (if encryptable) is preserved
-// for debugging.
+// for debugging. processed_at is stamped here on completion.
 func finalizeScanJobNoMatch(db *sql.DB, jobID int64, confidence float64, reason, respEnc string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if _, err := db.ExecContext(ctx, `
 		UPDATE pokemon_scan_jobs
-		SET status = ?, confidence = ?, error_message = ?, claude_response_enc = ?
+		SET status = ?, confidence = ?, error_message = ?, claude_response_enc = ?, processed_at = ?
 		WHERE id = ?
-	`, scanJobStatusNoMatch, confidence, reason, nullIfEmpty(respEnc), jobID); err != nil {
+	`, scanJobStatusNoMatch, confidence, reason, nullIfEmpty(respEnc), time.Now().UTC(), jobID); err != nil {
 		log.Printf("pokemon: finalize no_match scan job %d: %v", jobID, err)
 	}
 }
 
 // finalizeScanJobFailed sets the terminal 'failed' state with the error
 // message. Used for infrastructure failures (disk, Claude CLI, DB) — distinct
-// from no_match which means "Claude returned no usable answer".
+// from no_match which means "Claude returned no usable answer". processed_at
+// is stamped here on completion.
 func finalizeScanJobFailed(db *sql.DB, jobID int64, message string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if _, err := db.ExecContext(ctx, `
 		UPDATE pokemon_scan_jobs
-		SET status = ?, error_message = ?
+		SET status = ?, error_message = ?, processed_at = ?
 		WHERE id = ?
-	`, scanJobStatusFailed, message, jobID); err != nil {
+	`, scanJobStatusFailed, message, time.Now().UTC(), jobID); err != nil {
 		log.Printf("pokemon: finalize failed scan job %d: %v", jobID, err)
 	}
 }

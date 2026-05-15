@@ -1695,7 +1695,7 @@ func createSchema(db *sql.DB) error {
 	CREATE TABLE IF NOT EXISTS pokemon_scan_jobs (
 		id                  INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		status              TEXT NOT NULL,
+		status              TEXT NOT NULL CHECK (status IN ('queued','processing','matched','no_match','failed','added','discarded')),
 		image_path_enc      TEXT NOT NULL,
 		image_hash          TEXT NOT NULL,
 		matched_card_id     TEXT,
