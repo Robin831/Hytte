@@ -213,6 +213,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"stride_custom_prompt":               true,
 			"calendar_visible_ids":               true,
 			"regnemester_muted":                  true,
+			"pokemon_scan_daily_cap":             true,
 		}
 
 		// Integer range keys: HR/pace, work hours, budget preferences, and other numeric settings.
@@ -231,6 +232,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"partner_income":                  {0, 10000000}, // monthly salary in NOK; must match budget.maxPartnerIncome
 			"income_day":                      {1, 31},       // day of month; must match budget.defaultIncomeDay
 			"partner_income_day":              {1, 31},
+			"pokemon_scan_daily_cap":          {1, 100000}, // override for ScanDailyCap (600); upper bound keeps a typo from disabling the cap
 		}
 
 		allowedEvents := allowedEventKeys()

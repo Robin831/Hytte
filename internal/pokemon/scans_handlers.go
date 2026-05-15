@@ -156,6 +156,50 @@ func QueueScanHandler(db *sql.DB) http.HandlerFunc {
 		sum := sha256.Sum256(buf)
 		imageHash := hex.EncodeToString(sum[:])
 
+		// Dedupe before any disk write: when the auto-detect camera loop
+		// fires the same frame multiple times while a card lingers we want
+		// to short-circuit to the original row, not burn another Claude
+		// call (and another image file) on identical bytes. The window is
+		// short (scanDedupeWindow) so two genuinely separate scans of the
+		// same printed card seconds apart still count as distinct work.
+		if dupID, found, err := findRecentDuplicateScan(r.Context(), db, user.ID, imageHash); err != nil {
+			log.Printf("pokemon: scan dedupe lookup: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to enqueue scan")
+			return
+		} else if found {
+			w.Header().Set("X-Pokemon-Scan-Dedupe", "true")
+			respondJSON(w, http.StatusAccepted, map[string]any{
+				"id":     dupID,
+				"status": scanJobStatusQueued,
+			})
+			return
+		}
+
+		// Daily cap: every queue attempt counts (queued, processing, any
+		// terminal status, retries) because every attempt charges Claude
+		// vision. The 429 body includes the cap + used so the frontend can
+		// render a friendly "47 / 600 today" message without an extra GET.
+		used, err := countScansToday(r.Context(), db, user.ID)
+		if err != nil {
+			log.Printf("pokemon: count scans today: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to enqueue scan")
+			return
+		}
+		dailyCap, err := getUserScanDailyCap(r.Context(), db, user.ID)
+		if err != nil {
+			log.Printf("pokemon: load scan daily cap: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to enqueue scan")
+			return
+		}
+		if used >= dailyCap {
+			respondJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error": "daily scan cap reached",
+				"cap":   dailyCap,
+				"used":  used,
+			})
+			return
+		}
+
 		uuid, err := scanUUID()
 		if err != nil {
 			log.Printf("pokemon: generate scan uuid: %v", err)
@@ -216,9 +260,27 @@ func ListScansHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Today's used + cap travel with the list response so the frontend
+		// can render "47 / 600 today" without an extra round trip. We
+		// compute it for every code path below (including the
+		// empty-filter short-circuit) so the field is always present.
+		used, err := countScansToday(r.Context(), db, user.ID)
+		if err != nil {
+			log.Printf("pokemon: count scans today: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to list scans")
+			return
+		}
+		dailyCap, err := getUserScanDailyCap(r.Context(), db, user.ID)
+		if err != nil {
+			log.Printf("pokemon: load scan daily cap: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to list scans")
+			return
+		}
+		today := map[string]int{"used": used, "cap": dailyCap}
+
 		statuses := parseScanStatusFilter(r.URL.Query().Get("status"))
 		if len(statuses) == 0 {
-			respondJSON(w, http.StatusOK, map[string]any{"scans": []ScanJobDTO{}})
+			respondJSON(w, http.StatusOK, map[string]any{"scans": []ScanJobDTO{}, "today": today})
 			return
 		}
 		limit := parseLimit(r, defaultScanListLimit, maxScanListLimit)
@@ -344,7 +406,7 @@ func ListScansHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		respondJSON(w, http.StatusOK, map[string]any{"scans": jobs})
+		respondJSON(w, http.StatusOK, map[string]any{"scans": jobs, "today": today})
 	}
 }
 
