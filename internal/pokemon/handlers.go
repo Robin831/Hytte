@@ -150,6 +150,7 @@ func RegisterRoutes(r chi.Router, db *sql.DB) {
 		// Kids hit /queue from the camera page, then poll /scans for results.
 		r.Post("/pokemon/scans/queue", QueueScanHandler(db))
 		r.Get("/pokemon/scans", ListScansHandler(db))
+		r.Get("/pokemon/scans/counts", ScanCountsHandler(db))
 		r.Get("/pokemon/scans/{id}/image", GetScanImageHandler(db))
 		r.Post("/pokemon/scans/{id}/resolve", ResolveScanHandler(db))
 	})

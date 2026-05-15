@@ -137,6 +137,10 @@
     "priceLabelDetailed": "{{nok}} kr (€{{eur}})",
     "tileLabel": "Open {{name}} from {{set}} (#{{number}}), rank {{rank}}, {{variant}}, {{price}}, {{ownership}}"
   },
+  "nav": {
+    "pendingBadgeAria_one": "{{count}} scan result to review",
+    "pendingBadgeAria_other": "{{count}} scan results to review"
+  },
   "scanner": {
     "dialogLabel": "Scan a Pokémon card",
     "requesting": "Requesting camera access…",
@@ -149,29 +153,19 @@
     "torchOff": "Turn flashlight off",
     "close": "Close scanner",
     "holdSteady": "Hold steady…",
-    "scanning": "Identifying card…",
+    "scanning": "Sending…",
+    "queuedToast": "Sent ✓",
+    "queuedToastLink": "View in Scanned",
+    "dailyLimit": "Daily scan limit reached",
     "errors": {
       "scanFailed": "Scan failed, try again",
-      "timedOut": "Scan timed out, try again",
-      "noVariant": "This card has no variants to add"
+      "timedOut": "Scan timed out, try again"
     },
     "preview": {
       "title": "Preview captured card",
       "imageAlt": "Captured card preview",
       "send": "Send",
       "retake": "Retake"
-    },
-    "result": {
-      "singleLabel": "Scan match: {{name}}",
-      "multiLabel": "Multiple matches",
-      "unmatchedLabel": "Card not recognised",
-      "pickCandidate": "Multiple matches — pick the right card.",
-      "candidatesList": "Candidate cards",
-      "yesAdd": "Yes, add to collection",
-      "tryAgain": "Try again",
-      "enterManually": "Enter manually",
-      "noMatch": "Couldn't read the card.",
-      "confidence": "Confidence: {{percent}}%"
     }
   }
 }
