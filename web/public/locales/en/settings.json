@@ -241,6 +241,13 @@
     "disableFeature": "Disable {{feature}} for {{name}}",
     "toggleError": "Failed to update {{feature}} for user — {{error}}"
   },
+  "pokemon": {
+    "heading": "Pokémon",
+    "scanPushTitle": "Scan result notifications",
+    "scanPushDescription": "Get a push when a card scan finishes (matched, no match, or failed).",
+    "enableScanPush": "Enable scan result notifications",
+    "disableScanPush": "Disable scan result notifications"
+  },
   "kioskTokens": {
     "heading": "Kiosk Tokens",
     "description": "Manage access tokens for the public kiosk display",

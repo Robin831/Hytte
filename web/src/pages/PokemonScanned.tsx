@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { ArrowLeft, Loader2 } from 'lucide-react'
@@ -217,6 +217,8 @@ interface ScanRowProps {
   scan: ScanJob
   busy: boolean
   now: number
+  highlighted: boolean
+  rowRef?: (el: HTMLLIElement | null) => void
   onResolve: (scan: ScanJob, body: ResolveBody) => Promise<void>
   onEnterManually: (scan: ScanJob) => void
   t: TFunction<'pokemon'>
@@ -230,7 +232,7 @@ interface ResolveBody {
   notes?: string
 }
 
-function ScanRow({ scan, busy, now, onResolve, onEnterManually, t }: ScanRowProps) {
+function ScanRow({ scan, busy, now, highlighted, rowRef, onResolve, onEnterManually, t }: ScanRowProps) {
   const [pickingVariant, setPickingVariant] = useState(false)
   const variants = scan.matched_card?.variants ?? []
   const hasMultiVariant = variants.length > 1
@@ -470,9 +472,15 @@ function ScanRow({ scan, busy, now, onResolve, onEnterManually, t }: ScanRowProp
 
   return (
     <li
+      ref={rowRef}
       data-testid={`scan-row-${scan.id}`}
       data-status={scan.status}
-      className="flex flex-col sm:flex-row gap-3 p-3 bg-gray-800/40 border border-gray-800 rounded-lg"
+      data-highlighted={highlighted ? 'true' : undefined}
+      className={`flex flex-col sm:flex-row gap-3 p-3 bg-gray-800/40 border rounded-lg transition-shadow duration-700 ${
+        highlighted
+          ? 'border-emerald-400 ring-2 ring-emerald-400/70 shadow-lg shadow-emerald-500/20'
+          : 'border-gray-800'
+      }`}
     >
       <div className="flex gap-3 min-w-0 flex-1">
         <Thumbnail
@@ -494,6 +502,14 @@ export default function PokemonScannedPage() {
   const { t } = useTranslation('pokemon')
   const { toasts, showToast } = useToast()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const focusParam = searchParams.get('focus')
+  const focusedId = useMemo(() => {
+    if (!focusParam) return null
+    const parsed = parseInt(focusParam, 10)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }, [focusParam])
 
   const [filter, setFilter] = useState<FilterKey>('needsReview')
   const [scans, setScans] = useState<ScanJob[]>([])
@@ -502,6 +518,9 @@ export default function PokemonScannedPage() {
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
   const [now, setNow] = useState(() => Date.now())
+  const [highlightedId, setHighlightedId] = useState<number | null>(null)
+  const rowRefs = useRef<Map<number, HTMLLIElement>>(new Map())
+  const focusHandledRef = useRef<number | null>(null)
 
   // tick the clock once per second so the "elapsed time" caption on pending
   // rows updates without forcing a full refetch.
@@ -604,6 +623,38 @@ export default function PokemonScannedPage() {
       return !Number.isNaN(ts) && ts >= cutoff
     })
   }, [scans, filter, now])
+
+  // When ?focus=N is present (e.g. opened from a scan-result push), scroll the
+  // matching row into view and apply a brief highlight so the kid can tell
+  // which result is theirs. focusHandledRef ensures we only scroll once per
+  // focus id even though visibleScans churns on every background poll.
+  useEffect(() => {
+    if (focusedId == null) return
+    if (loading) return
+    if (focusHandledRef.current === focusedId) return
+    const target = visibleScans.find(s => s.id === focusedId)
+    if (!target) return
+    const el = rowRefs.current.get(focusedId)
+    if (!el) return
+    focusHandledRef.current = focusedId
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlightedId(focusedId)
+    // Strip ?focus= once the focus is consumed so a refresh does not re-trigger
+    // the highlight after the user has moved on.
+    const next = new URLSearchParams(searchParams)
+    next.delete('focus')
+    setSearchParams(next, { replace: true })
+  }, [focusedId, loading, visibleScans, searchParams, setSearchParams])
+
+  // Auto-clear the row highlight after a short window so the visual nudge
+  // fades back to normal styling without lingering forever. Split from the
+  // scroll effect so the timer is not cancelled by unrelated re-renders
+  // (e.g. when the background poll refreshes visibleScans).
+  useEffect(() => {
+    if (highlightedId == null) return
+    const timer = window.setTimeout(() => setHighlightedId(null), 2500)
+    return () => window.clearTimeout(timer)
+  }, [highlightedId])
 
   const handleEnterManually = useCallback(
     (scan: ScanJob) => {
@@ -742,6 +793,14 @@ export default function PokemonScannedPage() {
                 scan={scan}
                 busy={busyId === scan.id}
                 now={now}
+                highlighted={highlightedId === scan.id}
+                rowRef={el => {
+                  if (el) {
+                    rowRefs.current.set(scan.id, el)
+                  } else {
+                    rowRefs.current.delete(scan.id)
+                  }
+                }}
                 onResolve={handleResolve}
                 onEnterManually={handleEnterManually}
                 t={t}

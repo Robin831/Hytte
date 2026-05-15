@@ -3,15 +3,19 @@ package pokemon
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/training"
 )
 
@@ -201,6 +205,7 @@ func processScanJob(ctx context.Context, db *sql.DB, job scanJob) {
 		if r := recover(); r != nil {
 			log.Printf("pokemon: scan worker panic on job %d: %v", job.ID, r)
 			finalizeScanJobFailed(db, job.ID, fmt.Sprintf("worker panic: %v", r))
+			notifyScanResult(db, job.UserID, job.ID, scanJobStatusFailed, "", "")
 		}
 	}()
 
@@ -217,30 +222,36 @@ func processScanJob(ctx context.Context, db *sql.DB, job scanJob) {
 	imagePath, err := encryption.DecryptField(job.ImagePathEnc)
 	if err != nil {
 		finalizeScanJobFailed(db, job.ID, fmt.Sprintf("decrypt image path: %v", err))
+		notifyScanResult(db, job.UserID, job.ID, scanJobStatusFailed, "", "")
 		return
 	}
 	if imagePath == "" {
 		finalizeScanJobFailed(db, job.ID, "empty image path")
+		notifyScanResult(db, job.UserID, job.ID, scanJobStatusFailed, "", "")
 		return
 	}
 	if _, err := os.Stat(imagePath); err != nil {
 		finalizeScanJobFailed(db, job.ID, fmt.Sprintf("stat image: %v", err))
+		notifyScanResult(db, job.UserID, job.ID, scanJobStatusFailed, "", "")
 		return
 	}
 
 	cfg, err := training.LoadClaudeConfig(db, job.UserID)
 	if err != nil {
 		finalizeScanJobFailed(db, job.ID, fmt.Sprintf("load claude config: %v", err))
+		notifyScanResult(db, job.UserID, job.ID, scanJobStatusFailed, "", "")
 		return
 	}
 	if !cfg.Enabled {
 		finalizeScanJobFailed(db, job.ID, "claude is not enabled for this user")
+		notifyScanResult(db, job.UserID, job.ID, scanJobStatusFailed, "", "")
 		return
 	}
 
 	raw, err := scanRunPromptFn(ctx, cfg, scanPrompt, imagePath)
 	if err != nil {
 		finalizeScanJobFailed(db, job.ID, fmt.Sprintf("claude scan: %v", err))
+		notifyScanResult(db, job.UserID, job.ID, scanJobStatusFailed, "", "")
 		return
 	}
 
@@ -256,16 +267,19 @@ func processScanJob(ctx context.Context, db *sql.DB, job scanJob) {
 	result, parseErr := parseClaudeScanResult(raw)
 	if parseErr != nil {
 		finalizeScanJobNoMatch(db, job.ID, 0, fmt.Sprintf("could not parse vision response: %v", parseErr), respEnc)
+		notifyScanResult(db, job.UserID, job.ID, scanJobStatusNoMatch, "", "")
 		return
 	}
 	if result.Confidence < scanConfidenceThreshold {
 		finalizeScanJobNoMatch(db, job.ID, result.Confidence, "low confidence", respEnc)
+		notifyScanResult(db, job.UserID, job.ID, scanJobStatusNoMatch, "", "")
 		return
 	}
 
 	candidates, reason, err := findScanCandidates(ctx, db, job.UserID, result)
 	if err != nil {
 		finalizeScanJobFailed(db, job.ID, fmt.Sprintf("find candidates: %v", err))
+		notifyScanResult(db, job.UserID, job.ID, scanJobStatusFailed, "", "")
 		return
 	}
 	if len(candidates) == 0 {
@@ -273,6 +287,7 @@ func processScanJob(ctx context.Context, db *sql.DB, job scanJob) {
 			reason = "no candidate found"
 		}
 		finalizeScanJobNoMatch(db, job.ID, result.Confidence, reason, respEnc)
+		notifyScanResult(db, job.UserID, job.ID, scanJobStatusNoMatch, "", "")
 		return
 	}
 
@@ -282,6 +297,11 @@ func processScanJob(ctx context.Context, db *sql.DB, job scanJob) {
 	// user picks the specific kind (normal vs reverse vs holo) during resolve.
 	matched := candidates[0]
 	finalizeScanJobMatched(db, job.ID, matched.Card.ID, result.Confidence, respEnc)
+	setName := ""
+	if matched.Set != nil {
+		setName = matched.Set.Name
+	}
+	notifyScanResult(db, job.UserID, job.ID, scanJobStatusMatched, matched.Card.Name, setName)
 }
 
 // finalizeScanJobMatched sets the terminal 'matched' state. Uses a short
@@ -339,4 +359,90 @@ func nullIfEmpty(s string) any {
 		return nil
 	}
 	return s
+}
+
+// scanPushPreferenceKey is the user preference that opts a kid out of per-scan
+// push notifications. Default is enabled — only an explicit "false" disables.
+const scanPushPreferenceKey = "pokemon_scan_push_enabled"
+
+// scanPushHTTPClient is the HTTP client used for sending scan-result push
+// notifications. A short timeout keeps the worker goroutine from stalling
+// indefinitely on a slow push endpoint.
+var scanPushHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
+// scanPushSendFn is the package-level seam tests override to capture push
+// payloads without exercising the real HTTP transport. Production wires it to
+// push.SendToUser.
+var scanPushSendFn = func(db *sql.DB, userID int64, payload []byte) ([]push.SendResult, error) {
+	return push.SendToUser(db, scanPushHTTPClient, userID, payload)
+}
+
+// scanPushEnabled returns whether the user accepts per-scan push notifications.
+// Missing preference defaults to true; only the literal string "false" opts a
+// user out. DB errors fail-open so a transient lookup failure does not
+// permanently silence notifications.
+func scanPushEnabled(db *sql.DB, userID int64) bool {
+	prefs, err := auth.GetPreferences(db, userID)
+	if err != nil {
+		log.Printf("pokemon: scan push load preferences for user %d: %v", userID, err)
+		return true
+	}
+	v, ok := prefs[scanPushPreferenceKey]
+	if !ok {
+		return true
+	}
+	return v != "false"
+}
+
+// notifyScanResult dispatches a push notification for a scan job that just
+// transitioned to a terminal state. All errors are logged and swallowed —
+// push delivery must never block the worker. cardName and setName are used
+// only for the matched status; ignored otherwise.
+func notifyScanResult(db *sql.DB, userID, jobID int64, status, cardName, setName string) {
+	if !scanPushEnabled(db, userID) {
+		return
+	}
+	notif, ok := buildScanResultNotification(status, jobID, cardName, setName)
+	if !ok {
+		return
+	}
+	payload, err := json.Marshal(notif)
+	if err != nil {
+		log.Printf("pokemon: marshal scan push for job %d: %v", jobID, err)
+		return
+	}
+	if _, err := scanPushSendFn(db, userID, payload); err != nil {
+		log.Printf("pokemon: send scan push for job %d: %v", jobID, err)
+	}
+}
+
+// buildScanResultNotification returns the Notification body for a terminal
+// status. The tag collapses repeats for the same job; the URL deep-links the
+// scanned page focused on the row so a notification click takes the kid
+// straight to the result. Unknown statuses return ok=false so callers can
+// skip the send.
+func buildScanResultNotification(status string, jobID int64, cardName, setName string) (push.Notification, bool) {
+	var body string
+	switch status {
+	case scanJobStatusMatched:
+		if setName != "" {
+			body = fmt.Sprintf("Found: %s (%s)", cardName, setName)
+		} else if cardName != "" {
+			body = fmt.Sprintf("Found: %s", cardName)
+		} else {
+			body = "Card matched"
+		}
+	case scanJobStatusNoMatch:
+		body = "Couldn't read the card — try another angle"
+	case scanJobStatusFailed:
+		body = "Scan failed — try again"
+	default:
+		return push.Notification{}, false
+	}
+	return push.Notification{
+		Title: "Scan result",
+		Body:  body,
+		Tag:   fmt.Sprintf("pokemon-scan-%d", jobID),
+		URL:   fmt.Sprintf("/pokemon/scanned?focus=%d", jobID),
+	}, true
 }

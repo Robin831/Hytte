@@ -241,6 +241,13 @@
     "disableFeature": "Deaktiver {{feature}} for {{name}}",
     "toggleError": "Kunne ikke oppdatere {{feature}} for bruker — {{error}}"
   },
+  "pokemon": {
+    "heading": "Pokémon",
+    "scanPushTitle": "Varsler om skanneresultater",
+    "scanPushDescription": "Få et push når en kortskanning er ferdig (treff, ingen treff eller feil).",
+    "enableScanPush": "Slå på varsler om skanneresultater",
+    "disableScanPush": "Slå av varsler om skanneresultater"
+  },
   "kioskTokens": {
     "heading": "Kiosktokens",
     "description": "Administrer tilgangstokens for offentlig kioskvisning",
