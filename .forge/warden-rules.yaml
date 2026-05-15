@@ -15438,3 +15438,679 @@ rules:
         Grep the codebase for the key (e.g. `t('namespace:key')`) to confirm no remaining usages exist. If the key is still referenced anywhere, either keep the translations and update the PR description, or migrate the remaining usages to a new key before removing the old translations.
       source: copilot:PR#715
       added: "2026-05-11"
+    - id: no-test-only-helpers-in-prod
+      category: testing
+      pattern: >-
+        Exported or package-level helper methods/functions in production (non-_test.go) files annotated or commented as being used only by tests (e.g. 'Used by tests', 'for testing')
+      check: >-
+        Verify test-only helpers are moved into a _test.go file (or the behavior is asserted via the existing public API) so production builds don't ship test-only methods
+      source: copilot:PR#716
+      added: "2026-05-13"
+    - id: article-before-vowel-sound
+      category: style
+      pattern: >-
+        Documentation, changelogs, comments, or user-facing strings using indefinite articles ('a' or 'an') before a word
+      check: >-
+        Verify the article matches the following word's initial sound: 'an' before vowel sounds (including words starting with vowels or silent 'h'), 'a' before consonant sounds. Pay attention to acronyms and technical terms (e.g., 'a text/event-stream', 'an HTTP request', 'an SSE stream', 'a URL').
+      source: copilot:PR#716
+      added: "2026-05-13"
+    - id: test-matches-pr-description
+      category: testing
+      pattern: >-
+        PR description or test plan claims an end-to-end test covers a specific code path (e.g. HTTP POST → publish → SSE delivery), but the actual test bypasses part of that path (e.g. publishes directly to an internal hub instead of going through the HTTP handler)
+      check: >-
+        Verify tests actually exercise the path described in the PR/acceptance criteria. If a test plan promises an E2E flow through HTTP/handlers, the test must drive that flow end-to-end rather than calling internal components directly. Either extend the test to cover the full path, or update the PR description to match what is actually tested.
+      source: copilot:PR#716
+      added: "2026-05-13"
+    - id: encrypted-unique-race
+      category: concurrency
+      pattern: >-
+        Enforcing uniqueness on an encrypted column (e.g. UNIQUE(user_id, label_enc)) when ciphertext uses a random nonce/IV, combined with a read-then-insert plaintext check for deduplication
+      check: >-
+        Verify duplicates cannot be inserted under concurrent requests: random-nonce ciphertext makes UNIQUE constraints on encrypted columns ineffective, and read-then-insert comparisons have a TOCTOU race. Require a deterministic per-user lookup key (e.g. HMAC or hash of the normalized plaintext) with a UNIQUE constraint, or make the upsert atomic (transaction with locking, INSERT ... ON CONFLICT on the deterministic key, or application-level mutex) so concurrent creates cannot produce duplicate plaintext values.
+      source: copilot:PR#721
+      added: "2026-05-14"
+    - id: sortable-timestamp-format
+      category: other
+      pattern: >-
+        Persisting timestamps as text (e.g., RFC3339Nano) in a column that is later sorted lexicographically
+      check: >-
+        Verify timestamps stored as text use a fixed-width, consistently comparable layout (e.g., UTC with fixed fractional precision) so lexicographic ordering matches chronological ordering
+      source: copilot:PR#721
+      added: "2026-05-14"
+    - id: filtered-list-state-sync
+      category: ui
+      pattern: >-
+        Optimistic insert/update of an item into a client-side list that is currently displayed through a filter (e.g., archived/active, status, category)
+      check: >-
+        Verify the new or modified item actually matches the active filter before adding it to state; otherwise items will appear in views they don't belong to until refetch. Either skip the local insert, switch the filter to match, or refetch.
+      source: copilot:PR#722
+      added: "2026-05-14"
+    - id: clear-stale-error-on-success
+      category: ui
+      pattern: >-
+        Page-level error state set on failed mutations/actions but only updated on subsequent failures
+      check: >-
+        Verify error state is cleared at the start of new mutations or on successful completion so stale error banners don't persist after a later successful action
+      source: copilot:PR#722
+      added: "2026-05-14"
+    - id: verify-external-api-shape
+      category: error-handling
+      pattern: >-
+        Decoding an external API response into a Go struct or map, especially when the field is named like a container (e.g., `prices`, `data`, `items`)
+      check: >-
+        Verify the Go type matches the actual JSON shape of the external API response by checking real sample payloads or official docs. Confirm whether nested fields are flat objects with scalar values vs. maps/arrays of sub-objects, since a mismatch causes json.Unmarshal to fail and breaks the entire sync before any records are processed.
+      source: copilot:PR#725
+      added: "2026-05-14"
+    - id: context-aware-retry-sleep
+      category: concurrency
+      pattern: >-
+        Sleep/delay between retries (e.g. after HTTP 429 Retry-After) using time.Sleep or unconditional waits in context-aware code paths
+      check: >-
+        Verify retry/backoff delays use a timer with select on ctx.Done() so cancellation and timeouts interrupt the wait instead of blocking until the sleep finishes
+      source: copilot:PR#725
+      added: "2026-05-14"
+    - id: guard-admin-triggered-syncs
+      category: concurrency
+      pattern: >-
+        Admin endpoint or user-triggered handler spawns a detached/background sync, crawl, or long-running job (goroutine, queued task) that also runs on a schedule
+      check: >-
+        Verify there is a single-flight guard, mutex, or job-state check that prevents concurrent runs — repeated triggers or overlap with the scheduled run should be coalesced or rejected with a 409 Conflict, not multiplied
+      source: copilot:PR#725
+      added: "2026-05-14"
+    - id: test-new-http-handlers
+      category: testing
+      pattern: >-
+        New HTTP handler added (especially admin-only or sync endpoints) without httptest coverage
+      check: >-
+        Verify the new handler has httptest-based tests covering both the success response (status code, JSON body/contract) and failure paths including route-level auth/admin-only behavior
+      source: copilot:PR#725
+      added: "2026-05-14"
+    - id: reset-encryption-key-singleton-in-tests
+      category: testing
+      pattern: >-
+        Test setup calls t.Setenv("ENCRYPTION_KEY", ...) or otherwise changes the encryption key environment without resetting the encryption key singleton
+      check: >-
+        Verify the test calls encryption.ResetEncryptionKey() after Setenv and registers it via t.Cleanup so the derived key singleton does not leak between tests or packages in the same process
+      source: copilot:PR#726
+      added: "2026-05-14"
+    - id: owned-count-quantity-filter
+      category: other
+      pattern: >-
+        Subquery or aggregation counting collection/inventory rows (e.g., owned_count, DISTINCT card_id) where the table allows a quantity column to be 0 without deleting the row
+      check: >-
+        Verify the count filters rows with quantity > 0 so zero-quantity rows are not counted as owned. Apply the same filter to all variants of the query (e.g., both era-filtered and unfiltered versions).
+      source: copilot:PR#727
+      added: "2026-05-14"
+    - id: paginated-endpoint-full-fetch
+      category: error-handling
+      pattern: >-
+        Frontend page fetches a paginated/capped backend endpoint with a single request and renders the results as if complete
+      check: >-
+        Verify the client either loops on offset/cursor until exhausted (fewer results than limit) or that the backend endpoint is documented to return the full list; otherwise items beyond the server-side cap will be silently omitted
+      source: copilot:PR#727
+      added: "2026-05-14"
+    - id: upsert-overwrites-existing-data
+      category: error-handling
+      pattern: >-
+        Frontend quick-add or create flow POSTs to a backend endpoint that performs UPSERT (ON CONFLICT DO UPDATE) with default/empty values for fields like quantity, condition, notes
+      check: >-
+        Verify the flow checks for existing ownership before POSTing — when the DTO indicates the item is already owned, either skip the request and show an 'already owned' message, or increment/preserve existing values rather than silently overwriting user-entered data (quantity, condition, notes) with defaults
+      source: copilot:PR#729
+      added: "2026-05-14"
+    - id: i18n-variant-key-coverage
+      category: ui
+      pattern: >-
+        Code uses t() with a dynamic key like `namespace.${value}` and a defaultValue fallback to render user-visible labels for an enum/variant set
+      check: >-
+        Verify every possible value of the dynamic segment has a matching translation key in all locale files (en/nb/th); otherwise users see raw tokens. List the full enum, grep each locale JSON, and add missing keys rather than relying on defaultValue.
+      source: copilot:PR#729
+      added: "2026-05-14"
+    - id: toast-type-mismatch
+      category: ui
+      pattern: Calling showToast() or similar toast helpers with a type string argument
+      check: >-
+        Verify the type argument matches the union type accepted by the toast helper (e.g. 'success' | 'error' | 'warning') and that ToastList/renderer has a real style for it — passing an unsupported value like 'info' will break the TypeScript build and fall through to the error style at runtime.
+      source: copilot:PR#729
+      added: "2026-05-14"
+    - id: multipart-upload-limits-and-cleanup
+      category: security
+      pattern: HTTP handler calls r.ParseMultipartForm() to handle file uploads
+      check: >-
+        Verify the request body is wrapped with http.MaxBytesReader to enforce a hard size cap (aligned with the documented file size limit plus small overhead), and that r.MultipartForm.RemoveAll() is deferred after a successful parse to clean up any temp files spooled to disk.
+      source: copilot:PR#731
+      added: "2026-05-14"
+    - id: sql-rows-err-check
+      category: error-handling
+      pattern: Iterating sql.Rows with rows.Next() in a query loop
+      check: >-
+        Ensure defer rows.Close() is set and rows.Err() is checked after the loop to catch mid-stream iteration errors
+      source: copilot:PR#731
+      added: "2026-05-14"
+    - id: getusermedia-error-branching
+      category: error-handling
+      pattern: >-
+        Catching errors from navigator.mediaDevices.getUserMedia() and mapping them to a single state (e.g. permissionState='denied')
+      check: >-
+        Verify the catch branches on DOMException.name (NotAllowedError vs NotFoundError, NotReadableError, OverconstrainedError, etc.) and surfaces distinct user-facing messages, or falls back to a generic 'camera unavailable' state — don't conflate all failures with 'permission denied'
+      source: copilot:PR#732
+      added: "2026-05-14"
+    - id: modal-keyboard-a11y
+      category: ui
+      pattern: >-
+        Element with role="dialog" or aria-modal="true" (modal-like overlays, sheets, or dialogs)
+      check: >-
+        Verify the modal manages focus (move initial focus to an element inside on open, e.g., close button) and handles keyboard dismissal (Escape key closes the overlay) so keyboard and screen-reader users can reliably interact with and dismiss it.
+      source: copilot:PR#732
+      added: "2026-05-14"
+    - id: test-capture-callback-paths
+      category: testing
+      pattern: >-
+        Component exposes a capture/action callback that fires after async media operations (canvas.toBlob, FileReader, MediaRecorder) producing a Blob/File
+      check: >-
+        Verify a test simulates the user action (e.g., clicking the shutter) and asserts the callback is invoked with the expected Blob/File when prerequisites (videoWidth/videoHeight, toBlob result) are satisfied
+      source: copilot:PR#732
+      added: "2026-05-14"
+    - id: restore-global-mocks-in-tests
+      category: testing
+      pattern: >-
+        Tests mutate global objects (e.g., navigator, window) via Object.defineProperty or direct assignment without saving and restoring the original value
+      check: >-
+        Verify that any mutation of global state in tests is reverted in afterEach by restoring the saved descriptor/value, or use vi.stubGlobal / vi.unstubAllGlobals to keep tests hermetic and prevent leakage into other test files
+      source: copilot:PR#732
+      added: "2026-05-14"
+    - id: fullscreen-modal-backdrop
+      category: ui
+      pattern: >-
+        Modal/overlay component whose root element shrinks on larger viewports (e.g. `md:inset-8`) when stacked over another dismissable overlay (Dialog, popover, etc.)
+      check: >-
+        Verify the modal keeps a full-screen backdrop layer (`fixed inset-0`) and only sizes/centers an inner container at desktop breakpoints, so clicks in the uncovered area don't pass through and dismiss an underlying overlay.
+      source: copilot:PR#732
+      added: "2026-05-14"
+    - id: nested-modal-focus-conflict
+      category: ui
+      pattern: >-
+        A modal/dialog component opens another modal-like overlay (e.g., scanner, picker, secondary dialog) while remaining mounted, where both install document-level Escape handlers, focus traps, or aria-modal semantics
+      check: >-
+        Verify only one modal owns Escape/Tab/focus-trap semantics at a time: either close/suspend the parent dialog when the child overlay opens, render the child inside the parent dialog, or use a shared Dialog primitive so Escape doesn't close both layers and Tab isn't trapped in the hidden underlying dialog
+      source: copilot:PR#732
+      added: "2026-05-14"
+    - id: restore-global-mocks-when-originally-undefined
+      category: testing
+      pattern: >-
+        Tests that mock or override a global/host property (e.g., navigator.mediaDevices) and try to restore it in afterEach/afterAll using a saved descriptor
+      check: >-
+        Verify the teardown handles the case where the property did not exist originally (saved descriptor is undefined) by deleting or setting it back to undefined, so the mock does not leak into other test files depending on execution order
+      source: copilot:PR#732
+      added: "2026-05-14"
+    - id: modal-overlay-focus-trap
+      category: ui
+      pattern: >-
+        Conditionally unmounting or hiding a Dialog/Modal when opening a nested overlay (e.g., scanner, camera, picker) that replaces the dialog's content
+      check: >-
+        Verify the replacement overlay provides equivalent focus trap and body scroll lock, OR keep the Dialog mounted and layer the overlay on top so its built-in focus trap and scroll lock remain active
+      source: copilot:PR#732
+      added: "2026-05-14"
+    - id: modal-focus-trap-scroll-lock
+      category: ui
+      pattern: >-
+        Full-screen modal/dialog overlays (role="dialog" or similar) implemented manually rather than via the shared Dialog component
+      check: >-
+        Verify the modal traps tab focus within itself (focus cannot escape to elements behind the overlay) and locks body scroll (e.g. document.body.style.overflow='hidden' while mounted, restored on unmount). Prefer reusing the existing Dialog component over reimplementing this behavior.
+      source: copilot:PR#732
+      added: "2026-05-14"
+    - id: canvas-toblob-null-recovery
+      category: error-handling
+      pattern: >-
+        Using canvas.toBlob() to capture an image after committing UI state to a 'captured'/locked state (e.g. pausing video, disabling controls)
+      check: >-
+        Verify the code handles canvas.toBlob being unavailable or yielding a null blob — either fall back to toDataURL/manual capture, or only commit the locked/captured state after a non-null Blob is produced (otherwise revert state and resume the prior flow) so the UI is never left frozen with no recovery path
+      source: copilot:PR#733
+      added: "2026-05-14"
+    - id: test-state-machine-transitions
+      category: testing
+      pattern: >-
+        New stateful logic (state machines, sampling loops, RAF-driven flows) added to a component that already has a dedicated test suite
+      check: >-
+        Verify tests cover the state transitions and side effects (e.g. mock requestAnimationFrame and detection helpers to drive each state, assert status changes and callbacks like onCapture fire correctly)
+      source: copilot:PR#733
+      added: "2026-05-14"
+    - id: paired-coordinates-not-sorted-independently
+      category: other
+      pattern: >-
+        Parallel arrays representing paired data (e.g., x/y coordinates, key/value pairs) that are sorted or reordered independently before being indexed together
+      check: >-
+        Verify that paired data stays paired — if two arrays represent components of the same items (coordinates, tuples), do not sort them independently and then access them by the same index. Use an array of paired objects/tuples, or keep unsorted copies for paired iteration.
+      source: copilot:PR#733
+      added: "2026-05-14"
+    - id: changelog-blank-line-after-category
+      category: style
+      pattern: Adding or modifying a changelog fragment file in changelog.d/
+      check: >-
+        Verify there is a blank line between the 'category: ...' header and the bullet list that follows it, matching the established format in existing fragments
+      source: copilot:PR#733
+      added: "2026-05-14"
+    - id: clear-stale-state-on-prefill
+      category: ui
+      pattern: >-
+        Component reopens or transitions to a new input/query state (e.g., scanner closes into manual entry with a prefilled value) while previous async results, errors, or picker state remain in component state
+      check: >-
+        Verify that all dependent result state (search results, error messages, variant/option pickers, loading flags) is explicitly cleared when applying a prefill or state transition, so stale UI from the prior query cannot be shown or interacted with before the new async operation resolves
+      source: copilot:PR#734
+      added: "2026-05-14"
+    - id: modal-focus-trap-nesting
+      category: ui
+      pattern: >-
+        A modal/dialog is rendered inside another modal that uses a focus trap, with aria-modal on the inner element but no focus management coordination
+      check: >-
+        Verify that when a nested modal opens, focus is constrained to the inner modal and underlying controls in the parent modal are made inert (via inert attribute, aria-hidden, or disabled) so keyboard users cannot tab to background controls
+      source: copilot:PR#734
+      added: "2026-05-14"
+    - id: test-timeout-abort-paths
+      category: testing
+      pattern: >-
+        New async flow with a timeout/abort branch (e.g. AbortController with setTimeout) that shows user feedback and resumes/recovers
+      check: >-
+        Verify a deterministic fake-timer test exercises the in-flight request timeout/abort, asserts the user-facing toast/error message, and confirms the recovery path (e.g. scanning resumes) so the failure mode is regression-tested
+      source: copilot:PR#734
+      added: "2026-05-14"
+    - id: deterministic-time-in-tests
+      category: testing
+      pattern: >-
+        Tests that assert behavior gated by time windows (cooldowns, debouncing, timeouts, throttling) using real wall-clock time or unmocked Date.now()/setTimeout/rAF.
+      check: >-
+        Verify the test uses fake timers (e.g., vi.useFakeTimers, jest.useFakeTimers) or mocks Date.now() so the timing-gated assertion is deterministic and does not depend on how fast the test runner reaches the callback.
+      source: copilot:PR#734
+      added: "2026-05-14"
+    - id: clear-timeouts-on-unmount
+      category: concurrency
+      pattern: >-
+        setTimeout/setInterval calls in React components that schedule state updates (e.g., setState, set* hooks) without storing the timer id in a ref
+      check: >-
+        Verify the timer id is stored in a useRef and cleared in all cleanup/close/unmount paths (useEffect cleanup, close handlers) to prevent state updates on unmounted components and leaks across instances/tests
+      source: copilot:PR#734
+      added: "2026-05-14"
+    - id: ui-api-auth-gate-mismatch
+      category: security
+      pattern: >-
+        Frontend exposes an action (button, panel, form submission) that calls a backend endpoint guarded by stricter auth/role requirements (e.g., RequireAdmin) than the page's own gate (e.g., feature flag only)
+      check: >-
+        Verify the UI's visibility/enablement conditions match the endpoint's auth requirements — either hide/disable the action for users who lack the backend role, or relax the endpoint gate so authorized UI users won't hit 403s surfaced as generic errors
+      source: copilot:PR#734
+      added: "2026-05-14"
+    - id: prefer-first-nonempty-over-nullish
+      category: error-handling
+      pattern: >-
+        Using `??` (nullish coalescing) to choose between string fields that may come back as empty strings from an API or scan response
+      check: >-
+        Verify that fallback chains for string fields skip empty/whitespace-only values, not just null/undefined. Prefer selecting the first non-empty trimmed value so a usable later field isn't shadowed by an empty earlier one.
+      source: copilot:PR#734
+      added: "2026-05-14"
+    - id: modal-focus-trap-initial-focus
+      category: ui
+      pattern: >-
+        Modal/dialog opens conditionally based on state change, with a focus trap that wraps Tab navigation only when activeElement is already inside the modal
+      check: >-
+        Verify focus is programmatically moved into the modal (e.g., to the first action button) when it opens, and that the focus trap handles the case where activeElement is outside the modal — otherwise keyboard users can tab away instead of reaching modal actions
+      source: copilot:PR#734
+      added: "2026-05-14"
+    - id: doc-matches-fallback-behavior
+      category: style
+      pattern: >-
+        Helper function with a comment describing its return value (e.g. 'returns first not-owned variant') but the implementation has a fallback path that can violate that contract (e.g. falls back to index 0 regardless of ownership)
+      check: >-
+        Verify the comment/docstring accurately describes all return paths including fallbacks. Either update the comment to document the fallback behavior, or change the implementation so the returned value always matches the documented contract. Callers should not be misled about invariants like 'addable', 'non-null', or 'unowned'.
+      source: copilot:PR#734
+      added: "2026-05-14"
+    - id: changelog-matches-diff
+      category: other
+      pattern: >-
+        PR adds or modifies a changelog fragment in changelog.d/ that describes code, test, or translation changes
+      check: >-
+        Verify every change claimed in the changelog fragment is actually present in the PR diff (referenced files are added/modified). If the fragment describes work not included in this PR, either trim the entry to what shipped or add the missing files before merging.
+      source: copilot:PR#735
+      added: "2026-05-14"
+    - id: no-orphaned-feature-removal
+      category: ui
+      pattern: >-
+        PR removes or replaces UI controls for editing user-owned data (quantity, condition, notes, etc.) and hard-codes those fields in the save handler
+      check: >-
+        Verify a replacement editor exists in the codebase or in the same PR before removing existing edit controls; ensure users retain the ability to modify all previously editable fields, and check that translation keys for removed controls are either reused or cleaned up
+      source: copilot:PR#736
+      added: "2026-05-14"
+    - id: button-label-toast-string
+      category: ui
+      pattern: >-
+        Button or other compact UI control uses a toast/notification i18n key as its label (e.g. a full sentence string intended for transient notifications)
+      check: >-
+        Verify that buttons, badges, and other compact UI elements use short, label-style i18n keys rather than full-sentence toast/notification strings; if a state needs both, add a dedicated short key (e.g. `*.alreadyOwnedShort`) for the compact context
+      source: copilot:PR#736
+      added: "2026-05-14"
+    - id: touch-swipe-synthetic-click
+      category: ui
+      pattern: >-
+        Touch gesture handlers (touchstart/touchmove/touchend) on a wrapper element with a click handler on a child element that dismisses or navigates
+      check: >-
+        Verify swipe gestures don't trigger the child's synthetic click after touchend. Track whether the last gesture was a swipe (e.g. via a ref set when the swipe threshold is exceeded) and short-circuit the child's onClick in that case, or call e.preventDefault() in handleTouchEnd once a swipe is committed.
+      source: copilot:PR#736
+      added: "2026-05-14"
+    - id: comment-code-mismatch
+      category: style
+      pattern: >-
+        Code comments that describe specific behavior (e.g., 'sends no parameter', 'omits X when Y', 'only runs in case Z') near logic that constructs requests, URLs, or conditionals
+      check: >-
+        Verify the comment's claim matches the actual code behavior. If the comment says a parameter is omitted/skipped/defaulted, trace the code path to confirm. If they diverge, either fix the comment or change the code so docs and behavior agree.
+      source: copilot:PR#737
+      added: "2026-05-15"
+    - id: consistent-variant-selection
+      category: ui
+      pattern: >-
+        Displaying a label and an associated value (e.g. price, name, stats) that are derived from two different selection mechanisms on the same underlying collection
+      check: >-
+        Verify the label and its associated value are sourced from the same selected item. If a kind/key field identifies the canonical selection, use it to look up the matching item rather than re-deriving via a separate ordering (e.g. max-by-price); fall back to the derived selection only when the canonical key is missing.
+      source: copilot:PR#737
+      added: "2026-05-15"
+    - id: match-access-control-to-pr-description
+      category: security
+      pattern: >-
+        PR description or acceptance criteria specifies access control level (e.g., 'admin-only', 'admin + RequireFeature') for a new route or endpoint
+      check: >-
+        Verify the route registration middleware (RequireAdmin, RequireFeature, RequireAuth) and any frontend route gating match the stated access control. If the PR says admin-only, confirm RequireAdmin() is applied on the backend route and the frontend route is gated equivalently; otherwise update the PR description to reflect actual access control.
+      source: copilot:PR#737
+      added: "2026-05-15"
+    - id: assert-dom-order-not-just-presence
+      category: testing
+      pattern: >-
+        Tests asserting ordering of rendered elements (sorted lists, tie-break rules, stable sort behavior)
+      check: >-
+        Verify the test asserts the actual DOM order of elements (e.g., collect headings/items and compare textContent sequence) rather than just asserting each element exists, so non-deterministic or reordered output is caught.
+      source: copilot:PR#738
+      added: "2026-05-15"
+    - id: surface-backfill-errors
+      category: error-handling
+      pattern: >-
+        Sync or repair functions that invoke a self-healing/backfill step and log-and-swallow its errors, returning nil to the caller
+      check: >-
+        Verify that errors from self-healing/backfill steps are returned (or otherwise surfaced) to the caller so failures can be retried or alerted on, rather than being logged and suppressed which leaves the DB partially repaired while reporting success
+      source: copilot:PR#739
+      added: "2026-05-15"
+    - id: backfill-partial-state-coverage
+      category: testing
+      pattern: >-
+        Tests for backfill or data-migration logic that ensures every row has a required related record (e.g. every card has a 'normal' variant)
+      check: >-
+        Verify the test suite covers the partial-state case — records that already have some related rows but are missing the required one — and asserts the backfill adds the missing row without duplicating existing rows, not just the empty-state case
+      source: copilot:PR#739
+      added: "2026-05-15"
+    - id: spec-behavior-match
+      category: other
+      pattern: >-
+        Aggregation/calculation logic that implements a behavior described in the PR description, spec, or UX copy (e.g., summing values, picking 'best' items, filtering by a named option)
+      check: >-
+        Verify the implementation matches the stated spec/PR description/UX copy exactly — e.g., if the spec says 'sum the best-priced variant per item', confirm the code picks one per item rather than summing all variants. If implementation and spec diverge, either fix the code or update the description/copy/tests to match.
+      source: copilot:PR#740
+      added: "2026-05-15"
+    - id: aria-pressed-mixed-for-partial-toggle
+      category: ui
+      pattern: >-
+        Toggle buttons (using aria-pressed) that can represent a partial/indeterminate state in addition to on/off, such as 'all variants' filters with mixed ownership
+      check: >-
+        Verify aria-pressed is set to 'mixed' (not 'false') when the toggle is in a partial/indeterminate state, so assistive technology can distinguish partial from unselected
+      source: copilot:PR#740
+      added: "2026-05-15"
+    - id: variant-chip-row-single-kind
+      category: ui
+      pattern: >-
+        Rendering a filter/chip row whose options are derived from data variants (e.g., availableVariantFilters) and gated on length > 1
+      check: >-
+        Verify the chip row is suppressed when the dataset has only a single meaningful variant kind — i.e., don't count the 'any' option toward the threshold, and collapse the row when no item has multiple variants so 'Any' and the single kind aren't shown as redundant chips
+      source: copilot:PR#740
+      added: "2026-05-15"
+    - id: aria-pressed-only-for-toggles
+      category: ui
+      pattern: >-
+        Button or interactive element using `aria-pressed` to convey state (e.g., ownership, selection, applicability) when the element does not actually toggle a pressed/unpressed state
+      check: >-
+        Verify `aria-pressed` is only used on true toggle buttons (with pressed/not-pressed/mixed semantics). For non-toggle actions like opening a lightbox or navigating, expose the state via `aria-label`, `aria-describedby`, or visible/sr-only text instead.
+      source: copilot:PR#740
+      added: "2026-05-15"
+    - id: test-on-state-not-aria
+      category: testing
+      pattern: >-
+        Tests asserting on ARIA attributes (aria-pressed, aria-checked, aria-selected, aria-expanded) to verify component state or data conditions
+      check: >-
+        Verify tests assert on dedicated state signals (data-* attributes), visible text, or semantic content rather than ARIA attributes. ARIA attributes are accessibility concerns and may need to change independently — coupling tests to them blocks future accessibility fixes.
+      source: copilot:PR#740
+      added: "2026-05-15"
+    - id: concurrency-test-asserts-parallelism
+      category: testing
+      pattern: >-
+        Tests intended to verify concurrent/parallel execution that only assert the stub or function was called (e.g., `maxObserved.Load() < 1` or counter > 0)
+      check: >-
+        Ensure the assertion proves actual parallelism by requiring the observed concurrency counter to reach the expected concurrent count (e.g., `>= maxConcurrent` or `== 2`), not just that the code ran at least once
+      source: copilot:PR#741
+      added: "2026-05-15"
+    - id: test-comment-matches-assertion
+      category: testing
+      pattern: >-
+        Test contains a comment claiming platform-specific behavior (e.g., 'skipped on Windows') but the assertion runs unconditionally
+      check: >-
+        Verify that conditional comments match the actual test logic — either gate the assertion with a runtime check (e.g., runtime.GOOS) or update the comment to reflect that the check always runs
+      source: copilot:PR#741
+      added: "2026-05-15"
+    - id: test-cancel-midjob
+      category: testing
+      pattern: >-
+        Tests for worker/goroutine cancellation cover only idle or post-completion shutdown paths
+      check: >-
+        Verify there is a test that cancels the worker context while a job is actively in-flight, asserts the worker exits cleanly, and confirms in-flight rows are left in a terminal (non-processing) state
+      source: copilot:PR#741
+      added: "2026-05-15"
+    - id: guard-async-handler-reentry
+      category: concurrency
+      pattern: >-
+        User-action handlers (button clicks, send/submit) that mutate phase/state refs and trigger async work like scans, uploads, or network requests
+      check: >-
+        Verify the handler guards against re-entry while a prior invocation is still in flight — check the current phase/state before resetting refs or kicking off follow-up actions (e.g. resumeScanning), so a double-tap or repeat activation cannot race with the in-flight operation
+      source: copilot:PR#742
+      added: "2026-05-15"
+    - id: dialog-focus-management
+      category: ui
+      pattern: >-
+        New dialog, modal, or overlay component is introduced (especially with time-sensitive actions like auto-confirm timers)
+      check: >-
+        Verify focus is moved into the dialog when it appears so keyboard and screen-reader users are notified of the available actions before any auto-action fires; follow the focus-management pattern used by existing modals in the codebase
+      source: copilot:PR#742
+      added: "2026-05-15"
+    - id: guard-state-transitions-against-concurrent-workers
+      category: concurrency
+      pattern: >-
+        Handler mutates a row's status (e.g. discard/cancel) while a background worker also updates the same row by id
+      check: >-
+        Verify the update is conditional on a resolvable source status (WHERE status IN (...)) and that zero affected rows is treated as a conflict, so the worker cannot later overwrite the new terminal status
+      source: copilot:PR#743
+      added: "2026-05-15"
+    - id: guard-state-transitions-in-update
+      category: concurrency
+      pattern: >-
+        UPDATE statement that changes a row's status/state where the allowed transition was validated by a prior SELECT
+      check: >-
+        Ensure the UPDATE includes the expected-status predicate in its WHERE clause and that RowsAffected is checked, so concurrent writers cannot cause the row to be transitioned from an unexpected state (e.g. resurrecting a resolved/discarded job back to queued)
+      source: copilot:PR#743
+      added: "2026-05-15"
+    - id: test-routed-feature-gating
+      category: testing
+      pattern: >-
+        New HTTP routes added to RegisterRoutes with auth.RequireFeature gating, or existing routes removed/renamed
+      check: >-
+        Verify there is httptest coverage that exercises the real router (not handlers called directly) so feature-gate wiring and route registration regressions are caught, including any removed legacy routes
+      source: copilot:PR#743
+      added: "2026-05-15"
+    - id: pokemon-nok-rate-missing-header
+      category: error-handling
+      pattern: >-
+        Endpoint converts card prices to NOK manually instead of using the shared applyNOK helper
+      check: >-
+        Verify all Pokémon endpoints that return NOK-converted prices use applyNOK (or equivalent) so the X-Pokemon-Rate-Missing header is set consistently when no exchange rate is available
+      source: copilot:PR#743
+      added: "2026-05-15"
+    - id: handler-error-status-tests
+      category: testing
+      pattern: >-
+        HTTP handler maps domain/sentinel errors to specific status codes via a switch or conditional chain
+      check: >-
+        Verify handler-level tests exercise each error branch and assert the resulting HTTP status code, not just unit tests on the underlying helper that returns the sentinel errors
+      source: copilot:PR#743
+      added: "2026-05-15"
+    - id: changelog-matches-api-behavior
+      category: other
+      pattern: >-
+        Changelog entries that describe user-facing behavior of an API endpoint (allowed states, retry conditions, status transitions, etc.)
+      check: >-
+        Verify the changelog wording matches the actual API behavior — cross-check claimed allowed states/transitions against the handler code (e.g., which statuses permit retry/resolve) and fix the entry if it overstates or misstates what the endpoint accepts.
+      source: copilot:PR#743
+      added: "2026-05-15"
+    - id: test-all-status-transitions
+      category: testing
+      pattern: >-
+        Handler accepts multiple status values as valid inputs for a state transition (e.g., retry allowed from `failed` or `no_match`)
+      check: >-
+        Verify tests cover every allowed status branch, not just one representative case — each accepted status should have its own test so an acceptance path cannot silently regress
+      source: copilot:PR#743
+      added: "2026-05-15"
+    - id: no-skeleton-flash-on-background-poll
+      category: ui
+      pattern: >-
+        Component uses polling/interval refetch and sets a `loading`/skeleton state at the start of every fetch, while the render path swaps the list for skeleton placeholders when loading is true
+      check: >-
+        Verify that background/interval refetches do not toggle the same loading state used to gate the skeleton render — only initial fetches and explicit user-triggered refetches (filter change, retry, post-action refresh) should set loading=true; background polls should use a separate refresh path so the list stays mounted and doesn't flash
+      source: copilot:PR#746
+      added: "2026-05-15"
+    - id: module-load-time-anchors
+      category: ui
+      pattern: >-
+        Time-based cutoffs or thresholds (e.g., `Date.now() - N`) computed at module load / top-level scope and then referenced inside components
+      check: >-
+        Verify that time-based cutoffs used for filtering recent data are computed inside the component/hook (useMemo, useEffect, or refreshed on poll) so they slide with current time rather than being anchored to bundle evaluation time, which causes stale windows in long-lived SPA sessions
+      source: copilot:PR#746
+      added: "2026-05-15"
+    - id: no-pointless-async-iife
+      category: style
+      pattern: >-
+        An async IIFE (or async callback) wrapping a body that contains no await statements
+      check: >-
+        Verify the async wrapper is necessary — if there are no awaits inside, remove the async/IIFE and call the synchronous statements directly to avoid an unnecessary microtask delay and misleading intent
+      source: copilot:PR#746
+      added: "2026-05-15"
+    - id: log-push-send-results
+      category: error-handling
+      pattern: >-
+        Code calls push.SendToUser (or a wrapper) and discards the returned []push.SendResult slice
+      check: >-
+        Verify the returned SendResult slice is iterated and per-subscription failures (Err values, non-2xx status codes) are logged so delivery issues are observable, matching the pattern in internal/webhooks/push_dispatch.go
+      source: copilot:PR#747
+      added: "2026-05-15"
+    - id: i18n-backend-notifications
+      category: other
+      pattern: >-
+        Backend code constructs user-facing strings (push notification titles/bodies, emails, SMS) with hardcoded English literals
+      check: >-
+        Verify user-facing strings sent from the backend are localized via a translation helper using the user's language preference, not hardcoded English literals — especially when the PR description claims i18n support
+      source: copilot:PR#747
+      added: "2026-05-15"
+    - id: check-rowsaffected-before-side-effects
+      category: concurrency
+      pattern: >-
+        Conditional UPDATE with status/state predicate followed by external side effects (file deletion, counter increments, notifications) based on assumed success
+      check: >-
+        Verify the code checks RowsAffected() from the conditional UPDATE and only performs side effects when the update actually modified a row; otherwise concurrent state transitions can cause the side effect to act on data the update didn't touch (e.g., deleting a file a retried job still needs)
+      source: copilot:PR#748
+      added: "2026-05-15"
+    - id: stale-job-uses-claim-time-not-created-at
+      category: concurrency
+      pattern: >-
+        Cleanup or timeout logic that flags long-running 'processing' jobs as stale/failed using a creation timestamp (e.g., created_at) shared with queued rows
+      check: >-
+        Verify staleness for in-flight jobs is measured from when processing actually started (e.g., a started_at/claimed_at column or a separate predicate per state), not from row creation, so that a job recently claimed from an old queued row isn't immediately marked failed or discarded
+      source: copilot:PR#748
+      added: "2026-05-15"
+    - id: avoid-stale-magnitude-claims-in-doc-comments
+      category: style
+      pattern: >-
+        Doc comments or code comments that state a specific magnitude or count of a dataset (e.g., 'a few dozen X', 'around 100 Y') that is expected to grow over time
+      check: >-
+        Verify that doc comments avoid precise magnitude claims for growing datasets; prefer future-proof phrasing or omit the count entirely, especially when pagination already exists
+      source: copilot:PR#749
+      added: "2026-05-15"
+    - id: case-sensitive-query-param-parsing
+      category: ui
+      pattern: >-
+        Frontend reads boolean/enum query parameters from URL using strict case-sensitive comparison (e.g., params.get('foo') === 'true') while the backend parses the same parameter case-insensitively
+      check: >-
+        Verify frontend query-param parsing matches backend tolerance — normalize case (e.g., toLowerCase()) or use case-insensitive comparison so URLs like ?foo=True behave consistently on both sides
+      source: copilot:PR#749
+      added: "2026-05-15"
+    - id: preserve-location-state-on-navigate
+      category: ui
+      pattern: >-
+        react-router navigate() calls that pass a { pathname, search } object (or otherwise replace the location) when toggling filters, updating query params, or performing cleanup navigations on a route that receives data via location.state
+      check: >-
+        Verify that existing location.state is preserved (spread or explicitly passed through) so hints like addCardQuery aren't dropped and subsequent replace navigations don't interfere with back/forward behavior
+      source: copilot:PR#749
+      added: "2026-05-15"
+    - id: dialog-focus-restore-once
+      category: ui
+      pattern: >-
+        Dialog/modal open/close effect that calls element.focus() to restore focus in both the else branch (when open becomes false) and the cleanup function (when previous open was true)
+      check: >-
+        Verify focus restoration happens in exactly one place — either the else branch or the cleanup — to avoid duplicate .focus() calls and to not override consumer focus management that runs after close
+      source: copilot:PR#750
+      added: "2026-05-15"
+    - id: reset-loading-state-on-abort
+      category: concurrency
+      pattern: >-
+        Debounced or cancellable async effects that set a loading/searching flag and use AbortController, where the finally block skips resetting the flag on abort to avoid stale overwrites
+      check: >-
+        Verify the loading/searching state is cleared on abort/cleanup paths (not just on successful completion), so rapid re-triggers don't leave the UI stuck in a loading state — while still guarding against stale results overwriting newer ones
+      source: copilot:PR#750
+      added: "2026-05-15"
+    - id: manual-override-stale-derived-fields
+      category: other
+      pattern: >-
+        Handler that lets a user override an auto-computed field (e.g. matched_card_id) while leaving sibling derived fields (confidence, scores, reasoning) unchanged on the same row
+      check: >-
+        Verify that when a manual override replaces an auto-computed value, all derived/correlated fields (confidence scores, model reasoning, match metadata) are cleared, recomputed, or stored separately so the row remains internally consistent and history is preserved
+      source: copilot:PR#750
+      added: "2026-05-15"
+    - id: explicit-boolean-checks
+      category: style
+      pattern: >-
+        Variables or conditions named like booleans (isX, hasX) assigned via short-circuit expressions that yield non-boolean values (e.g., `const isMatched = status === 'matched' && obj`)
+      check: >-
+        Verify boolean-named variables and conditions evaluate to actual booleans. Use explicit comparisons (`!= null`, `=== 'value'`) and keep derived objects in separate variables to avoid confusing truthy/falsy coercion and satisfy strict-boolean lint rules.
+      source: copilot:PR#750
+      added: "2026-05-15"
+    - id: fetch-abort-error-detection
+      category: error-handling
+      pattern: >-
+        Catch block following a fetch() with AbortController, where aborted requests should be silently ignored
+      check: >-
+        Verify abort detection does not rely on `err instanceof Error` (fetch abort rejections are often DOMException). Use `(err as { name?: string })?.name === 'AbortError'` or check `controller.signal.aborted` before surfacing the error to the user.
+      source: copilot:PR#750
+      added: "2026-05-15"
+    - id: fake-timers-for-debounce-tests
+      category: testing
+      pattern: >-
+        Tests that exercise debounced or time-delayed behavior using real timers (e.g. `await new Promise(r => setTimeout(r, 250))` or waiting out a debounce interval)
+      check: >-
+        Verify the test uses fake timers (`vi.useFakeTimers()` and advances by the debounce constant) instead of real timers, so debounce-driven assertions are deterministic and fast rather than slow/flaky under load
+      source: copilot:PR#750
+      added: "2026-05-15"
+    - id: verify-element-connected-before-focus
+      category: ui
+      pattern: >-
+        Restoring focus to a previously focused element (e.g., previousFocusRef.current.focus()) after a dialog/modal/overlay closes
+      check: >-
+        Verify the element is still connected to the document (e.g., document.contains(previousFocusRef.current)) before calling .focus(), to avoid focusing detached nodes that were removed during the interaction
+      source: copilot:PR#750
+      added: "2026-05-15"
