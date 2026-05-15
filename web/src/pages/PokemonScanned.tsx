@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -516,14 +516,28 @@ export default function PokemonScannedPage() {
   // poll tick) so the fetch effect re-runs without us needing a separate
   // useEffect for each trigger.
   const [attempt, setAttempt] = useState(0)
-  const refetch = useCallback(() => setAttempt(a => a + 1), [])
+  const isSilentPollRef = useRef(false)
+  const refetch = useCallback(() => {
+    isSilentPollRef.current = false
+    setAttempt(a => a + 1)
+  }, [])
+  // silentRefetch is used by the background poll — it does not trigger the
+  // loading skeleton, so the scan list stays mounted during the refresh.
+  const silentRefetch = useCallback(() => {
+    isSilentPollRef.current = true
+    setAttempt(a => a + 1)
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
+    const isSilent = isSilentPollRef.current
+    isSilentPollRef.current = false
     const statuses = statusForFilter(filter).join(',')
     ;(async () => {
-      setLoading(true)
-      setError('')
+      if (!isSilent) {
+        setLoading(true)
+        setError('')
+      }
       try {
         const res = await fetch(
           `/api/pokemon/scans?status=${encodeURIComponent(statuses)}`,
@@ -533,11 +547,14 @@ export default function PokemonScannedPage() {
         const data: { scans?: ScanJob[]; today?: TodayUsage } = await res.json()
         setScans(data.scans ?? [])
         setToday(data.today ?? null)
+        // clear any previous error when a silent poll succeeds
+        if (isSilent) setError('')
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return
-        setError(err instanceof Error ? err.message : t('scanned.loadError'))
+        // background poll failures are swallowed — existing data stays visible
+        if (!isSilent) setError(err instanceof Error ? err.message : t('scanned.loadError'))
       } finally {
-        if (!controller.signal.aborted) setLoading(false)
+        if (!controller.signal.aborted && !isSilent) setLoading(false)
       }
     })()
     return () => controller.abort()
@@ -554,7 +571,7 @@ export default function PokemonScannedPage() {
       if (intervalId !== null) return
       intervalId = window.setInterval(() => {
         if (document.visibilityState !== 'visible') return
-        refetch()
+        silentRefetch()
       }, SCAN_POLL_MS)
     }
     const stop = () => {
@@ -569,7 +586,7 @@ export default function PokemonScannedPage() {
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
         start()
-        refetch()
+        silentRefetch()
       } else {
         stop()
       }
@@ -579,7 +596,7 @@ export default function PokemonScannedPage() {
       stop()
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [refetch])
+  }, [silentRefetch])
 
   const visibleScans = useMemo(() => {
     if (filter !== 'resolved') return scans
