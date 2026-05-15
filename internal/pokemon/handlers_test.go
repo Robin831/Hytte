@@ -260,6 +260,94 @@ func TestListSetsHandler_OwnedCount(t *testing.T) {
 	}
 }
 
+func TestListSetsHandler_OwnedFilter(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+	other := seedUser(t, db, 2, "b@example.com")
+
+	// User 1 owns one card from sv1; nothing from swsh1.
+	pikaNormal := variantID(t, db, "sv1-25", "normal")
+	if _, err := db.Exec(`
+		INSERT INTO pokemon_collections (user_id, card_id, variant_id, quantity, condition, acquired_at, notes_enc)
+		VALUES (?, ?, ?, 1, '', ?, NULL)
+	`, u.ID, "sv1-25", pikaNormal, time.Now().UTC()); err != nil {
+		t.Fatalf("seed collection: %v", err)
+	}
+	// Other user owns a swsh1 card — must not leak into user 1's filtered list.
+	celebiNormal := variantID(t, db, "swsh1-1", "normal")
+	if _, err := db.Exec(`
+		INSERT INTO pokemon_collections (user_id, card_id, variant_id, quantity, condition, acquired_at, notes_enc)
+		VALUES (?, ?, ?, 1, '', ?, NULL)
+	`, other.ID, "swsh1-1", celebiNormal, time.Now().UTC()); err != nil {
+		t.Fatalf("seed other collection: %v", err)
+	}
+
+	t.Run("owned=true returns only sets the user owns cards in", func(t *testing.T) {
+		req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/sets?owned=true", nil), u)
+		rec := httptest.NewRecorder()
+		ListSetsHandler(db).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		body := decode[struct {
+			Sets []SetDTO `json:"sets"`
+		}](t, rec)
+		if len(body.Sets) != 1 || body.Sets[0].ID != "sv1" {
+			t.Errorf("expected only sv1, got %+v", body.Sets)
+		}
+		if body.Sets[0].OwnedCount != 1 {
+			t.Errorf("expected owned_count=1, got %d", body.Sets[0].OwnedCount)
+		}
+	})
+
+	t.Run("no owned param returns all sets", func(t *testing.T) {
+		req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/sets", nil), u)
+		rec := httptest.NewRecorder()
+		ListSetsHandler(db).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		body := decode[struct {
+			Sets []SetDTO `json:"sets"`
+		}](t, rec)
+		if len(body.Sets) != 2 {
+			t.Errorf("expected 2 sets, got %d", len(body.Sets))
+		}
+	})
+
+	t.Run("owned=false returns all sets", func(t *testing.T) {
+		req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/sets?owned=false", nil), u)
+		rec := httptest.NewRecorder()
+		ListSetsHandler(db).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		body := decode[struct {
+			Sets []SetDTO `json:"sets"`
+		}](t, rec)
+		if len(body.Sets) != 2 {
+			t.Errorf("expected 2 sets, got %d", len(body.Sets))
+		}
+	})
+
+	t.Run("owned=true combines with era filter", func(t *testing.T) {
+		// Filter to Sword & Shield while owned=true → user 1 owns nothing there.
+		req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/sets?owned=true&era=Sword+%26+Shield", nil), u)
+		rec := httptest.NewRecorder()
+		ListSetsHandler(db).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		body := decode[struct {
+			Sets []SetDTO `json:"sets"`
+		}](t, rec)
+		if len(body.Sets) != 0 {
+			t.Errorf("expected zero sets, got %+v", body.Sets)
+		}
+	})
+}
+
 func TestListSetsHandler_Unauthorized(t *testing.T) {
 	db := setupTestDB(t)
 	seedCatalogue(t, db)

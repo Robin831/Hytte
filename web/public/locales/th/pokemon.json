@@ -3,6 +3,10 @@
   "showOlder": "แสดงชุดเก่ากว่า",
   "hideOlder": "ซ่อนชุดเก่ากว่า",
   "olderSets": "ชุดเก่ากว่า",
+  "sets": {
+    "filterOwnedOnly": "เฉพาะที่มี",
+    "emptyOwned": "คุณยังไม่มีการ์ดเลย — ไปสแกนก่อนสิ!"
+  },
   "tile": {
     "totalCards_one": "{{count}} ใบ",
     "totalCards_other": "{{count}} ใบ",

@@ -3,6 +3,10 @@
   "showOlder": "Show older sets",
   "hideOlder": "Hide older sets",
   "olderSets": "Older sets",
+  "sets": {
+    "filterOwnedOnly": "Owned only",
+    "emptyOwned": "You don't own any cards yet — go scan some!"
+  },
   "tile": {
     "totalCards_one": "{{count}} card",
     "totalCards_other": "{{count}} cards",

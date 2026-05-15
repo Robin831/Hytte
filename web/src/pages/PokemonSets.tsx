@@ -142,6 +142,14 @@ export default function PokemonSets() {
   const location = useLocation()
   const navigate = useNavigate()
 
+  // Owned-only filter state is mirrored to ?owned=true in the URL so a reload
+  // or a shared link preserves the toggle. The toggle reads its initial value
+  // from the current URL on every render of the search string.
+  const ownedOnly = useMemo(() => {
+    const params = new URLSearchParams(location.search)
+    return params.get('owned')?.toLowerCase() === 'true'
+  }, [location.search])
+
   const [sets, setSets] = useState<PokemonSet[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -151,6 +159,17 @@ export default function PokemonSets() {
 
   const locState = location.state as PokemonSetsLocationState | null
   const initialAddCardQuery = locState?.addCardQuery ?? undefined
+
+  const toggleOwnedOnly = useCallback(() => {
+    const params = new URLSearchParams(location.search)
+    if (ownedOnly) {
+      params.delete('owned')
+    } else {
+      params.set('owned', 'true')
+    }
+    const next = params.toString()
+    navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: false, state: location.state })
+  }, [ownedOnly, navigate, location.pathname, location.search])
 
   // After the AddCardPanel consumes its initialQuery we strip the hint from
   // history so a subsequent back/forward navigation doesn't re-open the
@@ -172,12 +191,19 @@ export default function PokemonSets() {
     const limit = 50
 
     ;(async () => {
+      setLoading(true)
+      setError('')
       try {
         const allSets: PokemonSet[] = []
         let offset = 0
         while (true) {
+          const params = new URLSearchParams({
+            limit: String(limit),
+            offset: String(offset),
+          })
+          if (ownedOnly) params.set('owned', 'true')
           const res = await fetch(
-            `/api/pokemon/sets?limit=${limit}&offset=${offset}`,
+            `/api/pokemon/sets?${params.toString()}`,
             { credentials: 'include', signal: controller.signal },
           )
           if (!res.ok) throw new Error(t('errors.failedToLoad'))
@@ -196,7 +222,7 @@ export default function PokemonSets() {
       }
     })()
     return () => { controller.abort() }
-  }, [t, attempt])
+  }, [t, attempt, ownedOnly])
 
   // Fetch the unresolved scan count once when the page mounts (and after a
   // reload triggered by AddCardPanel) so the banner reflects scans that
@@ -244,17 +270,29 @@ export default function PokemonSets() {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        <header className="flex items-center justify-between gap-3">
+        <header className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold">{t('pageTitle')}</h1>
-          <Link
-            to="/pokemon/top"
-            aria-label={t('top.entryLabel')}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-200 rounded transition-colors"
-            data-testid="pokemon-top-link"
-          >
-            <Trophy size={16} aria-hidden="true" />
-            <span>{t('top.entryButton')}</span>
-          </Link>
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="inline-flex items-center gap-2 text-sm text-gray-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={ownedOnly}
+                onChange={toggleOwnedOnly}
+                className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-amber-500 focus:ring-amber-500"
+                data-testid="pokemon-sets-owned-toggle"
+              />
+              <span>{t('sets.filterOwnedOnly')}</span>
+            </label>
+            <Link
+              to="/pokemon/top"
+              aria-label={t('top.entryLabel')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-200 rounded transition-colors"
+              data-testid="pokemon-top-link"
+            >
+              <Trophy size={16} aria-hidden="true" />
+              <span>{t('top.entryButton')}</span>
+            </Link>
+          </div>
         </header>
 
         {unresolvedCount > 0 && (
@@ -286,7 +324,16 @@ export default function PokemonSets() {
 
         {loading && !error && <SkeletonGrid />}
 
-        {!loading && !error && (
+        {!loading && !error && ownedOnly && sets.length === 0 && (
+          <p
+            data-testid="pokemon-sets-empty-owned"
+            className="text-sm text-gray-400 px-3 py-8 text-center"
+          >
+            {t('sets.emptyOwned')}
+          </p>
+        )}
+
+        {!loading && !error && !(ownedOnly && sets.length === 0) && (
           <>
             {recent.map(([era, list]) => {
               const slug = eraSlug(era)

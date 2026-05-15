@@ -3,6 +3,10 @@
   "showOlder": "Vis eldre sett",
   "hideOlder": "Skjul eldre sett",
   "olderSets": "Eldre sett",
+  "sets": {
+    "filterOwnedOnly": "Bare eide",
+    "emptyOwned": "Du eier ingen kort enda — gå og scan noen!"
+  },
   "tile": {
     "totalCards_one": "{{count}} kort",
     "totalCards_other": "{{count}} kort",
