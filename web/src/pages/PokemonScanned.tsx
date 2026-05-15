@@ -596,7 +596,6 @@ export default function PokemonScannedPage() {
     }
   }, [silentRefetch])
 
-  const [now] = useState(Date.now)
   const visibleScans = useMemo(() => {
     if (filter !== 'resolved') return scans
     const cutoff = now - RESOLVED_WINDOW_DAYS * 24 * 60 * 60 * 1000
