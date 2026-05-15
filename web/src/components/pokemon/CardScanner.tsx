@@ -130,9 +130,9 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
           return
         }
         streamRef.current = stream
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-        }
+        // Note: the <video> element is only rendered after permissionState
+        // flips to 'granted', so videoRef.current is null at this point.
+        // A separate effect attaches srcObject once the element mounts.
         const [track] = stream.getVideoTracks()
         if (track && typeof track.getCapabilities === 'function') {
           const caps = track.getCapabilities() as ExtendedMediaTrackCapabilities
@@ -166,6 +166,26 @@ export default function CardScanner({ onClose, onEnterManually, onAdded }: CardS
       }
     }
   }, [])
+
+  // Attach the captured stream to the <video> element once permissionState
+  // flips to 'granted' and the element actually exists in the DOM. Without
+  // this, srcObject would be assigned before the conditional <video> rendered,
+  // and the camera preview would stay black even though the stream is live.
+  // iOS Safari in particular needs this; it won't reattach implicitly.
+  useEffect(() => {
+    if (permissionState !== 'granted') return
+    const video = videoRef.current
+    const stream = streamRef.current
+    if (!video || !stream) return
+    if (video.srcObject !== stream) {
+      video.srcObject = stream
+    }
+    // Defensive: explicit play() in case autoplay doesn't kick in (some
+    // browsers under power-save / low-power mode).
+    if (typeof video.play === 'function') {
+      void video.play().catch(() => {})
+    }
+  }, [permissionState])
 
   // resumeScanning resets all refs and React state to the initial scanning
   // posture: clears the detector candidates, lifts the captured/locked freeze,

@@ -1,0 +1,2 @@
+category: Fixed
+- **Pokémon scanner camera preview** - Fix black-camera-preview bug on the Pokémon scanner. The `<video>` element only renders after the permission state flips to `granted`, but `srcObject` was being assigned beforehand while `videoRef.current` was still null. The stream attachment is now moved into a separate effect that runs once the element is mounted; explicit `.play()` is also called for browsers that don't kick off autoplay.
