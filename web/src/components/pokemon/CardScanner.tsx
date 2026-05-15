@@ -41,7 +41,11 @@ const CANDIDATE_TOLERANCE = 0.05
 // SCAN_TIMEOUT_MS is the hard cap on a single /api/pokemon/scan call. Claude
 // vision can be slow; 30s lets the slow path finish but still surfaces a
 // timeout before the user gives up.
-const SCAN_TIMEOUT_MS = 30000
+// Claude vision on a card image consistently takes 60–90s in production
+// (see the 91s real-world request that prompted bumping this). 30s was too
+// short and caused every scan to time out. 120s gives the model headroom
+// without making a genuinely stuck request feel infinite.
+const SCAN_TIMEOUT_MS = 120000
 
 // COOLDOWN_MS is the debounce window after a successful add. The rAF loop will
 // not trigger another POST until this window elapses, so a card lingering in
