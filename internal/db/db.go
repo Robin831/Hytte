@@ -1684,6 +1684,33 @@ func createSchema(db *sql.DB) error {
 		PRIMARY KEY(pair, observed)
 	);
 
+	-- pokemon_scan_jobs (Hytte-cgsl): async scanner queue. The HTTP endpoint
+	-- enqueues a row with status='queued' and returns 202 immediately; a
+	-- background worker picks it up, runs Claude vision, and writes the
+	-- match outcome. Terminal statuses: matched | no_match | failed (set by
+	-- the worker), or added | discarded (set later by the resolution flow).
+	-- image_path_enc holds the encrypted absolute path to the scan image on
+	-- disk; the worker decrypts it to feed Claude's Read tool. image_hash is
+	-- the SHA-256 of the raw bytes, used for dedupe in a later bead.
+	CREATE TABLE IF NOT EXISTS pokemon_scan_jobs (
+		id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		status              TEXT NOT NULL CHECK (status IN ('queued','processing','matched','no_match','failed','added','discarded')),
+		image_path_enc      TEXT NOT NULL,
+		image_hash          TEXT NOT NULL,
+		matched_card_id     TEXT,
+		matched_variant_id  INTEGER,
+		confidence          REAL,
+		claude_response_enc TEXT,
+		error_message       TEXT,
+		created_at          TIMESTAMP NOT NULL,
+		processed_at        TIMESTAMP,
+		resolved_at         TIMESTAMP,
+		FOREIGN KEY (matched_card_id) REFERENCES pokemon_cards(id) ON DELETE SET NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_pokemon_scan_jobs_user_status ON pokemon_scan_jobs(user_id, status);
+	CREATE INDEX IF NOT EXISTS idx_pokemon_scan_jobs_queued ON pokemon_scan_jobs(status, created_at) WHERE status = 'queued';
+
 	`
 
 	_, err := db.Exec(schema)
