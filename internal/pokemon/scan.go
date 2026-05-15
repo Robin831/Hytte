@@ -6,13 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"log"
 	"net/http"
-	"os"
 	"strings"
 
-	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/training"
 )
 
@@ -112,188 +108,11 @@ type ScanCandidate struct {
 	Score float64 `json:"score"`
 }
 
-// scanRunPromptFn is the package-level seam used by ScanHandler to invoke
+// scanRunPromptFn is the package-level seam the scan worker uses to invoke
 // Claude. Tests override it to stub out the CLI call without touching the
 // real claude binary.
 var scanRunPromptFn = func(ctx context.Context, cfg *training.ClaudeConfig, prompt, imagePath string) (string, error) {
 	return training.RunPromptWithImage(ctx, cfg, prompt, imagePath)
-}
-
-// ScanHandler accepts a multipart upload with a single `image` part, runs the
-// photo through Claude vision, and returns the matched card (or a low-
-// confidence marker). The handler is admin-gated and feature-gated at the
-// router level — it does no further auth checks here beyond reading the user
-// for Claude config lookup.
-func ScanHandler(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		user := auth.UserFromContext(r.Context())
-		if user == nil {
-			respondError(w, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-
-		r.Body = http.MaxBytesReader(w, r.Body, scanParseFormBytes)
-		if err := r.ParseMultipartForm(scanParseFormBytes); err != nil {
-			respondError(w, http.StatusBadRequest, "failed to parse multipart form")
-			return
-		}
-		defer r.MultipartForm.RemoveAll()
-
-		file, header, err := r.FormFile("image")
-		if err != nil {
-			respondError(w, http.StatusBadRequest, "image is required")
-			return
-		}
-		defer file.Close()
-
-		if header.Size > scanMaxImageBytes {
-			respondError(w, http.StatusBadRequest, "image too large (max 5 MB)")
-			return
-		}
-
-		// Sniff the content type from the first 512 bytes. The reported
-		// form Content-Type is attacker-controlled; the actual byte pattern
-		// is what Claude's Read tool will see.
-		sniff := make([]byte, 512)
-		n, err := io.ReadFull(file, sniff)
-		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-			respondError(w, http.StatusBadRequest, "failed to read image")
-			return
-		}
-		mime := detectImageMIME(sniff[:n])
-		if !scanAllowedMIMETypes[mime] {
-			respondError(w, http.StatusBadRequest, "unsupported image type")
-			return
-		}
-
-		// Create a per-scan directory under the OS temp root and place the
-		// image inside it. The Claude wrapper grants Read access to the
-		// containing directory (via --add-dir), so isolating each scan in its
-		// own folder ensures Claude cannot see any other temp files. The
-		// directory and its contents are removed at the end of the request.
-		tmpDir, err := os.MkdirTemp("", "pokemon-scan-*")
-		if err != nil {
-			log.Printf("pokemon: create temp dir: %v", err)
-			respondError(w, http.StatusInternalServerError, "failed to create temp dir")
-			return
-		}
-		defer os.RemoveAll(tmpDir)
-
-		tmp, err := os.CreateTemp(tmpDir, "image-*")
-		if err != nil {
-			log.Printf("pokemon: create temp file: %v", err)
-			respondError(w, http.StatusInternalServerError, "failed to create temp file")
-			return
-		}
-		tmpPath := tmp.Name()
-
-		if _, err := tmp.Write(sniff[:n]); err != nil {
-			tmp.Close()
-			log.Printf("pokemon: write sniffed bytes: %v", err)
-			respondError(w, http.StatusInternalServerError, "failed to buffer image")
-			return
-		}
-		// Enforce the 5 MB cap on the streaming copy too — a client could
-		// have lied about Size via the multipart header.
-		remaining := int64(scanMaxImageBytes) - int64(n)
-		if remaining > 0 {
-			written, err := io.Copy(tmp, io.LimitReader(file, remaining+1))
-			if err != nil {
-				tmp.Close()
-				log.Printf("pokemon: copy upload to temp: %v", err)
-				respondError(w, http.StatusInternalServerError, "failed to buffer image")
-				return
-			}
-			if written > remaining {
-				tmp.Close()
-				respondError(w, http.StatusBadRequest, "image too large (max 5 MB)")
-				return
-			}
-		}
-		if err := tmp.Close(); err != nil {
-			log.Printf("pokemon: close temp file: %v", err)
-			respondError(w, http.StatusInternalServerError, "failed to save image")
-			return
-		}
-
-		cfg, err := training.LoadClaudeConfig(db, user.ID)
-		if err != nil {
-			log.Printf("pokemon: load claude config: %v", err)
-			respondError(w, http.StatusInternalServerError, "failed to load claude config")
-			return
-		}
-		if !cfg.Enabled {
-			respondError(w, http.StatusBadRequest, "claude is not enabled for this user")
-			return
-		}
-
-		raw, err := scanRunPromptFn(r.Context(), cfg, scanPrompt, tmpPath)
-		if err != nil {
-			log.Printf("pokemon: claude scan: %v", err)
-			respondError(w, http.StatusBadGateway, "vision call failed")
-			return
-		}
-
-		result, parseErr := parseClaudeScanResult(raw)
-		if parseErr != nil {
-			respondJSON(w, http.StatusOK, map[string]any{
-				"matched":    false,
-				"confidence": 0.0,
-				"reason":     fmt.Sprintf("could not parse vision response: %v", parseErr),
-			})
-			return
-		}
-		if result.Confidence < scanConfidenceThreshold {
-			respondJSON(w, http.StatusOK, map[string]any{
-				"matched":          false,
-				"confidence":       result.Confidence,
-				"reason":           "low confidence",
-				"set_name":         result.SetName,
-				"collector_number": result.CollectorNumber,
-			})
-			return
-		}
-
-		candidates, reason, err := findScanCandidates(r.Context(), db, user.ID, result)
-		if err != nil {
-			log.Printf("pokemon: find scan candidates: %v", err)
-			respondError(w, http.StatusInternalServerError, "failed to look up card")
-			return
-		}
-
-		rate, rateOK := loadRate(r, db)
-		if len(candidates) == 0 {
-			respondJSON(w, http.StatusOK, map[string]any{
-				"matched":          false,
-				"confidence":       result.Confidence,
-				"reason":           reason,
-				"set_name":         result.SetName,
-				"collector_number": result.CollectorNumber,
-			})
-			return
-		}
-
-		// Apply EUR→NOK to each candidate card. We reuse the same helper that
-		// the listing endpoints use so prices stay consistent across the API.
-		if rateOK {
-			cards := make([]CardDTO, len(candidates))
-			for i := range candidates {
-				cards[i] = candidates[i].Card
-			}
-			applyNOK(w, cards, rate, rateOK)
-			for i := range candidates {
-				candidates[i].Card = cards[i]
-			}
-		} else {
-			w.Header().Set("X-Pokemon-Rate-Missing", "1")
-		}
-
-		respondJSON(w, http.StatusOK, map[string]any{
-			"matched":    true,
-			"confidence": result.Confidence,
-			"candidates": candidates,
-		})
-	}
 }
 
 // parseClaudeScanResult unmarshals the Claude response into claudeScanResult,
