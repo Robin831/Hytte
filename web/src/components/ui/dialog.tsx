@@ -40,7 +40,7 @@ function Dialog({
     }
     return () => {
       document.body.style.overflow = ''
-      if (open && previousFocusRef.current instanceof HTMLElement) {
+      if (open && previousFocusRef.current instanceof HTMLElement && document.contains(previousFocusRef.current)) {
         previousFocusRef.current.focus()
       }
     }

@@ -374,7 +374,7 @@ function ScanRow({ scan, busy, now, highlighted, rowRef, onResolve, onEnterManua
     return null
   }
 
-  const isMatched = scan.status === 'matched' && scan.matched_card
+  const isMatched = scan.status === 'matched' && scan.matched_card != null
   const containerClass = `flex flex-col sm:flex-row gap-3 p-3 bg-gray-800/40 border rounded-lg transition-shadow duration-700 ${
     highlighted
       ? 'border-emerald-400 ring-2 ring-emerald-400/70 shadow-lg shadow-emerald-500/20'

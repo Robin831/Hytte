@@ -116,7 +116,7 @@ export default function ScanDetailModal({ scan, busy, onClose, onResolve }: Scan
           const data: { cards?: ScanDetailCard[] } = await res.json()
           setResults(data.cards ?? [])
         } catch (err) {
-          if (err instanceof Error && err.name === 'AbortError') return
+          if ((err as { name?: string })?.name === 'AbortError' || controller.signal.aborted) return
           setSearchError(err instanceof Error ? err.message : t('scanned.detail.searchFailed'))
           setResults([])
         } finally {

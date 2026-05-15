@@ -537,8 +537,12 @@ describe('PokemonScanned – resolve actions', () => {
     fireEvent.click(screen.getByTestId('scan-detail-wrong-match-toggle'))
     expect(screen.getByTestId('scan-detail-wrong-match-panel')).toBeInTheDocument()
 
-    // Typing triggers the debounced /cards/search call.
+    // Typing triggers the debounced /cards/search call — use fake timers to
+    // advance past the debounce deterministically without real-time waiting.
+    vi.useFakeTimers()
     fireEvent.change(screen.getByTestId('scan-detail-search-input'), { target: { value: 'eevee' } })
+    vi.advanceTimersByTime(250)
+    vi.useRealTimers()
 
     await waitFor(() => {
       const searchCall = fetchMock.mock.calls.find(
@@ -594,7 +598,10 @@ describe('PokemonScanned – resolve actions', () => {
 
     fireEvent.click(screen.getByTestId('scan-open-detail-1'))
     fireEvent.click(screen.getByTestId('scan-detail-wrong-match-toggle'))
+    vi.useFakeTimers()
     fireEvent.change(screen.getByTestId('scan-detail-search-input'), { target: { value: 'eevee' } })
+    vi.advanceTimersByTime(250)
+    vi.useRealTimers()
     await waitFor(() => expect(screen.getByTestId('scan-detail-pick-sv1-100')).toBeInTheDocument())
     fireEvent.click(screen.getByTestId('scan-detail-pick-sv1-100'))
     await waitFor(() => expect(screen.getByTestId('scan-detail-override-banner')).toBeInTheDocument())

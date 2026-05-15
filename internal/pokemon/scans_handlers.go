@@ -667,11 +667,23 @@ func ResolveScanHandler(db *sql.DB) http.HandlerFunc {
 				respondError(w, http.StatusInternalServerError, "failed to resolve scan")
 				return
 			}
-			res, err := tx.ExecContext(r.Context(), `
-				UPDATE pokemon_scan_jobs
-				SET status = ?, matched_card_id = ?, matched_variant_id = ?, resolved_at = ?, image_path_enc = ''
-				WHERE id = ? AND user_id = ? AND status = ?
-			`, scanJobStatusAdded, targetCardID, body.VariantID, now, jobID, user.ID, scanJobStatusMatched)
+			// When the client overrides the matched card, confidence no longer
+			// corresponds to the stored card, so clear it to avoid inconsistency.
+			clearConfidence := body.CardID != "" && body.CardID != matchedCard.String
+			var res sql.Result
+			if clearConfidence {
+				res, err = tx.ExecContext(r.Context(), `
+					UPDATE pokemon_scan_jobs
+					SET status = ?, matched_card_id = ?, matched_variant_id = ?, resolved_at = ?, image_path_enc = '', confidence = NULL
+					WHERE id = ? AND user_id = ? AND status = ?
+				`, scanJobStatusAdded, targetCardID, body.VariantID, now, jobID, user.ID, scanJobStatusMatched)
+			} else {
+				res, err = tx.ExecContext(r.Context(), `
+					UPDATE pokemon_scan_jobs
+					SET status = ?, matched_card_id = ?, matched_variant_id = ?, resolved_at = ?, image_path_enc = ''
+					WHERE id = ? AND user_id = ? AND status = ?
+				`, scanJobStatusAdded, targetCardID, body.VariantID, now, jobID, user.ID, scanJobStatusMatched)
+			}
 			if err != nil {
 				tx.Rollback()
 				log.Printf("pokemon: resolve add claim: %v", err)
