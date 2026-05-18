@@ -236,6 +236,7 @@ type EstimateResponse struct {
 	AbsenceCostPerDay       float64          `json:"absence_cost_per_day"`
 	SickDayCostAmount       float64          `json:"sick_day_cost"`
 	VacationDayCostAmount   float64          `json:"vacation_day_cost"`
+	ExtraHourNet            float64          `json:"extra_hour_net"`
 }
 
 // buildEstimate produces an EstimateResponse for the given YYYY-MM month string.
@@ -345,6 +346,7 @@ func buildEstimateWithParams(db *sql.DB, userID int64, month string, today time.
 	projectedTotalRevenue := projectedBillableRevenue + projectedInternalRevenue
 	sickCost := SickDayCost(*cfg, tiers, totalDays, projectedTotalRevenue)
 	vacCost := VacationDayCost(tiers, totalDays, projectedTotalRevenue)
+	extraHourNet := ExtraHourNet(*cfg, tiers, taxParams, totalDays, vacationDays, sickDays, projectedTotalRevenue)
 
 	return &EstimateResponse{
 		Month:                   month,
@@ -363,6 +365,7 @@ func buildEstimateWithParams(db *sql.DB, userID int64, month string, today time.
 		AbsenceCostPerDay:       absenceCostPerDay,
 		SickDayCostAmount:       sickCost,
 		VacationDayCostAmount:   vacCost,
+		ExtraHourNet:            extraHourNet,
 	}, nil
 }
 
@@ -410,6 +413,11 @@ func buildEstimateResponseFromRecord(db *sql.DB, userID int64, month string, tod
 	totalRevenue := billableRevenue + internalRevenue
 	sickCost := SickDayCost(*cfg, tiers, totalDays, totalRevenue)
 	vacCost := VacationDayCost(tiers, totalDays, totalRevenue)
+	taxParams, err := GetOrSeedTrekktabellParams(db, userID, int64(year))
+	if err != nil {
+		return nil, err
+	}
+	extraHourNet := ExtraHourNet(*cfg, tiers, taxParams, totalDays, int(rec.VacationDays), int(rec.SickDays), totalRevenue)
 
 	monthStart := time.Date(year, time.Month(mon), 1, 0, 0, 0, 0, time.UTC)
 	var doneDays int
@@ -442,6 +450,7 @@ func buildEstimateResponseFromRecord(db *sql.DB, userID int64, month string, tod
 		AbsenceCostPerDay:       absenceCostPerDay,
 		SickDayCostAmount:       sickCost,
 		VacationDayCostAmount:   vacCost,
+		ExtraHourNet:            extraHourNet,
 	}, nil
 }
 

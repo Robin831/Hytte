@@ -389,6 +389,12 @@ func TestEstimateMonthHandler_PastConfirmedRecord(t *testing.T) {
 	if resp.Month != "2026-01" {
 		t.Errorf("Month = %q, want 2026-01", resp.Month)
 	}
+	// Revenue 140h * 500 = 70000 NOK lands in the 60k–80k commission tier
+	// (rate 0.20), so an extra hour adds 500*0.20 = 100 NOK of commission
+	// before tax — ExtraHourNet must be populated and strictly positive.
+	if resp.ExtraHourNet <= 0 {
+		t.Errorf("ExtraHourNet = %v, want > 0", resp.ExtraHourNet)
+	}
 }
 
 // --- AbsenceCostHandler ---

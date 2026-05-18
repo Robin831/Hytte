@@ -269,6 +269,117 @@ func TestVacationDayCost(t *testing.T) {
 	}
 }
 
+func TestExtraHourNet(t *testing.T) {
+	cfg := Config{
+		UserID:        1,
+		BaseSalary:    60000,
+		HourlyRate:    500,
+		StandardHours: 7.5,
+	}
+	taxParams := flatTaxParams(0.30)
+
+	t.Run("zero working days returns 0 without panic", func(t *testing.T) {
+		got := ExtraHourNet(cfg, defaultTiers, taxParams, 0, 0, 0, 100000)
+		if got != 0 {
+			t.Errorf("ExtraHourNet(workingDays=0) = %v, want 0", got)
+		}
+	})
+
+	t.Run("empty config returns 0 without panic", func(t *testing.T) {
+		empty := Config{}
+		got := ExtraHourNet(empty, nil, taxParams, 22, 0, 0, 0)
+		if got != 0 {
+			t.Errorf("ExtraHourNet(emptyConfig) = %v, want 0", got)
+		}
+	})
+
+	t.Run("negative hourly rate returns 0 without panic", func(t *testing.T) {
+		bad := cfg
+		bad.HourlyRate = -1
+		got := ExtraHourNet(bad, defaultTiers, taxParams, 22, 0, 0, 100000)
+		if got != 0 {
+			t.Errorf("ExtraHourNet(hourlyRate=-1) = %v, want 0", got)
+		}
+	})
+
+	t.Run("within-tier hour: matches commission delta net of flat tax", func(t *testing.T) {
+		// Revenue 75000 sits inside the 60k–80k tier (rate 0.20). +500 stays in
+		// the same tier, so commission grows by 500*0.20 = 100. Gross grows by
+		// 100. Tax @ 30% flat grows by 30. Net grows by 70.
+		got := ExtraHourNet(cfg, defaultTiers, taxParams, 22, 0, 0, 75000)
+		want := 100.0 * 0.70
+		if round2(got) != round2(want) {
+			t.Errorf("ExtraHourNet within-tier = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("tier-crossing hour: partial across boundary", func(t *testing.T) {
+		// Revenue 79900 → +500 → 80400 crosses 80000 tier boundary.
+		// Commission delta = (80000-79900)*0.20 + (80400-80000)*0.40 = 20 + 160 = 180.
+		// Gross delta = 180. Tax @30% = 54. Net delta = 126.
+		got := ExtraHourNet(cfg, defaultTiers, taxParams, 22, 0, 0, 79900)
+		want := 180.0 * 0.70
+		if round2(got) != round2(want) {
+			t.Errorf("ExtraHourNet tier-crossing = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("tax-bracket-crossing hour: trinnskatt boundary applies", func(t *testing.T) {
+		// Construct params where annual gross sits just below a trinnskatt step,
+		// so the extra hour pushes part of the gross delta across the step.
+		// Monthly gross of 60000 → annual 720000. We add a step at 720200
+		// (jumping from 0% to 50%) so the entire commission delta crosses it.
+		params := TrekktabellParams{
+			MinstefradragRate:   0,
+			MinstefradragMin:    0,
+			MinstefradragMax:    0,
+			Personfradrag:       0,
+			AlminneligSkattRate: 0,
+			Trygdeavgift:        0,
+			TrinnskattTiers: []TrinnskattTier{
+				{IncomeFrom: 720200, Rate: 0.50},
+			},
+		}
+		// Revenue 0 → no commission → annual gross = 720000 (under step).
+		// +500 revenue at 0% tier → no commission change → no gross change → no net change.
+		// Instead, target second tier with revenue 70000: commission = (70000-60000)*0.20 = 2000.
+		// Gross = 62000/mo, annual = 744000. Above 720200 step.
+		// +500 → commission = (70500-60000)*0.20 = 2100, gross = 62100/mo, annual = 745200.
+		// Annual delta = 1200. All above step. Trinnskatt delta = 1200*0.50 = 600/year = 50/month.
+		// Net delta = 100 (gross delta) - 50 (tax delta) = 50.
+		got := ExtraHourNet(cfg, defaultTiers, params, 22, 0, 0, 70000)
+		want := 50.0
+		if round2(got) != round2(want) {
+			t.Errorf("ExtraHourNet trinnskatt-crossing = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("parity with full recompute", func(t *testing.T) {
+		// Verify the function returns exactly net_with_extra - net_current via
+		// the EstimateMonth pipeline (no shortcuts).
+		revenue := 90000.0
+		current := EstimateMonth(cfg, defaultTiers, taxParams, 0, revenue, 0, 22, 1, 1)
+		withExtra := EstimateMonth(cfg, defaultTiers, taxParams, 0, revenue+cfg.HourlyRate, 0, 22, 1, 1)
+		want := withExtra.Net - current.Net
+
+		got := ExtraHourNet(cfg, defaultTiers, taxParams, 22, 1, 1, revenue)
+		if round2(got) != round2(want) {
+			t.Errorf("ExtraHourNet parity = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("absence-scaled tiers respected", func(t *testing.T) {
+		// With absence, EstimateMonth scales tier boundaries; ExtraHourNet must
+		// use the same scaled tiers (since it routes through EstimateMonth).
+		revenue := 60000.0
+		got := ExtraHourNet(cfg, defaultTiers, taxParams, 22, 5, 2, revenue)
+		// Sanity: a positive hourly rate with non-zero tier rate should yield > 0.
+		if got <= 0 {
+			t.Errorf("ExtraHourNet absence-scaled = %v, want > 0", got)
+		}
+	})
+}
+
 func TestScaleTiersForAbsence(t *testing.T) {
 	tiers := []CommissionTier{
 		{Floor: 0, Ceiling: 60000, Rate: 0},
