@@ -347,6 +347,13 @@ func buildEstimateWithParams(db *sql.DB, userID int64, month string, today time.
 	sickCost := SickDayCost(*cfg, tiers, totalDays, projectedTotalRevenue)
 	vacCost := VacationDayCost(tiers, totalDays, projectedTotalRevenue)
 	extraHourNet := ExtraHourNet(*cfg, tiers, taxParams, totalDays, vacationDays, sickDays, projectedTotalRevenue)
+	// When trekktabell lookup is active, record.Net already uses the lookup tax.
+	// Recompute extra_hour_net using the same lookup path so the delta is consistent.
+	if HasTrekktabellData(db, tableNumber, year) && cfg.HourlyRate > 0 {
+		extraRec := EstimateMonth(*cfg, tiers, taxParams, 0, projectedBillableRevenue+cfg.HourlyRate, projectedInternalRevenue, totalDays, vacationDays, sickDays)
+		extraLookupTax := LookupTrekktabellTax(db, tableNumber, year, extraRec.Gross)
+		extraHourNet = (extraRec.Gross - extraLookupTax) - record.Net
+	}
 
 	return &EstimateResponse{
 		Month:                   month,
@@ -418,6 +425,14 @@ func buildEstimateResponseFromRecord(db *sql.DB, userID int64, month string, tod
 		return nil, err
 	}
 	extraHourNet := ExtraHourNet(*cfg, tiers, taxParams, totalDays, int(rec.VacationDays), int(rec.SickDays), totalRevenue)
+	// When trekktabell lookup is active, rec.Net was saved using lookup-based tax.
+	// Recompute extra_hour_net with the same path so the delta is consistent with rec.Net.
+	tableNumber := GetEffectiveTrekktabellNumber(db, userID, month)
+	if HasTrekktabellData(db, tableNumber, year) && cfg.HourlyRate > 0 {
+		extraRec := EstimateMonth(*cfg, tiers, taxParams, 0, billableRevenue+cfg.HourlyRate, internalRevenue, totalDays, int(rec.VacationDays), int(rec.SickDays))
+		extraLookupTax := LookupTrekktabellTax(db, tableNumber, year, extraRec.Gross)
+		extraHourNet = (extraRec.Gross - extraLookupTax) - rec.Net
+	}
 
 	monthStart := time.Date(year, time.Month(mon), 1, 0, 0, 0, 0, time.UTC)
 	var doneDays int

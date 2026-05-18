@@ -326,9 +326,12 @@ func TestExtraHourNet(t *testing.T) {
 
 	t.Run("tax-bracket-crossing hour: trinnskatt boundary applies", func(t *testing.T) {
 		// Construct params where annual gross sits just below a trinnskatt step,
-		// so the extra hour pushes part of the gross delta across the step.
-		// Monthly gross of 60000 → annual 720000. We add a step at 720200
-		// (jumping from 0% to 50%) so the entire commission delta crosses it.
+		// so the extra hour pushes gross across it.
+		// Revenue 60000: commission = 0 (0% tier), gross = 60000/mo, annual = 720000 < 720200 step → no trinnskatt.
+		// Revenue 60500: commission = (60500-60000)*0.20 = 100, gross = 60100/mo, annual = 721200 > 720200 step.
+		// Of the 1200/yr annual delta, 1000 crosses the step boundary.
+		// Trinnskatt delta = 1000 * 0.50 = 500/year = 500/12/month.
+		// Gross delta = 100/mo. Net delta = 100 - 500/12 = 700/12 ≈ 58.33.
 		params := TrekktabellParams{
 			MinstefradragRate:   0,
 			MinstefradragMin:    0,
@@ -340,15 +343,8 @@ func TestExtraHourNet(t *testing.T) {
 				{IncomeFrom: 720200, Rate: 0.50},
 			},
 		}
-		// Revenue 0 → no commission → annual gross = 720000 (under step).
-		// +500 revenue at 0% tier → no commission change → no gross change → no net change.
-		// Instead, target second tier with revenue 70000: commission = (70000-60000)*0.20 = 2000.
-		// Gross = 62000/mo, annual = 744000. Above 720200 step.
-		// +500 → commission = (70500-60000)*0.20 = 2100, gross = 62100/mo, annual = 745200.
-		// Annual delta = 1200. All above step. Trinnskatt delta = 1200*0.50 = 600/year = 50/month.
-		// Net delta = 100 (gross delta) - 50 (tax delta) = 50.
-		got := ExtraHourNet(cfg, defaultTiers, params, 22, 0, 0, 70000)
-		want := 50.0
+		got := ExtraHourNet(cfg, defaultTiers, params, 22, 0, 0, 60000)
+		want := 700.0 / 12
 		if round2(got) != round2(want) {
 			t.Errorf("ExtraHourNet trinnskatt-crossing = %v, want %v", got, want)
 		}
