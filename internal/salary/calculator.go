@@ -73,6 +73,32 @@ func SickDayCost(config Config, tiers []CommissionTier, workingDays int, totalRe
 	return dailyCommission - sickAddonPerDay
 }
 
+// ExtraHourNet returns the marginal increase in net (after-tax) salary from
+// working one additional billable hour, holding everything else constant.
+//
+// It recomputes the full pipeline (commission tiers → gross → tax via the
+// trekktabell formula) at the current revenue and at revenue + hourly_rate,
+// then returns the delta. The same absence-aware tier scaling that
+// EstimateMonth applies is preserved here.
+//
+// Returns 0 (without panicking) when workingDays <= 0 or hourly_rate <= 0.
+func ExtraHourNet(
+	config Config,
+	tiers []CommissionTier,
+	taxParams TrekktabellParams,
+	workingDays int,
+	vacationDays int,
+	sickDays int,
+	totalRevenue float64,
+) float64 {
+	if workingDays <= 0 || config.HourlyRate <= 0 {
+		return 0
+	}
+	base := EstimateMonth(config, tiers, taxParams, 0, totalRevenue, 0, workingDays, vacationDays, sickDays)
+	extra := EstimateMonth(config, tiers, taxParams, 0, totalRevenue+config.HourlyRate, 0, workingDays, vacationDays, sickDays)
+	return extra.Net - base.Net
+}
+
 // VacationDayCost returns the marginal commission loss per vacation day.
 // It computes the difference between commission at full attendance and
 // commission with one fewer working day (scaled tiers).

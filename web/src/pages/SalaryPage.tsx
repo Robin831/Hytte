@@ -68,6 +68,7 @@ interface EstimateResponse {
   absence_cost_per_day: number
   sick_day_cost: number
   vacation_day_cost: number
+  extra_hour_net: number
 }
 
 interface MonthProjection {
@@ -1235,7 +1236,7 @@ export default function SalaryPage() {
           )}
 
           {/* Per-absence-day cost */}
-          {(estimate.sick_day_cost !== 0 || estimate.vacation_day_cost !== 0) && (
+          {(estimate.sick_day_cost !== 0 || estimate.vacation_day_cost !== 0 || estimate.extra_hour_net !== 0) && (
             <div className="bg-gray-800 rounded-xl p-5">
               <h2 className="text-base font-medium text-white mb-2">{t('absenceCost.title')}</h2>
               <div className="space-y-1">
@@ -1250,6 +1251,13 @@ export default function SalaryPage() {
                     amount: formatCurrency(estimate.vacation_day_cost),
                   })}
                 </p>
+                {estimate.extra_hour_net !== 0 && (
+                  <p className="text-sm text-gray-300">
+                    {t('absenceCost.perExtraHour', {
+                      amount: formatCurrency(estimate.extra_hour_net),
+                    })}
+                  </p>
+                )}
               </div>
             </div>
           )}
