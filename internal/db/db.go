@@ -41,7 +41,66 @@ func Init(path string) (*sql.DB, error) {
 	return db, nil
 }
 
+// preCreateMigrations runs ALTER TABLE renames that the main schema block in
+// createSchema assumes are already in place. The schema block is idempotent
+// for tables (CREATE TABLE IF NOT EXISTS) but the CREATE INDEX statements
+// reference column names directly — if a legacy install still has the old
+// column name, the schema block fails. Anything that renames a column the
+// schema block then references must live here, not in the post-schema
+// migration pass at the bottom of createSchema.
+func preCreateMigrations(db *sql.DB) error {
+	// family_chat_* (Hytte-56j7): the initial schema bead used *_enc column
+	// names for fields stored encrypted at rest, plus owner_id / sender_id.
+	// The REST handlers bead switched to plain column names (the encryption
+	// happens in application code, the column type doesn't change) and to
+	// *_user_id for the FKs to users(id). Each rename is idempotent via a
+	// pragma_table_info check.
+	renames := []struct {
+		table   string
+		oldName string
+		newName string
+	}{
+		{"family_chat_conversations", "name_enc", "name"},
+		{"family_chat_conversations", "owner_id", "owner_user_id"},
+		{"family_chat_messages", "body_enc", "body"},
+		{"family_chat_messages", "attachment_path_enc", "attachment_path"},
+		{"family_chat_messages", "sender_id", "sender_user_id"},
+	}
+	for _, r := range renames {
+		if err := renameColumnIfExists(db, r.table, r.oldName, r.newName); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// renameColumnIfExists renames a column if (and only if) the table exists and
+// still has the old column name. It is a no-op on fresh installs (where the
+// table was just created with the new column name) and on already-migrated
+// installs.
+func renameColumnIfExists(db *sql.DB, table, oldName, newName string) error {
+	var hasOld int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`,
+		table, oldName,
+	).Scan(&hasOld); err != nil {
+		return fmt.Errorf("check %s.%s: %w", table, oldName, err)
+	}
+	if hasOld == 0 {
+		return nil
+	}
+	stmt := fmt.Sprintf(`ALTER TABLE %s RENAME COLUMN %s TO %s`, table, oldName, newName)
+	if _, err := db.Exec(stmt); err != nil {
+		return fmt.Errorf("rename %s.%s -> %s: %w", table, oldName, newName, err)
+	}
+	return nil
+}
+
 func createSchema(db *sql.DB) error {
+	if err := preCreateMigrations(db); err != nil {
+		return err
+	}
+
 	schema := `
 	-- schema_migrations stores global one-time migration sentinels (e.g. data
 	-- encryption). It is separate from user_preferences (which is per-user)
@@ -2505,27 +2564,6 @@ func createSchema(db *sql.DB) error {
 	if hasPrintedTotal == 0 {
 		if _, err := db.Exec(`ALTER TABLE pokemon_sets ADD COLUMN printed_total INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return fmt.Errorf("add pokemon_sets printed_total column: %w", err)
-		}
-	}
-
-	// Migrate family_chat tables from the schema-bead column names to the REST
-	// bead column names (Hytte-56j7). Detect old schema via presence of
-	// name_enc on family_chat_conversations; if found, rename all affected
-	// columns so existing installs don't break at runtime.
-	var hasFCNameEnc int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('family_chat_conversations') WHERE name = 'name_enc'`).Scan(&hasFCNameEnc); err != nil {
-		return fmt.Errorf("check family_chat_conversations name_enc: %w", err)
-	}
-	if hasFCNameEnc != 0 {
-		for _, stmt := range []string{
-			`ALTER TABLE family_chat_conversations RENAME COLUMN name_enc TO name`,
-			`ALTER TABLE family_chat_conversations RENAME COLUMN owner_id TO owner_user_id`,
-			`ALTER TABLE family_chat_messages RENAME COLUMN body_enc TO body`,
-			`ALTER TABLE family_chat_messages RENAME COLUMN attachment_path_enc TO attachment_path`,
-		} {
-			if _, err := db.Exec(stmt); err != nil {
-				return fmt.Errorf("migrate family_chat columns: %w", err)
-			}
 		}
 	}
 
