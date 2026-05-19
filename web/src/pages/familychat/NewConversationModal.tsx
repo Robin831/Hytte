@@ -43,14 +43,17 @@ export default function NewConversationModal({ open, onClose, onCreated }: NewCo
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState('')
 
-  // Reset all form state when the modal closes so reopening starts fresh.
-  useEffect(() => {
+  // Reset form state when the modal transitions from open to closed.
+  // Using the "adjust state during render" pattern avoids setState-in-effect.
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (prevOpen !== open) {
+    setPrevOpen(open)
     if (!open) {
       setName('')
       setSelectedIds(new Set())
       setSubmitError('')
     }
-  }, [open])
+  }
 
   // Fetch the available family members each time the modal opens. We source
   // from /family/children for parents and /family/my-family for child users,
