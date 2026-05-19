@@ -975,6 +975,25 @@ func DeleteScanPageHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Reject the discard while any child is still being processed by the
+		// scan worker. A worker that finishes after we discard the row updates
+		// by id only (no status guard), so it would silently overwrite the
+		// 'discarded' status back to 'matched'/'no_match'/'failed' and leave
+		// the image_path_enc pointing at a file we may have deleted.
+		var processingCount int
+		if err := db.QueryRowContext(r.Context(), `
+			SELECT COUNT(*) FROM pokemon_scan_jobs
+			WHERE user_id = ? AND page_id = ? AND status = ?
+		`, user.ID, pageID, scanJobStatusProcessing).Scan(&processingCount); err != nil {
+			log.Printf("pokemon: check processing children: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to delete page")
+			return
+		}
+		if processingCount > 0 {
+			respondError(w, http.StatusConflict, "page has cards still being processed; retry after they complete")
+			return
+		}
+
 		now := time.Now().UTC()
 		tx, err := db.BeginTx(r.Context(), nil)
 		if err != nil {

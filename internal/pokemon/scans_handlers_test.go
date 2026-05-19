@@ -1875,3 +1875,50 @@ func TestDeleteScanPage_OtherUserReturns404(t *testing.T) {
 		t.Errorf("expected page still present, got %d rows", pageRows)
 	}
 }
+
+// TestDeleteScanPage_RejectsWhileProcessing guards against the race where a
+// scan worker finishes *after* the page-discard update and silently overwrites
+// the 'discarded' status back to 'matched'/'no_match'/'failed'. The handler
+// must return 409 Conflict when any child is still in 'processing' state.
+func TestDeleteScanPage_RejectsWhileProcessing(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "processing-race@example.com")
+
+	now := time.Now().UTC()
+	pageID := insertScanPage(t, db, u.ID, 2, now)
+	p1 := writeOnDiskImage(t, root, u.ID, "proc-1.jpg")
+	p2 := writeOnDiskImage(t, root, u.ID, "proc-2.jpg")
+	c1 := insertScanJob(t, db, u.ID, scanJobStatusProcessing, p1, withCreatedAt(now))
+	c2 := insertScanJob(t, db, u.ID, scanJobStatusMatched, p2,
+		withCreatedAt(now), withMatchedCard("sv1-25", 0.9))
+	linkScanJobToPage(t, db, c1, pageID)
+	linkScanJobToPage(t, db, c2, pageID)
+
+	req := asUser(httptest.NewRequest(http.MethodDelete,
+		"/api/pokemon/scans/pages/"+strconv.FormatInt(pageID, 10), nil), u)
+	req = asChi(req, map[string]string{"id": strconv.FormatInt(pageID, 10)})
+	rec := httptest.NewRecorder()
+	DeleteScanPageHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 while a child is processing, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Parent must still exist and the child statuses must be unchanged.
+	var pageRows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pokemon_scan_pages WHERE id = ?`, pageID).Scan(&pageRows); err != nil {
+		t.Fatalf("count pages: %v", err)
+	}
+	if pageRows != 1 {
+		t.Errorf("expected page still present after rejected delete, got %d rows", pageRows)
+	}
+	var procStatus string
+	if err := db.QueryRow(`SELECT status FROM pokemon_scan_jobs WHERE id = ?`, c1).Scan(&procStatus); err != nil {
+		t.Fatalf("read processing child: %v", err)
+	}
+	if procStatus != scanJobStatusProcessing {
+		t.Errorf("expected processing child status unchanged, got %q", procStatus)
+	}
+}

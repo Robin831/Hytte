@@ -103,11 +103,11 @@ function statusToBadgeClass(status: ScanPageGridStatus): string {
   }
 }
 
-// gridDimensions picks the rows/cols layout from the page's expected_count.
-// 12 → 4 columns × 3 rows (the larger binder page); everything else falls
-// back to 3 × 3 which matches the default 9-pocket page. The detection is
-// deliberately conservative: a 6 or 4 page is still rendered as a 3×3 grid
-// with empty placeholders rather than guessing an unusual layout.
+// gridDimensions picks the rows/cols layout from the page's expected_count:
+//   4  → 2 × 2
+//   6  → 2 × 3
+//   12 → 3 × 4 (larger binder page)
+// Everything else falls back to 3 × 3 (default 9-pocket page).
 function gridDimensions(expectedCount: number): { rows: number; cols: number } {
   if (expectedCount === 12) return { rows: 3, cols: 4 }
   if (expectedCount === 4) return { rows: 2, cols: 2 }
@@ -310,7 +310,7 @@ export default function ScanPageGrid({
   }, [page.children, totalCells])
 
   const matchedCount = useMemo(
-    () => page.children.filter(c => c.status === 'matched').length,
+    () => page.children.filter(c => c.status === 'matched' && c.matched_card).length,
     [page.children],
   )
 
