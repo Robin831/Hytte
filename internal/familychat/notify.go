@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/push"
@@ -22,8 +23,21 @@ type PushSenderFunc func(userID int64, payload []byte) error
 // subscriptions are deleted automatically by push.SendToUser.
 func defaultPushSender(db *sql.DB) PushSenderFunc {
 	return func(userID int64, payload []byte) error {
-		_, err := push.SendToUser(db, push.DefaultHTTPClient, userID, payload)
-		return err
+		results, err := push.SendToUser(db, push.DefaultHTTPClient, userID, payload)
+		if err != nil {
+			return err
+		}
+		for _, r := range results {
+			switch {
+			case r.Err != nil:
+				log.Printf("familychat: push send sub=%d user=%d: %v", r.SubscriptionID, userID, r.Err)
+			case r.StatusCode >= http.StatusBadRequest &&
+				r.StatusCode != http.StatusNotFound &&
+				r.StatusCode != http.StatusGone:
+				log.Printf("familychat: push send sub=%d user=%d: unexpected status %d", r.SubscriptionID, userID, r.StatusCode)
+			}
+		}
+		return nil
 	}
 }
 
@@ -79,7 +93,7 @@ func notifyOfflineRecipients(db *sql.DB, hub *Hub, sender PushSenderFunc, convID
 		if uid == msg.SenderUserID {
 			continue
 		}
-		if hub.HasSubscriber(uid, convID) {
+		if hub != nil && hub.HasSubscriber(uid, convID) {
 			continue
 		}
 		if err := sender(uid, payload); err != nil {
