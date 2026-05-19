@@ -258,17 +258,14 @@ export default function PageScanner({
         stopCamera()
         navigate(`/pokemon/scanned?page=${pageId}`)
         onClose()
-      } catch (err) {
+      } catch {
         if (controller.signal.aborted) {
           if (timedOut) {
             showToast(t('pageScanner.errors.timedOut'), 'error')
           }
           return
         }
-        showToast(
-          err instanceof Error ? err.message : t('pageScanner.errors.uploadFailed'),
-          'error',
-        )
+        showToast(t('pageScanner.errors.uploadFailed'), 'error')
       } finally {
         window.clearTimeout(timer)
         if (abortRef.current === controller) abortRef.current = null
