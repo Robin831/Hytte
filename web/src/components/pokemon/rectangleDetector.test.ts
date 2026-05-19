@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   cropCellsToCanvases,
   detectCardRectangle,
@@ -100,6 +100,55 @@ function makeBinderFrame(opts: {
           for (let x = gx0; x < gx1; x++) {
             setPixel(x, y, 255)
           }
+        }
+      }
+    }
+  }
+  return { data, width: w, height: h, colorSpace: 'srgb' } as unknown as ImageData
+}
+
+// Build a 3x3 binder page where each card row is horizontally sheared by
+// shearX pixels per source pixel of height. shearX ≈ tan(5°) ≈ 0.0875 produces
+// a realistic ~5° page tilt to exercise the percentile+bucketing skew tolerance.
+function makeSkewedBinderFrame(shearX: number): ImageData {
+  const w = 300 // extra width to absorb the horizontal shift
+  const h = 336
+  const gridX0 = 20
+  const gridY0 = 28
+  const gridW = 200
+  const gridH = 280
+  const cellW = gridW / 3
+  const cellH = gridH / 3
+  const cardScale = 0.85
+  const bg = 220
+  const card = 50
+  const data = new Uint8ClampedArray(w * h * 4)
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = bg
+    data[i + 1] = bg
+    data[i + 2] = bg
+    data[i + 3] = 255
+  }
+  const setPixel = (x: number, y: number, v: number) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return
+    const idx = (y * w + x) * 4
+    data[idx] = v
+    data[idx + 1] = v
+    data[idx + 2] = v
+    data[idx + 3] = 255
+  }
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const cW = cellW * cardScale
+      const cH = cellH * cardScale
+      const cx0 = Math.round(gridX0 + c * cellW + (cellW - cW) / 2)
+      const cy0 = Math.round(gridY0 + r * cellH + (cellH - cH) / 2)
+      const cx1 = Math.round(cx0 + cW)
+      const cy1 = Math.round(cy0 + cH)
+      for (let y = cy0; y < cy1; y++) {
+        const xShift = Math.round(shearX * (y - gridY0))
+        for (let x = cx0; x < cx1; x++) {
+          setPixel(x + xShift, y, card)
         }
       }
     }
@@ -225,6 +274,19 @@ describe('detectGrid', () => {
     }
   })
 
+  it('detects cells on a page with ~5° horizontal shear', () => {
+    // tan(5°) ≈ 0.0875 — each pixel row shifts right by ~0.0875px per pixel of height,
+    // producing axis-aligned bounding boxes that are a few pixels wider than the card.
+    const frame = makeSkewedBinderFrame(Math.tan((5 * Math.PI) / 180))
+    const cells = detectGrid(frame, { rows: 3, cols: 3 })
+    expect(cells.length).toBe(9)
+    const seen = new Set(cells.map(c => `${c.row}:${c.col}`))
+    expect(seen.size).toBe(9)
+    for (const cell of cells) {
+      assertCellAspect(cell)
+    }
+  })
+
   it('returns an empty array for invalid expected dimensions', () => {
     const frame = makeBinderFrame({ bg: 220, card: 50 })
     expect(detectGrid(frame, { rows: 0, cols: 3 })).toEqual([])
@@ -281,15 +343,40 @@ describe('cropCellsToCanvases', () => {
       { row: 1, col: 1, x: 60, y: 100, w: 50, h: 70 },
       { row: 0, col: 0, x: 0, y: 0, w: 50, h: 70 },
     ]
+
+    // Capture the (sx, sy) source-rect args passed to drawImage in call order to
+    // prove that canvases are produced in sorted (row, col) sequence. Spy on
+    // HTMLCanvasElement.prototype.getContext (available in happy-dom) to inject
+    // a minimal context rather than relying on CanvasRenderingContext2D global.
+    const drawnSourceRects: Array<{ sx: number; sy: number }> = []
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockImplementation((type: string): any => {
+        if (type !== '2d') return null
+        return {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          drawImage: (...args: any[]) => {
+            drawnSourceRects.push({ sx: args[1] as number, sy: args[2] as number })
+          },
+        }
+      })
+
     const canvases = cropCellsToCanvases(source, unordered, 100, 140)
-    // Sorted order should be (0,0), (0,2), (1,1), (2,0). All canvases share
-    // the same dimensions, so verify count + dimensions; the iteration order
-    // is verified indirectly by drawImage being called in that sequence.
+    getContextSpy.mockRestore()
+
     expect(canvases.length).toBe(4)
     for (const canvas of canvases) {
       expect(canvas.width).toBe(100)
       expect(canvas.height).toBe(140)
     }
+    // Sorted order: (0,0)→x=0,y=0  (0,2)→x=120,y=0  (1,1)→x=60,y=100  (2,0)→x=0,y=200
+    expect(drawnSourceRects).toEqual([
+      { sx: 0, sy: 0 },
+      { sx: 120, sy: 0 },
+      { sx: 60, sy: 100 },
+      { sx: 0, sy: 200 },
+    ])
   })
 
   it('returns an empty array for invalid dimensions', () => {

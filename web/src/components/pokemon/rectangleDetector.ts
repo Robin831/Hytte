@@ -1,6 +1,7 @@
-// Pure helpers for detecting Pokémon-card-shaped rectangles in an `ImageData`
-// frame. Kept free of React/DOM lifecycle so it can be exercised in unit tests
-// with synthetic frames.
+// Helpers for detecting Pokémon-card-shaped rectangles in an `ImageData` frame.
+// detectCardRectangle and detectGrid are pure DOM-free utilities suitable for
+// unit tests and web workers. cropCellsToCanvases is browser-only: it uses
+// document.createElement and HTMLCanvasElement.
 
 export interface DetectedRectangle {
   x: number
@@ -269,16 +270,13 @@ export function detectGrid(
       const ratio = Math.min(cw / ch, ch / cw)
       if (Math.abs(ratio - TARGET_ASPECT_RATIO) > GRID_ASPECT_TOLERANCE) continue
 
-      const rx = Math.max(0, Math.round(cx0 / scale))
-      const ry = Math.max(0, Math.round(cy0 / scale))
-      cells.push({
-        row: r,
-        col: c,
-        x: rx,
-        y: ry,
-        w: Math.min(srcW - rx, Math.round(cw / scale)),
-        h: Math.min(srcH - ry, Math.round(ch / scale)),
-      })
+      // Clamp to [0, src-1] so srcW-rx and srcH-ry are always >= 1.
+      const rx = Math.min(srcW - 1, Math.max(0, Math.round(cx0 / scale)))
+      const ry = Math.min(srcH - 1, Math.max(0, Math.round(cy0 / scale)))
+      const rw = Math.min(srcW - rx, Math.round(cw / scale))
+      const rh = Math.min(srcH - ry, Math.round(ch / scale))
+      if (rw <= 0 || rh <= 0) continue
+      cells.push({ row: r, col: c, x: rx, y: ry, w: rw, h: rh })
     }
   }
 
