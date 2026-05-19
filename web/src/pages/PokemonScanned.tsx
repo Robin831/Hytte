@@ -605,11 +605,22 @@ export default function PokemonScannedPage() {
       items.push({ kind: 'scan', ts: Date.parse(scan.created_at) || 0, scan })
     }
     for (const page of visiblePages) {
-      items.push({ kind: 'page', ts: Date.parse(page.created_at) || 0, page })
+      // For the resolved filter, sort by the most-recent child timestamp so
+      // the ordering matches the windowing logic in visiblePages (which also
+      // uses max-child-ts). Using page.created_at here would push recently-
+      // resolved pages far down the list because their *parent* may be old.
+      const pageTs =
+        filter === 'resolved'
+          ? page.children.reduce((max, c) => {
+              const parsed = Date.parse(c.resolved_at ?? c.created_at)
+              return Number.isFinite(parsed) && parsed > max ? parsed : max
+            }, 0)
+          : Date.parse(page.created_at) || 0
+      items.push({ kind: 'page', ts: pageTs, page })
     }
     items.sort((a, b) => b.ts - a.ts)
     return items
-  }, [visibleScans, visiblePages])
+  }, [visibleScans, visiblePages, filter])
 
   // When ?focus=N is present (e.g. opened from a scan-result push), scroll the
   // matching row into view and apply a brief highlight so the kid can tell

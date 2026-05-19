@@ -975,30 +975,36 @@ func DeleteScanPageHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Reject the discard while any child is still being processed by the
-		// scan worker. A worker that finishes after we discard the row updates
-		// by id only (no status guard), so it would silently overwrite the
-		// 'discarded' status back to 'matched'/'no_match'/'failed' and leave
-		// the image_path_enc pointing at a file we may have deleted.
+		// Acquire a write lock immediately so the processing check and the
+		// discard UPDATE are atomic with respect to the scan worker. Without
+		// BEGIN IMMEDIATE a queued row can flip to processing between the
+		// pre-transaction check and the UPDATE; the worker would then
+		// finalise by id (no status guard) and silently overwrite 'discarded'
+		// back to 'matched'/'no_match'/'failed', leaving image_path_enc
+		// pointing at a file we may have already deleted.
+		now := time.Now().UTC()
+		tx, err := db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelSerializable})
+		if err != nil {
+			log.Printf("pokemon: begin page delete tx: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to delete page")
+			return
+		}
+
+		// Re-check for processing children inside the write lock so no new
+		// status flip can sneak in after this point.
 		var processingCount int
-		if err := db.QueryRowContext(r.Context(), `
+		if err := tx.QueryRowContext(r.Context(), `
 			SELECT COUNT(*) FROM pokemon_scan_jobs
 			WHERE user_id = ? AND page_id = ? AND status = ?
 		`, user.ID, pageID, scanJobStatusProcessing).Scan(&processingCount); err != nil {
+			tx.Rollback()
 			log.Printf("pokemon: check processing children: %v", err)
 			respondError(w, http.StatusInternalServerError, "failed to delete page")
 			return
 		}
 		if processingCount > 0 {
+			tx.Rollback()
 			respondError(w, http.StatusConflict, "page has cards still being processed; retry after they complete")
-			return
-		}
-
-		now := time.Now().UTC()
-		tx, err := db.BeginTx(r.Context(), nil)
-		if err != nil {
-			log.Printf("pokemon: begin page delete tx: %v", err)
-			respondError(w, http.StatusInternalServerError, "failed to delete page")
 			return
 		}
 
@@ -1014,10 +1020,10 @@ func DeleteScanPageHandler(db *sql.DB) http.HandlerFunc {
 			UPDATE pokemon_scan_jobs
 			SET status = ?, resolved_at = ?
 			WHERE user_id = ? AND page_id = ?
-			  AND status NOT IN (?, ?)
+			  AND status NOT IN (?, ?, ?)
 			RETURNING id, image_path_enc
 		`, scanJobStatusDiscarded, now, user.ID, pageID,
-			scanJobStatusAdded, scanJobStatusDiscarded)
+			scanJobStatusAdded, scanJobStatusDiscarded, scanJobStatusProcessing)
 		if err != nil {
 			tx.Rollback()
 			log.Printf("pokemon: discard child scans: %v", err)

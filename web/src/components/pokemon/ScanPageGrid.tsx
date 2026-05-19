@@ -336,7 +336,7 @@ export default function ScanPageGrid({
           </span>
           <span data-testid={`scan-page-progress-${page.id}`}>
             {t('scanned.page.progress', {
-              matched: matchedCount,
+              matched: page.matched_count,
               total: page.expected_count,
             })}
           </span>
