@@ -112,18 +112,15 @@ func CreateConversationHandler(db *sql.DB) http.HandlerFunc {
 				return
 			}
 		}
-		// Pre-validate that referenced users exist so FK failures map to 400.
-		for _, uid := range body.MemberUserIDs {
-			var exists int
-			if err := db.QueryRow(`SELECT 1 FROM users WHERE id = ?`, uid).Scan(&exists); err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("user %d not found", uid)})
-					return
-				}
-				log.Printf("familychat: lookup user %d: %v", uid, err)
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to validate members"})
-				return
-			}
+		// Pre-validate that referenced users exist (single IN query) so FK
+		// failures map to 400 rather than 500.
+		if missing, err := ValidateMemberIDs(db, body.MemberUserIDs); err != nil {
+			log.Printf("familychat: validate members: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to validate members"})
+			return
+		} else if missing != 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("user %d not found", missing)})
+			return
 		}
 
 		c, err := CreateConversation(db, user.ID, body.Name, body.MemberUserIDs)
@@ -255,6 +252,16 @@ func PostMessageHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to post message"})
 			return
 		}
+		DefaultHub().Publish(convID, Event{
+			Type: EventMessageNew,
+			Data: map[string]any{
+				"id":              msg.ID,
+				"conversation_id": msg.ConversationID,
+				"sender_user_id":  msg.SenderUserID,
+				"body":            msg.Body,
+				"created_at":      msg.CreatedAt,
+			},
+		})
 		writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
 	}
 }
@@ -296,6 +303,11 @@ func MarkReadHandler(db *sql.DB) http.HandlerFunc {
 			}
 			at = t.UTC().Format(timeFormat)
 		}
+		// Pre-compute server time so the same value goes into the DB and the
+		// read-receipt event, avoiding a race between MarkRead's own default.
+		if at == "" {
+			at = time.Now().UTC().Format(timeFormat)
+		}
 
 		if err := MarkRead(db, convID, user.ID, at); err != nil {
 			if errors.Is(err, ErrForbidden) {
@@ -306,6 +318,14 @@ func MarkReadHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to mark read"})
 			return
 		}
+		DefaultHub().Publish(convID, Event{
+			Type: EventReadReceipt,
+			Data: map[string]any{
+				"conversation_id": convID,
+				"user_id":         user.ID,
+				"at":              at,
+			},
+		})
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
 }

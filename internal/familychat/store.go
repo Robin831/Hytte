@@ -6,7 +6,6 @@ package familychat
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,9 +13,10 @@ import (
 	"github.com/Robin831/Hytte/internal/encryption"
 )
 
-// timeFormat is a fixed-width UTC timestamp with nanosecond precision so
-// that string comparisons sort chronologically without same-millisecond ties.
-const timeFormat = "2006-01-02T15:04:05.000000000Z07:00"
+// timeFormat is a fixed-width UTC timestamp with millisecond precision,
+// matching the convention used by other stores in this repo (e.g. chat/store.go).
+// An (id) tie-breaker in ORDER BY clauses handles same-millisecond writes.
+const timeFormat = "2006-01-02T15:04:05.000Z07:00"
 
 // Conversation is a single family chat conversation as returned to the client.
 type Conversation struct {
@@ -41,20 +41,48 @@ type Message struct {
 	CreatedAt      string `json:"created_at"`
 }
 
-// IsMember reports whether userID belongs to convID.
+// IsMember reports whether userID belongs to convID. It delegates to
+// DefaultMembership so there is a single SQL implementation shared with the
+// SSE stream's membership check.
 func IsMember(db *sql.DB, convID, userID int64) (bool, error) {
-	var one int
-	err := db.QueryRow(
-		`SELECT 1 FROM family_chat_members WHERE conversation_id = ? AND user_id = ?`,
-		convID, userID,
-	).Scan(&one)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
+	return DefaultMembership(db)(userID, convID)
+}
+
+// ValidateMemberIDs checks that every id in ids exists in the users table
+// using a single IN query. It returns the first missing id (and nil error) so
+// callers can map it to a 400 response, or (0, error) on a DB failure.
+func ValidateMemberIDs(db *sql.DB, ids []int64) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
 	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := db.Query(`SELECT id FROM users WHERE id IN (`+placeholders+`)`, args...)
 	if err != nil {
-		return false, err
+		return 0, err
 	}
-	return true, nil
+	defer rows.Close()
+	found := make(map[int64]struct{}, len(ids))
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return 0, err
+		}
+		found[id] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for _, id := range ids {
+		if _, ok := found[id]; !ok {
+			return id, nil
+		}
+	}
+	return 0, nil
 }
 
 // ListConversations returns every conversation the user belongs to, newest
