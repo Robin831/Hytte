@@ -30,9 +30,12 @@ const (
 // Subscriber is a single SSE client subscription. The channel is buffered so
 // a publisher can fan out without blocking on a slow consumer; if the buffer
 // fills up the publish for that Subscriber is dropped (the client will pick
-// up the next event or reconnect).
+// up the next event or reconnect). The userID is recorded so callers fanning
+// out external notifications (e.g. webpush) can skip recipients who are
+// already live on SSE.
 type Subscriber struct {
-	ch chan Event
+	userID int64
+	ch     chan Event
 }
 
 // SubscriberBufferSize is the per-Subscriber channel buffer. Sized to absorb
@@ -54,17 +57,35 @@ func NewHub() *Hub {
 	}
 }
 
-// Subscribe registers a new Subscriber for the given conversation and returns
-// it. The caller must Unsubscribe when finished, typically via defer.
-func (h *Hub) Subscribe(convID int64) *Subscriber {
+// Subscribe registers a new Subscriber for the given user and conversation
+// and returns it. The caller must Unsubscribe when finished, typically via
+// defer. The userID is stored on the Subscriber so other code paths (such as
+// the webpush fan-out for incoming messages) can ask whether a user already
+// has a live SSE stream open.
+func (h *Hub) Subscribe(userID, convID int64) *Subscriber {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	s := &Subscriber{ch: make(chan Event, SubscriberBufferSize)}
+	s := &Subscriber{userID: userID, ch: make(chan Event, SubscriberBufferSize)}
 	if h.subs[convID] == nil {
 		h.subs[convID] = make(map[*Subscriber]struct{})
 	}
 	h.subs[convID][s] = struct{}{}
 	return s
+}
+
+// HasSubscriber reports whether userID currently has any live SSE
+// subscription for convID. Used by the message-post fan-out to decide
+// whether a recipient also needs a webpush notification (they do not if
+// they already have a streaming connection).
+func (h *Hub) HasSubscriber(userID, convID int64) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for s := range h.subs[convID] {
+		if s.userID == userID {
+			return true
+		}
+	}
+	return false
 }
 
 // Unsubscribe removes the Subscriber and closes its channel. Idempotent and
