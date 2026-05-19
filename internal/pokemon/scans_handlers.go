@@ -140,8 +140,9 @@ const scanPageParseFormBytes = (scanMaxImageBytes * scanPageMaxImagesPerPage) + 
 
 // pageCell is one (row, col) entry in the JSON `cells` field of a page upload.
 // Rows and columns are 0-indexed grid coordinates from the browser-side crop
-// pipeline (Hytte-ku2w), stored on each child job so the review UI can lay the
-// resolved cards back out in the same arrangement.
+// pipeline (Hytte-ku2w). For this bead we only use the array for shape +
+// length validation against the image parts; persisting the coordinates to
+// each child row is deferred to a follow-up that wires the review UI.
 type pageCell struct {
 	Row int `json:"row"`
 	Col int `json:"col"`
@@ -153,13 +154,22 @@ type pageCell struct {
 // children with page_id set — the worker pipeline picks the children up
 // through its existing single-card flow unchanged.
 //
-// Order of operations is strict to keep the cost cap honest:
-//  1. compute N from parts and check the daily cap charging N — if the user
+// Order of operations is strict to keep the cost cap honest and to guarantee
+// a 429 leaves zero state behind:
+//  1. parse + validate parts and the cells JSON;
+//  2. compute N from parts and check the daily cap charging N — if the user
 //     does not have N free scans remaining today, return 429 BEFORE any
-//     image is written to disk;
-//  2. create the parent pokemon_scan_pages row;
-//  3. insert N pokemon_scan_jobs children referencing that parent, each
-//     reusing the existing per-card image path encryption.
+//     image bytes touch disk;
+//  3. read + validate every card part into memory (oversize / wrong MIME);
+//  4. write all card images to disk;
+//  5. create the parent pokemon_scan_pages row + N pokemon_scan_jobs
+//     children in one transaction. On any failure roll back the rows AND
+//     delete the on-disk files so a 5xx also leaves zero state.
+//
+// The original full-page photo is intentionally not accepted here — the spec
+// for this bead only takes the cropped per-card images. The parent's
+// page_image_path_enc column stays at its empty default; a future iteration
+// can extend the form if the review UI needs the source frame.
 func PageScanHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -218,8 +228,7 @@ func PageScanHandler(db *sql.DB) http.HandlerFunc {
 			respondError(w, http.StatusInternalServerError, "failed to enqueue page scan")
 			return
 		}
-		remaining := dailyCap - used
-		if remaining < n {
+		if dailyCap-used < n {
 			respondJSON(w, http.StatusTooManyRequests, map[string]any{
 				"error":     "daily scan cap reached",
 				"cap":       dailyCap,
@@ -230,13 +239,12 @@ func PageScanHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Read + validate every card part into memory before touching the
-		// database. One bad part (oversize, wrong MIME) must reject the
-		// whole batch rather than leave half-written rows or files behind.
+		// database or disk. One bad part (oversize, wrong MIME) must
+		// reject the whole batch rather than leave half-written rows or
+		// files behind.
 		type cardImage struct {
 			buf  []byte
 			hash string
-			row  int
-			col  int
 		}
 		cards := make([]cardImage, n)
 		for i, fh := range files {
@@ -250,8 +258,7 @@ func PageScanHandler(db *sql.DB) http.HandlerFunc {
 				respondError(w, http.StatusInternalServerError, "failed to read image")
 				return
 			}
-			limited := io.LimitReader(f, scanMaxImageBytes+1)
-			buf, readErr := io.ReadAll(limited)
+			buf, readErr := io.ReadAll(io.LimitReader(f, scanMaxImageBytes+1))
 			f.Close()
 			if readErr != nil {
 				log.Printf("pokemon: read page card part %d: %v", i, readErr)
@@ -262,8 +269,7 @@ func PageScanHandler(db *sql.DB) http.HandlerFunc {
 				respondError(w, http.StatusBadRequest, "image too large (max 5 MB)")
 				return
 			}
-			mime := detectImageMIME(buf)
-			if !scanAllowedMIMETypes[mime] {
+			if !scanAllowedMIMETypes[detectImageMIME(buf)] {
 				respondError(w, http.StatusBadRequest, "unsupported image type")
 				return
 			}
@@ -271,81 +277,68 @@ func PageScanHandler(db *sql.DB) http.HandlerFunc {
 			cards[i] = cardImage{
 				buf:  buf,
 				hash: hex.EncodeToString(sum[:]),
-				row:  cells[i].Row,
-				col:  cells[i].Col,
 			}
 		}
 
-		// Optional page image part. Storing the full source frame lets a
-		// future review UI show the original page next to the resolved
-		// crops. When absent, the column stays at its default empty
-		// string — children still resolve independently via page_id.
-		var pageImagePathEnc string
-		var pageImageDiskPath string
-		if pageHeaders := r.MultipartForm.File["page"]; len(pageHeaders) > 0 {
-			fh := pageHeaders[0]
-			if fh.Size > scanMaxImageBytes {
-				respondError(w, http.StatusBadRequest, "page image too large (max 5 MB)")
-				return
-			}
-			pf, err := fh.Open()
-			if err != nil {
-				log.Printf("pokemon: open page image: %v", err)
-				respondError(w, http.StatusInternalServerError, "failed to read page image")
-				return
-			}
-			pageBuf, readErr := io.ReadAll(io.LimitReader(pf, scanMaxImageBytes+1))
-			pf.Close()
-			if readErr != nil {
-				log.Printf("pokemon: read page image: %v", readErr)
-				respondError(w, http.StatusInternalServerError, "failed to read page image")
-				return
-			}
-			if int64(len(pageBuf)) > scanMaxImageBytes {
-				respondError(w, http.StatusBadRequest, "page image too large (max 5 MB)")
-				return
-			}
-			if !scanAllowedMIMETypes[detectImageMIME(pageBuf)] {
-				respondError(w, http.StatusBadRequest, "unsupported page image type")
-				return
-			}
-			pageUUID, err := scanUUID()
-			if err != nil {
-				log.Printf("pokemon: generate page uuid: %v", err)
-				respondError(w, http.StatusInternalServerError, "failed to enqueue page scan")
-				return
-			}
-			pageImageDiskPath, err = scanImagePathForUUID(user.ID, "page-"+pageUUID)
-			if err != nil {
-				log.Printf("pokemon: page image path: %v", err)
-				respondError(w, http.StatusInternalServerError, "failed to enqueue page scan")
-				return
-			}
-			if err := os.WriteFile(pageImageDiskPath, pageBuf, 0600); err != nil {
-				log.Printf("pokemon: write page image: %v", err)
-				respondError(w, http.StatusInternalServerError, "failed to save page image")
-				return
-			}
-			pageImagePathEnc, err = encryption.EncryptField(pageImageDiskPath)
-			if err != nil {
-				os.Remove(pageImageDiskPath)
-				log.Printf("pokemon: encrypt page image path: %v", err)
-				respondError(w, http.StatusInternalServerError, "failed to enqueue page scan")
-				return
+		// Write all card images to disk before opening the transaction so
+		// the tx is short (just N+1 INSERTs). If any write fails we delete
+		// the ones already on disk and return 500 — no DB state was
+		// touched, so there is nothing to roll back yet.
+		type cardWrite struct {
+			diskPath string
+			pathEnc  string
+			hash     string
+		}
+		writes := make([]cardWrite, 0, n)
+		cleanupFiles := func() {
+			for _, cw := range writes {
+				os.Remove(cw.diskPath)
 			}
 		}
+		for i := range cards {
+			uuid, err := scanUUID()
+			if err != nil {
+				cleanupFiles()
+				log.Printf("pokemon: generate child scan uuid: %v", err)
+				respondError(w, http.StatusInternalServerError, "failed to generate scan id")
+				return
+			}
+			imagePath, err := scanImagePathForUUID(user.ID, uuid)
+			if err != nil {
+				cleanupFiles()
+				log.Printf("pokemon: child scan image path: %v", err)
+				respondError(w, http.StatusInternalServerError, "failed to prepare scan storage")
+				return
+			}
+			if err := os.WriteFile(imagePath, cards[i].buf, 0600); err != nil {
+				cleanupFiles()
+				log.Printf("pokemon: write child scan image: %v", err)
+				respondError(w, http.StatusInternalServerError, "failed to save scan image")
+				return
+			}
+			pathEnc, err := encryption.EncryptField(imagePath)
+			if err != nil {
+				os.Remove(imagePath)
+				cleanupFiles()
+				log.Printf("pokemon: encrypt child scan path: %v", err)
+				respondError(w, http.StatusInternalServerError, "failed to enqueue scan")
+				return
+			}
+			writes = append(writes, cardWrite{
+				diskPath: imagePath,
+				pathEnc:  pathEnc,
+				hash:     cards[i].hash,
+			})
+		}
 
-		// Single transaction so the parent row + N children are committed
-		// atomically. If any child insert fails we roll back, delete any
-		// card images already on disk, and surface a 500. Without this,
-		// a partial failure could leave orphan children pointing at a
-		// missing page or vice versa.
+		// Single transaction so the parent row + N children commit
+		// atomically. On any failure roll back the rows AND delete the
+		// on-disk images so a 5xx leaves zero state, matching the 429
+		// contract above.
 		now := time.Now().UTC()
 		tx, err := db.BeginTx(r.Context(), nil)
 		if err != nil {
-			if pageImageDiskPath != "" {
-				os.Remove(pageImageDiskPath)
-			}
+			cleanupFiles()
 			log.Printf("pokemon: begin page scan tx: %v", err)
 			respondError(w, http.StatusInternalServerError, "failed to enqueue page scan")
 			return
@@ -353,13 +346,11 @@ func PageScanHandler(db *sql.DB) http.HandlerFunc {
 
 		pageRes, err := tx.ExecContext(r.Context(), `
 			INSERT INTO pokemon_scan_pages (user_id, page_image_path_enc, expected_count, matched_count, created_at)
-			VALUES (?, ?, ?, 0, ?)
-		`, user.ID, pageImagePathEnc, n, now)
+			VALUES (?, '', ?, 0, ?)
+		`, user.ID, n, now)
 		if err != nil {
 			tx.Rollback()
-			if pageImageDiskPath != "" {
-				os.Remove(pageImageDiskPath)
-			}
+			cleanupFiles()
 			log.Printf("pokemon: insert scan page: %v", err)
 			respondError(w, http.StatusInternalServerError, "failed to enqueue page scan")
 			return
@@ -367,67 +358,29 @@ func PageScanHandler(db *sql.DB) http.HandlerFunc {
 		pageID, err := pageRes.LastInsertId()
 		if err != nil {
 			tx.Rollback()
-			if pageImageDiskPath != "" {
-				os.Remove(pageImageDiskPath)
-			}
+			cleanupFiles()
 			log.Printf("pokemon: scan page last id: %v", err)
 			respondError(w, http.StatusInternalServerError, "failed to enqueue page scan")
 			return
 		}
 
 		jobIDs := make([]int64, 0, n)
-		writtenPaths := make([]string, 0, n)
-		rollback := func() {
-			tx.Rollback()
-			for _, p := range writtenPaths {
-				os.Remove(p)
-			}
-			if pageImageDiskPath != "" {
-				os.Remove(pageImageDiskPath)
-			}
-		}
-		for i := range cards {
-			uuid, err := scanUUID()
-			if err != nil {
-				rollback()
-				log.Printf("pokemon: generate child scan uuid: %v", err)
-				respondError(w, http.StatusInternalServerError, "failed to generate scan id")
-				return
-			}
-			imagePath, err := scanImagePathForUUID(user.ID, uuid)
-			if err != nil {
-				rollback()
-				log.Printf("pokemon: child scan image path: %v", err)
-				respondError(w, http.StatusInternalServerError, "failed to prepare scan storage")
-				return
-			}
-			if err := os.WriteFile(imagePath, cards[i].buf, 0600); err != nil {
-				rollback()
-				log.Printf("pokemon: write child scan image: %v", err)
-				respondError(w, http.StatusInternalServerError, "failed to save scan image")
-				return
-			}
-			writtenPaths = append(writtenPaths, imagePath)
-			pathEnc, err := encryption.EncryptField(imagePath)
-			if err != nil {
-				rollback()
-				log.Printf("pokemon: encrypt child scan path: %v", err)
-				respondError(w, http.StatusInternalServerError, "failed to enqueue scan")
-				return
-			}
+		for _, cw := range writes {
 			res, err := tx.ExecContext(r.Context(), `
 				INSERT INTO pokemon_scan_jobs (user_id, status, image_path_enc, image_hash, page_id, created_at)
 				VALUES (?, ?, ?, ?, ?, ?)
-			`, user.ID, scanJobStatusQueued, pathEnc, cards[i].hash, pageID, now)
+			`, user.ID, scanJobStatusQueued, cw.pathEnc, cw.hash, pageID, now)
 			if err != nil {
-				rollback()
+				tx.Rollback()
+				cleanupFiles()
 				log.Printf("pokemon: insert child scan job: %v", err)
 				respondError(w, http.StatusInternalServerError, "failed to enqueue scan")
 				return
 			}
 			jobID, err := res.LastInsertId()
 			if err != nil {
-				rollback()
+				tx.Rollback()
+				cleanupFiles()
 				log.Printf("pokemon: child scan last id: %v", err)
 				respondError(w, http.StatusInternalServerError, "failed to enqueue scan")
 				return
@@ -436,12 +389,7 @@ func PageScanHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err := tx.Commit(); err != nil {
-			for _, p := range writtenPaths {
-				os.Remove(p)
-			}
-			if pageImageDiskPath != "" {
-				os.Remove(pageImageDiskPath)
-			}
+			cleanupFiles()
 			log.Printf("pokemon: commit page scan tx: %v", err)
 			respondError(w, http.StatusInternalServerError, "failed to enqueue page scan")
 			return
