@@ -204,6 +204,19 @@
       "useAutoMatchInstead": "Use auto-match instead",
       "searchPlaceholder": "Search for the right card — name or number",
       "searchFailed": "Failed to search cards"
+    },
+    "page": {
+      "label": "Binder page",
+      "progress": "{{matched}} / {{total}} matched",
+      "addAllMatched": "Add all matched ({{count}})",
+      "discardPage": "Discard page",
+      "confirmDiscard": "Discard this whole page? Cards you've already added will be kept.",
+      "cancel": "Cancel",
+      "discardConfirm": "Yes, discard",
+      "addAllToast": "Added {{count}} cards",
+      "addAllPartial": "{{count}} cards could not be added",
+      "discardToast": "Page discarded",
+      "discardFailed": "Failed to discard page"
     }
   },
   "scanner": {

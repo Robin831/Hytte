@@ -1578,3 +1578,347 @@ func TestPageScan_RejectsBadMIME(t *testing.T) {
 		t.Errorf("expected no pokemon_scan_pages on bad MIME, got %d", pageRows)
 	}
 }
+
+// insertScanPage seeds a pokemon_scan_pages parent row directly so list /
+// delete tests can build a known-shape page without going through the
+// multipart upload handler.
+func insertScanPage(t *testing.T, db *sql.DB, userID int64, expected int, createdAt time.Time) int64 {
+	t.Helper()
+	res, err := db.Exec(`
+		INSERT INTO pokemon_scan_pages (user_id, page_image_path_enc, expected_count, matched_count, created_at)
+		VALUES (?, '', ?, 0, ?)
+	`, userID, expected, createdAt)
+	if err != nil {
+		t.Fatalf("insert scan page: %v", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("scan page last id: %v", err)
+	}
+	return id
+}
+
+// linkScanJobToPage stamps page_id on an existing scan job. Tests use this
+// to attach previously-inserted children to a freshly-seeded parent.
+func linkScanJobToPage(t *testing.T, db *sql.DB, jobID, pageID int64) {
+	t.Helper()
+	if _, err := db.Exec(`UPDATE pokemon_scan_jobs SET page_id = ? WHERE id = ?`, pageID, jobID); err != nil {
+		t.Fatalf("link scan job to page: %v", err)
+	}
+}
+
+// TestListScans_PageReturnsAllChildrenRegardlessOfStatus is the core grid
+// contract: when the status filter matches any child of a page, the list
+// response must include the parent and ALL of its children (even those whose
+// individual status falls outside the filter) so the frontend can render the
+// full captured layout in one block.
+func TestListScans_PageReturnsAllChildrenRegardlessOfStatus(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "page-list@example.com")
+
+	now := time.Now().UTC()
+	pageID := insertScanPage(t, db, u.ID, 4, now)
+	// Four children spanning the full lifecycle: only one matches the
+	// "needs review" filter (matched), but all four must come back.
+	p1 := writeOnDiskImage(t, root, u.ID, "queued.jpg")
+	p2 := writeOnDiskImage(t, root, u.ID, "match.jpg")
+	p3 := writeOnDiskImage(t, root, u.ID, "no-match.jpg")
+	p4 := writeOnDiskImage(t, root, u.ID, "failed.jpg")
+	c1 := insertScanJob(t, db, u.ID, scanJobStatusQueued, p1, withCreatedAt(now))
+	c2 := insertScanJob(t, db, u.ID, scanJobStatusMatched, p2,
+		withCreatedAt(now), withMatchedCard("sv1-25", 0.92))
+	c3 := insertScanJob(t, db, u.ID, scanJobStatusNoMatch, p3,
+		withCreatedAt(now), withError("low confidence"))
+	c4 := insertScanJob(t, db, u.ID, scanJobStatusFailed, p4,
+		withCreatedAt(now), withError("boom"))
+	linkScanJobToPage(t, db, c1, pageID)
+	linkScanJobToPage(t, db, c2, pageID)
+	linkScanJobToPage(t, db, c3, pageID)
+	linkScanJobToPage(t, db, c4, pageID)
+
+	req := asUser(httptest.NewRequest(http.MethodGet,
+		"/api/pokemon/scans?status=matched,no_match,failed", nil), u)
+	rec := httptest.NewRecorder()
+	ListScansHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[struct {
+		Scans []ScanJobDTO  `json:"scans"`
+		Pages []ScanPageDTO `json:"pages"`
+	}](t, rec)
+	if len(body.Scans) != 0 {
+		t.Errorf("expected zero standalone scans, got %d", len(body.Scans))
+	}
+	if len(body.Pages) != 1 {
+		t.Fatalf("expected one page, got %d", len(body.Pages))
+	}
+	page := body.Pages[0]
+	if page.ID != pageID {
+		t.Errorf("expected page id=%d, got %d", pageID, page.ID)
+	}
+	if page.ExpectedCount != 4 {
+		t.Errorf("expected expected_count=4, got %d", page.ExpectedCount)
+	}
+	if len(page.Children) != 4 {
+		t.Fatalf("expected all 4 children, got %d", len(page.Children))
+	}
+	gotStatuses := map[string]bool{}
+	for _, child := range page.Children {
+		gotStatuses[child.Status] = true
+	}
+	for _, want := range []string{scanJobStatusQueued, scanJobStatusMatched, scanJobStatusNoMatch, scanJobStatusFailed} {
+		if !gotStatuses[want] {
+			t.Errorf("expected child with status %q in grid, got statuses %v", want, gotStatuses)
+		}
+	}
+	// The matched child must have its card hydrated so the grid can render
+	// the card name without an extra round trip.
+	var matchedChild *ScanJobDTO
+	for i := range page.Children {
+		if page.Children[i].Status == scanJobStatusMatched {
+			matchedChild = &page.Children[i]
+			break
+		}
+	}
+	if matchedChild == nil || matchedChild.MatchedCard == nil || matchedChild.MatchedCard.ID != "sv1-25" {
+		t.Errorf("expected matched child to carry hydrated card sv1-25, got %+v", matchedChild)
+	}
+}
+
+// TestListScans_StandaloneAndPageInSameResponse verifies that page-grouped
+// scans and standalone scans coexist in the response without collisions:
+// standalone rows stay in `scans`, pages go in `pages`, and a single matched
+// card is hydrated correctly in both buckets.
+func TestListScans_StandaloneAndPageInSameResponse(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "mixed@example.com")
+
+	now := time.Now().UTC()
+	standalonePath := writeOnDiskImage(t, root, u.ID, "standalone.jpg")
+	insertScanJob(t, db, u.ID, scanJobStatusMatched, standalonePath,
+		withCreatedAt(now.Add(-1*time.Minute)), withMatchedCard("sv1-25", 0.9))
+
+	pageID := insertScanPage(t, db, u.ID, 2, now)
+	pp1 := writeOnDiskImage(t, root, u.ID, "page-child.jpg")
+	pc := insertScanJob(t, db, u.ID, scanJobStatusMatched, pp1,
+		withCreatedAt(now), withMatchedCard("sv1-25", 0.9))
+	linkScanJobToPage(t, db, pc, pageID)
+
+	req := asUser(httptest.NewRequest(http.MethodGet,
+		"/api/pokemon/scans?status=matched", nil), u)
+	rec := httptest.NewRecorder()
+	ListScansHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[struct {
+		Scans []ScanJobDTO  `json:"scans"`
+		Pages []ScanPageDTO `json:"pages"`
+	}](t, rec)
+	if len(body.Scans) != 1 {
+		t.Fatalf("expected one standalone scan, got %d", len(body.Scans))
+	}
+	if body.Scans[0].MatchedCard == nil || body.Scans[0].MatchedCard.ID != "sv1-25" {
+		t.Errorf("expected standalone matched card hydrated, got %+v", body.Scans[0].MatchedCard)
+	}
+	if len(body.Pages) != 1 {
+		t.Fatalf("expected one page, got %d", len(body.Pages))
+	}
+	if len(body.Pages[0].Children) != 1 {
+		t.Errorf("expected one child in page, got %d", len(body.Pages[0].Children))
+	}
+}
+
+// TestDeleteScanPage_DiscardsChildrenAndRemovesParent verifies the page-level
+// discard: every non-terminal child is soft-discarded (status='discarded',
+// image_path cleared), the parent row is removed, and the on-disk files are
+// reaped.
+func TestDeleteScanPage_DiscardsChildrenAndRemovesParent(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "delete-page@example.com")
+
+	now := time.Now().UTC()
+	pageID := insertScanPage(t, db, u.ID, 3, now)
+	p1 := writeOnDiskImage(t, root, u.ID, "del-1.jpg")
+	p2 := writeOnDiskImage(t, root, u.ID, "del-2.jpg")
+	p3 := writeOnDiskImage(t, root, u.ID, "del-3.jpg")
+	c1 := insertScanJob(t, db, u.ID, scanJobStatusMatched, p1,
+		withCreatedAt(now), withMatchedCard("sv1-25", 0.9))
+	c2 := insertScanJob(t, db, u.ID, scanJobStatusNoMatch, p2, withCreatedAt(now))
+	c3 := insertScanJob(t, db, u.ID, scanJobStatusQueued, p3, withCreatedAt(now))
+	linkScanJobToPage(t, db, c1, pageID)
+	linkScanJobToPage(t, db, c2, pageID)
+	linkScanJobToPage(t, db, c3, pageID)
+
+	req := asUser(httptest.NewRequest(http.MethodDelete,
+		"/api/pokemon/scans/pages/"+strconv.FormatInt(pageID, 10), nil), u)
+	req = asChi(req, map[string]string{"id": strconv.FormatInt(pageID, 10)})
+	rec := httptest.NewRecorder()
+	DeleteScanPageHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var pageRows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pokemon_scan_pages WHERE id = ?`, pageID).Scan(&pageRows); err != nil {
+		t.Fatalf("count pages: %v", err)
+	}
+	if pageRows != 0 {
+		t.Errorf("expected parent row deleted, found %d", pageRows)
+	}
+
+	for _, cID := range []int64{c1, c2, c3} {
+		var status, pathEnc string
+		if err := db.QueryRow(`SELECT status, image_path_enc FROM pokemon_scan_jobs WHERE id = ?`, cID).Scan(&status, &pathEnc); err != nil {
+			t.Fatalf("read child %d: %v", cID, err)
+		}
+		if status != scanJobStatusDiscarded {
+			t.Errorf("child %d expected status=discarded, got %q", cID, status)
+		}
+		if pathEnc != "" {
+			t.Errorf("child %d expected cleared image_path_enc, got non-empty", cID)
+		}
+	}
+	for _, p := range []string{p1, p2, p3} {
+		if _, err := os.Stat(p); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("expected on-disk image %s removed, got err=%v", p, err)
+		}
+	}
+}
+
+// TestDeleteScanPage_PreservesAddedChildren ensures that children that the
+// user has already added to their collection are left alone: page-discard is
+// a "throw away the rest" action, not a retroactive removal of accepted cards.
+func TestDeleteScanPage_PreservesAddedChildren(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "delete-keep@example.com")
+
+	now := time.Now().UTC()
+	pageID := insertScanPage(t, db, u.ID, 2, now)
+	pAdded := writeOnDiskImage(t, root, u.ID, "added.jpg")
+	pQueued := writeOnDiskImage(t, root, u.ID, "queued.jpg")
+	addedID := insertScanJob(t, db, u.ID, scanJobStatusAdded, pAdded,
+		withCreatedAt(now), withMatchedCard("sv1-25", 0.9))
+	queuedID := insertScanJob(t, db, u.ID, scanJobStatusQueued, pQueued, withCreatedAt(now))
+	linkScanJobToPage(t, db, addedID, pageID)
+	linkScanJobToPage(t, db, queuedID, pageID)
+
+	req := asUser(httptest.NewRequest(http.MethodDelete,
+		"/api/pokemon/scans/pages/"+strconv.FormatInt(pageID, 10), nil), u)
+	req = asChi(req, map[string]string{"id": strconv.FormatInt(pageID, 10)})
+	rec := httptest.NewRecorder()
+	DeleteScanPageHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var addedStatus string
+	if err := db.QueryRow(`SELECT status FROM pokemon_scan_jobs WHERE id = ?`, addedID).Scan(&addedStatus); err != nil {
+		t.Fatalf("read added child: %v", err)
+	}
+	if addedStatus != scanJobStatusAdded {
+		t.Errorf("expected already-added child preserved, got %q", addedStatus)
+	}
+	var queuedStatus string
+	if err := db.QueryRow(`SELECT status FROM pokemon_scan_jobs WHERE id = ?`, queuedID).Scan(&queuedStatus); err != nil {
+		t.Fatalf("read queued child: %v", err)
+	}
+	if queuedStatus != scanJobStatusDiscarded {
+		t.Errorf("expected queued child discarded, got %q", queuedStatus)
+	}
+}
+
+// TestDeleteScanPage_OtherUserReturns404 confirms cross-user isolation: a
+// caller may not delete or even probe the existence of another user's page.
+func TestDeleteScanPage_OtherUserReturns404(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	uA := seedUser(t, db, 1, "owner@example.com")
+	uB := seedUser(t, db, 2, "stranger@example.com")
+
+	pageID := insertScanPage(t, db, uA.ID, 1, time.Now().UTC())
+
+	req := asUser(httptest.NewRequest(http.MethodDelete,
+		"/api/pokemon/scans/pages/"+strconv.FormatInt(pageID, 10), nil), uB)
+	req = asChi(req, map[string]string{"id": strconv.FormatInt(pageID, 10)})
+	rec := httptest.NewRecorder()
+	DeleteScanPageHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for other user's page, got %d", rec.Code)
+	}
+	// Parent row must survive an unauthorised delete attempt.
+	var pageRows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pokemon_scan_pages WHERE id = ?`, pageID).Scan(&pageRows); err != nil {
+		t.Fatalf("count pages: %v", err)
+	}
+	if pageRows != 1 {
+		t.Errorf("expected page still present, got %d rows", pageRows)
+	}
+}
+
+// TestDeleteScanPage_RejectsWhileProcessing guards against the race where a
+// scan worker finishes *after* the page-discard update and silently overwrites
+// the 'discarded' status back to 'matched'/'no_match'/'failed'. The handler
+// must return 409 Conflict when any child is still in 'processing' state.
+func TestDeleteScanPage_RejectsWhileProcessing(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "processing-race@example.com")
+
+	now := time.Now().UTC()
+	pageID := insertScanPage(t, db, u.ID, 2, now)
+	p1 := writeOnDiskImage(t, root, u.ID, "proc-1.jpg")
+	p2 := writeOnDiskImage(t, root, u.ID, "proc-2.jpg")
+	c1 := insertScanJob(t, db, u.ID, scanJobStatusProcessing, p1, withCreatedAt(now))
+	c2 := insertScanJob(t, db, u.ID, scanJobStatusMatched, p2,
+		withCreatedAt(now), withMatchedCard("sv1-25", 0.9))
+	linkScanJobToPage(t, db, c1, pageID)
+	linkScanJobToPage(t, db, c2, pageID)
+
+	req := asUser(httptest.NewRequest(http.MethodDelete,
+		"/api/pokemon/scans/pages/"+strconv.FormatInt(pageID, 10), nil), u)
+	req = asChi(req, map[string]string{"id": strconv.FormatInt(pageID, 10)})
+	rec := httptest.NewRecorder()
+	DeleteScanPageHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 while a child is processing, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Parent must still exist and the child statuses must be unchanged.
+	var pageRows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pokemon_scan_pages WHERE id = ?`, pageID).Scan(&pageRows); err != nil {
+		t.Fatalf("count pages: %v", err)
+	}
+	if pageRows != 1 {
+		t.Errorf("expected page still present after rejected delete, got %d rows", pageRows)
+	}
+	var procStatus string
+	if err := db.QueryRow(`SELECT status FROM pokemon_scan_jobs WHERE id = ?`, c1).Scan(&procStatus); err != nil {
+		t.Fatalf("read processing child: %v", err)
+	}
+	if procStatus != scanJobStatusProcessing {
+		t.Errorf("expected processing child status unchanged, got %q", procStatus)
+	}
+}
