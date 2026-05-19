@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Camera, Plus, Search, X } from 'lucide-react'
+import { Camera, LayoutGrid, Plus, Search, X } from 'lucide-react'
 import { Dialog } from '../ui/dialog'
 import ToastList from '../ToastList'
 import { useToast } from '../../hooks/useToast'
 import { formatNumber } from '../../utils/formatDate'
 import CardScanner from './CardScanner'
+import PageScanner from './PageScanner'
 import CardLightbox from './CardLightbox'
 
 interface Variant {
@@ -68,6 +69,7 @@ export default function AddCardPanel({ onAdded, initialQuery, onInitialQueryCons
   const [variantCard, setVariantCard] = useState<Card | null>(null)
   const [adding, setAdding] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
+  const [pageScannerOpen, setPageScannerOpen] = useState(false)
   const [lightboxStartIndex, setLightboxStartIndex] = useState<number | null>(null)
 
   // Sync query/open state when parent supplies a new initialQuery after mount.
@@ -91,6 +93,7 @@ export default function AddCardPanel({ onAdded, initialQuery, onInitialQueryCons
   const close = useCallback(() => {
     setIsOpen(false)
     setScannerOpen(false)
+    setPageScannerOpen(false)
     setQuery('')
     setResults([])
     setError('')
@@ -196,7 +199,7 @@ export default function AddCardPanel({ onAdded, initialQuery, onInitialQueryCons
       </button>
 
       <Dialog
-        open={isOpen && !scannerOpen}
+        open={isOpen && !scannerOpen && !pageScannerOpen}
         onClose={close}
         maxWidth="sm:max-w-lg"
         overlayClassName="items-end sm:items-center p-0 sm:p-4"
@@ -221,6 +224,15 @@ export default function AddCardPanel({ onAdded, initialQuery, onInitialQueryCons
             className="p-1 text-gray-400 hover:text-white cursor-pointer"
           >
             <Camera size={18} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setPageScannerOpen(true)}
+            aria-label={t('pageScanner.scanBinder')}
+            data-testid="add-card-scan-page"
+            className="p-1 text-gray-400 hover:text-white cursor-pointer"
+          >
+            <LayoutGrid size={18} />
           </button>
           <button
             type="button"
@@ -337,6 +349,10 @@ export default function AddCardPanel({ onAdded, initialQuery, onInitialQueryCons
           onClose={() => setScannerOpen(false)}
           onAdded={onAdded}
         />
+      )}
+
+      {pageScannerOpen && (
+        <PageScanner onClose={() => setPageScannerOpen(false)} />
       )}
 
       {lightboxStartIndex != null && results.length > 0 && (

@@ -1,0 +1,2 @@
+category: Added
+- **Scan a whole binder page** - New PageScanner component opens a 4K camera view with a 3×3 framing-guide overlay and a manual shutter that uploads N per-card crops + cell coordinates to `/api/pokemon/scans/page`, then jumps to the scanned-cards review page. A new "Scan binder page" button (LayoutGrid icon) sits next to the existing "Scan card" button on the Pokémon sets page and inside the Add card panel. (Hytte-w5f4)

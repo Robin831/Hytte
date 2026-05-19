@@ -232,5 +232,18 @@
       "send": "Send",
       "retake": "Retake"
     }
+  },
+  "pageScanner": {
+    "dialogLabel": "Scan a binder page",
+    "shutter": "Capture binder page",
+    "uploading": "Uploading…",
+    "scanBinder": "Scan binder page",
+    "errors": {
+      "noFrame": "Camera frame not ready, try again",
+      "noGrid": "Couldn't find the cards — line the page up with the grid and try again",
+      "captureFailed": "Failed to capture the page, try again",
+      "uploadFailed": "Upload failed, try again",
+      "timedOut": "Upload timed out, try again"
+    }
   }
 }

@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ArrowRight, Camera, ChevronDown, ChevronUp, ScanLine, Trophy } from 'lucide-react'
+import { ArrowRight, Camera, ChevronDown, ChevronUp, LayoutGrid, ScanLine, Trophy } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
 import AddCardPanel from '../components/pokemon/AddCardPanel'
 import CardScanner from '../components/pokemon/CardScanner'
+import PageScanner from '../components/pokemon/PageScanner'
 import { formatDate } from '../utils/formatDate'
 
 // PokemonSetsLocationState carries the optional "open AddCardPanel pre-filled
@@ -158,6 +159,7 @@ export default function PokemonSets() {
   const [attempt, setAttempt] = useState(0)
   const [unresolvedCount, setUnresolvedCount] = useState(0)
   const [scannerOpen, setScannerOpen] = useState(false)
+  const [pageScannerOpen, setPageScannerOpen] = useState(false)
 
   const locState = location.state as PokemonSetsLocationState | null
   const initialAddCardQuery = locState?.addCardQuery ?? undefined
@@ -294,6 +296,15 @@ export default function PokemonSets() {
             >
               <Camera size={18} aria-hidden="true" />
             </button>
+            <button
+              type="button"
+              onClick={() => setPageScannerOpen(true)}
+              aria-label={t('pageScanner.scanBinder')}
+              data-testid="pokemon-scan-page-shortcut"
+              className="inline-flex items-center justify-center p-1.5 bg-gray-800/60 hover:bg-gray-700 border border-gray-700 text-gray-200 rounded transition-colors cursor-pointer"
+            >
+              <LayoutGrid size={18} aria-hidden="true" />
+            </button>
             <Link
               to="/pokemon/top"
               aria-label={t('top.entryLabel')}
@@ -392,6 +403,9 @@ export default function PokemonSets() {
           onClose={() => setScannerOpen(false)}
           onAdded={load}
         />
+      )}
+      {pageScannerOpen && (
+        <PageScanner onClose={() => setPageScannerOpen(false)} />
       )}
     </div>
   )
