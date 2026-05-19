@@ -3,6 +3,8 @@ package familychat
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -320,5 +322,32 @@ func TestStreamHandler_InvalidConversationID(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid id, got %d", resp.StatusCode)
+	}
+}
+
+func TestStreamHandler_MembershipCheckError(t *testing.T) {
+	hub := NewHub()
+	user := &auth.User{ID: 1, Email: "a@example.com", Name: "A"}
+	errFn := MembershipFn(func(userID, convID int64) (bool, error) {
+		return false, errors.New("db unavailable")
+	})
+
+	srv := httptest.NewServer(newAuthRouter(t, hub, errFn, user))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api/familychat/conversations/100/stream")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for membership check error, got %d", resp.StatusCode)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	if body["error"] != "internal error" {
+		t.Fatalf("expected error=%q, got %q", "internal error", body["error"])
 	}
 }

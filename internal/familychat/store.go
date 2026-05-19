@@ -130,8 +130,9 @@ func ListUserConversations(ctx context.Context, db *sql.DB, userID int64) ([]Con
 	return out, nil
 }
 
-// GetConversation returns the conversation if askerID is a member, else
-// ErrForbidden. Returns sql.ErrNoRows when the conversation does not exist.
+// GetConversation returns the conversation if askerID is a member of it.
+// Returns ErrForbidden when askerID is not a member or the conversation does
+// not exist — existence is not revealed to non-members.
 func GetConversation(ctx context.Context, db *sql.DB, conversationID, askerID int64) (Conversation, error) {
 	ok, err := isMember(ctx, db, conversationID, askerID)
 	if err != nil {

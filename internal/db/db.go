@@ -1732,6 +1732,7 @@ func createSchema(db *sql.DB) error {
 		last_read_at    TIMESTAMP,
 		PRIMARY KEY (conversation_id, user_id)
 	);
+	CREATE INDEX IF NOT EXISTS idx_family_chat_members_user ON family_chat_members(user_id, conversation_id);
 
 	CREATE TABLE IF NOT EXISTS family_chat_messages (
 		id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1743,6 +1744,7 @@ func createSchema(db *sql.DB) error {
 		sent_at         TIMESTAMP NOT NULL
 	);
 	CREATE INDEX IF NOT EXISTS idx_family_chat_messages_conv ON family_chat_messages(conversation_id, sent_at);
+	CREATE INDEX IF NOT EXISTS idx_family_chat_messages_conv_id ON family_chat_messages(conversation_id, id);
 
 	`
 
