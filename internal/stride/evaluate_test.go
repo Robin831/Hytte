@@ -197,6 +197,112 @@ func TestBuildEvalPrompt_WithoutNotes(t *testing.T) {
 	}
 }
 
+// Reproduces the 2026-05-19 production bug: a treadmill 6x4min interval
+// session was read as an easy aerobic run because the coach only saw
+// aggregate metrics. With laps in the prompt the interval structure is
+// visible, so the coach can recognise it.
+func TestBuildEvalPrompt_IncludesLapsSection(t *testing.T) {
+	workout := training.Workout{
+		Sport:           "running",
+		StartedAt:       "2026-05-19T03:36:00Z",
+		DurationSeconds: 2401,
+		DistanceMeters:  8000,
+		AvgHeartRate:    147,
+		MaxHeartRate:    165,
+		AvgPaceSecPerKm: 300,
+		Laps: []training.Lap{
+			{LapNumber: 1, DurationSeconds: 298, DistanceMeters: 957, AvgHeartRate: 122, MaxHeartRate: 141, AvgPaceSecPerKm: 312, AvgCadence: 99},
+			{LapNumber: 2, DurationSeconds: 240, DistanceMeters: 801, AvgHeartRate: 149, MaxHeartRate: 153, AvgPaceSecPerKm: 299, AvgCadence: 98},
+			{LapNumber: 3, DurationSeconds: 90, DistanceMeters: 295, AvgHeartRate: 138, MaxHeartRate: 154, AvgPaceSecPerKm: 305, AvgCadence: 97},
+		},
+	}
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	if !strings.Contains(prompt, "## Laps") {
+		t.Error("expected prompt to include a Laps section")
+	}
+	if !strings.Contains(prompt, "| 1 |") || !strings.Contains(prompt, "| 2 |") || !strings.Contains(prompt, "| 3 |") {
+		t.Errorf("expected lap rows 1-3 in prompt:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "957m") {
+		t.Error("expected lap 1 distance 957m in prompt")
+	}
+}
+
+// Laps shorter than 3 do not produce a Laps section — not enough structure
+// to be useful, and avoids cluttering eval prompts for short runs.
+func TestBuildEvalPrompt_OmitsLapsBelowThreshold(t *testing.T) {
+	workout := training.Workout{
+		Sport:     "running",
+		StartedAt: "2026-04-06T07:00:00Z",
+		Laps: []training.Lap{
+			{LapNumber: 1, DurationSeconds: 600, DistanceMeters: 1200, AvgHeartRate: 130},
+			{LapNumber: 2, DurationSeconds: 600, DistanceMeters: 1300, AvgHeartRate: 135},
+		},
+	}
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	if strings.Contains(prompt, "## Laps") {
+		t.Error("prompt should not include Laps section when fewer than 3 laps recorded")
+	}
+}
+
+// The treadmill callout appears for indoor + treadmill sub_sport workouts so
+// the coach trusts the runner's reported speeds over watch pace.
+func TestBuildEvalPrompt_TreadmillCallout(t *testing.T) {
+	workout := training.Workout{
+		Sport:     "running",
+		SubSport:  "treadmill",
+		IsIndoor:  true,
+		StartedAt: "2026-05-19T03:36:00Z",
+	}
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	if !strings.Contains(prompt, "## Treadmill Note") {
+		t.Error("expected treadmill callout for indoor + treadmill sub_sport")
+	}
+	if !strings.Contains(prompt, "watch estimates pace") {
+		t.Error("expected callout to warn about watch pace inaccuracy on treadmill")
+	}
+}
+
+// Outdoor workouts must NOT see the treadmill callout — watch pace is
+// reliable on the road and the noise would confuse the coach.
+func TestBuildEvalPrompt_NoTreadmillCalloutOutdoor(t *testing.T) {
+	workout := training.Workout{
+		Sport:     "running",
+		StartedAt: "2026-04-06T07:00:00Z",
+	}
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	if strings.Contains(prompt, "Treadmill Note") {
+		t.Error("outdoor workout should not get the treadmill callout")
+	}
+}
+
+// The runner's post-workout self-report (folded in by appendWorkoutContextNote)
+// is split out from generic notes and gets the stronger "prefer this over
+// aggregate inference" framing.
+func TestBuildEvalPrompt_SplitsSelfReportFromFreeText(t *testing.T) {
+	workout := training.Workout{
+		Sport:     "running",
+		StartedAt: "2026-05-19T03:36:00Z",
+	}
+	notes := []Note{
+		{TargetDate: "2026-05-18", Content: "Slept poorly"},
+		{TargetDate: "2026-05-19", Content: "Runner's post-workout report — Feel notes: 6 x 4min increasing speed from 13.3 to 13.8 | Context: surface=Treadmill, run_type=interval, hr_source=chest"},
+	}
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, notes)
+	if !strings.Contains(prompt, "## Runner's Post-Workout Self-Report") {
+		t.Error("expected self-report section header")
+	}
+	if !strings.Contains(prompt, "Prefer this over inference from aggregate metrics") {
+		t.Errorf("expected strong-preference instruction in self-report section:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "## User Notes") {
+		t.Error("expected User Notes section to remain for the free-text note")
+	}
+	if !strings.Contains(prompt, "Slept poorly") {
+		t.Error("expected the sleep note to land in User Notes section")
+	}
+}
+
 // --- storeEvaluation and queryUnevaluatedWorkouts ---
 
 func TestStoreEvaluation_RoundTrip(t *testing.T) {

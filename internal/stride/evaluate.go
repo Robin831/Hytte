@@ -166,7 +166,54 @@ func queryWorkoutsOnDate(ctx context.Context, db *sql.DB, userID int64, date str
 		}
 		workouts = append(workouts, w)
 	}
-	return workouts, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Hydrate per-workout laps so the eval prompt can show interval structure;
+	// without this the coach only sees aggregate metrics and reads short-rep
+	// interval sessions (recovery jogs dragging the average down) as easy
+	// aerobic runs. Failure to load laps is logged but non-fatal: a missing
+	// laps section is better than failing the whole eval.
+	for i := range workouts {
+		laps, err := loadWorkoutLaps(ctx, db, workouts[i].ID)
+		if err != nil {
+			log.Printf("stride eval: workout %d: load laps: %v", workouts[i].ID, err)
+			continue
+		}
+		workouts[i].Laps = laps
+	}
+	return workouts, nil
+}
+
+// loadWorkoutLaps fetches the per-lap rows for one workout in lap-number order.
+// Returns an empty slice when the workout has no recorded laps (e.g. very short
+// runs or sports without lap data).
+func loadWorkoutLaps(ctx context.Context, db *sql.DB, workoutID int64) ([]training.Lap, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, workout_id, lap_number, start_offset_ms, duration_seconds,
+		       distance_meters, avg_heart_rate, max_heart_rate,
+		       avg_pace_sec_per_km, avg_cadence
+		FROM workout_laps
+		WHERE workout_id = ?
+		ORDER BY lap_number ASC
+	`, workoutID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var laps []training.Lap
+	for rows.Next() {
+		var l training.Lap
+		if err := rows.Scan(
+			&l.ID, &l.WorkoutID, &l.LapNumber, &l.StartOffsetMs, &l.DurationSeconds,
+			&l.DistanceMeters, &l.AvgHeartRate, &l.MaxHeartRate,
+			&l.AvgPaceSecPerKm, &l.AvgCadence,
+		); err != nil {
+			return nil, err
+		}
+		laps = append(laps, l)
+	}
+	return laps, rows.Err()
 }
 
 // reEvalRecord is a Claude-produced evaluation held in memory by ReEvaluateDate
@@ -514,7 +561,18 @@ func queryUnevaluatedWorkouts(ctx context.Context, db *sql.DB, userID int64, sin
 		}
 		workouts = append(workouts, w)
 	}
-	return workouts, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range workouts {
+		laps, err := loadWorkoutLaps(ctx, db, workouts[i].ID)
+		if err != nil {
+			log.Printf("stride eval: workout %d: load laps: %v", workouts[i].ID, err)
+			continue
+		}
+		workouts[i].Laps = laps
+	}
+	return workouts, nil
 }
 
 // evaluateSingleWorkout finds the matching plan+session for a workout, evaluates it via
@@ -853,6 +911,42 @@ func buildEvalPrompt(
 	}
 	sb.WriteString("\n")
 
+	// Laps reveal interval structure that the averages hide. A 6x4min threshold
+	// session looks like an easy aerobic run when only the aggregates are
+	// visible (recovery jogs drag avg HR and avg pace down) — but the laps
+	// table makes the work-rest cadence obvious. Show laps when we have at
+	// least three, which is the smallest table that conveys structure.
+	if len(workout.Laps) >= 3 {
+		sb.WriteString("## Laps\n")
+		sb.WriteString("Per-lap data from the watch. When the planned session is interval-based, consult this rather than the averages — the recovery laps will lower the avg pace and avg HR even when the work laps were correctly executed.\n\n")
+		sb.WriteString("| # | Dur | Dist | Avg HR | Max HR | Pace | Cad |\n")
+		sb.WriteString("|---|-----|------|--------|--------|------|-----|\n")
+		for _, l := range workout.Laps {
+			durMin := int(l.DurationSeconds) / 60
+			durSec := int(l.DurationSeconds) % 60
+			pace := "—"
+			if l.AvgPaceSecPerKm > 0 {
+				pMin := int(l.AvgPaceSecPerKm) / 60
+				pSec := int(l.AvgPaceSecPerKm) % 60
+				pace = fmt.Sprintf("%d:%02d", pMin, pSec)
+			}
+			fmt.Fprintf(&sb, "| %d | %d:%02d | %dm | %d | %d | %s | %d |\n",
+				l.LapNumber, durMin, durSec, int(l.DistanceMeters),
+				l.AvgHeartRate, l.MaxHeartRate, pace, l.AvgCadence,
+			)
+		}
+		sb.WriteString("\n")
+	}
+
+	// Treadmill workouts: the watch derives pace from foot-pod / wrist
+	// accelerometer and is commonly off by 5-15% versus the belt speed. The
+	// chest-strap HR is still reliable. Tell the coach to trust the runner's
+	// reported speeds over the watch's pace when this callout fires.
+	if workout.IsIndoor && (strings.EqualFold(workout.SubSport, "treadmill") || strings.Contains(strings.ToLower(workout.SubSport), "treadmill") || strings.Contains(strings.ToLower(workout.SubSport), "indoor")) {
+		sb.WriteString("## Treadmill Note\n")
+		sb.WriteString("This workout is on a treadmill. The watch estimates pace/distance from foot-pod or wrist accelerometer and is often off by 5-15% versus the belt speed. The belt (and the runner's reported speeds in the post-workout self-report) is the source of truth for pace. Heart rate from a chest strap remains reliable; trust HR + cadence + lap structure to assess intensity, not the watch's pace number.\n\n")
+	}
+
 	if plan.ID > 0 {
 		sb.WriteString("## Weekly Plan Context\n")
 		fmt.Fprintf(&sb, "- Week: %s to %s\n", plan.WeekStart, plan.WeekEnd)
@@ -870,12 +964,35 @@ func buildEvalPrompt(
 	}
 
 	if len(notes) > 0 {
-		sb.WriteString("## User Notes\n")
-		sb.WriteString("The athlete left the following notes. Consider these for context about sickness, fatigue, skipped workouts, or other factors:\n")
+		// Split notes into the runner's post-workout self-report (folded in by
+		// appendWorkoutContextNote and identifiable by its "Runner's post-workout
+		// report —" prefix) and other free-text notes. The self-report describes
+		// what the runner actually executed and outranks aggregate inference; the
+		// other notes carry context like sickness or fatigue.
+		var selfReport, freeText []Note
 		for _, n := range notes {
-			fmt.Fprintf(&sb, "- [%s] %s\n", n.TargetDate, n.Content)
+			if strings.HasPrefix(n.Content, "Runner's post-workout report") {
+				selfReport = append(selfReport, n)
+			} else {
+				freeText = append(freeText, n)
+			}
 		}
-		sb.WriteString("\n")
+		if len(selfReport) > 0 {
+			sb.WriteString("## Runner's Post-Workout Self-Report\n")
+			sb.WriteString("The runner described what they actually executed. **Prefer this over inference from aggregate metrics when the two disagree** — short-rep interval sessions in particular will look like easy aerobic runs in the averages.\n")
+			for _, n := range selfReport {
+				fmt.Fprintf(&sb, "- [%s] %s\n", n.TargetDate, n.Content)
+			}
+			sb.WriteString("\n")
+		}
+		if len(freeText) > 0 {
+			sb.WriteString("## User Notes\n")
+			sb.WriteString("The athlete left the following notes. Consider these for context about sickness, fatigue, skipped workouts, or other factors:\n")
+			for _, n := range freeText {
+				fmt.Fprintf(&sb, "- [%s] %s\n", n.TargetDate, n.Content)
+			}
+			sb.WriteString("\n")
+		}
 	}
 
 	sb.WriteString(`## Output Format
