@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, MessageSquare, Download, X } from 'lucide-react'
+import { ChevronLeft, MessageSquare, Download, X, WifiOff } from 'lucide-react'
 import { Skeleton } from '../../components/ui/skeleton'
 import { useAuth } from '../../auth'
 import Composer from './Composer'
@@ -64,6 +64,11 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const [error, setError] = useState('')
   const [memberLookup, setMemberLookup] = useState<Map<number, MemberInfo>>(new Map())
   const [lightbox, setLightbox] = useState<{ url: string; alt: string } | null>(null)
+  // streamDropped flips to true while the SSE reconnect backoff is in flight.
+  // It only ever shows the indicator after we've successfully connected once,
+  // so the initial-load skeleton isn't shadowed by a "Reconnecting" badge.
+  const [streamDropped, setStreamDropped] = useState(false)
+  const [hasConnected, setHasConnected] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -158,6 +163,8 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     setError('')
     setMessages([])
     setConversation(null)
+    setStreamDropped(false)
+    setHasConnected(false)
 
     // appendIncoming deduplicates by id so a message that arrives via both
     // SSE and the POST response (the sender path) or via SSE and gap-fill
@@ -193,6 +200,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
 
     const scheduleReconnect = () => {
       if (controller.signal.aborted) return
+      setStreamDropped(true)
       reconnectAttempts += 1
       // Exponential backoff capped at 30s to keep a server outage from
       // hammering the endpoint while still recovering quickly from a
@@ -224,6 +232,8 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         reconnectAttempts = 0
         reader = res.body.getReader()
         activeReader = reader
+        setStreamDropped(false)
+        setHasConnected(true)
         const decoder = new TextDecoder()
         let buffer = ''
         let eventName = 'message'
@@ -425,6 +435,19 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
             </ul>
           )}
         </div>
+        {hasConnected && streamDropped && (
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-amber-500/15 border border-amber-500/40 text-amber-200 shrink-0"
+            role="status"
+            aria-live="polite"
+            title={t('chat.connection.reconnecting')}
+            data-testid="family-chat-reconnecting"
+          >
+            <WifiOff size={12} aria-hidden="true" />
+            <span className="hidden sm:inline">{t('chat.connection.reconnecting')}</span>
+            <span className="sr-only sm:hidden">{t('chat.connection.reconnecting')}</span>
+          </span>
+        )}
       </header>
 
       <div

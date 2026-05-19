@@ -30,7 +30,10 @@
     "attachmentAudioAlt": "Vedlagt lyd",
     "attachmentFileLabel": "Last ned vedlegg ({{mime}})",
     "lightboxTitle": "Forhåndsvisning av bilde",
-    "lightboxClose": "Lukk forhåndsvisning"
+    "lightboxClose": "Lukk forhåndsvisning",
+    "connection": {
+      "reconnecting": "Kobler til på nytt…"
+    }
   },
   "composer": {
     "placeholder": "Skriv en melding…",
