@@ -11,10 +11,28 @@
     "noMessages": "Ingen meldinger ennå"
   },
   "errors": {
-    "failedToLoad": "Klarte ikke å laste samtaler"
+    "failedToLoad": "Klarte ikke å laste samtaler",
+    "failedToLoadMessages": "Klarte ikke å laste meldinger"
   },
   "time": {
     "justNow": "akkurat nå"
+  },
+  "chat": {
+    "back": "Tilbake til samtaler",
+    "membersLabel": "Medlemmer",
+    "memberFallback": "Medlem #{{id}}",
+    "you": "Deg",
+    "emptyMessages": "Ingen meldinger ennå. Si hei!",
+    "noSelectionTitle": "Velg en samtale",
+    "noSelectionHint": "Velg en chat fra listen for å begynne å lese."
+  },
+  "composer": {
+    "placeholder": "Skriv en melding…",
+    "send": "Send melding",
+    "errors": {
+      "send": "Klarte ikke å sende melding",
+      "tooLong": "Meldingen er for lang"
+    }
   },
   "newModal": {
     "title": "Ny samtale",

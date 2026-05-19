@@ -11,10 +11,28 @@
     "noMessages": "No messages yet"
   },
   "errors": {
-    "failedToLoad": "Failed to load conversations"
+    "failedToLoad": "Failed to load conversations",
+    "failedToLoadMessages": "Failed to load messages"
   },
   "time": {
     "justNow": "just now"
+  },
+  "chat": {
+    "back": "Back to conversations",
+    "membersLabel": "Members",
+    "memberFallback": "Member #{{id}}",
+    "you": "You",
+    "emptyMessages": "No messages yet. Say hello!",
+    "noSelectionTitle": "Pick a conversation",
+    "noSelectionHint": "Choose a chat from the list to start reading."
+  },
+  "composer": {
+    "placeholder": "Write a message…",
+    "send": "Send message",
+    "errors": {
+      "send": "Failed to send message",
+      "tooLong": "Message is too long"
+    }
   },
   "newModal": {
     "title": "New conversation",
