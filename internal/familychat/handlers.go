@@ -148,7 +148,7 @@ func GetConversationHandler(db *sql.DB) http.HandlerFunc {
 		}
 		c, err := GetConversation(db, convID, user.ID)
 		if err != nil {
-			if errors.Is(err, ErrNotMember) || errors.Is(err, sql.ErrNoRows) {
+			if errors.Is(err, ErrForbidden) || errors.Is(err, sql.ErrNoRows) {
 				notFound(w)
 				return
 			}
@@ -194,7 +194,7 @@ func ListMessagesHandler(db *sql.DB) http.HandlerFunc {
 
 		msgs, err := ListMessages(db, convID, user.ID, since, limit)
 		if err != nil {
-			if errors.Is(err, ErrNotMember) {
+			if errors.Is(err, ErrForbidden) {
 				notFound(w)
 				return
 			}
@@ -247,7 +247,7 @@ func PostMessageHandler(db *sql.DB) http.HandlerFunc {
 
 		msg, err := CreateMessage(db, convID, user.ID, body.Body, body.AttachmentPath, body.AttachmentMime)
 		if err != nil {
-			if errors.Is(err, ErrNotMember) {
+			if errors.Is(err, ErrForbidden) {
 				notFound(w)
 				return
 			}
@@ -298,7 +298,7 @@ func MarkReadHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err := MarkRead(db, convID, user.ID, at); err != nil {
-			if errors.Is(err, ErrNotMember) {
+			if errors.Is(err, ErrForbidden) {
 				notFound(w)
 				return
 			}
@@ -321,7 +321,7 @@ func DeleteConversationHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if err := DeleteConversation(db, convID, user.ID); err != nil {
-			if errors.Is(err, ErrNotMember) {
+			if errors.Is(err, ErrForbidden) {
 				notFound(w)
 				return
 			}

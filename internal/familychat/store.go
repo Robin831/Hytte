@@ -41,11 +41,6 @@ type Message struct {
 	CreatedAt      string `json:"created_at"`
 }
 
-// ErrNotMember is returned when the requesting user is not a member of the
-// target conversation. Handlers convert this into 404 to avoid leaking the
-// existence of conversations the user is not part of.
-var ErrNotMember = errors.New("familychat: not a member")
-
 // IsMember reports whether userID belongs to convID.
 func IsMember(db *sql.DB, convID, userID int64) (bool, error) {
 	var one int
@@ -175,14 +170,14 @@ func CreateConversation(db *sql.DB, ownerID int64, name string, memberIDs []int6
 }
 
 // GetConversation returns the conversation if userID is a member, otherwise
-// returns ErrNotMember (handlers map to 404).
+// returns ErrForbidden (handlers map to 404).
 func GetConversation(db *sql.DB, convID, userID int64) (*Conversation, error) {
 	ok, err := IsMember(db, convID, userID)
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
-		return nil, ErrNotMember
+		return nil, ErrForbidden
 	}
 
 	var c Conversation
@@ -210,7 +205,7 @@ func GetConversation(db *sql.DB, convID, userID int64) (*Conversation, error) {
 }
 
 // DeleteConversation removes the conversation, but only if userID is its
-// owner. Non-owners (including other members) receive ErrNotMember so the
+// owner. Non-owners (including other members) receive ErrForbidden so the
 // existence of conversations they do not own is not leaked.
 func DeleteConversation(db *sql.DB, convID, userID int64) error {
 	res, err := db.Exec(
@@ -225,7 +220,7 @@ func DeleteConversation(db *sql.DB, convID, userID int64) error {
 		return err
 	}
 	if n == 0 {
-		return ErrNotMember
+		return ErrForbidden
 	}
 	return nil
 }
@@ -239,7 +234,7 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 		return nil, err
 	}
 	if !ok {
-		return nil, ErrNotMember
+		return nil, ErrForbidden
 	}
 
 	if limit <= 0 {
@@ -299,14 +294,14 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 
 // CreateMessage inserts a new message authored by senderID into convID,
 // touches the conversation's last_message_at, and returns the inserted row
-// in plaintext form. Returns ErrNotMember if the sender is not a member.
+// in plaintext form. Returns ErrForbidden if the sender is not a member.
 func CreateMessage(db *sql.DB, convID, senderID int64, body, attachmentPath, attachmentMime string) (*Message, error) {
 	ok, err := IsMember(db, convID, senderID)
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
-		return nil, ErrNotMember
+		return nil, ErrForbidden
 	}
 
 	encBody, err := encryption.EncryptField(body)
@@ -359,7 +354,7 @@ func CreateMessage(db *sql.DB, convID, senderID int64, body, attachmentPath, att
 }
 
 // MarkRead sets the requesting member's last_read_at to at. Returns
-// ErrNotMember if the user is not a member of convID.
+// ErrForbidden if the user is not a member of convID.
 func MarkRead(db *sql.DB, convID, userID int64, at string) error {
 	if at == "" {
 		at = time.Now().UTC().Format(timeFormat)
@@ -376,7 +371,7 @@ func MarkRead(db *sql.DB, convID, userID int64, at string) error {
 		return err
 	}
 	if n == 0 {
-		return ErrNotMember
+		return ErrForbidden
 	}
 	return nil
 }
