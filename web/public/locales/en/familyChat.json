@@ -1,0 +1,33 @@
+{
+  "title": "Family Chat",
+  "newConversation": "New conversation",
+  "unnamedConversation": "Untitled chat",
+  "loading": "Loading…",
+  "unreadCount_one": "{{count}} unread message",
+  "unreadCount_other": "{{count}} unread messages",
+  "empty": {
+    "title": "No conversations yet",
+    "hint": "Start a new chat with your family.",
+    "noMessages": "No messages yet"
+  },
+  "errors": {
+    "failedToLoad": "Failed to load conversations"
+  },
+  "time": {
+    "justNow": "just now"
+  },
+  "newModal": {
+    "title": "New conversation",
+    "nameLabel": "Name",
+    "namePlaceholder": "e.g. Holiday planning",
+    "membersLabel": "Members",
+    "noMembers": "No family members available. Add family on the Family page first.",
+    "cancel": "Cancel",
+    "create": "Create",
+    "creating": "Creating…",
+    "errors": {
+      "loadMembers": "Failed to load family members",
+      "create": "Failed to create conversation"
+    }
+  }
+}
