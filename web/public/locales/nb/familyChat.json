@@ -1,0 +1,34 @@
+{
+  "title": "Familiechat",
+  "newConversation": "Ny samtale",
+  "unnamedConversation": "Uten navn",
+  "loading": "Laster…",
+  "unreadCount_one": "{{count}} ulest melding",
+  "unreadCount_other": "{{count}} uleste meldinger",
+  "empty": {
+    "title": "Ingen samtaler ennå",
+    "hint": "Start en ny chat med familien.",
+    "noMessages": "Ingen meldinger ennå"
+  },
+  "errors": {
+    "failedToLoad": "Klarte ikke å laste samtaler"
+  },
+  "time": {
+    "justNow": "akkurat nå"
+  },
+  "newModal": {
+    "title": "Ny samtale",
+    "nameLabel": "Navn",
+    "namePlaceholder": "f.eks. Ferieplanlegging",
+    "membersLabel": "Medlemmer",
+    "parent": "Forelder",
+    "noMembers": "Ingen familiemedlemmer tilgjengelig. Legg til familie på Familie-siden først.",
+    "cancel": "Avbryt",
+    "create": "Opprett",
+    "creating": "Oppretter…",
+    "errors": {
+      "loadMembers": "Klarte ikke å laste familiemedlemmer",
+      "create": "Klarte ikke å opprette samtale"
+    }
+  }
+}

@@ -6,6 +6,7 @@ import NewConversationModal from './familychat/NewConversationModal'
 export default function FamilyChat() {
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null)
   const [newConversationOpen, setNewConversationOpen] = useState(false)
+  const [conversationListRefreshKey, setConversationListRefreshKey] = useState(0)
 
   const handleSelectConversation = (id: number) => {
     setSelectedConversationId(id)
@@ -22,6 +23,7 @@ export default function FamilyChat() {
   const handleConversationCreated = (id: number) => {
     setNewConversationOpen(false)
     setSelectedConversationId(id)
+    setConversationListRefreshKey(k => k + 1)
   }
 
   const handleBackToList = () => {
@@ -40,6 +42,7 @@ export default function FamilyChat() {
           selectedConversationId={selectedConversationId}
           onSelectConversation={handleSelectConversation}
           onNewConversation={handleOpenNewConversation}
+          refreshKey={conversationListRefreshKey}
         />
       </aside>
 

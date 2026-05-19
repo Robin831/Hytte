@@ -266,3 +266,82 @@ func TestStoreUnreadCount(t *testing.T) {
 		t.Errorf("unread after mark = %d, want 0", got.UnreadCount)
 	}
 }
+
+func TestStoreListConversations_LastMessagePreview(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+
+	c, err := CreateConversation(db, 1, "Preview Test", []int64{2})
+	if err != nil {
+		t.Fatalf("create conv: %v", err)
+	}
+
+	// No messages yet — preview should be empty.
+	convos, err := ListConversations(db, 1)
+	if err != nil {
+		t.Fatalf("list (empty): %v", err)
+	}
+	if len(convos) != 1 || convos[0].LastMessagePreview != "" {
+		t.Errorf("expected empty preview before any message, got %q", convos[0].LastMessagePreview)
+	}
+
+	// First message — preview reflects it (decrypted).
+	if _, err := CreateMessage(db, c.ID, 1, "first", "", ""); err != nil {
+		t.Fatalf("create msg 1: %v", err)
+	}
+	convos, err = ListConversations(db, 1)
+	if err != nil {
+		t.Fatalf("list after first: %v", err)
+	}
+	if convos[0].LastMessagePreview != "first" {
+		t.Errorf("preview = %q, want %q", convos[0].LastMessagePreview, "first")
+	}
+	if convos[0].LastMessageSenderID != 1 {
+		t.Errorf("preview sender = %d, want 1", convos[0].LastMessageSenderID)
+	}
+
+	// Second message replaces the preview.
+	if _, err := CreateMessage(db, c.ID, 2, "second", "", ""); err != nil {
+		t.Fatalf("create msg 2: %v", err)
+	}
+	convos, err = ListConversations(db, 1)
+	if err != nil {
+		t.Fatalf("list after second: %v", err)
+	}
+	if convos[0].LastMessagePreview != "second" {
+		t.Errorf("preview = %q, want %q", convos[0].LastMessagePreview, "second")
+	}
+	if convos[0].LastMessageSenderID != 2 {
+		t.Errorf("preview sender = %d, want 2", convos[0].LastMessageSenderID)
+	}
+
+	// Long bodies get truncated with an ellipsis so the list stays compact.
+	long := strings.Repeat("a", previewMaxRunes+50)
+	if _, err := CreateMessage(db, c.ID, 1, long, "", ""); err != nil {
+		t.Fatalf("create long msg: %v", err)
+	}
+	convos, err = ListConversations(db, 1)
+	if err != nil {
+		t.Fatalf("list after long: %v", err)
+	}
+	preview := convos[0].LastMessagePreview
+	if !strings.HasSuffix(preview, "…") {
+		t.Errorf("expected truncated preview to end with ellipsis, got %q", preview)
+	}
+	if len([]rune(preview)) != previewMaxRunes+1 {
+		t.Errorf("preview rune length = %d, want %d", len([]rune(preview)), previewMaxRunes+1)
+	}
+
+	// Empty-body attachment-only messages surface a placeholder.
+	if _, err := CreateMessage(db, c.ID, 1, "", "/uploads/file.png", "image/png"); err != nil {
+		t.Fatalf("create attach msg: %v", err)
+	}
+	convos, err = ListConversations(db, 1)
+	if err != nil {
+		t.Fatalf("list after attach: %v", err)
+	}
+	if convos[0].LastMessagePreview == "" {
+		t.Errorf("attachment-only message should have a placeholder preview, got empty")
+	}
+}

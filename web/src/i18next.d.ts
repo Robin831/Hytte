@@ -2,6 +2,7 @@ import type commonEn from '../public/locales/en/common.json'
 import type dashboardEn from '../public/locales/en/dashboard.json'
 import type weatherEn from '../public/locales/en/weather.json'
 import type chatEn from '../public/locales/en/chat.json'
+import type familyChatEn from '../public/locales/en/familyChat.json'
 import type infraEn from '../public/locales/en/infra.json'
 import type kioskEn from '../public/locales/en/kiosk.json'
 import type lactateEn from '../public/locales/en/lactate.json'
@@ -35,6 +36,7 @@ declare module 'i18next' {
       dashboard: typeof dashboardEn
       weather: typeof weatherEn
       chat: typeof chatEn
+      familyChat: typeof familyChatEn
       infra: typeof infraEn
       kiosk: typeof kioskEn
       lactate: typeof lactateEn

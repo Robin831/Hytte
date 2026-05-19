@@ -7,6 +7,7 @@ package familychat
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -20,13 +21,15 @@ const timeFormat = "2006-01-02T15:04:05.000Z07:00"
 
 // Conversation is a single family chat conversation as returned to the client.
 type Conversation struct {
-	ID            int64   `json:"id"`
-	Name          string  `json:"name"`
-	OwnerUserID   int64   `json:"owner_user_id"`
-	CreatedAt     string  `json:"created_at"`
-	LastMessageAt string  `json:"last_message_at"`
-	UnreadCount   int64   `json:"unread_count"`
-	MemberIDs     []int64 `json:"member_ids"`
+	ID                  int64   `json:"id"`
+	Name                string  `json:"name"`
+	OwnerUserID         int64   `json:"owner_user_id"`
+	CreatedAt           string  `json:"created_at"`
+	LastMessageAt       string  `json:"last_message_at"`
+	UnreadCount         int64   `json:"unread_count"`
+	MemberIDs           []int64 `json:"member_ids"`
+	LastMessagePreview  string  `json:"last_message_preview"`
+	LastMessageSenderID int64   `json:"last_message_sender_id,omitempty"`
 }
 
 // Message is a single chat message returned to the client. Body and
@@ -130,6 +133,10 @@ func ListConversations(db *sql.DB, userID int64) ([]Conversation, error) {
 	if err != nil {
 		return nil, err
 	}
+	lastMsgByConv, err := batchLastMessages(db, convIDs)
+	if err != nil {
+		return nil, err
+	}
 
 	out := make([]Conversation, 0, len(convBuf))
 	for _, c := range convBuf {
@@ -138,6 +145,10 @@ func ListConversations(db *sql.DB, userID int64) ([]Conversation, error) {
 			c.MemberIDs = []int64{}
 		}
 		c.UnreadCount = unreadByConv[c.ID]
+		if last, ok := lastMsgByConv[c.ID]; ok {
+			c.LastMessagePreview = last.preview
+			c.LastMessageSenderID = last.senderID
+		}
 		out = append(out, c)
 	}
 	return out, nil
@@ -485,6 +496,97 @@ func batchUnreadCounts(db *sql.DB, userID int64) (map[int64]int64, error) {
 		result[convID] = count
 	}
 	return result, rows.Err()
+}
+
+// lastMessage holds the decrypted preview text and sender id for the most
+// recent message in a conversation. Used by the conversation list to render
+// each row without a follow-up message fetch.
+type lastMessage struct {
+	preview  string
+	senderID int64
+}
+
+// previewMaxRunes caps the length of the last-message preview returned with
+// each conversation. Long messages are truncated; clients can fetch the full
+// message via the /messages endpoint when the conversation is opened.
+const previewMaxRunes = 140
+
+// batchLastMessages returns the most recent message (decrypted) per
+// conversation id. Conversations with no messages are absent from the result
+// map. The query uses a grouped derived subquery joined back to the messages
+// table to pick the max message id per conversation in a single round-trip.
+func batchLastMessages(db *sql.DB, convIDs []int64) (map[int64]lastMessage, error) {
+	result := make(map[int64]lastMessage, len(convIDs))
+	if len(convIDs) == 0 {
+		return result, nil
+	}
+	placeholders := strings.Repeat("?,", len(convIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(convIDs))
+	for i, id := range convIDs {
+		args[i] = id
+	}
+	rows, err := db.Query(
+		`SELECT m.conversation_id, m.sender_user_id, m.body, m.attachment_path
+		 FROM family_chat_messages m
+		 JOIN (
+		   SELECT conversation_id, MAX(id) AS max_id
+		   FROM family_chat_messages
+		   WHERE conversation_id IN (`+placeholders+`)
+		   GROUP BY conversation_id
+		 ) latest ON latest.conversation_id = m.conversation_id AND latest.max_id = m.id`,
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			convID, senderID       int64
+			body, attachmentPath   string
+		)
+		if err := rows.Scan(&convID, &senderID, &body, &attachmentPath); err != nil {
+			return nil, err
+		}
+		// A failed decrypt of a single message body must not blow up the entire
+		// conversation list — that would lock users out of every conversation.
+		// Follow the repo convention (see internal/allowance/storage.go):
+		// log + return legacy plaintext as-is, or log + blank for corrupted
+		// enc:-prefixed values.
+		plainBody, err := encryption.DecryptField(body)
+		if err != nil {
+			if strings.HasPrefix(body, "enc:") {
+				log.Printf("familychat: decrypt preview body failed for conversation_id=%d (corrupted enc value): %v", convID, err)
+				plainBody = ""
+			} else {
+				log.Printf("familychat: returning legacy plaintext preview for conversation_id=%d after decrypt failure: %v", convID, err)
+				plainBody = body
+			}
+		}
+		preview := truncateRunes(plainBody, previewMaxRunes)
+		if preview == "" && attachmentPath != "" {
+			// No text body but the message had an attachment; surface a generic
+			// placeholder so the list still shows something meaningful.
+			preview = "📎"
+		}
+		result[convID] = lastMessage{preview: preview, senderID: senderID}
+	}
+	return result, rows.Err()
+}
+
+// truncateRunes returns s capped to max runes, appending an ellipsis when
+// truncation actually occurred. Operating on runes (not bytes) keeps multibyte
+// characters intact.
+func truncateRunes(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max]) + "…"
 }
 
 // unreadCount returns the number of messages in convID newer than lastReadAt
