@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -109,6 +111,17 @@ func withUser(r *http.Request, userID int64) *http.Request {
 func withChiParam(r *http.Request, key, value string) *http.Request {
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add(key, value)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
+
+// withChiParams sets multiple URL params at once. Use this when a route has
+// more than one path param: withChiParam would otherwise wipe the prior call
+// because each invocation creates a fresh RouteContext.
+func withChiParams(r *http.Request, params map[string]string) *http.Request {
+	rctx := chi.NewRouteContext()
+	for k, v := range params {
+		rctx.URLParams.Add(k, v)
+	}
 	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 }
 
@@ -330,8 +343,21 @@ func TestPostMessageHandler_AttachmentEncryption(t *testing.T) {
 	makeUser(t, db, 1, "alice@example.com")
 	convID := seedConversation(t, db, 1, "Family")
 
+	// Stage an attachment file under the conv's storage dir so the new
+	// existence check in PostMessageHandler is satisfied.
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	dir, err := attachmentDir(convID)
+	if err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	uuid := "abcdef0123456789abcdef0123456789"
+	if err := os.WriteFile(filepath.Join(dir, uuid), []byte("not really a jpeg"), 0600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
 	idStr := strconv.FormatInt(convID, 10)
-	payload := `{"body":"","attachment_path":"/uploads/photo.jpg","attachment_mime":"image/jpeg"}`
+	payload := fmt.Sprintf(`{"body":"","attachment_path":%q,"attachment_mime":"image/jpeg"}`, uuid)
 	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations/"+idStr+"/messages", strings.NewReader(payload)), 1)
 	req.Header.Set("Content-Type", "application/json")
 	req = withChiParam(req, "id", idStr)
@@ -348,8 +374,8 @@ func TestPostMessageHandler_AttachmentEncryption(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	// Response returns plaintext values.
-	if body.Message.AttachmentPath != "/uploads/photo.jpg" {
-		t.Errorf("response attachment_path = %q, want plaintext", body.Message.AttachmentPath)
+	if body.Message.AttachmentPath != uuid {
+		t.Errorf("response attachment_path = %q, want %q", body.Message.AttachmentPath, uuid)
 	}
 	if body.Message.AttachmentMime != "image/jpeg" {
 		t.Errorf("response attachment_mime = %q", body.Message.AttachmentMime)

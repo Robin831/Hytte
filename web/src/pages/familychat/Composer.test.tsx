@@ -9,8 +9,13 @@ import type { ChatMessage } from './ChatView'
 const TRANSLATIONS: Record<string, string> = {
   'composer.placeholder': 'Write a message…',
   'composer.send': 'Send message',
+  'composer.attach': 'Attach a file',
+  'composer.removeAttachment': 'Remove attachment',
   'composer.errors.send': 'Failed to send message',
   'composer.errors.tooLong': 'Message is too long',
+  'composer.errors.upload': 'Failed to upload file',
+  'composer.errors.fileTooLarge': 'File is too large (max 10 MB)',
+  'composer.errors.unsupportedType': 'File type is not supported',
 }
 
 vi.mock('react-i18next', () => ({
@@ -107,6 +112,73 @@ describe('Composer – successful send', () => {
 
     await waitFor(() => {
       expect(onMessageCreated).toHaveBeenCalledWith(msg)
+    })
+  })
+})
+
+describe('Composer – attachments', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  it('uploads a file then sends the message with the upload id', async () => {
+    const newMsg = makeMessage({
+      id: 100,
+      body: '',
+      attachment_path: 'aabbccddeeff00112233445566778899',
+      attachment_mime: 'image/png',
+    })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          upload_id: 'aabbccddeeff00112233445566778899',
+          mime: 'image/png',
+          size: 1024,
+        }),
+      })
+      .mockResolvedValueOnce(sendOk(newMsg))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const onMessageCreated = vi.fn()
+    const { container } = renderComposer(1, onMessageCreated)
+
+    const file = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'pic.png', { type: 'image/png' })
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    expect(input).toBeTruthy()
+    fireEvent.change(input, { target: { files: [file] } })
+
+    // Wait for the chip to appear after upload settles.
+    await waitFor(() => {
+      expect(screen.getByTestId('family-chat-attachment-chip')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      expect(onMessageCreated).toHaveBeenCalledWith(newMsg)
+    })
+
+    // The second fetch (POST /messages) must include the upload_id.
+    const sendCall = fetchMock.mock.calls[1]
+    expect(sendCall[0]).toMatch(/\/api\/familychat\/conversations\/1\/messages/)
+    const body = JSON.parse(sendCall[1].body as string)
+    expect(body.attachment_path).toBe('aabbccddeeff00112233445566778899')
+    expect(body.attachment_mime).toBe('image/png')
+  })
+
+  it('surfaces a 413 from the upload as a clear error toast', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      ok: false,
+      status: 413,
+      json: () => Promise.resolve({ error: 'file too large' }),
+    })))
+    const { container } = renderComposer()
+
+    const big = new File([new Uint8Array([0x89, 0x50])], 'huge.png', { type: 'image/png' })
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [big] } })
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('File is too large (max 10 MB)')
     })
   })
 })

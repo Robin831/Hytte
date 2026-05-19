@@ -25,14 +25,24 @@
     "you": "You",
     "emptyMessages": "No messages yet. Say hello!",
     "noSelectionTitle": "Pick a conversation",
-    "noSelectionHint": "Choose a chat from the list to start reading."
+    "noSelectionHint": "Choose a chat from the list to start reading.",
+    "attachmentImageAlt": "Attached image",
+    "attachmentAudioAlt": "Attached audio",
+    "attachmentFileLabel": "Download attachment ({{mime}})",
+    "lightboxTitle": "Image preview",
+    "lightboxClose": "Close preview"
   },
   "composer": {
     "placeholder": "Write a message…",
     "send": "Send message",
+    "attach": "Attach a file",
+    "removeAttachment": "Remove attachment",
     "errors": {
       "send": "Failed to send message",
-      "tooLong": "Message is too long"
+      "tooLong": "Message is too long",
+      "upload": "Failed to upload file",
+      "fileTooLarge": "File is too large (max 10 MB)",
+      "unsupportedType": "File type is not supported"
     }
   },
   "newModal": {

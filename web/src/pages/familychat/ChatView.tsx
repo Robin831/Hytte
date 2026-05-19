@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, MessageSquare } from 'lucide-react'
+import { ChevronLeft, MessageSquare, Download, X } from 'lucide-react'
 import { Skeleton } from '../../components/ui/skeleton'
 import { useAuth } from '../../auth'
 import Composer from './Composer'
@@ -63,6 +63,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [memberLookup, setMemberLookup] = useState<Map<number, MemberInfo>>(new Map())
+  const [lightbox, setLightbox] = useState<{ url: string; alt: string } | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -329,6 +330,19 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     }
   }, [messages.length, conversationId])
 
+  // Lightbox: ESC closes; scroll on body locked while open.
+  useEffect(() => {
+    if (!lightbox) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightbox(null) }
+    document.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prev
+    }
+  }, [lightbox])
+
   const handleMessageCreated = useCallback((msg: ChatMessage) => {
     // Defensive: if the user switched conversations while a send was in
     // flight, drop the message rather than leaking it into the wrong chat.
@@ -446,6 +460,12 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
           const senderInfo = memberLookup.get(msg.sender_user_id)
           const senderLabel = senderInfo?.label ?? t('chat.memberFallback', { id: msg.sender_user_id })
           const relative = formatRelative(msg.created_at, rtf, t('time.justNow'))
+          const attachmentUrl = msg.attachment_path && msg.attachment_mime
+            ? `/api/familychat/conversations/${msg.conversation_id}/attachments/${msg.id}`
+            : ''
+          const mime = msg.attachment_mime ?? ''
+          const isImage = mime.startsWith('image/')
+          const isAudio = mime.startsWith('audio/')
           return (
             <div
               key={msg.id}
@@ -455,13 +475,50 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                 <span className="text-xs text-gray-400 mb-0.5 px-1">{senderLabel}</span>
               )}
               <div
-                className={`max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap break-words ${
+                className={`max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl text-sm break-words ${
                   isOwn
                     ? 'bg-blue-600 text-white rounded-br-sm'
                     : 'bg-gray-800 text-gray-100 rounded-bl-sm'
                 }`}
               >
-                {msg.body}
+                {attachmentUrl && isImage && (
+                  <button
+                    type="button"
+                    onClick={() => setLightbox({ url: attachmentUrl, alt: t('chat.attachmentImageAlt') })}
+                    className="block cursor-zoom-in mb-1"
+                    aria-label={t('chat.attachmentImageAlt')}
+                  >
+                    <img
+                      src={attachmentUrl}
+                      alt={t('chat.attachmentImageAlt')}
+                      loading="lazy"
+                      className="rounded-lg max-h-60 max-w-full object-contain"
+                    />
+                  </button>
+                )}
+                {attachmentUrl && isAudio && (
+                  <audio
+                    controls
+                    src={attachmentUrl}
+                    className="block max-w-full mb-1"
+                    aria-label={t('chat.attachmentAudioAlt')}
+                  />
+                )}
+                {attachmentUrl && !isImage && !isAudio && (
+                  <a
+                    href={attachmentUrl}
+                    download
+                    className={`flex items-center gap-2 rounded-lg px-2 py-1.5 mb-1 text-xs ${
+                      isOwn ? 'bg-blue-700/60 hover:bg-blue-700/80' : 'bg-gray-700/70 hover:bg-gray-700'
+                    }`}
+                  >
+                    <Download size={14} aria-hidden="true" />
+                    <span className="truncate">{t('chat.attachmentFileLabel', { mime })}</span>
+                  </a>
+                )}
+                {msg.body && (
+                  <div className="whitespace-pre-wrap">{msg.body}</div>
+                )}
               </div>
               {relative && (
                 <span className="text-[10px] text-gray-500 mt-0.5 px-1">{relative}</span>
@@ -475,6 +532,30 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       <div className="border-t border-gray-800 bg-gray-950 shrink-0">
         <Composer conversationId={conversationId} onMessageCreated={handleMessageCreated} />
       </div>
+
+      {lightbox && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('chat.lightboxTitle')}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setLightbox(null) }}
+        >
+          <button
+            type="button"
+            onClick={() => setLightbox(null)}
+            aria-label={t('chat.lightboxClose')}
+            className="absolute top-4 right-4 p-2 text-white/80 hover:text-white bg-black/40 rounded-full cursor-pointer"
+          >
+            <X size={24} aria-hidden="true" />
+          </button>
+          <img
+            src={lightbox.url}
+            alt={lightbox.alt}
+            className="max-w-full max-h-full object-contain"
+          />
+        </div>
+      )}
     </div>
   )
 }

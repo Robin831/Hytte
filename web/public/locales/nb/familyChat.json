@@ -25,14 +25,24 @@
     "you": "Deg",
     "emptyMessages": "Ingen meldinger ennå. Si hei!",
     "noSelectionTitle": "Velg en samtale",
-    "noSelectionHint": "Velg en chat fra listen for å begynne å lese."
+    "noSelectionHint": "Velg en chat fra listen for å begynne å lese.",
+    "attachmentImageAlt": "Vedlagt bilde",
+    "attachmentAudioAlt": "Vedlagt lyd",
+    "attachmentFileLabel": "Last ned vedlegg ({{mime}})",
+    "lightboxTitle": "Forhåndsvisning av bilde",
+    "lightboxClose": "Lukk forhåndsvisning"
   },
   "composer": {
     "placeholder": "Skriv en melding…",
     "send": "Send melding",
+    "attach": "Legg ved fil",
+    "removeAttachment": "Fjern vedlegg",
     "errors": {
       "send": "Klarte ikke å sende melding",
-      "tooLong": "Meldingen er for lang"
+      "tooLong": "Meldingen er for lang",
+      "upload": "Klarte ikke å laste opp filen",
+      "fileTooLarge": "Filen er for stor (maks 10 MB)",
+      "unsupportedType": "Filtypen støttes ikke"
     }
   },
   "newModal": {

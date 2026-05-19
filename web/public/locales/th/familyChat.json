@@ -25,14 +25,24 @@
     "you": "คุณ",
     "emptyMessages": "ยังไม่มีข้อความ ลองทักทายกันสิ!",
     "noSelectionTitle": "เลือกการสนทนา",
-    "noSelectionHint": "เลือกแชตจากรายการเพื่อเริ่มอ่าน"
+    "noSelectionHint": "เลือกแชตจากรายการเพื่อเริ่มอ่าน",
+    "attachmentImageAlt": "รูปภาพแนบ",
+    "attachmentAudioAlt": "เสียงที่แนบ",
+    "attachmentFileLabel": "ดาวน์โหลดไฟล์แนบ ({{mime}})",
+    "lightboxTitle": "ดูตัวอย่างรูปภาพ",
+    "lightboxClose": "ปิดการดูตัวอย่าง"
   },
   "composer": {
     "placeholder": "พิมพ์ข้อความ…",
     "send": "ส่งข้อความ",
+    "attach": "แนบไฟล์",
+    "removeAttachment": "ลบไฟล์แนบ",
     "errors": {
       "send": "ส่งข้อความไม่สำเร็จ",
-      "tooLong": "ข้อความยาวเกินไป"
+      "tooLong": "ข้อความยาวเกินไป",
+      "upload": "อัปโหลดไฟล์ไม่สำเร็จ",
+      "fileTooLarge": "ไฟล์ใหญ่เกินไป (สูงสุด 10 MB)",
+      "unsupportedType": "ไม่รองรับประเภทไฟล์นี้"
     }
   },
   "newModal": {

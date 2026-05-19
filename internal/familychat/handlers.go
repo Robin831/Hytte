@@ -257,6 +257,20 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "attachment_mime is too long"})
 			return
 		}
+		// If the client references an attachment, the upload_id must point at
+		// a real file under this conversation's storage dir. Anything else
+		// (path traversal, fabricated id, mismatched conv) is rejected so a
+		// message row can never claim an attachment that doesn't exist.
+		if body.AttachmentPath != "" {
+			if _, ok := resolveAttachmentPath(convID, body.AttachmentPath); !ok {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid attachment reference"})
+				return
+			}
+			if !AttachmentExists(convID, body.AttachmentPath) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "attachment not found"})
+				return
+			}
+		}
 
 		msg, err := CreateMessage(db, convID, user.ID, body.Body, body.AttachmentPath, body.AttachmentMime)
 		if err != nil {

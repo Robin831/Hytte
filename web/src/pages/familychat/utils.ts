@@ -17,3 +17,21 @@ export function formatRelative(iso: string, rtf: Intl.RelativeTimeFormat, justNo
   if (abs < 60 * 60 * 24 * 365) return rtf.format(Math.round(diffSec / (86400 * 30)), 'month')
   return rtf.format(Math.round(diffSec / (86400 * 365)), 'year')
 }
+
+// formatFileSize renders a byte count as a human-readable string. Uses
+// binary units (KiB/MiB) and one decimal so a 12 MiB file shows as "12.0 MB"
+// rather than "12582912 B". Keeps things small for the attachment chips and
+// download links in the chat bubbles.
+export function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB']
+  let value = bytes / 1024
+  let i = 0
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024
+    i++
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[i]}`
+}
+
