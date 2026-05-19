@@ -355,9 +355,17 @@ func TestPostMessageHandler_AttachmentEncryption(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, uuid), []byte("not really a jpeg"), 0600); err != nil {
 		t.Fatalf("write file: %v", err)
 	}
+	// Write the .mime sidecar that UploadAttachmentHandler would normally
+	// create. The server reads this instead of trusting the client's
+	// attachment_mime field.
+	if err := os.WriteFile(filepath.Join(dir, uuid+".mime"), []byte("image/jpeg"), 0600); err != nil {
+		t.Fatalf("write mime sidecar: %v", err)
+	}
 
 	idStr := strconv.FormatInt(convID, 10)
-	payload := fmt.Sprintf(`{"body":"","attachment_path":%q,"attachment_mime":"image/jpeg"}`, uuid)
+	// Send a spoofed attachment_mime to verify the server ignores it and uses
+	// the server-determined type from the .mime sidecar instead.
+	payload := fmt.Sprintf(`{"body":"","attachment_path":%q,"attachment_mime":"application/pdf"}`, uuid)
 	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations/"+idStr+"/messages", strings.NewReader(payload)), 1)
 	req.Header.Set("Content-Type", "application/json")
 	req = withChiParam(req, "id", idStr)
@@ -377,8 +385,10 @@ func TestPostMessageHandler_AttachmentEncryption(t *testing.T) {
 	if body.Message.AttachmentPath != uuid {
 		t.Errorf("response attachment_path = %q, want %q", body.Message.AttachmentPath, uuid)
 	}
+	// Server must use the sidecar MIME (image/jpeg), not the client-supplied
+	// application/pdf.
 	if body.Message.AttachmentMime != "image/jpeg" {
-		t.Errorf("response attachment_mime = %q", body.Message.AttachmentMime)
+		t.Errorf("response attachment_mime = %q, want image/jpeg (server-determined)", body.Message.AttachmentMime)
 	}
 
 	// DB stores attachment_path encrypted, attachment_mime as plaintext.
@@ -390,7 +400,7 @@ func TestPostMessageHandler_AttachmentEncryption(t *testing.T) {
 		t.Errorf("attachment_path not encrypted at rest: %q", storedPath)
 	}
 	if storedMime != "image/jpeg" {
-		t.Errorf("attachment_mime should be plaintext, got %q", storedMime)
+		t.Errorf("attachment_mime should be server-determined image/jpeg, got %q", storedMime)
 	}
 }
 

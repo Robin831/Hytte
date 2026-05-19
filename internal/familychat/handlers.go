@@ -261,6 +261,13 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 		// a real file under this conversation's storage dir. Anything else
 		// (path traversal, fabricated id, mismatched conv) is rejected so a
 		// message row can never claim an attachment that doesn't exist.
+		//
+		// The MIME type is always derived server-side from the .mime sidecar
+		// written during upload (falling back to content sniffing) so the
+		// client cannot round-trip a spoofed type (e.g. upload audio/mp4 and
+		// claim application/pdf). body.AttachmentMime is accepted for
+		// backward-compatibility validation but its value is ignored.
+		var attachmentMime string
 		if body.AttachmentPath != "" {
 			if _, ok := resolveAttachmentPath(convID, body.AttachmentPath); !ok {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid attachment reference"})
@@ -270,9 +277,16 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "attachment not found"})
 				return
 			}
+			var mimeErr error
+			attachmentMime, mimeErr = mimeForStoredUpload(convID, body.AttachmentPath)
+			if mimeErr != nil {
+				log.Printf("familychat: sniff mime conv=%d: %v", convID, mimeErr)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read attachment"})
+				return
+			}
 		}
 
-		msg, err := CreateMessage(db, convID, user.ID, body.Body, body.AttachmentPath, body.AttachmentMime)
+		msg, err := CreateMessage(db, convID, user.ID, body.Body, body.AttachmentPath, attachmentMime)
 		if err != nil {
 			if errors.Is(err, ErrForbidden) {
 				notFound(w)
@@ -394,6 +408,10 @@ func DeleteConversationHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete conversation"})
 			return
 		}
+		// Remove uploaded attachment files. The DB cascade already deleted the
+		// message rows; this cleans up the filesystem. Non-fatal: the orphan
+		// sweep will eventually reclaim any files that couldn't be deleted here.
+		DeleteAttachmentDir(convID)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

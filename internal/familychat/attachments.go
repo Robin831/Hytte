@@ -1,6 +1,7 @@
 package familychat
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -247,6 +249,14 @@ func UploadAttachmentHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Persist the server-determined MIME alongside the data file so that
+		// POST /messages can retrieve it without trusting the client to
+		// round-trip the correct type. Failure is non-fatal: the attachment is
+		// already on disk and serving falls back to content sniffing.
+		if err := os.WriteFile(dst+".mime", []byte(mimeType), 0600); err != nil {
+			log.Printf("familychat: upload mime sidecar conv=%d: %v", convID, err)
+		}
+
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"upload_id": uuid,
 			"mime":      mimeType,
@@ -347,4 +357,146 @@ func GetAttachmentHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 	}
+}
+
+// mimeForStoredUpload returns the MIME type for the stored upload identified by
+// rel. It reads the .mime sidecar written by UploadAttachmentHandler; if the
+// sidecar is absent (e.g. a legacy upload or a test that writes the file
+// directly) it falls back to content sniffing via http.DetectContentType.
+func mimeForStoredUpload(convID int64, rel string) (string, error) {
+	full, ok := resolveAttachmentPath(convID, rel)
+	if !ok {
+		return "", fmt.Errorf("invalid attachment path %q", rel)
+	}
+	if data, err := os.ReadFile(full + ".mime"); err == nil {
+		if mime := strings.TrimSpace(string(data)); mime != "" {
+			return mime, nil
+		}
+	}
+	// Sidecar absent — sniff from file header.
+	f, err := os.Open(full)
+	if err != nil {
+		return "", fmt.Errorf("open attachment for sniff: %w", err)
+	}
+	defer f.Close()
+	buf := make([]byte, 512)
+	n, _ := io.ReadFull(f, buf)
+	detected := http.DetectContentType(buf[:n])
+	if idx := strings.Index(detected, ";"); idx >= 0 {
+		detected = strings.TrimSpace(detected[:idx])
+	}
+	return detected, nil
+}
+
+// DeleteAttachmentDir removes the entire per-conversation attachment directory,
+// including all uploaded files and their .mime sidecars. Called when a
+// conversation is deleted. Errors are logged but not propagated — the DB
+// cascade has already removed the message rows.
+func DeleteAttachmentDir(convID int64) {
+	dir := filepath.Join(attachmentRoot(), strconv.FormatInt(convID, 10))
+	if err := os.RemoveAll(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Printf("familychat: remove attachment dir conv=%d: %v", convID, err)
+	}
+}
+
+// knownAttachmentUUIDs returns the set of UUID filenames referenced by messages
+// in convID. Since attachment_path is AES-GCM encrypted with a random nonce it
+// cannot be matched directly in SQL; all non-empty paths are loaded and
+// decrypted in the application layer.
+func knownAttachmentUUIDs(db *sql.DB, convID int64) (map[string]struct{}, error) {
+	rows, err := db.Query(
+		`SELECT attachment_path FROM family_chat_messages WHERE conversation_id = ? AND attachment_path <> ''`,
+		convID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	known := make(map[string]struct{})
+	for rows.Next() {
+		var encPath string
+		if err := rows.Scan(&encPath); err != nil {
+			return nil, err
+		}
+		rel, decErr := encryption.DecryptField(encPath)
+		if decErr != nil {
+			continue // Skip corrupted rows; keep scanning for valid ones.
+		}
+		if rel != "" {
+			known[rel] = struct{}{}
+		}
+	}
+	return known, rows.Err()
+}
+
+// CleanOrphanedAttachments removes uploaded files that have no corresponding
+// message row in the DB and are older than minAge. The grace period prevents
+// a race with the two-phase upload-then-send flow: files created within minAge
+// are left alone so an in-flight send can still reference them.
+func CleanOrphanedAttachments(db *sql.DB, minAge time.Duration) {
+	root := attachmentRoot()
+	convEntries, err := os.ReadDir(root)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			log.Printf("familychat: orphan sweep readdir %s: %v", root, err)
+		}
+		return
+	}
+	for _, convEntry := range convEntries {
+		if !convEntry.IsDir() {
+			continue
+		}
+		convID, parseErr := strconv.ParseInt(convEntry.Name(), 10, 64)
+		if parseErr != nil {
+			continue
+		}
+		convDir := filepath.Join(root, convEntry.Name())
+		files, readErr := os.ReadDir(convDir)
+		if readErr != nil {
+			log.Printf("familychat: orphan sweep readdir %s: %v", convDir, readErr)
+			continue
+		}
+		known, queryErr := knownAttachmentUUIDs(db, convID)
+		if queryErr != nil {
+			log.Printf("familychat: orphan sweep query conv=%d: %v", convID, queryErr)
+			continue
+		}
+		for _, f := range files {
+			if f.IsDir() || strings.HasSuffix(f.Name(), ".mime") {
+				continue
+			}
+			info, infoErr := f.Info()
+			if infoErr != nil || time.Since(info.ModTime()) < minAge {
+				continue
+			}
+			uuid := f.Name()
+			if _, referenced := known[uuid]; referenced {
+				continue
+			}
+			full := filepath.Join(convDir, uuid)
+			_ = os.Remove(full)
+			_ = os.Remove(full + ".mime")
+			log.Printf("familychat: orphan sweep deleted conv=%d uuid=%s", convID, uuid)
+		}
+	}
+}
+
+// StartOrphanSweep runs CleanOrphanedAttachments on an immediate call and then
+// every interval in a background goroutine. The goroutine exits when ctx is
+// cancelled — tie this to the server shutdown context so the sweep stops
+// cleanly before the DB is closed.
+func StartOrphanSweep(ctx context.Context, db *sql.DB, interval, minAge time.Duration) {
+	go func() {
+		CleanOrphanedAttachments(db, minAge)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				CleanOrphanedAttachments(db, minAge)
+			}
+		}
+	}()
 }
