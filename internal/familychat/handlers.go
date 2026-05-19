@@ -28,7 +28,16 @@ const (
 	defaultMsgLimit   = 50
 	maxMsgLimit       = 500
 	maxRequestBytes   = 1 << 20 // 1 MiB
+
+	// pushWorkerLimit caps the number of concurrently running webpush fan-out
+	// goroutines so slow or unreachable push endpoints cannot grow the goroutine
+	// count without bound under high message volume.
+	pushWorkerLimit = 16
 )
+
+// pushSem is a counting semaphore that enforces pushWorkerLimit. Each async
+// push goroutine acquires one slot before starting DB + HTTP work.
+var pushSem = make(chan struct{}, pushWorkerLimit)
 
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -274,7 +283,12 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 			if notifySync {
 				notifyOfflineRecipients(db, hub, sender, convID, msg, senderName)
 			} else {
-				go notifyOfflineRecipients(db, hub, sender, convID, msg, senderName)
+				sn := senderName
+				go func() {
+					pushSem <- struct{}{}
+					defer func() { <-pushSem }()
+					notifyOfflineRecipients(db, hub, sender, convID, msg, sn)
+				}()
 			}
 		}
 

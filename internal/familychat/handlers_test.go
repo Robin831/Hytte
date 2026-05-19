@@ -71,6 +71,20 @@ func setupTestDB(t *testing.T) *sql.DB {
 			attachment_mime TEXT NOT NULL DEFAULT '',
 			created_at      TEXT NOT NULL DEFAULT ''
 		);
+		CREATE TABLE IF NOT EXISTS vapid_keys (
+			id          INTEGER PRIMARY KEY,
+			public_key  TEXT NOT NULL,
+			private_key TEXT NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS push_subscriptions (
+			id         INTEGER PRIMARY KEY,
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			endpoint   TEXT NOT NULL,
+			p256dh     TEXT NOT NULL,
+			auth       TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT '',
+			UNIQUE(user_id, endpoint)
+		);
 	`); err != nil {
 		t.Fatalf("create schema: %v", err)
 	}
@@ -736,31 +750,6 @@ func TestDeleteConversationHandler_NonMember(t *testing.T) {
 	}
 }
 
-// addPushTables creates the vapid_keys and push_subscriptions tables on a
-// test DB that was originally built without them. Used by the push fan-out
-// tests below.
-func addPushTables(t *testing.T, db *sql.DB) {
-	t.Helper()
-	if _, err := db.Exec(`
-		CREATE TABLE vapid_keys (
-			id          INTEGER PRIMARY KEY,
-			public_key  TEXT NOT NULL,
-			private_key TEXT NOT NULL
-		);
-		CREATE TABLE push_subscriptions (
-			id         INTEGER PRIMARY KEY,
-			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-			endpoint   TEXT NOT NULL,
-			p256dh     TEXT NOT NULL,
-			auth       TEXT NOT NULL,
-			created_at TEXT NOT NULL DEFAULT '',
-			UNIQUE(user_id, endpoint)
-		);
-	`); err != nil {
-		t.Fatalf("add push tables: %v", err)
-	}
-}
-
 func TestPostMessageHandler_NotifiesOnlyOfflineRecipients(t *testing.T) {
 	db := setupTestDB(t)
 	makeUser(t, db, 1, "alice@example.com") // sender
@@ -873,7 +862,6 @@ func TestPostMessageHandler_TruncatesLongBodyInPush(t *testing.T) {
 
 func TestPostMessageHandler_StaleSubscriptionRemovedOn410(t *testing.T) {
 	db := setupTestDB(t)
-	addPushTables(t, db)
 	makeUser(t, db, 1, "alice@example.com")
 	makeUser(t, db, 2, "bob@example.com")
 	convID := seedConversation(t, db, 1, "Family", 2)
