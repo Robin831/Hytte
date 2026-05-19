@@ -17,6 +17,7 @@ import (
 	"github.com/Robin831/Hytte/internal/currency"
 	"github.com/Robin831/Hytte/internal/daemon"
 	"github.com/Robin831/Hytte/internal/db"
+	"github.com/Robin831/Hytte/internal/familychat"
 	"github.com/Robin831/Hytte/internal/pokemon"
 	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/stars"
@@ -389,6 +390,11 @@ func main() {
 			}
 		}
 	}()
+
+	// Sweep orphaned Family Chat attachment files every hour. Files uploaded but
+	// never referenced by a message row (e.g. aborted sends) are removed after
+	// a 1-hour grace period that prevents racing with the upload-then-send flow.
+	familychat.StartOrphanSweep(notifCtx, database, 1*time.Hour, 1*time.Hour)
 
 	// Pokémon async scan worker (Hytte-cgsl): polls pokemon_scan_jobs for
 	// queued rows and runs Claude vision in the background. Honours notifCtx

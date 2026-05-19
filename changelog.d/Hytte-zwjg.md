@@ -1,0 +1,2 @@
+category: Added
+- **Family Chat attachments** - Send photos, audio, and PDF files in Family Chat conversations. Uploads are capped at 10 MB, restricted to a safe MIME allowlist (JPEG/PNG/WebP/HEIC/HEIF/PDF/MP3/M4A), stored on disk under the upload root (attachment paths are encrypted in SQLite), and streamed back through a membership-checked endpoint. Images render as click-to-enlarge thumbnails, audio gets inline play controls, and other files render as download links. (Hytte-zwjg)

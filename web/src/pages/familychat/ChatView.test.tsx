@@ -20,8 +20,18 @@ const TRANSLATIONS: Record<string, string> = {
   'chat.noSelectionHint': 'Choose a chat from the list to start reading.',
   'composer.placeholder': 'Write a message…',
   'composer.send': 'Send message',
+  'composer.attach': 'Attach a file',
+  'composer.removeAttachment': 'Remove attachment',
   'composer.errors.send': 'Failed to send message',
   'composer.errors.tooLong': 'Message is too long',
+  'composer.errors.upload': 'Failed to upload file',
+  'composer.errors.fileTooLarge': 'File is too large (max 10 MB)',
+  'composer.errors.unsupportedType': 'File type is not supported',
+  'chat.attachmentImageAlt': 'Attached image',
+  'chat.attachmentAudioAlt': 'Attached audio',
+  'chat.attachmentFileLabel': 'Download attachment ({{mime}})',
+  'chat.lightboxTitle': 'Image preview',
+  'chat.lightboxClose': 'Close preview',
   'newModal.parent': 'Parent',
 }
 
@@ -257,6 +267,65 @@ describe('ChatView – optimistic message append', () => {
 
     await waitFor(() => expect(screen.getByText('Conv2 message')).toBeInTheDocument())
     expect(screen.queryByText('Conv1 message')).not.toBeInTheDocument()
+  })
+})
+
+describe('ChatView – attachment rendering', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  it('renders an image attachment with a thumbnail pointing at the attachments endpoint', async () => {
+    const imgMsg = makeMessage({
+      id: 7,
+      body: '',
+      sender_user_id: 2,
+      attachment_path: 'aabbccddeeff00112233445566778899',
+      attachment_mime: 'image/png',
+    })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([imgMsg]))
+      .mockResolvedValueOnce(streamOk()),
+    )
+    renderChatView()
+    const img = await screen.findByAltText('Attached image') as HTMLImageElement
+    expect(img.src).toContain(`/api/familychat/conversations/${imgMsg.conversation_id}/attachments/${imgMsg.id}`)
+  })
+
+  it('renders an audio attachment with controls', async () => {
+    const audioMsg = makeMessage({
+      id: 8,
+      body: '',
+      sender_user_id: 2,
+      attachment_path: 'aabbccddeeff00112233445566778899',
+      attachment_mime: 'audio/mpeg',
+    })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([audioMsg]))
+      .mockResolvedValueOnce(streamOk()),
+    )
+    const { container } = renderChatView()
+    await waitFor(() => {
+      expect(container.querySelector('audio[controls]')).not.toBeNull()
+    })
+  })
+
+  it('renders a non-image, non-audio attachment as a download link', async () => {
+    const pdfMsg = makeMessage({
+      id: 9,
+      body: 'see attached',
+      sender_user_id: 2,
+      attachment_path: 'aabbccddeeff00112233445566778899',
+      attachment_mime: 'application/pdf',
+    })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([pdfMsg]))
+      .mockResolvedValueOnce(streamOk()),
+    )
+    renderChatView()
+    const link = await screen.findByText(/Download attachment/) as HTMLAnchorElement
+    expect(link.closest('a')?.getAttribute('href')).toContain(`/attachments/${pdfMsg.id}`)
   })
 })
 
