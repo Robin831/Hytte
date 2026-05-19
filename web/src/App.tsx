@@ -19,6 +19,7 @@ import LactateNewTest from './pages/LactateNewTest'
 import LactateTestDetail from './pages/LactateTestDetail'
 import LactateInsights from './pages/LactateInsights'
 import Chat from './pages/Chat'
+import FamilyChat from './pages/FamilyChat'
 import Training from './pages/Training'
 import TrainingDetail from './pages/TrainingDetail'
 import TrainingCompare from './pages/TrainingCompare'
@@ -138,6 +139,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="chat">
                 <Chat />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/family-chat"
+            element={
+              <FeatureRoute feature="family_chat">
+                <FamilyChat />
               </FeatureRoute>
             }
           />

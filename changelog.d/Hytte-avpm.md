@@ -1,0 +1,2 @@
+category: Added
+- **Family Chat page shell** - Added the `/family-chat` route, sidebar entry (MessageCircle icon, gated on the `family_chat` feature flag), and the `FamilyChat` page with a responsive two-column layout (conversation list left, chat view right; single-column stack on mobile). Stub child components for `ConversationList`, `ChatView`, `Composer`, and `NewConversationModal` are wired up so follow-up beads can plug behavior in. (Hytte-avpm)
