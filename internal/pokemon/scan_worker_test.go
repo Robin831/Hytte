@@ -309,7 +309,12 @@ func TestProcessScanJob_PageChildren_ResolveIndependently(t *testing.T) {
 	// is what the worker calls per row, so this proves the children are
 	// indistinguishable from any other queued job.
 	for _, c := range children {
-		processScanJob(context.Background(), db, scanJob{ID: c.id, UserID: u.ID, ImagePathEnc: c.enc})
+		processScanJob(context.Background(), db, scanJob{
+			ID:           c.id,
+			UserID:       u.ID,
+			ImagePathEnc: c.enc,
+			PageID:       sql.NullInt64{Int64: pageID, Valid: true},
+		})
 	}
 
 	for i, c := range children {
@@ -333,6 +338,15 @@ func TestProcessScanJob_PageChildren_ResolveIndependently(t *testing.T) {
 	}
 	if linkedCount != len(children) {
 		t.Errorf("expected %d rows still linked to page_id=%d, got %d", len(children), pageID, linkedCount)
+	}
+
+	// matched_count must equal the number of successfully matched children.
+	var matchedCount int
+	if err := db.QueryRow(`SELECT matched_count FROM pokemon_scan_pages WHERE id = ?`, pageID).Scan(&matchedCount); err != nil {
+		t.Fatalf("read matched_count: %v", err)
+	}
+	if matchedCount != len(children) {
+		t.Errorf("expected matched_count=%d, got %d", len(children), matchedCount)
 	}
 }
 

@@ -1717,9 +1717,10 @@ func createSchema(db *sql.DB) error {
 	-- page upload. One row is inserted per /api/pokemon/scans/page request and
 	-- N child pokemon_scan_jobs rows point at it via page_id. expected_count
 	-- captures how many cells the client cropped from the page; matched_count
-	-- is incremented as children resolve so the UI can render progress without
-	-- a join. page_image_path_enc holds the optional encrypted path to the
-	-- original page photo (empty when the client only uploads the crops).
+	-- is incremented by the scan worker each time a child job reaches the
+	-- 'matched' state, so the UI can render progress without a join.
+	-- page_image_path_enc holds the optional encrypted path to the original
+	-- page photo (empty when the client only uploads the crops).
 	CREATE TABLE IF NOT EXISTS pokemon_scan_pages (
 		id                  INTEGER PRIMARY KEY AUTOINCREMENT,
 		user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

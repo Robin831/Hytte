@@ -155,16 +155,18 @@ type pageCell struct {
 // through its existing single-card flow unchanged.
 //
 // Order of operations is strict to keep the cost cap honest and to guarantee
-// a 429 leaves zero state behind:
+// a 429 or 5xx leaves zero state behind:
 //  1. parse + validate parts and the cells JSON;
-//  2. compute N from parts and check the daily cap charging N — if the user
-//     does not have N free scans remaining today, return 429 BEFORE any
-//     image bytes touch disk;
+//  2. optimistic pre-check of the daily cap (fast-fail before disk I/O);
 //  3. read + validate every card part into memory (oversize / wrong MIME);
 //  4. write all card images to disk;
-//  5. create the parent pokemon_scan_pages row + N pokemon_scan_jobs
-//     children in one transaction. On any failure roll back the rows AND
-//     delete the on-disk files so a 5xx also leaves zero state.
+//  5. open a transaction, INSERT the parent pokemon_scan_pages row (which
+//     acquires the SQLite write lock), then re-check the daily cap under
+//     that lock so two concurrent uploads from the same user cannot both
+//     pass with a stale count; if the definitive check fails, rollback the
+//     parent row AND delete the on-disk files;
+//  6. insert N pokemon_scan_jobs children and commit. On any failure roll
+//     back rows AND delete files so a 5xx also leaves zero state.
 //
 // The original full-page photo is intentionally not accepted here — the spec
 // for this bead only takes the cropped per-card images. The parent's
@@ -331,10 +333,11 @@ func PageScanHandler(db *sql.DB) http.HandlerFunc {
 			})
 		}
 
-		// Single transaction so the parent row + N children commit
-		// atomically. On any failure roll back the rows AND delete the
-		// on-disk images so a 5xx leaves zero state, matching the 429
-		// contract above.
+		// Single transaction so the parent row + N children commit atomically.
+		// The parent INSERT runs first: once it acquires the SQLite write lock,
+		// no concurrent writer can insert jobs between the definitive cap check
+		// and our own child inserts. On any failure roll back rows AND delete
+		// files so a 5xx leaves zero state, matching the 429 contract above.
 		now := time.Now().UTC()
 		tx, err := db.BeginTx(r.Context(), nil)
 		if err != nil {
@@ -361,6 +364,35 @@ func PageScanHandler(db *sql.DB) http.HandlerFunc {
 			cleanupFiles()
 			log.Printf("pokemon: scan page last id: %v", err)
 			respondError(w, http.StatusInternalServerError, "failed to enqueue page scan")
+			return
+		}
+
+		// Definitive cap check under the write lock. The INSERT above acquired
+		// the write lock so this COUNT sees all prior commits; no concurrent
+		// writer can insert scan jobs while we hold it.
+		capLoc := scanLocalLocation()
+		capNow := time.Now().In(capLoc)
+		startOfDay := time.Date(capNow.Year(), capNow.Month(), capNow.Day(), 0, 0, 0, 0, capLoc)
+		var usedNow int
+		if err := tx.QueryRowContext(r.Context(), `
+			SELECT COUNT(*) FROM pokemon_scan_jobs
+			WHERE user_id = ? AND created_at >= ?
+		`, user.ID, startOfDay.UTC()).Scan(&usedNow); err != nil {
+			tx.Rollback()
+			cleanupFiles()
+			log.Printf("pokemon: count scans today in tx: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to enqueue page scan")
+			return
+		}
+		if dailyCap-usedNow < n {
+			tx.Rollback()
+			cleanupFiles()
+			respondJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":     "daily scan cap reached",
+				"cap":       dailyCap,
+				"used":      usedNow,
+				"requested": n,
+			})
 			return
 		}
 

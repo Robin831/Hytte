@@ -54,6 +54,7 @@ type scanJob struct {
 	ID           int64
 	UserID       int64
 	ImagePathEnc string
+	PageID       sql.NullInt64
 }
 
 // scanImageRoot returns the base directory under which scan images are
@@ -143,7 +144,7 @@ func dispatchScanJobs(ctx context.Context, db *sql.DB, sem chan struct{}, wg *sy
 // read; the row is fully claimed (status='processing') inside processScanJob.
 func pollQueuedScanJobs(ctx context.Context, db *sql.DB, limit int) ([]scanJob, error) {
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, user_id, image_path_enc
+		SELECT id, user_id, image_path_enc, page_id
 		FROM pokemon_scan_jobs
 		WHERE status = ?
 		ORDER BY created_at, id
@@ -157,7 +158,7 @@ func pollQueuedScanJobs(ctx context.Context, db *sql.DB, limit int) ([]scanJob, 
 	var jobs []scanJob
 	for rows.Next() {
 		var j scanJob
-		if err := rows.Scan(&j.ID, &j.UserID, &j.ImagePathEnc); err != nil {
+		if err := rows.Scan(&j.ID, &j.UserID, &j.ImagePathEnc, &j.PageID); err != nil {
 			return nil, fmt.Errorf("scan queued row: %w", err)
 		}
 		jobs = append(jobs, j)
@@ -298,7 +299,7 @@ func processScanJob(ctx context.Context, db *sql.DB, job scanJob) {
 	// so the row has a non-null reference; variant id stays NULL because the
 	// user picks the specific kind (normal vs reverse vs holo) during resolve.
 	matched := candidates[0]
-	finalizeScanJobMatched(db, job.ID, matched.Card.ID, result.Confidence, respEnc)
+	finalizeScanJobMatched(db, job.ID, job.PageID, matched.Card.ID, result.Confidence, respEnc)
 	setName := ""
 	if matched.Set != nil {
 		setName = matched.Set.Name
@@ -310,15 +311,49 @@ func processScanJob(ctx context.Context, db *sql.DB, job scanJob) {
 // background deadline so a cancelled parent context does not lose the result.
 // processed_at is stamped here (not at claim time) so it reflects when the
 // worker actually finished the job.
-func finalizeScanJobMatched(db *sql.DB, jobID int64, cardID string, confidence float64, respEnc string) {
+//
+// When the job belongs to a page (pageID.Valid), both the job status update
+// and the parent's matched_count increment are committed in one transaction so
+// the counter stays consistent with the number of matched children.
+func finalizeScanJobMatched(db *sql.DB, jobID int64, pageID sql.NullInt64, cardID string, confidence float64, respEnc string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, err := db.ExecContext(ctx, `
+	now := time.Now().UTC()
+
+	if !pageID.Valid {
+		if _, err := db.ExecContext(ctx, `
+			UPDATE pokemon_scan_jobs
+			SET status = ?, matched_card_id = ?, confidence = ?, claude_response_enc = ?, error_message = NULL, processed_at = ?
+			WHERE id = ?
+		`, scanJobStatusMatched, cardID, confidence, nullIfEmpty(respEnc), now, jobID); err != nil {
+			log.Printf("pokemon: finalize matched scan job %d: %v", jobID, err)
+		}
+		return
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Printf("pokemon: finalize matched scan job %d begin tx: %v", jobID, err)
+		return
+	}
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE pokemon_scan_jobs
 		SET status = ?, matched_card_id = ?, confidence = ?, claude_response_enc = ?, error_message = NULL, processed_at = ?
 		WHERE id = ?
-	`, scanJobStatusMatched, cardID, confidence, nullIfEmpty(respEnc), time.Now().UTC(), jobID); err != nil {
+	`, scanJobStatusMatched, cardID, confidence, nullIfEmpty(respEnc), now, jobID); err != nil {
+		tx.Rollback()
 		log.Printf("pokemon: finalize matched scan job %d: %v", jobID, err)
+		return
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE pokemon_scan_pages SET matched_count = matched_count + 1 WHERE id = ?
+	`, pageID.Int64); err != nil {
+		tx.Rollback()
+		log.Printf("pokemon: update page matched_count for page %d: %v", pageID.Int64, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		log.Printf("pokemon: finalize matched scan job %d commit: %v", jobID, err)
 	}
 }
 
