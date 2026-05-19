@@ -2490,6 +2490,27 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Migrate family_chat tables from the schema-bead column names to the REST
+	// bead column names (Hytte-56j7). Detect old schema via presence of
+	// name_enc on family_chat_conversations; if found, rename all affected
+	// columns so existing installs don't break at runtime.
+	var hasFCNameEnc int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('family_chat_conversations') WHERE name = 'name_enc'`).Scan(&hasFCNameEnc); err != nil {
+		return fmt.Errorf("check family_chat_conversations name_enc: %w", err)
+	}
+	if hasFCNameEnc != 0 {
+		for _, stmt := range []string{
+			`ALTER TABLE family_chat_conversations RENAME COLUMN name_enc TO name`,
+			`ALTER TABLE family_chat_conversations RENAME COLUMN owner_id TO owner_user_id`,
+			`ALTER TABLE family_chat_messages RENAME COLUMN body_enc TO body`,
+			`ALTER TABLE family_chat_messages RENAME COLUMN attachment_path_enc TO attachment_path`,
+		} {
+			if _, err := db.Exec(stmt); err != nil {
+				return fmt.Errorf("migrate family_chat columns: %w", err)
+			}
+		}
+	}
+
 	return nil
 }
 

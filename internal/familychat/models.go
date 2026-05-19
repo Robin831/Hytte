@@ -10,10 +10,3 @@ import (
 // prefer to hide existence).
 var ErrForbidden = errors.New("familychat: not a conversation member")
 
-// Role values for family_chat_members.role. Owners are members who can later
-// be granted moderation actions (rename, delete, add/remove members); for the
-// schema bead they are stored but not yet enforced anywhere.
-const (
-	RoleOwner  = "owner"
-	RoleMember = "member"
-)

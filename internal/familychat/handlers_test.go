@@ -27,6 +27,9 @@ func setupTestDB(t *testing.T) *sql.DB {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	t.Cleanup(func() { _ = db.Close() })
 	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
 		t.Fatalf("enable fk: %v", err)
 	}
@@ -161,17 +164,19 @@ func TestCreateConversationHandler_Success(t *testing.T) {
 	}
 }
 
-func TestCreateConversationHandler_MissingName(t *testing.T) {
+func TestCreateConversationHandler_EmptyNameAllowed(t *testing.T) {
 	db := setupTestDB(t)
 	makeUser(t, db, 1, "alice@example.com")
 
+	// Empty name is valid — the schema allows it (unnamed/1:1 chats derive
+	// their display name client-side).
 	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations", strings.NewReader(`{"name":""}`)), 1)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	CreateConversationHandler(db).ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for empty name, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -298,6 +303,49 @@ func TestPostMessageHandler_EmptyBodyRejected(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestPostMessageHandler_AttachmentEncryption(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	convID := seedConversation(t, db, 1, "Family")
+
+	idStr := strconv.FormatInt(convID, 10)
+	payload := `{"body":"","attachment_path":"/uploads/photo.jpg","attachment_mime":"image/jpeg"}`
+	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations/"+idStr+"/messages", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	PostMessageHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Message Message `json:"message"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// Response returns plaintext values.
+	if body.Message.AttachmentPath != "/uploads/photo.jpg" {
+		t.Errorf("response attachment_path = %q, want plaintext", body.Message.AttachmentPath)
+	}
+	if body.Message.AttachmentMime != "image/jpeg" {
+		t.Errorf("response attachment_mime = %q", body.Message.AttachmentMime)
+	}
+
+	// DB stores attachment_path encrypted, attachment_mime as plaintext.
+	var storedPath, storedMime string
+	if err := db.QueryRow(`SELECT attachment_path, attachment_mime FROM family_chat_messages WHERE id = ?`, body.Message.ID).Scan(&storedPath, &storedMime); err != nil {
+		t.Fatalf("read stored row: %v", err)
+	}
+	if !strings.HasPrefix(storedPath, "enc:") {
+		t.Errorf("attachment_path not encrypted at rest: %q", storedPath)
+	}
+	if storedMime != "image/jpeg" {
+		t.Errorf("attachment_mime should be plaintext, got %q", storedMime)
 	}
 }
 

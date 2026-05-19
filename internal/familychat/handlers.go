@@ -94,10 +94,6 @@ func CreateConversationHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		body.Name = strings.TrimSpace(body.Name)
-		if body.Name == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
-			return
-		}
 		if len([]rune(body.Name)) > maxNameLen {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is too long"})
 			return
