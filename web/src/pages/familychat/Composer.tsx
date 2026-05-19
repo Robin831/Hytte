@@ -47,7 +47,7 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
   async function submit() {
     const trimmed = body.trim()
     if (!trimmed || sending) return
-    if (trimmed.length > MAX_BODY_LEN) {
+    if ([...trimmed].length > MAX_BODY_LEN) {
       setError(t('composer.errors.tooLong'))
       return
     }
@@ -127,7 +127,6 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
           placeholder={t('composer.placeholder')}
           rows={1}
           disabled={sending}
-          maxLength={MAX_BODY_LEN}
           className="flex-1 resize-none bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60"
         />
         <button

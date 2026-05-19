@@ -4,6 +4,7 @@ import { ChevronLeft, MessageSquare } from 'lucide-react'
 import { Skeleton } from '../../components/ui/skeleton'
 import { useAuth } from '../../auth'
 import Composer from './Composer'
+import { formatRelative } from './utils'
 
 interface ChatViewProps {
   conversationId: number | null
@@ -53,26 +54,6 @@ interface ParentInfo {
   picture: string
 }
 
-// formatRelative renders an ISO timestamp as a localized relative-time string
-// (e.g. "2 minutes ago"). Falls back to an empty string for invalid input.
-function formatRelative(iso: string, language: string, justNow: string): string {
-  if (!iso) return ''
-  const then = new Date(iso).getTime()
-  if (Number.isNaN(then)) return ''
-  const now = Date.now()
-  const diffSec = Math.round((then - now) / 1000)
-  const abs = Math.abs(diffSec)
-  const rtf = new Intl.RelativeTimeFormat(language, { numeric: 'auto' })
-  if (abs < 30) return justNow
-  if (abs < 60) return rtf.format(diffSec, 'second')
-  if (abs < 60 * 60) return rtf.format(Math.round(diffSec / 60), 'minute')
-  if (abs < 60 * 60 * 24) return rtf.format(Math.round(diffSec / 3600), 'hour')
-  if (abs < 60 * 60 * 24 * 7) return rtf.format(Math.round(diffSec / 86400), 'day')
-  if (abs < 60 * 60 * 24 * 30) return rtf.format(Math.round(diffSec / (86400 * 7)), 'week')
-  if (abs < 60 * 60 * 24 * 365) return rtf.format(Math.round(diffSec / (86400 * 30)), 'month')
-  return rtf.format(Math.round(diffSec / (86400 * 365)), 'year')
-}
-
 export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const { t, i18n } = useTranslation('familyChat')
   const { user, familyStatus } = useAuth()
@@ -84,6 +65,11 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const [memberLookup, setMemberLookup] = useState<Map<number, MemberInfo>>(new Map())
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const rtf = useMemo(
+    () => new Intl.RelativeTimeFormat(i18n.language, { numeric: 'auto' }),
+    [i18n.language],
+  )
 
   // Build a label/emoji lookup for every user the current user can name,
   // so member chips and sender labels render with friendly names. The
@@ -315,7 +301,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
           const isOwn = user?.id === msg.sender_user_id
           const senderInfo = memberLookup.get(msg.sender_user_id)
           const senderLabel = senderInfo?.label ?? t('chat.memberFallback', { id: msg.sender_user_id })
-          const relative = formatRelative(msg.created_at, i18n.language, t('time.justNow'))
+          const relative = formatRelative(msg.created_at, rtf, t('time.justNow'))
           return (
             <div
               key={msg.id}
