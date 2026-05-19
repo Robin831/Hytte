@@ -7,6 +7,7 @@ interface ConversationListProps {
   selectedConversationId: number | null
   onSelectConversation: (id: number) => void
   onNewConversation: () => void
+  refreshKey?: number
 }
 
 interface Conversation {
@@ -45,6 +46,7 @@ export default function ConversationList({
   selectedConversationId,
   onSelectConversation,
   onNewConversation,
+  refreshKey,
 }: ConversationListProps) {
   const { t, i18n } = useTranslation('familyChat')
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -72,7 +74,7 @@ export default function ConversationList({
       }
     })()
     return () => { controller.abort() }
-  }, [t])
+  }, [t, refreshKey])
 
   return (
     <div className="flex flex-col h-full" data-testid="family-chat-conversation-list">
