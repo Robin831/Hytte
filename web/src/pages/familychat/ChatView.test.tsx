@@ -347,3 +347,98 @@ describe('ChatView – SSE live updates', () => {
     expect(screen.getByText('No messages yet. Say hello!')).toBeInTheDocument()
   })
 })
+
+describe('ChatView – reconnect gap-fill', () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  it('issues a gap-fill fetch after stream disconnect and appends messages in order', async () => {
+    // shouldAdvanceTime lets real time flow so waitFor retries work, while
+    // advanceTimersByTimeAsync can still fast-forward the reconnect delay.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+
+    let closeStream: (() => void) | null = null
+    const firstStream = new ReadableStream<Uint8Array>({
+      start(c) { closeStream = () => c.close() },
+    })
+
+    const initialMsg = makeMessage({ id: 10, body: 'Before disconnect', conversation_id: 1 })
+    const gapMsg1 = makeMessage({ id: 11, body: 'Gap one', conversation_id: 1, created_at: '2026-05-01T10:11:00Z' })
+    const gapMsg2 = makeMessage({ id: 12, body: 'Gap two', conversation_id: 1, created_at: '2026-05-01T10:12:00Z' })
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([initialMsg]))
+      .mockResolvedValueOnce({ ok: true, body: firstStream })
+      .mockResolvedValueOnce(msgsOk([gapMsg2, gapMsg1]))  // API newest-first
+      .mockResolvedValueOnce(streamOk())
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChatView()
+    await waitFor(() => expect(screen.getByText('Before disconnect')).toBeInTheDocument())
+
+    // Close the first stream to trigger scheduleReconnect
+    await act(async () => {
+      closeStream!()
+      await Promise.resolve()
+    })
+
+    // Fast-forward past the first reconnect delay (2000 ms for attempt #1)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2500)
+    })
+
+    // Verify that a gap-fill fetch with since=10 was issued
+    const fetchedUrls = fetchMock.mock.calls.map(([url]) => url as string)
+    expect(fetchedUrls.some(url => url.includes('/messages?since=10'))).toBe(true)
+
+    // Both gap messages should appear in ascending order after the pre-disconnect message
+    await waitFor(() => {
+      expect(screen.getByText('Gap one')).toBeInTheDocument()
+      expect(screen.getByText('Gap two')).toBeInTheDocument()
+    })
+
+    const log = screen.getByRole('log')
+    const bubbles = Array.from(log.querySelectorAll('[class*="rounded-2xl"]'))
+    const texts = bubbles.map(b => b.textContent)
+    expect(texts.indexOf('Before disconnect')).toBeLessThan(texts.indexOf('Gap one'))
+    expect(texts.indexOf('Gap one')).toBeLessThan(texts.indexOf('Gap two'))
+  }, 15000)
+
+  it('gap-fills without a since param when the initial message list is empty', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+
+    let closeStream: (() => void) | null = null
+    const firstStream = new ReadableStream<Uint8Array>({
+      start(c) { closeStream = () => c.close() },
+    })
+
+    const reconnectMsg = makeMessage({ id: 1, body: 'Arrived during disconnect', conversation_id: 1 })
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce({ ok: true, body: firstStream })
+      .mockResolvedValueOnce(msgsOk([reconnectMsg]))
+      .mockResolvedValueOnce(streamOk())
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+
+    await act(async () => {
+      closeStream!()
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2500)
+    })
+
+    // Gap-fill URL must not include ?since when lastId was 0
+    const fetchedUrls = fetchMock.mock.calls.map(([url]) => url as string)
+    const msgUrls = fetchedUrls.filter(url => url.includes('/messages'))
+    expect(msgUrls.some(url => !url.includes('?since'))).toBe(true)
+
+    await waitFor(() => expect(screen.getByText('Arrived during disconnect')).toBeInTheDocument())
+  }, 15000)
+})

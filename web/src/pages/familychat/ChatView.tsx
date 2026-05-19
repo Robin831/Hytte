@@ -171,12 +171,12 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     }
 
     const fillGap = async () => {
-      if (lastId <= 0 || controller.signal.aborted) return
+      if (controller.signal.aborted) return
       try {
-        const res = await fetch(
-          `/api/familychat/conversations/${conversationId}/messages?since=${lastId}`,
-          { credentials: 'include', signal: controller.signal },
-        )
+        const url = lastId > 0
+          ? `/api/familychat/conversations/${conversationId}/messages?since=${lastId}`
+          : `/api/familychat/conversations/${conversationId}/messages`
+        const res = await fetch(url, { credentials: 'include', signal: controller.signal })
         if (!res.ok) return
         const data = await res.json()
         const msgs: ChatMessage[] = data.messages ?? []
