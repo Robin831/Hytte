@@ -51,11 +51,8 @@ func StreamHandler(hub *Hub, membership MembershipFn) http.HandlerFunc {
 
 		ok, err := membership(user.ID, convID)
 		if err != nil {
-			// Treat membership check errors as not-a-member to avoid leaking
-			// conversation existence. Log so the operator can investigate
-			// genuine failures (e.g. missing table before schema is migrated).
 			log.Printf("familychat: membership check failed for user %d conv %d: %v", user.ID, convID, err)
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 			return
 		}
 		if !ok {
