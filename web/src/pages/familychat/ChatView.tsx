@@ -444,8 +444,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
             data-testid="family-chat-reconnecting"
           >
             <WifiOff size={12} aria-hidden="true" />
-            <span className="hidden sm:inline">{t('chat.connection.reconnecting')}</span>
-            <span className="sr-only sm:hidden">{t('chat.connection.reconnecting')}</span>
+            <span className="truncate max-w-[8rem] sm:max-w-none">{t('chat.connection.reconnecting')}</span>
           </span>
         )}
       </header>
