@@ -10,7 +10,7 @@ require (
 	github.com/sixdouglas/suncalc v0.0.0-20250114185126-291b1938b70c
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.20.0
-	google.golang.org/api v0.278.0
+	google.golang.org/api v0.279.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.50.1
 )
