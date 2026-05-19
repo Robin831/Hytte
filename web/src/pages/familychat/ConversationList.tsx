@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, MessageSquarePlus } from 'lucide-react'
 import { Skeleton } from '../../components/ui/skeleton'
+import { formatRelative } from './utils'
 
 interface ConversationListProps {
   selectedConversationId: number | null
@@ -22,26 +23,6 @@ interface Conversation {
   last_message_sender_id?: number
 }
 
-// formatRelative renders a date as a localized relative-time string
-// (e.g. "2 minutes ago"). Falls back to an empty string for invalid input.
-function formatRelative(iso: string, language: string, justNow: string): string {
-  if (!iso) return ''
-  const then = new Date(iso).getTime()
-  if (Number.isNaN(then)) return ''
-  const now = Date.now()
-  const diffSec = Math.round((then - now) / 1000)
-  const abs = Math.abs(diffSec)
-  const rtf = new Intl.RelativeTimeFormat(language, { numeric: 'auto' })
-  if (abs < 30) return justNow
-  if (abs < 60) return rtf.format(diffSec, 'second')
-  if (abs < 60 * 60) return rtf.format(Math.round(diffSec / 60), 'minute')
-  if (abs < 60 * 60 * 24) return rtf.format(Math.round(diffSec / 3600), 'hour')
-  if (abs < 60 * 60 * 24 * 7) return rtf.format(Math.round(diffSec / 86400), 'day')
-  if (abs < 60 * 60 * 24 * 30) return rtf.format(Math.round(diffSec / (86400 * 7)), 'week')
-  if (abs < 60 * 60 * 24 * 365) return rtf.format(Math.round(diffSec / (86400 * 30)), 'month')
-  return rtf.format(Math.round(diffSec / (86400 * 365)), 'year')
-}
-
 export default function ConversationList({
   selectedConversationId,
   onSelectConversation,
@@ -52,6 +33,11 @@ export default function ConversationList({
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  const rtf = useMemo(
+    () => new Intl.RelativeTimeFormat(i18n.language, { numeric: 'auto' }),
+    [i18n.language],
+  )
 
   useEffect(() => {
     const controller = new AbortController()
@@ -121,7 +107,7 @@ export default function ConversationList({
             {conversations.map(conv => {
               const isSelected = conv.id === selectedConversationId
               const timestamp = conv.last_message_at || conv.created_at
-              const relative = formatRelative(timestamp, i18n.language, t('time.justNow'))
+              const relative = formatRelative(timestamp, rtf, t('time.justNow'))
               const previewText = conv.last_message_preview || t('empty.noMessages')
               return (
                 <li key={conv.id}>
