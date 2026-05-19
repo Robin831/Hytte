@@ -68,16 +68,15 @@ export default function NewConversationModal({ open, onClose, onCreated }: NewCo
             credentials: 'include',
             signal: controller.signal,
           })
-          if (res.ok) {
-            const data = await res.json()
-            const kids: FamilyChild[] = data.children ?? []
-            for (const k of kids) {
-              collected.push({
-                id: k.child_id,
-                label: k.nickname || `#${k.child_id}`,
-                emoji: k.avatar_emoji || '⭐',
-              })
-            }
+          if (!res.ok) throw new Error(`family/children responded ${res.status}`)
+          const data = await res.json()
+          const kids: FamilyChild[] = data.children ?? []
+          for (const k of kids) {
+            collected.push({
+              id: k.child_id,
+              label: k.nickname || `#${k.child_id}`,
+              emoji: k.avatar_emoji || '⭐',
+            })
           }
         }
         if (familyStatus?.is_child) {
@@ -85,16 +84,15 @@ export default function NewConversationModal({ open, onClose, onCreated }: NewCo
             credentials: 'include',
             signal: controller.signal,
           })
-          if (res.ok) {
-            const data = await res.json()
-            const siblings: SiblingInfo[] = data.siblings ?? []
-            for (const s of siblings) {
-              collected.push({
-                id: s.child_id,
-                label: s.nickname || `#${s.child_id}`,
-                emoji: s.avatar_emoji || '⭐',
-              })
-            }
+          if (!res.ok) throw new Error(`family/my-family responded ${res.status}`)
+          const data = await res.json()
+          const siblings: SiblingInfo[] = data.siblings ?? []
+          for (const s of siblings) {
+            collected.push({
+              id: s.child_id,
+              label: s.nickname || `#${s.child_id}`,
+              emoji: s.avatar_emoji || '⭐',
+            })
           }
         }
         if (!controller.signal.aborted) {

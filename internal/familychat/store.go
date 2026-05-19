@@ -7,6 +7,7 @@ package familychat
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -548,9 +549,20 @@ func batchLastMessages(db *sql.DB, convIDs []int64) (map[int64]lastMessage, erro
 		if err := rows.Scan(&convID, &senderID, &body, &attachmentPath); err != nil {
 			return nil, err
 		}
+		// A failed decrypt of a single message body must not blow up the entire
+		// conversation list — that would lock users out of every conversation.
+		// Follow the repo convention (see internal/allowance/storage.go):
+		// log + return legacy plaintext as-is, or log + blank for corrupted
+		// enc:-prefixed values.
 		plainBody, err := encryption.DecryptField(body)
 		if err != nil {
-			return nil, fmt.Errorf("decrypt preview body: %w", err)
+			if strings.HasPrefix(body, "enc:") {
+				log.Printf("familychat: decrypt preview body failed for conversation_id=%d (corrupted enc value): %v", convID, err)
+				plainBody = ""
+			} else {
+				log.Printf("familychat: returning legacy plaintext preview for conversation_id=%d after decrypt failure: %v", convID, err)
+				plainBody = body
+			}
 		}
 		preview := truncateRunes(plainBody, previewMaxRunes)
 		if preview == "" && attachmentPath != "" {

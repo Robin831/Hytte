@@ -79,6 +79,7 @@ export default function ConversationList({
       <header className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
         <h1 className="text-lg font-semibold text-white">{t('title')}</h1>
         <button
+          type="button"
           onClick={onNewConversation}
           className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors cursor-pointer"
           aria-label={t('newConversation')}
