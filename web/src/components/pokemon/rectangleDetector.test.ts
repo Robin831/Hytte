@@ -1,9 +1,12 @@
 // @vitest-environment happy-dom
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
+  cropCellsToCanvases,
   detectCardRectangle,
+  detectGrid,
   isWithinTolerance,
   TARGET_ASPECT_RATIO,
+  type DetectedGridCell,
   type DetectedRectangle,
 } from './rectangleDetector'
 
@@ -31,6 +34,122 @@ function makeFrame(
         data[i + 1] = 240
         data[i + 2] = 240
         data[i + 3] = 255
+      }
+    }
+  }
+  return { data, width: w, height: h, colorSpace: 'srgb' } as unknown as ImageData
+}
+
+// Build a synthetic 3x3 binder page: nine card-shaped rectangles at ~5:7
+// aspect, laid out on a uniform background. `bg` is the binder color, `card`
+// the card color. `skip` removes that cell to simulate an empty pocket;
+// `glare` paints a bright square inside that cell to simulate camera glare.
+function makeBinderFrame(opts: {
+  bg: number
+  card: number
+  skip?: { row: number; col: number }
+  glare?: { row: number; col: number }
+}): ImageData {
+  const w = 240
+  const h = 336
+  const gridX0 = 20
+  const gridY0 = 28
+  const gridW = 200
+  const gridH = 280
+  const cellW = gridW / 3
+  const cellH = gridH / 3
+  // Cards occupy 85% of each cell so there's a clear binder gap between them.
+  const cardScale = 0.85
+  const data = new Uint8ClampedArray(w * h * 4)
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = opts.bg
+    data[i + 1] = opts.bg
+    data[i + 2] = opts.bg
+    data[i + 3] = 255
+  }
+  const setPixel = (x: number, y: number, v: number) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return
+    const i = (y * w + x) * 4
+    data[i] = v
+    data[i + 1] = v
+    data[i + 2] = v
+    data[i + 3] = 255
+  }
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      if (opts.skip && opts.skip.row === r && opts.skip.col === c) continue
+      const cardW = cellW * cardScale
+      const cardH = cellH * cardScale
+      const cx0 = Math.round(gridX0 + c * cellW + (cellW - cardW) / 2)
+      const cy0 = Math.round(gridY0 + r * cellH + (cellH - cardH) / 2)
+      const cx1 = Math.round(cx0 + cardW)
+      const cy1 = Math.round(cy0 + cardH)
+      for (let y = cy0; y < cy1; y++) {
+        for (let x = cx0; x < cx1; x++) {
+          setPixel(x, y, opts.card)
+        }
+      }
+      if (opts.glare && opts.glare.row === r && opts.glare.col === c) {
+        // Bright square well inside the card so the outer card bbox is
+        // unchanged but the cell carries extra interior edges.
+        const gx0 = cx0 + 6
+        const gy0 = cy0 + 6
+        const gx1 = Math.min(cx1 - 6, gx0 + 14)
+        const gy1 = Math.min(cy1 - 6, gy0 + 14)
+        for (let y = gy0; y < gy1; y++) {
+          for (let x = gx0; x < gx1; x++) {
+            setPixel(x, y, 255)
+          }
+        }
+      }
+    }
+  }
+  return { data, width: w, height: h, colorSpace: 'srgb' } as unknown as ImageData
+}
+
+// Build a 3x3 binder page where each card row is horizontally sheared by
+// shearX pixels per source pixel of height. shearX ≈ tan(5°) ≈ 0.0875 produces
+// a realistic ~5° page tilt to exercise the percentile+bucketing skew tolerance.
+function makeSkewedBinderFrame(shearX: number): ImageData {
+  const w = 300 // extra width to absorb the horizontal shift
+  const h = 336
+  const gridX0 = 20
+  const gridY0 = 28
+  const gridW = 200
+  const gridH = 280
+  const cellW = gridW / 3
+  const cellH = gridH / 3
+  const cardScale = 0.85
+  const bg = 220
+  const card = 50
+  const data = new Uint8ClampedArray(w * h * 4)
+  for (let i = 0; i < data.length; i += 4) {
+    data[i] = bg
+    data[i + 1] = bg
+    data[i + 2] = bg
+    data[i + 3] = 255
+  }
+  const setPixel = (x: number, y: number, v: number) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return
+    const idx = (y * w + x) * 4
+    data[idx] = v
+    data[idx + 1] = v
+    data[idx + 2] = v
+    data[idx + 3] = 255
+  }
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      const cW = cellW * cardScale
+      const cH = cellH * cardScale
+      const cx0 = Math.round(gridX0 + c * cellW + (cellW - cW) / 2)
+      const cy0 = Math.round(gridY0 + r * cellH + (cellH - cH) / 2)
+      const cx1 = Math.round(cx0 + cW)
+      const cy1 = Math.round(cy0 + cH)
+      for (let y = cy0; y < cy1; y++) {
+        const xShift = Math.round(shearX * (y - gridY0))
+        for (let x = cx0; x < cx1; x++) {
+          setPixel(x + xShift, y, card)
+        }
       }
     }
   }
@@ -80,6 +199,196 @@ describe('detectCardRectangle', () => {
   it('returns null for too-small input frames', () => {
     const tiny = makeFrame(8, 8, null)
     expect(detectCardRectangle(tiny)).toBeNull()
+  })
+})
+
+function assertCellAspect(cell: DetectedGridCell) {
+  expect(cell.w).toBeGreaterThan(0)
+  expect(cell.h).toBeGreaterThan(0)
+  const ratio = Math.min(cell.w / cell.h, cell.h / cell.w)
+  // Same tolerance window the detector itself uses for the 5:7 gate.
+  expect(Math.abs(ratio - TARGET_ASPECT_RATIO)).toBeLessThanOrEqual(0.22)
+}
+
+describe('detectGrid', () => {
+  it('detects all nine cells on a light binder', () => {
+    const frame = makeBinderFrame({ bg: 220, card: 50 })
+    const cells = detectGrid(frame, { rows: 3, cols: 3 })
+    expect(cells.length).toBe(9)
+    const seen = new Set(cells.map(c => `${c.row}:${c.col}`))
+    expect(seen.size).toBe(9)
+    for (const cell of cells) {
+      expect(cell.row).toBeGreaterThanOrEqual(0)
+      expect(cell.row).toBeLessThan(3)
+      expect(cell.col).toBeGreaterThanOrEqual(0)
+      expect(cell.col).toBeLessThan(3)
+      assertCellAspect(cell)
+    }
+  })
+
+  it('detects all nine cells on a dark binder', () => {
+    const frame = makeBinderFrame({ bg: 30, card: 230 })
+    const cells = detectGrid(frame, { rows: 3, cols: 3 })
+    expect(cells.length).toBe(9)
+    const seen = new Set(cells.map(c => `${c.row}:${c.col}`))
+    expect(seen.size).toBe(9)
+    for (const cell of cells) {
+      assertCellAspect(cell)
+    }
+  })
+
+  it('still detects the cell that has glare', () => {
+    const frame = makeBinderFrame({
+      bg: 220,
+      card: 50,
+      glare: { row: 0, col: 1 },
+    })
+    const cells = detectGrid(frame, { rows: 3, cols: 3 })
+    expect(cells.length).toBe(9)
+    const glared = cells.find(c => c.row === 0 && c.col === 1)
+    expect(glared).toBeDefined()
+    if (glared) assertCellAspect(glared)
+  })
+
+  it('skips empty pockets', () => {
+    const frame = makeBinderFrame({
+      bg: 30,
+      card: 230,
+      skip: { row: 1, col: 2 },
+    })
+    const cells = detectGrid(frame, { rows: 3, cols: 3 })
+    expect(cells.length).toBe(8)
+    expect(cells.find(c => c.row === 1 && c.col === 2)).toBeUndefined()
+    for (const cell of cells) {
+      assertCellAspect(cell)
+    }
+  })
+
+  it('returns cells sorted by row then column', () => {
+    const frame = makeBinderFrame({ bg: 220, card: 50 })
+    const cells = detectGrid(frame, { rows: 3, cols: 3 })
+    for (let i = 1; i < cells.length; i++) {
+      const prevKey = cells[i - 1].row * 100 + cells[i - 1].col
+      const currKey = cells[i].row * 100 + cells[i].col
+      expect(currKey).toBeGreaterThan(prevKey)
+    }
+  })
+
+  it('detects cells on a page with ~5° horizontal shear', () => {
+    // tan(5°) ≈ 0.0875 — each pixel row shifts right by ~0.0875px per pixel of height,
+    // producing axis-aligned bounding boxes that are a few pixels wider than the card.
+    const frame = makeSkewedBinderFrame(Math.tan((5 * Math.PI) / 180))
+    const cells = detectGrid(frame, { rows: 3, cols: 3 })
+    expect(cells.length).toBe(9)
+    const seen = new Set(cells.map(c => `${c.row}:${c.col}`))
+    expect(seen.size).toBe(9)
+    for (const cell of cells) {
+      assertCellAspect(cell)
+    }
+  })
+
+  it('returns an empty array for invalid expected dimensions', () => {
+    const frame = makeBinderFrame({ bg: 220, card: 50 })
+    expect(detectGrid(frame, { rows: 0, cols: 3 })).toEqual([])
+    expect(detectGrid(frame, { rows: 3, cols: 0 })).toEqual([])
+  })
+
+  it('returns an empty array for too-small frames', () => {
+    const tiny = makeFrame(8, 8, null)
+    expect(detectGrid(tiny, { rows: 3, cols: 3 })).toEqual([])
+  })
+
+  it('returns an empty array for a uniform frame with no edges', () => {
+    const frame = makeFrame(240, 336, null)
+    expect(detectGrid(frame, { rows: 3, cols: 3 })).toEqual([])
+  })
+})
+
+describe('cropCellsToCanvases', () => {
+  it('produces one canvas per cell at the default 1500x2100 resolution', () => {
+    const source = document.createElement('canvas')
+    source.width = 800
+    source.height = 1120
+    const cells: DetectedGridCell[] = [
+      { row: 0, col: 0, x: 0, y: 0, w: 50, h: 70 },
+      { row: 0, col: 1, x: 60, y: 0, w: 50, h: 70 },
+      { row: 1, col: 0, x: 0, y: 80, w: 50, h: 70 },
+    ]
+    const canvases = cropCellsToCanvases(source, cells)
+    expect(canvases.length).toBe(3)
+    for (const canvas of canvases) {
+      expect(canvas.width).toBe(1500)
+      expect(canvas.height).toBe(2100)
+    }
+  })
+
+  it('respects custom targetW/targetH', () => {
+    const source = document.createElement('canvas')
+    source.width = 200
+    source.height = 280
+    const cells: DetectedGridCell[] = [{ row: 0, col: 0, x: 0, y: 0, w: 50, h: 70 }]
+    const canvases = cropCellsToCanvases(source, cells, 750, 1050)
+    expect(canvases.length).toBe(1)
+    expect(canvases[0].width).toBe(750)
+    expect(canvases[0].height).toBe(1050)
+  })
+
+  it('sorts canvases row-major regardless of input order', () => {
+    const source = document.createElement('canvas')
+    source.width = 200
+    source.height = 280
+    const unordered: DetectedGridCell[] = [
+      { row: 2, col: 0, x: 0, y: 200, w: 50, h: 70 },
+      { row: 0, col: 2, x: 120, y: 0, w: 50, h: 70 },
+      { row: 1, col: 1, x: 60, y: 100, w: 50, h: 70 },
+      { row: 0, col: 0, x: 0, y: 0, w: 50, h: 70 },
+    ]
+
+    // Capture the (sx, sy) source-rect args passed to drawImage in call order to
+    // prove that canvases are produced in sorted (row, col) sequence. Spy on
+    // HTMLCanvasElement.prototype.getContext (available in happy-dom) to inject
+    // a minimal context rather than relying on CanvasRenderingContext2D global.
+    const drawnSourceRects: Array<{ sx: number; sy: number }> = []
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getContext')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockImplementation((type: string): any => {
+        if (type !== '2d') return null
+        return {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          drawImage: (...args: any[]) => {
+            drawnSourceRects.push({ sx: args[1] as number, sy: args[2] as number })
+          },
+        }
+      })
+
+    const canvases = cropCellsToCanvases(source, unordered, 100, 140)
+    getContextSpy.mockRestore()
+
+    expect(canvases.length).toBe(4)
+    for (const canvas of canvases) {
+      expect(canvas.width).toBe(100)
+      expect(canvas.height).toBe(140)
+    }
+    // Sorted order: (0,0)→x=0,y=0  (0,2)→x=120,y=0  (1,1)→x=60,y=100  (2,0)→x=0,y=200
+    expect(drawnSourceRects).toEqual([
+      { sx: 0, sy: 0 },
+      { sx: 120, sy: 0 },
+      { sx: 60, sy: 100 },
+      { sx: 0, sy: 200 },
+    ])
+  })
+
+  it('returns an empty array for invalid dimensions', () => {
+    const source = document.createElement('canvas')
+    const cell: DetectedGridCell = { row: 0, col: 0, x: 0, y: 0, w: 50, h: 70 }
+    expect(cropCellsToCanvases(source, [cell], 0, 100)).toEqual([])
+    expect(cropCellsToCanvases(source, [cell], 100, 0)).toEqual([])
+  })
+
+  it('returns an empty array when there are no cells', () => {
+    const source = document.createElement('canvas')
+    expect(cropCellsToCanvases(source, [])).toEqual([])
   })
 })
 
