@@ -30,7 +30,10 @@
     "attachmentAudioAlt": "เสียงที่แนบ",
     "attachmentFileLabel": "ดาวน์โหลดไฟล์แนบ ({{mime}})",
     "lightboxTitle": "ดูตัวอย่างรูปภาพ",
-    "lightboxClose": "ปิดการดูตัวอย่าง"
+    "lightboxClose": "ปิดการดูตัวอย่าง",
+    "connection": {
+      "reconnecting": "กำลังเชื่อมต่อใหม่…"
+    }
   },
   "composer": {
     "placeholder": "พิมพ์ข้อความ…",

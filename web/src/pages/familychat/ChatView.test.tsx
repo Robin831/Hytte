@@ -32,6 +32,7 @@ const TRANSLATIONS: Record<string, string> = {
   'chat.attachmentFileLabel': 'Download attachment ({{mime}})',
   'chat.lightboxTitle': 'Image preview',
   'chat.lightboxClose': 'Close preview',
+  'chat.connection.reconnecting': 'Reconnecting…',
   'newModal.parent': 'Parent',
 }
 
@@ -471,6 +472,44 @@ describe('ChatView – reconnect gap-fill', () => {
     const texts = bubbles.map(b => b.textContent)
     expect(texts.indexOf('Before disconnect')).toBeLessThan(texts.indexOf('Gap one'))
     expect(texts.indexOf('Gap one')).toBeLessThan(texts.indexOf('Gap two'))
+  }, 15000)
+
+  it('shows a Reconnecting badge in the header while the SSE stream is dropped', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+
+    let closeStream: (() => void) | null = null
+    const firstStream = new ReadableStream<Uint8Array>({
+      start(c) { closeStream = () => c.close() },
+    })
+    // Park the second connect on a never-resolving promise so the badge stays
+    // visible long enough to assert on. The test cleans up via unmount.
+    const stuckStreamFetch = new Promise<never>(() => {})
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce({ ok: true, body: firstStream })
+      .mockResolvedValueOnce(msgsOk([]))         // gap-fill
+      .mockReturnValueOnce(stuckStreamFetch)     // second connect hangs
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+
+    expect(screen.queryByTestId('family-chat-reconnecting')).not.toBeInTheDocument()
+
+    await act(async () => {
+      closeStream!()
+      await Promise.resolve()
+    })
+    // Advance past the first reconnect backoff (2s for attempt #1).
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2500)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('family-chat-reconnecting')).toBeInTheDocument()
+    })
   }, 15000)
 
   it('gap-fills without a since param when the initial message list is empty', async () => {

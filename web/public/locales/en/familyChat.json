@@ -30,7 +30,10 @@
     "attachmentAudioAlt": "Attached audio",
     "attachmentFileLabel": "Download attachment ({{mime}})",
     "lightboxTitle": "Image preview",
-    "lightboxClose": "Close preview"
+    "lightboxClose": "Close preview",
+    "connection": {
+      "reconnecting": "Reconnecting…"
+    }
   },
   "composer": {
     "placeholder": "Write a message…",
