@@ -1,0 +1,2 @@
+category: Fixed
+- **Family Chat schema migration crash loop** - Hytte no longer crashes on startup against databases that still have the original Hytte-0w3d family_chat column names. Column renames (name_enc/owner_id on family_chat_conversations and body_enc/attachment_path_enc/sender_id on family_chat_messages) now run before the main schema block, so the new `idx_family_chat_conversations_owner` index can reference owner_user_id on legacy installs. The previously-missing `sender_id` → `sender_user_id` rename is now included. (Hytte-oe7p)

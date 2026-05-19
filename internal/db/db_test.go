@@ -830,6 +830,185 @@ func TestSuggestionRunsTable(t *testing.T) {
 	}
 }
 
+// TestCreateSchema_LegacyFamilyChatConversations simulates a database that
+// still has the original Hytte-0w3d column names on family_chat_conversations
+// (name_enc, owner_id) and verifies that createSchema migrates the columns to
+// the new names before the schema block tries to create
+// idx_family_chat_conversations_owner on owner_user_id. Prior to Hytte-oe7p,
+// the index creation lived in the schema block and ran before the rename,
+// causing the binary to crash-loop on every install that hadn't been upgraded.
+func TestCreateSchema_LegacyFamilyChatConversations(t *testing.T) {
+	database, err := sql.Open("sqlite", "file::memory:?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	database.SetMaxOpenConns(1)
+	database.SetMaxIdleConns(1)
+	t.Cleanup(func() { database.Close() })
+
+	// Seed the legacy family_chat_conversations schema (pre-Hytte-56j7).
+	_, err = database.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY,
+			email TEXT UNIQUE NOT NULL,
+			name TEXT NOT NULL,
+			picture TEXT NOT NULL DEFAULT '',
+			google_id TEXT UNIQUE NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE family_chat_conversations (
+			id              INTEGER PRIMARY KEY,
+			name_enc        TEXT NOT NULL DEFAULT '',
+			owner_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			created_at      TEXT NOT NULL DEFAULT '',
+			last_message_at TEXT NOT NULL DEFAULT ''
+		);
+	`)
+	if err != nil {
+		t.Fatalf("seed legacy schema: %v", err)
+	}
+
+	if err := createSchema(database); err != nil {
+		t.Fatalf("createSchema with legacy family_chat_conversations: %v", err)
+	}
+
+	// Old columns are gone; new columns exist.
+	for _, c := range []struct {
+		col     string
+		want    int
+		message string
+	}{
+		{"name_enc", 0, "legacy name_enc should have been renamed"},
+		{"owner_id", 0, "legacy owner_id should have been renamed"},
+		{"name", 1, "expected new column name"},
+		{"owner_user_id", 1, "expected new column owner_user_id"},
+	} {
+		var n int
+		if err := database.QueryRow(
+			`SELECT COUNT(*) FROM pragma_table_info('family_chat_conversations') WHERE name = ?`, c.col,
+		).Scan(&n); err != nil {
+			t.Fatalf("pragma_table_info %s: %v", c.col, err)
+		}
+		if n != c.want {
+			t.Errorf("%s: column %q count=%d want %d", c.message, c.col, n, c.want)
+		}
+	}
+
+	// Index on the renamed column must exist.
+	var idxName string
+	err = database.QueryRow(
+		`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_family_chat_conversations_owner'`,
+	).Scan(&idxName)
+	if err != nil {
+		t.Fatalf("expected idx_family_chat_conversations_owner to exist: %v", err)
+	}
+}
+
+// TestCreateSchema_LegacyFamilyChatMessages exercises the symmetric rename
+// path for family_chat_messages: legacy installs had sender_id, body_enc and
+// attachment_path_enc; the new schema declares sender_user_id, body, and
+// attachment_path. The sender_id rename in particular was missing from the
+// PR #756 migration block — without it, application queries against
+// sender_user_id would fail at runtime on upgraded installs.
+func TestCreateSchema_LegacyFamilyChatMessages(t *testing.T) {
+	database, err := sql.Open("sqlite", "file::memory:?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	database.SetMaxOpenConns(1)
+	database.SetMaxIdleConns(1)
+	t.Cleanup(func() { database.Close() })
+
+	_, err = database.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY,
+			email TEXT UNIQUE NOT NULL,
+			name TEXT NOT NULL,
+			picture TEXT NOT NULL DEFAULT '',
+			google_id TEXT UNIQUE NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE family_chat_conversations (
+			id              INTEGER PRIMARY KEY,
+			name_enc        TEXT NOT NULL DEFAULT '',
+			owner_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			created_at      TEXT NOT NULL DEFAULT '',
+			last_message_at TEXT NOT NULL DEFAULT ''
+		);
+		CREATE TABLE family_chat_messages (
+			id                  INTEGER PRIMARY KEY,
+			conversation_id     INTEGER NOT NULL REFERENCES family_chat_conversations(id) ON DELETE CASCADE,
+			sender_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			body_enc            TEXT NOT NULL DEFAULT '',
+			attachment_path_enc TEXT NOT NULL DEFAULT '',
+			attachment_mime     TEXT NOT NULL DEFAULT '',
+			created_at          TEXT NOT NULL DEFAULT ''
+		);
+	`)
+	if err != nil {
+		t.Fatalf("seed legacy schema: %v", err)
+	}
+
+	if err := createSchema(database); err != nil {
+		t.Fatalf("createSchema with legacy family_chat_messages: %v", err)
+	}
+
+	for _, c := range []struct {
+		col  string
+		want int
+	}{
+		{"sender_id", 0},
+		{"body_enc", 0},
+		{"attachment_path_enc", 0},
+		{"sender_user_id", 1},
+		{"body", 1},
+		{"attachment_path", 1},
+	} {
+		var n int
+		if err := database.QueryRow(
+			`SELECT COUNT(*) FROM pragma_table_info('family_chat_messages') WHERE name = ?`, c.col,
+		).Scan(&n); err != nil {
+			t.Fatalf("pragma_table_info %s: %v", c.col, err)
+		}
+		if n != c.want {
+			t.Errorf("column %q count=%d want %d", c.col, n, c.want)
+		}
+	}
+
+	// After the migration we must be able to write a row using the new column
+	// names — the application queries depend on this.
+	if _, err := database.Exec(
+		`INSERT INTO users (id, email, name, google_id) VALUES (1, 'a@b', 'A', 'g1')`,
+	); err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	if _, err := database.Exec(
+		`INSERT INTO family_chat_conversations (id, name, owner_user_id, created_at, last_message_at) VALUES (1, 'Family', 1, '2026-01-01', '')`,
+	); err != nil {
+		t.Fatalf("insert conversation: %v", err)
+	}
+	if _, err := database.Exec(
+		`INSERT INTO family_chat_messages (conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at) VALUES (1, 1, 'hi', '', '', '2026-01-01')`,
+	); err != nil {
+		t.Fatalf("insert message with new column names: %v", err)
+	}
+}
+
+// TestPreCreateMigrationsFreshInstall verifies that the pre-phase is a no-op
+// on a clean database (no legacy tables present). Each rename's table_info
+// check returns 0, so nothing is altered and the function returns nil.
+func TestPreCreateMigrationsFreshInstall(t *testing.T) {
+	database, err := sql.Open("sqlite", "file::memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	if err := preCreateMigrations(database); err != nil {
+		t.Fatalf("preCreateMigrations on empty db: %v", err)
+	}
+}
+
 func TestSuggestionRunsIndexExists(t *testing.T) {
 	database := initTestDB(t)
 
