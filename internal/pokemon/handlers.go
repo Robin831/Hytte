@@ -189,6 +189,11 @@ func RegisterRoutes(r chi.Router, db *sql.DB) {
 		// is gone; uploads enqueue a job that the background worker picks up.
 		// Kids hit /queue from the camera page, then poll /scans for results.
 		r.Post("/pokemon/scans/queue", QueueScanHandler(db))
+		// Page upload (Hytte-3zej): one multipart request with N cropped card
+		// images groups them under a pokemon_scan_pages parent so a binder
+		// page is queued as a single user action even though each child
+		// flows through the existing single-card worker.
+		r.Post("/pokemon/scans/page", PageScanHandler(db))
 		r.Get("/pokemon/scans", ListScansHandler(db))
 		r.Get("/pokemon/scans/counts", ScanCountsHandler(db))
 		r.Get("/pokemon/scans/{id}/image", GetScanImageHandler(db))

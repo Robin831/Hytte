@@ -1713,9 +1713,27 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_pokemon_scan_jobs_user_status ON pokemon_scan_jobs(user_id, status);
 	CREATE INDEX IF NOT EXISTS idx_pokemon_scan_jobs_queued ON pokemon_scan_jobs(status, created_at) WHERE status = 'queued';
 
-	-- Family Chat (Hytte-56j7): conversations, members, and encrypted messages.
-	-- Trust model is at-rest encryption with the server holding the key (same
-	-- as Notes); body and attachment_path are stored as enc:... ciphertext.
+	-- pokemon_scan_pages (Hytte-3zej): parent grouping for a multi-card binder
+	-- page upload. One row is inserted per /api/pokemon/scans/page request and
+	-- N child pokemon_scan_jobs rows point at it via page_id. expected_count
+	-- captures how many cells the client cropped from the page; matched_count
+	-- is incremented by the scan worker each time a child job reaches the
+	-- 'matched' state, so the UI can render progress without a join.
+	-- page_image_path_enc holds the optional encrypted path to the original
+	-- page photo (empty when the client only uploads the crops).
+	CREATE TABLE IF NOT EXISTS pokemon_scan_pages (
+		id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		page_image_path_enc TEXT NOT NULL DEFAULT '',
+		expected_count      INTEGER NOT NULL,
+		matched_count       INTEGER NOT NULL DEFAULT 0,
+		created_at          TIMESTAMP NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_pokemon_scan_pages_user ON pokemon_scan_pages(user_id, created_at);
+
+	-- family_chat_* (Hytte-0w3d): conversations, members, and messages for the
+	-- Family Chat feature. Free-text fields (name, message body, attachment
+	-- path) are stored encrypted at rest via internal/encryption.
 	CREATE TABLE IF NOT EXISTS family_chat_conversations (
 		id              INTEGER PRIMARY KEY,
 		name            TEXT NOT NULL DEFAULT '',
@@ -2509,6 +2527,23 @@ func createSchema(db *sql.DB) error {
 				return fmt.Errorf("migrate family_chat columns: %w", err)
 			}
 		}
+	}
+
+	// Add page_id FK to pokemon_scan_jobs (Hytte-3zej): nullable parent link so
+	// children of a /scans/page upload can be grouped under one
+	// pokemon_scan_pages row while the single-card /scans/queue path keeps
+	// page_id = NULL. Worker pipeline is unchanged — page_id is metadata only.
+	var hasPokemonScanJobsPageID int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('pokemon_scan_jobs') WHERE name = 'page_id'`).Scan(&hasPokemonScanJobsPageID); err != nil {
+		return fmt.Errorf("check pokemon_scan_jobs page_id column: %w", err)
+	}
+	if hasPokemonScanJobsPageID == 0 {
+		if _, err := db.Exec(`ALTER TABLE pokemon_scan_jobs ADD COLUMN page_id INTEGER REFERENCES pokemon_scan_pages(id) ON DELETE SET NULL`); err != nil {
+			return fmt.Errorf("add pokemon_scan_jobs page_id column: %w", err)
+		}
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_pokemon_scan_jobs_page ON pokemon_scan_jobs(page_id) WHERE page_id IS NOT NULL`); err != nil {
+		return fmt.Errorf("create pokemon_scan_jobs page_id index: %w", err)
 	}
 
 	return nil
