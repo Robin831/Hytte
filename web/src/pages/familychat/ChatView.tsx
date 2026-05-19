@@ -148,6 +148,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // selection switch cannot race a stale response into state.
   useEffect(() => {
     if (conversationId === null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setConversation(null)
       setMessages([])
       setError('')

@@ -25,6 +25,7 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
   // abort any in-flight send so its response cannot leak the message into
   // the newly selected conversation. The cleanup also runs on unmount.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setBody('')
     setError('')
     setSending(false)
