@@ -8,6 +8,7 @@ import {
   type DetectedRectangle,
   type RectangleDetectorStatus,
 } from './rectangleDetector'
+import { usePokemonCamera } from './usePokemonCamera'
 import ToastList from '../ToastList'
 import { useToast } from '../../hooks/useToast'
 
@@ -15,8 +16,6 @@ export interface CardScannerProps {
   onClose: () => void
   onAdded?: () => void
 }
-
-type PermissionState = 'prompting' | 'granted' | 'denied' | 'unavailable' | 'unsupported'
 
 // scanPhase tracks the lifecycle of the scan POST flow, layered on top
 // of the rectangle-detector state machine. idle = no submission in flight;
@@ -63,27 +62,22 @@ const CAPTURE_CROP_PAD = 0.05
 // uses 5/7 (≈0.714) which is close enough and renders crisply on all viewports.
 const CARD_GUIDE_ASPECT = '5 / 7'
 
-interface ExtendedMediaTrackCapabilities extends MediaTrackCapabilities {
-  torch?: boolean
-}
-
-interface TorchConstraint extends MediaTrackConstraintSet {
-  torch: boolean
-}
-
-interface ExtendedMediaTrackConstraints extends MediaTrackConstraints {
-  advanced?: TorchConstraint[]
-}
-
 export default function CardScanner({ onClose, onAdded }: CardScannerProps) {
   const { t } = useTranslation('pokemon')
   const { toasts, showToast } = useToast()
 
-  const [permissionState, setPermissionState] = useState<PermissionState>(() =>
-    typeof navigator.mediaDevices?.getUserMedia === 'function' ? 'prompting' : 'unsupported',
-  )
-  const [torchOn, setTorchOn] = useState(false)
-  const [torchSupported, setTorchSupported] = useState(false)
+  // Request 1080p so the cropped card (post-detection) has enough pixels for
+  // Claude vision to read the set symbol and collector number. The browser
+  // falls back to the closest available preset automatically.
+  const {
+    videoRef,
+    permissionState,
+    torchSupported,
+    torchOn,
+    toggleTorch,
+    stopCamera,
+  } = usePokemonCamera({ width: 1920, height: 1080 })
+
   const [scanStatus, setScanStatus] = useState<RectangleDetectorStatus>('searching')
   const [scanPhase, setScanPhase] = useState<ScanPhase>('idle')
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -96,9 +90,7 @@ export default function CardScanner({ onClose, onAdded }: CardScannerProps) {
   // to /pokemon/scanned without going through the ToastList plumbing.
   const [queuedToastVisible, setQueuedToastVisible] = useState(false)
 
-  const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
 
@@ -152,55 +144,12 @@ export default function CardScanner({ onClose, onAdded }: CardScannerProps) {
   const previewUrlRef = useRef<string | null>(null)
   const previewTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null)
 
-  // Acquire the camera on mount; stop tracks on unmount so the camera LED
-  // turns off even if the parent unmounts the scanner without calling onClose.
+  // Camera lifecycle (getUserMedia, srcObject attach, torch capability, track
+  // teardown) lives in usePokemonCamera. The local cleanup effect below
+  // handles only the scan-flow refs/timers/object-URLs that aren't part of
+  // the camera itself.
   useEffect(() => {
-    let cancelled = false
-
-    if (!navigator.mediaDevices?.getUserMedia) return
-
-    void (async () => {
-      try {
-        // Request 1080p so the cropped card (post-detection) has enough pixels
-        // for Claude vision to read the set symbol and collector number. The
-        // browser falls back to the closest available preset automatically.
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
-        })
-        if (cancelled) {
-          stream.getTracks().forEach(track => track.stop())
-          return
-        }
-        streamRef.current = stream
-        // Note: the <video> element is only rendered after permissionState
-        // flips to 'granted', so videoRef.current is null at this point.
-        // A separate effect attaches srcObject once the element mounts.
-        const [track] = stream.getVideoTracks()
-        if (track && typeof track.getCapabilities === 'function') {
-          const caps = track.getCapabilities() as ExtendedMediaTrackCapabilities
-          if (caps.torch === true) setTorchSupported(true)
-        }
-        setPermissionState('granted')
-      } catch (err) {
-        if (cancelled) return
-        const isDenied =
-          err instanceof DOMException &&
-          (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')
-        setPermissionState(isDenied ? 'denied' : 'unavailable')
-      }
-    })()
-
     return () => {
-      cancelled = true
-      const stream = streamRef.current
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop())
-        streamRef.current = null
-      }
       const ctl = scanAbortRef.current
       if (ctl) {
         ctl.abort()
@@ -225,26 +174,6 @@ export default function CardScanner({ onClose, onAdded }: CardScannerProps) {
       previewBlobRef.current = null
     }
   }, [])
-
-  // Attach the captured stream to the <video> element once permissionState
-  // flips to 'granted' and the element actually exists in the DOM. Without
-  // this, srcObject would be assigned before the conditional <video> rendered,
-  // and the camera preview would stay black even though the stream is live.
-  // iOS Safari in particular needs this; it won't reattach implicitly.
-  useEffect(() => {
-    if (permissionState !== 'granted') return
-    const video = videoRef.current
-    const stream = streamRef.current
-    if (!video || !stream) return
-    if (video.srcObject !== stream) {
-      video.srcObject = stream
-    }
-    // Defensive: explicit play() in case autoplay doesn't kick in (some
-    // browsers under power-save / low-power mode).
-    if (typeof video.play === 'function') {
-      void video.play().catch(() => {})
-    }
-  }, [permissionState])
 
   // clearPreview tears down the preview overlay: revokes the object URL,
   // clears the auto-send timer, and drops the cached blob. Used by Retake,
@@ -726,11 +655,7 @@ export default function CardScanner({ onClose, onAdded }: CardScannerProps) {
   }, [permissionState])
 
   const handleClose = useCallback(() => {
-    const stream = streamRef.current
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop())
-      streamRef.current = null
-    }
+    stopCamera()
     const ctl = scanAbortRef.current
     if (ctl) {
       ctl.abort()
@@ -746,7 +671,7 @@ export default function CardScanner({ onClose, onAdded }: CardScannerProps) {
     }
     clearPreview()
     onClose()
-  }, [clearPreview, onClose])
+  }, [clearPreview, onClose, stopCamera])
 
   // Lock body scroll while the scanner is mounted, just like Dialog does.
   useEffect(() => {
@@ -850,21 +775,8 @@ export default function CardScanner({ onClose, onAdded }: CardScannerProps) {
   }, [])
 
   const handleTorchToggle = useCallback(async () => {
-    const stream = streamRef.current
-    if (!stream) return
-    const [track] = stream.getVideoTracks()
-    if (!track) return
-    const next = !torchOn
-    try {
-      await track.applyConstraints({
-        advanced: [{ torch: next }],
-      } as ExtendedMediaTrackConstraints)
-      setTorchOn(next)
-    } catch {
-      // Torch toggling can fail mid-session if the device hot-revokes the
-      // capability; surface no error UI — the button simply does nothing.
-    }
-  }, [torchOn])
+    await toggleTorch()
+  }, [toggleTorch])
 
   return (
     // Outer layer always covers the full viewport so clicks on the uncovered

@@ -232,5 +232,18 @@
       "send": "Send",
       "retake": "Ta på nytt"
     }
+  },
+  "pageScanner": {
+    "dialogLabel": "Skann en perm-side",
+    "shutter": "Ta bilde av perm-siden",
+    "uploading": "Laster opp …",
+    "scanBinder": "Skann perm-side",
+    "errors": {
+      "noFrame": "Kamerabildet er ikke klart, prøv på nytt",
+      "noGrid": "Fant ikke kortene — legg siden i rute med rutenettet og prøv på nytt",
+      "captureFailed": "Klarte ikke å ta bilde av siden, prøv på nytt",
+      "uploadFailed": "Opplastingen feilet, prøv på nytt",
+      "timedOut": "Opplastingen tok for lang tid, prøv på nytt"
+    }
   }
 }
