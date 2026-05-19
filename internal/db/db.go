@@ -1713,38 +1713,40 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_pokemon_scan_jobs_user_status ON pokemon_scan_jobs(user_id, status);
 	CREATE INDEX IF NOT EXISTS idx_pokemon_scan_jobs_queued ON pokemon_scan_jobs(status, created_at) WHERE status = 'queued';
 
-	-- family_chat_* (Hytte-0w3d): conversations, members, and messages for the
-	-- Family Chat feature. Free-text fields (name, message body, attachment
-	-- path) are stored encrypted at rest via internal/encryption.
+	-- Family Chat (Hytte-56j7): conversations, members, and encrypted messages.
+	-- Trust model is at-rest encryption with the server holding the key (same
+	-- as Notes); body and attachment_path are stored as enc:... ciphertext.
 	CREATE TABLE IF NOT EXISTS family_chat_conversations (
-		id          INTEGER PRIMARY KEY AUTOINCREMENT,
-		name_enc    TEXT NOT NULL DEFAULT '',
-		owner_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		created_at  TIMESTAMP NOT NULL,
-		updated_at  TIMESTAMP NOT NULL
+		id              INTEGER PRIMARY KEY,
+		name            TEXT NOT NULL DEFAULT '',
+		owner_user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		last_message_at TEXT NOT NULL DEFAULT ''
 	);
+
+	CREATE INDEX IF NOT EXISTS idx_family_chat_conversations_owner ON family_chat_conversations(owner_user_id);
 
 	CREATE TABLE IF NOT EXISTS family_chat_members (
 		conversation_id INTEGER NOT NULL REFERENCES family_chat_conversations(id) ON DELETE CASCADE,
 		user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		role            TEXT NOT NULL DEFAULT 'member',
-		joined_at       TIMESTAMP NOT NULL,
-		last_read_at    TIMESTAMP,
+		joined_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		last_read_at    TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY (conversation_id, user_id)
 	);
-	CREATE INDEX IF NOT EXISTS idx_family_chat_members_user ON family_chat_members(user_id, conversation_id);
+
+	CREATE INDEX IF NOT EXISTS idx_family_chat_members_user ON family_chat_members(user_id);
 
 	CREATE TABLE IF NOT EXISTS family_chat_messages (
-		id              INTEGER PRIMARY KEY AUTOINCREMENT,
-		conversation_id INTEGER NOT NULL REFERENCES family_chat_conversations(id) ON DELETE CASCADE,
-		sender_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		body_enc        TEXT NOT NULL,
-		attachment_path_enc TEXT,
-		attachment_mime TEXT,
-		sent_at         TIMESTAMP NOT NULL
+		id                INTEGER PRIMARY KEY,
+		conversation_id   INTEGER NOT NULL REFERENCES family_chat_conversations(id) ON DELETE CASCADE,
+		sender_user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		body              TEXT NOT NULL DEFAULT '',
+		attachment_path   TEXT NOT NULL DEFAULT '',
+		attachment_mime   TEXT NOT NULL DEFAULT '',
+		created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 	);
-	CREATE INDEX IF NOT EXISTS idx_family_chat_messages_conv ON family_chat_messages(conversation_id, sent_at);
-	CREATE INDEX IF NOT EXISTS idx_family_chat_messages_conv_id ON family_chat_messages(conversation_id, id);
+
+	CREATE INDEX IF NOT EXISTS idx_family_chat_messages_conversation_id ON family_chat_messages(conversation_id, id DESC);
 
 	`
 
@@ -2485,6 +2487,27 @@ func createSchema(db *sql.DB) error {
 	if hasPrintedTotal == 0 {
 		if _, err := db.Exec(`ALTER TABLE pokemon_sets ADD COLUMN printed_total INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return fmt.Errorf("add pokemon_sets printed_total column: %w", err)
+		}
+	}
+
+	// Migrate family_chat tables from the schema-bead column names to the REST
+	// bead column names (Hytte-56j7). Detect old schema via presence of
+	// name_enc on family_chat_conversations; if found, rename all affected
+	// columns so existing installs don't break at runtime.
+	var hasFCNameEnc int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('family_chat_conversations') WHERE name = 'name_enc'`).Scan(&hasFCNameEnc); err != nil {
+		return fmt.Errorf("check family_chat_conversations name_enc: %w", err)
+	}
+	if hasFCNameEnc != 0 {
+		for _, stmt := range []string{
+			`ALTER TABLE family_chat_conversations RENAME COLUMN name_enc TO name`,
+			`ALTER TABLE family_chat_conversations RENAME COLUMN owner_id TO owner_user_id`,
+			`ALTER TABLE family_chat_messages RENAME COLUMN body_enc TO body`,
+			`ALTER TABLE family_chat_messages RENAME COLUMN attachment_path_enc TO attachment_path`,
+		} {
+			if _, err := db.Exec(stmt); err != nil {
+				return fmt.Errorf("migrate family_chat columns: %w", err)
+			}
 		}
 	}
 
