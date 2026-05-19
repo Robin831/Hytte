@@ -29,6 +29,12 @@ interface SiblingInfo {
   avatar_emoji: string
 }
 
+interface ParentInfo {
+  user_id: number
+  name: string
+  picture: string
+}
+
 export default function NewConversationModal({ open, onClose, onCreated }: NewConversationModalProps) {
   const { t } = useTranslation('familyChat')
   const { familyStatus } = useAuth()
@@ -89,6 +95,14 @@ export default function NewConversationModal({ open, onClose, onCreated }: NewCo
           })
           if (!res.ok) throw new Error(`family/my-family responded ${res.status}`)
           const data = await res.json()
+          const parent: ParentInfo | undefined = data.parent
+          if (parent?.user_id) {
+            collected.push({
+              id: parent.user_id,
+              label: parent.name || t('newModal.parent'),
+              emoji: '👤',
+            })
+          }
           const siblings: SiblingInfo[] = data.siblings ?? []
           for (const s of siblings) {
             collected.push({

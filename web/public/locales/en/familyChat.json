@@ -21,6 +21,7 @@
     "nameLabel": "Name",
     "namePlaceholder": "e.g. Holiday planning",
     "membersLabel": "Members",
+    "parent": "Parent",
     "noMembers": "No family members available. Add family on the Family page first.",
     "cancel": "Cancel",
     "create": "Create",

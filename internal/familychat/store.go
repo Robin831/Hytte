@@ -513,8 +513,8 @@ const previewMaxRunes = 140
 
 // batchLastMessages returns the most recent message (decrypted) per
 // conversation id. Conversations with no messages are absent from the result
-// map. The query uses a correlated subquery to pick the max message id per
-// conversation in a single round-trip.
+// map. The query uses a grouped derived subquery joined back to the messages
+// table to pick the max message id per conversation in a single round-trip.
 func batchLastMessages(db *sql.DB, convIDs []int64) (map[int64]lastMessage, error) {
 	result := make(map[int64]lastMessage, len(convIDs))
 	if len(convIDs) == 0 {

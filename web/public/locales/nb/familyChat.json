@@ -21,6 +21,7 @@
     "nameLabel": "Navn",
     "namePlaceholder": "f.eks. Ferieplanlegging",
     "membersLabel": "Medlemmer",
+    "parent": "Forelder",
     "noMembers": "Ingen familiemedlemmer tilgjengelig. Legg til familie på Familie-siden først.",
     "cancel": "Avbryt",
     "create": "Opprett",

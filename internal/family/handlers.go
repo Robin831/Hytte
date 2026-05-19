@@ -696,7 +696,8 @@ func MyFamilyHandler(db *sql.DB) http.HandlerFunc {
 		childCount := len(siblings) + 1
 
 		writeJSON(w, http.StatusOK, map[string]any{
-			"parent": map[string]string{
+			"parent": map[string]any{
+				"user_id": parentUser.ID,
 				"name":    parentUser.Name,
 				"picture": parentUser.Picture,
 			},
