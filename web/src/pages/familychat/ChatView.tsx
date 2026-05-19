@@ -129,9 +129,12 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     return () => { controller.abort() }
   }, [user, familyStatus, t])
 
-  // Load conversation metadata + initial messages whenever the selected
-  // conversation changes. Both requests share an AbortController so a fast
-  // selection switch cannot race a stale response into state.
+  // Load conversation metadata + initial messages, then subscribe to the SSE
+  // stream so new messages arrive without a refetch. The initial load and the
+  // SSE subscription share a single AbortController so switching conversation
+  // tears both down atomically; the SSE reader is also canceled explicitly so
+  // tests (and the rare browser that doesn't propagate abort to a streaming
+  // body) terminate the read loop deterministically.
   useEffect(() => {
     if (conversationId === null) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -142,10 +145,132 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       return
     }
     const controller = new AbortController()
+    // lastId is the highest message id this client has rendered for the
+    // current conversation. It seeds gap-fill queries on reconnect and is
+    // updated by initial load, SSE events, and gap-fill responses.
+    let lastId = 0
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let reconnectAttempts = 0
+    let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null
+
     setLoading(true)
     setError('')
     setMessages([])
     setConversation(null)
+
+    // appendIncoming deduplicates by id so a message that arrives via both
+    // SSE and the POST response (the sender path) or via SSE and gap-fill
+    // shows up exactly once.
+    const appendIncoming = (msg: ChatMessage) => {
+      if (msg.conversation_id !== conversationId) return
+      if (msg.id > lastId) lastId = msg.id
+      setMessages(prev => {
+        if (prev.some(m => m.id === msg.id)) return prev
+        return [...prev, msg]
+      })
+    }
+
+    const fillGap = async () => {
+      if (controller.signal.aborted) return
+      try {
+        const url = lastId > 0
+          ? `/api/familychat/conversations/${conversationId}/messages?since=${lastId}`
+          : `/api/familychat/conversations/${conversationId}/messages`
+        const res = await fetch(url, { credentials: 'include', signal: controller.signal })
+        if (!res.ok) return
+        const data = await res.json()
+        const msgs: ChatMessage[] = data.messages ?? []
+        // API returns newest-first; sort ascending so lastId climbs
+        // monotonically as we replay the burst.
+        msgs.sort((a, b) => a.id - b.id)
+        for (const m of msgs) appendIncoming(m)
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        // Non-fatal: the next reconnect attempt will retry.
+      }
+    }
+
+    const scheduleReconnect = () => {
+      if (controller.signal.aborted) return
+      reconnectAttempts += 1
+      // Exponential backoff capped at 30s to keep a server outage from
+      // hammering the endpoint while still recovering quickly from a
+      // transient blip.
+      const delay = Math.min(30000, 1000 * 2 ** Math.min(reconnectAttempts, 5))
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null
+        void connect(false)
+      }, delay)
+    }
+
+    const connect = async (firstConnect: boolean) => {
+      if (controller.signal.aborted) return
+      // Skip the gap-fill on the very first connect: the initial /messages
+      // fetch already covered everything up to lastId. On reconnects we
+      // re-issue it so a disconnect window can't lose messages.
+      if (!firstConnect) await fillGap()
+      if (controller.signal.aborted) return
+      let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
+      try {
+        const res = await fetch(
+          `/api/familychat/conversations/${conversationId}/stream`,
+          { credentials: 'include', signal: controller.signal },
+        )
+        if (!res.ok || !res.body) {
+          scheduleReconnect()
+          return
+        }
+        reconnectAttempts = 0
+        reader = res.body.getReader()
+        activeReader = reader
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let eventName = 'message'
+        let dataLines: string[] = []
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          let nl = buffer.indexOf('\n')
+          while (nl >= 0) {
+            let line = buffer.slice(0, nl)
+            buffer = buffer.slice(nl + 1)
+            if (line.endsWith('\r')) line = line.slice(0, -1)
+            if (line === '') {
+              if (dataLines.length > 0) {
+                try {
+                  const payload = JSON.parse(dataLines.join('\n'))
+                  if (eventName === 'message_new' && payload?.message) {
+                    appendIncoming(payload.message as ChatMessage)
+                  }
+                } catch {
+                  // Ignore a malformed payload; the server should never emit
+                  // one, but we don't want to tear down the whole stream over
+                  // a single bad frame.
+                }
+              }
+              eventName = 'message'
+              dataLines = []
+            } else if (line.startsWith(':')) {
+              // SSE comment / heartbeat — ignore.
+            } else if (line.startsWith('event:')) {
+              eventName = line.slice(6).trimStart()
+            } else if (line.startsWith('data:')) {
+              const v = line.slice(5)
+              dataLines.push(v.startsWith(' ') ? v.slice(1) : v)
+            }
+            nl = buffer.indexOf('\n')
+          }
+        }
+        if (!controller.signal.aborted) scheduleReconnect()
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        if (!controller.signal.aborted) scheduleReconnect()
+      } finally {
+        if (activeReader === reader) activeReader = null
+      }
+    }
+
     ;(async () => {
       try {
         const [convRes, msgRes] = await Promise.all([
@@ -166,7 +291,9 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         setConversation(convData.conversation ?? null)
         // The API returns newest-first; display oldest at top to bottom.
         const sorted: ChatMessage[] = (msgData.messages ?? []).slice().reverse()
+        if (sorted.length > 0) lastId = sorted[sorted.length - 1].id
         setMessages(sorted)
+        void connect(true)
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return
         const key = err instanceof Error && err.message === 'conversation failed'
@@ -177,7 +304,21 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         if (!controller.signal.aborted) setLoading(false)
       }
     })()
-    return () => { controller.abort() }
+
+    return () => {
+      controller.abort()
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
+      // Cancel the reader so the read loop exits even when the fetch mock
+      // doesn't propagate abort to the body (notably in tests). The catch is
+      // intentional — cancel can throw if the reader is already detached.
+      if (activeReader) {
+        activeReader.cancel().catch(() => {})
+        activeReader = null
+      }
+    }
   }, [conversationId, t])
 
   // Auto-scroll to the bottom whenever the message list updates. useLayoutEffect
