@@ -1,4 +1,4 @@
-// Pure helpers for detecting a Pokémon-card-shaped rectangle in an `ImageData`
+// Pure helpers for detecting Pokémon-card-shaped rectangles in an `ImageData`
 // frame. Kept free of React/DOM lifecycle so it can be exercised in unit tests
 // with synthetic frames.
 
@@ -8,6 +8,15 @@ export interface DetectedRectangle {
   w: number
   h: number
   score: number
+}
+
+export interface DetectedGridCell {
+  row: number
+  col: number
+  x: number
+  y: number
+  w: number
+  h: number
 }
 
 export type RectangleDetectorStatus = 'searching' | 'candidate' | 'locked' | 'captured'
@@ -20,8 +29,14 @@ export interface RectangleDetectorState {
 
 // Pokémon TCG cards are 63x88mm — width/height ≈ 0.716.
 export const TARGET_ASPECT_RATIO = 0.716
-// Maximum allowed deviation from TARGET_ASPECT_RATIO before a candidate is rejected.
+// Maximum allowed deviation from TARGET_ASPECT_RATIO before a single-card
+// candidate is rejected.
 const ASPECT_TOLERANCE = 0.18
+// Wider tolerance for grid cells. A binder page is often photographed at a
+// slight angle; up to ~5° of rotational skew shifts each card's axis-aligned
+// bounding box by a few pixels, which the per-cell percentile bbox reads as
+// extra aspect-ratio noise.
+const GRID_ASPECT_TOLERANCE = 0.22
 // Approximate width (in pixels) of the small grid we downsample to before
 // running Sobel. ~80 keeps CPU work tiny while still revealing card edges.
 const DOWNSAMPLE_WIDTH = 80
@@ -40,7 +55,26 @@ const MAX_RECT_FRACTION = 0.97
 const PERCENTILE_LO = 0.05
 const PERCENTILE_HI = 0.95
 
-export function detectCardRectangle(image: ImageData): DetectedRectangle | null {
+// Default output resolution for grid-cell crops. Matches the resolution the
+// single-card scanner already feeds into ingestion (5:7 aspect at ~1500×2100),
+// so downstream code can treat both single-card and per-cell crops the same.
+const DEFAULT_CROP_W = 1500
+const DEFAULT_CROP_H = 2100
+
+interface EdgeMap {
+  // Paired downsampled-coordinate arrays — edgesX[k]/edgesY[k] is one edge pixel.
+  edgesX: number[]
+  edgesY: number[]
+  dw: number
+  dh: number
+  scale: number
+}
+
+// Downsample the frame, run a 3x3 Sobel pass, and return the coordinates of
+// pixels whose gradient magnitude crosses EDGE_THRESHOLD. Shared by the
+// single-card detector and the grid detector so both stages see the same edge
+// pixels.
+function computeEdgeMap(image: ImageData): EdgeMap | null {
   const srcW = image.width
   const srcH = image.height
   if (srcW < 16 || srcH < 16) return null
@@ -60,8 +94,6 @@ export function detectCardRectangle(image: ImageData): DetectedRectangle | null 
     }
   }
 
-  // 3x3 Sobel — produces |Gx| + |Gy| (cheap approximation of magnitude).
-  let edgeCount = 0
   const edgesX: number[] = []
   const edgesY: number[] = []
   for (let y = 1; y < dh - 1; y++) {
@@ -80,10 +112,20 @@ export function detectCardRectangle(image: ImageData): DetectedRectangle | null 
       if (mag >= EDGE_THRESHOLD) {
         edgesX.push(x)
         edgesY.push(y)
-        edgeCount++
       }
     }
   }
+
+  return { edgesX, edgesY, dw, dh, scale }
+}
+
+export function detectCardRectangle(image: ImageData): DetectedRectangle | null {
+  const map = computeEdgeMap(image)
+  if (!map) return null
+  const { edgesX, edgesY, dw, dh, scale } = map
+  const srcW = image.width
+  const srcH = image.height
+  const edgeCount = edgesX.length
 
   // Reject frames where edges are too sparse or saturate — both signal that
   // there isn't a single dominant rectangular object in view.
@@ -91,7 +133,6 @@ export function detectCardRectangle(image: ImageData): DetectedRectangle | null 
   if (edgeCount < pixelCount * 0.01) return null
   if (edgeCount > pixelCount * 0.6) return null
 
-  // Sort copies so the original paired arrays remain intact for density scoring.
   const sortedX = edgesX.slice().sort((a, b) => a - b)
   const sortedY = edgesY.slice().sort((a, b) => a - b)
 
@@ -135,6 +176,145 @@ export function detectCardRectangle(image: ImageData): DetectedRectangle | null 
     h: Math.min(srcH - ry, Math.round(rectH / scale)),
     score,
   }
+}
+
+// Find a rows×cols grid of card-shaped rectangles in a binder-page frame.
+//
+// Algorithm:
+//   1. Run the shared Sobel pass over a downsampled copy of the frame.
+//   2. Take the percentile bounding box of all edge pixels as the page bbox.
+//      This trims stray background edges and survives ~5° page skew (the
+//      axis-aligned hull still contains the rotated grid).
+//   3. Bucket each edge pixel into the (row, col) cell of a uniform grid that
+//      subdivides the page bbox. Card edges fall inside their own bucket; the
+//      shared boundaries between adjacent cards are split across both buckets,
+//      which is fine because we only use the bucket to localise per-card edges.
+//   4. For each bucket: skip empty pockets via an adaptive edge-count gate,
+//      derive a tight per-card bbox via the same percentile method, and reject
+//      cells whose aspect ratio is far from 5:7.
+//   5. Translate accepted cells back to source-image coordinates.
+export function detectGrid(
+  image: ImageData,
+  expected: { rows: number; cols: number },
+): DetectedGridCell[] {
+  if (expected.rows <= 0 || expected.cols <= 0) return []
+  const map = computeEdgeMap(image)
+  if (!map) return []
+  const { edgesX, edgesY, scale } = map
+  if (edgesX.length === 0) return []
+
+  const sortedX = edgesX.slice().sort((a, b) => a - b)
+  const sortedY = edgesY.slice().sort((a, b) => a - b)
+  const loIdx = Math.floor(sortedX.length * PERCENTILE_LO)
+  const hiIdx = Math.min(sortedX.length - 1, Math.floor(sortedX.length * PERCENTILE_HI))
+  const pageX0 = sortedX[loIdx]
+  const pageX1 = sortedX[hiIdx]
+  const pageY0 = sortedY[loIdx]
+  const pageY1 = sortedY[hiIdx]
+  const pageW = pageX1 - pageX0
+  const pageH = pageY1 - pageY0
+  if (pageW < expected.cols || pageH < expected.rows) return []
+
+  const cellW = pageW / expected.cols
+  const cellH = pageH / expected.rows
+
+  interface Bucket {
+    ex: number[]
+    ey: number[]
+  }
+  const buckets: Bucket[][] = []
+  for (let r = 0; r < expected.rows; r++) {
+    const row: Bucket[] = []
+    for (let c = 0; c < expected.cols; c++) row.push({ ex: [], ey: [] })
+    buckets.push(row)
+  }
+  for (let k = 0; k < edgesX.length; k++) {
+    const ex = edgesX[k]
+    const ey = edgesY[k]
+    if (ex < pageX0 || ex > pageX1 || ey < pageY0 || ey > pageY1) continue
+    const c = Math.min(expected.cols - 1, Math.floor((ex - pageX0) / cellW))
+    const r = Math.min(expected.rows - 1, Math.floor((ey - pageY0) / cellH))
+    buckets[r][c].ex.push(ex)
+    buckets[r][c].ey.push(ey)
+  }
+
+  // Empty-pocket gate: use the median bucket size so the threshold scales with
+  // however dense the card art happens to be. The absolute floor of 8 guards
+  // against noise spuriously satisfying an unrealistically small median.
+  const counts = buckets.flat().map(b => b.ex.length)
+  const sortedCounts = counts.slice().sort((a, b) => a - b)
+  const median = sortedCounts[Math.floor(sortedCounts.length / 2)]
+  const minEdgeCount = Math.max(8, Math.floor(median * 0.25))
+
+  const srcW = image.width
+  const srcH = image.height
+  const cells: DetectedGridCell[] = []
+  for (let r = 0; r < expected.rows; r++) {
+    for (let c = 0; c < expected.cols; c++) {
+      const bucket = buckets[r][c]
+      if (bucket.ex.length < minEdgeCount) continue
+
+      const sx = bucket.ex.slice().sort((a, b) => a - b)
+      const sy = bucket.ey.slice().sort((a, b) => a - b)
+      const li = Math.floor(sx.length * PERCENTILE_LO)
+      const hi = Math.min(sx.length - 1, Math.floor(sx.length * PERCENTILE_HI))
+      const cx0 = sx[li]
+      const cx1 = sx[hi]
+      const cy0 = sy[li]
+      const cy1 = sy[hi]
+      const cw = cx1 - cx0
+      const ch = cy1 - cy0
+      if (cw <= 0 || ch <= 0) continue
+
+      const ratio = Math.min(cw / ch, ch / cw)
+      if (Math.abs(ratio - TARGET_ASPECT_RATIO) > GRID_ASPECT_TOLERANCE) continue
+
+      const rx = Math.max(0, Math.round(cx0 / scale))
+      const ry = Math.max(0, Math.round(cy0 / scale))
+      cells.push({
+        row: r,
+        col: c,
+        x: rx,
+        y: ry,
+        w: Math.min(srcW - rx, Math.round(cw / scale)),
+        h: Math.min(srcH - ry, Math.round(ch / scale)),
+      })
+    }
+  }
+
+  cells.sort((a, b) => a.row - b.row || a.col - b.col)
+  return cells
+}
+
+// Draw each detected cell into its own canvas at the single-card scanner's
+// effective resolution. Returned canvases are sorted by (row, col) so the
+// caller can pair them with the corresponding grid position.
+export function cropCellsToCanvases(
+  source: HTMLCanvasElement,
+  cells: DetectedGridCell[],
+  targetW: number = DEFAULT_CROP_W,
+  targetH: number = DEFAULT_CROP_H,
+): HTMLCanvasElement[] {
+  if (targetW <= 0 || targetH <= 0) return []
+  const ordered = cells.slice().sort((a, b) => a.row - b.row || a.col - b.col)
+  const canvases: HTMLCanvasElement[] = []
+  for (const cell of ordered) {
+    const canvas = document.createElement('canvas')
+    canvas.width = targetW
+    canvas.height = targetH
+    const ctx = canvas.getContext('2d')
+    if (ctx && typeof ctx.drawImage === 'function' && cell.w > 0 && cell.h > 0) {
+      try {
+        ctx.drawImage(source, cell.x, cell.y, cell.w, cell.h, 0, 0, targetW, targetH)
+      } catch {
+        // Best-effort: a tainted source or environment without a working 2D
+        // context shouldn't crash the whole capture flow — surface an empty
+        // canvas and let the caller decide.
+      }
+    }
+    canvases.push(canvas)
+  }
+  return canvases
 }
 
 // Returns a [0..1] score that peaks at TARGET_ASPECT_RATIO. Accepts the
