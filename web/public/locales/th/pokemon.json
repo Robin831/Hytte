@@ -202,6 +202,19 @@
       "useAutoMatchInstead": "ใช้ผลที่ตรงอัตโนมัติแทน",
       "searchPlaceholder": "ค้นหาการ์ดที่ถูกต้อง — ชื่อหรือหมายเลข",
       "searchFailed": "ค้นหาการ์ดไม่สำเร็จ"
+    },
+    "page": {
+      "label": "หน้าแฟ้ม",
+      "progress": "ตรงแล้ว {{matched}} / {{total}}",
+      "addAllMatched": "เพิ่มทุกใบที่ตรง ({{count}})",
+      "discardPage": "ทิ้งทั้งหน้า",
+      "confirmDiscard": "ทิ้งหน้านี้ทั้งหมดใช่ไหม? การ์ดที่เพิ่มไปแล้วจะถูกเก็บไว้",
+      "cancel": "ยกเลิก",
+      "discardConfirm": "ใช่ ทิ้ง",
+      "addAllToast": "เพิ่มแล้ว {{count}} ใบ",
+      "addAllPartial": "เพิ่มไม่สำเร็จ {{count}} ใบ",
+      "discardToast": "ทิ้งหน้าแล้ว",
+      "discardFailed": "ทิ้งหน้าไม่สำเร็จ"
     }
   },
   "scanner": {

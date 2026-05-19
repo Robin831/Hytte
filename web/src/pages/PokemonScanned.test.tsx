@@ -31,6 +31,7 @@ const TRANSLATIONS: Record<string, string> = {
   'scanned.noPriceYet': 'Price unavailable',
   'scanned.thumbnailAlt': 'Scanned card preview',
   'scanned.thumbnailPlaceholder': 'Image no longer available',
+  'scanned.tapToReview': 'Tap to review',
   'scanned.filter.label': 'Filter scans',
   'scanned.filter.needsReview': 'Needs review',
   'scanned.filter.pending': 'Pending',
@@ -51,6 +52,13 @@ const TRANSLATIONS: Record<string, string> = {
   'scanned.toast.added': 'Added to collection',
   'scanned.toast.discarded': 'Discarded',
   'scanned.toast.retried': 'Sent back to the scanner queue',
+  'scanned.page.label': 'Binder page',
+  'scanned.page.discardPage': 'Discard page',
+  'scanned.page.confirmDiscard': 'Discard this whole page?',
+  'scanned.page.cancel': 'Cancel',
+  'scanned.page.discardConfirm': 'Yes, discard',
+  'scanned.page.discardToast': 'Page discarded',
+  'scanned.page.discardFailed': 'Failed to discard page',
   'scanner.errors.scanFailed': 'Scan failed, try again',
   'variantKind.normal': 'Normal',
   'variantKind.reverse_holofoil': 'Reverse holo',
@@ -62,6 +70,11 @@ function mockT(key: string, opts?: Record<string, string | number> & { defaultVa
   if (key === 'scanned.confidence') return `${opts?.pct ?? 0}% confidence`
   if (key === 'scanned.elapsed') return `${opts?.seconds ?? 0} s`
   if (key === 'tile.collectorNo') return `#${opts?.number ?? ''}`
+  if (key === 'scanned.page.progress') return `${opts?.matched ?? 0} / ${opts?.total ?? 0} matched`
+  if (key === 'scanned.page.addAllMatched') return `Add all matched (${opts?.count ?? 0})`
+  if (key === 'scanned.page.addAllToast') return `Added ${opts?.count ?? 0} cards`
+  if (key === 'scanned.page.addAllPartial') return `${opts?.count ?? 0} cards could not be added`
+  if (key === 'scanned.detail.openLabel') return `Open scan detail for ${opts?.name ?? ''}`
   if (key.startsWith('variantKind.')) return TRANSLATIONS[key] ?? opts?.defaultValue ?? key
   return TRANSLATIONS[key] ?? key
 }
@@ -186,11 +199,24 @@ function makeQueued(over: Partial<ScanFixture> = {}): ScanFixture {
   }
 }
 
+interface PageFixture {
+  id: number
+  expected_count: number
+  matched_count: number
+  created_at: string
+  children: ScanFixture[]
+}
+
 interface FetchSpec {
   needsReview: ScanFixture[]
   pending?: ScanFixture[]
   resolved?: ScanFixture[]
   today?: { used: number; cap: number }
+  pages?: {
+    needsReview?: PageFixture[]
+    pending?: PageFixture[]
+    resolved?: PageFixture[]
+  }
 }
 
 function makeFetchMock(spec: FetchSpec, overrides?: (url: string, init?: FetchInit) => JsonResp | null) {
@@ -201,18 +227,30 @@ function makeFetchMock(spec: FetchSpec, overrides?: (url: string, init?: FetchIn
     }
     if (url.startsWith('/api/pokemon/scans?')) {
       let scans: ScanFixture[] = []
-      if (url.includes('matched') && url.includes('no_match')) scans = spec.needsReview
-      else if (url.includes('queued')) scans = spec.pending ?? []
-      else if (url.includes('added')) scans = spec.resolved ?? []
+      let pages: PageFixture[] = []
+      if (url.includes('matched') && url.includes('no_match')) {
+        scans = spec.needsReview
+        pages = spec.pages?.needsReview ?? []
+      } else if (url.includes('queued')) {
+        scans = spec.pending ?? []
+        pages = spec.pages?.pending ?? []
+      } else if (url.includes('added')) {
+        scans = spec.resolved ?? []
+        pages = spec.pages?.resolved ?? []
+      }
       return Promise.resolve(
         jsonResponse({
           scans,
+          pages,
           today: spec.today ?? { used: 12, cap: 600 },
         }),
       )
     }
     if (url.match(/^\/api\/pokemon\/scans\/\d+\/resolve$/) && init?.method === 'POST') {
       return Promise.resolve(jsonResponse({ scan: {} }, 200))
+    }
+    if (url.match(/^\/api\/pokemon\/scans\/pages\/\d+$/) && init?.method === 'DELETE') {
+      return Promise.resolve(jsonResponse({}, 204))
     }
     return Promise.resolve(jsonResponse({}, 404))
   })
@@ -622,6 +660,158 @@ describe('PokemonScanned – resolve actions', () => {
       const body = JSON.parse(((post?.[1] as FetchInit | undefined)?.body as string) ?? '{}')
       expect(body).toMatchObject({ action: 'add', variant_id: 11 })
       expect(body.card_id).toBeUndefined()
+    })
+  })
+})
+
+describe('PokemonScanned – page grid', () => {
+  function makePageMatched(id: number, over: Partial<ScanFixture> = {}): ScanFixture {
+    return makeMatched({ id, ...over })
+  }
+  function makePageQueued(id: number): ScanFixture {
+    return makeQueued({ id })
+  }
+
+  function makePage(over: Partial<PageFixture> = {}): PageFixture {
+    return {
+      id: 42,
+      expected_count: 9,
+      matched_count: 1,
+      created_at: new Date('2026-05-15T11:00:00Z').toISOString(),
+      children: [
+        makePageMatched(101),
+        makePageMatched(102, { id: 102, status: 'no_match' as const, matched_card: null }),
+        makePageQueued(103),
+      ],
+      ...over,
+    }
+  }
+
+  it('renders a page block with cells and shows the matched count in the progress label', async () => {
+    const fetchMock = makeFetchMock({
+      needsReview: [],
+      pages: { needsReview: [makePage()] },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId('scan-page-42')).toBeInTheDocument())
+
+    expect(screen.getByTestId('scan-page-progress-42')).toHaveTextContent('1 / 9 matched')
+    // Three real cells plus 6 empty placeholders for the 3×3 grid.
+    expect(screen.getByTestId('scan-page-cell-101')).toBeInTheDocument()
+    expect(screen.getByTestId('scan-page-cell-102')).toBeInTheDocument()
+    expect(screen.getByTestId('scan-page-cell-103')).toBeInTheDocument()
+    expect(screen.getAllByTestId('scan-page-cell-empty')).toHaveLength(6)
+  })
+
+  it('"Add all matched" posts action=add for each matched child', async () => {
+    const fetchMock = makeFetchMock({
+      needsReview: [],
+      pages: {
+        needsReview: [
+          makePage({
+            matched_count: 2,
+            children: [makePageMatched(201), makePageMatched(202, { id: 202 })],
+            expected_count: 4,
+          }),
+        ],
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId('scan-page-42')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId('scan-page-add-all-42'))
+
+    await waitFor(() => {
+      const post201 = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          (url as string) === '/api/pokemon/scans/201/resolve' &&
+          (init as FetchInit | undefined)?.method === 'POST',
+      )
+      const post202 = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          (url as string) === '/api/pokemon/scans/202/resolve' &&
+          (init as FetchInit | undefined)?.method === 'POST',
+      )
+      expect(post201).toBeTruthy()
+      expect(post202).toBeTruthy()
+      const body201 = JSON.parse(((post201?.[1] as FetchInit | undefined)?.body as string) ?? '{}')
+      expect(body201).toMatchObject({ action: 'add', variant_id: 11, quantity: 1 })
+    })
+  })
+
+  it('"Discard page" with confirmation issues DELETE /api/pokemon/scans/pages/{id}', async () => {
+    const fetchMock = makeFetchMock({
+      needsReview: [],
+      pages: { needsReview: [makePage()] },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId('scan-page-42')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId('scan-page-discard-42'))
+    fireEvent.click(screen.getByTestId('scan-page-discard-confirm-42'))
+
+    await waitFor(() => {
+      const del = fetchMock.mock.calls.find(
+        ([url, init]) =>
+          (url as string) === '/api/pokemon/scans/pages/42' &&
+          (init as FetchInit | undefined)?.method === 'DELETE',
+      )
+      expect(del).toBeTruthy()
+    })
+  })
+
+  it('cancelling the discard confirmation does NOT call DELETE', async () => {
+    const fetchMock = makeFetchMock({
+      needsReview: [],
+      pages: { needsReview: [makePage()] },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByTestId('scan-page-42')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByTestId('scan-page-discard-42'))
+    fireEvent.click(screen.getByTestId('scan-page-discard-cancel-42'))
+
+    const del = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        (url as string).startsWith('/api/pokemon/scans/pages/') &&
+        (init as FetchInit | undefined)?.method === 'DELETE',
+    )
+    expect(del).toBeFalsy()
+  })
+
+  it('?page=<id> highlights the matching page block once data is loaded', async () => {
+    // A fresh page upload starts in the pending state, so the component
+    // auto-switches to the "pending" filter when it sees ?page= — the mock
+    // returns the page on that filter so the highlight effect can fire.
+    const fetchMock = makeFetchMock({
+      needsReview: [],
+      pending: [],
+      pages: {
+        needsReview: [makePage()],
+        pending: [makePage()],
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <MemoryRouter initialEntries={['/pokemon/scanned?page=42']}>
+        <Routes>
+          <Route path="/pokemon/scanned" element={<PokemonScanned />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      const block = screen.getByTestId('scan-page-42')
+      expect(block).toHaveAttribute('data-highlighted', 'true')
     })
   })
 })

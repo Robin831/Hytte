@@ -204,6 +204,19 @@
       "useAutoMatchInstead": "Bruk auto-treffet i stedet",
       "searchPlaceholder": "Søk etter riktig kort — navn eller nummer",
       "searchFailed": "Kunne ikke søke etter kort"
+    },
+    "page": {
+      "label": "Perm-side",
+      "progress": "{{matched}} / {{total}} treff",
+      "addAllMatched": "Legg til alle treff ({{count}})",
+      "discardPage": "Forkast siden",
+      "confirmDiscard": "Forkast hele denne siden? Kort du allerede har lagt til beholdes.",
+      "cancel": "Avbryt",
+      "discardConfirm": "Ja, forkast",
+      "addAllToast": "La til {{count}} kort",
+      "addAllPartial": "{{count}} kort kunne ikke legges til",
+      "discardToast": "Siden er forkastet",
+      "discardFailed": "Kunne ikke forkaste siden"
     }
   },
   "scanner": {

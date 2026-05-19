@@ -1,0 +1,2 @@
+category: Added
+- **Binder page scan grid** - The /pokemon/scanned page now groups multi-card binder uploads into a single grid block matching the captured 3×3 or 4×3 layout, with per-cell status badges, the existing per-card Add / Discard / Manual-search actions, plus parent-level "Add all matched" and "Discard page" controls. The new `?page=<id>` query param auto-scrolls and highlights the freshly-submitted page right after the upload flow finishes. (Hytte-3uq2)

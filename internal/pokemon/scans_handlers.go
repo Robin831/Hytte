@@ -85,6 +85,19 @@ type ScanJobDTO struct {
 	ParsedCollectorNo string   `json:"parsed_collector_no,omitempty"`
 }
 
+// ScanPageDTO groups a pokemon_scan_pages parent row with all of its child
+// scan jobs so the /pokemon/scanned UI can render the binder layout as a
+// single grid block. Children are returned regardless of their individual
+// status so the grid always shows the full N cells the user captured; the
+// frontend filters or styles each cell by its own state.
+type ScanPageDTO struct {
+	ID            int64        `json:"id"`
+	ExpectedCount int          `json:"expected_count"`
+	MatchedCount  int          `json:"matched_count"`
+	CreatedAt     string       `json:"created_at"`
+	Children      []ScanJobDTO `json:"children"`
+}
+
 // extractScanHints decrypts the stored Claude response (if any) and returns
 // the partial set name + collector number it managed to read. Used by the
 // no_match path to pre-fill manual entry — failures collapse to empty
@@ -628,6 +641,13 @@ func ScanCountsHandler(db *sql.DB) http.HandlerFunc {
 
 // ListScansHandler returns the current user's scan jobs newest-first, scoped
 // to the comma-separated ?status= filter (defaults to "not yet resolved").
+//
+// Multi-card binder uploads (pokemon_scan_pages parents with N child jobs)
+// are returned in a separate "pages" array: a page block is included as soon
+// as any child matches the filter, and the response carries ALL of that
+// page's children regardless of status so the grid renders the full N cells.
+// Standalone scans (page_id IS NULL) stay in "scans" so the frontend can
+// interleave the two arrays by created_at.
 func ListScansHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -656,7 +676,11 @@ func ListScansHandler(db *sql.DB) http.HandlerFunc {
 
 		statuses := parseScanStatusFilter(r.URL.Query().Get("status"))
 		if len(statuses) == 0 {
-			respondJSON(w, http.StatusOK, map[string]any{"scans": []ScanJobDTO{}, "today": today})
+			respondJSON(w, http.StatusOK, map[string]any{
+				"scans": []ScanJobDTO{},
+				"pages": []ScanPageDTO{},
+				"today": today,
+			})
 			return
 		}
 		limit := parseLimit(r, defaultScanListLimit, maxScanListLimit)
@@ -672,7 +696,7 @@ func ListScansHandler(db *sql.DB) http.HandlerFunc {
 		query := `
 			SELECT id, status, image_path_enc, matched_card_id, confidence,
 			       error_message, created_at, processed_at, resolved_at,
-			       claude_response_enc
+			       claude_response_enc, page_id
 			FROM pokemon_scan_jobs
 			WHERE user_id = ? AND status IN (` + strings.Join(placeholders, ",") + `)
 			ORDER BY created_at DESC, id DESC
@@ -684,64 +708,64 @@ func ListScansHandler(db *sql.DB) http.HandlerFunc {
 			respondError(w, http.StatusInternalServerError, "failed to list scans")
 			return
 		}
-		defer rows.Close()
 
-		jobs := make([]ScanJobDTO, 0)
+		standalone := make([]ScanJobDTO, 0)
+		pageIDOrder := make([]int64, 0)
+		pageSeen := make(map[int64]bool)
 		matchedCardIDs := make([]string, 0)
 		jobMatched := make(map[int64]string)
 		for rows.Next() {
-			var (
-				id             int64
-				status         string
-				pathEnc        string
-				matchedCard    sql.NullString
-				confidence     sql.NullFloat64
-				errorMessage   sql.NullString
-				createdAt      time.Time
-				processedAt    sql.NullTime
-				resolvedAt     sql.NullTime
-				claudeResponse sql.NullString
-			)
-			if err := rows.Scan(&id, &status, &pathEnc, &matchedCard, &confidence,
-				&errorMessage, &createdAt, &processedAt, &resolvedAt, &claudeResponse); err != nil {
+			dto, cardID, pageID, err := scanRowToDTO(rows)
+			if err != nil {
+				rows.Close()
 				log.Printf("pokemon: scan list row: %v", err)
 				respondError(w, http.StatusInternalServerError, "failed to list scans")
 				return
 			}
-			dto := ScanJobDTO{
-				ID:        id,
-				Status:    status,
-				CreatedAt: createdAt.UTC().Format(time.RFC3339),
-				HasImage:  scanImageOnDisk(pathEnc),
+			if cardID != "" {
+				jobMatched[dto.ID] = cardID
+				matchedCardIDs = append(matchedCardIDs, cardID)
 			}
-			if confidence.Valid {
-				c := confidence.Float64
-				dto.Confidence = &c
+			if pageID.Valid {
+				if !pageSeen[pageID.Int64] {
+					pageSeen[pageID.Int64] = true
+					pageIDOrder = append(pageIDOrder, pageID.Int64)
+				}
+				continue
 			}
-			if processedAt.Valid {
-				ts := processedAt.Time.UTC().Format(time.RFC3339)
-				dto.ProcessedAt = &ts
-			}
-			if resolvedAt.Valid {
-				ts := resolvedAt.Time.UTC().Format(time.RFC3339)
-				dto.ResolvedAt = &ts
-			}
-			if errorMessage.Valid {
-				dto.ErrorMessage = errorMessage.String
-			}
-			if status == scanJobStatusNoMatch {
-				dto.ParsedSetName, dto.ParsedCollectorNo = extractScanHints(claudeResponse)
-			}
-			if matchedCard.Valid && matchedCard.String != "" {
-				jobMatched[id] = matchedCard.String
-				matchedCardIDs = append(matchedCardIDs, matchedCard.String)
-			}
-			jobs = append(jobs, dto)
+			standalone = append(standalone, dto)
 		}
 		if err := rows.Err(); err != nil {
+			rows.Close()
 			log.Printf("pokemon: iterate scans: %v", err)
 			respondError(w, http.StatusInternalServerError, "failed to list scans")
 			return
+		}
+		rows.Close()
+
+		// Load each touched page and ALL its children so the grid renders
+		// the captured layout in full regardless of which children matched
+		// the filter. Order is preserved from the original (newest first)
+		// query so the response is stable.
+		pages := make([]ScanPageDTO, 0, len(pageIDOrder))
+		for _, pid := range pageIDOrder {
+			page, children, cardIDs, err := loadScanPage(r.Context(), db, user.ID, pid)
+			if err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					continue
+				}
+				log.Printf("pokemon: load scan page %d: %v", pid, err)
+				respondError(w, http.StatusInternalServerError, "failed to list scans")
+				return
+			}
+			page.Children = children
+			for cid, cardID := range cardIDs {
+				if _, ok := jobMatched[cid]; !ok {
+					jobMatched[cid] = cardID
+					matchedCardIDs = append(matchedCardIDs, cardID)
+				}
+			}
+			pages = append(pages, page)
 		}
 
 		if len(matchedCardIDs) > 0 {
@@ -758,36 +782,274 @@ func ListScansHandler(db *sql.DB) http.HandlerFunc {
 				byID[c.ID] = c
 			}
 			sets := make(map[string]*SetDTO)
-			for i := range jobs {
-				cardID, ok := jobMatched[jobs[i].ID]
+			lookupSet := func(setID string) *SetDTO {
+				if setID == "" {
+					return nil
+				}
+				if cached, ok := sets[setID]; ok {
+					return cached
+				}
+				loaded, loadErr := loadSetByID(r.Context(), db, user.ID, setID)
+				if loadErr != nil && !errors.Is(loadErr, sql.ErrNoRows) {
+					log.Printf("pokemon: load matched set %s: %v", setID, loadErr)
+				}
+				sets[setID] = loaded
+				return loaded
+			}
+			hydrate := func(job *ScanJobDTO) {
+				cardID, ok := jobMatched[job.ID]
 				if !ok {
-					continue
+					return
 				}
 				card, ok := byID[cardID]
 				if !ok {
-					continue
+					return
 				}
 				cardCopy := card
-				jobs[i].MatchedCard = &cardCopy
-				if cardCopy.SetID != "" {
-					set, cached := sets[cardCopy.SetID]
-					if !cached {
-						loaded, loadErr := loadSetByID(r.Context(), db, user.ID, cardCopy.SetID)
-						if loadErr != nil && !errors.Is(loadErr, sql.ErrNoRows) {
-							log.Printf("pokemon: load matched set %s: %v", cardCopy.SetID, loadErr)
-						}
-						set = loaded
-						sets[cardCopy.SetID] = set
-					}
-					if set != nil {
-						setCopy := *set
-						jobs[i].Set = &setCopy
-					}
+				job.MatchedCard = &cardCopy
+				if set := lookupSet(cardCopy.SetID); set != nil {
+					setCopy := *set
+					job.Set = &setCopy
+				}
+			}
+			for i := range standalone {
+				hydrate(&standalone[i])
+			}
+			for i := range pages {
+				for j := range pages[i].Children {
+					hydrate(&pages[i].Children[j])
 				}
 			}
 		}
 
-		respondJSON(w, http.StatusOK, map[string]any{"scans": jobs, "today": today})
+		respondJSON(w, http.StatusOK, map[string]any{
+			"scans": standalone,
+			"pages": pages,
+			"today": today,
+		})
+	}
+}
+
+// scanRowToDTO decodes one pokemon_scan_jobs row (already SELECTed) into a
+// ScanJobDTO. Returns the matched_card_id and page_id alongside so the caller
+// can hydrate cards in a single follow-up query and route page-grouped rows
+// into the ScanPageDTO bucket.
+func scanRowToDTO(rows *sql.Rows) (ScanJobDTO, string, sql.NullInt64, error) {
+	var (
+		id             int64
+		status         string
+		pathEnc        string
+		matchedCard    sql.NullString
+		confidence     sql.NullFloat64
+		errorMessage   sql.NullString
+		createdAt      time.Time
+		processedAt    sql.NullTime
+		resolvedAt     sql.NullTime
+		claudeResponse sql.NullString
+		pageID         sql.NullInt64
+	)
+	if err := rows.Scan(&id, &status, &pathEnc, &matchedCard, &confidence,
+		&errorMessage, &createdAt, &processedAt, &resolvedAt, &claudeResponse, &pageID); err != nil {
+		return ScanJobDTO{}, "", sql.NullInt64{}, err
+	}
+	dto := ScanJobDTO{
+		ID:        id,
+		Status:    status,
+		CreatedAt: createdAt.UTC().Format(time.RFC3339),
+		HasImage:  scanImageOnDisk(pathEnc),
+	}
+	if confidence.Valid {
+		c := confidence.Float64
+		dto.Confidence = &c
+	}
+	if processedAt.Valid {
+		ts := processedAt.Time.UTC().Format(time.RFC3339)
+		dto.ProcessedAt = &ts
+	}
+	if resolvedAt.Valid {
+		ts := resolvedAt.Time.UTC().Format(time.RFC3339)
+		dto.ResolvedAt = &ts
+	}
+	if errorMessage.Valid {
+		dto.ErrorMessage = errorMessage.String
+	}
+	if status == scanJobStatusNoMatch {
+		dto.ParsedSetName, dto.ParsedCollectorNo = extractScanHints(claudeResponse)
+	}
+	cardID := ""
+	if matchedCard.Valid {
+		cardID = matchedCard.String
+	}
+	return dto, cardID, pageID, nil
+}
+
+// loadScanPage fetches the parent row plus every child that belongs to it,
+// regardless of the child's status. The matchedCardIDs map (child id →
+// pokemon_cards.id) lets the caller hydrate card metadata for the children
+// in the same batch as standalone scans.
+func loadScanPage(ctx context.Context, db *sql.DB, userID, pageID int64) (ScanPageDTO, []ScanJobDTO, map[int64]string, error) {
+	var (
+		expected  int
+		matched   int
+		createdAt time.Time
+	)
+	err := db.QueryRowContext(ctx, `
+		SELECT expected_count, matched_count, created_at
+		FROM pokemon_scan_pages
+		WHERE id = ? AND user_id = ?
+	`, pageID, userID).Scan(&expected, &matched, &createdAt)
+	if err != nil {
+		return ScanPageDTO{}, nil, nil, err
+	}
+	page := ScanPageDTO{
+		ID:            pageID,
+		ExpectedCount: expected,
+		MatchedCount:  matched,
+		CreatedAt:     createdAt.UTC().Format(time.RFC3339),
+	}
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, status, image_path_enc, matched_card_id, confidence,
+		       error_message, created_at, processed_at, resolved_at,
+		       claude_response_enc, page_id
+		FROM pokemon_scan_jobs
+		WHERE user_id = ? AND page_id = ?
+		ORDER BY id ASC
+	`, userID, pageID)
+	if err != nil {
+		return ScanPageDTO{}, nil, nil, err
+	}
+	defer rows.Close()
+
+	children := make([]ScanJobDTO, 0, expected)
+	cardIDs := make(map[int64]string)
+	for rows.Next() {
+		dto, cardID, _, err := scanRowToDTO(rows)
+		if err != nil {
+			return ScanPageDTO{}, nil, nil, err
+		}
+		if cardID != "" {
+			cardIDs[dto.ID] = cardID
+		}
+		children = append(children, dto)
+	}
+	if err := rows.Err(); err != nil {
+		return ScanPageDTO{}, nil, nil, err
+	}
+	return page, children, cardIDs, nil
+}
+
+// DeleteScanPageHandler discards every child of a pokemon_scan_pages parent
+// that isn't already in a terminal added/discarded state, deletes the parent
+// row, and removes the on-disk images. Children already added to the
+// collection are left alone so the user does not lose a card they kept by
+// accident when clicking "Discard page". Returns 204 on success, 404 when
+// the page does not belong to the caller.
+func DeleteScanPageHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			respondError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		pageID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil || pageID <= 0 {
+			respondError(w, http.StatusBadRequest, "invalid page id")
+			return
+		}
+
+		// Verify ownership before touching anything. A row owned by another
+		// user must 404 (not 403) to avoid leaking the existence of foreign
+		// page ids.
+		var ownerID int64
+		err = db.QueryRowContext(r.Context(), `
+			SELECT user_id FROM pokemon_scan_pages WHERE id = ?
+		`, pageID).Scan(&ownerID)
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && ownerID != user.ID) {
+			respondError(w, http.StatusNotFound, "page not found")
+			return
+		}
+		if err != nil {
+			log.Printf("pokemon: load scan page for delete: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to delete page")
+			return
+		}
+
+		// Collect the image paths of every child we are about to discard so
+		// we can remove the on-disk files after the transaction commits.
+		// Reading them BEFORE the UPDATE keeps the work outside the write
+		// lock; the file deletes happen post-commit so a crash mid-update
+		// can be reconciled by the scan_cleanup pass.
+		pathRows, err := db.QueryContext(r.Context(), `
+			SELECT image_path_enc FROM pokemon_scan_jobs
+			WHERE user_id = ? AND page_id = ?
+			  AND status NOT IN (?, ?)
+			  AND image_path_enc != ''
+		`, user.ID, pageID, scanJobStatusAdded, scanJobStatusDiscarded)
+		if err != nil {
+			log.Printf("pokemon: load child image paths for page delete: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to delete page")
+			return
+		}
+		var imagePaths []string
+		for pathRows.Next() {
+			var enc string
+			if err := pathRows.Scan(&enc); err != nil {
+				pathRows.Close()
+				log.Printf("pokemon: scan child path: %v", err)
+				respondError(w, http.StatusInternalServerError, "failed to delete page")
+				return
+			}
+			imagePaths = append(imagePaths, enc)
+		}
+		if err := pathRows.Err(); err != nil {
+			pathRows.Close()
+			log.Printf("pokemon: iterate child paths: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to delete page")
+			return
+		}
+		pathRows.Close()
+
+		now := time.Now().UTC()
+		tx, err := db.BeginTx(r.Context(), nil)
+		if err != nil {
+			log.Printf("pokemon: begin page delete tx: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to delete page")
+			return
+		}
+		if _, err := tx.ExecContext(r.Context(), `
+			UPDATE pokemon_scan_jobs
+			SET status = ?, resolved_at = ?, image_path_enc = ''
+			WHERE user_id = ? AND page_id = ?
+			  AND status NOT IN (?, ?)
+		`, scanJobStatusDiscarded, now, user.ID, pageID,
+			scanJobStatusAdded, scanJobStatusDiscarded); err != nil {
+			tx.Rollback()
+			log.Printf("pokemon: discard child scans: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to delete page")
+			return
+		}
+		// Delete the parent row last so the children's page_id FK transitions
+		// to NULL via ON DELETE SET NULL. The discarded children survive as
+		// history rows reachable via the "Recently resolved" filter.
+		if _, err := tx.ExecContext(r.Context(), `
+			DELETE FROM pokemon_scan_pages WHERE id = ? AND user_id = ?
+		`, pageID, user.ID); err != nil {
+			tx.Rollback()
+			log.Printf("pokemon: delete scan page row: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to delete page")
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			log.Printf("pokemon: commit page delete: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to delete page")
+			return
+		}
+
+		for _, enc := range imagePaths {
+			deleteScanImage(enc)
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

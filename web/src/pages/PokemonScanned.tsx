@@ -7,6 +7,8 @@ import ToastList from '../components/ToastList'
 import { useToast } from '../hooks/useToast'
 import ScanDetailModal from '../components/pokemon/ScanDetailModal'
 import type { ScanDetailResolveBody } from '../components/pokemon/ScanDetailModal'
+import ScanPageGrid from '../components/pokemon/ScanPageGrid'
+import type { ScanPageGridParent } from '../components/pokemon/ScanPageGrid'
 
 // buildManualEntryQuery joins whatever partial fields Claude could read into a
 // single search string for AddCardPanel. Empty hints collapse to an empty
@@ -438,18 +440,37 @@ export default function PokemonScannedPage() {
     const parsed = parseInt(focusParam, 10)
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null
   }, [focusParam])
+  // ?page=<id> is set by the binder page-upload flow (PageScanner) and asks
+  // us to scroll the freshly-submitted page block into view + highlight it.
+  // Parsed once per search-param change so the auto-scroll effect can react.
+  const pageParam = searchParams.get('page')
+  const focusedPageId = useMemo(() => {
+    if (!pageParam) return null
+    const parsed = parseInt(pageParam, 10)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }, [pageParam])
 
-  const [filter, setFilter] = useState<FilterKey>('needsReview')
+  // Default to "needsReview" unless we're arriving from a fresh page upload
+  // (?page=<id>) — those children are queued at first, so we pick "pending"
+  // so the new page block lands on screen without the kid manually switching
+  // filters. Read once on mount so subsequent ?page= strips don't fight the
+  // user if they later flip filters themselves.
+  const initialFilter: FilterKey = pageParam ? 'pending' : 'needsReview'
+  const [filter, setFilter] = useState<FilterKey>(initialFilter)
   const [scans, setScans] = useState<ScanJob[]>([])
+  const [pages, setPages] = useState<ScanPageGridParent[]>([])
   const [today, setToday] = useState<TodayUsage | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const [highlightedId, setHighlightedId] = useState<number | null>(null)
+  const [highlightedPageId, setHighlightedPageId] = useState<number | null>(null)
   const [detailScanId, setDetailScanId] = useState<number | null>(null)
   const rowRefs = useRef<Map<number, HTMLLIElement>>(new Map())
+  const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const focusHandledRef = useRef<number | null>(null)
+  const pageHandledRef = useRef<number | null>(null)
 
   // tick the clock once per second so the "elapsed time" caption on pending
   // rows updates without forcing a full refetch.
@@ -490,8 +511,13 @@ export default function PokemonScannedPage() {
           { credentials: 'include', signal: controller.signal },
         )
         if (!res.ok) throw new Error(t('scanned.loadError'))
-        const data: { scans?: ScanJob[]; today?: TodayUsage } = await res.json()
+        const data: {
+          scans?: ScanJob[]
+          pages?: ScanPageGridParent[]
+          today?: TodayUsage
+        } = await res.json()
         setScans(data.scans ?? [])
+        setPages(data.pages ?? [])
         setToday(data.today ?? null)
         // clear any previous error when a silent poll succeeds
         if (isSilent) setError('')
@@ -553,6 +579,38 @@ export default function PokemonScannedPage() {
     })
   }, [scans, filter, now])
 
+  const visiblePages = useMemo(() => {
+    if (filter !== 'resolved') return pages
+    const cutoff = now - RESOLVED_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    // For pages we look at the most recent child timestamp — a single newly
+    // resolved child should keep the whole page block in the recent list.
+    return pages.filter(p => {
+      const ts = p.children.reduce((max, c) => {
+        const parsed = Date.parse(c.resolved_at ?? c.created_at)
+        return Number.isFinite(parsed) && parsed > max ? parsed : max
+      }, 0)
+      return ts >= cutoff
+    })
+  }, [pages, filter, now])
+
+  // listItems interleaves standalone scans and page blocks by their created_at
+  // timestamp (newest first) so the page renders one chronological stream
+  // rather than two separate sections.
+  type ListItem =
+    | { kind: 'scan'; ts: number; scan: ScanJob }
+    | { kind: 'page'; ts: number; page: ScanPageGridParent }
+  const listItems = useMemo<ListItem[]>(() => {
+    const items: ListItem[] = []
+    for (const scan of visibleScans) {
+      items.push({ kind: 'scan', ts: Date.parse(scan.created_at) || 0, scan })
+    }
+    for (const page of visiblePages) {
+      items.push({ kind: 'page', ts: Date.parse(page.created_at) || 0, page })
+    }
+    items.sort((a, b) => b.ts - a.ts)
+    return items
+  }, [visibleScans, visiblePages])
+
   // When ?focus=N is present (e.g. opened from a scan-result push), scroll the
   // matching row into view and apply a brief highlight so the kid can tell
   // which result is theirs. focusHandledRef ensures we only scroll once per
@@ -575,6 +633,26 @@ export default function PokemonScannedPage() {
     setSearchParams(next, { replace: true })
   }, [focusedId, loading, visibleScans, searchParams, setSearchParams])
 
+  // ?page=<id> targets a whole page block (set by the PageScanner after the
+  // multipart upload commits). Behaviour mirrors ?focus= but indexes the
+  // pageRefs map; the search param is cleared once consumed so a later
+  // refresh does not re-trigger the scroll.
+  useEffect(() => {
+    if (focusedPageId == null) return
+    if (loading) return
+    if (pageHandledRef.current === focusedPageId) return
+    const target = visiblePages.find(p => p.id === focusedPageId)
+    if (!target) return
+    const el = pageRefs.current.get(focusedPageId)
+    if (!el) return
+    pageHandledRef.current = focusedPageId
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlightedPageId(focusedPageId)
+    const next = new URLSearchParams(searchParams)
+    next.delete('page')
+    setSearchParams(next, { replace: true })
+  }, [focusedPageId, loading, visiblePages, searchParams, setSearchParams])
+
   // Auto-clear the row highlight after a short window so the visual nudge
   // fades back to normal styling without lingering forever. Split from the
   // scroll effect so the timer is not cancelled by unrelated re-renders
@@ -584,6 +662,12 @@ export default function PokemonScannedPage() {
     const timer = window.setTimeout(() => setHighlightedId(null), 2500)
     return () => window.clearTimeout(timer)
   }, [highlightedId])
+
+  useEffect(() => {
+    if (highlightedPageId == null) return
+    const timer = window.setTimeout(() => setHighlightedPageId(null), 2500)
+    return () => window.clearTimeout(timer)
+  }, [highlightedPageId])
 
   const handleEnterManually = useCallback(
     (scan: ScanJob) => {
@@ -628,7 +712,19 @@ export default function PokemonScannedPage() {
     [refetch, showToast, t],
   )
 
-  const detailScan = detailScanId != null ? (scans.find(s => s.id === detailScanId) ?? null) : null
+  // The matched-scan detail modal can be opened from a standalone row OR
+  // from a cell inside a page grid, so we fall back to scanning each page's
+  // children for the active id when it isn't in the standalone list.
+  const detailScan = useMemo<ScanJob | null>(() => {
+    if (detailScanId == null) return null
+    const standalone = scans.find(s => s.id === detailScanId)
+    if (standalone) return standalone
+    for (const page of pages) {
+      const child = page.children.find(c => c.id === detailScanId)
+      if (child) return child as ScanJob
+    }
+    return null
+  }, [detailScanId, scans, pages])
 
   const handleDetailResolve = useCallback(
     async (body: ScanDetailResolveBody) => {
@@ -637,6 +733,75 @@ export default function PokemonScannedPage() {
       handleCloseDetail()
     },
     [detailScan, handleResolve, handleCloseDetail],
+  )
+
+  const handleAddAllMatched = useCallback(
+    async (page: ScanPageGridParent) => {
+      const matched = page.children.filter(c => c.status === 'matched' && c.matched_card)
+      if (matched.length === 0) return
+      let added = 0
+      let failed = 0
+      // Issue the requests sequentially so a partial failure leaves the
+      // grid in a sensible state — the kid sees the matching cells flip
+      // one by one rather than all at once with no recovery.
+      for (const child of matched) {
+        const card = child.matched_card
+        const variant = card?.variants?.[0]
+        if (!variant) {
+          failed++
+          continue
+        }
+        try {
+          const res = await fetch(`/api/pokemon/scans/${child.id}/resolve`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'add',
+              variant_id: variant.id,
+              quantity: 1,
+            }),
+          })
+          if (!res.ok) {
+            failed++
+          } else {
+            added++
+          }
+        } catch {
+          failed++
+        }
+      }
+      if (added > 0) {
+        showToast(t('scanned.page.addAllToast', { count: added }), 'success')
+      }
+      if (failed > 0) {
+        showToast(t('scanned.page.addAllPartial', { count: failed }), 'error')
+      }
+      refetch()
+    },
+    [refetch, showToast, t],
+  )
+
+  const handleDiscardPage = useCallback(
+    async (page: ScanPageGridParent) => {
+      try {
+        const res = await fetch(`/api/pokemon/scans/pages/${page.id}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        })
+        if (!res.ok && res.status !== 204) {
+          throw new Error(t('scanned.page.discardFailed'))
+        }
+        showToast(t('scanned.page.discardToast'), 'success')
+        refetch()
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : t('scanned.page.discardFailed'),
+          'error',
+        )
+      }
+    },
+    [refetch, showToast, t],
   )
 
   return (
@@ -724,7 +889,7 @@ export default function PokemonScannedPage() {
           </ul>
         )}
 
-        {!loading && !error && visibleScans.length === 0 && (
+        {!loading && !error && listItems.length === 0 && (
           <p
             data-testid="scanned-empty"
             className="text-sm text-gray-400 py-6 text-center"
@@ -733,28 +898,57 @@ export default function PokemonScannedPage() {
           </p>
         )}
 
-        {!loading && !error && visibleScans.length > 0 && (
+        {!loading && !error && listItems.length > 0 && (
           <ul className="space-y-3" data-testid="scanned-list">
-            {visibleScans.map(scan => (
-              <ScanRow
-                key={scan.id}
-                scan={scan}
-                busy={busyId === scan.id}
-                now={now}
-                highlighted={highlightedId === scan.id}
-                rowRef={el => {
-                  if (el) {
-                    rowRefs.current.set(scan.id, el)
-                  } else {
-                    rowRefs.current.delete(scan.id)
-                  }
-                }}
-                onResolve={handleResolve}
-                onEnterManually={handleEnterManually}
-                onOpenDetail={handleOpenDetail}
-                t={t}
-              />
-            ))}
+            {listItems.map(item => {
+              if (item.kind === 'scan') {
+                const scan = item.scan
+                return (
+                  <ScanRow
+                    key={`scan-${scan.id}`}
+                    scan={scan}
+                    busy={busyId === scan.id}
+                    now={now}
+                    highlighted={highlightedId === scan.id}
+                    rowRef={el => {
+                      if (el) {
+                        rowRefs.current.set(scan.id, el)
+                      } else {
+                        rowRefs.current.delete(scan.id)
+                      }
+                    }}
+                    onResolve={handleResolve}
+                    onEnterManually={handleEnterManually}
+                    onOpenDetail={handleOpenDetail}
+                    t={t}
+                  />
+                )
+              }
+              const page = item.page
+              return (
+                <li key={`page-${page.id}`}>
+                  <ScanPageGrid
+                    page={page}
+                    busyChildId={busyId}
+                    highlighted={highlightedPageId === page.id}
+                    blockRef={el => {
+                      if (el) {
+                        pageRefs.current.set(page.id, el)
+                      } else {
+                        pageRefs.current.delete(page.id)
+                      }
+                    }}
+                    onResolveChild={(child, body) =>
+                      handleResolve(child as ScanJob, body)
+                    }
+                    onOpenDetail={child => handleOpenDetail(child as ScanJob)}
+                    onEnterManually={child => handleEnterManually(child as ScanJob)}
+                    onAddAllMatched={handleAddAllMatched}
+                    onDiscardPage={handleDiscardPage}
+                  />
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>

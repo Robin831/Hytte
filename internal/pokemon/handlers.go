@@ -194,6 +194,11 @@ func RegisterRoutes(r chi.Router, db *sql.DB) {
 		// page is queued as a single user action even though each child
 		// flows through the existing single-card worker.
 		r.Post("/pokemon/scans/page", PageScanHandler(db))
+		// Page-level discard (Hytte-3uq2): drops the parent + soft-discards
+		// every child that has not yet been added to the collection so the
+		// kid can throw away a whole binder upload from the grid in one
+		// click without losing already-added cards.
+		r.Delete("/pokemon/scans/pages/{id}", DeleteScanPageHandler(db))
 		r.Get("/pokemon/scans", ListScansHandler(db))
 		r.Get("/pokemon/scans/counts", ScanCountsHandler(db))
 		r.Get("/pokemon/scans/{id}/image", GetScanImageHandler(db))
