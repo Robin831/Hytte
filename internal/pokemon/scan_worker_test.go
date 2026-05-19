@@ -251,6 +251,91 @@ func TestProcessScanJob_ClaudeDisabled_Failed(t *testing.T) {
 	}
 }
 
+// TestProcessScanJob_PageChildren_ResolveIndependently seeds one
+// pokemon_scan_pages row with 9 child pokemon_scan_jobs (page_id set) and
+// drives each child through processScanJob directly. Each child must reach
+// the matched terminal state on its own — the page_id is metadata only and
+// must not gate the worker pipeline. This is the worker-side guarantee that
+// Hytte-3zej's POST /scans/page rows behave exactly like single-card uploads
+// once they hit the queue.
+func TestProcessScanJob_PageChildren_ResolveIndependently(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "page-worker@example.com")
+	enableClaudeForUser(t, db, u.ID)
+
+	// Seed the parent row first so children can FK into it.
+	pageRes, err := db.Exec(`
+		INSERT INTO pokemon_scan_pages (user_id, page_image_path_enc, expected_count, matched_count, created_at)
+		VALUES (?, ?, ?, 0, ?)
+	`, u.ID, "", 9, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("insert parent page: %v", err)
+	}
+	pageID, err := pageRes.LastInsertId()
+	if err != nil {
+		t.Fatalf("page last id: %v", err)
+	}
+
+	// One image file per child so each row has its own decryptable on-disk
+	// path. The bytes themselves don't matter — the stub returns a canned
+	// JSON response and the worker only reads the file to confirm it exists.
+	type child struct {
+		id   int64
+		path string
+		enc  string
+	}
+	children := make([]child, 9)
+	for i := range children {
+		path, hash := writeTempScanImage(t)
+		enc := encryptPath(t, path)
+		res, err := db.Exec(`
+			INSERT INTO pokemon_scan_jobs (user_id, status, image_path_enc, image_hash, page_id, created_at)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, u.ID, scanJobStatusQueued, enc, hash, pageID, time.Now().UTC())
+		if err != nil {
+			t.Fatalf("insert child %d: %v", i, err)
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			t.Fatalf("child %d last id: %v", i, err)
+		}
+		children[i] = child{id: id, path: path, enc: enc}
+	}
+
+	stubScanPrompt(t, `{"set_name":"Scarlet & Violet Base","set_id_hint":"sv1","collector_number":"025","confidence":0.91}`, nil)
+
+	// Run each child through the single-card pipeline directly. processScanJob
+	// is what the worker calls per row, so this proves the children are
+	// indistinguishable from any other queued job.
+	for _, c := range children {
+		processScanJob(context.Background(), db, scanJob{ID: c.id, UserID: u.ID, ImagePathEnc: c.enc})
+	}
+
+	for i, c := range children {
+		row := readScanJob(t, db, c.id)
+		if row.Status != scanJobStatusMatched {
+			t.Fatalf("child %d expected matched, got %q (err=%q)", i, row.Status, row.ErrorMessage.String)
+		}
+		if !row.MatchedCardID.Valid || row.MatchedCardID.String != "sv1-25" {
+			t.Errorf("child %d expected matched_card_id=sv1-25, got %+v", i, row.MatchedCardID)
+		}
+		if !row.ProcessedAt.Valid {
+			t.Errorf("child %d expected processed_at to be set", i)
+		}
+	}
+
+	// Re-read page_id on each row to confirm the parent link survived the
+	// worker UPDATE — finalizeScanJobMatched must not clobber page_id.
+	var linkedCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pokemon_scan_jobs WHERE page_id = ?`, pageID).Scan(&linkedCount); err != nil {
+		t.Fatalf("count linked: %v", err)
+	}
+	if linkedCount != len(children) {
+		t.Errorf("expected %d rows still linked to page_id=%d, got %d", len(children), pageID, linkedCount)
+	}
+}
+
 // TestStartScanWorker_ProcessesQueuedJobs spins up the actual polling loop
 // and verifies it picks up rows and writes terminal states. The poll interval
 // is left at the production default; we cancel the worker as soon as both

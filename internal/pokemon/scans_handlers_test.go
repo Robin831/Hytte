@@ -1338,3 +1338,243 @@ func TestScanCounts_OtherUsersDoNotLeak(t *testing.T) {
 		t.Errorf("expected today_cap=%d (default), got %d", ScanDailyCap, body["today_cap"])
 	}
 }
+
+// buildPageScanRequest builds a multipart upload for /api/pokemon/scans/page
+// with one image part per supplied payload plus a JSON cells field. cells must
+// have the same length as payloads — the tests deliberately feed identical
+// lengths because the matching check is exercised by the dedicated mismatch
+// test below.
+func buildPageScanRequest(t *testing.T, payloads [][]byte, cells string) *http.Request {
+	t.Helper()
+	body := &bytes.Buffer{}
+	w := multipart.NewWriter(body)
+	for i, p := range payloads {
+		part, err := w.CreateFormFile("images", "card-"+strconv.Itoa(i)+".jpg")
+		if err != nil {
+			t.Fatalf("create form file %d: %v", i, err)
+		}
+		if _, err := part.Write(p); err != nil {
+			t.Fatalf("write form payload %d: %v", i, err)
+		}
+	}
+	if cells != "" {
+		if err := w.WriteField("cells", cells); err != nil {
+			t.Fatalf("write cells field: %v", err)
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close multipart: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/pokemon/scans/page", body)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	return req
+}
+
+// jpegPayload returns N distinct JPEG-magic-prefixed byte slices so each card
+// part has its own SHA-256 hash. Used by the page-upload tests to confirm
+// children are stored independently rather than collapsed via dedupe.
+func jpegPayloads(t *testing.T, n int) [][]byte {
+	t.Helper()
+	out := make([][]byte, n)
+	for i := 0; i < n; i++ {
+		out[i] = append([]byte{}, jpegMagic...)
+		out[i] = append(out[i], []byte("page-card-"+strconv.Itoa(i))...)
+	}
+	return out
+}
+
+// TestPageScan_NPartsProduceOneParentAndNChildren is the happy-path: 9 image
+// parts plus a 9-element cells array must land 1 row in pokemon_scan_pages
+// and 9 children in pokemon_scan_jobs all linked via page_id, plus 9 image
+// files written to disk.
+func TestPageScan_NPartsProduceOneParentAndNChildren(t *testing.T) {
+	t.Setenv("UPLOAD_ROOT", t.TempDir())
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "page@example.com")
+
+	const n = 9
+	payloads := jpegPayloads(t, n)
+	cells := `[{"row":0,"col":0},{"row":0,"col":1},{"row":0,"col":2},{"row":1,"col":0},{"row":1,"col":1},{"row":1,"col":2},{"row":2,"col":0},{"row":2,"col":1},{"row":2,"col":2}]`
+
+	req := asUser(buildPageScanRequest(t, payloads, cells), u)
+	rec := httptest.NewRecorder()
+	PageScanHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[struct {
+		PageID int64   `json:"page_id"`
+		JobIDs []int64 `json:"job_ids"`
+		Count  int     `json:"count"`
+	}](t, rec)
+	if body.PageID <= 0 {
+		t.Fatalf("expected page_id > 0, got %d", body.PageID)
+	}
+	if len(body.JobIDs) != n || body.Count != n {
+		t.Fatalf("expected %d job ids and count=%d, got ids=%d count=%d", n, n, len(body.JobIDs), body.Count)
+	}
+
+	var pageCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pokemon_scan_pages WHERE user_id = ?`, u.ID).Scan(&pageCount); err != nil {
+		t.Fatalf("count pages: %v", err)
+	}
+	if pageCount != 1 {
+		t.Errorf("expected exactly 1 pokemon_scan_pages row, got %d", pageCount)
+	}
+	var expectedCount int
+	if err := db.QueryRow(`SELECT expected_count FROM pokemon_scan_pages WHERE id = ?`, body.PageID).Scan(&expectedCount); err != nil {
+		t.Fatalf("read expected_count: %v", err)
+	}
+	if expectedCount != n {
+		t.Errorf("expected expected_count=%d, got %d", n, expectedCount)
+	}
+
+	var childCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pokemon_scan_jobs WHERE user_id = ? AND page_id = ?`, u.ID, body.PageID).Scan(&childCount); err != nil {
+		t.Fatalf("count children: %v", err)
+	}
+	if childCount != n {
+		t.Errorf("expected %d children linked to page_id=%d, got %d", n, body.PageID, childCount)
+	}
+
+	// Every child must have its own decryptable image on disk so the worker
+	// can pick it up via the same code path as a single-card upload.
+	rows, err := db.Query(`SELECT image_path_enc FROM pokemon_scan_jobs WHERE page_id = ? ORDER BY id`, body.PageID)
+	if err != nil {
+		t.Fatalf("query child paths: %v", err)
+	}
+	defer rows.Close()
+	seen := 0
+	for rows.Next() {
+		var enc string
+		if err := rows.Scan(&enc); err != nil {
+			t.Fatalf("scan path: %v", err)
+		}
+		path, err := encryption.DecryptField(enc)
+		if err != nil || path == "" {
+			t.Fatalf("decrypt child path: err=%v path=%q", err, path)
+		}
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("expected child image at %s: %v", path, err)
+		}
+		seen++
+	}
+	if seen != n {
+		t.Errorf("expected %d child paths, scanned %d", n, seen)
+	}
+}
+
+// TestPageScan_CostCapReturns429NoImageWritten verifies the strict order of
+// operations: when the user does not have N free scans left today the handler
+// returns 429 and leaves zero state — no parent row, no children, and no
+// files on the per-user scan directory.
+func TestPageScan_CostCapReturns429NoImageWritten(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "cap-page@example.com")
+
+	// Cap=5, already used=3 → remaining=2 < n=4. The 4-image upload must
+	// be refused without writing anything.
+	setScanCapPref(t, db, u.ID, 5)
+	seedScanJobsToday(t, db, u.ID, 3)
+	usedBefore := scanJobCount(t, db, u.ID)
+
+	const n = 4
+	payloads := jpegPayloads(t, n)
+	cells := `[{"row":0,"col":0},{"row":0,"col":1},{"row":1,"col":0},{"row":1,"col":1}]`
+
+	req := asUser(buildPageScanRequest(t, payloads, cells), u)
+	rec := httptest.NewRecorder()
+	PageScanHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[struct {
+		Error     string `json:"error"`
+		Cap       int    `json:"cap"`
+		Used      int    `json:"used"`
+		Requested int    `json:"requested"`
+	}](t, rec)
+	if body.Error != "daily scan cap reached" {
+		t.Errorf("unexpected error message: %q", body.Error)
+	}
+	if body.Cap != 5 || body.Used != 3 || body.Requested != n {
+		t.Errorf("expected cap=5 used=3 requested=%d, got cap=%d used=%d requested=%d",
+			n, body.Cap, body.Used, body.Requested)
+	}
+
+	var pageRows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pokemon_scan_pages WHERE user_id = ?`, u.ID).Scan(&pageRows); err != nil {
+		t.Fatalf("count pages: %v", err)
+	}
+	if pageRows != 0 {
+		t.Errorf("expected zero pokemon_scan_pages rows on 429, got %d", pageRows)
+	}
+	if got := scanJobCount(t, db, u.ID); got != usedBefore {
+		t.Errorf("expected child job count to stay at %d on 429, got %d", usedBefore, got)
+	}
+
+	userScanDir := filepath.Join(root, "pokemon-scans", strconv.FormatInt(u.ID, 10))
+	if entries, err := os.ReadDir(userScanDir); err == nil {
+		// Directory may not exist at all — that's fine. If it does,
+		// it must contain no files because the 429 fired before any write.
+		if len(entries) != 0 {
+			t.Errorf("expected no scan files written on 429, found %d entries in %s", len(entries), userScanDir)
+		}
+	}
+}
+
+// TestPageScan_CellsLengthMustMatchImageCount guards the contract that the
+// caller cannot smuggle in extra or missing crops vs the cells JSON.
+func TestPageScan_CellsLengthMustMatchImageCount(t *testing.T) {
+	t.Setenv("UPLOAD_ROOT", t.TempDir())
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "mismatch@example.com")
+
+	payloads := jpegPayloads(t, 3)
+	// 2 cells, 3 images — must reject without writing rows or files.
+	cells := `[{"row":0,"col":0},{"row":0,"col":1}]`
+
+	req := asUser(buildPageScanRequest(t, payloads, cells), u)
+	rec := httptest.NewRecorder()
+	PageScanHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 on cells/images mismatch, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := scanJobCount(t, db, u.ID); got != 0 {
+		t.Errorf("expected no rows on 400, got %d", got)
+	}
+}
+
+// TestPageScan_RejectsBadMIME verifies a non-image part rejects the whole
+// batch — no children inserted and no files written.
+func TestPageScan_RejectsBadMIME(t *testing.T) {
+	t.Setenv("UPLOAD_ROOT", t.TempDir())
+	db := setupTestDB(t)
+	u := seedUser(t, db, 1, "badmime@example.com")
+
+	good := append([]byte{}, jpegMagic...)
+	good = append(good, []byte("ok")...)
+	bad := []byte("definitely not an image")
+	cells := `[{"row":0,"col":0},{"row":0,"col":1}]`
+
+	req := asUser(buildPageScanRequest(t, [][]byte{good, bad}, cells), u)
+	rec := httptest.NewRecorder()
+	PageScanHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 on bad MIME part, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := scanJobCount(t, db, u.ID); got != 0 {
+		t.Errorf("expected no rows on bad MIME, got %d", got)
+	}
+	var pageRows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pokemon_scan_pages WHERE user_id = ?`, u.ID).Scan(&pageRows); err != nil {
+		t.Fatalf("count pages: %v", err)
+	}
+	if pageRows != 0 {
+		t.Errorf("expected no pokemon_scan_pages on bad MIME, got %d", pageRows)
+	}
+}
