@@ -1,0 +1,2 @@
+category: Fixed
+- **Running cadence now reported as steps/min instead of strides/min** - The FIT format stores running cadence as "strides per minute" (one stride = one full cycle of both legs = 2 footstrikes); watches like Coros / Garmin show cadence as steps/min, so our stored value was exactly half of what users see on the watch. New `runningCadenceFromFIT` helper doubles the value for running sport only (cycling crank rpm and other sports keep their FIT value). Existing rows backfilled with a one-off SQL update on deploy.

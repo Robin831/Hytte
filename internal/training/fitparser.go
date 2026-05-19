@@ -52,7 +52,7 @@ func ParseFIT(r io.Reader) (*ParsedWorkout, string, error) {
 		pw.DistanceMeters = sessionDistance(sess)
 		pw.AvgHeartRate = int(sess.AvgHeartRate)
 		pw.MaxHeartRate = int(sess.MaxHeartRate)
-		pw.AvgCadence = int(sess.AvgCadence)
+		pw.AvgCadence = runningCadenceFromFIT(pw.Sport, int(sess.AvgCadence))
 		pw.Calories = int(sess.TotalCalories)
 		pw.AscentMeters = float64(sess.TotalAscent)
 		pw.DescentMeters = float64(sess.TotalDescent)
@@ -73,7 +73,7 @@ func ParseFIT(r io.Reader) (*ParsedWorkout, string, error) {
 			AvgHeartRate:    int(lap.AvgHeartRate),
 			MaxHeartRate:    int(lap.MaxHeartRate),
 			AvgSpeedMPerS:   lapAvgSpeed(lap),
-			AvgCadence:      int(lap.AvgCadence),
+			AvgCadence:      runningCadenceFromFIT(pw.Sport, int(lap.AvgCadence)),
 			LapTrigger:      lapTriggerString(lap.LapTrigger),
 		}
 		if !activityStart.IsZero() && !lap.StartTime.IsZero() {
@@ -99,7 +99,7 @@ func ParseFIT(r io.Reader) (*ParsedWorkout, string, error) {
 			s.SpeedMPerS = spd
 		}
 		if rec.Cadence != basetype.Uint8Invalid {
-			s.Cadence = int(rec.Cadence)
+			s.Cadence = runningCadenceFromFIT(pw.Sport, int(rec.Cadence))
 		}
 		if alt := recordAltitude(rec); alt >= -500 {
 			s.AltitudeM = alt
@@ -182,6 +182,22 @@ func recordAltitude(r *mesgdef.Record) float64 {
 		return float64(r.Altitude)/5.0 - 500.0
 	}
 	return -501 // sentinel: no altitude present
+}
+
+// runningCadenceFromFIT converts the FIT-stored cadence value (which is
+// "strides per minute" for running — one stride = one full cycle of both
+// legs = 2 footstrikes) into the steps-per-minute value that watches and
+// runners actually talk about. For non-running sports (cycling crank rpm,
+// etc.) the FIT value is already what the user expects and is returned
+// unchanged. Returns 0 unchanged so missing-cadence stays missing.
+func runningCadenceFromFIT(sport string, fitCadence int) int {
+	if fitCadence == 0 {
+		return 0
+	}
+	if sport == "running" {
+		return fitCadence * 2
+	}
+	return fitCadence
 }
 
 func sportString(s typedef.Sport) string {

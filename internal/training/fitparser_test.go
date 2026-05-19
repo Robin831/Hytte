@@ -305,3 +305,27 @@ func TestParseFIT_Integration(t *testing.T) {
 		t.Errorf("Samples[0].SpeedMPerS = %v, want 3.0", pw.Samples[0].SpeedMPerS)
 	}
 }
+
+// FIT stores running cadence in strides/min (one stride = both feet =
+// 2 footstrikes); the value users and watches expect is steps/min, so we
+// double on parse. Other sports (cycling, etc.) keep the FIT value as-is.
+func TestRunningCadenceFromFIT(t *testing.T) {
+	cases := []struct {
+		sport string
+		in    int
+		want  int
+	}{
+		{"running", 98, 196},
+		{"running", 100, 200},
+		{"running", 0, 0},
+		{"cycling", 90, 90},
+		{"swimming", 30, 30},
+		{"", 95, 95},
+	}
+	for _, c := range cases {
+		got := runningCadenceFromFIT(c.sport, c.in)
+		if got != c.want {
+			t.Errorf("runningCadenceFromFIT(%q, %d) = %d, want %d", c.sport, c.in, got, c.want)
+		}
+	}
+}
