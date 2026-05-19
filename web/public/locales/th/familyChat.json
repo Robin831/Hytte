@@ -12,7 +12,8 @@
   },
   "errors": {
     "failedToLoad": "โหลดการสนทนาไม่สำเร็จ",
-    "failedToLoadMessages": "โหลดข้อความไม่สำเร็จ"
+    "failedToLoadMessages": "โหลดข้อความไม่สำเร็จ",
+    "failedToLoadConversation": "โหลดการสนทนาไม่สำเร็จ"
   },
   "time": {
     "justNow": "เมื่อสักครู่"

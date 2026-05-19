@@ -12,7 +12,8 @@
   },
   "errors": {
     "failedToLoad": "Failed to load conversations",
-    "failedToLoadMessages": "Failed to load messages"
+    "failedToLoadMessages": "Failed to load messages",
+    "failedToLoadConversation": "Failed to load conversation"
   },
   "time": {
     "justNow": "just now"

@@ -169,7 +169,10 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         setMessages(sorted)
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return
-        setError(t('errors.failedToLoadMessages'))
+        const key = err instanceof Error && err.message === 'conversation failed'
+          ? 'errors.failedToLoadConversation'
+          : 'errors.failedToLoadMessages'
+        setError(t(key))
       } finally {
         if (!controller.signal.aborted) setLoading(false)
       }

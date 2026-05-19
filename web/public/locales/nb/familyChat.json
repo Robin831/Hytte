@@ -12,7 +12,8 @@
   },
   "errors": {
     "failedToLoad": "Klarte ikke å laste samtaler",
-    "failedToLoadMessages": "Klarte ikke å laste meldinger"
+    "failedToLoadMessages": "Klarte ikke å laste meldinger",
+    "failedToLoadConversation": "Klarte ikke å laste samtalen"
   },
   "time": {
     "justNow": "akkurat nå"
