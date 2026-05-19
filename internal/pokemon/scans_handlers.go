@@ -975,41 +975,6 @@ func DeleteScanPageHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Collect the image paths of every child we are about to discard so
-		// we can remove the on-disk files after the transaction commits.
-		// Reading them BEFORE the UPDATE keeps the work outside the write
-		// lock; the file deletes happen post-commit so a crash mid-update
-		// can be reconciled by the scan_cleanup pass.
-		pathRows, err := db.QueryContext(r.Context(), `
-			SELECT image_path_enc FROM pokemon_scan_jobs
-			WHERE user_id = ? AND page_id = ?
-			  AND status NOT IN (?, ?)
-			  AND image_path_enc != ''
-		`, user.ID, pageID, scanJobStatusAdded, scanJobStatusDiscarded)
-		if err != nil {
-			log.Printf("pokemon: load child image paths for page delete: %v", err)
-			respondError(w, http.StatusInternalServerError, "failed to delete page")
-			return
-		}
-		var imagePaths []string
-		for pathRows.Next() {
-			var enc string
-			if err := pathRows.Scan(&enc); err != nil {
-				pathRows.Close()
-				log.Printf("pokemon: scan child path: %v", err)
-				respondError(w, http.StatusInternalServerError, "failed to delete page")
-				return
-			}
-			imagePaths = append(imagePaths, enc)
-		}
-		if err := pathRows.Err(); err != nil {
-			pathRows.Close()
-			log.Printf("pokemon: iterate child paths: %v", err)
-			respondError(w, http.StatusInternalServerError, "failed to delete page")
-			return
-		}
-		pathRows.Close()
-
 		now := time.Now().UTC()
 		tx, err := db.BeginTx(r.Context(), nil)
 		if err != nil {
@@ -1017,18 +982,78 @@ func DeleteScanPageHandler(db *sql.DB) http.HandlerFunc {
 			respondError(w, http.StatusInternalServerError, "failed to delete page")
 			return
 		}
-		if _, err := tx.ExecContext(r.Context(), `
+
+		// Mark every non-terminal child as discarded and capture the image
+		// paths of *exactly* the rows we just discarded via RETURNING. Doing
+		// it as a single atomic statement closes the TOCTOU window where a
+		// concurrent INSERT (new sibling) or status flip to 'added' between a
+		// preliminary SELECT and the UPDATE could leave us deleting an image
+		// file still referenced by a row we didn't touch. image_path_enc is
+		// cleared in a follow-up UPDATE keyed by the returned ids so the
+		// RETURNING values reflect the path *before* it was zeroed out.
+		discardedRows, err := tx.QueryContext(r.Context(), `
 			UPDATE pokemon_scan_jobs
-			SET status = ?, resolved_at = ?, image_path_enc = ''
+			SET status = ?, resolved_at = ?
 			WHERE user_id = ? AND page_id = ?
 			  AND status NOT IN (?, ?)
+			RETURNING id, image_path_enc
 		`, scanJobStatusDiscarded, now, user.ID, pageID,
-			scanJobStatusAdded, scanJobStatusDiscarded); err != nil {
+			scanJobStatusAdded, scanJobStatusDiscarded)
+		if err != nil {
 			tx.Rollback()
 			log.Printf("pokemon: discard child scans: %v", err)
 			respondError(w, http.StatusInternalServerError, "failed to delete page")
 			return
 		}
+		var (
+			discardedIDs []int64
+			imagePaths   []string
+		)
+		for discardedRows.Next() {
+			var (
+				cID int64
+				enc string
+			)
+			if err := discardedRows.Scan(&cID, &enc); err != nil {
+				discardedRows.Close()
+				tx.Rollback()
+				log.Printf("pokemon: scan discard returning: %v", err)
+				respondError(w, http.StatusInternalServerError, "failed to delete page")
+				return
+			}
+			discardedIDs = append(discardedIDs, cID)
+			if enc != "" {
+				imagePaths = append(imagePaths, enc)
+			}
+		}
+		if err := discardedRows.Err(); err != nil {
+			discardedRows.Close()
+			tx.Rollback()
+			log.Printf("pokemon: iterate discard returning: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to delete page")
+			return
+		}
+		discardedRows.Close()
+
+		if len(discardedIDs) > 0 {
+			placeholders := make([]string, len(discardedIDs))
+			args := make([]any, len(discardedIDs))
+			for i, id := range discardedIDs {
+				placeholders[i] = "?"
+				args[i] = id
+			}
+			if _, err := tx.ExecContext(r.Context(), `
+				UPDATE pokemon_scan_jobs
+				SET image_path_enc = ''
+				WHERE id IN (`+strings.Join(placeholders, ",")+`)
+			`, args...); err != nil {
+				tx.Rollback()
+				log.Printf("pokemon: clear discarded paths: %v", err)
+				respondError(w, http.StatusInternalServerError, "failed to delete page")
+				return
+			}
+		}
+
 		// Delete the parent row last so the children's page_id FK transitions
 		// to NULL via ON DELETE SET NULL. The discarded children survive as
 		// history rows reachable via the "Recently resolved" filter.
@@ -1046,6 +1071,9 @@ func DeleteScanPageHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// File deletes happen post-commit: a crash mid-loop leaves orphaned
+		// files reachable by the scan_cleanup pass, while deleting before
+		// commit risks losing files we'd need to keep on rollback.
 		for _, enc := range imagePaths {
 			deleteScanImage(enc)
 		}
