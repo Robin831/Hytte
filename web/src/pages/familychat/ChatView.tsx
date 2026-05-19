@@ -199,13 +199,16 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   }, [messages.length, conversationId])
 
   const handleMessageCreated = useCallback((msg: ChatMessage) => {
+    // Defensive: if the user switched conversations while a send was in
+    // flight, drop the message rather than leaking it into the wrong chat.
+    if (msg.conversation_id !== conversationId) return
     setMessages(prev => {
       // Guard against the rare case where SSE (sub-task 4) and the REST
       // response both deliver the same message: drop any duplicate id.
       if (prev.some(m => m.id === msg.id)) return prev
       return [...prev, msg]
     })
-  }, [])
+  }, [conversationId])
 
   const memberChips = useMemo(() => {
     if (!conversation) return []

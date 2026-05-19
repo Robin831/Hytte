@@ -18,13 +18,21 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   // Clear draft + focus the textarea when the conversation changes so the
-  // composer doesn't carry a half-typed message to a different chat.
+  // composer doesn't carry a half-typed message to a different chat. Also
+  // abort any in-flight send so its response cannot leak the message into
+  // the newly selected conversation. The cleanup also runs on unmount.
   useEffect(() => {
     setBody('')
     setError('')
+    setSending(false)
     textareaRef.current?.focus()
+    return () => {
+      abortRef.current?.abort()
+      abortRef.current = null
+    }
   }, [conversationId])
 
   // Auto-grow the textarea up to a max height; collapse back when emptied.
@@ -42,20 +50,27 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
       setError(t('composer.errors.tooLong'))
       return
     }
+    const controller = new AbortController()
+    abortRef.current?.abort()
+    abortRef.current = controller
+    const targetConversationId = conversationId
     setSending(true)
     setError('')
     try {
-      const res = await fetch(`/api/familychat/conversations/${conversationId}/messages`, {
+      const res = await fetch(`/api/familychat/conversations/${targetConversationId}/messages`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ body: trimmed }),
+        signal: controller.signal,
       })
+      if (controller.signal.aborted) return
       if (!res.ok) {
         const data = await res.json().catch(() => null)
         throw new Error(data?.error || t('composer.errors.send'))
       }
       const data = await res.json()
+      if (controller.signal.aborted) return
       const msg = data?.message as ChatMessage | undefined
       if (!msg || typeof msg.id !== 'number') {
         throw new Error(t('composer.errors.send'))
@@ -64,9 +79,12 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
       setBody('')
       textareaRef.current?.focus()
     } catch (err) {
+      if (controller.signal.aborted) return
+      if (err instanceof Error && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : t('composer.errors.send'))
     } finally {
-      setSending(false)
+      if (!controller.signal.aborted) setSending(false)
+      if (abortRef.current === controller) abortRef.current = null
     }
   }
 
