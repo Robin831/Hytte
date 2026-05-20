@@ -195,6 +195,74 @@ describe('VoiceBubble – seek', () => {
     expect(target).toBeLessThan(6000)
   })
 
+  it('the seek slider is focusable and exposes a slider role with value bounds', () => {
+    render(
+      <VoiceBubble
+        messageId={42}
+        src="/audio/42.webm"
+        bars={makeBars()}
+        durationMs={10000}
+      />,
+    )
+    const svg = screen.getByTestId('voice-bubble-wave-42')
+    expect(svg).toHaveAttribute('role', 'slider')
+    expect(svg).toHaveAttribute('tabindex', '0')
+    expect(svg).toHaveAttribute('aria-valuemin', '0')
+    expect(svg).toHaveAttribute('aria-valuemax', '10000')
+    expect(svg).toHaveAttribute('aria-valuenow', '0')
+    expect(svg).toHaveAttribute('aria-orientation', 'horizontal')
+  })
+
+  it('arrow keys step the position by 5s on the active bubble', () => {
+    render(
+      <VoiceBubble
+        messageId={42}
+        src="/audio/42.webm"
+        bars={makeBars()}
+        durationMs={30000}
+      />,
+    )
+    act(() => {
+      mockedPlayer.__setState({ currentId: '42', playing: true, positionMs: 10000, durationMs: 30000 })
+    })
+
+    const svg = screen.getByTestId('voice-bubble-wave-42')
+    fireEvent.keyDown(svg, { key: 'ArrowRight' })
+    expect(voicePlayer.seek).toHaveBeenLastCalledWith(15000)
+
+    fireEvent.keyDown(svg, { key: 'ArrowLeft' })
+    // The slider drives off the singleton-reported position, so each press
+    // bases its delta on the same 10000ms snapshot in this test.
+    expect(voicePlayer.seek).toHaveBeenLastCalledWith(5000)
+
+    fireEvent.keyDown(svg, { key: 'Home' })
+    expect(voicePlayer.seek).toHaveBeenLastCalledWith(0)
+
+    fireEvent.keyDown(svg, { key: 'End' })
+    expect(voicePlayer.seek).toHaveBeenLastCalledWith(30000)
+  })
+
+  it('keyboard seek clamps to the duration bounds', () => {
+    render(
+      <VoiceBubble
+        messageId={42}
+        src="/audio/42.webm"
+        bars={makeBars()}
+        durationMs={4000}
+      />,
+    )
+    act(() => {
+      mockedPlayer.__setState({ currentId: '42', playing: true, positionMs: 1000, durationMs: 4000 })
+    })
+
+    const svg = screen.getByTestId('voice-bubble-wave-42')
+    fireEvent.keyDown(svg, { key: 'ArrowLeft' })
+    expect(voicePlayer.seek).toHaveBeenLastCalledWith(0)
+
+    fireEvent.keyDown(svg, { key: 'ArrowRight' })
+    expect(voicePlayer.seek).toHaveBeenLastCalledWith(4000)
+  })
+
   it('clicking the waveform on an idle bubble starts playback at the picked offset', async () => {
     render(
       <VoiceBubble

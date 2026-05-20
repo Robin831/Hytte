@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Play, Pause } from 'lucide-react'
 import * as voicePlayer from './voicePlayer'
+
+const KEYBOARD_SEEK_STEP_MS = 5000
 
 interface VoiceBubbleProps {
   messageId: number
@@ -78,6 +80,18 @@ export default function VoiceBubble({
     }
   }, [idKey, isPlaying, src])
 
+  // seekTo centralizes the "drive the singleton to ms" logic shared by the
+  // pointer and keyboard handlers. On an idle bubble it kicks off playback at
+  // the picked offset so a keyboard user can move directly into the recording.
+  const seekTo = useCallback((targetMs: number) => {
+    const clamped = Math.max(0, Math.min(effectiveDurationMs, targetMs))
+    if (!isActive) {
+      void voicePlayer.play(idKey, src).then(() => voicePlayer.seek(clamped))
+    } else {
+      voicePlayer.seek(clamped)
+    }
+  }, [effectiveDurationMs, idKey, isActive, src])
+
   // handleSeek maps a pointer X within the SVG to a duration offset.
   const handleSeek = useCallback((event: PointerEvent<SVGSVGElement>) => {
     if (effectiveDurationMs <= 0) return
@@ -86,14 +100,43 @@ export default function VoiceBubble({
     const rect = svg.getBoundingClientRect()
     if (rect.width <= 0) return
     const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
-    const targetMs = ratio * effectiveDurationMs
-    if (!isActive) {
-      // Seeking on an idle bubble: start playback from the picked offset.
-      void voicePlayer.play(idKey, src).then(() => voicePlayer.seek(targetMs))
-    } else {
-      voicePlayer.seek(targetMs)
+    seekTo(ratio * effectiveDurationMs)
+  }, [effectiveDurationMs, seekTo])
+
+  // handleKeyDown fulfils the ARIA slider keyboard contract: arrow keys step
+  // by 5s, PageUp/PageDown step by 10s, Home/End jump to the bounds.
+  // Without this the role="slider" advertisement would be a lie to assistive
+  // tech — a slider must be focusable and operable by keyboard.
+  const handleKeyDown = useCallback((event: KeyboardEvent<SVGSVGElement>) => {
+    if (effectiveDurationMs <= 0) return
+    let nextMs: number | null = null
+    switch (event.key) {
+      case 'ArrowLeft':
+      case 'ArrowDown':
+        nextMs = positionMs - KEYBOARD_SEEK_STEP_MS
+        break
+      case 'ArrowRight':
+      case 'ArrowUp':
+        nextMs = positionMs + KEYBOARD_SEEK_STEP_MS
+        break
+      case 'PageDown':
+        nextMs = positionMs - KEYBOARD_SEEK_STEP_MS * 2
+        break
+      case 'PageUp':
+        nextMs = positionMs + KEYBOARD_SEEK_STEP_MS * 2
+        break
+      case 'Home':
+        nextMs = 0
+        break
+      case 'End':
+        nextMs = effectiveDurationMs
+        break
+      default:
+        return
     }
-  }, [effectiveDurationMs, idKey, isActive, src])
+    event.preventDefault()
+    seekTo(nextMs)
+  }, [effectiveDurationMs, positionMs, seekTo])
 
   const fillWidth = WAVE_WIDTH * progressRatio
   const baseColor = isOwn ? 'rgba(255,255,255,0.45)' : 'rgba(156,163,175,0.6)'
@@ -129,13 +172,17 @@ export default function VoiceBubble({
         ref={svgRef}
         viewBox={`0 0 ${WAVE_WIDTH} ${WAVE_HEIGHT}`}
         preserveAspectRatio="none"
-        className="h-7 flex-1 min-w-[100px] max-w-[200px] cursor-pointer touch-none"
+        className="h-7 flex-1 min-w-[100px] max-w-[200px] cursor-pointer touch-none focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 rounded"
         onClick={handleSeek}
+        onKeyDown={handleKeyDown}
         role="slider"
+        tabIndex={0}
         aria-label={t('voice.bubble.seek')}
         aria-valuemin={0}
         aria-valuemax={effectiveDurationMs}
         aria-valuenow={positionMs}
+        aria-valuetext={formatDuration(positionMs)}
+        aria-orientation="horizontal"
         data-testid={`voice-bubble-wave-${messageId}`}
       >
         <defs>
