@@ -6,6 +6,8 @@ import {
   applyReactionEvent,
   editMessage,
   deleteMessage,
+  uploadAttachment,
+  UploadError,
   type ReactionMap,
 } from './api'
 
@@ -127,5 +129,62 @@ describe('deleteMessage', () => {
   it('throws when the response is not ok', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }))
     await expect(deleteMessage(1, 1)).rejects.toThrow()
+  })
+})
+
+describe('uploadAttachment', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('returns parsed uploadId, mime and size on success', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ upload_id: 'abc123', mime: 'audio/webm', size: 1024 }),
+    }))
+    const result = await uploadAttachment(1, new Blob(['x']), 'voice.webm')
+    expect(result.uploadId).toBe('abc123')
+    expect(result.mime).toBe('audio/webm')
+    expect(result.size).toBe(1024)
+  })
+
+  it('throws UploadError with status and serverCode on non-OK JSON response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: () => Promise.resolve({ error: 'unsupported file type' }),
+    }))
+    let caught: unknown
+    try { await uploadAttachment(1, new Blob(['x']), 'file.txt') } catch (e) { caught = e }
+    expect(caught).toBeInstanceOf(UploadError)
+    expect((caught as UploadError).status).toBe(400)
+    expect((caught as UploadError).serverCode).toBe('unsupported file type')
+  })
+
+  it('throws UploadError when the response body is not JSON', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 413,
+      json: () => Promise.reject(new SyntaxError('not json')),
+    }))
+    let caught: unknown
+    try { await uploadAttachment(1, new Blob(['x']), 'huge.bin') } catch (e) { caught = e }
+    expect(caught).toBeInstanceOf(UploadError)
+    expect((caught as UploadError).status).toBe(413)
+    expect((caught as UploadError).serverCode).toBe('')
+  })
+
+  it('throws UploadError when upload_id is missing from the response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ mime: 'audio/webm', size: 512 }),
+    }))
+    await expect(uploadAttachment(1, new Blob(['x']), 'voice.webm')).rejects.toBeInstanceOf(UploadError)
+  })
+
+  it('throws UploadError when upload_id is not a string', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ upload_id: 42, mime: 'audio/webm', size: 512 }),
+    }))
+    await expect(uploadAttachment(1, new Blob(['x']), 'voice.webm')).rejects.toBeInstanceOf(UploadError)
   })
 })

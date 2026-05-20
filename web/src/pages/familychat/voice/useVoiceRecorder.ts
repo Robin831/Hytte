@@ -117,6 +117,10 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
   const levelsHistoryRef = useRef<number[]>(new Array(barCount).fill(0))
   const autoCompleteRef = useRef<boolean>(false)
   const onAutoCompleteRef = useRef<UseVoiceRecorderOptions['onAutoComplete']>(options.onAutoComplete)
+  // Synchronous guard so a rapid second start() call in the same tick
+  // (e.g. double pointerdown) is dropped before any async work begins.
+  // State-based checks are async and cannot catch this race.
+  const startInFlightRef = useRef(false)
   useEffect(() => { onAutoCompleteRef.current = options.onAutoComplete })
 
   // Adjust levels length when barCount changes (rare). Use a useState-based
@@ -284,7 +288,10 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
   ])
 
   const start = useCallback(async () => {
+    if (startInFlightRef.current) return
     if (state === 'recording' || state === 'starting') return
+    startInFlightRef.current = true
+    try {
     if (!supported) {
       setError('unsupported')
       setState('error')
@@ -404,6 +411,9 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
       setState('processing')
       try { recorder.stop() } catch { /* recorder may have stopped already */ }
     }, maxDurationMs)
+    } finally {
+      startInFlightRef.current = false
+    }
   }, [
     barCount,
     finaliseStop,
@@ -455,9 +465,10 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
   }, [finaliseStop, fullTeardown])
 
   const setPointerDelta = useCallback((deltaY: number) => {
-    // deltaY is the pointer's vertical displacement since pointerdown
-    // (negative when the finger moves up). Use the magnitude so callers can
-    // pass either sign convention without breaking the gesture.
+    // deltaY is the pointer's vertical displacement since pointerdown,
+    // negative when the pointer moves up (clientY − startY). The sign is
+    // negated internally to get the upward distance, so callers must pass
+    // the raw signed delta — not an absolute value.
     const upward = -deltaY
     setCancelArmed(upward >= cancelThresholdPx)
   }, [cancelThresholdPx])

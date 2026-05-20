@@ -41,6 +41,7 @@
     "attach": "Legg ved fil",
     "removeAttachment": "Fjern vedlegg",
     "voice": {
+      "record": "Ta opp talemelding",
       "start": "Hold inne for å spille inn talemelding",
       "cancel": "Avbryt opptak",
       "send": "Send talemelding",

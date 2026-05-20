@@ -41,6 +41,7 @@
     "attach": "Attach a file",
     "removeAttachment": "Remove attachment",
     "voice": {
+      "record": "Record voice note",
       "start": "Hold to record voice note",
       "cancel": "Cancel recording",
       "send": "Send voice note",

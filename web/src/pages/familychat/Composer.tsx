@@ -494,7 +494,7 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
             onPointerUp={handleMicPointerUp}
             onPointerCancel={handleMicPointerCancel}
             disabled={micDisabled}
-            aria-label={t('composer.voice.start')}
+            aria-label={t('composer.voice.record')}
             title={t('composer.voice.start')}
             className="flex items-center justify-center w-10 h-10 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer touch-none select-none"
             data-testid="family-chat-voice-mic"
