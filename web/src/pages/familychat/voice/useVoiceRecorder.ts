@@ -124,11 +124,10 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
   const startInFlightRef = useRef(false)
   useEffect(() => { onAutoCompleteRef.current = options.onAutoComplete })
 
-  // Sync levels/history when barCount changes (rare). levelsHistoryRef is also
-  // reset in start() before each recording, so mid-recording changes are fine.
+  // Sync levelsHistoryRef when barCount changes (rare). The levels state is
+  // reset in start() before each recording, so it self-corrects on next use.
   useEffect(() => {
     levelsHistoryRef.current = new Array(barCount).fill(0)
-    setLevels(new Array(barCount).fill(0))
   }, [barCount])
 
   const supported = isGetUserMediaAvailable() && isMediaRecorderAvailable()
