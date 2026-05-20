@@ -120,18 +120,20 @@ func TestUploadAttachmentHandler_RejectsTooLarge(t *testing.T) {
 
 func TestUploadAttachmentHandler_AcceptsAudioWebm(t *testing.T) {
 	// MediaRecorder voice-note uploads from Chromium arrive as audio/webm.
-	// http.DetectContentType has no WebM signature, so the sniff returns
-	// application/octet-stream and the handler must fall through to the
-	// client-supplied Content-Type. The recorder sub-task depends on this.
+	// Go's http.DetectContentType only knows the EBML/Matroska container
+	// signature and returns "video/webm" — it cannot tell the audio-only
+	// stream apart from a video. The handler disambiguates by trusting the
+	// client's Content-Type when it declares audio/webm, which is what the
+	// recorder sub-task depends on.
 	db := setupTestDB(t)
 	makeUser(t, db, 1, "alice@example.com")
 	convID := seedConversation(t, db, 1, "Family")
 	root := t.TempDir()
 	t.Setenv("UPLOAD_ROOT", root)
 
-	// EBML / Matroska magic 1A 45 DF A3 followed by padding. Go's sniff
-	// table does not include WebM, so DetectContentType returns
-	// application/octet-stream and the handler uses the request header.
+	// EBML / Matroska magic 1A 45 DF A3 followed by padding. This triggers
+	// Go's "video/webm" sniff signature; the handler then overrides it to
+	// "audio/webm" based on the client-supplied Content-Type.
 	payload := []byte{0x1A, 0x45, 0xDF, 0xA3}
 	payload = append(payload, bytes.Repeat([]byte{0x00}, 512)...)
 	req := withUser(buildUploadRequest(t, convID, "voice.webm", "audio/webm", payload), 1)

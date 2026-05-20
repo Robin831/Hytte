@@ -183,13 +183,24 @@ func UploadAttachmentHandler(db *sql.DB) http.HandlerFunc {
 		if idx := strings.Index(mimeType, ";"); idx >= 0 {
 			mimeType = strings.TrimSpace(mimeType[:idx])
 		}
+		// Normalise the client-declared Content-Type so we can use it both for
+		// the octet-stream fallback below and for disambiguating sniffed types
+		// whose container is shared between audio and video.
+		clientCT := strings.TrimSpace(header.Header.Get("Content-Type"))
+		if idx := strings.Index(clientCT, ";"); idx >= 0 {
+			clientCT = strings.TrimSpace(clientCT[:idx])
+		}
+		clientCT = strings.ToLower(clientCT)
 		if mimeType == "application/octet-stream" {
-			if ct := strings.TrimSpace(header.Header.Get("Content-Type")); ct != "" {
-				if idx := strings.Index(ct, ";"); idx >= 0 {
-					ct = strings.TrimSpace(ct[:idx])
-				}
-				mimeType = strings.ToLower(ct)
+			if clientCT != "" {
+				mimeType = clientCT
 			}
+		} else if mimeType == "video/webm" && clientCT == "audio/webm" {
+			// WebM uses the same EBML/Matroska container for audio and video,
+			// and Go's sniff table only recognises it as "video/webm". Trust
+			// the client header when it declares an audio-only stream — that
+			// is what Chromium MediaRecorder emits for voice notes.
+			mimeType = "audio/webm"
 		}
 		if _, allowed := allowedAttachmentMimes[mimeType]; !allowed {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported file type"})
