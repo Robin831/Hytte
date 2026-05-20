@@ -2,7 +2,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createRef } from 'react'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
-import ReactionPicker, { computePickerPosition } from './ReactionPicker'
+import ReactionPicker from './ReactionPicker'
+import { computePickerPosition } from './pickerPosition'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
