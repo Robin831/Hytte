@@ -39,6 +39,50 @@ export async function removeReaction(convID: number, msgID: number, emoji: strin
   if (!res.ok) throw new Error(`remove reaction failed: ${res.status}`)
 }
 
+// editMessage PATCHes a message body. Resolves with the server's view of the
+// updated message (including the freshly stamped `edited_at`). Throws on any
+// non-success response so callers can roll back optimistic UI updates.
+export async function editMessage(
+  convID: number,
+  msgID: number,
+  body: string,
+): Promise<{
+  id: number
+  conversation_id: number
+  sender_user_id: number
+  body: string
+  created_at: string
+  edited_at: string | null
+  deleted_at: string | null
+  deleted_by: number | null
+}> {
+  const res = await fetch(
+    `/api/familychat/conversations/${convID}/messages/${msgID}`,
+    {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ body }),
+    },
+  )
+  if (!res.ok) throw new Error(`edit message failed: ${res.status}`)
+  const data = await res.json()
+  return data.message
+}
+
+// deleteMessage DELETEs (soft-deletes) a message. Resolves on success (204).
+// Throws on any non-success response.
+export async function deleteMessage(convID: number, msgID: number): Promise<void> {
+  const res = await fetch(
+    `/api/familychat/conversations/${convID}/messages/${msgID}`,
+    {
+      method: 'DELETE',
+      credentials: 'include',
+    },
+  )
+  if (!res.ok) throw new Error(`delete message failed: ${res.status}`)
+}
+
 // applyReactionEvent returns a new reaction map reflecting an add/remove SSE
 // event. The input map is never mutated; a shallow clone is always returned so
 // React state updates trigger re-renders even when bucket fields are unchanged.

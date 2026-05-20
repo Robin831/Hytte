@@ -1,6 +1,13 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { addReaction, removeReaction, applyReactionEvent, type ReactionMap } from './api'
+import {
+  addReaction,
+  removeReaction,
+  applyReactionEvent,
+  editMessage,
+  deleteMessage,
+  type ReactionMap,
+} from './api'
 
 describe('addReaction', () => {
   afterEach(() => { vi.unstubAllGlobals() })
@@ -67,5 +74,58 @@ describe('applyReactionEvent', () => {
     const out = applyReactionEvent(prev, { user_id: 7, emoji: '👍', count: 1 }, 7, true)
     expect(out['👍'].me).toBe(false)
     expect(out['👍'].users).toEqual([3])
+  })
+})
+
+describe('editMessage', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('PATCHes the message endpoint with the new body and returns the parsed message', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        message: {
+          id: 42,
+          conversation_id: 7,
+          sender_user_id: 1,
+          body: 'updated',
+          created_at: '2026-05-01T10:00:00Z',
+          edited_at: '2026-05-01T10:05:00Z',
+          deleted_at: null,
+          deleted_by: null,
+        },
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const out = await editMessage(7, 42, 'updated')
+    expect(out.body).toBe('updated')
+    expect(out.edited_at).toBe('2026-05-01T10:05:00Z')
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/familychat/conversations/7/messages/42')
+    expect(init.method).toBe('PATCH')
+    expect(JSON.parse(init.body)).toEqual({ body: 'updated' })
+  })
+
+  it('throws when the response is not ok', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 409 }))
+    await expect(editMessage(1, 1, 'x')).rejects.toThrow()
+  })
+})
+
+describe('deleteMessage', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('DELETEs the message endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 204 })
+    vi.stubGlobal('fetch', fetchMock)
+    await deleteMessage(3, 9)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/familychat/conversations/3/messages/9')
+    expect(init.method).toBe('DELETE')
+  })
+
+  it('throws when the response is not ok', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }))
+    await expect(deleteMessage(1, 1)).rejects.toThrow()
   })
 })

@@ -71,7 +71,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 			body            TEXT NOT NULL DEFAULT '',
 			attachment_path TEXT NOT NULL DEFAULT '',
 			attachment_mime TEXT NOT NULL DEFAULT '',
-			created_at      TEXT NOT NULL DEFAULT ''
+			created_at      TEXT NOT NULL DEFAULT '',
+			edited_at       TEXT,
+			deleted_at      TEXT,
+			deleted_by      INTEGER REFERENCES users(id) ON DELETE SET NULL
 		);
 		CREATE TABLE IF NOT EXISTS vapid_keys (
 			id          INTEGER PRIMARY KEY,
@@ -1001,5 +1004,273 @@ func TestPostMessageHandler_SkipsPushWhenAllRecipientsOnline(t *testing.T) {
 	}
 	if calls != 0 {
 		t.Errorf("expected no push (every recipient on SSE), got %d", calls)
+	}
+}
+
+func TestEditMessageHandler_AuthorEditsAndStampsEditedAt(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+
+	original, err := CreateMessage(db, convID, 1, "first draft", "", "")
+	if err != nil {
+		t.Fatalf("seed message: %v", err)
+	}
+
+	hub := NewHub()
+	sub := hub.Subscribe(2, convID)
+	defer hub.Unsubscribe(convID, sub)
+
+	idStr := strconv.FormatInt(convID, 10)
+	msgIDStr := strconv.FormatInt(original.ID, 10)
+	req := withUser(httptest.NewRequest(
+		"PATCH",
+		fmt.Sprintf("/api/familychat/conversations/%s/messages/%s", idStr, msgIDStr),
+		strings.NewReader(`{"body":"polished"}`),
+	), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParams(req, map[string]string{"id": idStr, "messageID": msgIDStr})
+	rec := httptest.NewRecorder()
+	editMessageHandler(db, hub).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Message Message `json:"message"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Message.Body != "polished" {
+		t.Errorf("body = %q, want polished", body.Message.Body)
+	}
+	if body.Message.EditedAt == nil || *body.Message.EditedAt == "" {
+		t.Errorf("edited_at not stamped: %+v", body.Message.EditedAt)
+	}
+
+	// Body is re-encrypted at rest.
+	var stored string
+	if err := db.QueryRow(`SELECT body FROM family_chat_messages WHERE id = ?`, original.ID).Scan(&stored); err != nil {
+		t.Fatalf("read stored: %v", err)
+	}
+	if !strings.HasPrefix(stored, "enc:") {
+		t.Errorf("edited body not encrypted at rest: %q", stored)
+	}
+
+	// SSE message_edited is published to the subscriber.
+	select {
+	case evt := <-sub.Events():
+		if evt.Type != EventMessageEdited {
+			t.Errorf("event type = %q, want %q", evt.Type, EventMessageEdited)
+		}
+		data, ok := evt.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("event data not map: %T", evt.Data)
+		}
+		if data["body"] != "polished" {
+			t.Errorf("event body = %v, want polished", data["body"])
+		}
+	default:
+		t.Fatal("no SSE message_edited event published")
+	}
+}
+
+func TestEditMessageHandler_NonAuthor404(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+
+	original, err := CreateMessage(db, convID, 1, "alice's note", "", "")
+	if err != nil {
+		t.Fatalf("seed message: %v", err)
+	}
+
+	idStr := strconv.FormatInt(convID, 10)
+	msgIDStr := strconv.FormatInt(original.ID, 10)
+	// Bob (id=2) tries to edit Alice's message.
+	req := withUser(httptest.NewRequest(
+		"PATCH",
+		fmt.Sprintf("/api/familychat/conversations/%s/messages/%s", idStr, msgIDStr),
+		strings.NewReader(`{"body":"sneaky edit"}`),
+	), 2)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParams(req, map[string]string{"id": idStr, "messageID": msgIDStr})
+	rec := httptest.NewRecorder()
+	EditMessageHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for non-author, got %d", rec.Code)
+	}
+
+	// The body must be unchanged.
+	msgs, err := ListMessages(db, convID, 1, 0, 10)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if msgs[0].Body != "alice's note" {
+		t.Errorf("body changed: %q", msgs[0].Body)
+	}
+	if msgs[0].EditedAt != nil {
+		t.Errorf("edited_at stamped despite rejected edit: %+v", msgs[0].EditedAt)
+	}
+}
+
+func TestEditMessageHandler_TombstoneRejected(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	convID := seedConversation(t, db, 1, "Family")
+
+	original, err := CreateMessage(db, convID, 1, "before delete", "", "")
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := SoftDeleteMessage(db, convID, original.ID, 1); err != nil {
+		t.Fatalf("soft-delete: %v", err)
+	}
+
+	idStr := strconv.FormatInt(convID, 10)
+	msgIDStr := strconv.FormatInt(original.ID, 10)
+	req := withUser(httptest.NewRequest(
+		"PATCH",
+		fmt.Sprintf("/api/familychat/conversations/%s/messages/%s", idStr, msgIDStr),
+		strings.NewReader(`{"body":"resurrect"}`),
+	), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParams(req, map[string]string{"id": idStr, "messageID": msgIDStr})
+	rec := httptest.NewRecorder()
+	EditMessageHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for tombstone, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestDeleteMessageHandler_AuthorSoftDeletePreservesRow(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+
+	original, err := CreateMessage(db, convID, 1, "to be deleted", "", "")
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	hub := NewHub()
+	sub := hub.Subscribe(2, convID)
+	defer hub.Unsubscribe(convID, sub)
+
+	idStr := strconv.FormatInt(convID, 10)
+	msgIDStr := strconv.FormatInt(original.ID, 10)
+	req := withUser(httptest.NewRequest(
+		"DELETE",
+		fmt.Sprintf("/api/familychat/conversations/%s/messages/%s", idStr, msgIDStr),
+		nil,
+	), 1)
+	req = withChiParams(req, map[string]string{"id": idStr, "messageID": msgIDStr})
+	rec := httptest.NewRecorder()
+	deleteMessageHandler(db, hub).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Row must still exist with cleared body + populated deleted_at/deleted_by.
+	var (
+		body      string
+		deletedAt sql.NullString
+		deletedBy sql.NullInt64
+	)
+	if err := db.QueryRow(
+		`SELECT body, deleted_at, deleted_by FROM family_chat_messages WHERE id = ?`,
+		original.ID,
+	).Scan(&body, &deletedAt, &deletedBy); err != nil {
+		t.Fatalf("read row: %v", err)
+	}
+	if body != "" {
+		t.Errorf("body not cleared: %q", body)
+	}
+	if !deletedAt.Valid || deletedAt.String == "" {
+		t.Errorf("deleted_at not set: %+v", deletedAt)
+	}
+	if !deletedBy.Valid || deletedBy.Int64 != 1 {
+		t.Errorf("deleted_by = %+v, want 1", deletedBy)
+	}
+
+	// ListMessages still returns the tombstone with cleared body.
+	msgs, err := ListMessages(db, convID, 1, 0, 10)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 tombstone in list, got %d", len(msgs))
+	}
+	if msgs[0].Body != "" {
+		t.Errorf("tombstone body in list = %q", msgs[0].Body)
+	}
+	if msgs[0].DeletedAt == nil {
+		t.Errorf("DeletedAt missing on tombstone")
+	}
+	if msgs[0].DeletedBy == nil || *msgs[0].DeletedBy != 1 {
+		t.Errorf("DeletedBy = %+v, want 1", msgs[0].DeletedBy)
+	}
+
+	// SSE message_deleted carries deleted_by.
+	select {
+	case evt := <-sub.Events():
+		if evt.Type != EventMessageDeleted {
+			t.Errorf("event type = %q, want %q", evt.Type, EventMessageDeleted)
+		}
+		data, ok := evt.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("event data not map: %T", evt.Data)
+		}
+		if data["deleted_by"] != int64(1) {
+			t.Errorf("deleted_by in event = %v, want 1", data["deleted_by"])
+		}
+	default:
+		t.Fatal("no SSE message_deleted event published")
+	}
+}
+
+func TestDeleteMessageHandler_NonAuthor404(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+
+	original, err := CreateMessage(db, convID, 1, "alice's", "", "")
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	idStr := strconv.FormatInt(convID, 10)
+	msgIDStr := strconv.FormatInt(original.ID, 10)
+	req := withUser(httptest.NewRequest(
+		"DELETE",
+		fmt.Sprintf("/api/familychat/conversations/%s/messages/%s", idStr, msgIDStr),
+		nil,
+	), 2)
+	req = withChiParams(req, map[string]string{"id": idStr, "messageID": msgIDStr})
+	rec := httptest.NewRecorder()
+	DeleteMessageHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+
+	// Row must still be intact.
+	var deletedAt sql.NullString
+	if err := db.QueryRow(
+		`SELECT deleted_at FROM family_chat_messages WHERE id = ?`,
+		original.ID,
+	).Scan(&deletedAt); err != nil {
+		t.Fatalf("read row: %v", err)
+	}
+	if deletedAt.Valid {
+		t.Errorf("non-author delete soft-deleted the row: %+v", deletedAt)
 	}
 }

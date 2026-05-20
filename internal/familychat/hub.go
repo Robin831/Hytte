@@ -23,6 +23,7 @@ type Event struct {
 // Known event types. Kept as constants so callers cannot typo a name silently.
 const (
 	EventMessageNew     = "message_new"
+	EventMessageEdited  = "message_edited"
 	EventMessageDeleted = "message_deleted"
 	EventReadReceipt    = "read_receipt"
 )

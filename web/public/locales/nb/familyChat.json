@@ -53,6 +53,20 @@
     "remove": "Fjern din {{emoji}}-reaksjon",
     "pickerLabel": "Velg en reaksjon"
   },
+  "edit": {
+    "edit": "Rediger",
+    "delete": "Slett",
+    "save": "Lagre",
+    "cancel": "Avbryt",
+    "confirmDelete": "Slette denne meldingen? Den blir erstattet av en gravstein synlig for alle i chatten.",
+    "tombstone": "Meldingen ble slettet av {{name}}",
+    "tombstoneSelf": "Du slettet denne meldingen",
+    "editedTag": "redigert",
+    "menuLabel": "Handlinger for melding",
+    "saving": "Lagrer…",
+    "saveError": "Klarte ikke å lagre endringene",
+    "deleteError": "Klarte ikke å slette meldingen"
+  },
   "newModal": {
     "title": "Ny samtale",
     "nameLabel": "Navn",
