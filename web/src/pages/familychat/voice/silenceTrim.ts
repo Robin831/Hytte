@@ -126,10 +126,14 @@ async function reencodeTrimmedBuffer(
   }
 
   return new Promise<Blob | null>(resolve => {
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null
+    let hardTimer: ReturnType<typeof setTimeout> | null = null
     let settled = false
     const finish = (value: Blob | null) => {
       if (settled) return
       settled = true
+      if (fallbackTimer !== null) { clearTimeout(fallbackTimer); fallbackTimer = null }
+      if (hardTimer !== null) { clearTimeout(hardTimer); hardTimer = null }
       void ctx.close?.().catch(() => {})
       resolve(value)
     }
@@ -161,12 +165,12 @@ async function reencodeTrimmedBuffer(
     // duration plus a small grace period, bounded by reencodeTimeoutMs.
     const bufferMs = (rendered.length / rendered.sampleRate) * 1000
     const fallbackMs = Math.min(timeoutMs, bufferMs + 500)
-    setTimeout(() => {
+    fallbackTimer = setTimeout(() => {
       if (recorder.state !== 'inactive') {
         try { recorder.stop() } catch { /* swallow */ }
       }
     }, fallbackMs)
-    setTimeout(() => finish(null), timeoutMs)
+    hardTimer = setTimeout(() => finish(null), timeoutMs)
   })
 }
 

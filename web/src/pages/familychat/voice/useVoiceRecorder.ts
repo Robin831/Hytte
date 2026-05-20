@@ -290,7 +290,9 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
 
   const start = useCallback(async () => {
     if (startInFlightRef.current) return
-    if (state === 'recording' || state === 'starting') return
+    // Also block when 'processing': a previous stop/cancel is still tearing
+    // down its stream/recorder. Starting now would leak tracks and confuse state.
+    if (state === 'recording' || state === 'starting' || state === 'processing') return
     startInFlightRef.current = true
     try {
     if (!supported) {

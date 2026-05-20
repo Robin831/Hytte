@@ -140,7 +140,7 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
     }
   }
 
-  function mapUploadError(err: unknown): string {
+  const mapUploadError = useCallback((err: unknown): string => {
     if (err instanceof UploadError) {
       if (err.status === 413) return t('composer.errors.fileTooLarge')
       if (err.serverCode === 'unsupported file type') return t('composer.errors.unsupportedType')
@@ -148,7 +148,7 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
       return t('composer.errors.upload')
     }
     return err instanceof Error ? err.message : t('composer.errors.upload')
-  }
+  }, [t])
 
   function removeAttachment() {
     uploadAbortRef.current?.abort()
@@ -277,14 +277,16 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
       if (!controller.signal.aborted) setVoiceSending(false)
       if (voiceAbortRef.current === controller) voiceAbortRef.current = null
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversationId, onMessageCreated, t])
+  }, [conversationId, mapUploadError, onMessageCreated, t])
 
   useEffect(() => { shipVoiceNoteRef.current = shipVoiceNote })
 
   const finishRecording = useCallback(async () => {
     const r = recorderRef.current
-    if (r.cancelArmed) {
+    // When getUserMedia is still in-flight (state==='starting'), stop() returns
+    // null and does not interrupt the async start; calling cancel() instead sets
+    // cancelledRef so that start() tears down the obtained stream on arrival.
+    if (r.cancelArmed || r.state === 'starting') {
       r.cancel()
       r.resetPointer()
       return
