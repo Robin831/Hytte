@@ -91,10 +91,15 @@ export interface UseVoiceCallApi {
   remoteUserId: number | null
   error: string | null
   remoteStream: MediaStream | null
+  muted: boolean
   startCall: () => Promise<void>
   acceptCall: () => Promise<void>
   rejectCall: () => Promise<void>
   endCall: () => Promise<void>
+  // setMuted flips the local audio track's enabled flag so the peer stops
+  // receiving frames without dropping the WebRTC connection. Safe to call in
+  // any state — a no-op when no local track exists.
+  setMuted: (muted: boolean) => void
   // Drive the call state machine from an external signal source. Exposed so
   // tests can simulate incoming events without a real SSE connection, and so
   // an outer page that already owns an SSE stream can route call_* frames in.
@@ -168,6 +173,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
   const [remoteUserId, setRemoteUserId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
+  const [muted, setMutedState] = useState(false)
 
   // Refs hold values the async signalling callbacks must read without
   // capturing stale closures. React state is used for things the UI needs to
@@ -241,6 +247,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     }
 
     setRemoteStream(null)
+    setMutedState(false)
     pendingOfferRef.current = null
     pendingRemoteCandidatesRef.current = []
     remoteDescriptionSetRef.current = false
@@ -717,16 +724,27 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     }
   }, [tearDown])
 
+  const setMuted = useCallback((next: boolean) => {
+    setMutedState(next)
+    const stream = localStreamRef.current
+    if (!stream) return
+    for (const track of stream.getAudioTracks()) {
+      track.enabled = !next
+    }
+  }, [])
+
   return {
     state,
     callId,
     remoteUserId,
     error,
     remoteStream,
+    muted,
     startCall,
     acceptCall,
     rejectCall,
     endCall,
+    setMuted,
     handleSignalEvent,
   }
 }

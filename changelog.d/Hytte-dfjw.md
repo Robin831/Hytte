@@ -1,0 +1,2 @@
+category: Added
+- **Family Chat call UI** - Phone-icon trigger in 1:1 conversation headers, full-screen incoming-call overlay (Accept/Decline), active-call overlay with mute, speakerphone, and hang-up controls plus an elapsed-time counter, a brief "Call ended — m:ss" status banner, and missed-call tombstone rows in the bubble area with a call-back action. Operators deploying the matching coturn relay should follow the steps in `docs/familychat-turn.md` (see the "coturn deploy" section). (Hytte-dfjw)

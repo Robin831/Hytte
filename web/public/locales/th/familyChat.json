@@ -85,6 +85,22 @@
       "seek": "ตำแหน่งในข้อความเสียง"
     }
   },
+  "call": {
+    "start": "เริ่มการโทรด้วยเสียง",
+    "incomingLabel": "สายเรียกเข้า",
+    "ringing": "กำลังโทร…",
+    "accept": "รับสาย",
+    "decline": "ปฏิเสธ",
+    "hangup": "วางสาย",
+    "mute": "ปิดเสียง",
+    "unmute": "เปิดเสียง",
+    "speakerOn": "เปิดลำโพง",
+    "speakerOff": "ปิดลำโพง",
+    "ended": "สิ้นสุดการโทร — {{duration}}",
+    "missedFrom": "สายที่ไม่ได้รับจาก {{name}}",
+    "callBack": "โทรกลับ",
+    "dismiss": "ปิด"
+  },
   "newModal": {
     "title": "การสนทนาใหม่",
     "nameLabel": "ชื่อ",

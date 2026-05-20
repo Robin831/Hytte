@@ -69,6 +69,20 @@ const TRANSLATIONS: Record<string, string> = {
   'voice.bubble.play': 'Play voice note',
   'voice.bubble.pause': 'Pause voice note',
   'voice.bubble.seek': 'Voice note position',
+  'call.start': 'Start voice call',
+  'call.incomingLabel': 'Incoming call',
+  'call.ringing': 'Ringing…',
+  'call.accept': 'Accept',
+  'call.decline': 'Decline',
+  'call.hangup': 'Hang up',
+  'call.mute': 'Mute',
+  'call.unmute': 'Unmute',
+  'call.speakerOn': 'Speaker on',
+  'call.speakerOff': 'Speaker off',
+  'call.ended': 'Call ended — {{duration}}',
+  'call.missedFrom': 'Missed call from {{name}}',
+  'call.callBack': 'Call back',
+  'call.dismiss': 'Dismiss',
 }
 
 function stableT(key: string, opts?: Record<string, string | number>): string {
@@ -891,5 +905,241 @@ describe('ChatView – voice note rendering', () => {
       expect(container.querySelector('audio[controls]')).not.toBeNull()
     })
     expect(screen.queryByTestId('voice-bubble-23')).toBeNull()
+  })
+})
+
+// ── Voice call helpers / fakes ────────────────────────────────────────────────
+
+// Fake media + RTC fakes mirror the shapes used by useVoiceCall's own tests so
+// the hook's real signalling code runs against a deterministic peer
+// connection. The ChatView tests only need a couple of behavioural checks:
+//   • An incoming SSE call_offer drives the hook into 'incoming-ringing' so
+//     the overlay appears.
+//   • Clicking Accept fires the TURN fetch + the /answer POST.
+// Anything beyond that is exhaustively covered in useVoiceCall.test.tsx.
+
+interface CallFetchEntry { url: string; method: string; body?: string }
+
+class FakeAudioTrack {
+  kind = 'audio' as const
+  enabled = true
+  stop = vi.fn()
+}
+
+function makeFakeAudioStream(): MediaStream {
+  const track = new FakeAudioTrack()
+  const tracks = [track]
+  return {
+    getTracks: () => tracks,
+    getAudioTracks: () => tracks,
+    getVideoTracks: () => [],
+  } as unknown as MediaStream
+}
+
+class FakeRtcPeerConnection {
+  static instances: FakeRtcPeerConnection[] = []
+  localDescription: RTCSessionDescriptionInit | null = null
+  remoteDescription: RTCSessionDescriptionInit | null = null
+  ontrack: ((event: RTCTrackEvent) => void) | null = null
+  onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null = null
+  oniceconnectionstatechange: (() => void) | null = null
+  onconnectionstatechange: (() => void) | null = null
+  closed = false
+  constructor() { FakeRtcPeerConnection.instances.push(this) }
+  addTrack() { return {} as RTCRtpSender }
+  async createOffer(): Promise<RTCSessionDescriptionInit> {
+    return { type: 'offer', sdp: 'v=0\r\nfake-offer' }
+  }
+  async createAnswer(): Promise<RTCSessionDescriptionInit> {
+    return { type: 'answer', sdp: 'v=0\r\nfake-answer' }
+  }
+  async setLocalDescription(d: RTCSessionDescriptionInit) { this.localDescription = d }
+  async setRemoteDescription(d: RTCSessionDescriptionInit) { this.remoteDescription = d }
+  async addIceCandidate() { /* no-op */ }
+  close() { this.closed = true }
+}
+
+// installCallEnv stubs the browser APIs the voice-call hook touches so the
+// regular ChatView SSE fetch paths can drive the call state machine without
+// poking at a real audio device.
+function installCallEnv() {
+  vi.stubGlobal('RTCPeerConnection', FakeRtcPeerConnection as unknown as typeof RTCPeerConnection)
+  const sharedStream = makeFakeAudioStream()
+  const getUserMedia = vi.fn(async () => sharedStream)
+  Object.defineProperty(navigator, 'mediaDevices', {
+    configurable: true,
+    value: { getUserMedia },
+  })
+  return { getUserMedia }
+}
+
+function uninstallCallEnv() {
+  delete (navigator as unknown as Record<string, unknown>).mediaDevices
+}
+
+describe('ChatView – call UI', () => {
+  beforeEach(() => { FakeRtcPeerConnection.instances = [] })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+    uninstallCallEnv()
+  })
+
+  it('renders the phone button only for two-member conversations', async () => {
+    const conv2 = makeConversation({ id: 1, name: 'One on One', member_ids: [1, 2] })
+    installCallEnv()
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk(conv2))
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce(streamOk()),
+    )
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+    expect(screen.getByTestId('family-chat-call-button')).toBeInTheDocument()
+  })
+
+  it('hides the phone button for group conversations (>2 members)', async () => {
+    const group = makeConversation({ id: 1, name: 'Group', member_ids: [1, 2, 3] })
+    installCallEnv()
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk(group))
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce(streamOk()),
+    )
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+    expect(screen.queryByTestId('family-chat-call-button')).not.toBeInTheDocument()
+  })
+
+  it('opens the incoming-call overlay when a call_offer SSE event arrives', async () => {
+    const conv2 = makeConversation({ id: 1, name: 'One on One', member_ids: [1, 2] })
+    const sse = streamWithController()
+    installCallEnv()
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk(conv2))
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce(sse.response),
+    )
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+
+    await act(async () => {
+      sse.push('call_offer', {
+        conversation_id: 1,
+        call_id: 'inbound-A',
+        from_user_id: 2,
+        data: { type: 'offer', sdp: 'v=0\r\nremote-offer' },
+      })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('family-chat-incoming-overlay')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('family-chat-call-accept')).toBeInTheDocument()
+    expect(screen.getByTestId('family-chat-call-decline')).toBeInTheDocument()
+  })
+
+  it('accepting an incoming call fetches TURN config and POSTs an answer to the relay', async () => {
+    const conv2 = makeConversation({ id: 1, name: 'One on One', member_ids: [1, 2] })
+    const sse = streamWithController()
+    installCallEnv()
+    const callFetches: CallFetchEntry[] = []
+
+    // Single fetch handler covers every URL the test cares about: the initial
+    // conv/messages/stream triple plus the TURN + signalling POSTs that
+    // useVoiceCall fires after Accept. Using a router rather than a chain of
+    // mockResolvedValueOnce keeps the test resilient to small ordering
+    // changes in the hook's implementation.
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const method = (init?.method ?? 'GET').toUpperCase()
+      const body = typeof init?.body === 'string' ? init.body : undefined
+      if (url.includes('/calls/') || url.includes('/api/familychat/turn')) {
+        callFetches.push({ url, method, body })
+      }
+      if (url.endsWith('/api/familychat/conversations/1') && method === 'GET') {
+        return new Response(JSON.stringify({ conversation: conv2 }), { status: 200 })
+      }
+      if (url.endsWith('/api/familychat/conversations/1/messages') && method === 'GET') {
+        return new Response(JSON.stringify({ messages: [] }), { status: 200 })
+      }
+      if (url.includes('/conversations/1/stream')) {
+        return sse.response as Response
+      }
+      if (url.endsWith('/api/familychat/turn')) {
+        return new Response(JSON.stringify({
+          iceServers: [{ urls: ['stun:stun.example.com:3478'] }],
+          ttl: 3600,
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.includes('/calls/')) {
+        return new Response(null, { status: 204 })
+      }
+      throw new Error(`unexpected fetch ${method} ${url}`)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+
+    await act(async () => {
+      sse.push('call_offer', {
+        conversation_id: 1,
+        call_id: 'inbound-accept',
+        from_user_id: 2,
+        data: { type: 'offer', sdp: 'v=0\r\nremote-offer' },
+      })
+      await Promise.resolve()
+    })
+    await waitFor(() => screen.getByTestId('family-chat-call-accept'))
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('family-chat-call-accept'))
+    })
+
+    await waitFor(() => {
+      const turnCall = callFetches.find(c =>
+        c.method === 'GET' && c.url.endsWith('/api/familychat/turn'))
+      expect(turnCall).toBeDefined()
+    })
+    await waitFor(() => {
+      const answerCall = callFetches.find(c =>
+        c.method === 'POST' && c.url.includes('/calls/inbound-accept/answer'))
+      expect(answerCall).toBeDefined()
+    })
+
+    // After accept the UI transitions to the active overlay.
+    await waitFor(() => {
+      expect(screen.getByTestId('family-chat-active-overlay')).toBeInTheDocument()
+    })
+  })
+
+  it('renders a missed-call tombstone row when a call_end with status=missed arrives', async () => {
+    const conv2 = makeConversation({ id: 1, name: 'One on One', member_ids: [1, 2] })
+    const sse = streamWithController()
+    installCallEnv()
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk(conv2))
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce(sse.response),
+    )
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+
+    await act(async () => {
+      sse.push('call_end', {
+        conversation_id: 1,
+        call_id: 'missed-1',
+        from_user_id: 2,
+        status: 'missed',
+      })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('missed-call-missed-1')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('missed-call-back-missed-1')).toBeInTheDocument()
   })
 })

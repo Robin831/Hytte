@@ -1,6 +1,22 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, MessageSquare, Download, X, WifiOff, Smile, MoreVertical } from 'lucide-react'
+import {
+  ChevronLeft,
+  MessageSquare,
+  Download,
+  X,
+  WifiOff,
+  Smile,
+  MoreVertical,
+  Phone,
+  PhoneOff,
+  PhoneIncoming,
+  PhoneMissed,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+} from 'lucide-react'
 import { Skeleton } from '../../components/ui/skeleton'
 import { useAuth } from '../../auth'
 import Composer from './Composer'
@@ -18,6 +34,7 @@ import { formatRelative } from './utils'
 import VoiceBubble from './voice/VoiceBubble'
 import { readCachedWaveform, parseWaveformJSON, DEFAULT_BAR_COUNT, type Waveform } from './voice/waveform'
 import * as voicePlayer from './voice/voicePlayer'
+import { useVoiceCall, type CallSignalEventName, type CallSignalPayload } from './voice/useVoiceCall'
 
 interface ChatViewProps {
   conversationId: number | null
@@ -63,6 +80,12 @@ function parseVoiceMeta(meta: string | null | undefined): Waveform | null {
 interface MemberInfo {
   label: string
   emoji: string
+}
+
+interface MissedCallEntry {
+  callId: string
+  fromUserId: number
+  receivedAt: string
 }
 
 interface FamilyChild {
@@ -117,8 +140,41 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const [deleteError, setDeleteError] = useState('')
   const deleteConfirmBtnRef = useRef<HTMLButtonElement>(null)
   const deletePrevFocusRef = useRef<Element | null>(null)
+  // missedCalls collects inbound calls the recipient never answered — surfaced
+  // as a tombstone row in the message list with a call-back button. Only
+  // populated for missed calls where the local user was the callee (we ignore
+  // missed calls that we initiated, since those aren't useful history for us).
+  const [missedCalls, setMissedCalls] = useState<MissedCallEntry[]>([])
+  // endedCallSummary is shown briefly after a call wraps up. Tracks the final
+  // duration in seconds so the banner can render "Call ended — m:ss".
+  const [endedCallSummary, setEndedCallSummary] = useState<{ durationSec: number } | null>(null)
+  // callElapsedSec is the running second-counter used by the active-call
+  // overlay. It rounds to whole seconds so the UI updates once per tick.
+  const [callElapsedSec, setCallElapsedSec] = useState(0)
+  const callStartedAtRef = useRef<number | null>(null)
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
+  // speakerOn: UI toggle for the speakerphone hint. The browser controls
+  // routing; this flag just drives the icon state + tries to bump volume to
+  // max so the remote stream is audible without a headset.
+  const [speakerOn, setSpeakerOn] = useState(true)
+
+  // Voice-call state machine. skipSignalSubscription is set so the hook
+  // doesn't open its own SSE stream — ChatView already owns one for messages
+  // and reactions, and routes call_* frames through handleSignalEvent below.
+  const voiceCall = useVoiceCall({
+    conversationId,
+    userId: user?.id ?? null,
+    skipSignalSubscription: true,
+  })
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  // voiceCallSignalRef shadows handleSignalEvent so the long-lived SSE reader
+  // can dispatch into the latest hook state without re-running on every
+  // re-render the hook returns a new function reference for.
+  const voiceCallSignalRef = useRef(voiceCall.handleSignalEvent)
+  useEffect(() => {
+    voiceCallSignalRef.current = voiceCall.handleSignalEvent
+  })
   // currentUserIdRef shadows user?.id so the long-lived SSE reader closure
   // (recreated only when conversationId changes) can read the most recent
   // value without forcing the effect to re-run on auth changes.
@@ -234,6 +290,8 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       setMessages([])
       setError('')
       setLoading(false)
+      setMissedCalls([])
+      setEndedCallSummary(null)
       return
     }
     const controller = new AbortController()
@@ -251,6 +309,8 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     setConversation(null)
     setStreamDropped(false)
     setHasConnected(false)
+    setMissedCalls([])
+    setEndedCallSummary(null)
 
     // appendIncoming deduplicates by id so a message that arrives via both
     // SSE and the POST response (the sender path) or via SSE and gap-fill
@@ -419,6 +479,40 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                     payload?.deleted_by !== undefined
                   ) {
                     applyMessageDeleted(payload)
+                  } else if (
+                    eventName === 'call_offer'
+                    || eventName === 'call_answer'
+                    || eventName === 'call_ice'
+                    || eventName === 'call_end'
+                  ) {
+                    // Route call signalling into the voice-call hook. We also
+                    // track missed calls locally so the bubble area can render
+                    // a tombstone-style row with a call-back button: a
+                    // call_end with status=missed from someone other than us
+                    // means we never picked up.
+                    const callPayload = payload as CallSignalPayload
+                    if (
+                      eventName === 'call_end'
+                      && callPayload?.status === 'missed'
+                      && callPayload?.from_user_id !== undefined
+                      && callPayload.from_user_id !== currentUserIdRef.current
+                    ) {
+                      setMissedCalls(prev => {
+                        if (prev.some(m => m.callId === callPayload.call_id)) return prev
+                        return [
+                          ...prev,
+                          {
+                            callId: callPayload.call_id,
+                            fromUserId: callPayload.from_user_id,
+                            receivedAt: new Date().toISOString(),
+                          },
+                        ]
+                      })
+                    }
+                    void voiceCallSignalRef.current(
+                      eventName as CallSignalEventName,
+                      callPayload,
+                    )
                   }
                 } catch {
                   // Ignore a malformed payload; the server should never emit
@@ -522,6 +616,60 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       document.body.style.overflow = prev
     }
   }, [lightbox])
+
+  // Wire the remote audio stream into the hidden <audio> element so the
+  // browser actually plays the peer's voice. The peer connection only opens
+  // the data path; the page is responsible for piping it into an audio sink.
+  useEffect(() => {
+    const el = remoteAudioRef.current
+    if (!el) return
+    if (voiceCall.remoteStream) {
+      el.srcObject = voiceCall.remoteStream
+      el.volume = speakerOn ? 1 : 0.4
+      void el.play().catch(() => {
+        // Autoplay rejection — the accept-button click already counts as a
+        // user gesture in every supported browser, but a stricter policy
+        // would surface here. Nothing actionable from this layer.
+      })
+    } else {
+      el.srcObject = null
+    }
+  }, [voiceCall.remoteStream, speakerOn])
+
+  // Drive the elapsed-time counter while a call is active. Reset on every
+  // state transition so the timer always reads from the moment we entered
+  // 'active', not from the moment startCall was first invoked.
+  useEffect(() => {
+    if (voiceCall.state !== 'active') {
+      // Capture the final elapsed seconds when the call leaves the active
+      // state so the "Call ended — m:ss" banner can show the right total.
+      if (callStartedAtRef.current !== null) {
+        const total = Math.floor((Date.now() - callStartedAtRef.current) / 1000)
+        callStartedAtRef.current = null
+        if (voiceCall.state === 'ended') {
+          setEndedCallSummary({ durationSec: total })
+        }
+      }
+      setCallElapsedSec(0)
+      return
+    }
+    callStartedAtRef.current = Date.now()
+    setCallElapsedSec(0)
+    const interval = setInterval(() => {
+      if (callStartedAtRef.current === null) return
+      setCallElapsedSec(Math.floor((Date.now() - callStartedAtRef.current) / 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [voiceCall.state])
+
+  // Auto-dismiss the "Call ended" banner after a short hold so it doesn't sit
+  // on screen indefinitely. Five seconds is long enough to read the duration
+  // and short enough not to feel sticky.
+  useEffect(() => {
+    if (!endedCallSummary) return
+    const timer = setTimeout(() => setEndedCallSummary(null), 5000)
+    return () => clearTimeout(timer)
+  }, [endedCallSummary])
 
   const handleMessageCreated = useCallback((msg: ChatMessage) => {
     // Defensive: if the user switched conversations while a send was in
@@ -690,6 +838,51 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     })
   }, [conversation, memberLookup, t, user?.id])
 
+  // Voice calls are 1:1 only — see useVoiceCall.ts. The phone button is
+  // hidden for group conversations rather than disabled so users don't see
+  // an interactive control they can't use.
+  const callPeerId = useMemo<number | null>(() => {
+    if (!conversation || user?.id === undefined) return null
+    if (conversation.member_ids.length !== 2) return null
+    return conversation.member_ids.find(id => id !== user.id) ?? null
+  }, [conversation, user?.id])
+  const canCall = callPeerId !== null
+
+  const peerLabel = useCallback((peerId: number | null) => {
+    if (peerId === null) return t('chat.memberFallback', { id: 0 })
+    return memberLookup.get(peerId)?.label ?? t('chat.memberFallback', { id: peerId })
+  }, [memberLookup, t])
+
+  const incomingCallerLabel = peerLabel(voiceCall.remoteUserId)
+  const activeCallPeerLabel = peerLabel(voiceCall.remoteUserId ?? callPeerId)
+
+  const formatCallDuration = useCallback((totalSec: number): string => {
+    const safe = Math.max(0, Math.floor(totalSec))
+    const minutes = Math.floor(safe / 60)
+    const seconds = safe % 60
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  }, [])
+
+  // startOrIgnoreCall fires the outgoing-call flow only when we're idle. A
+  // second press while already ringing is a no-op so a double-tap can't kick
+  // off two parallel sessions.
+  const handleStartCall = useCallback(() => {
+    if (!canCall) return
+    if (voiceCall.state !== 'idle' && voiceCall.state !== 'ended') return
+    void voiceCall.startCall()
+  }, [canCall, voiceCall])
+
+  const handleCallBack = useCallback((entry: MissedCallEntry) => {
+    // Dismiss the row first so a successful call doesn't leave an obsolete
+    // missed-call entry behind in the message list.
+    setMissedCalls(prev => prev.filter(m => m.callId !== entry.callId))
+    handleStartCall()
+  }, [handleStartCall])
+
+  const dismissMissedCall = useCallback((callId: string) => {
+    setMissedCalls(prev => prev.filter(m => m.callId !== callId))
+  }, [])
+
   if (conversationId === null) {
     return (
       <div
@@ -755,6 +948,19 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
             <WifiOff size={12} aria-hidden="true" />
             <span className="truncate max-w-[8rem] sm:max-w-none">{t('chat.connection.reconnecting')}</span>
           </span>
+        )}
+        {canCall && (
+          <button
+            type="button"
+            onClick={handleStartCall}
+            disabled={voiceCall.state !== 'idle' && voiceCall.state !== 'ended'}
+            aria-label={t('call.start')}
+            title={t('call.start')}
+            className="shrink-0 p-2 rounded-full text-green-300 hover:text-green-200 hover:bg-green-500/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            data-testid="family-chat-call-button"
+          >
+            <Phone size={20} aria-hidden="true" />
+          </button>
         )}
       </header>
 
@@ -1063,6 +1269,40 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
             </div>
           )
         })}
+
+        {!loading && !error && missedCalls.map(entry => (
+          <div
+            key={`missed-call-${entry.callId}`}
+            className="flex justify-center"
+            data-testid={`missed-call-${entry.callId}`}
+          >
+            <div className="inline-flex items-center gap-2 px-3 py-2 rounded-2xl bg-red-900/30 border border-red-700/50 text-red-200 text-xs">
+              <PhoneMissed size={14} aria-hidden="true" />
+              <span>{t('call.missedFrom', { name: peerLabel(entry.fromUserId) })}</span>
+              {canCall && (
+                <button
+                  type="button"
+                  onClick={() => handleCallBack(entry)}
+                  className="px-2 py-0.5 rounded-md bg-red-800/50 hover:bg-red-700/60 text-red-100 text-[11px] font-medium cursor-pointer"
+                  data-testid={`missed-call-back-${entry.callId}`}
+                >
+                  {t('call.callBack')}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => dismissMissedCall(entry.callId)}
+                aria-label={t('call.dismiss')}
+                title={t('call.dismiss')}
+                className="p-0.5 text-red-300 hover:text-red-100 cursor-pointer"
+                data-testid={`missed-call-dismiss-${entry.callId}`}
+              >
+                <X size={12} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        ))}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -1130,6 +1370,164 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Hidden audio sink for the remote peer's stream. Kept outside the
+          conditional overlays so the element survives state transitions and
+          srcObject assignment isn't fighting React re-renders. */}
+      <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+
+      {voiceCall.state === 'incoming-ringing' && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="family-chat-incoming-call-title"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 text-white p-6"
+          data-testid="family-chat-incoming-overlay"
+        >
+          <div className="flex flex-col items-center text-center max-w-sm">
+            <div className="mb-6 p-5 rounded-full bg-green-500/20 animate-pulse">
+              <PhoneIncoming size={48} aria-hidden="true" className="text-green-300" />
+            </div>
+            <p className="text-sm uppercase tracking-wide text-gray-400">
+              {t('call.incomingLabel')}
+            </p>
+            <h2
+              id="family-chat-incoming-call-title"
+              className="mt-2 text-2xl font-semibold"
+            >
+              {incomingCallerLabel}
+            </h2>
+            <div className="mt-8 flex items-center justify-center gap-6">
+              <button
+                type="button"
+                onClick={() => { void voiceCall.rejectCall() }}
+                aria-label={t('call.decline')}
+                className="flex flex-col items-center gap-1 text-red-300 hover:text-red-200 cursor-pointer"
+                data-testid="family-chat-call-decline"
+              >
+                <span className="p-4 rounded-full bg-red-600 text-white hover:bg-red-500">
+                  <PhoneOff size={28} aria-hidden="true" />
+                </span>
+                <span className="text-xs">{t('call.decline')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { void voiceCall.acceptCall() }}
+                aria-label={t('call.accept')}
+                className="flex flex-col items-center gap-1 text-green-300 hover:text-green-200 cursor-pointer"
+                data-testid="family-chat-call-accept"
+              >
+                <span className="p-4 rounded-full bg-green-600 text-white hover:bg-green-500">
+                  <Phone size={28} aria-hidden="true" />
+                </span>
+                <span className="text-xs">{t('call.accept')}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(voiceCall.state === 'outgoing-ringing' || voiceCall.state === 'active') && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="family-chat-active-call-title"
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 text-white p-6"
+          data-testid="family-chat-active-overlay"
+        >
+          <div className="flex flex-col items-center text-center max-w-sm w-full">
+            <div className="mb-6 p-5 rounded-full bg-green-500/20">
+              <Phone size={48} aria-hidden="true" className="text-green-300" />
+            </div>
+            <h2
+              id="family-chat-active-call-title"
+              className="text-2xl font-semibold"
+            >
+              {activeCallPeerLabel}
+            </h2>
+            <p
+              className="mt-2 text-sm text-gray-300"
+              data-testid="family-chat-call-status"
+            >
+              {voiceCall.state === 'outgoing-ringing'
+                ? t('call.ringing')
+                : formatCallDuration(callElapsedSec)}
+            </p>
+            {voiceCall.error && (
+              <p className="mt-2 text-xs text-red-400">{voiceCall.error}</p>
+            )}
+            <div className="mt-8 flex items-center justify-center gap-4">
+              <button
+                type="button"
+                onClick={() => voiceCall.setMuted(!voiceCall.muted)}
+                aria-label={voiceCall.muted ? t('call.unmute') : t('call.mute')}
+                aria-pressed={voiceCall.muted}
+                disabled={voiceCall.state !== 'active'}
+                className={`flex flex-col items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                  voiceCall.muted ? 'text-amber-300' : 'text-gray-200'
+                }`}
+                data-testid="family-chat-call-mute"
+              >
+                <span className={`p-3 rounded-full ${
+                  voiceCall.muted ? 'bg-amber-500/20' : 'bg-gray-700'
+                }`}>
+                  {voiceCall.muted
+                    ? <MicOff size={24} aria-hidden="true" />
+                    : <Mic size={24} aria-hidden="true" />}
+                </span>
+                <span className="text-xs">
+                  {voiceCall.muted ? t('call.unmute') : t('call.mute')}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => { void voiceCall.endCall() }}
+                aria-label={t('call.hangup')}
+                className="flex flex-col items-center gap-1 text-white cursor-pointer"
+                data-testid="family-chat-call-hangup"
+              >
+                <span className="p-4 rounded-full bg-red-600 hover:bg-red-500">
+                  <PhoneOff size={28} aria-hidden="true" />
+                </span>
+                <span className="text-xs">{t('call.hangup')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSpeakerOn(prev => !prev)}
+                aria-label={speakerOn ? t('call.speakerOff') : t('call.speakerOn')}
+                aria-pressed={speakerOn}
+                disabled={voiceCall.state !== 'active'}
+                className={`flex flex-col items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                  speakerOn ? 'text-blue-300' : 'text-gray-200'
+                }`}
+                data-testid="family-chat-call-speaker"
+              >
+                <span className={`p-3 rounded-full ${
+                  speakerOn ? 'bg-blue-500/20' : 'bg-gray-700'
+                }`}>
+                  {speakerOn
+                    ? <Volume2 size={24} aria-hidden="true" />
+                    : <VolumeX size={24} aria-hidden="true" />}
+                </span>
+                <span className="text-xs">
+                  {speakerOn ? t('call.speakerOff') : t('call.speakerOn')}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {endedCallSummary && voiceCall.state !== 'active' && voiceCall.state !== 'outgoing-ringing' && voiceCall.state !== 'incoming-ringing' && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-3 py-1.5 rounded-full bg-gray-800/95 border border-gray-700 text-gray-100 text-xs shadow-lg"
+          data-testid="family-chat-call-ended"
+        >
+          {t('call.ended', { duration: formatCallDuration(endedCallSummary.durationSec) })}
         </div>
       )}
     </div>

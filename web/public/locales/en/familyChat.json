@@ -85,6 +85,22 @@
       "seek": "Voice note position"
     }
   },
+  "call": {
+    "start": "Start voice call",
+    "incomingLabel": "Incoming call",
+    "ringing": "Ringing…",
+    "accept": "Accept",
+    "decline": "Decline",
+    "hangup": "Hang up",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "speakerOn": "Speaker on",
+    "speakerOff": "Speaker off",
+    "ended": "Call ended — {{duration}}",
+    "missedFrom": "Missed call from {{name}}",
+    "callBack": "Call back",
+    "dismiss": "Dismiss"
+  },
   "newModal": {
     "title": "New conversation",
     "nameLabel": "Name",

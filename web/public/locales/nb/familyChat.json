@@ -85,6 +85,22 @@
       "seek": "Posisjon i talemeldingen"
     }
   },
+  "call": {
+    "start": "Start talesamtale",
+    "incomingLabel": "Innkommende samtale",
+    "ringing": "Ringer…",
+    "accept": "Svar",
+    "decline": "Avvis",
+    "hangup": "Legg på",
+    "mute": "Demp",
+    "unmute": "Slå på lyd",
+    "speakerOn": "Høyttaler på",
+    "speakerOff": "Høyttaler av",
+    "ended": "Samtale avsluttet — {{duration}}",
+    "missedFrom": "Tapt anrop fra {{name}}",
+    "callBack": "Ring tilbake",
+    "dismiss": "Lukk"
+  },
   "newModal": {
     "title": "Ny samtale",
     "nameLabel": "Navn",
