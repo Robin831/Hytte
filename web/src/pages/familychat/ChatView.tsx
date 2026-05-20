@@ -554,6 +554,10 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     }
     setEditingSaving(true)
     setEditingError('')
+    // Capture the pre-edit body/edited_at so a failed save can revert the
+    // optimistic update — otherwise the bubble would keep showing the
+    // unsaved draft as if it had been persisted.
+    const snapshot = messages.find(m => m.id === msgId) ?? null
     // Optimistic update first: the SSE confirmation will overwrite shortly
     // with the server's authoritative edited_at, which matches the pattern
     // used by reactions / message sends in this view.
@@ -572,10 +576,17 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       setEditingDraft('')
       setEditingSaving(false)
     } catch {
+      if (snapshot) {
+        setMessages(prev => prev.map(m =>
+          m.id === msgId
+            ? { ...m, body: snapshot.body, edited_at: snapshot.edited_at ?? null }
+            : m,
+        ))
+      }
       setEditingError(t('edit.saveError'))
       setEditingSaving(false)
     }
-  }, [conversationId, editingDraft, t])
+  }, [conversationId, editingDraft, messages, t])
 
   const confirmDelete = useCallback(async (msgId: number) => {
     if (conversationId === null) return
@@ -597,9 +608,12 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         deleted_by: meID,
       }
     }))
-    setConfirmDeleteId(null)
     try {
       await deleteMessage(conversationId, msgId)
+      // Only dismiss the confirm modal after the server has accepted the
+      // delete — closing it earlier would hide the error message rendered
+      // inside the same modal if the request fails.
+      setConfirmDeleteId(null)
     } catch {
       if (snapshot) {
         setMessages(prev => prev.map(m => (m.id === msgId ? snapshot : m)))
