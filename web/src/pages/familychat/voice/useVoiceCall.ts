@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 // useVoiceCall manages the WebRTC lifecycle of a 1:1 voice call between two
-// members of a Family Chat conversation. It is intentionally UI-agnostic:
-// state transitions and stream handles are exposed so an outer component can
-// render the ringing banner, in-call controls, and end-of-call summary.
+// members of a Family Chat conversation. Voice calling is only supported for
+// 2-member conversations — the signalling endpoints broadcast to all members
+// but this hook tracks a single remoteUserId. Callers should disable the call
+// UI (or reject incoming offers) when the conversation has more than 2 members.
+//
+// It is intentionally UI-agnostic: state transitions and stream handles are
+// exposed so an outer component can render the ringing banner, in-call
+// controls, and end-of-call summary.
 //
 // Responsibilities:
 //   1. Fetch the STUN/TURN ICE config from /api/familychat/turn before each
@@ -168,6 +173,10 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
   // capturing stale closures. React state is used for things the UI needs to
   // re-render on; everything else is a ref.
   const pcRef = useRef<RTCPeerConnection | null>(null)
+  // callEpochRef is incremented by tearDown so that any in-flight startCall
+  // continuation can detect that the call was ended and bail out rather than
+  // re-creating a PeerConnection or POSTing a stale offer.
+  const callEpochRef = useRef<number>(0)
   const localStreamRef = useRef<MediaStream | null>(null)
   const callIdRef = useRef<string | null>(null)
   const remoteUserIdRef = useRef<number | null>(null)
@@ -210,6 +219,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
   // AudioContext, and clears every transient buffer. It is safe to call from
   // any state — every step guards a missing handle.
   const tearDown = useCallback((nextState: VoiceCallState = 'idle') => {
+    callEpochRef.current++ // Invalidate any in-flight startCall continuation.
     const pc = pcRef.current
     if (pc) {
       // Drop event listeners before close() to avoid a final connectionstate
@@ -372,12 +382,17 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
       return
     }
     setError(null)
+    // Capture the current epoch so every resumed continuation can detect
+    // whether endCall/tearDown fired while an async step was in-flight.
+    const epoch = callEpochRef.current
     const theCallId = optionsRef.current.generateCallId()
     updateCallId(theCallId)
     updateState('outgoing-ringing')
 
     try {
       const ice = await fetchICEConfig()
+      if (callEpochRef.current !== epoch) return
+
       const pc = optionsRef.current.rtcPeerConnectionFactory({
         iceServers: ice.iceServers as RTCIceServer[],
       })
@@ -385,13 +400,20 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
       wirePeerConnection(pc, conversationId, theCallId)
 
       const localStream = await optionsRef.current.getUserMedia({ audio: true })
+      if (callEpochRef.current !== epoch) {
+        // tearDown already ran — release the mic without touching state.
+        for (const t of localStream.getTracks()) { try { t.stop() } catch { /* ok */ } }
+        return
+      }
       localStreamRef.current = localStream
       for (const track of localStream.getTracks()) {
         pc.addTrack(track, localStream)
       }
 
       const offer = await pc.createOffer()
+      if (callEpochRef.current !== epoch) return
       await pc.setLocalDescription(offer)
+      if (callEpochRef.current !== epoch) return
       // Relay the SDP from localDescription (rather than the raw createOffer
       // result) because some implementations massage the SDP during setLocal.
       const sdp = pc.localDescription ?? offer
@@ -400,6 +422,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         sdp: sdp.sdp,
       })
     } catch (err) {
+      if (callEpochRef.current !== epoch) return
       setError(err instanceof Error ? err.message : 'start-failed')
       tearDown('idle')
     }
@@ -513,8 +536,8 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         // tear down an in-progress call.
         if (stateRef.current !== 'idle' && stateRef.current !== 'ended') return
         const data = payload.data as { type?: RTCSdpType; sdp?: string } | undefined
-        if (!data || !data.sdp || !data.type) return
-        pendingOfferRef.current = { type: data.type, sdp: data.sdp }
+        if (!data || !data.sdp) return
+        pendingOfferRef.current = { type: data.type ?? 'offer', sdp: data.sdp }
         updateCallId(incomingCallId)
         updateRemoteUserId(payload.from_user_id)
         updateState('incoming-ringing')
@@ -525,9 +548,9 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         if (callIdRef.current !== incomingCallId) return
         const pc = pcRef.current
         const data = payload.data as { type?: RTCSdpType; sdp?: string } | undefined
-        if (!pc || !data || !data.sdp || !data.type) return
+        if (!pc || !data || !data.sdp) return
         try {
-          await pc.setRemoteDescription({ type: data.type, sdp: data.sdp })
+          await pc.setRemoteDescription({ type: data.type ?? 'answer', sdp: data.sdp })
           remoteDescriptionSetRef.current = true
           await flushBufferedCandidates()
           updateRemoteUserId(payload.from_user_id)
@@ -584,6 +607,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
 
     const controller = new AbortController()
     let cancelled = false
+    let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null
 
     const dispatch = (eventName: string, data: string) => {
       if (
@@ -609,6 +633,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         )
         if (!res.ok || !res.body) return
         const reader = res.body.getReader()
+        activeReader = reader
         const decoder = new TextDecoder()
         let buffer = ''
         let eventName = 'message'
@@ -653,6 +678,12 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     return () => {
       cancelled = true
       controller.abort()
+      // Some environments don't propagate abort to the body reader; cancel
+      // explicitly so the read loop cannot hang and leak after cleanup.
+      if (activeReader) {
+        activeReader.cancel().catch(() => {})
+        activeReader = null
+      }
     }
   }, [conversationId, handleSignalEvent, skipSignalSubscription])
 

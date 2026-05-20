@@ -166,12 +166,22 @@ function installRtcGlobals() {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+let originalMediaDevicesDescriptor: PropertyDescriptor | undefined
+
 beforeEach(() => {
   FakePeerConnection.instances = []
+  originalMediaDevicesDescriptor = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices')
 })
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  // Restore navigator.mediaDevices to its original state so the stub doesn't
+  // leak into subsequent test files sharing the same worker.
+  if (originalMediaDevicesDescriptor !== undefined) {
+    Object.defineProperty(navigator, 'mediaDevices', originalMediaDevicesDescriptor)
+  } else {
+    delete (navigator as unknown as Record<string, unknown>).mediaDevices
+  }
 })
 
 describe('useVoiceCall — outgoing call', () => {
