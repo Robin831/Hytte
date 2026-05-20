@@ -1820,7 +1820,10 @@ func createSchema(db *sql.DB) error {
 		body              TEXT NOT NULL DEFAULT '',
 		attachment_path   TEXT NOT NULL DEFAULT '',
 		attachment_mime   TEXT NOT NULL DEFAULT '',
-		created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+		created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		edited_at         TEXT,
+		deleted_at        TEXT,
+		deleted_by        INTEGER REFERENCES users(id) ON DELETE SET NULL
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_family_chat_messages_conversation_id ON family_chat_messages(conversation_id, id DESC);
@@ -2595,6 +2598,31 @@ func createSchema(db *sql.DB) error {
 	}
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_pokemon_scan_jobs_page ON pokemon_scan_jobs(page_id) WHERE page_id IS NOT NULL`); err != nil {
 		return fmt.Errorf("create pokemon_scan_jobs page_id index: %w", err)
+	}
+
+	// Add edit/soft-delete tombstone columns to family_chat_messages (Hytte-f0tw).
+	// Each is nullable so legacy rows continue to behave as non-edited / non-deleted.
+	familyChatMsgCols := []struct {
+		name string
+		ddl  string
+	}{
+		{"edited_at", `ALTER TABLE family_chat_messages ADD COLUMN edited_at TEXT`},
+		{"deleted_at", `ALTER TABLE family_chat_messages ADD COLUMN deleted_at TEXT`},
+		{"deleted_by", `ALTER TABLE family_chat_messages ADD COLUMN deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL`},
+	}
+	for _, col := range familyChatMsgCols {
+		var present int
+		if err := db.QueryRow(
+			`SELECT COUNT(*) FROM pragma_table_info('family_chat_messages') WHERE name = ?`,
+			col.name,
+		).Scan(&present); err != nil {
+			return fmt.Errorf("check family_chat_messages %s column: %w", col.name, err)
+		}
+		if present == 0 {
+			if _, err := db.Exec(col.ddl); err != nil {
+				return fmt.Errorf("add family_chat_messages %s column: %w", col.name, err)
+			}
+		}
 	}
 
 	return nil

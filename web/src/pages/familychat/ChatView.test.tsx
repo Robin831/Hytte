@@ -37,6 +37,18 @@ const TRANSLATIONS: Record<string, string> = {
   'reactions.pickerLabel': 'Add reaction',
   'reactions.add': 'React with {{emoji}}',
   'reactions.remove': 'Remove {{emoji}} reaction',
+  'edit.edit': 'Edit',
+  'edit.delete': 'Delete',
+  'edit.save': 'Save',
+  'edit.cancel': 'Cancel',
+  'edit.confirmDelete': 'Delete this message?',
+  'edit.tombstone': 'Message deleted by {{name}}',
+  'edit.tombstoneSelf': 'You deleted this message',
+  'edit.editedTag': 'edited',
+  'edit.menuLabel': 'Message actions',
+  'edit.saving': 'Saving…',
+  'edit.saveError': 'Failed to save changes',
+  'edit.deleteError': 'Failed to delete message',
 }
 
 function stableT(key: string, opts?: Record<string, string | number>): string {
@@ -651,5 +663,123 @@ describe('ChatView – reactions', () => {
     })
 
     await waitFor(() => expect(screen.getByTestId('reaction-chip-👍')).toBeInTheDocument())
+  })
+})
+
+describe('ChatView – edit + delete', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  it('opens the actions menu only for the current user\'s messages', async () => {
+    const own = makeMessage({ id: 1, sender_user_id: 1, body: 'My message' })
+    const other = makeMessage({ id: 2, sender_user_id: 2, body: 'Their message' })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([other, own])) // newest-first
+      .mockResolvedValueOnce(streamOk()),
+    )
+    renderChatView()
+    await waitFor(() => screen.getByText('My message'))
+
+    expect(screen.getByTestId(`chat-actions-trigger-${own.id}`)).toBeInTheDocument()
+    expect(screen.queryByTestId(`chat-actions-trigger-${other.id}`)).not.toBeInTheDocument()
+  })
+
+  it('edits the message body via PATCH and shows the edited tag', async () => {
+    const own = makeMessage({ id: 5, sender_user_id: 1, body: 'Before edit' })
+    const editedAt = '2026-05-01T10:30:00Z'
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([own]))
+      .mockResolvedValueOnce(streamOk())
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          message: { ...own, body: 'After edit', edited_at: editedAt },
+        }),
+      }),
+    )
+    renderChatView()
+    await waitFor(() => screen.getByText('Before edit'))
+
+    fireEvent.click(screen.getByTestId(`chat-actions-trigger-${own.id}`))
+    fireEvent.click(screen.getByTestId(`chat-edit-action-${own.id}`))
+
+    const input = await screen.findByTestId(`chat-edit-input-${own.id}`) as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'After edit' } })
+    fireEvent.click(screen.getByTestId(`chat-edit-save-${own.id}`))
+
+    await waitFor(() => expect(screen.getByText('After edit')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId(`chat-edited-tag-${own.id}`)).toBeInTheDocument())
+  })
+
+  it('confirms before deleting and renders a tombstone bubble on success', async () => {
+    const own = makeMessage({ id: 7, sender_user_id: 1, body: 'Goodbye' })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([own]))
+      .mockResolvedValueOnce(streamOk())
+      .mockResolvedValueOnce({ ok: true, status: 204 }),
+    )
+    renderChatView()
+    await waitFor(() => screen.getByText('Goodbye'))
+
+    fireEvent.click(screen.getByTestId(`chat-actions-trigger-${own.id}`))
+    fireEvent.click(screen.getByTestId(`chat-delete-action-${own.id}`))
+
+    expect(screen.getByTestId('chat-delete-confirm')).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('chat-delete-confirm-button'))
+
+    await waitFor(() => expect(screen.getByTestId(`chat-tombstone-${own.id}`)).toBeInTheDocument())
+    expect(screen.queryByText('Goodbye')).not.toBeInTheDocument()
+  })
+
+  it('applies a message_edited SSE event to the open bubble', async () => {
+    const sse = streamWithController()
+    const msg = makeMessage({ id: 9, body: 'Original', sender_user_id: 2 })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([msg]))
+      .mockResolvedValueOnce(sse.response),
+    )
+    renderChatView()
+    await waitFor(() => screen.getByText('Original'))
+
+    await act(async () => {
+      sse.push('message_edited', {
+        message_id: 9,
+        conversation_id: 1,
+        body: 'Live edit',
+        edited_at: '2026-05-01T11:00:00Z',
+      })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => expect(screen.getByText('Live edit')).toBeInTheDocument())
+    expect(screen.queryByText('Original')).not.toBeInTheDocument()
+    expect(screen.getByTestId(`chat-edited-tag-${msg.id}`)).toBeInTheDocument()
+  })
+
+  it('applies a message_deleted SSE event to convert the bubble into a tombstone', async () => {
+    const sse = streamWithController()
+    const msg = makeMessage({ id: 11, body: 'Will be deleted', sender_user_id: 2 })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([msg]))
+      .mockResolvedValueOnce(sse.response),
+    )
+    renderChatView()
+    await waitFor(() => screen.getByText('Will be deleted'))
+
+    await act(async () => {
+      sse.push('message_deleted', {
+        message_id: 11,
+        conversation_id: 1,
+        deleted_by: 2,
+      })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => expect(screen.getByTestId(`chat-tombstone-${msg.id}`)).toBeInTheDocument())
+    expect(screen.queryByText('Will be deleted')).not.toBeInTheDocument()
   })
 })

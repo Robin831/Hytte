@@ -53,6 +53,20 @@
     "remove": "Remove your {{emoji}} reaction",
     "pickerLabel": "Pick a reaction"
   },
+  "edit": {
+    "edit": "Edit",
+    "delete": "Delete",
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirmDelete": "Delete this message? It will be replaced by a tombstone visible to everyone in the chat.",
+    "tombstone": "Message deleted by {{name}}",
+    "tombstoneSelf": "You deleted this message",
+    "editedTag": "edited",
+    "menuLabel": "Message actions",
+    "saving": "Saving…",
+    "saveError": "Failed to save changes",
+    "deleteError": "Failed to delete message"
+  },
   "newModal": {
     "title": "New conversation",
     "nameLabel": "Name",

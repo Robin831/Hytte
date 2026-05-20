@@ -6,6 +6,7 @@ package familychat
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -36,6 +37,11 @@ type Conversation struct {
 // AttachmentPath are returned in plaintext after decryption. Reactions is
 // always non-nil so the JSON shape is stable (an empty `{}` instead of null
 // when nobody has reacted yet).
+//
+// EditedAt, DeletedAt, and DeletedBy are pointer types so they marshal as JSON
+// null (not the zero value) for messages that have not been edited or deleted.
+// A soft-deleted message returns body, attachment_path, attachment_mime cleared
+// and edited_at forced to null so the renderer treats it as a tombstone.
 type Message struct {
 	ID             int64                       `json:"id"`
 	ConversationID int64                       `json:"conversation_id"`
@@ -44,6 +50,9 @@ type Message struct {
 	AttachmentPath string                      `json:"attachment_path,omitempty"`
 	AttachmentMime string                      `json:"attachment_mime,omitempty"`
 	CreatedAt      string                      `json:"created_at"`
+	EditedAt       *string                     `json:"edited_at"`
+	DeletedAt      *string                     `json:"deleted_at"`
+	DeletedBy      *int64                      `json:"deleted_by"`
 	Reactions      map[string]*ReactionSummary `json:"reactions"`
 }
 
@@ -292,7 +301,7 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 	)
 	if since > 0 {
 		rows, queryErr = db.Query(
-			`SELECT id, conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at
+			`SELECT id, conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at, edited_at, deleted_at, deleted_by
 			 FROM family_chat_messages
 			 WHERE conversation_id = ? AND id > ?
 			 ORDER BY id DESC
@@ -301,7 +310,7 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 		)
 	} else {
 		rows, queryErr = db.Query(
-			`SELECT id, conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at
+			`SELECT id, conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at, edited_at, deleted_at, deleted_by
 			 FROM family_chat_messages
 			 WHERE conversation_id = ?
 			 ORDER BY id DESC
@@ -317,7 +326,9 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 	out := []Message{}
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.ConversationID, &m.SenderUserID, &m.Body, &m.AttachmentPath, &m.AttachmentMime, &m.CreatedAt); err != nil {
+		var editedAt, deletedAt sql.NullString
+		var deletedBy sql.NullInt64
+		if err := rows.Scan(&m.ID, &m.ConversationID, &m.SenderUserID, &m.Body, &m.AttachmentPath, &m.AttachmentMime, &m.CreatedAt, &editedAt, &deletedAt, &deletedBy); err != nil {
 			return nil, err
 		}
 		if m.Body, err = encryption.DecryptField(m.Body); err != nil {
@@ -325,6 +336,25 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 		}
 		if m.AttachmentPath, err = encryption.DecryptField(m.AttachmentPath); err != nil {
 			return nil, fmt.Errorf("decrypt attachment path: %w", err)
+		}
+		if editedAt.Valid {
+			s := editedAt.String
+			m.EditedAt = &s
+		}
+		if deletedAt.Valid {
+			s := deletedAt.String
+			m.DeletedAt = &s
+			// Tombstone: never surface the original body, attachment, or edit
+			// history to clients. The DB row is already cleared on soft-delete
+			// but defensive zeroing here makes the contract obvious.
+			m.Body = ""
+			m.AttachmentPath = ""
+			m.AttachmentMime = ""
+			m.EditedAt = nil
+		}
+		if deletedBy.Valid {
+			id := deletedBy.Int64
+			m.DeletedBy = &id
 		}
 		out = append(out, m)
 	}
@@ -412,6 +442,146 @@ func CreateMessage(db *sql.DB, convID, senderID int64, body, attachmentPath, att
 		CreatedAt:      now,
 		Reactions:      map[string]*ReactionSummary{},
 	}, nil
+}
+
+// ErrMessageDeleted is returned by EditMessage when the target message has
+// already been soft-deleted. Handlers map this to a 409 Conflict so clients
+// can refresh and surface the tombstone in the UI.
+var ErrMessageDeleted = errors.New("familychat: message is deleted")
+
+// EditMessage updates the body of msgID inside convID, but only when the
+// requesting user is the author. Non-authors (and references to messages that
+// do not exist in this conversation) receive ErrForbidden so handlers can map
+// to 404 and avoid leaking existence. A tombstoned message returns
+// ErrMessageDeleted so the caller distinguishes "you may not edit this" from
+// "this message can no longer be edited".
+//
+// On success the message row's body is re-encrypted, edited_at is stamped, and
+// the updated Message (decrypted) is returned. The conversation's
+// last_message_at is not touched — an edit doesn't shift the conversation's
+// sort order in the sidebar.
+func EditMessage(db *sql.DB, convID, msgID, userID int64, body string) (*Message, error) {
+	// Confirm the row belongs to convID + is owned by userID. A single row
+	// lookup also pulls deleted_at so we can short-circuit the tombstone case.
+	var (
+		senderID  int64
+		convInMsg int64
+		deletedAt sql.NullString
+	)
+	err := db.QueryRow(
+		`SELECT sender_user_id, conversation_id, deleted_at FROM family_chat_messages WHERE id = ?`,
+		msgID,
+	).Scan(&senderID, &convInMsg, &deletedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrForbidden
+		}
+		return nil, err
+	}
+	if convInMsg != convID || senderID != userID {
+		return nil, ErrForbidden
+	}
+	if deletedAt.Valid {
+		return nil, ErrMessageDeleted
+	}
+
+	encBody, err := encryption.EncryptField(body)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt body: %w", err)
+	}
+	now := time.Now().UTC().Format(timeFormat)
+	if _, err := db.Exec(
+		`UPDATE family_chat_messages SET body = ?, edited_at = ? WHERE id = ?`,
+		encBody, now, msgID,
+	); err != nil {
+		return nil, err
+	}
+
+	// Read back the row so the response reflects the on-disk state (including
+	// the freshly stamped edited_at and the original created_at). Reactions are
+	// fetched separately so the contract matches ListMessages — clients always
+	// receive a stable Message shape.
+	var (
+		createdAt    string
+		editedAtNull sql.NullString
+	)
+	if err := db.QueryRow(
+		`SELECT created_at, edited_at FROM family_chat_messages WHERE id = ?`,
+		msgID,
+	).Scan(&createdAt, &editedAtNull); err != nil {
+		return nil, err
+	}
+	editedAt := now
+	if editedAtNull.Valid {
+		editedAt = editedAtNull.String
+	}
+	reactions, err := batchReactions(db, []int64{msgID}, userID)
+	if err != nil {
+		return nil, fmt.Errorf("load reactions: %w", err)
+	}
+	byEmoji := reactions[msgID]
+	if byEmoji == nil {
+		byEmoji = map[string]*ReactionSummary{}
+	}
+	return &Message{
+		ID:             msgID,
+		ConversationID: convID,
+		SenderUserID:   userID,
+		Body:           body,
+		CreatedAt:      createdAt,
+		EditedAt:       &editedAt,
+		Reactions:      byEmoji,
+	}, nil
+}
+
+// SoftDeleteMessage marks msgID as deleted by userID and returns the cleared
+// attachment path (so the handler can remove the file from disk after a
+// successful update). Non-author callers and unknown messages return
+// ErrForbidden — handlers map both to 404 to avoid leaking existence. Calling
+// SoftDeleteMessage on an already-tombstoned message is a no-op that returns
+// (attachmentPath="", nil); the wire payload is idempotent and the SSE
+// re-broadcast is still useful for any client that missed the first event.
+func SoftDeleteMessage(db *sql.DB, convID, msgID, userID int64) (attachmentPath string, err error) {
+	var (
+		senderID    int64
+		convInMsg   int64
+		encPath     string
+		deletedAt   sql.NullString
+	)
+	err = db.QueryRow(
+		`SELECT sender_user_id, conversation_id, attachment_path, deleted_at FROM family_chat_messages WHERE id = ?`,
+		msgID,
+	).Scan(&senderID, &convInMsg, &encPath, &deletedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrForbidden
+		}
+		return "", err
+	}
+	if convInMsg != convID || senderID != userID {
+		return "", ErrForbidden
+	}
+	if deletedAt.Valid {
+		// Already tombstoned; nothing to do.
+		return "", nil
+	}
+
+	plainPath, derr := encryption.DecryptField(encPath)
+	if derr != nil {
+		// Treat decrypt failures as no attachment to remove; the row is still
+		// marked deleted so the user-visible tombstone path completes.
+		log.Printf("familychat: decrypt attachment_path for soft-delete msg=%d: %v", msgID, derr)
+		plainPath = ""
+	}
+
+	now := time.Now().UTC().Format(timeFormat)
+	if _, err := db.Exec(
+		`UPDATE family_chat_messages SET deleted_at = ?, deleted_by = ?, body = '', attachment_path = '', attachment_mime = '' WHERE id = ?`,
+		now, userID, msgID,
+	); err != nil {
+		return "", err
+	}
+	return plainPath, nil
 }
 
 // MarkRead sets the requesting member's last_read_at to at. Returns
@@ -548,13 +718,17 @@ func batchLastMessages(db *sql.DB, convIDs []int64) (map[int64]lastMessage, erro
 	for i, id := range convIDs {
 		args[i] = id
 	}
+	// Filter out soft-deleted messages from the conversation list preview so
+	// the sidebar shows the most recent visible message. The MAX(id) is
+	// computed over visible rows only — if every row in a conversation has
+	// been soft-deleted, the conversation simply has no preview.
 	rows, err := db.Query(
 		`SELECT m.conversation_id, m.sender_user_id, m.body, m.attachment_path
 		 FROM family_chat_messages m
 		 JOIN (
 		   SELECT conversation_id, MAX(id) AS max_id
 		   FROM family_chat_messages
-		   WHERE conversation_id IN (`+placeholders+`)
+		   WHERE conversation_id IN (`+placeholders+`) AND deleted_at IS NULL
 		   GROUP BY conversation_id
 		 ) latest ON latest.conversation_id = m.conversation_id AND latest.max_id = m.id`,
 		args...,

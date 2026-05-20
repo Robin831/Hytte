@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, MessageSquare, Download, X, WifiOff, Smile } from 'lucide-react'
+import { ChevronLeft, MessageSquare, Download, X, WifiOff, Smile, MoreVertical } from 'lucide-react'
 import { Skeleton } from '../../components/ui/skeleton'
 import { useAuth } from '../../auth'
 import Composer from './Composer'
 import ReactionChips from './ReactionChips'
 import ReactionPicker from './ReactionPicker'
-import { addReaction, removeReaction, applyReactionEvent, type ReactionMap } from './api'
+import {
+  addReaction,
+  removeReaction,
+  applyReactionEvent,
+  editMessage,
+  deleteMessage,
+  type ReactionMap,
+} from './api'
 import { formatRelative } from './utils'
 
 interface ChatViewProps {
@@ -32,6 +39,9 @@ export interface ChatMessage {
   attachment_path?: string
   attachment_mime?: string
   created_at: string
+  edited_at?: string | null
+  deleted_at?: string | null
+  deleted_by?: number | null
   reactions?: ReactionMap
 }
 
@@ -76,6 +86,20 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // pickerForMsgId is the id of the bubble whose reaction picker is open, or
   // null when nothing is open. We only show one picker at a time.
   const [pickerForMsgId, setPickerForMsgId] = useState<number | null>(null)
+  // menuForMsgId is the id of the own-message bubble whose actions menu (edit /
+  // delete) is open. Only one menu is open at a time.
+  const [menuForMsgId, setMenuForMsgId] = useState<number | null>(null)
+  // editingMsgId is the id of the message currently being edited inline, with
+  // editingDraft holding the in-progress text and editingError the most recent
+  // save failure (so the user can retry without losing their draft).
+  const [editingMsgId, setEditingMsgId] = useState<number | null>(null)
+  const [editingDraft, setEditingDraft] = useState('')
+  const [editingSaving, setEditingSaving] = useState(false)
+  const [editingError, setEditingError] = useState('')
+  // confirmDeleteId holds the id of the message whose delete-confirm modal is
+  // open, or null when the modal is closed.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
+  const [deleteError, setDeleteError] = useState('')
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   // currentUserIdRef shadows user?.id so the long-lived SSE reader closure
@@ -218,6 +242,43 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       })
     }
 
+    // applyMessageEdited overwrites the body + edited_at of the matching
+    // message. Keeps the existing reactions / attachment metadata intact.
+    const applyMessageEdited = (
+      payload: { message_id: number; body: string; edited_at: string; conversation_id?: number },
+    ) => {
+      if (payload.conversation_id !== undefined && payload.conversation_id !== conversationId) return
+      setMessages(prev => prev.map(m =>
+        m.id === payload.message_id
+          ? { ...m, body: payload.body, edited_at: payload.edited_at }
+          : m,
+      ))
+    }
+
+    // applyMessageDeleted converts the matching message into a tombstone.
+    // Body + attachment metadata are cleared so the bubble flips to the
+    // "Message deleted" placeholder; deleted_at + deleted_by drive that
+    // rendering and the timestamp tooltip.
+    const applyMessageDeleted = (
+      payload: { message_id: number; deleted_by: number; conversation_id?: number },
+    ) => {
+      if (payload.conversation_id !== undefined && payload.conversation_id !== conversationId) return
+      const now = new Date().toISOString()
+      setMessages(prev => prev.map(m =>
+        m.id === payload.message_id
+          ? {
+              ...m,
+              body: '',
+              attachment_path: '',
+              attachment_mime: '',
+              edited_at: null,
+              deleted_at: m.deleted_at ?? now,
+              deleted_by: payload.deleted_by,
+            }
+          : m,
+      ))
+    }
+
     const fillGap = async () => {
       if (controller.signal.aborted) return
       try {
@@ -299,6 +360,17 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                     payload?.emoji !== undefined
                   ) {
                     applyReactionEventLocal(payload, eventName === 'reaction_removed')
+                  } else if (
+                    eventName === 'message_edited' &&
+                    payload?.message_id !== undefined &&
+                    payload?.body !== undefined
+                  ) {
+                    applyMessageEdited(payload)
+                  } else if (
+                    eventName === 'message_deleted' &&
+                    payload?.message_id !== undefined
+                  ) {
+                    applyMessageDeleted(payload)
                   }
                 } catch {
                   // Ignore a malformed payload; the server should never emit
@@ -456,6 +528,86 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     void toggleReaction(msgId, emoji, mine)
   }, [messages, toggleReaction])
 
+  // openEditor opens the inline editor for a message bubble. Seeds the draft
+  // from the current body so the user starts from what's on screen.
+  const openEditor = useCallback((msg: ChatMessage) => {
+    setMenuForMsgId(null)
+    setEditingMsgId(msg.id)
+    setEditingDraft(msg.body)
+    setEditingError('')
+    setEditingSaving(false)
+  }, [])
+
+  const cancelEditor = useCallback(() => {
+    setEditingMsgId(null)
+    setEditingDraft('')
+    setEditingError('')
+    setEditingSaving(false)
+  }, [])
+
+  const saveEditor = useCallback(async (msgId: number) => {
+    if (conversationId === null) return
+    const trimmed = editingDraft.trim()
+    if (!trimmed) {
+      setEditingError(t('edit.saveError'))
+      return
+    }
+    setEditingSaving(true)
+    setEditingError('')
+    // Optimistic update first: the SSE confirmation will overwrite shortly
+    // with the server's authoritative edited_at, which matches the pattern
+    // used by reactions / message sends in this view.
+    const optimisticTime = new Date().toISOString()
+    setMessages(prev => prev.map(m =>
+      m.id === msgId ? { ...m, body: trimmed, edited_at: optimisticTime } : m,
+    ))
+    try {
+      const updated = await editMessage(conversationId, msgId, trimmed)
+      setMessages(prev => prev.map(m =>
+        m.id === msgId
+          ? { ...m, body: updated.body, edited_at: updated.edited_at }
+          : m,
+      ))
+      setEditingMsgId(null)
+      setEditingDraft('')
+      setEditingSaving(false)
+    } catch {
+      setEditingError(t('edit.saveError'))
+      setEditingSaving(false)
+    }
+  }, [conversationId, editingDraft, t])
+
+  const confirmDelete = useCallback(async (msgId: number) => {
+    if (conversationId === null) return
+    setDeleteError('')
+    const meID = user?.id ?? null
+    const now = new Date().toISOString()
+    // Capture the pre-delete snapshot from the current render's state so the
+    // rollback in catch{} doesn't depend on the setState updater having run.
+    const snapshot = messages.find(m => m.id === msgId) ?? null
+    setMessages(prev => prev.map(m => {
+      if (m.id !== msgId) return m
+      return {
+        ...m,
+        body: '',
+        attachment_path: '',
+        attachment_mime: '',
+        edited_at: null,
+        deleted_at: now,
+        deleted_by: meID,
+      }
+    }))
+    setConfirmDeleteId(null)
+    try {
+      await deleteMessage(conversationId, msgId)
+    } catch {
+      if (snapshot) {
+        setMessages(prev => prev.map(m => (m.id === msgId ? snapshot : m)))
+      }
+      setDeleteError(t('edit.deleteError'))
+    }
+  }, [conversationId, user?.id, t, messages])
+
   const memberChips = useMemo(() => {
     if (!conversation) return []
     return conversation.member_ids.map(id => {
@@ -570,92 +722,216 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
 
         {!loading && !error && messages.map(msg => {
           const isOwn = user?.id === msg.sender_user_id
+          const isDeleted = !!msg.deleted_at
+          const isEditing = editingMsgId === msg.id
           const senderInfo = memberLookup.get(msg.sender_user_id)
           const senderLabel = senderInfo?.label ?? t('chat.memberFallback', { id: msg.sender_user_id })
           const relative = formatRelative(msg.created_at, rtf, t('time.justNow'))
-          const attachmentUrl = msg.attachment_path && msg.attachment_mime
+          const attachmentUrl = !isDeleted && msg.attachment_path && msg.attachment_mime
             ? `/api/familychat/conversations/${msg.conversation_id}/attachments/${msg.id}`
             : ''
           const mime = msg.attachment_mime ?? ''
           const isImage = mime.startsWith('image/')
           const isAudio = mime.startsWith('audio/')
           const pickerOpen = pickerForMsgId === msg.id
+          const menuOpen = menuForMsgId === msg.id
+          const showActions = isOwn && !isDeleted && !isEditing
+          const deletedByInfo = msg.deleted_by != null ? memberLookup.get(msg.deleted_by) : undefined
+          const deletedByLabel = msg.deleted_by != null && user?.id === msg.deleted_by
+            ? t('edit.tombstoneSelf')
+            : t('edit.tombstone', { name: deletedByInfo?.label ?? t('chat.memberFallback', { id: msg.deleted_by ?? 0 }) })
           return (
             <div
               key={msg.id}
               className={`flex flex-col group ${isOwn ? 'items-end' : 'items-start'}`}
               data-testid={`chat-bubble-${msg.id}`}
             >
-              {!isOwn && (
+              {!isOwn && !isDeleted && (
                 <span className="text-xs text-gray-400 mb-0.5 px-1">{senderLabel}</span>
               )}
               <div className={`relative max-w-[85%] sm:max-w-[70%]`}>
-                <div
-                  className={`px-3 py-2 rounded-2xl text-sm break-words ${
-                    isOwn
-                      ? 'bg-blue-600 text-white rounded-br-sm'
-                      : 'bg-gray-800 text-gray-100 rounded-bl-sm'
-                  }`}
-                  onPointerDown={(e) => { lastPointerTypeRef.current = e.pointerType }}
-                  onContextMenu={(e) => {
-                    // Only intercept touch long-press (suppress native menu, open
-                    // picker). Mouse right-clicks keep the native menu so users
-                    // can copy text/images; the picker is reachable via the hover
-                    // button (Smile icon) on desktop.
-                    if (lastPointerTypeRef.current === 'touch') {
-                      e.preventDefault()
-                      setPickerForMsgId(msg.id)
-                    }
-                  }}
-                >
-                  {attachmentUrl && isImage && (
+                {isDeleted ? (
+                  <div
+                    className="px-3 py-2 rounded-2xl text-sm italic bg-gray-800/60 border border-gray-700 text-gray-400"
+                    data-testid={`chat-tombstone-${msg.id}`}
+                  >
+                    {deletedByLabel}
+                  </div>
+                ) : isEditing ? (
+                  <div className={`px-3 py-2 rounded-2xl text-sm break-words ${
+                    isOwn ? 'bg-blue-600/40 border border-blue-500' : 'bg-gray-800 border border-gray-700'
+                  }`}>
+                    <textarea
+                      value={editingDraft}
+                      onChange={(e) => setEditingDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          e.preventDefault()
+                          cancelEditor()
+                        } else if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault()
+                          void saveEditor(msg.id)
+                        }
+                      }}
+                      aria-label={t('edit.edit')}
+                      data-testid={`chat-edit-input-${msg.id}`}
+                      className="w-full bg-gray-900 text-gray-100 border border-gray-700 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-blue-500"
+                      rows={3}
+                      autoFocus
+                    />
+                    {editingError && (
+                      <div className="text-xs text-red-400 mt-1">{editingError}</div>
+                    )}
+                    <div className="flex gap-2 mt-2 justify-end">
+                      <button
+                        type="button"
+                        onClick={cancelEditor}
+                        className="px-2 py-1 text-xs rounded-md bg-gray-700 text-gray-200 hover:bg-gray-600"
+                        data-testid={`chat-edit-cancel-${msg.id}`}
+                      >
+                        {t('edit.cancel')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { void saveEditor(msg.id) }}
+                        disabled={editingSaving || !editingDraft.trim()}
+                        className="px-2 py-1 text-xs rounded-md bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        data-testid={`chat-edit-save-${msg.id}`}
+                      >
+                        {editingSaving ? t('edit.saving') : t('edit.save')}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className={`px-3 py-2 rounded-2xl text-sm break-words ${
+                      isOwn
+                        ? 'bg-blue-600 text-white rounded-br-sm'
+                        : 'bg-gray-800 text-gray-100 rounded-bl-sm'
+                    }`}
+                    onPointerDown={(e) => { lastPointerTypeRef.current = e.pointerType }}
+                    onContextMenu={(e) => {
+                      // Only intercept touch long-press (suppress native menu, open
+                      // picker). Mouse right-clicks keep the native menu so users
+                      // can copy text/images; the picker is reachable via the hover
+                      // button (Smile icon) on desktop.
+                      if (lastPointerTypeRef.current === 'touch') {
+                        e.preventDefault()
+                        if (isOwn) {
+                          setMenuForMsgId(msg.id)
+                        } else {
+                          setPickerForMsgId(msg.id)
+                        }
+                      }
+                    }}
+                  >
+                    {attachmentUrl && isImage && (
+                      <button
+                        type="button"
+                        onClick={() => setLightbox({ url: attachmentUrl, alt: t('chat.attachmentImageAlt') })}
+                        className="block cursor-zoom-in mb-1"
+                        aria-label={t('chat.attachmentImageAlt')}
+                      >
+                        <img
+                          src={attachmentUrl}
+                          alt={t('chat.attachmentImageAlt')}
+                          loading="lazy"
+                          className="rounded-lg max-h-60 max-w-full object-contain"
+                        />
+                      </button>
+                    )}
+                    {attachmentUrl && isAudio && (
+                      <audio
+                        controls
+                        src={attachmentUrl}
+                        className="block max-w-full mb-1"
+                        aria-label={t('chat.attachmentAudioAlt')}
+                      />
+                    )}
+                    {attachmentUrl && !isImage && !isAudio && (
+                      <a
+                        href={attachmentUrl}
+                        download
+                        className={`flex items-center gap-2 rounded-lg px-2 py-1.5 mb-1 text-xs ${
+                          isOwn ? 'bg-blue-700/60 hover:bg-blue-700/80' : 'bg-gray-700/70 hover:bg-gray-700'
+                        }`}
+                      >
+                        <Download size={14} aria-hidden="true" />
+                        <span className="truncate">{t('chat.attachmentFileLabel', { mime })}</span>
+                      </a>
+                    )}
+                    {msg.body && (
+                      <div className="whitespace-pre-wrap">{msg.body}</div>
+                    )}
+                  </div>
+                )}
+                {!isDeleted && !isEditing && (
+                  <button
+                    type="button"
+                    onClick={() => setPickerForMsgId(pickerOpen ? null : msg.id)}
+                    aria-label={t('reactions.pickerLabel')}
+                    className={`absolute -top-3 ${isOwn ? '-left-2' : '-right-2'} p-1 rounded-full bg-gray-800 border border-gray-700 text-gray-300 hover:text-white opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer`}
+                    data-testid={`reaction-trigger-${msg.id}`}
+                  >
+                    <Smile size={14} aria-hidden="true" />
+                  </button>
+                )}
+                {showActions && (
+                  <button
+                    type="button"
+                    onClick={() => setMenuForMsgId(menuOpen ? null : msg.id)}
+                    aria-label={t('edit.menuLabel')}
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
+                    className="absolute -top-3 -right-2 p-1 rounded-full bg-gray-800 border border-gray-700 text-gray-300 hover:text-white opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer"
+                    data-testid={`chat-actions-trigger-${msg.id}`}
+                  >
+                    <MoreVertical size={14} aria-hidden="true" />
+                  </button>
+                )}
+                {menuOpen && showActions && (
+                  <>
+                    {/* Click outside to dismiss — full-viewport transparent layer
+                        intercepts the next click and closes the menu without
+                        eating any actual UI interaction. */}
                     <button
                       type="button"
-                      onClick={() => setLightbox({ url: attachmentUrl, alt: t('chat.attachmentImageAlt') })}
-                      className="block cursor-zoom-in mb-1"
-                      aria-label={t('chat.attachmentImageAlt')}
-                    >
-                      <img
-                        src={attachmentUrl}
-                        alt={t('chat.attachmentImageAlt')}
-                        loading="lazy"
-                        className="rounded-lg max-h-60 max-w-full object-contain"
-                      />
-                    </button>
-                  )}
-                  {attachmentUrl && isAudio && (
-                    <audio
-                      controls
-                      src={attachmentUrl}
-                      className="block max-w-full mb-1"
-                      aria-label={t('chat.attachmentAudioAlt')}
+                      aria-hidden="true"
+                      tabIndex={-1}
+                      onClick={() => setMenuForMsgId(null)}
+                      className="fixed inset-0 z-40 cursor-default"
                     />
-                  )}
-                  {attachmentUrl && !isImage && !isAudio && (
-                    <a
-                      href={attachmentUrl}
-                      download
-                      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 mb-1 text-xs ${
-                        isOwn ? 'bg-blue-700/60 hover:bg-blue-700/80' : 'bg-gray-700/70 hover:bg-gray-700'
-                      }`}
+                    <div
+                      role="menu"
+                      aria-label={t('edit.menuLabel')}
+                      data-testid={`chat-actions-menu-${msg.id}`}
+                      className="absolute z-50 -top-2 right-0 mt-6 min-w-[8rem] bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden"
                     >
-                      <Download size={14} aria-hidden="true" />
-                      <span className="truncate">{t('chat.attachmentFileLabel', { mime })}</span>
-                    </a>
-                  )}
-                  {msg.body && (
-                    <div className="whitespace-pre-wrap">{msg.body}</div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPickerForMsgId(pickerOpen ? null : msg.id)}
-                  aria-label={t('reactions.pickerLabel')}
-                  className={`absolute -top-3 ${isOwn ? '-left-2' : '-right-2'} p-1 rounded-full bg-gray-800 border border-gray-700 text-gray-300 hover:text-white opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer`}
-                  data-testid={`reaction-trigger-${msg.id}`}
-                >
-                  <Smile size={14} aria-hidden="true" />
-                </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => openEditor(msg)}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-700"
+                        data-testid={`chat-edit-action-${msg.id}`}
+                      >
+                        {t('edit.edit')}
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setMenuForMsgId(null)
+                          setDeleteError('')
+                          setConfirmDeleteId(msg.id)
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm text-red-300 hover:bg-gray-700"
+                        data-testid={`chat-delete-action-${msg.id}`}
+                      >
+                        {t('edit.delete')}
+                      </button>
+                    </div>
+                  </>
+                )}
                 {pickerOpen && (
                   <ReactionPicker
                     onPick={(emoji) => handlePickFromPicker(msg.id, emoji)}
@@ -667,9 +943,20 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                 reactions={msg.reactions}
                 onToggle={(emoji, mine) => { void toggleReaction(msg.id, emoji, mine) }}
               />
-              {relative && (
-                <span className="text-[10px] text-gray-500 mt-0.5 px-1">{relative}</span>
-              )}
+              <div className="flex items-center gap-1 mt-0.5 px-1">
+                {!isDeleted && msg.edited_at && (
+                  <span
+                    className="text-[10px] text-gray-500 italic"
+                    title={msg.edited_at}
+                    data-testid={`chat-edited-tag-${msg.id}`}
+                  >
+                    ({t('edit.editedTag')})
+                  </span>
+                )}
+                {relative && (
+                  <span className="text-[10px] text-gray-500">{relative}</span>
+                )}
+              </div>
             </div>
           )
         })}
@@ -701,6 +988,44 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
             alt={lightbox.alt}
             className="max-w-full max-h-full object-contain"
           />
+        </div>
+      )}
+
+      {confirmDeleteId !== null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="family-chat-confirm-delete-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setConfirmDeleteId(null) }}
+          data-testid="chat-delete-confirm"
+        >
+          <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-md w-full p-4 shadow-xl">
+            <p id="family-chat-confirm-delete-title" className="text-sm text-gray-100">
+              {t('edit.confirmDelete')}
+            </p>
+            {deleteError && (
+              <p className="mt-2 text-xs text-red-400">{deleteError}</p>
+            )}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteId(null)}
+                className="px-3 py-1.5 text-sm rounded-md bg-gray-800 text-gray-200 hover:bg-gray-700"
+                data-testid="chat-delete-cancel"
+              >
+                {t('edit.cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => { void confirmDelete(confirmDeleteId) }}
+                className="px-3 py-1.5 text-sm rounded-md bg-red-600 text-white hover:bg-red-500"
+                data-testid="chat-delete-confirm-button"
+              >
+                {t('edit.delete')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

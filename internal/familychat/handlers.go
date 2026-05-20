@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -322,6 +323,144 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 
 
 		writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
+	}
+}
+
+// EditMessageHandler updates the body of an existing message authored by the
+// requesting user. Non-authors and unknown messages both get 404 so the API
+// does not leak which messages exist in conversations the caller cannot read.
+// A tombstoned message returns 409 Conflict so the client can refresh and
+// surface the existing tombstone rather than overwrite history.
+func EditMessageHandler(db *sql.DB) http.HandlerFunc {
+	return editMessageHandler(db, DefaultHub())
+}
+
+func editMessageHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		convID, ok := parseConvID(r)
+		if !ok {
+			notFound(w)
+			return
+		}
+		msgID, ok := parseMessageID(r)
+		if !ok {
+			notFound(w)
+			return
+		}
+
+		var body struct {
+			Body string `json:"body"`
+		}
+		if !decodeJSON(w, r, &body) {
+			return
+		}
+		body.Body = strings.TrimSpace(body.Body)
+		if body.Body == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body is required"})
+			return
+		}
+		if len([]rune(body.Body)) > maxBodyLen {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body is too long"})
+			return
+		}
+
+		msg, err := EditMessage(db, convID, msgID, user.ID, body.Body)
+		if err != nil {
+			if errors.Is(err, ErrForbidden) {
+				notFound(w)
+				return
+			}
+			if errors.Is(err, ErrMessageDeleted) {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "message has been deleted"})
+				return
+			}
+			log.Printf("familychat: edit message conv=%d msg=%d user=%d: %v", convID, msgID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to edit message"})
+			return
+		}
+
+		if hub != nil && msg != nil {
+			editedAt := ""
+			if msg.EditedAt != nil {
+				editedAt = *msg.EditedAt
+			}
+			hub.Publish(convID, Event{
+				Type: EventMessageEdited,
+				Data: map[string]any{
+					"message_id":      msgID,
+					"conversation_id": convID,
+					"body":            msg.Body,
+					"edited_at":       editedAt,
+				},
+			})
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"message": msg})
+	}
+}
+
+// DeleteMessageHandler soft-deletes a message authored by the requesting user.
+// The row is preserved (so the tombstone can keep its place in the history),
+// but the body, attachment path, and attachment MIME are cleared and the
+// attachment file is removed from disk. Non-authors and unknown messages both
+// get 404 to avoid leaking existence. The cleared fields are broadcast over
+// SSE so other clients render the tombstone without refreshing.
+func DeleteMessageHandler(db *sql.DB) http.HandlerFunc {
+	return deleteMessageHandler(db, DefaultHub())
+}
+
+func deleteMessageHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		convID, ok := parseConvID(r)
+		if !ok {
+			notFound(w)
+			return
+		}
+		msgID, ok := parseMessageID(r)
+		if !ok {
+			notFound(w)
+			return
+		}
+
+		attachmentPath, err := SoftDeleteMessage(db, convID, msgID, user.ID)
+		if err != nil {
+			if errors.Is(err, ErrForbidden) {
+				notFound(w)
+				return
+			}
+			log.Printf("familychat: soft-delete message conv=%d msg=%d user=%d: %v", convID, msgID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete message"})
+			return
+		}
+
+		// Remove the attachment file from disk after the row has been updated.
+		// Failure here is non-fatal: the row already advertises no attachment,
+		// and the orphan sweep eventually reclaims any file we couldn't unlink.
+		if attachmentPath != "" {
+			if full, ok := resolveAttachmentPath(convID, attachmentPath); ok {
+				if rmErr := os.Remove(full); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+					log.Printf("familychat: remove attachment for deleted message conv=%d msg=%d: %v", convID, msgID, rmErr)
+				}
+				if rmErr := os.Remove(full + ".mime"); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+					log.Printf("familychat: remove attachment mime sidecar conv=%d msg=%d: %v", convID, msgID, rmErr)
+				}
+			}
+		}
+
+		if hub != nil {
+			hub.Publish(convID, Event{
+				Type: EventMessageDeleted,
+				Data: map[string]any{
+					"message_id":      msgID,
+					"conversation_id": convID,
+					"deleted_by":      user.ID,
+				},
+			})
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
