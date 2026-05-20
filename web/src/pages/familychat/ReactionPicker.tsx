@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 // don't ship a megabyte emoji search index. Server-side validation accepts
 // any single emoji grapheme so users can still react with anything they can
 // type via their OS keyboard from the textarea path (future work).
-export const PICKER_EMOJIS = [
+const PICKER_EMOJIS = [
   '👍', '❤️', '🎉', '😂',
   '😮', '😢', '🙏', '🔥',
   '👏', '👀', '💯', '🚀',

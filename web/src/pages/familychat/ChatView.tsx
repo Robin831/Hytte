@@ -411,9 +411,10 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // network round-trip) and rolls back on failure. The eventual SSE
   // confirmation overwrites the optimistic state with the server-authoritative
   // count, which keeps two clients in sync even if either one races.
+  const userId = user?.id
   const toggleReaction = useCallback(async (msgId: number, emoji: string, currentlyMine: boolean) => {
-    if (conversationId === null || user?.id === undefined) return
-    const meID = user.id
+    if (conversationId === null || userId === undefined) return
+    const meID = userId
     const snapshot = messages.find(m => m.id === msgId) ?? null
     setMessages(prev => prev.map(m => {
       if (m.id !== msgId) return m
@@ -438,7 +439,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         setMessages(prev => prev.map(m => (m.id === msgId ? snapshot : m)))
       }
     }
-  }, [conversationId, user?.id, messages])
+  }, [conversationId, userId, messages])
 
   const handlePickFromPicker = useCallback((msgId: number, emoji: string) => {
     setPickerForMsgId(null)
