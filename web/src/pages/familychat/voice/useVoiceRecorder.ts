@@ -104,6 +104,7 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const dataArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null)
   const rafRef = useRef<number | null>(null)
+  const lastMeterTimeRef = useRef<number>(0)
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const maxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const startedAtRef = useRef<number>(0)
@@ -123,16 +124,12 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
   const startInFlightRef = useRef(false)
   useEffect(() => { onAutoCompleteRef.current = options.onAutoComplete })
 
-  // Adjust levels length when barCount changes (rare). Use a useState-based
-  // comparison rather than a ref so we can call setState during render without
-  // triggering the react-hooks/set-state-in-effect or no-ref-during-render
-  // rules. levelsHistoryRef is reset in start() before each recording, so the
-  // temporary mismatch between recordings is harmless.
-  const [prevBarCount, setPrevBarCount] = useState(barCount)
-  if (prevBarCount !== barCount) {
-    setPrevBarCount(barCount)
+  // Sync levels/history when barCount changes (rare). levelsHistoryRef is also
+  // reset in start() before each recording, so mid-recording changes are fine.
+  useEffect(() => {
+    levelsHistoryRef.current = new Array(barCount).fill(0)
     setLevels(new Array(barCount).fill(0))
-  }
+  }, [barCount])
 
   const supported = isGetUserMediaAvailable() && isMediaRecorderAvailable()
 
@@ -203,6 +200,11 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
     const analyser = analyserRef.current
     const data = dataArrayRef.current
     if (!analyser || !data) return
+    // Throttle to ~15 fps so the meter doesn't force a React re-render on every
+    // animation frame (~60fps), which causes jank on low-end devices.
+    const now = performance.now()
+    if (now - lastMeterTimeRef.current < 66) return
+    lastMeterTimeRef.current = now
     analyser.getByteTimeDomainData(data)
     // RMS over the time-domain buffer. getByteTimeDomainData yields uint8
     // values centred on 128; subtract the bias before squaring.
@@ -431,6 +433,19 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
     if (!recorder || (state !== 'recording' && state !== 'starting')) {
       return Promise.resolve(null)
     }
+    // Guard against rapid double-calls before React re-renders state.
+    if (stopPromiseRef.current !== null) {
+      return Promise.resolve(null)
+    }
+    // Clear the max-duration timer so it cannot race with this user-initiated
+    // stop — without this, a timeout firing between stop() and onstop would
+    // set autoCompleteRef and cause finaliseStop to invoke onAutoComplete in
+    // addition to resolving the stop() promise (double-commit bug).
+    if (maxTimerRef.current !== null) {
+      clearTimeout(maxTimerRef.current)
+      maxTimerRef.current = null
+    }
+    autoCompleteRef.current = false
     finalDurationRef.current = Date.now() - startedAtRef.current
     cancelledRef.current = false
     setState('processing')
@@ -449,6 +464,12 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
   const cancel = useCallback(() => {
     const recorder = recorderRef.current
     cancelledRef.current = true
+    // Clear the max-duration timer so it cannot fire after cancel begins.
+    if (maxTimerRef.current !== null) {
+      clearTimeout(maxTimerRef.current)
+      maxTimerRef.current = null
+    }
+    autoCompleteRef.current = false
     if (!recorder) {
       // Nothing to stop — just drop any latent error/state and tear down.
       fullTeardown()

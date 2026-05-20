@@ -101,7 +101,7 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
   }, [body])
 
   function handleAttachClick() {
-    if (uploading || sending || voiceSending || recorder.state === 'recording') return
+    if (uploading || sending || voiceSending || recorder.state === 'recording' || recorder.state === 'starting' || recorder.state === 'processing') return
     fileInputRef.current?.click()
   }
 

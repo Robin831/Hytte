@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { useVoiceRecorder } from './useVoiceRecorder'
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
@@ -255,6 +255,38 @@ describe('useVoiceRecorder – start/stop/cancel/timeout', () => {
     expect(arg.durationMs).toBeGreaterThanOrEqual(1000)
   })
 
+  it('stop() called near cap: onAutoComplete does not fire, result via stop() only', async () => {
+    installPlatform()
+    const onAutoComplete = vi.fn()
+    const { result } = renderHook(() => useVoiceRecorder({
+      maxDurationMs: 1000,
+      minDurationMs: 100,
+      onAutoComplete,
+    }))
+
+    await act(async () => { await result.current.start() })
+
+    // Advance to just before the cap fires.
+    await act(async () => { vi.advanceTimersByTime(950) })
+
+    // User stops just before the cap — stop() must clear the max-duration
+    // timer so the cap cannot fire and trigger a second onAutoComplete call.
+    let stopResult: Awaited<ReturnType<typeof result.current.stop>> = null
+    await act(async () => {
+      const promise = result.current.stop()
+      lastRecorder?.finishStop()
+      stopResult = await promise
+    })
+
+    // Advance past where the cap would have fired.
+    await act(async () => { vi.advanceTimersByTime(100) })
+
+    expect(stopResult).not.toBeNull()
+    expect(stopResult!.blob).toBeInstanceOf(Blob)
+    // onAutoComplete must NOT fire — result was delivered via the stop() promise.
+    expect(onAutoComplete).not.toHaveBeenCalled()
+  })
+
   it('handles a denied permission as state=error', async () => {
     installPlatform({ rejectGetUserMedia: new DOMException('denied', 'NotAllowedError') })
     const { result } = renderHook(() => useVoiceRecorder())
@@ -318,11 +350,10 @@ describe('useVoiceRecorder – start/stop/cancel/timeout', () => {
     const { result } = renderHook(() => useVoiceRecorder({ maxDurationMs: 5000 }))
 
     await act(async () => { await result.current.start() })
+    // Advance fake timers — state updates are flushed by act, so check directly.
     await act(async () => { vi.advanceTimersByTime(450) })
 
-    await waitFor(() => {
-      expect(result.current.elapsedMs).toBeGreaterThanOrEqual(400)
-    })
+    expect(result.current.elapsedMs).toBeGreaterThanOrEqual(400)
     expect(result.current.remainingMs).toBeLessThanOrEqual(4600)
   })
 })
