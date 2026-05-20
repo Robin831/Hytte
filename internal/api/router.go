@@ -562,6 +562,10 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/familychat/conversations/{id}/calls/{call_id}/answer", familychat.CallAnswerHandler(db))
 				r.Post("/familychat/conversations/{id}/calls/{call_id}/ice", familychat.CallICEHandler(db))
 				r.Post("/familychat/conversations/{id}/calls/{call_id}/end", familychat.CallEndHandler(db))
+				// STUN/TURN ICE config endpoint (Hytte-n3f6). Mints short-lived
+				// coturn credentials per request when WEBRTC_TURN_SHARED_SECRET
+				// is set, falls back to static creds, then to STUN-only.
+				r.Get("/familychat/turn", familychat.TurnConfigHandler())
 			})
 
 			// Kids Stars: family management — gated by "kids_stars" feature.
