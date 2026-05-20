@@ -48,6 +48,11 @@
       "unsupportedType": "ไม่รองรับประเภทไฟล์นี้"
     }
   },
+  "reactions": {
+    "add": "ตอบกลับด้วย {{emoji}}",
+    "remove": "ลบรีแอ็กชัน {{emoji}} ของคุณ",
+    "pickerLabel": "เลือกรีแอ็กชัน"
+  },
   "newModal": {
     "title": "การสนทนาใหม่",
     "nameLabel": "ชื่อ",

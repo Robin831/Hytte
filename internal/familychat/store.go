@@ -33,15 +33,18 @@ type Conversation struct {
 }
 
 // Message is a single chat message returned to the client. Body and
-// AttachmentPath are returned in plaintext after decryption.
+// AttachmentPath are returned in plaintext after decryption. Reactions is
+// always non-nil so the JSON shape is stable (an empty `{}` instead of null
+// when nobody has reacted yet).
 type Message struct {
-	ID             int64  `json:"id"`
-	ConversationID int64  `json:"conversation_id"`
-	SenderUserID   int64  `json:"sender_user_id"`
-	Body           string `json:"body"`
-	AttachmentPath string `json:"attachment_path,omitempty"`
-	AttachmentMime string `json:"attachment_mime,omitempty"`
-	CreatedAt      string `json:"created_at"`
+	ID             int64                       `json:"id"`
+	ConversationID int64                       `json:"conversation_id"`
+	SenderUserID   int64                       `json:"sender_user_id"`
+	Body           string                      `json:"body"`
+	AttachmentPath string                      `json:"attachment_path,omitempty"`
+	AttachmentMime string                      `json:"attachment_mime,omitempty"`
+	CreatedAt      string                      `json:"created_at"`
+	Reactions      map[string]*ReactionSummary `json:"reactions"`
 }
 
 // IsMember reports whether userID belongs to convID. It delegates to
@@ -328,6 +331,24 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+
+	if len(out) > 0 {
+		ids := make([]int64, len(out))
+		for i := range out {
+			ids[i] = out[i].ID
+		}
+		reactions, err := batchReactions(db, ids, userID)
+		if err != nil {
+			return nil, fmt.Errorf("load reactions: %w", err)
+		}
+		for i := range out {
+			byEmoji := reactions[out[i].ID]
+			if byEmoji == nil {
+				byEmoji = map[string]*ReactionSummary{}
+			}
+			out[i].Reactions = byEmoji
+		}
+	}
 	return out, nil
 }
 
@@ -389,6 +410,7 @@ func CreateMessage(db *sql.DB, convID, senderID int64, body, attachmentPath, att
 		AttachmentPath: attachmentPath,
 		AttachmentMime: attachmentMime,
 		CreatedAt:      now,
+		Reactions:      map[string]*ReactionSummary{},
 	}, nil
 }
 

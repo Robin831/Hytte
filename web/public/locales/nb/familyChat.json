@@ -48,6 +48,11 @@
       "unsupportedType": "Filtypen støttes ikke"
     }
   },
+  "reactions": {
+    "add": "Reager med {{emoji}}",
+    "remove": "Fjern din {{emoji}}-reaksjon",
+    "pickerLabel": "Velg en reaksjon"
+  },
   "newModal": {
     "title": "Ny samtale",
     "nameLabel": "Navn",

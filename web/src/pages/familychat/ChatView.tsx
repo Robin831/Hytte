@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, MessageSquare, Download, X, WifiOff } from 'lucide-react'
+import { ChevronLeft, MessageSquare, Download, X, WifiOff, Smile } from 'lucide-react'
 import { Skeleton } from '../../components/ui/skeleton'
 import { useAuth } from '../../auth'
 import Composer from './Composer'
+import ReactionChips from './ReactionChips'
+import ReactionPicker from './ReactionPicker'
+import { addReaction, removeReaction, applyReactionEvent, type ReactionMap } from './api'
 import { formatRelative } from './utils'
 
 interface ChatViewProps {
@@ -29,6 +32,7 @@ export interface ChatMessage {
   attachment_path?: string
   attachment_mime?: string
   created_at: string
+  reactions?: ReactionMap
 }
 
 interface MemberInfo {
@@ -69,8 +73,16 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // so the initial-load skeleton isn't shadowed by a "Reconnecting" badge.
   const [streamDropped, setStreamDropped] = useState(false)
   const [hasConnected, setHasConnected] = useState(false)
+  // pickerForMsgId is the id of the bubble whose reaction picker is open, or
+  // null when nothing is open. We only show one picker at a time.
+  const [pickerForMsgId, setPickerForMsgId] = useState<number | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  // currentUserIdRef shadows user?.id so the long-lived SSE reader closure
+  // (recreated only when conversationId changes) can read the most recent
+  // value without forcing the effect to re-run on auth changes.
+  const currentUserIdRef = useRef<number | undefined>(user?.id)
+  useEffect(() => { currentUserIdRef.current = user?.id }, [user?.id])
 
   const rtf = useMemo(
     () => new Intl.RelativeTimeFormat(i18n.language, { numeric: 'auto' }),
@@ -178,6 +190,30 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       })
     }
 
+    // applyReactionEventLocal merges an incoming reaction event into the
+    // open message list. We can't compute the recipient's `me` flag from
+    // the wire payload alone (the server broadcasts a single payload to
+    // every subscriber), so the comparison happens here against the
+    // current user's id.
+    const applyReactionEventLocal = (
+      payload: { message_id: number; user_id: number; emoji: string; count: number; conversation_id?: number },
+      removed: boolean,
+    ) => {
+      if (payload.conversation_id !== undefined && payload.conversation_id !== conversationId) return
+      setMessages(prev => {
+        let changed = false
+        const next = prev.map(m => {
+          if (m.id !== payload.message_id) return m
+          changed = true
+          return {
+            ...m,
+            reactions: applyReactionEvent(m.reactions, payload, currentUserIdRef.current, removed),
+          }
+        })
+        return changed ? next : prev
+      })
+    }
+
     const fillGap = async () => {
       if (controller.signal.aborted) return
       try {
@@ -253,6 +289,12 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                   const payload = JSON.parse(dataLines.join('\n'))
                   if (eventName === 'message_new' && payload?.message) {
                     appendIncoming(payload.message as ChatMessage)
+                  } else if (
+                    (eventName === 'reaction_added' || eventName === 'reaction_removed') &&
+                    payload?.message_id !== undefined &&
+                    payload?.emoji !== undefined
+                  ) {
+                    applyReactionEventLocal(payload, eventName === 'reaction_removed')
                   }
                 } catch {
                   // Ignore a malformed payload; the server should never emit
@@ -364,6 +406,46 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       return [...prev, msg]
     })
   }, [conversationId])
+
+  // toggleReaction applies the change optimistically (chips update before the
+  // network round-trip) and rolls back on failure. The eventual SSE
+  // confirmation overwrites the optimistic state with the server-authoritative
+  // count, which keeps two clients in sync even if either one races.
+  const toggleReaction = useCallback(async (msgId: number, emoji: string, currentlyMine: boolean) => {
+    if (conversationId === null || user?.id === undefined) return
+    const meID = user.id
+    const snapshot = messages.find(m => m.id === msgId) ?? null
+    setMessages(prev => prev.map(m => {
+      if (m.id !== msgId) return m
+      const synthetic = currentlyMine
+        ? { user_id: meID, emoji, count: Math.max((m.reactions?.[emoji]?.count ?? 1) - 1, 0) }
+        : { user_id: meID, emoji, count: (m.reactions?.[emoji]?.count ?? 0) + 1 }
+      return {
+        ...m,
+        reactions: applyReactionEvent(m.reactions, synthetic, meID, currentlyMine),
+      }
+    }))
+    try {
+      if (currentlyMine) {
+        await removeReaction(conversationId, msgId, emoji)
+      } else {
+        await addReaction(conversationId, msgId, emoji)
+      }
+    } catch {
+      // Roll back to the pre-toggle snapshot. The eventual SSE event from
+      // any successful interaction is still the source of truth.
+      if (snapshot) {
+        setMessages(prev => prev.map(m => (m.id === msgId ? snapshot : m)))
+      }
+    }
+  }, [conversationId, user?.id, messages])
+
+  const handlePickFromPicker = useCallback((msgId: number, emoji: string) => {
+    setPickerForMsgId(null)
+    const msg = messages.find(m => m.id === msgId)
+    const mine = !!msg?.reactions?.[emoji]?.me
+    void toggleReaction(msgId, emoji, mine)
+  }, [messages, toggleReaction])
 
   const memberChips = useMemo(() => {
     if (!conversation) return []
@@ -488,60 +570,84 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
           const mime = msg.attachment_mime ?? ''
           const isImage = mime.startsWith('image/')
           const isAudio = mime.startsWith('audio/')
+          const pickerOpen = pickerForMsgId === msg.id
           return (
             <div
               key={msg.id}
-              className={`flex flex-col ${isOwn ? 'items-end' : 'items-start'}`}
+              className={`flex flex-col group ${isOwn ? 'items-end' : 'items-start'}`}
+              data-testid={`chat-bubble-${msg.id}`}
             >
               {!isOwn && (
                 <span className="text-xs text-gray-400 mb-0.5 px-1">{senderLabel}</span>
               )}
-              <div
-                className={`max-w-[85%] sm:max-w-[70%] px-3 py-2 rounded-2xl text-sm break-words ${
-                  isOwn
-                    ? 'bg-blue-600 text-white rounded-br-sm'
-                    : 'bg-gray-800 text-gray-100 rounded-bl-sm'
-                }`}
-              >
-                {attachmentUrl && isImage && (
-                  <button
-                    type="button"
-                    onClick={() => setLightbox({ url: attachmentUrl, alt: t('chat.attachmentImageAlt') })}
-                    className="block cursor-zoom-in mb-1"
-                    aria-label={t('chat.attachmentImageAlt')}
-                  >
-                    <img
+              <div className={`relative max-w-[85%] sm:max-w-[70%]`}>
+                <div
+                  className={`px-3 py-2 rounded-2xl text-sm break-words ${
+                    isOwn
+                      ? 'bg-blue-600 text-white rounded-br-sm'
+                      : 'bg-gray-800 text-gray-100 rounded-bl-sm'
+                  }`}
+                  onContextMenu={(e) => { e.preventDefault(); setPickerForMsgId(msg.id) }}
+                >
+                  {attachmentUrl && isImage && (
+                    <button
+                      type="button"
+                      onClick={() => setLightbox({ url: attachmentUrl, alt: t('chat.attachmentImageAlt') })}
+                      className="block cursor-zoom-in mb-1"
+                      aria-label={t('chat.attachmentImageAlt')}
+                    >
+                      <img
+                        src={attachmentUrl}
+                        alt={t('chat.attachmentImageAlt')}
+                        loading="lazy"
+                        className="rounded-lg max-h-60 max-w-full object-contain"
+                      />
+                    </button>
+                  )}
+                  {attachmentUrl && isAudio && (
+                    <audio
+                      controls
                       src={attachmentUrl}
-                      alt={t('chat.attachmentImageAlt')}
-                      loading="lazy"
-                      className="rounded-lg max-h-60 max-w-full object-contain"
+                      className="block max-w-full mb-1"
+                      aria-label={t('chat.attachmentAudioAlt')}
                     />
-                  </button>
-                )}
-                {attachmentUrl && isAudio && (
-                  <audio
-                    controls
-                    src={attachmentUrl}
-                    className="block max-w-full mb-1"
-                    aria-label={t('chat.attachmentAudioAlt')}
+                  )}
+                  {attachmentUrl && !isImage && !isAudio && (
+                    <a
+                      href={attachmentUrl}
+                      download
+                      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 mb-1 text-xs ${
+                        isOwn ? 'bg-blue-700/60 hover:bg-blue-700/80' : 'bg-gray-700/70 hover:bg-gray-700'
+                      }`}
+                    >
+                      <Download size={14} aria-hidden="true" />
+                      <span className="truncate">{t('chat.attachmentFileLabel', { mime })}</span>
+                    </a>
+                  )}
+                  {msg.body && (
+                    <div className="whitespace-pre-wrap">{msg.body}</div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPickerForMsgId(pickerOpen ? null : msg.id)}
+                  aria-label={t('reactions.pickerLabel')}
+                  className={`absolute -top-3 ${isOwn ? '-left-2' : '-right-2'} p-1 rounded-full bg-gray-800 border border-gray-700 text-gray-300 hover:text-white opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer`}
+                  data-testid={`reaction-trigger-${msg.id}`}
+                >
+                  <Smile size={14} aria-hidden="true" />
+                </button>
+                {pickerOpen && (
+                  <ReactionPicker
+                    onPick={(emoji) => handlePickFromPicker(msg.id, emoji)}
+                    onClose={() => setPickerForMsgId(null)}
                   />
                 )}
-                {attachmentUrl && !isImage && !isAudio && (
-                  <a
-                    href={attachmentUrl}
-                    download
-                    className={`flex items-center gap-2 rounded-lg px-2 py-1.5 mb-1 text-xs ${
-                      isOwn ? 'bg-blue-700/60 hover:bg-blue-700/80' : 'bg-gray-700/70 hover:bg-gray-700'
-                    }`}
-                  >
-                    <Download size={14} aria-hidden="true" />
-                    <span className="truncate">{t('chat.attachmentFileLabel', { mime })}</span>
-                  </a>
-                )}
-                {msg.body && (
-                  <div className="whitespace-pre-wrap">{msg.body}</div>
-                )}
               </div>
+              <ReactionChips
+                reactions={msg.reactions}
+                onToggle={(emoji, mine) => { void toggleReaction(msg.id, emoji, mine) }}
+              />
               {relative && (
                 <span className="text-[10px] text-gray-500 mt-0.5 px-1">{relative}</span>
               )}
