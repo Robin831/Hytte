@@ -281,6 +281,12 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
       return
     }
     audioCtxRef.current = ctx
+    // Best-effort immediate resume so the context reliably reaches 'running'
+    // without waiting for the next visibilitychange — some browsers start it
+    // suspended even when created during a user gesture.
+    if (typeof ctx.resume === 'function') {
+      void ctx.resume().catch(() => {})
+    }
     // Connect a 0-gain oscillator to the destination. It produces no audible
     // output but it keeps the audio graph "doing something" so the browser
     // does not park the context.
@@ -438,9 +444,13 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     }
     if (stateRef.current !== 'incoming-ringing') return
     setError(null)
+    // Capture epoch so continuations can detect if tearDown fired while awaiting.
+    const epoch = callEpochRef.current
 
     try {
       const ice = await fetchICEConfig()
+      if (callEpochRef.current !== epoch) return
+
       const pc = optionsRef.current.rtcPeerConnectionFactory({
         iceServers: ice.iceServers as RTCIceServer[],
       })
@@ -448,27 +458,38 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
       wirePeerConnection(pc, convId, theCallId)
 
       await pc.setRemoteDescription(offer)
+      if (callEpochRef.current !== epoch) return
       remoteDescriptionSetRef.current = true
       await flushBufferedCandidates()
+      if (callEpochRef.current !== epoch) return
 
       const localStream = await optionsRef.current.getUserMedia({ audio: true })
+      if (callEpochRef.current !== epoch) {
+        // tearDown already ran — release the mic without touching state.
+        for (const t of localStream.getTracks()) { try { t.stop() } catch { /* ok */ } }
+        return
+      }
       localStreamRef.current = localStream
       for (const track of localStream.getTracks()) {
         pc.addTrack(track, localStream)
       }
 
       const answer = await pc.createAnswer()
+      if (callEpochRef.current !== epoch) return
       await pc.setLocalDescription(answer)
+      if (callEpochRef.current !== epoch) return
       const sdp = pc.localDescription ?? answer
       await postSignal(convId, theCallId, 'answer', {
         type: sdp.type,
         sdp: sdp.sdp,
       })
+      if (callEpochRef.current !== epoch) return
 
       pendingOfferRef.current = null
       updateState('active')
       installAudioContextKick()
     } catch (err) {
+      if (callEpochRef.current !== epoch) return
       setError(err instanceof Error ? err.message : 'accept-failed')
       // Notify the caller that we couldn't pick up so their UI updates.
       if (convId !== null && theCallId !== null) {
@@ -538,6 +559,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         const data = payload.data as { type?: RTCSdpType; sdp?: string } | undefined
         if (!data || !data.sdp) return
         pendingOfferRef.current = { type: data.type ?? 'offer', sdp: data.sdp }
+        setError(null)
         updateCallId(incomingCallId)
         updateRemoteUserId(payload.from_user_id)
         updateState('incoming-ringing')

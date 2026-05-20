@@ -437,6 +437,37 @@ describe('useVoiceCall — incoming call', () => {
     expect(findCall(fetchMock.calls, 'POST', '/calls/inbound-3/end')).toBeDefined()
   })
 
+  it('clears stale error when a new inbound offer arrives', async () => {
+    installRtcGlobals()
+    const fetchMock = installFetchMock()
+    // Force TURN to fail so startCall sets an error.
+    fetchMock.setResponse('GET', '/api/familychat/turn', () => new Response('', { status: 500 }))
+
+    const { result } = renderHook(() => useVoiceCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: makeFakePeerConnection,
+      skipSignalSubscription: true,
+      generateCallId: () => 'call-err',
+    }))
+
+    await act(async () => { await result.current.startCall() })
+    expect(result.current.error).not.toBeNull()
+    expect(result.current.state).toBe('idle')
+
+    await act(async () => {
+      await result.current.handleSignalEvent('call_offer', {
+        conversation_id: 7,
+        call_id: 'fresh-inbound',
+        from_user_id: 2,
+        data: { type: 'offer', sdp: 'v=0\r\nfresh-offer' },
+      })
+    })
+
+    expect(result.current.state).toBe('incoming-ringing')
+    expect(result.current.error).toBeNull()
+  })
+
   it('call_end during active state transitions to ended and closes the peer connection', async () => {
     installFetchMock()
     installRtcGlobals()
@@ -470,6 +501,51 @@ describe('useVoiceCall — incoming call', () => {
 
     expect(result.current.state).toBe('ended')
     expect(pc.closed).toBe(true)
+  })
+})
+
+describe('useVoiceCall — epoch guards', () => {
+  it('acceptCall bails out if rejectCall fires while TURN is in-flight', async () => {
+    installRtcGlobals()
+    let resolveTurn!: (r: Response) => void
+    const turnPromise = new Promise<Response>(resolve => { resolveTurn = resolve })
+
+    const fetchMock = installFetchMock()
+    fetchMock.setResponse('GET', '/api/familychat/turn', (() => turnPromise) as unknown as () => Response)
+
+    const { result } = renderHook(() => useVoiceCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: makeFakePeerConnection,
+      skipSignalSubscription: true,
+    }))
+
+    await act(async () => {
+      await result.current.handleSignalEvent('call_offer', {
+        conversation_id: 7,
+        call_id: 'inbound-ep',
+        from_user_id: 2,
+        data: { type: 'offer', sdp: 'v=0\r\nremote-offer-ep' },
+      })
+    })
+    expect(result.current.state).toBe('incoming-ringing')
+
+    await act(async () => {
+      // acceptCall suspends on the deferred TURN fetch.
+      const accept = result.current.acceptCall()
+      // rejectCall runs tearDown synchronously, bumping the epoch.
+      await result.current.rejectCall()
+      // Unblock TURN — the epoch guard in acceptCall should bail out.
+      resolveTurn(new Response(JSON.stringify({
+        iceServers: [{ urls: ['stun:stun.example.com:3478'] }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      await accept
+    })
+
+    // No peer connection created and no answer posted.
+    expect(FakePeerConnection.instances).toHaveLength(0)
+    expect(findCall(fetchMock.calls, 'POST', '/calls/inbound-ep/answer')).toBeUndefined()
+    expect(result.current.state).toBe('idle')
   })
 })
 
