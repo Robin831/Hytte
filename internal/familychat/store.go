@@ -42,6 +42,13 @@ type Conversation struct {
 // null (not the zero value) for messages that have not been edited or deleted.
 // A soft-deleted message returns body, attachment_path, attachment_mime cleared
 // and edited_at forced to null so the renderer treats it as a tombstone.
+//
+// MetaJSON is an opaque client-controlled JSON string (currently used by voice
+// notes to persist the precomputed waveform + duration). It is encrypted at
+// rest like the body and treated as nullable end-to-end: nil when the column
+// is NULL. The handler normalizes empty/whitespace-only strings to nil before
+// storage so clients can rely on a non-nil pointer meaning "the sender
+// attached metadata".
 type Message struct {
 	ID             int64                       `json:"id"`
 	ConversationID int64                       `json:"conversation_id"`
@@ -53,6 +60,7 @@ type Message struct {
 	EditedAt       *string                     `json:"edited_at"`
 	DeletedAt      *string                     `json:"deleted_at"`
 	DeletedBy      *int64                      `json:"deleted_by"`
+	MetaJSON       *string                     `json:"meta_json"`
 	Reactions      map[string]*ReactionSummary `json:"reactions"`
 }
 
@@ -301,7 +309,7 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 	)
 	if since > 0 {
 		rows, queryErr = db.Query(
-			`SELECT id, conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at, edited_at, deleted_at, deleted_by
+			`SELECT id, conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at, edited_at, deleted_at, deleted_by, meta_json
 			 FROM family_chat_messages
 			 WHERE conversation_id = ? AND id > ?
 			 ORDER BY id DESC
@@ -310,7 +318,7 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 		)
 	} else {
 		rows, queryErr = db.Query(
-			`SELECT id, conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at, edited_at, deleted_at, deleted_by
+			`SELECT id, conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at, edited_at, deleted_at, deleted_by, meta_json
 			 FROM family_chat_messages
 			 WHERE conversation_id = ?
 			 ORDER BY id DESC
@@ -326,9 +334,9 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 	out := []Message{}
 	for rows.Next() {
 		var m Message
-		var editedAt, deletedAt sql.NullString
+		var editedAt, deletedAt, metaJSON sql.NullString
 		var deletedBy sql.NullInt64
-		if err := rows.Scan(&m.ID, &m.ConversationID, &m.SenderUserID, &m.Body, &m.AttachmentPath, &m.AttachmentMime, &m.CreatedAt, &editedAt, &deletedAt, &deletedBy); err != nil {
+		if err := rows.Scan(&m.ID, &m.ConversationID, &m.SenderUserID, &m.Body, &m.AttachmentPath, &m.AttachmentMime, &m.CreatedAt, &editedAt, &deletedAt, &deletedBy, &metaJSON); err != nil {
 			return nil, err
 		}
 		if m.Body, err = encryption.DecryptField(m.Body); err != nil {
@@ -341,6 +349,13 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 			s := editedAt.String
 			m.EditedAt = &s
 		}
+		if metaJSON.Valid {
+			plain, decErr := encryption.DecryptField(metaJSON.String)
+			if decErr != nil {
+				return nil, fmt.Errorf("decrypt meta_json: %w", decErr)
+			}
+			m.MetaJSON = &plain
+		}
 		if deletedAt.Valid {
 			s := deletedAt.String
 			m.DeletedAt = &s
@@ -351,6 +366,7 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 			m.AttachmentPath = ""
 			m.AttachmentMime = ""
 			m.EditedAt = nil
+			m.MetaJSON = nil
 		}
 		if deletedBy.Valid {
 			id := deletedBy.Int64
@@ -385,7 +401,16 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 // CreateMessage inserts a new message authored by senderID into convID,
 // touches the conversation's last_message_at, and returns the inserted row
 // in plaintext form. Returns ErrForbidden if the sender is not a member.
+// Equivalent to CreateMessageWithMeta(..., nil) — kept as a thin wrapper so
+// older call sites (and tests) that never persist meta_json stay compact.
 func CreateMessage(db *sql.DB, convID, senderID int64, body, attachmentPath, attachmentMime string) (*Message, error) {
+	return CreateMessageWithMeta(db, convID, senderID, body, attachmentPath, attachmentMime, nil)
+}
+
+// CreateMessageWithMeta is the full-fat constructor: metaJSON is nullable so
+// callers can persist client-supplied opaque metadata (e.g. voice-note waveform
+// + duration) encrypted at rest. Pass nil to leave the meta_json column NULL.
+func CreateMessageWithMeta(db *sql.DB, convID, senderID int64, body, attachmentPath, attachmentMime string, metaJSON *string) (*Message, error) {
 	ok, err := IsMember(db, convID, senderID)
 	if err != nil {
 		return nil, err
@@ -402,6 +427,14 @@ func CreateMessage(db *sql.DB, convID, senderID int64, body, attachmentPath, att
 	if err != nil {
 		return nil, fmt.Errorf("encrypt attachment path: %w", err)
 	}
+	var encMeta any // nil → NULL column; otherwise the ciphertext string.
+	if metaJSON != nil {
+		ct, mErr := encryption.EncryptField(*metaJSON)
+		if mErr != nil {
+			return nil, fmt.Errorf("encrypt meta_json: %w", mErr)
+		}
+		encMeta = ct
+	}
 	now := time.Now().UTC().Format(timeFormat)
 
 	tx, err := db.Begin()
@@ -411,9 +444,9 @@ func CreateMessage(db *sql.DB, convID, senderID int64, body, attachmentPath, att
 	defer func() { _ = tx.Rollback() }()
 
 	res, err := tx.Exec(
-		`INSERT INTO family_chat_messages (conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		convID, senderID, encBody, encPath, attachmentMime, now,
+		`INSERT INTO family_chat_messages (conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at, meta_json)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		convID, senderID, encBody, encPath, attachmentMime, now, encMeta,
 	)
 	if err != nil {
 		return nil, err
@@ -440,6 +473,7 @@ func CreateMessage(db *sql.DB, convID, senderID int64, body, attachmentPath, att
 		AttachmentPath: attachmentPath,
 		AttachmentMime: attachmentMime,
 		CreatedAt:      now,
+		MetaJSON:       metaJSON,
 		Reactions:      map[string]*ReactionSummary{},
 	}, nil
 }
@@ -519,16 +553,25 @@ func EditMessage(db *sql.DB, convID, msgID, userID int64, body string) (*Message
 	var (
 		createdAt    string
 		editedAtNull sql.NullString
+		metaJSONNull sql.NullString
 	)
 	if err := db.QueryRow(
-		`SELECT created_at, edited_at FROM family_chat_messages WHERE id = ?`,
+		`SELECT created_at, edited_at, meta_json FROM family_chat_messages WHERE id = ?`,
 		msgID,
-	).Scan(&createdAt, &editedAtNull); err != nil {
+	).Scan(&createdAt, &editedAtNull, &metaJSONNull); err != nil {
 		return nil, err
 	}
 	editedAt := now
 	if editedAtNull.Valid {
 		editedAt = editedAtNull.String
+	}
+	var metaJSON *string
+	if metaJSONNull.Valid {
+		plain, decErr := encryption.DecryptField(metaJSONNull.String)
+		if decErr != nil {
+			return nil, fmt.Errorf("decrypt meta_json: %w", decErr)
+		}
+		metaJSON = &plain
 	}
 	reactions, err := batchReactions(db, []int64{msgID}, userID)
 	if err != nil {
@@ -545,6 +588,7 @@ func EditMessage(db *sql.DB, convID, msgID, userID int64, body string) (*Message
 		Body:           body,
 		CreatedAt:      createdAt,
 		EditedAt:       &editedAt,
+		MetaJSON:       metaJSON,
 		Reactions:      byEmoji,
 	}, nil
 }
@@ -600,7 +644,7 @@ func SoftDeleteMessage(db *sql.DB, convID, msgID, userID int64) (attachmentPath 
 
 	now := time.Now().UTC().Format(timeFormat)
 	if _, err := db.Exec(
-		`UPDATE family_chat_messages SET deleted_at = ?, deleted_by = ?, body = '', attachment_path = '', attachment_mime = '' WHERE id = ?`,
+		`UPDATE family_chat_messages SET deleted_at = ?, deleted_by = ?, body = '', attachment_path = '', attachment_mime = '', meta_json = NULL WHERE id = ?`,
 		now, userID, msgID,
 	); err != nil {
 		return "", err

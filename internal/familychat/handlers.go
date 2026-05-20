@@ -29,6 +29,12 @@ const (
 	defaultMsgLimit   = 50
 	maxMsgLimit       = 500
 	maxRequestBytes   = 1 << 20 // 1 MiB
+	// maxMetaJSONLen caps the opaque client-supplied meta_json blob. Voice-note
+	// waveforms (the only current user) sit comfortably under 8 KiB even at
+	// 200 sample bars, so 16 KiB leaves room for forward-compatible additions
+	// without giving a single message room to fill a chat row with megabytes
+	// of pseudo-metadata.
+	maxMetaJSONLen = 16 * 1024
 
 	// pushWorkerLimit caps the number of concurrently running webpush fan-out
 	// goroutines so slow or unreachable push endpoints cannot grow the goroutine
@@ -232,9 +238,14 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 		}
 
 		var body struct {
-			Body           string `json:"body"`
-			AttachmentPath string `json:"attachment_path"`
-			AttachmentMime string `json:"attachment_mime"`
+			Body           string  `json:"body"`
+			AttachmentPath string  `json:"attachment_path"`
+			AttachmentMime string  `json:"attachment_mime"`
+			// MetaJSON is opaque client-supplied JSON the server stores and
+			// returns verbatim. Pointer so the client can distinguish "omit
+			// the field" from "store an empty object"; the server never parses
+			// the inner string.
+			MetaJSON *string `json:"meta_json"`
 		}
 		if !decodeJSON(w, r, &body) {
 			return
@@ -257,6 +268,15 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 		if len(body.AttachmentMime) > maxAttachmentMime {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "attachment_mime is too long"})
 			return
+		}
+		if body.MetaJSON != nil && len(*body.MetaJSON) > maxMetaJSONLen {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "meta_json is too long"})
+			return
+		}
+		// Normalize empty meta_json to nil so the API contract holds:
+		// a non-nil pointer always means "the sender attached metadata".
+		if body.MetaJSON != nil && strings.TrimSpace(*body.MetaJSON) == "" {
+			body.MetaJSON = nil
 		}
 		// If the client references an attachment, the upload_id must point at
 		// a real file under this conversation's storage dir. Anything else
@@ -287,7 +307,7 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 			}
 		}
 
-		msg, err := CreateMessage(db, convID, user.ID, body.Body, body.AttachmentPath, attachmentMime)
+		msg, err := CreateMessageWithMeta(db, convID, user.ID, body.Body, body.AttachmentPath, attachmentMime, body.MetaJSON)
 		if err != nil {
 			if errors.Is(err, ErrForbidden) {
 				notFound(w)

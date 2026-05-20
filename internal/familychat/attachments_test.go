@@ -118,6 +118,104 @@ func TestUploadAttachmentHandler_RejectsTooLarge(t *testing.T) {
 	}
 }
 
+func TestUploadAttachmentHandler_AcceptsAudioWebm(t *testing.T) {
+	// MediaRecorder voice-note uploads from Chromium arrive as audio/webm.
+	// Go's http.DetectContentType only knows the EBML/Matroska container
+	// signature and returns "video/webm" — it cannot tell the audio-only
+	// stream apart from a video. The handler disambiguates by trusting the
+	// client's Content-Type when it declares audio/webm, which is what the
+	// recorder sub-task depends on.
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	convID := seedConversation(t, db, 1, "Family")
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+
+	// EBML / Matroska magic 1A 45 DF A3 followed by padding. This triggers
+	// Go's "video/webm" sniff signature; the handler then overrides it to
+	// "audio/webm" based on the client-supplied Content-Type.
+	payload := []byte{0x1A, 0x45, 0xDF, 0xA3}
+	payload = append(payload, bytes.Repeat([]byte{0x00}, 512)...)
+	req := withUser(buildUploadRequest(t, convID, "voice.webm", "audio/webm", payload), 1)
+	rec := httptest.NewRecorder()
+	UploadAttachmentHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for audio/webm, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		UploadID string `json:"upload_id"`
+		Mime     string `json:"mime"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Mime != "audio/webm" {
+		t.Errorf("mime = %q, want audio/webm", body.Mime)
+	}
+}
+
+func TestUploadAttachmentHandler_AcceptsAudioOgg(t *testing.T) {
+	// MediaRecorder voice-note uploads from Firefox arrive as audio/ogg.
+	// Go's sniff table recognises the OggS magic and returns application/ogg,
+	// so the allowlist must accept that variant — adding only "audio/ogg"
+	// would silently reject real OGG bodies. Use OggS-prefixed payload to
+	// exercise the sniff-then-allowlist path end to end.
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	convID := seedConversation(t, db, 1, "Family")
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+
+	payload := append([]byte("OggS"), bytes.Repeat([]byte{0x00}, 512)...)
+	req := withUser(buildUploadRequest(t, convID, "voice.ogg", "audio/ogg", payload), 1)
+	rec := httptest.NewRecorder()
+	UploadAttachmentHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for audio/ogg, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		UploadID string `json:"upload_id"`
+		Mime     string `json:"mime"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// Server uses the sniffed type. http.DetectContentType returns
+	// application/ogg for OggS-prefixed bodies; the allowlist accepts both
+	// application/ogg and audio/ogg so this is the value clients receive.
+	if body.Mime != "application/ogg" && body.Mime != "audio/ogg" {
+		t.Errorf("mime = %q, want application/ogg or audio/ogg", body.Mime)
+	}
+}
+
+func TestUploadAttachmentHandler_RejectsUnknownAudio(t *testing.T) {
+	// audio/x-aiff is deliberately outside the allowlist — only the
+	// MediaRecorder-friendly audio types are accepted. Body bytes are
+	// arbitrary so the sniff returns application/octet-stream and the
+	// handler falls back to the client header before checking the allowlist.
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	convID := seedConversation(t, db, 1, "Family")
+	root := t.TempDir()
+	t.Setenv("UPLOAD_ROOT", root)
+
+	payload := []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}
+	req := withUser(buildUploadRequest(t, convID, "voice.aiff", "audio/x-aiff", payload), 1)
+	rec := httptest.NewRecorder()
+	UploadAttachmentHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for audio/x-aiff, got %d: %s", rec.Code, rec.Body.String())
+	}
+	dir := filepath.Join(root, "familychat", strconv.FormatInt(convID, 10))
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 0 {
+		t.Errorf("expected no files persisted, found %d", len(entries))
+	}
+}
+
 func TestUploadAttachmentHandler_RejectsBadMime(t *testing.T) {
 	db := setupTestDB(t)
 	makeUser(t, db, 1, "alice@example.com")

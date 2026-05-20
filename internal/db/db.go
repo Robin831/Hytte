@@ -1823,7 +1823,8 @@ func createSchema(db *sql.DB) error {
 		created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 		edited_at         TEXT,
 		deleted_at        TEXT,
-		deleted_by        INTEGER REFERENCES users(id) ON DELETE SET NULL
+		deleted_by        INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		meta_json         TEXT
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_family_chat_messages_conversation_id ON family_chat_messages(conversation_id, id DESC);
@@ -2602,6 +2603,9 @@ func createSchema(db *sql.DB) error {
 
 	// Add edit/soft-delete tombstone columns to family_chat_messages (Hytte-f0tw).
 	// Each is nullable so legacy rows continue to behave as non-edited / non-deleted.
+	// meta_json (Hytte-bgvt) carries the client-supplied opaque JSON blob used to
+	// persist the precomputed waveform + duration of voice notes; encrypted at
+	// rest like body via internal/encryption.
 	familyChatMsgCols := []struct {
 		name string
 		ddl  string
@@ -2609,6 +2613,7 @@ func createSchema(db *sql.DB) error {
 		{"edited_at", `ALTER TABLE family_chat_messages ADD COLUMN edited_at TEXT`},
 		{"deleted_at", `ALTER TABLE family_chat_messages ADD COLUMN deleted_at TEXT`},
 		{"deleted_by", `ALTER TABLE family_chat_messages ADD COLUMN deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL`},
+		{"meta_json", `ALTER TABLE family_chat_messages ADD COLUMN meta_json TEXT`},
 	}
 	for _, col := range familyChatMsgCols {
 		var present int
