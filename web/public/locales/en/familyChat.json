@@ -78,6 +78,13 @@
     "saveError": "Failed to save changes",
     "deleteError": "Failed to delete message"
   },
+  "voice": {
+    "bubble": {
+      "play": "Play voice note",
+      "pause": "Pause voice note",
+      "seek": "Voice note position"
+    }
+  },
   "newModal": {
     "title": "New conversation",
     "nameLabel": "Name",

@@ -78,6 +78,13 @@
     "saveError": "Klarte ikke å lagre endringene",
     "deleteError": "Klarte ikke å slette meldingen"
   },
+  "voice": {
+    "bubble": {
+      "play": "Spill av talemelding",
+      "pause": "Sett talemelding på pause",
+      "seek": "Posisjon i talemeldingen"
+    }
+  },
   "newModal": {
     "title": "Ny samtale",
     "nameLabel": "Navn",

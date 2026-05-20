@@ -1,7 +1,24 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import ChatView from './ChatView'
+
+// Mock voicePlayer so VoiceBubble renders without a real HTMLAudioElement.
+// stopAll is called by ChatView's cleanup effect on every unmount.
+vi.mock('./voice/voicePlayer', () => ({
+  getState: vi.fn(() => ({ currentId: null, playing: false, positionMs: 0, durationMs: 0 })),
+  subscribe: vi.fn((listener: (s: object) => void) => {
+    listener({ currentId: null, playing: false, positionMs: 0, durationMs: 0 })
+    return () => {}
+  }),
+  play: vi.fn().mockResolvedValue(undefined),
+  pause: vi.fn(),
+  seek: vi.fn(),
+  stop: vi.fn(),
+  stopAll: vi.fn(),
+  getCurrentId: vi.fn(() => null),
+  setAudioFactory: vi.fn(),
+}))
 
 // ── Translation mock ──────────────────────────────────────────────────────────
 
@@ -49,6 +66,9 @@ const TRANSLATIONS: Record<string, string> = {
   'edit.saving': 'Saving…',
   'edit.saveError': 'Failed to save changes',
   'edit.deleteError': 'Failed to delete message',
+  'voice.bubble.play': 'Play voice note',
+  'voice.bubble.pause': 'Pause voice note',
+  'voice.bubble.seek': 'Voice note position',
 }
 
 function stableT(key: string, opts?: Record<string, string | number>): string {
@@ -781,5 +801,95 @@ describe('ChatView – edit + delete', () => {
 
     await waitFor(() => expect(screen.getByTestId(`chat-tombstone-${msg.id}`)).toBeInTheDocument())
     expect(screen.queryByText('Will be deleted')).not.toBeInTheDocument()
+  })
+})
+
+describe('ChatView – voice note rendering', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+  beforeEach(() => { try { window.localStorage.clear() } catch { /* ignore */ } })
+
+  it('renders VoiceBubble (not native audio) for audio/webm with empty body and meta_json waveform', async () => {
+    const bars = Array.from({ length: 32 }, (_, i) => (i + 1) / 32)
+    const voiceMsg = makeMessage({
+      id: 20,
+      body: '',
+      sender_user_id: 2,
+      attachment_path: 'aabbccddeeff00112233445566778899',
+      attachment_mime: 'audio/webm',
+      meta_json: JSON.stringify({ bars, durationMs: 3000 }),
+    })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([voiceMsg]))
+      .mockResolvedValueOnce(streamOk()),
+    )
+    const { container } = renderChatView()
+    await waitFor(() => {
+      expect(screen.getByTestId('voice-bubble-20')).toBeInTheDocument()
+    })
+    expect(container.querySelector('audio[controls]')).toBeNull()
+  })
+
+  it('renders VoiceBubble for audio/ogg with empty body (Firefox voice note)', async () => {
+    const voiceMsg = makeMessage({
+      id: 21,
+      body: '',
+      sender_user_id: 2,
+      attachment_path: 'aabbccddeeff00112233445566778899',
+      attachment_mime: 'audio/ogg',
+    })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([voiceMsg]))
+      .mockResolvedValueOnce(streamOk()),
+    )
+    const { container } = renderChatView()
+    await waitFor(() => {
+      expect(screen.getByTestId('voice-bubble-21')).toBeInTheDocument()
+    })
+    expect(container.querySelector('audio[controls]')).toBeNull()
+  })
+
+  it('renders VoiceBubble using the localStorage waveform when meta_json is absent', async () => {
+    const bars = Array.from({ length: 32 }, (_, i) => i / 32)
+    window.localStorage.setItem('voice-waveform:22', JSON.stringify({ bars, durationMs: 4500 }))
+
+    const voiceMsg = makeMessage({
+      id: 22,
+      body: '',
+      sender_user_id: 2,
+      attachment_path: 'aabbccddeeff00112233445566778899',
+      attachment_mime: 'audio/webm',
+    })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([voiceMsg]))
+      .mockResolvedValueOnce(streamOk()),
+    )
+    const { container } = renderChatView()
+    await waitFor(() => {
+      expect(screen.getByTestId('voice-bubble-22')).toBeInTheDocument()
+    })
+    expect(container.querySelector('audio[controls]')).toBeNull()
+  })
+
+  it('renders native audio controls for audio/mpeg (not a voice note)', async () => {
+    const audioMsg = makeMessage({
+      id: 23,
+      body: '',
+      sender_user_id: 2,
+      attachment_path: 'aabbccddeeff00112233445566778899',
+      attachment_mime: 'audio/mpeg',
+    })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([audioMsg]))
+      .mockResolvedValueOnce(streamOk()),
+    )
+    const { container } = renderChatView()
+    await waitFor(() => {
+      expect(container.querySelector('audio[controls]')).not.toBeNull()
+    })
+    expect(screen.queryByTestId('voice-bubble-23')).toBeNull()
   })
 })

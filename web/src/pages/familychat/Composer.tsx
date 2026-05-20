@@ -6,6 +6,7 @@ import { formatFileSize } from './utils'
 import { uploadAttachment, UploadError } from './api'
 import { useVoiceRecorder } from './voice/useVoiceRecorder'
 import { trimLeadingTrailingSilence } from './voice/silenceTrim'
+import { computeWaveform, writeCachedWaveform } from './voice/waveform'
 
 interface ComposerProps {
   conversationId: number
@@ -242,6 +243,19 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
       const filename = `voice-note-${Date.now()}.${ext}`
       const upload = await uploadAttachment(targetConversationId, effective, filename, controller.signal)
       if (controller.signal.aborted) return
+      // Precompute the waveform so the receiving bubble can render bars
+      // immediately. We ship the result in meta_json (the backend stores it
+      // verbatim) — failure here is non-fatal: a zero-bar fallback still
+      // plays the audio, the visualisation is just blank.
+      let metaJSON: string | undefined
+      let waveform: Awaited<ReturnType<typeof computeWaveform>> | null = null
+      try {
+        waveform = await computeWaveform(effective)
+        metaJSON = JSON.stringify({ bars: waveform.bars, durationMs: waveform.durationMs })
+      } catch {
+        waveform = null
+      }
+      if (controller.signal.aborted) return
       const res = await fetch(`/api/familychat/conversations/${targetConversationId}/messages`, {
         method: 'POST',
         credentials: 'include',
@@ -250,6 +264,7 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
           body: '',
           attachment_path: upload.uploadId,
           attachment_mime: upload.mime || mimeType,
+          ...(metaJSON ? { meta_json: metaJSON } : {}),
         }),
         signal: controller.signal,
       })
@@ -264,6 +279,10 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
       if (!msg || typeof msg.id !== 'number') {
         throw new Error(t('composer.errors.send'))
       }
+      // Cache the waveform under the persisted message id so the sender's
+      // bubble doesn't have to re-decode the blob, and so we have a fallback
+      // when the backend ever drops meta_json on read.
+      if (waveform) writeCachedWaveform(msg.id, waveform)
       onMessageCreated(msg)
     } catch (err) {
       if (controller.signal.aborted) return
