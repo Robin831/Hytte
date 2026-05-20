@@ -273,6 +273,11 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "meta_json is too long"})
 			return
 		}
+		// Normalize empty meta_json to nil so the API contract holds:
+		// a non-nil pointer always means "the sender attached metadata".
+		if body.MetaJSON != nil && strings.TrimSpace(*body.MetaJSON) == "" {
+			body.MetaJSON = nil
+		}
 		// If the client references an attachment, the upload_id must point at
 		// a real file under this conversation's storage dir. Anything else
 		// (path traversal, fabricated id, mismatched conv) is rejected so a

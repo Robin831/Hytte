@@ -504,21 +504,25 @@ func TestPostMessageHandler_MetaJSONOmittedReturnsNull(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
+
+	// Capture the raw HTTP body BEFORE decoding — once json.NewDecoder reads
+	// from rec.Body the bytes.Buffer position advances and String() returns "".
+	rawBody := rec.Body.String()
+
+	// JSON envelope must explicitly include `"meta_json":null` so clients can
+	// distinguish "field present, value null" from "field missing".
+	if !strings.Contains(rawBody, `"meta_json":null`) {
+		t.Errorf("HTTP response missing explicit null meta_json: %s", rawBody)
+	}
+
 	var created struct {
 		Message Message `json:"message"`
 	}
-	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+	if err := json.NewDecoder(strings.NewReader(rawBody)).Decode(&created); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if created.Message.MetaJSON != nil {
 		t.Errorf("expected nil meta_json when omitted, got %q", *created.Message.MetaJSON)
-	}
-
-	// JSON envelope must explicitly include `"meta_json":null` so clients can
-	// distinguish "field present, value null" from "field missing".
-	bodyBytes, _ := json.Marshal(created)
-	if !strings.Contains(string(bodyBytes), `"meta_json":null`) {
-		t.Errorf("envelope missing explicit null meta_json: %s", bodyBytes)
 	}
 
 	var stored sql.NullString

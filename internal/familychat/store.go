@@ -46,8 +46,9 @@ type Conversation struct {
 // MetaJSON is an opaque client-controlled JSON string (currently used by voice
 // notes to persist the precomputed waveform + duration). It is encrypted at
 // rest like the body and treated as nullable end-to-end: nil when the column
-// is NULL, *"" never appears in the API so clients can rely on a non-nil
-// pointer meaning "the sender attached metadata".
+// is NULL. The handler normalizes empty/whitespace-only strings to nil before
+// storage so clients can rely on a non-nil pointer meaning "the sender
+// attached metadata".
 type Message struct {
 	ID             int64                       `json:"id"`
 	ConversationID int64                       `json:"conversation_id"`
@@ -552,16 +553,25 @@ func EditMessage(db *sql.DB, convID, msgID, userID int64, body string) (*Message
 	var (
 		createdAt    string
 		editedAtNull sql.NullString
+		metaJSONNull sql.NullString
 	)
 	if err := db.QueryRow(
-		`SELECT created_at, edited_at FROM family_chat_messages WHERE id = ?`,
+		`SELECT created_at, edited_at, meta_json FROM family_chat_messages WHERE id = ?`,
 		msgID,
-	).Scan(&createdAt, &editedAtNull); err != nil {
+	).Scan(&createdAt, &editedAtNull, &metaJSONNull); err != nil {
 		return nil, err
 	}
 	editedAt := now
 	if editedAtNull.Valid {
 		editedAt = editedAtNull.String
+	}
+	var metaJSON *string
+	if metaJSONNull.Valid {
+		plain, decErr := encryption.DecryptField(metaJSONNull.String)
+		if decErr != nil {
+			return nil, fmt.Errorf("decrypt meta_json: %w", decErr)
+		}
+		metaJSON = &plain
 	}
 	reactions, err := batchReactions(db, []int64{msgID}, userID)
 	if err != nil {
@@ -578,6 +588,7 @@ func EditMessage(db *sql.DB, convID, msgID, userID int64, body string) (*Message
 		Body:           body,
 		CreatedAt:      createdAt,
 		EditedAt:       &editedAt,
+		MetaJSON:       metaJSON,
 		Reactions:      byEmoji,
 	}, nil
 }
