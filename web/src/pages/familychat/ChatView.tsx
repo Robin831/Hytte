@@ -153,9 +153,8 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const [callElapsedSec, setCallElapsedSec] = useState(0)
   const callStartedAtRef = useRef<number | null>(null)
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
-  // speakerOn: UI toggle for the speakerphone hint. The browser controls
-  // routing; this flag just drives the icon state + tries to bump volume to
-  // max so the remote stream is audible without a headset.
+  // speakerOn controls the remote audio volume: true = full volume (1.0),
+  // false = muted (0) so "Speaker off" means no audio is heard.
   const [speakerOn, setSpeakerOn] = useState(true)
 
   // Voice-call state machine. skipSignalSubscription is set so the hook
@@ -175,6 +174,17 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   useEffect(() => {
     voiceCallSignalRef.current = voiceCall.handleSignalEvent
   })
+  // voiceCallEndRef lets the conversationId-change cleanup end any active call
+  // on the old conversation without re-subscribing on every voice-call state change.
+  const voiceCallEndRef = useRef(voiceCall.endCall)
+  useEffect(() => {
+    voiceCallEndRef.current = voiceCall.endCall
+  })
+  // Tear down any active call when switching conversations so the mic and
+  // RTCPeerConnection don't remain active against the old conversation.
+  useEffect(() => {
+    return () => { void voiceCallEndRef.current() }
+  }, [conversationId])
   // currentUserIdRef shadows user?.id so the long-lived SSE reader closure
   // (recreated only when conversationId changes) can read the most recent
   // value without forcing the effect to re-run on auth changes.
@@ -192,7 +202,11 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // the same click. NOT set on long-press (no toggle button exists there), so
   // tapping the bubble correctly closes the picker.
   const pickerGuardRef = useRef<HTMLElement | null>(null)
+  // conversationRef mirrors the conversation state for the long-lived SSE
+  // closure so call-event gating can check member count without re-running.
+  const conversationRef = useRef<Conversation | null>(null)
   useEffect(() => { currentUserIdRef.current = user?.id }, [user?.id])
+  useEffect(() => { conversationRef.current = conversation }, [conversation])
 
   // Focus management + Escape handling for the delete confirmation modal,
   // matching the pattern used by ConfirmDialog.
@@ -485,34 +499,38 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                     || eventName === 'call_ice'
                     || eventName === 'call_end'
                   ) {
-                    // Route call signalling into the voice-call hook. We also
-                    // track missed calls locally so the bubble area can render
-                    // a tombstone-style row with a call-back button: a
-                    // call_end with status=missed from someone other than us
-                    // means we never picked up.
-                    const callPayload = payload as CallSignalPayload
-                    if (
-                      eventName === 'call_end'
-                      && callPayload?.status === 'missed'
-                      && callPayload?.from_user_id !== undefined
-                      && callPayload.from_user_id !== currentUserIdRef.current
-                    ) {
-                      setMissedCalls(prev => {
-                        if (prev.some(m => m.callId === callPayload.call_id)) return prev
-                        return [
-                          ...prev,
-                          {
-                            callId: callPayload.call_id,
-                            fromUserId: callPayload.from_user_id,
-                            receivedAt: new Date().toISOString(),
-                          },
-                        ]
-                      })
+                    // Only process call events for 1:1 conversations — group
+                    // calls are not supported; ignore call_* events from them.
+                    if (conversationRef.current?.member_ids.length === 2) {
+                      // Route call signalling into the voice-call hook. We also
+                      // track missed calls locally so the bubble area can render
+                      // a tombstone-style row with a call-back button: a
+                      // call_end with status=missed from someone other than us
+                      // means we never picked up.
+                      const callPayload = payload as CallSignalPayload
+                      if (
+                        eventName === 'call_end'
+                        && callPayload?.status === 'missed'
+                        && callPayload?.from_user_id !== undefined
+                        && callPayload.from_user_id !== currentUserIdRef.current
+                      ) {
+                        setMissedCalls(prev => {
+                          if (prev.some(m => m.callId === callPayload.call_id)) return prev
+                          return [
+                            ...prev,
+                            {
+                              callId: callPayload.call_id,
+                              fromUserId: callPayload.from_user_id,
+                              receivedAt: new Date().toISOString(),
+                            },
+                          ]
+                        })
+                      }
+                      void voiceCallSignalRef.current(
+                        eventName as CallSignalEventName,
+                        callPayload,
+                      )
                     }
-                    void voiceCallSignalRef.current(
-                      eventName as CallSignalEventName,
-                      callPayload,
-                    )
                   }
                 } catch {
                   // Ignore a malformed payload; the server should never emit
@@ -625,7 +643,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     if (!el) return
     if (voiceCall.remoteStream) {
       el.srcObject = voiceCall.remoteStream
-      el.volume = speakerOn ? 1 : 0.4
+      el.volume = speakerOn ? 1 : 0
       void el.play().catch(() => {
         // Autoplay rejection — the accept-button click already counts as a
         // user gesture in every supported browser, but a stricter policy

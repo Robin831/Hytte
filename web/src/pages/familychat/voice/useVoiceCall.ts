@@ -725,9 +725,9 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
   }, [tearDown])
 
   const setMuted = useCallback((next: boolean) => {
-    setMutedState(next)
     const stream = localStreamRef.current
     if (!stream) return
+    setMutedState(next)
     for (const track of stream.getAudioTracks()) {
       track.enabled = !next
     }
