@@ -40,12 +40,23 @@
     "send": "Send message",
     "attach": "Attach a file",
     "removeAttachment": "Remove attachment",
+    "voice": {
+      "record": "Record voice note",
+      "start": "Hold to record voice note",
+      "cancel": "Cancel recording",
+      "send": "Send voice note",
+      "sending": "Sending voice note…",
+      "recordingLabel": "Recording voice note",
+      "releaseToCancel": "Release to cancel",
+      "remaining": "{{time}} remaining"
+    },
     "errors": {
       "send": "Failed to send message",
       "tooLong": "Message is too long",
       "upload": "Failed to upload file",
       "fileTooLarge": "File is too large (max 10 MB)",
-      "unsupportedType": "File type is not supported"
+      "unsupportedType": "File type is not supported",
+      "recorderUnsupported": "Voice recording isn't supported in this browser"
     }
   },
   "reactions": {
