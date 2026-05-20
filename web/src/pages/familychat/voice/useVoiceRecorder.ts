@@ -102,7 +102,7 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
   const audioCtxRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
-  const dataArrayRef = useRef<Uint8Array<ArrayBuffer> | null>(null)
+  const dataArrayRef = useRef<Uint8Array | null>(null)
   const rafRef = useRef<number | null>(null)
   const lastMeterTimeRef = useRef<number>(0)
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -316,6 +316,16 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
         && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError')
       setError(denied ? 'permission' : 'unavailable')
       setState('error')
+      return
+    }
+    // cancel() may have been called while getUserMedia was in flight (e.g. on
+    // conversation switch or unmount). Stop the obtained tracks and bail before
+    // any recorder state is created so the mic LED goes off immediately.
+    if (cancelledRef.current) {
+      for (const track of stream.getTracks()) {
+        try { track.stop() } catch { /* already stopped */ }
+      }
+      setState('idle')
       return
     }
     streamRef.current = stream

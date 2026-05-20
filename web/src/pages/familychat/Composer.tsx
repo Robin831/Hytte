@@ -78,8 +78,10 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
     pointerStartRef.current = null
     textareaRef.current?.focus()
     // Drop any active recording when the user switches chats so the audio
-    // doesn't end up posted to the wrong conversation.
-    if (recorderRef.current.state === 'recording' || recorderRef.current.state === 'starting') {
+    // doesn't end up posted to the wrong conversation. Include 'processing'
+    // so an auto-stop that fires mid-switch can't deliver to the new chat.
+    const rs = recorderRef.current.state
+    if (rs === 'recording' || rs === 'starting' || rs === 'processing') {
       recorderRef.current.cancel()
     }
     return () => {
@@ -157,7 +159,8 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
 
   async function submit() {
     const trimmed = body.trim()
-    if (sending || uploading) return
+    const rState = recorder.state
+    if (sending || uploading || voiceSending || rState === 'recording' || rState === 'starting' || rState === 'processing') return
     if (!trimmed && !attachment) return
     if ([...trimmed].length > MAX_BODY_LEN) {
       setError(t('composer.errors.tooLong'))
