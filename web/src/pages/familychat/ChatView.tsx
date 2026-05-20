@@ -112,11 +112,15 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // it was triggered by a touch long-press (open picker, suppress native menu)
   // or a mouse right-click (leave native menu alone; picker is on hover button).
   const lastPointerTypeRef = useRef<string>('mouse')
-  // pickerTriggerRef anchors the open reaction picker to whichever trigger
-  // (hover button or bubble long-press target) opened it. The picker portals
-  // out to document.body so it needs an explicit anchor rect rather than
-  // relying on its position in the DOM.
-  const pickerTriggerRef = useRef<HTMLElement | null>(null)
+  // pickerAnchorRef: element used by ReactionPicker for placement/positioning.
+  // Set to the hover button or the message bubble (long-press), whichever opened the picker.
+  const pickerAnchorRef = useRef<HTMLElement | null>(null)
+  // pickerGuardRef: the actual toggle button (hover Smile button only). The
+  // picker's outside-click handler ignores clicks on this element so the button
+  // can toggle the picker closed without the picker immediately re-closing on
+  // the same click. NOT set on long-press (no toggle button exists there), so
+  // tapping the bubble correctly closes the picker.
+  const pickerGuardRef = useRef<HTMLElement | null>(null)
   useEffect(() => { currentUserIdRef.current = user?.id }, [user?.id])
 
   // Focus management + Escape handling for the delete confirmation modal,
@@ -862,7 +866,11 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                       // MoreVertical button for own messages.
                       if (lastPointerTypeRef.current === 'touch') {
                         e.preventDefault()
-                        pickerTriggerRef.current = e.currentTarget
+                        // Use the bubble as the positioning anchor only.
+                        // pickerGuardRef is NOT set here — there is no toggle
+                        // button for long-press, so clicks on the bubble should
+                        // correctly dismiss the picker.
+                        pickerAnchorRef.current = e.currentTarget
                         setPickerForMsgId(msg.id)
                       }
                     }}
@@ -911,11 +919,17 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                   <button
                     type="button"
                     ref={(el) => {
-                      if (pickerOpen) pickerTriggerRef.current = el
+                      if (pickerOpen) {
+                        pickerAnchorRef.current = el
+                        pickerGuardRef.current = el
+                      }
                     }}
                     onClick={(e) => {
                       const willOpen = !pickerOpen
-                      if (willOpen) pickerTriggerRef.current = e.currentTarget
+                      if (willOpen) {
+                        pickerAnchorRef.current = e.currentTarget
+                        pickerGuardRef.current = e.currentTarget
+                      }
                       setPickerForMsgId(willOpen ? msg.id : null)
                     }}
                     aria-label={t('reactions.pickerLabel')}
@@ -985,7 +999,8 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                   <ReactionPicker
                     onPick={(emoji) => handlePickFromPicker(msg.id, emoji)}
                     onClose={() => setPickerForMsgId(null)}
-                    triggerRef={pickerTriggerRef}
+                    anchorRef={pickerAnchorRef}
+                    triggerRef={pickerGuardRef}
                   />
                 )}
               </div>

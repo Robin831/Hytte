@@ -22,17 +22,19 @@ const TRIGGER_GAP = 8
 const VIEWPORT_MARGIN = 8
 
 // computePickerPosition picks the popover placement around a trigger rect.
-// Vertical: prefer above if there's room (>= pickerH + TRIGGER_GAP), else
-// below. Horizontal: right-align when the trigger center is in the right half
-// of the viewport, else left-align. Final top/left are clamped so the popup
-// stays within the viewport (with a small margin), which matters on tiny
-// viewports where the picker doesn't really fit either side.
+// Vertical: prefer above if there's room (>= pickerH + TRIGGER_GAP + VIEWPORT_MARGIN),
+// else below. Including the margin ensures there's real space above and we don't
+// choose 'above' only to have the clamping eat into the gap. Horizontal:
+// right-align when the trigger center is in the right half of the viewport,
+// else left-align. Final top/left are clamped so the popup stays within the
+// viewport (with a small margin), which matters on tiny viewports where the
+// picker doesn't really fit either side.
 export function computePickerPosition(
   triggerRect: DOMRect,
   viewport: Viewport,
   pickerSize: PickerSize,
 ): PickerPosition {
-  const fitsAbove = triggerRect.top >= pickerSize.h + TRIGGER_GAP
+  const fitsAbove = triggerRect.top >= pickerSize.h + TRIGGER_GAP + VIEWPORT_MARGIN
   const placement: PickerPlacement = fitsAbove ? 'above' : 'below'
 
   const rawTop = placement === 'above'

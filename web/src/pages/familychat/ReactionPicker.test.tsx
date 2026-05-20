@@ -102,7 +102,7 @@ describe('ReactionPicker', () => {
     ;(ref as { current: HTMLElement | null }).current = trigger
 
     const { container } = render(
-      <ReactionPicker onPick={() => {}} onClose={() => {}} triggerRef={ref} />,
+      <ReactionPicker onPick={() => {}} onClose={() => {}} anchorRef={ref} />,
     )
 
     // The portal target is document.body, NOT the React render container.
@@ -124,16 +124,16 @@ describe('ReactionPicker', () => {
     })
   })
 
-  it('positions itself via fixed coordinates derived from the trigger rect', () => {
+  it('positions itself via fixed coordinates derived from the anchor rect', () => {
     const ref = createRef<HTMLElement | null>()
     ;(ref as { current: HTMLElement | null }).current = trigger
 
-    render(<ReactionPicker onPick={() => {}} onClose={() => {}} triggerRef={ref} />)
+    render(<ReactionPicker onPick={() => {}} onClose={() => {}} anchorRef={ref} />)
 
     const picker = screen.getByTestId('reaction-picker')
     expect(picker.style.position).toBe('fixed')
-    // Trigger sits at top=400 with plenty of room above (>= 180 + 16), so the
-    // picker should flip above.
+    // Trigger sits at top=400 with plenty of room above (>= 180 + TRIGGER_GAP + VIEWPORT_MARGIN),
+    // so the picker should flip above.
     expect(picker.style.top).not.toBe('')
     expect(picker.style.left).not.toBe('')
   })
@@ -143,7 +143,7 @@ describe('ReactionPicker', () => {
     const ref = createRef<HTMLElement | null>()
     ;(ref as { current: HTMLElement | null }).current = trigger
 
-    render(<ReactionPicker onPick={onPick} onClose={() => {}} triggerRef={ref} />)
+    render(<ReactionPicker onPick={onPick} onClose={() => {}} anchorRef={ref} />)
 
     const picker = screen.getByTestId('reaction-picker')
     const firstCell = picker.querySelector('button')!
@@ -157,7 +157,7 @@ describe('ReactionPicker', () => {
     const ref = createRef<HTMLElement | null>()
     ;(ref as { current: HTMLElement | null }).current = trigger
 
-    render(<ReactionPicker onPick={() => {}} onClose={onClose} triggerRef={ref} />)
+    render(<ReactionPicker onPick={() => {}} onClose={onClose} anchorRef={ref} />)
 
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(1)
@@ -168,7 +168,7 @@ describe('ReactionPicker', () => {
     const ref = createRef<HTMLElement | null>()
     ;(ref as { current: HTMLElement | null }).current = trigger
 
-    render(<ReactionPicker onPick={() => {}} onClose={onClose} triggerRef={ref} />)
+    render(<ReactionPicker onPick={() => {}} onClose={onClose} anchorRef={ref} />)
 
     const outside = document.createElement('div')
     document.body.appendChild(outside)
@@ -177,15 +177,31 @@ describe('ReactionPicker', () => {
     outside.remove()
   })
 
-  it('does NOT close when clicking the trigger element (toggling is the trigger\'s job)', () => {
+  it('does NOT close when clicking the trigger button (triggerRef guard, toggling is the button\'s job)', () => {
     const onClose = vi.fn()
-    const ref = createRef<HTMLElement | null>()
-    ;(ref as { current: HTMLElement | null }).current = trigger
+    const anchorRef = createRef<HTMLElement | null>()
+    ;(anchorRef as { current: HTMLElement | null }).current = trigger
+    // triggerRef is the actual toggle button — pass same element here to verify guard.
+    const triggerRef = createRef<HTMLElement | null>()
+    ;(triggerRef as { current: HTMLElement | null }).current = trigger
 
-    render(<ReactionPicker onPick={() => {}} onClose={onClose} triggerRef={ref} />)
+    render(<ReactionPicker onPick={() => {}} onClose={onClose} anchorRef={anchorRef} triggerRef={triggerRef} />)
 
     fireEvent.mouseDown(trigger)
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('closes when clicking the anchor element when no triggerRef is set (long-press case)', () => {
+    const onClose = vi.fn()
+    const anchorRef = createRef<HTMLElement | null>()
+    ;(anchorRef as { current: HTMLElement | null }).current = trigger
+
+    // No triggerRef — simulates the long-press / touch path where there is no
+    // toggle button and clicking the bubble should close the picker.
+    render(<ReactionPicker onPick={() => {}} onClose={onClose} anchorRef={anchorRef} />)
+
+    fireEvent.mouseDown(trigger)
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('does not close when clicking inside the picker itself', () => {
@@ -193,7 +209,7 @@ describe('ReactionPicker', () => {
     const ref = createRef<HTMLElement | null>()
     ;(ref as { current: HTMLElement | null }).current = trigger
 
-    render(<ReactionPicker onPick={() => {}} onClose={onClose} triggerRef={ref} />)
+    render(<ReactionPicker onPick={() => {}} onClose={onClose} anchorRef={ref} />)
 
     const picker = screen.getByTestId('reaction-picker')
     fireEvent.mouseDown(picker)

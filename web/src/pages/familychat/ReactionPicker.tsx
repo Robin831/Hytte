@@ -15,37 +15,48 @@ const DEFAULT_PICKER_H = 180
 interface ReactionPickerProps {
   onPick: (emoji: string) => void
   onClose: () => void
-  triggerRef: RefObject<HTMLElement | null>
+  /** Element used to compute placement (getBoundingClientRect). Always required. */
+  anchorRef: RefObject<HTMLElement | null>
+  /**
+   * Optional toggle-button element. Clicks inside this element are ignored by
+   * the outside-click handler so the button's own click handler can toggle the
+   * picker without the picker immediately closing first.
+   *
+   * Omit (or leave as null) for long-press / touch-triggered pickers where
+   * there is no toggle button — clicks on the anchor will then correctly close
+   * the picker.
+   */
+  triggerRef?: RefObject<HTMLElement | null>
 }
 
-export default function ReactionPicker({ onPick, onClose, triggerRef }: ReactionPickerProps) {
+export default function ReactionPicker({ onPick, onClose, anchorRef, triggerRef }: ReactionPickerProps) {
   const { t } = useTranslation('familyChat')
   const containerRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<PickerPosition | null>(null)
 
   // First layout pass: compute a position using default picker dimensions so
   // the popup paints in roughly the right place on the first frame and we
-  // don't flash at (0,0). Read the trigger via the parent-supplied ref.
+  // don't flash at (0,0). Read the anchor via the parent-supplied ref.
   useLayoutEffect(() => {
-    const trigger = triggerRef.current
-    if (!trigger) return
+    const anchor = anchorRef.current
+    if (!anchor) return
     const viewport = { w: window.innerWidth, h: window.innerHeight }
     const pickerSize = { w: DEFAULT_PICKER_W, h: DEFAULT_PICKER_H }
-    setPosition(computePickerPosition(trigger.getBoundingClientRect(), viewport, pickerSize))
-  }, [triggerRef])
+    setPosition(computePickerPosition(anchor.getBoundingClientRect(), viewport, pickerSize))
+  }, [anchorRef])
 
   // Second layout pass: measure the actual rendered popup and recompute the
   // position so the clamping uses real dimensions. This is what catches the
   // case where the popup is shorter/taller than the default and would
   // otherwise have a stale top/left.
   useLayoutEffect(() => {
-    const trigger = triggerRef.current
+    const anchor = anchorRef.current
     const popup = containerRef.current
-    if (!trigger || !popup) return
+    if (!anchor || !popup) return
     const rect = popup.getBoundingClientRect()
     const viewport = { w: window.innerWidth, h: window.innerHeight }
     const pickerSize = { w: rect.width, h: rect.height }
-    const next = computePickerPosition(trigger.getBoundingClientRect(), viewport, pickerSize)
+    const next = computePickerPosition(anchor.getBoundingClientRect(), viewport, pickerSize)
     setPosition(prev => {
       if (prev && prev.top === next.top && prev.left === next.left
         && prev.placement === next.placement && prev.align === next.align) {
@@ -53,18 +64,21 @@ export default function ReactionPicker({ onPick, onClose, triggerRef }: Reaction
       }
       return next
     })
-  }, [triggerRef])
+  }, [anchorRef])
 
   useEffect(() => {
     containerRef.current?.focus()
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as Node
       if (containerRef.current && containerRef.current.contains(target)) return
-      // Clicks on the trigger itself shouldn't fall through onClose, because
-      // the trigger's own click handler is responsible for toggling the
+      // Clicks on the trigger button itself shouldn't fall through onClose,
+      // because the button's own click handler is responsible for toggling the
       // picker. Without this guard the picker would close, then immediately
       // re-open on the same click.
-      if (triggerRef.current && triggerRef.current.contains(target)) return
+      // triggerRef is intentionally absent for long-press / touch-triggered
+      // pickers (no toggle button exists), so clicks on the anchor bubble will
+      // correctly dismiss the picker.
+      if (triggerRef?.current && triggerRef.current.contains(target)) return
       onClose()
     }
     const handleKey = (e: KeyboardEvent) => {
