@@ -867,10 +867,13 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                       if (lastPointerTypeRef.current === 'touch') {
                         e.preventDefault()
                         // Use the bubble as the positioning anchor only.
-                        // pickerGuardRef is NOT set here — there is no toggle
-                        // button for long-press, so clicks on the bubble should
-                        // correctly dismiss the picker.
+                        // pickerGuardRef is explicitly cleared here — there is
+                        // no toggle button for long-press, so clicks on the
+                        // bubble should correctly dismiss the picker. Clearing
+                        // prevents a stale guard ref from a prior hover-button
+                        // open from suppressing the outside-click close.
                         pickerAnchorRef.current = e.currentTarget
+                        pickerGuardRef.current = null
                         setPickerForMsgId(msg.id)
                       }
                     }}
@@ -918,12 +921,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                 {!isDeleted && !isEditing && (
                   <button
                     type="button"
-                    ref={(el) => {
-                      if (pickerOpen) {
-                        pickerAnchorRef.current = el
-                        pickerGuardRef.current = el
-                      }
-                    }}
                     onClick={(e) => {
                       const willOpen = !pickerOpen
                       if (willOpen) {

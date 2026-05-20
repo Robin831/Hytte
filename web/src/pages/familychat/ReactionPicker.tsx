@@ -84,11 +84,20 @@ export default function ReactionPicker({ onPick, onClose, anchorRef, triggerRef 
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
+    // Close the picker on scroll or resize so the fixed-position popup never
+    // becomes visually detached from its anchor. The capture-phase scroll
+    // listener catches scrolling inside the chat log container (overflow-y-auto)
+    // which doesn't bubble to window.
+    const handleScrollOrResize = () => onClose()
     document.addEventListener('mousedown', handleClickOutside)
     document.addEventListener('keydown', handleKey)
+    window.addEventListener('scroll', handleScrollOrResize, true)
+    window.addEventListener('resize', handleScrollOrResize)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
       document.removeEventListener('keydown', handleKey)
+      window.removeEventListener('scroll', handleScrollOrResize, true)
+      window.removeEventListener('resize', handleScrollOrResize)
     }
   }, [onClose, triggerRef])
 
