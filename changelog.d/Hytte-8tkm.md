@@ -1,0 +1,2 @@
+category: Added
+- **Voice-note playback bubble in Family Chat** - Voice notes now render with a play/pause button, a 32-bar waveform, click-to-seek, and a progress fill instead of the generic audio element. The recorder precomputes the waveform after upload (persisted via `meta_json`, with a `localStorage` fallback) so receivers see bars without re-decoding. A singleton audio player guarantees that only one voice note plays at a time and auto-stops on conversation switch or unmount. (Hytte-8tkm)

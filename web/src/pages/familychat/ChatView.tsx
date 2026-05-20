@@ -15,6 +15,9 @@ import {
   type ReactionMap,
 } from './api'
 import { formatRelative } from './utils'
+import VoiceBubble from './voice/VoiceBubble'
+import { readCachedWaveform, DEFAULT_BAR_COUNT, type Waveform } from './voice/waveform'
+import * as voicePlayer from './voice/voicePlayer'
 
 interface ChatViewProps {
   conversationId: number | null
@@ -42,7 +45,35 @@ export interface ChatMessage {
   edited_at?: string | null
   deleted_at?: string | null
   deleted_by?: number | null
+  // meta_json is opaque client-controlled JSON the server stores verbatim.
+  // Voice notes use it to ship the precomputed waveform (see voice/waveform.ts).
+  meta_json?: string | null
   reactions?: ReactionMap
+}
+
+// parseVoiceMeta extracts a {bars, durationMs} pair from a meta_json blob.
+// Returns null when the field is absent, unparseable, or shaped wrong — the
+// caller falls back to a localStorage cache (and ultimately a flat waveform)
+// so a malformed meta_json never blocks playback.
+function parseVoiceMeta(meta: string | null | undefined): Waveform | null {
+  if (!meta) return null
+  try {
+    const parsed: unknown = JSON.parse(meta)
+    if (
+      parsed
+      && typeof parsed === 'object'
+      && Array.isArray((parsed as { bars?: unknown }).bars)
+      && typeof (parsed as { durationMs?: unknown }).durationMs === 'number'
+    ) {
+      const bars = (parsed as { bars: unknown[] }).bars.map(v =>
+        typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0,
+      )
+      return { bars, durationMs: (parsed as { durationMs: number }).durationMs }
+    }
+  } catch {
+    // Fall through to null — the bubble renders a flat waveform.
+  }
+  return null
 }
 
 interface MemberInfo {
@@ -480,6 +511,10 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         activeReader.cancel().catch(() => {})
         activeReader = null
       }
+      // Stop any voice-note playback owned by this conversation. Switching
+      // chats or unmounting must not leave a bubble in the prior conversation
+      // continuing to play in the background.
+      voicePlayer.stopAll()
     }
   }, [conversationId, t])
 
@@ -780,6 +815,19 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
           const mime = msg.attachment_mime ?? ''
           const isImage = mime.startsWith('image/')
           const isAudio = mime.startsWith('audio/')
+          // A voice note is an audio/webm attachment with an empty body —
+          // the recorder always ships these as standalone bubbles. The
+          // bubble renders a precomputed waveform if meta_json carries one;
+          // it falls back to a localStorage cache (written immediately
+          // after upload by the recorder) and finally to a flat waveform.
+          const isVoiceNote = !isDeleted && !!attachmentUrl
+            && mime.startsWith('audio/webm')
+            && !msg.body.trim()
+          const cachedWaveform = isVoiceNote
+            ? (parseVoiceMeta(msg.meta_json) ?? readCachedWaveform(msg.id))
+            : null
+          const voiceBars = cachedWaveform?.bars ?? new Array(DEFAULT_BAR_COUNT).fill(0)
+          const voiceDurationMs = cachedWaveform?.durationMs ?? 0
           const pickerOpen = pickerForMsgId === msg.id
           const menuOpen = menuForMsgId === msg.id
           const showActions = isOwn && !isDeleted && !isEditing
@@ -893,7 +941,16 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                         />
                       </button>
                     )}
-                    {attachmentUrl && isAudio && (
+                    {attachmentUrl && isVoiceNote && (
+                      <VoiceBubble
+                        messageId={msg.id}
+                        src={attachmentUrl}
+                        bars={voiceBars}
+                        durationMs={voiceDurationMs}
+                        isOwn={isOwn}
+                      />
+                    )}
+                    {attachmentUrl && isAudio && !isVoiceNote && (
                       <audio
                         controls
                         src={attachmentUrl}
