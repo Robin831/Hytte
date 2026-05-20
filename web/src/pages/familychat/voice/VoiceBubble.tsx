@@ -131,9 +131,8 @@ export default function VoiceBubble({
       case 'End':
         nextMs = effectiveDurationMs
         break
-      default:
-        return
     }
+    if (nextMs === null) return
     event.preventDefault()
     seekTo(nextMs)
   }, [effectiveDurationMs, positionMs, seekTo])
