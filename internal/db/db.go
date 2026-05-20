@@ -1842,6 +1842,24 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_family_chat_message_reactions_message ON family_chat_message_reactions(message_id);
 
+	-- family_chat_calls (Hytte-tjii): records the lifecycle of WebRTC calls
+	-- relayed through the SSE signalling hub. call_id is the client-generated
+	-- identifier used in the relay URLs (offer/answer/ice/end). SDP and ICE
+	-- payloads are NEVER stored — only the call envelope (who started it, when,
+	-- and how it ended) so missed-call history can be rendered.
+	CREATE TABLE IF NOT EXISTS family_chat_calls (
+		id                INTEGER PRIMARY KEY,
+		conversation_id   INTEGER NOT NULL REFERENCES family_chat_conversations(id) ON DELETE CASCADE,
+		initiator_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		call_id           TEXT NOT NULL,
+		started_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		ended_at          TEXT,
+		status            TEXT NOT NULL DEFAULT 'ringing',
+		UNIQUE(conversation_id, call_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_family_chat_calls_conversation ON family_chat_calls(conversation_id, id DESC);
+
 	`
 
 	_, err := db.Exec(schema)

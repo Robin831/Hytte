@@ -98,6 +98,16 @@ func setupTestDB(t *testing.T) *sql.DB {
 			reacted_at  TEXT NOT NULL DEFAULT '',
 			PRIMARY KEY (message_id, user_id, emoji)
 		);
+		CREATE TABLE family_chat_calls (
+			id                INTEGER PRIMARY KEY,
+			conversation_id   INTEGER NOT NULL REFERENCES family_chat_conversations(id) ON DELETE CASCADE,
+			initiator_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			call_id           TEXT NOT NULL,
+			started_at        TEXT NOT NULL DEFAULT '',
+			ended_at          TEXT,
+			status            TEXT NOT NULL DEFAULT 'ringing',
+			UNIQUE(conversation_id, call_id)
+		);
 	`); err != nil {
 		t.Fatalf("create schema: %v", err)
 	}

@@ -555,6 +555,13 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/familychat/conversations/{id}/stream", familychat.StreamHandlerWithDB(db))
 				r.Post("/familychat/conversations/{id}/upload", familychat.UploadAttachmentHandler(db))
 				r.Get("/familychat/conversations/{id}/attachments/{message_id}", familychat.GetAttachmentHandler(db))
+				// WebRTC call signalling relay (Hytte-tjii). The hub never persists
+				// SDP / ICE — only the call envelope (initiator + status) is stored
+				// so missed-call history can be rendered.
+				r.Post("/familychat/conversations/{id}/calls/{call_id}/offer", familychat.CallOfferHandler(db))
+				r.Post("/familychat/conversations/{id}/calls/{call_id}/answer", familychat.CallAnswerHandler(db))
+				r.Post("/familychat/conversations/{id}/calls/{call_id}/ice", familychat.CallICEHandler(db))
+				r.Post("/familychat/conversations/{id}/calls/{call_id}/end", familychat.CallEndHandler(db))
 			})
 
 			// Kids Stars: family management — gated by "kids_stars" feature.

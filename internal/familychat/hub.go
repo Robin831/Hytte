@@ -26,6 +26,16 @@ const (
 	EventMessageEdited  = "message_edited"
 	EventMessageDeleted = "message_deleted"
 	EventReadReceipt    = "read_receipt"
+
+	// WebRTC signalling events. The hub relays SDP/ICE blobs verbatim — the
+	// server never inspects or persists the payload contents. The four-event
+	// shape (offer/answer/ice/end) is enough to drive a 1:1 voice/video call
+	// between conversation members; the frontend in sibling bead 3 consumes
+	// these events and feeds them straight into RTCPeerConnection.
+	EventCallOffer  = "call_offer"
+	EventCallAnswer = "call_answer"
+	EventCallICE    = "call_ice"
+	EventCallEnd    = "call_end"
 )
 
 // Subscriber is a single SSE client subscription. The channel is buffered so
