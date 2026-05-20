@@ -16,7 +16,8 @@ import (
 
 // WebRTCConfig holds the resolved STUN/TURN servers and optional coturn
 // shared-secret used to mint short-lived ephemeral credentials. Built once
-// per request from environment variables; nothing is persisted.
+// at handler-construction time from environment variables; nothing is
+// persisted.
 //
 // The config layer keys (when an operator chooses to mirror them into a
 // future YAML/TOML layer) are:
@@ -134,6 +135,7 @@ func BuildICEConfig(cfg WebRTCConfig, username string, now time.Time) ICEConfig 
 		ttl = defaultTURNTTL
 	}
 
+	turnServer := ICEServer{URLs: cfg.TURNURLs}
 	switch {
 	case cfg.SharedSecret != "":
 		// coturn REST API spec (draft-uberti-behave-turn-rest-00):
@@ -148,27 +150,19 @@ func BuildICEConfig(cfg WebRTCConfig, username string, now time.Time) ICEConfig 
 			identity = "hytte"
 		}
 		expiry := now.Add(ttl).Unix()
-		turnUser := fmt.Sprintf("%d:%s", expiry, identity)
-		credential := signCoturnCredential(cfg.SharedSecret, turnUser)
-		out.ICEServers = append(out.ICEServers, ICEServer{
-			URLs:       cfg.TURNURLs,
-			Username:   turnUser,
-			Credential: credential,
-		})
+		turnServer.Username = fmt.Sprintf("%d:%s", expiry, identity)
+		turnServer.Credential = signCoturnCredential(cfg.SharedSecret, turnServer.Username)
 		out.TTL = int(ttl.Seconds())
 	case cfg.TURNUsername != "" && cfg.TURNCredential != "":
-		out.ICEServers = append(out.ICEServers, ICEServer{
-			URLs:       cfg.TURNURLs,
-			Username:   cfg.TURNUsername,
-			Credential: cfg.TURNCredential,
-		})
+		turnServer.Username = cfg.TURNUsername
+		turnServer.Credential = cfg.TURNCredential
 	default:
 		// TURN URLs configured but no credentials — return them anyway so a
 		// deliberately anonymous TURN deployment still works. coturn refuses
 		// these by default, but operators sometimes run unauthenticated
 		// turnservers on private networks.
-		out.ICEServers = append(out.ICEServers, ICEServer{URLs: cfg.TURNURLs})
 	}
+	out.ICEServers = append(out.ICEServers, turnServer)
 	return out
 }
 
@@ -184,23 +178,29 @@ func signCoturnCredential(sharedSecret, username string) string {
 
 // TurnConfigHandler returns the current STUN/TURN configuration so the
 // frontend can pass it straight into new RTCPeerConnection. Session-auth
-// gated by the surrounding router group — the handler itself only reads
-// the user id (to scope the ephemeral coturn identity) and never falls
-// back to anonymous behaviour.
+// and family_chat feature gated by the surrounding router group — the
+// handler itself only reads the user id (to scope the ephemeral coturn
+// identity) and never falls back to anonymous behaviour.
+//
+// The WebRTC config is read from the environment once at handler
+// construction time. Re-reading the six env vars on every request would
+// duplicate work and contend on os.Getenv's package mutex under
+// concurrent load; the config is process-lifetime stable so the cached
+// copy is correct.
 func TurnConfigHandler() http.HandlerFunc {
-	return turnConfigHandler(LoadWebRTCConfig, time.Now)
+	return turnConfigHandler(LoadWebRTCConfig(), time.Now)
 }
 
-// turnConfigHandler is the testable inner constructor. loader and clock are
-// injected so tests can pin both the environment and the expiry timestamp.
-func turnConfigHandler(loader func() WebRTCConfig, clock func() time.Time) http.HandlerFunc {
+// turnConfigHandler is the testable inner constructor. cfg is captured by
+// reference so tests can build it explicitly, and clock is injected so
+// tests can pin the expiry timestamp for deterministic HMAC assertions.
+func turnConfigHandler(cfg WebRTCConfig, clock func() time.Time) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 		var identity string
 		if user != nil && user.ID > 0 {
 			identity = strconv.FormatInt(user.ID, 10)
 		}
-		cfg := loader()
 		ice := BuildICEConfig(cfg, identity, clock())
 		writeJSON(w, http.StatusOK, ice)
 	}

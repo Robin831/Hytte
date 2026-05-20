@@ -17,13 +17,6 @@ import (
 // pin the coturn expiry timestamp so the HMAC assertion is deterministic.
 func fixedTime(t time.Time) func() time.Time { return func() time.Time { return t } }
 
-// fixedLoader returns a WebRTCConfig loader that ignores the environment.
-// Tests build configs explicitly so they don't pick up host env contamination
-// (e.g. WEBRTC_TURN_SHARED_SECRET set on the developer's machine).
-func fixedLoader(cfg WebRTCConfig) func() WebRTCConfig {
-	return func() WebRTCConfig { return cfg }
-}
-
 func decodeICE(t *testing.T, body string) ICEConfig {
 	t.Helper()
 	var out ICEConfig
@@ -37,7 +30,7 @@ func TestTurnHandler_STUNOnlyFallback(t *testing.T) {
 	cfg := WebRTCConfig{
 		STUNURLs: []string{"stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"},
 	}
-	h := turnConfigHandler(fixedLoader(cfg), time.Now)
+	h := turnConfigHandler(cfg, time.Now)
 
 	req := withUser(httptest.NewRequest("GET", "/api/familychat/turn", nil), 42)
 	rec := httptest.NewRecorder()
@@ -63,7 +56,7 @@ func TestTurnHandler_STUNOnlyFallback(t *testing.T) {
 }
 
 func TestTurnHandler_EmptyConfigReturnsEmptyList(t *testing.T) {
-	h := turnConfigHandler(fixedLoader(WebRTCConfig{}), time.Now)
+	h := turnConfigHandler(WebRTCConfig{}, time.Now)
 
 	req := withUser(httptest.NewRequest("GET", "/api/familychat/turn", nil), 1)
 	rec := httptest.NewRecorder()
@@ -85,7 +78,7 @@ func TestTurnHandler_StaticCredentials(t *testing.T) {
 		TURNUsername:   "alice",
 		TURNCredential: "static-secret",
 	}
-	h := turnConfigHandler(fixedLoader(cfg), time.Now)
+	h := turnConfigHandler(cfg, time.Now)
 
 	req := withUser(httptest.NewRequest("GET", "/api/familychat/turn", nil), 7)
 	rec := httptest.NewRecorder()
@@ -114,7 +107,7 @@ func TestTurnHandler_EphemeralCredentialMatchesCoturnSpec(t *testing.T) {
 		SharedSecret: secret,
 		TTL:          ttl,
 	}
-	h := turnConfigHandler(fixedLoader(cfg), fixedTime(now))
+	h := turnConfigHandler(cfg, fixedTime(now))
 
 	req := withUser(httptest.NewRequest("GET", "/api/familychat/turn", nil), 99)
 	rec := httptest.NewRecorder()
@@ -306,7 +299,7 @@ func TestTurnHandler_ResponseShape(t *testing.T) {
 		TURNUsername:   "u",
 		TURNCredential: "c",
 	}
-	h := turnConfigHandler(fixedLoader(cfg), time.Now)
+	h := turnConfigHandler(cfg, time.Now)
 	req := withUser(httptest.NewRequest("GET", "/api/familychat/turn", nil), 1)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -343,9 +336,9 @@ func TestTurnHandler_ResponseShape(t *testing.T) {
 // session-auth requirement is enforced by the router middleware; the
 // handler itself should not panic if it ever runs outside that wrapper.
 func TestTurnHandler_NoUserContext(t *testing.T) {
-	h := turnConfigHandler(fixedLoader(WebRTCConfig{
+	h := turnConfigHandler(WebRTCConfig{
 		STUNURLs: []string{"stun:a"},
-	}), time.Now)
+	}, time.Now)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/familychat/turn", nil))
 	if rec.Code != http.StatusOK {
