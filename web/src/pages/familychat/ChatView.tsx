@@ -845,7 +845,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     if (!conversation || user?.id === undefined) return null
     if (conversation.member_ids.length !== 2) return null
     return conversation.member_ids.find(id => id !== user.id) ?? null
-  }, [conversation, user?.id])
+  }, [conversation, user])
   const canCall = callPeerId !== null
 
   const peerLabel = useCallback((peerId: number | null) => {
