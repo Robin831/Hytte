@@ -40,12 +40,22 @@
     "send": "Send melding",
     "attach": "Legg ved fil",
     "removeAttachment": "Fjern vedlegg",
+    "voice": {
+      "start": "Hold inne for å spille inn talemelding",
+      "cancel": "Avbryt opptak",
+      "send": "Send talemelding",
+      "sending": "Sender talemelding…",
+      "recordingLabel": "Spiller inn talemelding",
+      "releaseToCancel": "Slipp for å avbryte",
+      "remaining": "{{time}} igjen"
+    },
     "errors": {
       "send": "Klarte ikke å sende melding",
       "tooLong": "Meldingen er for lang",
       "upload": "Klarte ikke å laste opp filen",
       "fileTooLarge": "Filen er for stor (maks 10 MB)",
-      "unsupportedType": "Filtypen støttes ikke"
+      "unsupportedType": "Filtypen støttes ikke",
+      "recorderUnsupported": "Taleopptak støttes ikke i denne nettleseren"
     }
   },
   "reactions": {

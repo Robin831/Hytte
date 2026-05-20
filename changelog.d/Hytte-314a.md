@@ -1,0 +1,2 @@
+category: Added
+- **Family Chat voice notes** - Added a mic button to the Family Chat composer. Touch users press-and-hold the mic to record, slide up to arm the cancel gesture, and release to send; desktop users click to start and click stop/cancel to commit or discard. The recorder caps at 30 seconds, drives a 10-bar live amplitude meter from an AnalyserNode, and on release runs a best-effort leading/trailing silence trim via OfflineAudioContext before uploading the audio/webm blob and posting a message with the upload reference. (Hytte-314a)
