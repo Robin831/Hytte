@@ -1825,6 +1825,19 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_family_chat_messages_conversation_id ON family_chat_messages(conversation_id, id DESC);
 
+	-- family_chat_message_reactions (Hytte-hp9b): one row per (message, user, emoji).
+	-- The composite primary key enforces idempotent add (ON CONFLICT DO NOTHING)
+	-- and makes "remove my reaction" an O(1) delete.
+	CREATE TABLE IF NOT EXISTS family_chat_message_reactions (
+		message_id  INTEGER NOT NULL REFERENCES family_chat_messages(id) ON DELETE CASCADE,
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		emoji       TEXT NOT NULL,
+		reacted_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		PRIMARY KEY (message_id, user_id, emoji)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_family_chat_message_reactions_message ON family_chat_message_reactions(message_id);
+
 	`
 
 	_, err := db.Exec(schema)

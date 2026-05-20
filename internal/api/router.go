@@ -547,6 +547,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Delete("/familychat/conversations/{id}", familychat.DeleteConversationHandler(db))
 				r.Get("/familychat/conversations/{id}/messages", familychat.ListMessagesHandler(db))
 				r.Post("/familychat/conversations/{id}/messages", familychat.PostMessageHandler(db))
+				r.Post("/familychat/conversations/{id}/messages/{messageID}/reactions", familychat.AddReactionHandler(db))
+				r.Delete("/familychat/conversations/{id}/messages/{messageID}/reactions", familychat.RemoveReactionHandler(db))
 				r.Post("/familychat/conversations/{id}/read", familychat.MarkReadHandler(db))
 				r.Get("/familychat/conversations/{id}/stream", familychat.StreamHandlerWithDB(db))
 				r.Post("/familychat/conversations/{id}/upload", familychat.UploadAttachmentHandler(db))

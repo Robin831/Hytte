@@ -48,6 +48,11 @@
       "unsupportedType": "File type is not supported"
     }
   },
+  "reactions": {
+    "add": "React with {{emoji}}",
+    "remove": "Remove your {{emoji}} reaction",
+    "pickerLabel": "Pick a reaction"
+  },
   "newModal": {
     "title": "New conversation",
     "nameLabel": "Name",

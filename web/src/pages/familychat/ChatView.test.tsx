@@ -34,6 +34,9 @@ const TRANSLATIONS: Record<string, string> = {
   'chat.lightboxClose': 'Close preview',
   'chat.connection.reconnecting': 'Reconnecting…',
   'newModal.parent': 'Parent',
+  'reactions.pickerLabel': 'Add reaction',
+  'reactions.add': 'React with {{emoji}}',
+  'reactions.remove': 'Remove {{emoji}} reaction',
 }
 
 function stableT(key: string, opts?: Record<string, string | number>): string {
@@ -549,4 +552,104 @@ describe('ChatView – reconnect gap-fill', () => {
 
     await waitFor(() => expect(screen.getByText('Arrived during disconnect')).toBeInTheDocument())
   }, 15000)
+})
+
+describe('ChatView – reactions', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  it('renders reaction chips when a message includes reaction data', async () => {
+    const msg = makeMessage({
+      id: 5,
+      body: 'Hello!',
+      reactions: { '👍': { count: 2, users: [1, 2], me: true } },
+    })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([msg]))
+      .mockResolvedValueOnce(streamOk()),
+    )
+    renderChatView()
+    const chip = await screen.findByTestId('reaction-chip-👍')
+    expect(chip).toBeInTheDocument()
+    expect(chip.textContent).toContain('2')
+  })
+
+  it('opens the reaction picker when the trigger button is clicked', async () => {
+    const msg = makeMessage({ id: 5, body: 'Hello!' })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([msg]))
+      .mockResolvedValueOnce(streamOk()),
+    )
+    renderChatView()
+    await waitFor(() => screen.getByTestId(`reaction-trigger-${msg.id}`))
+
+    fireEvent.click(screen.getByTestId(`reaction-trigger-${msg.id}`))
+    expect(screen.getByTestId('reaction-picker')).toBeInTheDocument()
+  })
+
+  it('closes the picker on Escape key', async () => {
+    const msg = makeMessage({ id: 5, body: 'Hello!' })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([msg]))
+      .mockResolvedValueOnce(streamOk()),
+    )
+    renderChatView()
+    await waitFor(() => screen.getByTestId(`reaction-trigger-${msg.id}`))
+
+    fireEvent.click(screen.getByTestId(`reaction-trigger-${msg.id}`))
+    expect(screen.getByTestId('reaction-picker')).toBeInTheDocument()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByTestId('reaction-picker')).not.toBeInTheDocument())
+  })
+
+  it('optimistically increments count on chip click and rolls back on network failure', async () => {
+    const msg = makeMessage({
+      id: 5,
+      body: 'Hello!',
+      reactions: { '👍': { count: 1, users: [2], me: false } },
+    })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([msg]))
+      .mockResolvedValueOnce(streamOk())
+      .mockResolvedValueOnce({ ok: false, status: 500 }),
+    )
+    renderChatView()
+    const chip = await screen.findByTestId('reaction-chip-👍')
+    expect(chip.textContent).toContain('1')
+
+    fireEvent.click(chip)
+    await waitFor(() => expect(screen.getByTestId('reaction-chip-👍').textContent).toContain('2'))
+
+    // Network failed → rollback to original count
+    await waitFor(() => expect(screen.getByTestId('reaction-chip-👍').textContent).toContain('1'))
+  })
+
+  it('applies a reaction_added SSE event to the message chips', async () => {
+    const sse = streamWithController()
+    const msg = makeMessage({ id: 5, body: 'Hello!' })
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([msg]))
+      .mockResolvedValueOnce(sse.response),
+    )
+    renderChatView()
+    await waitFor(() => screen.getByText('Hello!'))
+
+    await act(async () => {
+      sse.push('reaction_added', {
+        message_id: 5,
+        conversation_id: 1,
+        user_id: 2,
+        emoji: '👍',
+        count: 1,
+      })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => expect(screen.getByTestId('reaction-chip-👍')).toBeInTheDocument())
+  })
 })
