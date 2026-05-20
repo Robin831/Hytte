@@ -134,15 +134,14 @@ export function waveformLocalStorageKey(messageId: number | string): string {
   return `voice-waveform:${messageId}`
 }
 
-// readCachedWaveform returns the cached waveform for the given message id, or
-// null if nothing is cached / the cache is corrupt. Safe to call in any
-// environment — falls back to null when localStorage is unavailable.
-export function readCachedWaveform(messageId: number | string): Waveform | null {
-  if (typeof window === 'undefined') return null
+// parseWaveformJSON parses a raw JSON string into a Waveform, applying the
+// same clamp/pad normalisation used everywhere waveform data is read. Returns
+// null when the string is unparseable or does not carry the expected shape.
+// Shared by readCachedWaveform (localStorage path) and parseVoiceMeta
+// (meta_json path) in ChatView so the two paths stay in sync.
+export function parseWaveformJSON(json: string): Waveform | null {
   try {
-    const raw = window.localStorage?.getItem(waveformLocalStorageKey(messageId))
-    if (!raw) return null
-    const parsed: unknown = JSON.parse(raw)
+    const parsed: unknown = JSON.parse(json)
     if (
       parsed
       && typeof parsed === 'object'
@@ -160,7 +159,22 @@ export function readCachedWaveform(messageId: number | string): Waveform | null 
       return { bars, durationMs }
     }
   } catch {
-    // Ignore parse / storage errors.
+    // Ignore parse errors.
+  }
+  return null
+}
+
+// readCachedWaveform returns the cached waveform for the given message id, or
+// null if nothing is cached / the cache is corrupt. Safe to call in any
+// environment — falls back to null when localStorage is unavailable.
+export function readCachedWaveform(messageId: number | string): Waveform | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage?.getItem(waveformLocalStorageKey(messageId))
+    if (!raw) return null
+    return parseWaveformJSON(raw)
+  } catch {
+    // Ignore storage errors.
   }
   return null
 }

@@ -16,7 +16,7 @@ import {
 } from './api'
 import { formatRelative } from './utils'
 import VoiceBubble from './voice/VoiceBubble'
-import { readCachedWaveform, DEFAULT_BAR_COUNT, type Waveform } from './voice/waveform'
+import { readCachedWaveform, parseWaveformJSON, DEFAULT_BAR_COUNT, type Waveform } from './voice/waveform'
 import * as voicePlayer from './voice/voicePlayer'
 
 interface ChatViewProps {
@@ -57,28 +57,7 @@ export interface ChatMessage {
 // so a malformed meta_json never blocks playback.
 function parseVoiceMeta(meta: string | null | undefined): Waveform | null {
   if (!meta) return null
-  try {
-    const parsed: unknown = JSON.parse(meta)
-    if (
-      parsed
-      && typeof parsed === 'object'
-      && Array.isArray((parsed as { bars?: unknown }).bars)
-      && typeof (parsed as { durationMs?: unknown }).durationMs === 'number'
-    ) {
-      const rawBars = (parsed as { bars: unknown[] }).bars.slice(0, DEFAULT_BAR_COUNT).map(v =>
-        typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0,
-      )
-      const bars = rawBars.length < DEFAULT_BAR_COUNT
-        ? [...rawBars, ...new Array(DEFAULT_BAR_COUNT - rawBars.length).fill(0)]
-        : rawBars
-      const rawDuration = (parsed as { durationMs: number }).durationMs
-      const durationMs = Number.isFinite(rawDuration) && rawDuration >= 0 ? rawDuration : 0
-      return { bars, durationMs }
-    }
-  } catch {
-    // Fall through to null — the bubble renders a flat waveform.
-  }
-  return null
+  return parseWaveformJSON(meta)
 }
 
 interface MemberInfo {

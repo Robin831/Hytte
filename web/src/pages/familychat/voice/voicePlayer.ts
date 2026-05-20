@@ -24,6 +24,10 @@ let audio: HTMLAudioElement | null = null
 let currentId: string | null = null
 let lastSrc: string | null = null
 let audioFactory: AudioFactory | null = null
+// pendingSeekMs queues a seek target for when loadedmetadata fires. Safari
+// silently drops currentTime assignments before duration is known, so callers
+// that do play().then(() => seek(x)) may land here before metadata loads.
+let pendingSeekMs: number | null = null
 
 const listeners = new Set<VoicePlayerListener>()
 
@@ -69,14 +73,27 @@ function notify(): void {
   }
 }
 
+function handleLoadedMetadata(): void {
+  if (pendingSeekMs !== null && audio) {
+    try {
+      audio.currentTime = pendingSeekMs / 1000
+    } catch {
+      // Safari may still reject the assignment; the user will start from 0.
+    }
+    pendingSeekMs = null
+  }
+  notify()
+}
+
 function teardown(): void {
+  pendingSeekMs = null
   if (!audio) return
   try { audio.pause() } catch { /* already paused */ }
   audio.removeEventListener('timeupdate', notify)
   audio.removeEventListener('play', notify)
   audio.removeEventListener('pause', notify)
   audio.removeEventListener('ended', notify)
-  audio.removeEventListener('loadedmetadata', notify)
+  audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
   audio.removeEventListener('seeked', notify)
   try { audio.src = '' } catch { /* ignore */ }
   audio = null
@@ -90,7 +107,7 @@ function ensureAudio(): HTMLAudioElement {
   audio.addEventListener('play', notify)
   audio.addEventListener('pause', notify)
   audio.addEventListener('ended', notify)
-  audio.addEventListener('loadedmetadata', notify)
+  audio.addEventListener('loadedmetadata', handleLoadedMetadata)
   audio.addEventListener('seeked', notify)
   return audio
 }
@@ -108,12 +125,15 @@ export function subscribe(listener: VoicePlayerListener): () => void {
 }
 
 // play attaches `src` to the singleton element (swapping out any previous
-// recording) and begins playback. Returns the play() promise so callers can
-// surface autoplay errors if needed.
+// recording) and begins playback. Autoplay errors are caught and swallowed —
+// the function always resolves. Callers that need to seek to an offset after
+// play should call seek() afterwards; any seek issued before loadedmetadata
+// fires is queued and applied automatically.
 export async function play(id: string, src: string): Promise<void> {
   const el = ensureAudio()
   if (currentId !== id || lastSrc !== src) {
     try { el.pause() } catch { /* ignore */ }
+    pendingSeekMs = null
     currentId = id
     lastSrc = src
     el.src = src
@@ -138,11 +158,20 @@ export function pause(): void {
 
 export function seek(positionMs: number): void {
   if (!audio) return
+  if (!Number.isFinite(audio.duration)) {
+    // Metadata has not loaded yet. Queue the seek so handleLoadedMetadata
+    // applies it once the duration is known. This is the common Safari path
+    // when seek() is called immediately after play() resolves.
+    pendingSeekMs = positionMs
+    notify()
+    return
+  }
+  pendingSeekMs = null
   const seconds = Math.max(0, positionMs / 1000)
   try {
     audio.currentTime = seconds
   } catch {
-    // Some browsers throw if currentTime is set before metadata loads.
+    // Some browsers may still throw after loadedmetadata on first load.
   }
   notify()
 }
