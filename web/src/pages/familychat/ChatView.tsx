@@ -65,10 +65,15 @@ function parseVoiceMeta(meta: string | null | undefined): Waveform | null {
       && Array.isArray((parsed as { bars?: unknown }).bars)
       && typeof (parsed as { durationMs?: unknown }).durationMs === 'number'
     ) {
-      const bars = (parsed as { bars: unknown[] }).bars.map(v =>
+      const rawBars = (parsed as { bars: unknown[] }).bars.slice(0, DEFAULT_BAR_COUNT).map(v =>
         typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0,
       )
-      return { bars, durationMs: (parsed as { durationMs: number }).durationMs }
+      const bars = rawBars.length < DEFAULT_BAR_COUNT
+        ? [...rawBars, ...new Array(DEFAULT_BAR_COUNT - rawBars.length).fill(0)]
+        : rawBars
+      const rawDuration = (parsed as { durationMs: number }).durationMs
+      const durationMs = Number.isFinite(rawDuration) && rawDuration >= 0 ? rawDuration : 0
+      return { bars, durationMs }
     }
   } catch {
     // Fall through to null — the bubble renders a flat waveform.
@@ -821,7 +826,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
           // it falls back to a localStorage cache (written immediately
           // after upload by the recorder) and finally to a flat waveform.
           const isVoiceNote = !isDeleted && !!attachmentUrl
-            && mime.startsWith('audio/webm')
+            && (mime.startsWith('audio/webm') || mime.startsWith('audio/ogg'))
             && !msg.body.trim()
           const cachedWaveform = isVoiceNote
             ? (parseVoiceMeta(msg.meta_json) ?? readCachedWaveform(msg.id))

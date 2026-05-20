@@ -22,6 +22,7 @@ type AudioFactory = () => HTMLAudioElement
 
 let audio: HTMLAudioElement | null = null
 let currentId: string | null = null
+let lastSrc: string | null = null
 let audioFactory: AudioFactory | null = null
 
 const listeners = new Set<VoicePlayerListener>()
@@ -79,6 +80,7 @@ function teardown(): void {
   audio.removeEventListener('seeked', notify)
   try { audio.src = '' } catch { /* ignore */ }
   audio = null
+  lastSrc = null
 }
 
 function ensureAudio(): HTMLAudioElement {
@@ -110,9 +112,10 @@ export function subscribe(listener: VoicePlayerListener): () => void {
 // surface autoplay errors if needed.
 export async function play(id: string, src: string): Promise<void> {
   const el = ensureAudio()
-  if (currentId !== id || el.src !== src) {
+  if (currentId !== id || lastSrc !== src) {
     try { el.pause() } catch { /* ignore */ }
     currentId = id
+    lastSrc = src
     el.src = src
     el.currentTime = 0
   }
@@ -181,4 +184,5 @@ export function setAudioFactory(factory: AudioFactory | null): void {
   teardown()
   audioFactory = factory
   currentId = null
+  lastSrc = null
 }

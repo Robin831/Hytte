@@ -108,7 +108,9 @@ describe('waveform localStorage cache', () => {
     const read = readCachedWaveform(99)
     expect(read).not.toBeNull()
     expect(read!.durationMs).toBe(1234)
-    expect(read!.bars).toEqual([0.1, 0.5, 1, 0])
+    expect(read!.bars).toHaveLength(DEFAULT_BAR_COUNT)
+    expect(read!.bars.slice(0, 4)).toEqual([0.1, 0.5, 1, 0])
+    expect(read!.bars.slice(4).every(v => v === 0)).toBe(true)
   })
 
   it('returns null for missing or malformed cache entries', () => {
@@ -126,6 +128,8 @@ describe('waveform localStorage cache', () => {
     )
     const read = readCachedWaveform('weird')
     expect(read).not.toBeNull()
-    expect(read!.bars).toEqual([0, 1, 0, 0.3])
+    expect(read!.bars).toHaveLength(DEFAULT_BAR_COUNT)
+    expect(read!.bars.slice(0, 4)).toEqual([0, 1, 0, 0.3])
+    expect(read!.bars.slice(4).every(v => v === 0)).toBe(true)
   })
 })

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type Keyboard
 import { useTranslation } from 'react-i18next'
 import { Play, Pause } from 'lucide-react'
 import * as voicePlayer from './voicePlayer'
+import { DEFAULT_BAR_COUNT } from './waveform'
 
 const KEYBOARD_SEEK_STEP_MS = 5000
 
@@ -66,7 +67,7 @@ export default function VoiceBubble({
     : 0
 
   const safeBars = useMemo(() => {
-    if (!Array.isArray(bars) || bars.length === 0) return new Array(32).fill(0)
+    if (!Array.isArray(bars) || bars.length === 0) return new Array(DEFAULT_BAR_COUNT).fill(0)
     return bars
   }, [bars])
   const barCount = safeBars.length
