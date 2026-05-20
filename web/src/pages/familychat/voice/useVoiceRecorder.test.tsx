@@ -124,11 +124,11 @@ function installPlatform(opts: { rejectGetUserMedia?: DOMException | null } = {}
       })
     }
     start(_timeslice?: number) {
-      this.rec.start()
+      ;(this.rec.start as () => void)()
       this.state = 'recording'
     }
     stop() {
-      this.rec.stop()
+      ;(this.rec.stop as () => void)()
       this.state = 'inactive'
     }
     static isTypeSupported(_: string) { return true }

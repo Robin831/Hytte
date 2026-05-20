@@ -152,12 +152,15 @@ describe('trimLeadingTrailingSilence', () => {
 
     class MockOfflineAudioContext {
       destination = {}
+      readonly numberOfChannels: number
+      readonly length: number
+      readonly sampleRate: number
 
-      constructor(
-        public readonly numberOfChannels: number,
-        public readonly length: number,
-        public readonly sampleRate: number,
-      ) {}
+      constructor(numberOfChannels: number, length: number, sampleRate: number) {
+        this.numberOfChannels = numberOfChannels
+        this.length = length
+        this.sampleRate = sampleRate
+      }
 
       createBuffer(channels: number, len: number, sr: number) {
         return makeFakeAudioBuffer({ channels, length: len, sampleRate: sr, fillValue: 0.1 })
@@ -207,7 +210,14 @@ describe('trimLeadingTrailingSilence', () => {
 
     class MockOfflineAudioContext {
       destination = {}
-      constructor(public numberOfChannels: number, public length: number, public sampleRate: number) {}
+      numberOfChannels: number
+      length: number
+      sampleRate: number
+      constructor(numberOfChannels: number, length: number, sampleRate: number) {
+        this.numberOfChannels = numberOfChannels
+        this.length = length
+        this.sampleRate = sampleRate
+      }
       createBuffer(c: number, l: number, sr: number) { return makeFakeAudioBuffer({ channels: c, length: l, sampleRate: sr, fillValue: 0.1 }) }
       createBufferSource() { return { buffer: null, connect: vi.fn(), start: vi.fn() } }
       startRendering() { return Promise.resolve(trimmedBuffer) }
