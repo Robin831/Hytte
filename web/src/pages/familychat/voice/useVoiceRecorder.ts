@@ -119,6 +119,17 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
   const onAutoCompleteRef = useRef<UseVoiceRecorderOptions['onAutoComplete']>(options.onAutoComplete)
   useEffect(() => { onAutoCompleteRef.current = options.onAutoComplete })
 
+  // Adjust levels length when barCount changes (rare). Use a useState-based
+  // comparison rather than a ref so we can call setState during render without
+  // triggering the react-hooks/set-state-in-effect or no-ref-during-render
+  // rules. levelsHistoryRef is reset in start() before each recording, so the
+  // temporary mismatch between recordings is harmless.
+  const [prevBarCount, setPrevBarCount] = useState(barCount)
+  if (prevBarCount !== barCount) {
+    setPrevBarCount(barCount)
+    setLevels(new Array(barCount).fill(0))
+  }
+
   const supported = isGetUserMediaAvailable() && isMediaRecorderAvailable()
 
   const clearAnimation = useCallback(() => {
@@ -183,13 +194,6 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
       pending?.resolve(null)
     }
   }, [fullTeardown])
-
-  // Reset the visible level bars whenever barCount changes (rare, but keeps
-  // levels.length === barCount as a stable contract for consumers).
-  useEffect(() => {
-    levelsHistoryRef.current = new Array(barCount).fill(0)
-    setLevels(new Array(barCount).fill(0))
-  }, [barCount])
 
   const sampleAmplitude = useCallback(() => {
     const analyser = analyserRef.current
