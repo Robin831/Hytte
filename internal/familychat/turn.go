@@ -107,8 +107,8 @@ type ICEConfig struct {
 	// TTL is the number of seconds the TURN credential is valid for. Clients
 	// should refetch the config and renegotiate the peer connection before
 	// this expires for calls that outlive the TTL. Zero when no TURN
-	// credential was issued (STUN-only or no auth).
-	TTL int `json:"ttl,omitempty"`
+	// credential was issued (STUN-only or static auth without an expiry).
+	TTL int `json:"ttl"`
 }
 
 // BuildICEConfig assembles the ICE server list at the supplied issue time.
@@ -192,8 +192,8 @@ func TurnConfigHandler() http.HandlerFunc {
 }
 
 // turnConfigHandler is the testable inner constructor. cfg is captured by
-// reference so tests can build it explicitly, and clock is injected so
-// tests can pin the expiry timestamp for deterministic HMAC assertions.
+// value (copied at construction time), and clock is injected so tests can
+// pin the expiry timestamp for deterministic HMAC assertions.
 func turnConfigHandler(cfg WebRTCConfig, clock func() time.Time) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())

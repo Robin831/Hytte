@@ -169,10 +169,11 @@ credential = base64(HMAC-SHA1(static-auth-secret, username))
 
 * `unix-expiry-seconds` is `now + WEBRTC_TURN_TTL_SECONDS` at the moment
   the Hytte handler builds the response.
-* `identity` is the authenticated user's id (or `hytte` for
+* `identity` is the authenticated user's numeric id (or `hytte` for
   internal/test callers). It lets you correlate TURN sessions with
-  application users in the coturn log without exposing user ids over
-  the wire.
+  application users in the coturn log without exposing the user's
+  email address or display name to the TURN server or other
+  participants.
 
 `internal/familychat/turn.go` implements both halves; the unit tests in
 `turn_test.go` pin the format against a known HMAC vector so the

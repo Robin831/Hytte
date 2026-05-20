@@ -1,2 +1,3 @@
 category: Added
 - **Family Chat: STUN/TURN ICE config endpoint** - Added `GET /api/familychat/turn` (session-auth gated, family_chat feature) that returns a `RTCConfiguration`-shaped JSON object the frontend can hand straight to `new RTCPeerConnection`. New env vars `WEBRTC_STUN_URLS`, `WEBRTC_TURN_URLS`, `WEBRTC_TURN_USERNAME`, `WEBRTC_TURN_CREDENTIAL`, `WEBRTC_TURN_SHARED_SECRET`, and `WEBRTC_TURN_TTL_SECONDS` configure the relay. When `WEBRTC_TURN_SHARED_SECRET` is set the handler mints short-lived ephemeral credentials per the coturn REST API spec (HMAC-SHA1 of `<unix-expiry>:<user_id>`); otherwise it returns the static username/credential, or STUN-only if no TURN config is present. Includes deploy instructions in `docs/familychat-turn.md`. (Hytte-n3f6)
+
