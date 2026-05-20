@@ -112,6 +112,11 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // it was triggered by a touch long-press (open picker, suppress native menu)
   // or a mouse right-click (leave native menu alone; picker is on hover button).
   const lastPointerTypeRef = useRef<string>('mouse')
+  // pickerTriggerRef anchors the open reaction picker to whichever trigger
+  // (hover button or bubble long-press target) opened it. The picker portals
+  // out to document.body so it needs an explicit anchor rect rather than
+  // relying on its position in the DOM.
+  const pickerTriggerRef = useRef<HTMLElement | null>(null)
   useEffect(() => { currentUserIdRef.current = user?.id }, [user?.id])
 
   // Focus management + Escape handling for the delete confirmation modal,
@@ -857,6 +862,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                       // MoreVertical button for own messages.
                       if (lastPointerTypeRef.current === 'touch') {
                         e.preventDefault()
+                        pickerTriggerRef.current = e.currentTarget
                         setPickerForMsgId(msg.id)
                       }
                     }}
@@ -904,7 +910,14 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                 {!isDeleted && !isEditing && (
                   <button
                     type="button"
-                    onClick={() => setPickerForMsgId(pickerOpen ? null : msg.id)}
+                    ref={(el) => {
+                      if (pickerOpen) pickerTriggerRef.current = el
+                    }}
+                    onClick={(e) => {
+                      const willOpen = !pickerOpen
+                      if (willOpen) pickerTriggerRef.current = e.currentTarget
+                      setPickerForMsgId(willOpen ? msg.id : null)
+                    }}
                     aria-label={t('reactions.pickerLabel')}
                     className={`absolute -top-3 ${isOwn ? '-left-2' : '-right-2'} p-1 rounded-full bg-gray-800 border border-gray-700 text-gray-300 hover:text-white opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer`}
                     data-testid={`reaction-trigger-${msg.id}`}
@@ -972,6 +985,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                   <ReactionPicker
                     onPick={(emoji) => handlePickFromPicker(msg.id, emoji)}
                     onClose={() => setPickerForMsgId(null)}
+                    triggerRef={pickerTriggerRef}
                   />
                 )}
               </div>

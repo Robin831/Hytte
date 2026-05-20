@@ -1,0 +1,2 @@
+category: Fixed
+- **Family Chat reaction picker positioning + sizing** - The emoji picker now portals to the document body and flips above or below the message bubble based on available space, so it no longer clips off-screen for messages near the top of the chat. The grid was widened to 6 columns with larger 44px tap targets, more padding, and a clearer drop shadow for comfortable mobile use. (Hytte-i6e8)
