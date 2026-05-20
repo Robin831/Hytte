@@ -70,10 +70,13 @@ type ReactionSummary struct {
 // `:shortcode:` whose body is on the allowlist above. Anything else (empty,
 // too long, multiple clusters, plain ASCII letters, etc.) is rejected.
 //
-// The grapheme heuristic is intentionally conservative: we walk runes, fold
-// trailing combining marks and emoji modifiers into the leading cluster, and
-// require that at least one rune in the input is a symbol/pictograph rune
-// (so a plain word like "hi" cannot pass).
+// The grapheme heuristic covers:
+//   - Standard emoji in the supplementary planes (👍, 🎉, etc.)
+//   - Emoji with variation selector 16 (❤️)
+//   - Skin-tone modifier sequences (👍🏽)
+//   - ZWJ sequences (👨‍👩‍👧)
+//   - Regional indicator flag pairs (🇳🇴)
+//   - Keycap sequences ([0-9#*] + U+FE0F? + U+20E3, e.g. 1️⃣)
 func validateEmoji(s string) error {
 	if s == "" {
 		return ErrInvalidEmoji
@@ -102,13 +105,28 @@ func validateEmoji(s string) error {
 		return nil
 	}
 
-	// Single grapheme-cluster path. Walk runes; the first rune must be a
-	// pictographic/symbol/punctuation rune (covers emoji, hearts, etc.).
-	// Subsequent runes are only allowed if they're combining marks,
-	// variation selectors, ZWJs, or further symbol runes that compose with
-	// the lead (skin-tone modifiers, regional indicators, etc.).
+	// Keycap sequences: [0-9#*] + optional U+FE0F (VS16) + U+20E3 (enclosing keycap).
+	// These start with an ASCII rune so we handle them before the general walk.
+	runes := []rune(s)
+	if isKeycapBase(runes[0]) {
+		if (len(runes) == 2 && runes[1] == 0x20E3) ||
+			(len(runes) == 3 && runes[1] == 0xFE0F && runes[2] == 0x20E3) {
+			return nil
+		}
+		return ErrInvalidEmoji
+	}
+
+	// Single grapheme-cluster walk. State tracks whether we just saw a ZWJ
+	// (so the next emoji lead may continue a ZWJ sequence) or a regional
+	// indicator (so one more regional indicator completes a flag pair).
+	// A second standalone emoji lead — i.e. one that is neither a ZWJ
+	// continuation nor the second half of a flag pair — is rejected so that
+	// inputs like "👍👍" or "👍🎉" cannot slip through.
 	first := true
 	gotSymbol := false
+	afterZWJ := false
+	lastWasRegional := false
+	consumedFlagPair := false
 	for _, r := range s {
 		if first {
 			first = false
@@ -116,11 +134,33 @@ func validateEmoji(s string) error {
 				return ErrInvalidEmoji
 			}
 			gotSymbol = true
+			lastWasRegional = isRegionalIndicator(r)
 			continue
 		}
-		if !isEmojiCombiner(r) && !isEmojiLead(r) {
+		// Check combiner before lead: skin-tone modifiers (U+1F3FB–U+1F3FF) fall
+		// inside the isEmojiLead supplementary range; treating them as combiners
+		// here is the correct semantics.
+		if isEmojiCombiner(r) {
+			afterZWJ = r == 0x200D
+			lastWasRegional = false
+			continue
+		}
+		if isEmojiLead(r) {
+			if afterZWJ {
+				// ZWJ sequence continuation (e.g. 👨‍👩‍👧).
+				afterZWJ = false
+				lastWasRegional = isRegionalIndicator(r)
+				continue
+			}
+			if lastWasRegional && isRegionalIndicator(r) && !consumedFlagPair {
+				// Second regional indicator completes a flag pair (e.g. 🇳🇴).
+				consumedFlagPair = true
+				lastWasRegional = false
+				continue
+			}
 			return ErrInvalidEmoji
 		}
+		return ErrInvalidEmoji
 	}
 	if !gotSymbol {
 		return ErrInvalidEmoji
@@ -174,9 +214,23 @@ func isEmojiCombiner(r rune) bool {
 	return false
 }
 
+// isKeycapBase reports whether r is an ASCII rune that can begin a keycap
+// sequence ([0-9#*] + U+FE0F? + U+20E3).
+func isKeycapBase(r rune) bool {
+	return (r >= '0' && r <= '9') || r == '#' || r == '*'
+}
+
+// isRegionalIndicator reports whether r is a Unicode regional indicator
+// letter (U+1F1E6–U+1F1FF). Two consecutive regional indicators form a
+// flag emoji (e.g. 🇳🇴 = U+1F1F3 U+1F1F4).
+func isRegionalIndicator(r rune) bool {
+	return r >= 0x1F1E6 && r <= 0x1F1FF
+}
+
 // reactionEventPayload is the JSON envelope broadcast over SSE for reaction
-// add/remove events. Recipients compute the `me` flag themselves by comparing
-// UserID to the viewer.
+// add/remove events. It intentionally omits a `me` field: emitting per-viewer
+// data would require per-subscriber payloads. Clients derive `me` by comparing
+// UserID to the authenticated viewer's own ID.
 type reactionEventPayload struct {
 	MessageID      int64  `json:"message_id"`
 	ConversationID int64  `json:"conversation_id"`
@@ -223,7 +277,7 @@ func addReactionHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 			return
 		}
 
-		count, err := addReaction(db, convID, msgID, user.ID, emoji)
+		count, changed, err := addReaction(db, convID, msgID, user.ID, emoji)
 		if err != nil {
 			if errors.Is(err, ErrForbidden) {
 				notFound(w)
@@ -234,7 +288,7 @@ func addReactionHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 			return
 		}
 
-		if hub != nil {
+		if hub != nil && changed {
 			hub.Publish(convID, Event{
 				Type: EventReactionAdded,
 				Data: reactionEventPayload{
@@ -276,7 +330,7 @@ func removeReactionHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 			return
 		}
 
-		count, err := removeReaction(db, convID, msgID, user.ID, emoji)
+		count, changed, err := removeReaction(db, convID, msgID, user.ID, emoji)
 		if err != nil {
 			if errors.Is(err, ErrForbidden) {
 				notFound(w)
@@ -287,7 +341,7 @@ func removeReactionHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 			return
 		}
 
-		if hub != nil {
+		if hub != nil && changed {
 			hub.Publish(convID, Event{
 				Type: EventReactionRemoved,
 				Data: reactionEventPayload{
@@ -304,40 +358,53 @@ func removeReactionHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 }
 
 // addReaction validates membership + message ownership of the conversation,
-// inserts the reaction row (ignoring PK conflicts), and returns the new
-// count for that emoji on that message.
-func addReaction(db *sql.DB, convID, msgID, userID int64, emoji string) (int, error) {
+// inserts the reaction row (ignoring PK conflicts), and returns the new count
+// for that emoji on that message plus a boolean indicating whether the row was
+// newly inserted (false means the reaction already existed — a no-op).
+func addReaction(db *sql.DB, convID, msgID, userID int64, emoji string) (int, bool, error) {
 	if err := requireMessageInConversation(db, convID, msgID, userID); err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	now := time.Now().UTC().Format(timeFormat)
-	if _, err := db.Exec(
+	res, err := db.Exec(
 		`INSERT INTO family_chat_message_reactions (message_id, user_id, emoji, reacted_at)
 		 VALUES (?, ?, ?, ?)
 		 ON CONFLICT(message_id, user_id, emoji) DO NOTHING`,
 		msgID, userID, emoji, now,
-	); err != nil {
-		return 0, fmt.Errorf("insert reaction: %w", err)
+	)
+	if err != nil {
+		return 0, false, fmt.Errorf("insert reaction: %w", err)
 	}
-	return reactionCount(db, msgID, emoji)
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, false, err
+	}
+	count, err := reactionCount(db, msgID, emoji)
+	return count, n > 0, err
 }
 
 // removeReaction validates membership + message ownership of the conversation,
-// deletes the (user, emoji) row, and returns the new count for that emoji.
-// Removing a reaction that does not exist is not an error (still returns the
-// current count of 0).
-func removeReaction(db *sql.DB, convID, msgID, userID int64, emoji string) (int, error) {
+// deletes the (user, emoji) row, and returns the new count for that emoji plus
+// a boolean indicating whether a row was actually deleted. Removing a reaction
+// that does not exist is not an error (returns count 0, changed false).
+func removeReaction(db *sql.DB, convID, msgID, userID int64, emoji string) (int, bool, error) {
 	if err := requireMessageInConversation(db, convID, msgID, userID); err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	if _, err := db.Exec(
+	res, err := db.Exec(
 		`DELETE FROM family_chat_message_reactions
 		 WHERE message_id = ? AND user_id = ? AND emoji = ?`,
 		msgID, userID, emoji,
-	); err != nil {
-		return 0, fmt.Errorf("delete reaction: %w", err)
+	)
+	if err != nil {
+		return 0, false, fmt.Errorf("delete reaction: %w", err)
 	}
-	return reactionCount(db, msgID, emoji)
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, false, err
+	}
+	count, err := reactionCount(db, msgID, emoji)
+	return count, n > 0, err
 }
 
 // requireMessageInConversation returns ErrForbidden when userID is not a

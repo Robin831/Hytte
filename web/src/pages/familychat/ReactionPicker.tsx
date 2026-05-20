@@ -23,6 +23,7 @@ export default function ReactionPicker({ onPick, onClose }: ReactionPickerProps)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    containerRef.current?.focus()
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         onClose()
@@ -43,8 +44,10 @@ export default function ReactionPicker({ onPick, onClose }: ReactionPickerProps)
     <div
       ref={containerRef}
       role="dialog"
+      aria-modal={true}
       aria-label={t('reactions.pickerLabel')}
-      className="absolute z-30 bottom-full mb-2 right-0 bg-gray-800 border border-gray-700 rounded-lg shadow-lg p-2 grid grid-cols-4 gap-1"
+      tabIndex={-1}
+      className="absolute z-30 bottom-full mb-2 right-0 bg-gray-800 border border-gray-700 rounded-lg shadow-lg p-2 grid grid-cols-4 gap-1 outline-none"
       data-testid="reaction-picker"
     >
       {PICKER_EMOJIS.map(emoji => (

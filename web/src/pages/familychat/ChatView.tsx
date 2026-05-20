@@ -82,6 +82,10 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // (recreated only when conversationId changes) can read the most recent
   // value without forcing the effect to re-run on auth changes.
   const currentUserIdRef = useRef<number | undefined>(user?.id)
+  // lastPointerTypeRef is set by onPointerDown so onContextMenu knows whether
+  // it was triggered by a touch long-press (open picker, suppress native menu)
+  // or a mouse right-click (leave native menu alone; picker is on hover button).
+  const lastPointerTypeRef = useRef<string>('mouse')
   useEffect(() => { currentUserIdRef.current = user?.id }, [user?.id])
 
   const rtf = useMemo(
@@ -433,10 +437,14 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         await addReaction(conversationId, msgId, emoji)
       }
     } catch {
-      // Roll back to the pre-toggle snapshot. The eventual SSE event from
-      // any successful interaction is still the source of truth.
+      // Roll back only the reactions field to the pre-toggle snapshot. Rolling
+      // back the whole message would clobber any concurrent SSE updates (edits,
+      // other reactions) that arrived between the optimistic update and the
+      // network failure.
       if (snapshot) {
-        setMessages(prev => prev.map(m => (m.id === msgId ? snapshot : m)))
+        setMessages(prev => prev.map(m =>
+          m.id === msgId ? { ...m, reactions: snapshot.reactions } : m,
+        ))
       }
     }
   }, [conversationId, userId, messages])
@@ -588,7 +596,17 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                       ? 'bg-blue-600 text-white rounded-br-sm'
                       : 'bg-gray-800 text-gray-100 rounded-bl-sm'
                   }`}
-                  onContextMenu={(e) => { e.preventDefault(); setPickerForMsgId(msg.id) }}
+                  onPointerDown={(e) => { lastPointerTypeRef.current = e.pointerType }}
+                  onContextMenu={(e) => {
+                    // Only intercept touch long-press (suppress native menu, open
+                    // picker). Mouse right-clicks keep the native menu so users
+                    // can copy text/images; the picker is reachable via the hover
+                    // button (Smile icon) on desktop.
+                    if (lastPointerTypeRef.current === 'touch') {
+                      e.preventDefault()
+                      setPickerForMsgId(msg.id)
+                    }
+                  }}
                 >
                   {attachmentUrl && isImage && (
                     <button

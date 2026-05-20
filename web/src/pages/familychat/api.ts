@@ -39,9 +39,9 @@ export async function removeReaction(convID: number, msgID: number, emoji: strin
   if (!res.ok) throw new Error(`remove reaction failed: ${res.status}`)
 }
 
-// applyReactionEvent mutates a reaction map in place to reflect an
-// add/remove SSE event. Returns a NEW object so React state updates trigger
-// re-renders even when the bucket fields didn't change identity.
+// applyReactionEvent returns a new reaction map reflecting an add/remove SSE
+// event. The input map is never mutated; a shallow clone is always returned so
+// React state updates trigger re-renders even when bucket fields are unchanged.
 export function applyReactionEvent(
   current: ReactionMap | undefined,
   evt: { user_id: number; emoji: string; count: number },

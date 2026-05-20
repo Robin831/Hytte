@@ -9,9 +9,9 @@ interface ReactionChipsProps {
 export default function ReactionChips({ reactions, onToggle }: ReactionChipsProps) {
   const { t } = useTranslation('familyChat')
   if (!reactions) return null
-  // Sort emoji keys for stable display order across renders. The backend
-  // returns the map keyed by emoji string; iteration order over a JS Map
-  // mirrors insertion order, which is non-deterministic across reloads.
+  // Sort emoji keys for stable display order across renders. reactions is a
+  // plain JSON object; Go map serialization order is non-deterministic, so
+  // without sorting the chips can shuffle between renders.
   const emojis = Object.keys(reactions).sort()
   if (emojis.length === 0) return null
   return (

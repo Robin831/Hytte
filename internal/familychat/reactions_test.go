@@ -46,6 +46,15 @@ func TestValidateEmoji(t *testing.T) {
 		{"injection attempt", "<script>", true},
 		{"shortcode with bad chars", ":bad chars:", true},
 		{"shortcode missing trailing", ":thumbsup", true},
+		// Keycap sequences (digit/# /* + VS16? + enclosing keycap).
+		{"keycap 1", "1️⃣", false},
+		{"keycap hash", "#️⃣", false},
+		{"keycap star", "*️⃣", false},
+		{"keycap without VS16", "1⃣", false},
+		{"bare digit without keycap", "1", true},
+		// Multi-emoji inputs must be rejected (only a single cluster is allowed).
+		{"two identical emoji", "👍👍", true},
+		{"two different emoji", "👍🎉", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -182,7 +191,7 @@ func TestRemoveReactionHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create message: %v", err)
 	}
-	if _, err := addReaction(db, convID, msg.ID, 2, "👍"); err != nil {
+	if _, _, err := addReaction(db, convID, msg.ID, 2, "👍"); err != nil {
 		t.Fatalf("seed reaction: %v", err)
 	}
 
@@ -217,13 +226,13 @@ func TestListMessagesHandler_EmbedsReactions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create message: %v", err)
 	}
-	if _, err := addReaction(db, convID, msg.ID, 1, "👍"); err != nil {
+	if _, _, err := addReaction(db, convID, msg.ID, 1, "👍"); err != nil {
 		t.Fatalf("react 1: %v", err)
 	}
-	if _, err := addReaction(db, convID, msg.ID, 2, "👍"); err != nil {
+	if _, _, err := addReaction(db, convID, msg.ID, 2, "👍"); err != nil {
 		t.Fatalf("react 2: %v", err)
 	}
-	if _, err := addReaction(db, convID, msg.ID, 3, "🎉"); err != nil {
+	if _, _, err := addReaction(db, convID, msg.ID, 3, "🎉"); err != nil {
 		t.Fatalf("react 3: %v", err)
 	}
 
@@ -285,7 +294,7 @@ func TestListMessagesHandler_ReactionsCappedAt20Users(t *testing.T) {
 		t.Fatalf("create message: %v", err)
 	}
 	for i := int64(1); i <= userCount; i++ {
-		if _, err := addReaction(db, convID, msg.ID, i, "🔥"); err != nil {
+		if _, _, err := addReaction(db, convID, msg.ID, i, "🔥"); err != nil {
 			t.Fatalf("react %d: %v", i, err)
 		}
 	}
