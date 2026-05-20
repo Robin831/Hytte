@@ -38,18 +38,41 @@ func InsertCall(db *sql.DB, convID, initiatorUserID int64, callID string) error 
 	return err
 }
 
-// MarkAnswered flips a ringing call to answered. A no-op when the call has
-// already been ended or marked missed, which keeps the relay race-safe: a
-// late answer that arrives after the initiator has hung up does not resurrect
-// the call.
+// MarkAnswered flips a ringing call to answered. Returns ErrCallNotFound when
+// no row exists for (convID, callID) so the handler can refuse to relay
+// phantom answer events for call_ids that never had a corresponding offer.
+// When the row exists but is no longer in 'ringing' state (already answered,
+// ended, or missed) the call is a no-op and returns nil — keeping the relay
+// race-safe: a late answer that arrives after the initiator has hung up does
+// not resurrect the call.
 func MarkAnswered(db *sql.DB, convID int64, callID string) error {
-	_, err := db.Exec(
-		`UPDATE family_chat_calls
-		    SET status = ?
-		  WHERE conversation_id = ? AND call_id = ? AND status = ?`,
-		CallStatusAnswered, convID, callID, CallStatusRinging,
-	)
-	return err
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var existing string
+	err = tx.QueryRow(
+		`SELECT status FROM family_chat_calls WHERE conversation_id = ? AND call_id = ?`,
+		convID, callID,
+	).Scan(&existing)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrCallNotFound
+		}
+		return err
+	}
+	if existing != CallStatusRinging {
+		return tx.Commit()
+	}
+	if _, err := tx.Exec(
+		`UPDATE family_chat_calls SET status = ? WHERE conversation_id = ? AND call_id = ?`,
+		CallStatusAnswered, convID, callID,
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // MarkEnded finalises a call. If the call was never answered (status is still

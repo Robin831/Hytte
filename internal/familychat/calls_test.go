@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -259,6 +260,86 @@ func TestCallOffer_DuplicateCallIDIsIdempotent(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("duplicate offer wrote %d rows, want 1", n)
+	}
+}
+
+func TestCallAnswerAndEnd_PhantomCallReturns404(t *testing.T) {
+	// /answer and /end for a call_id that was never offered must not relay
+	// SSE events to the rest of the conversation — otherwise any member can
+	// fan phantom call_answer / call_end events at everyone else.
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+
+	hub := NewHub()
+	bobSub := hub.Subscribe(2, convID)
+	defer hub.Unsubscribe(convID, bobSub)
+
+	sender := func(int64, []byte) error { return nil }
+	srv := httptest.NewServer(callsRouter(t, db, hub, sender, &auth.User{ID: 1, Name: "Alice"}, true))
+	defer srv.Close()
+
+	for _, ep := range []string{"answer", "end"} {
+		u := fmt.Sprintf("%s/api/familychat/conversations/%d/calls/no-such-call/%s", srv.URL, convID, ep)
+		resp, err := http.Post(u, "application/json", strings.NewReader(`{"data":{}}`))
+		if err != nil {
+			t.Fatalf("post %s: %v", ep, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("phantom %s: got %d, want 404", ep, resp.StatusCode)
+		}
+	}
+
+	// No SSE event should have been delivered.
+	select {
+	case evt := <-bobSub.Events():
+		t.Errorf("phantom call leaked SSE event: %+v", evt)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestCallOffer_WebpushURLEncodesCallID(t *testing.T) {
+	// call_id is client-supplied so the deep link in the webpush payload must
+	// URL-encode it; otherwise a value containing reserved characters
+	// (spaces, '&', etc.) would corrupt the link.
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+
+	var captured []byte
+	sender := func(_ int64, payload []byte) error {
+		captured = append([]byte(nil), payload...)
+		return nil
+	}
+	srv := httptest.NewServer(callsRouter(t, db, NewHub(), sender, &auth.User{ID: 1, Name: "Alice"}, true))
+	defer srv.Close()
+
+	// space + '&' is enough to exercise QueryEscape vs PathEscape divergence:
+	// QueryEscape encodes both ('+' and '%26'), PathEscape leaves '&' alone.
+	callID := "weird id&foo"
+	postJSON(t,
+		fmt.Sprintf("%s/api/familychat/conversations/%d/calls/%s/offer", srv.URL, convID, url.PathEscape(callID)),
+		`{"data":{"sdp":"v=0..."}}`,
+	)
+
+	if captured == nil {
+		t.Fatal("expected a push payload to be captured")
+	}
+	var note push.Notification
+	if err := json.Unmarshal(captured, &note); err != nil {
+		t.Fatalf("decode push payload: %v", err)
+	}
+	want := fmt.Sprintf("/familychat/%d?call=%s", convID, url.QueryEscape(callID))
+	if note.URL != want {
+		t.Errorf("URL=%q, want %q", note.URL, want)
+	}
+	// Defensive: the encoded URL must not contain raw control chars or '&'
+	// that could be mistaken for an extra query parameter delimiter.
+	if strings.Contains(note.URL[strings.Index(note.URL, "?call=")+len("?call="):], "&") {
+		t.Errorf("URL %q embeds an unescaped '&' after the call= value", note.URL)
 	}
 }
 

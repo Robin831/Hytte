@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -181,6 +182,13 @@ func callAnswerHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 		}
 
 		if err := MarkAnswered(db, convID, callID); err != nil {
+			if errors.Is(err, ErrCallNotFound) {
+				// Refuse to relay phantom answer events for call_ids that were
+				// never offered — otherwise any member could spam fake
+				// call_answer events at the rest of the conversation.
+				notFound(w)
+				return
+			}
 			log.Printf("familychat: mark answered conv=%d call=%s: %v", convID, callID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update call"})
 			return
@@ -258,7 +266,14 @@ func callEndHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 		}
 
 		status, err := MarkEnded(db, convID, callID)
-		if err != nil && !errors.Is(err, ErrCallNotFound) {
+		if err != nil {
+			if errors.Is(err, ErrCallNotFound) {
+				// Refuse to relay phantom end events for call_ids that were
+				// never offered. Without this, any member could fan a fake
+				// call_end out to the entire conversation.
+				notFound(w)
+				return
+			}
 			log.Printf("familychat: mark ended conv=%d call=%s: %v", convID, callID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update call"})
 			return
@@ -292,10 +307,12 @@ func notifyCallRecipients(db *sql.DB, hub *Hub, sender PushSenderFunc, convID, i
 		return
 	}
 
+	// callID is client-supplied; QueryEscape so values containing reserved
+	// URL characters (or stray '?'/'&'/spaces) cannot break the deep link.
 	note := push.Notification{
 		Title:   initiatorName,
 		Body:    "Incoming call",
-		URL:     fmt.Sprintf("/familychat/%d?call=%s", convID, callID),
+		URL:     fmt.Sprintf("/familychat/%d?call=%s", convID, url.QueryEscape(callID)),
 		Tag:     fmt.Sprintf("familychat-call-%d", convID),
 		Urgency: "high",
 	}
