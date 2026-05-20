@@ -30,6 +30,12 @@ const (
 
 // allowedAttachmentMimes is the strict allowlist of accepted upload types.
 // Anything else is rejected with 400 before the file ever hits disk.
+//
+// audio/webm and audio/ogg cover MediaRecorder voice-note output across
+// browsers: Chromium emits audio/webm;codecs=opus, Firefox emits
+// audio/ogg;codecs=opus. application/ogg is included as an alias because
+// http.DetectContentType returns it for OggS-prefixed bodies — without it,
+// real OGG audio uploads would be rejected by the sniff path.
 var allowedAttachmentMimes = map[string]struct{}{
 	"image/jpeg":      {},
 	"image/png":       {},
@@ -39,6 +45,9 @@ var allowedAttachmentMimes = map[string]struct{}{
 	"application/pdf": {},
 	"audio/mpeg":      {},
 	"audio/mp4":       {},
+	"audio/webm":      {},
+	"audio/ogg":       {},
+	"application/ogg": {},
 }
 
 // attachmentRoot returns the base directory under which Family Chat

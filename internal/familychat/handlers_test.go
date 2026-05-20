@@ -74,7 +74,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 			created_at      TEXT NOT NULL DEFAULT '',
 			edited_at       TEXT,
 			deleted_at      TEXT,
-			deleted_by      INTEGER REFERENCES users(id) ON DELETE SET NULL
+			deleted_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			meta_json       TEXT
 		);
 		CREATE TABLE IF NOT EXISTS vapid_keys (
 			id          INTEGER PRIMARY KEY,
@@ -411,6 +412,149 @@ func TestPostMessageHandler_AttachmentEncryption(t *testing.T) {
 	}
 	if storedMime != "image/jpeg" {
 		t.Errorf("attachment_mime should be server-determined image/jpeg, got %q", storedMime)
+	}
+}
+
+func TestPostMessageHandler_MetaJSONRoundTrip(t *testing.T) {
+	// meta_json is the opaque client-supplied JSON blob used by voice notes to
+	// persist the precomputed waveform + duration. It must:
+	//   - encrypt at rest (the body convention),
+	//   - survive a list round-trip with byte-for-byte equality,
+	//   - default to nil (JSON null) when the client omits it.
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	convID := seedConversation(t, db, 1, "Family")
+
+	idStr := strconv.FormatInt(convID, 10)
+	// Send a representative voice-note metadata blob. The server stores and
+	// returns the string verbatim; we never parse the inner JSON.
+	const metaJSON = `{"waveform":[0.1,0.5,0.9,0.4],"duration_ms":3200,"codec":"opus"}`
+	payload := fmt.Sprintf(`{"body":"audio","meta_json":%q}`, metaJSON)
+	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations/"+idStr+"/messages", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	PostMessageHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		Message Message `json:"message"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+	if created.Message.MetaJSON == nil || *created.Message.MetaJSON != metaJSON {
+		t.Errorf("create response meta_json = %v, want %q", created.Message.MetaJSON, metaJSON)
+	}
+
+	// Stored value must be encrypted (enc: prefix) so a DB dump can't expose
+	// the waveform without the encryption key.
+	var stored sql.NullString
+	if err := db.QueryRow(`SELECT meta_json FROM family_chat_messages WHERE id = ?`, created.Message.ID).Scan(&stored); err != nil {
+		t.Fatalf("read stored meta_json: %v", err)
+	}
+	if !stored.Valid {
+		t.Fatal("meta_json stored as NULL when client supplied a value")
+	}
+	if !strings.HasPrefix(stored.String, "enc:") {
+		t.Errorf("meta_json not encrypted at rest: %q", stored.String)
+	}
+
+	// Read back via the list handler — the decrypted plaintext must equal the
+	// originally posted bytes.
+	listReq := withUser(httptest.NewRequest("GET", "/api/familychat/conversations/"+idStr+"/messages", nil), 1)
+	listReq = withChiParam(listReq, "id", idStr)
+	listRec := httptest.NewRecorder()
+	ListMessagesHandler(db).ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 list, got %d: %s", listRec.Code, listRec.Body.String())
+	}
+	var list struct {
+		Messages []Message `json:"messages"`
+	}
+	if err := json.NewDecoder(listRec.Body).Decode(&list); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(list.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(list.Messages))
+	}
+	if list.Messages[0].MetaJSON == nil || *list.Messages[0].MetaJSON != metaJSON {
+		t.Errorf("list meta_json = %v, want %q", list.Messages[0].MetaJSON, metaJSON)
+	}
+}
+
+func TestPostMessageHandler_MetaJSONOmittedReturnsNull(t *testing.T) {
+	// When the client omits meta_json the column must stay NULL and the API
+	// response must marshal it as JSON null (so the frontend's localStorage
+	// fallback for legacy voice notes still works).
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	convID := seedConversation(t, db, 1, "Family")
+
+	idStr := strconv.FormatInt(convID, 10)
+	payload := `{"body":"plain text"}`
+	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations/"+idStr+"/messages", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	PostMessageHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		Message Message `json:"message"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if created.Message.MetaJSON != nil {
+		t.Errorf("expected nil meta_json when omitted, got %q", *created.Message.MetaJSON)
+	}
+
+	// JSON envelope must explicitly include `"meta_json":null` so clients can
+	// distinguish "field present, value null" from "field missing".
+	bodyBytes, _ := json.Marshal(created)
+	if !strings.Contains(string(bodyBytes), `"meta_json":null`) {
+		t.Errorf("envelope missing explicit null meta_json: %s", bodyBytes)
+	}
+
+	var stored sql.NullString
+	if err := db.QueryRow(`SELECT meta_json FROM family_chat_messages WHERE id = ?`, created.Message.ID).Scan(&stored); err != nil {
+		t.Fatalf("read stored: %v", err)
+	}
+	if stored.Valid {
+		t.Errorf("meta_json should be NULL when omitted, got %q", stored.String)
+	}
+}
+
+func TestPostMessageHandler_MetaJSONTooLong(t *testing.T) {
+	// A 32 KiB blob exceeds the 16 KiB cap. The handler must reject before
+	// touching the DB so an oversized waveform cannot bloat the conversation.
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	convID := seedConversation(t, db, 1, "Family")
+
+	idStr := strconv.FormatInt(convID, 10)
+	huge := strings.Repeat("a", maxMetaJSONLen+1)
+	payload := fmt.Sprintf(`{"body":"audio","meta_json":%q}`, huge)
+	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations/"+idStr+"/messages", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	PostMessageHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized meta_json, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM family_chat_messages WHERE conversation_id = ?`, convID).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("rejected message persisted (%d rows)", n)
 	}
 }
 
