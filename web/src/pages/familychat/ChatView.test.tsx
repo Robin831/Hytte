@@ -962,8 +962,11 @@ class FakeRtcPeerConnection {
 // installCallEnv stubs the browser APIs the voice-call hook touches so the
 // regular ChatView SSE fetch paths can drive the call state machine without
 // poking at a real audio device.
+let _originalMediaDevicesDescriptor: PropertyDescriptor | undefined
+
 function installCallEnv() {
   vi.stubGlobal('RTCPeerConnection', FakeRtcPeerConnection as unknown as typeof RTCPeerConnection)
+  _originalMediaDevicesDescriptor = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices')
   const sharedStream = makeFakeAudioStream()
   const getUserMedia = vi.fn(async () => sharedStream)
   Object.defineProperty(navigator, 'mediaDevices', {
@@ -974,7 +977,12 @@ function installCallEnv() {
 }
 
 function uninstallCallEnv() {
-  delete (navigator as unknown as Record<string, unknown>).mediaDevices
+  if (_originalMediaDevicesDescriptor !== undefined) {
+    Object.defineProperty(navigator, 'mediaDevices', _originalMediaDevicesDescriptor)
+  } else {
+    delete (navigator as unknown as Record<string, unknown>).mediaDevices
+  }
+  _originalMediaDevicesDescriptor = undefined
 }
 
 describe('ChatView – call UI', () => {
