@@ -95,6 +95,10 @@ class FakePeerConnection {
   }
 }
 
+function makeFakePeerConnection(cfg: RTCConfiguration): RTCPeerConnection {
+  return new FakePeerConnection(cfg) as unknown as RTCPeerConnection
+}
+
 interface FetchCall {
   url: string
   method: string
@@ -174,7 +178,7 @@ describe('useVoiceCall — outgoing call', () => {
   it('fetches TURN config, creates an offer, and POSTs it to the relay', async () => {
     const fetchMock = installFetchMock()
     installRtcGlobals()
-    const factory = vi.fn((cfg: RTCConfiguration) => new FakePeerConnection(cfg))
+    const factory = vi.fn(makeFakePeerConnection)
 
     const { result } = renderHook(() => useVoiceCall({
       conversationId: 7,
@@ -220,7 +224,7 @@ describe('useVoiceCall — outgoing call', () => {
     const { result } = renderHook(() => useVoiceCall({
       conversationId: 7,
       userId: 1,
-      rtcPeerConnectionFactory: cfg => new FakePeerConnection(cfg),
+      rtcPeerConnectionFactory: makeFakePeerConnection,
       skipSignalSubscription: true,
       generateCallId: () => 'call-uuid-B',
     }))
@@ -250,7 +254,7 @@ describe('useVoiceCall — outgoing call', () => {
     const { result } = renderHook(() => useVoiceCall({
       conversationId: 7,
       userId: 1,
-      rtcPeerConnectionFactory: cfg => new FakePeerConnection(cfg),
+      rtcPeerConnectionFactory: makeFakePeerConnection,
       skipSignalSubscription: true,
       generateCallId: () => 'call-uuid-C',
     }))
@@ -277,7 +281,7 @@ describe('useVoiceCall — outgoing call', () => {
     const { result } = renderHook(() => useVoiceCall({
       conversationId: 7,
       userId: 1,
-      rtcPeerConnectionFactory: cfg => new FakePeerConnection(cfg),
+      rtcPeerConnectionFactory: makeFakePeerConnection,
       skipSignalSubscription: true,
       generateCallId: () => 'call-uuid-D',
     }))
@@ -316,7 +320,7 @@ describe('useVoiceCall — outgoing call', () => {
     const { result } = renderHook(() => useVoiceCall({
       conversationId: 7,
       userId: 1,
-      rtcPeerConnectionFactory: cfg => new FakePeerConnection(cfg),
+      rtcPeerConnectionFactory: makeFakePeerConnection,
       skipSignalSubscription: true,
       generateCallId: () => 'call-uuid-E',
     }))
@@ -339,7 +343,7 @@ describe('useVoiceCall — incoming call', () => {
     const { result } = renderHook(() => useVoiceCall({
       conversationId: 7,
       userId: 1,
-      rtcPeerConnectionFactory: cfg => new FakePeerConnection(cfg),
+      rtcPeerConnectionFactory: makeFakePeerConnection,
       skipSignalSubscription: true,
     }))
 
@@ -366,7 +370,7 @@ describe('useVoiceCall — incoming call', () => {
     const { result } = renderHook(() => useVoiceCall({
       conversationId: 7,
       userId: 1,
-      rtcPeerConnectionFactory: cfg => new FakePeerConnection(cfg),
+      rtcPeerConnectionFactory: makeFakePeerConnection,
       skipSignalSubscription: true,
     }))
 
@@ -403,7 +407,7 @@ describe('useVoiceCall — incoming call', () => {
     const { result } = renderHook(() => useVoiceCall({
       conversationId: 7,
       userId: 1,
-      rtcPeerConnectionFactory: cfg => new FakePeerConnection(cfg),
+      rtcPeerConnectionFactory: makeFakePeerConnection,
       skipSignalSubscription: true,
     }))
 
@@ -430,7 +434,7 @@ describe('useVoiceCall — incoming call', () => {
     const { result } = renderHook(() => useVoiceCall({
       conversationId: 7,
       userId: 1,
-      rtcPeerConnectionFactory: cfg => new FakePeerConnection(cfg),
+      rtcPeerConnectionFactory: makeFakePeerConnection,
       skipSignalSubscription: true,
     }))
 
@@ -467,7 +471,7 @@ describe('useVoiceCall — event filtering', () => {
     const { result } = renderHook(() => useVoiceCall({
       conversationId: 7,
       userId: 1,
-      rtcPeerConnectionFactory: cfg => new FakePeerConnection(cfg),
+      rtcPeerConnectionFactory: makeFakePeerConnection,
       skipSignalSubscription: true,
     }))
 
@@ -490,7 +494,7 @@ describe('useVoiceCall — event filtering', () => {
     const { result } = renderHook(() => useVoiceCall({
       conversationId: 7,
       userId: 1,
-      rtcPeerConnectionFactory: cfg => new FakePeerConnection(cfg),
+      rtcPeerConnectionFactory: makeFakePeerConnection,
       skipSignalSubscription: true,
     }))
 
