@@ -461,6 +461,15 @@ var ErrMessageDeleted = errors.New("familychat: message is deleted")
 // last_message_at is not touched — an edit doesn't shift the conversation's
 // sort order in the sidebar.
 func EditMessage(db *sql.DB, convID, msgID, userID int64, body string) (*Message, error) {
+	// Membership check — an ex-member must not be able to edit historical messages.
+	ok, err := IsMember(db, convID, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, ErrForbidden
+	}
+
 	// Confirm the row belongs to convID + is owned by userID. A single row
 	// lookup also pulls deleted_at so we can short-circuit the tombstone case.
 	var (
@@ -468,11 +477,10 @@ func EditMessage(db *sql.DB, convID, msgID, userID int64, body string) (*Message
 		convInMsg int64
 		deletedAt sql.NullString
 	)
-	err := db.QueryRow(
+	if err := db.QueryRow(
 		`SELECT sender_user_id, conversation_id, deleted_at FROM family_chat_messages WHERE id = ?`,
 		msgID,
-	).Scan(&senderID, &convInMsg, &deletedAt)
-	if err != nil {
+	).Scan(&senderID, &convInMsg, &deletedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrForbidden
 		}
@@ -490,11 +498,18 @@ func EditMessage(db *sql.DB, convID, msgID, userID int64, body string) (*Message
 		return nil, fmt.Errorf("encrypt body: %w", err)
 	}
 	now := time.Now().UTC().Format(timeFormat)
-	if _, err := db.Exec(
-		`UPDATE family_chat_messages SET body = ?, edited_at = ? WHERE id = ?`,
-		encBody, now, msgID,
-	); err != nil {
+	res, err := db.Exec(
+		`UPDATE family_chat_messages SET body = ?, edited_at = ? WHERE id = ? AND conversation_id = ? AND sender_user_id = ? AND deleted_at IS NULL`,
+		encBody, now, msgID, convID, userID,
+	)
+	if err != nil {
 		return nil, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return nil, err
+	} else if n == 0 {
+		// The message was soft-deleted between our SELECT and UPDATE.
+		return nil, ErrMessageDeleted
 	}
 
 	// Read back the row so the response reflects the on-disk state (including
@@ -542,11 +557,20 @@ func EditMessage(db *sql.DB, convID, msgID, userID int64, body string) (*Message
 // (attachmentPath="", nil); the wire payload is idempotent and the SSE
 // re-broadcast is still useful for any client that missed the first event.
 func SoftDeleteMessage(db *sql.DB, convID, msgID, userID int64) (attachmentPath string, err error) {
+	// Membership check — an ex-member must not be able to tombstone historical messages.
+	ok, err := IsMember(db, convID, userID)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", ErrForbidden
+	}
+
 	var (
-		senderID    int64
-		convInMsg   int64
-		encPath     string
-		deletedAt   sql.NullString
+		senderID  int64
+		convInMsg int64
+		encPath   string
+		deletedAt sql.NullString
 	)
 	err = db.QueryRow(
 		`SELECT sender_user_id, conversation_id, attachment_path, deleted_at FROM family_chat_messages WHERE id = ?`,

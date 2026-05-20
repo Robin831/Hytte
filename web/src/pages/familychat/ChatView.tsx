@@ -100,6 +100,8 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // open, or null when the modal is closed.
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
   const [deleteError, setDeleteError] = useState('')
+  const deleteConfirmBtnRef = useRef<HTMLButtonElement>(null)
+  const deletePrevFocusRef = useRef<Element | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   // currentUserIdRef shadows user?.id so the long-lived SSE reader closure
@@ -111,6 +113,26 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // or a mouse right-click (leave native menu alone; picker is on hover button).
   const lastPointerTypeRef = useRef<string>('mouse')
   useEffect(() => { currentUserIdRef.current = user?.id }, [user?.id])
+
+  // Focus management + Escape handling for the delete confirmation modal,
+  // matching the pattern used by ConfirmDialog.
+  useEffect(() => {
+    if (confirmDeleteId !== null) {
+      deletePrevFocusRef.current = document.activeElement
+      deleteConfirmBtnRef.current?.focus()
+    } else if (deletePrevFocusRef.current instanceof HTMLElement) {
+      deletePrevFocusRef.current.focus()
+      deletePrevFocusRef.current = null
+    }
+  }, [confirmDeleteId])
+  useEffect(() => {
+    if (confirmDeleteId === null) return
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setConfirmDeleteId(null); setDeleteError('') }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [confirmDeleteId])
 
   const rtf = useMemo(
     () => new Intl.RelativeTimeFormat(i18n.language, { numeric: 'auto' }),
@@ -363,12 +385,14 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                   } else if (
                     eventName === 'message_edited' &&
                     payload?.message_id !== undefined &&
-                    payload?.body !== undefined
+                    payload?.body !== undefined &&
+                    payload?.edited_at !== undefined
                   ) {
                     applyMessageEdited(payload)
                   } else if (
                     eventName === 'message_deleted' &&
-                    payload?.message_id !== undefined
+                    payload?.message_id !== undefined &&
+                    payload?.deleted_by !== undefined
                   ) {
                     applyMessageDeleted(payload)
                   }
@@ -826,16 +850,14 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                     onPointerDown={(e) => { lastPointerTypeRef.current = e.pointerType }}
                     onContextMenu={(e) => {
                       // Only intercept touch long-press (suppress native menu, open
-                      // picker). Mouse right-clicks keep the native menu so users
-                      // can copy text/images; the picker is reachable via the hover
-                      // button (Smile icon) on desktop.
+                      // reaction picker for all messages). Mouse right-clicks keep
+                      // the native menu so users can copy text/images; the reaction
+                      // picker is reachable via the hover button (Smile icon) on
+                      // desktop. Edit/delete actions remain accessible via the
+                      // MoreVertical button for own messages.
                       if (lastPointerTypeRef.current === 'touch') {
                         e.preventDefault()
-                        if (isOwn) {
-                          setMenuForMsgId(msg.id)
-                        } else {
-                          setPickerForMsgId(msg.id)
-                        }
+                        setPickerForMsgId(msg.id)
                       }
                     }}
                   >
@@ -1031,6 +1053,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                 {t('edit.cancel')}
               </button>
               <button
+                ref={deleteConfirmBtnRef}
                 type="button"
                 onClick={() => { void confirmDelete(confirmDeleteId) }}
                 className="px-3 py-1.5 text-sm rounded-md bg-red-600 text-white hover:bg-red-500"
