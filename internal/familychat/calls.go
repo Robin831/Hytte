@@ -17,16 +17,15 @@ const (
 )
 
 // ErrCallNotFound is returned by call repository helpers when no row matches
-// the (conversation_id, call_id) pair. Handlers map this to 404 (offer/end) or
-// 200-with-noop semantics (answer/ice race conditions) as appropriate.
+// the (conversation_id, call_id) pair. callAnswerHandler and callEndHandler both
+// map it to 404; callICEHandler does not consult the DB and never returns it.
 var ErrCallNotFound = errors.New("familychat: call not found")
 
 // InsertCall records a new call envelope for an outgoing offer. The call_id is
 // supplied by the client (typically a UUID) so the same identifier can route
-// every subsequent relay (answer/ice/end) without an extra round-trip. Returns
-// ErrCallNotFound only on UNIQUE collisions — duplicate offers for the same
-// (conversation, call_id) pair return nil; the caller treats the relay as
-// idempotent.
+// every subsequent relay (answer/ice/end) without an extra round-trip. Duplicate
+// offers for the same (conversation, call_id) pair are silently ignored via
+// INSERT OR IGNORE; the caller treats the relay as idempotent.
 func InsertCall(db *sql.DB, convID, initiatorUserID int64, callID string) error {
 	now := time.Now().UTC().Format(timeFormat)
 	_, err := db.Exec(

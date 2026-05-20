@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -74,8 +75,9 @@ func readSignalBody(w http.ResponseWriter, r *http.Request, allowEmpty bool) (js
 		Data json.RawMessage `json:"data"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		if allowEmpty {
-			// Treat an empty / missing body as no payload — useful for /end.
+		if allowEmpty && errors.Is(err, io.EOF) {
+			// Treat a genuinely empty body as no payload — useful for /end.
+			// Any other error (malformed JSON, body-too-large) still returns 400.
 			return nil, true
 		}
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})

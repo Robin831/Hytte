@@ -336,10 +336,12 @@ func TestCallOffer_WebpushURLEncodesCallID(t *testing.T) {
 	if note.URL != want {
 		t.Errorf("URL=%q, want %q", note.URL, want)
 	}
-	// Defensive: the encoded URL must not contain raw control chars or '&'
+	// Defensive: the encoded URL must not contain raw '&' after the call= value
 	// that could be mistaken for an extra query parameter delimiter.
-	if strings.Contains(note.URL[strings.Index(note.URL, "?call=")+len("?call="):], "&") {
-		t.Errorf("URL %q embeds an unescaped '&' after the call= value", note.URL)
+	if _, afterCall, ok := strings.Cut(note.URL, "?call="); ok {
+		if strings.Contains(afterCall, "&") {
+			t.Errorf("URL %q embeds an unescaped '&' after the call= value", note.URL)
+		}
 	}
 }
 
