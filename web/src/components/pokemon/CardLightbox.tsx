@@ -58,8 +58,14 @@ function unlockBodyScroll() {
   }
 }
 
+// 0 is treated the same as missing in both formatters below — Cardmarket
+// never quotes a card at exactly €0,00 (the floor is €0,01), so amount===0
+// always means upstream hasn't priced this card yet (common for cards from
+// the new Mega Evolution series whose Cardmarket scraper bridge isn't wired
+// to pokemontcg.io's API yet). Showing "kr 0" makes the card look free;
+// "—" reads as unknown.
 function formatNok(amount: number | null | undefined): string {
-  if (amount == null) return '—'
+  if (amount == null || amount === 0) return '—'
   return formatNumber(amount, {
     style: 'currency',
     currency: 'NOK',
@@ -69,7 +75,7 @@ function formatNok(amount: number | null | undefined): string {
 }
 
 function formatEur(amount: number | null | undefined): string | null {
-  if (amount == null) return null
+  if (amount == null || amount === 0) return null
   return formatNumber(amount, {
     style: 'currency',
     currency: 'EUR',

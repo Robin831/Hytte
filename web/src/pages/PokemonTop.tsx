@@ -38,8 +38,10 @@ function filterToQuery(filter: Filter): string {
   return 'any'
 }
 
+// 0 means "upstream price missing" rather than "this card is free" — see
+// CardLightbox.formatNok for the full reasoning.
 function formatNok(amount: number | null | undefined): string {
-  if (amount == null) return '—'
+  if (amount == null || amount === 0) return '—'
   return formatNumber(amount, {
     style: 'currency',
     currency: 'NOK',
@@ -49,7 +51,7 @@ function formatNok(amount: number | null | undefined): string {
 }
 
 function formatEur(amount: number | null | undefined): string {
-  if (amount == null) return '—'
+  if (amount == null || amount === 0) return '—'
   return formatNumber(amount, {
     style: 'currency',
     currency: 'EUR',
