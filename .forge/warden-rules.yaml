@@ -16114,3 +16114,918 @@ rules:
         Verify the element is still connected to the document (e.g., document.contains(previousFocusRef.current)) before calling .focus(), to avoid focusing detached nodes that were removed during the interaction
       source: copilot:PR#750
       added: "2026-05-15"
+    - id: consistent-tax-calculation-path
+      category: other
+      pattern: >-
+        Response includes multiple values derived from tax calculations (e.g., net salary and marginal/extra-hour net) where one path may be overridden (e.g., lookup tables) while another uses a default calculation
+      check: >-
+        Verify all tax-derived values in the same response use the same tax calculation path, including any conditional overrides (like trekktabell lookup), so related figures remain internally consistent
+      source: copilot:PR#752
+      added: "2026-05-18"
+    - id: test-boundary-comment-accuracy
+      category: testing
+      pattern: >-
+        Test cases with comments describing boundary/threshold-crossing behavior (e.g., 'just below threshold', 'pushes value across step')
+      check: >-
+        Verify the test's numeric inputs actually straddle the described boundary — both the before and after values should be on the claimed sides of the threshold. If not, fix the parameters or update the comment/test name to match reality.
+      source: copilot:PR#752
+      added: "2026-05-18"
+    - id: consistent-tax-method-for-delta
+      category: other
+      pattern: >-
+        Computing a delta (e.g., extra-hour net) between a persisted record and a recomputed value, where the persisted record may have used a different tax/calculation method (trekktabell lookup vs. formula-based params)
+      check: >-
+        Verify that both sides of the delta are computed using the same tax method as the persisted record. Either derive the base value from the record's stored net and recompute only the 'with-extra' side using a consistent method, or apply the same lookup/override for both base and extra so the returned delta cannot drift from the record's actual net.
+      source: copilot:PR#752
+      added: "2026-05-18"
+    - id: changelog-module-path-accuracy
+      category: other
+      pattern: >-
+        Changelog fragment in changelog.d/ references a Go module path or dependency name
+      check: >-
+        Verify the module path in the changelog matches the actual import path in go.mod exactly (e.g., google.golang.org/api vs go.golang.org/api). Cross-reference dependency names against go.mod/package.json to ensure release notes are accurate.
+      source: copilot:PR#753
+      added: "2026-05-19"
+    - id: index-foreign-key-lookups
+      category: performance
+      pattern: >-
+        Queries filter a junction/association table by a column that is not the leading column of the primary key or any index (e.g., filtering by user_id when PK is (conversation_id, user_id))
+      check: >-
+        Verify that any column used as a WHERE filter has a supporting index with that column as the leading key; for composite PKs, add a secondary index on (filter_col, other_col) or reorder the PK to avoid full table scans
+      source: copilot:PR#754
+      added: "2026-05-19"
+    - id: index-matches-query-pattern
+      category: performance
+      pattern: >-
+        New table with pagination/filter queries (e.g., WHERE x = ? AND y > ? ORDER BY y) and accompanying CREATE INDEX statements
+      check: >-
+        Verify the index columns match the actual query's WHERE/ORDER BY columns (including the pagination column). If the query paginates by id but the index is on (conversation_id, sent_at), either add an index on the paginated column or change the query to use the indexed column.
+      source: copilot:PR#754
+      added: "2026-05-19"
+    - id: test-membership-error-path
+      category: testing
+      pattern: >-
+        Handler returns a non-2xx status (e.g. 500) when an injected dependency or check function returns an error
+      check: >-
+        Ensure tests cover the error path: inject a failing dependency, assert the expected HTTP status code, and verify the JSON error payload shape
+      source: copilot:PR#754
+      added: "2026-05-19"
+    - id: changelog-bullet-dash-space
+      category: style
+      pattern: Bullet entries in changelog.d/*.md fragments
+      check: >-
+        Verify each bullet starts with '- **' (dash followed by a space before the bold marker), not '-**', to preserve markdown rendering
+      source: copilot:PR#754
+      added: "2026-05-19"
+    - id: module-purity-vs-dom-usage
+      category: style
+      pattern: >-
+        A module whose header/comment declares it is pure or DOM-free (e.g. 'kept free of React/DOM lifecycle', 'pure helpers') contains functions that use browser-only APIs like `document`, `window`, `HTMLCanvasElement`, or other DOM types
+      check: >-
+        Verify the module's stated purity contract matches its actual dependencies — either update the header to reflect DOM/browser usage, or extract the browser-only helpers into a separate module so the pure utilities remain usable from non-DOM contexts (tests, workers, SSR)
+      source: copilot:PR#755
+      added: "2026-05-19"
+    - id: clamp-rect-bounds-positive-dims
+      category: error-handling
+      pattern: >-
+        Computing rectangle/grid cell coordinates by rounding scaled values (e.g., Math.round(cx0 / scale)) and then deriving width/height as srcW - rx or srcH - ry
+      check: >-
+        Verify rx/ry are clamped to be strictly less than srcW/srcH (and >= 0), and that cells with non-positive w/h after clamping are skipped, so returned cells always have positive dimensions consistent with the type contract
+      source: copilot:PR#755
+      added: "2026-05-19"
+    - id: skew-tolerance-test-coverage
+      category: testing
+      pattern: >-
+        Detection/parsing logic claims tolerance for rotated, skewed, or affine-transformed input (e.g. ~5° skew tolerance in detectGrid)
+      check: >-
+        Verify unit tests include rotated/skewed synthetic inputs that exercise the documented tolerance, not just axis-aligned cases, so regressions in the tolerance logic are caught
+      source: copilot:PR#755
+      added: "2026-05-19"
+    - id: assert-order-not-just-count
+      category: testing
+      pattern: >-
+        Test claims to verify ordering (e.g., row-major, sorted) but only asserts count/dimensions, with ordering implied by a comment referencing an unspied call like drawImage
+      check: >-
+        Ensure tests that claim to verify ordering actually assert it — spy on or stub the relevant call (e.g., drawImage, getContext) to capture the sequence, or add explicit assertions proving outputs correspond to the expected sorted input order
+      source: copilot:PR#755
+      added: "2026-05-19"
+    - id: consistent-timestamp-format
+      category: style
+      pattern: >-
+        New store/handler defines a custom time format string (e.g. `timeFormat` with RFC3339Nano or non-standard fractional precision) for serializing timestamps to clients or DB
+      check: >-
+        Verify the timestamp format matches existing stores in the repo (typically fixed-width millisecond precision) and that list queries use `ORDER BY timestamp, id` for stable tie-breaking, rather than introducing a divergent precision/shape that complicates client parsing
+      source: copilot:PR#756
+      added: "2026-05-19"
+    - id: avoid-duplicate-membership-logic
+      category: other
+      pattern: >-
+        Membership/authorization check SQL or logic implemented inline in a store/handler when a similar check already exists elsewhere (e.g., for SSE, REST, or other entry points)
+      check: >-
+        Verify that membership and authorization checks are factored into a single shared helper used by all callers (REST handlers, SSE streams, etc.) rather than duplicated, to prevent the implementations from drifting as new rules are added
+      source: copilot:PR#756
+      added: "2026-05-19"
+    - id: publish-events-after-write
+      category: other
+      pattern: >-
+        REST/HTTP handler persists or mutates state (insert/update/delete) for a resource that has a real-time event stream (SSE/WebSocket hub)
+      check: >-
+        Verify the handler publishes a corresponding event to the hub after a successful write, including the necessary fields (id, timestamp, payload), so live subscribers stay in sync with the REST mutations
+      source: copilot:PR#756
+      added: "2026-05-19"
+    - id: publish-event-after-state-change
+      category: other
+      pattern: >-
+        Handler mutates state that is also exposed via an event stream/hub (e.g., SSE, websockets, pub/sub)
+      check: >-
+        After a successful state mutation, verify the corresponding event is published to the hub/stream so subscribers stay in sync with the documented streaming contract
+      source: copilot:PR#756
+      added: "2026-05-19"
+    - id: batch-existence-validation
+      category: performance
+      pattern: >-
+        Handler validates a set of foreign-key IDs (e.g. member IDs, tag IDs) by running one SELECT-per-ID inside a loop
+      check: >-
+        Replace per-ID existence checks with a single `WHERE id IN (...)` query and compare returned IDs/count to the requested set, still returning a clear 400 for unknown IDs
+      source: copilot:PR#756
+      added: "2026-05-19"
+    - id: publish-hub-events-after-persist
+      category: other
+      pattern: >-
+        REST handler persists state (e.g. new message, status change) for a resource that also has a pub/sub stream endpoint
+      check: >-
+        Verify the handler publishes the corresponding event to the Hub (e.g. DefaultHub().Publish) after persisting and before responding, so stream subscribers receive updates
+      source: copilot:PR#756
+      added: "2026-05-19"
+    - id: handler-storage-validation-consistency
+      category: error-handling
+      pattern: >-
+        HTTP handler validates a field (e.g. rejects empty/missing values) before passing to the storage layer
+      check: >-
+        Verify validation rules in the handler match the storage layer's schema constraints, defaults, and test fixtures — either both enforce the rule or neither does, so the API contract and persistence layer agree
+      source: copilot:PR#756
+      added: "2026-05-19"
+    - id: schema-comment-sync
+      category: style
+      pattern: >-
+        Comments, constants, or documentation describing database schema (columns, tables, roles) alongside CREATE TABLE / ALTER TABLE statements or model definitions
+      check: >-
+        Verify that schema-related comments and constants (e.g., role enums, column descriptions) match the actual schema defined in this PR — remove or update any references to columns/fields that don't exist, and ensure ownership/state tracking documentation points to the correct table and column
+      source: copilot:PR#756
+      added: "2026-05-19"
+    - id: sqlite-schema-migration-on-rename
+      category: other
+      pattern: >-
+        Changes to existing SQLite table schemas in createSchema() (renamed columns, changed types, dropped columns) that rely solely on CREATE TABLE IF NOT EXISTS
+      check: >-
+        Verify that schema changes to existing tables include an explicit migration path (PRAGMA table_info detection plus ALTER TABLE, or recreate-and-copy) so existing installs are upgraded safely — CREATE TABLE IF NOT EXISTS will not alter tables that already exist, and handlers will fail with 'no such column' at runtime
+      source: copilot:PR#756
+      added: "2026-05-19"
+    - id: timestamp-precision-consistency
+      category: style
+      pattern: >-
+        New SQLite store defines a `timeFormat` constant or formats `created_at`/`updated_at` timestamps with nanosecond precision (e.g. `.000000000`)
+      check: >-
+        Verify the timestamp format matches the repo-wide millisecond precision used by other stores (e.g. `internal/chat/store.go`); if same-instant ordering matters, add a deterministic tie-breaker like `ORDER BY created_at, id` rather than widening the timestamp precision
+      source: copilot:PR#756
+      added: "2026-05-19"
+    - id: sqlite-test-db-single-conn
+      category: testing
+      pattern: >-
+        Test helper opens an in-memory SQLite database (`:memory:`) via `sql.Open` / modernc.org/sqlite for use in tests
+      check: >-
+        Verify the helper pins the pool to a single connection with `db.SetMaxOpenConns(1)` and `db.SetMaxIdleConns(1)` (so all queries hit the same in-memory DB) and registers `t.Cleanup(func(){ _ = db.Close() })` to release resources after the test
+      source: copilot:PR#756
+      added: "2026-05-19"
+    - id: test-attachment-encryption-paths
+      category: testing
+      pattern: >-
+        New handler/store code paths that accept attachment fields (or other fields marked for at-rest encryption) and persist them to the database
+      check: >-
+        Verify there is a test that exercises the attachment/encrypted-field code path end-to-end: POST with the field set, assert the API response returns plaintext values, and assert the DB row stores encrypted fields with the `enc:` prefix while non-sensitive fields (e.g. mime type) remain plaintext
+      source: copilot:PR#756
+      added: "2026-05-19"
+    - id: atomic-quota-cap-enforcement
+      category: concurrency
+      pattern: >-
+        Handler enforces a per-user quota/cap by reading current usage, comparing against a limit, then inserting N rows (jobs, records, files) without holding a serialized write lock across both steps
+      check: >-
+        Verify the cap check and the dependent inserts run inside a single transaction (or use a per-user reservation/counter row) so concurrent requests cannot both pass the check and exceed the cap; verify any partially-written side effects (files, blobs) are cleaned up if a late check rejects
+      source: copilot:PR#757
+      added: "2026-05-19"
+    - id: schema-comment-matches-behavior
+      category: other
+      pattern: >-
+        Schema or column comments describe progress/counter semantics (e.g., 'incremented as X happens') for fields maintained by application code
+      check: >-
+        Verify the described update behavior is actually implemented in all relevant code paths (writes, finalizers, workers) and covered by tests; if not, either implement the maintenance logic or remove/defer the claim so future readers don't rely on a column that stays at its default.
+      source: copilot:PR#757
+      added: "2026-05-19"
+    - id: normalize-timestamps-before-lexical-compare
+      category: other
+      pattern: >-
+        Storing user-supplied or parsed timestamps as strings that will later be compared lexicographically (e.g. for ordering, unread counts, or cursor pagination) against other timestamp strings
+      check: >-
+        Verify timestamps are normalized to a single fixed-width UTC format (e.g. the canonical `timeFormat` used elsewhere) before storage, so string comparisons against other timestamps produce correct chronological ordering regardless of input precision or timezone offset
+      source: copilot:PR#758
+      added: "2026-05-19"
+    - id: nil-guard-optional-deps
+      category: error-handling
+      pattern: >-
+        A helper or downstream function dereferences a dependency (e.g., calls a method on it) that callers treat as optional via nil checks
+      check: >-
+        Verify the helper either nil-guards the dependency itself or that the constructor/caller contract requires it to be non-nil; inconsistent nil-handling between caller and callee risks a panic
+      source: copilot:PR#758
+      added: "2026-05-19"
+    - id: log-per-result-fanout-send-errors
+      category: error-handling
+      pattern: >-
+        Calling a fan-out send function (e.g. push.SendToUser) that returns a slice of per-recipient/per-subscription results without inspecting the returned slice
+      check: >-
+        Verify the caller iterates the returned results and logs per-item errors (result.Err) and unexpected HTTP status codes, rather than discarding the slice and silently swallowing per-subscription failures
+      source: copilot:PR#758
+      added: "2026-05-19"
+    - id: avoid-n-plus-one-in-list-handlers
+      category: performance
+      pattern: >-
+        List/index handlers or store methods that loop over a result set and issue additional per-row queries (e.g. fetching related IDs, counts, or child records inside the loop)
+      check: >-
+        Verify related data (member IDs, counts, child rows) is fetched in the initial query via joins/subqueries or batched by parent ID after the loop, rather than queried per row
+      source: copilot:PR#758
+      added: "2026-05-19"
+    - id: bound-goroutine-fanout
+      category: concurrency
+      pattern: >-
+        HTTP handler spawns an unbounded `go` goroutine per request to perform fan-out work (e.g. push notifications, webhooks, broadcasts) that involves DB queries or network calls to external endpoints
+      check: >-
+        Verify that fan-out concurrency is bounded — via a worker pool, queue, semaphore, or errgroup with a limit — so slow/unreachable downstreams or high request volume cannot cause unbounded goroutine growth and repeated per-request DB load
+      source: copilot:PR#758
+      added: "2026-05-19"
+    - id: no-duplicate-schema-in-tests
+      category: testing
+      pattern: >-
+        Test helper defines CREATE TABLE statements that duplicate schema already declared in internal/db/db.go (e.g., vapid_keys, push_subscriptions, or other canonical tables)
+      check: >-
+        Verify test setup reuses the canonical schema from internal/db/createSchema() or a shared helper instead of inlining duplicate CREATE TABLE definitions, and uses CREATE TABLE IF NOT EXISTS to avoid drift when production schema evolves
+      source: copilot:PR#758
+      added: "2026-05-19"
+    - id: guard-status-transitions-against-worker-races
+      category: concurrency
+      pattern: >-
+        Bulk status updates (e.g. discard/cancel) on rows that may be concurrently updated by background workers, where worker finalizers update by id without guarding on current status
+      check: >-
+        Verify that either the bulk update excludes in-flight rows (e.g. status='processing') and returns 409 when any child is mid-processing, or that worker finalizers use conditional updates (WHERE status='processing') so a late-finishing worker cannot overwrite a terminal state set by the bulk update
+      source: copilot:PR#761
+      added: "2026-05-19"
+    - id: consistent-matched-predicate
+      category: ui
+      pattern: >-
+        Computing counts or progress indicators for items with a status field where downstream UI/actions require additional fields beyond status (e.g. status==='matched' plus a populated matched_card/result object)
+      check: >-
+        Verify the count predicate matches the predicate used by the cell UI and any bulk actions. If the UI treats an item as 'done/matched/ready' only when both status AND the associated payload (e.g. matched_card) are present, the count must use the same combined predicate so progress labels and button enablement stay consistent.
+      source: copilot:PR#761
+      added: "2026-05-19"
+    - id: filter-sort-timestamp-consistency
+      category: ui
+      pattern: >-
+        List filtering uses a computed/derived timestamp (e.g., max child timestamp for 'resolved' filter) while sorting uses a different timestamp field (e.g., parent's created_at)
+      check: >-
+        Verify that when filtering uses a derived timestamp, the sort order uses the same timestamp so recently-matched items appear in the expected position rather than being buried by stale parent timestamps
+      source: copilot:PR#761
+      added: "2026-05-19"
+    - id: stale-derived-state-for-progress
+      category: ui
+      pattern: >-
+        A progress/status label is computed by filtering children for a transient state (e.g. `status === 'matched'`) while a persisted counter on the parent (e.g. `page.matched_count`) tracks the same metric cumulatively
+      check: >-
+        Verify progress displays use the persisted/cumulative field from the parent so the label does not regress when children transition out of the transient state; reserve the derived count for actions that genuinely depend on current children (e.g. enabling a bulk action button)
+      source: copilot:PR#761
+      added: "2026-05-19"
+    - id: tx-race-status-guard
+      category: concurrency
+      pattern: >-
+        Handler performs a pre-check on row status outside a transaction, then updates rows filtered by an allowlist of statuses, while a background worker can transition statuses concurrently and later finalizes by id without a status guard
+      check: >-
+        Verify the handler acquires the write lock first (BEGIN IMMEDIATE or row lock), re-checks status inside the transaction, and that the UPDATE's status filter excludes any in-flight state (e.g. processing) so a concurrent worker cannot overwrite a just-discarded row; return 409 if conflicting rows exist
+      source: copilot:PR#761
+      added: "2026-05-19"
+    - id: family-member-list-completeness
+      category: other
+      pattern: >-
+        Family/group member pickers populated from role-scoped endpoints (e.g., `siblings` array from `/api/family/my-family`) that exclude certain relationships based on the current user's role
+      check: >-
+        Verify the member list source includes all user IDs needed for the intended conversation/interaction scope. If the endpoint omits certain members (e.g., parent's user_id not exposed to child users, only name/picture), confirm whether cross-role interactions are intentionally excluded or fetch the missing IDs from another source before shipping.
+      source: copilot:PR#763
+      added: "2026-05-19"
+    - id: refresh-list-after-create
+      category: ui
+      pattern: >-
+        Parent component creates a new item via a modal/dialog and updates selection state, while a sibling/child list component fetches its own data independently
+      check: >-
+        Verify the list component is refreshed after creation (via refetch ref, key bump, lifted state, or callback) so the new item appears without requiring a page reload
+      source: copilot:PR#763
+      added: "2026-05-19"
+    - id: rune-vs-utf16-length-parity
+      category: ui
+      pattern: >-
+        Frontend enforces a length limit (textarea maxLength or JS string .length checks) that is meant to mirror a backend cap which counts Unicode code points / runes (e.g. Go len([]rune(s)))
+      check: >-
+        Verify the client counts Unicode code points (e.g. [...str].length or Array.from(str).length) rather than UTF-16 code units, so messages with astral characters like emoji aren't rejected client-side before reaching the backend limit, and that the maxLength vs submit-time error strategy matches backend parity
+      source: copilot:PR#764
+      added: "2026-05-19"
+    - id: memoize-intl-formatters
+      category: performance
+      pattern: >-
+        Creating Intl.* formatters (RelativeTimeFormat, DateTimeFormat, NumberFormat, Collator) inside render-path functions called per item in a list
+      check: >-
+        Verify Intl.* formatter instances are memoized (e.g. via useMemo keyed on i18n.language) and reused across list items, rather than constructed on every call
+      source: copilot:PR#764
+      added: "2026-05-19"
+    - id: no-duplicate-time-formatters
+      category: style
+      pattern: >-
+        Time/date formatting helper (e.g. formatRelative, formatDate) defined inline in a component file when a sibling component in the same feature has the same helper
+      check: >-
+        Verify shared formatting helpers are extracted into a feature-level util module (e.g. familychat/utils) and imported by all consumers, so thresholds and behavior cannot drift between views
+      source: copilot:PR#764
+      added: "2026-05-19"
+    - id: specific-error-messages-per-failure
+      category: error-handling
+      pattern: >-
+        A catch block handles multiple distinct operations (e.g. fetching conversation metadata AND messages) but maps all failures to a single generic error message tied to only one of them.
+      check: >-
+        Verify that error messages shown to users accurately reflect which operation failed. Either use a sufficiently general error key that covers all failure modes, or branch on the error type/source to show context-appropriate messages.
+      source: copilot:PR#764
+      added: "2026-05-19"
+    - id: test-new-chat-interactive-surfaces
+      category: testing
+      pattern: >-
+        New or significantly expanded interactive chat/message view components (fetch + render conversation/messages, loading/error/empty states, optimistic append, auto-scroll, conversation-switch race handling)
+      check: >-
+        Verify Vitest coverage exists for: initial load success and error state, messages rendering in correct order, auto-appending newly created messages, and the conversation-switch abort/race guard. Follow patterns from existing tests like HomeworkChat/StrideChatDrawer.
+      source: copilot:PR#764
+      added: "2026-05-19"
+    - id: composer-key-handler-tests
+      category: testing
+      pattern: >-
+        Chat/message composer components implementing Enter-to-send vs Shift+Enter newline behavior, max-length validation, in-flight submit disabling, and error handling
+      check: >-
+        Verify a Vitest + Testing Library test suite covers: Enter submits the message, Shift+Enter inserts a newline (does not submit), the input clears on successful send, the submit button is disabled while in-flight, max-length validation is enforced, and an error message renders on non-2xx responses
+      source: copilot:PR#764
+      added: "2026-05-19"
+    - id: gap-fill-zero-lastid
+      category: error-handling
+      pattern: >-
+        Reconnect/gap-fill logic that bails out when a tracked last-seen ID is 0 or unset (e.g., `if (lastId <= 0) return`) before refetching missed items
+      check: >-
+        Verify that gap-fill on reconnect still fetches latest items when lastId is 0 or unset — either omit the `since` param or treat 0 as valid — so conversations that initially loaded empty don't miss messages created during the disconnect window
+      source: copilot:PR#765
+      added: "2026-05-19"
+    - id: test-sse-reconnect-gap-fill
+      category: testing
+      pattern: >-
+        SSE/WebSocket stream with reconnect logic that backfills missed messages via a since/cursor REST fetch
+      check: >-
+        Verify tests cover the reconnect gap-fill path: simulate a stream close, assert a follow-up fetch with the since/cursor parameter is issued, and confirm backfilled messages are appended in order and deduplicated against live stream messages
+      source: copilot:PR#765
+      added: "2026-05-19"
+    - id: encrypt-file-contents-at-rest
+      category: security
+      pattern: >-
+        New feature persists user file uploads or binary blobs to disk (e.g. via os.Create + io.Copy/Write) while only encrypting metadata or path references in the database
+      check: >-
+        Verify that file bytes themselves are encrypted at rest using encryption.Encrypt (or streaming AEAD as in internal/vault/vault.go) before being written to disk, not just the DB-stored path/metadata. If only the path is encrypted, ensure the PR description and docs accurately reflect that file contents are plaintext on disk.
+      source: copilot:PR#767
+      added: "2026-05-19"
+    - id: no-trust-client-mime-type
+      category: security
+      pattern: >-
+        Endpoint accepts a client-supplied MIME type / Content-Type field that is stored and later served back as the file's Content-Type, even when the server already sniffed the real type at upload time
+      check: >-
+        Verify the MIME type served for user-uploaded files is derived server-side (from upload-time sniffing persisted by upload_id, or by re-sniffing the stored bytes) rather than trusted from a client-provided field on a later request, to prevent a client from re-declaring an allowlisted upload as a different type
+      source: copilot:PR#767
+      added: "2026-05-19"
+    - id: orphan-upload-cleanup
+      category: other
+      pattern: >-
+        Endpoints or flows that persist user-uploaded files to disk before a referencing DB row is guaranteed to exist, or features that delete rows referencing on-disk files
+      check: >-
+        Verify uploaded files cannot become orphaned: ensure files are cleaned up if the referencing message/row is never created (aborted send, tab close, removed attachment) or is later deleted, e.g. via a periodic sweep of files with no DB reference and deletion of files when their owning row is removed
+      source: copilot:PR#767
+      added: "2026-05-19"
+    - id: byte-unit-consistency
+      category: ui
+      pattern: >-
+        Functions that format byte sizes for display, or size-limit constants paired with user-facing size labels
+      check: >-
+        Verify divisor base matches the unit label: 1024-based divisors must use binary labels (KiB/MiB/GiB) and 1000-based divisors must use decimal labels (KB/MB/GB). Ensure size-limit constants (e.g. maxBytes) use the same base as the formatter so the displayed limit and the enforced limit agree, and confirm code comments don't contradict the chosen convention.
+      source: copilot:PR#767
+      added: "2026-05-19"
+    - id: mobile-icon-only-status-needs-visible-label
+      category: ui
+      pattern: >-
+        Status/badge indicators (e.g., reconnect, sync, error states) that hide their text label on mobile via `hidden sm:inline` / `sr-only sm:hidden`, leaving only an icon with a `title` attribute for context
+      check: >-
+        Verify mobile users get a visible short label (with truncation if needed) rather than relying on `title` tooltips, since `title` is not accessible via hover on touch devices — icon-only status indicators leave mobile users without context
+      source: copilot:PR#768
+      added: "2026-05-19"
+    - id: emoji-validation-grapheme-clusters
+      category: other
+      pattern: >-
+        Validators that check whether a string is a single emoji (e.g. for reactions) using codepoint ranges or Unicode property checks
+      check: >-
+        Verify the validator accepts all valid single-emoji grapheme clusters, including keycap sequences (e.g. "1️⃣", "#️⃣", "*️⃣") that start with ASCII characters, ZWJ sequences, and variation selectors. Prefer grapheme-cluster segmentation plus emoji-property checks over naive codepoint range checks.
+      source: copilot:PR#769
+      added: "2026-05-20"
+    - id: sse-payload-matches-docs
+      category: other
+      pattern: >-
+        SSE event payload structs (or other API response shapes) where PR description/docs claim certain fields are included
+      check: >-
+        Verify the payload struct's fields exactly match what the PR description and docs advertise. If the docs mention viewer-specific fields like `me`, either add them to the payload (accepting per-subscriber serialization cost) or update the docs to state that clients compute them locally.
+      source: copilot:PR#769
+      added: "2026-05-20"
+    - id: check-rows-affected-before-sse-broadcast
+      category: performance
+      pattern: >-
+        Handler performs an idempotent DB write (e.g. `ON CONFLICT ... DO NOTHING`, `INSERT OR IGNORE`, conditional UPDATE) and then publishes an SSE/websocket event or broadcasts a notification
+      check: >-
+        Verify the handler checks `RowsAffected()` (or equivalent) from the write and only publishes/broadcasts the event when the DB actually changed, to avoid spurious events, re-renders, and unnecessary realtime traffic on no-op writes
+      source: copilot:PR#769
+      added: "2026-05-20"
+    - id: emoji-validation-edge-cases
+      category: testing
+      pattern: Tests for emoji or unicode cluster validation functions
+      check: "Verify tests cover multi-emoji inputs (e.g. '\U0001F44D\U0001F44D', '\U0001F44D\U0001F389') and composite sequences like keycap emoji ('1️⃣') to lock in intended single-cluster validation behavior"
+      source: copilot:PR#769
+      added: "2026-05-20"
+    - id: optimistic-rollback-scope
+      category: concurrency
+      pattern: >-
+        Optimistic UI updates that capture a snapshot of an entire entity (e.g. a message, item, or record) before mutation and restore that snapshot on request failure
+      check: >-
+        Verify rollback only reverts the specific field(s) that were optimistically changed, ideally via a functional state update that reads the latest state, so concurrent updates (SSE events, edits, other mutations) arriving before the failure are not clobbered by the stale snapshot
+      source: copilot:PR#769
+      added: "2026-05-20"
+    - id: context-menu-preventdefault-scope
+      category: ui
+      pattern: >-
+        onContextMenu handlers that call preventDefault() unconditionally on interactive elements (message bubbles, list items, media containers)
+      check: >-
+        Verify preventDefault is scoped to touch long-press (e.g., pointerType === 'touch') so desktop users retain native context menu actions like text selection/copy and image/audio context options, or that an alternative affordance is provided
+      source: copilot:PR#769
+      added: "2026-05-20"
+    - id: dialog-a11y-attributes
+      category: ui
+      pattern: "Components using role=\"dialog\" or similar overlay/popover roles"
+      check: >-
+        Verify the component has proper a11y attributes and behavior: aria-modal where appropriate, tabIndex={-1} on the container, focus management on mount, and keyboard reachability/exit. If full dialog semantics aren't needed, use a more appropriate role like popover or menu instead.
+      source: copilot:PR#769
+      added: "2026-05-20"
+    - id: comment-accuracy-map-vs-object
+      category: style
+      pattern: >-
+        Code comments that describe data structures (e.g., 'JS Map', 'array', 'set') when the actual value is a different type (e.g., a plain object from JSON)
+      check: >-
+        Verify that comments accurately describe the actual data type and the real reason for the code's behavior. When iteration order is involved, confirm whether the source is a JS Map (insertion order), a plain object (key order from JSON, which reflects Go map non-determinism), or an array — and that the comment cites the correct reason for sorting or ordering logic.
+      source: copilot:PR#769
+      added: "2026-05-20"
+    - id: comment-matches-impl
+      category: style
+      pattern: >-
+        Function or method documentation/comments that describe mutation, side effects, return values, or parameter behavior
+      check: >-
+        Verify the comment accurately reflects the implementation — e.g., if the comment says 'mutates in place' but the code clones and returns a new object (or vice versa), update the comment to match actual behavior so callers aren't misled
+      source: copilot:PR#769
+      added: "2026-05-20"
+    - id: cover-new-ui-features-with-tests
+      category: testing
+      pattern: >-
+        New interactive UI feature (e.g. reactions, picker, optimistic updates with SSE) added to a component that already has a test file
+      check: >-
+        Verify focused tests are added covering the new UX flow: trigger interactions, open/close states, render of new elements, and any optimistic update + rollback paths against the API
+      source: copilot:PR#769
+      added: "2026-05-20"
+    - id: guard-mutations-against-tombstones
+      category: concurrency
+      pattern: >-
+        Mutation handlers (edit/update) that perform a SELECT to check state (e.g., deleted_at, ownership) and then issue a separate UPDATE keyed only by primary key
+      check: >-
+        Verify the UPDATE includes all guard conditions in its WHERE clause (e.g., `deleted_at IS NULL`, sender/ownership, conversation_id) and checks RowsAffected — or wrap the read+write in a transaction — so concurrent soft-deletes or permission changes can't be overwritten between the SELECT and UPDATE
+      source: copilot:PR#770
+      added: "2026-05-20"
+    - id: verify-membership-on-mutation
+      category: security
+      pattern: >-
+        Message/resource mutation handler (edit, delete, react) authorizes only by matching (conversation_id, sender_user_id) without checking current conversation membership
+      check: >-
+        Ensure mutation handlers verify the caller is still a member of the parent conversation (e.g., requireMessageInConversation) and return ErrForbidden for non-members, so removed users cannot mutate prior resources
+      source: copilot:PR#770
+      added: "2026-05-20"
+    - id: verify-membership-before-mutation
+      category: security
+      pattern: >-
+        Handlers or store methods that mutate conversation/group resources (edit, delete, soft-delete, react) authorize only by ownership fields like sender_user_id without checking current membership
+      check: >-
+        Verify the caller is still a member of the conversation/group (e.g., IsMember(convID, userID) returning ErrForbidden) before allowing mutations, so ex-members cannot act on historical resources by guessing IDs
+      source: copilot:PR#770
+      added: "2026-05-20"
+    - id: touch-accessible-actions
+      category: ui
+      pattern: >-
+        Long-press or hover-only gestures that change behavior based on message ownership, or that gate multiple actions (reactions, edit, delete) behind a single touch gesture
+      check: >-
+        Verify all message actions (reactions, edit, delete) remain reachable on touch devices. Hover-only triggers must have a touch-accessible equivalent, and a single gesture like long-press should not be repurposed in a way that hides previously available actions (e.g., reactions) on owned vs. others' messages.
+      source: copilot:PR#770
+      added: "2026-05-20"
+    - id: validate-sse-event-fields
+      category: error-handling
+      pattern: >-
+        SSE/WebSocket event handlers that apply payloads to UI state using fields like deleted_by, edited_at, or other attribution metadata
+      check: >-
+        Verify the handler guards against missing or malformed payload fields before applying them, either by requiring the field (early return) or providing a safe default — never let undefined fields fall through to UI rendering where they produce misleading output like 'Member #0'
+      source: copilot:PR#770
+      added: "2026-05-20"
+    - id: reuse-confirm-dialog-component
+      category: ui
+      pattern: >-
+        New inline modal/dialog implementations (confirmation prompts, alerts) added directly in page/component files
+      check: >-
+        Verify the code reuses the shared ConfirmDialog component (web/src/components/ConfirmDialog.tsx) instead of duplicating modal logic. If a custom modal is unavoidable, confirm it has Escape-to-close keyboard handling, initial focus on a sensible element, and focus restoration to the trigger element on close.
+      source: copilot:PR#770
+      added: "2026-05-20"
+    - id: viewport-margin-in-fit-checks
+      category: ui
+      pattern: >-
+        Positioning logic that decides placement (above/below/left/right) based on whether an element fits in the viewport, while a separate viewport margin constant is later applied via clamping
+      check: >-
+        Verify that fit/space checks include the viewport margin (and any trigger gap) in the required space calculation, e.g. `available >= elementSize + gap + viewportMargin`, so the chosen placement actually preserves the intended gap instead of being silently shrunk by later clamping
+      source: copilot:PR#771
+      added: "2026-05-20"
+    - id: outside-click-trigger-ref-scope
+      category: ui
+      pattern: >-
+        Popover/menu/picker components that use a `triggerRef` to exempt the trigger from outside-click dismissal, where the ref is assigned to a broad container (e.g. a whole message bubble or row) rather than the specific trigger element — especially on touch/long-press paths.
+      check: >-
+        Verify the outside-click 'ignore' ref points only to the actual trigger element (the button/icon that toggles the picker), not a larger ancestor. If positioning needs a different element than dismissal, split into separate `anchorRef` (positioning) and `triggerRef` (ignore-on-click) refs so taps elsewhere on the container still dismiss the popover.
+      source: copilot:PR#771
+      added: "2026-05-20"
+    - id: ref-callback-state-coupling
+      category: ui
+      pattern: >-
+        A React ref callback that conditionally assigns refs based on shared open/visible state (e.g. `pickerOpen`, `menuOpen`) used by multiple trigger paths (hover, long-press, keyboard).
+      check: >-
+        Verify the ref callback cannot clobber refs set by other open paths. Refs that differ per trigger (e.g. anchor element, guard) should be set explicitly in each open handler, not via a ref callback gated on the shared open flag, otherwise opening from one path will overwrite refs set by another.
+      source: copilot:PR#771
+      added: "2026-05-20"
+    - id: clear-stale-refs-on-alt-open-path
+      category: ui
+      pattern: >-
+        Component has multiple code paths (e.g., hover button + touch long-press) that open the same popover/picker and share refs like anchorRef and guardRef used by outside-click logic
+      check: >-
+        Verify every open path explicitly sets OR clears all related refs (anchor, guard, trigger) so stale values from a previous open path can't make outside-click guards ignore clicks or misposition the popover
+      source: copilot:PR#771
+      added: "2026-05-20"
+    - id: portal-popover-reposition-on-scroll-resize
+      category: ui
+      pattern: >-
+        A floating popover/menu/picker rendered in a position:fixed portal whose coordinates are computed from an anchor element only on mount (layout effect depending only on anchorRef)
+      check: >-
+        Verify the popover recomputes its position or closes on scroll (using capture-phase scroll listeners to catch scrollable ancestors) and on window resize/orientation change, so it does not become visually detached from its anchor when the chat log or viewport scrolls
+      source: copilot:PR#771
+      added: "2026-05-20"
+    - id: assert-raw-http-response-body
+      category: testing
+      pattern: >-
+        Test asserts on JSON response by re-marshaling a decoded struct instead of inspecting the raw HTTP response body
+      check: >-
+        When validating the HTTP JSON contract (especially presence/absence of nullable or optional fields), assert against rec.Body.Bytes()/String() before decoding, or decode into map[string]any to check key presence — never re-marshal the decoded struct, since that reintroduces zero-value fields the server may have omitted
+      source: copilot:PR#772
+      added: "2026-05-20"
+    - id: preserve-fields-on-partial-update
+      category: error-handling
+      pattern: >-
+        Handler that returns a struct after a partial update (e.g., Edit/Update) constructs the response struct manually instead of re-reading the full row from the DB
+      check: >-
+        Verify that all fields on the returned struct are populated from the DB (especially fields not touched by the update), so unchanged columns aren't reported as null/empty to the client. Prefer re-fetching the row over hand-assembling the response.
+      source: copilot:PR#772
+      added: "2026-05-20"
+    - id: ref-guard-async-init
+      category: concurrency
+      pattern: >-
+        Async initialization functions (start/open/connect) that guard against re-entrancy using React state instead of refs
+      check: >-
+        Verify re-entrancy guards for async init use refs (or check existing resource refs like recorderRef.current/streamRef.current) rather than React state, since state updates are batched/async and can't prevent concurrent invocations within the same tick
+      source: copilot:PR#773
+      added: "2026-05-20"
+    - id: comment-matches-impl-contract
+      category: style
+      pattern: >-
+        Function or method documentation/comments describe a contract (e.g., 'sign-convention agnostic', 'accepts any input', 'handles both X and Y') that may not match the actual implementation behavior
+      check: >-
+        Verify that doc comments accurately reflect what the code actually does — if a comment claims the function accepts multiple input conventions or handles a broader contract, confirm the implementation truly supports that; otherwise tighten the comment to match the real behavior (or fix the implementation to honor the documented contract)
+      source: copilot:PR#773
+      added: "2026-05-20"
+    - id: input-modality-accessible-name
+      category: ui
+      pattern: >-
+        Interactive controls with aria-label/title or visible text that describes a single input modality (e.g. 'Hold to record', 'Tap to', 'Click to', 'Swipe to')
+      check: >-
+        Verify the accessible name accurately describes behavior across all supported input modalities (touch, mouse, keyboard). If behavior differs by pointer type (e.g. hold-to-record on touch vs click-to-toggle on desktop), use a neutral action label (e.g. 'Record voice note') and convey modality-specific hints as separate helper text conditioned on pointer type.
+      source: copilot:PR#773
+      added: "2026-05-20"
+    - id: test-new-api-helpers
+      category: testing
+      pattern: New API helper function or typed error class added to a frontend api.ts module
+      check: >-
+        Verify unit tests cover the helper's success parsing, non-OK response with JSON error body, non-OK response with non-JSON body, and missing/invalid response fields
+      source: copilot:PR#773
+      added: "2026-05-20"
+    - id: test-complex-audio-pipelines
+      category: testing
+      pattern: >-
+        New code introduces a multi-step media/audio processing pipeline (decode → analyze → render → re-encode) using browser APIs like AudioContext, OfflineAudioContext, or MediaRecorder, with best-effort fallback paths.
+      check: >-
+        Verify unit tests exist that mock the browser APIs to cover both the happy path (correct boundary detection, preserved mime/type on re-encode) and fallback paths (returns original input on missing constructors or decode failure).
+      source: copilot:PR#773
+      added: "2026-05-20"
+    - id: consistent-state-guard-checks
+      category: concurrency
+      pattern: >-
+        UI handler guards an action based on a single state value (e.g., `state === 'recording'`) when a derived flag (e.g., `isRecording`) treats multiple states as equivalent
+      check: >-
+        Verify that guards across related handlers use the same derived flag or full set of states, not a narrower subset, to prevent races during transitional states like 'starting' or 'processing'
+      source: copilot:PR#773
+      added: "2026-05-20"
+    - id: test-stop-near-timeout-race
+      category: testing
+      pattern: >-
+        Recorder/timer logic with both a user-stop path and an auto-complete-on-timeout path (e.g. useVoiceRecorder with maxDurationMs and onAutoComplete)
+      check: >-
+        Verify there is a regression test covering the stop-near-timeout race: when stop() is called just before maxDurationMs elapses, onAutoComplete must not fire and the result must be delivered only via the stop() promise (no double-commit).
+      source: copilot:PR#773
+      added: "2026-05-20"
+    - id: no-generic-uint8array-type-param
+      category: style
+      pattern: >-
+        TypeScript code that uses `Uint8Array<...>` (or other DOM typed-array classes) with a generic type parameter
+      check: >-
+        Verify the typed-array type is written without a generic parameter (e.g. `Uint8Array | null`), since `Uint8Array` is not generic in the standard TS DOM libs and adding a type argument will fail type-checking unless a custom lib definition is in place
+      source: copilot:PR#773
+      added: "2026-05-20"
+    - id: capture-context-at-async-start
+      category: concurrency
+      pattern: >-
+        Async/long-running operations (recording, uploading, fetching) whose completion handlers reference a context value (conversationId, userId, route param) that can change mid-operation, with cleanup only handling a subset of in-flight states
+      check: >-
+        Verify either (a) the context value is captured at operation start and used in the completion handler, or (b) cleanup cancels/ignores completions for ALL in-flight states (not just the obvious ones like 'recording' — also 'processing', 'uploading', 'finalizing', etc.), so completions cannot apply to the wrong context after a switch
+      source: copilot:PR#773
+      added: "2026-05-20"
+    - id: guard-state-transitions-before-restart
+      category: concurrency
+      pattern: >-
+        State machine methods (start/stop/cancel) that gate re-entry by checking only a subset of in-flight states, while async teardown/processing states can still hold live resources (streams, recorders, timers, refs).
+      check: >-
+        Verify that methods which acquire new resources or transition into an active state guard against ALL non-idle states — including transitional ones like 'processing', 'stopping', or 'cleaning-up' — and/or check that resource refs are null before re-acquiring. Re-entering during teardown can leak streams/handles and corrupt state.
+      source: copilot:PR#773
+      added: "2026-05-20"
+    - id: cancel-starting-recorder-on-stop
+      category: concurrency
+      pattern: >-
+        Recorder/async-resource hook with a 'starting' state (e.g., getUserMedia in-flight) where stop() is called on user release/finish
+      check: >-
+        Verify the finish/stop flow calls cancel() (or stop() cancels the pending start) when state==='starting', so a quick tap/release does not let the recorder transition to recording and auto-complete after the user has already released
+      source: copilot:PR#773
+      added: "2026-05-20"
+    - id: clear-timeouts-on-promise-settle
+      category: concurrency
+      pattern: >-
+        A function that creates Promise(s) with setTimeout timers, where the promise can settle via multiple paths (resolve, reject, event handlers) before the timeouts fire
+      check: >-
+        Verify timeout handles are stored and cleared in the settlement/finish path so pending timers don't fire after the promise resolves, keeping closures alive and doing extra work
+      source: copilot:PR#773
+      added: "2026-05-20"
+    - id: avoid-exhaustive-deps-suppression
+      category: error-handling
+      pattern: >-
+        useCallback/useEffect/useMemo with eslint-disable-next-line react-hooks/exhaustive-deps comment
+      check: >-
+        Verify the dependency suppression is removed. Referenced values (i18n t, state, helpers, props) must either be included in the dependency array or made stable via useRef/useCallback. Suppressing exhaustive-deps hides stale-closure bugs.
+      source: copilot:PR#773
+      added: "2026-05-20"
+    - id: html-media-src-comparison
+      category: ui
+      pattern: >-
+        Comparing an HTMLMediaElement's `el.src` property to a raw URL string (e.g. relative path) to decide whether to reload/seek the element
+      check: >-
+        Verify `el.src` is not compared directly to a non-absolute URL — the browser normalizes `el.src` to an absolute URL, so the comparison will spuriously differ and reset `currentTime`, breaking pause/resume. Track the last requested src separately, or compare against `new URL(src, location.href).href` / `el.getAttribute('src')`.
+      source: copilot:PR#774
+      added: "2026-05-20"
+    - id: voice-note-mime-detection
+      category: ui
+      pattern: >-
+        Code that detects voice notes or other media types by matching a single MIME string (e.g., only `audio/webm`)
+      check: >-
+        Verify the detection covers all MIME types the producer/recorder can emit across browsers (e.g., Firefox emits `audio/ogg`, Safari may emit `audio/mp4`). Match the full set of MIME types or use a broader pattern like `audio/*` with codec hints, so cross-browser outputs render with the intended UI component.
+      source: copilot:PR#774
+      added: "2026-05-20"
+    - id: validate-client-controlled-meta-fields
+      category: security
+      pattern: >-
+        Parsing client-controlled JSON/meta fields (e.g., meta_json, bars, durationMs) and using values directly for rendering or computation
+      check: >-
+        Verify all fields from opaque client-controlled inputs are validated: clamp numbers to finite non-negative ranges, cap array lengths to safe maximums, and pad/normalize to expected shapes before use in DOM or calculations
+      source: copilot:PR#774
+      added: "2026-05-20"
+    - id: validate-cached-render-data
+      category: error-handling
+      pattern: >-
+        Reading cached/stored data (bars, durations, counts) and feeding it directly into rendering, ARIA attributes, or DOM geometry
+      check: >-
+        Validate and sanitize cached values before use: clamp numeric fields to finite non-negative ranges (reject NaN/Infinity), and cap/pad array lengths to expected bounds to prevent excessive DOM work or invalid geometry from corrupted storage
+      source: copilot:PR#774
+      added: "2026-05-20"
+    - id: use-shared-constants
+      category: style
+      pattern: >-
+        Hard-coded literal values (array sizes, counts, defaults) in a component when a named constant for that value already exists in a shared module
+      check: >-
+        Verify that hard-coded literals are replaced with the existing shared constant (e.g., DEFAULT_BAR_COUNT) so values stay in sync if the constant changes
+      source: copilot:PR#774
+      added: "2026-05-20"
+    - id: promise-contract-matches-impl
+      category: error-handling
+      pattern: >-
+        Function comment or return type promises callers can observe/await errors from an async operation (e.g. returning a Promise from .play(), fetch, etc.)
+      check: >-
+        Verify the implementation actually propagates rejections to the caller — it must not catch-and-swallow errors while the documented contract claims errors are surfaced. Either rethrow after side-effects (logging/notify) or update the comment and return type to reflect that errors are handled internally.
+      source: copilot:PR#774
+      added: "2026-05-20"
+    - id: media-seek-before-metadata
+      category: ui
+      pattern: >-
+        Setting HTMLMediaElement.currentTime (seek) immediately after play(), or before the element's metadata/duration is known
+      check: >-
+        Verify the seek is deferred until 'loadedmetadata'/'canplay' (or duration is known) — e.g. queue a pending seek value and apply it once metadata loads, or expose an API like playFrom(positionMs) that guarantees the initial offset is applied. Silently swallowing seek errors before metadata is loaded (common in Safari) causes playback to start at 0 and ignore the intended offset.
+      source: copilot:PR#774
+      added: "2026-05-20"
+    - id: no-duplicate-validation-logic
+      category: style
+      pattern: >-
+        Two code paths parse/validate the same data shape (e.g., waveform meta from meta_json vs localStorage cache) with their own clamp/pad/validation logic
+      check: >-
+        Verify that shared parsing/validation logic is extracted into a single helper (e.g., normalizeWaveformShape/parseWaveformJSON) and reused across all call sites, so changes like barCount or validation tweaks stay consistent
+      source: copilot:PR#774
+      added: "2026-05-20"
+    - id: test-voice-note-bubble-rendering
+      category: testing
+      pattern: >-
+        ChatView attachment rendering adds a new branch (e.g. isVoiceNote for audio/webm|ogg with empty body) that selects a custom bubble component instead of the default native renderer
+      check: >-
+        Verify a ChatView test covers the new branch — asserting the custom bubble renders (and the default e.g. <audio controls> does not) — across all data sources the branch reads from (meta_json and localStorage fallback)
+      source: copilot:PR#774
+      added: "2026-05-20"
+    - id: json-decode-empty-body-handling
+      category: error-handling
+      pattern: >-
+        HTTP handler decodes a JSON request body with a flag allowing empty bodies, treating any decode error as acceptable when the flag is set
+      check: >-
+        Verify that only true empty-body errors (e.g. errors.Is(err, io.EOF)) are tolerated; malformed JSON and http.MaxBytesReader size errors must still return HTTP 400 rather than being silently accepted
+      source: copilot:PR#775
+      added: "2026-05-20"
+    - id: guard-string-index-before-slice
+      category: error-handling
+      pattern: >-
+        Slicing a string using the result of strings.Index without checking for -1, especially in tests after a non-fatal t.Errorf
+      check: >-
+        Verify that strings.Index results are guarded against -1 before slicing (or use strings.Cut), so a missing substring produces a clear failure rather than a panic that masks the real assertion
+      source: copilot:PR#775
+      added: "2026-05-20"
+    - id: json-omitempty-doc-mismatch
+      category: style
+      pattern: >-
+        Struct fields tagged with `omitempty` whose accompanying comment/docstring describes behavior when the field is zero/empty (e.g. "Zero when ...")
+      check: >-
+        Verify the doc matches actual JSON output: with `omitempty`, the field is omitted (not zero) when empty. Either remove `omitempty` to always emit the field, or update the comment to explicitly state the field is omitted when not applicable.
+      source: copilot:PR#776
+      added: "2026-05-20"
+    - id: comment-matches-code-semantics
+      category: style
+      pattern: >-
+        Comments describing variable capture, ownership, mutability, or parameter passing semantics in function signatures or closures
+      check: >-
+        Verify the comment accurately reflects the actual code behavior — e.g., if a comment says a value is captured by reference, confirm the parameter is a pointer/reference type rather than passed by value; otherwise update the comment or change the signature to match the stated intent
+      source: copilot:PR#776
+      added: "2026-05-20"
+    - id: doc-claims-match-implementation
+      category: other
+      pattern: >-
+        Documentation describes security/privacy properties of an identifier, token, or wire format (e.g., 'does not expose X', 'protects Y')
+      check: >-
+        Verify the claim matches what the code actually transmits. If the value embeds user ids, emails, or other identifying data, the doc must accurately describe what is and isn't exposed (and to whom) rather than overstating the protection.
+      source: copilot:PR#776
+      added: "2026-05-20"
+    - id: doc-matches-implementation-scope
+      category: other
+      pattern: >-
+        Hook/function/module header comment describes scope (e.g. '1:1', 'single user', 'per-conversation') while the underlying API, signalling, or state handles a broader/narrower case
+      check: >-
+        Verify documented scope matches actual behavior: if the doc says 1:1 but signalling broadcasts to N members (or vice versa), either update the doc to reflect real constraints, enforce the constraint in code (reject/guard when assumptions don't hold), or extend the implementation to match the documented scope
+      source: copilot:PR#777
+      added: "2026-05-20"
+    - id: async-lifecycle-race-guard
+      category: concurrency
+      pattern: >-
+        Async start/setup functions (e.g. startCall, connect, init) that await multiple operations (fetch, getUserMedia, createOffer) while a corresponding teardown/cancel function can run concurrently, mutating shared refs/state or sending network requests after each await
+      check: >-
+        Verify the async function uses an AbortController or epoch/generation token that is invalidated by teardown, and that the token is checked after every await before mutating refs/state, creating resources (PeerConnection, streams), or POSTing signals — otherwise a teardown mid-flight will leave orphaned resources or stale requests
+      source: copilot:PR#777
+      added: "2026-05-20"
+    - id: permissive-sdp-payload-parsing
+      category: error-handling
+      pattern: >-
+        Parsing WebRTC signalling payloads (call_offer/call_answer) that require both `type` and `sdp` fields before acting
+      check: >-
+        Verify the handler tolerates missing `type` by defaulting it (e.g. `'offer'` for call_offer, `'answer'` for call_answer) when `sdp` is present, instead of silently dropping the event, to stay forward-compatible with the permissive backend
+      source: copilot:PR#777
+      added: "2026-05-20"
+    - id: sse-reader-cancel-on-cleanup
+      category: concurrency
+      pattern: >-
+        Subscribing to an SSE/fetch stream (res.body.getReader()) inside a React effect or async hook, relying solely on AbortController.abort() for cleanup
+      check: >-
+        Verify the active stream reader is tracked and explicitly cancelled (reader.cancel()) in the effect cleanup, since some environments don't propagate abort to res.body and the read loop can hang and leak
+      source: copilot:PR#777
+      added: "2026-05-20"
+    - id: restore-global-stubs-in-tests
+      category: testing
+      pattern: >-
+        Tests mutate global objects (e.g., `navigator`, `window`, `document`) via `Object.defineProperty` or direct assignment without snapshotting the original descriptor
+      check: >-
+        Verify the test snapshots the original property descriptor in `beforeEach` (or before mutation) and restores or deletes it in `afterEach` to prevent leakage into subsequent test files in the same worker
+      source: copilot:PR#777
+      added: "2026-05-20"
+    - id: async-lifecycle-epoch-guard
+      category: concurrency
+      pattern: >-
+        Async function performs multiple awaits then creates resources (peer connections, media streams, network posts) that outlive the call/session lifecycle
+      check: >-
+        Verify the function captures an epoch/generation token at entry and re-checks it after each await; on mismatch, bail out and clean up any already-acquired resources (stop MediaStream tracks, close connections) before returning
+      source: copilot:PR#777
+      added: "2026-05-20"
+    - id: audiocontext-resume-after-create
+      category: performance
+      pattern: >-
+        Creating a new AudioContext (e.g. to keep a media pipeline alive in the background) without explicitly resuming it
+      check: >-
+        Verify that ctx.resume() is called (best-effort) immediately after AudioContext creation, or that the visibility/gesture handler is invoked once, so the context reliably reaches the 'running' state instead of remaining 'suspended'
+      source: copilot:PR#777
+      added: "2026-05-20"
+    - id: clear-stale-error-on-state-transition
+      category: error-handling
+      pattern: >-
+        State machine or lifecycle hook (e.g., call/connection/session) transitioning into a new active state (incoming, accepting, idle reset) while a previous error state may still be set
+      check: >-
+        Verify that error state is explicitly cleared (e.g., setError(null)) when entering a new lifecycle phase that supersedes prior failures, so stale errors don't remain visible during the new active/ringing state or after returning to idle
+      source: copilot:PR#777
+      added: "2026-05-20"
+    - id: restore-stubbed-globals-in-tests
+      category: testing
+      pattern: >-
+        Test stubs a global/host property (e.g., navigator.mediaDevices, window.X) via Object.defineProperty in beforeEach/setup
+      check: >-
+        Verify the original property descriptor is captured before stubbing and restored in afterEach (not just deleted), so state does not leak to other tests
+      source: copilot:PR#778
+      added: "2026-05-20"
+    - id: cleanup-on-prop-change-for-persistent-components
+      category: concurrency
+      pattern: >-
+        Components that stay mounted across prop/route changes (e.g., conversationId, userId) and hold live resources like media streams, RTCPeerConnections, WebSockets, or subscriptions
+      check: >-
+        Verify that resource-holding hooks tear down and reinitialize when identifying props change — add a useEffect cleanup that ends/closes the previous resource so switching context doesn't leak active connections or misroute signalling to the wrong target
+      source: copilot:PR#778
+      added: "2026-05-20"
+    - id: enforce-1-1-call-constraint
+      category: ui
+      pattern: >-
+        Signalling/event handlers (e.g., call_* events) wired into a UI feature that is only exposed for a specific conversation shape (e.g., 1:1 conversations)
+      check: >-
+        Verify the handler gates event processing and related UI (overlays, missed-call rows, state changes) on the same constraint that hides/shows the entry point — e.g., a verified 2-member conversation for 1:1 calls — or auto-rejects events that violate the constraint, so the invariant holds even if another client sends events for unsupported conversation shapes
+      source: copilot:PR#778
+      added: "2026-05-20"
+    - id: ui-toggle-label-matches-behavior
+      category: ui
+      pattern: >-
+        Boolean toggle (on/off, enable/disable, mute/unmute) controlling a media element, audio volume, or similar binary state
+      check: >-
+        Verify the toggle's visible label and icon accurately reflect the underlying behavior — e.g. an 'off' state should fully disable/mute (volume 0, paused, hidden) rather than just attenuate. If the behavior is partial (reduced volume, dimmed, etc.), rename the label/icon to match (e.g. 'quiet mode' instead of 'speaker off').
+      source: copilot:PR#778
+      added: "2026-05-20"
+    - id: state-track-sync-on-toggle
+      category: ui
+      pattern: >-
+        Toggle/setter functions (mute, enable, pause, etc.) that update React state but conditionally apply the effect to an underlying media track, stream, or resource that may not yet exist
+      check: >-
+        Verify the desired state is either (a) not updated when the underlying resource is missing, or (b) persisted and re-applied whenever the resource is later acquired, so state and the actual track/stream stay in sync
+      source: copilot:PR#778
+      added: "2026-05-20"
