@@ -16228,17 +16228,9 @@ rules:
     - id: publish-events-after-write
       category: other
       pattern: >-
-        REST/HTTP handler persists or mutates state (insert/update/delete) for a resource that has a real-time event stream (SSE/WebSocket hub)
+        REST/HTTP handler persists or mutates state (insert/update/delete) for a resource that also has a real-time event stream (SSE, WebSocket, or pub/sub hub)
       check: >-
-        Verify the handler publishes a corresponding event to the hub after a successful write, including the necessary fields (id, timestamp, payload), so live subscribers stay in sync with the REST mutations
-      source: copilot:PR#756
-      added: "2026-05-19"
-    - id: publish-event-after-state-change
-      category: other
-      pattern: >-
-        Handler mutates state that is also exposed via an event stream/hub (e.g., SSE, websockets, pub/sub)
-      check: >-
-        After a successful state mutation, verify the corresponding event is published to the hub/stream so subscribers stay in sync with the documented streaming contract
+        Verify the handler publishes a corresponding event to the hub/stream (e.g. DefaultHub().Publish, SSE broadcast) after a successful write and before responding, including the necessary fields (id, timestamp, payload), so live subscribers stay in sync with REST mutations regardless of the transport (hub, SSE, WebSocket)
       source: copilot:PR#756
       added: "2026-05-19"
     - id: batch-existence-validation
@@ -16247,14 +16239,6 @@ rules:
         Handler validates a set of foreign-key IDs (e.g. member IDs, tag IDs) by running one SELECT-per-ID inside a loop
       check: >-
         Replace per-ID existence checks with a single `WHERE id IN (...)` query and compare returned IDs/count to the requested set, still returning a clear 400 for unknown IDs
-      source: copilot:PR#756
-      added: "2026-05-19"
-    - id: publish-hub-events-after-persist
-      category: other
-      pattern: >-
-        REST handler persists state (e.g. new message, status change) for a resource that also has a pub/sub stream endpoint
-      check: >-
-        Verify the handler publishes the corresponding event to the Hub (e.g. DefaultHub().Publish) after persisting and before responding, so stream subscribers receive updates
       source: copilot:PR#756
       added: "2026-05-19"
     - id: handler-storage-validation-consistency
@@ -16960,10 +16944,10 @@ rules:
     - id: restore-global-stubs-in-tests
       category: testing
       pattern: >-
-        Tests mutate global objects (e.g., `navigator`, `window`, `document`) via `Object.defineProperty` or direct assignment without snapshotting the original descriptor
+        Tests mutate global objects (e.g., `navigator`, `window`, `document`, `navigator.mediaDevices`) via `Object.defineProperty` or direct assignment without snapshotting the original descriptor
       check: >-
-        Verify the test snapshots the original property descriptor in `beforeEach` (or before mutation) and restores or deletes it in `afterEach` to prevent leakage into subsequent test files in the same worker
-      source: copilot:PR#777
+        Verify the original property descriptor is captured before stubbing (in `beforeEach` or immediately before mutation) and fully restored in `afterEach` (not just deleted), so the stub does not leak into subsequent test files or workers
+      source: copilot:PR#777,PR#778
       added: "2026-05-20"
     - id: async-lifecycle-epoch-guard
       category: concurrency
@@ -16988,14 +16972,6 @@ rules:
       check: >-
         Verify that error state is explicitly cleared (e.g., setError(null)) when entering a new lifecycle phase that supersedes prior failures, so stale errors don't remain visible during the new active/ringing state or after returning to idle
       source: copilot:PR#777
-      added: "2026-05-20"
-    - id: restore-stubbed-globals-in-tests
-      category: testing
-      pattern: >-
-        Test stubs a global/host property (e.g., navigator.mediaDevices, window.X) via Object.defineProperty in beforeEach/setup
-      check: >-
-        Verify the original property descriptor is captured before stubbing and restored in afterEach (not just deleted), so state does not leak to other tests
-      source: copilot:PR#778
       added: "2026-05-20"
     - id: cleanup-on-prop-change-for-persistent-components
       category: concurrency
