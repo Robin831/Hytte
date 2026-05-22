@@ -154,6 +154,34 @@ func listSetIDs(ctx context.Context, db *sql.DB) ([]string, error) {
 // syncCardsImpl is the shared implementation behind SyncCards and the
 // price-only refresh path.
 func syncCardsImpl(ctx context.Context, db *sql.DB, client *Client, setID string, pricesOnly bool) error {
+	// Hybrid dispatch: certain sets (today: the `me*` Mega Evolution family)
+	// have no Cardmarket prices on pokemontcg.io v2 because their scraper
+	// bridge isn't wired up for the new IDs. Route those to TCGdex which
+	// does carry fresh prices. Card metadata still comes from pokemontcg.io
+	// (the rest of syncCardsImplPokemontcg below runs first to keep card
+	// rows / set rows consistent with the rest of the catalogue); TCGdex
+	// only contributes pricing.
+	if shouldUseTCGdex(setID) {
+		// Run the pokemontcg.io path first so metadata stays consistent —
+		// our card IDs, names, rarities, and image URLs come from
+		// pokemontcg.io and don't change.
+		if err := syncCardsImplPokemontcg(ctx, db, client, setID, pricesOnly); err != nil {
+			return err
+		}
+		// Then overlay TCGdex prices on top. Failure here is non-fatal —
+		// metadata is already good; we just leave variant prices at zero
+		// (which the UI renders as "—" per Hytte-bivr).
+		if err := overlayTCGdexPrices(ctx, db, setID); err != nil {
+			log.Printf("pokemon: TCGdex price overlay for %s: %v", setID, err)
+		}
+		return nil
+	}
+	return syncCardsImplPokemontcg(ctx, db, client, setID, pricesOnly)
+}
+
+// syncCardsImplPokemontcg is the canonical pokemontcg.io v2 sync path —
+// pulls card metadata + (when present) Cardmarket prices for the given set.
+func syncCardsImplPokemontcg(ctx context.Context, db *sql.DB, client *Client, setID string, pricesOnly bool) error {
 	page := 1
 	for {
 		q := url.Values{}
@@ -189,6 +217,81 @@ func syncCardsImpl(ctx context.Context, db *sql.DB, client *Client, setID string
 	}
 	return nil
 }
+
+// overlayTCGdexPrices reads every card row for setID from the DB, translates
+// each card id into TCGdex's zero-padded convention, fetches per-card pricing
+// in parallel (bounded by tcgdexParallelism), and upserts the resulting
+// (normal, reverse_holofoil) prices onto the existing variant rows. Card
+// metadata is NOT touched — that path is owned by syncCardsImplPokemontcg.
+// Test seam tcgdexClientFn lets tests inject a stub client without exporting
+// the dependency through the public sync entry points.
+func overlayTCGdexPrices(ctx context.Context, db *sql.DB, setID string) error {
+	client := tcgdexClientFn()
+	rows, err := db.QueryContext(ctx, `SELECT id FROM pokemon_cards WHERE set_id = ?`, setID)
+	if err != nil {
+		return fmt.Errorf("list cards for tcgdex overlay: %w", err)
+	}
+	defer rows.Close()
+	var ourIDs, tcgIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return fmt.Errorf("scan card id: %w", err)
+		}
+		ourIDs = append(ourIDs, id)
+		tcgIDs = append(tcgIDs, ourCardIDToTCGdex(id))
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(ourIDs) == 0 {
+		return nil
+	}
+
+	prices := fetchTCGdexCardPrices(ctx, client, setID, tcgIDs, ourIDs)
+	if len(prices) == 0 {
+		// TCGdex may not have ingested this set yet (the common case for
+		// brand-new releases like me4 on its release day). Caller logs
+		// nothing; the UI shows "—" until prices appear on the next pass.
+		return nil
+	}
+
+	now := time.Now().UTC()
+	for cardID, p := range prices {
+		// Ensure the placeholder normal row exists so the price update has
+		// something to update.
+		if err := ensureNormalVariant(ctx, db, cardID); err != nil {
+			return err
+		}
+		if p[0] > 0 {
+			if _, err := db.ExecContext(ctx, `
+				INSERT INTO pokemon_card_variants (card_id, kind, price_eur, price_at)
+				VALUES (?, 'normal', ?, ?)
+				ON CONFLICT(card_id, kind) DO UPDATE SET
+					price_eur = excluded.price_eur,
+					price_at  = excluded.price_at
+			`, cardID, p[0], now); err != nil {
+				return fmt.Errorf("upsert tcgdex normal for %s: %w", cardID, err)
+			}
+		}
+		if p[1] > 0 {
+			if _, err := db.ExecContext(ctx, `
+				INSERT INTO pokemon_card_variants (card_id, kind, price_eur, price_at)
+				VALUES (?, 'reverse_holofoil', ?, ?)
+				ON CONFLICT(card_id, kind) DO UPDATE SET
+					price_eur = excluded.price_eur,
+					price_at  = excluded.price_at
+			`, cardID, p[1], now); err != nil {
+				return fmt.Errorf("upsert tcgdex reverse for %s: %w", cardID, err)
+			}
+		}
+	}
+	return nil
+}
+
+// tcgdexClientFn is the test seam for swapping the TCGdex client. Production
+// returns a fresh client per call (cheap); tests replace it with a stub.
+var tcgdexClientFn = func() *TCGdexClient { return NewTCGdexClient() }
 
 func upsertCard(ctx context.Context, db *sql.DB, setID string, c Card, now time.Time) error {
 	_, err := db.ExecContext(ctx, `

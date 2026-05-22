@@ -30,6 +30,16 @@ func setupTestDB(t *testing.T) *sql.DB {
 	d.SetMaxOpenConns(1)
 	d.SetMaxIdleConns(1)
 	t.Cleanup(func() { d.Close() })
+	// Default-disable the TCGdex hybrid overlay during tests by pointing the
+	// stub client at an unreachable address. Tests that exercise the overlay
+	// override tcgdexClientFn explicitly. Without this default, tests that
+	// happen to seed me*-prefixed sets (used by the existing fallback /
+	// backfill tests) would race against real network calls to TCGdex.
+	prev := tcgdexClientFn
+	tcgdexClientFn = func() *TCGdexClient {
+		return NewTCGdexClient().WithTCGdexBaseURL("http://127.0.0.1:1") // refused
+	}
+	t.Cleanup(func() { tcgdexClientFn = prev })
 	return d
 }
 
