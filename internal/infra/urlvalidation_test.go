@@ -393,3 +393,59 @@ func parseIPForTest(t *testing.T, s string) net.IP {
 	}
 	return ip
 }
+
+// --- HEALTHCHECK_ALLOWED_HOSTS allowlist ---
+
+func TestValidateServiceURL_AllowlistOverridesLocalhost(t *testing.T) {
+	t.Setenv("HEALTHCHECK_ALLOWED_HOSTS", "localhost")
+	if err := ValidateServiceURL("http://localhost:8080/api/health"); err != nil {
+		t.Errorf("expected localhost to be allowed via env, got %v", err)
+	}
+}
+
+func TestValidateServiceURL_AllowlistOverrides127001(t *testing.T) {
+	t.Setenv("HEALTHCHECK_ALLOWED_HOSTS", "127.0.0.1")
+	if err := ValidateServiceURL("http://127.0.0.1:8080/api/health"); err != nil {
+		t.Errorf("expected 127.0.0.1 to be allowed via env, got %v", err)
+	}
+}
+
+func TestValidateServiceURL_AllowlistMultipleEntries(t *testing.T) {
+	t.Setenv("HEALTHCHECK_ALLOWED_HOSTS", " localhost , 127.0.0.1 ")
+	cases := []string{
+		"http://localhost:8080/x",
+		"http://127.0.0.1:8080/x",
+	}
+	for _, u := range cases {
+		if err := ValidateServiceURL(u); err != nil {
+			t.Errorf("%q: expected allowed via env, got %v", u, err)
+		}
+	}
+}
+
+// Allowlist requires exact match — listing "localhost" must not unlock
+// other private hosts the operator did not explicitly trust.
+func TestValidateServiceURL_AllowlistExactMatchOnly(t *testing.T) {
+	t.Setenv("HEALTHCHECK_ALLOWED_HOSTS", "localhost")
+	if err := ValidateServiceURL("http://127.0.0.1:8080/x"); err == nil {
+		t.Error("expected 127.0.0.1 to remain blocked when allowlist only includes 'localhost'")
+	}
+	if err := ValidateServiceURL("http://10.0.0.1/x"); err == nil {
+		t.Error("expected 10.0.0.1 to remain blocked when allowlist only includes 'localhost'")
+	}
+}
+
+// With the env var unset, the validator must behave exactly as before —
+// loopback rejected, RFC1918 rejected, etc.
+func TestValidateServiceURL_DefaultStillBlocksWhenEnvUnset(t *testing.T) {
+	t.Setenv("HEALTHCHECK_ALLOWED_HOSTS", "")
+	for _, u := range []string{
+		"http://localhost:8080/x",
+		"http://127.0.0.1/x",
+		"http://10.0.0.1/x",
+	} {
+		if err := ValidateServiceURL(u); err == nil {
+			t.Errorf("%q: expected blocked when env unset", u)
+		}
+	}
+}

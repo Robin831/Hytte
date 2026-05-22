@@ -1,0 +1,2 @@
+category: Added
+- **Healthcheck SSRF allowlist env var** - `HEALTHCHECK_ALLOWED_HOSTS` (comma-separated) bypasses the loopback / private-IP SSRF rejection in the Service Health Checks module for explicitly trusted hostnames. Set on the box's `~/Hytte/.env` (e.g. `HEALTHCHECK_ALLOWED_HOSTS=localhost,127.0.0.1`) to monitor a service running on the same host as Hytte. Default (env unset) keeps the previous behaviour — all loopback / RFC1918 / link-local addresses rejected. Allowlist is exact-match on the URL's hostname, no CIDR or wildcards. (Hytte-art2)

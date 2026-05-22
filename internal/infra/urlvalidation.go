@@ -5,10 +5,51 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 )
+
+// healthCheckAllowedHosts parses HEALTHCHECK_ALLOWED_HOSTS (comma-separated)
+// into a set of lowercased hostnames that bypass the SSRF rejection in
+// validateHost + safeDialContext. Default (unset/empty env) returns an empty
+// set, which keeps the previous "reject all loopback/private" behaviour.
+//
+// Exact match only on the URL's Hostname(): operators add each entry they
+// trust (e.g. "localhost,127.0.0.1"). No CIDR or wildcard support — that
+// invites footguns and the env var is per-process anyway, so the operator
+// can list everything they need explicitly. Read on each call so tests can
+// override via t.Setenv without an init-order dance; the env lookup is
+// cheap enough for the poll cadence.
+func healthCheckAllowedHosts() map[string]struct{} {
+	raw := strings.TrimSpace(os.Getenv("HEALTHCHECK_ALLOWED_HOSTS"))
+	if raw == "" {
+		return nil
+	}
+	out := make(map[string]struct{})
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.ToLower(strings.TrimSpace(entry))
+		entry = strings.TrimSuffix(entry, ".")
+		if entry == "" {
+			continue
+		}
+		out[entry] = struct{}{}
+	}
+	return out
+}
+
+// isHealthCheckAllowedHost reports whether host (already lower-cased and
+// trimmed of any trailing dot by the caller) is in the operator-supplied
+// allowlist.
+func isHealthCheckAllowedHost(host string) bool {
+	allow := healthCheckAllowedHosts()
+	if len(allow) == 0 {
+		return false
+	}
+	_, ok := allow[host]
+	return ok
+}
 
 // ValidateServiceURL checks that a URL is safe to make HTTP requests to.
 // It rejects private/internal IP ranges, localhost, and non-HTTP(S) schemes
@@ -177,6 +218,12 @@ func ValidateGitHubOwnerRepo(owner, repo string) error {
 func validateHost(host string) error {
 	// Block localhost variants.
 	lower := strings.ToLower(host)
+	// Operator opt-in via HEALTHCHECK_ALLOWED_HOSTS lets self-monitoring work
+	// (e.g. http://localhost:8080/api/health on a single-box deploy). Trailing
+	// dot is normalized away so "localhost" matches "localhost." too.
+	if isHealthCheckAllowedHost(strings.TrimSuffix(lower, ".")) {
+		return nil
+	}
 	if lower == "localhost" || lower == "localhost." {
 		return fmt.Errorf("localhost is not allowed")
 	}
@@ -222,10 +269,16 @@ func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error
 		return nil, fmt.Errorf("invalid address %q: %w", addr, err)
 	}
 
-	// Block localhost at dial time too.
+	// Block localhost at dial time too — unless the operator has explicitly
+	// allowlisted this hostname via HEALTHCHECK_ALLOWED_HOSTS. The allowlist
+	// also bypasses the per-resolved-IP isPrivateIP check below, since the
+	// whole point is to let "localhost" / "127.0.0.1" through.
 	lower := strings.ToLower(host)
-	if lower == "localhost" || lower == "localhost." {
-		return nil, fmt.Errorf("connection to localhost is blocked")
+	allowed := isHealthCheckAllowedHost(strings.TrimSuffix(lower, "."))
+	if !allowed {
+		if lower == "localhost" || lower == "localhost." {
+			return nil, fmt.Errorf("connection to localhost is blocked")
+		}
 	}
 
 	// Resolve the hostname ourselves so we can inspect the IPs.
@@ -235,9 +288,11 @@ func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error
 	}
 
 	// Check every resolved IP before connecting.
-	for _, ipAddr := range ips {
-		if isPrivateIP(ipAddr.IP) {
-			return nil, fmt.Errorf("connection to private/internal IP %s blocked (resolved from %q)", ipAddr.IP, host)
+	if !allowed {
+		for _, ipAddr := range ips {
+			if isPrivateIP(ipAddr.IP) {
+				return nil, fmt.Errorf("connection to private/internal IP %s blocked (resolved from %q)", ipAddr.IP, host)
+			}
 		}
 	}
 
