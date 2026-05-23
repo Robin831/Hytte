@@ -1,0 +1,2 @@
+category: Changed
+- **Training page polls a lightweight latest-id endpoint with visibility-aware backoff** - The Training page no longer refetches the full workout list every 15 seconds. A new `GET /api/training/workouts/latest` endpoint returns just `{latest_id, count}` with a single indexed query, and the client polls it on a 30s → 5min exponential backoff that pauses while the tab is hidden. The full workout list is only refetched when the user opts in via the existing "new workouts available" banner. Reduces idle bandwidth, DB load, and mobile battery drain. (Hytte-jiuc)
