@@ -434,6 +434,44 @@ describe('StridePage – race form', () => {
       expect(screen.getByText('Failed to create race')).toBeInTheDocument()
     }, { timeout: 3000 })
   })
+
+  it('shows validation error for invalid target time and does not POST', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes('/api/stride/races')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ races: [] }) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ notes: [] }) } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('No upcoming races. Add a race to get started.')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByText('Add Race'))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Race name')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByLabelText('Race name'), { target: { value: 'Test Race' } })
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2099-01-01' } })
+    fireEvent.change(screen.getByLabelText('Distance (km)'), { target: { value: '42' } })
+    fireEvent.change(screen.getByLabelText('Target time (optional)'), { target: { value: '25:00' } })
+
+    const form = screen.getByLabelText('Race name').closest('form')!
+    await act(async () => {
+      fireEvent.submit(form)
+    })
+
+    expect(screen.getByText('Enter target time as H:MM:SS (e.g. 3:30:00)')).toBeInTheDocument()
+    const postCalls = fetchMock.mock.calls.filter(
+      ([url, init]: [string, RequestInit | undefined]) =>
+        url.includes('/api/stride/races') && init?.method === 'POST',
+    )
+    expect(postCalls).toHaveLength(0)
+  })
 })
 
 describe('StridePage – delete race', () => {
