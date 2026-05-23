@@ -436,7 +436,7 @@ describe('StridePage – race form', () => {
   })
 
   it('shows validation error for invalid target time and does not POST', async () => {
-    const fetchMock = vi.fn((url: string) => {
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
       if (url.includes('/api/stride/races')) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ races: [] }) } as Response)
       }
