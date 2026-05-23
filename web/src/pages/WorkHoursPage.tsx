@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Building2, Calendar, ChevronLeft, ChevronRight, Clock, Copy, Plus, Settings, Trash2 } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
@@ -109,27 +109,27 @@ function localDateStr(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-function getInitialDate(): string {
+function getInitialDate(holidays: Set<string>): string {
   const d = new Date()
-  while (d.getDay() === 0 || d.getDay() === 6) {
+  while (d.getDay() === 0 || d.getDay() === 6 || holidays.has(localDateStr(d))) {
     d.setDate(d.getDate() - 1)
   }
   return localDateStr(d)
 }
 
-function prevWeekday(date: string): string {
+function prevWeekday(date: string, holidays: Set<string>): string {
   const d = new Date(date + 'T12:00:00')
   d.setDate(d.getDate() - 1)
-  while (d.getDay() === 0 || d.getDay() === 6) {
+  while (d.getDay() === 0 || d.getDay() === 6 || holidays.has(localDateStr(d))) {
     d.setDate(d.getDate() - 1)
   }
   return localDateStr(d)
 }
 
-function nextWeekday(date: string): string {
+function nextWeekday(date: string, holidays: Set<string>): string {
   const d = new Date(date + 'T12:00:00')
   d.setDate(d.getDate() + 1)
-  while (d.getDay() === 0 || d.getDay() === 6) {
+  while (d.getDay() === 0 || d.getDay() === 6 || holidays.has(localDateStr(d))) {
     d.setDate(d.getDate() + 1)
   }
   return localDateStr(d)
@@ -294,6 +294,16 @@ function getNorwegianHolidays(year: number): Map<string, string> {
   return m
 }
 
+// Build a holiday set covering the given year and its adjacent years so that
+// day-by-day navigation across year boundaries (Dec↔Jan) never loses holidays.
+function buildNavHolidaySet(year: number): Set<string> {
+  return new Set<string>([
+    ...getNorwegianHolidays(year - 1).keys(),
+    ...getNorwegianHolidays(year).keys(),
+    ...getNorwegianHolidays(year + 1).keys(),
+  ])
+}
+
 function currentTimeHHMM(): string {
   const now = new Date()
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
@@ -305,7 +315,9 @@ function currentTimeHHMM(): string {
 export default function WorkHoursPage() {
   const { t } = useTranslation(['workhours', 'common'])
   const [activeTab, setActiveTab] = useState<ViewMode>('day')
-  const [currentDate, setCurrentDate] = useState(getInitialDate)
+  const [currentDate, setCurrentDate] = useState<string>(() =>
+    getInitialDate(buildNavHolidaySet(new Date().getFullYear()))
+  )
 
   function handleSelectDay(date: string) {
     setCurrentDate(date)
@@ -385,6 +397,9 @@ function DayView({
   onNavigateToSettings: () => void
 }) {
   const { t } = useTranslation(['workhours', 'common'])
+
+  const navYear = parseInt(currentDate.split('-')[0])
+  const navHolidaySet = useMemo(() => buildNavHolidaySet(navYear), [navYear])
 
   const currentDateRef = useRef(currentDate)
   const leaveDaysCacheRef = useRef<Map<string, LeaveDay[]>>(new Map())
@@ -882,7 +897,7 @@ function DayView({
 
   const handleCopyYesterday = async () => {
     if (sessions.length > 0) return
-    const yesterday = prevWeekday(currentDate)
+    const yesterday = prevWeekday(currentDate, navHolidaySet)
     setSaving(true)
     try {
       const r = await fetch(`/api/workhours/day?date=${encodeURIComponent(yesterday)}`, {
@@ -990,7 +1005,7 @@ function DayView({
       <div className="flex items-center justify-between bg-gray-800 rounded-lg p-3">
         <button
           type="button"
-          onClick={() => setCurrentDate(prev => prevWeekday(prev))}
+          onClick={() => setCurrentDate(prev => prevWeekday(prev, navHolidaySet))}
           className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
           aria-label={t('workhours:prevDay')}
         >
@@ -1023,7 +1038,7 @@ function DayView({
             onChange={e => {
               if (!e.target.value) return
               const d = new Date(e.target.value + 'T12:00:00')
-              while (d.getDay() === 0 || d.getDay() === 6) {
+              while (d.getDay() === 0 || d.getDay() === 6 || navHolidaySet.has(localDateStr(d))) {
                 d.setDate(d.getDate() - 1)
               }
               setCurrentDate(localDateStr(d))
@@ -1035,7 +1050,7 @@ function DayView({
         </div>
         <button
           type="button"
-          onClick={() => setCurrentDate(prev => nextWeekday(prev))}
+          onClick={() => setCurrentDate(prev => nextWeekday(prev, navHolidaySet))}
           className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
           aria-label={t('workhours:nextDay')}
         >
