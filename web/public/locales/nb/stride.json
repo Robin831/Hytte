@@ -56,7 +56,7 @@
         "create": "Kunne ikke opprette løp",
         "delete": "Kunne ikke slette løp",
         "invalidDistance": "Distanse må være et positivt tall",
-        "invalidTargetTime": "Skriv inn en gyldig måltid (f.eks. 3:45)"
+        "invalidTargetTime": "Skriv inn måltid som T:MM:SS (f.eks. 3:30:00)"
       }
     }
   },

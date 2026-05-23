@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import StridePage from './StridePage'
+import StridePage, { parseTargetTime } from './StridePage'
 import enStride from '../../public/locales/en/stride.json'
 import type { DayPlan } from '../types/stride'
 
@@ -213,6 +213,53 @@ function renderPage() {
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+
+describe('parseTargetTime', () => {
+  it('returns null for empty input', () => {
+    expect(parseTargetTime('')).toBeNull()
+  })
+
+  it('returns null for whitespace-only input', () => {
+    expect(parseTargetTime('   ')).toBeNull()
+  })
+
+  it('rejects two-part H:MM input that used to be silently parsed as H:MM', () => {
+    // Regression: "25:00" used to be parsed as 25 hours = 90000 seconds.
+    expect(parseTargetTime('25:00')).toBeNull()
+  })
+
+  it('parses 3:30:00 as 12600 seconds', () => {
+    expect(parseTargetTime('3:30:00')).toBe(12600)
+  })
+
+  it('parses 0:25:00 as 1500 seconds', () => {
+    expect(parseTargetTime('0:25:00')).toBe(1500)
+  })
+
+  it('returns null when minutes exceed 59', () => {
+    expect(parseTargetTime('1:60:00')).toBeNull()
+  })
+
+  it('returns null when seconds exceed 59', () => {
+    expect(parseTargetTime('1:00:60')).toBeNull()
+  })
+
+  it('returns null for non-numeric input', () => {
+    expect(parseTargetTime('abc')).toBeNull()
+  })
+
+  it('returns null for inputs with too many parts', () => {
+    expect(parseTargetTime('1:2:3:4')).toBeNull()
+  })
+
+  it('returns null for inputs with a single number (no colons)', () => {
+    expect(parseTargetTime('3600')).toBeNull()
+  })
+
+  it('trims surrounding whitespace and parses a valid H:MM:SS', () => {
+    expect(parseTargetTime('  1:00:00  ')).toBe(3600)
+  })
+})
 
 describe('StridePage – loading and empty states', () => {
   afterEach(() => {

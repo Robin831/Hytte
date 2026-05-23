@@ -54,6 +54,23 @@ function formatDuration(seconds: number | null): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
+// Parses a strict "H:MM:SS" target-time string to seconds. Returns null for
+// empty/whitespace-only input or any string that does not match the format
+// exactly (non-negative hours, minutes 0–59, seconds 0–59). Two-part inputs
+// like "25:00" are intentionally rejected to avoid the historical ambiguity
+// where they were silently treated as hours+minutes and saved as 25 hours.
+export function parseTargetTime(s: string): number | null {
+  const trimmed = s.trim()
+  if (!trimmed) return null
+  const match = trimmed.match(/^(\d+):(\d{1,2}):(\d{1,2})$/)
+  if (!match) return null
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  const seconds = Number(match[3])
+  if (minutes > 59 || seconds > 59) return null
+  return hours * 3600 + minutes * 60 + seconds
+}
+
 function priorityLabel(priority: string): { label: string; class: string } {
   switch (priority) {
     case 'A':
@@ -758,16 +775,6 @@ export default function StridePage() {
     fetchAll()
     return () => { controller.abort() }
   }, [planId, previousPlanId])
-
-  // Parse "H:MM:SS" or "M:SS" target time string to seconds
-  function parseTargetTime(s: string): number | null {
-    if (!s.trim()) return null
-    const parts = s.trim().split(':').map(Number)
-    if (parts.some(isNaN)) return null
-    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
-    if (parts.length === 2) return parts[0] * 3600 + parts[1] * 60 // H:MM for race times
-    return null
-  }
 
   async function handleRerunDay(date: string) {
     setRerunError('')
