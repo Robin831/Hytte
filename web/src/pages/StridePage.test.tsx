@@ -260,6 +260,11 @@ describe('parseTargetTime', () => {
   it('trims surrounding whitespace and parses a valid H:MM:SS', () => {
     expect(parseTargetTime('  1:00:00  ')).toBe(3600)
   })
+
+  it('returns null for an astronomically large hour value that would overflow safe integers', () => {
+    // MAX_SAFE_INTEGER ≈ 9e15; threshold is ~2.5e9 hours. 9999999999999 * 3600 ≈ 3.6e16 > MAX_SAFE_INTEGER.
+    expect(parseTargetTime('9999999999999:00:00')).toBeNull()
+  })
 })
 
 describe('StridePage – loading and empty states', () => {

@@ -11,6 +11,8 @@ export function parseTargetTime(s: string): number | null {
   const hours = Number(match[1])
   const minutes = Number(match[2])
   const seconds = Number(match[3])
-  if (minutes > 59 || seconds > 59) return null
-  return hours * 3600 + minutes * 60 + seconds
+  if (!Number.isFinite(hours) || minutes > 59 || seconds > 59) return null
+  const totalSeconds = hours * 3600 + minutes * 60 + seconds
+  if (!Number.isSafeInteger(totalSeconds)) return null
+  return totalSeconds
 }
