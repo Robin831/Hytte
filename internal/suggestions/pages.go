@@ -454,6 +454,31 @@ var Pages = []Page{
 		},
 		FeatureFlag: "",
 	},
+	{
+		Slug:        "pokemon",
+		Title:       "Pokémon",
+		Route:       "/pokemon",
+		Description: "Pokémon TCG collection: browse sets, scan cards, view top cards by value, and track scanned inventory.",
+		SourceFiles: []string{
+			"web/src/pages/PokemonSets.tsx",
+			"web/src/pages/PokemonSet.tsx",
+			"web/src/pages/PokemonTop.tsx",
+			"web/src/pages/PokemonScanned.tsx",
+		},
+		FeatureFlag: "pokemon",
+	},
+	{
+		Slug:        "family-chat",
+		Title:       "Family Chat",
+		Route:       "/family-chat",
+		Description: "Real-time family messaging with attachments, reactions, voice calls, and turn-based prompts.",
+		SourceFiles: []string{
+			"web/src/pages/FamilyChat.tsx",
+			"internal/familychat/handlers.go",
+			"internal/familychat/hub.go",
+		},
+		FeatureFlag: "family_chat",
+	},
 }
 
 // AllRegistered returns the unfiltered registry slice. Callers that need a
