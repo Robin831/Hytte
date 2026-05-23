@@ -1038,7 +1038,9 @@ function DayView({
             onChange={e => {
               if (!e.target.value) return
               const d = new Date(e.target.value + 'T12:00:00')
-              while (d.getDay() === 0 || d.getDay() === 6 || navHolidaySet.has(localDateStr(d))) {
+              const pickedYear = d.getFullYear()
+              const pickedHolidaySet = buildNavHolidaySet(pickedYear)
+              while (d.getDay() === 0 || d.getDay() === 6 || pickedHolidaySet.has(localDateStr(d))) {
                 d.setDate(d.getDate() - 1)
               }
               setCurrentDate(localDateStr(d))
