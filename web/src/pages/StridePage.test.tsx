@@ -467,7 +467,7 @@ describe('StridePage – race form', () => {
 
     expect(screen.getByText('Enter target time as H:MM:SS (e.g. 3:30:00)')).toBeInTheDocument()
     const postCalls = fetchMock.mock.calls.filter(
-      ([url, init]: [string, RequestInit | undefined]) =>
+      ([url, init]: [string, (RequestInit | undefined)?]) =>
         url.includes('/api/stride/races') && init?.method === 'POST',
     )
     expect(postCalls).toHaveLength(0)
