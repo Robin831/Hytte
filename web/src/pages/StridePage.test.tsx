@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import StridePage from './StridePage'
+import { parseTargetTime } from './strideUtils'
 import enStride from '../../public/locales/en/stride.json'
 import type { DayPlan } from '../types/stride'
 
@@ -214,6 +215,58 @@ function renderPage() {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+describe('parseTargetTime', () => {
+  it('returns null for empty input', () => {
+    expect(parseTargetTime('')).toBeNull()
+  })
+
+  it('returns null for whitespace-only input', () => {
+    expect(parseTargetTime('   ')).toBeNull()
+  })
+
+  it('rejects two-part H:MM input that used to be silently parsed as H:MM', () => {
+    // Regression: "25:00" used to be parsed as 25 hours = 90000 seconds.
+    expect(parseTargetTime('25:00')).toBeNull()
+  })
+
+  it('parses 3:30:00 as 12600 seconds', () => {
+    expect(parseTargetTime('3:30:00')).toBe(12600)
+  })
+
+  it('parses 0:25:00 as 1500 seconds', () => {
+    expect(parseTargetTime('0:25:00')).toBe(1500)
+  })
+
+  it('returns null when minutes exceed 59', () => {
+    expect(parseTargetTime('1:60:00')).toBeNull()
+  })
+
+  it('returns null when seconds exceed 59', () => {
+    expect(parseTargetTime('1:00:60')).toBeNull()
+  })
+
+  it('returns null for non-numeric input', () => {
+    expect(parseTargetTime('abc')).toBeNull()
+  })
+
+  it('returns null for inputs with too many parts', () => {
+    expect(parseTargetTime('1:2:3:4')).toBeNull()
+  })
+
+  it('returns null for inputs with a single number (no colons)', () => {
+    expect(parseTargetTime('3600')).toBeNull()
+  })
+
+  it('trims surrounding whitespace and parses a valid H:MM:SS', () => {
+    expect(parseTargetTime('  1:00:00  ')).toBe(3600)
+  })
+
+  it('returns null for an astronomically large hour value that would overflow safe integers', () => {
+    // MAX_SAFE_INTEGER ≈ 9e15; threshold is ~2.5e9 hours. 9999999999999 * 3600 ≈ 3.6e16 > MAX_SAFE_INTEGER.
+    expect(parseTargetTime('9999999999999:00:00')).toBeNull()
+  })
+})
+
 describe('StridePage – loading and empty states', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -385,6 +438,44 @@ describe('StridePage – race form', () => {
     await waitFor(() => {
       expect(screen.getByText('Failed to create race')).toBeInTheDocument()
     }, { timeout: 3000 })
+  })
+
+  it('shows validation error for invalid target time and does not POST', async () => {
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
+      if (url.includes('/api/stride/races')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ races: [] }) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ notes: [] }) } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('No upcoming races. Add a race to get started.')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByText('Add Race'))
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Race name')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByLabelText('Race name'), { target: { value: 'Test Race' } })
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2099-01-01' } })
+    fireEvent.change(screen.getByLabelText('Distance (km)'), { target: { value: '42' } })
+    fireEvent.change(screen.getByLabelText('Target time (optional)'), { target: { value: '25:00' } })
+
+    const form = screen.getByLabelText('Race name').closest('form')!
+    await act(async () => {
+      fireEvent.submit(form)
+    })
+
+    expect(screen.getByText('Enter target time as H:MM:SS (e.g. 3:30:00)')).toBeInTheDocument()
+    const postCalls = fetchMock.mock.calls.filter(
+      ([url, init]: [string, (RequestInit | undefined)?]) =>
+        url.includes('/api/stride/races') && init?.method === 'POST',
+    )
+    expect(postCalls).toHaveLength(0)
   })
 })
 

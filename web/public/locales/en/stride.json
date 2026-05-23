@@ -56,7 +56,7 @@
         "create": "Failed to create race",
         "delete": "Failed to delete race",
         "invalidDistance": "Distance must be a positive number",
-        "invalidTargetTime": "Please enter a valid target time (e.g. 3:45)"
+        "invalidTargetTime": "Enter target time as H:MM:SS (e.g. 3:30:00)"
       }
     }
   },

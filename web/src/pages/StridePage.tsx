@@ -9,6 +9,7 @@ import StrideChatDrawer from '../components/stride/StrideChatDrawer'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../components/ui/dialog'
 import { DayCard } from '../components/stride/DayCard'
 import { WeekDetailsModal } from '../components/stride/WeekDetailsModal'
+import { parseTargetTime } from './strideUtils'
 
 interface Race {
   id: number
@@ -758,16 +759,6 @@ export default function StridePage() {
     fetchAll()
     return () => { controller.abort() }
   }, [planId, previousPlanId])
-
-  // Parse "H:MM:SS" or "M:SS" target time string to seconds
-  function parseTargetTime(s: string): number | null {
-    if (!s.trim()) return null
-    const parts = s.trim().split(':').map(Number)
-    if (parts.some(isNaN)) return null
-    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
-    if (parts.length === 2) return parts[0] * 3600 + parts[1] * 60 // H:MM for race times
-    return null
-  }
 
   async function handleRerunDay(date: string) {
     setRerunError('')
