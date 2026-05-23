@@ -2,7 +2,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import StridePage, { parseTargetTime } from './StridePage'
+import StridePage from './StridePage'
+import { parseTargetTime } from './strideUtils'
 import enStride from '../../public/locales/en/stride.json'
 import type { DayPlan } from '../types/stride'
 

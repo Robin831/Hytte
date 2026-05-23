@@ -9,6 +9,7 @@ import StrideChatDrawer from '../components/stride/StrideChatDrawer'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../components/ui/dialog'
 import { DayCard } from '../components/stride/DayCard'
 import { WeekDetailsModal } from '../components/stride/WeekDetailsModal'
+import { parseTargetTime } from './strideUtils'
 
 interface Race {
   id: number
@@ -52,23 +53,6 @@ function formatDuration(seconds: number | null): string {
   const s = seconds % 60
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   return `${m}:${String(s).padStart(2, '0')}`
-}
-
-// Parses a strict "H:MM:SS" target-time string to seconds. Returns null for
-// empty/whitespace-only input or any string that does not match the format
-// exactly (non-negative hours, minutes 0–59, seconds 0–59). Two-part inputs
-// like "25:00" are intentionally rejected to avoid the historical ambiguity
-// where they were silently treated as hours+minutes and saved as 25 hours.
-export function parseTargetTime(s: string): number | null {
-  const trimmed = s.trim()
-  if (!trimmed) return null
-  const match = trimmed.match(/^(\d+):(\d{1,2}):(\d{1,2})$/)
-  if (!match) return null
-  const hours = Number(match[1])
-  const minutes = Number(match[2])
-  const seconds = Number(match[3])
-  if (minutes > 59 || seconds > 59) return null
-  return hours * 3600 + minutes * 60 + seconds
 }
 
 function priorityLabel(priority: string): { label: string; class: string } {
