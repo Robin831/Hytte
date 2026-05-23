@@ -473,11 +473,10 @@ func LatestHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		var latestID int64
-		var count int64
 		err := db.QueryRow(
-			`SELECT COALESCE(MAX(id), 0), COUNT(*) FROM workouts WHERE user_id = ?`,
+			`SELECT COALESCE(MAX(id), 0) FROM workouts WHERE user_id = ?`,
 			user.ID,
-		).Scan(&latestID, &count)
+		).Scan(&latestID)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workouts"})
 			return
@@ -485,7 +484,6 @@ func LatestHandler(db *sql.DB) http.HandlerFunc {
 
 		writeJSON(w, http.StatusOK, map[string]any{
 			"latest_id": latestID,
-			"count":     count,
 		})
 	}
 }

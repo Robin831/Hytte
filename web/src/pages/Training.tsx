@@ -100,6 +100,7 @@ export default function Training() {
     let timeoutId: ReturnType<typeof setTimeout> | null = null
     let controller: AbortController | null = null
     let cancelled = false
+    let inFlight = false
     let intervalMs = MIN_INTERVAL_MS
 
     const schedule = (delay: number) => {
@@ -109,12 +110,10 @@ export default function Training() {
 
     const poll = async () => {
       if (cancelled) return
-      if (document.hidden || hasNewWorkoutsRef.current) {
-        // Skip while hidden or while the banner is already pending; reschedule
-        // at the current interval so we resume on the next tick.
-        schedule(intervalMs)
-        return
-      }
+      // Don't poll while hidden or while the banner is already pending.
+      // The visibilitychange handler will resume when the tab becomes visible.
+      if (document.hidden || hasNewWorkoutsRef.current) return
+      inFlight = true
       controller = new AbortController()
       try {
         const res = await fetch('/api/training/workouts/latest', {
@@ -140,14 +139,27 @@ export default function Training() {
       } catch {
         // AbortError on unmount or transient network failure — back off.
         intervalMs = Math.min(intervalMs * BACKOFF_FACTOR, MAX_INTERVAL_MS)
+      } finally {
+        inFlight = false
       }
       schedule(intervalMs)
     }
 
     const handleVisibilityChange = () => {
-      if (document.hidden) return
-      // Resume immediately with a fresh interval on becoming visible.
+      if (document.hidden) {
+        // Pause polling while hidden: cancel any pending timeout.
+        if (timeoutId !== null) {
+          clearTimeout(timeoutId)
+          timeoutId = null
+        }
+        return
+      }
+      // Tab became visible — abort any in-flight request and poll immediately.
       intervalMs = MIN_INTERVAL_MS
+      if (inFlight && controller !== null) {
+        controller.abort()
+        inFlight = false
+      }
       if (timeoutId !== null) {
         clearTimeout(timeoutId)
         timeoutId = null

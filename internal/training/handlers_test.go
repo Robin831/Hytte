@@ -112,13 +112,6 @@ func TestLatestHandler_Empty(t *testing.T) {
 	if latestID != 0 {
 		t.Fatalf("expected latest_id 0 for empty list, got %v", latestID)
 	}
-	count, ok := resp["count"].(float64)
-	if !ok {
-		t.Fatalf("expected count number, got %v", resp["count"])
-	}
-	if count != 0 {
-		t.Fatalf("expected count 0 for empty list, got %v", count)
-	}
 }
 
 func TestLatestHandler_Populated(t *testing.T) {
@@ -148,7 +141,7 @@ func TestLatestHandler_Populated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create user1 workout b: %v", err)
 	}
-	// Workout for user 2 — must not affect user 1's latest_id/count.
+	// Workout for user 2 — must not affect user 1's latest_id.
 	if _, err := Create(database, 2, mkWorkout("user2-a"), "user2-a"); err != nil {
 		t.Fatalf("create user2 workout: %v", err)
 	}
@@ -173,10 +166,6 @@ func TestLatestHandler_Populated(t *testing.T) {
 	latestID, _ := resp["latest_id"].(float64)
 	if int64(latestID) != expectedMax {
 		t.Fatalf("expected latest_id %d, got %v", expectedMax, latestID)
-	}
-	count, _ := resp["count"].(float64)
-	if int64(count) != 2 {
-		t.Fatalf("expected count 2 (user-scoped), got %v", count)
 	}
 }
 
