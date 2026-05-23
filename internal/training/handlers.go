@@ -460,6 +460,34 @@ func ListHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// LatestHandler handles GET /api/training/workouts/latest. It returns the
+// highest workout id and total count for the authenticated user without
+// loading or decrypting any rows, so the Training page can cheaply poll for
+// new workouts without refetching the full list every tick.
+func LatestHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+
+		var latestID int64
+		err := db.QueryRow(
+			`SELECT COALESCE(MAX(id), 0) FROM workouts WHERE user_id = ?`,
+			user.ID,
+		).Scan(&latestID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workouts"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"latest_id": latestID,
+		})
+	}
+}
+
 // GetHandler handles GET /api/training/workouts/{id}.
 func GetHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

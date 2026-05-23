@@ -90,6 +90,97 @@ func TestListHandler_Empty(t *testing.T) {
 	}
 }
 
+func TestLatestHandler_Empty(t *testing.T) {
+	database := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/workouts/latest", nil), 1)
+	w := httptest.NewRecorder()
+	LatestHandler(database)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	latestID, ok := resp["latest_id"].(float64)
+	if !ok {
+		t.Fatalf("expected latest_id number, got %v", resp["latest_id"])
+	}
+	if latestID != 0 {
+		t.Fatalf("expected latest_id 0 for empty list, got %v", latestID)
+	}
+}
+
+func TestLatestHandler_Populated(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Create a second user to verify per-user isolation.
+	if _, err := database.Exec(
+		`INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'google-2')`,
+	); err != nil {
+		t.Fatalf("create second user: %v", err)
+	}
+
+	mkWorkout := func(hash string) *ParsedWorkout {
+		return &ParsedWorkout{
+			Sport:           "running",
+			DurationSeconds: 1800,
+			DistanceMeters:  5000,
+			AvgHeartRate:    150,
+		}
+	}
+
+	w1, err := Create(database, 1, mkWorkout("user1-a"), "user1-a")
+	if err != nil {
+		t.Fatalf("create user1 workout a: %v", err)
+	}
+	w2, err := Create(database, 1, mkWorkout("user1-b"), "user1-b")
+	if err != nil {
+		t.Fatalf("create user1 workout b: %v", err)
+	}
+	// Workout for user 2 — must not affect user 1's latest_id.
+	if _, err := Create(database, 2, mkWorkout("user2-a"), "user2-a"); err != nil {
+		t.Fatalf("create user2 workout: %v", err)
+	}
+
+	expectedMax := w1.ID
+	if w2.ID > expectedMax {
+		expectedMax = w2.ID
+	}
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/workouts/latest", nil), 1)
+	rec := httptest.NewRecorder()
+	LatestHandler(database)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	latestID, _ := resp["latest_id"].(float64)
+	if int64(latestID) != expectedMax {
+		t.Fatalf("expected latest_id %d, got %v", expectedMax, latestID)
+	}
+}
+
+func TestLatestHandler_Unauthenticated(t *testing.T) {
+	database := setupTestDB(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/training/workouts/latest", nil)
+	w := httptest.NewRecorder()
+	LatestHandler(database)(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
 func TestCreateAndGet(t *testing.T) {
 	database := setupTestDB(t)
 

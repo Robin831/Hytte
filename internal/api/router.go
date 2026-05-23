@@ -465,6 +465,7 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireFeature(db, "training"))
 				r.Get("/training/workouts", training.ListHandler(db))
+				r.Get("/training/workouts/latest", training.LatestHandler(db))
 				r.Get("/training/workouts/{id}", training.GetHandler(db))
 				r.Put("/training/workouts/{id}", training.UpdateHandler(db))
 				r.Delete("/training/workouts/{id}", training.DeleteHandler(db))

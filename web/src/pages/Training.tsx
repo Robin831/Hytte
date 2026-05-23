@@ -88,26 +88,94 @@ export default function Training() {
 
   useEffect(() => {
     if (!user) return
-    const controller = new AbortController()
+    // Visibility-aware polling with exponential backoff: hit a cheap /latest
+    // endpoint that returns only the max workout id, and only the existing
+    // banner flow trips when a new id appears. Interval starts at 30s and
+    // doubles up to a 5min cap when no new workout is seen; visibility
+    // changes reset it.
+    const MIN_INTERVAL_MS = 30_000
+    const MAX_INTERVAL_MS = 5 * 60_000
+    const BACKOFF_FACTOR = 2
+
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    let controller: AbortController | null = null
+    let cancelled = false
+    let inFlight = false
+    let intervalMs = MIN_INTERVAL_MS
+
+    const schedule = (delay: number) => {
+      if (cancelled) return
+      timeoutId = setTimeout(poll, delay)
+    }
+
     const poll = async () => {
+      if (cancelled) return
+      // Don't poll while hidden or while the banner is already pending.
+      // The visibilitychange handler will resume when the tab becomes visible.
       if (document.hidden || hasNewWorkoutsRef.current) return
+      inFlight = true
+      controller = new AbortController()
       try {
-        const res = await fetch('/api/training/workouts', { credentials: 'include', signal: controller.signal })
-        if (!res.ok) return
+        const res = await fetch('/api/training/workouts/latest', {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!res.ok) {
+          intervalMs = Math.min(intervalMs * BACKOFF_FACTOR, MAX_INTERVAL_MS)
+          schedule(intervalMs)
+          return
+        }
         const data = await res.json()
-        const list: Workout[] = data.workouts || []
-        const maxId = list.length > 0 ? Math.max(...list.map(w => w.id)) : null
-        if (maxId !== null && (latestWorkoutIdRef.current === null || maxId > latestWorkoutIdRef.current)) {
+        const maxId: number = typeof data.latest_id === 'number' ? data.latest_id : 0
+        const seen = latestWorkoutIdRef.current
+        if (maxId > 0 && (seen === null || maxId > seen)) {
           latestWorkoutIdRef.current = maxId
           hasNewWorkoutsRef.current = true
           setHasNewWorkouts(true)
+          intervalMs = MIN_INTERVAL_MS
+        } else {
+          intervalMs = Math.min(intervalMs * BACKOFF_FACTOR, MAX_INTERVAL_MS)
         }
       } catch {
-        // silently ignore polling errors (including AbortError on unmount)
+        // AbortError on unmount or transient network failure — back off.
+        intervalMs = Math.min(intervalMs * BACKOFF_FACTOR, MAX_INTERVAL_MS)
+      } finally {
+        inFlight = false
       }
+      schedule(intervalMs)
     }
-    const intervalId = setInterval(poll, 15000)
-    return () => { clearInterval(intervalId); controller.abort() }
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Pause polling while hidden: cancel any pending timeout.
+        if (timeoutId !== null) {
+          clearTimeout(timeoutId)
+          timeoutId = null
+        }
+        return
+      }
+      // Tab became visible — abort any in-flight request and poll immediately.
+      intervalMs = MIN_INTERVAL_MS
+      if (inFlight && controller !== null) {
+        controller.abort()
+        inFlight = false
+      }
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+      schedule(0)
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    schedule(intervalMs)
+
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      if (timeoutId !== null) clearTimeout(timeoutId)
+      if (controller !== null) controller.abort()
+    }
   }, [user])
 
   const handleUpload = useCallback(async (files: FileList | File[]) => {
@@ -268,7 +336,7 @@ export default function Training() {
         <div className="mb-4 flex items-center justify-between p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg text-sm">
           <button
             type="button"
-            onClick={() => { setHasNewWorkouts(false); setRefreshTick(prev => prev + 1) }}
+            onClick={() => { hasNewWorkoutsRef.current = false; setHasNewWorkouts(false); setRefreshTick(prev => prev + 1) }}
             className="flex items-center gap-2 text-orange-400 hover:text-orange-300 transition-colors"
           >
             <RefreshCw size={16} />
