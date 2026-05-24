@@ -1,0 +1,129 @@
+rules:
+    - id: form-control-accessible-label
+      category: ui
+      pattern: >-
+        Form controls (select, input, etc.) rendered without an associated <label> element or aria-label/aria-labelledby attribute
+      check: >-
+        Verify that every interactive form control has an accessible name via a <label>, aria-label, or aria-labelledby so screen readers can announce the control's purpose
+      source: copilot:PR#21
+      added: "2026-03-10"
+      superseded_by: form-control-accessible-name-2
+      last_seen: 2026-05-24T14:44:45.858234497Z
+      archived_at: 2026-05-24T14:44:45.858234497Z
+      archive_reason: duplicate
+    - id: form-control-accessible-name
+      category: ui
+      pattern: >-
+        Form controls (<select>, <input>, etc.) rendered without an associated <label htmlFor>, aria-label, or aria-labelledby attribute
+      check: >-
+        Verify every form control has an accessible name — either a <label> with a matching htmlFor, an aria-label, or an aria-labelledby pointing to visible text — so screen readers can announce the control's purpose
+      source: copilot:PR#602
+      added: "2026-04-09"
+      superseded_by: form-control-accessible-name-2
+      last_seen: 2026-05-24T14:44:45.858235448Z
+      archived_at: 2026-05-24T14:44:45.858235448Z
+      archive_reason: duplicate
+    - id: thai-calendar-gregory
+      category: ui
+      pattern: DEPRECATED — superseded by use-shared-date-formatter
+      check: >-
+        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which covers both the calendar:'gregory' requirement and all other inline Intl.DateTimeFormat usage with a single consolidated check.
+      source: copilot:PR#290
+      added: "2026-03-28"
+      superseded_by: use-shared-date-formatter-2
+      last_seen: 2026-05-24T14:44:45.85823637Z
+      archived_at: 2026-05-24T14:44:45.85823637Z
+      archive_reason: duplicate
+    - id: use-format-date-helper
+      category: ui
+      pattern: DEPRECATED — superseded by use-shared-date-formatter
+      check: >-
+        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which covers all direct Intl.DateTimeFormat/toLocaleDateString usage with a single consolidated check and formatDate helper reference.
+      source: copilot:PR#291
+      added: "2026-03-28"
+      superseded_by: use-shared-date-formatter-2
+      last_seen: 2026-05-24T14:44:45.858237271Z
+      archived_at: 2026-05-24T14:44:45.858237271Z
+      archive_reason: duplicate
+    - id: use-format-date-for-thai-locale
+      category: ui
+      pattern: DEPRECATED — superseded by use-shared-date-formatter
+      check: >-
+        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which covers the Thai locale Gregorian calendar requirement and all raw Intl.DateTimeFormat usage.
+      source: copilot:PR#291
+      added: "2026-03-28"
+      superseded_by: use-shared-date-formatter-2
+      last_seen: 2026-05-24T14:44:45.858237601Z
+      archived_at: 2026-05-24T14:44:45.858237601Z
+      archive_reason: duplicate
+    - id: tailwind-valid-color-steps
+      category: ui
+      pattern: >-
+        Tailwind CSS color classes using non-standard numeric steps (e.g. gray-750, blue-150, red-250)
+      check: >-
+        Verify that color step values in Tailwind classes use only default steps (50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950) or arbitrary values (e.g. bg-[#2a2a2a]). Non-standard steps like 750 or 150 won't generate CSS unless explicitly defined in the Tailwind config.
+      source: copilot:PR#451
+      added: "2026-04-02"
+      superseded_by: tailwind-valid-color-steps-2
+      last_seen: 2026-05-24T14:44:45.858240085Z
+      archived_at: 2026-05-24T14:44:45.858240085Z
+      archive_reason: duplicate
+    - id: valid-tailwind-color-steps
+      category: ui
+      pattern: >-
+        Tailwind CSS color classes using non-standard numeric steps (e.g. gray-750, blue-150, red-250)
+      check: >-
+        Verify that all Tailwind color utility classes use standard color steps (50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950). Non-standard steps like 750 or 850 are not included in Tailwind's default palette and will silently produce no styling unless explicitly defined in the theme configuration.
+      source: copilot:PR#453
+      added: "2026-04-02"
+      superseded_by: tailwind-valid-color-steps-2
+      last_seen: 2026-05-24T14:44:45.858240466Z
+      archived_at: 2026-05-24T14:44:45.858240466Z
+      archive_reason: duplicate
+    - id: sql-rows-close-and-err
+      category: error-handling
+      pattern: >-
+        Functions that iterate over sql.Rows using defer rows.Close() and/or an explicit rows.Close() call
+      check: >-
+        Verify rows is closed exactly once (not both deferred and explicitly), and that rows.Err() is checked after the iteration loop to catch scan/iteration errors that would otherwise be silently masked
+      source: copilot:PR#68
+      added: "2026-03-15"
+      superseded_by: sql-rows-close-and-err-2
+      last_seen: 2026-05-24T14:44:45.858241387Z
+      archived_at: 2026-05-24T14:44:45.858241387Z
+      archive_reason: duplicate
+    - id: silent-db-error-swallow
+      category: error-handling
+      pattern: >-
+        Loop over candidate IDs calling a DB fetch, ignoring all errors to skip candidates
+      check: >-
+        Only sql.ErrNoRows should be silently skipped (race with deletion); all other DB errors should be returned or surfaced so callers know results may be incomplete
+      source: copilot:PR#68
+      added: "2026-03-15"
+      superseded_by: silent-db-error-swallow-2
+      last_seen: 2026-05-24T14:44:45.858244111Z
+      archived_at: 2026-05-24T14:44:45.858244111Z
+      archive_reason: duplicate
+    - id: test-helper-last-insert-id-error
+      category: testing
+      pattern: Test helper calls res.LastInsertId() without checking the returned error
+      check: >-
+        Verify that LastInsertId() errors are checked and cause the test to fail immediately, not silently proceed with an invalid ID
+      source: copilot:PR#68
+      added: "2026-03-15"
+      superseded_by: test-helper-last-insert-id-error-2
+      last_seen: 2026-05-24T14:44:45.858245002Z
+      archived_at: 2026-05-24T14:44:45.858245002Z
+      archive_reason: duplicate
+    - id: test-timestamp-format-consistency
+      category: testing
+      pattern: >-
+        Test inserts rows with SQLite datetime() functions (e.g., datetime('now')) for timestamp columns
+      check: >-
+        Verify that test timestamps use the same format as production code. If production stores RFC3339 strings via Go's time.Time, tests should use explicit RFC3339 literals or call the real Create helper — not SQLite datetime() — to avoid format mismatches in ordering and date functions.
+      source: copilot:PR#68
+      added: "2026-03-15"
+      superseded_by: test-timestamp-format-consistency-2
+      last_seen: 2026-05-24T14:44:45.858245974Z
+      archived_at: 2026-05-24T14:44:45.858245974Z
+      archive_reason: duplicate
