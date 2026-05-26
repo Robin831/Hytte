@@ -8,8 +8,8 @@ rules:
       source: copilot:PR#21
       added: "2026-03-10"
       superseded_by: form-control-accessible-name-2
-      last_seen: 2026-05-24T14:44:45.858234497Z
-      archived_at: 2026-05-24T14:44:45.858234497Z
+      last_seen: "2026-05-24T14:44:45.858234497Z"
+      archived_at: "2026-05-24T14:44:45.858234497Z"
       archive_reason: duplicate
     - id: form-control-accessible-name
       category: ui
@@ -20,8 +20,8 @@ rules:
       source: copilot:PR#602
       added: "2026-04-09"
       superseded_by: form-control-accessible-name-2
-      last_seen: 2026-05-24T14:44:45.858235448Z
-      archived_at: 2026-05-24T14:44:45.858235448Z
+      last_seen: "2026-05-24T14:44:45.858235448Z"
+      archived_at: "2026-05-24T14:44:45.858235448Z"
       archive_reason: duplicate
     - id: thai-calendar-gregory
       category: ui
@@ -31,8 +31,8 @@ rules:
       source: copilot:PR#290
       added: "2026-03-28"
       superseded_by: use-shared-date-formatter-2
-      last_seen: 2026-05-24T14:44:45.85823637Z
-      archived_at: 2026-05-24T14:44:45.85823637Z
+      last_seen: "2026-05-24T14:44:45.858236370Z"
+      archived_at: "2026-05-24T14:44:45.858236370Z"
       archive_reason: duplicate
     - id: use-format-date-helper
       category: ui
@@ -42,8 +42,8 @@ rules:
       source: copilot:PR#291
       added: "2026-03-28"
       superseded_by: use-shared-date-formatter-2
-      last_seen: 2026-05-24T14:44:45.858237271Z
-      archived_at: 2026-05-24T14:44:45.858237271Z
+      last_seen: "2026-05-24T14:44:45.858237271Z"
+      archived_at: "2026-05-24T14:44:45.858237271Z"
       archive_reason: duplicate
     - id: use-format-date-for-thai-locale
       category: ui
@@ -53,8 +53,8 @@ rules:
       source: copilot:PR#291
       added: "2026-03-28"
       superseded_by: use-shared-date-formatter-2
-      last_seen: 2026-05-24T14:44:45.858237601Z
-      archived_at: 2026-05-24T14:44:45.858237601Z
+      last_seen: "2026-05-24T14:44:45.858237601Z"
+      archived_at: "2026-05-24T14:44:45.858237601Z"
       archive_reason: duplicate
     - id: tailwind-valid-color-steps
       category: ui
@@ -65,8 +65,8 @@ rules:
       source: copilot:PR#451
       added: "2026-04-02"
       superseded_by: tailwind-valid-color-steps-2
-      last_seen: 2026-05-24T14:44:45.858240085Z
-      archived_at: 2026-05-24T14:44:45.858240085Z
+      last_seen: "2026-05-24T14:44:45.858240085Z"
+      archived_at: "2026-05-24T14:44:45.858240085Z"
       archive_reason: duplicate
     - id: valid-tailwind-color-steps
       category: ui
@@ -77,8 +77,8 @@ rules:
       source: copilot:PR#453
       added: "2026-04-02"
       superseded_by: tailwind-valid-color-steps-2
-      last_seen: 2026-05-24T14:44:45.858240466Z
-      archived_at: 2026-05-24T14:44:45.858240466Z
+      last_seen: "2026-05-24T14:44:45.858240466Z"
+      archived_at: "2026-05-24T14:44:45.858240466Z"
       archive_reason: duplicate
     - id: sql-rows-close-and-err
       category: error-handling
@@ -89,8 +89,8 @@ rules:
       source: copilot:PR#68
       added: "2026-03-15"
       superseded_by: sql-rows-close-and-err-2
-      last_seen: 2026-05-24T14:44:45.858241387Z
-      archived_at: 2026-05-24T14:44:45.858241387Z
+      last_seen: "2026-05-24T14:44:45.858241387Z"
+      archived_at: "2026-05-24T14:44:45.858241387Z"
       archive_reason: duplicate
     - id: silent-db-error-swallow
       category: error-handling
@@ -101,8 +101,8 @@ rules:
       source: copilot:PR#68
       added: "2026-03-15"
       superseded_by: silent-db-error-swallow-2
-      last_seen: 2026-05-24T14:44:45.858244111Z
-      archived_at: 2026-05-24T14:44:45.858244111Z
+      last_seen: "2026-05-24T14:44:45.858244111Z"
+      archived_at: "2026-05-24T14:44:45.858244111Z"
       archive_reason: duplicate
     - id: test-helper-last-insert-id-error
       category: testing
@@ -112,8 +112,8 @@ rules:
       source: copilot:PR#68
       added: "2026-03-15"
       superseded_by: test-helper-last-insert-id-error-2
-      last_seen: 2026-05-24T14:44:45.858245002Z
-      archived_at: 2026-05-24T14:44:45.858245002Z
+      last_seen: "2026-05-24T14:44:45.858245002Z"
+      archived_at: "2026-05-24T14:44:45.858245002Z"
       archive_reason: duplicate
     - id: test-timestamp-format-consistency
       category: testing
@@ -124,6 +124,6 @@ rules:
       source: copilot:PR#68
       added: "2026-03-15"
       superseded_by: test-timestamp-format-consistency-2
-      last_seen: 2026-05-24T14:44:45.858245974Z
-      archived_at: 2026-05-24T14:44:45.858245974Z
+      last_seen: "2026-05-24T14:44:45.858245974Z"
+      archived_at: "2026-05-24T14:44:45.858245974Z"
       archive_reason: duplicate
