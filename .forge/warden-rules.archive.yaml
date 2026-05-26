@@ -25,9 +25,9 @@ rules:
       archive_reason: duplicate
     - id: thai-calendar-gregory
       category: ui
-      pattern: DEPRECATED — superseded by use-shared-date-formatter
+      pattern: DEPRECATED — superseded by use-shared-date-formatter-2
       check: >-
-        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which covers both the calendar:'gregory' requirement and all other inline Intl.DateTimeFormat usage with a single consolidated check.
+        This rule is intentionally inactive. Use the `use-shared-date-formatter-2` rule instead, which covers both the calendar:'gregory' requirement and all other inline Intl.DateTimeFormat usage with a single consolidated check.
       source: copilot:PR#290
       added: "2026-03-28"
       superseded_by: use-shared-date-formatter-2
@@ -36,9 +36,9 @@ rules:
       archive_reason: duplicate
     - id: use-format-date-helper
       category: ui
-      pattern: DEPRECATED — superseded by use-shared-date-formatter
+      pattern: DEPRECATED — superseded by use-shared-date-formatter-2
       check: >-
-        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which covers all direct Intl.DateTimeFormat/toLocaleDateString usage with a single consolidated check and formatDate helper reference.
+        This rule is intentionally inactive. Use the `use-shared-date-formatter-2` rule instead, which covers all direct Intl.DateTimeFormat/toLocaleDateString usage with a single consolidated check and formatDate helper reference.
       source: copilot:PR#291
       added: "2026-03-28"
       superseded_by: use-shared-date-formatter-2
@@ -47,9 +47,9 @@ rules:
       archive_reason: duplicate
     - id: use-format-date-for-thai-locale
       category: ui
-      pattern: DEPRECATED — superseded by use-shared-date-formatter
+      pattern: DEPRECATED — superseded by use-shared-date-formatter-2
       check: >-
-        This rule is intentionally inactive. Use the `use-shared-date-formatter` rule instead, which covers the Thai locale Gregorian calendar requirement and all raw Intl.DateTimeFormat usage.
+        This rule is intentionally inactive. Use the `use-shared-date-formatter-2` rule instead, which covers the Thai locale Gregorian calendar requirement and all raw Intl.DateTimeFormat usage.
       source: copilot:PR#291
       added: "2026-03-28"
       superseded_by: use-shared-date-formatter-2
