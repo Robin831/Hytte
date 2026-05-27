@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import BudgetCreditCards from './BudgetCreditCards'
+import BudgetCreditCards, { computeGroupTotals } from './BudgetCreditCards'
 import enBudget from '../../public/locales/en/budget.json'
 
 // ── Translation helpers ───────────────────────────────────────────────────────
@@ -626,5 +626,148 @@ describe('BudgetCreditCards – import preview modal', () => {
     await waitFor(() => {
       expect(screen.getByText('No new transactions in this file.')).toBeInTheDocument()
     })
+  })
+})
+
+// ── Group totals semantics ────────────────────────────────────────────────────
+// Verifies that the memoised per-group totals preserve the legacy
+// filter+reduce behaviour: carry-overs (deferred_from_previous_month) are
+// counted, rows deferred forward out of the month are excluded, and
+// innbetalinger are tracked separately.
+
+interface TxFixture {
+  id: number
+  transaksjonsdato: string
+  beskrivelse: string
+  belop: number
+  belop_i_valuta: number
+  is_pending: boolean
+  is_innbetaling: boolean
+  deferred_to_next_month: boolean
+  deferred_from_previous_month: boolean
+  group_id: number | null
+  group_name: string
+}
+
+function makeTx(overrides: Partial<TxFixture> & { id: number; belop: number }): TxFixture {
+  return {
+    transaksjonsdato: '2024-01-15',
+    beskrivelse: `Tx ${overrides.id}`,
+    belop_i_valuta: 0,
+    is_pending: false,
+    is_innbetaling: false,
+    deferred_to_next_month: false,
+    deferred_from_previous_month: false,
+    group_id: 2,
+    group_name: 'Groceries',
+    ...overrides,
+  }
+}
+
+describe('computeGroupTotals', () => {
+  it('sums plain expenses', () => {
+    const totals = computeGroupTotals([
+      makeTx({ id: 1, belop: -100 }),
+      makeTx({ id: 2, belop: -250 }),
+    ])
+    expect(totals.expenseTotal).toBe(350)
+    expect(totals.innbetalingTotal).toBe(0)
+  })
+
+  it('counts carry-overs from the previous month', () => {
+    const totals = computeGroupTotals([
+      makeTx({ id: 1, belop: -100 }),
+      // Carry-over: both flags true while still being displayed in this month.
+      makeTx({ id: 2, belop: -50, deferred_from_previous_month: true, deferred_to_next_month: true }),
+    ])
+    expect(totals.expenseTotal).toBe(150)
+  })
+
+  it('excludes rows deferred forward out of this month', () => {
+    const totals = computeGroupTotals([
+      makeTx({ id: 1, belop: -100 }),
+      // Deferred forward: to_next=true, from_prev=false → excluded.
+      makeTx({ id: 2, belop: -30, deferred_to_next_month: true }),
+    ])
+    expect(totals.expenseTotal).toBe(100)
+  })
+
+  it('keeps innbetalinger out of the expense total', () => {
+    const totals = computeGroupTotals([
+      makeTx({ id: 1, belop: -100 }),
+      makeTx({ id: 2, belop: 200, is_innbetaling: true }),
+    ])
+    expect(totals.expenseTotal).toBe(100)
+    expect(totals.innbetalingTotal).toBe(200)
+  })
+
+  it('returns a payments-only group with zero expenses', () => {
+    const totals = computeGroupTotals([
+      makeTx({ id: 1, belop: 500, is_innbetaling: true }),
+    ])
+    expect(totals.expenseTotal).toBe(0)
+    expect(totals.innbetalingTotal).toBe(500)
+  })
+
+  it('combines all cases the page actually displays', () => {
+    const totals = computeGroupTotals([
+      makeTx({ id: 1, belop: -100 }),
+      makeTx({ id: 2, belop: -50, deferred_from_previous_month: true, deferred_to_next_month: true }),
+      makeTx({ id: 3, belop: -30, deferred_to_next_month: true }),
+      makeTx({ id: 4, belop: 200, is_innbetaling: true }),
+    ])
+    // -100 + carry-over -50 = 150 (deferred-away -30 excluded)
+    expect(totals.expenseTotal).toBe(150)
+    expect(totals.innbetalingTotal).toBe(200)
+  })
+})
+
+// ── 1000-row virtualisation smoke test ────────────────────────────────────────
+// Verifies that rendering ~1000 transactions does not crash and that
+// virtualisation kicks in: the first row mounts but rows far below the
+// visible area do not.
+
+describe('BudgetCreditCards – large transaction list', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('renders the first row of a 1000-transaction group without mounting all rows', async () => {
+    const manyTxns = Array.from({ length: 1000 }, (_, i) => ({
+      id: i + 100,
+      transaksjonsdato: '2024-01-01',
+      beskrivelse: `Test Transaction ${i + 1}`,
+      belop: -(i + 1),
+      belop_i_valuta: 0,
+      is_pending: false,
+      is_innbetaling: false,
+      deferred_to_next_month: false,
+      deferred_from_previous_month: false,
+      group_id: 2,
+      group_name: 'Groceries',
+    }))
+
+    vi.stubGlobal(
+      'fetch',
+      makeFetchMock({
+        transactions: {
+          transactions: manyTxns,
+          variable_bill_name: null,
+          variable_bill_amount: 0,
+          opening_balance: 0,
+        },
+      }),
+    )
+
+    renderComponent()
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Transaction 1')).toBeInTheDocument()
+    })
+
+    // Virtualisation guarantee: rows far beyond the visible viewport should
+    // not be mounted into the DOM.
+    expect(screen.queryByText('Test Transaction 1000')).not.toBeInTheDocument()
   })
 })
