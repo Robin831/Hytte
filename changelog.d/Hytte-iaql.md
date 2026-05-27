@@ -1,0 +1,2 @@
+category: Changed
+- **Kiosk polling pauses when hidden and backs off on errors** - The kiosk now pauses its 30 s `/api/kiosk/data` poll while the tab is hidden and resumes with an immediate fetch when it returns. Failed fetches (network errors or non-OK responses) escalate the next delay through 30 s → 60 s → 2 min → 5 min, resetting to 30 s on the next success. Reduces battery use on idle tablets and avoids hammering Netatmo/Entur quotas during upstream outages. (Hytte-iaql)
