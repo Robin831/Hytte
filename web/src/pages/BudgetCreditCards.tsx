@@ -990,6 +990,10 @@ export default function BudgetCreditCards() {
   // A ref tracks the previous map so per-group array references are preserved
   // for unchanged groups, letting React.memo(GroupSection) short-circuit for
   // groups not touched by an optimistic update.
+  //
+  // The useMemo is kept pure (no ref writes during render). The ref is updated
+  // in useLayoutEffect after commit so it is safe under concurrent/StrictMode
+  // rendering where renders may be aborted and re-run.
   const prevByGroupIdRef = useRef<Map<number | null, Transaction[]>>(new Map())
   const byGroupId = useMemo(() => {
     const prev = prevByGroupIdRef.current
@@ -1000,16 +1004,19 @@ export default function BudgetCreditCards() {
       next.get(key)!.push(tx)
     }
     for (const [key, arr] of next) {
-      // eslint-disable-next-line react-hooks/refs -- intentional: stable ref read inside useMemo for referential stability without extra render
       const old = prev.get(key)
       if (old && old.length === arr.length && old.every((t, i) => t === arr[i])) {
         next.set(key, old)
       }
     }
-    // eslint-disable-next-line react-hooks/refs -- intentional: stable ref write inside useMemo; avoids the two-render useLayoutEffect pattern
-    prevByGroupIdRef.current = next
     return next
   }, [transactions])
+  // Keep the ref in sync with the last committed map so the next useMemo run
+  // can do structural sharing against it. This must be useLayoutEffect (not
+  // useMemo) so the write happens after commit, not during render.
+  useLayoutEffect(() => {
+    prevByGroupIdRef.current = byGroupId
+  }, [byGroupId])
 
   // Diverse catch-all: transactions in Diverse group + unassigned.
   // Split into two intermediate memos so the concatenation can be memoised on
