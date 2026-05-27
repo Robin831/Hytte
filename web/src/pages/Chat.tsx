@@ -59,7 +59,9 @@ export default function Chat() {
   // send response arrives after the user deleted the conversation mid-flight.
   const deletedConversationIds = useRef<Set<number>>(new Set())
   // Monotonically decreasing counter for optimistic message IDs (negative to avoid
-  // collisions with server-assigned IDs). Avoids calling Date.now() during render.
+  // collisions with server-assigned IDs). Using a ref gives stable IDs across
+  // re-renders without depending on wall-clock time (Date.now() could collide if
+  // two messages are sent within the same millisecond).
   const tempIdCounter = useRef(0)
 
   const scrollToBottom = useCallback(() => {
