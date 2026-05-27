@@ -172,6 +172,13 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // style overrides.
   const [pipPosition, setPipPosition] = useState<{ x: number; y: number } | null>(null)
   const pipDragRef = useRef<{ offsetX: number; offsetY: number; pointerId: number } | null>(null)
+  // Derive the effective PiP position: when no call is active reset to null so
+  // the next call always starts from the default corner. Computed at render
+  // rather than via a synchronous setState-in-effect to keep lint happy.
+  const activePipPosition =
+    voiceCall.state === 'active' || voiceCall.state === 'outgoing-ringing'
+      ? pipPosition
+      : null
 
   // Voice-call state machine. skipSignalSubscription is set so the hook
   // doesn't open its own SSE stream — ChatView already owns one for messages
@@ -315,7 +322,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // body) terminate the read loop deterministically.
   useEffect(() => {
     if (conversationId === null) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setConversation(null)
       setMessages([])
       setError('')
@@ -703,15 +709,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       void el.play().catch(() => { /* autoplay policy — acceptable to ignore */ })
     }
   }, [voiceCall.localStream, voiceCall.state])
-
-  // Reset the PiP position when a call ends or starts so a new call always
-  // renders in the default corner rather than wherever the last drag left it.
-  useEffect(() => {
-    if (voiceCall.state !== 'active' && voiceCall.state !== 'outgoing-ringing') {
-      setPipPosition(null)
-      pipDragRef.current = null
-    }
-  }, [voiceCall.state])
 
   // Drive the elapsed-time counter while a call is active. Reset on every
   // state transition so the timer always reads from the moment we entered
@@ -1709,9 +1706,9 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                   onPointerUp={handlePipPointerUp}
                   onPointerCancel={handlePipPointerUp}
                   className={`md:hidden absolute touch-none cursor-move w-28 h-40 sm:w-36 sm:h-48 rounded-lg overflow-hidden border border-gray-700 bg-gray-900 shadow-lg ${
-                    pipPosition === null ? 'top-4 right-4' : ''
+                    activePipPosition === null ? 'top-4 right-4' : ''
                   }`}
-                  style={pipPosition === null ? undefined : { top: pipPosition.y, left: pipPosition.x }}
+                  style={activePipPosition === null ? undefined : { top: activePipPosition.y, left: activePipPosition.x }}
                 >
                   <video
                     ref={localVideoRef}
