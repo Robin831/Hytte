@@ -70,7 +70,9 @@ const TRANSLATIONS: Record<string, string> = {
   'voice.bubble.pause': 'Pause voice note',
   'voice.bubble.seek': 'Voice note position',
   'call.start': 'Start voice call',
+  'call.startVideo': 'Start video call',
   'call.incomingLabel': 'Incoming call',
+  'call.incomingVideoLabel': 'Incoming video call',
   'call.ringing': 'Ringing…',
   'call.accept': 'Accept',
   'call.decline': 'Decline',
@@ -79,6 +81,12 @@ const TRANSLATIONS: Record<string, string> = {
   'call.unmute': 'Unmute',
   'call.speakerOn': 'Speaker on',
   'call.speakerOff': 'Speaker off',
+  'call.cameraOn': 'Turn camera on',
+  'call.cameraOff': 'Turn camera off',
+  'call.switchCamera': 'Switch camera',
+  'call.remoteCameraOff': 'Camera off',
+  'call.localPreview': 'Your camera preview',
+  'call.remoteVideo': 'Remote video',
   'call.ended': 'Call ended — {{duration}}',
   'call.missedFrom': 'Missed call from {{name}}',
   'call.callBack': 'Call back',
@@ -1149,5 +1157,47 @@ describe('ChatView – call UI', () => {
       expect(screen.getByTestId('missed-call-missed-1')).toBeInTheDocument()
     })
     expect(screen.getByTestId('missed-call-back-missed-1')).toBeInTheDocument()
+  })
+
+  it('renders the video call button next to the phone button in 2-member conversations', async () => {
+    const conv2 = makeConversation({ id: 1, name: 'One on One', member_ids: [1, 2] })
+    installCallEnv()
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk(conv2))
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce(streamOk()),
+    )
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+    expect(screen.getByTestId('family-chat-video-call-button')).toBeInTheDocument()
+  })
+
+  it('shows the video-call label on the incoming overlay when the offer carries kind=video', async () => {
+    const conv2 = makeConversation({ id: 1, name: 'One on One', member_ids: [1, 2] })
+    const sse = streamWithController()
+    installCallEnv()
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(convOk(conv2))
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce(sse.response),
+    )
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+
+    await act(async () => {
+      sse.push('call_offer', {
+        conversation_id: 1,
+        call_id: 'inbound-video-1',
+        from_user_id: 2,
+        data: { type: 'offer', sdp: 'v=0\r\nremote-offer' },
+        kind: 'video',
+      })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('family-chat-incoming-overlay')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('family-chat-incoming-kind-label').textContent).toBe('Incoming video call')
   })
 })

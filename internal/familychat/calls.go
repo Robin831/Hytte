@@ -16,6 +16,24 @@ const (
 	CallStatusMissed   = "missed"
 )
 
+// Call kinds. 'voice' is the legacy default for audio-only calls; 'video'
+// (Hytte-hob4) is the same WebRTC pipeline with a video track added so the
+// conversation log can pick the right icon.
+const (
+	CallKindVoice = "voice"
+	CallKindVideo = "video"
+)
+
+// NormalizeCallKind clamps an arbitrary input to a recognised kind. Anything
+// other than the explicit 'video' value falls back to 'voice' so a malformed
+// client payload never produces an unrecognised value in the database.
+func NormalizeCallKind(kind string) string {
+	if kind == CallKindVideo {
+		return CallKindVideo
+	}
+	return CallKindVoice
+}
+
 // ErrCallNotFound is returned by call repository helpers when no row matches
 // the (conversation_id, call_id) pair. callAnswerHandler and callEndHandler both
 // map it to 404; callICEHandler does not consult the DB and never returns it.
@@ -25,14 +43,15 @@ var ErrCallNotFound = errors.New("familychat: call not found")
 // supplied by the client (typically a UUID) so the same identifier can route
 // every subsequent relay (answer/ice/end) without an extra round-trip. Duplicate
 // offers for the same (conversation, call_id) pair are silently ignored via
-// INSERT OR IGNORE; the caller treats the relay as idempotent.
-func InsertCall(db *sql.DB, convID, initiatorUserID int64, callID string) error {
+// INSERT OR IGNORE; the caller treats the relay as idempotent. kind is
+// clamped to a recognised value so malformed input falls back to voice.
+func InsertCall(db *sql.DB, convID, initiatorUserID int64, callID, kind string) error {
 	now := time.Now().UTC().Format(timeFormat)
 	_, err := db.Exec(
 		`INSERT OR IGNORE INTO family_chat_calls
-			(conversation_id, initiator_user_id, call_id, started_at, status)
-		 VALUES (?, ?, ?, ?, ?)`,
-		convID, initiatorUserID, callID, now, CallStatusRinging,
+			(conversation_id, initiator_user_id, call_id, started_at, status, kind)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		convID, initiatorUserID, callID, now, CallStatusRinging, NormalizeCallKind(kind),
 	)
 	return err
 }
@@ -131,4 +150,18 @@ func GetCallStatus(db *sql.DB, convID int64, callID string) (string, error) {
 		return "", ErrCallNotFound
 	}
 	return status, err
+}
+
+// GetCallKind returns the persisted kind ('voice' or 'video') for a call.
+// Used by tests verifying that the offer handler plumbed the kind through.
+func GetCallKind(db *sql.DB, convID int64, callID string) (string, error) {
+	var kind string
+	err := db.QueryRow(
+		`SELECT kind FROM family_chat_calls WHERE conversation_id = ? AND call_id = ?`,
+		convID, callID,
+	).Scan(&kind)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrCallNotFound
+	}
+	return kind, err
 }

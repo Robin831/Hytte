@@ -277,6 +277,56 @@ func TestOrphanCleanupIdempotent(t *testing.T) {
 	}
 }
 
+// TestFamilyChatCallsKindMigrationIdempotent verifies the Hytte-hob4 kind
+// column migration runs cleanly across repeated createSchema calls and is
+// a no-op when the column already exists. Both a fresh init and a manual
+// drop-then-restore path are exercised.
+func TestFamilyChatCallsKindMigrationIdempotent(t *testing.T) {
+	database := initTestDB(t)
+
+	// First run already executed via Init — the column must exist.
+	var present int
+	if err := database.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('family_chat_calls') WHERE name = 'kind'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("check kind column: %v", err)
+	}
+	if present != 1 {
+		t.Fatalf("kind column missing after initial schema: present=%d", present)
+	}
+
+	// Second createSchema call must be a no-op.
+	if err := createSchema(database); err != nil {
+		t.Fatalf("second createSchema: %v", err)
+	}
+
+	// Third run for good measure (idempotency).
+	if err := createSchema(database); err != nil {
+		t.Fatalf("third createSchema: %v", err)
+	}
+
+	// New rows must default to 'voice'.
+	if _, err := database.Exec(
+		`INSERT INTO family_chat_conversations (id, owner_user_id, name) VALUES (1, 1, 'Family')`,
+	); err != nil {
+		t.Fatalf("seed conversation: %v", err)
+	}
+	if _, err := database.Exec(
+		`INSERT INTO family_chat_calls (conversation_id, initiator_user_id, call_id) VALUES (1, 1, 'default-kind')`,
+	); err != nil {
+		t.Fatalf("insert call: %v", err)
+	}
+	var kind string
+	if err := database.QueryRow(
+		`SELECT kind FROM family_chat_calls WHERE call_id = 'default-kind'`,
+	).Scan(&kind); err != nil {
+		t.Fatalf("read kind: %v", err)
+	}
+	if kind != "voice" {
+		t.Errorf("default kind=%q, want voice", kind)
+	}
+}
+
 func setupEncryptionKey(t *testing.T) {
 	t.Helper()
 	t.Setenv("ENCRYPTION_KEY", "test-encryption-key-for-db-tests")

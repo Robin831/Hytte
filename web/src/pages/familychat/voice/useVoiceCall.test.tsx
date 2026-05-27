@@ -6,12 +6,16 @@ import { useVoiceCall, type CallSignalPayload } from './useVoiceCall'
 // ── Fakes ─────────────────────────────────────────────────────────────────────
 
 class FakeMediaStreamTrack {
-  kind = 'audio' as const
+  kind: 'audio' | 'video'
+  enabled = true
   stop = vi.fn()
+  constructor(kind: 'audio' | 'video' = 'audio') {
+    this.kind = kind
+  }
 }
 
 function makeFakeMediaStream(): MediaStream {
-  const track = new FakeMediaStreamTrack()
+  const track = new FakeMediaStreamTrack('audio')
   const tracks = [track]
   return {
     getTracks: () => tracks,
@@ -20,10 +24,39 @@ function makeFakeMediaStream(): MediaStream {
   } as unknown as MediaStream
 }
 
+// makeFakeVideoStream returns a mutable MediaStream that supports
+// addTrack/removeTrack, since switchCamera / setCameraEnabled rely on
+// swapping the video track in place. Audio is included so a video call's
+// stream looks like the real getUserMedia({audio, video}) result.
+function makeFakeVideoStream(): {
+  stream: MediaStream
+  audioTrack: FakeMediaStreamTrack
+  videoTracks: FakeMediaStreamTrack[]
+} {
+  const audioTrack = new FakeMediaStreamTrack('audio')
+  const videoTracks: FakeMediaStreamTrack[] = [new FakeMediaStreamTrack('video')]
+  const stream = {
+    getTracks: () => [audioTrack, ...videoTracks],
+    getAudioTracks: () => [audioTrack],
+    getVideoTracks: () => [...videoTracks],
+    addTrack: (t: FakeMediaStreamTrack) => { videoTracks.push(t) },
+    removeTrack: (t: FakeMediaStreamTrack) => {
+      const i = videoTracks.indexOf(t)
+      if (i >= 0) videoTracks.splice(i, 1)
+    },
+  } as unknown as MediaStream
+  return { stream, audioTrack, videoTracks }
+}
+
 interface FakeIceCandidate {
   candidate: string
   sdpMid: string
   sdpMLineIndex: number
+}
+
+interface FakeSender {
+  track: MediaStreamTrack | null
+  replaceTrack: ReturnType<typeof vi.fn>
 }
 
 class FakePeerConnection {
@@ -32,6 +65,7 @@ class FakePeerConnection {
   localDescription: RTCSessionDescriptionInit | null = null
   remoteDescription: RTCSessionDescriptionInit | null = null
   tracks: Array<{ track: MediaStreamTrack; stream: MediaStream }> = []
+  senders: FakeSender[] = []
   addedRemoteCandidates: RTCIceCandidateInit[] = []
   connectionState: RTCPeerConnectionState = 'new'
   ontrack: ((event: RTCTrackEvent) => void) | null = null
@@ -45,9 +79,14 @@ class FakePeerConnection {
     FakePeerConnection.instances.push(this)
   }
 
-  addTrack(track: MediaStreamTrack, stream: MediaStream) {
+  addTrack(track: MediaStreamTrack, stream: MediaStream): RTCRtpSender {
     this.tracks.push({ track, stream })
-    return {} as RTCRtpSender
+    const sender: FakeSender = {
+      track,
+      replaceTrack: vi.fn(async (next: MediaStreamTrack | null) => { sender.track = next }),
+    }
+    this.senders.push(sender)
+    return sender as unknown as RTCRtpSender
   }
 
   async createOffer(): Promise<RTCSessionDescriptionInit> {
@@ -594,5 +633,372 @@ describe('useVoiceCall — event filtering', () => {
     })
 
     expect(result.current.state).toBe('idle')
+  })
+})
+
+// ── Video call tests (Hytte-hob4) ────────────────────────────────────────────
+
+describe('useVoiceCall — video call (outgoing)', () => {
+  it('requests audio+video when startCall("video") is invoked', async () => {
+    installFetchMock()
+    const { stream } = makeFakeVideoStream()
+    vi.stubGlobal('RTCPeerConnection', FakePeerConnection)
+    const getUserMedia = vi.fn(async () => stream)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+
+    const { result } = renderHook(() => useVoiceCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: makeFakePeerConnection,
+      skipSignalSubscription: true,
+      generateCallId: () => 'video-A',
+    }))
+
+    await act(async () => { await result.current.startCall('video') })
+
+    expect(result.current.state).toBe('outgoing-ringing')
+    expect(result.current.callKind).toBe('video')
+
+    // getUserMedia must have been asked for audio+video with the 640×480
+    // default constraints and facingMode 'user'.
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+    const constraints = getUserMedia.mock.calls[0][0] as MediaStreamConstraints
+    expect(constraints.audio).toBe(true)
+    expect(constraints.video).toBeTruthy()
+    const v = constraints.video as MediaTrackConstraints
+    expect(v.facingMode).toBe('user')
+    expect((v.width as { ideal?: number })?.ideal).toBe(640)
+    expect((v.height as { ideal?: number })?.ideal).toBe(480)
+
+    // The local stream is exposed for the PiP UI.
+    expect(result.current.localStream).toBe(stream)
+  })
+
+  it('POSTs the offer with kind=video so the receiver branches correctly', async () => {
+    const fetchMock = installFetchMock()
+    const { stream } = makeFakeVideoStream()
+    vi.stubGlobal('RTCPeerConnection', FakePeerConnection)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn(async () => stream) },
+    })
+
+    const { result } = renderHook(() => useVoiceCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: makeFakePeerConnection,
+      skipSignalSubscription: true,
+      generateCallId: () => 'video-B',
+    }))
+
+    await act(async () => { await result.current.startCall('video') })
+
+    const offerCall = findCall(fetchMock.calls, 'POST', '/calls/video-B/offer')
+    expect(offerCall).toBeDefined()
+    const body = JSON.parse(offerCall!.body!)
+    expect(body.kind).toBe('video')
+    expect(body.data.type).toBe('offer')
+  })
+})
+
+describe('useVoiceCall — video call (incoming)', () => {
+  it('reads kind=video from the offer payload before the user accepts', async () => {
+    installFetchMock()
+    installRtcGlobals()
+
+    const { result } = renderHook(() => useVoiceCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: makeFakePeerConnection,
+      skipSignalSubscription: true,
+    }))
+
+    await act(async () => {
+      await result.current.handleSignalEvent('call_offer', {
+        conversation_id: 7,
+        call_id: 'in-video-1',
+        from_user_id: 2,
+        data: { type: 'offer', sdp: 'v=0\r\noffer' },
+        kind: 'video',
+      })
+    })
+
+    expect(result.current.state).toBe('incoming-ringing')
+    expect(result.current.callKind).toBe('video')
+  })
+
+  it('requests audio+video on accept when the offer was a video call', async () => {
+    installFetchMock()
+    const { stream } = makeFakeVideoStream()
+    vi.stubGlobal('RTCPeerConnection', FakePeerConnection)
+    const getUserMedia = vi.fn(async () => stream)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+
+    const { result } = renderHook(() => useVoiceCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: makeFakePeerConnection,
+      skipSignalSubscription: true,
+    }))
+
+    await act(async () => {
+      await result.current.handleSignalEvent('call_offer', {
+        conversation_id: 7,
+        call_id: 'in-video-2',
+        from_user_id: 2,
+        data: { type: 'offer', sdp: 'v=0\r\noffer-v' },
+        kind: 'video',
+      })
+    })
+    await act(async () => { await result.current.acceptCall() })
+
+    expect(result.current.state).toBe('active')
+    expect(result.current.callKind).toBe('video')
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+    const constraints = getUserMedia.mock.calls[0][0] as MediaStreamConstraints
+    expect(constraints.audio).toBe(true)
+    expect(constraints.video).toBeTruthy()
+  })
+
+  it('falls back to voice when the offer omits kind (legacy clients)', async () => {
+    installFetchMock()
+    installRtcGlobals()
+
+    const { result } = renderHook(() => useVoiceCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: makeFakePeerConnection,
+      skipSignalSubscription: true,
+    }))
+
+    await act(async () => {
+      await result.current.handleSignalEvent('call_offer', {
+        conversation_id: 7,
+        call_id: 'legacy-offer',
+        from_user_id: 2,
+        data: { type: 'offer', sdp: 'v=0\r\nlegacy' },
+        // no kind field
+      })
+    })
+
+    expect(result.current.callKind).toBe('voice')
+  })
+})
+
+describe('useVoiceCall — video controls', () => {
+  it('switchCamera re-requests video with the opposite facingMode and replaceTracks', async () => {
+    installFetchMock()
+    const original = makeFakeVideoStream()
+    const swapped = makeFakeVideoStream()
+    vi.stubGlobal('RTCPeerConnection', FakePeerConnection)
+
+    // First getUserMedia call (during startCall) returns original; second
+    // (during switchCamera) returns the swapped stream so we can inspect both.
+    const getUserMedia = vi.fn()
+      .mockImplementationOnce(async () => original.stream)
+      .mockImplementationOnce(async () => swapped.stream)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+
+    const { result } = renderHook(() => useVoiceCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: makeFakePeerConnection,
+      skipSignalSubscription: true,
+      generateCallId: () => 'video-switch-1',
+    }))
+
+    await act(async () => { await result.current.startCall('video') })
+    expect(result.current.facingMode).toBe('user')
+
+    await act(async () => { await result.current.switchCamera() })
+
+    expect(getUserMedia).toHaveBeenCalledTimes(2)
+    const switchConstraints = getUserMedia.mock.calls[1][0] as MediaStreamConstraints
+    const sv = switchConstraints.video as MediaTrackConstraints
+    expect(sv.facingMode).toBe('environment')
+    expect(switchConstraints.audio).toBe(false)
+    expect(result.current.facingMode).toBe('environment')
+
+    // The sender's replaceTrack must have been invoked with the new video track.
+    const pc = FakePeerConnection.instances[0]
+    const videoSender = pc.senders.find(s => s.track?.kind === 'video' || s.replaceTrack.mock.calls.length > 0)
+    expect(videoSender).toBeDefined()
+    expect(videoSender!.replaceTrack).toHaveBeenCalled()
+  })
+
+  it('setCameraEnabled(false) calls replaceTrack(null) on the video sender', async () => {
+    installFetchMock()
+    const original = makeFakeVideoStream()
+    vi.stubGlobal('RTCPeerConnection', FakePeerConnection)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn(async () => original.stream) },
+    })
+
+    const { result } = renderHook(() => useVoiceCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: makeFakePeerConnection,
+      skipSignalSubscription: true,
+      generateCallId: () => 'video-mute-1',
+    }))
+
+    await act(async () => { await result.current.startCall('video') })
+    expect(result.current.cameraEnabled).toBe(true)
+
+    await act(async () => { await result.current.setCameraEnabled(false) })
+
+    expect(result.current.cameraEnabled).toBe(false)
+    const pc = FakePeerConnection.instances[0]
+    const videoSender = pc.senders.find(s => s.replaceTrack.mock.calls.some(c => c[0] === null))
+    expect(videoSender).toBeDefined()
+  })
+
+  it('does not request video for voice calls', async () => {
+    installFetchMock()
+    const audioStream = makeFakeMediaStream()
+    vi.stubGlobal('RTCPeerConnection', FakePeerConnection)
+    const getUserMedia = vi.fn(async () => audioStream)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+
+    const { result } = renderHook(() => useVoiceCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: makeFakePeerConnection,
+      skipSignalSubscription: true,
+      generateCallId: () => 'voice-only-1',
+    }))
+
+    await act(async () => { await result.current.startCall('voice') })
+
+    expect(getUserMedia).toHaveBeenCalledTimes(1)
+    const constraints = getUserMedia.mock.calls[0][0] as MediaStreamConstraints
+    expect(constraints.audio).toBe(true)
+    expect(constraints.video).toBeUndefined()
+    expect(result.current.callKind).toBe('voice')
+  })
+})
+
+describe('useVoiceCall — bandwidth adaptation', () => {
+  // Each test sets navigator.connection on the fly so the hook reads the
+  // current effectiveType. afterEach in the outer suite tears it down.
+  function setEffectiveType(type: string): EventTarget & { dispatchChange: () => void } {
+    const listeners: Array<() => void> = []
+    const conn = {
+      effectiveType: type,
+      addEventListener(_: string, l: () => void) { listeners.push(l) },
+      removeEventListener(_: string, l: () => void) {
+        const i = listeners.indexOf(l)
+        if (i >= 0) listeners.splice(i, 1)
+      },
+      dispatchChange() { for (const l of listeners) l() },
+    }
+    Object.defineProperty(navigator, 'connection', {
+      configurable: true,
+      value: conn,
+    })
+    return conn as unknown as EventTarget & { dispatchChange: () => void }
+  }
+
+  afterEach(() => {
+    // Remove the connection prop so it doesn't leak between tests.
+    delete (navigator as unknown as Record<string, unknown>).connection
+  })
+
+  it('captures local video at 320×240 when effectiveType is 3g at start', async () => {
+    installFetchMock()
+    setEffectiveType('3g')
+    const { stream } = makeFakeVideoStream()
+    vi.stubGlobal('RTCPeerConnection', FakePeerConnection)
+    const getUserMedia = vi.fn(async () => stream)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+
+    const { result } = renderHook(() => useVoiceCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: makeFakePeerConnection,
+      skipSignalSubscription: true,
+      generateCallId: () => 'video-slow-1',
+    }))
+
+    await act(async () => { await result.current.startCall('video') })
+
+    const constraints = getUserMedia.mock.calls[0][0] as MediaStreamConstraints
+    const v = constraints.video as MediaTrackConstraints
+    expect((v.width as { ideal?: number })?.ideal).toBe(320)
+    expect((v.height as { ideal?: number })?.ideal).toBe(240)
+  })
+
+  it('triggers a replaceTrack with 320×240 when connection downgrades during an active video call', async () => {
+    installFetchMock()
+    const conn = setEffectiveType('4g')
+    const original = makeFakeVideoStream()
+    const downgrade = makeFakeVideoStream()
+    vi.stubGlobal('RTCPeerConnection', FakePeerConnection)
+
+    const getUserMedia = vi.fn()
+      .mockImplementationOnce(async () => original.stream)
+      .mockImplementationOnce(async () => downgrade.stream)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+
+    const { result } = renderHook(() => useVoiceCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: makeFakePeerConnection,
+      skipSignalSubscription: true,
+      generateCallId: () => 'video-adapt-1',
+    }))
+
+    await act(async () => { await result.current.startCall('video') })
+    // Transition to active via the call_answer path so the bandwidth effect's
+    // state guard passes (it adapts when state is 'active' or 'outgoing-ringing').
+    await act(async () => {
+      await result.current.handleSignalEvent('call_answer', {
+        conversation_id: 7,
+        call_id: 'video-adapt-1',
+        from_user_id: 2,
+        data: { type: 'answer', sdp: 'v=0\r\nanswer' },
+      })
+    })
+
+    // Initial capture was 640×480 (4g).
+    const first = getUserMedia.mock.calls[0][0] as MediaStreamConstraints
+    const v1 = first.video as MediaTrackConstraints
+    expect((v1.width as { ideal?: number })?.ideal).toBe(640)
+
+    // Simulate the network dropping to 3g and emit the change event.
+    ;(conn as unknown as { effectiveType: string }).effectiveType = '3g'
+    await act(async () => {
+      ;(conn as unknown as { dispatchChange: () => void }).dispatchChange()
+    })
+
+    // waitFor polls until the async re-acquire chain has issued the second
+    // getUserMedia call. This is more robust than awaiting a fixed number of
+    // microtasks since happy-dom's scheduling can vary across versions.
+    await waitFor(() => {
+      expect(getUserMedia.mock.calls.length).toBeGreaterThanOrEqual(2)
+    })
+    const second = getUserMedia.mock.calls[1][0] as MediaStreamConstraints
+    const v2 = second.video as MediaTrackConstraints
+    expect((v2.width as { ideal?: number })?.ideal).toBe(320)
+    expect((v2.height as { ideal?: number })?.ideal).toBe(240)
   })
 })
