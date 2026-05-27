@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -67,17 +67,13 @@ export default function IngotsPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
-  const handleSearch = useCallback(() => {
-    setSearch(searchInput)
-    setPage(1)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput)
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(timer)
   }, [searchInput])
-
-  const handleSearchKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') handleSearch()
-    },
-    [handleSearch],
-  )
 
   const handleClearFilters = useCallback(() => {
     setSearch('')
@@ -170,8 +166,6 @@ export default function IngotsPage() {
             type="text"
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            onBlur={handleSearch}
             placeholder={t('ingotsPage.searchPlaceholder')}
             className="w-full pl-8 pr-3 py-2 text-sm rounded-lg bg-gray-800 border border-gray-700 text-gray-200 placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             aria-label={t('ingotsPage.searchLabel')}
