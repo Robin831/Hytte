@@ -139,8 +139,8 @@ export default function AnvilsPage() {
                   <span className="text-xs text-gray-500">
                     {t('anvilsPage.lastActivity')}:{' '}
                     <span className={`${TIMESTAMP_TEXT_CLASS[bucket]} tabular-nums`}>
-                      {anvil.last_activity
-                        ? formatDateTime(anvil.last_activity, {
+                      {bucket !== 'never'
+                        ? formatDateTime(anvil.last_activity as string, {
                             month: 'short',
                             day: 'numeric',
                             hour: '2-digit',
