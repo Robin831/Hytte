@@ -3,14 +3,12 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, Home, Plus, Pencil, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Loan } from './budget/loan/types'
+import { DEFAULT_LTV_MAX } from './budget/loan/types'
 import { fmt, fmtPct, effectiveRate, localDateString } from './budget/loan/format'
 import { LoanForm } from './budget/loan/LoanForm'
 import { AmortizationTable } from './budget/loan/AmortizationTable'
 import { useLoans } from './budget/loan/useLoans'
 
-// Fallback if the server hasn't started returning ltv_max yet (e.g. during rollout).
-// Kept in one place so the list card still renders sensibly without it.
-const FALLBACK_LTV_MAX = 0.85
 
 const EMPTY_LOAN: Omit<Loan, 'id'> = {
   name: '',
@@ -113,7 +111,7 @@ export default function BudgetLoan() {
           const isEditing = editingLoan?.id === loan.id
           const isAmortOpen = expandedAmortization === loan.id
           const ltvPct = loan.ltv_ratio ?? 0
-          const ltvMax = loan.ltv_max ?? FALLBACK_LTV_MAX
+          const ltvMax = loan.ltv_max ?? DEFAULT_LTV_MAX
           const ltvOk = ltvPct <= ltvMax
 
           return (

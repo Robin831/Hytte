@@ -1,3 +1,6 @@
+/** Default regulatory LTV ceiling – mirrors backend DefaultLTVMax in internal/budget/loans.go. */
+export const DEFAULT_LTV_MAX = 0.85
+
 export interface Loan {
   id: number
   name: string

@@ -16,8 +16,8 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// DefaultLTVMax is the regulatory LTV ceiling used to colour the loan UI
-// (Norwegian mortgages cap residential LTV at 85%).
+// DefaultLTVMax is the default regulatory LTV ceiling used to colour the loan UI.
+// This is the standard cap for Norwegian residential mortgages.
 const DefaultLTVMax = 0.85
 
 // -- Loan store --
