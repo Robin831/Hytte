@@ -2,6 +2,7 @@ package training
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -242,6 +243,137 @@ func TestRunPromptWithCost_ParsesEnvelope(t *testing.T) {
 	}
 	if cost < 0.012 || cost > 0.013 {
 		t.Errorf("expected cost ≈ 0.0123, got %v", cost)
+	}
+}
+
+// TestParseClaudeStream exercises the NDJSON parser used by
+// RunPromptWithSessionStream. Each case feeds a captured stream-json fixture
+// and asserts the assembled text plus the session id emission.
+func TestParseClaudeStream(t *testing.T) {
+	type want struct {
+		chunks    []string
+		text      string
+		sessionID string
+		errSubstr string
+	}
+
+	cases := []struct {
+		name string
+		in   string
+		want want
+	}{
+		{
+			name: "content_block_delta chunks assembled",
+			in: strings.Join([]string{
+				`{"type":"system","session_id":"sess-1"}`,
+				`{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello "}}`,
+				`{"type":"content_block_delta","delta":{"type":"text_delta","text":"world!"}}`,
+				`{"type":"result","result":"Hello world!","session_id":"sess-1","is_error":false}`,
+			}, "\n") + "\n",
+			want: want{
+				chunks:    []string{"Hello ", "world!"},
+				text:      "Hello world!",
+				sessionID: "sess-1",
+			},
+		},
+		{
+			name: "assistant content blocks emitted",
+			in: strings.Join([]string{
+				`{"type":"assistant","message":{"content":[{"type":"text","text":"Greetings."}]}}`,
+				`{"type":"result","result":"Greetings.","session_id":"sess-2","is_error":false}`,
+			}, "\n") + "\n",
+			want: want{
+				chunks:    []string{"Greetings."},
+				text:      "Greetings.",
+				sessionID: "sess-2",
+			},
+		},
+		{
+			name: "malformed line tolerated",
+			in: strings.Join([]string{
+				`{"type":"content_block_delta","delta":{"type":"text_delta","text":"ok"}}`,
+				`not-json {{`,
+				`{"type":"result","result":"ok","session_id":"sess-3"}`,
+			}, "\n") + "\n",
+			want: want{
+				chunks:    []string{"ok"},
+				text:      "ok",
+				sessionID: "sess-3",
+			},
+		},
+		{
+			name: "is_error result returns error",
+			in: strings.Join([]string{
+				`{"type":"result","result":"rate limit exceeded","is_error":true}`,
+			}, "\n") + "\n",
+			want: want{
+				errSubstr: "rate limit exceeded",
+			},
+		},
+		{
+			name: "session emitted from system event when result lacks it",
+			in: strings.Join([]string{
+				`{"type":"system","session_id":"sess-4"}`,
+				`{"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}`,
+				`{"type":"result","result":"hi","is_error":false}`,
+			}, "\n") + "\n",
+			want: want{
+				chunks:    []string{"hi"},
+				text:      "hi",
+				sessionID: "sess-4",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var chunks []string
+			var sessionID string
+			text, sessionEmitted, err := parseClaudeStream(strings.NewReader(tc.in),
+				func(c string) { chunks = append(chunks, c) },
+				func(s string) { sessionID = s },
+			)
+			if tc.want.errSubstr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tc.want.errSubstr)
+				}
+				if !strings.Contains(err.Error(), tc.want.errSubstr) {
+					t.Fatalf("error %v does not contain %q", err, tc.want.errSubstr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if text != tc.want.text {
+				t.Errorf("text = %q, want %q", text, tc.want.text)
+			}
+			if len(chunks) != len(tc.want.chunks) {
+				t.Fatalf("chunks = %v, want %v", chunks, tc.want.chunks)
+			}
+			for i, c := range chunks {
+				if c != tc.want.chunks[i] {
+					t.Errorf("chunk[%d] = %q, want %q", i, c, tc.want.chunks[i])
+				}
+			}
+			if sessionID != tc.want.sessionID {
+				t.Errorf("session id = %q, want %q", sessionID, tc.want.sessionID)
+			}
+			if tc.want.sessionID != "" && !sessionEmitted {
+				t.Errorf("expected onSession callback to fire")
+			}
+		})
+	}
+}
+
+func TestRunPromptWithSessionStream_Disabled(t *testing.T) {
+	cfg := &ClaudeConfig{Enabled: false, CLIPath: "claude", Model: "claude-sonnet-4-6"}
+	_, err := RunPromptWithSessionStream(context.Background(), cfg, "hi", "", nil, nil)
+	if err == nil {
+		t.Fatal("expected error when claude is disabled")
+	}
+	if err.Error() != "claude is not enabled" {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
 

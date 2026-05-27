@@ -23,9 +23,11 @@
   },
   "emptyMessages": "Send a message to start the conversation",
   "thinking": "Thinking...",
+  "streamingIndicator": "Streaming…",
   "input": {
     "placeholder": "Type a message... (Shift+Enter for new line)",
     "sendLabel": "Send message",
+    "stopStreaming": "Stop generating",
     "dismissError": "Dismiss error",
     "copyMessage": "Copy message"
   },
@@ -35,6 +37,7 @@
     "failedToCreate": "Failed to create conversation",
     "failedToDelete": "Failed to delete conversation",
     "failedToRename": "Failed to rename conversation",
-    "failedToSend": "Failed to send message"
+    "failedToSend": "Failed to send message",
+    "streamError": "The response stream was interrupted. Please try again."
   }
 }

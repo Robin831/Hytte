@@ -7,6 +7,7 @@ import {
   Plus,
   Trash2,
   Send,
+  Square,
   MessageSquare,
   Pencil,
   Check,
@@ -58,11 +59,9 @@ export default function Chat() {
   // Track locally deleted conversation IDs so we don't resurrect them if a
   // send response arrives after the user deleted the conversation mid-flight.
   const deletedConversationIds = useRef<Set<number>>(new Set())
-  // Monotonically decreasing counter for optimistic message IDs (negative to avoid
-  // collisions with server-assigned IDs). Using a ref gives stable IDs across
-  // re-renders without depending on wall-clock time (Date.now() could collide if
-  // two messages are sent within the same millisecond).
-  const tempIdCounter = useRef(0)
+  // Tracks the active streaming request so the user can cancel mid-send and
+  // so a conversation switch can abort the in-flight stream.
+  const streamAbortRef = useRef<AbortController | null>(null)
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -98,6 +97,11 @@ export default function Chat() {
   // Load messages when conversation changes
   const activeConversationId = activeConversation?.id ?? null
   useEffect(() => {
+    // Cancel any in-flight streaming send when switching conversations so the
+    // partial tokens do not bleed into the newly selected conversation.
+    streamAbortRef.current?.abort()
+    streamAbortRef.current = null
+
     const controller = new AbortController()
     ;(async () => {
       if (activeConversationId === null) {
@@ -135,6 +139,15 @@ export default function Chat() {
       el.style.height = Math.min(el.scrollHeight, 160) + 'px'
     }
   }, [input])
+
+  // Abort any in-flight streaming send when the component unmounts so the
+  // background fetch does not keep running with a stale state ref.
+  useEffect(() => {
+    return () => {
+      streamAbortRef.current?.abort()
+      streamAbortRef.current = null
+    }
+  }, [])
 
   // Focus rename input when entering rename mode
   useEffect(() => {
@@ -219,81 +232,204 @@ export default function Chat() {
   async function sendMessage() {
     if (!input.trim() || !activeConversation || sendingConversationId === activeConversation.id) return
     const content = input.trim()
-    // Capture conversation id at send time to guard against mid-flight switches
     const sentConversationId = activeConversation.id
     setInput('')
     setSendingConversationId(sentConversationId)
     setError('')
 
-    // Optimistic: add user message immediately
+    // Optimistic rows: the user bubble and an empty assistant bubble that
+    // we mutate as `token` events arrive. Negative ids mark them as
+    // placeholders that will be swapped for canonical rows on `user_message`
+    // / `done`.
+    const tempUserId = -Date.now()
+    const tempAssistantId = tempUserId - 1
     const tempUserMsg: Message = {
-      id: -(++tempIdCounter.current),
+      id: tempUserId,
       conversation_id: sentConversationId,
       role: 'user',
       content,
       created_at: new Date().toISOString(),
     }
-    setMessages(prev => [...prev, tempUserMsg])
+    const tempAssistantMsg: Message = {
+      id: tempAssistantId,
+      conversation_id: sentConversationId,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+    }
+    setMessages(prev => [...prev, tempUserMsg, tempAssistantMsg])
+
+    // Abort any earlier in-flight stream before starting this one. The
+    // useEffect on activeConversationId also calls abort on conversation
+    // switches.
+    streamAbortRef.current?.abort()
+    const controller = new AbortController()
+    streamAbortRef.current = controller
+
+    // Accumulate streamed text so we can write a single state update per
+    // animation frame rather than once per token (React schedules them, but
+    // each setState still re-renders the whole markdown tree).
+    let accumulated = ''
+    const applyAccumulated = () => {
+      const next = accumulated
+      setMessages(prev =>
+        prev.map(m => (m.id === tempAssistantId ? { ...m, content: next } : m)),
+      )
+    }
+
+    let sawToken = false
 
     try {
-      const res = await fetch(`/api/chat/conversations/${sentConversationId}/messages`, {
+      const res = await fetch(`/api/chat/conversations/${sentConversationId}/messages/stream`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
+        signal: controller.signal,
       })
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
         const data = await res.json().catch(() => null)
         throw new Error(data?.error || t('errors.failedToSend'))
       }
-      const data = await res.json()
-      const userMsg = data.user_message as Message
-      const assistantMsg = data.assistant_message as Message
-      const updatedConv = data.conversation as Conversation | undefined
 
-      // Only update messages if the user hasn't switched conversations
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let canonicalUserMsg: Message | null = null
+      let canonicalAssistantMsg: Message | null = null
+      let serverError: string | null = null
+
+      const handleFrame = (frame: string) => {
+        let eventName = 'message'
+        const dataLines: string[] = []
+        for (const line of frame.split('\n')) {
+          if (line.startsWith('event:')) {
+            eventName = line.slice(6).trim()
+          } else if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).trim())
+          }
+        }
+        if (dataLines.length === 0) return
+        let payload: unknown
+        try {
+          payload = JSON.parse(dataLines.join('\n'))
+        } catch {
+          return
+        }
+        if (eventName === 'token') {
+          const text = (payload as { text?: string }).text ?? ''
+          if (text) {
+            sawToken = true
+            accumulated += text
+            applyAccumulated()
+          }
+        } else if (eventName === 'user_message') {
+          canonicalUserMsg = payload as Message
+        } else if (eventName === 'done') {
+          canonicalAssistantMsg = (payload as { assistant_message?: Message }).assistant_message ?? null
+        } else if (eventName === 'error') {
+          serverError = (payload as { error?: string }).error ?? t('errors.streamError')
+        }
+      }
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const frames = buffer.split('\n\n')
+        buffer = frames.pop() ?? ''
+        for (const frame of frames) {
+          if (!frame.trim()) continue
+          handleFrame(frame)
+        }
+      }
+      // Flush any trailing frame that didn't end with the double-newline.
+      if (buffer.trim()) handleFrame(buffer)
+
+      if (serverError) {
+        throw new Error(serverError)
+      }
+
+      // Final swap: replace optimistic rows with the canonical ones the
+      // server returned. Skip if the user navigated away from this
+      // conversation while the stream was running.
       setActiveConversation(current => {
         if (current?.id !== sentConversationId) return current
-        setMessages(prev => [
-          ...prev.filter(m => m.id !== tempUserMsg.id),
-          userMsg,
-          assistantMsg,
-        ])
+        setMessages(prev => {
+          // Drop the assistant placeholder if Claude returned an empty body
+          // and we never saw a token; otherwise replace with canonical.
+          if (!canonicalAssistantMsg && !sawToken) {
+            return prev.filter(m => m.id !== tempUserId && m.id !== tempAssistantId)
+          }
+          return prev.flatMap(m => {
+            if (m.id === tempUserId) {
+              return canonicalUserMsg ? [canonicalUserMsg] : [m]
+            }
+            if (m.id === tempAssistantId) {
+              return canonicalAssistantMsg ? [canonicalAssistantMsg] : [m]
+            }
+            return [m]
+          })
+        })
         return current
       })
 
-      // Merge the refreshed conversation into local state (replaces auto-title refetch).
-      if (updatedConv) {
-        setConversations(prev => {
-          // Do not resurrect a conversation the user explicitly deleted locally.
-          if (deletedConversationIds.current.has(updatedConv.id)) return prev
-          const exists = prev.some(c => c.id === updatedConv.id)
-          // Insert when missing (e.g. initial list load finished after createConversation
-          // and overwrote state before the send response arrived).
-          const next = exists
-            ? prev.map(c => (c.id === updatedConv.id ? updatedConv : c))
-            : [updatedConv, ...prev]
-          // Sort by updated_at DESC, then id DESC (matches server ORDER BY) for stable ordering.
-          next.sort((a, b) => {
-            if (a.updated_at !== b.updated_at) return a.updated_at < b.updated_at ? 1 : -1
-            return b.id - a.id
+      // Refresh conversation list to pick up auto-title updates (non-fatal).
+      try {
+        const convRes = await fetch('/api/chat/conversations', { credentials: 'include' })
+        if (convRes.ok) {
+          const convData = await convRes.json()
+          const allConvs: Conversation[] = convData.conversations ?? []
+          setConversations(prev => {
+            // Build a merged list: start from the server list, but drop any
+            // conversations the user explicitly deleted locally so we don't
+            // resurrect them.
+            return allConvs.filter(c => !deletedConversationIds.current.has(c.id))
           })
-          return next
-        })
-        // Only update the active conversation if the user hasn't switched to another one.
-        setActiveConversation(current =>
-          current?.id === sentConversationId ? updatedConv : current
-        )
+          const updated = allConvs.find(c => c.id === sentConversationId)
+          if (updated) {
+            setActiveConversation(current =>
+              current?.id === sentConversationId ? updated : current,
+            )
+          }
+        }
+      } catch (refreshErr) {
+        console.error('Failed to refresh conversations after sending message', refreshErr)
       }
     } catch (err) {
-      // Remove optimistic message on error and restore draft
-      setMessages(prev => prev.filter(m => m.id !== tempUserMsg.id))
-      setInput(content)
-      if (err instanceof Error) setError(err.message)
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        // Stop semantics: keep the partial assistant text on screen at
+        // whatever was already streamed. The placeholder rows stay in place
+        // as non-persisted local entries.
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === tempAssistantId
+              ? { ...m, content: accumulated || m.content }
+              : m,
+          ),
+        )
+      } else {
+        // Stream error: drop the placeholders, restore the draft, and
+        // surface the error so the user can re-send.
+        setMessages(prev =>
+          prev.filter(m => m.id !== tempAssistantId && m.id !== tempUserId),
+        )
+        setInput(content)
+        if (err instanceof Error) setError(err.message || t('errors.streamError'))
+        else setError(t('errors.streamError'))
+      }
     } finally {
+      if (streamAbortRef.current === controller) {
+        streamAbortRef.current = null
+      }
       setSendingConversationId(null)
       inputRef.current?.focus()
     }
+  }
+
+  function stopStreaming() {
+    streamAbortRef.current?.abort()
+    streamAbortRef.current = null
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -538,22 +674,33 @@ export default function Chat() {
             </div>
           ) : (
             <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-              {messages.map(msg => (
-                <MessageBubble key={msg.id} message={msg} />
-              ))}
-              {sendingConversationId === activeConversation?.id && (
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-purple-600/20 flex items-center justify-center shrink-0">
-                    <Bot size={16} className="text-purple-400" />
-                  </div>
-                  <div className="bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3">
-                    <div className="flex items-center gap-2 text-gray-400">
-                      <Loader2 size={14} className="animate-spin" />
-                      <span className="text-sm">{t('thinking')}</span>
+              {messages.map(msg => {
+                // While streaming, the assistant placeholder is the last
+                // assistant row with negative id. Show the "streaming…"
+                // indicator only when its content is still empty so once
+                // tokens arrive the user sees the live text.
+                const isStreamingPlaceholder =
+                  sendingConversationId === activeConversation?.id &&
+                  msg.role === 'assistant' &&
+                  msg.id < 0 &&
+                  msg.content === ''
+                if (isStreamingPlaceholder) {
+                  return (
+                    <div key={msg.id} className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-purple-600/20 flex items-center justify-center shrink-0">
+                        <Bot size={16} className="text-purple-400" />
+                      </div>
+                      <div className="bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3">
+                        <div className="flex items-center gap-2 text-gray-400">
+                          <Loader2 size={14} className="animate-spin" />
+                          <span className="text-sm">{t('streamingIndicator')}</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              )}
+                  )
+                }
+                return <MessageBubble key={msg.id} message={msg} />
+              })}
               <div ref={messagesEndRef} />
             </div>
           )}
@@ -593,14 +740,28 @@ export default function Chat() {
                   el.style.height = Math.min(el.scrollHeight, 160) + 'px'
                 }}
               />
-              <button
-                onClick={sendMessage}
-                disabled={!input.trim() || sendingConversationId === activeConversation?.id}
-                className="self-end p-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                title={t('input.sendLabel')}
-              >
-                {sendingConversationId === activeConversation?.id ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-              </button>
+              {sendingConversationId === activeConversation?.id ? (
+                <button
+                  onClick={stopStreaming}
+                  className="self-end p-3 rounded-xl bg-red-600 hover:bg-red-500 text-white transition-colors cursor-pointer shrink-0"
+                  title={t('input.stopStreaming')}
+                  aria-label={t('input.stopStreaming')}
+                  data-testid="chat-stop-button"
+                >
+                  <Square size={18} />
+                </button>
+              ) : (
+                <button
+                  onClick={sendMessage}
+                  disabled={!input.trim()}
+                  className="self-end p-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                  title={t('input.sendLabel')}
+                  aria-label={t('input.sendLabel')}
+                  data-testid="chat-send-button"
+                >
+                  <Send size={18} />
+                </button>
+              )}
             </div>
           </div>
         )}

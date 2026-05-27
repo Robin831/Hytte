@@ -22,6 +22,11 @@ var runPromptFn = training.RunPrompt
 // runPromptWithSessionFn is the function used for session-aware Claude calls. It can be replaced in tests.
 var runPromptWithSessionFn = training.RunPromptWithSession
 
+// runPromptWithSessionStreamFn is the streaming variant used by
+// StreamMessageHandler. Replaced in tests so the handler can be exercised
+// without spawning the Claude CLI.
+var runPromptWithSessionStreamFn = training.RunPromptWithSessionStream
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -321,6 +326,185 @@ func truncateRunes(s string, max int) string {
 		return string(r[:max])
 	}
 	return s
+}
+
+// StreamMessageHandler is the SSE counterpart to SendMessageHandler. It
+// persists the incoming user message, then opens a text/event-stream
+// response and forwards Claude CLI text deltas as they arrive. After the
+// stream finishes successfully the assembled assistant message is persisted
+// and a final `done` event carries the saved row. CLI errors emit a single
+// `error` event and leave no assistant row behind.
+//
+// POST /api/chat/conversations/{id}/messages/stream
+// Body: {"content": "Hello!"}
+// Events:
+//   - user_message  {message}             — the persisted user row
+//   - token         {text}                — incremental text delta from Claude
+//   - done          {assistant_message}   — the persisted assistant row
+//   - error         {error}               — single fatal error before `done`
+func StreamMessageHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid conversation ID"})
+			return
+		}
+
+		var body struct {
+			Content string `json:"content"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+			return
+		}
+
+		content := strings.TrimSpace(body.Content)
+		if content == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "content is required"})
+			return
+		}
+
+		// Verify conversation exists and belongs to user.
+		convo, err := GetConversation(db, id, user.ID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "conversation not found"})
+				return
+			}
+			log.Printf("Failed to get conversation: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get conversation"})
+			return
+		}
+
+		// Load Claude configuration.
+		cfg, err := training.LoadClaudeConfig(db, user.ID)
+		if err != nil {
+			log.Printf("Failed to load Claude config: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load Claude configuration"})
+			return
+		}
+		if !cfg.Enabled {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Claude is not enabled — enable it in settings"})
+			return
+		}
+
+		// Override model with the conversation's model.
+		cfg.Model = convo.Model
+
+		// Persist the user message before flipping into SSE mode so a DB
+		// failure surfaces as a normal JSON error rather than a torn stream.
+		userMsg, err := InsertMessage(db, convo.ID, "user", content)
+		if err != nil {
+			log.Printf("Failed to insert user message: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save message"})
+			return
+		}
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+
+		// Send the persisted user row first so the client can replace its
+		// optimistic placeholder with the canonical id.
+		writeSSEEvent(w, flusher, "user_message", userMsg)
+
+		// Cancel the Claude subprocess when the client disconnects.
+		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
+		defer cancel()
+
+		var newSessionID string
+		runStream := func(sessionID string) (string, error) {
+			return runPromptWithSessionStreamFn(ctx, cfg, content, sessionID,
+				func(chunk string) {
+					writeSSEEvent(w, flusher, "token", map[string]string{"text": chunk})
+				},
+				func(sid string) {
+					newSessionID = sid
+				},
+			)
+		}
+
+		full, err := runStream(convo.SessionID)
+		if err != nil && convo.SessionID != "" && ctx.Err() == nil {
+			// Session may have expired — retry without it.
+			log.Printf("Session resume failed, retrying fresh: %v", err)
+			writeSSEEvent(w, flusher, "retry", map[string]string{"reason": "session expired, retrying"})
+			full, err = runStream("")
+		}
+
+		if err != nil {
+			// Client cancelled mid-stream: leave the partial text on the
+			// client and skip the assistant row. The user message remains
+			// persisted by design — that's a faithful record of what the
+			// user typed.
+			if ctx.Err() != nil {
+				log.Printf("chat stream cancelled for conversation %d: %v", convo.ID, ctx.Err())
+				return
+			}
+			log.Printf("Claude CLI streaming error: %v", err)
+			writeSSEEvent(w, flusher, "error", map[string]string{"error": "Claude failed to respond"})
+			return
+		}
+
+		// Save the session ID for future resumption.
+		if newSessionID != "" && newSessionID != convo.SessionID {
+			if dbErr := UpdateSessionID(db, convo.ID, user.ID, newSessionID); dbErr != nil {
+				log.Printf("Failed to save session ID: %v", dbErr)
+			}
+		}
+
+		full = strings.TrimSpace(full)
+		if full == "" {
+			writeSSEEvent(w, flusher, "error", map[string]string{"error": "Claude returned an empty response"})
+			return
+		}
+
+		assistantMsg, err := InsertMessage(db, convo.ID, "assistant", full)
+		if err != nil {
+			log.Printf("Failed to insert assistant message: %v", err)
+			writeSSEEvent(w, flusher, "error", map[string]string{"error": "failed to save response"})
+			return
+		}
+
+		// Auto-title: same logic as SendMessageHandler. autoTitle re-checks
+		// the title so we don't overwrite a user-set title.
+		if convo.Title == "" {
+			convoID := convo.ID
+			userID := user.ID
+			go func() {
+				bgCtx, bgCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer bgCancel()
+				autoTitle(bgCtx, db, cfg, convoID, userID, content)
+			}()
+		}
+
+		writeSSEEvent(w, flusher, "done", map[string]any{"assistant_message": assistantMsg})
+	}
+}
+
+// writeSSEEvent serialises payload as JSON and writes a single SSE frame.
+// Failures are swallowed because a write error means the client is gone.
+func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, event string, payload any) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("chat: marshal sse event %q: %v", event, err)
+		return
+	}
+	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data); err != nil {
+		return
+	}
+	flusher.Flush()
 }
 
 // autoTitle generates a short title for the conversation based on the first user message

@@ -23,9 +23,11 @@
   },
   "emptyMessages": "ส่งข้อความเพื่อเริ่มการสนทนา",
   "thinking": "กำลังคิด...",
+  "streamingIndicator": "กำลังสตรีม…",
   "input": {
     "placeholder": "พิมพ์ข้อความ... (Shift+Enter สำหรับขึ้นบรรทัดใหม่)",
     "sendLabel": "ส่งข้อความ",
+    "stopStreaming": "หยุดการสร้าง",
     "dismissError": "ปิดข้อผิดพลาด",
     "copyMessage": "คัดลอกข้อความ"
   },
@@ -35,6 +37,7 @@
     "failedToCreate": "สร้างการสนทนาไม่สำเร็จ",
     "failedToDelete": "ลบการสนทนาไม่สำเร็จ",
     "failedToRename": "เปลี่ยนชื่อการสนทนาไม่สำเร็จ",
-    "failedToSend": "ส่งข้อความไม่สำเร็จ"
+    "failedToSend": "ส่งข้อความไม่สำเร็จ",
+    "streamError": "การสตรีมตอบกลับถูกขัดจังหวะ โปรดลองอีกครั้ง"
   }
 }
