@@ -260,3 +260,146 @@ describe('HomeworkChat – send message flow', () => {
     })
   })
 })
+
+describe('HomeworkChat – optimistic send recovery on failure', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  it('removes optimistic bubble and restores draft on network error', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convDetailResponse())
+      .mockRejectedValueOnce(new Error('Network down'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+    await waitFor(() => screen.getByText('Homework Helper'))
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'My question' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Network down')).toBeInTheDocument()
+    })
+
+    // Bubble removed from the transcript (textarea value is not text content,
+    // so queryByText only finds rendered message bubbles).
+    expect(screen.queryByText('My question')).not.toBeInTheDocument()
+    // Draft restored.
+    expect(input.value).toBe('My question')
+  })
+
+  it('removes optimistic bubble and restores draft on non-OK response with server error text', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convDetailResponse())
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ error: 'Server boom' }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+    await waitFor(() => screen.getByText('Homework Helper'))
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'A query' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Server boom')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText('A query')).not.toBeInTheDocument()
+    expect(input.value).toBe('A query')
+  })
+
+  it('removes the swapped real-id bubble when SSE emits an error mid-stream', async () => {
+    // The server emits user_message (so the optimistic temp id is replaced by id=999),
+    // then emits an error event. Recovery must remove the now-real-id bubble.
+    const realUserMsg = makeMessage({ id: 999, role: 'user', content: 'Original question' })
+
+    const sseEvents = [
+      `event: user_message\ndata: ${JSON.stringify(realUserMsg)}\n\n`,
+      `event: error\ndata: ${JSON.stringify({ error: 'Stream failed' })}\n\n`,
+    ]
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convDetailResponse())
+      .mockResolvedValueOnce(makeSSEStream(sseEvents))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+    await waitFor(() => screen.getByText('Homework Helper'))
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'Original question' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Stream failed')).toBeInTheDocument()
+    })
+
+    // The user-message bubble (real id 999) must be gone from the transcript.
+    expect(screen.queryByText('Original question')).not.toBeInTheDocument()
+    // Streaming placeholder cleared, draft restored.
+    expect(input.value).toBe('Original question')
+  })
+
+  it('does not clobber a newer draft typed during the in-flight send', async () => {
+    // Deferred reject so we can control timing.
+    let rejectFn: ((err: Error) => void) | null = null
+    const inFlight = new Promise<Response>((_, reject) => { rejectFn = reject })
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convDetailResponse())
+      .mockReturnValueOnce(inFlight)
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+    await waitFor(() => screen.getByText('Homework Helper'))
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'Original' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    // Wait for the send fetch to be in-flight (and input to have been cleared).
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(input.value).toBe(''))
+
+    // User types a new draft while the send is still pending.
+    fireEvent.change(input, { target: { value: 'Newer draft' } })
+
+    // Now fail the in-flight send.
+    rejectFn!(new Error('boom'))
+
+    await waitFor(() => {
+      expect(screen.getByText('boom')).toBeInTheDocument()
+    })
+
+    // Newer draft is preserved; captured "Original" is NOT restored over it.
+    expect(input.value).toBe('Newer draft')
+    // Optimistic bubble still removed.
+    expect(screen.queryByText('Original')).not.toBeInTheDocument()
+  })
+
+  it('short-circuits silently on AbortError without restoring draft or showing banner', async () => {
+    const abortErr = new Error('aborted')
+    abortErr.name = 'AbortError'
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convDetailResponse())
+      .mockRejectedValueOnce(abortErr)
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+    await waitFor(() => screen.getByText('Homework Helper'))
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'Question' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    // Wait for the send promise to settle (the textarea re-enables when sending=false).
+    await waitFor(() => expect(input.disabled).toBe(false))
+
+    // No banner shown, draft NOT restored (input stays cleared).
+    expect(input.value).toBe('')
+    expect(screen.queryByText('aborted')).not.toBeInTheDocument()
+    expect(screen.queryByText('Failed to send message')).not.toBeInTheDocument()
+  })
+})
