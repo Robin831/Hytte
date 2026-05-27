@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, memo, type ChangeEvent } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useReducer, memo, type ChangeEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Link } from 'react-router-dom'
@@ -984,32 +984,40 @@ export default function BudgetCreditCards() {
     [groups],
   )
 
-  // Tracks the previous grouping so we can preserve per-group array references
-  // for unchanged groups (see byGroupId below).
-  const prevByGroupIdRef = useRef(new Map<number | null, Transaction[]>())
-
-  // Group transactions by group_id. After building the new map we compare each
-  // group's transactions to the previous run: if every transaction object
-  // reference is identical (setTransactions uses structural updates that keep
-  // unchanged objects stable), we reuse the old array so React.memo(GroupSection)
-  // and the per-group useMemo([transactions]) inside it can short-circuit for
-  // groups that weren't touched by an optimistic update.
-  const byGroupId = useMemo(() => {
-    const next = new Map<number | null, Transaction[]>()
-    for (const tx of transactions) {
-      const key = tx.group_id
-      if (!next.has(key)) next.set(key, [])
-      next.get(key)!.push(tx)
-    }
-    const prev = prevByGroupIdRef.current
-    for (const [key, arr] of next) {
-      const old = prev.get(key)
-      if (old && old.length === arr.length && old.every((t, i) => t === arr[i])) {
-        next.set(key, old)
+  // Group transactions by group_id. The reducer preserves per-group array
+  // references for unchanged groups so React.memo(GroupSection) can
+  // short-circuit for groups not touched by an optimistic update.
+  // useLayoutEffect keeps it in sync synchronously after commit (before paint)
+  // so there is no visible flicker.
+  const [byGroupId, updateByGroupId] = useReducer(
+    (prev: Map<number | null, Transaction[]>, txs: Transaction[]) => {
+      const next = new Map<number | null, Transaction[]>()
+      for (const tx of txs) {
+        const key = tx.group_id
+        if (!next.has(key)) next.set(key, [])
+        next.get(key)!.push(tx)
       }
-    }
-    prevByGroupIdRef.current = next
-    return next
+      for (const [key, arr] of next) {
+        const old = prev.get(key)
+        if (old && old.length === arr.length && old.every((t, i) => t === arr[i])) {
+          next.set(key, old)
+        }
+      }
+      return next
+    },
+    transactions,
+    (txs: Transaction[]) => {
+      const map = new Map<number | null, Transaction[]>()
+      for (const tx of txs) {
+        const key = tx.group_id
+        if (!map.has(key)) map.set(key, [])
+        map.get(key)!.push(tx)
+      }
+      return map
+    },
+  )
+  useLayoutEffect(() => {
+    updateByGroupId(transactions)
   }, [transactions])
 
   // Diverse catch-all: transactions in Diverse group + unassigned.
