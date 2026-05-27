@@ -638,9 +638,17 @@ func ChildWorkoutsSummaryHandler(db *sql.DB) http.HandlerFunc {
 
 		if err := verifyParentChild(r.Context(), db, user.ID, childID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				writeJSON(w, http.StatusForbidden, map[string]string{"error": "not authorized to view this child's workouts"})
+				// Distinguish between an unknown child and an unlinked child.
+				// If the child user doesn't exist at all, return 404; if the user
+				// exists but is not linked to this parent, return 403.
+				var exists int
+				if qErr := db.QueryRowContext(r.Context(), `SELECT 1 FROM users WHERE id = ?`, childID).Scan(&exists); errors.Is(qErr, sql.ErrNoRows) {
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": "child not found"})
+				} else {
+					writeJSON(w, http.StatusForbidden, map[string]string{"error": "not authorized to view this child's workouts"})
+				}
 			} else {
-				log.Printf("family: verify parent-child user %d child %d: %v", user.ID, childID, err)
+				log.Printf("family: verify parent-child parent %d child %d: %v", user.ID, childID, err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			}
 			return
@@ -672,7 +680,7 @@ func ChildWorkoutsSummaryHandler(db *sql.DB) http.HandlerFunc {
 		// after the local midnight of the oldest Monday, expressed in UTC.
 		windowStartLocal, err := time.ParseInLocation("2006-01-02", windowStart, loc)
 		if err != nil {
-			log.Printf("family: child workouts summary parse window user %d: %v", childID, err)
+			log.Printf("family: child workouts summary parse window child %d: %v", childID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load summary"})
 			return
 		}
@@ -683,15 +691,15 @@ func ChildWorkoutsSummaryHandler(db *sql.DB) http.HandlerFunc {
 			       COALESCE(s.stars, 0) AS stars
 			FROM workouts w
 			LEFT JOIN (
-				SELECT reference_id, user_id, SUM(amount) AS stars
+				SELECT reference_id, SUM(amount) AS stars
 				FROM star_transactions
-				WHERE amount > 0
-				GROUP BY reference_id, user_id
-			) s ON s.reference_id = w.id AND s.user_id = w.user_id
+				WHERE amount > 0 AND user_id = ?
+				GROUP BY reference_id
+			) s ON s.reference_id = w.id
 			WHERE w.user_id = ? AND w.started_at >= ?
-		`, childID, windowStartUTC)
+		`, childID, childID, windowStartUTC)
 		if err != nil {
-			log.Printf("family: child workouts summary query user %d: %v", childID, err)
+			log.Printf("family: child workouts summary query child %d: %v", childID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load summary"})
 			return
 		}
@@ -711,13 +719,13 @@ func ChildWorkoutsSummaryHandler(db *sql.DB) http.HandlerFunc {
 			var distance float64
 			var stars int
 			if err := rows.Scan(&startedAt, &distance, &stars); err != nil {
-				log.Printf("family: child workouts summary scan user %d: %v", childID, err)
+				log.Printf("family: child workouts summary scan child %d: %v", childID, err)
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan summary"})
 				return
 			}
 			t, err := time.Parse(time.RFC3339, startedAt)
 			if err != nil {
-				log.Printf("family: child workouts summary parse started_at %q user %d: %v", startedAt, childID, err)
+				log.Printf("family: child workouts summary parse started_at %q child %d: %v", startedAt, childID, err)
 				continue
 			}
 			local := t.In(loc)
@@ -731,7 +739,7 @@ func ChildWorkoutsSummaryHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 		if err := rows.Err(); err != nil {
-			log.Printf("family: child workouts summary rows user %d: %v", childID, err)
+			log.Printf("family: child workouts summary rows child %d: %v", childID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read summary"})
 			return
 		}

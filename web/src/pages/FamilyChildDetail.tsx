@@ -192,6 +192,9 @@ export default function FamilyChildDetail() {
     if (paginationAbortRef.current) {
       paginationAbortRef.current.abort()
       paginationAbortRef.current = null
+      // Clear loading state for the aborted request — the finally block
+      // won't clear it because it guards against aborted signals.
+      setWorkoutsLoading(false)
     }
 
     const cached = pageCacheRef.current.get(newPage)

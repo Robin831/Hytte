@@ -542,8 +542,8 @@ func TestChildWorkoutsSummaryHandlerUnknownChild(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for unknown child (no family_links row), got %d: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown child (user does not exist), got %d: %s", w.Code, w.Body.String())
 	}
 }
 
