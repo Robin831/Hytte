@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef, type ChangeEvent } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, memo, type ChangeEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, Upload, X, Link2, CreditCard, Plus, Trash2, Settings, History } from 'lucide-react'
+import { List, type RowComponentProps } from 'react-window'
 import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -89,6 +90,10 @@ interface MonthlyHistory {
   net_totals: Record<string, number>         // net outstanding = expenses + innbetaling_totals
 }
 
+// Stable empty array for groups with no transactions — avoids allocating a new
+// [] on every render when byGroupId.get(key) returns undefined.
+const EMPTY_TX_ARRAY: Transaction[] = []
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function currentMonth(): string {
@@ -133,60 +138,11 @@ function formatAmount(amount: number, currency = 'NOK'): string {
 
 // ── Subcomponents ─────────────────────────────────────────────────────────────
 
-interface GroupSectionProps {
-  title: string
-  transactions: Transaction[]
-  groups: Group[]
-  currency: string
-  t: TFunction<'budget'>
-  onAssign: (txId: number, groupId: number | null) => void
-  onDelete: (txId: number) => void
-  onDefer: (txId: number) => void
-}
-
-function GroupSection({ title, transactions, groups, currency, t, onAssign, onDelete, onDefer }: GroupSectionProps) {
-  // A carry-over (deferred_from_previous_month) is active in the viewed month and
-  // counts toward its total; a row deferred forward out of this month does not.
-  const expenseTotal = transactions
-    .filter(tx => !tx.is_innbetaling && (tx.deferred_from_previous_month || !tx.deferred_to_next_month))
-    .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
-  const innbetalingTotal = transactions
-    .filter(tx => tx.is_innbetaling)
-    .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
-
-  if (transactions.length === 0) return null
-
-  return (
-    <div className="bg-gray-800 rounded-lg overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2 bg-gray-700 border-b border-gray-600">
-        <span className="text-sm font-semibold text-gray-200">{title}</span>
-        {innbetalingTotal > 0 && expenseTotal === 0 ? (
-          <span className="text-sm font-semibold text-green-400">
-            {formatCurrency(innbetalingTotal, currency)}
-          </span>
-        ) : (
-          <span className="text-sm font-semibold text-red-400">
-            {formatCurrency(expenseTotal, currency)}
-          </span>
-        )}
-      </div>
-      <div className="divide-y divide-gray-700/50">
-        {transactions.map(tx => (
-          <TransactionItem
-            key={tx.id}
-            tx={tx}
-            groups={groups}
-            currency={currency}
-            t={t}
-            onAssign={onAssign}
-            onDelete={onDelete}
-            onDefer={onDefer}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
+// Row height (px) for a single transaction. Badges are prevented from wrapping
+// (overflow-hidden + flex-1 truncation) so this height is truly fixed.
+const TX_ROW_HEIGHT = 60
+// Cap each virtualised list at ~8 rows tall; larger groups scroll internally.
+const TX_LIST_MAX_HEIGHT = 480
 
 interface TransactionItemProps {
   tx: Transaction
@@ -198,7 +154,7 @@ interface TransactionItemProps {
   onDefer: (txId: number) => void
 }
 
-function TransactionItem({ tx, groups, currency, t, onAssign, onDelete, onDefer }: TransactionItemProps) {
+const TransactionItem = memo(function TransactionItem({ tx, groups, currency, t, onAssign, onDelete, onDefer }: TransactionItemProps) {
   const showForeignAmount =
     tx.belop_i_valuta !== 0 &&
     Math.abs(Math.abs(tx.belop_i_valuta) - Math.abs(tx.belop)) > 0.01
@@ -211,8 +167,8 @@ function TransactionItem({ tx, groups, currency, t, onAssign, onDelete, onDefer 
   return (
     <div className={`flex items-start gap-2 px-3 py-2 ${isDeferredAway ? 'opacity-60' : ''}`}>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className={`text-sm truncate ${tx.is_innbetaling ? 'text-green-400' : 'text-gray-200'}`}>
+        <div className="flex items-center gap-1.5 overflow-hidden">
+          <span className={`text-sm truncate min-w-0 flex-1 ${tx.is_innbetaling ? 'text-green-400' : 'text-gray-200'}`}>
             {tx.beskrivelse}
           </span>
           {tx.is_pending && (
@@ -281,7 +237,101 @@ function TransactionItem({ tx, groups, currency, t, onAssign, onDelete, onDefer 
       </div>
     </div>
   )
+})
+
+// Sum a group's transactions using the same semantics as the legacy
+// filter+reduce: include carry-overs from the previous month, exclude rows
+// deferred forward out of this month, and split innbetalinger separately.
+// eslint-disable-next-line react-refresh/only-export-components
+export function computeGroupTotals(transactions: Transaction[]): { expenseTotal: number; innbetalingTotal: number } {
+  let expenseTotal = 0
+  let innbetalingTotal = 0
+  for (const tx of transactions) {
+    if (tx.is_innbetaling) {
+      innbetalingTotal += Math.abs(tx.belop)
+    } else if (tx.deferred_from_previous_month || !tx.deferred_to_next_month) {
+      expenseTotal += Math.abs(tx.belop)
+    }
+  }
+  return { expenseTotal, innbetalingTotal }
 }
+
+interface TransactionRowExtraProps {
+  transactions: Transaction[]
+  groups: Group[]
+  currency: string
+  t: TFunction<'budget'>
+  onAssign: (txId: number, groupId: number | null) => void
+  onDelete: (txId: number) => void
+  onDefer: (txId: number) => void
+}
+
+// Thin wrapper rendered by react-window for each visible row. The wrapper
+// re-renders whenever `rowProps` changes (e.g. after an optimistic update),
+// but `TransactionItem` is memoised on the individual `tx` reference, so
+// unaffected rows skip their actual render.
+function TransactionRow({ index, style, transactions, groups, currency, t, onAssign, onDelete, onDefer }: RowComponentProps<TransactionRowExtraProps>) {
+  const tx = transactions[index]
+  if (!tx) return null
+  return (
+    <div style={style} className="border-b border-gray-700/50">
+      <TransactionItem
+        tx={tx}
+        groups={groups}
+        currency={currency}
+        t={t}
+        onAssign={onAssign}
+        onDelete={onDelete}
+        onDefer={onDefer}
+      />
+    </div>
+  )
+}
+
+interface GroupSectionProps {
+  title: string
+  transactions: Transaction[]
+  groups: Group[]
+  currency: string
+  t: TFunction<'budget'>
+  onAssign: (txId: number, groupId: number | null) => void
+  onDelete: (txId: number) => void
+  onDefer: (txId: number) => void
+}
+
+const GroupSection = memo(function GroupSection({ title, transactions, groups, currency, t, onAssign, onDelete, onDefer }: GroupSectionProps) {
+  const { expenseTotal, innbetalingTotal } = useMemo(() => computeGroupTotals(transactions), [transactions])
+
+  if (transactions.length === 0) return null
+
+  const listHeight = Math.min(transactions.length * TX_ROW_HEIGHT, TX_LIST_MAX_HEIGHT)
+
+  return (
+    <div className="bg-gray-800 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 bg-gray-700 border-b border-gray-600">
+        <span className="text-sm font-semibold text-gray-200">{title}</span>
+        {innbetalingTotal > 0 && expenseTotal === 0 ? (
+          <span className="text-sm font-semibold text-green-400">
+            {formatCurrency(innbetalingTotal, currency)}
+          </span>
+        ) : (
+          <span className="text-sm font-semibold text-red-400">
+            {formatCurrency(expenseTotal, currency)}
+          </span>
+        )}
+      </div>
+      <List<TransactionRowExtraProps>
+        rowComponent={TransactionRow}
+        rowCount={transactions.length}
+        rowHeight={TX_ROW_HEIGHT}
+        rowProps={{ transactions, groups, currency, t, onAssign, onDelete, onDefer }}
+        style={{ height: listHeight }}
+        defaultHeight={listHeight}
+        overscanCount={3}
+      />
+    </div>
+  )
+})
 
 // ── Import Preview Modal ───────────────────────────────────────────────────────
 
@@ -604,6 +654,17 @@ export default function BudgetCreditCards() {
   const currentMonthRef = useRef(month)
   useEffect(() => { currentSelectedIdRef.current = selectedId }, [selectedId])
   useEffect(() => { currentMonthRef.current = month }, [month])
+
+  // Latest-value refs so that row callbacks stay reference-stable across
+  // transaction/group state changes (otherwise memoised TransactionItems
+  // re-render on every optimistic update). useLayoutEffect (rather than
+  // useEffect) ensures the refs are flushed synchronously before the browser
+  // paints and can accept user input, so handlers never read stale data.
+  const transactionsRef = useRef<Transaction[]>(transactions)
+  const groupsRef = useRef<Group[]>(groups)
+  useLayoutEffect(() => { transactionsRef.current = transactions }, [transactions])
+  useLayoutEffect(() => { groupsRef.current = groups }, [groups])
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset result when selection changes
     setReapplyResult(null)
@@ -801,12 +862,14 @@ export default function BudgetCreditCards() {
 
   const handleAssignGroup = useCallback(async (txId: number, groupId: number | null) => {
     // Find the transaction to get its description for the merchant rule.
-    const tx = transactions.find(t => t.id === txId)
+    // Reads through refs so this callback stays reference-stable when
+    // transactions/groups update (keeps memoised TransactionItems quiet).
+    const tx = transactionsRef.current.find(t => t.id === txId)
 
     // Optimistic update
     setTransactions(prev => prev.map(t => {
       if (t.id !== txId) return t
-      const group = groups.find(g => g.id === groupId)
+      const group = groupsRef.current.find(g => g.id === groupId)
       return { ...t, group_id: groupId, group_name: group?.name ?? '' }
     }))
 
@@ -846,7 +909,7 @@ export default function BudgetCreditCards() {
       setTxnsError(t('creditCards.errors.assignFailed'))
       if (selectedId !== null) loadTransactions(selectedId, month)
     }
-  }, [groups, transactions, t, selectedId, month, loadTransactions])
+  }, [t, selectedId, month, loadTransactions])
 
   const handleSaveOpeningBalance = useCallback(async () => {
     if (selectedId === null) return
@@ -905,6 +968,88 @@ export default function BudgetCreditCards() {
       setTxnsError(t('creditCards.errors.deferFailed'))
     }
   }, [t, selectedId, month, loadTransactions])
+
+  // ── Derived data (memoised) ───────────────────────────────────────────────
+
+  // Groups to show in dropdown for reassignment (include Diverse so any
+  // persisted group_id always has a matching option in the controlled select).
+  const allGroupOptions = useMemo(
+    () => [...groups].sort((a, b) => a.sort_order - b.sort_order),
+    [groups],
+  )
+
+  const diverseGroup = useMemo(() => groups.find(g => g.name === 'Diverse'), [groups])
+  const namedGroups = useMemo(
+    () => groups.filter(g => g.name !== 'Diverse').sort((a, b) => a.sort_order - b.sort_order),
+    [groups],
+  )
+
+  // Group transactions by group_id. Derived directly from transactions via
+  // useMemo so no extra render is needed (vs. the useReducer + useLayoutEffect
+  // pattern which always caused two renders on every transaction update).
+  // A ref tracks the previous map so per-group array references are preserved
+  // for unchanged groups, letting React.memo(GroupSection) short-circuit for
+  // groups not touched by an optimistic update.
+  //
+  // The useMemo is kept pure (no ref writes during render). The ref is updated
+  // in useLayoutEffect after commit so it is safe under concurrent/StrictMode
+  // rendering where renders may be aborted and re-run.
+  const prevByGroupIdRef = useRef<Map<number | null, Transaction[]>>(new Map())
+  const byGroupId = useMemo(() => {
+    const prev = prevByGroupIdRef.current
+    const next = new Map<number | null, Transaction[]>()
+    for (const tx of transactions) {
+      const key = tx.group_id
+      if (!next.has(key)) next.set(key, [])
+      next.get(key)!.push(tx)
+    }
+    for (const [key, arr] of next) {
+      // eslint-disable-next-line react-hooks/refs -- intentional: read-only ref access for structural sharing; write is in useLayoutEffect below
+      const old = prev.get(key)
+      if (old && old.length === arr.length && old.every((t, i) => t === arr[i])) {
+        next.set(key, old)
+      }
+    }
+    return next
+  }, [transactions])
+  // Keep the ref in sync with the last committed map so the next useMemo run
+  // can do structural sharing against it. This must be useLayoutEffect (not
+  // useMemo) so the write happens after commit, not during render.
+  useLayoutEffect(() => {
+    prevByGroupIdRef.current = byGroupId
+  }, [byGroupId])
+
+  // Diverse catch-all: transactions in Diverse group + unassigned.
+  // Split into two intermediate memos so the concatenation can be memoised on
+  // those references independently: if only a named-group transaction changes,
+  // only diverseGroupTxns/unassignedTxns need updating — and if they haven't
+  // changed, diverseTxns itself stays referentially stable and the Diverse
+  // GroupSection skips re-rendering.
+  const diverseGroupTxns = useMemo(
+    () => diverseGroup ? (byGroupId.get(diverseGroup.id) ?? EMPTY_TX_ARRAY) : EMPTY_TX_ARRAY,
+    [byGroupId, diverseGroup],
+  )
+  const unassignedTxns = useMemo(
+    () => byGroupId.get(null) ?? EMPTY_TX_ARRAY,
+    [byGroupId],
+  )
+  const diverseTxns = useMemo<Transaction[]>(
+    () => [...diverseGroupTxns, ...unassignedTxns],
+    [diverseGroupTxns, unassignedTxns],
+  )
+
+  // When a variable bill is linked, derive the monthly total from the backend-computed
+  // closing balance so it stays consistent with SyncCreditCardExpense. Otherwise sum
+  // the visible rows: include carry-overs from the previous month, exclude rows
+  // deferred forward out of this month.
+  const expenseTotal = useMemo(
+    () => variableBillName !== null
+      ? variableBillAmount - openingBalance
+      : transactions
+          .filter(tx => !tx.is_innbetaling && (tx.deferred_from_previous_month || !tx.deferred_to_next_month))
+          .reduce((sum, tx) => sum + Math.abs(tx.belop), 0),
+    [transactions, variableBillName, variableBillAmount, openingBalance],
+  )
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -1007,36 +1152,7 @@ export default function BudgetCreditCards() {
     }
   }
 
-  // Build grouped transactions
-  const diverseGroup = groups.find(g => g.name === 'Diverse')
-  const namedGroups = groups.filter(g => g.name !== 'Diverse').sort((a, b) => a.sort_order - b.sort_order)
-
-  const byGroupId = new Map<number | null, Transaction[]>()
-  for (const tx of transactions) {
-    const key = tx.group_id
-    if (!byGroupId.has(key)) byGroupId.set(key, [])
-    byGroupId.get(key)!.push(tx)
-  }
-
-  // Diverse catch-all: transactions in Diverse group + unassigned
-  const diverseTxns: Transaction[] = [
-    ...(diverseGroup ? (byGroupId.get(diverseGroup.id) ?? []) : []),
-    ...(byGroupId.get(null) ?? []),
-  ]
-
-  // When a variable bill is linked, derive the monthly total from the backend-computed
-  // closing balance so it stays consistent with SyncCreditCardExpense. Otherwise sum
-  // the visible rows: include carry-overs from the previous month, exclude rows
-  // deferred forward out of this month.
-  const expenseTotal = variableBillName !== null
-    ? variableBillAmount - openingBalance
-    : transactions
-        .filter(tx => !tx.is_innbetaling && (tx.deferred_from_previous_month || !tx.deferred_to_next_month))
-        .reduce((sum, tx) => sum + Math.abs(tx.belop), 0)
-
-  // Groups to show in dropdown for reassignment (include Diverse so any
-  // persisted group_id always has a matching option in the controlled select)
-  const allGroupOptions = [...groups].sort((a, b) => a.sort_order - b.sort_order)
+  // Grouping, totals, and dropdown options are computed in useMemo hooks above.
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-4">
