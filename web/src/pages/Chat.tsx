@@ -278,6 +278,9 @@ export default function Chat() {
     }
 
     let sawToken = false
+    // Hoisted so the catch block can reference the canonical user row when
+    // deciding whether to keep the user bubble visible after a stream error.
+    let canonicalUserMsg: Message | null = null
 
     try {
       const res = await fetch(`/api/chat/conversations/${sentConversationId}/messages/stream`, {
@@ -295,7 +298,6 @@ export default function Chat() {
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
-      let canonicalUserMsg: Message | null = null
       let canonicalAssistantMsg: Message | null = null
       let serverError: string | null = null
 
@@ -427,10 +429,15 @@ export default function Chat() {
           setMessages(prev => prev.filter(m => m.id !== tempAssistantId))
         }
       } else {
-        // Stream error: drop the placeholders, restore the draft, and
-        // surface the error so the user can re-send.
+        // Stream error: the backend has already persisted the user_message
+        // before running Claude, so keep it visible (swap in the canonical
+        // row if one arrived, otherwise leave the optimistic placeholder).
+        // Only remove the assistant placeholder and restore the draft input
+        // so the user can re-send without losing their message context.
         setMessages(prev =>
-          prev.filter(m => m.id !== tempAssistantId && m.id !== tempUserId),
+          prev
+            .filter(m => m.id !== tempAssistantId)
+            .map(m => (m.id === tempUserId && canonicalUserMsg ? canonicalUserMsg : m)),
         )
         setInput(content)
         if (err instanceof Error) setError(err.message || t('errors.streamError'))

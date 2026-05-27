@@ -349,6 +349,11 @@ func runPromptWithSessionStreamCLI(ctx context.Context, cfg *ClaudeConfig, promp
 
 	fullText, _, parseErr := parseClaudeStream(stdout, onChunk, onSession)
 	if parseErr != nil {
+		// Kill the subprocess first so it stops writing, then drain any
+		// remaining bytes from stdout so the pipe buffer cannot block the
+		// process (and therefore cmd.Wait()) from exiting.
+		_ = cmd.Process.Kill()
+		go func() { _, _ = io.Copy(io.Discard, stdout) }()
 		_ = cmd.Wait()
 		return "", parseErr
 	}
