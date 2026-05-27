@@ -306,6 +306,50 @@ describe('Chat – streaming send', () => {
     expect(screen.getByText(/Partial answer so far/)).toBeInTheDocument()
   })
 
+  it('clicking Stop before any tokens arrive removes the empty assistant placeholder', async () => {
+    const { convListRes, convDetailRes } = await selectExistingConversation([])
+    const stream = manualSSEResponse()
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(convListRes)
+      .mockResolvedValueOnce(convDetailRes)
+      .mockImplementationOnce((_: string, init?: RequestInit) => {
+        const signal = init?.signal as AbortSignal | undefined
+        signal?.addEventListener('abort', () => {
+          try {
+            stream.close()
+          } catch {
+            // already closed
+          }
+        })
+        return Promise.resolve(stream.response)
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+
+    await waitFor(() => screen.getByText('Existing chat'))
+    fireEvent.click(screen.getByText('Existing chat'))
+    await waitFor(() => screen.getByPlaceholderText('Type a message...'))
+
+    const textarea = screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'Long question' } })
+    fireEvent.click(screen.getByTestId('chat-send-button'))
+
+    // Wait until the streaming indicator (empty assistant placeholder) is on
+    // screen, but do not push any token.
+    await screen.findByText('Streaming…')
+
+    // Click Stop while the bubble is still empty.
+    const stopBtn = await screen.findByTestId('chat-stop-button')
+    fireEvent.click(stopBtn)
+
+    // The streaming indicator should disappear with the placeholder.
+    await waitFor(() => expect(screen.queryByText('Streaming…')).not.toBeInTheDocument())
+    expect(screen.queryByTestId('chat-stop-button')).not.toBeInTheDocument()
+  })
+
   it('switching conversations aborts the in-flight stream', async () => {
     const convA = makeConv({ id: 1, title: 'Chat A' })
     const convB = makeConv({ id: 2, title: 'Chat B' })

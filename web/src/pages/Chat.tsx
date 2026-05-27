@@ -266,9 +266,9 @@ export default function Chat() {
     const controller = new AbortController()
     streamAbortRef.current = controller
 
-    // Accumulate streamed text so we can write a single state update per
-    // animation frame rather than once per token (React schedules them, but
-    // each setState still re-renders the whole markdown tree).
+    // Accumulate streamed text in a local string so the placeholder row's
+    // content reflects the full assistant reply on every render, even though
+    // React batches the setState calls.
     let accumulated = ''
     const applyAccumulated = () => {
       const next = accumulated
@@ -398,16 +398,24 @@ export default function Chat() {
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        // Stop semantics: keep the partial assistant text on screen at
-        // whatever was already streamed. The placeholder rows stay in place
-        // as non-persisted local entries.
-        setMessages(prev =>
-          prev.map(m =>
-            m.id === tempAssistantId
-              ? { ...m, content: accumulated || m.content }
-              : m,
-          ),
-        )
+        if (sawToken) {
+          // Stop semantics: keep the partial assistant text on screen at
+          // whatever was already streamed. The placeholder rows stay in
+          // place as non-persisted local entries.
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === tempAssistantId
+                ? { ...m, content: accumulated || m.content }
+                : m,
+            ),
+          )
+        } else {
+          // Aborted before any tokens arrived — drop the empty assistant
+          // placeholder so the user does not see a hollow bubble. The user
+          // message is left in place since the server has already persisted
+          // it (the `user_message` event runs before the first token).
+          setMessages(prev => prev.filter(m => m.id !== tempAssistantId))
+        }
       } else {
         // Stream error: drop the placeholders, restore the draft, and
         // surface the error so the user can re-send.

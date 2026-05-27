@@ -424,9 +424,11 @@ func StreamMessageHandler(db *sql.DB) http.HandlerFunc {
 		defer cancel()
 
 		var newSessionID string
+		var tokensEmitted bool
 		runStream := func(sessionID string) (string, error) {
 			return runPromptWithSessionStreamFn(ctx, cfg, content, sessionID,
 				func(chunk string) {
+					tokensEmitted = true
 					writeSSEEvent(w, flusher, "token", map[string]string{"text": chunk})
 				},
 				func(sid string) {
@@ -436,10 +438,11 @@ func StreamMessageHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		full, err := runStream(convo.SessionID)
-		if err != nil && convo.SessionID != "" && ctx.Err() == nil {
-			// Session may have expired — retry without it.
-			log.Printf("Session resume failed, retrying fresh: %v", err)
-			writeSSEEvent(w, flusher, "retry", map[string]string{"reason": "session expired, retrying"})
+		// Only retry without the stored session id if the first attempt
+		// failed BEFORE any tokens reached the client. Replaying after
+		// partial output would duplicate text in the assistant bubble.
+		if err != nil && convo.SessionID != "" && ctx.Err() == nil && !tokensEmitted {
+			log.Printf("Session resume failed before any tokens, retrying fresh: %v", err)
 			full, err = runStream("")
 		}
 
