@@ -562,7 +562,13 @@
     "activeWorkers": "Arbeidere",
     "openPRs": "Åpne PRer",
     "queueDepth": "Kø",
-    "lastActivity": "Siste aktivitet"
+    "lastActivity": "Siste aktivitet",
+    "staleness": {
+      "fresh": "aktiv: sist aktiv {{relative}}",
+      "stale": "foreldet: sist aktiv {{relative}}",
+      "dead": "inaktiv: sist aktiv {{relative}}",
+      "never": "aldri aktiv"
+    }
   },
   "prModal": {
     "title": "PR-håndtering",
