@@ -103,25 +103,36 @@ export default function Infra() {
   const [error, setError] = useState<string | null>(null)
   const [selectedModule, setSelectedModule] = useState<string | null>(null)
 
-  const fetchModules = useCallback(async (signal?: AbortSignal) => {
+  const abortRef = useRef<AbortController | null>(null)
+
+  const newAbort = useCallback(() => {
+    abortRef.current?.abort()
+    const c = new AbortController()
+    abortRef.current = c
+    return c.signal
+  }, [])
+
+  const fetchModules = useCallback(async (signal: AbortSignal) => {
     const res = await fetch('/api/infra/modules', { credentials: 'include', signal })
     if (!res.ok) {
       throw new Error(`Failed to load modules (${res.status})`)
     }
     const data = await res.json()
+    if (signal.aborted) return
     setModules(data.modules || [])
   }, [])
 
-  const fetchStatus = useCallback(async (signal?: AbortSignal) => {
+  const fetchStatus = useCallback(async (signal: AbortSignal) => {
     const res = await fetch('/api/infra/status', { credentials: 'include', signal })
     if (!res.ok) {
       throw new Error(`Failed to load status (${res.status})`)
     }
     const data: StatusResponse = await res.json()
+    if (signal.aborted) return
     setStatus(data)
   }, [])
 
-  const loadAll = useCallback(async (background = false) => {
+  const loadAll = useCallback(async (background: boolean, signal: AbortSignal) => {
     if (background) {
       setRefreshing(true)
     } else {
@@ -129,41 +140,35 @@ export default function Infra() {
     }
     setError(null)
     try {
-      await Promise.all([fetchModules(), fetchStatus()])
+      await Promise.all([fetchModules(signal), fetchStatus(signal)])
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
     } finally {
-      if (background) {
-        setRefreshing(false)
-      } else {
-        setLoading(false)
+      if (!signal.aborted) {
+        if (background) {
+          setRefreshing(false)
+        } else {
+          setLoading(false)
+        }
       }
     }
   }, [fetchModules, fetchStatus, t])
 
   useEffect(() => {
-    const controller = new AbortController()
-    const init = async () => {
-      try {
-        await Promise.all([fetchModules(controller.signal), fetchStatus(controller.signal)])
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false)
-        }
-      }
+    void loadAll(false, newAbort())
+    return () => {
+      abortRef.current?.abort()
     }
-    void init()
-    return () => controller.abort()
-  }, [fetchModules, fetchStatus, t])
+  }, [loadAll, newAbort])
 
   const handleRefresh = async () => {
-    await loadAll(true)
+    await loadAll(true, newAbort())
   }
 
   const handleToggle = async (moduleName: string, currentEnabled: boolean) => {
+    const signal = newAbort()
     setToggling(moduleName)
     try {
       const res = await fetch(`/api/infra/modules/${encodeURIComponent(moduleName)}`, {
@@ -171,15 +176,20 @@ export default function Infra() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: !currentEnabled }),
+        signal,
       })
       if (!res.ok) {
         throw new Error(`Failed to toggle module (${res.status})`)
       }
-      await loadAll(true)
+      await loadAll(true, signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : t('errors.failedToToggle'))
     } finally {
-      setToggling(null)
+      if (!signal.aborted) {
+        setToggling(null)
+      }
     }
   }
 
@@ -451,21 +461,22 @@ function ToolVersionsPanel() {
 
   useEffect(() => {
     const controller = new AbortController()
+    const signal = controller.signal
     async function load() {
       try {
         const res = await fetch('/api/infra/versions', {
           credentials: 'include',
-          signal: controller.signal,
+          signal,
         })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const data = await res.json()
+        if (signal.aborted) return
         setVersions(data)
       } catch (err) {
-        if ((err as Error).name !== 'AbortError') {
-          setError('LOAD_FAILED')
-        }
+        if ((err as Error).name === 'AbortError' || signal.aborted) return
+        setError('LOAD_FAILED')
       } finally {
-        setLoading(false)
+        if (!signal.aborted) setLoading(false)
       }
     }
     load()
@@ -532,6 +543,10 @@ function ToolVersionsPanel() {
   }, [isAdmin])
 
   const handleNodeMajorUpgrade = async (major: number) => {
+    refetchAbortRef.current?.abort()
+    const controller = new AbortController()
+    refetchAbortRef.current = controller
+    const signal = controller.signal
     setUpgradeTarget(null)
     setUpgradingNode(true)
     setUpgradingMajor(major)
@@ -542,9 +557,12 @@ function ToolVersionsPanel() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ major }),
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) {
         const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        if (signal.aborted) return
         setUpdateResult({
           tool: 'node',
           success: false,
@@ -554,6 +572,7 @@ function ToolVersionsPanel() {
         return
       }
       const data = await res.json()
+      if (signal.aborted) return
       setUpdateResult({
         tool: 'node',
         success: data.success,
@@ -562,23 +581,20 @@ function ToolVersionsPanel() {
       })
       if (data.success) {
         setNodeLtsMajors([])
-        // Re-fetch versions
-        refetchAbortRef.current?.abort()
-        const refetchController = new AbortController()
-        refetchAbortRef.current = refetchController
         try {
           const [versionsRes, latestRes] = await Promise.all([
-            fetch('/api/infra/versions', { credentials: 'include', signal: refetchController.signal }),
-            fetch('/api/infra/latest-versions', { credentials: 'include', signal: refetchController.signal }),
+            fetch('/api/infra/versions', { credentials: 'include', signal }),
+            fetch('/api/infra/latest-versions', { credentials: 'include', signal }),
           ])
-          if (!refetchController.signal.aborted) {
-            if (versionsRes.ok) setVersions(await versionsRes.json())
-            if (latestRes.ok) {
-              const latestData: Array<{ name: string; version: string }> = await latestRes.json()
-              const map: Record<string, string> = {}
-              for (const entry of latestData) map[entry.name] = entry.version
-              setLatestVersions(map)
-            }
+          if (signal.aborted) return
+          if (versionsRes.ok) setVersions(await versionsRes.json())
+          if (signal.aborted) return
+          if (latestRes.ok) {
+            const latestData: Array<{ name: string; version: string }> = await latestRes.json()
+            if (signal.aborted) return
+            const map: Record<string, string> = {}
+            for (const entry of latestData) map[entry.name] = entry.version
+            setLatestVersions(map)
           }
         } catch (err) {
           if ((err as Error).name !== 'AbortError') {
@@ -587,6 +603,7 @@ function ToolVersionsPanel() {
         }
       }
     } catch (err) {
+      if ((err as Error).name === 'AbortError' || signal.aborted) return
       setUpdateResult({
         tool: 'node',
         success: false,
@@ -594,12 +611,18 @@ function ToolVersionsPanel() {
         stderr: err instanceof Error ? err.message : 'Request failed',
       })
     } finally {
-      setUpgradingNode(false)
-      setUpgradingMajor(null)
+      if (!signal.aborted) {
+        setUpgradingNode(false)
+        setUpgradingMajor(null)
+      }
     }
   }
 
   const handleUpdate = async (tool: string) => {
+    refetchAbortRef.current?.abort()
+    const controller = new AbortController()
+    refetchAbortRef.current = controller
+    const signal = controller.signal
     setConfirmTool(null)
     setUpdatingTool(tool)
     setUpdateResult(null)
@@ -607,9 +630,12 @@ function ToolVersionsPanel() {
       const res = await fetch(`/api/infra/update/${tool === 'bd' ? 'beads' : tool}`, {
         method: 'POST',
         credentials: 'include',
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) {
         const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        if (signal.aborted) return
         setUpdateResult({
           tool,
           success: false,
@@ -619,6 +645,7 @@ function ToolVersionsPanel() {
         return
       }
       const data = await res.json()
+      if (signal.aborted) return
       setUpdateResult({
         tool,
         success: data.success,
@@ -626,27 +653,24 @@ function ToolVersionsPanel() {
         stderr: data.stderr || '',
       })
       if (data.success) {
-        // Re-fetch installed and latest versions to reflect the update
-        refetchAbortRef.current?.abort()
-        const refetchController = new AbortController()
-        refetchAbortRef.current = refetchController
         try {
           const [versionsRes, latestRes] = await Promise.all([
-            fetch('/api/infra/versions', { credentials: 'include', signal: refetchController.signal }),
-            fetch('/api/infra/latest-versions', { credentials: 'include', signal: refetchController.signal }),
+            fetch('/api/infra/versions', { credentials: 'include', signal }),
+            fetch('/api/infra/latest-versions', { credentials: 'include', signal }),
           ])
-          if (!refetchController.signal.aborted) {
-            if (versionsRes.ok) {
-              setVersions(await versionsRes.json())
+          if (signal.aborted) return
+          if (versionsRes.ok) {
+            setVersions(await versionsRes.json())
+          }
+          if (signal.aborted) return
+          if (latestRes.ok) {
+            const latestData: Array<{ name: string; version: string }> = await latestRes.json()
+            if (signal.aborted) return
+            const map: Record<string, string> = {}
+            for (const entry of latestData) {
+              map[entry.name] = entry.version
             }
-            if (latestRes.ok) {
-              const latestData: Array<{ name: string; version: string }> = await latestRes.json()
-              const map: Record<string, string> = {}
-              for (const entry of latestData) {
-                map[entry.name] = entry.version
-              }
-              setLatestVersions(map)
-            }
+            setLatestVersions(map)
           }
         } catch (err) {
           if ((err as Error).name !== 'AbortError') {
@@ -655,6 +679,7 @@ function ToolVersionsPanel() {
         }
       }
     } catch (err) {
+      if ((err as Error).name === 'AbortError' || signal.aborted) return
       setUpdateResult({
         tool,
         success: false,
@@ -662,7 +687,9 @@ function ToolVersionsPanel() {
         stderr: err instanceof Error ? err.message : 'Request failed',
       })
     } finally {
-      setUpdatingTool(null)
+      if (!signal.aborted) {
+        setUpdatingTool(null)
+      }
     }
   }
 
@@ -989,26 +1016,36 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
     status_code?: number; response_time_ms?: number; error?: string
   }>
 
-  const loadServices = useCallback(async (signal?: AbortSignal) => {
+  const abortRef = useRef<AbortController | null>(null)
+  const newAbort = useCallback(() => {
+    abortRef.current?.abort()
+    const c = new AbortController()
+    abortRef.current = c
+    return c.signal
+  }, [])
+
+  const loadServices = useCallback(async (signal: AbortSignal) => {
     try {
       const res = await fetch('/api/infra/health-checks', { credentials: 'include', signal })
       if (!res.ok) throw new Error(`Failed to load services (${res.status})`)
       const data = await res.json()
+      if (signal.aborted) return
       setServices(data.services || [])
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to load services')
     }
   }, [])
 
   useEffect(() => {
-    const controller = new AbortController()
-    ;(async () => { await loadServices(controller.signal) })()
-    return () => controller.abort()
-  }, [loadServices])
+    void loadServices(newAbort())
+    return () => abortRef.current?.abort()
+  }, [loadServices, newAbort])
 
   const handleAdd = async () => {
     if (!newName.trim() || !newUrl.trim()) return
+    const signal = newAbort()
     setAdding(true)
     setError(null)
     try {
@@ -1017,30 +1054,39 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName.trim(), url: newUrl.trim() }),
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || `Failed (${res.status})`)
       }
       setNewName('')
       setNewUrl('')
-      await loadServices()
+      await loadServices(signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to add service')
     } finally {
-      setAdding(false)
+      if (!signal.aborted) setAdding(false)
     }
   }
 
   const handleDelete = async (id: number) => {
+    const signal = newAbort()
     try {
       const res = await fetch(`/api/infra/health-checks/${id}`, {
         method: 'DELETE',
         credentials: 'include',
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) throw new Error('Failed to delete')
-      await loadServices()
+      await loadServices(signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to delete service')
     }
   }
@@ -1155,26 +1201,36 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
     issuer?: string; expires_at?: string; days_remaining?: number; error?: string
   }>
 
-  const loadHosts = useCallback(async (signal?: AbortSignal) => {
+  const abortRef = useRef<AbortController | null>(null)
+  const newAbort = useCallback(() => {
+    abortRef.current?.abort()
+    const c = new AbortController()
+    abortRef.current = c
+    return c.signal
+  }, [])
+
+  const loadHosts = useCallback(async (signal: AbortSignal) => {
     try {
       const res = await fetch('/api/infra/ssl-certs', { credentials: 'include', signal })
       if (!res.ok) throw new Error(`Failed to load hosts (${res.status})`)
       const data = await res.json()
+      if (signal.aborted) return
       setHosts(data.hosts || [])
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to load hosts')
     }
   }, [])
 
   useEffect(() => {
-    const controller = new AbortController()
-    ;(async () => { await loadHosts(controller.signal) })()
-    return () => controller.abort()
-  }, [loadHosts])
+    void loadHosts(newAbort())
+    return () => abortRef.current?.abort()
+  }, [loadHosts, newAbort])
 
   const handleAdd = async () => {
     if (!newName.trim() || !newHostname.trim()) return
+    const signal = newAbort()
     setAdding(true)
     setError(null)
     try {
@@ -1187,7 +1243,9 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
           hostname: newHostname.trim(),
           port: parseInt(newPort) || 443,
         }),
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || `Failed (${res.status})`)
@@ -1195,23 +1253,30 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
       setNewName('')
       setNewHostname('')
       setNewPort('443')
-      await loadHosts()
+      await loadHosts(signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to add host')
     } finally {
-      setAdding(false)
+      if (!signal.aborted) setAdding(false)
     }
   }
 
   const handleDelete = async (id: number) => {
+    const signal = newAbort()
     try {
       const res = await fetch(`/api/infra/ssl-certs/${id}`, {
         method: 'DELETE',
         credentials: 'include',
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) throw new Error('Failed to delete')
-      await loadHosts()
+      await loadHosts(signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to delete host')
     }
   }
@@ -1441,16 +1506,21 @@ function HetznerVPSDetail({ details }: { details?: Record<string, unknown> }) {
 
   useEffect(() => {
     const controller = new AbortController()
+    const signal = controller.signal
     async function load() {
       try {
-        const res = await fetch('/api/infra/hetzner/token', { credentials: 'include', signal: controller.signal })
+        const res = await fetch('/api/infra/hetzner/token', { credentials: 'include', signal })
+        if (signal.aborted) return
         if (!res.ok) {
           setTokenLoadError(true)
           return
         }
-        setTokenState(await res.json())
+        const data = await res.json()
+        if (signal.aborted) return
+        setTokenState(data)
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
+        if (signal.aborted) return
         setTokenLoadError(true)
       }
     }
@@ -1638,36 +1708,36 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
     }>
   }>
 
-  const loadHosts = useCallback(async (signal?: AbortSignal) => {
+  const abortRef = useRef<AbortController | null>(null)
+  const newAbort = useCallback(() => {
+    abortRef.current?.abort()
+    const c = new AbortController()
+    abortRef.current = c
+    return c.signal
+  }, [])
+
+  const loadHosts = useCallback(async (signal: AbortSignal) => {
     try {
       const res = await fetch('/api/infra/docker-hosts', { credentials: 'include', signal })
       if (!res.ok) throw new Error(`Failed to load hosts (${res.status})`)
       const data = await res.json()
+      if (signal.aborted) return
       setHosts(data.hosts || [])
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to load Docker hosts')
     }
   }, [])
 
   useEffect(() => {
-    const controller = new AbortController()
-    ;(async () => {
-      try {
-        const res = await fetch('/api/infra/docker-hosts', { credentials: 'include', signal: controller.signal })
-        if (!res.ok) throw new Error(`Failed to load hosts (${res.status})`)
-        const data = await res.json()
-        setHosts(data.hosts || [])
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setError(err instanceof Error ? err.message : 'Failed to load Docker hosts')
-      }
-    })()
-    return () => controller.abort()
-  }, [])
+    void loadHosts(newAbort())
+    return () => abortRef.current?.abort()
+  }, [loadHosts, newAbort])
 
   const handleAdd = async () => {
     if (!newName.trim() || !newUrl.trim()) return
+    const signal = newAbort()
     setAdding(true)
     setError(null)
     try {
@@ -1676,34 +1746,43 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName.trim(), url: newUrl.trim() }),
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || `Failed (${res.status})`)
       }
       setNewName('')
       setNewUrl('')
-      await loadHosts()
+      await loadHosts(signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to add Docker host')
     } finally {
-      setAdding(false)
+      if (!signal.aborted) setAdding(false)
     }
   }
 
   const handleDelete = async (id: number) => {
+    const signal = newAbort()
     setDeletingId(id)
     try {
       const res = await fetch(`/api/infra/docker-hosts/${id}`, {
         method: 'DELETE',
         credentials: 'include',
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) throw new Error('Failed to delete')
-      await loadHosts()
+      await loadHosts(signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to delete Docker host')
     } finally {
-      setDeletingId(null)
+      if (!signal.aborted) setDeletingId(null)
     }
   }
 
@@ -1851,40 +1930,51 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
     }>
   }>
 
-  const loadToken = useCallback(async (signal?: AbortSignal) => {
+  const abortRef = useRef<AbortController | null>(null)
+  const newAbort = useCallback(() => {
+    abortRef.current?.abort()
+    const c = new AbortController()
+    abortRef.current = c
+    return c.signal
+  }, [])
+
+  const loadToken = useCallback(async (signal: AbortSignal) => {
     try {
       const res = await fetch('/api/infra/github/token', { credentials: 'include', signal })
       if (!res.ok) throw new Error(`Failed to load token status (${res.status})`)
       const data = await res.json()
+      if (signal.aborted) return
       setTokenState(data)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to load token status')
     }
   }, [])
 
-  const loadRepos = useCallback(async (signal?: AbortSignal) => {
+  const loadRepos = useCallback(async (signal: AbortSignal) => {
     try {
       const res = await fetch('/api/infra/github/repos', { credentials: 'include', signal })
       if (!res.ok) throw new Error(`Failed to load repos (${res.status})`)
       const data = await res.json()
+      if (signal.aborted) return
       setRepos(data.repos || [])
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to load repositories')
     }
   }, [])
 
   useEffect(() => {
-    const controller = new AbortController()
-    ;(async () => {
-      await Promise.all([loadToken(controller.signal), loadRepos(controller.signal)])
-    })()
-    return () => controller.abort()
-  }, [loadToken, loadRepos])
+    const signal = newAbort()
+    void Promise.all([loadToken(signal), loadRepos(signal)])
+    return () => abortRef.current?.abort()
+  }, [loadToken, loadRepos, newAbort])
 
   const handleSaveToken = async () => {
     if (!newToken.trim()) return
+    const signal = newAbort()
     setSaving(true)
     setError(null)
     try {
@@ -1893,40 +1983,50 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: newToken.trim() }),
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || `Failed (${res.status})`)
       }
       setNewToken('')
       setShowToken(false)
-      await loadToken()
+      await loadToken(signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to save token')
     } finally {
-      setSaving(false)
+      if (!signal.aborted) setSaving(false)
     }
   }
 
   const handleDeleteToken = async () => {
+    const signal = newAbort()
     setDeleting(true)
     setError(null)
     try {
       const res = await fetch('/api/infra/github/token', {
         method: 'DELETE',
         credentials: 'include',
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) throw new Error('Failed to delete token')
-      await loadToken()
+      await loadToken(signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to delete token')
     } finally {
-      setDeleting(false)
+      if (!signal.aborted) setDeleting(false)
     }
   }
 
   const handleAddRepo = async () => {
     if (!newOwner.trim() || !newRepo.trim()) return
+    const signal = newAbort()
     setAdding(true)
     setError(null)
     try {
@@ -1935,30 +2035,39 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ owner: newOwner.trim(), repo: newRepo.trim() }),
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || `Failed (${res.status})`)
       }
       setNewOwner('')
       setNewRepo('')
-      await loadRepos()
+      await loadRepos(signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to add repository')
     } finally {
-      setAdding(false)
+      if (!signal.aborted) setAdding(false)
     }
   }
 
   const handleDeleteRepo = async (id: number) => {
+    const signal = newAbort()
     try {
       const res = await fetch(`/api/infra/github/repos/${id}`, {
         method: 'DELETE',
         credentials: 'include',
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) throw new Error('Failed to delete')
-      await loadRepos()
+      await loadRepos(signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to delete repository')
     }
   }
@@ -2158,26 +2267,36 @@ function DNSDetail({ details }: { details?: Record<string, unknown> }) {
     resolved_values?: string[]; response_time_ms: number; error?: string
   }>
 
-  const loadMonitors = useCallback(async (signal?: AbortSignal) => {
+  const abortRef = useRef<AbortController | null>(null)
+  const newAbort = useCallback(() => {
+    abortRef.current?.abort()
+    const c = new AbortController()
+    abortRef.current = c
+    return c.signal
+  }, [])
+
+  const loadMonitors = useCallback(async (signal: AbortSignal) => {
     try {
       const res = await fetch('/api/infra/dns-monitors', { credentials: 'include', signal })
       if (!res.ok) throw new Error(`Failed to load monitors (${res.status})`)
       const data = await res.json()
+      if (signal.aborted) return
       setMonitors(data.monitors || [])
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to load DNS monitors')
     }
   }, [])
 
   useEffect(() => {
-    const controller = new AbortController()
-    ;(async () => { await loadMonitors(controller.signal) })()
-    return () => controller.abort()
-  }, [loadMonitors])
+    void loadMonitors(newAbort())
+    return () => abortRef.current?.abort()
+  }, [loadMonitors, newAbort])
 
   const handleAdd = async () => {
     if (!newName.trim() || !newHostname.trim()) return
+    const signal = newAbort()
     setAdding(true)
     setError(null)
     try {
@@ -2190,7 +2309,9 @@ function DNSDetail({ details }: { details?: Record<string, unknown> }) {
           hostname: newHostname.trim(),
           record_type: newRecordType,
         }),
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || `Failed (${res.status})`)
@@ -2198,23 +2319,30 @@ function DNSDetail({ details }: { details?: Record<string, unknown> }) {
       setNewName('')
       setNewHostname('')
       setNewRecordType('A')
-      await loadMonitors()
+      await loadMonitors(signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to add DNS monitor')
     } finally {
-      setAdding(false)
+      if (!signal.aborted) setAdding(false)
     }
   }
 
   const handleDelete = async (id: number) => {
+    const signal = newAbort()
     try {
       const res = await fetch(`/api/infra/dns-monitors/${id}`, {
         method: 'DELETE',
         credentials: 'include',
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) throw new Error('Failed to delete')
-      await loadMonitors()
+      await loadMonitors(signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to delete DNS monitor')
     }
   }
@@ -2419,26 +2547,36 @@ function SystemdDetail({ details }: { details?: Record<string, unknown> }) {
     sub_state?: string; status: string; error?: string
   }>
 
-  const loadServices = useCallback(async (signal?: AbortSignal) => {
+  const abortRef = useRef<AbortController | null>(null)
+  const newAbort = useCallback(() => {
+    abortRef.current?.abort()
+    const c = new AbortController()
+    abortRef.current = c
+    return c.signal
+  }, [])
+
+  const loadServices = useCallback(async (signal: AbortSignal) => {
     try {
       const res = await fetch('/api/infra/systemd-services', { credentials: 'include', signal })
       if (!res.ok) throw new Error(`Failed to load services (${res.status})`)
       const data = await res.json()
+      if (signal.aborted) return
       setServices(data.services || [])
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to load systemd services')
     }
   }, [])
 
   useEffect(() => {
-    const controller = new AbortController()
-    ;(async () => { await loadServices(controller.signal) })()
-    return () => controller.abort()
-  }, [loadServices])
+    void loadServices(newAbort())
+    return () => abortRef.current?.abort()
+  }, [loadServices, newAbort])
 
   const handleAdd = async () => {
     if (!newName.trim() || !newUnit.trim()) return
+    const signal = newAbort()
     setAdding(true)
     setError(null)
     try {
@@ -2450,30 +2588,39 @@ function SystemdDetail({ details }: { details?: Record<string, unknown> }) {
           name: newName.trim(),
           unit: newUnit.trim(),
         }),
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || `Failed (${res.status})`)
       }
       setNewName('')
       setNewUnit('')
-      await loadServices()
+      await loadServices(signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to add systemd service')
     } finally {
-      setAdding(false)
+      if (!signal.aborted) setAdding(false)
     }
   }
 
   const handleDelete = async (id: number) => {
+    const signal = newAbort()
     try {
       const res = await fetch(`/api/infra/systemd-services/${id}`, {
         method: 'DELETE',
         credentials: 'include',
+        signal,
       })
+      if (signal.aborted) return
       if (!res.ok) throw new Error('Failed to delete')
-      await loadServices()
+      await loadServices(signal)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to delete systemd service')
     }
   }
