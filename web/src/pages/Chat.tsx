@@ -392,7 +392,7 @@ export default function Chat() {
         if (convRes.ok) {
           const convData = await convRes.json()
           const allConvs: Conversation[] = convData.conversations ?? []
-          setConversations(prev => {
+          setConversations(_prev => {
             // Build a merged list: start from the server list, but drop any
             // conversations the user explicitly deleted locally so we don't
             // resurrect them.
