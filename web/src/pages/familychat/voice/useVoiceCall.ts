@@ -943,8 +943,20 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
       // the camera light staying on until the page is closed.
       const epoch = callEpochRef.current
       try {
-        const constraints = videoConstraintsForKind('video', facingModeRef.current)
-        const fresh = await optionsRef.current.getUserMedia(constraints)
+        // Request video-only — the existing mic track is still live on
+        // localStreamRef and does not need to be re-acquired. Requesting
+        // audio:true here would open a second microphone capture, trigger the
+        // OS recording indicator, and be discarded immediately on line 972.
+        const { width, height } = videoSizeForConnection()
+        const videoOnlyConstraints: MediaStreamConstraints = {
+          audio: false,
+          video: {
+            facingMode: facingModeRef.current,
+            width: { ideal: width },
+            height: { ideal: height },
+          },
+        }
+        const fresh = await optionsRef.current.getUserMedia(videoOnlyConstraints)
         if (callEpochRef.current !== epoch) {
           for (const t of fresh.getTracks()) { try { t.stop() } catch { /* ok */ } }
           return
@@ -968,7 +980,8 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
           try { t.stop() } catch { /* ok */ }
         }
         stream.addTrack(videoTrack)
-        // Release the audio track from the fresh stream since we kept the original.
+        // Defensive: stop any audio tracks the stream may carry (should be
+        // none since we passed audio:false, but guard against browser quirks).
         for (const t of fresh.getAudioTracks()) { try { t.stop() } catch { /* ok */ } }
         setCameraEnabledState(true)
       } catch (err) {

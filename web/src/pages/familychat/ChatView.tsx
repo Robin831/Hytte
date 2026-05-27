@@ -172,7 +172,8 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // pipPosition holds the {x, y} offset for the draggable local-preview
   // window. Initialised to null so the PiP renders in its default top-right
   // corner via Tailwind classes; once the user drags it switches to inline
-  // style overrides.
+  // style overrides. Reset to null at the end of each call so the next call
+  // always starts from the default corner (see effect below).
   const [pipPosition, setPipPosition] = useState<{ x: number; y: number } | null>(null)
   const pipDragRef = useRef<{ offsetX: number; offsetY: number; pointerId: number } | null>(null)
 
@@ -208,9 +209,17 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   useEffect(() => {
     voiceCallKindRef.current = voiceCall.callKind
   })
-  // Derive the effective PiP position: when no call is active reset to null so
-  // the next call always starts from the default corner. Computed at render
-  // rather than via a synchronous setState-in-effect to keep lint happy.
+  // Reset pipPosition once the call returns to idle so the next video call
+  // always opens with the PiP in its default top-right corner rather than
+  // wherever the user dragged it during the previous call.
+  useEffect(() => {
+    if (voiceCall.state === 'idle') {
+      setPipPosition(null)
+    }
+  }, [voiceCall.state])
+  // Derive the effective PiP position: passthrough while a call is live,
+  // null otherwise (belt-and-suspenders guard in case the effect above hasn't
+  // fired yet between the 'ended' and 'idle' transitions).
   // Placed here (after voiceCall) so that voiceCall.state is in scope.
   const activePipPosition =
     voiceCall.state === 'active' || voiceCall.state === 'outgoing-ringing'
@@ -539,6 +548,13 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                       // call_end with status=missed from someone other than us
                       // means we never picked up.
                       const callPayload = payload as CallSignalPayload
+                      // Synchronously update voiceCallKindRef when we see a
+                      // call_offer so that a same-iteration call_end (e.g.
+                      // missed) captures the correct kind without waiting for
+                      // a React render to flush the useEffect above.
+                      if (eventName === 'call_offer' && callPayload?.kind) {
+                        voiceCallKindRef.current = callPayload.kind
+                      }
                       if (
                         eventName === 'call_end'
                         && callPayload?.status === 'missed'
