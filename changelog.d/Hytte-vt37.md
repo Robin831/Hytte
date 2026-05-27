@@ -1,0 +1,2 @@
+category: Added
+- **Anvil staleness signal** - Anvil cards on the Mezzanine anvils page now tint their border and timestamp amber when `last_activity` is older than 30 minutes, red when older than 24 hours, and use a dashed gray treatment when an anvil has never reported activity. The timestamp block exposes an `aria-label` (e.g. "stale: last active 2h ago") and `role="status"` so screen readers receive the same signal. (Hytte-vt37)

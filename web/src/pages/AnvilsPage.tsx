@@ -11,9 +11,26 @@ import {
 } from 'lucide-react'
 import { useAnvilHealth } from '../hooks/useAnvilHealth'
 import { formatDateTime } from '../utils/formatDate'
+import { getAnvilFreshness, type FreshnessBucket } from '../utils/anvilFreshness'
+import { timeAgo } from '../utils/timeAgo'
+
+const BORDER_CLASS: Record<FreshnessBucket, string> = {
+  fresh: 'border border-gray-700/50',
+  stale: 'border border-amber-500',
+  dead: 'border border-red-500',
+  never: 'border border-dashed border-gray-500',
+}
+
+const TIMESTAMP_TEXT_CLASS: Record<FreshnessBucket, string> = {
+  fresh: 'text-gray-400',
+  stale: 'text-amber-400',
+  dead: 'text-red-400',
+  never: 'text-gray-400',
+}
 
 export default function AnvilsPage() {
   const { t } = useTranslation('forge')
+  const { t: tCommon } = useTranslation('common')
   const { anvils, loading, error, refresh } = useAnvilHealth()
 
   return (
@@ -58,71 +75,84 @@ export default function AnvilsPage() {
       {/* Card grid */}
       {anvils.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {anvils.map(anvil => (
-            <div
-              key={anvil.anvil}
-              className="bg-gray-800 rounded-lg border border-gray-700/50 p-4"
-            >
-              <div className="flex items-center gap-2 mb-3">
-                <Hammer size={16} className="text-gray-400 shrink-0" />
-                <h2 className="text-sm font-semibold text-white truncate">
-                  {anvil.anvil}
-                </h2>
-              </div>
+          {anvils.map(anvil => {
+            const bucket = getAnvilFreshness(anvil.last_activity)
+            const ariaLabel =
+              bucket === 'never'
+                ? t('anvilsPage.staleness.never')
+                : t(`anvilsPage.staleness.${bucket}`, {
+                    relative: timeAgo(anvil.last_activity as string, tCommon),
+                  })
+            return (
+              <div
+                key={anvil.anvil}
+                className={`bg-gray-800 rounded-lg ${BORDER_CLASS[bucket]} p-4`}
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <Hammer size={16} className="text-gray-400 shrink-0" />
+                  <h2 className="text-sm font-semibold text-white truncate">
+                    {anvil.anvil}
+                  </h2>
+                </div>
 
-              <div className="grid grid-cols-3 gap-3 mb-3">
-                <div>
-                  <div className="flex items-center gap-1 mb-0.5">
-                    <Activity size={12} className="text-blue-400" />
-                    <span className="text-xs text-gray-500">
-                      {t('anvilsPage.activeWorkers')}
-                    </span>
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <Activity size={12} className="text-blue-400" />
+                      <span className="text-xs text-gray-500">
+                        {t('anvilsPage.activeWorkers')}
+                      </span>
+                    </div>
+                    <p className="text-lg font-semibold text-white tabular-nums">
+                      {anvil.active_workers}
+                    </p>
                   </div>
-                  <p className="text-lg font-semibold text-white tabular-nums">
-                    {anvil.active_workers}
-                  </p>
-                </div>
-                <div>
-                  <div className="flex items-center gap-1 mb-0.5">
-                    <GitPullRequest size={12} className="text-green-400" />
-                    <span className="text-xs text-gray-500">
-                      {t('anvilsPage.openPRs')}
-                    </span>
+                  <div>
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <GitPullRequest size={12} className="text-green-400" />
+                      <span className="text-xs text-gray-500">
+                        {t('anvilsPage.openPRs')}
+                      </span>
+                    </div>
+                    <p className="text-lg font-semibold text-white tabular-nums">
+                      {anvil.open_prs}
+                    </p>
                   </div>
-                  <p className="text-lg font-semibold text-white tabular-nums">
-                    {anvil.open_prs}
-                  </p>
-                </div>
-                <div>
-                  <div className="flex items-center gap-1 mb-0.5">
-                    <ListOrdered size={12} className="text-yellow-400" />
-                    <span className="text-xs text-gray-500">
-                      {t('anvilsPage.queueDepth')}
-                    </span>
+                  <div>
+                    <div className="flex items-center gap-1 mb-0.5">
+                      <ListOrdered size={12} className="text-yellow-400" />
+                      <span className="text-xs text-gray-500">
+                        {t('anvilsPage.queueDepth')}
+                      </span>
+                    </div>
+                    <p className="text-lg font-semibold text-white tabular-nums">
+                      {anvil.queue_depth}
+                    </p>
                   </div>
-                  <p className="text-lg font-semibold text-white tabular-nums">
-                    {anvil.queue_depth}
-                  </p>
                 </div>
-              </div>
 
-              <div className="border-t border-gray-700/50 pt-2">
-                <span className="text-xs text-gray-500">
-                  {t('anvilsPage.lastActivity')}:{' '}
-                  <span className="text-gray-400 tabular-nums">
-                    {anvil.last_activity
-                      ? formatDateTime(anvil.last_activity, {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
-                      : '\u2014'}
+                <div
+                  className="border-t border-gray-700/50 pt-2"
+                  role="status"
+                  aria-label={ariaLabel}
+                >
+                  <span className="text-xs text-gray-500">
+                    {t('anvilsPage.lastActivity')}:{' '}
+                    <span className={`${TIMESTAMP_TEXT_CLASS[bucket]} tabular-nums`}>
+                      {anvil.last_activity
+                        ? formatDateTime(anvil.last_activity, {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : '—'}
+                    </span>
                   </span>
-                </span>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

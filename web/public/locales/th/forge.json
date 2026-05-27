@@ -562,7 +562,13 @@
     "activeWorkers": "คนงาน",
     "openPRs": "PR เปิด",
     "queueDepth": "คิว",
-    "lastActivity": "กิจกรรมล่าสุด"
+    "lastActivity": "กิจกรรมล่าสุด",
+    "staleness": {
+      "fresh": "ใช้งานอยู่: ทำงานล่าสุด {{relative}}",
+      "stale": "ค้างนาน: ทำงานล่าสุด {{relative}}",
+      "dead": "ไม่ทำงาน: ทำงานล่าสุด {{relative}}",
+      "never": "ไม่เคยทำงาน"
+    }
   },
   "prModal": {
     "title": "การจัดการ PR",

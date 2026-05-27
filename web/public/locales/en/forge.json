@@ -562,7 +562,13 @@
     "activeWorkers": "Workers",
     "openPRs": "Open PRs",
     "queueDepth": "Queue",
-    "lastActivity": "Last activity"
+    "lastActivity": "Last activity",
+    "staleness": {
+      "fresh": "active: last active {{relative}}",
+      "stale": "stale: last active {{relative}}",
+      "dead": "inactive: last active {{relative}}",
+      "never": "never active"
+    }
   },
   "prModal": {
     "title": "PR Management",
