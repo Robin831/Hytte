@@ -1000,11 +1000,13 @@ export default function BudgetCreditCards() {
       next.get(key)!.push(tx)
     }
     for (const [key, arr] of next) {
+      // eslint-disable-next-line react-hooks/refs -- intentional: stable ref read inside useMemo for referential stability without extra render
       const old = prev.get(key)
       if (old && old.length === arr.length && old.every((t, i) => t === arr[i])) {
         next.set(key, old)
       }
     }
+    // eslint-disable-next-line react-hooks/refs -- intentional: stable ref write inside useMemo; avoids the two-render useLayoutEffect pattern
     prevByGroupIdRef.current = next
     return next
   }, [transactions])
