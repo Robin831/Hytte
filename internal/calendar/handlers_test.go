@@ -234,9 +234,14 @@ func TestEventsHandler_SyncErrorsOmittedOnSuccess(t *testing.T) {
 		t.Fatalf("expected 200, got %d; body: %s", rr.Code, rr.Body.String())
 	}
 
-	// The raw payload should omit sync_errors entirely on success.
-	if strings.Contains(rr.Body.String(), "sync_errors") {
-		t.Errorf("expected sync_errors to be omitted when all syncs succeed; body: %s", rr.Body.String())
+	// Decode the response and assert that the sync_errors key is entirely absent
+	// (omitempty drops the field when nil, so its presence would be a regression).
+	var decoded map[string]json.RawMessage
+	if err := json.NewDecoder(rr.Body).Decode(&decoded); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if rawErrs, present := decoded["sync_errors"]; present {
+		t.Errorf("expected sync_errors to be omitted when all syncs succeed; got: %s", rawErrs)
 	}
 }
 
