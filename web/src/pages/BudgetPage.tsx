@@ -102,10 +102,10 @@ function todayDate(): string {
 // Callers without a per-account context fall back to 'NOK'; the negative sign
 // (or parentheses, depending on locale) is rendered by Intl.NumberFormat —
 // red/green tinting belongs on the surrounding cell, not in here.
-function formatAmount(amount: number, currency: string = 'NOK'): string {
+function formatAmount(amount: number, currency?: string): string {
   return formatNumber(amount, {
     style: 'currency',
-    currency,
+    currency: currency ?? 'NOK',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   })
