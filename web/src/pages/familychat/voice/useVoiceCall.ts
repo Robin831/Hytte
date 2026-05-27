@@ -967,10 +967,29 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     }
   }, [])
 
-  // switchCamera toggles between the front- and back-facing camera by
-  // requesting a fresh video track with the opposite facingMode and swapping
-  // it onto the existing sender. Desktop webcams typically ignore the hint —
-  // the call still succeeds, just with the same camera.
+  // switchCamera toggles to the next available camera. The bead asks for
+  // navigator.mediaDevices.enumerateDevices(); when the platform exposes more
+  // than one videoinput we pick the next one by deviceId so the swap works on
+  // browsers that ignore the facingMode hint. Falls back to a plain facingMode
+  // toggle on platforms without enumerateDevices (or with only one camera).
+  const pickNextCameraDeviceId = useCallback(async (currentTrack: MediaStreamTrack | null): Promise<string | null> => {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) {
+      return null
+    }
+    let devices: MediaDeviceInfo[]
+    try {
+      devices = await navigator.mediaDevices.enumerateDevices()
+    } catch {
+      return null
+    }
+    const videoInputs = devices.filter(d => d.kind === 'videoinput' && d.deviceId)
+    if (videoInputs.length < 2) return null
+    const currentId = currentTrack?.getSettings?.().deviceId
+    const idx = currentId ? videoInputs.findIndex(d => d.deviceId === currentId) : -1
+    const next = videoInputs[(idx + 1) % videoInputs.length]
+    return next.deviceId
+  }, [])
+
   const switchCamera = useCallback(async () => {
     const sender = videoSenderRef.current
     if (!sender) return
@@ -979,16 +998,27 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     if (!stream) return
     const nextFacing: CameraFacingMode = facingModeRef.current === 'user' ? 'environment' : 'user'
     try {
-      // Ask only for video — keep the existing mic track so we don't drop
-      // audio mid-call by re-acquiring it from getUserMedia.
       const { width, height } = videoSizeForConnection()
+      const currentVideoTrack = stream.getVideoTracks()[0] ?? null
+      const nextDeviceId = await pickNextCameraDeviceId(currentVideoTrack)
+      // Ask only for video — keep the existing mic track so we don't drop
+      // audio mid-call by re-acquiring it from getUserMedia. Prefer an exact
+      // deviceId when enumerateDevices found a sibling camera; otherwise fall
+      // back to the facingMode hint that mobile browsers honour.
+      const videoConstraints: MediaTrackConstraints = nextDeviceId !== null
+        ? {
+            deviceId: { exact: nextDeviceId },
+            width: { ideal: width },
+            height: { ideal: height },
+          }
+        : {
+            facingMode: nextFacing,
+            width: { ideal: width },
+            height: { ideal: height },
+          }
       const fresh = await optionsRef.current.getUserMedia({
         audio: false,
-        video: {
-          facingMode: nextFacing,
-          width: { ideal: width },
-          height: { ideal: height },
-        },
+        video: videoConstraints,
       })
       const videoTrack = fresh.getVideoTracks()[0]
       if (!videoTrack) {
@@ -1009,13 +1039,12 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         console.warn('voice call: switchCamera failed', err)
       }
     }
-  }, [updateFacingMode])
+  }, [pickNextCameraDeviceId, updateFacingMode])
 
   // adaptVideoToConnection re-requests the video track at the resolution
   // matching the current effectiveType (slow→320×240, fast→640×480) and
-  // replaceTrack-s it onto the sender. Called both on connection change and
-  // by tests via the exposed `__test_adaptBandwidth` hook would be useful,
-  // but here we keep it as an internal callback driven by the effect below.
+  // replaceTrack-s it onto the sender. Driven by the navigator.connection
+  // 'change' event subscribed in the effect below.
   const adaptVideoToConnection = useCallback(async () => {
     const sender = videoSenderRef.current
     if (!sender) return

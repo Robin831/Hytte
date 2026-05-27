@@ -156,9 +156,13 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const [callElapsedSec, setCallElapsedSec] = useState(0)
   const callStartedAtRef = useRef<number | null>(null)
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
-  // Video sinks for video calls: remote is the big pane, local is the PiP.
+  // Video sinks for video calls: remote is the big pane, local is the PiP on
+  // mobile and a separate side-by-side pane on desktop. Both local elements
+  // bind to the same MediaStream so the layout can switch via CSS without
+  // re-acquiring the camera.
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
   const localVideoRef = useRef<HTMLVideoElement | null>(null)
+  const localVideoDesktopRef = useRef<HTMLVideoElement | null>(null)
   // speakerOn controls the remote audio volume: true = full volume (1.0),
   // false = muted (0) so "Speaker off" means no audio is heard.
   const [speakerOn, setSpeakerOn] = useState(true)
@@ -688,6 +692,15 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     el.srcObject = voiceCall.localStream ?? null
     if (voiceCall.localStream) {
       void el.play().catch(() => { /* same as above */ })
+    }
+  }, [voiceCall.localStream, voiceCall.state])
+
+  useEffect(() => {
+    const el = localVideoDesktopRef.current
+    if (!el) return
+    el.srcObject = voiceCall.localStream ?? null
+    if (voiceCall.localStream) {
+      void el.play().catch(() => { /* autoplay policy — acceptable to ignore */ })
     }
   }, [voiceCall.localStream, voiceCall.state])
 
@@ -1652,7 +1665,8 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
           className="fixed inset-0 z-50 flex flex-col bg-black text-white"
           data-testid="family-chat-active-video-overlay"
         >
-          {/* Remote video pane — full screen on mobile, left column on desktop. */}
+          {/* Video panes: full-screen remote with draggable PiP on mobile;
+              side-by-side remote + local panes on desktop (md:flex-row). */}
           <div className="relative flex-1 min-h-0 flex flex-col md:flex-row">
             <div className="relative flex-1 min-h-0 bg-gray-950">
               <video
@@ -1684,9 +1698,9 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                 </div>
               </div>
 
-              {/* PiP local preview. Defaults to top-right; switches to inline
-                  style once dragged. Hidden if the local stream isn't ready
-                  (very early in the outgoing-ringing flow). */}
+              {/* Mobile PiP local preview. Hidden on md+ where the local pane
+                  below takes over. Defaults to top-right; switches to inline
+                  style once dragged. */}
               {voiceCall.localStream && (
                 <div
                   data-testid="family-chat-call-local-pip"
@@ -1694,7 +1708,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                   onPointerMove={handlePipPointerMove}
                   onPointerUp={handlePipPointerUp}
                   onPointerCancel={handlePipPointerUp}
-                  className={`absolute touch-none cursor-move w-28 h-40 sm:w-36 sm:h-48 rounded-lg overflow-hidden border border-gray-700 bg-gray-900 shadow-lg ${
+                  className={`md:hidden absolute touch-none cursor-move w-28 h-40 sm:w-36 sm:h-48 rounded-lg overflow-hidden border border-gray-700 bg-gray-900 shadow-lg ${
                     pipPosition === null ? 'top-4 right-4' : ''
                   }`}
                   style={pipPosition === null ? undefined : { top: pipPosition.y, left: pipPosition.x }}
@@ -1727,6 +1741,33 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                 </div>
               )}
             </div>
+
+            {/* Desktop-only local pane — sits side-by-side with the remote on
+                md+ screens, where the mobile PiP is hidden. */}
+            {voiceCall.localStream && (
+              <div
+                data-testid="family-chat-call-local-pane"
+                className="hidden md:block relative flex-1 min-h-0 bg-gray-900 border-l border-gray-800"
+              >
+                <video
+                  ref={localVideoDesktopRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  aria-label={t('call.localPreview')}
+                  className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
+                  data-testid="family-chat-call-local-video-desktop"
+                />
+                {!voiceCall.cameraEnabled && (
+                  <div
+                    className="absolute inset-0 flex items-center justify-center bg-gray-900/80 text-sm text-gray-300"
+                    data-testid="family-chat-call-local-camera-off-desktop"
+                  >
+                    <VideoOff size={24} aria-hidden="true" />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Bottom control bar — full width on mobile, sits across the bottom
