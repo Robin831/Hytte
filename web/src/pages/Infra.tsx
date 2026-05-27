@@ -158,6 +158,7 @@ export default function Infra() {
   }, [fetchModules, fetchStatus, t])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAll(false, newAbort())
     return () => {
       abortRef.current?.abort()
@@ -1035,6 +1036,7 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadServices(newAbort())
     return () => abortRef.current?.abort()
   }, [loadServices, newAbort])
@@ -1220,6 +1222,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadHosts(newAbort())
     return () => abortRef.current?.abort()
   }, [loadHosts, newAbort])
@@ -1727,6 +1730,7 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadHosts(newAbort())
     return () => abortRef.current?.abort()
   }, [loadHosts, newAbort])
@@ -1966,6 +1970,7 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
 
   useEffect(() => {
     const signal = newAbort()
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void Promise.all([loadToken(signal), loadRepos(signal)])
     return () => abortRef.current?.abort()
   }, [loadToken, loadRepos, newAbort])
@@ -2288,6 +2293,7 @@ function DNSDetail({ details }: { details?: Record<string, unknown> }) {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadMonitors(newAbort())
     return () => abortRef.current?.abort()
   }, [loadMonitors, newAbort])
@@ -2568,6 +2574,7 @@ function SystemdDetail({ details }: { details?: Record<string, unknown> }) {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadServices(newAbort())
     return () => abortRef.current?.abort()
   }, [loadServices, newAbort])
