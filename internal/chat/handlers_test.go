@@ -232,6 +232,7 @@ func TestSendMessageHandler_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
+	preSendUpdatedAt := convo.UpdatedAt
 
 	// Replace runPromptWithSessionFn with a stub that returns a known response.
 	orig := runPromptWithSessionFn
@@ -239,6 +240,14 @@ func TestSendMessageHandler_Success(t *testing.T) {
 		return &training.SessionResult{Response: "Hello from Claude!", SessionID: "test-session-123"}, nil
 	}
 	t.Cleanup(func() { runPromptWithSessionFn = orig })
+
+	// Stub the auto-title prompt so we don't shell out to a real CLI and so we
+	// can assert that the returned conversation reflects the generated title.
+	origPrompt := runPromptFn
+	runPromptFn = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		return "  Generated Title  ", nil
+	}
+	t.Cleanup(func() { runPromptFn = origPrompt })
 
 	body := `{"content": "Hello!"}`
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
@@ -253,8 +262,9 @@ func TestSendMessageHandler_Success(t *testing.T) {
 	}
 
 	var resp struct {
-		UserMsg      *Message `json:"user_message"`
-		AssistantMsg *Message `json:"assistant_message"`
+		UserMsg      *Message      `json:"user_message"`
+		AssistantMsg *Message      `json:"assistant_message"`
+		Conversation *Conversation `json:"conversation"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -265,6 +275,24 @@ func TestSendMessageHandler_Success(t *testing.T) {
 	if resp.AssistantMsg == nil || resp.AssistantMsg.Content != "Hello from Claude!" {
 		t.Fatalf("unexpected assistant message: %+v", resp.AssistantMsg)
 	}
+	if resp.Conversation == nil {
+		t.Fatal("expected conversation in response, got nil")
+	}
+	if resp.Conversation.ID != convo.ID {
+		t.Fatalf("expected conversation ID %d, got %d", convo.ID, resp.Conversation.ID)
+	}
+	if resp.Conversation.Title == "" {
+		t.Fatal("expected non-empty auto-generated title on first send, got empty")
+	}
+	if resp.Conversation.Title != "Generated Title" {
+		t.Fatalf("expected sanitised title 'Generated Title', got %q", resp.Conversation.Title)
+	}
+	if resp.Conversation.UpdatedAt == "" {
+		t.Fatal("expected non-empty updated_at on returned conversation")
+	}
+	if resp.Conversation.UpdatedAt < preSendUpdatedAt {
+		t.Fatalf("expected updated_at to advance, pre=%q post=%q", preSendUpdatedAt, resp.Conversation.UpdatedAt)
+	}
 
 	// Verify session ID was stored on the conversation.
 	convoAfter, err := GetConversation(d, convo.ID, 1)
@@ -273,6 +301,9 @@ func TestSendMessageHandler_Success(t *testing.T) {
 	}
 	if convoAfter.SessionID != "test-session-123" {
 		t.Fatalf("expected session_id 'test-session-123', got %q", convoAfter.SessionID)
+	}
+	if convoAfter.Title != "Generated Title" {
+		t.Fatalf("expected stored title to be auto-generated, got %q", convoAfter.Title)
 	}
 }
 

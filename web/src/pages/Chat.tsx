@@ -55,6 +55,14 @@ export default function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const renameInputRef = useRef<HTMLInputElement>(null)
+  // Track locally deleted conversation IDs so we don't resurrect them if a
+  // send response arrives after the user deleted the conversation mid-flight.
+  const deletedConversationIds = useRef<Set<number>>(new Set())
+  // Monotonically decreasing counter for optimistic message IDs (negative to avoid
+  // collisions with server-assigned IDs). Using a ref gives stable IDs across
+  // re-renders without depending on wall-clock time (Date.now() could collide if
+  // two messages are sent within the same millisecond).
+  const tempIdCounter = useRef(0)
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -168,6 +176,7 @@ export default function Chat() {
         credentials: 'include',
       })
       if (!res.ok) throw new Error(t('errors.failedToDelete'))
+      deletedConversationIds.current.add(id)
       setConversations(prev => prev.filter(c => c.id !== id))
       if (activeConversation?.id === id) {
         setActiveConversation(null)
@@ -218,7 +227,7 @@ export default function Chat() {
 
     // Optimistic: add user message immediately
     const tempUserMsg: Message = {
-      id: -Date.now(),
+      id: -(++tempIdCounter.current),
       conversation_id: sentConversationId,
       role: 'user',
       content,
@@ -240,6 +249,7 @@ export default function Chat() {
       const data = await res.json()
       const userMsg = data.user_message as Message
       const assistantMsg = data.assistant_message as Message
+      const updatedConv = data.conversation as Conversation | undefined
 
       // Only update messages if the user hasn't switched conversations
       setActiveConversation(current => {
@@ -252,24 +262,28 @@ export default function Chat() {
         return current
       })
 
-      // Refresh conversation list to pick up auto-title updates (non-fatal)
-      try {
-        const convRes = await fetch('/api/chat/conversations', { credentials: 'include' })
-        if (convRes.ok) {
-          const convData = await convRes.json()
-          setConversations(convData.conversations ?? [])
-          const updated = (convData.conversations ?? []).find(
-            (c: Conversation) => c.id === sentConversationId
-          )
-          if (updated) {
-            setActiveConversation(current =>
-              current?.id === sentConversationId ? updated : current
-            )
-          }
-        }
-      } catch (refreshErr) {
-        // Non-fatal: log but don't roll back successful send
-        console.error('Failed to refresh conversations after sending message', refreshErr)
+      // Merge the refreshed conversation into local state (replaces auto-title refetch).
+      if (updatedConv) {
+        setConversations(prev => {
+          // Do not resurrect a conversation the user explicitly deleted locally.
+          if (deletedConversationIds.current.has(updatedConv.id)) return prev
+          const exists = prev.some(c => c.id === updatedConv.id)
+          // Insert when missing (e.g. initial list load finished after createConversation
+          // and overwrote state before the send response arrived).
+          const next = exists
+            ? prev.map(c => (c.id === updatedConv.id ? updatedConv : c))
+            : [updatedConv, ...prev]
+          // Sort by updated_at DESC, then id DESC (matches server ORDER BY) for stable ordering.
+          next.sort((a, b) => {
+            if (a.updated_at !== b.updated_at) return a.updated_at < b.updated_at ? 1 : -1
+            return b.id - a.id
+          })
+          return next
+        })
+        // Only update the active conversation if the user hasn't switched to another one.
+        setActiveConversation(current =>
+          current?.id === sentConversationId ? updatedConv : current
+        )
       }
     } catch (err) {
       // Remove optimistic message on error and restore draft
