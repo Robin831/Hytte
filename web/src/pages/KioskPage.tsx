@@ -6,6 +6,7 @@ import KioskBusDepartures from '../components/kiosk/KioskBusDepartures'
 import KioskWeather from '../components/kiosk/KioskWeather'
 import type { ForecastData } from '../components/kiosk/KioskWeather'
 import KioskSunrise from '../components/kiosk/KioskSunrise'
+import KioskStaleBadge from '../components/kiosk/KioskStaleBadge'
 import mockData from '../mocks/kioskData.json'
 
 // Error boundary so that JS errors show a visible message instead of a blank
@@ -112,6 +113,8 @@ interface KioskData {
 }
 
 const POLL_INTERVAL_MS = 30_000
+const STALE_THRESHOLD_MS = 2 * POLL_INTERVAL_MS
+const STALE_TICK_INTERVAL_MS = 5_000
 
 // Offset mock departure times so they appear relative to the current time,
 // preventing all departures from showing as "now/0 min" once the static
@@ -144,18 +147,28 @@ function KioskPageInner() {
     return () => { if (link) link.setAttribute('href', '/manifest.json') }
   }, [])
 
-  // Token from URL takes precedence; persist to localStorage so the kiosk
-  // works after "Add to Home Screen" (which strips query params).
-  const token = (() => {
-    const urlToken = searchParams.get('token')
+  const urlToken = searchParams.get('token')
+
+  // Persist URL token to localStorage in an effect so the kiosk works after
+  // "Add to Home Screen" (which strips query params). Doing this in a render
+  // body would write to storage on every re-render; an effect only runs when
+  // the URL token actually changes.
+  useEffect(() => {
     if (urlToken) {
       try { localStorage.setItem(KIOSK_TOKEN_KEY, urlToken) } catch { /* ignore */ }
-      return urlToken
     }
+  }, [urlToken])
+
+  // Read the stored token once at mount via the state initializer. URL param
+  // takes precedence so a fresh ?token=... URL always wins over the stored one.
+  const [storedToken] = useState<string | null>(() => {
     try { return localStorage.getItem(KIOSK_TOKEN_KEY) } catch { return null }
-  })()
+  })
+  const token = urlToken ?? storedToken
 
   const [apiData, setApiData] = useState<KioskData | null>(null)
+  const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null)
+  const [now, setNow] = useState<number>(() => Date.now())
 
   // When no token is present, display relativized mock data; otherwise show API data (or mock while loading)
   const data = useMemo<KioskData>(() => {
@@ -181,6 +194,7 @@ function KioskPageInner() {
         if (!res.ok) return
         const json: KioskData = await res.json()
         setApiData(json)
+        setLastSuccessAt(Date.now())
       } catch {
         // Keep displaying last known data on error
       }
@@ -194,6 +208,41 @@ function KioskPageInner() {
       clearInterval(intervalId)
     }
   }, [token])
+
+  // Drive the "Updated X ago" clock.
+  //
+  // The effect is gated on lastSuccessAt being non-null so the interval
+  // never starts before we have received a first data payload — a healthy
+  // kiosk that has never fetched successfully produces zero ticks.
+  //
+  // While data *is* fresh the interval fires every 5 s but skips the
+  // setNow call (and therefore skips the re-render) when we are still well
+  // below the stale threshold.  Only as we approach or cross the threshold
+  // does the state update fire, keeping the badge age display accurate
+  // without wasting renders on low-power wall-mounted devices during normal
+  // operation.
+  //
+  // The effect re-runs on each successful fetch (lastSuccessAt changes), so
+  // the timer is always anchored to the most recent success and a recovery
+  // fetch automatically resets the clock.
+  useEffect(() => {
+    if (!token || lastSuccessAt === null) return
+    const id = setInterval(() => {
+      const t = Date.now()
+      // Only trigger a re-render when we are within one tick of the stale
+      // threshold or already past it; during the clearly-fresh window the
+      // DOM does not need updating.
+      if (t - lastSuccessAt >= STALE_THRESHOLD_MS - STALE_TICK_INTERVAL_MS) {
+        setNow(t)
+      }
+    }, STALE_TICK_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [token, lastSuccessAt])
+
+  const isStale =
+    !!token &&
+    lastSuccessAt !== null &&
+    now - lastSuccessAt > STALE_THRESHOLD_MS
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col overflow-hidden pb-16">
@@ -224,6 +273,8 @@ function KioskPageInner() {
 
       {/* Sunrise / Sunset */}
       <KioskSunrise sun={data.sun ?? null} />
+
+      <KioskStaleBadge isStale={isStale} lastSuccessAt={lastSuccessAt} now={now} />
     </div>
   )
 }
