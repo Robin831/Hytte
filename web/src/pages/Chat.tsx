@@ -343,11 +343,21 @@ export default function Chat() {
           handleFrame(frame)
         }
       }
+      // Flush the TextDecoder's internal buffer so any multi-byte UTF-8
+      // codepoint that was split across the final two chunks is completed.
+      buffer += decoder.decode()
       // Flush any trailing frame that didn't end with the double-newline.
       if (buffer.trim()) handleFrame(buffer)
 
       if (serverError) {
         throw new Error(serverError)
+      }
+
+      // Detect an unexpected server disconnect: the stream ended without
+      // a `done` or `error` event and the AbortController was not fired
+      // (AbortError from Stop/navigation reaches the catch block, not here).
+      if (!canonicalAssistantMsg && !controller.signal.aborted) {
+        throw new Error(t('errors.streamError'))
       }
 
       // Final swap: replace optimistic rows with the canonical ones the

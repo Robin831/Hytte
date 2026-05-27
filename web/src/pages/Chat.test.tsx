@@ -176,7 +176,10 @@ describe('Chat – streaming send', () => {
       stream.push(frame('user_message', { id: 100, conversation_id: conv.id, role: 'user', content: 'Hi Claude', created_at: '2026-05-01T01:00:00Z' }))
       stream.push(frame('token', { text: 'Hello, ' }))
     })
-    await waitFor(() => expect(screen.getByText(/Hello, /)).toBeInTheDocument())
+    // RTL's default normalizer trims trailing whitespace, so "Hello, " (the
+    // first token, which ends with a space) normalises to "Hello," in the DOM.
+    // Use a regex that does not require a trailing space.
+    await waitFor(() => expect(screen.getByText(/Hello,/)).toBeInTheDocument())
 
     await act(async () => {
       stream.push(frame('token', { text: 'world!' }))

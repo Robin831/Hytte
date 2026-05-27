@@ -393,18 +393,21 @@ func StreamMessageHandler(db *sql.DB) http.HandlerFunc {
 		// Override model with the conversation's model.
 		cfg.Model = convo.Model
 
-		// Persist the user message before flipping into SSE mode so a DB
-		// failure surfaces as a normal JSON error rather than a torn stream.
+		// Check Flusher support before persisting the user message so that a
+		// non-streaming response writer surfaces as a regular JSON error rather
+		// than leaving a dangling user message without an assistant reply.
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
+			return
+		}
+
+		// Persist the user message. DB failures surface as a normal JSON error
+		// because we haven't committed to SSE mode yet (headers not sent).
 		userMsg, err := InsertMessage(db, convo.ID, "user", content)
 		if err != nil {
 			log.Printf("Failed to insert user message: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save message"})
-			return
-		}
-
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "streaming not supported"})
 			return
 		}
 
@@ -447,12 +450,19 @@ func StreamMessageHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err != nil {
-			// Client cancelled mid-stream: leave the partial text on the
-			// client and skip the assistant row. The user message remains
-			// persisted by design — that's a faithful record of what the
-			// user typed.
-			if ctx.Err() != nil {
-				log.Printf("chat stream cancelled for conversation %d: %v", convo.ID, ctx.Err())
+			ctxErr := ctx.Err()
+			// Client disconnected or user clicked Stop — leave partial text on
+			// the client and skip the assistant row. The user message stays
+			// persisted as a faithful record of what the user typed.
+			if ctxErr == context.Canceled {
+				log.Printf("chat stream cancelled for conversation %d", convo.ID)
+				return
+			}
+			// Server-side timeout — emit an error event so the client can
+			// distinguish this from a voluntary Stop.
+			if ctxErr == context.DeadlineExceeded {
+				log.Printf("chat stream timed out for conversation %d", convo.ID)
+				writeSSEEvent(w, flusher, "error", map[string]string{"error": "response timed out"})
 				return
 			}
 			log.Printf("Claude CLI streaming error: %v", err)

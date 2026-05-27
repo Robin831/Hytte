@@ -317,6 +317,16 @@ func runPromptWithSessionStreamCLI(ctx context.Context, cfg *ClaudeConfig, promp
 		return "", fmt.Errorf("claude is not enabled")
 	}
 
+	// Apply a default timeout when the caller has not set a deadline,
+	// consistent with runPromptCLIWithCost and runPromptCLIWithImage, so the
+	// Claude CLI subprocess cannot run indefinitely if the caller forgets to
+	// add a timeout.
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, DefaultCLITimeout)
+		defer cancel()
+	}
+
 	args := []string{"--model", cfg.Model, "-p", "-", "--output-format", "stream-json", "--verbose"}
 	if sessionID != "" {
 		args = append(args, "--resume", sessionID)
