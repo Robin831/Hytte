@@ -667,7 +667,7 @@ describe('useVoiceCall — video call (outgoing)', () => {
     // getUserMedia must have been asked for audio+video with the 640×480
     // default constraints and facingMode 'user'.
     expect(getUserMedia).toHaveBeenCalledTimes(1)
-    const constraints = getUserMedia.mock.calls[0][0] as MediaStreamConstraints
+    const constraints = (getUserMedia.mock.calls as unknown as MediaStreamConstraints[][])[0][0]
     expect(constraints.audio).toBe(true)
     expect(constraints.video).toBeTruthy()
     const v = constraints.video as MediaTrackConstraints
@@ -763,7 +763,7 @@ describe('useVoiceCall — video call (incoming)', () => {
     expect(result.current.state).toBe('active')
     expect(result.current.callKind).toBe('video')
     expect(getUserMedia).toHaveBeenCalledTimes(1)
-    const constraints = getUserMedia.mock.calls[0][0] as MediaStreamConstraints
+    const constraints = (getUserMedia.mock.calls as unknown as MediaStreamConstraints[][])[0][0]
     expect(constraints.audio).toBe(true)
     expect(constraints.video).toBeTruthy()
   })
@@ -886,7 +886,7 @@ describe('useVoiceCall — video controls', () => {
     await act(async () => { await result.current.startCall('voice') })
 
     expect(getUserMedia).toHaveBeenCalledTimes(1)
-    const constraints = getUserMedia.mock.calls[0][0] as MediaStreamConstraints
+    const constraints = (getUserMedia.mock.calls as unknown as MediaStreamConstraints[][])[0][0]
     expect(constraints.audio).toBe(true)
     expect(constraints.video).toBeUndefined()
     expect(result.current.callKind).toBe('voice')
@@ -940,7 +940,7 @@ describe('useVoiceCall — bandwidth adaptation', () => {
 
     await act(async () => { await result.current.startCall('video') })
 
-    const constraints = getUserMedia.mock.calls[0][0] as MediaStreamConstraints
+    const constraints = (getUserMedia.mock.calls as unknown as MediaStreamConstraints[][])[0][0]
     const v = constraints.video as MediaTrackConstraints
     expect((v.width as { ideal?: number })?.ideal).toBe(320)
     expect((v.height as { ideal?: number })?.ideal).toBe(240)
