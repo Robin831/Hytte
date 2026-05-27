@@ -89,6 +89,9 @@ interface MissedCallEntry {
   callId: string
   fromUserId: number
   receivedAt: string
+  // kind mirrors the call-kind from the original offer so call-back can
+  // match the modality (voice → voice, video → video).
+  kind: CallKind
 }
 
 interface FamilyChild {
@@ -172,13 +175,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // style overrides.
   const [pipPosition, setPipPosition] = useState<{ x: number; y: number } | null>(null)
   const pipDragRef = useRef<{ offsetX: number; offsetY: number; pointerId: number } | null>(null)
-  // Derive the effective PiP position: when no call is active reset to null so
-  // the next call always starts from the default corner. Computed at render
-  // rather than via a synchronous setState-in-effect to keep lint happy.
-  const activePipPosition =
-    voiceCall.state === 'active' || voiceCall.state === 'outgoing-ringing'
-      ? pipPosition
-      : null
 
   // Voice-call state machine. skipSignalSubscription is set so the hook
   // doesn't open its own SSE stream — ChatView already owns one for messages
@@ -203,6 +199,23 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   useEffect(() => {
     voiceCallEndRef.current = voiceCall.endCall
   })
+  // voiceCallKindRef shadows voiceCall.callKind so the long-lived SSE reader
+  // can capture the current call kind when recording missed calls — the hook
+  // resets callKind synchronously inside tearDown before the next render, so
+  // capturing it at the top of the SSE dispatch path preserves the correct
+  // value even when call_end arrives immediately after call_offer.
+  const voiceCallKindRef = useRef<CallKind>(voiceCall.callKind)
+  useEffect(() => {
+    voiceCallKindRef.current = voiceCall.callKind
+  })
+  // Derive the effective PiP position: when no call is active reset to null so
+  // the next call always starts from the default corner. Computed at render
+  // rather than via a synchronous setState-in-effect to keep lint happy.
+  // Placed here (after voiceCall) so that voiceCall.state is in scope.
+  const activePipPosition =
+    voiceCall.state === 'active' || voiceCall.state === 'outgoing-ringing'
+      ? pipPosition
+      : null
   // Tear down any active call when switching conversations so the mic and
   // RTCPeerConnection don't remain active against the old conversation.
   useEffect(() => {
@@ -536,6 +549,10 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                         && callPayload?.from_user_id !== undefined
                         && callPayload.from_user_id !== currentUserIdRef.current
                       ) {
+                        // Capture the call kind before voiceCallSignalRef fires
+                        // tearDown (which resets callKindRef synchronously). This
+                        // preserves video vs voice so call-back matches the modality.
+                        const capturedKind = voiceCallKindRef.current
                         setMissedCalls(prev => {
                           if (prev.some(m => m.callId === callPayload.call_id)) return prev
                           return [
@@ -544,6 +561,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                               callId: callPayload.call_id,
                               fromUserId: callPayload.from_user_id,
                               receivedAt: new Date().toISOString(),
+                              kind: capturedKind,
                             },
                           ]
                         })
@@ -951,7 +969,9 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     // Dismiss the row first so a successful call doesn't leave an obsolete
     // missed-call entry behind in the message list.
     setMissedCalls(prev => prev.filter(m => m.callId !== entry.callId))
-    handleStartCall('voice')
+    // Use the kind from the original missed call so a video call-back
+    // correctly starts as video, not a downgraded voice call.
+    handleStartCall(entry.kind)
   }, [handleStartCall])
 
   const dismissMissedCall = useCallback((callId: string) => {
@@ -1675,6 +1695,17 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                 className="absolute inset-0 w-full h-full object-cover"
                 data-testid="family-chat-call-remote-video"
               />
+              {/* Shown when the remote peer disables their camera. Sits above
+                  the frozen video frame so the viewer has a clear indicator. */}
+              {!voiceCall.remoteCameraEnabled && (
+                <div
+                  className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950/80 text-gray-300"
+                  data-testid="family-chat-call-remote-camera-off"
+                >
+                  <VideoOff size={32} aria-hidden="true" />
+                  <span className="mt-2 text-sm">{t('call.remoteCameraOff')}</span>
+                </div>
+              )}
               {/* Translucent header with peer label + status. */}
               <div className="absolute top-0 inset-x-0 p-3 sm:p-4 flex items-start gap-3 bg-gradient-to-b from-black/60 to-transparent">
                 <div className="flex-1 min-w-0">

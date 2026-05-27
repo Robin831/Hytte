@@ -159,6 +159,11 @@ export interface UseVoiceCallApi {
   // clients that pre-date the field).
   callKind: CallKind
   remoteStream: MediaStream | null
+  // remoteCameraEnabled reflects whether the remote peer's camera is active.
+  // Flips to false when the peer calls replaceTrack(null) (the received video
+  // track fires a 'mute' event), and back to true on re-enable. Always true
+  // for voice-only calls since no video track is ever received.
+  remoteCameraEnabled: boolean
   // localStream surfaces the same MediaStream that's wired into the
   // RTCPeerConnection's senders so the UI can render a self-view <video>
   // element (PiP). Null when no call is active or when called for voice-only.
@@ -270,6 +275,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
   const [callKind, setCallKindState] = useState<CallKind>('voice')
   const [cameraEnabled, setCameraEnabledState] = useState(true)
   const [facingMode, setFacingModeState] = useState<CameraFacingMode>('user')
+  const [remoteCameraEnabled, setRemoteCameraEnabledState] = useState(true)
 
   // Refs hold values the async signalling callbacks must read without
   // capturing stale closures. React state is used for things the UI needs to
@@ -374,6 +380,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     setRemoteStream(null)
     setMutedState(false)
     setCameraEnabledState(true)
+    setRemoteCameraEnabledState(true)
     callKindRef.current = 'voice'
     setCallKindState('voice')
     facingModeRef.current = 'user'
@@ -463,6 +470,14 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
       const stream = event.streams?.[0]
         ?? new MediaStream([event.track])
       setRemoteStream(stream)
+      // Track remote camera state via mute/unmute events on the received
+      // video track. When the peer calls replaceTrack(null) the track fires
+      // 'mute'; replaceTrack(<newTrack>) fires 'unmute'. Voice-only calls
+      // never expose a video track, so the flag stays true throughout.
+      if (event.track.kind === 'video') {
+        event.track.onmute = () => setRemoteCameraEnabledState(false)
+        event.track.onunmute = () => setRemoteCameraEnabledState(true)
+      }
     }
 
     pc.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
@@ -923,9 +938,17 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
       // Re-enable: re-request a video track and put it back on the sender.
       const stream = localStreamRef.current
       if (!stream) return
+      // Capture the epoch so we can bail if tearDown fires while getUserMedia
+      // is in-flight — otherwise the fresh tracks would outlive the call with
+      // the camera light staying on until the page is closed.
+      const epoch = callEpochRef.current
       try {
         const constraints = videoConstraintsForKind('video', facingModeRef.current)
         const fresh = await optionsRef.current.getUserMedia(constraints)
+        if (callEpochRef.current !== epoch) {
+          for (const t of fresh.getTracks()) { try { t.stop() } catch { /* ok */ } }
+          return
+        }
         const videoTrack = fresh.getVideoTracks()[0]
         if (!videoTrack) {
           // Releasing the audio-only stream avoids leaking a second mic capture.
@@ -933,6 +956,10 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
           return
         }
         await sender.replaceTrack(videoTrack)
+        if (callEpochRef.current !== epoch) {
+          try { videoTrack.stop() } catch { /* ok */ }
+          return
+        }
         // Swap the new video track into our local preview stream so the UI
         // re-renders with the fresh feed. Audio track is preserved.
         const oldVideos = stream.getVideoTracks()
@@ -996,11 +1023,16 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     if (callKindRef.current !== 'video') return
     const stream = localStreamRef.current
     if (!stream) return
+    // Capture epoch before any async work (enumerateDevices + getUserMedia) so
+    // a tearDown during either await stops the fresh track rather than wiring
+    // it into a torn-down peer connection.
+    const epoch = callEpochRef.current
     const nextFacing: CameraFacingMode = facingModeRef.current === 'user' ? 'environment' : 'user'
     try {
       const { width, height } = videoSizeForConnection()
       const currentVideoTrack = stream.getVideoTracks()[0] ?? null
       const nextDeviceId = await pickNextCameraDeviceId(currentVideoTrack)
+      if (callEpochRef.current !== epoch) return
       // Ask only for video — keep the existing mic track so we don't drop
       // audio mid-call by re-acquiring it from getUserMedia. Prefer an exact
       // deviceId when enumerateDevices found a sibling camera; otherwise fall
@@ -1020,12 +1052,20 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         audio: false,
         video: videoConstraints,
       })
+      if (callEpochRef.current !== epoch) {
+        for (const t of fresh.getTracks()) { try { t.stop() } catch { /* ok */ } }
+        return
+      }
       const videoTrack = fresh.getVideoTracks()[0]
       if (!videoTrack) {
         for (const t of fresh.getTracks()) { try { t.stop() } catch { /* ok */ } }
         return
       }
       await sender.replaceTrack(videoTrack)
+      if (callEpochRef.current !== epoch) {
+        try { videoTrack.stop() } catch { /* ok */ }
+        return
+      }
       const oldVideos = stream.getVideoTracks()
       for (const t of oldVideos) {
         try { stream.removeTrack(t) } catch { /* old browsers */ }
@@ -1059,6 +1099,10 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     }
     const stream = localStreamRef.current
     if (!stream) return
+    // Capture epoch before the async getUserMedia so a tearDown while the
+    // request is in-flight stops the fresh track rather than wiring it into
+    // a torn-down peer connection with the camera light staying on.
+    const epoch = callEpochRef.current
     try {
       const fresh = await optionsRef.current.getUserMedia({
         audio: false,
@@ -1068,12 +1112,20 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
           height: { ideal: target.height },
         },
       })
+      if (callEpochRef.current !== epoch) {
+        for (const t of fresh.getTracks()) { try { t.stop() } catch { /* ok */ } }
+        return
+      }
       const videoTrack = fresh.getVideoTracks()[0]
       if (!videoTrack) {
         for (const t of fresh.getTracks()) { try { t.stop() } catch { /* ok */ } }
         return
       }
       await sender.replaceTrack(videoTrack)
+      if (callEpochRef.current !== epoch) {
+        try { videoTrack.stop() } catch { /* ok */ }
+        return
+      }
       const oldVideos = stream.getVideoTracks()
       for (const t of oldVideos) {
         try { stream.removeTrack(t) } catch { /* old browsers */ }
@@ -1121,6 +1173,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     muted,
     cameraEnabled,
     facingMode,
+    remoteCameraEnabled,
     startCall,
     acceptCall,
     rejectCall,

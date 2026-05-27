@@ -253,11 +253,13 @@ describe('useVoiceCall — outgoing call', () => {
       { urls: ['stun:stun.example.com:3478'] },
     ])
 
-    // Offer POSTed with the SDP wrapped under {data: {type, sdp}}.
+    // Offer POSTed with the SDP wrapped under {data: {type, sdp}} and the
+    // call kind so the receiver can branch before requesting media.
     const offerCall = findCall(fetchMock.calls, 'POST', '/calls/call-uuid-A/offer')
     expect(offerCall).toBeDefined()
     expect(JSON.parse(offerCall!.body!)).toEqual({
       data: { type: 'offer', sdp: 'v=0\r\nfake-offer' },
+      kind: 'voice',
     })
 
     // The peer connection has the local mic track wired up.
