@@ -147,16 +147,24 @@ function KioskPageInner() {
     return () => { if (link) link.setAttribute('href', '/manifest.json') }
   }, [])
 
-  // Token from URL takes precedence; persist to localStorage so the kiosk
-  // works after "Add to Home Screen" (which strips query params).
-  const token = (() => {
-    const urlToken = searchParams.get('token')
+  const urlToken = searchParams.get('token')
+
+  // Persist URL token to localStorage in an effect so the kiosk works after
+  // "Add to Home Screen" (which strips query params). Doing this in a render
+  // body would write to storage on every re-render; an effect only runs when
+  // the URL token actually changes.
+  useEffect(() => {
     if (urlToken) {
       try { localStorage.setItem(KIOSK_TOKEN_KEY, urlToken) } catch { /* ignore */ }
-      return urlToken
     }
+  }, [urlToken])
+
+  // Read the stored token once at mount via the state initializer. URL param
+  // takes precedence so a fresh ?token=... URL always wins over the stored one.
+  const [storedToken] = useState<string | null>(() => {
     try { return localStorage.getItem(KIOSK_TOKEN_KEY) } catch { return null }
-  })()
+  })
+  const token = urlToken ?? storedToken
 
   const [apiData, setApiData] = useState<KioskData | null>(null)
   const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null)
@@ -201,13 +209,35 @@ function KioskPageInner() {
     }
   }, [token])
 
-  // Tick a clock so the stale indicator transitions from fresh to stale even
-  // when no new fetches are succeeding (e.g. kiosk left unattended on a wall).
+  // Drive the "Updated X ago" clock.
+  //
+  // The effect is gated on lastSuccessAt being non-null so the interval
+  // never starts before we have received a first data payload — a healthy
+  // kiosk that has never fetched successfully produces zero ticks.
+  //
+  // While data *is* fresh the interval fires every 5 s but skips the
+  // setNow call (and therefore skips the re-render) when we are still well
+  // below the stale threshold.  Only as we approach or cross the threshold
+  // does the state update fire, keeping the badge age display accurate
+  // without wasting renders on low-power wall-mounted devices during normal
+  // operation.
+  //
+  // The effect re-runs on each successful fetch (lastSuccessAt changes), so
+  // the timer is always anchored to the most recent success and a recovery
+  // fetch automatically resets the clock.
   useEffect(() => {
-    if (!token) return
-    const id = setInterval(() => setNow(Date.now()), STALE_TICK_INTERVAL_MS)
+    if (!token || lastSuccessAt === null) return
+    const id = setInterval(() => {
+      const t = Date.now()
+      // Only trigger a re-render when we are within one tick of the stale
+      // threshold or already past it; during the clearly-fresh window the
+      // DOM does not need updating.
+      if (t - lastSuccessAt >= STALE_THRESHOLD_MS - STALE_TICK_INTERVAL_MS) {
+        setNow(t)
+      }
+    }, STALE_TICK_INTERVAL_MS)
     return () => clearInterval(id)
-  }, [token])
+  }, [token, lastSuccessAt])
 
   const isStale =
     !!token &&

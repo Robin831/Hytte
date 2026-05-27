@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import KioskPage from './KioskPage'
 
@@ -94,13 +94,17 @@ describe('KioskPage – stale data badge', () => {
     expect(screen.queryByTestId('kiosk-stale-badge')).not.toBeInTheDocument()
 
     // From here on, fetches fail. Advance well past 2 * POLL_INTERVAL_MS (60s).
+    // Use the synchronous advanceTimersByTime so all setInterval callbacks fire
+    // within the same JS tick — React batches the setNow updates and flushes
+    // them when act() exits, ensuring the badge is in the DOM before the
+    // synchronous getByTestId call below.
     succeed = false
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(90_000)
+      vi.advanceTimersByTime(90_000)
       await flushMicrotasks()
     })
 
-    const badge = await screen.findByTestId('kiosk-stale-badge')
+    const badge = screen.getByTestId('kiosk-stale-badge')
     expect(badge).toBeInTheDocument()
     expect(badge.textContent).toMatch(/Updated .* (sec|min|hr) ago/)
   })
@@ -120,21 +124,23 @@ describe('KioskPage – stale data badge', () => {
     await act(async () => { await flushMicrotasks() })
 
     succeed = false
-    // Cross the threshold so the badge becomes visible.
+    // Cross the threshold so the badge becomes visible. Use synchronous timer
+    // advancement so React can batch and flush the setNow updates before act()
+    // exits, making getByTestId reliable without fake-timer polling.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(65_000)
+      vi.advanceTimersByTime(65_000)
       await flushMicrotasks()
     })
-    const badge = await screen.findByTestId('kiosk-stale-badge')
+    const badge = screen.getByTestId('kiosk-stale-badge')
     const firstText = badge.textContent
 
     // Now advance a further chunk of time — the staleness clock should tick
     // even though no fetch succeeds.
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(120_000)
+      vi.advanceTimersByTime(120_000)
       await flushMicrotasks()
     })
-    const updated = await screen.findByTestId('kiosk-stale-badge')
+    const updated = screen.getByTestId('kiosk-stale-badge')
     expect(updated.textContent).not.toEqual(firstText)
   })
 
@@ -154,21 +160,21 @@ describe('KioskPage – stale data badge', () => {
 
     succeed = false
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(90_000)
+      vi.advanceTimersByTime(90_000)
       await flushMicrotasks()
     })
-    expect(await screen.findByTestId('kiosk-stale-badge')).toBeInTheDocument()
+    expect(screen.getByTestId('kiosk-stale-badge')).toBeInTheDocument()
 
     // Recovery: the next poll succeeds, so the badge should clear.
     succeed = true
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000)
+      vi.advanceTimersByTime(30_000)
       await flushMicrotasks()
     })
 
-    await waitFor(() => {
-      expect(screen.queryByTestId('kiosk-stale-badge')).not.toBeInTheDocument()
-    })
+    // After synchronous timer advancement and act() flushing, the badge should
+    // be gone — no need for waitFor which uses the now-faked setTimeout.
+    expect(screen.queryByTestId('kiosk-stale-badge')).not.toBeInTheDocument()
   })
 
   it('does not show the badge in mock mode (no token)', async () => {
