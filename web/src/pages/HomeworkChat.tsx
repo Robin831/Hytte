@@ -268,6 +268,11 @@ export default function HomeworkChat() {
         setSelectedImage(prev => prev ?? image)
         if (previewSnapshot) {
           setImagePreview(prev => prev ?? previewSnapshot)
+        } else {
+          // FileReader.onload hadn't fired when send was triggered; rebuild the preview now
+          const reader = new FileReader()
+          reader.onload = () => setImagePreview(prev => prev ?? (reader.result as string))
+          reader.readAsDataURL(image)
         }
       }
       if (err instanceof Error) setError(err.message)

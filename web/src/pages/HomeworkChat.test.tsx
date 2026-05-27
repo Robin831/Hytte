@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import HomeworkChat from './HomeworkChat'
 
@@ -281,9 +281,10 @@ describe('HomeworkChat – optimistic send recovery on failure', () => {
       expect(screen.getByText('Network down')).toBeInTheDocument()
     })
 
-    // Bubble removed from the transcript (textarea value is not text content,
-    // so queryByText only finds rendered message bubbles).
-    expect(screen.queryByText('My question')).not.toBeInTheDocument()
+    // Bubble removed from the transcript — scope to the message log so the
+    // textarea value (which happy-dom exposes as textContent) doesn't match.
+    const log = screen.getByRole('log')
+    expect(within(log).queryByText('My question')).not.toBeInTheDocument()
     // Draft restored.
     expect(input.value).toBe('My question')
   })
@@ -305,7 +306,7 @@ describe('HomeworkChat – optimistic send recovery on failure', () => {
       expect(screen.getByText('Server boom')).toBeInTheDocument()
     })
 
-    expect(screen.queryByText('A query')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('log')).queryByText('A query')).not.toBeInTheDocument()
     expect(input.value).toBe('A query')
   })
 
@@ -336,7 +337,7 @@ describe('HomeworkChat – optimistic send recovery on failure', () => {
     })
 
     // The user-message bubble (real id 999) must be gone from the transcript.
-    expect(screen.queryByText('Original question')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('log')).queryByText('Original question')).not.toBeInTheDocument()
     // Streaming placeholder cleared, draft restored.
     expect(input.value).toBe('Original question')
   })
@@ -375,7 +376,7 @@ describe('HomeworkChat – optimistic send recovery on failure', () => {
     // Newer draft is preserved; captured "Original" is NOT restored over it.
     expect(input.value).toBe('Newer draft')
     // Optimistic bubble still removed.
-    expect(screen.queryByText('Original')).not.toBeInTheDocument()
+    expect(within(screen.getByRole('log')).queryByText('Original')).not.toBeInTheDocument()
   })
 
   it('short-circuits silently on AbortError without restoring draft or showing banner', async () => {
@@ -401,5 +402,96 @@ describe('HomeworkChat – optimistic send recovery on failure', () => {
     expect(input.value).toBe('')
     expect(screen.queryByText('aborted')).not.toBeInTheDocument()
     expect(screen.queryByText('Failed to send message')).not.toBeInTheDocument()
+  })
+
+  it('restores selected image file and preview after a failed send', async () => {
+    // Use a synchronous FileReader so imagePreview is set before send is clicked.
+    const fakeDataUrl = 'data:image/png;base64,abc'
+    class SyncFileReader {
+      result = fakeDataUrl
+      onload: (() => void) | null = null
+      readAsDataURL(_file: File) { this.onload?.() }
+    }
+    vi.stubGlobal('FileReader', SyncFileReader)
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convDetailResponse())
+      .mockRejectedValueOnce(new Error('Network down'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+    await waitFor(() => screen.getByText('Homework Helper'))
+
+    // Select an image — preview loads synchronously
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['dummy'], 'photo.png', { type: 'image/png' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    await waitFor(() => screen.getByAltText('Selected image preview'))
+
+    // Type text and send
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'Look at this problem' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => expect(screen.getByText('Network down')).toBeInTheDocument())
+
+    // Both the image preview and the remove button must be back in the UI
+    expect(screen.getByAltText('Selected image preview')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove image' })).toBeInTheDocument()
+    // And the draft text is restored
+    expect(input.value).toBe('Look at this problem')
+  })
+
+  it('rebuilds image preview in the catch block when FileReader had not fired before send', async () => {
+    // Deferred FileReader — onload is stored but not called until we trigger it.
+    const fakeDataUrl = 'data:image/png;base64,abc'
+    const readers: Array<{ onload: (() => void) | null; result: string }> = []
+    class DeferredFileReader {
+      result = fakeDataUrl
+      onload: (() => void) | null = null
+      readAsDataURL(_file: File) {
+        // Capture the instance (onload will have been assigned before this call)
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        readers.push(this)
+        // Does NOT call onload — simulates FileReader that hasn't fired yet
+      }
+    }
+    vi.stubGlobal('FileReader', DeferredFileReader)
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convDetailResponse())
+      .mockRejectedValueOnce(new Error('Network down'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+    await waitFor(() => screen.getByText('Homework Helper'))
+
+    // Select image — FileReader created but onload not fired yet
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['dummy'], 'photo.png', { type: 'image/png' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    // No preview shown yet
+    expect(screen.queryByAltText('Selected image preview')).not.toBeInTheDocument()
+
+    // Type text and send immediately (previewSnapshot captured as null)
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'Quick send' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => expect(screen.getByText('Network down')).toBeInTheDocument())
+
+    // The catch block created a second FileReader to rebuild the preview.
+    // readers[0] = from handleImageSelect, readers[1] = from catch block.
+    expect(readers.length).toBe(2)
+    const rebuildReader = readers[readers.length - 1]
+    expect(rebuildReader.onload).not.toBeNull()
+
+    // Fire the catch-block reader's onload to deliver the preview
+    rebuildReader.onload!()
+
+    await waitFor(() => expect(screen.getByAltText('Selected image preview')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Remove image' })).toBeInTheDocument()
   })
 })
