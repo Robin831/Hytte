@@ -1,0 +1,2 @@
+category: Fixed
+- **Family child detail loads in one round-trip** - The Kids Stars child detail page no longer sequentially refetches every workout page on mount to power its charts. A new `GET /api/family/children/{id}/workouts/summary` endpoint returns the 8-week weekly aggregates (distance, workout count, stars) directly, and the table fetches only the first 20 rows on mount and additional pages on demand. (Hytte-y64r)

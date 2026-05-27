@@ -579,6 +579,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Delete("/family/children/{id}", family.UnlinkChildHandler(db))
 				r.Get("/family/children/{id}/stats", family.ChildStatsHandler(db))
 				r.Get("/family/children/{id}/workouts", family.ChildWorkoutsHandler(db))
+				r.Get("/family/children/{id}/workouts/summary", family.ChildWorkoutsSummaryHandler(db))
 				r.Get("/family/children/{id}/settings", stars.GetChildSettingsHandler(db))
 				r.Put("/family/children/{id}/settings", stars.PutChildSettingsHandler(db))
 				r.Post("/family/invite", family.GenerateInviteHandler(db))

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -480,6 +481,243 @@ func TestChildWorkoutsHandlerPagination(t *testing.T) {
 	}
 	if resp2.Offset != 2 {
 		t.Errorf("expected offset 2, got %d", resp2.Offset)
+	}
+}
+
+// ── Child workouts summary handler tests ───────────────────────────────────
+
+// summaryWeek mirrors the JSON shape returned by ChildWorkoutsSummaryHandler.
+type summaryWeek struct {
+	WeekStart      string  `json:"week_start"`
+	DistanceMeters float64 `json:"distance_meters"`
+	WorkoutCount   int     `json:"workout_count"`
+	Stars          int     `json:"stars"`
+}
+
+type summaryResp struct {
+	Weeks []summaryWeek `json:"weeks"`
+}
+
+// localMondayN returns the Monday of the ISO week N weeks before the current
+// week, at local 00:00. n=0 is this week's Monday, n=1 is last week's, etc.
+func localMondayN(now time.Time, n int) time.Time {
+	daysSinceMonday := (int(now.Weekday()) + 6) % 7
+	thisMonday := time.Date(now.Year(), now.Month(), now.Day()-daysSinceMonday, 0, 0, 0, 0, now.Location())
+	return thisMonday.AddDate(0, 0, -7*n)
+}
+
+func TestChildWorkoutsSummaryHandlerForbidden(t *testing.T) {
+	db := setupTestDB(t)
+
+	// testParent is not linked to testChild.
+	handler := ChildWorkoutsSummaryHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodGet, "/api/family/children/2/workouts/summary", nil), "id", "2"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for unlinked parent, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestChildWorkoutsSummaryHandlerInvalidID(t *testing.T) {
+	db := setupTestDB(t)
+
+	handler := ChildWorkoutsSummaryHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodGet, "/api/family/children/abc/workouts/summary", nil), "id", "abc"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid id, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestChildWorkoutsSummaryHandlerUnknownChild(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Child user 99 does not exist and is not linked to the parent.
+	handler := ChildWorkoutsSummaryHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodGet, "/api/family/children/99/workouts/summary", nil), "id", "99"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for unknown child (no family_links row), got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestChildWorkoutsSummaryHandlerEmpty(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateLink(db, 1, 2, "Kiddo", "⭐"); err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+
+	handler := ChildWorkoutsSummaryHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodGet, "/api/family/children/2/workouts/summary", nil), "id", "2"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp summaryResp
+	decode(t, w.Body.Bytes(), &resp)
+
+	if len(resp.Weeks) != 8 {
+		t.Fatalf("expected 8 weeks, got %d", len(resp.Weeks))
+	}
+	for i, wk := range resp.Weeks {
+		if wk.DistanceMeters != 0 || wk.WorkoutCount != 0 || wk.Stars != 0 {
+			t.Errorf("week %d: expected zero aggregates, got distance=%v count=%d stars=%d", i, wk.DistanceMeters, wk.WorkoutCount, wk.Stars)
+		}
+		if wk.WeekStart == "" {
+			t.Errorf("week %d: missing week_start", i)
+		}
+	}
+	// Weeks must be ordered oldest→newest and span exactly 7 days each.
+	for i := 1; i < len(resp.Weeks); i++ {
+		prev, err := time.Parse("2006-01-02", resp.Weeks[i-1].WeekStart)
+		if err != nil {
+			t.Fatalf("parse week_start[%d]: %v", i-1, err)
+		}
+		cur, err := time.Parse("2006-01-02", resp.Weeks[i].WeekStart)
+		if err != nil {
+			t.Fatalf("parse week_start[%d]: %v", i, err)
+		}
+		if diff := cur.Sub(prev); diff != 7*24*time.Hour {
+			t.Errorf("weeks %d→%d: expected 7-day gap, got %v", i-1, i, diff)
+		}
+	}
+}
+
+func TestChildWorkoutsSummaryHandlerBucketing(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateLink(db, 1, 2, "Kiddo", "⭐"); err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+
+	now := time.Now()
+	thisMonday := localMondayN(now, 0)
+	lastMonday := localMondayN(now, 1)
+	threeWeeksAgoMonday := localMondayN(now, 3)
+
+	// Insert workouts in three different weeks. Use UTC RFC3339 strings as the
+	// schema does — the handler converts back to local time.
+	insertWorkout := func(id int64, when time.Time, distance float64) {
+		t.Helper()
+		_, err := db.Exec(`
+			INSERT INTO workouts (id, user_id, sport, started_at, duration_seconds, distance_meters, fit_file_hash, created_at)
+			VALUES (?, 2, 'running', ?, 1800, ?, ?, ?)
+		`, id, when.UTC().Format(time.RFC3339), distance, "h"+strconv.FormatInt(id, 10), when.UTC().Format(time.RFC3339))
+		if err != nil {
+			t.Fatalf("insert workout %d: %v", id, err)
+		}
+	}
+
+	// Current week: one workout, 5km, +3 stars.
+	insertWorkout(1, thisMonday.Add(2*time.Hour), 5000)
+	// Last week: two workouts (3km + 7km).
+	insertWorkout(2, lastMonday.Add(10*time.Hour), 3000)
+	insertWorkout(3, lastMonday.Add(48*time.Hour), 7000)
+	// Three weeks ago: one workout, 12km, no stars.
+	insertWorkout(4, threeWeeksAgoMonday.Add(5*time.Hour), 12000)
+
+	// Star transactions: 3 stars for workout 1, 2 stars for workout 2.
+	if _, err := db.Exec(`
+		INSERT INTO star_transactions (user_id, amount, reason, reference_id, created_at)
+		VALUES (2, 3, 'showed_up', 1, ?), (2, 2, 'showed_up', 2, ?)
+	`, thisMonday.UTC().Format(time.RFC3339), lastMonday.UTC().Format(time.RFC3339)); err != nil {
+		t.Fatalf("insert star tx: %v", err)
+	}
+
+	handler := ChildWorkoutsSummaryHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodGet, "/api/family/children/2/workouts/summary", nil), "id", "2"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp summaryResp
+	decode(t, w.Body.Bytes(), &resp)
+	if len(resp.Weeks) != 8 {
+		t.Fatalf("expected 8 weeks, got %d", len(resp.Weeks))
+	}
+
+	// Buckets: index 7 = current week, 6 = last week, 4 = three weeks ago, 0 = seven weeks ago.
+	if resp.Weeks[7].WorkoutCount != 1 || resp.Weeks[7].DistanceMeters != 5000 || resp.Weeks[7].Stars != 3 {
+		t.Errorf("current week: %+v", resp.Weeks[7])
+	}
+	if resp.Weeks[6].WorkoutCount != 2 || resp.Weeks[6].DistanceMeters != 10000 || resp.Weeks[6].Stars != 2 {
+		t.Errorf("last week: %+v", resp.Weeks[6])
+	}
+	if resp.Weeks[4].WorkoutCount != 1 || resp.Weeks[4].DistanceMeters != 12000 || resp.Weeks[4].Stars != 0 {
+		t.Errorf("three weeks ago: %+v", resp.Weeks[4])
+	}
+	// Other weeks must be zero.
+	for _, i := range []int{0, 1, 2, 3, 5} {
+		if resp.Weeks[i].WorkoutCount != 0 || resp.Weeks[i].DistanceMeters != 0 || resp.Weeks[i].Stars != 0 {
+			t.Errorf("week %d should be empty: %+v", i, resp.Weeks[i])
+		}
+	}
+
+	// Week-start values should be Mondays in YYYY-MM-DD format.
+	if resp.Weeks[7].WeekStart != thisMonday.Format("2006-01-02") {
+		t.Errorf("current week start: got %q want %q", resp.Weeks[7].WeekStart, thisMonday.Format("2006-01-02"))
+	}
+	if resp.Weeks[6].WeekStart != lastMonday.Format("2006-01-02") {
+		t.Errorf("last week start: got %q want %q", resp.Weeks[6].WeekStart, lastMonday.Format("2006-01-02"))
+	}
+}
+
+func TestChildWorkoutsSummaryHandlerWeekBoundary(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := CreateLink(db, 1, 2, "Kiddo", "⭐"); err != nil {
+		t.Fatalf("CreateLink: %v", err)
+	}
+
+	now := time.Now()
+	thisMonday := localMondayN(now, 0)
+	// One minute before this Monday (local) and one minute after.
+	beforeBoundary := thisMonday.Add(-time.Minute)
+	atBoundary := thisMonday
+
+	if _, err := db.Exec(`
+		INSERT INTO workouts (id, user_id, sport, started_at, duration_seconds, distance_meters, fit_file_hash, created_at)
+		VALUES (1, 2, 'running', ?, 1800, 1000, 'a', ?),
+		       (2, 2, 'running', ?, 1800, 2000, 'b', ?)
+	`,
+		beforeBoundary.UTC().Format(time.RFC3339), beforeBoundary.UTC().Format(time.RFC3339),
+		atBoundary.UTC().Format(time.RFC3339), atBoundary.UTC().Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("insert workouts: %v", err)
+	}
+
+	handler := ChildWorkoutsSummaryHandler(db)
+	r := withUser(withChiParam(newRequest(http.MethodGet, "/api/family/children/2/workouts/summary", nil), "id", "2"), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp summaryResp
+	decode(t, w.Body.Bytes(), &resp)
+
+	// The workout one minute before this Monday belongs to last week (index 6),
+	// the one at exactly this Monday belongs to the current week (index 7).
+	if resp.Weeks[6].WorkoutCount != 1 || resp.Weeks[6].DistanceMeters != 1000 {
+		t.Errorf("last week should hold the Sunday 23:59 workout: %+v", resp.Weeks[6])
+	}
+	if resp.Weeks[7].WorkoutCount != 1 || resp.Weeks[7].DistanceMeters != 2000 {
+		t.Errorf("current week should hold the Monday 00:00 workout: %+v", resp.Weeks[7])
 	}
 }
 
