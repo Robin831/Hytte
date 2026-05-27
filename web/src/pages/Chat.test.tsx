@@ -83,23 +83,6 @@ function makeConv(overrides: Partial<ConversationFixture> = {}): ConversationFix
   }
 }
 
-// scriptedSSEResponse builds a fetch-shaped object whose body is a
-// ReadableStream that emits the given SSE frames in order. Each frame is a
-// pre-formatted "event: NAME\ndata: JSON\n\n" string. Used for happy-path
-// tests where the entire stream is known up front.
-function scriptedSSEResponse(frames: string[]): Response {
-  const encoder = new TextEncoder()
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const f of frames) {
-        controller.enqueue(encoder.encode(f))
-      }
-      controller.close()
-    },
-  })
-  return { ok: true, status: 200, body: stream } as unknown as Response
-}
-
 // manualSSEResponse exposes push/close/error so tests can interleave assertions
 // between events. The returned Response object's body is a ReadableStream that
 // emits the frames pushed via the helper.

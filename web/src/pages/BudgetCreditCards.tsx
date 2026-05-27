@@ -985,39 +985,16 @@ export default function BudgetCreditCards() {
   )
 
   // Group transactions by group_id. Derived directly from transactions via
-  // useMemo so no extra render is needed (vs. the useReducer + useLayoutEffect
-  // pattern which always caused two renders on every transaction update).
-  // A ref tracks the previous map so per-group array references are preserved
-  // for unchanged groups, letting React.memo(GroupSection) short-circuit for
-  // groups not touched by an optimistic update.
-  //
-  // The useMemo is kept pure (no ref writes during render). The ref is updated
-  // in useLayoutEffect after commit so it is safe under concurrent/StrictMode
-  // rendering where renders may be aborted and re-run.
-  const prevByGroupIdRef = useRef<Map<number | null, Transaction[]>>(new Map())
+  // useMemo so no extra render is needed when unrelated state changes.
   const byGroupId = useMemo(() => {
-    const prev = prevByGroupIdRef.current
     const next = new Map<number | null, Transaction[]>()
     for (const tx of transactions) {
       const key = tx.group_id
       if (!next.has(key)) next.set(key, [])
       next.get(key)!.push(tx)
     }
-    for (const [key, arr] of next) {
-      // eslint-disable-next-line react-hooks/refs -- intentional: prev is the last-committed map (updated via useLayoutEffect, not during render); reading it here is safe for structural sharing
-      const old = prev.get(key)
-      if (old && old.length === arr.length && old.every((t, i) => t === arr[i])) {
-        next.set(key, old)
-      }
-    }
     return next
   }, [transactions])
-  // Keep the ref in sync with the last committed map so the next useMemo run
-  // can do structural sharing against it. This must be useLayoutEffect (not
-  // useMemo) so the write happens after commit, not during render.
-  useLayoutEffect(() => {
-    prevByGroupIdRef.current = byGroupId
-  }, [byGroupId])
 
   // Diverse catch-all: transactions in Diverse group + unassigned.
   // Split into two intermediate memos so the concatenation can be memoised on
