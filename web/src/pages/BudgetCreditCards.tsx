@@ -655,11 +655,6 @@ export default function BudgetCreditCards() {
   useEffect(() => { currentSelectedIdRef.current = selectedId }, [selectedId])
   useEffect(() => { currentMonthRef.current = month }, [month])
 
-  // Tracks the previous byGroupId map so structural sharing can reuse array
-  // references for groups whose transactions haven't changed. Kept as a ref
-  // so it's available inside useMemo without being a dependency.
-  const prevByGroupIdRef = useRef<Map<number | null, Transaction[]>>(new Map())
-
   // Latest-value refs so that row callbacks stay reference-stable across
   // transaction/group state changes (otherwise memoised TransactionItems
   // re-render on every optimistic update).
@@ -987,27 +982,16 @@ export default function BudgetCreditCards() {
     [groups],
   )
 
-  // Group transactions by group_id, with structural sharing: if a group's
-  // transactions are referentially identical to the previous render (same
-  // objects in the same order), reuse the previous array reference so that
-  // React.memo(GroupSection) and the [transactions]-keyed useMemo inside it
-  // can short-circuit even when other groups changed.
+  // Group transactions by group_id. Recomputed only when the `transactions`
+  // array reference changes (i.e. after a fetch), so GroupSection and the
+  // per-group useMemos below only re-run when real data changes.
   const byGroupId = useMemo(() => {
-    const prev = prevByGroupIdRef.current
     const result = new Map<number | null, Transaction[]>()
     for (const tx of transactions) {
       const key = tx.group_id
       if (!result.has(key)) result.set(key, [])
       result.get(key)!.push(tx)
     }
-    // Share array references from the previous map for groups that are unchanged.
-    for (const [key, arr] of result) {
-      const prevArr = prev.get(key)
-      if (prevArr && prevArr.length === arr.length && prevArr.every((t, i) => t === arr[i])) {
-        result.set(key, prevArr)
-      }
-    }
-    prevByGroupIdRef.current = result
     return result
   }, [transactions])
 
