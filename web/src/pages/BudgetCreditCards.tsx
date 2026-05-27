@@ -138,8 +138,8 @@ function formatAmount(amount: number, currency = 'NOK'): string {
 
 // ── Subcomponents ─────────────────────────────────────────────────────────────
 
-// Row height (px) for a single transaction. Slightly taller than typical content
-// to leave room for badge wrap on narrow viewports without clipping.
+// Row height (px) for a single transaction. Badges are prevented from wrapping
+// (overflow-hidden + flex-1 truncation) so this height is truly fixed.
 const TX_ROW_HEIGHT = 60
 // Cap each virtualised list at ~8 rows tall; larger groups scroll internally.
 const TX_LIST_MAX_HEIGHT = 480
@@ -167,8 +167,8 @@ const TransactionItem = memo(function TransactionItem({ tx, groups, currency, t,
   return (
     <div className={`flex items-start gap-2 px-3 py-2 ${isDeferredAway ? 'opacity-60' : ''}`}>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className={`text-sm truncate ${tx.is_innbetaling ? 'text-green-400' : 'text-gray-200'}`}>
+        <div className="flex items-center gap-1.5 overflow-hidden">
+          <span className={`text-sm truncate min-w-0 flex-1 ${tx.is_innbetaling ? 'text-green-400' : 'text-gray-200'}`}>
             {tx.beskrivelse}
           </span>
           {tx.is_pending && (
@@ -655,6 +655,11 @@ export default function BudgetCreditCards() {
   useEffect(() => { currentSelectedIdRef.current = selectedId }, [selectedId])
   useEffect(() => { currentMonthRef.current = month }, [month])
 
+  // Tracks the previous byGroupId map so structural sharing can reuse array
+  // references for groups whose transactions haven't changed. Kept as a ref
+  // so it's available inside useMemo without being a dependency.
+  const prevByGroupIdRef = useRef<Map<number | null, Transaction[]>>(new Map())
+
   // Latest-value refs so that row callbacks stay reference-stable across
   // transaction/group state changes (otherwise memoised TransactionItems
   // re-render on every optimistic update).
@@ -982,14 +987,27 @@ export default function BudgetCreditCards() {
     [groups],
   )
 
-  // Group transactions by group_id
+  // Group transactions by group_id, with structural sharing: if a group's
+  // transactions are referentially identical to the previous render (same
+  // objects in the same order), reuse the previous array reference so that
+  // React.memo(GroupSection) and the [transactions]-keyed useMemo inside it
+  // can short-circuit even when other groups changed.
   const byGroupId = useMemo(() => {
+    const prev = prevByGroupIdRef.current
     const result = new Map<number | null, Transaction[]>()
     for (const tx of transactions) {
       const key = tx.group_id
       if (!result.has(key)) result.set(key, [])
       result.get(key)!.push(tx)
     }
+    // Share array references from the previous map for groups that are unchanged.
+    for (const [key, arr] of result) {
+      const prevArr = prev.get(key)
+      if (prevArr && prevArr.length === arr.length && prevArr.every((t, i) => t === arr[i])) {
+        result.set(key, prevArr)
+      }
+    }
+    prevByGroupIdRef.current = result
     return result
   }, [transactions])
 
