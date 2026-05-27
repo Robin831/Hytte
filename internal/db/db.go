@@ -1855,6 +1855,7 @@ func createSchema(db *sql.DB) error {
 		started_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 		ended_at          TEXT,
 		status            TEXT NOT NULL DEFAULT 'ringing',
+		kind              TEXT NOT NULL DEFAULT 'voice',
 		UNIQUE(conversation_id, call_id)
 	);
 
@@ -2645,6 +2646,19 @@ func createSchema(db *sql.DB) error {
 			if _, err := db.Exec(col.ddl); err != nil {
 				return fmt.Errorf("add family_chat_messages %s column: %w", col.name, err)
 			}
+		}
+	}
+
+	// Add kind column to family_chat_calls (Hytte-hob4): distinguishes voice
+	// calls from video calls so the conversation log can render the correct
+	// icon. Existing rows default to 'voice' since video predates this column.
+	var hasCallKind int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('family_chat_calls') WHERE name = 'kind'`).Scan(&hasCallKind); err != nil {
+		return fmt.Errorf("check family_chat_calls kind column: %w", err)
+	}
+	if hasCallKind == 0 {
+		if _, err := db.Exec(`ALTER TABLE family_chat_calls ADD COLUMN kind TEXT NOT NULL DEFAULT 'voice'`); err != nil {
+			return fmt.Errorf("add family_chat_calls kind column: %w", err)
 		}
 	}
 

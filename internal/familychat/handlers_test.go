@@ -106,6 +106,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			started_at        TEXT NOT NULL DEFAULT '',
 			ended_at          TEXT,
 			status            TEXT NOT NULL DEFAULT 'ringing',
+			kind              TEXT NOT NULL DEFAULT 'voice',
 			UNIQUE(conversation_id, call_id)
 		);
 	`); err != nil {

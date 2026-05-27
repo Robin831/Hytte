@@ -90,6 +90,27 @@ func readSignalBody(w http.ResponseWriter, r *http.Request, allowEmpty bool) (js
 	return body.Data, true
 }
 
+// readOfferBody extends readSignalBody for the offer endpoint, which also
+// carries a top-level `kind` field ('voice'|'video'). The kind is optional
+// so older clients that pre-date video support continue to ring as voice.
+func readOfferBody(w http.ResponseWriter, r *http.Request) (json.RawMessage, string, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxSignalPayloadLen)
+	defer r.Body.Close()
+	var body struct {
+		Data json.RawMessage `json:"data"`
+		Kind string          `json:"kind"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return nil, "", false
+	}
+	if len(body.Data) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "data is required"})
+		return nil, "", false
+	}
+	return body.Data, NormalizeCallKind(body.Kind), true
+}
+
 // callRelayPayload builds the SSE event payload for a single relay hop. The
 // shape is identical across event types so the frontend's signalling layer
 // can route by event name alone.
@@ -100,6 +121,15 @@ func callRelayPayload(convID, fromUserID int64, callID string, data json.RawMess
 		"from_user_id":    fromUserID,
 		"data":            data,
 	}
+}
+
+// callOfferRelayPayload extends callRelayPayload with the call kind so the
+// receiver can branch on voice vs video before fetching media (only the offer
+// frame needs this; the kind sticks to the local call state from then on).
+func callOfferRelayPayload(convID, fromUserID int64, callID, kind string, data json.RawMessage) map[string]any {
+	payload := callRelayPayload(convID, fromUserID, callID, data)
+	payload["kind"] = NormalizeCallKind(kind)
+	return payload
 }
 
 // CallOfferHandler relays a WebRTC offer through the SSE hub and records the
@@ -121,12 +151,12 @@ func callOfferHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync bo
 			return
 		}
 
-		data, ok := readSignalBody(w, r, false /* offer must carry SDP */)
+		data, kind, ok := readOfferBody(w, r)
 		if !ok {
 			return
 		}
 
-		if err := InsertCall(db, convID, user.ID, callID); err != nil {
+		if err := InsertCall(db, convID, user.ID, callID, kind); err != nil {
 			log.Printf("familychat: insert call conv=%d call=%s user=%d: %v", convID, callID, user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to record call"})
 			return
@@ -135,7 +165,7 @@ func callOfferHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync bo
 		if hub != nil {
 			hub.Publish(convID, Event{
 				Type: EventCallOffer,
-				Data: callRelayPayload(convID, user.ID, callID, data),
+				Data: callOfferRelayPayload(convID, user.ID, callID, kind, data),
 			})
 		}
 

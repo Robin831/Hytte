@@ -221,7 +221,7 @@ func TestCallEnd_AlreadyEndedIsIdempotent(t *testing.T) {
 	makeUser(t, db, 1, "alice@example.com")
 	convID := seedConversation(t, db, 1, "Family")
 
-	if err := InsertCall(db, convID, 1, "abc"); err != nil {
+	if err := InsertCall(db, convID, 1, "abc", CallKindVoice); err != nil {
 		t.Fatalf("insert: %v", err)
 	}
 	if err := MarkAnswered(db, convID, "abc"); err != nil {
@@ -248,10 +248,10 @@ func TestCallOffer_DuplicateCallIDIsIdempotent(t *testing.T) {
 	makeUser(t, db, 1, "alice@example.com")
 	convID := seedConversation(t, db, 1, "Family")
 
-	if err := InsertCall(db, convID, 1, "dup"); err != nil {
+	if err := InsertCall(db, convID, 1, "dup", CallKindVoice); err != nil {
 		t.Fatalf("first insert: %v", err)
 	}
-	if err := InsertCall(db, convID, 1, "dup"); err != nil {
+	if err := InsertCall(db, convID, 1, "dup", CallKindVoice); err != nil {
 		t.Fatalf("second insert (should be no-op): %v", err)
 	}
 	var n int
@@ -342,6 +342,110 @@ func TestCallOffer_WebpushURLEncodesCallID(t *testing.T) {
 		if strings.Contains(afterCall, "&") {
 			t.Errorf("URL %q embeds an unescaped '&' after the call= value", note.URL)
 		}
+	}
+}
+
+func TestCallOffer_VideoKindPersisted(t *testing.T) {
+	// A video call offer should persist kind='video' on the call row and
+	// include `kind` in the relayed SSE payload so the receiver can branch
+	// on it before requesting media.
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+
+	hub := NewHub()
+	bobSub := hub.Subscribe(2, convID)
+	defer hub.Unsubscribe(convID, bobSub)
+
+	sender := func(int64, []byte) error { return nil }
+	srv := httptest.NewServer(callsRouter(t, db, hub, sender, &auth.User{ID: 1, Name: "Alice"}, true))
+	defer srv.Close()
+
+	callID := "video-call-1"
+	postJSON(t,
+		fmt.Sprintf("%s/api/familychat/conversations/%d/calls/%s/offer", srv.URL, convID, callID),
+		`{"data":{"type":"offer","sdp":"v=0..."},"kind":"video"}`,
+	)
+
+	// The persisted row should carry kind='video'.
+	gotKind, err := GetCallKind(db, convID, callID)
+	if err != nil {
+		t.Fatalf("get kind: %v", err)
+	}
+	if gotKind != CallKindVideo {
+		t.Errorf("kind=%q, want %q", gotKind, CallKindVideo)
+	}
+
+	// The SSE event should include kind so the receiver can react before media.
+	select {
+	case evt, ok := <-bobSub.Events():
+		if !ok {
+			t.Fatal("subscriber channel closed")
+		}
+		if evt.Type != EventCallOffer {
+			t.Fatalf("event type=%q, want %q", evt.Type, EventCallOffer)
+		}
+		data, ok := evt.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("event data not map: %T", evt.Data)
+		}
+		if data["kind"] != CallKindVideo {
+			t.Errorf("event kind=%v, want %q", data["kind"], CallKindVideo)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no call_offer event received in time")
+	}
+}
+
+func TestCallOffer_UnknownKindFallsBackToVoice(t *testing.T) {
+	// A malformed or unknown kind on the wire must not produce a stray value
+	// in the DB — NormalizeCallKind clamps it back to 'voice'.
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	convID := seedConversation(t, db, 1, "Family")
+
+	sender := func(int64, []byte) error { return nil }
+	srv := httptest.NewServer(callsRouter(t, db, NewHub(), sender, &auth.User{ID: 1, Name: "Alice"}, true))
+	defer srv.Close()
+
+	callID := "unknown-kind-1"
+	postJSON(t,
+		fmt.Sprintf("%s/api/familychat/conversations/%d/calls/%s/offer", srv.URL, convID, callID),
+		`{"data":{"sdp":"v=0..."},"kind":"hologram"}`,
+	)
+
+	gotKind, err := GetCallKind(db, convID, callID)
+	if err != nil {
+		t.Fatalf("get kind: %v", err)
+	}
+	if gotKind != CallKindVoice {
+		t.Errorf("kind=%q, want %q (unknown should clamp to voice)", gotKind, CallKindVoice)
+	}
+}
+
+func TestCallOffer_MissingKindDefaultsToVoice(t *testing.T) {
+	// Legacy clients that omit `kind` continue to ring as voice calls.
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	convID := seedConversation(t, db, 1, "Family")
+
+	sender := func(int64, []byte) error { return nil }
+	srv := httptest.NewServer(callsRouter(t, db, NewHub(), sender, &auth.User{ID: 1, Name: "Alice"}, true))
+	defer srv.Close()
+
+	callID := "legacy-call-1"
+	postJSON(t,
+		fmt.Sprintf("%s/api/familychat/conversations/%d/calls/%s/offer", srv.URL, convID, callID),
+		`{"data":{"sdp":"v=0..."}}`,
+	)
+
+	gotKind, err := GetCallKind(db, convID, callID)
+	if err != nil {
+		t.Fatalf("get kind: %v", err)
+	}
+	if gotKind != CallKindVoice {
+		t.Errorf("kind=%q, want %q (legacy default)", gotKind, CallKindVoice)
 	}
 }
 

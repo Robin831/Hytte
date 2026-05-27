@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ChevronLeft,
@@ -16,6 +16,9 @@ import {
   MicOff,
   Volume2,
   VolumeX,
+  Video,
+  VideoOff,
+  SwitchCamera,
 } from 'lucide-react'
 import { Skeleton } from '../../components/ui/skeleton'
 import { useAuth } from '../../auth'
@@ -34,7 +37,7 @@ import { formatRelative } from './utils'
 import VoiceBubble from './voice/VoiceBubble'
 import { readCachedWaveform, parseWaveformJSON, DEFAULT_BAR_COUNT, type Waveform } from './voice/waveform'
 import * as voicePlayer from './voice/voicePlayer'
-import { useVoiceCall, type CallSignalEventName, type CallSignalPayload } from './voice/useVoiceCall'
+import { useVoiceCall, type CallKind, type CallSignalEventName, type CallSignalPayload } from './voice/useVoiceCall'
 
 interface ChatViewProps {
   conversationId: number | null
@@ -86,6 +89,9 @@ interface MissedCallEntry {
   callId: string
   fromUserId: number
   receivedAt: string
+  // kind mirrors the call-kind from the original offer so call-back can
+  // match the modality (voice → voice, video → video).
+  kind: CallKind
 }
 
 interface FamilyChild {
@@ -153,9 +159,23 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const [callElapsedSec, setCallElapsedSec] = useState(0)
   const callStartedAtRef = useRef<number | null>(null)
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
+  // Video sinks for video calls: remote is the big pane, local is the PiP on
+  // mobile and a separate side-by-side pane on desktop. Both local elements
+  // bind to the same MediaStream so the layout can switch via CSS without
+  // re-acquiring the camera.
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
+  const localVideoRef = useRef<HTMLVideoElement | null>(null)
+  const localVideoDesktopRef = useRef<HTMLVideoElement | null>(null)
   // speakerOn controls the remote audio volume: true = full volume (1.0),
   // false = muted (0) so "Speaker off" means no audio is heard.
   const [speakerOn, setSpeakerOn] = useState(true)
+  // pipPosition holds the {x, y} offset for the draggable local-preview
+  // window. Initialised to null so the PiP renders in its default top-right
+  // corner via Tailwind classes; once the user drags it switches to inline
+  // style overrides. Reset to null at the end of each call so the next call
+  // always starts from the default corner (see effect below).
+  const [pipPosition, setPipPosition] = useState<{ x: number; y: number } | null>(null)
+  const pipDragRef = useRef<{ offsetX: number; offsetY: number; pointerId: number } | null>(null)
 
   // Voice-call state machine. skipSignalSubscription is set so the hook
   // doesn't open its own SSE stream — ChatView already owns one for messages
@@ -180,6 +200,24 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   useEffect(() => {
     voiceCallEndRef.current = voiceCall.endCall
   })
+  // voiceCallKindRef shadows voiceCall.callKind so the long-lived SSE reader
+  // can capture the current call kind when recording missed calls — the hook
+  // resets callKind synchronously inside tearDown before the next render, so
+  // capturing it at the top of the SSE dispatch path preserves the correct
+  // value even when call_end arrives immediately after call_offer.
+  const voiceCallKindRef = useRef<CallKind>(voiceCall.callKind)
+  useEffect(() => {
+    voiceCallKindRef.current = voiceCall.callKind
+  })
+  // Derive the effective PiP position: passthrough while a call is live,
+  // null otherwise. pipPosition is reset to null when a new call is initiated
+  // (in handleStartCall / handleAcceptCall) so each call starts from the
+  // default top-right corner regardless of where the previous call's PiP was
+  // dragged. Placed here (after voiceCall) so that voiceCall.state is in scope.
+  const activePipPosition =
+    voiceCall.state === 'active' || voiceCall.state === 'outgoing-ringing'
+      ? pipPosition
+      : null
   // Tear down any active call when switching conversations so the mic and
   // RTCPeerConnection don't remain active against the old conversation.
   useEffect(() => {
@@ -298,16 +336,11 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // tests (and the rare browser that doesn't propagate abort to a streaming
   // body) terminate the read loop deterministically.
   useEffect(() => {
-    if (conversationId === null) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setConversation(null)
-      setMessages([])
-      setError('')
-      setLoading(false)
-      setMissedCalls([])
-      setEndedCallSummary(null)
-      return
-    }
+    // When no conversation is selected, do nothing here — the previous
+    // non-null effect's cleanup (below) resets state when switching away.
+    // Calling setState directly in the guard body is flagged by
+    // react-hooks/set-state-in-effect; cleanup callbacks are not.
+    if (conversationId === null) return
     const controller = new AbortController()
     // lastId is the highest message id this client has rendered for the
     // current conversation. It seeds gap-fill queries on reconnect and is
@@ -317,6 +350,13 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     let reconnectAttempts = 0
     let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null
 
+    // Initialise loading state at the start of every new conversation fetch.
+    // setLoading(true) must live here (not in cleanup) because cleanup runs
+    // setLoading(false) to represent "no conversation selected", which is the
+    // correct value when conversationId is null. Cleanup callbacks are exempt
+    // from react-hooks/set-state-in-effect; the synchronous call here is
+    // intentional and safe — React 18 batches all these updates into one commit.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     setError('')
     setMessages([])
@@ -508,12 +548,23 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                       // call_end with status=missed from someone other than us
                       // means we never picked up.
                       const callPayload = payload as CallSignalPayload
+                      // Synchronously update voiceCallKindRef when we see a
+                      // call_offer so that a same-iteration call_end (e.g.
+                      // missed) captures the correct kind without waiting for
+                      // a React render to flush the useEffect above.
+                      if (eventName === 'call_offer' && callPayload?.kind) {
+                        voiceCallKindRef.current = callPayload.kind
+                      }
                       if (
                         eventName === 'call_end'
                         && callPayload?.status === 'missed'
                         && callPayload?.from_user_id !== undefined
                         && callPayload.from_user_id !== currentUserIdRef.current
                       ) {
+                        // Capture the call kind before voiceCallSignalRef fires
+                        // tearDown (which resets callKindRef synchronously). This
+                        // preserves video vs voice so call-back matches the modality.
+                        const capturedKind = voiceCallKindRef.current
                         setMissedCalls(prev => {
                           if (prev.some(m => m.callId === callPayload.call_id)) return prev
                           return [
@@ -522,6 +573,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                               callId: callPayload.call_id,
                               fromUserId: callPayload.from_user_id,
                               receivedAt: new Date().toISOString(),
+                              kind: capturedKind,
                             },
                           ]
                         })
@@ -611,6 +663,15 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       // chats or unmounting must not leave a bubble in the prior conversation
       // continuing to play in the background.
       voicePlayer.stopAll()
+      // Reset conversation state when leaving (to null or another conversation)
+      // so the next render starts from a blank slate. State updates inside
+      // cleanup callbacks are not flagged by react-hooks/set-state-in-effect.
+      setConversation(null)
+      setMessages([])
+      setError('')
+      setLoading(false)
+      setMissedCalls([])
+      setEndedCallSummary(null)
     }
   }, [conversationId, t])
 
@@ -638,6 +699,9 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // Wire the remote audio stream into the hidden <audio> element so the
   // browser actually plays the peer's voice. The peer connection only opens
   // the data path; the page is responsible for piping it into an audio sink.
+  // For video calls the same MediaStream is also bound to the remote <video>
+  // element below; the <audio> tag is still required for voice calls (no
+  // <video> mounts) and as a redundant audio sink while the video pane loads.
   useEffect(() => {
     const el = remoteAudioRef.current
     if (!el) return
@@ -653,6 +717,37 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       el.srcObject = null
     }
   }, [voiceCall.remoteStream, speakerOn])
+
+  // Wire the remote video stream into the big remote <video> pane when the
+  // pane is mounted (i.e. during an active video call). We also push the
+  // stream into the local PiP <video> from voiceCall.localStream. Both are
+  // muted=true at the element level — the audio sink above plays the sound.
+  useEffect(() => {
+    const el = remoteVideoRef.current
+    if (!el) return
+    el.srcObject = voiceCall.remoteStream ?? null
+    if (voiceCall.remoteStream) {
+      void el.play().catch(() => { /* autoplay policy — acceptable to ignore */ })
+    }
+  }, [voiceCall.remoteStream, voiceCall.state])
+
+  useEffect(() => {
+    const el = localVideoRef.current
+    if (!el) return
+    el.srcObject = voiceCall.localStream ?? null
+    if (voiceCall.localStream) {
+      void el.play().catch(() => { /* same as above */ })
+    }
+  }, [voiceCall.localStream, voiceCall.state])
+
+  useEffect(() => {
+    const el = localVideoDesktopRef.current
+    if (!el) return
+    el.srcObject = voiceCall.localStream ?? null
+    if (voiceCall.localStream) {
+      void el.play().catch(() => { /* autoplay policy — acceptable to ignore */ })
+    }
+  }, [voiceCall.localStream, voiceCall.state])
 
   // Drive the elapsed-time counter while a call is active. Reset on every
   // state transition so the timer always reads from the moment we entered
@@ -883,22 +978,75 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
 
   // startOrIgnoreCall fires the outgoing-call flow only when we're idle. A
   // second press while already ringing is a no-op so a double-tap can't kick
-  // off two parallel sessions.
-  const handleStartCall = useCallback(() => {
+  // off two parallel sessions. Kind is plumbed through so the same handler
+  // serves both the voice and video buttons in the header.
+  const handleStartCall = useCallback((kind: CallKind = 'voice') => {
     if (!canCall) return
     if (voiceCall.state !== 'idle' && voiceCall.state !== 'ended') return
-    void voiceCall.startCall()
+    // Reset PiP to the default top-right corner so each new call starts fresh
+    // regardless of where the user dragged it during the previous call.
+    setPipPosition(null)
+    void voiceCall.startCall(kind)
   }, [canCall, voiceCall])
 
   const handleCallBack = useCallback((entry: MissedCallEntry) => {
     // Dismiss the row first so a successful call doesn't leave an obsolete
     // missed-call entry behind in the message list.
     setMissedCalls(prev => prev.filter(m => m.callId !== entry.callId))
-    handleStartCall()
+    // Use the kind from the original missed call so a video call-back
+    // correctly starts as video, not a downgraded voice call.
+    handleStartCall(entry.kind)
   }, [handleStartCall])
 
   const dismissMissedCall = useCallback((callId: string) => {
     setMissedCalls(prev => prev.filter(m => m.callId !== callId))
+  }, [])
+
+  // handleAcceptCall resets the PiP position before accepting so the local
+  // preview always starts from the default top-right corner for incoming calls,
+  // matching the behaviour of outgoing calls (handleStartCall above).
+  const handleAcceptCall = useCallback(() => {
+    setPipPosition(null)
+    void voiceCall.acceptCall()
+  }, [voiceCall])
+
+  // PiP drag handlers. Use Pointer Events so touch + mouse share one code
+  // path; setPointerCapture keeps the move/up events targeted even if the
+  // pointer briefly leaves the small PiP element while dragging.
+  const handlePipPointerDown = useCallback((e: PointerEvent<HTMLDivElement>) => {
+    // Only initiate drag for primary button / single touch.
+    if (e.button !== 0 && e.pointerType === 'mouse') return
+    const target = e.currentTarget
+    const rect = target.getBoundingClientRect()
+    pipDragRef.current = {
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      pointerId: e.pointerId,
+    }
+    try { target.setPointerCapture(e.pointerId) } catch { /* fine */ }
+    e.preventDefault()
+  }, [])
+
+  const handlePipPointerMove = useCallback((e: PointerEvent<HTMLDivElement>) => {
+    const drag = pipDragRef.current
+    if (!drag || drag.pointerId !== e.pointerId) return
+    const target = e.currentTarget
+    const rect = target.getBoundingClientRect()
+    // Clamp to viewport so the PiP can't be dragged off-screen.
+    const viewW = typeof window !== 'undefined' ? window.innerWidth : rect.width
+    const viewH = typeof window !== 'undefined' ? window.innerHeight : rect.height
+    const rawX = e.clientX - drag.offsetX
+    const rawY = e.clientY - drag.offsetY
+    const clampedX = Math.max(8, Math.min(viewW - rect.width - 8, rawX))
+    const clampedY = Math.max(8, Math.min(viewH - rect.height - 8, rawY))
+    setPipPosition({ x: clampedX, y: clampedY })
+  }, [])
+
+  const handlePipPointerUp = useCallback((e: PointerEvent<HTMLDivElement>) => {
+    const drag = pipDragRef.current
+    if (!drag || drag.pointerId !== e.pointerId) return
+    pipDragRef.current = null
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* fine */ }
   }, [])
 
   if (conversationId === null) {
@@ -968,17 +1116,30 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
           </span>
         )}
         {canCall && (
-          <button
-            type="button"
-            onClick={handleStartCall}
-            disabled={voiceCall.state !== 'idle' && voiceCall.state !== 'ended'}
-            aria-label={t('call.start')}
-            title={t('call.start')}
-            className="shrink-0 p-2 rounded-full text-green-300 hover:text-green-200 hover:bg-green-500/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-            data-testid="family-chat-call-button"
-          >
-            <Phone size={20} aria-hidden="true" />
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => handleStartCall('voice')}
+              disabled={voiceCall.state !== 'idle' && voiceCall.state !== 'ended'}
+              aria-label={t('call.start')}
+              title={t('call.start')}
+              className="shrink-0 p-2 rounded-full text-green-300 hover:text-green-200 hover:bg-green-500/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              data-testid="family-chat-call-button"
+            >
+              <Phone size={20} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStartCall('video')}
+              disabled={voiceCall.state !== 'idle' && voiceCall.state !== 'ended'}
+              aria-label={t('call.startVideo')}
+              title={t('call.startVideo')}
+              className="shrink-0 p-2 rounded-full text-blue-300 hover:text-blue-200 hover:bg-blue-500/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              data-testid="family-chat-video-call-button"
+            >
+              <Video size={20} aria-hidden="true" />
+            </button>
+          </>
         )}
       </header>
 
@@ -1406,10 +1567,17 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         >
           <div className="flex flex-col items-center text-center max-w-sm">
             <div className="mb-6 p-5 rounded-full bg-green-500/20 animate-pulse">
-              <PhoneIncoming size={48} aria-hidden="true" className="text-green-300" />
+              {voiceCall.callKind === 'video'
+                ? <Video size={48} aria-hidden="true" className="text-blue-300" />
+                : <PhoneIncoming size={48} aria-hidden="true" className="text-green-300" />}
             </div>
-            <p className="text-sm uppercase tracking-wide text-gray-400">
-              {t('call.incomingLabel')}
+            <p
+              className="text-sm uppercase tracking-wide text-gray-400"
+              data-testid="family-chat-incoming-kind-label"
+            >
+              {voiceCall.callKind === 'video'
+                ? t('call.incomingVideoLabel')
+                : t('call.incomingLabel')}
             </p>
             <h2
               id="family-chat-incoming-call-title"
@@ -1432,7 +1600,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
               </button>
               <button
                 type="button"
-                onClick={() => { void voiceCall.acceptCall() }}
+                onClick={handleAcceptCall}
                 aria-label={t('call.accept')}
                 className="flex flex-col items-center gap-1 text-green-300 hover:text-green-200 cursor-pointer"
                 data-testid="family-chat-call-accept"
@@ -1447,7 +1615,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         </div>
       )}
 
-      {(voiceCall.state === 'outgoing-ringing' || voiceCall.state === 'active') && (
+      {(voiceCall.state === 'outgoing-ringing' || voiceCall.state === 'active') && voiceCall.callKind === 'voice' && (
         <div
           role="dialog"
           aria-modal="true"
@@ -1534,6 +1702,230 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                 </span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {(voiceCall.state === 'outgoing-ringing' || voiceCall.state === 'active') && voiceCall.callKind === 'video' && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="family-chat-active-video-call-title"
+          className="fixed inset-0 z-50 flex flex-col bg-black text-white"
+          data-testid="family-chat-active-video-overlay"
+        >
+          {/* Video panes: full-screen remote with draggable PiP on mobile;
+              side-by-side remote + local panes on desktop (md:flex-row). */}
+          <div className="relative flex-1 min-h-0 flex flex-col md:flex-row">
+            <div className="relative flex-1 min-h-0 bg-gray-950">
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                muted
+                aria-label={t('call.remoteVideo')}
+                className="absolute inset-0 w-full h-full object-cover"
+                data-testid="family-chat-call-remote-video"
+              />
+              {/* Shown when the remote peer disables their camera. Sits above
+                  the frozen video frame so the viewer has a clear indicator. */}
+              {!voiceCall.remoteCameraEnabled && (
+                <div
+                  className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950/80 text-gray-300"
+                  data-testid="family-chat-call-remote-camera-off"
+                >
+                  <VideoOff size={32} aria-hidden="true" />
+                  <span className="mt-2 text-sm">{t('call.remoteCameraOff')}</span>
+                </div>
+              )}
+              {/* Translucent header with peer label + status. */}
+              <div className="absolute top-0 inset-x-0 p-3 sm:p-4 flex items-start gap-3 bg-gradient-to-b from-black/60 to-transparent">
+                <div className="flex-1 min-w-0">
+                  <h2
+                    id="family-chat-active-video-call-title"
+                    className="text-base sm:text-lg font-semibold truncate"
+                  >
+                    {activeCallPeerLabel}
+                  </h2>
+                  <p
+                    className="text-xs text-gray-300"
+                    data-testid="family-chat-call-status"
+                  >
+                    {voiceCall.state === 'outgoing-ringing'
+                      ? t('call.ringing')
+                      : formatCallDuration(callElapsedSec)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Mobile PiP local preview. Hidden on md+ where the local pane
+                  below takes over. Defaults to top-right; switches to inline
+                  style once dragged. */}
+              {voiceCall.localStream && (
+                <div
+                  data-testid="family-chat-call-local-pip"
+                  onPointerDown={handlePipPointerDown}
+                  onPointerMove={handlePipPointerMove}
+                  onPointerUp={handlePipPointerUp}
+                  onPointerCancel={handlePipPointerUp}
+                  className={`md:hidden absolute touch-none cursor-move w-28 h-40 sm:w-36 sm:h-48 rounded-lg overflow-hidden border border-gray-700 bg-gray-900 shadow-lg ${
+                    activePipPosition === null ? 'top-4 right-4' : ''
+                  }`}
+                  style={activePipPosition === null ? undefined : { top: activePipPosition.y, left: activePipPosition.x }}
+                >
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    aria-label={t('call.localPreview')}
+                    className="w-full h-full object-cover scale-x-[-1]"
+                    data-testid="family-chat-call-local-video"
+                  />
+                  {!voiceCall.cameraEnabled && (
+                    <div
+                      className="absolute inset-0 flex items-center justify-center bg-gray-900/80 text-xs text-gray-300"
+                      data-testid="family-chat-call-local-camera-off"
+                    >
+                      <VideoOff size={18} aria-hidden="true" />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {voiceCall.error && (
+                <div className="absolute bottom-24 left-4 right-4 sm:left-auto sm:right-4 sm:max-w-sm">
+                  <p className="text-xs text-red-300 bg-red-900/40 border border-red-700 rounded-md px-2 py-1">
+                    {voiceCall.error}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Desktop-only local pane — sits side-by-side with the remote on
+                md+ screens, where the mobile PiP is hidden. */}
+            {voiceCall.localStream && (
+              <div
+                data-testid="family-chat-call-local-pane"
+                className="hidden md:block relative flex-1 min-h-0 bg-gray-900 border-l border-gray-800"
+              >
+                <video
+                  ref={localVideoDesktopRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  aria-label={t('call.localPreview')}
+                  className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
+                  data-testid="family-chat-call-local-video-desktop"
+                />
+                {!voiceCall.cameraEnabled && (
+                  <div
+                    className="absolute inset-0 flex items-center justify-center bg-gray-900/80 text-sm text-gray-300"
+                    data-testid="family-chat-call-local-camera-off-desktop"
+                  >
+                    <VideoOff size={24} aria-hidden="true" />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Bottom control bar — full width on mobile, sits across the bottom
+              on desktop too (matches the spec). */}
+          <div className="shrink-0 bg-gray-950 border-t border-gray-800 px-4 py-3 flex items-center justify-center gap-3 sm:gap-5">
+            <button
+              type="button"
+              onClick={() => voiceCall.setMuted(!voiceCall.muted)}
+              aria-label={voiceCall.muted ? t('call.unmute') : t('call.mute')}
+              aria-pressed={voiceCall.muted}
+              disabled={voiceCall.state !== 'active'}
+              className={`flex flex-col items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                voiceCall.muted ? 'text-amber-300' : 'text-gray-200'
+              }`}
+              data-testid="family-chat-call-mute"
+            >
+              <span className={`p-3 rounded-full ${
+                voiceCall.muted ? 'bg-amber-500/20' : 'bg-gray-700'
+              }`}>
+                {voiceCall.muted
+                  ? <MicOff size={24} aria-hidden="true" />
+                  : <Mic size={24} aria-hidden="true" />}
+              </span>
+              <span className="text-xs hidden sm:inline">
+                {voiceCall.muted ? t('call.unmute') : t('call.mute')}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { void voiceCall.setCameraEnabled(!voiceCall.cameraEnabled) }}
+              aria-label={voiceCall.cameraEnabled ? t('call.cameraOff') : t('call.cameraOn')}
+              aria-pressed={!voiceCall.cameraEnabled}
+              disabled={voiceCall.state !== 'active'}
+              className={`flex flex-col items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                voiceCall.cameraEnabled ? 'text-gray-200' : 'text-amber-300'
+              }`}
+              data-testid="family-chat-call-camera"
+            >
+              <span className={`p-3 rounded-full ${
+                voiceCall.cameraEnabled ? 'bg-gray-700' : 'bg-amber-500/20'
+              }`}>
+                {voiceCall.cameraEnabled
+                  ? <Video size={24} aria-hidden="true" />
+                  : <VideoOff size={24} aria-hidden="true" />}
+              </span>
+              <span className="text-xs hidden sm:inline">
+                {voiceCall.cameraEnabled ? t('call.cameraOff') : t('call.cameraOn')}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { void voiceCall.switchCamera() }}
+              aria-label={t('call.switchCamera')}
+              disabled={voiceCall.state !== 'active' || !voiceCall.cameraEnabled}
+              className="flex flex-col items-center gap-1 cursor-pointer text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
+              data-testid="family-chat-call-switch-camera"
+            >
+              <span className="p-3 rounded-full bg-gray-700">
+                <SwitchCamera size={24} aria-hidden="true" />
+              </span>
+              <span className="text-xs hidden sm:inline">
+                {t('call.switchCamera')}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { void voiceCall.endCall() }}
+              aria-label={t('call.hangup')}
+              className="flex flex-col items-center gap-1 text-white cursor-pointer"
+              data-testid="family-chat-call-hangup"
+            >
+              <span className="p-4 rounded-full bg-red-600 hover:bg-red-500">
+                <PhoneOff size={28} aria-hidden="true" />
+              </span>
+              <span className="text-xs hidden sm:inline">{t('call.hangup')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSpeakerOn(prev => !prev)}
+              aria-label={speakerOn ? t('call.speakerOff') : t('call.speakerOn')}
+              aria-pressed={speakerOn}
+              disabled={voiceCall.state !== 'active'}
+              className={`flex flex-col items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                speakerOn ? 'text-blue-300' : 'text-gray-200'
+              }`}
+              data-testid="family-chat-call-speaker"
+            >
+              <span className={`p-3 rounded-full ${
+                speakerOn ? 'bg-blue-500/20' : 'bg-gray-700'
+              }`}>
+                {speakerOn
+                  ? <Volume2 size={24} aria-hidden="true" />
+                  : <VolumeX size={24} aria-hidden="true" />}
+              </span>
+              <span className="text-xs hidden sm:inline">
+                {speakerOn ? t('call.speakerOff') : t('call.speakerOn')}
+              </span>
+            </button>
           </div>
         </div>
       )}
