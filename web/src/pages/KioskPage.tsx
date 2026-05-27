@@ -6,6 +6,7 @@ import KioskBusDepartures from '../components/kiosk/KioskBusDepartures'
 import KioskWeather from '../components/kiosk/KioskWeather'
 import type { ForecastData } from '../components/kiosk/KioskWeather'
 import KioskSunrise from '../components/kiosk/KioskSunrise'
+import KioskStaleBadge from '../components/kiosk/KioskStaleBadge'
 import mockData from '../mocks/kioskData.json'
 
 // Error boundary so that JS errors show a visible message instead of a blank
@@ -112,6 +113,8 @@ interface KioskData {
 }
 
 const POLL_INTERVAL_MS = 30_000
+const STALE_THRESHOLD_MS = 2 * POLL_INTERVAL_MS
+const STALE_TICK_INTERVAL_MS = 5_000
 
 // Offset mock departure times so they appear relative to the current time,
 // preventing all departures from showing as "now/0 min" once the static
@@ -156,6 +159,8 @@ function KioskPageInner() {
   })()
 
   const [apiData, setApiData] = useState<KioskData | null>(null)
+  const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null)
+  const [now, setNow] = useState<number>(() => Date.now())
 
   // When no token is present, display relativized mock data; otherwise show API data (or mock while loading)
   const data = useMemo<KioskData>(() => {
@@ -181,6 +186,7 @@ function KioskPageInner() {
         if (!res.ok) return
         const json: KioskData = await res.json()
         setApiData(json)
+        setLastSuccessAt(Date.now())
       } catch {
         // Keep displaying last known data on error
       }
@@ -194,6 +200,19 @@ function KioskPageInner() {
       clearInterval(intervalId)
     }
   }, [token])
+
+  // Tick a clock so the stale indicator transitions from fresh to stale even
+  // when no new fetches are succeeding (e.g. kiosk left unattended on a wall).
+  useEffect(() => {
+    if (!token) return
+    const id = setInterval(() => setNow(Date.now()), STALE_TICK_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [token])
+
+  const isStale =
+    !!token &&
+    lastSuccessAt !== null &&
+    now - lastSuccessAt > STALE_THRESHOLD_MS
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col overflow-hidden pb-16">
@@ -224,6 +243,8 @@ function KioskPageInner() {
 
       {/* Sunrise / Sunset */}
       <KioskSunrise sun={data.sun ?? null} />
+
+      <KioskStaleBadge isStale={isStale} lastSuccessAt={lastSuccessAt} now={now} />
     </div>
   )
 }
