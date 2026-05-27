@@ -659,10 +659,6 @@ export default function BudgetCreditCards() {
   useEffect(() => { transactionsRef.current = transactions }, [transactions])
   useEffect(() => { groupsRef.current = groups }, [groups])
 
-  // Previous per-group transaction arrays. Used to reuse the same array
-  // reference for groups whose contents haven't changed between renders so
-  // that React.memo on `GroupSection` can short-circuit unaffected groups.
-  const byGroupIdRef = useRef<Map<number | null, Transaction[]>>(new Map())
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset result when selection changes
     setReapplyResult(null)
@@ -982,27 +978,14 @@ export default function BudgetCreditCards() {
     [groups],
   )
 
-  // Group transactions by group_id with structural sharing: groups whose
-  // contents haven't changed reuse the previous array reference so that
-  // memoised GroupSection instances can short-circuit.
+  // Group transactions by group_id
   const byGroupId = useMemo(() => {
-    const fresh = new Map<number | null, Transaction[]>()
+    const result = new Map<number | null, Transaction[]>()
     for (const tx of transactions) {
       const key = tx.group_id
-      if (!fresh.has(key)) fresh.set(key, [])
-      fresh.get(key)!.push(tx)
+      if (!result.has(key)) result.set(key, [])
+      result.get(key)!.push(tx)
     }
-    const result = new Map<number | null, Transaction[]>()
-    const prev = byGroupIdRef.current
-    for (const [groupId, txs] of fresh) {
-      const prevTxs = prev.get(groupId)
-      if (prevTxs && prevTxs.length === txs.length && prevTxs.every((p, i) => p === txs[i])) {
-        result.set(groupId, prevTxs)
-      } else {
-        result.set(groupId, txs)
-      }
-    }
-    byGroupIdRef.current = result
     return result
   }, [transactions])
 
