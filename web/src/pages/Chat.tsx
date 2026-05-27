@@ -240,6 +240,7 @@ export default function Chat() {
       const data = await res.json()
       const userMsg = data.user_message as Message
       const assistantMsg = data.assistant_message as Message
+      const updatedConv = data.conversation as Conversation | undefined
 
       // Only update messages if the user hasn't switched conversations
       setActiveConversation(current => {
@@ -252,24 +253,19 @@ export default function Chat() {
         return current
       })
 
-      // Refresh conversation list to pick up auto-title updates (non-fatal)
-      try {
-        const convRes = await fetch('/api/chat/conversations', { credentials: 'include' })
-        if (convRes.ok) {
-          const convData = await convRes.json()
-          setConversations(convData.conversations ?? [])
-          const updated = (convData.conversations ?? []).find(
-            (c: Conversation) => c.id === sentConversationId
-          )
-          if (updated) {
-            setActiveConversation(current =>
-              current?.id === sentConversationId ? updated : current
-            )
-          }
-        }
-      } catch (refreshErr) {
-        // Non-fatal: log but don't roll back successful send
-        console.error('Failed to refresh conversations after sending message', refreshErr)
+      // Merge the refreshed conversation into local state (replaces auto-title refetch).
+      if (updatedConv) {
+        setConversations(prev => {
+          // If the user has already deleted the conversation locally, do not resurrect it.
+          if (!prev.some(c => c.id === updatedConv.id)) return prev
+          const next = prev.map(c => (c.id === updatedConv.id ? updatedConv : c))
+          next.sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0))
+          return next
+        })
+        // Only update the active conversation if the user hasn't switched to another one.
+        setActiveConversation(current =>
+          current?.id === sentConversationId ? updatedConv : current
+        )
       }
     } catch (err) {
       // Remove optimistic message on error and restore draft

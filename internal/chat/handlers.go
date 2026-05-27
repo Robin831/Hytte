@@ -243,33 +243,28 @@ func SendMessageHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Auto-title: generate a title after the first exchange if the conversation has no title.
-		// Re-check the title inside the goroutine to avoid overwriting a user-set title.
+		// Runs synchronously with a bounded timeout so the returned conversation reflects the
+		// final title on the first turn — the client merges this into local state instead of
+		// firing a follow-up GET /api/chat/conversations.
 		if convo.Title == "" {
-			convoID := convo.ID
-			userID := user.ID
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
+			titleCtx, titleCancel := context.WithTimeout(r.Context(), 15*time.Second)
+			autoTitle(titleCtx, db, cfg, convo.ID, user.ID, content)
+			titleCancel()
+		}
 
-				var currentTitle string
-				err := db.QueryRowContext(ctx,
-					"SELECT title FROM chat_conversations WHERE id = ? AND user_id = ?",
-					convoID, userID,
-				).Scan(&currentTitle)
-				if err != nil {
-					return
-				}
-				if currentTitle != "" {
-					// User has already set a title; skip auto-title.
-					return
-				}
-				autoTitle(db, cfg, convoID, userID, content)
-			}()
+		// Re-load the conversation row so title and updated_at reflect the final state
+		// (after the message insert and any auto-title update).
+		updatedConvo, err := GetConversation(db, convo.ID, user.ID)
+		if err != nil {
+			log.Printf("Failed to reload conversation after send: %v", err)
+			// Fall back to the pre-send snapshot; the client can still display the message pair.
+			updatedConvo = convo
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
 			"user_message":      userMsg,
 			"assistant_message": assistantMsg,
+			"conversation":      updatedConvo,
 		})
 	}
 }
@@ -325,18 +320,27 @@ func truncateRunes(s string, max int) string {
 	return s
 }
 
-// autoTitle generates a short title for the conversation based on the first user message.
-// It runs in the background and silently updates the title.
-func autoTitle(db *sql.DB, cfg *training.ClaudeConfig, convoID, userID int64, firstMessage string) {
+// autoTitle generates a short title for the conversation based on the first user message
+// and updates the row in place. The caller controls the deadline via ctx.
+func autoTitle(ctx context.Context, db *sql.DB, cfg *training.ClaudeConfig, convoID, userID int64, firstMessage string) {
+	// Re-check the title under the caller's context to avoid overwriting a user-set title.
+	var currentTitle string
+	if err := db.QueryRowContext(ctx,
+		"SELECT title FROM chat_conversations WHERE id = ? AND user_id = ?",
+		convoID, userID,
+	).Scan(&currentTitle); err != nil {
+		return
+	}
+	if currentTitle != "" {
+		return
+	}
+
 	// Truncate long messages for title generation (rune-safe to avoid splitting UTF-8).
 	msg := truncateRunes(firstMessage, 500)
 
 	prompt := fmt.Sprintf(
 		"Generate a very short title (max 6 words) for a conversation that starts with this message. "+
 			"Reply with ONLY the title, no quotes, no punctuation at the end.\n\nMessage: %s", msg)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 
 	title, err := runPromptFn(ctx, cfg, prompt)
 	if err != nil {
