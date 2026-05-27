@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useReducer, memo, type ChangeEvent } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, memo, type ChangeEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Link } from 'react-router-dom'
@@ -662,8 +662,8 @@ export default function BudgetCreditCards() {
   // paints and can accept user input, so handlers never read stale data.
   const transactionsRef = useRef<Transaction[]>(transactions)
   const groupsRef = useRef<Group[]>(groups)
-  useLayoutEffect(() => { transactionsRef.current = transactions })
-  useLayoutEffect(() => { groupsRef.current = groups })
+  useLayoutEffect(() => { transactionsRef.current = transactions }, [transactions])
+  useLayoutEffect(() => { groupsRef.current = groups }, [groups])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset result when selection changes
@@ -984,40 +984,29 @@ export default function BudgetCreditCards() {
     [groups],
   )
 
-  // Group transactions by group_id. The reducer preserves per-group array
-  // references for unchanged groups so React.memo(GroupSection) can
-  // short-circuit for groups not touched by an optimistic update.
-  // useLayoutEffect keeps it in sync synchronously after commit (before paint)
-  // so there is no visible flicker.
-  const [byGroupId, updateByGroupId] = useReducer(
-    (prev: Map<number | null, Transaction[]>, txs: Transaction[]) => {
-      const next = new Map<number | null, Transaction[]>()
-      for (const tx of txs) {
-        const key = tx.group_id
-        if (!next.has(key)) next.set(key, [])
-        next.get(key)!.push(tx)
+  // Group transactions by group_id. Derived directly from transactions via
+  // useMemo so no extra render is needed (vs. the useReducer + useLayoutEffect
+  // pattern which always caused two renders on every transaction update).
+  // A ref tracks the previous map so per-group array references are preserved
+  // for unchanged groups, letting React.memo(GroupSection) short-circuit for
+  // groups not touched by an optimistic update.
+  const prevByGroupIdRef = useRef<Map<number | null, Transaction[]>>(new Map())
+  const byGroupId = useMemo(() => {
+    const prev = prevByGroupIdRef.current
+    const next = new Map<number | null, Transaction[]>()
+    for (const tx of transactions) {
+      const key = tx.group_id
+      if (!next.has(key)) next.set(key, [])
+      next.get(key)!.push(tx)
+    }
+    for (const [key, arr] of next) {
+      const old = prev.get(key)
+      if (old && old.length === arr.length && old.every((t, i) => t === arr[i])) {
+        next.set(key, old)
       }
-      for (const [key, arr] of next) {
-        const old = prev.get(key)
-        if (old && old.length === arr.length && old.every((t, i) => t === arr[i])) {
-          next.set(key, old)
-        }
-      }
-      return next
-    },
-    transactions,
-    (txs: Transaction[]) => {
-      const map = new Map<number | null, Transaction[]>()
-      for (const tx of txs) {
-        const key = tx.group_id
-        if (!map.has(key)) map.set(key, [])
-        map.get(key)!.push(tx)
-      }
-      return map
-    },
-  )
-  useLayoutEffect(() => {
-    updateByGroupId(transactions)
+    }
+    prevByGroupIdRef.current = next
+    return next
   }, [transactions])
 
   // Diverse catch-all: transactions in Diverse group + unassigned.
