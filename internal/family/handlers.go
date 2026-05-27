@@ -621,6 +621,133 @@ func ChildWorkoutsHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// ChildWorkoutsSummaryHandler returns per-week aggregates (distance, workout count,
+// stars earned) for a child over the last 8 ISO/Monday-based weeks, in the server's
+// local timezone. Weeks are zero-filled and returned oldest→newest, always 8 entries.
+// The authenticated user must be the parent of the requested child.
+// GET /api/family/children/{id}/workouts/summary
+func ChildWorkoutsSummaryHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		childID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid child ID"})
+			return
+		}
+
+		if err := verifyParentChild(r.Context(), db, user.ID, childID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				// Distinguish between an unknown child and an unlinked child.
+				// If the child user doesn't exist at all, return 404; if the user
+				// exists but is not linked to this parent, return 403.
+				var exists int
+				if qErr := db.QueryRowContext(r.Context(), `SELECT 1 FROM users WHERE id = ?`, childID).Scan(&exists); errors.Is(qErr, sql.ErrNoRows) {
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": "child not found"})
+				} else {
+					writeJSON(w, http.StatusForbidden, map[string]string{"error": "not authorized to view this child's workouts"})
+				}
+			} else {
+				log.Printf("family: verify parent-child parent %d child %d: %v", user.ID, childID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			}
+			return
+		}
+
+		// Compute the 8 Monday-aligned week starts in the server's local timezone,
+		// oldest→newest. The last entry is the current (possibly partial) week.
+		loc := time.Now().Location()
+		now := time.Now().In(loc)
+		daysSinceMonday := (int(now.Weekday()) + 6) % 7
+		thisMonday := time.Date(now.Year(), now.Month(), now.Day()-daysSinceMonday, 0, 0, 0, 0, loc)
+
+		type weekBucket struct {
+			WeekStart      string  `json:"week_start"`
+			DistanceMeters float64 `json:"distance_meters"`
+			WorkoutCount   int     `json:"workout_count"`
+			Stars          int     `json:"stars"`
+		}
+		weeks := make([]weekBucket, 8)
+		for i := 0; i < 8; i++ {
+			ws := thisMonday.AddDate(0, 0, -7*(7-i))
+			weeks[i] = weekBucket{WeekStart: ws.Format("2006-01-02")}
+		}
+		windowStart := weeks[0].WeekStart // Monday of the oldest bucket, as YYYY-MM-DD.
+
+		// We compare workout started_at strings (stored as RFC3339 in UTC) against
+		// week-boundary local times by converting each row's started_at to local
+		// time in Go. Filter at the DB by a conservative window: anything on or
+		// after the local midnight of the oldest Monday, expressed in UTC.
+		windowStartLocal, err := time.ParseInLocation("2006-01-02", windowStart, loc)
+		if err != nil {
+			log.Printf("family: child workouts summary parse window child %d: %v", childID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load summary"})
+			return
+		}
+		windowStartUTC := windowStartLocal.UTC().Format(time.RFC3339)
+
+		rows, err := db.QueryContext(r.Context(), `
+			SELECT w.started_at, w.distance_meters,
+			       COALESCE(s.stars, 0) AS stars
+			FROM workouts w
+			LEFT JOIN (
+				SELECT reference_id, SUM(amount) AS stars
+				FROM star_transactions
+				WHERE amount > 0 AND user_id = ?
+				GROUP BY reference_id
+			) s ON s.reference_id = w.id
+			WHERE w.user_id = ? AND w.started_at >= ?
+		`, childID, childID, windowStartUTC)
+		if err != nil {
+			log.Printf("family: child workouts summary query child %d: %v", childID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load summary"})
+			return
+		}
+		defer rows.Close()
+
+		// Precompute each bucket's [start, end) in local time for direct comparison.
+		bucketStarts := make([]time.Time, 8)
+		bucketEnds := make([]time.Time, 8)
+		for i := 0; i < 8; i++ {
+			ws := thisMonday.AddDate(0, 0, -7*(7-i))
+			bucketStarts[i] = ws
+			bucketEnds[i] = ws.AddDate(0, 0, 7)
+		}
+
+		for rows.Next() {
+			var startedAt string
+			var distance float64
+			var stars int
+			if err := rows.Scan(&startedAt, &distance, &stars); err != nil {
+				log.Printf("family: child workouts summary scan child %d: %v", childID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to scan summary"})
+				return
+			}
+			t, err := time.Parse(time.RFC3339, startedAt)
+			if err != nil {
+				log.Printf("family: child workouts summary parse started_at %q child %d: %v", startedAt, childID, err)
+				continue
+			}
+			local := t.In(loc)
+			for i := 0; i < 8; i++ {
+				if !local.Before(bucketStarts[i]) && local.Before(bucketEnds[i]) {
+					weeks[i].DistanceMeters += distance
+					weeks[i].WorkoutCount++
+					weeks[i].Stars += stars
+					break
+				}
+			}
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("family: child workouts summary rows child %d: %v", childID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read summary"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"weeks": weeks})
+	}
+}
+
 // MyFamilyHandler returns family info for the authenticated child user: their parent's
 // display info and the list of siblings with basic stats.
 // GET /api/family/my-family

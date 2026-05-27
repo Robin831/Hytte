@@ -67,6 +67,13 @@ interface ChildSettings {
   weekly_duration_target_min: number
 }
 
+interface WeeklySummary {
+  week_start: string
+  distance_meters: number
+  workout_count: number
+  stars: number
+}
+
 const PAGE_SIZE = 20
 
 export default function FamilyChildDetail() {
@@ -87,13 +94,14 @@ export default function FamilyChildDetail() {
   const [loading, setLoading] = useState(isValidId)
   const [error, setError] = useState(() => isValidId ? '' : t('family.detail.errors.invalidChild'))
 
-  const [chartWorkouts, setChartWorkouts] = useState<ChildWorkout[]>([])
+  const [weeklySummary, setWeeklySummary] = useState<WeeklySummary[]>([])
   const [tableWorkouts, setTableWorkouts] = useState<ChildWorkout[]>([])
   const [workoutsTotal, setWorkoutsTotal] = useState(0)
   const [workoutsPage, setWorkoutsPage] = useState(0)
   const [workoutsLoading, setWorkoutsLoading] = useState(false)
   const [workoutsError, setWorkoutsError] = useState('')
   const paginationAbortRef = useRef<AbortController | null>(null)
+  const pageCacheRef = useRef<Map<number, ChildWorkout[]>>(new Map())
 
   const [settings, setSettings] = useState<ChildSettings | null>(null)
   const [settingsSaving, setSettingsSaving] = useState(false)
@@ -108,13 +116,15 @@ export default function FamilyChildDetail() {
 
     async function loadInitialData(signal: AbortSignal) {
       setWorkoutsPage(0)
+      pageCacheRef.current = new Map()
       try {
         setLoading(true)
         setError('')
-        const [statsRes, childrenRes, workoutsRes, settingsRes] = await Promise.all([
+        const [statsRes, childrenRes, workoutsRes, summaryRes, settingsRes] = await Promise.all([
           fetch(`/api/family/children/${childId}/stats`, { credentials: 'include', signal }),
           fetch('/api/family/children', { credentials: 'include', signal }),
-          fetch(`/api/family/children/${childId}/workouts?limit=100&offset=0`, { credentials: 'include', signal }),
+          fetch(`/api/family/children/${childId}/workouts?limit=${PAGE_SIZE}&offset=0`, { credentials: 'include', signal }),
+          fetch(`/api/family/children/${childId}/workouts/summary`, { credentials: 'include', signal }),
           fetch(`/api/family/children/${childId}/settings`, { credentials: 'include', signal }),
         ])
         if (!statsRes.ok) throw new Error('failed')
@@ -136,33 +146,18 @@ export default function FamilyChildDetail() {
           const workoutsData = await workoutsRes.json()
           const firstPage: ChildWorkout[] = workoutsData.workouts ?? []
           const total: number = workoutsData.total ?? firstPage.length
-
-          const allWorkouts: ChildWorkout[] = [...firstPage]
-          let offset = firstPage.length
-
-          while (offset < total) {
-            const pageRes = await fetch(
-              `/api/family/children/${childId}/workouts?limit=100&offset=${offset}`,
-              { credentials: 'include', signal }
-            )
-            if (!pageRes.ok) {
-              setWorkoutsError(t('family.detail.errors.failedToLoad'))
-              break
-            }
-            const pageData = await pageRes.json()
-            const pageWorkouts: ChildWorkout[] = pageData.workouts ?? []
-            if (pageWorkouts.length === 0) {
-              break
-            }
-            allWorkouts.push(...pageWorkouts)
-            offset += pageWorkouts.length
-          }
-
-          setChartWorkouts(allWorkouts)
-          setTableWorkouts(allWorkouts.slice(0, PAGE_SIZE))
+          pageCacheRef.current.set(0, firstPage)
+          setTableWorkouts(firstPage)
           setWorkoutsTotal(total)
         } else {
           setWorkoutsError(t('family.detail.errors.failedToLoad'))
+        }
+
+        if (summaryRes.ok) {
+          const summaryData = await summaryRes.json()
+          setWeeklySummary(summaryData.weeks ?? [])
+        } else {
+          setWeeklySummary([])
         }
 
         if (settingsRes.ok) {
@@ -191,22 +186,24 @@ export default function FamilyChildDetail() {
     const prevPage = workoutsPage
     setWorkoutsPage(newPage)
     setWorkoutsError('')
-    const offset = newPage * PAGE_SIZE
 
     // Abort any in-flight pagination request before handling this navigation,
     // even if we end up serving data from the cache.
     if (paginationAbortRef.current) {
       paginationAbortRef.current.abort()
       paginationAbortRef.current = null
+      // Clear loading state for the aborted request — the finally block
+      // won't clear it because it guards against aborted signals.
+      setWorkoutsLoading(false)
     }
 
-    // Use cached chart workouts if the page is within what we have loaded
-    if (offset < chartWorkouts.length) {
-      setTableWorkouts(chartWorkouts.slice(offset, offset + PAGE_SIZE))
+    const cached = pageCacheRef.current.get(newPage)
+    if (cached) {
+      setTableWorkouts(cached)
       return
     }
 
-    // Start a new request for uncached pages
+    const offset = newPage * PAGE_SIZE
     const controller = new AbortController()
     paginationAbortRef.current = controller
 
@@ -218,7 +215,9 @@ export default function FamilyChildDetail() {
       )
       if (!res.ok) throw new Error('failed')
       const data = await res.json()
-      setTableWorkouts(data.workouts ?? [])
+      const pageWorkouts: ChildWorkout[] = data.workouts ?? []
+      pageCacheRef.current.set(newPage, pageWorkouts)
+      setTableWorkouts(pageWorkouts)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
       setWorkoutsError(t('family.detail.errors.failedToLoad'))
@@ -268,33 +267,40 @@ export default function FamilyChildDetail() {
     }
   }
 
-  // Compute weekly aggregates for the last 8 weeks (Monday-based)
+  // Weekly aggregates come from the server's summary endpoint (oldest→newest,
+  // always 8 entries with zero-fill). The week_start strings are YYYY-MM-DD in
+  // the server's local timezone; parsed as local dates for label formatting.
+  // If the summary fetch failed, fall back to 8 empty buckets so the charts
+  // still render their axes instead of going blank.
   const weeklyChartData = useMemo(() => {
+    if (weeklySummary.length > 0) {
+      return weeklySummary.map(week => {
+        const [y, m, d] = week.week_start.split('-').map(Number)
+        const weekStart = new Date(y, (m ?? 1) - 1, d ?? 1)
+        return {
+          label: formatDate(weekStart, { month: 'short', day: 'numeric' }),
+          distance: Math.round(week.distance_meters / 100) / 10,
+          workouts: week.workout_count,
+          stars: week.stars,
+        }
+      })
+    }
     const now = new Date()
     const daysToMonday = (now.getDay() + 6) % 7
     const thisMonday = new Date(now)
     thisMonday.setHours(0, 0, 0, 0)
     thisMonday.setDate(now.getDate() - daysToMonday)
-
     return Array.from({ length: 8 }, (_, i) => {
       const weekStart = new Date(thisMonday)
       weekStart.setDate(thisMonday.getDate() - (7 - i) * 7)
-      const weekEnd = new Date(weekStart)
-      weekEnd.setDate(weekStart.getDate() + 7)
-
-      const wos = chartWorkouts.filter(w => {
-        const d = new Date(w.started_at)
-        return d >= weekStart && d < weekEnd
-      })
-
       return {
         label: formatDate(weekStart, { month: 'short', day: 'numeric' }),
-        distance: Math.round(wos.reduce((s, w) => s + w.distance_meters, 0) / 100) / 10,
-        workouts: wos.length,
-        stars: wos.reduce((s, w) => s + w.stars, 0),
+        distance: 0,
+        workouts: 0,
+        stars: 0,
       }
     })
-  }, [chartWorkouts])
+  }, [weeklySummary])
 
   const totalPages = Math.ceil(workoutsTotal / PAGE_SIZE)
 
