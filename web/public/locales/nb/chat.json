@@ -23,9 +23,11 @@
   },
   "emptyMessages": "Send en melding for å starte samtalen",
   "thinking": "Tenker...",
+  "streamingIndicator": "Strømmer…",
   "input": {
     "placeholder": "Skriv en melding... (Shift+Enter for ny linje)",
     "sendLabel": "Send melding",
+    "stopStreaming": "Stopp generering",
     "dismissError": "Lukk feil",
     "copyMessage": "Kopier melding"
   },
@@ -35,6 +37,7 @@
     "failedToCreate": "Kunne ikke opprette samtale",
     "failedToDelete": "Kunne ikke slette samtale",
     "failedToRename": "Kunne ikke gi samtalen nytt navn",
-    "failedToSend": "Kunne ikke sende melding"
+    "failedToSend": "Kunne ikke sende melding",
+    "streamError": "Strømmen ble avbrutt. Prøv igjen."
   }
 }

@@ -1,11 +1,13 @@
 package training
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os/exec"
 	"path/filepath"
@@ -267,4 +269,194 @@ func RunPromptWithSession(ctx context.Context, cfg *ClaudeConfig, prompt, sessio
 		Response:  strings.TrimSpace(resp.Result),
 		SessionID: resp.SessionID,
 	}, nil
+}
+
+// claudeStreamLine mirrors the subset of the Claude CLI
+// --output-format=stream-json envelope that the streaming chat path consumes.
+// Only the fields needed to extract incremental text deltas and the resolved
+// session id are decoded.
+type claudeStreamLine struct {
+	Type      string `json:"type"`
+	Result    string `json:"result"`
+	SessionID string `json:"session_id"`
+	IsError   bool   `json:"is_error"`
+	Message   struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	} `json:"message"`
+}
+
+// runPromptWithSessionStreamFn is the seam used by RunPromptWithSessionStream.
+// Tests override this to feed a scripted stream without spawning the CLI.
+var runPromptWithSessionStreamFn = runPromptWithSessionStreamCLI
+
+// RunPromptWithSessionStream invokes the Claude CLI with
+// --output-format=stream-json --verbose so callers can render assistant text
+// progressively. Each text delta is delivered to onChunk in the order the CLI
+// emits it; the resolved session id is delivered to onSession exactly once
+// when the CLI reports it (which may differ from sessionID on a fresh
+// conversation). Both callbacks are optional — pass nil to ignore.
+//
+// The caller's context controls the subprocess lifetime: cancelling ctx kills
+// the CLI. Returns the trimmed assistant text on success.
+func RunPromptWithSessionStream(ctx context.Context, cfg *ClaudeConfig, prompt, sessionID string, onChunk func(string), onSession func(string)) (string, error) {
+	return runPromptWithSessionStreamFn(ctx, cfg, prompt, sessionID, onChunk, onSession)
+}
+
+// streamExecCommand creates an exec.Cmd for RunPromptWithSessionStream.
+// Extracted as a variable so tests can substitute a fake command that emits
+// a scripted stream-json sequence on stdout.
+var streamExecCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+	return exec.CommandContext(ctx, name, args...)
+}
+
+func runPromptWithSessionStreamCLI(ctx context.Context, cfg *ClaudeConfig, prompt, sessionID string, onChunk func(string), onSession func(string)) (string, error) {
+	if !cfg.Enabled {
+		return "", fmt.Errorf("claude is not enabled")
+	}
+
+	// Apply a default timeout when the caller has not set a deadline,
+	// consistent with runPromptCLIWithCost and runPromptCLIWithImage, so the
+	// Claude CLI subprocess cannot run indefinitely if the caller forgets to
+	// add a timeout.
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, DefaultCLITimeout)
+		defer cancel()
+	}
+
+	args := []string{"--model", cfg.Model, "-p", "-", "--output-format", "stream-json", "--verbose"}
+	if sessionID != "" {
+		args = append(args, "--resume", sessionID)
+	}
+
+	cmd := streamExecCommand(ctx, cfg.CLIPath, args...)
+	cmd.Stdin = strings.NewReader(prompt)
+
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", fmt.Errorf("stdout pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("start claude: %w", err)
+	}
+
+	fullText, _, parseErr := parseClaudeStream(stdout, onChunk, onSession)
+	if parseErr != nil {
+		// Kill the subprocess first so it stops writing, then drain any
+		// remaining bytes from stdout so the pipe buffer cannot block the
+		// process (and therefore cmd.Wait()) from exiting.
+		_ = cmd.Process.Kill()
+		go func() { _, _ = io.Copy(io.Discard, stdout) }()
+		_ = cmd.Wait()
+		return "", parseErr
+	}
+
+	if err := cmd.Wait(); err != nil {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		if stderr := strings.TrimSpace(stderrBuf.String()); stderr != "" {
+			return "", fmt.Errorf("claude exit: %w: %s", err, stderr)
+		}
+		return "", fmt.Errorf("claude exit: %w", err)
+	}
+
+	return strings.TrimSpace(fullText), nil
+}
+
+// parseClaudeStream reads NDJSON events from r, invokes onChunk for each text
+// delta in emission order, and invokes onSession once when the CLI reports a
+// session id. The returned string is the assistant text assembled from
+// streamed deltas (or the authoritative result envelope when present). The
+// session-emitted boolean reports whether onSession was actually called so
+// callers can detect malformed streams that never produced a session id.
+//
+// Malformed lines are skipped silently — the CLI occasionally interleaves
+// status messages that the chat path does not need.
+func parseClaudeStream(r io.Reader, onChunk func(string), onSession func(string)) (string, bool, error) {
+	var fullText strings.Builder
+	var sessionEmitted bool
+
+	// Use bufio.Reader + ReadBytes instead of bufio.Scanner to avoid the hard
+	// per-token size limit. bufio.Scanner caps each line at the configured max
+	// (default 64 KiB) and returns bufio.ErrTooLong for larger lines. The CLI's
+	// `--output-format=stream-json` can emit a single very large NDJSON line for
+	// the final `result` envelope on long responses, so ReadBytes is safer here.
+	br := bufio.NewReaderSize(r, 64*1024)
+
+	for {
+		rawLine, err := br.ReadBytes('\n')
+		// Process whatever bytes were read before checking the error.
+		line := bytes.TrimRight(rawLine, "\r\n")
+		if len(line) > 0 {
+			var ev claudeStreamLine
+			if jsonErr := json.Unmarshal(line, &ev); jsonErr == nil {
+				switch ev.Type {
+				case "assistant":
+					for _, block := range ev.Message.Content {
+						if block.Type == "text" && block.Text != "" {
+							fullText.WriteString(block.Text)
+							if onChunk != nil {
+								onChunk(block.Text)
+							}
+						}
+					}
+				case "content_block_delta":
+					var delta struct {
+						Delta struct {
+							Type string `json:"type"`
+							Text string `json:"text"`
+						} `json:"delta"`
+					}
+					if jsonErr2 := json.Unmarshal(line, &delta); jsonErr2 == nil && delta.Delta.Text != "" {
+						fullText.WriteString(delta.Delta.Text)
+						if onChunk != nil {
+							onChunk(delta.Delta.Text)
+						}
+					}
+				case "result":
+					if ev.IsError {
+						if ev.Result != "" {
+							return "", sessionEmitted, fmt.Errorf("claude returned error: %s", ev.Result)
+						}
+						return "", sessionEmitted, fmt.Errorf("claude returned error")
+					}
+					if ev.Result != "" {
+						// The result envelope is the authoritative assembled text.
+						fullText.Reset()
+						fullText.WriteString(ev.Result)
+					}
+					if ev.SessionID != "" && !sessionEmitted {
+						sessionEmitted = true
+						if onSession != nil {
+							onSession(ev.SessionID)
+						}
+					}
+				case "system":
+					// Some CLI versions emit the session id on the initial system event.
+					if ev.SessionID != "" && !sessionEmitted {
+						sessionEmitted = true
+						if onSession != nil {
+							onSession(ev.SessionID)
+						}
+					}
+				}
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", sessionEmitted, fmt.Errorf("read claude output: %w", err)
+		}
+	}
+
+	return fullText.String(), sessionEmitted, nil
 }

@@ -8,7 +8,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/training"
@@ -491,5 +494,312 @@ func TestSendMessageHandler_SessionExpiredFallback(t *testing.T) {
 	}
 	if convoAfter.SessionID != "new-session-789" {
 		t.Fatalf("expected new session ID 'new-session-789', got %q", convoAfter.SessionID)
+	}
+}
+
+// flushRecorder wraps httptest.ResponseRecorder and adds the no-op Flush so
+// the SSE handler's Flusher assertion succeeds in tests.
+type flushRecorder struct {
+	*httptest.ResponseRecorder
+}
+
+func (f *flushRecorder) Flush() {}
+
+func newFlushRecorder() *flushRecorder {
+	return &flushRecorder{ResponseRecorder: httptest.NewRecorder()}
+}
+
+// parseSSE splits a recorder body into ordered (event, data) frames.
+func parseSSE(body string) [][2]string {
+	var out [][2]string
+	for _, frame := range strings.Split(body, "\n\n") {
+		frame = strings.TrimSpace(frame)
+		if frame == "" {
+			continue
+		}
+		var event, data string
+		for _, line := range strings.Split(frame, "\n") {
+			switch {
+			case strings.HasPrefix(line, "event:"):
+				event = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			case strings.HasPrefix(line, "data:"):
+				if data != "" {
+					data += "\n"
+				}
+				data += strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			}
+		}
+		out = append(out, [2]string{event, data})
+	}
+	return out
+}
+
+func TestStreamMessageHandler_HappyPath(t *testing.T) {
+	d := setupTestDB(t)
+	if _, err := d.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true'), (1, 'claude_model', 'claude-sonnet-4-6')`,
+	); err != nil {
+		t.Fatalf("set prefs: %v", err)
+	}
+	convo, err := CreateConversation(d, 1, "Initial", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	orig := runPromptWithSessionStreamFn
+	runPromptWithSessionStreamFn = func(_ context.Context, _ *training.ClaudeConfig, prompt, sid string, onChunk func(string), onSession func(string)) (string, error) {
+		if prompt != "Hello!" {
+			t.Errorf("unexpected prompt: %q", prompt)
+		}
+		if sid != "" {
+			t.Errorf("expected empty session id on first call, got %q", sid)
+		}
+		onChunk("Hello ")
+		onChunk("from ")
+		onChunk("Claude!")
+		onSession("sess-abc")
+		return "Hello from Claude!", nil
+	}
+	t.Cleanup(func() { runPromptWithSessionStreamFn = orig })
+
+	rec := newFlushRecorder()
+	body := `{"content": "Hello!"}`
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", strconv.FormatInt(convo.ID, 10))
+
+	StreamMessageHandler(d)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("expected SSE content type, got %q", ct)
+	}
+
+	frames := parseSSE(rec.Body.String())
+	var (
+		gotUserMsg, gotDone bool
+		tokens              []string
+	)
+	for _, f := range frames {
+		switch f[0] {
+		case "user_message":
+			gotUserMsg = true
+		case "token":
+			var d struct {
+				Text string `json:"text"`
+			}
+			if err := json.Unmarshal([]byte(f[1]), &d); err != nil {
+				t.Fatalf("token JSON: %v", err)
+			}
+			tokens = append(tokens, d.Text)
+		case "done":
+			gotDone = true
+			var d struct {
+				AssistantMessage *Message `json:"assistant_message"`
+			}
+			if err := json.Unmarshal([]byte(f[1]), &d); err != nil {
+				t.Fatalf("done JSON: %v", err)
+			}
+			if d.AssistantMessage == nil || d.AssistantMessage.Content != "Hello from Claude!" {
+				t.Fatalf("unexpected assistant message: %+v", d.AssistantMessage)
+			}
+		case "error":
+			t.Fatalf("unexpected error frame: %s", f[1])
+		}
+	}
+	if !gotUserMsg {
+		t.Error("expected user_message event")
+	}
+	if !gotDone {
+		t.Error("expected done event")
+	}
+	if strings.Join(tokens, "") != "Hello from Claude!" {
+		t.Errorf("token concatenation = %q, want %q", strings.Join(tokens, ""), "Hello from Claude!")
+	}
+
+	// Verify the assistant row was persisted and session id stored.
+	msgs, err := GetMessages(d, convo.ID)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages persisted, got %d", len(msgs))
+	}
+	if msgs[1].Role != "assistant" || msgs[1].Content != "Hello from Claude!" {
+		t.Fatalf("unexpected assistant message in DB: %+v", msgs[1])
+	}
+	updated, err := GetConversation(d, convo.ID, 1)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if updated.SessionID != "sess-abc" {
+		t.Errorf("expected session id 'sess-abc', got %q", updated.SessionID)
+	}
+}
+
+func TestStreamMessageHandler_CLIError(t *testing.T) {
+	d := setupTestDB(t)
+	if _, err := d.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true'), (1, 'claude_model', 'claude-sonnet-4-6')`,
+	); err != nil {
+		t.Fatalf("set prefs: %v", err)
+	}
+	convo, err := CreateConversation(d, 1, "Err", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	orig := runPromptWithSessionStreamFn
+	runPromptWithSessionStreamFn = func(_ context.Context, _ *training.ClaudeConfig, _, _ string, onChunk func(string), _ func(string)) (string, error) {
+		onChunk("partial...")
+		return "", errors.New("claude exploded")
+	}
+	t.Cleanup(func() { runPromptWithSessionStreamFn = orig })
+
+	rec := newFlushRecorder()
+	body := `{"content": "Will fail"}`
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", strconv.FormatInt(convo.ID, 10))
+
+	StreamMessageHandler(d)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 (SSE), got %d", rec.Code)
+	}
+	frames := parseSSE(rec.Body.String())
+	var errorFrames int
+	for _, f := range frames {
+		if f[0] == "error" {
+			errorFrames++
+		}
+		if f[0] == "done" {
+			t.Fatalf("unexpected done frame after CLI error")
+		}
+	}
+	if errorFrames != 1 {
+		t.Errorf("expected exactly one error frame, got %d", errorFrames)
+	}
+
+	// User message persisted; assistant row must NOT exist.
+	msgs, err := GetMessages(d, convo.ID)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	var assistantCount int
+	for _, m := range msgs {
+		if m.Role == "assistant" {
+			assistantCount++
+		}
+	}
+	if assistantCount != 0 {
+		t.Errorf("expected no assistant row on CLI error, got %d", assistantCount)
+	}
+}
+
+func TestStreamMessageHandler_ClientDisconnect(t *testing.T) {
+	d := setupTestDB(t)
+	if _, err := d.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true'), (1, 'claude_model', 'claude-sonnet-4-6')`,
+	); err != nil {
+		t.Fatalf("set prefs: %v", err)
+	}
+	convo, err := CreateConversation(d, 1, "", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Fake stream that observes ctx cancellation: writes one chunk, then
+	// blocks until the caller cancels and returns ctx.Err().
+	var (
+		started sync.WaitGroup
+		seenCtx context.Context
+	)
+	started.Add(1)
+
+	orig := runPromptWithSessionStreamFn
+	runPromptWithSessionStreamFn = func(ctx context.Context, _ *training.ClaudeConfig, _, _ string, onChunk func(string), _ func(string)) (string, error) {
+		seenCtx = ctx
+		onChunk("partial")
+		started.Done()
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+	t.Cleanup(func() { runPromptWithSessionStreamFn = orig })
+
+	rec := newFlushRecorder()
+	body := `{"content": "Hi"}`
+	reqCtx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+	req = req.WithContext(reqCtx)
+	req = withUser(req)
+	req = withURLParam(req, "id", strconv.FormatInt(convo.ID, 10))
+
+	done := make(chan struct{})
+	go func() {
+		StreamMessageHandler(d)(rec, req)
+		close(done)
+	}()
+
+	started.Wait()
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler did not return after context cancel")
+	}
+
+	if seenCtx == nil {
+		t.Fatal("handler never invoked the stream stub")
+	}
+
+	// On client disconnect, no assistant row may be written.
+	msgs, err := GetMessages(d, convo.ID)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	for _, m := range msgs {
+		if m.Role == "assistant" {
+			t.Errorf("expected no assistant row on disconnect, found one")
+		}
+	}
+}
+
+func TestStreamMessageHandler_EmptyContent(t *testing.T) {
+	d := setupTestDB(t)
+	rec := newFlushRecorder()
+	body := `{"content": ""}`
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", "1")
+
+	StreamMessageHandler(d)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestStreamMessageHandler_NotFound(t *testing.T) {
+	d := setupTestDB(t)
+	if _, err := d.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true'), (1, 'claude_model', 'claude-sonnet-4-6')`,
+	); err != nil {
+		t.Fatalf("set prefs: %v", err)
+	}
+
+	rec := newFlushRecorder()
+	body := `{"content": "Hi"}`
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", "9999")
+
+	StreamMessageHandler(d)(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 }
