@@ -1,0 +1,2 @@
+category: Fixed
+- **Infra page no longer flickers stale data or sticks on rapid actions** - Page-level and per-module fetches on `/infra` now share an `AbortController` that cancels in-flight requests when the user refreshes, toggles a module, or navigates away. Loading, refreshing, and per-row "toggling/deleting" flags now reset even when a request is superseded by a handler that touches a different flag, preventing the UI from getting stuck in a loading state. (Hytte-9dz6)
