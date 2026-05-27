@@ -247,9 +247,11 @@ func SendMessageHandler(db *sql.DB) http.HandlerFunc {
 		// final title on the first turn — the client merges this into local state instead of
 		// firing a follow-up GET /api/chat/conversations.
 		if convo.Title == "" {
-			titleCtx, titleCancel := context.WithTimeout(r.Context(), 15*time.Second)
+			// Derive from the already-deadlined ctx so the total request time stays
+			// bounded by the original 120s budget plus at most 15s (not 120s + 15s).
+			titleCtx, titleCancel := context.WithTimeout(ctx, 15*time.Second)
+			defer titleCancel()
 			autoTitle(titleCtx, db, cfg, convo.ID, user.ID, content)
-			titleCancel()
 		}
 
 		// Re-load the conversation row so title and updated_at reflect the final state
