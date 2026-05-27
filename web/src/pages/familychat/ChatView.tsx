@@ -209,18 +209,11 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   useEffect(() => {
     voiceCallKindRef.current = voiceCall.callKind
   })
-  // Reset pipPosition once the call returns to idle so the next video call
-  // always opens with the PiP in its default top-right corner rather than
-  // wherever the user dragged it during the previous call.
-  useEffect(() => {
-    if (voiceCall.state === 'idle') {
-      setPipPosition(null)
-    }
-  }, [voiceCall.state])
   // Derive the effective PiP position: passthrough while a call is live,
-  // null otherwise (belt-and-suspenders guard in case the effect above hasn't
-  // fired yet between the 'ended' and 'idle' transitions).
-  // Placed here (after voiceCall) so that voiceCall.state is in scope.
+  // null otherwise. pipPosition is reset to null when a new call is initiated
+  // (in handleStartCall / handleAcceptCall) so each call starts from the
+  // default top-right corner regardless of where the previous call's PiP was
+  // dragged. Placed here (after voiceCall) so that voiceCall.state is in scope.
   const activePipPosition =
     voiceCall.state === 'active' || voiceCall.state === 'outgoing-ringing'
       ? pipPosition
@@ -357,6 +350,13 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     let reconnectAttempts = 0
     let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null
 
+    // Initialise loading state at the start of every new conversation fetch.
+    // setLoading(true) must live here (not in cleanup) because cleanup runs
+    // setLoading(false) to represent "no conversation selected", which is the
+    // correct value when conversationId is null. Cleanup callbacks are exempt
+    // from react-hooks/set-state-in-effect; the synchronous call here is
+    // intentional and safe — React 18 batches all these updates into one commit.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     setError('')
     setMessages([])
@@ -983,6 +983,9 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const handleStartCall = useCallback((kind: CallKind = 'voice') => {
     if (!canCall) return
     if (voiceCall.state !== 'idle' && voiceCall.state !== 'ended') return
+    // Reset PiP to the default top-right corner so each new call starts fresh
+    // regardless of where the user dragged it during the previous call.
+    setPipPosition(null)
     void voiceCall.startCall(kind)
   }, [canCall, voiceCall])
 
@@ -998,6 +1001,14 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const dismissMissedCall = useCallback((callId: string) => {
     setMissedCalls(prev => prev.filter(m => m.callId !== callId))
   }, [])
+
+  // handleAcceptCall resets the PiP position before accepting so the local
+  // preview always starts from the default top-right corner for incoming calls,
+  // matching the behaviour of outgoing calls (handleStartCall above).
+  const handleAcceptCall = useCallback(() => {
+    setPipPosition(null)
+    void voiceCall.acceptCall()
+  }, [voiceCall])
 
   // PiP drag handlers. Use Pointer Events so touch + mouse share one code
   // path; setPointerCapture keeps the move/up events targeted even if the
@@ -1589,7 +1600,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
               </button>
               <button
                 type="button"
-                onClick={() => { void voiceCall.acceptCall() }}
+                onClick={handleAcceptCall}
                 aria-label={t('call.accept')}
                 className="flex flex-col items-center gap-1 text-green-300 hover:text-green-200 cursor-pointer"
                 data-testid="family-chat-call-accept"
