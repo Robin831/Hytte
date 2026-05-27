@@ -98,10 +98,14 @@ function todayDate(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
-function formatAmount(amount: number): string {
-  return formatNumber(Math.abs(amount), {
+// Formats a signed amount in the given currency using the active locale.
+// Callers without a per-account context fall back to 'NOK'; the negative sign
+// (or parentheses, depending on locale) is rendered by Intl.NumberFormat —
+// red/green tinting belongs on the surrounding cell, not in here.
+function formatAmount(amount: number, currency?: string): string {
+  return formatNumber(amount, {
     style: 'currency',
-    currency: 'NOK',
+    currency: currency ?? 'NOK',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   })
@@ -367,7 +371,7 @@ function CategoryRow({ cs, month, onLimitSaved }: CategoryRowProps) {
           <span
             className={`tabular-nums font-medium ${cs.is_income ? 'text-green-400' : cs.total < 0 ? 'text-red-400' : 'text-gray-300'}`}
           >
-            {cs.total >= 0 ? '+' : '-'}{formatAmount(cs.total)}
+            {formatAmount(cs.total)}
           </span>
           {hasBudget && (
             <span className="text-gray-500 text-xs ml-1">
@@ -675,7 +679,7 @@ export default function BudgetPage() {
             <div className="text-center">
               <p className="text-xs text-gray-400 uppercase tracking-wide">{t('summary.net')}</p>
               <p className={`text-lg font-semibold ${summary.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {summary.net < 0 ? '-' : ''}{formatAmount(summary.net)}
+                {formatAmount(summary.net)}
               </p>
             </div>
             <div className="text-center">
@@ -874,10 +878,10 @@ export default function BudgetPage() {
                     <p
                       className={`text-sm font-medium tabular-nums ${isIncome ? 'text-green-400' : 'text-red-400'}`}
                     >
-                      {isIncome ? '+' : '-'}{formatAmount(txn.amount)}
+                      {formatAmount(txn.amount, acct?.currency)}
                     </p>
                     <p className="text-xs text-gray-500 tabular-nums">
-                      {t('summary.remaining')}: {balance < 0 ? '-' : ''}{formatAmount(balance)}
+                      {t('summary.remaining')}: {formatAmount(balance, acct?.currency)}
                     </p>
                   </div>
 
@@ -947,7 +951,7 @@ export default function BudgetPage() {
                     <p
                       className={`text-sm font-medium tabular-nums ${isIncome ? 'text-green-400/70' : 'text-red-400/70'}`}
                     >
-                      {isIncome ? '+' : '-'}{formatAmount(item.amount)}
+                      {formatAmount(item.amount)}
                     </p>
                     {hasSplit && Math.abs(item.your_share) !== Math.abs(item.amount) && (
                       <p className="text-xs text-gray-500 tabular-nums">
