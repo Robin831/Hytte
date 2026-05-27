@@ -182,7 +182,6 @@ export default function GroceryPage() {
     } finally {
       if (translateControllerRef.current === controller) {
         setIsTranslating(false)
-        // eslint-disable-next-line react-hooks/immutability
         translateControllerRef.current = null
       }
     }
