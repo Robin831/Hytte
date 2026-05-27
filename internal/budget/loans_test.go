@@ -300,6 +300,48 @@ func TestLoansListHandler_Empty(t *testing.T) {
 	}
 }
 
+func TestLoansListHandler_ExposesLTVMax(t *testing.T) {
+	db := setupTestDB(t)
+
+	l := &Loan{
+		Name:           "Mortgage",
+		StartDate:      "2020-01-01",
+		Principal:      3000000,
+		CurrentBalance: 2800000,
+		AnnualRate:     0.048,
+		MonthlyPayment: 15000,
+		TermMonths:     240,
+		PropertyValue:  4000000,
+	}
+	if err := CreateLoan(db, 1, l); err != nil {
+		t.Fatalf("CreateLoan: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/budget/loans", nil), 1)
+	rec := httptest.NewRecorder()
+	LoansListHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Loans []struct {
+			Loan
+			LTVRatio float64 `json:"ltv_ratio"`
+			LTVMax   float64 `json:"ltv_max"`
+		} `json:"loans"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Loans) != 1 {
+		t.Fatalf("expected 1 loan, got %d", len(body.Loans))
+	}
+	if body.Loans[0].LTVMax != DefaultLTVMax {
+		t.Errorf("ltv_max = %v, want %v", body.Loans[0].LTVMax, DefaultLTVMax)
+	}
+}
+
 func TestLoansCreateHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -496,8 +538,8 @@ func TestLoansAmortizationHandler_Success(t *testing.T) {
 	if len(body.Amortization) != 12 {
 		t.Errorf("expected 12 rows, got %d", len(body.Amortization))
 	}
-	if body.LTVMax != 0.85 {
-		t.Errorf("ltv_max = %v, want 0.85", body.LTVMax)
+	if body.LTVMax != DefaultLTVMax {
+		t.Errorf("ltv_max = %v, want %v", body.LTVMax, DefaultLTVMax)
 	}
 }
 

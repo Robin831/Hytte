@@ -16,6 +16,10 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// DefaultLTVMax is the default regulatory LTV ceiling used to colour the loan UI.
+// This is the standard cap for Norwegian residential mortgages.
+const DefaultLTVMax = 0.85
+
 // -- Loan store --
 
 // CreateLoan inserts a new loan for the given user and sets l.ID.
@@ -464,14 +468,15 @@ func LoansListHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list loans"})
 			return
 		}
-		// Annotate each loan with its LTV ratio.
+		// Annotate each loan with its LTV ratio and the regulatory ceiling.
 		type loanWithLTV struct {
 			Loan
 			LTVRatio float64 `json:"ltv_ratio"`
+			LTVMax   float64 `json:"ltv_max"`
 		}
 		out := make([]loanWithLTV, len(loans))
 		for i, l := range loans {
-			out[i] = loanWithLTV{Loan: l, LTVRatio: LTV(&loans[i])}
+			out[i] = loanWithLTV{Loan: l, LTVRatio: LTV(&loans[i]), LTVMax: DefaultLTVMax}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"loans": out})
 	}
@@ -672,11 +677,11 @@ func LoansAmortizationHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"loan":          loan,
-			"amortization":  rows,
-			"rate_changes":  rateChanges,
-			"ltv_ratio":     LTV(loan),
-			"ltv_max":       0.85,
+			"loan":         loan,
+			"amortization": rows,
+			"rate_changes": rateChanges,
+			"ltv_ratio":    LTV(loan),
+			"ltv_max":      DefaultLTVMax,
 		})
 	}
 }
