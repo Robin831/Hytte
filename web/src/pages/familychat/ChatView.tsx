@@ -334,15 +334,11 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // tests (and the rare browser that doesn't propagate abort to a streaming
   // body) terminate the read loop deterministically.
   useEffect(() => {
-    if (conversationId === null) {
-      setConversation(null)
-      setMessages([])
-      setError('')
-      setLoading(false)
-      setMissedCalls([])
-      setEndedCallSummary(null)
-      return
-    }
+    // When no conversation is selected, do nothing here — the previous
+    // non-null effect's cleanup (below) resets state when switching away.
+    // Calling setState directly in the guard body is flagged by
+    // react-hooks/set-state-in-effect; cleanup callbacks are not.
+    if (conversationId === null) return
     const controller = new AbortController()
     // lastId is the highest message id this client has rendered for the
     // current conversation. It seeds gap-fill queries on reconnect and is
@@ -651,6 +647,15 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       // chats or unmounting must not leave a bubble in the prior conversation
       // continuing to play in the background.
       voicePlayer.stopAll()
+      // Reset conversation state when leaving (to null or another conversation)
+      // so the next render starts from a blank slate. State updates inside
+      // cleanup callbacks are not flagged by react-hooks/set-state-in-effect.
+      setConversation(null)
+      setMessages([])
+      setError('')
+      setLoading(false)
+      setMissedCalls([])
+      setEndedCallSummary(null)
     }
   }, [conversationId, t])
 
