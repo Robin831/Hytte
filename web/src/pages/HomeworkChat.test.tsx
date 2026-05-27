@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import HomeworkChat from './HomeworkChat'
 
@@ -258,5 +258,240 @@ describe('HomeworkChat – send message flow', () => {
     await waitFor(() => {
       expect(screen.getByText('Image attached')).toBeInTheDocument()
     })
+  })
+})
+
+describe('HomeworkChat – optimistic send recovery on failure', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  it('removes optimistic bubble and restores draft on network error', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convDetailResponse())
+      .mockRejectedValueOnce(new Error('Network down'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+    await waitFor(() => screen.getByText('Homework Helper'))
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'My question' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Network down')).toBeInTheDocument()
+    })
+
+    // Bubble removed from the transcript — scope to the message log so the
+    // textarea value (which happy-dom exposes as textContent) doesn't match.
+    const log = screen.getByRole('log')
+    expect(within(log).queryByText('My question')).not.toBeInTheDocument()
+    // Draft restored.
+    expect(input.value).toBe('My question')
+  })
+
+  it('removes optimistic bubble and restores draft on non-OK response with server error text', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convDetailResponse())
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ error: 'Server boom' }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+    await waitFor(() => screen.getByText('Homework Helper'))
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'A query' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Server boom')).toBeInTheDocument()
+    })
+
+    expect(within(screen.getByRole('log')).queryByText('A query')).not.toBeInTheDocument()
+    expect(input.value).toBe('A query')
+  })
+
+  it('removes the swapped real-id bubble when SSE emits an error mid-stream', async () => {
+    // The server emits user_message (so the optimistic temp id is replaced by id=999),
+    // then emits an error event. Recovery must remove the now-real-id bubble.
+    const realUserMsg = makeMessage({ id: 999, role: 'user', content: 'Original question' })
+
+    const sseEvents = [
+      `event: user_message\ndata: ${JSON.stringify(realUserMsg)}\n\n`,
+      `event: error\ndata: ${JSON.stringify({ error: 'Stream failed' })}\n\n`,
+    ]
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convDetailResponse())
+      .mockResolvedValueOnce(makeSSEStream(sseEvents))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+    await waitFor(() => screen.getByText('Homework Helper'))
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'Original question' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Stream failed')).toBeInTheDocument()
+    })
+
+    // The user-message bubble (real id 999) must be gone from the transcript.
+    expect(within(screen.getByRole('log')).queryByText('Original question')).not.toBeInTheDocument()
+    // Streaming placeholder cleared, draft restored.
+    expect(input.value).toBe('Original question')
+  })
+
+  it('does not clobber a newer draft typed during the in-flight send', async () => {
+    // Deferred reject so we can control timing.
+    let rejectFn: ((err: Error) => void) | null = null
+    const inFlight = new Promise<Response>((_, reject) => { rejectFn = reject })
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convDetailResponse())
+      .mockReturnValueOnce(inFlight)
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+    await waitFor(() => screen.getByText('Homework Helper'))
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'Original' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    // Wait for the send fetch to be in-flight (and input to have been cleared).
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(input.value).toBe(''))
+
+    // User types a new draft while the send is still pending.
+    fireEvent.change(input, { target: { value: 'Newer draft' } })
+
+    // Now fail the in-flight send.
+    rejectFn!(new Error('boom'))
+
+    await waitFor(() => {
+      expect(screen.getByText('boom')).toBeInTheDocument()
+    })
+
+    // Newer draft is preserved; captured "Original" is NOT restored over it.
+    expect(input.value).toBe('Newer draft')
+    // Optimistic bubble still removed.
+    expect(within(screen.getByRole('log')).queryByText('Original')).not.toBeInTheDocument()
+  })
+
+  it('short-circuits silently on AbortError without restoring draft or showing banner', async () => {
+    const abortErr = new Error('aborted')
+    abortErr.name = 'AbortError'
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convDetailResponse())
+      .mockRejectedValueOnce(abortErr)
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+    await waitFor(() => screen.getByText('Homework Helper'))
+
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'Question' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    // Wait for the send promise to settle (the textarea re-enables when sending=false).
+    await waitFor(() => expect(input.disabled).toBe(false))
+
+    // No banner shown, draft NOT restored (input stays cleared).
+    expect(input.value).toBe('')
+    expect(screen.queryByText('aborted')).not.toBeInTheDocument()
+    expect(screen.queryByText('Failed to send message')).not.toBeInTheDocument()
+  })
+
+  it('restores selected image file and preview after a failed send', async () => {
+    // Use a synchronous FileReader so imagePreview is set before send is clicked.
+    const fakeDataUrl = 'data:image/png;base64,abc'
+    class SyncFileReader {
+      result = fakeDataUrl
+      onload: (() => void) | null = null
+      readAsDataURL(_file: File) { this.onload?.() }
+    }
+    vi.stubGlobal('FileReader', SyncFileReader)
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convDetailResponse())
+      .mockRejectedValueOnce(new Error('Network down'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+    await waitFor(() => screen.getByText('Homework Helper'))
+
+    // Select an image — preview loads synchronously
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['dummy'], 'photo.png', { type: 'image/png' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    await waitFor(() => screen.getByAltText('Selected image preview'))
+
+    // Type text and send
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'Look at this problem' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => expect(screen.getByText('Network down')).toBeInTheDocument())
+
+    // Both the image preview and the remove button must be back in the UI
+    expect(screen.getByAltText('Selected image preview')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove image' })).toBeInTheDocument()
+    // And the draft text is restored
+    expect(input.value).toBe('Look at this problem')
+  })
+
+  it('rebuilds image preview in the catch block when FileReader had not fired before send', async () => {
+    // Deferred FileReader — onload is stored but not called until we trigger it.
+    const fakeDataUrl = 'data:image/png;base64,abc'
+    const readers: Array<{ onload: (() => void) | null; result: string }> = []
+    class DeferredFileReader {
+      result = fakeDataUrl
+      onload: (() => void) | null = null
+      readAsDataURL(_file: File) {
+        // Capture the instance (onload will have been assigned before this call)
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        readers.push(this)
+        // Does NOT call onload — simulates FileReader that hasn't fired yet
+      }
+    }
+    vi.stubGlobal('FileReader', DeferredFileReader)
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convDetailResponse())
+      .mockRejectedValueOnce(new Error('Network down'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+    await waitFor(() => screen.getByText('Homework Helper'))
+
+    // Select image — FileReader created but onload not fired yet
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['dummy'], 'photo.png', { type: 'image/png' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    // No preview shown yet
+    expect(screen.queryByAltText('Selected image preview')).not.toBeInTheDocument()
+
+    // Type text and send immediately (previewSnapshot captured as null)
+    const input = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'Quick send' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => expect(screen.getByText('Network down')).toBeInTheDocument())
+
+    // The catch block created a second FileReader to rebuild the preview.
+    // readers[0] = from handleImageSelect, readers[1] = from catch block.
+    expect(readers.length).toBe(2)
+    const rebuildReader = readers[readers.length - 1]
+    expect(rebuildReader.onload).not.toBeNull()
+
+    // Fire the catch-block reader's onload to deliver the preview
+    rebuildReader.onload!()
+
+    await waitFor(() => expect(screen.getByAltText('Selected image preview')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Remove image' })).toBeInTheDocument()
   })
 })

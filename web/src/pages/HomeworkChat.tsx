@@ -130,6 +130,7 @@ export default function HomeworkChat() {
     const content = input.trim()
     if (!content || !id || sending) return
     const image = selectedImage
+    const previewSnapshot = imagePreview
 
     setInput('')
     clearImage()
@@ -138,8 +139,9 @@ export default function HomeworkChat() {
     setError('')
 
     // Optimistic user message
+    const tempId = -Date.now()
     const tempUserMsg: Message = {
-      id: -Date.now(),
+      id: tempId,
       conversation_id: Number(id),
       role: 'user',
       content,
@@ -147,6 +149,11 @@ export default function HomeworkChat() {
       created_at: new Date().toISOString(),
     }
     setMessages(prev => [...prev, tempUserMsg])
+
+    // Track the id of the in-flight user message. Starts as the temp id, but
+    // gets reassigned to the server id once `user_message` swaps the bubble —
+    // so the catch block can remove the correct bubble even after the swap.
+    let inFlightUserMessageId = tempId
 
     const controller = new AbortController()
     sendAbortRef.current = controller
@@ -178,7 +185,6 @@ export default function HomeworkChat() {
       const decoder = new TextDecoder()
       let buffer = ''
       let accumulatedText = ''
-      let realUserMsg: Message | null = null
 
       while (true) {
         const { done, value } = await reader.read()
@@ -200,13 +206,15 @@ export default function HomeworkChat() {
               const parsed = JSON.parse(data)
 
               switch (eventType) {
-                case 'user_message':
-                  realUserMsg = parsed as Message
+                case 'user_message': {
+                  const realUserMsg = parsed as Message
+                  inFlightUserMessageId = realUserMsg.id
                   // Replace optimistic message with real one
                   setMessages(prev =>
-                    prev.map(m => m.id === tempUserMsg.id ? realUserMsg! : m)
+                    prev.map(m => m.id === tempId ? realUserMsg : m)
                   )
                   break
+                }
                 case 'delta':
                   accumulatedText += parsed.text ?? ''
                   setStreamingText(accumulatedText)
@@ -251,15 +259,21 @@ export default function HomeworkChat() {
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
-      // Remove optimistic message and restore draft
-      setMessages(prev => prev.filter(m => m.id !== tempUserMsg.id))
+      // Remove the in-flight bubble (matches either the temp id or the swapped real id)
+      // and restore the captured draft only if the composer hasn't been touched since.
+      setMessages(prev => prev.filter(m => m.id !== inFlightUserMessageId))
       setStreamingText('')
-      setInput(content)
+      setInput(prev => prev === '' ? content : prev)
       if (image) {
-        setSelectedImage(image)
-        const reader = new FileReader()
-        reader.onload = () => setImagePreview(reader.result as string)
-        reader.readAsDataURL(image)
+        setSelectedImage(prev => prev ?? image)
+        if (previewSnapshot) {
+          setImagePreview(prev => prev ?? previewSnapshot)
+        } else {
+          // FileReader.onload hadn't fired when send was triggered; rebuild the preview now
+          const reader = new FileReader()
+          reader.onload = () => setImagePreview(prev => prev ?? (reader.result as string))
+          reader.readAsDataURL(image)
+        }
       }
       if (err instanceof Error) setError(err.message)
     } finally {
