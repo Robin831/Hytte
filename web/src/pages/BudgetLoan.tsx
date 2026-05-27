@@ -8,6 +8,10 @@ import { LoanForm } from './budget/loan/LoanForm'
 import { AmortizationTable } from './budget/loan/AmortizationTable'
 import { useLoans } from './budget/loan/useLoans'
 
+// Fallback if the server hasn't started returning ltv_max yet (e.g. during rollout).
+// Kept in one place so the list card still renders sensibly without it.
+const FALLBACK_LTV_MAX = 0.85
+
 const EMPTY_LOAN: Omit<Loan, 'id'> = {
   name: '',
   principal: 0,
@@ -109,7 +113,8 @@ export default function BudgetLoan() {
           const isEditing = editingLoan?.id === loan.id
           const isAmortOpen = expandedAmortization === loan.id
           const ltvPct = loan.ltv_ratio ?? 0
-          const ltvOk = ltvPct <= 0.85
+          const ltvMax = loan.ltv_max ?? FALLBACK_LTV_MAX
+          const ltvOk = ltvPct <= ltvMax
 
           return (
             <div key={loan.id} className="bg-gray-800 rounded-xl overflow-hidden">
@@ -173,12 +178,12 @@ export default function BudgetLoan() {
                   <div className="mt-3">
                     <div className="flex justify-between text-xs text-gray-500 mb-1">
                       <span>{t('loan.ltv')}</span>
-                      <span>{t('loan.ltvMax', { pct: '85%' })}</span>
+                      <span>{t('loan.ltvMax', { pct: fmtPct(ltvMax) })}</span>
                     </div>
                     <div className="bg-gray-700 rounded-full h-1.5">
                       <div
                         className={`h-1.5 rounded-full transition-all ${ltvOk ? 'bg-green-500' : 'bg-red-500'}`}
-                        style={{ width: `${Math.min(ltvPct / 0.85, 1) * 100}%` }}
+                        style={{ width: `${Math.min(ltvMax > 0 ? ltvPct / ltvMax : 0, 1) * 100}%` }}
                       />
                     </div>
                   </div>

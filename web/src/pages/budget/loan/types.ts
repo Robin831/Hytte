@@ -13,6 +13,7 @@ export interface Loan {
   property_name: string
   notes: string
   ltv_ratio?: number
+  ltv_max?: number
 }
 
 export interface AmortizationRow {
