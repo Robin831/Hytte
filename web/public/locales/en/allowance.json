@@ -30,7 +30,8 @@
     "markPaid": "Mark as Paid",
     "saveRule": "Save Rule",
     "viewPhoto": "View photo",
-    "close": "Close"
+    "close": "Close",
+    "refresh": "Refresh"
   },
   "form": {
     "newChore": "New Chore",

@@ -30,7 +30,8 @@
     "markPaid": "Merk som betalt",
     "saveRule": "Lagre regel",
     "viewPhoto": "Se bilde",
-    "close": "Lukk"
+    "close": "Lukk",
+    "refresh": "Oppdater"
   },
   "form": {
     "newChore": "Ny oppgave",

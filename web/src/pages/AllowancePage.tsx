@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Camera, CheckCircle, XCircle, Plus, Pencil, Trash2, Star, X, ClipboardCheck } from 'lucide-react'
+import { Camera, CheckCircle, XCircle, Plus, Pencil, Trash2, Star, X, ClipboardCheck, RefreshCw } from 'lucide-react'
 import { formatDate, formatNumber } from '../utils/formatDate'
 import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
@@ -8,6 +8,7 @@ import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
 import RecordCompletionModal from '../components/allowance/RecordCompletionModal'
 import ToastList from '../components/ToastList'
 import { useToast } from '../hooks/useToast'
+import { useTabFetch } from '../hooks/useTabFetch'
 
 const formatAmount2dp = (amount: number) =>
   formatNumber(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -143,8 +144,6 @@ export default function AllowancePage() {
 
   // Today tab state
   const [pending, setPending] = useState<CompletionWithDetails[]>([])
-  const [pendingLoading, setPendingLoading] = useState(true)
-  const [pendingError, setPendingError] = useState('')
   const [photoPreviewId, setPhotoPreviewId] = useState<number | null>(null)
   const [photoEnlarged, setPhotoEnlarged] = useState(false)
   const enlargedCloseRef = useRef<HTMLButtonElement>(null)
@@ -152,8 +151,6 @@ export default function AllowancePage() {
 
   // Chores tab state
   const [chores, setChores] = useState<Chore[]>([])
-  const [choresLoading, setChoresLoading] = useState(false)
-  const [choresError, setChoresError] = useState('')
   const [showChoreForm, setShowChoreForm] = useState(false)
   const [editingChore, setEditingChore] = useState<Chore | null>(null)
   const [choreForm, setChoreForm] = useState<ChoreFormState>(DEFAULT_CHORE_FORM)
@@ -181,13 +178,9 @@ export default function AllowancePage() {
 
   // Payouts tab state
   const [payouts, setPayouts] = useState<Payout[]>([])
-  const [payoutsLoading, setPayoutsLoading] = useState(false)
-  const [payoutsError, setPayoutsError] = useState('')
 
   // Extras tab state
   const [extras, setExtras] = useState<Extra[]>([])
-  const [extrasLoading, setExtrasLoading] = useState(false)
-  const [extrasError, setExtrasError] = useState('')
   const [showExtraForm, setShowExtraForm] = useState(false)
   const [extraForm, setExtraForm] = useState({ name: '', amount: '', expires_at: '' })
   const [extraFormSaving, setExtraFormSaving] = useState(false)
@@ -195,8 +188,6 @@ export default function AllowancePage() {
   const [extraActionError, setExtraActionError] = useState('')
 
   // Bonuses tab state
-  const [bonusesLoading, setBonusesLoading] = useState(false)
-  const [bonusesError, setBonusesError] = useState('')
   const [bonusForms, setBonusForms] = useState<Record<BonusType, BonusRuleFormState>>({
     full_week: { multiplier: '1.2', flat_amount: '0', active: false },
     early_bird: { multiplier: '1.0', flat_amount: '5', active: false },
@@ -220,97 +211,77 @@ export default function AllowancePage() {
   const [deactivateError, setDeactivateError] = useState('')
   const [payoutActionError, setPayoutActionError] = useState('')
 
-  useEffect(() => {
-    if (tab !== 'today') return
-    let cancelled = false
-    fetch('/api/allowance/pending', { credentials: 'include' })
-      .then(res => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data: { pending: CompletionWithDetails[] }) => {
-        if (!cancelled) { setPending(data.pending ?? []); setPendingError('') }
-      })
-      .catch(() => { if (!cancelled) setPendingError(t('errors.loadFailed')) })
-      .finally(() => { if (!cancelled) setPendingLoading(false) })
-    return () => { cancelled = true }
-  }, [tab, t])
+  const loadFailed = t('errors.loadFailed')
 
-  useEffect(() => {
-    if (tab !== 'chores') return
-    let cancelled = false
-    fetch('/api/allowance/chores', { credentials: 'include' })
-      .then(res => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data: { chores: Chore[] }) => {
-        if (!cancelled) { setChores(data.chores ?? []); setChoresError('') }
-      })
-      .catch(() => { if (!cancelled) setChoresError(t('errors.loadFailed')) })
-      .finally(() => { if (!cancelled) setChoresLoading(false) })
-    return () => { cancelled = true }
-  }, [tab, t])
+  const pendingFetch = useTabFetch<{ pending: CompletionWithDetails[] }>(
+    tab === 'today',
+    async signal => {
+      const res = await fetch('/api/allowance/pending', { credentials: 'include', signal })
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    data => setPending(data.pending ?? []),
+    loadFailed,
+  )
 
-  useEffect(() => {
-    if (tab !== 'payouts') return
-    let cancelled = false
-    fetch('/api/allowance/payouts?weeks=8', { credentials: 'include' })
-      .then(res => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data: { payouts: Payout[] }) => {
-        if (!cancelled) { setPayouts(data.payouts ?? []); setPayoutsError('') }
-      })
-      .catch(() => { if (!cancelled) setPayoutsError(t('errors.loadFailed')) })
-      .finally(() => { if (!cancelled) setPayoutsLoading(false) })
-    return () => { cancelled = true }
-  }, [tab, t])
+  const choresFetch = useTabFetch<{ chores: Chore[] }>(
+    tab === 'chores',
+    async signal => {
+      const res = await fetch('/api/allowance/chores', { credentials: 'include', signal })
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    data => setChores(data.chores ?? []),
+    loadFailed,
+  )
 
-  useEffect(() => {
-    if (tab !== 'extras') return
-    let cancelled = false
-    void (async () => {
-      setExtrasLoading(true)
-      try {
-        const res = await fetch('/api/allowance/extras', { credentials: 'include' })
-        const data: { extras: Extra[] } = await (res.ok ? res.json() : Promise.reject(res))
-        if (!cancelled) { setExtras(data.extras ?? []); setExtrasError('') }
-      } catch {
-        if (!cancelled) setExtrasError(t('errors.loadFailed'))
-      } finally {
-        if (!cancelled) setExtrasLoading(false)
-      }
-    })()
-    return () => { cancelled = true }
-  }, [tab, t])
+  const payoutsFetch = useTabFetch<{ payouts: Payout[] }>(
+    tab === 'payouts',
+    async signal => {
+      const res = await fetch('/api/allowance/payouts?weeks=8', { credentials: 'include', signal })
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    data => setPayouts(data.payouts ?? []),
+    loadFailed,
+  )
 
-  useEffect(() => {
-    if (tab !== 'bonuses') return
-    let cancelled = false
-    void (async () => {
-      setBonusesLoading(true)
-      try {
-        const res = await fetch('/api/allowance/bonuses', { credentials: 'include' })
-        const data: { bonus_rules: BonusRule[] } = await (res.ok ? res.json() : Promise.reject(res))
-        if (!cancelled) {
-          setBonusesError('')
-          // Populate form state from loaded rules using functional update to avoid stale closure
-          setBonusForms(prev => {
-            const updatedForms = { ...prev }
-            for (const rule of data.bonus_rules ?? []) {
-              const ruleType = rule.type as BonusType
-              if (BONUS_TYPES.includes(ruleType)) {
-                updatedForms[ruleType] = {
-                  multiplier: String(rule.multiplier ?? 1.0),
-                  flat_amount: String(rule.flat_amount ?? 0),
-                  active: rule.active,
-                }
-              }
+  const extrasFetch = useTabFetch<{ extras: Extra[] }>(
+    tab === 'extras',
+    async signal => {
+      const res = await fetch('/api/allowance/extras', { credentials: 'include', signal })
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    data => setExtras(data.extras ?? []),
+    loadFailed,
+  )
+
+  const bonusesFetch = useTabFetch<{ bonus_rules: BonusRule[] }>(
+    tab === 'bonuses',
+    async signal => {
+      const res = await fetch('/api/allowance/bonuses', { credentials: 'include', signal })
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    data => {
+      setBonusForms(prev => {
+        const updatedForms = { ...prev }
+        for (const rule of data.bonus_rules ?? []) {
+          const ruleType = rule.type as BonusType
+          if (BONUS_TYPES.includes(ruleType)) {
+            updatedForms[ruleType] = {
+              multiplier: String(rule.multiplier ?? 1.0),
+              flat_amount: String(rule.flat_amount ?? 0),
+              active: rule.active,
             }
-            return updatedForms
-          })
+          }
         }
-      } catch {
-        if (!cancelled) setBonusesError(t('errors.loadFailed'))
-      } finally {
-        if (!cancelled) setBonusesLoading(false)
-      }
-    })()
-    return () => { cancelled = true }
-  }, [tab, t])
+        return updatedForms
+      })
+    },
+    loadFailed,
+  )
 
   useEffect(() => {
     if (!recordChore || familyChildrenLoaded) return
@@ -333,28 +304,8 @@ export default function AllowancePage() {
   }, [recordChore, familyChildrenLoaded, t, showToast])
 
   const handleRecordSuccess = () => {
-    setPendingLoading(true)
-    setPendingError('')
-    fetch('/api/allowance/pending', { credentials: 'include' })
-      .then(res => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data: { pending: CompletionWithDetails[] }) => {
-        if (!mountedRef.current) return
-        setPending(data.pending ?? [])
-        setPendingError('')
-      })
-      .catch(() => { if (mountedRef.current) setPendingError(t('errors.loadFailed')) })
-      .finally(() => { if (mountedRef.current) setPendingLoading(false) })
-
-    setPayoutsLoading(true)
-    fetch('/api/allowance/payouts?weeks=8', { credentials: 'include' })
-      .then(res => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data: { payouts: Payout[] }) => {
-        if (!mountedRef.current) return
-        setPayouts(data.payouts ?? [])
-        setPayoutsError('')
-      })
-      .catch(() => { if (mountedRef.current) setPayoutsError(t('errors.loadFailed')) })
-      .finally(() => { if (mountedRef.current) setPayoutsLoading(false) })
+    pendingFetch.reload()
+    payoutsFetch.reload()
   }
 
   const handleApprove = async (id: number) => {
@@ -363,6 +314,7 @@ export default function AllowancePage() {
       const res = await fetch(`/api/allowance/approve/${id}`, { method: 'POST', credentials: 'include' })
       if (!res.ok) throw new Error()
       setPending(prev => prev.filter(c => c.id !== id))
+      payoutsFetch.invalidate()
     } catch {
       setActionError(t('errors.actionFailed'))
     }
@@ -379,6 +331,7 @@ export default function AllowancePage() {
       })
       if (!res.ok) throw new Error()
       setPending(prev => prev.filter(c => c.id !== id))
+      payoutsFetch.invalidate()
     } catch {
       setActionError(t('errors.actionFailed'))
     }
@@ -529,6 +482,7 @@ export default function AllowancePage() {
       if (!res.ok) throw new Error()
       const updated: Extra = await res.json()
       setExtras(prev => prev.map(e => (e.id === updated.id ? updated : e)))
+      payoutsFetch.invalidate()
     } catch {
       setExtraActionError(t('errors.actionFailed'))
     }
@@ -612,14 +566,21 @@ export default function AllowancePage() {
 
   const handleTabSwitch = (newTab: Tab) => {
     if (newTab === tab) return
-    if (newTab === 'today') { setPendingLoading(true); setPendingError('') }
-    else if (newTab === 'chores') { setChoresLoading(true); setChoresError('') }
-    else if (newTab === 'payouts') { setPayoutsLoading(true); setPayoutsError('') }
-    else if (newTab === 'extras') { setExtrasLoading(true); setExtrasError('') }
-    else if (newTab === 'bonuses') { setBonusesLoading(true); setBonusesError('') }
     setShowEmojiPicker(false)
     setTab(newTab)
   }
+
+  const renderRefresh = (onClick: () => void, loading: boolean) => (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      aria-label={t('actions.refresh')}
+      className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+    </button>
+  )
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'today', label: t('tabs.today') },
@@ -650,7 +611,7 @@ export default function AllowancePage() {
           {tabs.map(({ id, label }) => (
             <TabTrigger key={id} value={id}>
               {label}
-              {id === 'today' && pending.length > 0 && !pendingLoading && (
+              {id === 'today' && pending.length > 0 && !pendingFetch.loading && (
                 <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-amber-500 text-white text-[10px] font-bold px-1">
                   {pending.length}
                 </span>
@@ -661,16 +622,19 @@ export default function AllowancePage() {
 
       {/* Today — pending approvals */}
       <TabPanel value="today">
+          <div className="flex justify-end mb-3">
+            {renderRefresh(() => pendingFetch.reload(), pendingFetch.loading)}
+          </div>
           {actionError && (
             <p className="text-red-400 text-sm mb-3">{actionError}</p>
           )}
-          {pendingLoading ? (
+          {pendingFetch.loading ? (
             <div role="status" aria-live="polite">
               <span className="sr-only">{t('loading')}</span>
               <Skeleton className="h-5 w-32" />
             </div>
-          ) : pendingError ? (
-            <p className="text-red-400 text-sm">{pendingError}</p>
+          ) : pendingFetch.error ? (
+            <p className="text-red-400 text-sm">{pendingFetch.error}</p>
           ) : pending.length === 0 ? (
             <div className="text-center py-16 text-gray-400">
               <p className="text-5xl mb-4">✅</p>
@@ -807,7 +771,8 @@ export default function AllowancePage() {
 
       {/* Chores — manage definitions */}
       <TabPanel value="chores">
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end gap-2 mb-4">
+            {renderRefresh(() => choresFetch.reload(), choresFetch.loading)}
             <button
               type="button"
               onClick={() => {
@@ -1041,13 +1006,13 @@ export default function AllowancePage() {
           {deactivateError && (
             <p className="text-red-400 text-sm mb-3">{deactivateError}</p>
           )}
-          {choresLoading ? (
+          {choresFetch.loading ? (
             <div role="status" aria-live="polite">
               <span className="sr-only">{t('loading')}</span>
               <Skeleton className="h-5 w-32" />
             </div>
-          ) : choresError ? (
-            <p className="text-red-400 text-sm">{choresError}</p>
+          ) : choresFetch.error ? (
+            <p className="text-red-400 text-sm">{choresFetch.error}</p>
           ) : chores.length === 0 ? (
             <div className="text-center py-16 text-gray-400">
               <p className="text-5xl mb-4">📋</p>
@@ -1111,7 +1076,8 @@ export default function AllowancePage() {
 
       {/* Extras — one-off tasks */}
       <TabPanel value="extras">
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end gap-2 mb-4">
+            {renderRefresh(() => extrasFetch.reload(), extrasFetch.loading)}
             <button
               type="button"
               onClick={() => {
@@ -1208,13 +1174,13 @@ export default function AllowancePage() {
           {extraActionError && (
             <p className="text-red-400 text-sm mb-3">{extraActionError}</p>
           )}
-          {extrasLoading ? (
+          {extrasFetch.loading ? (
             <div role="status" aria-live="polite">
               <span className="sr-only">{t('loading')}</span>
               <Skeleton className="h-5 w-32" />
             </div>
-          ) : extrasError ? (
-            <p className="text-red-400 text-sm">{extrasError}</p>
+          ) : extrasFetch.error ? (
+            <p className="text-red-400 text-sm">{extrasFetch.error}</p>
           ) : extras.length === 0 ? (
             <div className="text-center py-16 text-gray-400">
               <p className="text-5xl mb-4">🎯</p>
@@ -1258,16 +1224,19 @@ export default function AllowancePage() {
 
       {/* Bonuses — bonus rules settings */}
       <TabPanel value="bonuses">
+          <div className="flex justify-end mb-3">
+            {renderRefresh(() => bonusesFetch.reload(), bonusesFetch.loading)}
+          </div>
           {bonusActionError && (
             <p className="text-red-400 text-sm mb-3">{bonusActionError}</p>
           )}
-          {bonusesLoading ? (
+          {bonusesFetch.loading ? (
             <div role="status" aria-live="polite">
               <span className="sr-only">{t('loading')}</span>
               <Skeleton className="h-5 w-32" />
             </div>
-          ) : bonusesError ? (
-            <p className="text-red-400 text-sm">{bonusesError}</p>
+          ) : bonusesFetch.error ? (
+            <p className="text-red-400 text-sm">{bonusesFetch.error}</p>
           ) : (
             <div className="space-y-4">
               {ACTIVE_BONUS_TYPES.map(bonusType => {
@@ -1375,16 +1344,19 @@ export default function AllowancePage() {
 
       {/* Payouts — weekly summaries */}
       <TabPanel value="payouts">
+          <div className="flex justify-end mb-3">
+            {renderRefresh(() => payoutsFetch.reload(), payoutsFetch.loading)}
+          </div>
           {payoutActionError && (
             <p className="text-red-400 text-sm mb-3">{payoutActionError}</p>
           )}
-          {payoutsLoading ? (
+          {payoutsFetch.loading ? (
             <div role="status" aria-live="polite">
               <span className="sr-only">{t('loading')}</span>
               <Skeleton className="h-5 w-32" />
             </div>
-          ) : payoutsError ? (
-            <p className="text-red-400 text-sm">{payoutsError}</p>
+          ) : payoutsFetch.error ? (
+            <p className="text-red-400 text-sm">{payoutsFetch.error}</p>
           ) : payouts.length === 0 ? (
             <div className="text-center py-16 text-gray-400">
               <p className="text-5xl mb-4">💰</p>
