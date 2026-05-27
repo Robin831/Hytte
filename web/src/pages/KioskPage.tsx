@@ -116,6 +116,12 @@ const POLL_INTERVAL_MS = 30_000
 const STALE_THRESHOLD_MS = 2 * POLL_INTERVAL_MS
 const STALE_TICK_INTERVAL_MS = 5_000
 
+// Backoff schedule applied to consecutive fetch failures. Index 0 is the delay
+// after the first failure, index 1 after the second, etc. The final entry is
+// used for any further consecutive failures (cap). A successful fetch resets
+// the failure count, so the next poll fires at POLL_INTERVAL_MS again.
+const BACKOFF_SCHEDULE_MS = [30_000, 60_000, 120_000, 300_000]
+
 // Offset mock departure times so they appear relative to the current time,
 // preventing all departures from showing as "now/0 min" once the static
 // fixture timestamps are in the past.
@@ -181,31 +187,108 @@ function KioskPageInner() {
       return
     }
 
-    // AbortController may be absent on very old browsers (Android 5); guard
-    // so the kiosk doesn't throw before the fetch try/catch can catch it.
-    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
+    // Visibility-aware polling with exponential backoff on failure. We avoid
+    // setInterval so each scheduling decision can react to the current state
+    // (visibility, failure count) instead of firing on a fixed cadence.
+    let cancelled = false
+    let failureCount = 0
+    let timerId: ReturnType<typeof setTimeout> | null = null
+    let activeController: AbortController | null = null
 
-    async function fetchData() {
-      try {
-        const res = await fetch('/api/kiosk/data?token=' + encodeURIComponent(token!), {
-          credentials: 'include',
-          signal: controller?.signal,
-        })
-        if (!res.ok) return
-        const json: KioskData = await res.json()
-        setApiData(json)
-        setLastSuccessAt(Date.now())
-      } catch {
-        // Keep displaying last known data on error
+    // Older browsers (Android 5 / Firefox ESR) may not implement the Page
+    // Visibility API. Feature-detect and skip the listener if absent — polling
+    // then runs unconditionally, as before.
+    const supportsVisibility =
+      typeof document !== 'undefined' && typeof document.visibilityState !== 'undefined'
+
+    function clearTimer() {
+      if (timerId !== null) {
+        clearTimeout(timerId)
+        timerId = null
       }
     }
 
+    function scheduleNext(delay: number) {
+      if (cancelled) return
+      // Don't schedule new fetches while the tab is hidden; the visibility
+      // listener will trigger an immediate fetch when the tab returns.
+      if (supportsVisibility && document.visibilityState === 'hidden') return
+      clearTimer()
+      timerId = setTimeout(() => {
+        timerId = null
+        fetchData()
+      }, delay)
+    }
+
+    function backoffDelay() {
+      const idx = Math.min(failureCount - 1, BACKOFF_SCHEDULE_MS.length - 1)
+      return BACKOFF_SCHEDULE_MS[idx]
+    }
+
+    async function fetchData() {
+      if (cancelled) return
+
+      // Abort any prior in-flight fetch (e.g. when visibility returns mid-poll
+      // we don't want two requests racing).
+      if (activeController) {
+        try { activeController.abort() } catch { /* ignore */ }
+      }
+      const myController =
+        typeof AbortController !== 'undefined' ? new AbortController() : null
+      activeController = myController
+
+      try {
+        const res = await fetch('/api/kiosk/data?token=' + encodeURIComponent(token!), {
+          credentials: 'include',
+          signal: myController?.signal,
+        })
+        // Bail if unmounted or superseded by a newer fetch.
+        if (cancelled || myController !== activeController) return
+        if (!res.ok) {
+          failureCount += 1
+          scheduleNext(backoffDelay())
+          return
+        }
+        const json: KioskData = await res.json()
+        if (cancelled || myController !== activeController) return
+        setApiData(json)
+        setLastSuccessAt(Date.now())
+        failureCount = 0
+        scheduleNext(POLL_INTERVAL_MS)
+      } catch {
+        // Network failure or abort. If the abort came from unmount/supersede,
+        // skip; otherwise treat as a failure and back off.
+        if (cancelled || myController !== activeController) return
+        failureCount += 1
+        scheduleNext(backoffDelay())
+      }
+    }
+
+    function handleVisibilityChange() {
+      if (cancelled) return
+      if (document.visibilityState === 'hidden') {
+        clearTimer()
+      } else if (document.visibilityState === 'visible') {
+        clearTimer()
+        fetchData()
+      }
+    }
+
+    if (supportsVisibility) {
+      document.addEventListener('visibilitychange', handleVisibilityChange)
+    }
+
     fetchData()
-    const intervalId = setInterval(fetchData, POLL_INTERVAL_MS)
 
     return () => {
-      controller?.abort()
-      clearInterval(intervalId)
+      cancelled = true
+      clearTimer()
+      if (activeController) {
+        try { activeController.abort() } catch { /* ignore */ }
+      }
+      if (supportsVisibility) {
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
+      }
     }
   }, [token])
 
