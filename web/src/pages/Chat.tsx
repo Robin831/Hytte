@@ -421,12 +421,24 @@ export default function Chat() {
                 : m,
             ),
           )
+        } else if (canonicalUserMsg) {
+          // Aborted before any tokens arrived but after the server persisted
+          // the user message (we received the `user_message` SSE event).
+          // Drop only the empty assistant placeholder; keep the canonical user
+          // row so the conversation history remains consistent.
+          setMessages(prev =>
+            prev
+              .filter(m => m.id !== tempAssistantId)
+              .map(m => (m.id === tempUserId ? canonicalUserMsg! : m)),
+          )
         } else {
-          // Aborted before any tokens arrived — drop the empty assistant
-          // placeholder so the user does not see a hollow bubble. The user
-          // message is left in place since the server has already persisted
-          // it (the `user_message` event runs before the first token).
-          setMessages(prev => prev.filter(m => m.id !== tempAssistantId))
+          // Aborted before the `user_message` SSE event arrived — the server
+          // may not have persisted the message yet. Remove both optimistic
+          // placeholders and restore the draft so the user can re-send.
+          setMessages(prev =>
+            prev.filter(m => m.id !== tempUserId && m.id !== tempAssistantId),
+          )
+          setInput(content)
         }
       } else {
         // Stream error: the backend has already persisted the user_message

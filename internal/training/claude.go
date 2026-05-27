@@ -384,74 +384,78 @@ func parseClaudeStream(r io.Reader, onChunk func(string), onSession func(string)
 	var fullText strings.Builder
 	var sessionEmitted bool
 
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	// Use bufio.Reader + ReadBytes instead of bufio.Scanner to avoid the hard
+	// per-token size limit. bufio.Scanner caps each line at the configured max
+	// (default 64 KiB) and returns bufio.ErrTooLong for larger lines. The CLI's
+	// `--output-format=stream-json` can emit a single very large NDJSON line for
+	// the final `result` envelope on long responses, so ReadBytes is safer here.
+	br := bufio.NewReaderSize(r, 64*1024)
 
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-
-		var ev claudeStreamLine
-		if err := json.Unmarshal(line, &ev); err != nil {
-			continue
-		}
-
-		switch ev.Type {
-		case "assistant":
-			for _, block := range ev.Message.Content {
-				if block.Type == "text" && block.Text != "" {
-					fullText.WriteString(block.Text)
-					if onChunk != nil {
-						onChunk(block.Text)
+	for {
+		rawLine, err := br.ReadBytes('\n')
+		// Process whatever bytes were read before checking the error.
+		line := bytes.TrimRight(rawLine, "\r\n")
+		if len(line) > 0 {
+			var ev claudeStreamLine
+			if jsonErr := json.Unmarshal(line, &ev); jsonErr == nil {
+				switch ev.Type {
+				case "assistant":
+					for _, block := range ev.Message.Content {
+						if block.Type == "text" && block.Text != "" {
+							fullText.WriteString(block.Text)
+							if onChunk != nil {
+								onChunk(block.Text)
+							}
+						}
+					}
+				case "content_block_delta":
+					var delta struct {
+						Delta struct {
+							Type string `json:"type"`
+							Text string `json:"text"`
+						} `json:"delta"`
+					}
+					if jsonErr2 := json.Unmarshal(line, &delta); jsonErr2 == nil && delta.Delta.Text != "" {
+						fullText.WriteString(delta.Delta.Text)
+						if onChunk != nil {
+							onChunk(delta.Delta.Text)
+						}
+					}
+				case "result":
+					if ev.IsError {
+						if ev.Result != "" {
+							return "", sessionEmitted, fmt.Errorf("claude returned error: %s", ev.Result)
+						}
+						return "", sessionEmitted, fmt.Errorf("claude returned error")
+					}
+					if ev.Result != "" {
+						// The result envelope is the authoritative assembled text.
+						fullText.Reset()
+						fullText.WriteString(ev.Result)
+					}
+					if ev.SessionID != "" && !sessionEmitted {
+						sessionEmitted = true
+						if onSession != nil {
+							onSession(ev.SessionID)
+						}
+					}
+				case "system":
+					// Some CLI versions emit the session id on the initial system event.
+					if ev.SessionID != "" && !sessionEmitted {
+						sessionEmitted = true
+						if onSession != nil {
+							onSession(ev.SessionID)
+						}
 					}
 				}
 			}
-		case "content_block_delta":
-			var delta struct {
-				Delta struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
-				} `json:"delta"`
-			}
-			if err := json.Unmarshal(line, &delta); err == nil && delta.Delta.Text != "" {
-				fullText.WriteString(delta.Delta.Text)
-				if onChunk != nil {
-					onChunk(delta.Delta.Text)
-				}
-			}
-		case "result":
-			if ev.IsError {
-				if ev.Result != "" {
-					return "", sessionEmitted, fmt.Errorf("claude returned error: %s", ev.Result)
-				}
-				return "", sessionEmitted, fmt.Errorf("claude returned error")
-			}
-			if ev.Result != "" {
-				// The result envelope is the authoritative assembled text.
-				fullText.Reset()
-				fullText.WriteString(ev.Result)
-			}
-			if ev.SessionID != "" && !sessionEmitted {
-				sessionEmitted = true
-				if onSession != nil {
-					onSession(ev.SessionID)
-				}
-			}
-		case "system":
-			// Some CLI versions emit the session id on the initial system event.
-			if ev.SessionID != "" && !sessionEmitted {
-				sessionEmitted = true
-				if onSession != nil {
-					onSession(ev.SessionID)
-				}
-			}
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return "", sessionEmitted, fmt.Errorf("scan claude output: %w", err)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", sessionEmitted, fmt.Errorf("read claude output: %w", err)
+		}
 	}
 
 	return fullText.String(), sessionEmitted, nil
