@@ -125,6 +125,11 @@
     "errors": {
       "failedToLoad": "Kunne ikke laste kalenderhendelser",
       "syncFailed": "Kalendersynkronisering mislyktes"
+    },
+    "syncErrors": {
+      "chip": "Synkroniseringsfeil",
+      "tooltip": "Kunne ikke synkronisere: {{calendars}}",
+      "ariaLabel": "Synkroniseringsfeil for: {{calendars}}"
     }
   },
   "family": {
