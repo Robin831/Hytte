@@ -146,12 +146,13 @@ export default function Infra() {
       if (signal.aborted) return
       setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
     } finally {
-      if (!signal.aborted) {
-        if (background) {
-          setRefreshing(false)
-        } else {
-          setLoading(false)
-        }
+      // Always reset the flag this call set, even on abort: a superseding
+      // handler (e.g. handleRefresh after the mount load) may not touch the
+      // same flag, which would otherwise leave the UI stuck.
+      if (background) {
+        setRefreshing(false)
+      } else {
+        setLoading(false)
       }
     }
   }, [fetchModules, fetchStatus, t])
@@ -187,9 +188,10 @@ export default function Infra() {
       if (signal.aborted) return
       setError(err instanceof Error ? err.message : t('errors.failedToToggle'))
     } finally {
-      if (!signal.aborted) {
-        setToggling(null)
-      }
+      // Only clear our own module from the toggling slot. If a newer
+      // handleToggle for a different module has since claimed the slot,
+      // leave its value intact.
+      setToggling(prev => (prev === moduleName ? null : prev))
     }
   }
 
@@ -476,7 +478,7 @@ function ToolVersionsPanel() {
         if ((err as Error).name === 'AbortError' || signal.aborted) return
         setError('LOAD_FAILED')
       } finally {
-        if (!signal.aborted) setLoading(false)
+        setLoading(false)
       }
     }
     load()
@@ -508,9 +510,7 @@ function ToolVersionsPanel() {
           // Silently fail — latestVersions stays empty, column shows '—'
         }
       } finally {
-        if (!controller.signal.aborted) {
-          setLatestLoading(false)
-        }
+        setLatestLoading(false)
       }
     }
     loadLatest()
@@ -611,10 +611,8 @@ function ToolVersionsPanel() {
         stderr: err instanceof Error ? err.message : 'Request failed',
       })
     } finally {
-      if (!signal.aborted) {
-        setUpgradingNode(false)
-        setUpgradingMajor(null)
-      }
+      setUpgradingNode(false)
+      setUpgradingMajor(prev => (prev === major ? null : prev))
     }
   }
 
@@ -687,9 +685,7 @@ function ToolVersionsPanel() {
         stderr: err instanceof Error ? err.message : 'Request failed',
       })
     } finally {
-      if (!signal.aborted) {
-        setUpdatingTool(null)
-      }
+      setUpdatingTool(prev => (prev === tool ? null : prev))
     }
   }
 
@@ -1069,7 +1065,7 @@ function HealthChecksDetail({ details }: { details?: Record<string, unknown> }) 
       if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to add service')
     } finally {
-      if (!signal.aborted) setAdding(false)
+      setAdding(false)
     }
   }
 
@@ -1259,7 +1255,7 @@ function SSLCertsDetail({ details }: { details?: Record<string, unknown> }) {
       if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to add host')
     } finally {
-      if (!signal.aborted) setAdding(false)
+      setAdding(false)
     }
   }
 
@@ -1761,7 +1757,7 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
       if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to add Docker host')
     } finally {
-      if (!signal.aborted) setAdding(false)
+      setAdding(false)
     }
   }
 
@@ -1782,7 +1778,9 @@ function DockerDetail({ details }: { details?: Record<string, unknown> }) {
       if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to delete Docker host')
     } finally {
-      if (!signal.aborted) setDeletingId(null)
+      // Only clear if our id is still the active one; a newer delete may
+      // have claimed the slot before this finally runs.
+      setDeletingId(prev => (prev === id ? null : prev))
     }
   }
 
@@ -1998,7 +1996,7 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
       if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to save token')
     } finally {
-      if (!signal.aborted) setSaving(false)
+      setSaving(false)
     }
   }
 
@@ -2020,7 +2018,7 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
       if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to delete token')
     } finally {
-      if (!signal.aborted) setDeleting(false)
+      setDeleting(false)
     }
   }
 
@@ -2050,7 +2048,7 @@ function GitHubActionsDetail({ details }: { details?: Record<string, unknown> })
       if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to add repository')
     } finally {
-      if (!signal.aborted) setAdding(false)
+      setAdding(false)
     }
   }
 
@@ -2325,7 +2323,7 @@ function DNSDetail({ details }: { details?: Record<string, unknown> }) {
       if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to add DNS monitor')
     } finally {
-      if (!signal.aborted) setAdding(false)
+      setAdding(false)
     }
   }
 
@@ -2603,7 +2601,7 @@ function SystemdDetail({ details }: { details?: Record<string, unknown> }) {
       if (signal.aborted) return
       setError(err instanceof Error ? err.message : 'Failed to add systemd service')
     } finally {
-      if (!signal.aborted) setAdding(false)
+      setAdding(false)
     }
   }
 
