@@ -194,6 +194,12 @@ function KioskPageInner() {
     let failureCount = 0
     let timerId: ReturnType<typeof setTimeout> | null = null
     let activeController: AbortController | null = null
+    // Monotonically increasing request ID. Guards against a stale response
+    // winning a race and calling setApiData after a newer fetch has started,
+    // independently of whether AbortController is available (when it is not,
+    // both myController and activeController would both be null and the
+    // controller-identity check would never fire).
+    let requestId = 0
 
     // Older browsers (Android 5 / Firefox ESR) may not implement the Page
     // Visibility API. Feature-detect and skip the listener if absent — polling
@@ -237,20 +243,27 @@ function KioskPageInner() {
         typeof AbortController !== 'undefined' ? new AbortController() : null
       activeController = myController
 
+      // Claim a unique ID for this invocation. This is the primary guard
+      // against a stale response winning a race — it works even when
+      // AbortController is unavailable (where both myController and
+      // activeController would be null, making the identity check useless).
+      requestId += 1
+      const myRequestId = requestId
+
       try {
         const res = await fetch('/api/kiosk/data?token=' + encodeURIComponent(token!), {
           credentials: 'include',
           signal: myController?.signal,
         })
         // Bail if unmounted or superseded by a newer fetch.
-        if (cancelled || myController !== activeController) return
+        if (cancelled || myRequestId !== requestId) return
         if (!res.ok) {
           failureCount += 1
           scheduleNext(backoffDelay())
           return
         }
         const json: KioskData = await res.json()
-        if (cancelled || myController !== activeController) return
+        if (cancelled || myRequestId !== requestId) return
         setApiData(json)
         setLastSuccessAt(Date.now())
         failureCount = 0
@@ -258,7 +271,7 @@ function KioskPageInner() {
       } catch {
         // Network failure or abort. If the abort came from unmount/supersede,
         // skip; otherwise treat as a failure and back off.
-        if (cancelled || myController !== activeController) return
+        if (cancelled || myRequestId !== requestId) return
         failureCount += 1
         scheduleNext(backoffDelay())
       }

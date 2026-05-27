@@ -393,6 +393,50 @@ describe('KioskPage – visibility-aware polling and backoff', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
+  it('polls unconditionally and skips visibility listener when Page Visibility API is unavailable', async () => {
+    // Simulate browsers (e.g. Android 5) that do not implement the Page
+    // Visibility API. The beforeEach resets visibilityState to 'visible', so we
+    // override it to undefined here so that typeof document.visibilityState ===
+    // 'undefined' — matching the feature-detection branch in KioskPage.
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => undefined,
+    })
+
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(apiPayload) } as Response),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const addSpy = vi.spyOn(document, 'addEventListener')
+
+    renderKiosk('/kiosk?token=test-token')
+
+    // Initial fetch fires immediately.
+    await act(async () => { await flushMicrotasks() })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    // No visibilitychange listener should have been attached.
+    const attachedVisibility = addSpy.mock.calls.some(
+      (call) => call[0] === 'visibilitychange',
+    )
+    expect(attachedVisibility).toBe(false)
+
+    // Polling continues unconditionally at the 30s baseline interval.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000)
+      await flushMicrotasks()
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000)
+      await flushMicrotasks()
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+
+    addSpy.mockRestore()
+  })
+
   it('does not schedule fetches or attach visibility listeners in mock mode', async () => {
     const fetchMock = vi.fn(() => Promise.reject(new Error('should not be called')))
     vi.stubGlobal('fetch', fetchMock)
