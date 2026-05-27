@@ -536,6 +536,112 @@ func TestActivityHandler_NoEnglishLabelsAcrossAllTypes(t *testing.T) {
 	}
 }
 
+// TestQueryHelpers_Individually exercises each per-source helper directly so
+// that the helper-level contract (own scoped defer rows.Close, returns its own
+// slice) is covered independently of the merge in recentActivity.
+func TestQueryHelpers_Individually(t *testing.T) {
+	d := setupTestDB(t)
+	user := createTestUser(t, d)
+	now := time.Now().UTC()
+	cutoff := now.AddDate(0, 0, -30).Format(time.RFC3339)
+
+	encWorkoutTitle, err := encryption.EncryptField("Solo Run")
+	if err != nil {
+		t.Fatalf("encrypt workout title: %v", err)
+	}
+	if _, err := d.Exec(
+		`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters,
+		 avg_heart_rate, max_heart_rate, avg_pace_sec_per_km, avg_cadence, calories,
+		 ascent_meters, descent_meters, fit_file_hash, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		user.ID, "running", encWorkoutTitle, now.Add(-2*time.Hour).Format(time.RFC3339),
+		1800, 5000, 150, 170, 360, 180, 300, 50, 30, "hash-helper", now.Add(-2*time.Hour).Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+
+	encComment, err := encryption.EncryptField("Stage notes")
+	if err != nil {
+		t.Fatalf("encrypt lactate comment: %v", err)
+	}
+	if _, err := d.Exec(
+		`INSERT INTO lactate_tests (user_id, date, comment, created_at) VALUES (?, ?, ?, ?)`,
+		user.ID, now.Add(-3*time.Hour).Format("2006-01-02"), encComment,
+		now.Add(-3*time.Hour).Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("insert lactate: %v", err)
+	}
+
+	encNoteTitle, err := encryption.EncryptField("Helper Note")
+	if err != nil {
+		t.Fatalf("encrypt note title: %v", err)
+	}
+	if _, err := d.Exec(
+		`INSERT INTO notes (user_id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		user.ID, encNoteTitle, "body",
+		now.Add(-4*time.Hour).Format(time.RFC3339), now.Add(-4*time.Hour).Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("insert note: %v", err)
+	}
+
+	if _, err := d.Exec(
+		`INSERT INTO short_links (user_id, code, target_url, title, created_at) VALUES (?, ?, ?, ?, ?)`,
+		user.ID, "lnk", "https://example.com", "Helper Link",
+		now.Add(-5*time.Hour).Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("insert short link: %v", err)
+	}
+
+	workouts, err := queryWorkouts(d, user.ID, cutoff)
+	if err != nil {
+		t.Fatalf("queryWorkouts: %v", err)
+	}
+	if len(workouts) != 1 || workouts[0].Type != "workout" || workouts[0].Title != "Solo Run" {
+		t.Errorf("unexpected queryWorkouts result: %+v", workouts)
+	}
+
+	lactates, err := queryLactate(d, user.ID, cutoff)
+	if err != nil {
+		t.Fatalf("queryLactate: %v", err)
+	}
+	if len(lactates) != 1 || lactates[0].Type != "lactate" || lactates[0].Comment != "Stage notes" {
+		t.Errorf("unexpected queryLactate result: %+v", lactates)
+	}
+
+	notes, err := queryNotes(d, user.ID, cutoff)
+	if err != nil {
+		t.Fatalf("queryNotes: %v", err)
+	}
+	if len(notes) != 1 || notes[0].Type != "note" || notes[0].Title != "Helper Note" {
+		t.Errorf("unexpected queryNotes result: %+v", notes)
+	}
+
+	links, err := queryLinks(d, user.ID, cutoff)
+	if err != nil {
+		t.Fatalf("queryLinks: %v", err)
+	}
+	if len(links) != 1 || links[0].Type != "link" || links[0].Code != "lnk" || links[0].Title != "Helper Link" {
+		t.Errorf("unexpected queryLinks result: %+v", links)
+	}
+}
+
+// TestRecentActivity_ErrorPropagation verifies that when one source query
+// fails (here, by closing the DB so all queries fail), recentActivity returns
+// the underlying error rather than silently swallowing it. The helpers' scoped
+// defer rows.Close ensures no Rows leak across the failure path.
+func TestRecentActivity_ErrorPropagation(t *testing.T) {
+	d := setupTestDB(t)
+	user := createTestUser(t, d)
+
+	if err := d.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	if _, err := recentActivity(d, user.ID); err == nil {
+		t.Fatal("expected recentActivity to return an error when the DB is closed")
+	}
+}
+
 func TestActivityHandler_LimitTen(t *testing.T) {
 	d := setupTestDB(t)
 	user := createTestUser(t, d)
