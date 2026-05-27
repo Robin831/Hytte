@@ -1,0 +1,2 @@
+category: Fixed
+- **Budget page now preserves negative signs and renders each account's own currency** - `formatAmount` no longer strips the sign with `Math.abs()` or hardcodes `NOK`. Transaction rows and the running balance now use the owning account's currency (USD, EUR, NOK, etc.), and negative amounts render with the locale's negative convention so an outgoing transaction is visually distinguishable from a refund. Red/green tinting stays on the row wrapping the amount. (Hytte-bzsw)
