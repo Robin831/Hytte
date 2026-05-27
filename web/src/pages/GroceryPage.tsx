@@ -69,18 +69,21 @@ export default function GroceryPage() {
   // Poll every 5 seconds
   useEffect(() => {
     if (!user) return
-    const controller = new AbortController()
+    let currentController: AbortController | null = null
     const poll = async () => {
       if (document.hidden) return
+      currentController?.abort()
+      const controller = new AbortController()
+      currentController = controller
       try {
         const fetched = await fetchItems(controller.signal)
-        setItems(fetched)
+        if (!controller.signal.aborted) setItems(fetched)
       } catch {
         // silently ignore polling errors
       }
     }
     const intervalId = setInterval(poll, 5000)
-    return () => { clearInterval(intervalId); controller.abort() }
+    return () => { clearInterval(intervalId); currentController?.abort() }
   }, [user, fetchItems])
 
   // Unmount cleanup: abort any in-flight translation and stop any active recognition
@@ -179,7 +182,6 @@ export default function GroceryPage() {
     } finally {
       if (translateControllerRef.current === controller) {
         setIsTranslating(false)
-        // eslint-disable-next-line react-hooks/immutability
         translateControllerRef.current = null
       }
     }
