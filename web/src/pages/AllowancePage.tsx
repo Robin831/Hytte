@@ -201,8 +201,6 @@ export default function AllowancePage() {
   const [recordChore, setRecordChore] = useState<Chore | null>(null)
   const [familyChildren, setFamilyChildren] = useState<{ child_id: number; nickname: string; avatar_emoji: string }[]>([])
   const [familyChildrenLoaded, setFamilyChildrenLoaded] = useState(false)
-  const mountedRef = useRef(true)
-  useEffect(() => () => { mountedRef.current = false }, [])
   const { toasts, showToast } = useToast()
 
   // Action error feedback
