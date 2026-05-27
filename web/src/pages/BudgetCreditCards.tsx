@@ -90,6 +90,10 @@ interface MonthlyHistory {
   net_totals: Record<string, number>         // net outstanding = expenses + innbetaling_totals
 }
 
+// Stable empty array for groups with no transactions — avoids allocating a new
+// [] on every render when byGroupId.get(key) returns undefined.
+const EMPTY_TX_ARRAY: Transaction[] = []
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function currentMonth(): string {
@@ -989,11 +993,24 @@ export default function BudgetCreditCards() {
     return result
   }, [transactions])
 
-  // Diverse catch-all: transactions in Diverse group + unassigned
-  const diverseTxns = useMemo<Transaction[]>(() => [
-    ...(diverseGroup ? (byGroupId.get(diverseGroup.id) ?? []) : []),
-    ...(byGroupId.get(null) ?? []),
-  ], [byGroupId, diverseGroup])
+  // Diverse catch-all: transactions in Diverse group + unassigned.
+  // Split into two intermediate memos so the concatenation can be memoised on
+  // those references independently: if only a named-group transaction changes,
+  // only diverseGroupTxns/unassignedTxns need updating — and if they haven't
+  // changed, diverseTxns itself stays referentially stable and the Diverse
+  // GroupSection skips re-rendering.
+  const diverseGroupTxns = useMemo(
+    () => diverseGroup ? (byGroupId.get(diverseGroup.id) ?? EMPTY_TX_ARRAY) : EMPTY_TX_ARRAY,
+    [byGroupId, diverseGroup],
+  )
+  const unassignedTxns = useMemo(
+    () => byGroupId.get(null) ?? EMPTY_TX_ARRAY,
+    [byGroupId],
+  )
+  const diverseTxns = useMemo<Transaction[]>(
+    () => [...diverseGroupTxns, ...unassignedTxns],
+    [diverseGroupTxns, unassignedTxns],
+  )
 
   // When a variable bill is linked, derive the monthly total from the backend-computed
   // closing balance so it stays consistent with SyncCreditCardExpense. Otherwise sum
