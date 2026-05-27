@@ -30,7 +30,8 @@
     "markPaid": "ทำเครื่องหมายว่าจ่ายแล้ว",
     "saveRule": "บันทึกกฎ",
     "viewPhoto": "ดูรูปภาพ",
-    "close": "ปิด"
+    "close": "ปิด",
+    "refresh": "รีเฟรช"
   },
   "form": {
     "newChore": "งานใหม่",

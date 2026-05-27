@@ -1,0 +1,2 @@
+category: Changed
+- **Allowance tabs cache data between switches** - Switching between Today, Chores, Payouts, Extras, and Bonuses tabs after a tab has loaded once no longer refetches or flashes a skeleton over cached data. Each tab gains an explicit Refresh control, and mutating actions (approve/reject, record, approve extra) invalidate dependent tabs so their data refetches on next visit. (Hytte-wj73)
