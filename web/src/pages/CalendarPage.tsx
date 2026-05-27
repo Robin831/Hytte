@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { RefreshCw, ChevronLeft, ChevronRight, Filter, CalendarDays, List, LayoutGrid, Columns3, Calendar } from 'lucide-react'
+import { RefreshCw, ChevronLeft, ChevronRight, Filter, CalendarDays, List, LayoutGrid, Columns3, Calendar, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../auth'
 import { formatDate } from '../utils/formatDate'
 import {
@@ -19,6 +19,16 @@ import AgendaView from '../components/calendar/AgendaView'
 
 const AGENDA_DAYS = 14
 const STORAGE_KEY = 'hytte-calendar-view'
+
+interface SyncError {
+  calendar_id: string
+  message: string
+}
+
+interface EventsResponse {
+  events?: CalendarEvent[]
+  sync_errors?: SyncError[]
+}
 
 /** Format a Date as RFC3339 without fractional seconds. */
 function toRFC3339(date: Date): string {
@@ -84,6 +94,7 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [syncErrors, setSyncErrors] = useState<SyncError[]>([])
   const [showSelector, setShowSelector] = useState(false)
   const [savingCalendars, setSavingCalendars] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>(loadViewMode)
@@ -111,8 +122,11 @@ export default function CalendarPage() {
       const url = buildEventsUrl(viewMode, rangeStart, sync)
       const res = await fetch(url, { credentials: 'include', signal: ctl.signal })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
+      const data: EventsResponse = await res.json()
       setEvents(data.events ?? [])
+      // sync_errors only appears on sync requests; clear on any fetch so the
+      // chip vanishes after a successful sync or a plain reload.
+      setSyncErrors(sync ? (data.sync_errors ?? []) : [])
       setError(null)
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
@@ -378,6 +392,27 @@ export default function CalendarPage() {
               <span className="hidden sm:inline">{t('calendar.refresh')}</span>
             </button>
           )}
+
+          {/* Sync errors chip — visible only when one or more calendars failed to sync */}
+          {connected === true && syncErrors.length > 0 && (() => {
+            const calendarNames = syncErrors.map(se => {
+              const cal = calendars.find(c => c.id === se.calendar_id)
+              return cal?.summary || se.calendar_id
+            })
+            const joined = calendarNames.join(', ')
+            const tooltip = t('calendar.syncErrors.tooltip', { calendars: joined })
+            return (
+              <span
+                role="status"
+                title={tooltip}
+                aria-label={t('calendar.syncErrors.ariaLabel', { calendars: joined })}
+                className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-lg bg-amber-900/40 text-amber-300 border border-amber-700/60"
+              >
+                <AlertTriangle size={14} />
+                <span>{t('calendar.syncErrors.chip')}</span>
+              </span>
+            )
+          })()}
         </div>
       </div>
 

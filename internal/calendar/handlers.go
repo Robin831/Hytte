@@ -1,6 +1,7 @@
 package calendar
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -20,12 +21,30 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
+// EventFetcher fetches and caches Google Calendar events for a single calendar.
+// *Client satisfies this interface; tests inject stubs that simulate sync failures.
+type EventFetcher interface {
+	FetchAndCacheEvents(ctx context.Context, userID int64, calendarID string, timeMin, timeMax time.Time) error
+}
+
+// SyncError describes a per-calendar sync failure surfaced to the client so the
+// UI can warn the user that some calendars are showing stale data.
+type SyncError struct {
+	CalendarID string `json:"calendar_id"`
+	Message    string `json:"message"`
+}
+
+type eventsResponse struct {
+	Events     []Event     `json:"events"`
+	SyncErrors []SyncError `json:"sync_errors,omitempty"`
+}
+
 // EventsHandler returns cached calendar events for the authenticated user.
 // Query params:
 //   - start: RFC3339 or YYYY-MM-DD (required)
 //   - end:   RFC3339 or YYYY-MM-DD (required)
 //   - sync:  if "true", performs a sync inline before querying and returning events
-func EventsHandler(db *sql.DB, client *Client) http.HandlerFunc {
+func EventsHandler(db *sql.DB, client EventFetcher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
@@ -59,6 +78,7 @@ func EventsHandler(db *sql.DB, client *Client) http.HandlerFunc {
 			queryCalendars = []string{"primary"}
 		}
 
+		var syncErrors []SyncError
 		if doSync {
 			hasToken, err := auth.HasGoogleToken(db, user.ID)
 			if err != nil {
@@ -70,6 +90,7 @@ func EventsHandler(db *sql.DB, client *Client) http.HandlerFunc {
 				for _, calID := range queryCalendars {
 					if err := client.FetchAndCacheEvents(r.Context(), user.ID, calID, startTime, endTime); err != nil {
 						log.Printf("calendar: sync failed for user %d calendar %s: %v", user.ID, calID, err)
+						syncErrors = append(syncErrors, SyncError{CalendarID: calID, Message: err.Error()})
 					}
 				}
 			}
@@ -85,7 +106,7 @@ func EventsHandler(db *sql.DB, client *Client) http.HandlerFunc {
 			events = []Event{}
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{"events": events})
+		writeJSON(w, http.StatusOK, eventsResponse{Events: events, SyncErrors: syncErrors})
 	}
 }
 

@@ -125,6 +125,11 @@
     "errors": {
       "failedToLoad": "Failed to load calendar events",
       "syncFailed": "Calendar sync failed"
+    },
+    "syncErrors": {
+      "chip": "Sync issues",
+      "tooltip": "Failed to sync: {{calendars}}",
+      "ariaLabel": "Sync issues with: {{calendars}}"
     }
   },
   "family": {

@@ -1,12 +1,15 @@
 package calendar
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/db"
@@ -111,6 +114,129 @@ func TestEventsHandler_EmptyCache(t *testing.T) {
 	}
 	if len(events) != 0 {
 		t.Errorf("expected 0 events, got %d", len(events))
+	}
+}
+
+// stubFetcher lets a test simulate per-calendar sync results.
+type stubFetcher struct {
+	// errs maps calendarID → error to return for that calendar. nil means success.
+	errs map[string]error
+	// called records the calendar IDs that FetchAndCacheEvents was invoked with.
+	called []string
+}
+
+func (s *stubFetcher) FetchAndCacheEvents(_ context.Context, _ int64, calendarID string, _, _ time.Time) error {
+	s.called = append(s.called, calendarID)
+	if err, ok := s.errs[calendarID]; ok {
+		return err
+	}
+	return nil
+}
+
+func TestEventsHandler_SyncErrorsReported(t *testing.T) {
+	d := setupTestDB(t)
+	user := createTestUser(t, d)
+
+	// Two visible calendars; one fails to sync, the other succeeds.
+	if err := auth.SetPreference(d, user.ID, "calendar_visible_ids", "good@g.com,bad@g.com"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	// Sync only runs when a Google token exists; insert one directly so we
+	// hit the loop without exercising real OAuth.
+	if err := auth.SaveGoogleToken(d, user.ID, &auth.GoogleToken{
+		AccessToken:  "stub-access",
+		RefreshToken: "stub-refresh",
+		TokenType:    "Bearer",
+	}); err != nil {
+		t.Fatalf("save google token: %v", err)
+	}
+
+	// Pre-seed one cached event per calendar so we can confirm the cached
+	// data is still returned alongside any sync errors.
+	if err := UpsertEvents(d, user.ID, []Event{
+		{ID: "good-1", CalendarID: "good@g.com", Title: "Good event", StartTime: "2026-04-08T07:00:00Z", EndTime: "2026-04-08T08:00:00Z", Status: "confirmed"},
+		{ID: "bad-1", CalendarID: "bad@g.com", Title: "Stale event", StartTime: "2026-04-08T09:00:00Z", EndTime: "2026-04-08T10:00:00Z", Status: "confirmed"},
+	}); err != nil {
+		t.Fatalf("seed events: %v", err)
+	}
+
+	fetcher := &stubFetcher{errs: map[string]error{"bad@g.com": errors.New("upstream 500")}}
+	handler := EventsHandler(d, fetcher)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/calendar/events?start=2026-04-01&end=2026-04-30&sync=true", nil)
+	req = req.WithContext(auth.ContextWithUser(req.Context(), user))
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp struct {
+		Events     []Event     `json:"events"`
+		SyncErrors []SyncError `json:"sync_errors"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	// Both calendars should have been attempted.
+	if len(fetcher.called) != 2 {
+		t.Errorf("expected fetcher to be called twice, got %d: %v", len(fetcher.called), fetcher.called)
+	}
+
+	if len(resp.SyncErrors) != 1 {
+		t.Fatalf("expected exactly 1 sync error, got %d: %+v", len(resp.SyncErrors), resp.SyncErrors)
+	}
+	if resp.SyncErrors[0].CalendarID != "bad@g.com" {
+		t.Errorf("expected sync error for bad@g.com, got %q", resp.SyncErrors[0].CalendarID)
+	}
+	if resp.SyncErrors[0].Message == "" {
+		t.Error("expected non-empty sync error message")
+	}
+	for _, se := range resp.SyncErrors {
+		if se.CalendarID == "good@g.com" {
+			t.Errorf("successful calendar should not appear in sync_errors: %+v", se)
+		}
+	}
+
+	// Cached events for both calendars are still returned.
+	if len(resp.Events) != 2 {
+		t.Errorf("expected 2 cached events, got %d", len(resp.Events))
+	}
+}
+
+func TestEventsHandler_SyncErrorsOmittedOnSuccess(t *testing.T) {
+	d := setupTestDB(t)
+	user := createTestUser(t, d)
+
+	if err := auth.SetPreference(d, user.ID, "calendar_visible_ids", "ok@g.com"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+	if err := auth.SaveGoogleToken(d, user.ID, &auth.GoogleToken{
+		AccessToken:  "stub-access",
+		RefreshToken: "stub-refresh",
+		TokenType:    "Bearer",
+	}); err != nil {
+		t.Fatalf("save google token: %v", err)
+	}
+
+	fetcher := &stubFetcher{}
+	handler := EventsHandler(d, fetcher)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/calendar/events?start=2026-04-01&end=2026-04-30&sync=true", nil)
+	req = req.WithContext(auth.ContextWithUser(req.Context(), user))
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rr.Code, rr.Body.String())
+	}
+
+	// The raw payload should omit sync_errors entirely on success.
+	if strings.Contains(rr.Body.String(), "sync_errors") {
+		t.Errorf("expected sync_errors to be omitted when all syncs succeed; body: %s", rr.Body.String())
 	}
 }
 

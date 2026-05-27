@@ -125,6 +125,11 @@
     "errors": {
       "failedToLoad": "ไม่สามารถโหลดกิจกรรมปฏิทินได้",
       "syncFailed": "การซิงค์ปฏิทินล้มเหลว"
+    },
+    "syncErrors": {
+      "chip": "ปัญหาการซิงค์",
+      "tooltip": "ซิงค์ไม่สำเร็จ: {{calendars}}",
+      "ariaLabel": "ปัญหาการซิงค์กับ: {{calendars}}"
     }
   },
   "family": {
