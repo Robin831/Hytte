@@ -45,11 +45,36 @@ func ActivityHandler(db *sql.DB) http.HandlerFunc {
 
 // recentActivity queries the most recent items across multiple tables and
 // merges them into a single chronological list, limited to 10 items.
+//
+// Each source is queried via its own helper so the sql.Rows handle is scoped
+// to that helper (defer rows.Close runs on helper return), guaranteeing no
+// rows are left open if a later source fails.
 func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 	cutoff := time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339)
-	var items []ActivityItem
 
-	// Recent workouts.
+	var items []ActivityItem
+	for _, query := range []func(*sql.DB, int64, string) ([]ActivityItem, error){
+		queryWorkouts,
+		queryLactate,
+		queryNotes,
+		queryLinks,
+	} {
+		got, err := query(db, userID, cutoff)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, got...)
+	}
+
+	sortByTimestamp(items)
+	if len(items) > 10 {
+		items = items[:10]
+	}
+	return items, nil
+}
+
+// queryWorkouts returns up to 10 recent workout activity items for the user.
+func queryWorkouts(db *sql.DB, userID int64, cutoff string) ([]ActivityItem, error) {
 	rows, err := db.Query(
 		`SELECT sport, title, started_at FROM workouts
 		 WHERE user_id = ? AND started_at >= ?
@@ -60,6 +85,8 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 		return nil, err
 	}
 	defer rows.Close()
+
+	var items []ActivityItem
 	for rows.Next() {
 		var sport, title, startedAt string
 		if err := rows.Scan(&sport, &title, &startedAt); err != nil {
@@ -77,21 +104,28 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	return items, nil
+}
 
-	// Recent lactate tests.
-	rows2, err := db.Query(
+// queryLactate returns up to 10 recent lactate-test activity items for the user.
+// The lactate_tests.date column stores YYYY-MM-DD, so the RFC3339 cutoff is
+// truncated to its date prefix.
+func queryLactate(db *sql.DB, userID int64, cutoff string) ([]ActivityItem, error) {
+	rows, err := db.Query(
 		`SELECT date, comment FROM lactate_tests
 		 WHERE user_id = ? AND date >= ?
 		 ORDER BY date DESC LIMIT 10`,
-		userID, cutoff[:10], // date column is YYYY-MM-DD
+		userID, cutoff[:10],
 	)
 	if err != nil {
 		return nil, err
 	}
-	defer rows2.Close()
-	for rows2.Next() {
+	defer rows.Close()
+
+	var items []ActivityItem
+	for rows.Next() {
 		var date, comment string
-		if err := rows2.Scan(&date, &comment); err != nil {
+		if err := rows.Scan(&date, &comment); err != nil {
 			return nil, err
 		}
 		comment = encryption.DecryptLenient(comment)
@@ -102,12 +136,15 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 			Link:      "/lactate",
 		})
 	}
-	if err := rows2.Err(); err != nil {
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	return items, nil
+}
 
-	// Recent notes.
-	rows3, err := db.Query(
+// queryNotes returns up to 10 recent note activity items for the user.
+func queryNotes(db *sql.DB, userID int64, cutoff string) ([]ActivityItem, error) {
+	rows, err := db.Query(
 		`SELECT title, created_at FROM notes
 		 WHERE user_id = ? AND created_at >= ?
 		 ORDER BY created_at DESC LIMIT 10`,
@@ -116,10 +153,12 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows3.Close()
-	for rows3.Next() {
+	defer rows.Close()
+
+	var items []ActivityItem
+	for rows.Next() {
 		var title, createdAt string
-		if err := rows3.Scan(&title, &createdAt); err != nil {
+		if err := rows.Scan(&title, &createdAt); err != nil {
 			return nil, err
 		}
 		title = encryption.DecryptLenient(title)
@@ -130,12 +169,15 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 			Link:      "/notes",
 		})
 	}
-	if err := rows3.Err(); err != nil {
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	return items, nil
+}
 
-	// Recent short links.
-	rows4, err := db.Query(
+// queryLinks returns up to 10 recent short-link activity items for the user.
+func queryLinks(db *sql.DB, userID int64, cutoff string) ([]ActivityItem, error) {
+	rows, err := db.Query(
 		`SELECT title, code, strftime('%Y-%m-%dT%H:%M:%SZ', created_at) FROM short_links
 		 WHERE user_id = ? AND datetime(created_at) >= datetime(?)
 		 ORDER BY created_at DESC LIMIT 10`,
@@ -144,10 +186,12 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows4.Close()
-	for rows4.Next() {
+	defer rows.Close()
+
+	var items []ActivityItem
+	for rows.Next() {
 		var title, code, createdAt string
-		if err := rows4.Scan(&title, &code, &createdAt); err != nil {
+		if err := rows.Scan(&title, &code, &createdAt); err != nil {
 			return nil, err
 		}
 		items = append(items, ActivityItem{
@@ -158,16 +202,9 @@ func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
 			Link:      "/links",
 		})
 	}
-	if err := rows4.Err(); err != nil {
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-
-	// Sort by timestamp descending and limit to 10.
-	sortByTimestamp(items)
-	if len(items) > 10 {
-		items = items[:10]
-	}
-
 	return items, nil
 }
 
