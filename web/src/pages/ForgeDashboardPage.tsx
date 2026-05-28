@@ -77,36 +77,33 @@ export default function ForgeDashboardPage() {
   const completedWorkers = allWorkers.filter(w => w.status !== 'pending' && w.status !== 'running')
 
   // Derive the effective selected worker ID during render to avoid calling setState
-  // inside a useEffect. Auto-selects the most recently started active worker; when
-  // a worker completes, switches to the next active one (or keeps showing the
-  // completed worker's output). A user click sets userSelectedWorkerId to override.
+  // inside a useEffect. Auto-selects the most recently started active worker as the
+  // default. A user click sets userSelectedWorkerId to pin an explicit choice — even
+  // a completed worker — which stays selected until the user picks something else or
+  // that worker disappears from allWorkers entirely.
   const selectedWorkerId = useMemo(() => {
     const sortedActive = [...activeWorkers].sort(
       (a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
     )
 
-    if (userSelectedWorkerId === null) {
-      // Initial selection: pick most recently started active worker, or most recently
-      // completed worker as fallback so the panel is never empty.
-      if (sortedActive.length > 0) return sortedActive[0].id
-      const lastCompleted = [...completedWorkers].sort((a, b) => {
-        const bTime = Date.parse(b.completed_at ?? b.updated_at ?? '') || 0
-        const aTime = Date.parse(a.completed_at ?? a.updated_at ?? '') || 0
-        return bTime - aTime
-      })[0]
-      return lastCompleted?.id ?? null
+    // If the user explicitly selected a worker that still exists, keep it pinned —
+    // even when it is completed and a brand-new active worker starts. This prevents
+    // the panel from jumping away while the user is reading a finished run's output.
+    if (userSelectedWorkerId !== null && allWorkers.some(w => w.id === userSelectedWorkerId)) {
+      return userSelectedWorkerId
     }
 
-    // If the user-selected worker is no longer active, switch to the next active
-    // worker (if any). If none are active, keep showing the completed worker's
-    // output — its log file is still readable.
-    const selectedIsActive = activeWorkers.some(w => w.id === userSelectedWorkerId)
-    if (!selectedIsActive && sortedActive.length > 0) {
-      return sortedActive[0].id
-    }
-
-    return userSelectedWorkerId
-  }, [userSelectedWorkerId, activeWorkers, completedWorkers])
+    // Fallback (no manual selection, or the selected worker has disappeared from
+    // allWorkers): pick the most recently started active worker, or the most recently
+    // completed worker, so the panel is never empty.
+    if (sortedActive.length > 0) return sortedActive[0].id
+    const lastCompleted = [...completedWorkers].sort((a, b) => {
+      const bTime = Date.parse(b.completed_at ?? b.updated_at ?? '') || 0
+      const aTime = Date.parse(a.completed_at ?? a.updated_at ?? '') || 0
+      return bTime - aTime
+    })[0]
+    return lastCompleted?.id ?? null
+  }, [userSelectedWorkerId, allWorkers, activeWorkers, completedWorkers])
 
   const selectedWorker = allWorkers.find(w => w.id === selectedWorkerId) ?? null
 
