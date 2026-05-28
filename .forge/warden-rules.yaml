@@ -26321,3 +26321,499 @@ rules:
       paths:
         - '**/*.go'
         - '**/*.md'
+    - id: quote-iso8601-yaml-timestamps
+      category: style
+      pattern: >-
+        YAML files containing ISO-8601 date/time values (e.g. last_seen, archived_at, added) as scalar values
+      check: >-
+        Ensure ISO-8601 timestamp values are wrapped in quotes so YAML parsers load them as strings rather than native timestamps, and that quoting is applied consistently across all timestamp fields in the file.
+      source: copilot:PR#783
+      added: "2026-05-26"
+      paths:
+        - '**/*.yaml'
+    - id: rfc3339-timestamp-precision
+      category: style
+      pattern: >-
+        RFC3339 timestamps written to YAML/JSON files or other persisted data formats (e.g., last_seen, archived_at, created_at fields)
+      check: >-
+        Verify timestamps use a consistent fixed-width fractional-second precision across all fields. Inconsistent precision (e.g., 8 vs 9 fractional digits) can break string-based sorting/comparison and format validation. Normalize to a uniform RFC3339 format when serializing timestamps.
+      source: copilot:PR#783
+      added: "2026-05-26"
+      paths:
+        - '**/*.yaml'
+    - id: superseded-by-consistency
+      category: style
+      pattern: >-
+        An archived or deprecated rule has a `superseded_by` field pointing to a replacement rule, while its `check` and `pattern` text reference a different rule ID.
+      check: >-
+        Verify that any rule ID mentioned in the `check` and `pattern` text of an archived/superseded rule matches the ID in its `superseded_by` field, so readers are directed to the correct replacement rule.
+      source: copilot:PR#783
+      added: "2026-05-26"
+      paths:
+        - '**/*.yaml'
+    - id: align-superseded-by-with-deprecation-text
+      category: other
+      pattern: >-
+        Archived or deprecated rule entries that mention a replacement rule ID in human-readable text (e.g. deprecation_reason, notes) and also declare a machine-readable `superseded_by` field
+      check: >-
+        Verify the rule ID named in the deprecation/explanatory text matches the ID in `superseded_by` exactly, so the archive doesn't point readers and tooling at different successor rules
+      source: copilot:PR#783
+      added: "2026-05-26"
+      paths:
+        - '**/*.yaml'
+    - id: archive-superseded-by-consistency
+      category: style
+      pattern: >-
+        Archived warden rule entries in .forge/warden-rules.archive.yaml that reference a successor rule in both the `check` message and `superseded_by` metadata field
+      check: >-
+        Verify the rule ID mentioned in the archived rule's `check` message matches the `superseded_by` field exactly, so the archive stays internally consistent when successor rules are versioned (e.g. `use-shared-date-formatter-2`)
+      source: copilot:PR#783
+      added: "2026-05-26"
+      paths:
+        - '**/*.yaml'
+    - id: no-hardcoded-fallback-constants-when-server-provides-value
+      category: style
+      pattern: >-
+        Component defines a hardcoded fallback constant (e.g. FALLBACK_LTV_MAX = 0.85) for a value the backend now reliably returns
+      check: >-
+        Verify the component contains no literal fallback constant when the server is the source of truth; either remove the fallback or move the default into a shared constants module so the component has no magic literal
+      source: copilot:PR#786
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: value-agnostic-constant-comments
+      category: style
+      pattern: >-
+        Comment on a shared/exported constant restates its current literal value (e.g. "cap at 85%", "timeout of 30s") instead of describing the underlying rationale.
+      check: >-
+        Verify constant doc comments describe the rationale value-agnostically (e.g. "default regulatory ceiling") or explicitly reference the constant so they stay correct if the value changes, rather than hardcoding the current number in prose.
+      source: copilot:PR#786
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: optional-param-strict-types
+      category: other
+      pattern: >-
+        Function parameter has a default value (e.g. `param: string = 'default'`) but call sites pass values typed as `string | undefined` (e.g. from optional chaining `obj?.field`)
+      check: >-
+        Under TypeScript strict mode, default parameter values do not accept `undefined` from typed call sites. Change the parameter to optional/nullable (`param?: string`) and use `param ?? 'default'` inside the function so callers can safely pass optional-chained or possibly-undefined values.
+      source: copilot:PR#788
+      added: "2026-05-27"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: consistent-date-validity-check
+      category: error-handling
+      pattern: >-
+        Rendering a timestamp field with a truthiness check (e.g. `value ? formatDateTime(value) : '—'`) when other code paths already validate/parse the same field
+      check: >-
+        Ensure the render-time guard uses the same validity signal as the validation logic (parsed Date or shared bucket/status) so invalid but non-empty strings don't reach a formatter that throws; render the fallback for invalid values too
+      source: copilot:PR#789
+      added: "2026-05-27"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: cache-failed-fetch-state
+      category: error-handling
+      pattern: >-
+        Hooks/components that cache fetch results with a boolean `loaded` flag and re-fetch when an input (tab, route, key) becomes active again
+      check: >-
+        Verify the skip/guard condition treats failed fetches as cached too — either track a separate attempted/failed state or include `error` in the skip condition — so a failed result is preserved until an explicit user-triggered reload, instead of silently retrying (and clearing the error) on the next activation
+      source: copilot:PR#790
+      added: "2026-05-27"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: force-reload-state-before-success
+      category: concurrency
+      pattern: >-
+        Refetch/reload logic marks a forced reload as handled (advancing a key/flag) before the request completes successfully, while keeping a `loaded`/cached flag set
+      check: >-
+        Verify that forced reloads remain pending until the request succeeds — the handled marker must only advance on success, or the cached/loaded state must be cleared on abort so a tab switch mid-flight cannot drop the refresh and leave stale data visible
+      source: copilot:PR#790
+      added: "2026-05-27"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: remove-unused-locals
+      category: style
+      pattern: >-
+        Refactoring a React/TypeScript component that previously used a ref, state, or local variable (e.g., `mountedRef`, helper functions, imports) where the new code no longer reads from it.
+      check: >-
+        Verify all declarations, useEffect cleanups, imports, and helper functions tied to the removed logic are also deleted. With `noUnusedLocals`/`noUnusedParameters` enabled in tsconfig, any leftover unused locals will fail `npm run build`.
+      source: copilot:PR#790
+      added: "2026-05-27"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: no-unused-locale-keys
+      category: other
+      pattern: >-
+        Adding new i18n locale keys to translation bundles (e.g., web/public/locales/{en,nb,th}/*.json)
+      check: >-
+        Verify every newly added locale key is actually referenced via t('namespace:key') in a TSX/TS file. If a key has no usage, either wire it into the UI where it belongs or remove it from all locale bundles to avoid dead translations.
+      source: copilot:PR#785
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: epoch-check-after-await
+      category: concurrency
+      pattern: >-
+        Async functions that await getUserMedia/getDisplayMedia (or similar long-running media/IO promises) and then mutate shared call/session state, attach tracks to a stream ref, or call replaceTrack on a sender ref
+      check: >-
+        Verify the function captures the call/session epoch (or equivalent generation token) at entry and re-checks it after each await before mutating refs or attaching tracks; on mismatch it must stop the freshly acquired tracks and return so resources from a torn-down session don't leak (e.g. camera/mic staying on)
+      source: copilot:PR#785
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: preserve-call-modality-on-callback
+      category: ui
+      pattern: >-
+        Call-back/redial handlers or missed-call entries that initiate a new call from a stored call record
+      check: >-
+        Verify the call kind (voice/video) is plumbed through the missed-call entry and used when initiating the call-back, instead of hardcoding a single modality that could silently downgrade video calls to voice
+      source: copilot:PR#785
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: video-only-getusermedia-on-reenable
+      category: performance
+      pattern: >-
+        Re-enabling a video track via getUserMedia using constraints that also include audio when an existing mic track is already preserved on the stream
+      check: >-
+        Verify that video re-enable paths request video-only constraints (not audio+video) when the microphone track is already alive, to avoid flickering OS/browser permission/recording indicators and wasteful mic capture
+      source: copilot:PR#785
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: reset-transient-ui-state-on-lifecycle-end
+      category: ui
+      pattern: >-
+        Component state representing per-session transient UI (e.g. dragged positions, temporary overlays, modal offsets) that persists in a parent component across multiple open/close cycles of a feature.
+      check: >-
+        Verify that transient per-session UI state is either reset when the session/lifecycle ends (e.g. call ends, modal closes) so the next session starts from the documented default, or that comments and behavior clearly reflect that the state is intentionally sticky across sessions. Check for mismatches between code comments describing 'default' initial state and actual runtime behavior after the first interaction.
+      source: copilot:PR#785
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: ref-sync-with-state-in-event-handlers
+      category: concurrency
+      pattern: >-
+        A ref mirrors a piece of state via useEffect, and that ref is read inside an event handler / async loop (e.g. SSE reader, WebSocket onmessage, setInterval) that can process multiple events before React re-renders.
+      check: >-
+        Verify the ref is updated synchronously at the same point the underlying state changes (or read from a synchronous source) rather than relying on useEffect timing. Otherwise back-to-back events in one tick will read a stale ref value and act on the wrong data.
+      source: copilot:PR#785
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: memoize-concat-by-refs
+      category: performance
+      pattern: >-
+        Concatenating or combining memoized arrays/objects derived from a larger map/dict, where the useMemo depends on the parent collection rather than the specific derived inputs
+      check: >-
+        Verify the concatenation/combination is memoized on the referentially stable derived inputs (not the parent map), so structural sharing is preserved and downstream memoized children don't re-render when unrelated entries change
+      source: copilot:PR#787
+      added: "2026-05-27"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: memoized-grouping-stable-refs
+      category: performance
+      pattern: >-
+        useMemo/reducer that groups items into per-key arrays (e.g., `Map<key, T[]>` via `set(key, [])` + `push`) and passes those arrays to React.memo children or as deps to inner useMemo
+      check: >-
+        Verify unchanged groups keep stable array references across updates — otherwise React.memo and array-keyed useMemo can't short-circuit. Prefer passing precomputed primitive values (e.g., totals) instead of arrays, or preserve per-group references via structural sharing so only the affected group re-renders.
+      source: copilot:PR#787
+      added: "2026-05-27"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: fixed-virtualization-row-height
+      category: ui
+      pattern: >-
+        List/table virtualization using a fixed row height (e.g., react-window's FixedSizeList) where the row component contains flex-wrap, multi-line text, badges, or other content that can vary in height across viewports
+      check: >-
+        Verify the row's rendered height cannot exceed the configured fixed height under any viewport or content state (no wrapping, no variable badge counts, no multi-line text). If row height is genuinely variable, switch to variable-size virtualization or compute the worst-case height; otherwise enforce single-line / no-wrap styling so the fixed height holds.
+      source: copilot:PR#787
+      added: "2026-05-27"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: ref-update-timing-useeffect-vs-uselayouteffect
+      category: concurrency
+      pattern: >-
+        A ref mirroring state (e.g. transactionsRef, groupsRef) is updated inside useEffect and later read by event handlers for optimistic updates or derived values.
+      check: >-
+        Verify the ref is updated via useLayoutEffect (or the value is passed directly into the callback) so handlers cannot read stale data between commit and paint when the user interacts immediately after a state update.
+      source: copilot:PR#787
+      added: "2026-05-27"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: ref-sync-effect-deps
+      category: performance
+      pattern: >-
+        useLayoutEffect or useEffect used to sync a ref with state/prop value (latest-value ref pattern)
+      check: >-
+        Verify the effect has a dependency array containing the synced value (e.g. [value]) so it only runs when that value changes, not on every render
+      source: copilot:PR#787
+      added: "2026-05-27"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: avoid-derived-state-double-render
+      category: performance
+      pattern: >-
+        State derived from other state via useReducer/useState dispatched from useEffect or useLayoutEffect
+      check: >-
+        Verify derived state is computed with useMemo (or in the same update path as its source) rather than via a separate effect+dispatch, which causes an extra render on every change to the source state.
+      source: copilot:PR#787
+      added: "2026-05-27"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: no-render-side-effects-in-usememo
+      category: concurrency
+      pattern: >-
+        A useMemo (or other render-phase computation) callback that mutates a ref, module-level variable, or other external state during render
+      check: >-
+        Verify render-phase callbacks (useMemo, useState initializers, function component bodies) are pure. Any ref mutation or external state update (e.g., prevRef.current = ...) must move into a useEffect/useLayoutEffect so aborted renders under StrictMode/concurrent rendering do not corrupt the stored value.
+      source: copilot:PR#787
+      added: "2026-05-27"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: state-update-missing-item-merge
+      category: concurrency
+      pattern: >-
+        Local state updater that skips merging an incoming item when it's not found in the current state (e.g. `!prev.some(x => x.id === item.id)` early-return)
+      check: >-
+        Verify the skip-when-missing branch can't lose legitimate updates due to race conditions (e.g. an initial fetch resolving after a create/update). Either insert the item when missing, or positively confirm it was removed locally (track deleted IDs, gate on active selection, etc.) before dropping the update.
+      source: copilot:PR#791
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: match-server-sort-tiebreakers
+      category: ui
+      pattern: >-
+        Client-side sorting or re-ordering of lists fetched from the backend (e.g., conversations, items ordered by timestamp)
+      check: >-
+        Verify the client sort uses the same keys and tiebreakers as the backend ORDER BY clause (e.g., if the server orders by `updated_at DESC, id DESC`, the client must include the `id` tiebreaker) so ordering stays stable and consistent when primary sort values tie.
+      source: copilot:PR#791
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: derive-subcontext-from-deadlined-parent
+      category: concurrency
+      pattern: >-
+        Spawning a follow-up operation with a new timeout context derived from r.Context() after an already-deadlined ctx was used for the primary call
+      check: >-
+        Verify the follow-up context is derived from the existing deadlined ctx (not r.Context()) so the total request time stays within the original budget and does not exceed upstream/proxy timeouts
+      source: copilot:PR#791
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: defer-cancel-after-context-timeout
+      category: concurrency
+      pattern: >-
+        Calling context.WithTimeout (or context.WithCancel/WithDeadline) and assigning the cancel function to a variable
+      check: >-
+        Verify the cancel function is deferred immediately after the context.WithTimeout/WithCancel/WithDeadline call, so cancellation runs on all return paths even if the surrounding block grows later
+      source: copilot:PR#791
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: comment-matches-context-timeout-semantics
+      category: style
+      pattern: Code comment describing a context.WithTimeout duration or timeout budget
+      check: >-
+        Verify the comment accurately reflects context.WithTimeout semantics — the timeout caps at min(remaining parent ctx, specified duration), it does not add to the parent's timeout. Update misleading comments or adjust the context strategy if an additive budget is actually intended.
+      source: copilot:PR#791
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: accurate-comment-rationale
+      category: style
+      pattern: >-
+        Code comments explaining why a particular approach was chosen (e.g., avoiding a function call in a specific context)
+      check: >-
+        Verify the comment accurately describes when/where the avoided behavior would occur. If the comment claims something happens 'during render' or in another specific context, confirm the actual code path matches — otherwise reword to state the real reason (e.g., 'stable IDs without wall-clock time' rather than 'avoids calling X during render').
+      source: copilot:PR#791
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: request-id-supersede-guard
+      category: concurrency
+      pattern: >-
+        Fetch supersede guards that rely on AbortController identity comparison to detect stale responses
+      check: >-
+        Verify the guard works when AbortController is unavailable — use a monotonically increasing request id or unique token per call and bail out when not the latest, independent of AbortController support, so older responses cannot win the race or reschedule timers/counters
+      source: copilot:PR#799
+      added: "2026-05-27"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: test-feature-detection-fallbacks
+      category: testing
+      pattern: >-
+        Code branches on feature detection (e.g., checking for an optional browser API like Page Visibility, IntersectionObserver, matchMedia) with a fallback path for unsupported environments
+      check: >-
+        Verify the test suite covers both branches — including a test that removes/undefines the API to exercise the unsupported/fallback path and asserts the correct degraded behavior (e.g., no listener attached, unconditional polling)
+      source: copilot:PR#799
+      added: "2026-05-27"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: json-response-structural-assertions
+      category: testing
+      pattern: >-
+        Tests asserting presence/absence of JSON response fields using string matching (e.g., strings.Contains on response body)
+      check: >-
+        Decode the JSON response into a typed struct or map[string]json.RawMessage and assert the field's presence, absence, or nil-ness structurally rather than via substring matching, which is brittle and can false-positive on unrelated payload content.
+      source: copilot:PR#800
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: i18n-locale-file-accuracy
+      category: other
+      pattern: >-
+        PR description, plan, or docs reference a specific locale/translation file (e.g., calendar.json) when adding or modifying i18n keys
+      check: >-
+        Verify the referenced locale file actually exists in web/public/locales/{en,nb,th}/ and is the file the affected page uses. CalendarPage uses common.json under the calendar.* prefix — there is no calendar.json. Update PR description/plan/docs to name the real file before merging.
+      source: copilot:PR#800
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: snapshot-async-state-before-restore
+      category: concurrency
+      pattern: >-
+        Snapshotting state for rollback on failure when some of that state is populated asynchronously (e.g. FileReader.onload, setTimeout, fetch) after the triggering user action
+      check: >-
+        Verify the rollback path can reconstruct any async-populated state from the source data (e.g. re-read the File to rebuild a preview) rather than relying on a snapshot that may be null when the action fires before the async callback completes
+      source: copilot:PR#798
+      added: "2026-05-27"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: test-image-restoration-on-failed-send
+      category: testing
+      pattern: >-
+        Tests covering recovery/restoration logic after a failed send in chat or message-composition components
+      check: >-
+        Verify that tests assert restoration of all snapshotted state (e.g., both the image File and its preview, not just the text draft) so partial-restoration regressions are caught
+      source: copilot:PR#798
+      added: "2026-05-27"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: scope-aggregation-subqueries-by-indexed-key
+      category: performance
+      pattern: >-
+        SQL aggregation subquery (SUM/COUNT/GROUP BY) joined back to a parent row by a filterable key like user_id, owner_id, or child_id
+      check: >-
+        Verify the aggregation subquery filters by the same indexed key (e.g. AND user_id = ?) inside the subquery rather than aggregating all rows and joining afterward, so SQLite can use the index and only scan rows for that entity
+      source: copilot:PR#801
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: match-error-status-to-spec
+      category: error-handling
+      pattern: >-
+        Handler returns an HTTP error status (e.g., 403, 404) for a failure case, and the PR description or acceptance criteria specifies a particular status code for that case
+      check: >-
+        Verify the returned status code matches the documented contract (e.g., unknown resource → 404, unauthorized access → 403). When sql.ErrNoRows or similar can mean multiple things (unknown vs unlinked), distinguish them so the right status is returned, and ensure tests assert the documented status.
+      source: copilot:PR#801
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: log-message-variable-mismatch
+      category: error-handling
+      pattern: >-
+        Log statements with format specifiers referencing a labeled identifier (e.g., "user %d", "order %s") in handlers or service code
+      check: >-
+        Verify the variable passed to the log call matches the label in the message (e.g., a message saying "user %d" actually receives the user ID, not a childID or other related identifier). Ensure labels are consistent with surrounding log lines to avoid misleading production debugging.
+      source: copilot:PR#801
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: loading-state-stuck-on-abort
+      category: concurrency
+      pattern: >-
+        Async fetch that sets a loading flag, supports request cancellation via AbortController, and has an early-return cached path
+      check: >-
+        Verify that the loading flag is reset in all paths: when aborting an in-flight request (the aborted request's finally block typically skips state updates), and before any early return that serves cached data without entering the fetch flow.
+      source: copilot:PR#801
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+        - '**/*.tsx'
