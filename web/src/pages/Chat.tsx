@@ -47,7 +47,10 @@ export default function Chat() {
   const [input, setInput] = useState('')
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
-  const [sendingConversationId, setSendingConversationId] = useState<number | null>(null)
+  // Track every conversation with an in-flight send so concurrent sends in
+  // different conversations don't clobber each other's pending state. Kept
+  // immutably (a fresh Set on each update) so React re-renders fire.
+  const [sendingConversationIds, setSendingConversationIds] = useState<Set<number>>(new Set())
   const [error, setError] = useState('')
   const [showSidebar, setShowSidebar] = useState(true)
   const [renamingId, setRenamingId] = useState<number | null>(null)
@@ -65,6 +68,22 @@ export default function Chat() {
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [])
+
+  const addSendingConversation = useCallback((id: number) => {
+    setSendingConversationIds(prev => {
+      const next = new Set(prev)
+      next.add(id)
+      return next
+    })
+  }, [])
+
+  const removeSendingConversation = useCallback((id: number) => {
+    setSendingConversationIds(prev => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
   }, [])
 
   useEffect(() => {
@@ -230,11 +249,11 @@ export default function Chat() {
   }
 
   async function sendMessage() {
-    if (!input.trim() || !activeConversation || sendingConversationId === activeConversation.id) return
+    if (!input.trim() || !activeConversation || sendingConversationIds.has(activeConversation.id)) return
     const content = input.trim()
     const sentConversationId = activeConversation.id
     setInput('')
-    setSendingConversationId(sentConversationId)
+    addSendingConversation(sentConversationId)
     setError('')
 
     // Optimistic rows: the user bubble and an empty assistant bubble that
@@ -459,7 +478,7 @@ export default function Chat() {
       if (streamAbortRef.current === controller) {
         streamAbortRef.current = null
       }
-      setSendingConversationId(null)
+      removeSendingConversation(sentConversationId)
       inputRef.current?.focus()
     }
   }
@@ -717,7 +736,8 @@ export default function Chat() {
                 // indicator only when its content is still empty so once
                 // tokens arrive the user sees the live text.
                 const isStreamingPlaceholder =
-                  sendingConversationId === activeConversation?.id &&
+                  activeConversation != null &&
+                  sendingConversationIds.has(activeConversation.id) &&
                   msg.role === 'assistant' &&
                   msg.id < 0 &&
                   msg.content === ''
@@ -770,14 +790,14 @@ export default function Chat() {
                 rows={1}
                 className="flex-1 bg-gray-800 border border-gray-600 rounded-xl px-4 py-3 text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-500 max-h-40 overflow-y-auto"
                 style={{ minHeight: '48px' }}
-                disabled={sendingConversationId === activeConversation?.id}
+                disabled={sendingConversationIds.has(activeConversation.id)}
                 onInput={e => {
                   const el = e.currentTarget
                   el.style.height = 'auto'
                   el.style.height = Math.min(el.scrollHeight, 160) + 'px'
                 }}
               />
-              {sendingConversationId === activeConversation?.id ? (
+              {sendingConversationIds.has(activeConversation.id) ? (
                 <button
                   onClick={stopStreaming}
                   className="self-end p-3 rounded-xl bg-red-600 hover:bg-red-500 text-white transition-colors cursor-pointer shrink-0"
