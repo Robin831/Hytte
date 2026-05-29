@@ -3,6 +3,7 @@ package stride
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Robin831/Hytte/internal/training"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -152,6 +154,31 @@ func fakeExecCommandChatCapture(lines []string, captured *[][]string) func(ctx c
 		output := strings.Join(lines, "\n") + "\n"
 		cmd := exec.CommandContext(ctx, "echo", "-n", output)
 		return cmd
+	}
+}
+
+// TestStreamChatClaude_TimeoutReportsDeadlineExceeded verifies that when the
+// context deadline kills the CLI (surfacing as "signal: killed"), the error is
+// reported as context.DeadlineExceeded rather than an opaque exit error.
+func TestStreamChatClaude_TimeoutReportsDeadlineExceeded(t *testing.T) {
+	origExec := execCommand
+	execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		// A command that outlives the deadline so CommandContext SIGKILLs it.
+		return exec.CommandContext(ctx, "sleep", "5")
+	}
+	t.Cleanup(func() { execCommand = origExec })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	rec := httptest.NewRecorder()
+	cfg := &training.ClaudeConfig{Enabled: true, Model: "claude-sonnet-4-6", CLIPath: "sleep"}
+	_, _, err := streamChatClaude(ctx, cfg, "system prompt", "hello", "", rec, rec)
+	if err == nil {
+		t.Fatal("expected error from timed-out claude stream, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected error to wrap context.DeadlineExceeded, got: %v", err)
 	}
 }
 

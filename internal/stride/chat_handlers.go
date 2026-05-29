@@ -20,6 +20,10 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// chatStreamTimeout bounds a single Claude CLI streaming attempt. It is
+// generous because plan-editing turns can stream a full week of workout JSON.
+const chatStreamTimeout = 300 * time.Second
+
 // execCommand creates an exec.Cmd. Extracted for test substitution.
 var execCommand = execCommandImpl
 
@@ -228,23 +232,35 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 			flusher.Flush()
 		}
 
-		// Stream Claude response.
-		ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
-		defer cancel()
+		// Load context for the system prompt (quick DB reads, bounded by the
+		// request context).
+		systemPrompt := buildChatContext(r.Context(), db, user.ID, *plan)
 
-		// Load context for the system prompt.
-		systemPrompt := buildChatContext(ctx, db, user.ID, *plan)
+		// Each Claude attempt runs under its own fresh deadline so a retry isn't
+		// starved by time the first attempt already consumed.
+		streamAttempt := func(resumeID string) (string, string, error) {
+			attemptCtx, cancel := context.WithTimeout(r.Context(), chatStreamTimeout)
+			defer cancel()
+			return streamChatClaude(attemptCtx, cfg, systemPrompt, body.Content, resumeID, w, flusher)
+		}
 
-		fullResponse, newSessionID, err := streamChatClaude(ctx, cfg, systemPrompt, body.Content, sessionID, w, flusher)
+		fullResponse, newSessionID, err := streamAttempt(sessionID)
 		if err != nil && sessionID != "" {
-			// Session may have expired — retry without session.
+			// Session may have expired — retry without session (fresh deadline).
 			log.Printf("stride chat: session resume failed, retrying fresh: %v", err)
 			fmt.Fprintf(w, "event: retry\ndata: {\"reason\":\"session expired, retrying\"}\n\n")
 			flusher.Flush()
-			fullResponse, newSessionID, err = streamChatClaude(ctx, cfg, systemPrompt, body.Content, "", w, flusher)
+			fullResponse, newSessionID, err = streamAttempt("")
 		}
 
 		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				log.Printf("stride chat: claude timed out after %s plan %d: %v", chatStreamTimeout, planID, err)
+				errJSON, _ := json.Marshal(map[string]string{"error": "The coach took too long to respond and timed out. Please try again."})
+				fmt.Fprintf(w, "event: error\ndata: %s\n\n", errJSON)
+				flusher.Flush()
+				return
+			}
 			log.Printf("stride chat: claude error plan %d: %v", planID, err)
 			errJSON, _ := json.Marshal(map[string]string{"error": "Claude failed to respond. Please try again."})
 			fmt.Fprintf(w, "event: error\ndata: %s\n\n", errJSON)
@@ -440,6 +456,11 @@ func streamChatClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPro
 
 	if err := scanner.Err(); err != nil {
 		cmd.Wait()
+		// A deadline kill surfaces here as a read error; report it as a timeout
+		// rather than an opaque scan failure.
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return "", "", fmt.Errorf("claude timed out: %w", context.DeadlineExceeded)
+		}
 		if stderr := strings.TrimSpace(stderrBuf.String()); stderr != "" {
 			return "", "", fmt.Errorf("scan claude output: %w: %s", err, stderr)
 		}
@@ -447,6 +468,12 @@ func streamChatClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPro
 	}
 
 	if err := cmd.Wait(); err != nil {
+		// When the context deadline fires, CommandContext SIGKILLs the process,
+		// which otherwise shows up as a bare "signal: killed". Surface it as a
+		// timeout so the caller can report it clearly.
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return "", "", fmt.Errorf("claude timed out: %w", context.DeadlineExceeded)
+		}
 		if stderr := strings.TrimSpace(stderrBuf.String()); stderr != "" {
 			return "", "", fmt.Errorf("claude exit: %w: %s", err, stderr)
 		}
