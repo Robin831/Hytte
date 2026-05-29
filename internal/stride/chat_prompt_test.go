@@ -149,6 +149,23 @@ func TestBuildChatSystemPrompt_ContainsCurrentPlan(t *testing.T) {
 	}
 }
 
+func TestBuildChatSystemPrompt_ContainsWorkoutFormatGuidance(t *testing.T) {
+	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes)
+
+	// Chat edits must follow the same treadmill-friendly dual-unit format as
+	// initial generation.
+	for _, want := range []string{
+		"Workout Description Formatting",
+		"km/h",
+		"4x2000m (or 4x9min)",
+	} {
+		if !strings.Contains(result, want) {
+			t.Errorf("chat prompt should contain workout format guidance %q, but it does not", want)
+		}
+	}
+}
+
 func TestBuildChatSystemPrompt_ContainsProfile(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
 	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes)

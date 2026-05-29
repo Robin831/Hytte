@@ -44,6 +44,8 @@ Only output plan JSON when you are actually making a change — not when just di
 ### DayPlan Schema
 
 ` + dayPlanSchemaFields + `
+
+` + workoutFormatGuidance + `
 `)
 
 	// 2. Current plan

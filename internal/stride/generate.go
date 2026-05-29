@@ -23,11 +23,23 @@ const dayPlanSchemaFields = `Each day object:
 - "rest_day": boolean — true for complete rest (no session needed), false otherwise
 - "session": object (required when rest_day is false):
   - "warmup": string — warmup description (empty string if none)
-  - "main_set": string — main workout description
+  - "main_set": string — main workout description. For interval/rep sessions with a target pace, give both units per the Workout Description Formatting rules.
   - "cooldown": string — cooldown description (empty string if none)
   - "strides": string — strides description (empty string if none)
   - "target_hr_cap": integer — max HR for this session in bpm (0 if not applicable)
   - "description": string — 1-2 sentence summary of the session purpose`
+
+// workoutFormatGuidance instructs the model to express interval/rep sessions in
+// both distance and time, and target pace in both min/km and km/h, so sessions
+// transfer cleanly to a treadmill. Shared between plan generation and chat
+// editing so both produce the same format.
+const workoutFormatGuidance = `## Workout Description Formatting
+When a main set has intervals or reps with a target pace, make it treadmill-friendly by giving BOTH units:
+- Distance AND its time equivalent: "4x2000m (or 4x9min)". Compute the time from distance × pace.
+- Pace in min/km AND speed in km/h: "at 4:28-4:32/km (13.2-13.4 km/h)". Speed = 60 / pace_in_min_per_km; a faster pace (lower min/km) is a higher km/h, so list the km/h range ascending.
+- Full example: "4x2000m (or 4x9min) at 4:28-4:32/km (13.2-13.4 km/h)".
+- For time-based blocks (e.g. 6x6min) add the distance equivalent the same way: "6x6min (or 6x~1350m) at 4:25-4:30/km (13.3-13.6 km/h)".
+Round time equivalents to the nearest half-minute and km/h to one decimal. Continuous easy/recovery/long runs described by time or HR don't need this dual-unit treatment.`
 
 // mariusBakkenInstructions contains the Marius Bakken threshold-dominant model
 // coaching instructions injected verbatim into every plan generation prompt.
@@ -65,9 +77,10 @@ const mariusBakkenInstructions = `You are an expert running coach applying the M
 ### Session Templates
 **Threshold Intervals (standard)**:
 - Warmup: 15-20 min Zone 1 jog + 4x100m strides
-- Main set: 6x6min at BELOW threshold pace/HR, 2min recovery jog
+- Main set: 6x6min (or 6x~1500m) at BELOW threshold pace/HR, 2min recovery jog
 - Cooldown: 10-15 min Zone 1 jog
 - Alternative formats: 6-8x1000m, 3-4x3000m, 2x4000m — always below threshold HR
+- Express every interval main set in both distance and time, and pace in both min/km and km/h (see Workout Description Formatting).
 
 **Hard Session (above threshold, max 1 per 1-2 weeks)**:
 - Examples: 30-45s hard + 15s rest x 20-40 reps, or hill intervals
@@ -97,6 +110,8 @@ const mariusBakkenInstructions = `You are an expert running coach applying the M
 - Taper: final 2 weeks reduce volume by 40-50%, maintain some intensity
 - B/C-races: no taper, treat as quality training session
 
+` + workoutFormatGuidance + `
+
 ## Output Format
 Return ONLY a JSON array of day objects for the requested week. No markdown, no explanation, no code fences.
 
@@ -104,7 +119,7 @@ Return ONLY a JSON array of day objects for the requested week. No markdown, no 
 
 Example output structure:
 [
-  {"date":"2026-04-06","rest_day":false,"session":{"warmup":"15 min easy jog + 4x100m strides","main_set":"6x1000m at threshold pace, 60s recovery jog","cooldown":"10 min easy jog","strides":"","target_hr_cap":165,"description":"Threshold intervals to develop lactate threshold fitness. Core Marius Bakken session."}},
+  {"date":"2026-04-06","rest_day":false,"session":{"warmup":"15 min easy jog + 4x100m strides","main_set":"6x1000m (or 6x4:30) at 4:28-4:32/km (13.2-13.4 km/h), 60s recovery jog","cooldown":"10 min easy jog","strides":"","target_hr_cap":165,"description":"Threshold intervals to develop lactate threshold fitness. Core Marius Bakken session."}},
   {"date":"2026-04-07","rest_day":true}
 ]
 `
