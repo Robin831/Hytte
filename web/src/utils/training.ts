@@ -75,7 +75,10 @@ export function formatDuration(
   }
 
   if (style === 'decimal') {
-    return `${(seconds / 3600).toFixed(1)}${t('units.h')}`
+    return `${formatNumber(seconds / 3600, {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    })}${t('units.h')}`
   }
 
   const total = Math.round(seconds)

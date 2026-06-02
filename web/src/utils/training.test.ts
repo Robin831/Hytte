@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import type { TFunction } from 'i18next'
-import { formatDistance, formatDuration, formatPace } from './training'
+
+vi.mock('./formatDate', () => ({
+  formatNumber: (n: number, opts?: Intl.NumberFormatOptions) =>
+    n.toLocaleString('en', opts),
+}))
+
+const { formatDistance, formatDuration, formatPace } = await import('./training')
 
 // Minimal stub for the i18n `t` function: returns the unit suffixes the real
 // `training` locale provides and interpolates the duration helper keys, so the
