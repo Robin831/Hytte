@@ -91,6 +91,16 @@ func DataHandler(db *sql.DB, transitSvc transitFetcher, netatmoClient netatmoFet
 		locationName, _ := cfg["location"].(string)
 		netatmoUserID, _ := extractInt64(cfg, "netatmo_user_id")
 
+		// Resolve the effective Netatmo user ID before building the cache key
+		// so the key reflects the actual data source, not the raw config input.
+		if netatmoUserID == 0 && netatmoClient != nil && db != nil {
+			var foundID int64
+			row := db.QueryRowContext(r.Context(), `SELECT user_id FROM netatmo_oauth_tokens LIMIT 1`)
+			if row.Scan(&foundID) == nil {
+				netatmoUserID = foundID
+			}
+		}
+
 		// Serve from cache when an identical kiosk config was fetched within the
 		// TTL window. The cached payload retains its original FetchedAt.
 		cacheKey := buildCacheKey(stopIDs, lat, lon, hasLat, hasLon, locationName, netatmoUserID)
@@ -139,15 +149,6 @@ func DataHandler(db *sql.DB, transitSvc transitFetcher, netatmoClient netatmoFet
 		}
 
 		// --- Netatmo outdoor readings ---
-		// If no netatmo_user_id in kiosk config, find the first user with a
-		// connected Netatmo account (typically the admin who set it up).
-		if netatmoUserID == 0 && netatmoClient != nil && db != nil {
-			var foundID int64
-			row := db.QueryRowContext(r.Context(), `SELECT user_id FROM netatmo_oauth_tokens LIMIT 1`)
-			if row.Scan(&foundID) == nil {
-				netatmoUserID = foundID
-			}
-		}
 		if netatmoUserID > 0 && netatmoClient != nil {
 			userID := netatmoUserID
 			wg.Add(1)
@@ -228,7 +229,9 @@ func DataHandler(db *sql.DB, transitSvc transitFetcher, netatmoClient netatmoFet
 
 		wg.Wait()
 
-		kioskCache.Set(cacheKey, result)
+		if r.Context().Err() == nil {
+			kioskCache.Set(cacheKey, result)
+		}
 		writeKioskData(w, result)
 	}
 }
@@ -268,7 +271,8 @@ func runWithTimeout[T any](ctx context.Context, fn func() (T, error)) (T, bool) 
 // non-sensitive aggregated data endpoint.
 func writeKioskData(w http.ResponseWriter, data KioskData) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", int(CacheTTL.Seconds())))
+	w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d", int(CacheTTL.Seconds())))
+	w.Header().Set("Vary", "Authorization")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(data)
 }

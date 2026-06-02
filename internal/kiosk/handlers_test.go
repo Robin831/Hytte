@@ -347,9 +347,12 @@ func TestDataHandler_CacheControlAndContentTypeHeaders(t *testing.T) {
 	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
 		t.Errorf("expected Content-Type application/json, got %q", ct)
 	}
-	wantCC := "max-age=" + strconv.Itoa(int(CacheTTL.Seconds()))
+	wantCC := "private, max-age=" + strconv.Itoa(int(CacheTTL.Seconds()))
 	if cc := rec.Header().Get("Cache-Control"); cc != wantCC {
 		t.Errorf("expected Cache-Control %q, got %q", wantCC, cc)
+	}
+	if vary := rec.Header().Get("Vary"); vary != "Authorization" {
+		t.Errorf("expected Vary: Authorization, got %q", vary)
 	}
 }
 
