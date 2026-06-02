@@ -206,6 +206,87 @@ func TestChatSessionID_DefaultEmpty(t *testing.T) {
 	}
 }
 
+func TestResetChatSession(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO stride_plans (id, user_id, week_start, week_end, plan_json, chat_session_id, created_at) VALUES (1, 1, '2026-04-13', '2026-04-19', '{}', 'sess-xyz', '2026-04-13T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert plan: %v", err)
+	}
+
+	if err := ResetChatSession(db, 1, 1); err != nil {
+		t.Fatalf("reset session: %v", err)
+	}
+
+	sid, err := GetChatSessionID(db, 1, 1)
+	if err != nil {
+		t.Fatalf("get session id: %v", err)
+	}
+	if sid != "" {
+		t.Errorf("expected empty session id after reset, got %q", sid)
+	}
+}
+
+func TestResetChatSession_WrongUser(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO stride_plans (id, user_id, week_start, week_end, plan_json, chat_session_id, created_at) VALUES (1, 1, '2026-04-13', '2026-04-19', '{}', 'sess-xyz', '2026-04-13T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert plan: %v", err)
+	}
+
+	// User 2 cannot reset user 1's plan — no rows affected.
+	if err := ResetChatSession(db, 1, 2); err == nil {
+		t.Fatal("expected error when resetting another user's plan")
+	}
+
+	// User 1's session id is untouched.
+	sid, err := GetChatSessionID(db, 1, 1)
+	if err != nil {
+		t.Fatalf("get session id: %v", err)
+	}
+	if sid != "sess-xyz" {
+		t.Errorf("expected session id unchanged, got %q", sid)
+	}
+}
+
+func TestEstimateChatContext(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO stride_plans (id, user_id, week_start, week_end, plan_json, created_at) VALUES (1, 1, '2026-04-13', '2026-04-19', '{}', '2026-04-13T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert plan: %v", err)
+	}
+
+	// Empty conversation.
+	count, bytes, err := EstimateChatContext(db, 1, 1)
+	if err != nil {
+		t.Fatalf("estimate empty: %v", err)
+	}
+	if count != 0 || bytes != 0 {
+		t.Errorf("expected 0/0 for empty conversation, got %d/%d", count, bytes)
+	}
+
+	// Add a couple of messages.
+	if _, err := AddChatMessage(db, ChatMessage{PlanID: 1, UserID: 1, Role: "user", Content: "hello coach"}); err != nil {
+		t.Fatalf("add msg: %v", err)
+	}
+	if _, err := AddChatMessage(db, ChatMessage{PlanID: 1, UserID: 1, Role: "assistant", Content: "hi there athlete"}); err != nil {
+		t.Fatalf("add msg: %v", err)
+	}
+
+	count, bytes, err = EstimateChatContext(db, 1, 1)
+	if err != nil {
+		t.Fatalf("estimate: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2 messages, got %d", count)
+	}
+	if bytes <= 0 {
+		t.Errorf("expected positive byte total, got %d", bytes)
+	}
+}
+
 func TestMarkMessagePlanModified(t *testing.T) {
 	db := setupTestDB(t)
 

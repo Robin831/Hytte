@@ -30,6 +30,19 @@ const chatStreamTimeout = 300 * time.Second
 // in tests.
 var chatHeartbeatInterval = 15 * time.Second
 
+// chatResetMessageThreshold and chatResetByteThreshold bound how large a coach
+// conversation may grow before the next turn automatically starts a fresh
+// Claude session. Each turn replays the entire prior conversation via
+// --resume, so first-token latency grows with the thread; observed timeouts
+// (>125s) occurred around ~23 messages / ~55KB of plaintext, several turns
+// carrying full 7-day plan JSON. The byte threshold counts stored (encrypted,
+// base64-inflated) content, so it is set higher than the raw plaintext figure.
+// Both are vars so tests can override them.
+var (
+	chatResetMessageThreshold = 20
+	chatResetByteThreshold    = 64 * 1024
+)
+
 // execCommand creates an exec.Cmd. Extracted for test substitution.
 var execCommand = execCommandImpl
 
@@ -219,6 +232,28 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Auto-reset: when the replayed conversation has grown large, start a
+		// fresh Claude session for this turn to cut first-token latency. We skip
+		// this for internal correction retries (body.IsInternal) because those
+		// depend on the previous turn (the invalid plan output) still being in
+		// the replayed session. The full system prompt is rebuilt every turn, so
+		// the plan state is preserved even after a reset.
+		autoReset := false
+		if sessionID != "" && !body.IsInternal {
+			msgCount, totalBytes, estErr := EstimateChatContext(db, planID, user.ID)
+			if estErr != nil {
+				log.Printf("stride chat: estimate context plan %d: %v", planID, estErr)
+			} else if msgCount >= chatResetMessageThreshold || totalBytes >= chatResetByteThreshold {
+				if rErr := ResetChatSession(db, planID, user.ID); rErr != nil {
+					log.Printf("stride chat: auto-reset session plan %d: %v", planID, rErr)
+				} else {
+					log.Printf("stride chat: auto-reset session plan %d (msgs=%d, bytes=%d)", planID, msgCount, totalBytes)
+					sessionID = ""
+					autoReset = true
+				}
+			}
+		}
+
 		// Set up SSE streaming.
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -235,6 +270,13 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 		if userMsg != nil {
 			userMsgJSON, _ := json.Marshal(userMsg)
 			fmt.Fprintf(w, "event: user_message\ndata: %s\n\n", userMsgJSON)
+			flusher.Flush()
+		}
+
+		// Tell the client a fresh context was started so it can show a subtle
+		// marker. The conversation history (stride_chat_messages) is untouched.
+		if autoReset {
+			fmt.Fprintf(w, "event: context_reset\ndata: {\"reason\":\"auto\"}\n\n")
 			flusher.Flush()
 		}
 
@@ -342,6 +384,43 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 		doneJSON, _ := json.Marshal(assistantMsg)
 		fmt.Fprintf(w, "event: done\ndata: %s\n\n", doneJSON)
 		flusher.Flush()
+	}
+}
+
+// StrideChatResetHandler starts a fresh Claude session for a plan's coach chat
+// by clearing the stored native session id. The visible conversation history is
+// kept; only what Claude replays each turn is reset, which reduces first-token
+// latency on long threads. The next turn rebuilds the full system prompt from
+// the current plan state, so no real context is lost.
+// POST /api/stride/plans/{planId}/chat/reset
+func StrideChatResetHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		planIDStr := chi.URLParam(r, "planId")
+		planID, err := strconv.ParseInt(planIDStr, 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid plan ID"})
+			return
+		}
+
+		// Verify plan exists and belongs to user.
+		if _, err := GetPlanByID(db, planID, user.ID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "plan not found"})
+				return
+			}
+			log.Printf("stride chat: get plan %d: %v", planID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get plan"})
+			return
+		}
+
+		if err := ResetChatSession(db, planID, user.ID); err != nil {
+			log.Printf("stride chat: reset session plan %d: %v", planID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reset conversation"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"reset": true, "plan_id": planID})
 	}
 }
 

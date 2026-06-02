@@ -130,6 +130,45 @@ func UpdateChatSessionID(db *sql.DB, planID, userID int64, sessionID string) err
 	return nil
 }
 
+// ResetChatSession clears the chat_session_id for a plan, scoped to userID.
+// On the next turn the absence of a session id makes the handler start a FRESH
+// Claude session (no --resume) instead of replaying the entire prior
+// conversation, which is what actually reduces per-turn latency. The plan state
+// itself (plan_json, profile, evaluations, races, notes) is rebuilt into the
+// system prompt every turn, so no real context is lost.
+func ResetChatSession(db *sql.DB, planID, userID int64) error {
+	res, err := db.Exec(`UPDATE stride_plans SET chat_session_id = '' WHERE id = ? AND user_id = ?`, planID, userID)
+	if err != nil {
+		return fmt.Errorf("reset chat session id: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// EstimateChatContext returns the message count and total stored byte size of a
+// plan's chat history. It is a cheap proxy for how much conversation Claude
+// replays each turn via --resume (the native session is not directly
+// inspectable). Stored content is encrypted/base64, so totalBytes is larger
+// than the plaintext, but it stays roughly proportional and is good enough to
+// drive an auto-reset threshold.
+func EstimateChatContext(db *sql.DB, planID, userID int64) (msgCount, totalBytes int, err error) {
+	err = db.QueryRow(`
+		SELECT COUNT(*), COALESCE(SUM(LENGTH(content)), 0)
+		FROM stride_chat_messages
+		WHERE plan_id = ? AND user_id = ?
+	`, planID, userID).Scan(&msgCount, &totalBytes)
+	if err != nil {
+		return 0, 0, fmt.Errorf("estimate chat context: %w", err)
+	}
+	return msgCount, totalBytes, nil
+}
+
 // MarkMessagePlanModified sets plan_modified=1 on a message. Scoped to userID.
 func MarkMessagePlanModified(db *sql.DB, messageID, userID int64) error {
 	res, err := db.Exec(`UPDATE stride_chat_messages SET plan_modified = 1 WHERE id = ? AND user_id = ?`, messageID, userID)

@@ -1,0 +1,2 @@
+category: Changed
+- **Stride coach chat resets long conversations to cut latency** - Long coach threads replay the entire prior conversation to Claude each turn, which made replies slow and timeout-prone. The chat now starts a fresh Claude session automatically once a thread grows large, and adds a "Start fresh conversation" control so you can reset on demand. Your visible message history and training plan are unchanged. (Hytte-tmye)

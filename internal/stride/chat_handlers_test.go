@@ -795,6 +795,253 @@ func TestStrideChatSendHandler_PlanUpdateFailedEmitsEvent(t *testing.T) {
 	}
 }
 
+// TestStrideChatSendHandler_AutoResetOnLargeThread verifies that when a
+// conversation exceeds the message-count threshold, the next turn starts a
+// FRESH Claude session (no --resume) and emits a context_reset event.
+func TestStrideChatSendHandler_AutoResetOnLargeThread(t *testing.T) {
+	db := setupTestDB(t)
+
+	for _, kv := range [][2]string{{"claude_enabled", "true"}} {
+		if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`, kv[0], kv[1]); err != nil {
+			t.Fatalf("insert pref: %v", err)
+		}
+	}
+
+	weekStart := "2026-04-13"
+	weekEnd := "2026-04-19"
+	planJSON := buildValidPlanJSON(weekStart)
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := db.Exec(`INSERT INTO stride_plans (user_id, week_start, week_end, plan_json, chat_session_id, created_at) VALUES (1, ?, ?, ?, 'old-sess', ?)`,
+		weekStart, weekEnd, planJSON, now)
+	if err != nil {
+		t.Fatalf("insert plan: %v", err)
+	}
+	planID, _ := res.LastInsertId()
+
+	// Lower the threshold so a couple of seeded messages trip the auto-reset.
+	origMsg := chatResetMessageThreshold
+	chatResetMessageThreshold = 2
+	t.Cleanup(func() { chatResetMessageThreshold = origMsg })
+
+	for i := 0; i < 3; i++ {
+		if _, err := AddChatMessage(db, ChatMessage{PlanID: planID, UserID: 1, Role: "user", Content: fmt.Sprintf("message %d", i)}); err != nil {
+			t.Fatalf("seed message: %v", err)
+		}
+	}
+
+	var captured [][]string
+	origExec := execCommand
+	execCommand = fakeExecCommandChatCapture([]string{
+		`{"type":"result","result":"Fresh start.","session_id":"fresh-sess","is_error":false}`,
+	}, &captured)
+	t.Cleanup(func() { execCommand = origExec })
+
+	handler := StrideChatSendHandler(db)
+	rec := httptest.NewRecorder()
+	reqBody := strings.NewReader(`{"content":"Another question"}`)
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/stride/plans/%d/chat", planID), reqBody)
+	r.Header.Set("Content-Type", "application/json")
+	r = withUser(r, 1)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("planId", fmt.Sprintf("%d", planID))
+	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+
+	handler.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: context_reset") {
+		t.Errorf("expected context_reset event, got: %s", body)
+	}
+
+	// The CLI must NOT have been invoked with --resume (fresh session).
+	if len(captured) == 0 {
+		t.Fatal("expected at least one exec call")
+	}
+	for _, a := range captured[0] {
+		if a == "--resume" {
+			t.Errorf("expected no --resume after auto-reset, got args: %v", captured[0])
+		}
+	}
+
+	// The new session id from this turn should be persisted.
+	sid, err := GetChatSessionID(db, planID, 1)
+	if err != nil {
+		t.Fatalf("get session id: %v", err)
+	}
+	if sid != "fresh-sess" {
+		t.Errorf("expected session_id 'fresh-sess', got %q", sid)
+	}
+}
+
+// TestStrideChatSendHandler_NoAutoResetBelowThreshold verifies a short thread
+// keeps resuming its existing session (no reset).
+func TestStrideChatSendHandler_NoAutoResetBelowThreshold(t *testing.T) {
+	db := setupTestDB(t)
+
+	for _, kv := range [][2]string{{"claude_enabled", "true"}} {
+		if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`, kv[0], kv[1]); err != nil {
+			t.Fatalf("insert pref: %v", err)
+		}
+	}
+
+	weekStart := "2026-04-13"
+	weekEnd := "2026-04-19"
+	planJSON := buildValidPlanJSON(weekStart)
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := db.Exec(`INSERT INTO stride_plans (user_id, week_start, week_end, plan_json, chat_session_id, created_at) VALUES (1, ?, ?, ?, 'keep-sess', ?)`,
+		weekStart, weekEnd, planJSON, now)
+	if err != nil {
+		t.Fatalf("insert plan: %v", err)
+	}
+	planID, _ := res.LastInsertId()
+
+	// High thresholds so nothing trips.
+	origMsg, origBytes := chatResetMessageThreshold, chatResetByteThreshold
+	chatResetMessageThreshold = 1000
+	chatResetByteThreshold = 10 * 1024 * 1024
+	t.Cleanup(func() {
+		chatResetMessageThreshold = origMsg
+		chatResetByteThreshold = origBytes
+	})
+
+	var captured [][]string
+	origExec := execCommand
+	execCommand = fakeExecCommandChatCapture([]string{
+		`{"type":"result","result":"Resumed.","session_id":"keep-sess","is_error":false}`,
+	}, &captured)
+	t.Cleanup(func() { execCommand = origExec })
+
+	handler := StrideChatSendHandler(db)
+	rec := httptest.NewRecorder()
+	reqBody := strings.NewReader(`{"content":"Quick question"}`)
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/stride/plans/%d/chat", planID), reqBody)
+	r.Header.Set("Content-Type", "application/json")
+	r = withUser(r, 1)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("planId", fmt.Sprintf("%d", planID))
+	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+
+	handler.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "event: context_reset") {
+		t.Error("did not expect context_reset event below threshold")
+	}
+	if len(captured) == 0 {
+		t.Fatal("expected at least one exec call")
+	}
+	foundResume := false
+	for i, a := range captured[0] {
+		if a == "--resume" && i+1 < len(captured[0]) && captured[0][i+1] == "keep-sess" {
+			foundResume = true
+		}
+	}
+	if !foundResume {
+		t.Errorf("expected --resume keep-sess below threshold, got args: %v", captured[0])
+	}
+}
+
+// TestStrideChatResetHandler_Success verifies the manual reset endpoint clears
+// the stored session id while leaving the message history intact.
+func TestStrideChatResetHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	weekStart := "2026-04-13"
+	weekEnd := "2026-04-19"
+	planJSON := buildValidPlanJSON(weekStart)
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := db.Exec(`INSERT INTO stride_plans (user_id, week_start, week_end, plan_json, chat_session_id, created_at) VALUES (1, ?, ?, ?, 'sess-to-clear', ?)`,
+		weekStart, weekEnd, planJSON, now)
+	if err != nil {
+		t.Fatalf("insert plan: %v", err)
+	}
+	planID, _ := res.LastInsertId()
+
+	if _, err := AddChatMessage(db, ChatMessage{PlanID: planID, UserID: 1, Role: "user", Content: "keep me"}); err != nil {
+		t.Fatalf("seed message: %v", err)
+	}
+
+	handler := StrideChatResetHandler(db)
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/stride/plans/%d/chat/reset", planID), nil)
+	r = withUser(r, 1)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("planId", fmt.Sprintf("%d", planID))
+	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+
+	handler.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	sid, err := GetChatSessionID(db, planID, 1)
+	if err != nil {
+		t.Fatalf("get session id: %v", err)
+	}
+	if sid != "" {
+		t.Errorf("expected cleared session id, got %q", sid)
+	}
+
+	// History must be preserved.
+	msgs, err := ListChatMessages(db, planID, 1)
+	if err != nil {
+		t.Fatalf("list messages: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Errorf("expected message history preserved (1 message), got %d", len(msgs))
+	}
+}
+
+// TestStrideChatResetHandler_WrongUser verifies a plan owned by another user
+// returns 404 and is left untouched.
+func TestStrideChatResetHandler_WrongUser(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (2, 'c@d.com', 'B', 'g-2')`); err != nil {
+		t.Fatalf("insert user 2: %v", err)
+	}
+
+	weekStart := "2026-04-13"
+	planJSON := buildValidPlanJSON(weekStart)
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := db.Exec(`INSERT INTO stride_plans (user_id, week_start, week_end, plan_json, chat_session_id, created_at) VALUES (1, ?, ?, ?, 'sess-keep', ?)`,
+		weekStart, "2026-04-19", planJSON, now)
+	if err != nil {
+		t.Fatalf("insert plan: %v", err)
+	}
+	planID, _ := res.LastInsertId()
+
+	handler := StrideChatResetHandler(db)
+	rec := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/stride/plans/%d/chat/reset", planID), nil)
+	r = withUser(r, 2)
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("planId", fmt.Sprintf("%d", planID))
+	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+
+	handler.ServeHTTP(rec, r)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Owner's session id is untouched.
+	sid, err := GetChatSessionID(db, planID, 1)
+	if err != nil {
+		t.Fatalf("get session id: %v", err)
+	}
+	if sid != "sess-keep" {
+		t.Errorf("expected session id unchanged, got %q", sid)
+	}
+}
+
 // mustJSON marshals v to a JSON string, failing the test on error.
 func mustJSON(t *testing.T, v any) string {
 	t.Helper()
