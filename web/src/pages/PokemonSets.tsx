@@ -152,10 +152,17 @@ export default function PokemonSets() {
     return params.get('owned')?.toLowerCase() === 'true'
   }, [location.search])
 
+  // The "Show older sets" expansion is mirrored to ?older=true in the URL,
+  // matching the ownedOnly pattern, so the browser Back button (and reloads /
+  // shared links) restore the expanded view instead of collapsing it.
+  const showOlder = useMemo(() => {
+    const params = new URLSearchParams(location.search)
+    return params.get('older')?.toLowerCase() === 'true'
+  }, [location.search])
+
   const [sets, setSets] = useState<PokemonSet[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [showOlder, setShowOlder] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const [unresolvedCount, setUnresolvedCount] = useState(0)
   const [scannerOpen, setScannerOpen] = useState(false)
@@ -174,6 +181,17 @@ export default function PokemonSets() {
     const next = params.toString()
     navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: false, state: location.state })
   }, [ownedOnly, navigate, location.pathname, location.search])
+
+  const toggleShowOlder = useCallback(() => {
+    const params = new URLSearchParams(location.search)
+    if (showOlder) {
+      params.delete('older')
+    } else {
+      params.set('older', 'true')
+    }
+    const next = params.toString()
+    navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: false, state: location.state })
+  }, [showOlder, navigate, location.pathname, location.search])
 
   // After the AddCardPanel consumes its initialQuery we strip the hint from
   // history so a subsequent back/forward navigation doesn't re-open the
@@ -371,7 +389,7 @@ export default function PokemonSets() {
               <section className="space-y-3 pt-2 border-t border-gray-800">
                 <button
                   type="button"
-                  onClick={() => setShowOlder(v => !v)}
+                  onClick={toggleShowOlder}
                   aria-expanded={showOlder}
                   className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors cursor-pointer"
                 >
