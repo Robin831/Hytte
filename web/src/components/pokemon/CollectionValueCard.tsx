@@ -3,9 +3,7 @@ import { Coins } from 'lucide-react'
 import { Skeleton } from '../ui/skeleton'
 
 export interface CollectionValueCardProps {
-  // totalNok is null when no EUR/NOK rate is available; the card then shows a
-  // "price unavailable" hint instead of a misleading zero. totalEur is kept as
-  // a fallback figure the caller may surface in the future.
+  // null when no EUR/NOK rate is available; the card shows "price unavailable".
   totalNok: number | null
   ownedVariantCount: number
   loading?: boolean
