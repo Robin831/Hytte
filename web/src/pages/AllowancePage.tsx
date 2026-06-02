@@ -13,6 +13,18 @@ import { useTabFetch } from '../hooks/useTabFetch'
 const formatAmount2dp = (amount: number) =>
   formatNumber(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+// Module-level dedup so React StrictMode's double-mount reuses the same
+// in-flight request instead of firing two /api/allowance/pending fetches.
+let pendingInFlight: Promise<{ pending: CompletionWithDetails[] }> | null = null
+function fetchPendingDeduped(): Promise<{ pending: CompletionWithDetails[] }> {
+  if (!pendingInFlight) {
+    pendingInFlight = fetch('/api/allowance/pending', { credentials: 'include' })
+      .then(res => { if (!res.ok) throw new Error(); return res.json() })
+      .finally(() => { pendingInFlight = null })
+  }
+  return pendingInFlight
+}
+
 interface CompletionWithDetails {
   id: number
   chore_id: number
@@ -217,13 +229,13 @@ export default function AllowancePage() {
 
   const loadFailed = t('errors.loadFailed')
 
+  // Fetch on mount regardless of the active tab so the Today tab's
+  // pending-approval count badge is populated on entry from any tab. The hook
+  // caches the result, so switching to Today later does not refetch.
+  // Uses module-level dedup to avoid a duplicate request from StrictMode.
   const pendingFetch = useTabFetch<{ pending: CompletionWithDetails[] }>(
-    tab === 'today',
-    async signal => {
-      const res = await fetch('/api/allowance/pending', { credentials: 'include', signal })
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
+    true,
+    () => fetchPendingDeduped(),
     data => setPending(data.pending ?? []),
     loadFailed,
   )
