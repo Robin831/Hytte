@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Building2, Calendar, ChevronLeft, ChevronRight, Clock, Copy, Plus, Trash2 } from 'lucide-react'
 import { formatDate } from '../../../utils/formatDate'
@@ -23,10 +23,12 @@ export default function DayView({
   currentDate,
   setCurrentDate,
   onNavigateToSettings,
+  punchToggleRef,
 }: {
   currentDate: string
   setCurrentDate: (d: string | ((prev: string) => string)) => void
   onNavigateToSettings: () => void
+  punchToggleRef?: RefObject<(() => void) | null>
 }) {
   const { t } = useTranslation(['workhours', 'common'])
   const api = useWorkHoursApi()
@@ -156,6 +158,18 @@ export default function DayView({
     const id = setInterval(() => setNow(new Date()), 60_000)
     return () => clearInterval(id)
   }, [punchStart])
+
+  useEffect(() => {
+    if (!punchToggleRef) return
+    punchToggleRef.current = () => {
+      if (punchStart === null) {
+        handlePunchIn()
+      } else {
+        handlePunchOut()
+      }
+    }
+    return () => { punchToggleRef.current = null }
+  })
 
   const loadLeaveDay = useCallback(async (date: string, signal?: AbortSignal) => {
     try {
