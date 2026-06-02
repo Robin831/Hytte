@@ -117,9 +117,10 @@ export default function Transit() {
       }
     }
 
-    // Initial fetch, then begin polling if the tab is currently visible.
-    void fetchDepartures()
-    startPolling()
+    if (!document.hidden) {
+      void fetchDepartures()
+      startPolling()
+    }
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
