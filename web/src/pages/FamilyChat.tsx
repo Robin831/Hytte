@@ -52,7 +52,11 @@ function FamilyChatInner() {
           selectedConversationId !== null ? 'flex' : 'hidden md:flex'
         } flex-1 min-w-0 flex-col`}
       >
-        <ChatView conversationId={selectedConversationId} onBack={handleBackToList} />
+        <ChatView
+          key={selectedConversationId ?? 'none'}
+          conversationId={selectedConversationId}
+          onBack={handleBackToList}
+        />
       </section>
 
       <NewConversationModal
