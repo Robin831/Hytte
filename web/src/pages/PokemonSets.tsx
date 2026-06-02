@@ -262,9 +262,9 @@ export default function PokemonSets() {
   // sets grid and answers "what is my whole collection worth?".
   useEffect(() => {
     const controller = new AbortController()
-    setValueLoading(true)
-    setValueError(false)
     ;(async () => {
+      setValueLoading(true)
+      setValueError(false)
       try {
         const res = await fetch('/api/pokemon/collection/value', {
           credentials: 'include',
