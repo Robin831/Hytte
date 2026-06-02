@@ -88,93 +88,63 @@ export default function Training() {
 
   useEffect(() => {
     if (!user) return
-    // Visibility-aware polling with exponential backoff: hit a cheap /latest
-    // endpoint that returns only the max workout id, and only the existing
-    // banner flow trips when a new id appears. Interval starts at 30s and
-    // doubles up to a 5min cap when no new workout is seen; visibility
-    // changes reset it.
-    const MIN_INTERVAL_MS = 30_000
-    const MAX_INTERVAL_MS = 5 * 60_000
-    const BACKOFF_FACTOR = 2
-
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
-    let controller: AbortController | null = null
+    // Subscribe to a per-user SSE stream that the backend pings whenever a
+    // workout is imported. This replaces the old visibility-aware polling
+    // loop: a quiet page makes zero periodic /latest requests, and the "new
+    // workouts" banner appears within ~1-2s of an upload. EventSource handles
+    // reconnection automatically; on each (re)connect we do a single /latest
+    // fetch to cover any events missed while disconnected.
     let cancelled = false
-    let inFlight = false
-    let intervalMs = MIN_INTERVAL_MS
 
-    const schedule = (delay: number) => {
-      if (cancelled) return
-      timeoutId = setTimeout(poll, delay)
-    }
-
-    const poll = async () => {
-      if (cancelled) return
-      // Don't poll while hidden or while the banner is already pending.
-      // The visibilitychange handler will resume when the tab becomes visible.
-      if (document.hidden || hasNewWorkoutsRef.current) return
-      inFlight = true
-      controller = new AbortController()
+    // reconcile checks the cheap /latest endpoint and trips the banner if a
+    // workout id higher than what we've seen has appeared. Used on connect and
+    // reconnect so missed events are not lost.
+    const reconcile = async () => {
       try {
-        const res = await fetch('/api/training/workouts/latest', {
-          credentials: 'include',
-          signal: controller.signal,
-        })
-        if (!res.ok) {
-          intervalMs = Math.min(intervalMs * BACKOFF_FACTOR, MAX_INTERVAL_MS)
-          schedule(intervalMs)
-          return
-        }
+        const res = await fetch('/api/training/workouts/latest', { credentials: 'include' })
+        if (!res.ok) return
         const data = await res.json()
         const maxId: number = typeof data.latest_id === 'number' ? data.latest_id : 0
+        if (cancelled) return
         const seen = latestWorkoutIdRef.current
         if (maxId > 0 && (seen === null || maxId > seen)) {
           latestWorkoutIdRef.current = maxId
           hasNewWorkoutsRef.current = true
           setHasNewWorkouts(true)
-          intervalMs = MIN_INTERVAL_MS
-        } else {
-          intervalMs = Math.min(intervalMs * BACKOFF_FACTOR, MAX_INTERVAL_MS)
         }
       } catch {
-        // AbortError on unmount or transient network failure — back off.
-        intervalMs = Math.min(intervalMs * BACKOFF_FACTOR, MAX_INTERVAL_MS)
-      } finally {
-        inFlight = false
+        // Transient network failure — EventSource will reconnect and we will
+        // reconcile again on the next open.
       }
-      schedule(intervalMs)
     }
 
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        // Pause polling while hidden: cancel any pending timeout.
-        if (timeoutId !== null) {
-          clearTimeout(timeoutId)
-          timeoutId = null
-        }
-        return
-      }
-      // Tab became visible — abort any in-flight request and poll immediately.
-      intervalMs = MIN_INTERVAL_MS
-      if (inFlight && controller !== null) {
-        controller.abort()
-        inFlight = false
-      }
-      if (timeoutId !== null) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
-      schedule(0)
-    }
+    const es = new EventSource('/api/training/events', { withCredentials: true })
 
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    schedule(intervalMs)
+    // onopen fires on the initial connection and after every automatic
+    // reconnect, so this single /latest fetch covers the reconnect-reconcile
+    // requirement without any manual backoff/visibility bookkeeping.
+    es.onopen = () => { reconcile() }
+
+    es.addEventListener('workout_new', (e: MessageEvent) => {
+      if (cancelled) return
+      let maxId = 0
+      try {
+        const data = JSON.parse(e.data)
+        if (typeof data.latest_id === 'number') maxId = data.latest_id
+      } catch {
+        // Malformed payload — fall back to trusting the signal itself below.
+      }
+      const seen = latestWorkoutIdRef.current
+      if (maxId === 0 || seen === null || maxId > seen) {
+        if (maxId > 0) latestWorkoutIdRef.current = maxId
+        hasNewWorkoutsRef.current = true
+        setHasNewWorkouts(true)
+      }
+    })
 
     return () => {
       cancelled = true
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      if (timeoutId !== null) clearTimeout(timeoutId)
-      if (controller !== null) controller.abort()
+      es.close()
     }
   }, [user])
 

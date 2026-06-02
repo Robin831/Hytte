@@ -247,6 +247,18 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 			imported = append(imported, *workout)
 		}
 
+		// Notify open Training tabs before kicking off background analysis,
+		// which may do synchronous DB work and delay this signal.
+		if len(imported) > 0 {
+			var latestID int64
+			for _, wkt := range imported {
+				if wkt.ID > latestID {
+					latestID = wkt.ID
+				}
+			}
+			DefaultHub().Publish(user.ID, Event{Type: EventWorkoutNew, LatestID: latestID})
+		}
+
 		scheduleBackgroundAnalysis(db, user.ID, user.IsAdmin, imported)
 
 		writeJSON(w, http.StatusCreated, map[string]any{
