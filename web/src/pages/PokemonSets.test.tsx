@@ -28,7 +28,7 @@ function mockT(key: string, opts?: Record<string, string | number>): string {
   }
   if (key === 'value.ownedVariants') {
     const count = Number(opts?.count ?? 0)
-    return count === 1 ? `${count} owned card` : `${count} owned cards`
+    return count === 1 ? `${count} owned variant` : `${count} owned variants`
   }
   return TRANSLATIONS[key] ?? key
 }
@@ -358,7 +358,7 @@ describe('PokemonSets – collection value card', () => {
     await waitFor(() => {
       expect(screen.getByTestId('pokemon-collection-value-total')).toHaveTextContent('115')
     })
-    expect(screen.getByText('3 owned cards')).toBeInTheDocument()
+    expect(screen.getByText('3 owned variants')).toBeInTheDocument()
   })
 
   it('renders a zero/empty state for an empty collection, not an error', async () => {
@@ -373,7 +373,7 @@ describe('PokemonSets – collection value card', () => {
     await waitFor(() => {
       expect(screen.getByTestId('pokemon-collection-value-total')).toHaveTextContent('0')
     })
-    expect(screen.getByText('0 owned cards')).toBeInTheDocument()
+    expect(screen.getByText('0 owned variants')).toBeInTheDocument()
     expect(screen.queryByTestId('pokemon-collection-value-error')).not.toBeInTheDocument()
   })
 

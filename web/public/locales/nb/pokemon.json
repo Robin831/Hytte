@@ -9,8 +9,8 @@
   },
   "value": {
     "title": "Samlingsverdi",
-    "ownedVariants_one": "{{count}} eid kort",
-    "ownedVariants_other": "{{count}} eide kort",
+    "ownedVariants_one": "{{count}} eid variant",
+    "ownedVariants_other": "{{count}} eide varianter",
     "unavailable": "Pris utilgjengelig",
     "error": "Kunne ikke laste samlingsverdien"
   },

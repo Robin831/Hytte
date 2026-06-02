@@ -9,8 +9,8 @@
   },
   "value": {
     "title": "Collection value",
-    "ownedVariants_one": "{{count}} owned card",
-    "ownedVariants_other": "{{count}} owned cards",
+    "ownedVariants_one": "{{count}} owned variant",
+    "ownedVariants_other": "{{count}} owned variants",
     "unavailable": "Price unavailable",
     "error": "Couldn't load collection value"
   },

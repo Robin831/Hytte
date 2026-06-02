@@ -9,8 +9,8 @@
   },
   "value": {
     "title": "มูลค่าคอลเลกชัน",
-    "ownedVariants_one": "การ์ดที่มี {{count}} ใบ",
-    "ownedVariants_other": "การ์ดที่มี {{count}} ใบ",
+    "ownedVariants_one": "แบบที่มี {{count}} ชนิด",
+    "ownedVariants_other": "แบบที่มี {{count}} ชนิด",
     "unavailable": "ไม่มีข้อมูลราคา",
     "error": "ไม่สามารถโหลดมูลค่าคอลเลกชันได้"
   },
