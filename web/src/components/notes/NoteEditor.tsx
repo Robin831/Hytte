@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -20,6 +20,11 @@ interface NoteEditorProps {
   onDelete: (note: Note) => void
   /** Close the editor without saving. */
   onClose: () => void
+  /**
+   * Report whether the draft currently has unsaved changes, so the parent can
+   * guard navigation away from the editor with a discard confirmation.
+   */
+  onDirtyChange: (dirty: boolean) => void
 }
 
 /** Imperative handle so the page can trigger a save from a keyboard shortcut. */
@@ -41,7 +46,7 @@ function parseTags(raw: string): string[] {
  * active note changes so drafts initialize cleanly from props.
  */
 const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEditor(
-  { note, isCreating, error, onSave, onDelete, onClose },
+  { note, isCreating, error, onSave, onDelete, onClose, onDirtyChange },
   ref,
 ) {
   const { t } = useTranslation('notes')
@@ -56,6 +61,15 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
       draftContent !== note.content ||
       draftTags !== note.tags.join(', ')
     : isCreating
+
+  // Keep the parent informed of the dirty state so it can intercept attempts to
+  // switch notes, start a new note, or close the editor. The cleanup resets the
+  // flag to false when this editor unmounts (note swap or close) so a stale
+  // "dirty" state can't linger once no draft is on screen.
+  useEffect(() => {
+    onDirtyChange(hasChanges)
+    return () => onDirtyChange(false)
+  }, [hasChanges, onDirtyChange])
 
   async function handleSave() {
     setSaving(true)

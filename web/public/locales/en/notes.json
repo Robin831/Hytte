@@ -37,6 +37,12 @@
     "description": "Choose a note from the list, or create a new one."
   },
   "confirmDelete": "Delete \"{{title}}\"?",
+  "discardConfirm": {
+    "title": "Discard unsaved changes?",
+    "message": "You have unsaved changes that will be lost.",
+    "confirm": "Discard",
+    "cancel": "Keep editing"
+  },
   "errors": {
     "failedToLoad": "Failed to load notes",
     "failedToCreate": "Failed to create note",
