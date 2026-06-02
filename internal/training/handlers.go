@@ -249,6 +249,21 @@ func UploadHandler(db *sql.DB) http.HandlerFunc {
 
 		scheduleBackgroundAnalysis(db, user.ID, user.IsAdmin, imported)
 
+		// Notify any open Training tabs for this user that new workouts landed,
+		// so they can show the "new workouts" banner without polling. The event
+		// carries only the highest imported id as a signal — clients fetch the
+		// details themselves. Publishing is best-effort and never affects the
+		// upload response.
+		if len(imported) > 0 {
+			var latestID int64
+			for _, wkt := range imported {
+				if wkt.ID > latestID {
+					latestID = wkt.ID
+				}
+			}
+			DefaultHub().Publish(user.ID, Event{Type: EventWorkoutNew, LatestID: latestID})
+		}
+
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"imported": imported,
 			"errors":   errs,

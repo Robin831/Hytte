@@ -1,0 +1,2 @@
+category: Changed
+- **Push new-workout notifications over SSE instead of polling** - The Training page now subscribes to a per-user Server-Sent Events stream (`GET /api/training/events`) and shows the "new workouts" banner within ~1-2s of a FIT upload. This replaces the 30s-5min visibility-aware `/workouts/latest` polling loop, so a quiet Training tab generates zero idle traffic. The client does a single `/latest` fetch on each (re)connect to reconcile events missed while disconnected. (Hytte-etux)
