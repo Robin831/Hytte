@@ -2,11 +2,12 @@ import { useState } from 'react'
 import ConversationList from './familychat/ConversationList'
 import ChatView from './familychat/ChatView'
 import NewConversationModal from './familychat/NewConversationModal'
+import { FamilyChatProvider, useFamilyChat } from './familychat/FamilyChatContext'
 
-export default function FamilyChat() {
+function FamilyChatInner() {
+  const { refreshConversations } = useFamilyChat()
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null)
   const [newConversationOpen, setNewConversationOpen] = useState(false)
-  const [conversationListRefreshKey, setConversationListRefreshKey] = useState(0)
 
   const handleSelectConversation = (id: number) => {
     setSelectedConversationId(id)
@@ -23,7 +24,7 @@ export default function FamilyChat() {
   const handleConversationCreated = (id: number) => {
     setNewConversationOpen(false)
     setSelectedConversationId(id)
-    setConversationListRefreshKey(k => k + 1)
+    refreshConversations()
   }
 
   const handleBackToList = () => {
@@ -42,7 +43,6 @@ export default function FamilyChat() {
           selectedConversationId={selectedConversationId}
           onSelectConversation={handleSelectConversation}
           onNewConversation={handleOpenNewConversation}
-          refreshKey={conversationListRefreshKey}
         />
       </aside>
 
@@ -61,5 +61,13 @@ export default function FamilyChat() {
         onCreated={handleConversationCreated}
       />
     </div>
+  )
+}
+
+export default function FamilyChat() {
+  return (
+    <FamilyChatProvider>
+      <FamilyChatInner />
+    </FamilyChatProvider>
   )
 }
