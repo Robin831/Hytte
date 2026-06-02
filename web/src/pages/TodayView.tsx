@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
 import type { ComponentType } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
+import { useCurrentTime } from '../hooks/useCurrentTime'
 import { formatDate, formatTime } from '../utils/formatDate'
 import ParentTodayView from '../components/today/ParentTodayView'
 import KidTodayView from '../components/today/KidTodayView'
@@ -27,28 +27,7 @@ const widgetsByRole: Record<FamilyRole, ComponentType> = {
 export default function TodayView() {
   const { t } = useTranslation('today')
   const role = useFamilyRole()
-  const [now, setNow] = useState(() => new Date())
-
-  useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | undefined
-
-    const updateNow = () => setNow(new Date())
-    const current = new Date()
-    const msUntilNextMinute =
-      (60 - current.getSeconds()) * 1000 - current.getMilliseconds()
-
-    const timeoutId = setTimeout(() => {
-      updateNow()
-      intervalId = setInterval(updateNow, 60_000)
-    }, msUntilNextMinute)
-
-    return () => {
-      clearTimeout(timeoutId)
-      if (intervalId) {
-        clearInterval(intervalId)
-      }
-    }
-  }, [])
+  const now = useCurrentTime()
 
   if (role === null) return null
 
