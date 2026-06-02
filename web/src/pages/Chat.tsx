@@ -75,6 +75,10 @@ export default function Chat() {
   // animation) — used on conversation switch / initial load so the button
   // does not flash while a long history animates into view.
   const instantScrollRef = useRef(false)
+  // Suppresses unpin detection in the scroll handler while a smooth
+  // jump-to-latest scroll is in flight — cleared once the container
+  // actually reaches the pinned zone.
+  const jumpingRef = useRef(false)
   const prevConversationIdRef = useRef<number | undefined>(activeConversation?.id)
   // Track locally deleted conversation IDs so we don't resurrect them if a
   // send response arrives after the user deleted the conversation mid-flight.
@@ -88,6 +92,7 @@ export default function Chat() {
   }, [])
 
   const jumpToLatest = useCallback(() => {
+    jumpingRef.current = true
     isPinnedRef.current = true
     setIsPinned(true)
     scrollToBottom('smooth')
@@ -127,8 +132,17 @@ export default function Chat() {
     const handleScroll = () => {
       const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
       const pinned = distanceFromBottom <= PIN_THRESHOLD
-      isPinnedRef.current = pinned
-      setIsPinned(pinned)
+      if (jumpingRef.current) {
+        if (pinned) {
+          jumpingRef.current = false
+        } else {
+          return
+        }
+      }
+      if (pinned !== isPinnedRef.current) {
+        isPinnedRef.current = pinned
+        setIsPinned(pinned)
+      }
     }
     el.addEventListener('scroll', handleScroll, { passive: true })
     return () => el.removeEventListener('scroll', handleScroll)
