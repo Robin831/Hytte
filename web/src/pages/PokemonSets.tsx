@@ -7,6 +7,7 @@ import { Skeleton } from '../components/ui/skeleton'
 import AddCardPanel from '../components/pokemon/AddCardPanel'
 import CardScanner from '../components/pokemon/CardScanner'
 import PageScanner from '../components/pokemon/PageScanner'
+import CollectionValueCard from '../components/pokemon/CollectionValueCard'
 import { formatDate } from '../utils/formatDate'
 
 // PokemonSetsLocationState carries the optional "open AddCardPanel pre-filled
@@ -27,6 +28,15 @@ interface PokemonSet {
   symbol_url: string
   logo_url: string
   owned_count: number
+}
+
+// CollectionValue is the portfolio-value summary from
+// /api/pokemon/collection/value. total_nok is null when no EUR/NOK rate is
+// available.
+interface CollectionValue {
+  total_eur: number
+  total_nok: number | null
+  owned_variant_count: number
 }
 
 // eraSlug converts a series name into a safe HTML id fragment so values like
@@ -158,6 +168,9 @@ export default function PokemonSets() {
   const [showOlder, setShowOlder] = useState(false)
   const [attempt, setAttempt] = useState(0)
   const [unresolvedCount, setUnresolvedCount] = useState(0)
+  const [value, setValue] = useState<CollectionValue | null>(null)
+  const [valueLoading, setValueLoading] = useState(true)
+  const [valueError, setValueError] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
   const [pageScannerOpen, setPageScannerOpen] = useState(false)
 
@@ -244,6 +257,32 @@ export default function PokemonSets() {
     return () => { controller.abort() }
   }, [attempt])
 
+  // Fetch the portfolio-value summary on mount and whenever the page reloads
+  // after a collection change (AddCardPanel / scanner). The card sits above the
+  // sets grid and answers "what is my whole collection worth?".
+  useEffect(() => {
+    const controller = new AbortController()
+    setValueLoading(true)
+    setValueError(false)
+    ;(async () => {
+      try {
+        const res = await fetch('/api/pokemon/collection/value', {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!res.ok) throw new Error('failed')
+        const data: CollectionValue = await res.json()
+        if (!controller.signal.aborted) setValue(data)
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        if (!controller.signal.aborted) setValueError(true)
+      } finally {
+        if (!controller.signal.aborted) setValueLoading(false)
+      }
+    })()
+    return () => { controller.abort() }
+  }, [attempt])
+
   // The top 3 series ranked by the most-recent release_date in each series are
   // shown expanded; everything else is hidden behind the "Show older sets"
   // toggle. Older series are sorted newest-first by their max release_date,
@@ -316,6 +355,13 @@ export default function PokemonSets() {
             </Link>
           </div>
         </header>
+
+        <CollectionValueCard
+          totalNok={value?.total_nok ?? null}
+          ownedVariantCount={value?.owned_variant_count ?? 0}
+          loading={valueLoading}
+          error={valueError}
+        />
 
         {unresolvedCount > 0 && (
           <Link

@@ -7,6 +7,13 @@
     "filterOwnedOnly": "Owned only",
     "emptyOwned": "You don't own any cards yet — go scan some!"
   },
+  "value": {
+    "title": "Collection value",
+    "ownedVariants_one": "{{count}} owned card",
+    "ownedVariants_other": "{{count}} owned cards",
+    "unavailable": "Price unavailable",
+    "error": "Couldn't load collection value"
+  },
   "tile": {
     "totalCards_one": "{{count}} card",
     "totalCards_other": "{{count}} cards",
