@@ -1,0 +1,2 @@
+category: Changed
+- **Shared math session plumbing** - Extracted the duplicated session state machine, wall-clock timing refs, prior-PB fetch, and finish flow from MathMarathon and MathBlitz into a shared `useMathSession` hook and a single `types.ts`. Both modes now apply the same late-POST guard, so a network failure after a run finishes can no longer clobber the result screen. No change to gameplay, scoring, or UI. (Hytte-mfte)
