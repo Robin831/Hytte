@@ -5,11 +5,13 @@ import { ArrowLeft, Trophy } from 'lucide-react'
 import { MathAnswerPad } from '../components/math/MathAnswerPad'
 import { appendAnswerDigit } from '../components/math/mathUtils'
 import { FinishRank } from '../components/math/FinishRank'
-import { UnlockedAchievementsBanner, type UnlockedAchievement } from '../components/math/UnlockedAchievements'
+import { UnlockedAchievementsBanner } from '../components/math/UnlockedAchievements'
 import { MuteToggle } from '../components/math/MuteToggle'
 import { SpeedCallout, FAST_THRESHOLD_MS } from '../components/regnemester/SpeedCallout'
-import { useFeedback, emitAchievementUnlock } from '../lib/regnemester/feedback'
+import { useFeedback } from '../lib/regnemester/feedback'
 import { burst, screenShake } from '../lib/regnemester/confetti'
+import { useMathSession } from './math/useMathSession'
+import type { Fact } from './math/types'
 
 const TOTAL = 200
 
@@ -21,15 +23,6 @@ const TIMER_MILESTONES_MS = [3 * 60_000, 4 * 60_000, 5 * 60_000]
 const SUB_FIVE_MS = 5 * 60_000
 const SUB_THREE_MS = 3 * 60_000
 
-type Op = '*' | '/'
-
-interface Fact {
-  a: number
-  b: number
-  op: Op
-  expected: number
-}
-
 interface MarathonBest {
   session_id: number
   duration_ms: number
@@ -37,25 +30,6 @@ interface MarathonBest {
   total_correct: number
   ended_at: string
 }
-
-interface FinishSummary {
-  session_id: number
-  mode: string
-  started_at: string
-  ended_at: string
-  duration_ms: number
-  total_correct: number
-  total_wrong: number
-  score_num: number
-}
-
-interface FinishResponse {
-  summary: FinishSummary
-  unlocked_achievements?: UnlockedAchievement[]
-  leaderboard_rank?: number | null
-}
-
-type Phase = 'idle' | 'starting' | 'playing' | 'finishing' | 'done' | 'error'
 
 function buildAllFacts(): Fact[] {
   const facts: Fact[] = []
@@ -105,39 +79,24 @@ export default function MathMarathon() {
   // run, so a single threshold doesn't fire repeatedly as the timer ticks.
   const firedMilestonesRef = useRef<Set<number>>(new Set())
 
-  const [phase, setPhase] = useState<Phase>('idle')
-  const [error, setError] = useState('')
-  const [sessionId, setSessionId] = useState<number | null>(null)
+  const session = useMathSession<MarathonBest>({ mode: 'marathon', bestPath: '/api/math/marathon/best' })
+  const {
+    phase, error, sessionId, priorBest, summary, unlocked,
+    startedAtRef, questionShownAtRef,
+    startSession, finishSession, failActiveSession, resetSession,
+    setPriorBest,
+  } = session
+
   const [facts, setFacts] = useState<Fact[]>(() => shuffle(buildAllFacts()))
   const [index, setIndex] = useState(0)
   const [wrongCount, setWrongCount] = useState(0)
   const [input, setInput] = useState('')
-  const [summary, setSummary] = useState<FinishSummary | null>(null)
-  const [priorBest, setPriorBest] = useState<MarathonBest | null>(null)
   const [elapsed, setElapsed] = useState(0)
   const [submitting, setSubmitting] = useState(false)
-  const [unlocked, setUnlocked] = useState<UnlockedAchievement[]>([])
   const [speedMs, setSpeedMs] = useState<number | null>(null)
   const [speedKey, setSpeedKey] = useState(0)
 
-  // Refs to keep wall-clock bookkeeping out of React state churn.
-  const startedAtRef = useRef<number>(0)
-  const questionShownAtRef = useRef<number>(0)
-
   const currentFact = facts[index]
-
-  // Fetch the user's prior PB once on mount so the result screen can decide
-  // whether to award a "New PB!" badge.
-  useEffect(() => {
-    const controller = new AbortController()
-    fetch('/api/math/marathon/best', { credentials: 'include', signal: controller.signal })
-      .then(res => (res.ok ? res.json() : { best: null }))
-      .then((data: { best: MarathonBest | null }) => {
-        setPriorBest(data.best ?? null)
-      })
-      .catch(() => { /* PB lookup is non-critical; treat as no prior */ })
-    return () => { controller.abort() }
-  }, [])
 
   // Live-elapsed timer: tick from the wall-clock start, not by accumulating
   // intervals — so a backgrounded tab still reports the correct duration.
@@ -167,63 +126,34 @@ export default function MathMarathon() {
     const id = window.setInterval(tick, 100)
     tick()
     return () => window.clearInterval(id)
-  }, [phase, feedback])
+  }, [phase, feedback, startedAtRef])
 
-  const startGame = useCallback(async () => {
-    setError('')
-    setPhase('starting')
-    // Start wall clock before the server request so the displayed elapsed
-    // time accounts for start-request latency and matches duration_ms.
-    startedAtRef.current = performance.now()
-    try {
-      const res = await fetch('/api/math/sessions', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'marathon' }),
-      })
-      if (!res.ok) throw new Error(t('errors.failedToStart'))
-      const data = await res.json()
-      setSessionId(data.session_id)
-      setFacts(shuffle(buildAllFacts()))
-      questionShownAtRef.current = performance.now()
-      setIndex(0)
-      setWrongCount(0)
-      setInput('')
-      setElapsed(0)
-      setSpeedMs(null)
-      setSpeedKey(0)
-      firedMilestonesRef.current = new Set()
-      setPhase('playing')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : t('errors.failedToStart')
-      setError(message)
-      setPhase('error')
-    }
-  }, [t, setFacts])
+  const startGame = useCallback(() => {
+    return startSession({
+      onBeforeRequest: () => {
+        // Start wall clock before the server request so the displayed elapsed
+        // time accounts for start-request latency and matches duration_ms.
+        startedAtRef.current = performance.now()
+      },
+      onStarted: () => {
+        setFacts(shuffle(buildAllFacts()))
+        questionShownAtRef.current = performance.now()
+        setIndex(0)
+        setWrongCount(0)
+        setInput('')
+        setElapsed(0)
+        setSpeedMs(null)
+        setSpeedKey(0)
+        firedMilestonesRef.current = new Set()
+      },
+    })
+  }, [startSession, startedAtRef, questionShownAtRef])
 
-  const finishGame = useCallback(async (id: number) => {
-    setPhase('finishing')
-    try {
-      const res = await fetch(`/api/math/sessions/${id}/finish`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-      if (!res.ok) throw new Error(t('errors.failedToFinish'))
-      const data = await res.json() as FinishResponse
-      // Trust the server's duration_ms and total_wrong: those are what get
-      // stored and what future PB lookups compare against. Sync elapsed so
-      // there's no visible jump between the running timer and the result.
-      const s = data.summary
-      setSummary(s)
+  const finishGame = useCallback((id: number) => {
+    return finishSession(id, ({ summary: s, unlocked: unlockedItems }) => {
+      // Sync elapsed so there's no visible jump between the running timer and
+      // the result.
       setElapsed(s.duration_ms)
-      const unlockedItems = data.unlocked_achievements ?? []
-      setUnlocked(unlockedItems)
-      setPhase('done')
-      // Broadcast to the global AchievementUnlockOverlay so each unlock gets
-      // its own celebration on top of the result screen. The banner below
-      // still renders as the persistent record on the page itself.
-      emitAchievementUnlock(unlockedItems)
       // Celebrate with milestone for a new PB, fanfare otherwise.
       let beatPB: boolean
       if (!priorBest) {
@@ -252,12 +182,8 @@ export default function MathMarathon() {
           burst('medium', 'default')
         }
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : t('errors.failedToFinish')
-      setError(message)
-      setPhase('error')
-    }
-  }, [t, feedback, priorBest])
+    })
+  }, [finishSession, priorBest, feedback])
 
   const submitAnswer = useCallback(async () => {
     if (phase !== 'playing' || submitting) return
@@ -316,13 +242,14 @@ export default function MathMarathon() {
         questionShownAtRef.current = performance.now()
       }
     } catch (err) {
+      // Suppress a late attempt failure that lands after the run already
+      // finished — only surface it while the run still owns the UI.
       const message = err instanceof Error ? err.message : t('errors.failedToRecord')
-      setError(message)
-      setPhase('error')
+      failActiveSession(message)
     } finally {
       setSubmitting(false)
     }
-  }, [phase, submitting, sessionId, input, index, facts, wrongCount, t, finishGame, feedback])
+  }, [phase, submitting, sessionId, input, index, facts, wrongCount, t, finishGame, feedback, failActiveSession, questionShownAtRef])
 
   const appendDigit = useCallback((digit: string) => {
     if (phase !== 'playing' || submitting) return
@@ -444,39 +371,37 @@ export default function MathMarathon() {
           <button
             type="button"
             onClick={() => {
-              setSummary(null)
-              setSessionId(null)
-              setPhase('idle')
+              const latest = summary
+              resetSession()
               setIndex(0)
               setWrongCount(0)
               setInput('')
               setElapsed(0)
-              setUnlocked([])
               setSpeedMs(null)
               setSpeedKey(0)
               // Refresh prior best so a back-to-back run compares against
               // the run we just stored.
               setPriorBest(prev => {
-                if (!summary) return prev
+                if (!latest) return prev
                 if (!prev) {
                   return {
-                    session_id: summary.session_id,
-                    duration_ms: summary.duration_ms,
-                    total_wrong: summary.total_wrong,
-                    total_correct: summary.total_correct,
-                    ended_at: summary.ended_at,
+                    session_id: latest.session_id,
+                    duration_ms: latest.duration_ms,
+                    total_wrong: latest.total_wrong,
+                    total_correct: latest.total_correct,
+                    ended_at: latest.ended_at,
                   }
                 }
                 if (
-                  summary.duration_ms < prev.duration_ms ||
-                  (summary.duration_ms === prev.duration_ms && summary.total_wrong < prev.total_wrong)
+                  latest.duration_ms < prev.duration_ms ||
+                  (latest.duration_ms === prev.duration_ms && latest.total_wrong < prev.total_wrong)
                 ) {
                   return {
-                    session_id: summary.session_id,
-                    duration_ms: summary.duration_ms,
-                    total_wrong: summary.total_wrong,
-                    total_correct: summary.total_correct,
-                    ended_at: summary.ended_at,
+                    session_id: latest.session_id,
+                    duration_ms: latest.duration_ms,
+                    total_wrong: latest.total_wrong,
+                    total_correct: latest.total_correct,
+                    ended_at: latest.ended_at,
                   }
                 }
                 return prev

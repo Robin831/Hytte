@@ -5,25 +5,18 @@ import { ArrowLeft, Trophy } from 'lucide-react'
 import { MathAnswerPad } from '../components/math/MathAnswerPad'
 import { appendAnswerDigit } from '../components/math/mathUtils'
 import { FinishRank } from '../components/math/FinishRank'
-import { UnlockedAchievementsBanner, type UnlockedAchievement } from '../components/math/UnlockedAchievements'
+import { UnlockedAchievementsBanner } from '../components/math/UnlockedAchievements'
 import { MuteToggle } from '../components/math/MuteToggle'
 import { SpeedCallout, FAST_THRESHOLD_MS } from '../components/regnemester/SpeedCallout'
-import { useFeedback, emitAchievementUnlock } from '../lib/regnemester/feedback'
+import { useFeedback } from '../lib/regnemester/feedback'
 import { burst, blitzIntensityForScore } from '../lib/regnemester/confetti'
+import { useMathSession } from './math/useMathSession'
+import type { Fact } from './math/types'
 
 const DURATION_MS = 60_000
 const STREAK_MILESTONE_STEP = 5
 const STREAK_POP_CLASS = 'regnemester-streak-pop'
 const STREAK_POP_MS = 450
-
-type Op = '*' | '/'
-
-interface Fact {
-  a: number
-  b: number
-  op: Op
-  expected: number
-}
 
 interface BlitzBest {
   session_id: number
@@ -33,26 +26,6 @@ interface BlitzBest {
   total_wrong: number
   ended_at: string
 }
-
-interface FinishSummary {
-  session_id: number
-  mode: string
-  started_at: string
-  ended_at: string
-  duration_ms: number
-  total_correct: number
-  total_wrong: number
-  score_num: number
-  best_streak: number
-}
-
-interface FinishResponse {
-  summary: FinishSummary
-  unlocked_achievements?: UnlockedAchievement[]
-  leaderboard_rank?: number | null
-}
-
-type Phase = 'idle' | 'starting' | 'playing' | 'finishing' | 'done' | 'error'
 
 // Mirrors ComputeBlitzPoints in internal/math/session.go so the live score
 // displayed during play matches the server-computed score stored in Finish.
@@ -83,67 +56,30 @@ export default function MathBlitz() {
   const streakBadgeRef = useRef<HTMLSpanElement | null>(null)
   const streakPopTimerRef = useRef<number | null>(null)
 
-  const [phase, setPhase] = useState<Phase>('idle')
-  const [error, setError] = useState('')
-  const [sessionId, setSessionId] = useState<number | null>(null)
+  const session = useMathSession<BlitzBest>({ mode: 'blitz', bestPath: '/api/math/blitz/best' })
+  const {
+    phase, phaseRef, error, sessionId, priorBest, summary, unlocked,
+    endAtRef, questionShownAtRef,
+    startSession, finishSession, failActiveSession, resetSession,
+    setSummary, setPriorBest,
+  } = session
+
   const [currentFact, setCurrentFact] = useState<Fact | null>(null)
   const [score, setScore] = useState(0)
   const [streak, setStreak] = useState(0)
   const [speedMs, setSpeedMs] = useState<number | null>(null)
   const [speedKey, setSpeedKey] = useState(0)
   const [input, setInput] = useState('')
-  const [summary, setSummary] = useState<FinishSummary | null>(null)
-  const [priorBest, setPriorBest] = useState<BlitzBest | null>(null)
   const [timeLeftMs, setTimeLeftMs] = useState(DURATION_MS)
   const [submitting, setSubmitting] = useState(false)
-  const [unlocked, setUnlocked] = useState<UnlockedAchievement[]>([])
 
-  // Wall-clock anchors; kept in refs so timer updates don't thrash React state.
-  const endAtRef = useRef<number>(0)
-  const questionShownAtRef = useRef<number>(0)
-  // phaseRef mirrors phase so async callers (the attempt POST) can tell
-  // whether the run still owns the UI by the time their request lands —
-  // if Finish ran while we were in flight, we must not clobber 'done'
-  // with an 'error' from a late network failure.
-  const phaseRef = useRef<Phase>('idle')
-  useEffect(() => { phaseRef.current = phase }, [phase])
-
-  // Fetch the user's prior PB once on mount so the result screen can show
-  // a New PB badge when beaten.
-  useEffect(() => {
-    const controller = new AbortController()
-    fetch('/api/math/blitz/best', { credentials: 'include', signal: controller.signal })
-      .then(res => (res.ok ? res.json() : { best: null }))
-      .then((data: { best: BlitzBest | null }) => {
-        setPriorBest(data.best ?? null)
-      })
-      .catch(() => { /* PB lookup is non-critical */ })
-    return () => { controller.abort() }
-  }, [])
-
-  const finishGame = useCallback(async (id: number) => {
-    setPhase('finishing')
-    try {
-      const res = await fetch(`/api/math/sessions/${id}/finish`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-      if (!res.ok) throw new Error(t('errors.failedToFinish'))
-      const data = await res.json() as FinishResponse
-      const s = data.summary
-      setSummary(s)
+  const finishGame = useCallback((id: number) => {
+    return finishSession(id, ({ summary: s, response, unlocked: unlockedItems }) => {
       // Trust the server's score for the result banner — the client tally
       // should already match, but the stored value is what future PB lookups
       // compare against.
       setScore(s.score_num)
       setTimeLeftMs(0)
-      const unlockedItems = data.unlocked_achievements ?? []
-      setUnlocked(unlockedItems)
-      setPhase('done')
-      // Broadcast to the global AchievementUnlockOverlay so each unlock gets
-      // its own celebration on top of the result screen. The banner below
-      // still renders as the persistent record on the page itself.
-      emitAchievementUnlock(unlockedItems)
       const beatPB = priorBest ? s.score_num > priorBest.score_num : s.score_num > 0
       if (unlockedItems.length === 0) {
         feedback.play(beatPB ? 'milestone' : 'fanfare')
@@ -151,19 +87,15 @@ export default function MathBlitz() {
       // Confetti intensity scales with score; #1 all-time leaderboard rank
       // earns the full-screen burst regardless of absolute score.
       if (s.score_num > 0) {
-        const isTopRank = data.leaderboard_rank === 1
+        const isTopRank = response.leaderboard_rank === 1
         if (isTopRank) {
           burst('full', 'rainbow')
         } else {
           burst(blitzIntensityForScore(s.score_num), beatPB ? 'golden' : 'default')
         }
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : t('errors.failedToFinish')
-      setError(message)
-      setPhase('error')
-    }
-  }, [t, feedback, priorBest])
+    })
+  }, [finishSession, priorBest, feedback])
 
   // Countdown timer: ticks off the wall-clock deadline so a backgrounded tab
   // still finishes at the right moment when it returns to the foreground.
@@ -185,41 +117,27 @@ export default function MathBlitz() {
     return () => {
       if (id !== null) window.clearInterval(id)
     }
-  }, [phase, sessionId, finishGame])
+  }, [phase, sessionId, finishGame, endAtRef])
 
-  const startGame = useCallback(async () => {
-    setError('')
-    setPhase('starting')
-    try {
-      const res = await fetch('/api/math/sessions', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'blitz' }),
-      })
-      if (!res.ok) throw new Error(t('errors.failedToStart'))
-      const data = await res.json()
-      setSessionId(data.session_id)
-      setCurrentFact(data.first_question as Fact)
-      setScore(0)
-      setStreak(0)
-      setSpeedMs(null)
-      setSpeedKey(0)
-      setInput('')
-      setSummary(null)
-      // Anchor the countdown to "now" rather than the server-request start —
-      // the player shouldn't lose seconds to network latency.
-      const now = performance.now()
-      endAtRef.current = now + DURATION_MS
-      questionShownAtRef.current = now
-      setTimeLeftMs(DURATION_MS)
-      setPhase('playing')
-    } catch (err) {
-      const message = err instanceof Error ? err.message : t('errors.failedToStart')
-      setError(message)
-      setPhase('error')
-    }
-  }, [t])
+  const startGame = useCallback(() => {
+    return startSession({
+      onStarted: (data) => {
+        setCurrentFact(data.first_question as Fact)
+        setScore(0)
+        setStreak(0)
+        setSpeedMs(null)
+        setSpeedKey(0)
+        setInput('')
+        setSummary(null)
+        // Anchor the countdown to "now" rather than the server-request start —
+        // the player shouldn't lose seconds to network latency.
+        const now = performance.now()
+        endAtRef.current = now + DURATION_MS
+        questionShownAtRef.current = now
+        setTimeLeftMs(DURATION_MS)
+      },
+    })
+  }, [startSession, endAtRef, questionShownAtRef, setSummary])
 
   const submitAnswer = useCallback(async () => {
     if (phase !== 'playing' || submitting) return
@@ -310,15 +228,12 @@ export default function MathBlitz() {
     } catch (err) {
       // Don't override 'finishing' or 'done' with an error from a late
       // attempt POST — the timer already finished the run cleanly.
-      if (phaseRef.current === 'playing') {
-        const message = err instanceof Error ? err.message : t('errors.failedToRecord')
-        setError(message)
-        setPhase('error')
-      }
+      const message = err instanceof Error ? err.message : t('errors.failedToRecord')
+      failActiveSession(message)
     } finally {
       setSubmitting(false)
     }
-  }, [phase, submitting, sessionId, currentFact, input, streak, t, finishGame, feedback])
+  }, [phase, submitting, sessionId, currentFact, input, streak, t, finishGame, feedback, failActiveSession, phaseRef, endAtRef, questionShownAtRef])
 
   const appendDigit = useCallback((digit: string) => {
     if (phase !== 'playing' || submitting) return
@@ -453,8 +368,7 @@ export default function MathBlitz() {
             type="button"
             onClick={() => {
               const latest = summary
-              setSummary(null)
-              setSessionId(null)
+              resetSession()
               setCurrentFact(null)
               setScore(0)
               setStreak(0)
@@ -462,8 +376,6 @@ export default function MathBlitz() {
               setSpeedKey(0)
               setInput('')
               setTimeLeftMs(DURATION_MS)
-              setUnlocked([])
-              setPhase('idle')
               // Refresh prior best so a back-to-back run compares against
               // the run we just stored.
               setPriorBest(prev => {
@@ -471,7 +383,7 @@ export default function MathBlitz() {
                 const candidate: BlitzBest = {
                   session_id: latest.session_id,
                   score_num: latest.score_num,
-                  best_streak: latest.best_streak,
+                  best_streak: latest.best_streak ?? 0,
                   total_correct: latest.total_correct,
                   total_wrong: latest.total_wrong,
                   ended_at: latest.ended_at,
