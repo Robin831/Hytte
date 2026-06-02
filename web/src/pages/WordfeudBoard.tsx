@@ -437,6 +437,29 @@ export default function WordfeudBoard() {
     handleSolveRef.current = handleSolve
   }, [handleSolve])
 
+  // Stable serialized signature of the current position (board + rack). It changes
+  // only on real board/rack edits, not on unrelated re-renders or object-identity
+  // churn, so the abort effect below fires precisely when the position changes.
+  const positionSignature = useMemo(() => {
+    const boardSig = board
+      .map(row => row.map(cell => (cell ? `${cell.letter}${cell.isBlank ? '*' : ''}` : '')).join(','))
+      .join('|')
+    return `${boardSig}#${rackInput}`
+  }, [board, rackInput])
+
+  // When the board or rack changes, abort any solve started against the now-stale
+  // position so its (potentially slow) response can never overwrite solverMoves, and
+  // clear move selection/hover so no preview overlay highlights squares that no longer
+  // match the displayed board. Keyed only on the serialized signature. This runs before
+  // the auto-solve effect below (declaration order), so a fresh auto-solve started for
+  // the new position is not aborted by it.
+  useEffect(() => {
+    solveControllerRef.current?.abort()
+    setSolving(false)
+    setSelectedMoveIdx(null)
+    setHoveredMoveIdx(null)
+  }, [positionSignature])
+
   useEffect(() => {
     if (!autoSolvePending || loadingGame) return
 
