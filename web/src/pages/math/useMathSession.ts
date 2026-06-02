@@ -113,8 +113,8 @@ export function useMathSession<TBest>({ mode, bestPath }: UseMathSessionOptions)
   const startSession = useCallback(async (handlers: StartHandlers) => {
     setError('')
     setPhase('starting')
-    handlers.onBeforeRequest?.()
     try {
+      handlers.onBeforeRequest?.()
       const res = await fetch('/api/math/sessions', {
         method: 'POST',
         credentials: 'include',
@@ -153,8 +153,11 @@ export function useMathSession<TBest>({ mode, bestPath }: UseMathSessionOptions)
       // its own celebration on top of the result screen. The in-page banner
       // still renders as the persistent record.
       emitAchievementUnlock(unlockedItems)
-      // Mode-specific score/timer syncing and confetti.
-      celebrate({ summary: s, response: data, unlocked: unlockedItems })
+      // Mode-specific score/timer syncing and confetti. Wrapped so a
+      // celebration bug doesn't flip an otherwise successful finish to 'error'.
+      try {
+        celebrate({ summary: s, response: data, unlocked: unlockedItems })
+      } catch { /* celebrate is best-effort */ }
     } catch (err) {
       const message = err instanceof Error ? err.message : t('errors.failedToFinish')
       setError(message)
