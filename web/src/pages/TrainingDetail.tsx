@@ -4,6 +4,7 @@ import { ArrowLeft, Trash2, Save, GitCompareArrows, Sparkles, RefreshCw, Loader2
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
+import { formatDistance, formatDuration, formatPace } from '../utils/training'
 import type { Workout, ZoneDistribution, WorkoutAnalysis, CachedInsights, Lap, RacePredictions } from '../types/training'
 import type { StrideEvaluationRecord } from '../types/stride'
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
@@ -16,14 +17,6 @@ import TagBadge from '../components/TagBadge'
 import { isAutoTag, isAITag } from '../tags'
 import LactateImportDialog from '../components/LactateImportDialog'
 
-
-function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
 
 function computePacingSplit(laps: Lap[]): 'positive' | 'negative' | 'even' | null {
   // Ignore very short laps (< 200 m) such as warmup/cooldown/trailing partial laps.
@@ -91,19 +84,6 @@ export default function TrainingDetail() {
   const contextAutoOpenedRef = useRef(false)
   const contextRefetchControllerRef = useRef<AbortController | null>(null)
   const hasContext = workoutContext !== null
-
-  function formatDistance(meters: number): string {
-    if (meters < 1000) return `${Math.round(meters)} ${t('units.m')}`
-    return `${formatNumber(meters / 1000, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${t('units.km')}`
-  }
-
-  function formatPace(secPerKm: number): string {
-    if (secPerKm <= 0) return '--:--'
-    let mins = Math.floor(secPerKm / 60)
-    let secs = Math.round(secPerKm % 60)
-    if (secs === 60) { mins++; secs = 0 }
-    return `${mins}:${secs.toString().padStart(2, '0')} ${t('units.pace')}`
-  }
 
   useEffect(() => {
     if (!user || !id) return
@@ -620,16 +600,16 @@ export default function TrainingDetail() {
             <p className="text-xs text-gray-400">
               {formatDate(`${linkedRace.date}T00:00:00`, { dateStyle: 'medium' })}
               {linkedRace.target_time != null && (
-                <> &middot; {t('detail.linkedRace.targetTime')}: {formatDuration(linkedRace.target_time)}</>
+                <> &middot; {t('detail.linkedRace.targetTime')}: {formatDuration(linkedRace.target_time, t)}</>
               )}
               {linkedRace.result_time != null && (
-                <> &middot; {t('detail.linkedRace.actualTime')}: {formatDuration(linkedRace.result_time)}</>
+                <> &middot; {t('detail.linkedRace.actualTime')}: {formatDuration(linkedRace.result_time, t)}</>
               )}
               {linkedRace.target_time != null && linkedRace.result_time != null && (
                 <> &middot; {t('detail.linkedRace.difference')}: {(() => {
                   const diff = linkedRace.result_time! - linkedRace.target_time!
                   const sign = diff < 0 ? '-' : diff > 0 ? '+' : ''
-                  return `${sign}${formatDuration(Math.abs(diff))}`
+                  return `${sign}${formatDuration(Math.abs(diff), t)}`
                 })()}</>
               )}
             </p>
@@ -829,8 +809,8 @@ export default function TrainingDetail() {
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard label={t('detail.stats.duration')} value={formatDuration(workout.duration_seconds)} />
-        <StatCard label={t('detail.stats.distance')} value={formatDistance(workout.distance_meters)} />
+        <StatCard label={t('detail.stats.duration')} value={formatDuration(workout.duration_seconds, t)} />
+        <StatCard label={t('detail.stats.distance')} value={formatDistance(workout.distance_meters, t)} />
         {workout.avg_heart_rate > 0 && (
           <StatCard
             label={t('detail.stats.avgHR')}
@@ -839,7 +819,7 @@ export default function TrainingDetail() {
           />
         )}
         {workout.avg_pace_sec_per_km > 0 && (
-          <StatCard label={t('detail.stats.avgPace')} value={formatPace(workout.avg_pace_sec_per_km)} />
+          <StatCard label={t('detail.stats.avgPace')} value={formatPace(workout.avg_pace_sec_per_km, t)} />
         )}
         {workout.calories > 0 && <StatCard label={t('detail.stats.calories')} value={`${workout.calories}`} />}
         {workout.ascent_meters > 0 && (
@@ -893,11 +873,11 @@ export default function TrainingDetail() {
                 {workout.laps.map((lap) => (
                   <tr key={lap.lap_number} className="border-b border-gray-700/50">
                     <td className="py-2 pr-4 text-gray-400">{lap.lap_number}</td>
-                    <td className="py-2 px-4 text-right">{formatDuration(Math.round(lap.duration_seconds))}</td>
-                    <td className="py-2 px-4 text-right">{formatDistance(lap.distance_meters)}</td>
+                    <td className="py-2 px-4 text-right">{formatDuration(Math.round(lap.duration_seconds), t)}</td>
+                    <td className="py-2 px-4 text-right">{formatDistance(lap.distance_meters, t)}</td>
                     <td className="py-2 px-4 text-right">{lap.avg_heart_rate > 0 ? lap.avg_heart_rate : '-'}</td>
                     <td className="py-2 px-4 text-right">{lap.max_heart_rate > 0 ? lap.max_heart_rate : '-'}</td>
-                    <td className="py-2 pl-4 text-right">{formatPace(lap.avg_pace_sec_per_km)}</td>
+                    <td className="py-2 pl-4 text-right">{formatPace(lap.avg_pace_sec_per_km, t)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { Dumbbell, Upload, TrendingUp, BarChart3, RefreshCw, X, Database } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
-import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
+import { formatDate, formatTime } from '../utils/formatDate'
+import { formatDistance, formatDuration, formatPace } from '../utils/training'
 import type { Workout, WeeklySummary } from '../types/training'
 import TagBadge from '../components/TagBadge'
 
@@ -35,26 +36,6 @@ export default function Training() {
   const [backfillResult, setBackfillResult] = useState<string | null>(null)
   const latestWorkoutIdRef = useRef<number | null>(null)
   const hasNewWorkoutsRef = useRef(false)
-
-  function formatDuration(seconds: number): string {
-    const h = Math.floor(seconds / 3600)
-    const m = Math.floor((seconds % 3600) / 60)
-    if (h > 0) return t('units.hours_minutes', { h, m })
-    return t('units.minutes', { m })
-  }
-
-  function formatDistance(meters: number): string {
-    if (meters < 1000) return `${Math.round(meters)} ${t('units.m')}`
-    return `${formatNumber(meters / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${t('units.km')}`
-  }
-
-  function formatPace(secPerKm: number): string {
-    if (secPerKm <= 0) return '--:--'
-    let mins = Math.floor(secPerKm / 60)
-    let secs = Math.round(secPerKm % 60)
-    if (secs === 60) { mins++; secs = 0 }
-    return `${mins}:${secs.toString().padStart(2, '0')} ${t('units.pace')}`
-  }
 
   useEffect(() => {
     if (!user) return
@@ -362,8 +343,8 @@ export default function Training() {
                 <p className="text-xs text-gray-500 mb-1">
                   {formatDate(s.week_start + 'T00:00:00', { month: 'short', day: 'numeric' })}
                 </p>
-                <p className="text-lg font-bold">{formatDuration(s.total_duration_seconds)}</p>
-                <p className="text-sm text-gray-400">{formatDistance(s.total_distance_meters)}</p>
+                <p className="text-lg font-bold">{formatDuration(s.total_duration_seconds, t, { style: 'human' })}</p>
+                <p className="text-sm text-gray-400">{formatDistance(s.total_distance_meters, t)}</p>
                 <p className="text-xs text-gray-500">{t('weeklyVolume.workoutCount', { count: s.workout_count })}</p>
               </div>
             ))}
@@ -425,8 +406,8 @@ export default function Training() {
                 </div>
                 <div className="flex gap-4 sm:gap-6 text-sm text-gray-400 flex-shrink-0">
                   <div className="text-right">
-                    <p className="font-medium text-white">{formatDuration(w.duration_seconds)}</p>
-                    <p>{formatDistance(w.distance_meters)}</p>
+                    <p className="font-medium text-white">{formatDuration(w.duration_seconds, t, { style: 'human' })}</p>
+                    <p>{formatDistance(w.distance_meters, t)}</p>
                   </div>
                   {w.avg_heart_rate > 0 && (
                     <div className="text-right hidden sm:block">
@@ -436,7 +417,7 @@ export default function Training() {
                   )}
                   {w.avg_pace_sec_per_km > 0 && (
                     <div className="text-right hidden sm:block">
-                      <p className="font-medium text-white">{formatPace(w.avg_pace_sec_per_km)}</p>
+                      <p className="font-medium text-white">{formatPace(w.avg_pace_sec_per_km, t)}</p>
                       <p>{t('workouts.pace')}</p>
                     </div>
                   )}

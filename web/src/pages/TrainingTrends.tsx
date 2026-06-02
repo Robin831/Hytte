@@ -4,6 +4,7 @@ import { ArrowLeft, TrendingUp, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isAutoTag, displayTag, AUTO_TAG_TOOLTIP } from '../tags'
 import { formatDate, formatNumber } from '../utils/formatDate'
+import { formatDuration, formatPace } from '../utils/training'
 import { AcrGauge } from '../components/AcrGauge'
 import { WeeklyAiSummary } from '../components/WeeklyAiSummary'
 import {
@@ -149,14 +150,6 @@ function VO2maxChart({ data }: VO2maxChartProps) {
   )
 }
 
-function formatPace(secPerKm: number): string {
-  if (secPerKm <= 0) return '--:--'
-  let mins = Math.floor(secPerKm / 60)
-  let secs = Math.round(secPerKm % 60)
-  if (secs === 60) { mins++; secs = 0 }
-  return `${mins}:${secs.toString().padStart(2, '0')}`
-}
-
 export default function TrainingTrends() {
   const { user } = useAuth()
   const { t } = useTranslation(['training', 'common'])
@@ -168,11 +161,6 @@ export default function TrainingTrends() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedGroup, setSelectedGroup] = useState<string>('')
-
-  function formatDuration(seconds: number): string {
-    const h = (seconds / 3600).toFixed(1)
-    return `${h}${t('units.h')}`
-  }
 
   useEffect(() => {
     if (!user) return
@@ -308,7 +296,7 @@ export default function TrainingTrends() {
                 <Tooltip
                   contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: '#e5e7eb' }}
                   formatter={(value, name) => {
-                    if (name === 'hours') return [formatDuration(Number(value) * 3600), t('trends.weeklyVolume.duration')]
+                    if (name === 'hours') return [formatDuration(Number(value) * 3600, t, { style: 'decimal' }), t('trends.weeklyVolume.duration')]
                     if (name === 'km') return [`${value} ${t('units.km')}`, t('trends.weeklyVolume.distance')]
                     return [value, name]
                   }}
@@ -386,11 +374,11 @@ export default function TrainingTrends() {
                         reversed
                         domain={['dataMin - 5', 'dataMax + 5']}
                         tick={{ fill: '#9ca3af', fontSize: 11 }}
-                        tickFormatter={(v: number) => formatPace(v)}
+                        tickFormatter={(v: number) => formatPace(v, t, { withUnit: false })}
                       />
                       <Tooltip
                         contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px', color: '#e5e7eb' }}
-                        formatter={(value) => [formatPace(Number(value)), t('trends.paceTrend.avgPace')]}
+                        formatter={(value) => [formatPace(Number(value), t, { withUnit: false }), t('trends.paceTrend.avgPace')]}
                       />
                       <Line type="monotone" dataKey="avgPace" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6' }} name={t('trends.paceTrend.avgPace')} />
                     </LineChart>
