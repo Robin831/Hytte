@@ -1,0 +1,2 @@
+category: Changed
+- **Kiosk data endpoint now caches and bounds upstream calls** - `GET /api/kiosk/data` serves results from a short-TTL (20s) in-memory cache keyed by stop IDs, location, and Netatmo user, so multiple kiosk tabs no longer hammer the transit/Netatmo/weather providers on every poll. Each upstream fetch is now bounded by its own timeout so one slow provider yields partial data instead of stalling the whole response, and the response carries a matching `Cache-Control: max-age` header. (Hytte-xegx)
