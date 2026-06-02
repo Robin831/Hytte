@@ -1,8 +1,10 @@
 package kiosk
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"sync"
@@ -12,6 +14,35 @@ import (
 	"github.com/Robin831/Hytte/internal/transit"
 	"github.com/Robin831/Hytte/internal/weather"
 )
+
+// perSourceTimeout bounds each upstream fan-out call (transit, Netatmo,
+// weather) independently so a single slow provider can't stall the whole
+// aggregated response. It is comfortably below CacheTTL and the kiosk poll
+// cadence, so a timed-out source simply yields partial data on this poll and
+// is retried on the next. It is a var (not a const) only so tests can shorten
+// it; production code never reassigns it.
+var perSourceTimeout = 8 * time.Second
+
+// kioskCache is a process-wide short-TTL cache shared across all kiosk tabs.
+// Identical kiosk configs polling within CacheTTL reuse a single upstream
+// fetch instead of each hammering the rate-limited providers.
+var kioskCache = NewTTLCache()
+
+// transitFetcher is the subset of *transit.Service used by the kiosk handler.
+// Defining it as an interface lets tests inject fakes with call counters.
+type transitFetcher interface {
+	FetchDepartures(ctx context.Context, stopID string, count int) (string, []transit.Departure, error)
+}
+
+// netatmoFetcher is the subset of *netatmo.Client used by the kiosk handler.
+type netatmoFetcher interface {
+	GetStationsData(ctx context.Context, userID int64) (*netatmo.ModuleReadings, error)
+}
+
+// weatherFetcher is the subset of *weather.Service used by the kiosk handler.
+type weatherFetcher interface {
+	FetchForecast(loc weather.Location) ([]byte, error)
+}
 
 // SunTimes holds today's sunrise and sunset times for the kiosk location.
 // Kind is "normal", "polarDay", or "polarNight".
@@ -36,7 +67,21 @@ type KioskData struct {
 // It reads stop IDs, location, and Netatmo user from the KioskConfig injected
 // by KioskAuth, then fans out to transit, Netatmo, weather, and sun time
 // sources concurrently.
-func DataHandler(db *sql.DB, transitSvc *transit.Service, netatmoClient *netatmo.Client, weatherSvc *weather.Service) http.HandlerFunc {
+func DataHandler(db *sql.DB, transitSvc transitFetcher, netatmoClient netatmoFetcher, weatherSvc weatherFetcher) http.HandlerFunc {
+	// Guard against typed-nil interface values: callers may pass a nil
+	// *transit.Service / *netatmo.Client / *weather.Service, which wraps into a
+	// non-nil interface. Normalise those back to a true nil interface so the
+	// "service configured" checks below behave as before.
+	if isNilFetcher(transitSvc) {
+		transitSvc = nil
+	}
+	if isNilFetcher(netatmoClient) {
+		netatmoClient = nil
+	}
+	if isNilFetcher(weatherSvc) {
+		weatherSvc = nil
+	}
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := GetKioskConfig(r.Context())
 
@@ -45,6 +90,24 @@ func DataHandler(db *sql.DB, transitSvc *transit.Service, netatmoClient *netatmo
 		lon, hasLon := extractFloat(cfg, "lon")
 		locationName, _ := cfg["location"].(string)
 		netatmoUserID, _ := extractInt64(cfg, "netatmo_user_id")
+
+		// Resolve the effective Netatmo user ID before building the cache key
+		// so the key reflects the actual data source, not the raw config input.
+		if netatmoUserID == 0 && netatmoClient != nil && db != nil {
+			var foundID int64
+			row := db.QueryRowContext(r.Context(), `SELECT user_id FROM netatmo_oauth_tokens LIMIT 1`)
+			if row.Scan(&foundID) == nil {
+				netatmoUserID = foundID
+			}
+		}
+
+		// Serve from cache when an identical kiosk config was fetched within the
+		// TTL window. The cached payload retains its original FetchedAt.
+		cacheKey := buildCacheKey(stopIDs, lat, lon, hasLat, hasLon, locationName, netatmoUserID)
+		if cached, ok := kioskCache.Get(cacheKey); ok {
+			writeKioskData(w, cached)
+			return
+		}
 
 		var (
 			mu     sync.Mutex
@@ -59,17 +122,25 @@ func DataHandler(db *sql.DB, transitSvc *transit.Service, netatmoClient *netatmo
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				stops := make([]transit.StopDepartures, 0, len(stopIDs))
-				for _, id := range stopIDs {
-					stopName, departures, err := transitSvc.FetchDepartures(r.Context(), id, 10)
-					if err != nil {
-						continue
+				ctx, cancel := context.WithTimeout(r.Context(), perSourceTimeout)
+				defer cancel()
+				stops, ok := runWithTimeout(ctx, func() ([]transit.StopDepartures, error) {
+					s := make([]transit.StopDepartures, 0, len(stopIDs))
+					for _, id := range stopIDs {
+						stopName, departures, err := transitSvc.FetchDepartures(ctx, id, 10)
+						if err != nil {
+							continue
+						}
+						s = append(s, transit.StopDepartures{
+							StopID:     id,
+							StopName:   stopName,
+							Departures: departures,
+						})
 					}
-					stops = append(stops, transit.StopDepartures{
-						StopID:     id,
-						StopName:   stopName,
-						Departures: departures,
-					})
+					return s, nil
+				})
+				if !ok {
+					return
 				}
 				mu.Lock()
 				result.Transit = stops
@@ -78,21 +149,17 @@ func DataHandler(db *sql.DB, transitSvc *transit.Service, netatmoClient *netatmo
 		}
 
 		// --- Netatmo outdoor readings ---
-		// If no netatmo_user_id in kiosk config, find the first user with a
-		// connected Netatmo account (typically the admin who set it up).
-		if netatmoUserID == 0 && netatmoClient != nil {
-			var foundID int64
-			row := db.QueryRowContext(r.Context(), `SELECT user_id FROM netatmo_oauth_tokens LIMIT 1`)
-			if row.Scan(&foundID) == nil {
-				netatmoUserID = foundID
-			}
-		}
 		if netatmoUserID > 0 && netatmoClient != nil {
+			userID := netatmoUserID
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				readings, err := netatmoClient.GetStationsData(r.Context(), netatmoUserID)
-				if err != nil {
+				ctx, cancel := context.WithTimeout(r.Context(), perSourceTimeout)
+				defer cancel()
+				readings, ok := runWithTimeout(ctx, func() (*netatmo.ModuleReadings, error) {
+					return netatmoClient.GetStationsData(ctx, userID)
+				})
+				if !ok || readings == nil {
 					return
 				}
 				mu.Lock()
@@ -124,13 +191,20 @@ func DataHandler(db *sql.DB, transitSvc *transit.Service, netatmoClient *netatmo
 		}
 
 		// --- Weather forecast ---
+		// FetchForecast has no context parameter, so it is bounded by running it
+		// under runWithTimeout: a slow MET response is abandoned after the
+		// per-source timeout and the forecast field is simply omitted.
 		if weatherLoc != nil && weatherSvc != nil {
 			capturedWeatherLoc := *weatherLoc
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				data, err := weatherSvc.FetchForecast(capturedWeatherLoc)
-				if err != nil {
+				ctx, cancel := context.WithTimeout(r.Context(), perSourceTimeout)
+				defer cancel()
+				data, ok := runWithTimeout(ctx, func() ([]byte, error) {
+					return weatherSvc.FetchForecast(capturedWeatherLoc)
+				})
+				if !ok {
 					return
 				}
 				mu.Lock()
@@ -140,6 +214,7 @@ func DataHandler(db *sql.DB, transitSvc *transit.Service, netatmoClient *netatmo
 		}
 
 		// --- Sun times (computed from lat/lon, only when explicitly configured) ---
+		// This is a local CPU computation, not an upstream call, so it needs no timeout.
 		if sunLoc != nil {
 			capturedLoc := *sunLoc
 			wg.Add(1)
@@ -154,8 +229,68 @@ func DataHandler(db *sql.DB, transitSvc *transit.Service, netatmoClient *netatmo
 
 		wg.Wait()
 
-		writeJSON(w, http.StatusOK, result)
+		if r.Context().Err() == nil {
+			kioskCache.Set(cacheKey, result)
+		}
+		writeKioskData(w, result)
 	}
+}
+
+// runWithTimeout runs fn in its own goroutine and returns its value and true if
+// fn completes successfully before ctx expires. On timeout or error it returns
+// the zero value and false. A timed-out fn goroutine is left to finish and its
+// result discarded — acceptable for the idempotent, read-only upstream fetches
+// used here, and it ensures the handler's total latency stays near the timeout
+// bound rather than the slow upstream's duration.
+func runWithTimeout[T any](ctx context.Context, fn func() (T, error)) (T, bool) {
+	type result struct {
+		val T
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		v, err := fn()
+		ch <- result{val: v, err: err}
+	}()
+	select {
+	case res := <-ch:
+		if res.err != nil {
+			var zero T
+			return zero, false
+		}
+		return res.val, true
+	case <-ctx.Done():
+		var zero T
+		return zero, false
+	}
+}
+
+// writeKioskData writes a KioskData payload with caching headers. It sets a
+// Cache-Control: max-age matching the in-memory TTL so browsers/CDN respect the
+// same freshness window, overriding the no-store set by KioskAuth for this
+// non-sensitive aggregated data endpoint.
+func writeKioskData(w http.ResponseWriter, data KioskData) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d", int(CacheTTL.Seconds())))
+	w.Header().Set("Vary", "Authorization")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(data)
+}
+
+// isNilFetcher reports whether an interface value holds a nil pointer (typed
+// nil). Plain untyped nil interfaces are reported as nil too.
+func isNilFetcher(v any) bool {
+	switch t := v.(type) {
+	case nil:
+		return true
+	case *transit.Service:
+		return t == nil
+	case *netatmo.Client:
+		return t == nil
+	case *weather.Service:
+		return t == nil
+	}
+	return false
 }
 
 // computeSunTimes computes sunrise and sunset for the given lat/lon and local date.
