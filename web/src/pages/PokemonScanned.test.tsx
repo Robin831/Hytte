@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import PokemonScanned from './PokemonScanned'
 
@@ -270,6 +270,9 @@ function renderPage() {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.clearAllMocks()
+  vi.useRealTimers()
+  // Drop any per-test override so we fall back to happy-dom's default 'visible'.
+  delete (document as unknown as Record<string, unknown>).visibilityState
 })
 
 describe('PokemonScanned – render', () => {
@@ -813,5 +816,149 @@ describe('PokemonScanned – page grid', () => {
       const block = screen.getByTestId('scan-page-42')
       expect(block).toHaveAttribute('data-highlighted', 'true')
     })
+  })
+})
+
+describe('PokemonScanned – visibility-aware polling', () => {
+  const SCAN_POLL_MS = 30000
+
+  // Counts how many times the scan-list endpoint was hit. Each background poll
+  // (silentRefetch) and the initial mount fetch both issue a GET to this URL,
+  // so the call count is a faithful proxy for "a poll fired".
+  function scanListCalls(fetchMock: ReturnType<typeof makeFetchMock>): number {
+    return fetchMock.mock.calls.filter(
+      ([url]) => typeof url === 'string' && url.startsWith('/api/pokemon/scans?'),
+    ).length
+  }
+
+  // Override document.visibilityState for the current test. happy-dom exposes
+  // it as a prototype getter, so we shadow it with a configurable own property
+  // (cleaned up in afterEach).
+  function setVisibility(state: 'visible' | 'hidden') {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => state,
+    })
+  }
+
+  // Flush pending microtasks (fetch → res.json → setState) so React commits the
+  // resulting render and the fetch effect runs. Works under fake timers because
+  // vitest only fakes the timer queue, not the microtask queue.
+  async function flush() {
+    await act(async () => {
+      for (let i = 0; i < 5; i++) await Promise.resolve()
+    })
+  }
+
+  it('polls /api/pokemon/scans at the SCAN_POLL_MS cadence while visible', async () => {
+    setVisibility('visible')
+    vi.useFakeTimers()
+    const fetchMock = makeFetchMock({ needsReview: [makeMatched()] })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await flush()
+
+    const baseline = scanListCalls(fetchMock)
+    expect(baseline).toBe(1) // the initial mount fetch
+
+    // Three interval ticks → three additional polls.
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        vi.advanceTimersByTime(SCAN_POLL_MS)
+      })
+      await flush()
+    }
+
+    expect(scanListCalls(fetchMock)).toBe(baseline + 3)
+  })
+
+  it('stops polling once the tab becomes hidden', async () => {
+    setVisibility('visible')
+    vi.useFakeTimers()
+    const fetchMock = makeFetchMock({ needsReview: [makeMatched()] })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await flush()
+    const baseline = scanListCalls(fetchMock)
+
+    // Background the tab: the visibilitychange handler clears the interval.
+    await act(async () => {
+      setVisibility('hidden')
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await flush()
+
+    // Advancing well past the poll cadence must not fire any new polls.
+    await act(async () => {
+      vi.advanceTimersByTime(SCAN_POLL_MS * 3)
+    })
+    await flush()
+
+    expect(scanListCalls(fetchMock)).toBe(baseline)
+  })
+
+  it('refetches immediately on refocus and resumes the interval', async () => {
+    setVisibility('visible')
+    vi.useFakeTimers()
+    const fetchMock = makeFetchMock({ needsReview: [makeMatched()] })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await flush()
+
+    // Hide the tab and confirm polling has paused.
+    await act(async () => {
+      setVisibility('hidden')
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(SCAN_POLL_MS * 2)
+    })
+    await flush()
+    const beforeRefocus = scanListCalls(fetchMock)
+
+    // Refocus: exactly one immediate refetch, before any timer advances.
+    await act(async () => {
+      setVisibility('visible')
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await flush()
+    expect(scanListCalls(fetchMock)).toBe(beforeRefocus + 1)
+
+    // The 30s interval is running again.
+    await act(async () => {
+      vi.advanceTimersByTime(SCAN_POLL_MS)
+    })
+    await flush()
+    expect(scanListCalls(fetchMock)).toBe(beforeRefocus + 2)
+  })
+
+  it('clears the interval and removes the visibilitychange listener on unmount', async () => {
+    setVisibility('visible')
+    vi.useFakeTimers()
+    const fetchMock = makeFetchMock({ needsReview: [makeMatched()] })
+    vi.stubGlobal('fetch', fetchMock)
+    const removeSpy = vi.spyOn(document, 'removeEventListener')
+
+    const { unmount } = renderPage()
+    await flush()
+    const baseline = scanListCalls(fetchMock)
+
+    await act(async () => {
+      unmount()
+    })
+
+    expect(removeSpy).toHaveBeenCalledWith('visibilitychange', expect.any(Function))
+
+    // No leaked interval keeps polling after the component is gone.
+    await act(async () => {
+      vi.advanceTimersByTime(SCAN_POLL_MS * 3)
+    })
+    await flush()
+    expect(scanListCalls(fetchMock)).toBe(baseline)
+
+    removeSpy.mockRestore()
   })
 })
