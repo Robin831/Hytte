@@ -182,6 +182,43 @@ func TestStreamChatClaude_TimeoutReportsDeadlineExceeded(t *testing.T) {
 	}
 }
 
+// TestStreamChatClaude_EmitsHeartbeatWhileWaiting verifies that an SSE keepalive
+// comment is sent while Claude is slow to produce output, so idle connections
+// (mobile browsers / proxies) aren't dropped mid-response.
+func TestStreamChatClaude_EmitsHeartbeatWhileWaiting(t *testing.T) {
+	origExec := execCommand
+	// Command that stays silent for ~250ms before emitting a single result
+	// line — long enough for several fast heartbeats to fire.
+	execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "sh", "-c",
+			`sleep 0.25; printf '%s\n' '{"type":"result","result":"hi","session_id":"s1","is_error":false}'`)
+	}
+	t.Cleanup(func() { execCommand = origExec })
+
+	origInterval := chatHeartbeatInterval
+	chatHeartbeatInterval = 30 * time.Millisecond
+	t.Cleanup(func() { chatHeartbeatInterval = origInterval })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	rec := httptest.NewRecorder()
+	cfg := &training.ClaudeConfig{Enabled: true, Model: "claude-sonnet-4-6", CLIPath: "sh"}
+	text, sessionID, err := streamChatClaude(ctx, cfg, "system prompt", "hi", "", rec, rec)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if text != "hi" {
+		t.Errorf("expected result text %q, got %q", "hi", text)
+	}
+	if sessionID != "s1" {
+		t.Errorf("expected session id %q, got %q", "s1", sessionID)
+	}
+	if !strings.Contains(rec.Body.String(), ": keepalive") {
+		t.Errorf("expected at least one heartbeat comment in the stream, got: %q", rec.Body.String())
+	}
+}
+
 // TestStrideChatListHandler_Empty tests listing messages for a plan with no messages.
 func TestStrideChatListHandler_Empty(t *testing.T) {
 	db := setupTestDB(t)

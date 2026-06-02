@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -23,6 +24,11 @@ import (
 // chatStreamTimeout bounds a single Claude CLI streaming attempt. It is
 // generous because plan-editing turns can stream a full week of workout JSON.
 const chatStreamTimeout = 300 * time.Second
+
+// chatHeartbeatInterval is how often an SSE keepalive comment is sent while
+// waiting on Claude, to stop idle connections from being dropped. Overridable
+// in tests.
+var chatHeartbeatInterval = 15 * time.Second
 
 // execCommand creates an exec.Cmd. Extracted for test substitution.
 var execCommand = execCommandImpl
@@ -398,6 +404,41 @@ func streamChatClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPro
 		return "", "", fmt.Errorf("start claude: %w", err)
 	}
 
+	// Keep the SSE connection alive while waiting on Claude. Resuming a large
+	// conversation can take a minute or more before the first token, and a
+	// connection that sits silent that long gets dropped by mobile browsers /
+	// intermediaries (observed ~125s) — which the client surfaces as a
+	// "network error". A periodic comment heartbeat keeps bytes flowing. All
+	// writes to w go through writeMu because the heartbeat runs concurrently
+	// with the reader loop below.
+	var writeMu sync.Mutex
+	heartbeatDone := make(chan struct{})
+	var heartbeatWG sync.WaitGroup
+	heartbeatWG.Add(1)
+	// Stop the heartbeat (close) and wait for it to fully exit before
+	// returning, so it can't race with the handler's later writes to w. Defers
+	// run LIFO: close signals, then Wait blocks until the goroutine is done.
+	defer heartbeatWG.Wait()
+	defer close(heartbeatDone)
+	go func() {
+		defer heartbeatWG.Done()
+		ticker := time.NewTicker(chatHeartbeatInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatDone:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				writeMu.Lock()
+				fmt.Fprint(w, ": keepalive\n\n")
+				flusher.Flush()
+				writeMu.Unlock()
+			}
+		}
+	}()
+
 	var fullText strings.Builder
 	var resultSessionID string
 	scanner := bufio.NewScanner(stdout)
@@ -420,8 +461,10 @@ func streamChatClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPro
 				if block.Type == "text" && block.Text != "" {
 					fullText.WriteString(block.Text)
 					data, _ := json.Marshal(map[string]string{"text": block.Text})
+					writeMu.Lock()
 					fmt.Fprintf(w, "event: delta\ndata: %s\n\n", data)
 					flusher.Flush()
+					writeMu.Unlock()
 				}
 			}
 		case "content_block_delta":
@@ -434,8 +477,10 @@ func streamChatClaude(ctx context.Context, cfg *training.ClaudeConfig, systemPro
 			if err := json.Unmarshal(line, &delta); err == nil && delta.Delta.Text != "" {
 				fullText.WriteString(delta.Delta.Text)
 				data, _ := json.Marshal(map[string]string{"text": delta.Delta.Text})
+				writeMu.Lock()
 				fmt.Fprintf(w, "event: delta\ndata: %s\n\n", data)
 				flusher.Flush()
+				writeMu.Unlock()
 			}
 		case "result":
 			if ev.IsError {
