@@ -9,6 +9,7 @@
     "createFirst": "Create your first note"
   },
   "untitled": "Untitled",
+  "moreTagsCount": "+{{count}}",
   "editor": {
     "edit": "Edit",
     "preview": "Preview",

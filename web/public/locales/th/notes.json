@@ -9,6 +9,7 @@
     "createFirst": "สร้างบันทึกแรกของคุณ"
   },
   "untitled": "ไม่มีชื่อ",
+  "moreTagsCount": "+{{count}}",
   "editor": {
     "edit": "แก้ไข",
     "preview": "ตัวอย่าง",
