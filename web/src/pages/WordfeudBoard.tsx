@@ -447,17 +447,13 @@ export default function WordfeudBoard() {
     return `${boardSig}#${rackInput}`
   }, [board, rackInput])
 
-  // When the board or rack changes, abort any solve started against the now-stale
-  // position so its (potentially slow) response can never overwrite solverMoves, and
-  // clear move selection/hover so no preview overlay highlights squares that no longer
-  // match the displayed board. Keyed only on the serialized signature. This runs before
-  // the auto-solve effect below (declaration order), so a fresh auto-solve started for
-  // the new position is not aborted by it.
   useEffect(() => {
     solveControllerRef.current?.abort()
-    setSolving(false)
-    setSelectedMoveIdx(null)
-    setHoveredMoveIdx(null)
+    startTransition(() => {
+      setSolving(false)
+      setSelectedMoveIdx(null)
+      setHoveredMoveIdx(null)
+    })
   }, [positionSignature])
 
   useEffect(() => {
