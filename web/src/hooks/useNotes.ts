@@ -117,6 +117,7 @@ export function useNotes(search: string, activeTag: string): UseNotesResult {
   }, [t, refresh])
 
   const remove = useCallback(async (id: number): Promise<boolean> => {
+    setError('')
     try {
       const res = await fetch(`/api/notes/${id}`, {
         method: 'DELETE',

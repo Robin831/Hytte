@@ -71,8 +71,9 @@ describe('Notes', () => {
     render(<Notes />)
     await screen.findByText('First note')
 
-    // Tag filter chips render once tags load; click "work".
-    fireEvent.click(screen.getByRole('button', { name: 'work' }))
+    // Tag filter chips render once tags load; wait for the button before clicking.
+    const workTag = await screen.findByRole('button', { name: 'work' })
+    fireEvent.click(workTag)
 
     await waitFor(() => {
       expect(

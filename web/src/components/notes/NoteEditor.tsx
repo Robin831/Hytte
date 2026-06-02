@@ -50,14 +50,17 @@ export default function NoteEditor({ note, isCreating, error, onSave, onDelete, 
 
   async function handleSave() {
     setSaving(true)
-    const tags = parseTags(draftTags)
-    const saved = await onSave({ id: note?.id, title: draftTitle, content: draftContent, tags })
-    if (saved) {
-      setDraftTitle(saved.title)
-      setDraftContent(saved.content)
-      setDraftTags(saved.tags.join(', '))
+    try {
+      const tags = parseTags(draftTags)
+      const saved = await onSave({ id: note?.id, title: draftTitle, content: draftContent, tags })
+      if (saved) {
+        setDraftTitle(saved.title)
+        setDraftContent(saved.content)
+        setDraftTags(saved.tags.join(', '))
+      }
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
   }
 
   return (
