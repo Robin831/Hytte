@@ -43,16 +43,17 @@ function DeltaBadge({ value, unit, decimals }: { value: number; unit: string; de
 }
 
 export default function LactateTests() {
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const { t } = useTranslation(['lactate', 'common'])
   const [tests, setTests] = useState<LactateTest[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (!user) return
     const controller = new AbortController()
     const load = async () => {
+      setLoading(true)
       try {
         const res = await fetch('/api/lactate/tests', { credentials: 'include', signal: controller.signal })
         if (!res.ok) {
@@ -73,7 +74,7 @@ export default function LactateTests() {
     return () => controller.abort()
   }, [user, t])
 
-  if (!user) {
+  if (!authLoading && !user) {
     return (
       <div className="p-6">
         <p className="text-gray-400">{t('signInToView')}</p>
@@ -114,7 +115,7 @@ export default function LactateTests() {
         </div>
       )}
 
-      {!loading && tests.length >= 2 && (() => {
+      {!authLoading && !loading && tests.length >= 2 && (() => {
         const latest = validThreshold(tests[0])
         const previous = validThreshold(tests[1])
         return (
@@ -149,7 +150,7 @@ export default function LactateTests() {
         )
       })()}
 
-      {loading ? (
+      {authLoading || loading ? (
         <div className="space-y-3 py-4" role="status" aria-live="polite" aria-busy="true">
           <p className="sr-only">{t('list.loading')}</p>
           <Skeleton className="h-16 w-full" />
