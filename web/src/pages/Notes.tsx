@@ -1,205 +1,65 @@
-import { useState, useEffect } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { Plus, Search, Tag, Trash2, Save, Eye, Edit3, X, FileText } from 'lucide-react'
+import { useState } from 'react'
+import { Plus, Search, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { timeAgo } from '../utils/timeAgo'
-
-interface Note {
-  id: number
-  user_id: number
-  title: string
-  content: string
-  tags: string[]
-  created_at: string
-  updated_at: string
-}
-
-type ViewMode = 'edit' | 'preview'
+import NoteEditor from '../components/notes/NoteEditor'
+import { useNotes, type Note, type NoteInput } from '../hooks/useNotes'
 
 export default function Notes() {
   const { t } = useTranslation('notes')
   const { t: tCommon } = useTranslation('common')
-  const [notes, setNotes] = useState<Note[]>([])
-  const [allTags, setAllTags] = useState<string[]>([])
-  const [selectedNote, setSelectedNote] = useState<Note | null>(null)
-  const [isCreating, setIsCreating] = useState(false)
   const [search, setSearch] = useState('')
   // Debounce the search term so typing only fires one request after a pause,
   // not one per keystroke. The input stays bound to `search` for instant text.
   const debouncedSearch = useDebouncedValue(search, 250)
   const [activeTag, setActiveTag] = useState('')
-  const [viewMode, setViewMode] = useState<ViewMode>('edit')
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [refreshKey, setRefreshKey] = useState(0)
+  const [selectedNote, setSelectedNote] = useState<Note | null>(null)
+  const [isCreating, setIsCreating] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Note | null>(null)
 
-  // Draft state for the editor
-  const [draftTitle, setDraftTitle] = useState('')
-  const [draftContent, setDraftContent] = useState('')
-  const [draftTags, setDraftTags] = useState('')
-
-  useEffect(() => {
-    const controller = new AbortController()
-    ;(async () => {
-      setLoading(true)
-      try {
-        const params = new URLSearchParams()
-        if (debouncedSearch) params.set('search', debouncedSearch)
-        if (activeTag) params.set('tag', activeTag)
-        const res = await fetch(`/api/notes?${params}`, { credentials: 'include', signal: controller.signal })
-        if (!res.ok) throw new Error(t('errors.failedToLoad'))
-        const data = await res.json()
-        setNotes(data.notes ?? [])
-        setError('')
-      } catch (err) {
-        if (err instanceof Error && err.name !== 'AbortError') {
-          setError(err.message)
-        }
-      } finally {
-        if (!controller.signal.aborted) setLoading(false)
-      }
-    })()
-    return () => { controller.abort() }
-  }, [debouncedSearch, activeTag, refreshKey, t])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    ;(async () => {
-      try {
-        const res = await fetch('/api/notes/tags', { credentials: 'include', signal: controller.signal })
-        if (!res.ok) return
-        const data = await res.json()
-        setAllTags(data.tags ?? [])
-      } catch {
-        // non-critical
-      }
-    })()
-    return () => { controller.abort() }
-  }, [refreshKey])
+  const { notes, allTags, loading, error, save, remove } = useNotes(debouncedSearch, activeTag)
 
   function openNote(note: Note) {
     setSelectedNote(note)
     setIsCreating(false)
-    setDraftTitle(note.title)
-    setDraftContent(note.content)
-    setDraftTags(note.tags.join(', '))
-    setViewMode('edit')
-    setError('')
   }
 
   function startCreating() {
     setSelectedNote(null)
     setIsCreating(true)
-    setDraftTitle('')
-    setDraftContent('')
-    setDraftTags('')
-    setViewMode('edit')
-    setError('')
   }
 
-  function cancelEdit() {
+  function closeEditor() {
     setSelectedNote(null)
     setIsCreating(false)
-    setError('')
   }
 
-  function parseTags(raw: string): string[] {
-    return raw
-      .split(',')
-      .map(t => t.trim())
-      .filter(t => t.length > 0)
+  async function handleSave(input: NoteInput): Promise<Note | null> {
+    const saved = await save(input)
+    if (saved) {
+      setSelectedNote(saved)
+      setIsCreating(false)
+    }
+    return saved
   }
 
-  async function saveNote() {
-    setSaving(true)
-    setError('')
-    const tags = parseTags(draftTags)
-
-    try {
-      if (isCreating) {
-        const res = await fetch('/api/notes', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: draftTitle, content: draftContent, tags }),
-        })
-        if (!res.ok) {
-          let msg = t('errors.failedToCreate')
-          try { const data = await res.json(); msg = data.error ?? msg } catch { /* non-JSON body */ }
-          throw new Error(msg)
-        }
-        const data = await res.json()
-        setIsCreating(false)
-        setSelectedNote(data.note)
-        setDraftTitle(data.note.title)
-        setDraftContent(data.note.content)
-        setDraftTags(data.note.tags.join(', '))
-      } else if (selectedNote) {
-        const res = await fetch(`/api/notes/${selectedNote.id}`, {
-          method: 'PUT',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: draftTitle, content: draftContent, tags }),
-        })
-        if (!res.ok) {
-          let msg = t('errors.failedToSave')
-          try { const data = await res.json(); msg = data.error ?? msg } catch { /* non-JSON body */ }
-          throw new Error(msg)
-        }
-        const data = await res.json()
-        setSelectedNote(data.note)
-        setDraftTitle(data.note.title)
-        setDraftContent(data.note.content)
-        setDraftTags(data.note.tags.join(', '))
-      }
-      setRefreshKey(k => k + 1)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('errors.saveFailed'))
-    } finally {
-      setSaving(false)
+  async function handleDelete(note: Note) {
+    const ok = await remove(note.id)
+    if (ok && selectedNote?.id === note.id) {
+      setSelectedNote(null)
+      setIsCreating(false)
     }
   }
-
-  async function doDeleteNote(note: Note) {
-    try {
-      const res = await fetch(`/api/notes/${note.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error ?? t('errors.failedToDelete'))
-      }
-      if (selectedNote?.id === note.id) {
-        setSelectedNote(null)
-        setIsCreating(false)
-      }
-      setRefreshKey(k => k + 1)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('errors.deleteFailed'))
-    }
-  }
-
-  const hasChanges = selectedNote
-    ? draftTitle !== selectedNote.title ||
-      draftContent !== selectedNote.content ||
-      draftTags !== selectedNote.tags.join(', ')
-    : isCreating
 
   return (
     <>
     <ConfirmDialog
       open={deleteTarget !== null}
       onClose={() => setDeleteTarget(null)}
-      onConfirm={() => deleteTarget && doDeleteNote(deleteTarget)}
+      onConfirm={() => deleteTarget && handleDelete(deleteTarget)}
       title={t('editor.deleteNote')}
       message={deleteTarget ? t('confirmDelete', { title: deleteTarget.title || t('untitled') }) : undefined}
     />
@@ -324,207 +184,15 @@ export default function Notes() {
       {/* Right panel — editor / viewer */}
       <main className="flex-1 min-w-0 flex flex-col bg-gray-900">
         {isCreating || selectedNote ? (
-          <>
-            {/* Toolbar */}
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-800 shrink-0">
-              <div className="flex rounded overflow-hidden border border-gray-700">
-                <button
-                  onClick={() => setViewMode('edit')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors cursor-pointer ${
-                    viewMode === 'edit'
-                      ? 'bg-gray-700 text-white'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
-                >
-                  <Edit3 size={14} />
-                  {t('editor.edit')}
-                </button>
-                <button
-                  onClick={() => setViewMode('preview')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors cursor-pointer ${
-                    viewMode === 'preview'
-                      ? 'bg-gray-700 text-white'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
-                >
-                  <Eye size={14} />
-                  {t('editor.preview')}
-                </button>
-              </div>
-
-              <div className="ml-auto flex items-center gap-2">
-                {error && <span className="text-red-400 text-sm">{error}</span>}
-                <button
-                  onClick={saveNote}
-                  disabled={saving || !hasChanges}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-default text-white rounded text-sm transition-colors cursor-pointer"
-                >
-                  <Save size={14} />
-                  {saving ? t('editor.saving') : t('editor.save')}
-                </button>
-                {selectedNote && (
-                  <button
-                    onClick={() => setDeleteTarget(selectedNote)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-red-400 hover:text-red-300 hover:bg-gray-800 rounded text-sm transition-colors cursor-pointer"
-                    title={t('editor.deleteNote')}
-                    aria-label={t('editor.deleteNote')}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-                <button
-                  onClick={cancelEdit}
-                  className="flex items-center gap-1 px-2 py-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded text-sm transition-colors cursor-pointer"
-                  title={t('editor.closeLabel')}
-                  aria-label={t('editor.closeLabel')}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-
-            {/* Note meta: title + tags */}
-            {viewMode === 'edit' && (
-              <div className="px-6 pt-4 space-y-2 shrink-0">
-                <input
-                  type="text"
-                  placeholder={t('fields.titlePlaceholder')}
-                  value={draftTitle}
-                  onChange={e => setDraftTitle(e.target.value)}
-                  className="w-full bg-transparent text-2xl font-bold text-white placeholder-gray-600 focus:outline-none"
-                  aria-label={t('fields.titleLabel')}
-                />
-                <div className="flex items-center gap-2">
-                  <Tag size={14} className="text-gray-500 shrink-0" />
-                  <input
-                    type="text"
-                    placeholder={t('fields.tagsPlaceholder')}
-                    value={draftTags}
-                    onChange={e => setDraftTags(e.target.value)}
-                    className="flex-1 bg-transparent text-sm text-gray-400 placeholder-gray-600 focus:outline-none"
-                    aria-label={t('fields.tagsLabel')}
-                  />
-                </div>
-                <hr className="border-gray-800" />
-              </div>
-            )}
-
-            {viewMode === 'edit' ? (
-              <textarea
-                value={draftContent}
-                onChange={e => setDraftContent(e.target.value)}
-                placeholder={t('fields.contentPlaceholder')}
-                className="flex-1 px-6 py-4 bg-transparent text-gray-200 text-sm font-mono leading-relaxed resize-none focus:outline-none placeholder-gray-600"
-                aria-label={t('fields.contentLabel')}
-                spellCheck
-              />
-            ) : (
-              <div className="flex-1 overflow-y-auto px-6 py-4">
-                <h1 className="text-2xl font-bold text-white mb-1">
-                  {draftTitle || <span className="text-gray-500 italic">{t('untitled')}</span>}
-                </h1>
-                {draftTags && (
-                  <div className="flex flex-wrap gap-1 mb-4">
-                    {parseTags(draftTags).map(tag => (
-                      <span
-                        key={tag}
-                        className="px-2 py-0.5 bg-gray-700 text-gray-300 text-xs rounded"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div className="prose prose-invert prose-sm max-w-none">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      code({ className, children, ...props }) {
-                        const match = /language-(\S+)/.exec(className ?? '')
-                        const isBlock = !!match
-                        return isBlock ? (
-                          <SyntaxHighlighter
-                            style={vscDarkPlus}
-                            language={match![1]}
-                            PreTag="div"
-                          >
-                            {String(children).replace(/\n$/, '')}
-                          </SyntaxHighlighter>
-                        ) : (
-                          <code
-                            className="px-1 py-0.5 bg-gray-800 rounded text-sm font-mono text-gray-200"
-                            {...props}
-                          >
-                            {children}
-                          </code>
-                        )
-                      },
-                      h1: ({ children }) => (
-                        <h1 className="text-2xl font-bold text-white mt-6 mb-3">{children}</h1>
-                      ),
-                      h2: ({ children }) => (
-                        <h2 className="text-xl font-semibold text-white mt-5 mb-2">{children}</h2>
-                      ),
-                      h3: ({ children }) => (
-                        <h3 className="text-lg font-semibold text-white mt-4 mb-2">{children}</h3>
-                      ),
-                      p: ({ children }) => (
-                        <p className="text-gray-300 mb-3 leading-relaxed">{children}</p>
-                      ),
-                      ul: ({ children }) => (
-                        <ul className="list-disc list-inside text-gray-300 mb-3 space-y-1">
-                          {children}
-                        </ul>
-                      ),
-                      ol: ({ children }) => (
-                        <ol className="list-decimal list-inside text-gray-300 mb-3 space-y-1">
-                          {children}
-                        </ol>
-                      ),
-                      li: ({ children }) => <li className="text-gray-300">{children}</li>,
-                      blockquote: ({ children }) => (
-                        <blockquote className="border-l-4 border-gray-600 pl-4 text-gray-400 italic mb-3">
-                          {children}
-                        </blockquote>
-                      ),
-                      a: ({ href, children }) => (
-                        <a
-                          href={href}
-                          className="text-blue-400 hover:text-blue-300 underline"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          {children}
-                        </a>
-                      ),
-                      strong: ({ children }) => (
-                        <strong className="font-semibold text-white">{children}</strong>
-                      ),
-                      em: ({ children }) => <em className="italic text-gray-200">{children}</em>,
-                      hr: () => <hr className="border-gray-700 my-4" />,
-                      table: ({ children }) => (
-                        <div className="overflow-x-auto mb-3">
-                          <table className="w-full text-sm text-gray-300 border-collapse">
-                            {children}
-                          </table>
-                        </div>
-                      ),
-                      th: ({ children }) => (
-                        <th className="border border-gray-700 px-3 py-1.5 bg-gray-800 font-semibold text-white text-left">
-                          {children}
-                        </th>
-                      ),
-                      td: ({ children }) => (
-                        <td className="border border-gray-700 px-3 py-1.5">{children}</td>
-                      ),
-                    }}
-                  >
-                    {draftContent || t('fields.nothingToPreview')}
-                  </ReactMarkdown>
-                </div>
-              </div>
-            )}
-          </>
+          <NoteEditor
+            key={selectedNote?.id ?? 'new'}
+            note={selectedNote}
+            isCreating={isCreating}
+            error={error}
+            onSave={handleSave}
+            onDelete={note => setDeleteTarget(note)}
+            onClose={closeEditor}
+          />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
             <FileText size={48} className="text-gray-700 mb-4" />
