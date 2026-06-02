@@ -120,6 +120,10 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
     return () => onDirtyChange(false)
   }, [hasChanges, onDirtyChange])
 
+  if (hasChanges && saveState === 'saved') {
+    setSaveState('idle')
+  }
+
   async function handleSave(input?: NoteInput) {
     setSaving(true)
     setSaveState('saving')
@@ -148,22 +152,13 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
   }
 
   // Expose save() so the page-level Cmd/Ctrl+S shortcut can persist the draft.
-  // Mirror the Save button's disabled state so the shortcut is a no-op when
-  // there is nothing to save or a save is already in flight. The handle is
-  // kept stable but defers to a ref that is refreshed every render, so the
-  // shortcut always saves the *current* draft rather than a stale closure
-  // captured the first time `hasChanges`/`saving` changed.
-  const saveRef = useRef(() => {})
-  useEffect(() => {
-    saveRef.current = () => {
-      if (!saving && hasChanges) handleSave()
-    }
-  })
+  // No dep array → runs as a layout effect after every render, guaranteeing the
+  // latest closure is available immediately (before paint) without a separate ref.
   useImperativeHandle(ref, () => ({
     save() {
-      saveRef.current()
+      if (!saving && hasChanges) handleSave()
     },
-  }), [])
+  }))
 
   // Debounced autosave for existing notes. The latest save logic lives on a ref
   // so the effect can depend only on the draft/guard values (resetting the
