@@ -1,0 +1,2 @@
+category: Added
+- **Regnemester Practice mode** - The previously locked "Coming soon" Practice tile on the math landing is now a working, low-pressure drill mode. Pick an operation (× / ÷ / mixed) and either a specific fact or the heatmap's weakest facts (red then yellow), then drill with no timer or leaderboard pressure. Attempts feed the same stats so the mastery heatmap reflects your progress. (Hytte-l5f8)
