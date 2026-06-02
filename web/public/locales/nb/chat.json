@@ -1,6 +1,7 @@
 {
   "title": "Samtaler",
   "newChat": "Ny samtale",
+  "jumpToLatest": "Hopp til nyeste",
   "empty": {
     "noConversations": "Ingen samtaler ennå",
     "startNew": "Start en ny samtale for å begynne"

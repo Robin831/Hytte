@@ -18,6 +18,7 @@ import {
   User,
   Copy,
   CheckCheck,
+  ArrowDown,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime as fmtTime } from '../utils/formatDate'
@@ -39,6 +40,11 @@ interface Message {
   created_at: string
 }
 
+// Distance from the bottom (px) within which the messages view is considered
+// "pinned": new streamed tokens keep the view glued to the latest message.
+// Past this, the user has scrolled up to read history and we leave them be.
+const PIN_THRESHOLD = 80
+
 export default function Chat() {
   const { t } = useTranslation('chat')
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -57,8 +63,22 @@ export default function Chat() {
   const [renameTitle, setRenameTitle] = useState('')
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const renameInputRef = useRef<HTMLInputElement>(null)
+  // Whether the messages view is glued to the bottom. `isPinned` drives the
+  // "jump to latest" button; `isPinnedRef` mirrors it so the streaming-token
+  // scroll effect reads the latest value without re-subscribing.
+  const [isPinned, setIsPinned] = useState(true)
+  const isPinnedRef = useRef(true)
+  // Set when the next scroll-to-bottom should jump instantly (no smooth
+  // animation) — used on conversation switch / initial load so the button
+  // does not flash while a long history animates into view.
+  const instantScrollRef = useRef(false)
+  // Suppresses unpin detection in the scroll handler while a smooth
+  // jump-to-latest scroll is in flight — cleared once the container
+  // actually reaches the pinned zone.
+  const jumpingRef = useRef(false)
   // Track locally deleted conversation IDs so we don't resurrect them if a
   // send response arrives after the user deleted the conversation mid-flight.
   const deletedConversationIds = useRef<Set<number>>(new Set())
@@ -66,9 +86,16 @@ export default function Chat() {
   // so a conversation switch can abort the in-flight stream.
   const streamAbortRef = useRef<AbortController | null>(null)
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior })
   }, [])
+
+  const jumpToLatest = useCallback(() => {
+    jumpingRef.current = true
+    isPinnedRef.current = true
+    setIsPinned(true)
+    scrollToBottom('smooth')
+  }, [scrollToBottom])
 
   const addSendingConversation = useCallback((id: number) => {
     setSendingConversationIds(prev => {
@@ -86,9 +113,47 @@ export default function Chat() {
     })
   }, [])
 
+  // Keep the view glued to the latest message only while the user is pinned
+  // near the bottom. If they have scrolled up to read history, leave their
+  // position untouched so streamed tokens no longer yank them back down.
   useEffect(() => {
-    scrollToBottom()
+    if (isPinnedRef.current) {
+      scrollToBottom(instantScrollRef.current ? 'auto' : 'smooth')
+    }
+    instantScrollRef.current = false
   }, [messages, scrollToBottom])
+
+  // Track how far the messages container is from the bottom so we know whether
+  // to auto-scroll and whether to show the "jump to latest" button.
+  useEffect(() => {
+    const el = scrollContainerRef.current
+    if (!el) return
+    const handleScroll = () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+      const pinned = distanceFromBottom <= PIN_THRESHOLD
+      if (jumpingRef.current) {
+        if (pinned) {
+          jumpingRef.current = false
+        } else {
+          return
+        }
+      }
+      if (pinned !== isPinnedRef.current) {
+        isPinnedRef.current = pinned
+        setIsPinned(pinned)
+      }
+    }
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // On conversation switch, re-pin to the bottom and scroll instantly so the
+  // latest message is shown without animating a long history.
+  useEffect(() => {
+    isPinnedRef.current = true
+    setIsPinned(true) // eslint-disable-line react-hooks/set-state-in-effect -- resetting derived state on key change
+    instantScrollRef.current = true
+  }, [activeConversation?.id])
 
   // Load conversations
   useEffect(() => {
@@ -277,6 +342,10 @@ export default function Chat() {
       created_at: new Date().toISOString(),
     }
     setMessages(prev => [...prev, tempUserMsg, tempAssistantMsg])
+    // Sending is a deliberate action: re-pin to the bottom so the user's new
+    // message and the streamed reply stay in view, even if they had scrolled up.
+    isPinnedRef.current = true
+    setIsPinned(true)
 
     // Abort any earlier in-flight stream before starting this one. The
     // useEffect on activeConversationId also calls abort on conversation
@@ -705,7 +774,8 @@ export default function Chat() {
         </div>
 
         {/* Messages area */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="relative flex-1 min-h-0">
+        <div ref={scrollContainerRef} className="h-full overflow-y-auto">
           {!activeConversation ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-500">
               <Bot size={48} className="mb-4 opacity-30" />
@@ -760,6 +830,18 @@ export default function Chat() {
               })}
               <div ref={messagesEndRef} />
             </div>
+          )}
+        </div>
+          {/* Jump to latest — shown only while scrolled away from the bottom */}
+          {activeConversation && messages.length > 0 && !isPinned && (
+            <button
+              onClick={jumpToLatest}
+              className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-2 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-medium shadow-lg border border-gray-700 transition-colors cursor-pointer"
+              aria-label={t('jumpToLatest')}
+            >
+              <ArrowDown size={14} />
+              {t('jumpToLatest')}
+            </button>
           )}
         </div>
 
