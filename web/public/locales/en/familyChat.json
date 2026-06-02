@@ -33,6 +33,10 @@
     "lightboxClose": "Close preview",
     "connection": {
       "reconnecting": "Reconnecting…"
+    },
+    "typing": {
+      "single": "{{name}} is typing…",
+      "multiple": "{{count}} people are typing…"
     }
   },
   "composer": {

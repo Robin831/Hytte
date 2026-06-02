@@ -33,6 +33,10 @@
     "lightboxClose": "ปิดการดูตัวอย่าง",
     "connection": {
       "reconnecting": "กำลังเชื่อมต่อใหม่…"
+    },
+    "typing": {
+      "single": "{{name}} กำลังพิมพ์…",
+      "multiple": "{{count}} คนกำลังพิมพ์…"
     }
   },
   "composer": {

@@ -548,6 +548,46 @@ func MarkReadHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// TypingHandler broadcasts an ephemeral "typing" signal to the conversation's
+// live SSE subscribers. Nothing is written to the database — the event is fire
+// and forget, scoped to the conversation, and carries only the conversation
+// and user ids. Non-members and unknown conversations both get 404 so the
+// endpoint never reveals whether a conversation exists.
+func TypingHandler(db *sql.DB) http.HandlerFunc {
+	return typingHandler(db, DefaultHub())
+}
+
+func typingHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		convID, ok := parseConvID(r)
+		if !ok {
+			notFound(w)
+			return
+		}
+		member, err := IsMember(db, convID, user.ID)
+		if err != nil {
+			log.Printf("familychat: typing membership conv=%d user=%d: %v", convID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+			return
+		}
+		if !member {
+			notFound(w)
+			return
+		}
+		if hub != nil {
+			hub.Publish(convID, Event{
+				Type: EventTyping,
+				Data: map[string]any{
+					"conversation_id": convID,
+					"user_id":         user.ID,
+				},
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
 // DeleteConversationHandler removes a conversation. Only the owner may
 // delete; non-owners (including members) get 404.
 func DeleteConversationHandler(db *sql.DB) http.HandlerFunc {
