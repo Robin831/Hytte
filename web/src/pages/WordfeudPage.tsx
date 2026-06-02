@@ -26,18 +26,16 @@ export default function WordfeudPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = parseTab(searchParams.get('tab'))
 
-  // One-time migration on mount: if no `tab` param is present, adopt the legacy
-  // localStorage value (mapping old `mygames`/`games` to `board`) and clear it.
-  // With no legacy key, normalize the URL to `?tab=finder` for consistency.
-  // `replace` keeps these from adding history entries.
   useEffect(() => {
+    const legacy = localStorage.getItem(LEGACY_TAB_KEY)
+    if (legacy !== null) {
+      localStorage.removeItem(LEGACY_TAB_KEY)
+    }
+
+    if (searchParams.get('tab')) return
+
+    const tab: Tab = legacy === 'board' || legacy === 'mygames' || legacy === 'games' ? 'board' : 'finder'
     setSearchParams((prev) => {
-      if (prev.get('tab')) return prev
-      const legacy = localStorage.getItem(LEGACY_TAB_KEY)
-      const tab: Tab = legacy === 'board' || legacy === 'mygames' || legacy === 'games' ? 'board' : 'finder'
-      if (legacy !== null) {
-        localStorage.removeItem(LEGACY_TAB_KEY)
-      }
       const next = new URLSearchParams(prev)
       next.set('tab', tab)
       return next
