@@ -50,17 +50,19 @@ export default function Notes() {
   // The listener lives on `window` only while this page is mounted.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      if (e.repeat) return
+      const mod = e.metaKey || e.ctrlKey
+      if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 's') {
         e.preventDefault()
         editorRef.current?.save()
         return
       }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+      if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'n') {
         e.preventDefault()
         startCreating()
         return
       }
-      if (e.key === '/' && !isTypingTarget(e.target)) {
+      if (e.key === '/' && !mod && !e.shiftKey && !e.altKey && !isTypingTarget(e.target)) {
         e.preventDefault()
         searchInputRef.current?.focus()
       }
