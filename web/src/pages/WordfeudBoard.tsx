@@ -138,6 +138,7 @@ export default function WordfeudBoard() {
 
   const [board, setBoard] = useState<(BoardCell | null)[][]>(createEmptyBoard)
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null)
+  const [direction, setDirection] = useState<'horizontal' | 'vertical'>('horizontal')
   const [rackInput, setRackInput] = useState('')
   const cellRefs = useRef<(HTMLButtonElement | null)[][]>(
     Array.from({ length: 15 }, () => Array.from({ length: 15 }, () => null))
@@ -349,10 +350,27 @@ export default function WordfeudBoard() {
         e.preventDefault()
         moveSelection(0, 1, row, col)
         break
+      case 'Tab':
+        // Toggle entry direction without moving browser focus off the grid.
+        // Shift+Tab and Tab toggle the same binary state from opposite ends.
+        e.preventDefault()
+        setDirection(prev => (prev === 'horizontal' ? 'vertical' : 'horizontal'))
+        break
       case 'Delete':
       case 'Backspace':
         e.preventDefault()
-        clearCell(row, col)
+        if (board[row][col]) {
+          // Filled cell: clear in place, keep focus here.
+          clearCell(row, col)
+        } else if (e.key === 'Backspace') {
+          // Empty cell: step back against the entry direction and clear that cell.
+          const dRow = direction === 'horizontal' ? 0 : -1
+          const dCol = direction === 'horizontal' ? -1 : 0
+          const prevRow = Math.max(0, Math.min(14, row + dRow))
+          const prevCol = Math.max(0, Math.min(14, col + dCol))
+          clearCell(prevRow, prevCol)
+          setSelectedCell({ row: prevRow, col: prevCol })
+        }
         break
       case ' ':
         // Toggle blank flag on existing tile
@@ -366,13 +384,17 @@ export default function WordfeudBoard() {
         if (upper.length === 1 && VALID_LETTERS.has(upper)) {
           e.preventDefault()
           placeCell(row, col, upper, false)
-          // Auto-advance right after placing a letter
-          moveSelection(0, 1, row, col)
+          // Auto-advance one cell along the current entry direction
+          if (direction === 'horizontal') {
+            moveSelection(0, 1, row, col)
+          } else {
+            moveSelection(1, 0, row, col)
+          }
         }
         break
       }
     }
-  }, [board, clearCell, moveSelection, placeCell])
+  }, [board, clearCell, direction, moveSelection, placeCell])
 
   // Solver: find moves
   const handleSolve = useCallback(async () => {
@@ -636,11 +658,22 @@ export default function WordfeudBoard() {
                         <span className="text-[8px] opacity-60">{BONUS_LABELS[bonus]}</span>
                       )
                     )}
+                    {isSelected && (
+                      <span className="absolute top-0 left-0.5 text-[8px] leading-none text-blue-300" aria-hidden="true">
+                        {direction === 'horizontal' ? '→' : '↓'}
+                      </span>
+                    )}
                   </button>
                 )
               })
             )}
           </div>
+        </div>
+        <div className="flex items-center gap-2 mt-2">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-800 text-xs text-gray-300">
+            <span aria-hidden="true">{direction === 'horizontal' ? '→' : '↓'}</span>
+            {t(direction === 'horizontal' ? 'board.directionHorizontal' : 'board.directionVertical')}
+          </span>
         </div>
         <p className="text-xs text-gray-500 mt-2">{t('board.hint')}</p>
       </div>
