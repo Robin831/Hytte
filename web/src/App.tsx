@@ -71,6 +71,7 @@ import HomeworkParentReview from './pages/HomeworkParentReview'
 import MathLanding from './pages/Math'
 import MathMarathon from './pages/MathMarathon'
 import MathBlitz from './pages/MathBlitz'
+import MathPractice from './pages/MathPractice'
 import MathLeaderboard from './pages/MathLeaderboard'
 import MathHeatmap from './pages/MathHeatmap'
 import MathAchievements from './pages/MathAchievements'
@@ -535,6 +536,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="regnemester">
                 <MathBlitz />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/math/play/practice"
+            element={
+              <FeatureRoute feature="regnemester">
+                <MathPractice />
               </FeatureRoute>
             }
           />
