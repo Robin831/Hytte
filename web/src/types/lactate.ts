@@ -19,8 +19,16 @@ export interface LactateTest {
   speed_increment_kmh: number
   workout_id?: number
   stages: Stage[]
+  primary_threshold?: PrimaryThreshold
   created_at: string
   updated_at: string
+}
+
+export interface PrimaryThreshold {
+  method: string
+  speed_kmh: number
+  heart_rate_bpm: number
+  valid: boolean
 }
 
 export interface ThresholdResult {

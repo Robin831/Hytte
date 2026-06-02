@@ -183,6 +183,104 @@ func TestList_WithTests(t *testing.T) {
 	}
 }
 
+func TestList_PrimaryThreshold(t *testing.T) {
+	db := setupTestDB(t)
+
+	// sampleTest crosses 4.0 mmol/L between 12.5 and 13.0 km/h, so OBLA is valid.
+	if _, err := Create(db, 1, sampleTest()); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	tests, err := List(db, 1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(tests) != 1 {
+		t.Fatalf("expected 1 test, got %d", len(tests))
+	}
+
+	pt := tests[0].PrimaryThreshold
+	if pt == nil {
+		t.Fatal("expected a primary threshold, got nil")
+	}
+	if !pt.Valid {
+		t.Errorf("expected valid threshold, got valid=false")
+	}
+	if pt.Method != string(MethodOBLA) {
+		t.Errorf("method = %q, want %q (first valid, prefers OBLA)", pt.Method, MethodOBLA)
+	}
+	// OBLA crosses 4.0 between (12.5, 3.4) and (13.0, 5.2): speed ~12.66 km/h.
+	if pt.SpeedKmh < 12.5 || pt.SpeedKmh > 13.0 {
+		t.Errorf("speed_kmh = %.2f, want between 12.5 and 13.0", pt.SpeedKmh)
+	}
+	if pt.HeartRateBpm < 165 || pt.HeartRateBpm > 175 {
+		t.Errorf("heart_rate_bpm = %d, want between 165 and 175", pt.HeartRateBpm)
+	}
+}
+
+func TestList_PrimaryThreshold_TooFewStages(t *testing.T) {
+	db := setupTestDB(t)
+
+	test := &Test{
+		Date:              "2026-03-14",
+		ProtocolType:      "standard",
+		WarmupDurationMin: 10,
+		StageDurationMin:  5,
+		StartSpeedKmh:     11.5,
+		SpeedIncrementKmh: 0.5,
+		Stages: []Stage{
+			{StageNumber: 0, SpeedKmh: 10.0, LactateMmol: 1.2, HeartRateBpm: 130},
+		},
+	}
+	if _, err := Create(db, 1, test); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	tests, err := List(db, 1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(tests) != 1 {
+		t.Fatalf("expected 1 test, got %d", len(tests))
+	}
+	if tests[0].PrimaryThreshold != nil {
+		t.Errorf("expected nil primary threshold for too-few stages, got %+v", tests[0].PrimaryThreshold)
+	}
+}
+
+func TestList_PrimaryThreshold_NeverReachesThreshold(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Lactate never reaches 4.0 mmol/L and the curve is too short/flat for
+	// the polynomial-based methods, so no method produces a valid threshold.
+	test := &Test{
+		Date:              "2026-03-14",
+		ProtocolType:      "standard",
+		WarmupDurationMin: 10,
+		StageDurationMin:  5,
+		StartSpeedKmh:     11.5,
+		SpeedIncrementKmh: 0.5,
+		Stages: []Stage{
+			{StageNumber: 0, SpeedKmh: 10.0, LactateMmol: 1.0, HeartRateBpm: 130},
+			{StageNumber: 1, SpeedKmh: 11.0, LactateMmol: 1.2, HeartRateBpm: 140},
+		},
+	}
+	if _, err := Create(db, 1, test); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	tests, err := List(db, 1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(tests) != 1 {
+		t.Fatalf("expected 1 test, got %d", len(tests))
+	}
+	if tests[0].PrimaryThreshold != nil {
+		t.Errorf("expected nil primary threshold when lactate never reaches threshold, got %+v", tests[0].PrimaryThreshold)
+	}
+}
+
 func TestUpdate(t *testing.T) {
 	db := setupTestDB(t)
 
