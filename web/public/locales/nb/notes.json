@@ -23,6 +23,14 @@
     "deleteNote": "Slett notat",
     "closeLabel": "Lukk notatredigerer"
   },
+  "status": {
+    "saving": "Lagrer…",
+    "savedJustNow": "Lagret nå nettopp",
+    "savedSecondsAgo": "Lagret for {{count}} s siden",
+    "savedMinutesAgo": "Lagret for {{count}} min siden",
+    "savedHoursAgo": "Lagret for {{count}} t siden",
+    "offline": "Frakoblet"
+  },
   "fields": {
     "titlePlaceholder": "Notatets tittel…",
     "titleLabel": "Notatets tittel",

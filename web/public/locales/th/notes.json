@@ -23,6 +23,14 @@
     "deleteNote": "ลบบันทึก",
     "closeLabel": "ปิดตัวแก้ไขบันทึก"
   },
+  "status": {
+    "saving": "กำลังบันทึก…",
+    "savedJustNow": "บันทึกเมื่อสักครู่",
+    "savedSecondsAgo": "บันทึกเมื่อ {{count}} วินาทีที่แล้ว",
+    "savedMinutesAgo": "บันทึกเมื่อ {{count}} นาทีที่แล้ว",
+    "savedHoursAgo": "บันทึกเมื่อ {{count}} ชั่วโมงที่แล้ว",
+    "offline": "ออฟไลน์"
+  },
   "fields": {
     "titlePlaceholder": "ชื่อบันทึก…",
     "titleLabel": "ชื่อบันทึก",
