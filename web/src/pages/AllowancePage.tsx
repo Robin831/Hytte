@@ -217,8 +217,11 @@ export default function AllowancePage() {
 
   const loadFailed = t('errors.loadFailed')
 
+  // Fetch on mount regardless of the active tab so the Today tab's
+  // pending-approval count badge is populated on entry from any tab. The hook
+  // caches the result, so switching to Today later does not refetch.
   const pendingFetch = useTabFetch<{ pending: CompletionWithDetails[] }>(
-    tab === 'today',
+    true,
     async signal => {
       const res = await fetch('/api/allowance/pending', { credentials: 'include', signal })
       if (!res.ok) throw new Error()
