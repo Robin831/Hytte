@@ -23,6 +23,14 @@
     "deleteNote": "Delete note",
     "closeLabel": "Close note editor"
   },
+  "status": {
+    "saving": "Saving…",
+    "savedJustNow": "Saved just now",
+    "savedSecondsAgo": "Saved {{count}}s ago",
+    "savedMinutesAgo": "Saved {{count}}m ago",
+    "savedHoursAgo": "Saved {{count}}h ago",
+    "offline": "Offline"
+  },
   "fields": {
     "titlePlaceholder": "Note title…",
     "titleLabel": "Note title",

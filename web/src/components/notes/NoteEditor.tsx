@@ -3,9 +3,16 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { Tag, Trash2, Save, Eye, Edit3, X } from 'lucide-react'
+import { Tag, Trash2, Save, Eye, Edit3, X, Check, Loader2, CloudOff } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useNow } from '../../hooks/useNow'
 import type { Note, NoteInput, ViewMode } from '../../hooks/useNotes'
+
+/** Delay after the last keystroke before an existing note autosaves. */
+const AUTOSAVE_DELAY_MS = 1500
+
+/** Lifecycle of the most recent save attempt, surfaced in the status label. */
+type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 interface NoteEditorProps {
   /** The note being edited, or null when creating a new note. */
@@ -41,6 +48,50 @@ function parseTags(raw: string): string[] {
 }
 
 /**
+ * Small label near the toolbar reflecting the autosave/save lifecycle:
+ * "Saving…" while a request is in flight, "Saved <relative time> ago" after a
+ * success (refreshing once a second), and "Offline" when a save fails. Renders
+ * nothing while idle; mounting only after the first save keeps the per-second
+ * tick from {@link useNow} off the hot editing path.
+ */
+function SaveStatus({ state, lastSavedAt }: { state: SaveState; lastSavedAt: number | null }) {
+  const { t } = useTranslation('notes')
+  const now = useNow()
+
+  if (state === 'saving') {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-gray-400" role="status" aria-live="polite">
+        <Loader2 size={12} className="animate-spin" />
+        {t('status.saving')}
+      </span>
+    )
+  }
+  if (state === 'error') {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-amber-400" role="status" aria-live="polite">
+        <CloudOff size={12} />
+        {t('status.offline')}
+      </span>
+    )
+  }
+  if (state === 'saved' && lastSavedAt !== null) {
+    const secs = Math.max(0, Math.floor((now.getTime() - lastSavedAt) / 1000))
+    let label: string
+    if (secs < 5) label = t('status.savedJustNow')
+    else if (secs < 60) label = t('status.savedSecondsAgo', { count: secs })
+    else if (secs < 3600) label = t('status.savedMinutesAgo', { count: Math.floor(secs / 60) })
+    else label = t('status.savedHoursAgo', { count: Math.floor(secs / 3600) })
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-gray-500" role="status" aria-live="polite">
+        <Check size={12} />
+        {label}
+      </span>
+    )
+  }
+  return null
+}
+
+/**
  * Editor pane for a single note. Owns draft state, edit/preview toggling, and
  * the markdown rendering. The parent re-mounts this (via a `key`) when the
  * active note changes so drafts initialize cleanly from props.
@@ -55,6 +106,8 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
   const [draftTags, setDraftTags] = useState(note ? note.tags.join(', ') : '')
   const [viewMode, setViewMode] = useState<ViewMode>('edit')
   const [saving, setSaving] = useState(false)
+  const [saveState, setSaveState] = useState<SaveState>('idle')
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
 
   const hasChanges = note
     ? draftTitle !== note.title ||
@@ -62,24 +115,36 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
       draftTags !== note.tags.join(', ')
     : isCreating
 
-  // Keep the parent informed of the dirty state so it can intercept attempts to
-  // switch notes, start a new note, or close the editor. The cleanup resets the
-  // flag to false when this editor unmounts (note swap or close) so a stale
-  // "dirty" state can't linger once no draft is on screen.
   useEffect(() => {
     onDirtyChange(hasChanges)
     return () => onDirtyChange(false)
   }, [hasChanges, onDirtyChange])
 
-  async function handleSave() {
+  // Hide the "Saved" indicator once the user resumes typing — derived, not
+  // mutated, so we avoid both render-time and effect-based setState.
+  const displaySaveState = (hasChanges && saveState === 'saved') ? 'idle' : saveState
+
+  async function handleSave(input?: NoteInput) {
     setSaving(true)
+    setSaveState('saving')
     try {
-      const tags = parseTags(draftTags)
-      const saved = await onSave({ id: note?.id, title: draftTitle, content: draftContent, tags })
+      const payload = input ?? {
+        id: note?.id,
+        title: draftTitle,
+        content: draftContent,
+        tags: parseTags(draftTags),
+      }
+      const saved = await onSave(payload)
       if (saved) {
         setDraftTitle(saved.title)
         setDraftContent(saved.content)
         setDraftTags(saved.tags.join(', '))
+        setSaveState('saved')
+        setLastSavedAt(Date.now())
+      } else {
+        // onSave swallows the failure and surfaces a message via `error`;
+        // mark the status as offline/errored so the indicator reflects it.
+        setSaveState('error')
       }
     } finally {
       setSaving(false)
@@ -87,20 +152,40 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
   }
 
   // Expose save() so the page-level Cmd/Ctrl+S shortcut can persist the draft.
-  // Mirror the Save button's disabled state so the shortcut is a no-op when
-  // there is nothing to save or a save is already in flight. The handle is
-  // kept stable but defers to a ref that is refreshed every render, so the
-  // shortcut always saves the *current* draft rather than a stale closure
-  // captured the first time `hasChanges`/`saving` changed.
-  const saveRef = useRef(() => {})
-  saveRef.current = () => {
-    if (!saving && hasChanges) handleSave()
-  }
+  // No dep array → runs as a layout effect after every render, guaranteeing the
+  // latest closure is available immediately (before paint) without a separate ref.
   useImperativeHandle(ref, () => ({
     save() {
-      saveRef.current()
+      if (!saving && hasChanges) handleSave()
     },
-  }), [])
+  }))
+
+  // Debounced autosave for existing notes. The latest save logic lives on a ref
+  // so the effect can depend only on the draft/guard values (resetting the
+  // timer on each keystroke) without re-subscribing to a fresh `handleSave`
+  // closure every render.
+  const autosaveRef = useRef((_input: NoteInput) => {})
+  useEffect(() => {
+    autosaveRef.current = (input: NoteInput) => {
+      if (note && input.id === note.id && !isCreating && hasChanges && !saving && saveState !== 'error') handleSave(input)
+    }
+  })
+  useEffect(() => {
+    // New-note creation stays on the manual Save button; never autosave it.
+    // Also hold off while a save is in flight to avoid request pileups.
+    if (!note || isCreating || !hasChanges || saving || saveState === 'error') return
+    const input: NoteInput = {
+      id: note.id,
+      title: draftTitle,
+      content: draftContent,
+      tags: parseTags(draftTags),
+    }
+    const timer = setTimeout(() => autosaveRef.current(input), AUTOSAVE_DELAY_MS)
+    // Clearing on every dependency change debounces rapid typing into a single
+    // request; the same cleanup runs on unmount and when the parent re-mounts
+    // this editor for a different note, so no stray PUT targets the old note.
+    return () => clearTimeout(timer)
+  }, [draftTitle, draftContent, draftTags, note, isCreating, hasChanges, saving, saveState])
 
   return (
     <>
@@ -132,9 +217,10 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          {displaySaveState !== 'idle' && <SaveStatus state={displaySaveState} lastSavedAt={lastSavedAt} />}
           {error && <span className="text-red-400 text-sm">{error}</span>}
           <button
-            onClick={handleSave}
+            onClick={() => handleSave()}
             disabled={saving || !hasChanges}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-default text-white rounded text-sm transition-colors cursor-pointer"
             title={t('shortcuts.save')}
