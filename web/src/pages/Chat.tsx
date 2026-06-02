@@ -79,7 +79,6 @@ export default function Chat() {
   // jump-to-latest scroll is in flight — cleared once the container
   // actually reaches the pinned zone.
   const jumpingRef = useRef(false)
-  const prevConversationIdRef = useRef<number | undefined>(activeConversation?.id)
   // Track locally deleted conversation IDs so we don't resurrect them if a
   // send response arrives after the user deleted the conversation mid-flight.
   const deletedConversationIds = useRef<Set<number>>(new Set())
@@ -149,16 +148,10 @@ export default function Chat() {
   }, [])
 
   // On conversation switch, re-pin to the bottom and scroll instantly so the
-  // latest message is shown without animating a long history. State is reset
-  // during render (React's "adjusting state from previous renders" pattern) to
-  // avoid a cascading re-render; refs are reset in the effect below.
-  if (activeConversation?.id !== prevConversationIdRef.current) {
-    prevConversationIdRef.current = activeConversation?.id
-    setIsPinned(true)
-  }
-
+  // latest message is shown without animating a long history.
   useEffect(() => {
     isPinnedRef.current = true
+    setIsPinned(true) // eslint-disable-line react-hooks/set-state-in-effect -- resetting derived state on key change
     instantScrollRef.current = true
   }, [activeConversation?.id])
 
