@@ -172,13 +172,13 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
   const autosaveRef = useRef((_input: NoteInput) => {})
   useEffect(() => {
     autosaveRef.current = (input: NoteInput) => {
-      if (note && !isCreating && hasChanges && !saving) handleSave(input)
+      if (note && input.id === note.id && !isCreating && hasChanges && !saving && saveState !== 'error') handleSave(input)
     }
   })
   useEffect(() => {
     // New-note creation stays on the manual Save button; never autosave it.
     // Also hold off while a save is in flight to avoid request pileups.
-    if (!note || isCreating || !hasChanges || saving) return
+    if (!note || isCreating || !hasChanges || saving || saveState === 'error') return
     const input: NoteInput = {
       id: note.id,
       title: draftTitle,
@@ -190,7 +190,7 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
     // request; the same cleanup runs on unmount and when the parent re-mounts
     // this editor for a different note, so no stray PUT targets the old note.
     return () => clearTimeout(timer)
-  }, [draftTitle, draftContent, draftTags, note, isCreating, hasChanges, saving])
+  }, [draftTitle, draftContent, draftTags, note, isCreating, hasChanges, saving, saveState])
 
   return (
     <>
