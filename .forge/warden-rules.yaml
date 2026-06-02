@@ -26817,3 +26817,172 @@ rules:
         - '**/*.go'
         - '**/*.md'
         - '**/*.tsx'
+    - id: verify-streaming-before-persist
+      category: error-handling
+      pattern: >-
+        Handler persists user input to the database before verifying that streaming/response prerequisites (e.g., http.Flusher support, SSE headers) are available
+      check: >-
+        Verify streaming capability and set required headers before any database writes; otherwise rollback/delete the persisted record when streaming setup fails to avoid orphaned data
+      source: copilot:PR#793
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: default-timeout-for-cli-subprocess
+      category: error-handling
+      pattern: >-
+        Functions that exec a CLI subprocess (e.g., Claude CLI) and accept a context.Context from the caller
+      check: >-
+        Verify the function applies a default timeout (e.g., DefaultCLITimeout) when the passed context has no deadline, consistent with sibling functions, so a forgetful caller cannot leave the subprocess running indefinitely
+      source: copilot:PR#793
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: sse-textdecoder-final-flush
+      category: error-handling
+      pattern: >-
+        Reading a streaming response (SSE/fetch ReadableStream) with TextDecoder using { stream: true }
+      check: >-
+        Ensure a final decoder.decode() flush is appended to the buffer after the read loop ends, so multi-byte UTF-8 codepoints split across the last chunk boundary are not dropped
+      source: copilot:PR#793
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: stream-end-without-terminal-event
+      category: error-handling
+      pattern: >-
+        Client code reads a server-sent event / streaming response loop and only treats explicit `error` events (or thrown exceptions) as failures, assuming success when the loop exits
+      check: >-
+        Verify that when the stream ends without receiving a terminal `done` or `error` event and was not explicitly aborted by the user, the code treats it as an error: clean up any partial placeholders and surface a stream/connection error to the user. Only silent completion is acceptable for explicit user-initiated aborts (e.g. AbortError from a Stop action).
+      source: copilot:PR#793
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: sse-distinguish-cancel-vs-timeout
+      category: error-handling
+      pattern: >-
+        SSE/streaming handler checks ctx.Err() after a context-bound call (e.g., LLM/API call) and returns early without inspecting which context error occurred
+      check: >-
+        Verify the handler distinguishes context.Canceled (client disconnect — silent return is fine) from context.DeadlineExceeded or other server-side errors, and emits an explicit 'error' (and/or 'done') SSE event for the latter so the client can tell a timeout/failure apart from a user-initiated stop
+      source: copilot:PR#793
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: drain-subprocess-stdout-on-parse-error
+      category: concurrency
+      pattern: >-
+        Reading a child process's stdout via a streaming parser then calling cmd.Wait(), where the parser can return early on error
+      check: >-
+        Ensure the subprocess is killed/cancelled and/or stdout is drained in a goroutine before cmd.Wait() when the parser returns an error early, so Wait cannot deadlock on a full pipe
+      source: copilot:PR#793
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: preserve-memo-referential-stability
+      category: performance
+      pattern: >-
+        Refactoring memoized grouping/derivation logic (e.g., useMemo that groups arrays by key) that feeds into React.memo child components
+      check: >-
+        Verify structural-sharing/referential stability of grouped slices is preserved so React.memo children can short-circuit; if identities now change every update, restore stable references or update nearby comments documenting the assumption, and ensure the change is in-scope for the PR
+      source: copilot:PR#793
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: preserve-persisted-state-on-stream-error
+      category: error-handling
+      pattern: >-
+        SSE/streaming error handlers that roll back optimistic UI updates after the server has already persisted some of the data (e.g. user message saved before assistant call fails)
+      check: >-
+        Verify error/catch branches only roll back UI state that was NOT persisted server-side. If the backend committed part of the operation (user message row) before failing on a later step (assistant response), keep the persisted portion visible — swap in the canonical row if available, otherwise retain the optimistic placeholder — and only remove the unpersisted placeholders. Otherwise the UI will disagree with persisted state until the next refetch.
+      source: copilot:PR#793
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: sse-abort-optimistic-cleanup
+      category: error-handling
+      pattern: >-
+        Optimistic UI updates (e.g., user message bubble) added before an SSE/streaming fetch that may be aborted before any server confirmation event arrives
+      check: >-
+        Verify that when the fetch is aborted before the server's confirmation event (e.g., user_message) is received, both optimistic placeholders are removed and any draft input is restored, so the user is not left with an unpersisted ghost message and lost input
+      source: copilot:PR#793
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: bufio-scanner-token-limit
+      category: error-handling
+      pattern: >-
+        bufio.Scanner used to read newline-delimited output from a subprocess or stream (e.g. NDJSON, stream-json) where individual lines may be large
+      check: >-
+        Verify the code either raises bufio.Scanner's buffer size to a safe upper bound for expected line lengths, or switches to bufio.Reader with ReadBytes('\n')/ReadString('\n') to avoid bufio.ErrTooLong truncating long lines (such as final result envelopes)
+      source: copilot:PR#793
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: preserve-list-virtualization
+      category: performance
+      pattern: >-
+        Rendering potentially large lists by mapping over all items in the render path, and/or computing groupings/sorts/totals inline on every render
+      check: >-
+        Verify that large lists keep virtualization (e.g. react-window) or pagination, and that derived groupings/sorts/totals are memoized so render cost scales with visible rows, not total items
+      source: copilot:PR#793
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: scope-creep-unrelated-refactor
+      category: other
+      pattern: >-
+        PR includes changes to files unrelated to the stated scope (e.g., refactors, removal of optimizations, or UX changes in modules outside the feature being implemented)
+      check: >-
+        Verify all modified files are necessary for the PR's stated scope; flag unrelated refactors or changes that should be split into a separate PR to reduce review/rollback risk
+      source: copilot:PR#793
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: preserve-regression-coverage-on-refactor
+      category: testing
+      pattern: >-
+        A refactor deletes or replaces existing test cases (especially ones that locked in specific semantics like totals, edge-case flag handling, or large-input performance)
+      check: >-
+        Verify that equivalent regression coverage exists for the behaviors the removed tests guarded (e.g., calculation semantics with edge-case flags, large-list rendering/performance) so future changes can't silently break them
+      source: copilot:PR#793
+      added: "2026-05-27"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
