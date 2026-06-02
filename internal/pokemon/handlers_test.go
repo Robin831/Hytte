@@ -1085,6 +1085,182 @@ func TestMissingFromSetHandler_RequiresSetID(t *testing.T) {
 	}
 }
 
+// --- CollectionValueHandler ---------------------------------------------------
+
+// ownCollection inserts a (user, card, variant) row with the given quantity so
+// the value tests can build a collection without repeating the INSERT.
+func ownCollection(t *testing.T, db *sql.DB, userID int64, cardID, kind string, quantity int) {
+	t.Helper()
+	vid := variantID(t, db, cardID, kind)
+	if _, err := db.Exec(`
+		INSERT INTO pokemon_collections (user_id, card_id, variant_id, quantity, condition, acquired_at)
+		VALUES (?, ?, ?, ?, '', ?)
+	`, userID, cardID, vid, quantity, time.Now().UTC()); err != nil {
+		t.Fatalf("own %s/%s: %v", cardID, kind, err)
+	}
+}
+
+func TestCollectionValueHandler_EmptyCollection(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	seedRate(t, db, 11.5)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/collection/value", nil), u)
+	rec := httptest.NewRecorder()
+	CollectionValueHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[CollectionValueDTO](t, rec)
+	if body.OwnedVariantCount != 0 {
+		t.Errorf("expected owned_variant_count=0, got %d", body.OwnedVariantCount)
+	}
+	if body.TotalEUR != 0 {
+		t.Errorf("expected total_eur=0, got %v", body.TotalEUR)
+	}
+	if body.TotalNOK == nil || *body.TotalNOK != 0 {
+		t.Errorf("expected total_nok=0 with a rate present, got %v", body.TotalNOK)
+	}
+}
+
+func TestCollectionValueHandler_SingleOwnedVariant(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	seedRate(t, db, 11.5)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	// sv1-25 normal is 10 EUR; one copy → 10 EUR, 115 NOK.
+	ownCollection(t, db, u.ID, "sv1-25", "normal", 1)
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/collection/value", nil), u)
+	rec := httptest.NewRecorder()
+	CollectionValueHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[CollectionValueDTO](t, rec)
+	if body.OwnedVariantCount != 1 {
+		t.Errorf("expected owned_variant_count=1, got %d", body.OwnedVariantCount)
+	}
+	if body.TotalEUR != 10.0 {
+		t.Errorf("expected total_eur=10.0, got %v", body.TotalEUR)
+	}
+	if body.TotalNOK == nil || *body.TotalNOK != 115.0 {
+		t.Errorf("expected total_nok=115.0, got %v", body.TotalNOK)
+	}
+}
+
+func TestCollectionValueHandler_MultipleOwnedVariantsWithQuantity(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	seedRate(t, db, 10.0)
+	u := seedUser(t, db, 1, "a@example.com")
+	other := seedUser(t, db, 2, "b@example.com")
+
+	// User 1: sv1-25 normal (10 EUR ×2), sv1-25 reverse_holofoil (14.5 EUR ×1),
+	// sv1-100 normal (2.5 EUR ×1) → 20 + 14.5 + 2.5 = 37 EUR across 3 variants.
+	ownCollection(t, db, u.ID, "sv1-25", "normal", 2)
+	ownCollection(t, db, u.ID, "sv1-25", "reverse_holofoil", 1)
+	ownCollection(t, db, u.ID, "sv1-100", "normal", 1)
+	// Another user's holdings must not leak into user 1's total.
+	ownCollection(t, db, other.ID, "swsh1-1", "normal", 5)
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/collection/value", nil), u)
+	rec := httptest.NewRecorder()
+	CollectionValueHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[CollectionValueDTO](t, rec)
+	if body.OwnedVariantCount != 3 {
+		t.Errorf("expected owned_variant_count=3, got %d", body.OwnedVariantCount)
+	}
+	if body.TotalEUR != 37.0 {
+		t.Errorf("expected total_eur=37.0, got %v", body.TotalEUR)
+	}
+	if body.TotalNOK == nil || *body.TotalNOK != 370.0 {
+		t.Errorf("expected total_nok=370.0 (rate 10), got %v", body.TotalNOK)
+	}
+}
+
+func TestCollectionValueHandler_MissingRate(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	u := seedUser(t, db, 1, "a@example.com")
+	ownCollection(t, db, u.ID, "sv1-25", "normal", 1)
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/collection/value", nil), u)
+	rec := httptest.NewRecorder()
+	CollectionValueHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("X-Pokemon-Rate-Missing") != "1" {
+		t.Errorf("expected X-Pokemon-Rate-Missing=1 header, got %q", rec.Header().Get("X-Pokemon-Rate-Missing"))
+	}
+	body := decode[CollectionValueDTO](t, rec)
+	if body.TotalNOK != nil {
+		t.Errorf("expected total_nok=nil when rate missing, got %v", *body.TotalNOK)
+	}
+	// EUR total is still computed so the figure is recoverable client-side.
+	if body.TotalEUR != 10.0 {
+		t.Errorf("expected total_eur=10.0 even without a rate, got %v", body.TotalEUR)
+	}
+	if body.OwnedVariantCount != 1 {
+		t.Errorf("expected owned_variant_count=1, got %d", body.OwnedVariantCount)
+	}
+}
+
+func TestCollectionValueHandler_ZeroPriceContributesZero(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+	seedRate(t, db, 11.5)
+	u := seedUser(t, db, 1, "a@example.com")
+
+	// Add a variant with no price so the row contributes 0, not an error. Give
+	// it a card+kind not already in the fixture to keep prices unambiguous.
+	if _, err := db.Exec(`
+		INSERT INTO pokemon_card_variants (card_id, kind, price_eur, price_at)
+		VALUES ('sv1-100', 'reverse_holofoil', 0, ?)
+	`, time.Now().UTC()); err != nil {
+		t.Fatalf("seed zero-price variant: %v", err)
+	}
+	ownCollection(t, db, u.ID, "sv1-100", "reverse_holofoil", 3) // 0 EUR
+	ownCollection(t, db, u.ID, "sv1-25", "normal", 1)            // 10 EUR
+
+	req := asUser(httptest.NewRequest(http.MethodGet, "/api/pokemon/collection/value", nil), u)
+	rec := httptest.NewRecorder()
+	CollectionValueHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decode[CollectionValueDTO](t, rec)
+	if body.OwnedVariantCount != 2 {
+		t.Errorf("expected owned_variant_count=2 (zero-price still owned), got %d", body.OwnedVariantCount)
+	}
+	if body.TotalEUR != 10.0 {
+		t.Errorf("expected total_eur=10.0 (zero-price contributes 0), got %v", body.TotalEUR)
+	}
+}
+
+func TestCollectionValueHandler_Unauthorized(t *testing.T) {
+	db := setupTestDB(t)
+	seedCatalogue(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/pokemon/collection/value", nil)
+	rec := httptest.NewRecorder()
+	CollectionValueHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
 // --- Feature-flag enforcement -------------------------------------------------
 
 // TestFeatureFlagEnforcement_All wires every endpoint through the real
@@ -1118,6 +1294,7 @@ func TestFeatureFlagEnforcement_All(t *testing.T) {
 			r.Get("/api/pokemon/sets/{id}/cards", ListSetCardsHandler(db))
 			r.Get("/api/pokemon/cards/search", SearchCardsHandler(db))
 			r.Get("/api/pokemon/top", TopHandler(db))
+			r.Get("/api/pokemon/collection/value", CollectionValueHandler(db))
 			r.Post("/api/pokemon/collection", UpsertCollectionHandler(db))
 			r.Patch("/api/pokemon/collection/{id}", UpdateCollectionHandler(db))
 			r.Delete("/api/pokemon/collection/{id}", DeleteCollectionHandler(db))
@@ -1136,6 +1313,7 @@ func TestFeatureFlagEnforcement_All(t *testing.T) {
 		{http.MethodGet, "/api/pokemon/sets/sv1/cards"},
 		{http.MethodGet, "/api/pokemon/cards/search?q=pika"},
 		{http.MethodGet, "/api/pokemon/top"},
+		{http.MethodGet, "/api/pokemon/collection/value"},
 		{http.MethodPost, "/api/pokemon/collection"},
 		{http.MethodPatch, "/api/pokemon/collection/1"},
 		{http.MethodDelete, "/api/pokemon/collection/1"},

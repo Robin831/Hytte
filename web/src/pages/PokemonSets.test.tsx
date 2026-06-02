@@ -14,6 +14,9 @@ const TRANSLATIONS: Record<string, string> = {
   'setDetail.comingSoon': 'Set detail coming soon',
   'sets.filterOwnedOnly': 'Owned only',
   'sets.emptyOwned': "You don't own any cards yet — go scan some!",
+  'value.title': 'Collection value',
+  'value.unavailable': 'Price unavailable',
+  'value.error': "Couldn't load collection value",
 }
 
 function mockT(key: string, opts?: Record<string, string | number>): string {
@@ -22,6 +25,10 @@ function mockT(key: string, opts?: Record<string, string | number>): string {
   if (key === 'tile.totalCards') {
     const count = Number(opts?.count ?? 0)
     return count === 1 ? `${count} card` : `${count} cards`
+  }
+  if (key === 'value.ownedVariants') {
+    const count = Number(opts?.count ?? 0)
+    return count === 1 ? `${count} owned variant` : `${count} owned variants`
   }
   return TRANSLATIONS[key] ?? key
 }
@@ -313,6 +320,86 @@ describe('PokemonSets – owned-only filter', () => {
       expect(screen.getByTestId('pokemon-sets-empty-owned')).toBeInTheDocument()
     })
     expect(screen.getByText("You don't own any cards yet — go scan some!")).toBeInTheDocument()
+  })
+})
+
+describe('PokemonSets – collection value card', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  // routedFetch returns the sets list for /sets, the given value payload for
+  // /collection/value, and a zero unresolved-count for everything else.
+  function routedFetch(sets: SetShape[], valueResponse: { ok: boolean; body?: unknown }) {
+    return vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/pokemon/sets')) {
+        return Promise.resolve(setsResponse(sets))
+      }
+      if (url.startsWith('/api/pokemon/collection/value')) {
+        return Promise.resolve({
+          ok: valueResponse.ok,
+          json: () => Promise.resolve(valueResponse.body ?? {}),
+        })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ unresolved: 0 }) })
+    })
+  }
+
+  it('renders the total NOK and owned-variant count once loaded', async () => {
+    const sv = makeSet({ id: 'sv1', name: 'SV Base' })
+    vi.stubGlobal('fetch', routedFetch([sv], {
+      ok: true,
+      body: { total_eur: 10, total_nok: 115, owned_variant_count: 3 },
+    }))
+
+    renderPage()
+
+    const card = await screen.findByTestId('pokemon-collection-value-card')
+    expect(card).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId('pokemon-collection-value-total')).toHaveTextContent('115')
+    })
+    expect(screen.getByText('3 owned variants')).toBeInTheDocument()
+  })
+
+  it('renders a zero/empty state for an empty collection, not an error', async () => {
+    const sv = makeSet({ id: 'sv1', name: 'SV Base' })
+    vi.stubGlobal('fetch', routedFetch([sv], {
+      ok: true,
+      body: { total_eur: 0, total_nok: 0, owned_variant_count: 0 },
+    }))
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pokemon-collection-value-total')).toHaveTextContent('0')
+    })
+    expect(screen.getByText('0 owned variants')).toBeInTheDocument()
+    expect(screen.queryByTestId('pokemon-collection-value-error')).not.toBeInTheDocument()
+  })
+
+  it('shows a price-unavailable hint when the rate is missing (total_nok null)', async () => {
+    const sv = makeSet({ id: 'sv1', name: 'SV Base' })
+    vi.stubGlobal('fetch', routedFetch([sv], {
+      ok: true,
+      body: { total_eur: 10, total_nok: null, owned_variant_count: 2 },
+    }))
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pokemon-collection-value-total')).toHaveTextContent('Price unavailable')
+    })
+  })
+
+  it('shows an error state when the value endpoint fails', async () => {
+    const sv = makeSet({ id: 'sv1', name: 'SV Base' })
+    vi.stubGlobal('fetch', routedFetch([sv], { ok: false }))
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pokemon-collection-value-error')).toBeInTheDocument()
+    })
   })
 })
 

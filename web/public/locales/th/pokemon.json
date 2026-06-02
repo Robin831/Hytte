@@ -7,6 +7,13 @@
     "filterOwnedOnly": "เฉพาะที่มี",
     "emptyOwned": "คุณยังไม่มีการ์ดเลย — ไปสแกนก่อนสิ!"
   },
+  "value": {
+    "title": "มูลค่าคอลเลกชัน",
+    "ownedVariants_one": "แบบที่มี {{count}} ชนิด",
+    "ownedVariants_other": "แบบที่มี {{count}} ชนิด",
+    "unavailable": "ไม่มีข้อมูลราคา",
+    "error": "ไม่สามารถโหลดมูลค่าคอลเลกชันได้"
+  },
   "tile": {
     "totalCards_one": "{{count}} ใบ",
     "totalCards_other": "{{count}} ใบ",

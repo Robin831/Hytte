@@ -168,6 +168,19 @@ type CollectionRow struct {
 	AcquiredAt string `json:"acquired_at"`
 }
 
+// CollectionValueDTO is the JSON shape returned by /api/pokemon/collection/value.
+// It answers "what is my whole collection worth?" by summing the NOK value of
+// every owned variant the user holds. TotalNOK is a pointer so it serializes as
+// null when no EUR/NOK rate is available (mirroring VariantDTO.PriceNOK). The
+// raw TotalEUR is always present so the UI can still show a figure — or recover
+// — when the rate is missing. OwnedVariantCount is the number of distinct owned
+// variants (collection rows with quantity > 0).
+type CollectionValueDTO struct {
+	TotalEUR          float64  `json:"total_eur"`
+	TotalNOK          *float64 `json:"total_nok"`
+	OwnedVariantCount int      `json:"owned_variant_count"`
+}
+
 // RegisterRoutes mounts all Pokémon Collection routes on r under the "pokemon"
 // feature gate. It is called by both the production API router and tests so
 // both exercise the same middleware chain — if the gate or admin check changes
@@ -178,6 +191,9 @@ func RegisterRoutes(r chi.Router, db *sql.DB) {
 		r.Get("/pokemon/sets", ListSetsHandler(db))
 		r.Get("/pokemon/sets/{id}/cards", ListSetCardsHandler(db))
 		r.Get("/pokemon/cards/search", SearchCardsHandler(db))
+		// Portfolio-value summary (Hytte-lmgj): one aggregate over the user's
+		// whole collection for the summary card at the top of the sets page.
+		r.Get("/pokemon/collection/value", CollectionValueHandler(db))
 		// /pokemon/top is intentionally accessible to all pokemon-feature users,
 		// not admin-only — it's a fun highlights surface for every collector.
 		r.Get("/pokemon/top", TopHandler(db))
@@ -757,6 +773,56 @@ func MissingFromSetHandler(db *sql.DB) http.HandlerFunc {
 		rate, ok := loadRate(r, db)
 		applyNOK(w, missing, rate, ok)
 		respondJSON(w, http.StatusOK, map[string]any{"cards": missing})
+	}
+}
+
+// CollectionValueHandler aggregates the authenticated user's whole collection
+// into a single portfolio value: the summed NOK worth of every owned variant
+// and the count of distinct owned variants. The EUR total multiplies each
+// variant's price by the held quantity (a user holding three copies owns three
+// copies of value), matching the per-set computeSetValue convention in the UI.
+// The NOK total reuses the shared EUR→NOK rate via loadRate; when no rate is
+// available TotalNOK is null and the X-Pokemon-Rate-Missing header is set, so
+// the front end behaves exactly as it does for the other priced endpoints.
+// Variants with no price contribute 0 (price_eur defaults to 0), never an error.
+func CollectionValueHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			respondError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+
+		var totalEUR float64
+		var ownedCount int
+		// COALESCE keeps the SUM at 0 for an empty collection (SUM over no rows
+		// is NULL in SQLite). Only rows with quantity > 0 count as "owned".
+		err := db.QueryRowContext(r.Context(), `
+			SELECT COALESCE(SUM(v.price_eur * col.quantity), 0), COUNT(*)
+			FROM pokemon_collections col
+			JOIN pokemon_card_variants v ON v.id = col.variant_id
+			WHERE col.user_id = ? AND col.quantity > 0
+		`, user.ID).Scan(&totalEUR, &ownedCount)
+		if err != nil {
+			log.Printf("pokemon: collection value: %v", err)
+			respondError(w, http.StatusInternalServerError, "failed to compute collection value")
+			return
+		}
+
+		out := CollectionValueDTO{
+			TotalEUR:          totalEUR,
+			OwnedVariantCount: ownedCount,
+		}
+		if rate, ok := loadRate(r, db); ok {
+			nok := totalEUR * rate
+			out.TotalNOK = &nok
+		} else {
+			// Mirror the per-card endpoints so the client can surface a
+			// "price unavailable" hint instead of a misleading zero.
+			w.Header().Set("X-Pokemon-Rate-Missing", "1")
+		}
+
+		respondJSON(w, http.StatusOK, out)
 	}
 }
 

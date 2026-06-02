@@ -7,6 +7,13 @@
     "filterOwnedOnly": "Bare eide",
     "emptyOwned": "Du eier ingen kort enda — gå og scan noen!"
   },
+  "value": {
+    "title": "Samlingsverdi",
+    "ownedVariants_one": "{{count}} eid variant",
+    "ownedVariants_other": "{{count}} eide varianter",
+    "unavailable": "Pris utilgjengelig",
+    "error": "Kunne ikke laste samlingsverdien"
+  },
   "tile": {
     "totalCards_one": "{{count}} kort",
     "totalCards_other": "{{count}} kort",
