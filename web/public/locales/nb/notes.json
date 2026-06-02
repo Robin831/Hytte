@@ -9,6 +9,7 @@
     "createFirst": "Opprett ditt første notat"
   },
   "untitled": "Uten tittel",
+  "moreTagsCount": "+{{count}}",
   "editor": {
     "edit": "Rediger",
     "preview": "Forhåndsvisning",
