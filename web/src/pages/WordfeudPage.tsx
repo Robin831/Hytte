@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useSearchParams } from 'react-router-dom'
 import { Search, Grid3X3 } from 'lucide-react'
 import WordfeudBoard from './WordfeudBoard'
 
@@ -11,25 +12,45 @@ interface FoundWord {
 
 type SearchMode = 'anagram' | 'starts_with' | 'ends_with' | 'contains'
 
-const TAB_KEY = 'wordfeud-tab'
+type Tab = 'finder' | 'board'
+
+const LEGACY_TAB_KEY = 'wordfeud-tab'
+
+function parseTab(value: string | null): Tab {
+  return value === 'board' ? 'board' : 'finder'
+}
 
 export default function WordfeudPage() {
   const { t } = useTranslation('wordfeud')
 
-  const [activeTab, setActiveTab] = useState<'finder' | 'board'>(() => {
-    const stored = localStorage.getItem(TAB_KEY)
-    // Migrate legacy tab values to valid ones
-    if (stored === 'mygames' || stored === 'games') {
-      localStorage.setItem(TAB_KEY, 'board')
-      return 'board'
-    }
-    const valid = ['finder', 'board'] as const
-    return (valid as readonly string[]).includes(stored ?? '') ? (stored as 'finder' | 'board') : 'finder'
-  })
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeTab = parseTab(searchParams.get('tab'))
 
-  const handleTabChange = (tab: 'finder' | 'board') => {
-    setActiveTab(tab)
-    localStorage.setItem(TAB_KEY, tab)
+  // One-time migration on mount: if no `tab` param is present, adopt the legacy
+  // localStorage value (mapping old `mygames`/`games` to `board`) and clear it.
+  // With no legacy key, normalize the URL to `?tab=finder` for consistency.
+  // `replace` keeps these from adding history entries.
+  useEffect(() => {
+    setSearchParams((prev) => {
+      if (prev.get('tab')) return prev
+      const legacy = localStorage.getItem(LEGACY_TAB_KEY)
+      const tab: Tab = legacy === 'board' || legacy === 'mygames' || legacy === 'games' ? 'board' : 'finder'
+      if (legacy !== null) {
+        localStorage.removeItem(LEGACY_TAB_KEY)
+      }
+      const next = new URLSearchParams(prev)
+      next.set('tab', tab)
+      return next
+    }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleTabChange = (tab: Tab) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('tab', tab)
+      return next
+    })
   }
 
   return (
