@@ -28,6 +28,7 @@ export function FamilyChatProvider({ children }: { children: ReactNode }) {
   return <FamilyChatContext.Provider value={value}>{children}</FamilyChatContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useFamilyChat(): FamilyChatContextValue {
   const ctx = useContext(FamilyChatContext)
   if (ctx === null) {
