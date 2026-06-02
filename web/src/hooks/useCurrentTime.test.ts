@@ -90,6 +90,76 @@ describe('useCurrentTime', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it('snaps to the current time on window focus (wake/resume)', () => {
+    vi.setSystemTime(new Date('2026-06-02T10:30:15.000Z'))
+    const { result } = renderHook(() => useCurrentTime())
+    const initial = result.current
+
+    // The device sleeps/resumes without a visibility change; wall-clock time
+    // jumps forward while no timer fired.
+    act(() => {
+      vi.setSystemTime(new Date('2026-06-02T11:05:42.000Z'))
+    })
+    expect(result.current).toBe(initial)
+
+    // Focus resyncs immediately to the real current time.
+    act(() => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    expect(result.current).not.toBe(initial)
+    expect(result.current.getMinutes()).toBe(5)
+    expect(result.current.getSeconds()).toBe(42)
+
+    // The next tick stays aligned to the top of the minute (18s away), not
+    // drifted to the resume offset.
+    act(() => {
+      vi.advanceTimersByTime(17_999)
+    })
+    expect(result.current.getSeconds()).toBe(42)
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(result.current.getMinutes()).toBe(6)
+    expect(result.current.getSeconds()).toBe(0)
+  })
+
+  it('ignores focus while hidden so the hook stays paused', () => {
+    vi.setSystemTime(new Date('2026-06-02T10:30:15.000Z'))
+    const { result } = renderHook(() => useCurrentTime())
+    const initial = result.current
+
+    setHidden(true)
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    expect(vi.getTimerCount()).toBe(0)
+
+    // A focus event while hidden must not re-arm timers or update the time.
+    act(() => {
+      vi.setSystemTime(new Date('2026-06-02T10:50:00.000Z'))
+      window.dispatchEvent(new Event('focus'))
+    })
+    expect(result.current).toBe(initial)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('removes the focus listener on unmount (no resync after unmount)', () => {
+    vi.setSystemTime(new Date('2026-06-02T10:30:15.000Z'))
+    const { result, unmount } = renderHook(() => useCurrentTime())
+    const initial = result.current
+
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
+
+    // Late focus event must not revive the hook.
+    act(() => {
+      vi.setSystemTime(new Date('2026-06-02T10:50:00.000Z'))
+      window.dispatchEvent(new Event('focus'))
+    })
+    expect(result.current).toBe(initial)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('pauses while hidden and snaps to the current time when visible again', () => {
     vi.setSystemTime(new Date('2026-06-02T10:30:15.000Z'))
     const { result } = renderHook(() => useCurrentTime())

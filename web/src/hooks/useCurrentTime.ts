@@ -7,6 +7,11 @@ import { useState, useEffect } from 'react'
  * Unlike {@link useNow} (which ticks every second), this hook re-renders only
  * once per minute, so it suits surfaces that show minute-granularity time
  * without incurring per-second re-renders.
+ *
+ * Both `visibilitychange` (returning to a backgrounded tab) and `focus`
+ * (covers laptop wake/resume, where visibility may not change) trigger an
+ * immediate recompute and re-align the next-minute timeout, so the displayed
+ * time is never left stale after sleep/resume.
  */
 export function useCurrentTime(): Date {
   const [now, setNow] = useState<Date>(() => new Date())
@@ -37,16 +42,25 @@ export function useCurrentTime(): Date {
         intervalId = null
       }
     }
+    // Recompute the time immediately and re-align the next-minute timeout.
+    // Skipped while hidden so the hook stays paused per its visibility contract.
+    function resync() {
+      if (document.hidden) return
+      tick()
+      start()
+    }
     function handleVisibility() {
       if (document.hidden) stop()
-      else { tick(); start() }
+      else resync()
     }
 
     if (!document.hidden) start()
     document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('focus', resync)
     return () => {
       stop()
       document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('focus', resync)
     }
   }, [])
 
