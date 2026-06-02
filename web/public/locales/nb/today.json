@@ -6,6 +6,20 @@
     "child": "Barn",
     "guest": "Gjest"
   },
+  "greeting": {
+    "morning": "God morgen, {{name}}",
+    "morningGuest": "God morgen",
+    "afternoon": "God ettermiddag, {{name}}",
+    "afternoonGuest": "God ettermiddag",
+    "evening": "God kveld, {{name}}",
+    "eveningGuest": "God kveld",
+    "night": "God natt, {{name}}",
+    "nightGuest": "God natt"
+  },
+  "ambient": {
+    "loading": "sjekker været…",
+    "summary": "{{condition}}, {{temp}}°"
+  },
   "widgets": {
     "weather": "V\u00e6r",
     "calendar": "Kalender",

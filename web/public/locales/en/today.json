@@ -6,6 +6,20 @@
     "child": "Kid",
     "guest": "Guest"
   },
+  "greeting": {
+    "morning": "Good morning, {{name}}",
+    "morningGuest": "Good morning",
+    "afternoon": "Good afternoon, {{name}}",
+    "afternoonGuest": "Good afternoon",
+    "evening": "Good evening, {{name}}",
+    "eveningGuest": "Good evening",
+    "night": "Good night, {{name}}",
+    "nightGuest": "Good night"
+  },
+  "ambient": {
+    "loading": "checking the weather…",
+    "summary": "{{condition}}, {{temp}}°"
+  },
   "widgets": {
     "weather": "Weather",
     "calendar": "Calendar",

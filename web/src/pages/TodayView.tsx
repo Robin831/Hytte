@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import { useCurrentTime } from '../hooks/useCurrentTime'
 import { formatDate, formatTime } from '../utils/formatDate'
+import AmbientLine from '../components/today/AmbientLine'
 
 const ParentTodayView = lazy(() => import('../components/today/ParentTodayView'))
 const KidTodayView = lazy(() => import('../components/today/KidTodayView'))
@@ -27,6 +28,7 @@ const widgetsByRole: Record<FamilyRole, LazyExoticComponent<ComponentType>> = {
 
 export default function TodayView() {
   const { t } = useTranslation('today')
+  const { user } = useAuth()
   const role = useFamilyRole()
   const now = useCurrentTime()
 
@@ -34,6 +36,7 @@ export default function TodayView() {
 
   const timeStr = formatTime(now, { hour: '2-digit', minute: '2-digit' })
   const dateStr = formatDate(now, { weekday: 'long', month: 'long', day: 'numeric' })
+  const firstName = user?.name?.trim().split(/\s+/)[0] || undefined
 
   const Widgets = widgetsByRole[role]
 
@@ -47,6 +50,7 @@ export default function TodayView() {
         <p className="text-sm sm:text-base text-gray-400 mt-1">
           {dateStr}
         </p>
+        <AmbientLine firstName={firstName} />
         <p className="text-xs text-gray-500 mt-1">
           {t(`role.${role}`)}
         </p>
