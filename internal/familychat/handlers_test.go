@@ -1433,3 +1433,103 @@ func TestDeleteMessageHandler_NonAuthor404(t *testing.T) {
 		t.Errorf("non-author delete soft-deleted the row: %+v", deletedAt)
 	}
 }
+
+func TestTypingHandler_MemberPublishesNoPersist(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+
+	hub := NewHub()
+	bobSub := hub.Subscribe(2, convID)
+	defer hub.Unsubscribe(convID, bobSub)
+
+	req := withChiParam(
+		withUser(httptest.NewRequest("POST", "/api/familychat/conversations/x/typing", nil), 1),
+		"id", strconv.FormatInt(convID, 10),
+	)
+	rec := httptest.NewRecorder()
+	typingHandler(db, hub).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Publish is synchronous, so the event is already buffered on bob's channel.
+	select {
+	case evt := <-bobSub.Events():
+		if evt.Type != EventTyping {
+			t.Errorf("event type = %q, want %q", evt.Type, EventTyping)
+		}
+		data, ok := evt.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("event data type = %T, want map[string]any", evt.Data)
+		}
+		if data["user_id"] != int64(1) {
+			t.Errorf("user_id = %v, want 1", data["user_id"])
+		}
+		if data["conversation_id"] != convID {
+			t.Errorf("conversation_id = %v, want %d", data["conversation_id"], convID)
+		}
+	default:
+		t.Fatal("no typing event received on subscriber channel")
+	}
+
+	// Typing must never persist a message (or any chat row).
+	var msgs int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM family_chat_messages`).Scan(&msgs); err != nil {
+		t.Fatalf("count messages: %v", err)
+	}
+	if msgs != 0 {
+		t.Errorf("typing wrote %d message row(s), want 0", msgs)
+	}
+}
+
+func TestTypingHandler_NonMember404(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	makeUser(t, db, 3, "carol@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+
+	hub := NewHub()
+	// Bob is a member and subscribed — he must not receive a typing event
+	// fabricated by a non-member.
+	bobSub := hub.Subscribe(2, convID)
+	defer hub.Unsubscribe(convID, bobSub)
+
+	// Carol (id=3) is not a member of the alice/bob conversation.
+	req := withChiParam(
+		withUser(httptest.NewRequest("POST", "/api/familychat/conversations/x/typing", nil), 3),
+		"id", strconv.FormatInt(convID, 10),
+	)
+	rec := httptest.NewRecorder()
+	typingHandler(db, hub).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("non-member: got %d, want 404", rec.Code)
+	}
+
+	select {
+	case evt := <-bobSub.Events():
+		t.Errorf("non-member typing published event %q", evt.Type)
+	default:
+		// expected: nothing published
+	}
+}
+
+func TestTypingHandler_UnknownConversation404(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+
+	req := withChiParam(
+		withUser(httptest.NewRequest("POST", "/api/familychat/conversations/x/typing", nil), 1),
+		"id", "9999",
+	)
+	rec := httptest.NewRecorder()
+	typingHandler(db, NewHub()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown conversation: got %d, want 404", rec.Code)
+	}
+}

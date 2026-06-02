@@ -27,6 +27,12 @@ const (
 	EventMessageDeleted = "message_deleted"
 	EventReadReceipt    = "read_receipt"
 
+	// EventTyping is an ephemeral "X is composing" signal. It is never
+	// persisted — the typing handler publishes it straight into the hub so
+	// subscribed clients can render a transient indicator and let it expire on
+	// their own timer.
+	EventTyping = "typing"
+
 	// WebRTC signalling events. The hub relays SDP/ICE blobs verbatim — the
 	// server never inspects or persists the payload contents. The four-event
 	// shape (offer/answer/ice/end) is enough to drive a 1:1 voice/video call

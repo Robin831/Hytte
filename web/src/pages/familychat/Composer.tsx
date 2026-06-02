@@ -11,6 +11,10 @@ import { computeWaveform, writeCachedWaveform } from './voice/waveform'
 interface ComposerProps {
   conversationId: number
   onMessageCreated: (msg: ChatMessage) => void
+  // onTyping fires on each keystroke in the message field so the parent can
+  // broadcast a debounced "typing" signal to the other members. Optional so
+  // the composer stays usable without a typing-aware parent.
+  onTyping?: () => void
 }
 
 // Match the backend cap so we surface "too long" errors locally instead of
@@ -39,7 +43,7 @@ function formatVoiceTime(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export default function Composer({ conversationId, onMessageCreated }: ComposerProps) {
+export default function Composer({ conversationId, onMessageCreated, onTyping }: ComposerProps) {
   const { t } = useTranslation('familyChat')
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
@@ -532,7 +536,12 @@ export default function Composer({ conversationId, onMessageCreated }: ComposerP
             id="family-chat-composer-input"
             ref={textareaRef}
             value={body}
-            onChange={e => setBody(e.target.value)}
+            onChange={e => {
+              setBody(e.target.value)
+              // Only signal typing for non-empty input so clearing the field
+              // (or a programmatic reset) doesn't broadcast a phantom signal.
+              if (e.target.value.trim()) onTyping?.()
+            }}
             onKeyDown={handleKeyDown}
             placeholder={t('composer.placeholder')}
             rows={1}

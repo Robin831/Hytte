@@ -33,6 +33,10 @@
     "lightboxClose": "Lukk forhåndsvisning",
     "connection": {
       "reconnecting": "Kobler til på nytt…"
+    },
+    "typing": {
+      "single": "{{name}} skriver…",
+      "multiple": "{{count}} personer skriver…"
     }
   },
   "composer": {

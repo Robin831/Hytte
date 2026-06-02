@@ -151,6 +151,13 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // populated for missed calls where the local user was the callee (we ignore
   // missed calls that we initiated, since those aren't useful history for us).
   const [missedCalls, setMissedCalls] = useState<MissedCallEntry[]>([])
+  // typingUsers maps a member's user id to the epoch-ms timestamp of their most
+  // recent typing signal. A sweep effect drops entries older than ~5s so the
+  // indicator clears on its own when the other side stops composing.
+  const [typingUsers, setTypingUsers] = useState<Map<number, number>>(new Map())
+  // lastTypingSentRef throttles outbound typing POSTs to at most one per ~3s
+  // while the local user is composing.
+  const lastTypingSentRef = useRef(0)
   // endedCallSummary is shown briefly after a call wraps up. Tracks the final
   // duration in seconds so the banner can render "Call ended — m:ss".
   const [endedCallSummary, setEndedCallSummary] = useState<{ durationSec: number } | null>(null)
@@ -365,6 +372,8 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     setHasConnected(false)
     setMissedCalls([])
     setEndedCallSummary(null)
+    setTypingUsers(new Map())
+    lastTypingSentRef.current = 0
 
     // appendIncoming deduplicates by id so a message that arrives via both
     // SSE and the POST response (the sender path) or via SSE and gap-fill
@@ -372,6 +381,14 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     const appendIncoming = (msg: ChatMessage) => {
       if (msg.conversation_id !== conversationId) return
       if (msg.id > lastId) lastId = msg.id
+      // A message from a member ends their typing state immediately, so the
+      // indicator doesn't linger after their reply lands.
+      setTypingUsers(prev => {
+        if (!prev.has(msg.sender_user_id)) return prev
+        const next = new Map(prev)
+        next.delete(msg.sender_user_id)
+        return next
+      })
       setMessages(prev => {
         if (prev.some(m => m.id === msg.id)) return prev
         return [...prev, msg]
@@ -437,6 +454,18 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
             }
           : m,
       ))
+    }
+
+    // recordTyping stamps a member's latest typing signal. We never record our
+    // own id (the hub fans the event back to every subscriber, including the
+    // sender) so the local user never sees their own indicator.
+    const recordTyping = (userId: number) => {
+      if (userId === currentUserIdRef.current) return
+      setTypingUsers(prev => {
+        const next = new Map(prev)
+        next.set(userId, Date.now())
+        return next
+      })
     }
 
     const fillGap = async () => {
@@ -533,6 +562,11 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                     payload?.deleted_by !== undefined
                   ) {
                     applyMessageDeleted(payload)
+                  } else if (
+                    eventName === 'typing' &&
+                    payload?.user_id !== undefined
+                  ) {
+                    recordTyping(payload.user_id as number)
                   } else if (
                     eventName === 'call_offer'
                     || eventName === 'call_answer'
@@ -672,6 +706,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       setLoading(false)
       setMissedCalls([])
       setEndedCallSummary(null)
+      setTypingUsers(new Map())
     }
   }, [conversationId, t])
 
@@ -783,6 +818,42 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     const timer = setTimeout(() => setEndedCallSummary(null), 5000)
     return () => clearTimeout(timer)
   }, [endedCallSummary])
+
+  // Sweep stale typing indicators: drop any member whose most recent signal is
+  // older than 5s so the row clears shortly after they stop composing. The
+  // interval only runs while at least one member is typing.
+  useEffect(() => {
+    if (typingUsers.size === 0) return
+    const interval = setInterval(() => {
+      setTypingUsers(prev => {
+        const now = Date.now()
+        let changed = false
+        const next = new Map(prev)
+        for (const [uid, ts] of next) {
+          if (now - ts > 5000) {
+            next.delete(uid)
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [typingUsers])
+
+  // notifyTyping fires from the composer on each keystroke; it throttles the
+  // outbound signal to at most one POST per ~3s so a fast typist doesn't flood
+  // the endpoint. Best-effort: a failed POST just means no indicator shows.
+  const notifyTyping = useCallback(() => {
+    if (conversationId === null) return
+    const now = Date.now()
+    if (now - lastTypingSentRef.current < 3000) return
+    lastTypingSentRef.current = now
+    void fetch(`/api/familychat/conversations/${conversationId}/typing`, {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => {})
+  }, [conversationId])
 
   const handleMessageCreated = useCallback((msg: ChatMessage) => {
     // Defensive: if the user switched conversations while a send was in
@@ -950,6 +1021,14 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       }
     })
   }, [conversation, memberLookup, t, user?.id])
+
+  // Resolve the friendly labels for everyone currently typing, excluding the
+  // local user (defensive — recordTyping already skips own-id signals).
+  const typingLabels = useMemo(() => {
+    return Array.from(typingUsers.keys())
+      .filter(id => id !== user?.id)
+      .map(id => memberLookup.get(id)?.label ?? t('chat.memberFallback', { id }))
+  }, [typingUsers, memberLookup, user?.id, t])
 
   // Voice calls are 1:1 only — see useVoiceCall.ts. The phone button is
   // hidden for group conversations rather than disabled so users don't see
@@ -1482,11 +1561,28 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
           </div>
         ))}
 
+        {typingLabels.length > 0 && (
+          <div
+            className="flex items-center px-1 text-xs text-gray-400 italic"
+            role="status"
+            aria-live="polite"
+            data-testid="family-chat-typing-indicator"
+          >
+            {typingLabels.length === 1
+              ? t('chat.typing.single', { name: typingLabels[0] })
+              : t('chat.typing.multiple', { count: typingLabels.length })}
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
       <div className="border-t border-gray-800 bg-gray-950 shrink-0">
-        <Composer conversationId={conversationId} onMessageCreated={handleMessageCreated} />
+        <Composer
+          conversationId={conversationId}
+          onMessageCreated={handleMessageCreated}
+          onTyping={notifyTyping}
+        />
       </div>
 
       {lightbox && (

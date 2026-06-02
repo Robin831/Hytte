@@ -555,6 +555,9 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/familychat/conversations/{id}/messages/{messageID}/reactions", familychat.AddReactionHandler(db))
 				r.Delete("/familychat/conversations/{id}/messages/{messageID}/reactions", familychat.RemoveReactionHandler(db))
 				r.Post("/familychat/conversations/{id}/read", familychat.MarkReadHandler(db))
+				// Ephemeral typing signal (Hytte-m9aq). Publishes a "typing"
+				// event over the hub for live subscribers; nothing is persisted.
+				r.Post("/familychat/conversations/{id}/typing", familychat.TypingHandler(db))
 				r.Get("/familychat/conversations/{id}/stream", familychat.StreamHandlerWithDB(db))
 				r.Post("/familychat/conversations/{id}/upload", familychat.UploadAttachmentHandler(db))
 				r.Get("/familychat/conversations/{id}/attachments/{message_id}", familychat.GetAttachmentHandler(db))
