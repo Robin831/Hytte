@@ -10,6 +10,11 @@
   },
   "untitled": "Untitled",
   "moreTagsCount": "+{{count}}",
+  "shortcuts": {
+    "save": "Save (Ctrl/Cmd+S)",
+    "newNote": "New note (Ctrl/Cmd+N)",
+    "focusSearch": "Search notes (press /)"
+  },
   "editor": {
     "edit": "Edit",
     "preview": "Preview",

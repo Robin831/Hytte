@@ -10,6 +10,11 @@
   },
   "untitled": "Uten tittel",
   "moreTagsCount": "+{{count}}",
+  "shortcuts": {
+    "save": "Lagre (Ctrl/Cmd+S)",
+    "newNote": "Nytt notat (Ctrl/Cmd+N)",
+    "focusSearch": "Søk i notater (trykk /)"
+  },
   "editor": {
     "edit": "Rediger",
     "preview": "Forhåndsvisning",

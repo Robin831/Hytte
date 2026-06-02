@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { forwardRef, useImperativeHandle, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -22,6 +22,12 @@ interface NoteEditorProps {
   onClose: () => void
 }
 
+/** Imperative handle so the page can trigger a save from a keyboard shortcut. */
+export interface NoteEditorHandle {
+  /** Persist the current draft if there are unsaved changes and no save is in flight. */
+  save: () => void
+}
+
 function parseTags(raw: string): string[] {
   return raw
     .split(',')
@@ -34,7 +40,10 @@ function parseTags(raw: string): string[] {
  * the markdown rendering. The parent re-mounts this (via a `key`) when the
  * active note changes so drafts initialize cleanly from props.
  */
-export default function NoteEditor({ note, isCreating, error, onSave, onDelete, onClose }: NoteEditorProps) {
+const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEditor(
+  { note, isCreating, error, onSave, onDelete, onClose },
+  ref,
+) {
   const { t } = useTranslation('notes')
   const [draftTitle, setDraftTitle] = useState(note?.title ?? '')
   const [draftContent, setDraftContent] = useState(note?.content ?? '')
@@ -62,6 +71,15 @@ export default function NoteEditor({ note, isCreating, error, onSave, onDelete, 
       setSaving(false)
     }
   }
+
+  // Expose save() so the page-level Cmd/Ctrl+S shortcut can persist the draft.
+  // Mirror the Save button's disabled state so the shortcut is a no-op when
+  // there is nothing to save or a save is already in flight.
+  useImperativeHandle(ref, () => ({
+    save() {
+      if (!saving && hasChanges) handleSave()
+    },
+  }), [saving, hasChanges])
 
   return (
     <>
@@ -98,6 +116,7 @@ export default function NoteEditor({ note, isCreating, error, onSave, onDelete, 
             onClick={handleSave}
             disabled={saving || !hasChanges}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-default text-white rounded text-sm transition-colors cursor-pointer"
+            title={t('shortcuts.save')}
           >
             <Save size={14} />
             {saving ? t('editor.saving') : t('editor.save')}
@@ -266,4 +285,6 @@ export default function NoteEditor({ note, isCreating, error, onSave, onDelete, 
       )}
     </>
   )
-}
+})
+
+export default NoteEditor

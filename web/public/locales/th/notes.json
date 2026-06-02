@@ -10,6 +10,11 @@
   },
   "untitled": "ไม่มีชื่อ",
   "moreTagsCount": "+{{count}}",
+  "shortcuts": {
+    "save": "บันทึก (Ctrl/Cmd+S)",
+    "newNote": "บันทึกใหม่ (Ctrl/Cmd+N)",
+    "focusSearch": "ค้นหาบันทึก (กด /)"
+  },
   "editor": {
     "edit": "แก้ไข",
     "preview": "ตัวอย่าง",

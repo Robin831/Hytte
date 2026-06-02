@@ -1,12 +1,19 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, Search, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { timeAgo } from '../utils/timeAgo'
-import NoteEditor from '../components/notes/NoteEditor'
+import NoteEditor, { type NoteEditorHandle } from '../components/notes/NoteEditor'
 import { useNotes, type Note, type NoteInput } from '../hooks/useNotes'
+
+/** True when the event target is a field where `/` should type literally. */
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable
+}
 
 export default function Notes() {
   const { t } = useTranslation('notes')
@@ -22,17 +29,45 @@ export default function Notes() {
 
   const { notes, allTags, loading, error, save, remove, clearError } = useNotes(debouncedSearch, activeTag)
 
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const editorRef = useRef<NoteEditorHandle>(null)
+
   function openNote(note: Note) {
     setSelectedNote(note)
     setIsCreating(false)
     clearError()
   }
 
-  function startCreating() {
+  const startCreating = useCallback(() => {
     setSelectedNote(null)
     setIsCreating(true)
     clearError()
-  }
+  }, [clearError])
+
+  // Keyboard shortcuts: Cmd/Ctrl+S saves the open note (suppressing the
+  // browser's native save dialog), Cmd/Ctrl+N starts a new note, and `/`
+  // focuses search unless the user is already typing in a field/editor.
+  // The listener lives on `window` only while this page is mounted.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        editorRef.current?.save()
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        startCreating()
+        return
+      }
+      if (e.key === '/' && !isTypingTarget(e.target)) {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [startCreating])
 
   function closeEditor() {
     setSelectedNote(null)
@@ -75,18 +110,20 @@ export default function Notes() {
             <div className="relative flex-1">
               <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
               <input
+                ref={searchInputRef}
                 type="text"
                 placeholder={t('searchPlaceholder')}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                 aria-label={t('searchLabel')}
+                title={t('shortcuts.focusSearch')}
               />
             </div>
             <button
               onClick={startCreating}
               className="flex items-center gap-1 px-2 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-sm transition-colors cursor-pointer shrink-0"
-              title={t('newNote')}
+              title={t('shortcuts.newNote')}
               aria-label={t('newNote')}
             >
               <Plus size={16} />
@@ -189,6 +226,7 @@ export default function Notes() {
         {isCreating || selectedNote ? (
           <NoteEditor
             key={selectedNote?.id ?? 'new'}
+            ref={editorRef}
             note={selectedNote}
             isCreating={isCreating}
             error={error}
