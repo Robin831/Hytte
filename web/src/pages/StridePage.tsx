@@ -109,6 +109,59 @@ function formatHHMM(totalSeconds: number): string {
   return `${h}:${String(m).padStart(2, '0')}`
 }
 
+interface ZoneBarProps {
+  easy: number
+  threshold: number
+  hard: number
+  totalSec: number
+  zoneTooltip: string
+  interactive: boolean
+}
+
+// Hover/focus state lives here so showing one row's tooltip does not re-render
+// sibling WeekRows.
+function ZoneBar({ easy, threshold, hard, totalSec, zoneTooltip, interactive }: ZoneBarProps) {
+  const zoneTooltipId = useId()
+  const [zoneTooltipVisible, setZoneTooltipVisible] = useState(false)
+
+  return (
+    <div className="relative mt-2">
+      <div
+        className="h-1.5 w-full flex rounded-full overflow-hidden bg-gray-700"
+        role="img"
+        aria-label={zoneTooltip}
+        aria-describedby={totalSec > 0 ? zoneTooltipId : undefined}
+        tabIndex={interactive ? -1 : 0}
+        onMouseEnter={() => setZoneTooltipVisible(true)}
+        onMouseLeave={() => setZoneTooltipVisible(false)}
+        onFocus={() => setZoneTooltipVisible(true)}
+        onBlur={() => setZoneTooltipVisible(false)}
+      >
+        {totalSec > 0 ? (
+          <>
+            {easy > 0 && <div style={{ flexBasis: `${(easy / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_EASY }} className="h-full" />}
+            {threshold > 0 && <div style={{ flexBasis: `${(threshold / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_THRESHOLD }} className="h-full" />}
+            {hard > 0 && <div style={{ flexBasis: `${(hard / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_HARD }} className="h-full" />}
+          </>
+        ) : null}
+      </div>
+      {totalSec > 0 && (
+        <div
+          id={zoneTooltipId}
+          role="tooltip"
+          aria-hidden={!zoneTooltipVisible}
+          className={
+            'absolute left-0 bottom-full mb-2 px-2.5 py-1.5 bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded-lg pointer-events-none z-10 whitespace-nowrap shadow-lg transition-opacity ' +
+            (zoneTooltipVisible ? 'opacity-100 visible' : 'opacity-0 invisible')
+          }
+        >
+          {zoneTooltip}
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface WeekRowProps {
   week: WeekSummary
   onOpen?: (week: WeekSummary) => void
@@ -116,37 +169,53 @@ interface WeekRowProps {
 
 function WeekRow({ week, onOpen }: WeekRowProps) {
   const { t } = useTranslation('stride')
-  const zoneTooltipId = useId()
   const openDescId = useId()
-  const [zoneTooltipVisible, setZoneTooltipVisible] = useState(false)
-  const pct = Math.min(Math.max(Math.round(Number(week.completion_rate) || 0), 0), 100)
-  const chipClass = pct >= 80
-    ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-    : pct >= 50
-      ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
-      : 'bg-red-500/20 text-red-300 border border-red-500/30'
 
-  const easy = Math.max(0, week.easy_seconds ?? 0)
-  const threshold = Math.max(0, week.threshold_seconds ?? 0)
-  const hard = Math.max(0, week.hard_seconds ?? 0)
-  const totalSec = easy + threshold + hard
-  const distanceKm = Math.max(0, week.total_distance_meters ?? 0) / 1000
+  // Derived display values depend only on the immutable `week` prop (and `t` for
+  // localized strings), so memoize them to avoid recomputing on unrelated re-renders.
+  const {
+    pct,
+    chipClass,
+    easy,
+    threshold,
+    hard,
+    totalSec,
+    distanceKm,
+    weekLabel,
+    openLabel,
+    zoneTooltip,
+  } = useMemo(() => {
+    const pct = Math.min(Math.max(Math.round(Number(week.completion_rate) || 0), 0), 100)
+    const chipClass = pct >= 80
+      ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+      : pct >= 50
+        ? 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30'
+        : 'bg-red-500/20 text-red-300 border border-red-500/30'
 
-  const easyPct = totalSec > 0 ? Math.round((easy / totalSec) * 100) : 0
-  const thresholdPct = totalSec > 0 ? Math.round((threshold / totalSec) * 100) : 0
-  const hardPct = totalSec > 0 ? Math.max(0, 100 - easyPct - thresholdPct) : 0
+    const easy = Math.max(0, week.easy_seconds ?? 0)
+    const threshold = Math.max(0, week.threshold_seconds ?? 0)
+    const hard = Math.max(0, week.hard_seconds ?? 0)
+    const totalSec = easy + threshold + hard
+    const distanceKm = Math.max(0, week.total_distance_meters ?? 0) / 1000
 
-  const weekLabel = t('plan.weekOf', {
-    start: formatDate(`${week.week_start}T00:00:00`, { month: 'short', day: 'numeric' }),
-    end: formatDate(`${week.week_end}T00:00:00`, { month: 'short', day: 'numeric' }),
-  })
-  const openLabel = t('history.week.openAria', { week: weekLabel, defaultValue: 'Open week {{week}}' })
-  const zoneTooltip = t('history.week.zoneSplit', {
-    easy: easyPct,
-    threshold: thresholdPct,
-    hard: hardPct,
-    defaultValue: 'Easy {{easy}}% · Threshold {{threshold}}% · Hard {{hard}}%',
-  })
+    const easyPct = totalSec > 0 ? Math.round((easy / totalSec) * 100) : 0
+    const thresholdPct = totalSec > 0 ? Math.round((threshold / totalSec) * 100) : 0
+    const hardPct = totalSec > 0 ? Math.max(0, 100 - easyPct - thresholdPct) : 0
+
+    const weekLabel = t('plan.weekOf', {
+      start: formatDate(`${week.week_start}T00:00:00`, { month: 'short', day: 'numeric' }),
+      end: formatDate(`${week.week_end}T00:00:00`, { month: 'short', day: 'numeric' }),
+    })
+    const openLabel = t('history.week.openAria', { week: weekLabel, defaultValue: 'Open week {{week}}' })
+    const zoneTooltip = t('history.week.zoneSplit', {
+      easy: easyPct,
+      threshold: thresholdPct,
+      hard: hardPct,
+      defaultValue: 'Easy {{easy}}% · Threshold {{threshold}}% · Hard {{hard}}%',
+    })
+
+    return { pct, chipClass, easy, threshold, hard, totalSec, distanceKm, weekLabel, openLabel, zoneTooltip }
+  }, [week, t])
 
   // Row click handler: parent wires the actual navigation/drawer in the follow-up
   // sub-task; if no handler is provided we render as a static row instead of a button.
@@ -171,40 +240,14 @@ function WeekRow({ week, onOpen }: WeekRowProps) {
           <span className="text-gray-200">{formatHHMM(totalSec)}</span>
         </span>
       </div>
-      <div className="relative mt-2">
-        <div
-          className="h-1.5 w-full flex rounded-full overflow-hidden bg-gray-700"
-          role="img"
-          aria-label={zoneTooltip}
-          aria-describedby={totalSec > 0 ? zoneTooltipId : undefined}
-          tabIndex={interactive ? -1 : 0}
-          onMouseEnter={() => setZoneTooltipVisible(true)}
-          onMouseLeave={() => setZoneTooltipVisible(false)}
-          onFocus={() => setZoneTooltipVisible(true)}
-          onBlur={() => setZoneTooltipVisible(false)}
-        >
-          {totalSec > 0 ? (
-            <>
-              {easy > 0 && <div style={{ flexBasis: `${(easy / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_EASY }} className="h-full" />}
-              {threshold > 0 && <div style={{ flexBasis: `${(threshold / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_THRESHOLD }} className="h-full" />}
-              {hard > 0 && <div style={{ flexBasis: `${(hard / totalSec) * 100}%`, backgroundColor: ZONE_COLOR_HARD }} className="h-full" />}
-            </>
-          ) : null}
-        </div>
-        {totalSec > 0 && (
-          <div
-            id={zoneTooltipId}
-            role="tooltip"
-            aria-hidden={!zoneTooltipVisible}
-            className={
-              'absolute left-0 bottom-full mb-2 px-2.5 py-1.5 bg-gray-700 border border-gray-600 text-gray-200 text-xs rounded-lg pointer-events-none z-10 whitespace-nowrap shadow-lg transition-opacity ' +
-              (zoneTooltipVisible ? 'opacity-100 visible' : 'opacity-0 invisible')
-            }
-          >
-            {zoneTooltip}
-          </div>
-        )}
-      </div>
+      <ZoneBar
+        easy={easy}
+        threshold={threshold}
+        hard={hard}
+        totalSec={totalSec}
+        zoneTooltip={zoneTooltip}
+        interactive={interactive}
+      />
     </>
   )
 
