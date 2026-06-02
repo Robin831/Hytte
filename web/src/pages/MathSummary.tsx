@@ -58,6 +58,9 @@ export default function MathSummary() {
     const { signal } = controller
 
     async function load() {
+      setLoading(true)
+      setError(false)
+
       const results = await Promise.allSettled([
         fetchJSON<{ best: MarathonBest | null }>('/api/math/marathon/best', signal),
         fetchJSON<{ best: BlitzBest | null }>('/api/math/blitz/best', signal),
