@@ -30,6 +30,8 @@ export interface UseNotesResult {
   save: (input: NoteInput) => Promise<Note | null>
   /** Delete a note by id. Returns true on success, false on failure. */
   remove: (id: number) => Promise<boolean>
+  /** Clear any surfaced error (e.g. when switching notes). */
+  clearError: () => void
   /** Re-trigger the list + tag fetches. */
   refresh: () => void
 }
@@ -48,6 +50,7 @@ export function useNotes(search: string, activeTag: string): UseNotesResult {
   const [refreshKey, setRefreshKey] = useState(0)
 
   const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
+  const clearError = useCallback(() => setError(''), [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -131,5 +134,5 @@ export function useNotes(search: string, activeTag: string): UseNotesResult {
     }
   }, [t, refresh])
 
-  return { notes, allTags, loading, error, save, remove, refresh }
+  return { notes, allTags, loading, error, save, remove, clearError, refresh }
 }

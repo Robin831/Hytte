@@ -20,21 +20,24 @@ export default function Notes() {
   const [isCreating, setIsCreating] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Note | null>(null)
 
-  const { notes, allTags, loading, error, save, remove } = useNotes(debouncedSearch, activeTag)
+  const { notes, allTags, loading, error, save, remove, clearError } = useNotes(debouncedSearch, activeTag)
 
   function openNote(note: Note) {
     setSelectedNote(note)
     setIsCreating(false)
+    clearError()
   }
 
   function startCreating() {
     setSelectedNote(null)
     setIsCreating(true)
+    clearError()
   }
 
   function closeEditor() {
     setSelectedNote(null)
     setIsCreating(false)
+    clearError()
   }
 
   async function handleSave(input: NoteInput): Promise<Note | null> {
