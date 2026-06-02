@@ -120,9 +120,9 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
     return () => onDirtyChange(false)
   }, [hasChanges, onDirtyChange])
 
-  if (hasChanges && saveState === 'saved') {
-    setSaveState('idle')
-  }
+  // Hide the "Saved" indicator once the user resumes typing — derived, not
+  // mutated, so we avoid both render-time and effect-based setState.
+  const displaySaveState = (hasChanges && saveState === 'saved') ? 'idle' : saveState
 
   async function handleSave(input?: NoteInput) {
     setSaving(true)
@@ -217,7 +217,7 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          {saveState !== 'idle' && <SaveStatus state={saveState} lastSavedAt={lastSavedAt} />}
+          {displaySaveState !== 'idle' && <SaveStatus state={displaySaveState} lastSavedAt={lastSavedAt} />}
           {error && <span className="text-red-400 text-sm">{error}</span>}
           <button
             onClick={() => handleSave()}
