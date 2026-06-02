@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest'
-import { computeWeakestFacts, findUserRank } from './MathSummary'
+import { computeWeakestFacts, findUserRank } from './mathSummaryUtils'
 
 type Op = '*' | '/'
 type Level = 'unseen' | 'red' | 'yellow' | 'green'

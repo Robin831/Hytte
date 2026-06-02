@@ -3,9 +3,8 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Timer, Zap, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../auth'
-
-type Op = '*' | '/'
-type Level = 'unseen' | 'red' | 'yellow' | 'green'
+import { computeWeakestFacts, findUserRank } from './mathSummaryUtils'
+import type { LeaderboardEntry, StatsCell, StatsResponse } from './mathSummaryUtils'
 
 interface MarathonBest {
   duration_ms: number
@@ -17,27 +16,8 @@ interface BlitzBest {
   best_streak: number
 }
 
-interface LeaderboardEntry {
-  user_id: number
-  rank: number | null
-}
-
 interface LeaderboardResponse {
   entries: LeaderboardEntry[]
-}
-
-interface StatsCell {
-  a: number
-  b: number
-  op: Op
-  count: number
-  accuracy_pct: number
-  level: Level
-}
-
-interface StatsResponse {
-  multiplication: StatsCell[][]
-  division: StatsCell[][]
 }
 
 interface SummaryData {
@@ -47,12 +27,6 @@ interface SummaryData {
   weakest: StatsCell[]
 }
 
-// Tie-break ordering when two facts share the same accuracy: a "red" cell is
-// weaker than a "yellow" one, which is weaker than a "green" one.
-const LEVEL_WEAKNESS: Record<Level, number> = { red: 0, yellow: 1, green: 2, unseen: 3 }
-
-// Format a duration in milliseconds as mm:ss, matching the leaderboard's
-// Marathon score format.
 function formatMarathonTime(ms: number): string {
   const totalSeconds = Math.max(0, ms) / 1000
   const minutes = Math.floor(totalSeconds / 60)
@@ -60,42 +34,9 @@ function formatMarathonTime(ms: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-// Render a fact cell as a human-readable problem, e.g. "7 × 8" or "56 ÷ 8".
 function cellProblem(cell: StatsCell): string {
   if (cell.op === '*') return `${cell.a} × ${cell.b}`
   return `${cell.a * cell.b} ÷ ${cell.b}`
-}
-
-// Compute the weakest facts from the heatmap stats: only cells that have been
-// attempted (count > 0), sorted by accuracy ascending, breaking ties by
-// mastery level then by attempt count (more attempts at low accuracy is
-// weaker). Returns at most `limit` cells.
-export function computeWeakestFacts(stats: StatsResponse, limit: number): StatsCell[] {
-  const cells: StatsCell[] = []
-  for (const grid of [stats.multiplication, stats.division]) {
-    if (!grid) continue
-    for (const row of grid) {
-      for (const cell of row) {
-        if (cell.count > 0) cells.push(cell)
-      }
-    }
-  }
-  cells.sort((x, y) => {
-    if (x.accuracy_pct !== y.accuracy_pct) return x.accuracy_pct - y.accuracy_pct
-    const lx = LEVEL_WEAKNESS[x.level] ?? 3
-    const ly = LEVEL_WEAKNESS[y.level] ?? 3
-    if (lx !== ly) return lx - ly
-    return y.count - x.count
-  })
-  return cells.slice(0, limit)
-}
-
-// Derive the current user's leaderboard rank from a leaderboard response by
-// matching on user_id. Returns null when the user has no entry/rank.
-export function findUserRank(entries: LeaderboardEntry[], userId: number | undefined): number | null {
-  if (userId == null) return null
-  const entry = entries.find(e => e.user_id === userId)
-  return entry?.rank ?? null
 }
 
 async function fetchJSON<T>(url: string, signal: AbortSignal): Promise<T> {
