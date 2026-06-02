@@ -58,7 +58,7 @@ export default function TodayView() {
   const Widgets = widgetsByRole[role]
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] md:h-screen flex flex-col p-4 sm:p-6 overflow-hidden">
+    <div className="h-[calc(100dvh-3.5rem)] md:h-[100dvh] flex flex-col p-4 sm:p-6 overflow-hidden">
       {/* Header: time + date, watch-face style */}
       <header className="text-center mb-4 sm:mb-6 shrink-0">
         <time className="text-4xl sm:text-5xl font-light tabular-nums tracking-tight">
