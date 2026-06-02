@@ -46,22 +46,22 @@ func TestTTLCache_ExpiredEntryIsMiss(t *testing.T) {
 }
 
 func TestBuildCacheKey_IdenticalInputsMatch(t *testing.T) {
-	a := buildCacheKey([]string{"A", "B"}, 0, 0, false, "Bergen", 7)
+	a := buildCacheKey([]string{"A", "B"}, 0, 0, false, false, "Bergen", 7)
 	// Stop ID order must not matter (keys are sorted).
-	b := buildCacheKey([]string{"B", "A"}, 0, 0, false, "Bergen", 7)
+	b := buildCacheKey([]string{"B", "A"}, 0, 0, false, false, "Bergen", 7)
 	if a != b {
 		t.Errorf("expected identical keys regardless of stop order: %q vs %q", a, b)
 	}
 }
 
 func TestBuildCacheKey_DistinctInputsDiffer(t *testing.T) {
-	base := buildCacheKey([]string{"A"}, 0, 0, false, "Bergen", 1)
+	base := buildCacheKey([]string{"A"}, 0, 0, false, false, "Bergen", 1)
 
 	cases := map[string]string{
-		"different stop_ids":  buildCacheKey([]string{"A", "C"}, 0, 0, false, "Bergen", 1),
-		"different location":  buildCacheKey([]string{"A"}, 0, 0, false, "Oslo", 1),
-		"different netatmo":   buildCacheKey([]string{"A"}, 0, 0, false, "Bergen", 2),
-		"lat/lon vs location": buildCacheKey([]string{"A"}, 59.9, 10.7, true, "Bergen", 1),
+		"different stop_ids":  buildCacheKey([]string{"A", "C"}, 0, 0, false, false, "Bergen", 1),
+		"different location":  buildCacheKey([]string{"A"}, 0, 0, false, false, "Oslo", 1),
+		"different netatmo":   buildCacheKey([]string{"A"}, 0, 0, false, false, "Bergen", 2),
+		"lat/lon vs location": buildCacheKey([]string{"A"}, 59.9, 10.7, true, true, "Bergen", 1),
 	}
 	for name, key := range cases {
 		if key == base {
