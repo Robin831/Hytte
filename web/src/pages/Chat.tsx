@@ -75,6 +75,7 @@ export default function Chat() {
   // animation) — used on conversation switch / initial load so the button
   // does not flash while a long history animates into view.
   const instantScrollRef = useRef(false)
+  const prevConversationIdRef = useRef<number | undefined>(activeConversation?.id)
   // Track locally deleted conversation IDs so we don't resurrect them if a
   // send response arrives after the user deleted the conversation mid-flight.
   const deletedConversationIds = useRef<Set<number>>(new Set())
@@ -133,11 +134,17 @@ export default function Chat() {
     return () => el.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // On conversation switch / initial load, re-pin to the bottom and scroll
-  // instantly so the latest message is shown without animating a long history.
+  // On conversation switch, re-pin to the bottom and scroll instantly so the
+  // latest message is shown without animating a long history. State is reset
+  // during render (React's "adjusting state from previous renders" pattern) to
+  // avoid a cascading re-render; refs are reset in the effect below.
+  if (activeConversation?.id !== prevConversationIdRef.current) {
+    prevConversationIdRef.current = activeConversation?.id
+    setIsPinned(true)
+  }
+
   useEffect(() => {
     isPinnedRef.current = true
-    setIsPinned(true)
     instantScrollRef.current = true
   }, [activeConversation?.id])
 
