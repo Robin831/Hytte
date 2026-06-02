@@ -17,7 +17,6 @@ describe('useCurrentTime', () => {
   })
 
   afterEach(() => {
-    vi.runOnlyPendingTimers()
     vi.useRealTimers()
     vi.restoreAllMocks()
   })
