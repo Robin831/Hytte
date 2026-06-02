@@ -162,9 +162,9 @@ export default function NoteEditor({ note, isCreating, error, onSave, onDelete, 
           </h1>
           {draftTags && (
             <div className="flex flex-wrap gap-1 mb-4">
-              {parseTags(draftTags).map(tag => (
+              {parseTags(draftTags).map((tag, i) => (
                 <span
-                  key={tag}
+                  key={`${i}-${tag}`}
                   className="px-2 py-0.5 bg-gray-700 text-gray-300 text-xs rounded"
                 >
                   {tag}

@@ -96,7 +96,7 @@ describe('Notes', () => {
     render(<Notes />)
     await screen.findByText('First note')
 
-    fireEvent.click(screen.getByRole('button', { name: 'newNote' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'newNote' })[0])
     fireEvent.change(screen.getByLabelText('fields.titleLabel'), { target: { value: 'Created' } })
 
     fetchMock.mockImplementationOnce(() =>
