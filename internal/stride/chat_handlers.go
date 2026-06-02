@@ -206,6 +206,36 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Get existing session ID for conversation continuity.
+		sessionID, err := GetChatSessionID(db, planID, user.ID)
+		if err != nil {
+			log.Printf("stride chat: get session ID plan %d: %v", planID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+			return
+		}
+
+		// Auto-reset: when the replayed conversation has grown large, start a
+		// fresh Claude session for this turn to cut first-token latency. We do
+		// this BEFORE storing the current user message so that the msg floor
+		// reflects the end of the previous native session, not this turn's
+		// message. We skip internal correction retries (body.IsInternal)
+		// because those depend on the previous turn still being replayed.
+		autoReset := false
+		if sessionID != "" && !body.IsInternal {
+			msgCount, totalBytes, estErr := EstimateChatContext(db, planID, user.ID)
+			if estErr != nil {
+				log.Printf("stride chat: estimate context plan %d: %v", planID, estErr)
+			} else if msgCount >= chatResetMessageThreshold || totalBytes >= chatResetByteThreshold {
+				if rErr := ResetChatSession(db, planID, user.ID); rErr != nil {
+					log.Printf("stride chat: auto-reset session plan %d: %v", planID, rErr)
+				} else {
+					log.Printf("stride chat: auto-reset session plan %d (msgs=%d, bytes=%d)", planID, msgCount, totalBytes)
+					sessionID = ""
+					autoReset = true
+				}
+			}
+		}
+
 		// Store user message (skip for system-internal correction retries so they
 		// don't appear in the chat history visible to the user).
 		var userMsg *ChatMessage
@@ -222,36 +252,6 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 				return
 			}
 			userMsg = &msg
-		}
-
-		// Get existing session ID for conversation continuity.
-		sessionID, err := GetChatSessionID(db, planID, user.ID)
-		if err != nil {
-			log.Printf("stride chat: get session ID plan %d: %v", planID, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
-			return
-		}
-
-		// Auto-reset: when the replayed conversation has grown large, start a
-		// fresh Claude session for this turn to cut first-token latency. We skip
-		// this for internal correction retries (body.IsInternal) because those
-		// depend on the previous turn (the invalid plan output) still being in
-		// the replayed session. The full system prompt is rebuilt every turn, so
-		// the plan state is preserved even after a reset.
-		autoReset := false
-		if sessionID != "" && !body.IsInternal {
-			msgCount, totalBytes, estErr := EstimateChatContext(db, planID, user.ID)
-			if estErr != nil {
-				log.Printf("stride chat: estimate context plan %d: %v", planID, estErr)
-			} else if msgCount >= chatResetMessageThreshold || totalBytes >= chatResetByteThreshold {
-				if rErr := ResetChatSession(db, planID, user.ID); rErr != nil {
-					log.Printf("stride chat: auto-reset session plan %d: %v", planID, rErr)
-				} else {
-					log.Printf("stride chat: auto-reset session plan %d (msgs=%d, bytes=%d)", planID, msgCount, totalBytes)
-					sessionID = ""
-					autoReset = true
-				}
-			}
 		}
 
 		// Set up SSE streaming.
@@ -415,6 +415,10 @@ func StrideChatResetHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err := ResetChatSession(db, planID, user.ID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "plan not found"})
+				return
+			}
 			log.Printf("stride chat: reset session plan %d: %v", planID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reset conversation"})
 			return

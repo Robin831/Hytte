@@ -532,7 +532,7 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
             type="button"
             onClick={() => setFreshNotice(false)}
             className="text-gray-400 hover:text-white cursor-pointer shrink-0"
-            aria-label={t('chat.dismissError')}
+            aria-label={t('chat.dismissNotice')}
           >
             <X size={14} />
           </button>
