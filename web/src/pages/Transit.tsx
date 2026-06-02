@@ -69,12 +69,14 @@ export default function Transit() {
 
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchAbortRef = useRef<AbortController | null>(null)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
-  // Initial load + auto-refresh every 30 seconds.
+  // Initial load + auto-refresh every 30 seconds, paused while the tab is hidden.
   useEffect(() => {
     const controller = new AbortController()
-    ;(async () => {
+
+    const fetchDepartures = async () => {
       setLoading(true)
       try {
         const res = await fetch('/api/transit/departures', { credentials: 'include', signal: controller.signal })
@@ -89,13 +91,42 @@ export default function Transit() {
       } finally {
         setLoading(false)
       }
-    })()
+    }
 
-    const interval = setInterval(() => setRefreshKey(k => k + 1), REFRESH_INTERVAL_MS)
+    const stopPolling = () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+
+    // Only poll while the tab is visible; guard against accumulating intervals.
+    const startPolling = () => {
+      if (intervalRef.current || document.hidden) return
+      intervalRef.current = setInterval(() => setRefreshKey(k => k + 1), REFRESH_INTERVAL_MS)
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Pause polling so backgrounded tabs don't burn Entur API budget.
+        stopPolling()
+      } else {
+        // On return, immediately refresh and resume the regular cadence.
+        void fetchDepartures()
+        startPolling()
+      }
+    }
+
+    if (!document.hidden) {
+      void fetchDepartures()
+      startPolling()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
       controller.abort()
-      clearInterval(interval)
+      stopPolling()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [refreshKey, t])
 
