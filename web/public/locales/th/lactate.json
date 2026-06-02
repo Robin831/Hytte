@@ -33,6 +33,16 @@
     "speedSteps": "+{{increment}} km/h ต่อช่วง",
     "stageDuration": "{{duration}} นาทีต่อช่วง"
   },
+  "summary": {
+    "latestThreshold": "เกณฑ์ล่าสุด",
+    "value": "{{speed}} km/h · {{hr}} bpm",
+    "chip": "{{method}} {{speed}} km/h · {{hr}} bpm",
+    "delta": "{{sign}}{{value}} {{unit}}",
+    "vsPrevious": "เทียบกับการทดสอบก่อนหน้า",
+    "noPreviousComparison": "ไม่มีการทดสอบก่อนหน้าให้เปรียบเทียบ",
+    "noResult": "ไม่มีผลลัพธ์",
+    "noResultYet": "ยังไม่มีผลลัพธ์"
+  },
   "new": {
     "title": "บันทึกการทดสอบ",
     "importFromWorkout": "นำเข้าจากการออกกำลังกาย",

@@ -33,6 +33,16 @@
     "speedSteps": "+{{increment}} km/h steps",
     "stageDuration": "{{duration}} min stages"
   },
+  "summary": {
+    "latestThreshold": "Latest threshold",
+    "value": "{{speed}} km/h · {{hr}} bpm",
+    "chip": "{{method}} {{speed}} km/h · {{hr}} bpm",
+    "delta": "{{sign}}{{value}} {{unit}}",
+    "vsPrevious": "vs previous test",
+    "noPreviousComparison": "No previous test to compare.",
+    "noResult": "No result",
+    "noResultYet": "No result yet"
+  },
   "new": {
     "title": "Record Test",
     "importFromWorkout": "Import from Workout",

@@ -33,6 +33,16 @@
     "speedSteps": "+{{increment}} km/t trinn",
     "stageDuration": "{{duration}} min trinn"
   },
+  "summary": {
+    "latestThreshold": "Siste terskel",
+    "value": "{{speed}} km/t · {{hr}} bpm",
+    "chip": "{{method}} {{speed}} km/t · {{hr}} bpm",
+    "delta": "{{sign}}{{value}} {{unit}}",
+    "vsPrevious": "mot forrige test",
+    "noPreviousComparison": "Ingen tidligere test å sammenligne med.",
+    "noResult": "Ingen resultat",
+    "noResultYet": "Ingen resultat ennå"
+  },
   "new": {
     "title": "Registrer test",
     "importFromWorkout": "Importer fra økt",

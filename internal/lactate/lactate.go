@@ -3,6 +3,7 @@ package lactate
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -20,10 +21,41 @@ type Test struct {
 	StartSpeedKmh     float64 `json:"start_speed_kmh"`
 	SpeedIncrementKmh float64 `json:"speed_increment_kmh"`
 	// WorkoutID links this test to an imported workout, if any.
-	WorkoutID         *int64  `json:"workout_id,omitempty"`
-	Stages            []Stage `json:"stages"`
-	CreatedAt         string  `json:"created_at"`
-	UpdatedAt         string  `json:"updated_at"`
+	WorkoutID *int64  `json:"workout_id,omitempty"`
+	Stages    []Stage `json:"stages"`
+	// PrimaryThreshold is a precomputed summary of this test's main threshold
+	// (preferring the valid OBLA/LT2 method), attached by List for glanceable display.
+	PrimaryThreshold *PrimaryThreshold `json:"primary_threshold,omitempty"`
+	CreatedAt        string            `json:"created_at"`
+	UpdatedAt        string            `json:"updated_at"`
+}
+
+// PrimaryThreshold is a compact summary of a test's primary threshold for list views.
+type PrimaryThreshold struct {
+	Method       string  `json:"method"`
+	SpeedKmh     float64 `json:"speed_kmh"`
+	HeartRateBpm int     `json:"heart_rate_bpm"`
+	Valid        bool    `json:"valid"`
+}
+
+// primaryThresholdFor computes the primary threshold for a set of stages,
+// preferring the first valid method (OBLA/LT2 is evaluated first by
+// CalculateThresholds). Returns nil when no valid threshold can be derived.
+func primaryThresholdFor(stages []Stage) *PrimaryThreshold {
+	if len(stages) < 2 {
+		return nil
+	}
+	for _, r := range CalculateThresholds(stages) {
+		if r.Valid {
+			return &PrimaryThreshold{
+				Method:       string(r.Method),
+				SpeedKmh:     r.SpeedKmh,
+				HeartRateBpm: r.HeartRateBpm,
+				Valid:        true,
+			}
+		}
+	}
+	return nil
 }
 
 // Stage represents a single step in a lactate test.
@@ -39,7 +71,8 @@ type Stage struct {
 }
 
 // List returns all lactate tests for a user, ordered by date descending.
-// Stages are not included; use GetByID for full test details.
+// Each test carries a precomputed PrimaryThreshold (when derivable) but no
+// stages; use GetByID for full test details including stages.
 func List(db *sql.DB, userID int64) ([]Test, error) {
 	rows, err := db.Query(`
 		SELECT id, user_id, date, comment, protocol_type,
@@ -77,9 +110,113 @@ func List(db *sql.DB, userID int64) ([]Test, error) {
 		return nil, err
 	}
 	if tests == nil {
-		tests = []Test{}
+		return []Test{}, nil
 	}
+
+	// Batch-load stages for all listed tests in one query (avoid N+1), then
+	// compute each test's primary threshold for glanceable list display.
+	ids := make([]int64, len(tests))
+	for i := range tests {
+		ids[i] = tests[i].ID
+	}
+	stagesByTest, err := getThresholdStagesForTests(db, ids)
+	if err != nil {
+		return nil, fmt.Errorf("get stages for tests: %w", err)
+	}
+	for i := range tests {
+		tests[i].PrimaryThreshold = primaryThresholdFor(stagesByTest[tests[i].ID])
+	}
+
 	return tests, nil
+}
+
+// getStagesForTests batch-loads stages for the given test IDs in a single query,
+// grouping them by test ID. Stages are returned ordered by stage number.
+func getStagesForTests(db *sql.DB, testIDs []int64) (map[int64][]Stage, error) {
+	result := make(map[int64][]Stage, len(testIDs))
+	if len(testIDs) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, len(testIDs))
+	args := make([]any, len(testIDs))
+	for i, id := range testIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := `
+		SELECT id, test_id, stage_number, speed_kmh, lactate_mmol,
+		       heart_rate_bpm, rpe, notes
+		FROM lactate_test_stages
+		WHERE test_id IN (` + strings.Join(placeholders, ",") + `)
+		ORDER BY test_id, stage_number`
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var s Stage
+		if err := rows.Scan(
+			&s.ID, &s.TestID, &s.StageNumber, &s.SpeedKmh, &s.LactateMmol,
+			&s.HeartRateBpm, &s.RPE, &s.Notes,
+		); err != nil {
+			return nil, err
+		}
+		if s.Notes, err = encryption.DecryptField(s.Notes); err != nil {
+			return nil, fmt.Errorf("decrypt stage notes: %w", err)
+		}
+		result[s.TestID] = append(result[s.TestID], s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// getThresholdStagesForTests is a lightweight variant of getStagesForTests that
+// only fetches columns needed for threshold computation (no notes/RPE), avoiding
+// unnecessary decryption overhead in the list path.
+func getThresholdStagesForTests(db *sql.DB, testIDs []int64) (map[int64][]Stage, error) {
+	result := make(map[int64][]Stage, len(testIDs))
+	if len(testIDs) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, len(testIDs))
+	args := make([]any, len(testIDs))
+	for i, id := range testIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := `
+		SELECT test_id, stage_number, speed_kmh, lactate_mmol, heart_rate_bpm
+		FROM lactate_test_stages
+		WHERE test_id IN (` + strings.Join(placeholders, ",") + `)
+		ORDER BY test_id, stage_number`
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var s Stage
+		if err := rows.Scan(
+			&s.TestID, &s.StageNumber, &s.SpeedKmh, &s.LactateMmol,
+			&s.HeartRateBpm,
+		); err != nil {
+			return nil, err
+		}
+		result[s.TestID] = append(result[s.TestID], s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // GetByID returns a single lactate test with all its stages.
