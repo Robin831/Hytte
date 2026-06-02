@@ -43,23 +43,18 @@ function DeltaBadge({ value, unit, decimals }: { value: number; unit: string; de
 }
 
 export default function LactateTests() {
-  const { user, loading: authLoading } = useAuth()
+  const { user } = useAuth()
   const { t } = useTranslation(['lactate', 'common'])
   const [tests, setTests] = useState<LactateTest[]>([])
-  const [fetchLoading, setFetchLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  // Show skeletons while auth is resolving or while fetching data.
-  // Derived — no setState needed for the no-user early-return path.
-  const loading = authLoading || fetchLoading
-
   useEffect(() => {
-    if (!user) {
-      return
-    }
+    if (!user) return
     const controller = new AbortController()
     const load = async () => {
-      setFetchLoading(true)
+      setLoading(true)
+      setError('')
       try {
         const res = await fetch('/api/lactate/tests', { credentials: 'include', signal: controller.signal })
         if (!res.ok) {
@@ -73,20 +68,12 @@ export default function LactateTests() {
           setError(t('errors.failedToLoadLactateTests'))
         }
       } finally {
-        setFetchLoading(false)
+        setLoading(false)
       }
     }
     load()
     return () => controller.abort()
   }, [user, t])
-
-  if (!authLoading && !user) {
-    return (
-      <div className="p-6">
-        <p className="text-gray-400">{t('signInToView')}</p>
-      </div>
-    )
-  }
 
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-6">
@@ -121,7 +108,7 @@ export default function LactateTests() {
         </div>
       )}
 
-      {!authLoading && !loading && tests.length >= 2 && (() => {
+      {!loading && tests.length >= 2 && (() => {
         const latest = validThreshold(tests[0])
         const previous = validThreshold(tests[1])
         return (
@@ -156,7 +143,7 @@ export default function LactateTests() {
         )
       })()}
 
-      {authLoading || loading ? (
+      {loading ? (
         <div className="space-y-3 py-4" role="status" aria-live="polite" aria-busy="true">
           <p className="sr-only">{t('list.loading')}</p>
           <Skeleton className="h-16 w-full" />
