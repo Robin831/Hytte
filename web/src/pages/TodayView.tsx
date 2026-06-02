@@ -1,11 +1,12 @@
-import type { ComponentType } from 'react'
+import { lazy, Suspense, type ComponentType, type LazyExoticComponent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
 import { useCurrentTime } from '../hooks/useCurrentTime'
 import { formatDate, formatTime } from '../utils/formatDate'
-import ParentTodayView from '../components/today/ParentTodayView'
-import KidTodayView from '../components/today/KidTodayView'
-import GuestTodayView from '../components/today/GuestTodayView'
+
+const ParentTodayView = lazy(() => import('../components/today/ParentTodayView'))
+const KidTodayView = lazy(() => import('../components/today/KidTodayView'))
+const GuestTodayView = lazy(() => import('../components/today/GuestTodayView'))
 
 export type FamilyRole = 'parent' | 'child' | 'guest'
 
@@ -18,7 +19,7 @@ function useFamilyRole(): FamilyRole | null {
   return 'guest'
 }
 
-const widgetsByRole: Record<FamilyRole, ComponentType> = {
+const widgetsByRole: Record<FamilyRole, LazyExoticComponent<ComponentType>> = {
   parent: ParentTodayView,
   child: KidTodayView,
   guest: GuestTodayView,
@@ -53,7 +54,9 @@ export default function TodayView() {
 
       {/* Widget grid */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 flex-1 min-h-0 auto-rows-fr">
-        <Widgets />
+        <Suspense fallback={null}>
+          <Widgets />
+        </Suspense>
       </div>
     </div>
   )
