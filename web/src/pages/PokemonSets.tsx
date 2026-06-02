@@ -180,7 +180,7 @@ export default function PokemonSets() {
     }
     const next = params.toString()
     navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: false, state: location.state })
-  }, [ownedOnly, navigate, location.pathname, location.search])
+  }, [ownedOnly, navigate, location.pathname, location.search, location.state])
 
   const toggleShowOlder = useCallback(() => {
     const params = new URLSearchParams(location.search)
@@ -191,7 +191,7 @@ export default function PokemonSets() {
     }
     const next = params.toString()
     navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: false, state: location.state })
-  }, [showOlder, navigate, location.pathname, location.search])
+  }, [showOlder, navigate, location.pathname, location.search, location.state])
 
   // After the AddCardPanel consumes its initialQuery we strip the hint from
   // history so a subsequent back/forward navigation doesn't re-open the
