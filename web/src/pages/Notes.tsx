@@ -7,6 +7,7 @@ import { Plus, Search, Tag, Trash2, Save, Eye, Edit3, X, FileText } from 'lucide
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 interface Note {
   id: number
@@ -27,6 +28,9 @@ export default function Notes() {
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [search, setSearch] = useState('')
+  // Debounce the search term so typing only fires one request after a pause,
+  // not one per keystroke. The input stays bound to `search` for instant text.
+  const debouncedSearch = useDebouncedValue(search, 250)
   const [activeTag, setActiveTag] = useState('')
   const [viewMode, setViewMode] = useState<ViewMode>('edit')
   const [loading, setLoading] = useState(true)
@@ -46,7 +50,7 @@ export default function Notes() {
       setLoading(true)
       try {
         const params = new URLSearchParams()
-        if (search) params.set('search', search)
+        if (debouncedSearch) params.set('search', debouncedSearch)
         if (activeTag) params.set('tag', activeTag)
         const res = await fetch(`/api/notes?${params}`, { credentials: 'include', signal: controller.signal })
         if (!res.ok) throw new Error(t('errors.failedToLoad'))
@@ -62,7 +66,7 @@ export default function Notes() {
       }
     })()
     return () => { controller.abort() }
-  }, [search, activeTag, refreshKey, t])
+  }, [debouncedSearch, activeTag, refreshKey, t])
 
   useEffect(() => {
     const controller = new AbortController()
