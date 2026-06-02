@@ -154,9 +154,11 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
   // shortcut always saves the *current* draft rather than a stale closure
   // captured the first time `hasChanges`/`saving` changed.
   const saveRef = useRef(() => {})
-  saveRef.current = () => {
-    if (!saving && hasChanges) handleSave()
-  }
+  useEffect(() => {
+    saveRef.current = () => {
+      if (!saving && hasChanges) handleSave()
+    }
+  })
   useImperativeHandle(ref, () => ({
     save() {
       saveRef.current()
@@ -168,9 +170,11 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
   // timer on each keystroke) without re-subscribing to a fresh `handleSave`
   // closure every render.
   const autosaveRef = useRef((_input: NoteInput) => {})
-  autosaveRef.current = (input: NoteInput) => {
-    if (note && !isCreating && hasChanges && !saving) handleSave(input)
-  }
+  useEffect(() => {
+    autosaveRef.current = (input: NoteInput) => {
+      if (note && !isCreating && hasChanges && !saving) handleSave(input)
+    }
+  })
   useEffect(() => {
     // New-note creation stays on the manual Save button; never autosave it.
     // Also hold off while a save is in flight to avoid request pileups.
