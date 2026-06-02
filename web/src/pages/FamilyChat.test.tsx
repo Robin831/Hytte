@@ -378,5 +378,14 @@ describe('FamilyChat – new conversation modal', () => {
     expect(
       await screen.findByRole('heading', { name: 'New Family Chat' }),
     ).toBeInTheDocument()
+
+    // Creating a conversation calls refreshConversations() via FamilyChatContext,
+    // which re-fetches the list. The second fetch returns the created conversation
+    // so the sidebar reflects the new chat — no refreshKey counter prop involved.
+    await waitFor(() => {
+      expect(convListCalls).toBeGreaterThanOrEqual(2)
+    })
+    const sidebar = screen.getByTestId('family-chat-conversation-list')
+    expect(within(sidebar).getByText('New Family Chat')).toBeInTheDocument()
   })
 })

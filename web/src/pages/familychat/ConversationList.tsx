@@ -3,12 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { Plus, MessageSquarePlus } from 'lucide-react'
 import { Skeleton } from '../../components/ui/skeleton'
 import { formatRelative } from './utils'
+import { useFamilyChat } from './FamilyChatContext'
 
 interface ConversationListProps {
   selectedConversationId: number | null
   onSelectConversation: (id: number) => void
   onNewConversation: () => void
-  refreshKey?: number
 }
 
 interface Conversation {
@@ -27,9 +27,9 @@ export default function ConversationList({
   selectedConversationId,
   onSelectConversation,
   onNewConversation,
-  refreshKey,
 }: ConversationListProps) {
   const { t, i18n } = useTranslation('familyChat')
+  const { refreshSignal } = useFamilyChat()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -60,7 +60,7 @@ export default function ConversationList({
       }
     })()
     return () => { controller.abort() }
-  }, [t, refreshKey])
+  }, [t, refreshSignal])
 
   return (
     <div className="flex flex-col h-full" data-testid="family-chat-conversation-list">
