@@ -350,9 +350,12 @@ export default function WordfeudBoard() {
         e.preventDefault()
         moveSelection(0, 1, row, col)
         break
+      case 'Escape':
+        e.preventDefault()
+        setSelectedCell(null)
+        ;(e.target as HTMLElement).blur()
+        break
       case 'Tab':
-        // Toggle entry direction without moving browser focus off the grid.
-        // Shift+Tab and Tab toggle the same binary state from opposite ends.
         e.preventDefault()
         setDirection(prev => (prev === 'horizontal' ? 'vertical' : 'horizontal'))
         break

@@ -29,7 +29,7 @@
     "tab": "Board",
     "title": "Board Editor",
     "clear": "Clear board",
-    "hint": "Click a cell and type to place a letter. Arrow keys to navigate, Tab to switch entry direction, Backspace to clear or step back, Space to toggle blank.",
+    "hint": "Click a cell and type to place a letter. Arrow keys to navigate, Tab to switch entry direction, Backspace to clear or step back, Space to toggle blank, Escape to exit the grid.",
     "directionHorizontal": "Horizontal entry",
     "directionVertical": "Vertical entry",
     "rack": "Your rack",

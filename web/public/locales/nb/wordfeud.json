@@ -29,7 +29,7 @@
     "tab": "Brett",
     "title": "Bretteditor",
     "clear": "Tøm brettet",
-    "hint": "Klikk en rute og skriv for å plassere en bokstav. Piltaster for å navigere, Tab for å bytte inntastingsretning, Backspace for å slette eller gå tilbake, mellomrom for å veksle blanko.",
+    "hint": "Klikk en rute og skriv for å plassere en bokstav. Piltaster for å navigere, Tab for å bytte inntastingsretning, Backspace for å slette eller gå tilbake, mellomrom for å veksle blanko, Escape for å forlate rutenettet.",
     "directionHorizontal": "Vannrett inntasting",
     "directionVertical": "Loddrett inntasting",
     "rack": "Dine brikker",
