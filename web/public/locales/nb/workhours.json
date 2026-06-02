@@ -99,5 +99,19 @@
     "overStandard": "+{{amount}} over standard",
     "atStandard": "Standarddag oppnådd",
     "invalidStart": "Starttid er i fremtiden — kan ikke estimere"
+  },
+  "shortcuts": {
+    "hint": "Hurtigtaster",
+    "title": "Hurtigtaster",
+    "close": "Lukk",
+    "punch": "Stemple inn / ut",
+    "prevDay": "Forrige arbeidsdag",
+    "nextDay": "Neste arbeidsdag",
+    "today": "Gå til i dag",
+    "viewDay": "Dagvisning",
+    "viewWeek": "Ukevisning",
+    "viewMonth": "Månedsvisning",
+    "viewSettings": "Innstillinger",
+    "help": "Vis denne hurtigtastoversikten"
   }
 }
