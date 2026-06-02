@@ -46,11 +46,18 @@ export default function LactateTests() {
   const { user, loading: authLoading } = useAuth()
   const { t } = useTranslation(['lactate', 'common'])
   const [tests, setTests] = useState<LactateTest[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!user) return
+    if (!user) {
+      // Auth has finished resolving and there is no user: stop showing
+      // skeletons so we don't sit in a permanent loading state. While auth
+      // is still resolving we leave loading=true so the first paint stays a
+      // skeleton (no skeleton -> empty -> skeleton flicker).
+      if (!authLoading) setLoading(false)
+      return
+    }
     const controller = new AbortController()
     const load = async () => {
       setLoading(true)
@@ -72,7 +79,7 @@ export default function LactateTests() {
     }
     load()
     return () => controller.abort()
-  }, [user, t])
+  }, [user, authLoading, t])
 
   if (!authLoading && !user) {
     return (
