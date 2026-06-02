@@ -170,9 +170,15 @@ export default function AllowancePage() {
       enlargedCloseRef.current?.focus()
       document.body.style.overflow = 'hidden'
     } else {
-      enlargedTriggerRef.current?.focus()
-      document.body.style.overflow = ''
+      // Only restore focus when the trigger is still attached to the DOM —
+      // it may have been unmounted while the photo was enlarged.
+      const trigger = enlargedTriggerRef.current
+      if (trigger && document.body.contains(trigger)) {
+        trigger.focus()
+      }
     }
+    // Always reset overflow on cleanup so navigating away mid-preview can never
+    // leave the body scroll locked, regardless of the current photoEnlarged value.
     return () => { document.body.style.overflow = '' }
   }, [photoEnlarged])
 
