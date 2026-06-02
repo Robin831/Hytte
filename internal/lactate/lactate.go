@@ -119,7 +119,7 @@ func List(db *sql.DB, userID int64) ([]Test, error) {
 	for i := range tests {
 		ids[i] = tests[i].ID
 	}
-	stagesByTest, err := getStagesForTests(db, ids)
+	stagesByTest, err := getThresholdStagesForTests(db, ids)
 	if err != nil {
 		return nil, fmt.Errorf("get stages for tests: %w", err)
 	}
@@ -165,10 +165,51 @@ func getStagesForTests(db *sql.DB, testIDs []int64) (map[int64][]Stage, error) {
 		); err != nil {
 			return nil, err
 		}
-		// Notes are not needed for threshold computation, but decrypt for
-		// consistency in case callers inspect them.
 		if s.Notes, err = encryption.DecryptField(s.Notes); err != nil {
 			return nil, fmt.Errorf("decrypt stage notes: %w", err)
+		}
+		result[s.TestID] = append(result[s.TestID], s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// getThresholdStagesForTests is a lightweight variant of getStagesForTests that
+// only fetches columns needed for threshold computation (no notes/RPE), avoiding
+// unnecessary decryption overhead in the list path.
+func getThresholdStagesForTests(db *sql.DB, testIDs []int64) (map[int64][]Stage, error) {
+	result := make(map[int64][]Stage, len(testIDs))
+	if len(testIDs) == 0 {
+		return result, nil
+	}
+
+	placeholders := make([]string, len(testIDs))
+	args := make([]any, len(testIDs))
+	for i, id := range testIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := `
+		SELECT test_id, stage_number, speed_kmh, lactate_mmol, heart_rate_bpm
+		FROM lactate_test_stages
+		WHERE test_id IN (` + strings.Join(placeholders, ",") + `)
+		ORDER BY test_id, stage_number`
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var s Stage
+		if err := rows.Scan(
+			&s.TestID, &s.StageNumber, &s.SpeedKmh, &s.LactateMmol,
+			&s.HeartRateBpm,
+		); err != nil {
+			return nil, err
 		}
 		result[s.TestID] = append(result[s.TestID], s)
 	}
