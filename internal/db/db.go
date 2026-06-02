@@ -1382,6 +1382,7 @@ func createSchema(db *sql.DB) error {
 		response    TEXT NOT NULL DEFAULT '',
 		model           TEXT NOT NULL DEFAULT '',
 		chat_session_id TEXT NOT NULL DEFAULT '',
+		chat_session_msg_floor INTEGER NOT NULL DEFAULT 0,
 		created_at      TEXT NOT NULL DEFAULT '',
 		UNIQUE(user_id, week_start),
 		UNIQUE(user_id, id)
@@ -2543,6 +2544,22 @@ func createSchema(db *sql.DB) error {
 	if hasStrideChatSessionID == 0 {
 		if _, err := db.Exec(`ALTER TABLE stride_plans ADD COLUMN chat_session_id TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("add stride_plans chat_session_id column: %w", err)
+		}
+	}
+
+	// Add chat_session_msg_floor column to stride_plans table (Hytte-tmye).
+	// Records the highest chat message id present when the Claude session was
+	// last reset, so the auto-reset size estimate only counts messages added
+	// since that reset (the fresh native session replays only those). Without
+	// this floor the estimate would count the full, never-trimmed history and
+	// reset on every turn once the thread first crossed the threshold.
+	var hasStrideChatMsgFloor int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stride_plans') WHERE name = 'chat_session_msg_floor'`).Scan(&hasStrideChatMsgFloor); err != nil {
+		return fmt.Errorf("check stride_plans chat_session_msg_floor column: %w", err)
+	}
+	if hasStrideChatMsgFloor == 0 {
+		if _, err := db.Exec(`ALTER TABLE stride_plans ADD COLUMN chat_session_msg_floor INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add stride_plans chat_session_msg_floor column: %w", err)
 		}
 	}
 

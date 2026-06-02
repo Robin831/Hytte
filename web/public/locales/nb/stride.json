@@ -170,9 +170,14 @@
     "empty": "Ingen meldinger ennå. Spør treneren din om ukens plan.",
     "collapse": "Skjul chat",
     "dismissError": "Lukk feilmelding",
+    "dismissNotice": "Lukk",
     "planUpdateFailed": "Kunne ikke oppdatere planen. Prøv igjen.",
     "readOnly": "Denne samtalen er skrivebeskyttet. Den tilhører en tidligere plan.",
     "previousWeekChat": "Se forrige samtale",
-    "returnToCurrent": "Tilbake til gjeldende chat"
+    "returnToCurrent": "Tilbake til gjeldende chat",
+    "startFresh": "Start ny samtale",
+    "startFreshHint": "Start en ny samtale for raskere svar",
+    "startFreshError": "Kunne ikke starte en ny samtale. Prøv igjen.",
+    "freshContext": "Startet en ny samtale for å holde svarene raske. Planen og historikken din er uendret."
   }
 }

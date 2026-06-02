@@ -12,6 +12,7 @@ import {
   X,
   ChevronDown,
   RefreshCw,
+  RotateCcw,
   Lock,
   History,
 } from 'lucide-react'
@@ -52,6 +53,11 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
   const [retrying, setRetrying] = useState(false)
 
   const [planUpdateWarning, setPlanUpdateWarning] = useState('')
+
+  // Shown after the Claude session is reset (manually or automatically) so the
+  // user understands why the coach starts a fresh thread. History stays intact.
+  const [freshNotice, setFreshNotice] = useState(false)
+  const [resetting, setResetting] = useState(false)
 
   const [keyboardOffset, setKeyboardOffset] = useState(0)
 
@@ -113,6 +119,7 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
       setStreamingText('')
       setError('')
       setPlanUpdateWarning('')
+      setFreshNotice(false)
       activePlanIdRef.current = planId
     }
   }, [planId])
@@ -269,6 +276,11 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
                     )
                   }
                   break
+                case 'context_reset':
+                  if (activePlanIdRef.current === planId) {
+                    setFreshNotice(true)
+                  }
+                  break
                 case 'delta':
                   accumulatedText += parsed.text ?? ''
                   setStreamingText(accumulatedText)
@@ -343,6 +355,29 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
     }
   }
 
+  async function handleStartFresh() {
+    if (isReadOnly || resetting || sending) return
+    setResetting(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/stride/plans/${planId}/chat/reset`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || t('chat.startFreshError'))
+      }
+      if (activePlanIdRef.current === planId) {
+        setFreshNotice(true)
+      }
+    } catch (err) {
+      if (err instanceof Error) setError(err.message)
+    } finally {
+      setResetting(false)
+    }
+  }
+
   function sendCorrectionMessage(validationError: string) {
     const correctionPrompt = `The plan update you provided was invalid: ${validationError}. Please output the corrected plan.`
     sendMessage(correctionPrompt)
@@ -377,6 +412,18 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
           <span className="text-sm font-medium">{t('chat.title')}</span>
         </div>
         <div className="flex items-center gap-1">
+          {!isReadOnly && (
+            <button
+              type="button"
+              onClick={handleStartFresh}
+              disabled={resetting || sending}
+              className="p-1 text-gray-400 hover:text-white cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label={t('chat.startFresh')}
+              title={t('chat.startFreshHint')}
+            >
+              {resetting ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
+            </button>
+          )}
           {onViewPreviousChat && (
             <button
               type="button"
@@ -473,6 +520,24 @@ export default function StrideChatDrawer({ planId, currentPlanId, onPlanUpdated,
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Fresh-context notice */}
+      {freshNotice && (
+        <div className="px-4 py-2 bg-gray-700/40 border-t border-gray-600 text-gray-300 text-xs flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2">
+            <RotateCcw size={12} className="shrink-0" />
+            {t('chat.freshContext')}
+          </span>
+          <button
+            type="button"
+            onClick={() => setFreshNotice(false)}
+            className="text-gray-400 hover:text-white cursor-pointer shrink-0"
+            aria-label={t('chat.dismissNotice')}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Retry banner */}
       {retrying && (

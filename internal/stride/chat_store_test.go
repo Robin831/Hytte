@@ -1,6 +1,7 @@
 package stride
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -203,6 +204,149 @@ func TestChatSessionID_DefaultEmpty(t *testing.T) {
 	}
 	if sid != "" {
 		t.Errorf("expected empty string, got %q", sid)
+	}
+}
+
+func TestResetChatSession(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO stride_plans (id, user_id, week_start, week_end, plan_json, chat_session_id, created_at) VALUES (1, 1, '2026-04-13', '2026-04-19', '{}', 'sess-xyz', '2026-04-13T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert plan: %v", err)
+	}
+
+	if err := ResetChatSession(db, 1, 1); err != nil {
+		t.Fatalf("reset session: %v", err)
+	}
+
+	sid, err := GetChatSessionID(db, 1, 1)
+	if err != nil {
+		t.Fatalf("get session id: %v", err)
+	}
+	if sid != "" {
+		t.Errorf("expected empty session id after reset, got %q", sid)
+	}
+}
+
+func TestResetChatSession_WrongUser(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO stride_plans (id, user_id, week_start, week_end, plan_json, chat_session_id, created_at) VALUES (1, 1, '2026-04-13', '2026-04-19', '{}', 'sess-xyz', '2026-04-13T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert plan: %v", err)
+	}
+
+	// User 2 cannot reset user 1's plan — no rows affected.
+	if err := ResetChatSession(db, 1, 2); err == nil {
+		t.Fatal("expected error when resetting another user's plan")
+	}
+
+	// User 1's session id is untouched.
+	sid, err := GetChatSessionID(db, 1, 1)
+	if err != nil {
+		t.Fatalf("get session id: %v", err)
+	}
+	if sid != "sess-xyz" {
+		t.Errorf("expected session id unchanged, got %q", sid)
+	}
+}
+
+func TestEstimateChatContext(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO stride_plans (id, user_id, week_start, week_end, plan_json, created_at) VALUES (1, 1, '2026-04-13', '2026-04-19', '{}', '2026-04-13T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert plan: %v", err)
+	}
+
+	// Empty conversation.
+	count, bytes, err := EstimateChatContext(db, 1, 1)
+	if err != nil {
+		t.Fatalf("estimate empty: %v", err)
+	}
+	if count != 0 || bytes != 0 {
+		t.Errorf("expected 0/0 for empty conversation, got %d/%d", count, bytes)
+	}
+
+	// Add a couple of messages.
+	if _, err := AddChatMessage(db, ChatMessage{PlanID: 1, UserID: 1, Role: "user", Content: "hello coach"}); err != nil {
+		t.Fatalf("add msg: %v", err)
+	}
+	if _, err := AddChatMessage(db, ChatMessage{PlanID: 1, UserID: 1, Role: "assistant", Content: "hi there athlete"}); err != nil {
+		t.Fatalf("add msg: %v", err)
+	}
+
+	count, bytes, err = EstimateChatContext(db, 1, 1)
+	if err != nil {
+		t.Fatalf("estimate: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2 messages, got %d", count)
+	}
+	if bytes <= 0 {
+		t.Errorf("expected positive byte total, got %d", bytes)
+	}
+}
+
+// TestEstimateChatContext_CountsOnlySinceReset is the regression test for the
+// auto-reset loop bug: the size estimate must measure only the messages Claude
+// replays in the CURRENT native session (those added after the last reset), not
+// the full never-trimmed history. Otherwise a thread that crosses the threshold
+// once would reset on every subsequent turn.
+func TestEstimateChatContext_CountsOnlySinceReset(t *testing.T) {
+	db := setupTestDB(t)
+
+	_, err := db.Exec(`INSERT INTO stride_plans (id, user_id, week_start, week_end, plan_json, chat_session_id, created_at) VALUES (1, 1, '2026-04-13', '2026-04-19', '{}', 'sess-xyz', '2026-04-13T00:00:00Z')`)
+	if err != nil {
+		t.Fatalf("insert plan: %v", err)
+	}
+
+	// Seed a long conversation that would trip any threshold.
+	for i := 0; i < 6; i++ {
+		role := "user"
+		if i%2 == 1 {
+			role = "assistant"
+		}
+		if _, err := AddChatMessage(db, ChatMessage{PlanID: 1, UserID: 1, Role: role, Content: fmt.Sprintf("message %d", i)}); err != nil {
+			t.Fatalf("seed message: %v", err)
+		}
+	}
+
+	count, _, err := EstimateChatContext(db, 1, 1)
+	if err != nil {
+		t.Fatalf("estimate before reset: %v", err)
+	}
+	if count != 6 {
+		t.Fatalf("expected 6 messages before reset, got %d", count)
+	}
+
+	// Reset records the watermark at the current max message id.
+	if err := ResetChatSession(db, 1, 1); err != nil {
+		t.Fatalf("reset session: %v", err)
+	}
+
+	// Immediately after reset, no messages belong to the new session yet.
+	count, bytes, err := EstimateChatContext(db, 1, 1)
+	if err != nil {
+		t.Fatalf("estimate after reset: %v", err)
+	}
+	if count != 0 || bytes != 0 {
+		t.Errorf("expected 0/0 after reset (history not yet replayed), got %d/%d", count, bytes)
+	}
+
+	// New turns accumulate from zero again — the full history is no longer
+	// counted, so the thread won't reset on every turn.
+	for i := 0; i < 2; i++ {
+		if _, err := AddChatMessage(db, ChatMessage{PlanID: 1, UserID: 1, Role: "user", Content: fmt.Sprintf("post-reset %d", i)}); err != nil {
+			t.Fatalf("post-reset message: %v", err)
+		}
+	}
+	count, _, err = EstimateChatContext(db, 1, 1)
+	if err != nil {
+		t.Fatalf("estimate after new turns: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("expected 2 messages since reset, got %d", count)
 	}
 }
 

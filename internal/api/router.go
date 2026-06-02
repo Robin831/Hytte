@@ -516,6 +516,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/stride/plans/{id}", stride.GetPlanHandler(db))
 				r.Get("/stride/plans/{planId}/chat", stride.StrideChatListHandler(db))
 				r.Post("/stride/plans/{planId}/chat", stride.StrideChatSendHandler(db))
+				r.Post("/stride/plans/{planId}/chat/reset", stride.StrideChatResetHandler(db))
 				r.Get("/stride/evaluations", stride.ListEvaluationsHandler(db))
 				r.Post("/stride/evaluate", stride.TriggerEvaluationHandler(db))
 				r.Post("/stride/days/{date}/reevaluate", stride.ReEvaluateDayHandler(db))

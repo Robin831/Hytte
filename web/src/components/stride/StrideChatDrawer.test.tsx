@@ -15,11 +15,16 @@ const TRANSLATIONS: Record<string, string> = {
   'chat.sessionRetry': 'Session expired, retrying...',
   'chat.error': 'Failed to send message',
   'chat.empty': 'No messages yet. Ask your coach anything about this week\'s plan.',
-  'chat.dismissError': 'Dismiss',
+  'chat.dismissError': 'Dismiss error',
+  'chat.dismissNotice': 'Dismiss',
   'chat.collapse': 'Collapse',
   'chat.readOnly': 'This is a previous week\'s chat. You can\'t send messages here.',
   'chat.previousWeekChat': 'View previous week\'s chat',
   'chat.returnToCurrent': 'Return to current chat',
+  'chat.startFresh': 'Start fresh conversation',
+  'chat.startFreshHint': 'Start a fresh conversation to speed up replies',
+  'chat.startFreshError': 'Couldn\'t start a fresh conversation. Please try again.',
+  'chat.freshContext': 'Started a fresh conversation to keep replies fast. Your plan and history are unchanged.',
 }
 
 function stableT(key: string): string {
@@ -334,6 +339,81 @@ describe('StrideChatDrawer – read-only mode', () => {
     await waitFor(() => {
       expect(screen.getByLabelText("View previous week's chat")).toBeInTheDocument()
     })
+  })
+})
+
+describe('StrideChatDrawer – start fresh conversation', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  it('shows the fresh-context notice when the manual reset succeeds', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(chatHistoryResponse())
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ reset: true }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDrawer()
+    fireEvent.click(screen.getByText('Chat with your coach'))
+    await waitFor(() => screen.getByRole('textbox'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start fresh conversation' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Started a fresh conversation to keep replies fast. Your plan and history are unchanged.')).toBeInTheDocument()
+    })
+    // The reset endpoint was called.
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/stride/plans/10/chat/reset', expect.objectContaining({ method: 'POST' }))
+  })
+
+  it('shows an error when the manual reset fails', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(chatHistoryResponse())
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ error: 'nope' }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDrawer()
+    fireEvent.click(screen.getByText('Chat with your coach'))
+    await waitFor(() => screen.getByRole('textbox'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start fresh conversation' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('nope')).toBeInTheDocument()
+    })
+  })
+
+  it('shows the fresh-context notice when a context_reset SSE event arrives', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(chatHistoryResponse())
+      .mockResolvedValueOnce(makeSSEStream([
+        `event: user_message\ndata: ${JSON.stringify(makeMessage({ id: 20, role: 'user', content: 'Long thread question' }))}\n\n`,
+        `event: context_reset\ndata: ${JSON.stringify({ reason: 'auto' })}\n\n`,
+        `event: delta\ndata: ${JSON.stringify({ text: 'Fresh reply.' })}\n\n`,
+        `event: done\ndata: ${JSON.stringify(makeMessage({ id: 21, role: 'assistant', content: 'Fresh reply.' }))}\n\n`,
+      ]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderDrawer()
+    fireEvent.click(screen.getByText('Chat with your coach'))
+    await waitFor(() => screen.getByRole('textbox'))
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Long thread question' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Started a fresh conversation to keep replies fast. Your plan and history are unchanged.')).toBeInTheDocument()
+    })
+  })
+
+  it('does not render the start-fresh button in read-only mode', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(chatHistoryResponse())))
+    renderDrawer({ planId: 9, currentPlanId: 10 })
+
+    fireEvent.click(screen.getByText('Chat with your coach'))
+
+    await waitFor(() => {
+      expect(screen.getByText("This is a previous week's chat. You can't send messages here.")).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: 'Start fresh conversation' })).not.toBeInTheDocument()
   })
 })
 

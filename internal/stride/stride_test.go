@@ -59,6 +59,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 			response        TEXT NOT NULL DEFAULT '',
 			model           TEXT NOT NULL DEFAULT '',
 			chat_session_id TEXT NOT NULL DEFAULT '',
+			chat_session_msg_floor INTEGER NOT NULL DEFAULT 0,
 			created_at      TEXT NOT NULL DEFAULT '',
 			UNIQUE(user_id, week_start),
 			UNIQUE(user_id, id)
