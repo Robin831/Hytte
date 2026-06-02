@@ -22,6 +22,15 @@
       "blurb": "ดูโจทย์ทุกข้อที่แสดงสีตามความแม่นยำของคุณ"
     }
   },
+  "summary": {
+    "heading": "ความคืบหน้าของคุณ",
+    "marathonLabel": "สถิติมาราธอน",
+    "blitzLabel": "สถิติบลิตซ์",
+    "noPbYet": "ยังไม่มีสถิติ",
+    "rank": "#{{rank}}",
+    "weakestHeading": "โจทย์ที่อ่อนที่สุด",
+    "chipAria": "{{problem}} ความแม่นยำ {{accuracy}}% — เปิดแผนที่ความเชี่ยวชาญ"
+  },
   "keypad": {
     "answerInputLabel": "คำตอบของคุณ",
     "backspaceAria": "ลบ",

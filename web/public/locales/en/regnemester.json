@@ -22,6 +22,15 @@
       "blurb": "See every fact colour-coded by how well you know it."
     }
   },
+  "summary": {
+    "heading": "Your progress",
+    "marathonLabel": "Marathon best",
+    "blitzLabel": "Blitz best",
+    "noPbYet": "No PB yet",
+    "rank": "#{{rank}}",
+    "weakestHeading": "Weakest facts",
+    "chipAria": "{{problem}}, {{accuracy}}% accuracy — open the mastery heatmap"
+  },
   "keypad": {
     "answerInputLabel": "Your answer",
     "backspaceAria": "Backspace",
