@@ -1,6 +1,7 @@
 {
   "title": "แชท",
   "newChat": "แชทใหม่",
+  "jumpToLatest": "ไปยังข้อความล่าสุด",
   "empty": {
     "noConversations": "ยังไม่มีการสนทนา",
     "startNew": "เริ่มแชทใหม่เพื่อเริ่มต้น"
