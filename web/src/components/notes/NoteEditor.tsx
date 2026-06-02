@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useState } from 'react'
+import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -74,12 +74,19 @@ const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(function NoteEd
 
   // Expose save() so the page-level Cmd/Ctrl+S shortcut can persist the draft.
   // Mirror the Save button's disabled state so the shortcut is a no-op when
-  // there is nothing to save or a save is already in flight.
+  // there is nothing to save or a save is already in flight. The handle is
+  // kept stable but defers to a ref that is refreshed every render, so the
+  // shortcut always saves the *current* draft rather than a stale closure
+  // captured the first time `hasChanges`/`saving` changed.
+  const saveRef = useRef(() => {})
+  saveRef.current = () => {
+    if (!saving && hasChanges) handleSave()
+  }
   useImperativeHandle(ref, () => ({
     save() {
-      if (!saving && hasChanges) handleSave()
+      saveRef.current()
     },
-  }), [saving, hasChanges])
+  }), [])
 
   return (
     <>
