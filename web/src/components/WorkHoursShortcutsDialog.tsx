@@ -2,22 +2,16 @@ import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogHeader, DialogBody } from './ui/dialog'
 
-interface ShortcutRow {
-  keys: string[]
-  labelKey: string
-}
-
-// Each row lists the key(s) that trigger the action; multiple keys are alternatives.
-const SHORTCUTS: ShortcutRow[] = [
-  { keys: ['P'], labelKey: 'shortcuts.punch' },
-  { keys: ['J', '←'], labelKey: 'shortcuts.prevDay' },
-  { keys: ['K', '→'], labelKey: 'shortcuts.nextDay' },
-  { keys: ['T'], labelKey: 'shortcuts.today' },
-  { keys: ['1'], labelKey: 'shortcuts.viewDay' },
-  { keys: ['2'], labelKey: 'shortcuts.viewWeek' },
-  { keys: ['3'], labelKey: 'shortcuts.viewMonth' },
-  { keys: ['4'], labelKey: 'shortcuts.viewSettings' },
-  { keys: ['?'], labelKey: 'shortcuts.help' },
+const SHORTCUTS = [
+  { keys: ['P'], labelKey: 'shortcuts.punch' as const },
+  { keys: ['J', '←'], labelKey: 'shortcuts.prevDay' as const },
+  { keys: ['K', '→'], labelKey: 'shortcuts.nextDay' as const },
+  { keys: ['T'], labelKey: 'shortcuts.today' as const },
+  { keys: ['1'], labelKey: 'shortcuts.viewDay' as const },
+  { keys: ['2'], labelKey: 'shortcuts.viewWeek' as const },
+  { keys: ['3'], labelKey: 'shortcuts.viewMonth' as const },
+  { keys: ['4'], labelKey: 'shortcuts.viewSettings' as const },
+  { keys: ['?'], labelKey: 'shortcuts.help' as const },
 ]
 
 interface WorkHoursShortcutsDialogProps {
