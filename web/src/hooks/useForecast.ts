@@ -30,9 +30,15 @@ function reducer(state: State, action: Action): State {
 }
 
 const cache = new Map<string, ForecastResponse>()
+const inflight = new Map<string, Promise<ForecastResponse>>()
 
-function cacheKey(lat: number, lon: number, name: string) {
+export function cacheKey(lat: number, lon: number, name: string) {
   return `${lat},${lon},${name}`
+}
+
+export function clearForecastCache() {
+  cache.clear()
+  inflight.clear()
 }
 
 export function useForecast(): State {
@@ -59,16 +65,24 @@ export function useForecast(): State {
 
     const controller = new AbortController()
     dispatch({ type: 'start' })
-    fetch(
-      `/api/weather/forecast?lat=${location.lat}&lon=${location.lon}&location=${encodeURIComponent(location.name)}`,
-      { signal: controller.signal, credentials: 'include' },
-    )
-      .then((r) => (r.ok ? (r.json() as Promise<ForecastResponse>) : Promise.reject()))
+
+    let promise = inflight.get(key)
+    if (!promise) {
+      promise = fetch(
+        `/api/weather/forecast?lat=${location.lat}&lon=${location.lon}&location=${encodeURIComponent(location.name)}`,
+        { signal: controller.signal, credentials: 'include' },
+      ).then((r) => (r.ok ? (r.json() as Promise<ForecastResponse>) : Promise.reject()))
+      inflight.set(key, promise)
+    }
+
+    promise
       .then((d) => {
         cache.set(key, d)
+        inflight.delete(key)
         if (mountedRef.current) dispatch({ type: 'done', data: d })
       })
       .catch(() => {
+        inflight.delete(key)
         if (!controller.signal.aborted && mountedRef.current) dispatch({ type: 'error' })
       })
     return () => controller.abort()
