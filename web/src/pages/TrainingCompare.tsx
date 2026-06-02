@@ -14,7 +14,7 @@ import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate } from '../utils/formatDate'
 import { isAutoTag, isAITag, displayTag } from '../tags'
-import type { TFunction } from 'i18next'
+import { formatDuration, formatPace } from '../utils/training'
 import type { Workout, Lap, ComparisonResult, CachedComparisonAnalysis, ComparisonAnalysisSummary } from '../types/training'
 
 function workoutOptionLabel(w: Workout): string {
@@ -25,21 +25,6 @@ function workoutOptionLabel(w: Workout): string {
   return tagPart
     ? `${w.title} — ${tagPart} — ${formatDate(w.started_at)}`
     : `${w.title} — ${formatDate(w.started_at)}`
-}
-
-function formatPace(secPerKm: number, t: TFunction<'training'>): string {
-  if (secPerKm <= 0) return '--:--'
-  let mins = Math.floor(secPerKm / 60)
-  let secs = Math.round(secPerKm % 60)
-  if (secs === 60) { mins++; secs = 0 }
-  return `${mins}:${secs.toString().padStart(2, '0')} ${t('units.pace')}`
-}
-
-function formatDuration(seconds: number): string {
-  const total = Math.round(seconds)
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${m}:${s.toString().padStart(2, '0')}`
 }
 
 function LapPicker({
@@ -89,7 +74,7 @@ function LapPicker({
               </span>
               <span className="text-gray-300">{t('compare.lapPicker.lapLabel', { number: lapNum })}</span>
               <span className="ml-auto text-gray-500 text-xs tabular-nums">
-                {formatDuration(lap.duration_seconds)} · {formatPace(lap.avg_pace_sec_per_km, t)} · {lap.avg_heart_rate > 0 ? `${lap.avg_heart_rate} ${t('units.bpm')}` : '-'}
+                {formatDuration(lap.duration_seconds, t)} · {formatPace(lap.avg_pace_sec_per_km, t)} · {lap.avg_heart_rate > 0 ? `${lap.avg_heart_rate} ${t('units.bpm')}` : '-'}
               </span>
             </button>
           )

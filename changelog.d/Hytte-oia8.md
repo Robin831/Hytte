@@ -1,0 +1,2 @@
+category: Changed
+- **Unified Training distance/pace/duration formatting** - Consolidated the duplicated `formatDistance`, `formatPace`, and `formatDuration` helpers that were independently re-implemented across the Training pages into a single shared `web/src/utils/training.ts` module. Distances now use a consistent two-decimal kilometer format everywhere (fixing the previous 1-vs-2 fraction-digit divergence on the workout list). (Hytte-oia8)
