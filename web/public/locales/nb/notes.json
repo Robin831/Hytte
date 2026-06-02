@@ -37,6 +37,12 @@
     "description": "Velg et notat fra listen, eller opprett et nytt."
   },
   "confirmDelete": "Slette «{{title}}»?",
+  "discardConfirm": {
+    "title": "Forkaste ulagrede endringer?",
+    "message": "Du har ulagrede endringer som vil gå tapt.",
+    "confirm": "Forkast",
+    "cancel": "Fortsett å redigere"
+  },
   "errors": {
     "failedToLoad": "Kunne ikke laste notater",
     "failedToCreate": "Kunne ikke opprette notat",

@@ -26,19 +26,25 @@ export default function Notes() {
   const [selectedNote, setSelectedNote] = useState<Note | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Note | null>(null)
+  // True when the open editor holds unsaved changes (reported by NoteEditor).
+  const [isDirty, setIsDirty] = useState(false)
+  // Holds the transition to run if the user confirms discarding their draft.
+  // Stored as `() => fn` so React doesn't treat it as a lazy state initializer.
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
+  const showDiscardConfirm = pendingAction !== null
 
   const { notes, allTags, loading, error, save, remove, clearError } = useNotes(debouncedSearch, activeTag)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const editorRef = useRef<NoteEditorHandle>(null)
 
-  function openNote(note: Note) {
+  function doOpenNote(note: Note) {
     setSelectedNote(note)
     setIsCreating(false)
     clearError()
   }
 
-  const startCreating = useCallback(() => {
+  const doStartCreating = useCallback(() => {
     setSelectedNote(null)
     setIsCreating(true)
     clearError()
@@ -71,10 +77,37 @@ export default function Notes() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [startCreating])
 
-  function closeEditor() {
+  function doCloseEditor() {
     setSelectedNote(null)
     setIsCreating(false)
     clearError()
+  }
+
+  // Run `action` immediately when the draft is clean, otherwise stash it behind
+  // the discard-changes confirmation dialog so unsaved work isn't lost silently.
+  function guardDirty(action: () => void) {
+    if (isDirty) {
+      setPendingAction(() => action)
+    } else {
+      action()
+    }
+  }
+
+  function openNote(note: Note) {
+    guardDirty(() => doOpenNote(note))
+  }
+
+  function startCreating() {
+    guardDirty(doStartCreating)
+  }
+
+  function closeEditor() {
+    guardDirty(doCloseEditor)
+  }
+
+  function confirmDiscard() {
+    pendingAction?.()
+    setPendingAction(null)
   }
 
   async function handleSave(input: NoteInput): Promise<Note | null> {
@@ -102,6 +135,15 @@ export default function Notes() {
       onConfirm={() => deleteTarget && handleDelete(deleteTarget)}
       title={t('editor.deleteNote')}
       message={deleteTarget ? t('confirmDelete', { title: deleteTarget.title || t('untitled') }) : undefined}
+    />
+    <ConfirmDialog
+      open={showDiscardConfirm}
+      onClose={() => setPendingAction(null)}
+      onConfirm={confirmDiscard}
+      title={t('discardConfirm.title')}
+      message={t('discardConfirm.message')}
+      confirmLabel={t('discardConfirm.confirm')}
+      cancelLabel={t('discardConfirm.cancel')}
     />
     <div className="flex h-[calc(100vh-3.5rem)] md:h-screen overflow-hidden">
       {/* Left panel — note list */}
@@ -235,6 +277,7 @@ export default function Notes() {
             onSave={handleSave}
             onDelete={note => setDeleteTarget(note)}
             onClose={closeEditor}
+            onDirtyChange={setIsDirty}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
