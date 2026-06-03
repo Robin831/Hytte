@@ -63,12 +63,18 @@ func ComputeSunData(lat, lon float64, date time.Time) SunData {
 	cosOmega := (math.Sin(-0.833*rad) - math.Sin(lat*rad)*math.Sin(decl)) /
 		(math.Cos(lat*rad) * math.Cos(decl))
 
+	if math.IsNaN(cosOmega) {
+		// Degenerate case (e.g. lat=±90): determine polar condition from
+		// whether the latitude and solar declination share the same sign.
+		if lat*sinDecl >= 0 {
+			return SunData{PolarDay: true, DaylightSeconds: 24 * 3600}
+		}
+		return SunData{PolarNight: true, DaylightSeconds: 0}
+	}
 	if cosOmega < -1 {
-		// The sun never reaches the sunset altitude: it stays up all day.
 		return SunData{PolarDay: true, DaylightSeconds: 24 * 3600}
 	}
 	if cosOmega > 1 {
-		// The sun never reaches the sunrise altitude: it stays down all day.
 		return SunData{PolarNight: true, DaylightSeconds: 0}
 	}
 

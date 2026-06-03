@@ -48,6 +48,7 @@ const (
 	cacheDuration       = 30 * time.Minute
 	maxResponseSize     = 2 << 20 // 2 MB
 	maxNominatimSize    = 512 << 10 // 512 KB — more than enough for 5 results
+	maxSunCacheEntries  = 1000
 )
 
 // cachedResponse holds a cached MET API response.
@@ -239,6 +240,16 @@ func (s *Service) sunDataCached(lat, lon float64) SunData {
 	data := ComputeSunData(lat, lon, localNow)
 
 	s.sunMu.Lock()
+	if len(s.sunCache) >= maxSunCacheEntries {
+		for k, v := range s.sunCache {
+			if v.date != dateKey {
+				delete(s.sunCache, k)
+			}
+		}
+		if len(s.sunCache) >= maxSunCacheEntries {
+			s.sunCache = make(map[string]cachedSun)
+		}
+	}
 	s.sunCache[cacheKey] = cachedSun{data: data, date: dateKey}
 	s.sunMu.Unlock()
 

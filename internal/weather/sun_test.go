@@ -104,6 +104,63 @@ func TestComputeSunDataPolarNight(t *testing.T) {
 	}
 }
 
+func TestComputeSunDataExactPole(t *testing.T) {
+	summer := time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)
+	winter := time.Date(2026, 12, 21, 12, 0, 0, 0, time.UTC)
+
+	cases := []struct {
+		name      string
+		lat       float64
+		date      time.Time
+		wantPolar string
+	}{
+		{"north pole summer", 90, summer, "day"},
+		{"north pole winter", 90, winter, "night"},
+		{"south pole summer", -90, winter, "day"},
+		{"south pole winter", -90, summer, "night"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sun := ComputeSunData(tc.lat, 0, tc.date)
+			if tc.wantPolar == "day" {
+				if !sun.PolarDay {
+					t.Errorf("expected polar day, got %+v", sun)
+				}
+				if sun.DaylightSeconds != 24*3600 {
+					t.Errorf("expected 24h daylight, got %ds", sun.DaylightSeconds)
+				}
+			} else {
+				if !sun.PolarNight {
+					t.Errorf("expected polar night, got %+v", sun)
+				}
+				if sun.DaylightSeconds != 0 {
+					t.Errorf("expected 0s daylight, got %ds", sun.DaylightSeconds)
+				}
+			}
+			if sun.Sunrise != nil || sun.Sunset != nil {
+				t.Error("expected nil sunrise/sunset for polar condition")
+			}
+		})
+	}
+}
+
+func TestSunCacheEviction(t *testing.T) {
+	svc := NewService()
+
+	for i := range maxSunCacheEntries + 10 {
+		lat := float64(i) * 0.01
+		svc.sunDataCached(lat, 10.0)
+	}
+
+	svc.sunMu.RLock()
+	n := len(svc.sunCache)
+	svc.sunMu.RUnlock()
+
+	if n > maxSunCacheEntries {
+		t.Errorf("cache should be bounded to %d entries, got %d", maxSunCacheEntries, n)
+	}
+}
+
 func TestSunHandlerSuccess(t *testing.T) {
 	svc := NewService()
 	handler := svc.SunHandler()
