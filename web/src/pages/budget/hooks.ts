@@ -21,11 +21,10 @@ export function formatNOK(amount: number, currency?: string): string {
 }
 
 // Symbol-free number formatter for chart axes, tooltips, and plain amounts.
-// Uses the `undefined` locale to respect the browser's settings and defaults to
-// whole numbers; pass `options` to override (e.g. two fraction digits for the
-// CSV import preview).
+// Defaults to whole numbers; pass `options` to override (e.g. two fraction
+// digits for the CSV import preview).
 export function formatBudgetNumber(n: number, options?: Intl.NumberFormatOptions): string {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0, ...options }).format(n)
+  return formatNumber(n, { maximumFractionDigits: 0, ...options })
 }
 
 export interface BudgetResource<T> {
@@ -51,7 +50,8 @@ export function useBudgetResource<T>(url: string, errorMessage: string): BudgetR
 
   useEffect(() => {
     const controller = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
+    let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; cancelled flag prevents stale updates
     setLoading(true)
     setError(null)
     fetch(url, { credentials: 'include', signal: controller.signal })
@@ -59,13 +59,14 @@ export function useBudgetResource<T>(url: string, errorMessage: string): BudgetR
         if (!r.ok) throw new Error('fetch failed')
         return r.json() as Promise<T>
       })
-      .then(setData)
+      .then(body => { if (!cancelled) setData(body) })
       .catch(err => {
-        if (err instanceof Error && err.name === 'AbortError') return
+        if (cancelled) return
+        if (err && err.name === 'AbortError') return
         setError(errorMessage)
       })
-      .finally(() => setLoading(false))
-    return () => controller.abort()
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true; controller.abort() }
   }, [url, errorMessage, reloadKey])
 
   return { data, setData, loading, error, reload }
