@@ -1,4 +1,4 @@
-import { useState, useEffect, useReducer, useCallback, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useReducer, useCallback, useRef } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
@@ -90,9 +90,9 @@ function fetchReducer(state: FetchState, action: FetchAction): FetchState {
 }
 
 /** Build the initial fetch state, seeding from the per-location cache when available. */
-function initFetchState(loc: RecentLocation | null): FetchState {
+function initFetchState({ loc, userId }: { loc: RecentLocation | null; userId?: number }): FetchState {
   if (loc) {
-    const cached = readForecastCache<ForecastResponse>(loc.lat, loc.lon)
+    const cached = readForecastCache<ForecastResponse>(loc.lat, loc.lon, userId)
     if (cached) {
       return { loading: true, error: null, forecast: cached.response, lastUpdated: new Date(cached.lastUpdated) }
     }
@@ -339,7 +339,7 @@ export default function Weather() {
   // on first paint (no skeleton flash) while a fresh forecast loads in the background.
   const [{ forecast, loading, error, lastUpdated }, dispatch] = useReducer(
     fetchReducer,
-    initialState.location,
+    { loc: initialState.location, userId: user?.id },
     initFetchState,
   )
   const [, setTick] = useState(0)
@@ -493,7 +493,9 @@ export default function Weather() {
 
   // Re-seed displayed data when the active location changes: show the location's
   // cached forecast instantly, or clear to skeletons when it was never viewed.
-  useEffect(() => {
+  // useLayoutEffect runs synchronously before paint, preventing a brief flash of
+  // the previous location's forecast under the newly selected location name.
+  useLayoutEffect(() => {
     if (!selectedLocation) return
     const cached = readForecastCache<ForecastResponse>(selectedLocation.lat, selectedLocation.lon, user?.id)
     if (cached) {
