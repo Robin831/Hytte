@@ -38,7 +38,7 @@ const DEFAULT_MODEL = 'claude-sonnet-4-6'
 
 // modelLabelKey maps a model ID to its i18n label key by family so any
 // supported variant (e.g. an older Opus) still shows a friendly name.
-function modelLabelKey(model: string): string {
+function modelLabelKey(model: string): 'models.opus' | 'models.sonnet' | 'models.haiku' | '' {
   if (model.startsWith('claude-opus')) return 'models.opus'
   if (model.startsWith('claude-sonnet')) return 'models.sonnet'
   if (model.startsWith('claude-haiku')) return 'models.haiku'
