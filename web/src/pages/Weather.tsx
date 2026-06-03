@@ -555,6 +555,13 @@ export default function Weather() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLocation, locationResolved, refreshKey])
 
+  // Clear stale sun data only when the location actually changes, so a previous
+  // city's values don't linger. Background auto-refreshes (refreshKey) keep the
+  // current values visible and update them in place once the fetch resolves.
+  useEffect(() => {
+    setSun(null)
+  }, [selectedLocation])
+
   // Fetch sunrise/sunset/daylight for the selected location. Computed locally on
   // the backend and cached per day, so this is cheap and updates when the
   // location changes.
@@ -562,7 +569,6 @@ export default function Weather() {
     if (!locationResolved || !selectedLocation) return
 
     let cancelled = false
-    setSun(null)
 
     fetch(`/api/weather/sun?lat=${selectedLocation.lat}&lon=${selectedLocation.lon}`)
       .then((r) => (r.ok ? r.json() : null))
