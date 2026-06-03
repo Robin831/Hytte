@@ -8,38 +8,61 @@ import { useNews, type NewsArticle } from '../hooks/useNews'
 
 type Layout = 'timeline' | 'columns'
 type Tab = 'feed' | 'saved'
+type SortMode = 'relevance' | 'newest'
 
 const LAYOUT_KEY = 'news-layout'
+const SORT_KEY = 'news-sort'
+
+const dateMs = (a: NewsArticle) => {
+  const t = new Date(a.published_at).getTime()
+  return isNaN(t) ? 0 : t
+}
 
 export default function News() {
   const { t } = useTranslation('news')
   const {
-    articles, hidden, scored, threshold, loading, error, newCount,
+    articles, hidden, rankingEnabled, threshold, loading, error, newCount,
     reload, showNew, markRead, vote, toggleSave,
   } = useNews()
 
   const [layout, setLayout] = useState<Layout>(() =>
     (localStorage.getItem(LAYOUT_KEY) as Layout) || 'timeline')
+  const [sort, setSort] = useState<SortMode>(() =>
+    (localStorage.getItem(SORT_KEY) as SortMode) || 'relevance')
   const [tab, setTab] = useState<Tab>('feed')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [showLow, setShowLow] = useState(false)
 
   useEffect(() => { localStorage.setItem(LAYOUT_KEY, layout) }, [layout])
+  useEffect(() => { localStorage.setItem(SORT_KEY, sort) }, [sort])
 
-  // Split into main feed and a collapsed low-relevance tail (only when ranked).
+  // Relevance sort only applies when ranking is on; otherwise always newest.
+  const effectiveSort: SortMode = rankingEnabled ? sort : 'newest'
+
+  const sorted = useMemo(() => {
+    const arr = [...articles]
+    if (effectiveSort === 'relevance') {
+      arr.sort((a, b) => (b.score - a.score) || (dateMs(b) - dateMs(a)))
+    } else {
+      arr.sort((a, b) => dateMs(b) - dateMs(a))
+    }
+    return arr
+  }, [articles, effectiveSort])
+
+  // Split into main feed and a collapsed low-relevance tail (relevance sort only).
   const { main, low } = useMemo(() => {
-    if (!scored) return { main: articles, low: [] as NewsArticle[] }
+    if (effectiveSort !== 'relevance') return { main: sorted, low: [] as NewsArticle[] }
     const main: NewsArticle[] = []
     const low: NewsArticle[] = []
-    for (const a of articles) {
+    for (const a of sorted) {
       if (a.score >= 0 && a.score < threshold) low.push(a)
       else main.push(a)
     }
     return { main, low }
-  }, [articles, scored, threshold])
+  }, [sorted, effectiveSort, threshold])
 
   const cardProps = {
-    scored,
+    scored: rankingEnabled,
     onOpen: markRead,
     onVote: vote,
     onToggleSave: toggleSave,
@@ -84,7 +107,7 @@ export default function News() {
         <div className="mr-auto">
           <h1 className="text-xl font-semibold text-white">{t('title')}</h1>
           <p className="flex items-center gap-1.5 text-xs text-gray-500">
-            {scored
+            {rankingEnabled && effectiveSort === 'relevance'
               ? <><Sparkles size={12} /> {t('rankedNote')}</>
               : <><Clock size={12} /> {t('chronologicalNote')}</>}
           </p>
@@ -104,6 +127,26 @@ export default function News() {
             </button>
           ))}
         </div>
+
+        {/* sort toggle (feed only, when ranking is available) */}
+        {tab === 'feed' && rankingEnabled && (
+          <div className="flex rounded-lg border border-gray-800 p-0.5 text-sm">
+            <button
+              onClick={() => setSort('relevance')}
+              title={t('sort.relevance')}
+              className={`flex items-center gap-1 rounded-md px-2 py-1 cursor-pointer ${sort === 'relevance' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-white'}`}
+            >
+              <Sparkles size={15} /> <span className="hidden sm:inline">{t('sort.relevance')}</span>
+            </button>
+            <button
+              onClick={() => setSort('newest')}
+              title={t('sort.newest')}
+              className={`flex items-center gap-1 rounded-md px-2 py-1 cursor-pointer ${sort === 'newest' ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-white'}`}
+            >
+              <Clock size={15} /> <span className="hidden sm:inline">{t('sort.newest')}</span>
+            </button>
+          </div>
+        )}
 
         {/* layout toggle (feed only) */}
         {tab === 'feed' && (

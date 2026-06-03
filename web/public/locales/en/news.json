@@ -17,6 +17,10 @@
     "timeline": "Timeline",
     "columns": "Columns"
   },
+  "sort": {
+    "relevance": "Relevance",
+    "newest": "Newest"
+  },
   "card": {
     "more": "More like this",
     "less": "Less like this",

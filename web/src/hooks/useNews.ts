@@ -51,7 +51,8 @@ export interface NewsSettings {
 interface ArticlesResponse {
   articles: NewsArticle[]
   hidden: HiddenArticle[]
-  scored: boolean
+  ranking_enabled: boolean
+  scoring_pending: boolean
   score_threshold: number
   layout: string
   generated_at: string
@@ -59,29 +60,56 @@ interface ArticlesResponse {
 
 // How often to silently re-poll for fresh articles while the page is open.
 const REFRESH_MS = 120_000
+// When the server reports background scoring is running, refetch this soon to
+// pick up the freshly computed relevance scores.
+const SCORING_REFETCH_MS = 14_000
+// localStorage key + max age for the stale-while-revalidate cache.
+const CACHE_KEY = 'news-feed-cache-v1'
+const CACHE_MAX_AGE_MS = 30 * 60_000
+
+// readCache returns the cached feed response if present and fresh enough.
+function readCache(): ArticlesResponse | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (!raw) return null
+    const { ts, data } = JSON.parse(raw)
+    if (Date.now() - ts < CACHE_MAX_AGE_MS && data?.articles) return data as ArticlesResponse
+  } catch { /* corrupt cache — ignore */ }
+  return null
+}
 
 export function useNews() {
   const { t } = useTranslation('news')
-  const [articles, setArticles] = useState<NewsArticle[]>([])
-  const [hidden, setHidden] = useState<HiddenArticle[]>([])
-  const [scored, setScored] = useState(false)
-  const [threshold, setThreshold] = useState(25)
-  const [loading, setLoading] = useState(true)
+
+  // Hydrate initial state from the cache so re-entering the page is instant.
+  // Lazy initializers run once on first render (the blessed pattern — no ref
+  // access during render, no setState in an effect).
+  const [articles, setArticles] = useState<NewsArticle[]>(() => readCache()?.articles ?? [])
+  const [hidden, setHidden] = useState<HiddenArticle[]>(() => readCache()?.hidden ?? [])
+  const [rankingEnabled, setRankingEnabled] = useState(() => readCache()?.ranking_enabled ?? false)
+  const [threshold, setThreshold] = useState(() => readCache()?.score_threshold ?? 25)
+  const [loading, setLoading] = useState(() => readCache() === null)
   const [error, setError] = useState('')
   const [newCount, setNewCount] = useState(0)
 
   // Latest poll result not yet shown (the "N new articles" pill promotes it).
+  // knownIds is repopulated by the mount load(false) before any silent poll runs.
   const pending = useRef<ArticlesResponse | null>(null)
   const knownIds = useRef<Set<string>>(new Set())
+  const scoringTimer = useRef<number | null>(null)
+  const loadRef = useRef<(silent: boolean) => void>(() => {})
 
   const apply = useCallback((data: ArticlesResponse) => {
     setArticles(data.articles ?? [])
     setHidden(data.hidden ?? [])
-    setScored(data.scored)
+    setRankingEnabled(data.ranking_enabled)
     setThreshold(data.score_threshold)
     knownIds.current = new Set((data.articles ?? []).map(a => a.id))
     pending.current = null
     setNewCount(0)
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data }))
+    } catch { /* quota — ignore */ }
   }, [])
 
   const load = useCallback(async (silent: boolean) => {
@@ -94,11 +122,20 @@ export function useNews() {
         if (fresh.length > 0) {
           pending.current = data
           setNewCount(fresh.length)
+        } else {
+          // No new articles, but scores may have changed — refresh in place.
+          apply(data)
         }
       } else {
         apply(data)
       }
       setError('')
+      // If the server is still scoring in the background, refetch soon so the
+      // relevance scores appear without waiting for the full poll interval.
+      if (data.scoring_pending) {
+        if (scoringTimer.current) window.clearTimeout(scoringTimer.current)
+        scoringTimer.current = window.setTimeout(() => loadRef.current(true), SCORING_REFETCH_MS)
+      }
     } catch (err) {
       if (!silent) setError(err instanceof Error ? err.message : t('errors.load'))
     } finally {
@@ -106,11 +143,16 @@ export function useNews() {
     }
   }, [apply, t])
 
-  // Initial load + background polling.
+  // Revalidate on mount, then poll. (Cache hydration happens in the initial
+  // state above, so there's no synchronous setState here.)
   useEffect(() => {
+    loadRef.current = load
     load(false)
     const id = window.setInterval(() => load(true), REFRESH_MS)
-    return () => window.clearInterval(id)
+    return () => {
+      window.clearInterval(id)
+      if (scoringTimer.current) window.clearTimeout(scoringTimer.current)
+    }
   }, [load])
 
   const showNew = useCallback(() => {
@@ -160,7 +202,7 @@ export function useNews() {
   }, [patch])
 
   return {
-    articles, hidden, scored, threshold, loading, error, newCount,
+    articles, hidden, rankingEnabled, threshold, loading, error, newCount,
     reload: () => load(false), showNew, markRead, vote, toggleSave,
   }
 }

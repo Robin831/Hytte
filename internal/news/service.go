@@ -33,6 +33,10 @@ type Service struct {
 	cache map[string]cachedFeed // keyed by feed URL
 
 	group singleflight.Group
+
+	// scoring tracks users with an in-flight background scoring job so we never
+	// run two at once for the same user.
+	scoring sync.Map // userID(int64) -> struct{}
 }
 
 // NewService creates a news service with production defaults.
@@ -41,6 +45,17 @@ func NewService() *Service {
 		client: &http.Client{Timeout: fetchTimeout},
 		cache:  make(map[string]cachedFeed),
 	}
+}
+
+// tryStartScoring marks a user's background scoring job as started. It returns
+// false if one is already running for that user.
+func (s *Service) tryStartScoring(userID int64) bool {
+	_, loaded := s.scoring.LoadOrStore(userID, struct{}{})
+	return !loaded
+}
+
+func (s *Service) finishScoring(userID int64) {
+	s.scoring.Delete(userID)
 }
 
 // fetchSource returns articles for one source, using the cache when warm and

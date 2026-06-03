@@ -17,6 +17,10 @@
     "timeline": "Tidslinje",
     "columns": "Kolonner"
   },
+  "sort": {
+    "relevance": "Relevans",
+    "newest": "Nyeste"
+  },
   "card": {
     "more": "Mer som dette",
     "less": "Mindre som dette",

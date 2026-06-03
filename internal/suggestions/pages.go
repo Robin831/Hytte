@@ -77,6 +77,19 @@ var Pages = []Page{
 		FeatureFlag: "calendar",
 	},
 	{
+		Slug:        "news",
+		Title:       "News",
+		Route:       "/news",
+		Description: "Aggregates Norwegian RSS sources into one feed with keyword/category/paywall filtering, cross-source de-duplication, AI relevance ranking, save-for-later and read tracking.",
+		SourceFiles: []string{
+			"web/src/pages/News.tsx",
+			"web/src/hooks/useNews.ts",
+			"internal/news/handlers.go",
+			"internal/news/service.go",
+		},
+		FeatureFlag: "news",
+	},
+	{
 		Slug:        "notes",
 		Title:       "Notes",
 		Route:       "/notes",

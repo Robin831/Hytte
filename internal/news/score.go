@@ -18,8 +18,10 @@ const scoreModel = "claude-haiku-4-5-20251001"
 // this keeps its previous/neutral score until a later refresh.
 const maxScorePerRefresh = 40
 
-// scoreTimeout caps the ranking CLI call.
-const scoreTimeout = 45 * time.Second
+// scoreBackgroundTimeout caps the background ranking CLI call. The Claude CLI
+// starts an agent session (loading project context) before answering, so a
+// single Haiku call is ~10-20s; this leaves generous headroom.
+const scoreBackgroundTimeout = 110 * time.Second
 
 type scoreResult struct {
 	Idx    int    `json:"idx"`
@@ -45,9 +47,7 @@ func scoreArticles(ctx context.Context, cfg *training.ClaudeConfig, profile Prof
 
 	prompt := buildScorePrompt(profile, toScore)
 
-	ctx, cancel := context.WithTimeout(ctx, scoreTimeout)
-	defer cancel()
-
+	// The caller owns the deadline (background jobs use scoreBackgroundTimeout).
 	raw, err := training.RunPrompt(ctx, &c, prompt)
 	if err != nil {
 		return nil, err
@@ -81,7 +81,11 @@ func scoreArticles(ctx context.Context, cfg *training.ClaudeConfig, profile Prof
 
 func buildScorePrompt(profile Profile, articles []Article) string {
 	var b strings.Builder
-	b.WriteString("You are a personal news ranker. Score each headline 0-100 for how likely THIS reader wants to read it. ")
+	// The CLI runs as an agent that may load project context and try to be
+	// conversational; the framing below keeps it acting as a pure JSON endpoint.
+	b.WriteString("TASK: You are a JSON-only news-ranking function. This is a data task — do NOT ask questions, ")
+	b.WriteString("do NOT add commentary, do NOT mention any project. Output only the JSON described at the end.\n\n")
+	b.WriteString("Score each headline 0-100 for how likely THIS reader wants to read it. ")
 	b.WriteString("100 = highly relevant to their taste, 0 = they would skip it. ")
 	b.WriteString("Reward concrete, substantive Norwegian/Nordic and tech/gaming news; ")
 	b.WriteString("penalise celebrity gossip, clickbait, sports trivia, and repetitive politics unless it matches their likes.\n\n")

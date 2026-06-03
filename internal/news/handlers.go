@@ -13,11 +13,17 @@ import (
 	"github.com/Robin831/Hytte/internal/training"
 )
 
-const maxHidden = 120 // cap audit-drawer payload size
+const (
+	maxHidden     = 120            // cap audit-drawer payload size
+	maxArticleAge = 48 * time.Hour // drop anything older than this
+	maxArticles   = 100            // cap the returned feed size
+)
 
 // ArticlesHandler fetches all enabled sources, applies the user's hard filters
-// and de-duplication, optionally ranks the survivors with the LLM, and returns
-// the assembled feed plus the audit list of what was hidden.
+// and de-duplication, caps the result by age and count, applies any cached
+// relevance scores, and returns the feed immediately. Computing missing scores
+// happens in the background (see applyRanking) so the page never blocks on the
+// Claude CLI.
 func (s *Service) ArticlesHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -32,6 +38,16 @@ func (s *Service) ArticlesHandler(db *sql.DB) http.HandlerFunc {
 		raw := s.FetchAll(r.Context(), settings.Sources)
 		visible, hidden := applyFilters(raw, settings)
 		visible = dedupe(visible)
+		visible = withinAge(visible, maxArticleAge)
+
+		// Canonical order is newest-first; the client re-sorts by relevance when
+		// the user picks that mode. Cap after sorting so we keep the newest.
+		sort.SliceStable(visible, func(i, j int) bool {
+			return visible[i].PublishedAt.After(visible[j].PublishedAt)
+		})
+		if len(visible) > maxArticles {
+			visible = visible[:maxArticles]
+		}
 
 		// Per-user overlays.
 		readSet, _ := ReadSet(db, user.ID)
@@ -44,12 +60,10 @@ func (s *Service) ArticlesHandler(db *sql.DB) http.HandlerFunc {
 			a.Feedback = fbMap[a.ID]
 		}
 
-		scored := false
+		rankingEnabled, scoringPending := false, false
 		if settings.LLMScoring {
-			scored = s.rankArticles(r.Context(), db, user.ID, visible)
+			rankingEnabled, scoringPending = s.applyRanking(db, user.ID, visible)
 		}
-
-		sortFeed(visible, scored)
 
 		if len(hidden) > maxHidden {
 			hidden = hidden[:maxHidden]
@@ -58,7 +72,9 @@ func (s *Service) ArticlesHandler(db *sql.DB) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"articles":        visible,
 			"hidden":          hidden,
-			"scored":          scored,
+			"ranking_enabled": rankingEnabled,
+			"scoring_pending": scoringPending,
+			"scored":          rankingEnabled, // legacy alias
 			"score_threshold": settings.ScoreThreshold,
 			"layout":          settings.Layout,
 			"generated_at":    time.Now().UTC().Format(time.RFC3339),
@@ -66,22 +82,24 @@ func (s *Service) ArticlesHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// rankArticles fills in Score/ScoreReason on the articles in place, using cached
-// scores where valid and asking the LLM for the rest. Returns whether scoring
-// actually ran (Claude enabled and reachable).
-func (s *Service) rankArticles(ctx context.Context, db *sql.DB, userID int64, articles []Article) bool {
+// applyRanking fills in any cached scores synchronously and, if some articles
+// are still unscored, kicks off a background scoring job. It returns whether
+// ranking is enabled (Claude available) and whether a background job was
+// started this request (so the client knows to refetch shortly).
+func (s *Service) applyRanking(db *sql.DB, userID int64, articles []Article) (enabled, pending bool) {
 	cfg, err := training.LoadClaudeConfig(db, userID)
 	if err != nil || !cfg.Enabled {
-		return false
+		return false, false
 	}
 
 	profile, err := GetProfile(db, userID)
 	if err != nil {
 		log.Printf("news: load profile: %v", err)
-		return false
+		return true, false
 	}
 
 	cached, _ := GetScores(db, userID, profile.Version)
+	applyScores(articles, cached)
 
 	var toScore []Article
 	for _, a := range articles {
@@ -89,27 +107,37 @@ func (s *Service) rankArticles(ctx context.Context, db *sql.DB, userID int64, ar
 			toScore = append(toScore, a)
 		}
 	}
+	if len(toScore) == 0 {
+		return true, false
+	}
+	if !s.tryStartScoring(userID) {
+		return true, false // a job is already running for this user
+	}
+
+	snap := make([]Article, len(toScore))
+	copy(snap, toScore)
+	go s.scoreInBackground(db, userID, cfg, profile, snap)
+	return true, true
+}
+
+// scoreInBackground scores articles off the request path and persists the
+// results, which the next feed fetch will pick up from the cache.
+func (s *Service) scoreInBackground(db *sql.DB, userID int64, cfg *training.ClaudeConfig, profile Profile, toScore []Article) {
+	defer s.finishScoring(userID)
+
+	ctx, cancel := context.WithTimeout(context.Background(), scoreBackgroundTimeout)
+	defer cancel()
 
 	fresh, err := scoreArticles(ctx, cfg, profile, toScore)
 	if err != nil {
-		log.Printf("news: scoring failed: %v", err)
-		// Still apply whatever was cached.
-		applyScores(articles, cached)
-		return len(cached) > 0
+		log.Printf("news: background scoring failed: %v", err)
+		return
 	}
 	if err := SaveScores(db, userID, profile.Version, fresh); err != nil {
 		log.Printf("news: save scores: %v", err)
+		return
 	}
-
-	merged := cached
-	if merged == nil {
-		merged = map[string]ScoreEntry{}
-	}
-	for id, e := range fresh {
-		merged[id] = e
-	}
-	applyScores(articles, merged)
-	return true
+	log.Printf("news: scored %d articles for user %d", len(fresh), userID)
 }
 
 func applyScores(articles []Article, scores map[string]ScoreEntry) {
@@ -121,16 +149,17 @@ func applyScores(articles []Article, scores map[string]ScoreEntry) {
 	}
 }
 
-// sortFeed orders the feed. When scored, relevance comes first (unscored items,
-// Score == -1, sort to the bottom of the scored block but above nothing else);
-// ties and the unscored fall back to newest-first.
-func sortFeed(articles []Article, scored bool) {
-	sort.SliceStable(articles, func(i, j int) bool {
-		if scored && articles[i].Score != articles[j].Score {
-			return articles[i].Score > articles[j].Score
+// withinAge drops articles older than maxAge. Articles with an unknown
+// (zero) publish time are kept rather than silently discarded.
+func withinAge(articles []Article, maxAge time.Duration) []Article {
+	cutoff := time.Now().Add(-maxAge)
+	out := articles[:0]
+	for _, a := range articles {
+		if a.PublishedAt.IsZero() || a.PublishedAt.After(cutoff) {
+			out = append(out, a)
 		}
-		return articles[i].PublishedAt.After(articles[j].PublishedAt)
-	})
+	}
+	return out
 }
 
 // MarkReadHandler records that an article was opened.

@@ -1,0 +1,2 @@
+category: Changed
+- **News feed loads instantly** - Relevance scoring now runs in the background instead of blocking the page, so the feed renders immediately. The page also caches the last result in the browser (stale-while-revalidate) for instant re-entry, and refetches shortly after to pick up freshly computed scores. Added a Relevance/Newest sort toggle, capped the feed to the last 48 hours / 100 articles, and registered the News page with the AI suggestions engine.
