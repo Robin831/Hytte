@@ -12,8 +12,10 @@ const (
 
 // GroceryEvent is a single mutation pushed to subscribers of a household's list.
 // Payload carries the minimal data the client needs to patch local state:
-//   - item_added / item_changed / item_reordered: the affected GroceryItem
-//   - item_removed: a struct with the removed item's ID(s)
+//   - item_added: the full GroceryItem
+//   - item_changed: {"id": <int>, "checked": <bool>}
+//   - item_reordered: {"id": <int>, "sort_order": <int>}
+//   - item_removed: {"ids": [<int>, ...]}
 type GroceryEvent struct {
 	Type    string `json:"type"`
 	Payload any    `json:"payload"`

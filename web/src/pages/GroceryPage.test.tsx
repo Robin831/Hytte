@@ -25,6 +25,7 @@ const TRANSLATIONS: Record<string, string> = {
   'errors.failedToUpdate': 'Failed to update item',
   'errors.failedToClear': 'Failed to clear completed items',
   'errors.failedToTranslate': 'Failed to translate voice input',
+  'errors.failedToStartRecording': 'Failed to start recording',
   'common:actions.close': 'Close',
 }
 
@@ -48,6 +49,27 @@ const authState: { user: object | null } = { user: null }
 vi.mock('../auth', () => ({
   useAuth: () => authState,
 }))
+
+// ── EventSource mock ─────────────────────────────────────────────────────
+// The SSE subscription effect creates an EventSource; happy-dom doesn't
+// provide one. Re-stubbed in beforeEach because afterEach calls
+// vi.unstubAllGlobals().
+
+class MockEventSource {
+  static readonly CONNECTING = 0
+  static readonly OPEN = 1
+  static readonly CLOSED = 2
+  readonly CONNECTING = 0
+  readonly OPEN = 1
+  readonly CLOSED = 2
+  readyState = MockEventSource.OPEN
+  onopen: (() => void) | null = null
+  onerror: (() => void) | null = null
+  close = vi.fn(() => { this.readyState = MockEventSource.CLOSED })
+  addEventListener = vi.fn()
+}
+
+beforeEach(() => { vi.stubGlobal('EventSource', MockEventSource) })
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -332,7 +354,7 @@ describe('GroceryPage – voice input', () => {
     })
   })
 
-  it('shows errors.failedToTranslate and stays not-recording when start() throws', async () => {
+  it('shows errors.failedToStartRecording and stays not-recording when start() throws', async () => {
     authState.user = { id: 1 }
     const MockRecognition = makeMockRecognitionClass(() => { throw new Error('permission denied') })
     vi.stubGlobal('SpeechRecognition', MockRecognition)
@@ -344,7 +366,7 @@ describe('GroceryPage – voice input', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Start voice input' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Failed to translate voice input')
+      expect(screen.getByRole('alert')).toHaveTextContent('Failed to start recording')
     })
     // Button should be back to start state (not recording)
     expect(screen.getByRole('button', { name: 'Start voice input' })).toBeInTheDocument()

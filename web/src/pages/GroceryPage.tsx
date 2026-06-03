@@ -91,7 +91,9 @@ export default function GroceryPage() {
 
     const resync = () => {
       fetchItems()
-        .then(fetched => setItems(fetched))
+        .then(fetched => {
+          if (source.readyState !== EventSource.CLOSED) setItems(fetched)
+        })
         .catch(() => { /* a failed resync is retried on the next reconnect */ })
     }
 
@@ -104,7 +106,13 @@ export default function GroceryPage() {
     }
 
     const on = (name: string, handler: (data: unknown) => void) =>
-      source.addEventListener(name, e => handler(JSON.parse((e as MessageEvent).data)))
+      source.addEventListener(name, e => {
+        try {
+          handler(JSON.parse((e as MessageEvent).data))
+        } catch {
+          // Malformed payload — ignore; the next reconnect resyncs full state.
+        }
+      })
 
     on('item_added', data => {
       const item = data as GroceryItem

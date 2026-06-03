@@ -240,6 +240,10 @@ func HandleClearCompleted(db *sql.DB) http.HandlerFunc {
 // close the idle connection. The subscription is released when the client
 // disconnects (r.Context().Done()), preventing goroutine/connection leaks.
 func HandleEvents(db *sql.DB) http.HandlerFunc {
+	return handleEventsWithBroker(db, DefaultBroker)
+}
+
+func handleEventsWithBroker(db *sql.DB, broker *Broker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
@@ -249,7 +253,7 @@ func HandleEvents(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		events, unsubscribe := DefaultBroker.Subscribe(user.ID)
+		events, unsubscribe := broker.Subscribe(user.ID)
 		defer unsubscribe()
 
 		w.Header().Set("Content-Type", "text/event-stream")
