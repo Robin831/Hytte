@@ -1,4 +1,4 @@
-import { useState, useEffect, useReducer, useCallback, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useReducer, useCallback, useRef } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
@@ -13,6 +13,7 @@ import {
   buildDefaultLocations,
 } from '../recentLocations'
 import LocationSearch from '../components/LocationSearch'
+import { readForecastCache, writeForecastCache } from '../lib/weatherCache'
 import { getWeatherIcon, getWeatherDescription } from '../weatherUtils'
 import { formatDate, formatTime } from '../utils/formatDate'
 import {
@@ -72,14 +73,31 @@ type FetchAction =
   | { type: 'start' }
   | { type: 'success'; data: ForecastResponse }
   | { type: 'error'; message: string }
+  // Seed displayed data from a cached response (stale-while-revalidate).
+  | { type: 'seed'; data: ForecastResponse; lastUpdated: Date }
+  // Clear displayed data so skeletons show (location with no cached forecast).
+  | { type: 'reset' }
 
 function fetchReducer(state: FetchState, action: FetchAction): FetchState {
   switch (action.type) {
     case 'start': return { ...state, loading: true, error: null }
     case 'success': return { loading: false, error: null, forecast: action.data, lastUpdated: new Date() }
     case 'error': return { loading: false, error: action.message, forecast: state.forecast, lastUpdated: state.lastUpdated }
+    case 'seed': return { loading: true, error: null, forecast: action.data, lastUpdated: action.lastUpdated }
+    case 'reset': return { loading: true, error: null, forecast: null, lastUpdated: null }
     default: return state
   }
+}
+
+/** Build the initial fetch state, seeding from the per-location cache when available. */
+function initFetchState({ loc, userId }: { loc: RecentLocation | null; userId?: number }): FetchState {
+  if (loc) {
+    const cached = readForecastCache<ForecastResponse>(loc.lat, loc.lon, userId)
+    if (cached) {
+      return { loading: true, error: null, forecast: cached.response, lastUpdated: new Date(cached.lastUpdated) }
+    }
+  }
+  return { loading: true, error: null, forecast: null, lastUpdated: null }
 }
 
 const AUTO_REFRESH_MS = 10 * 60 * 1000 // 10 minutes
@@ -317,12 +335,13 @@ export default function Weather() {
       cancelled = true
     }
   }, [])
-  const [{ forecast, loading, error, lastUpdated }, dispatch] = useReducer(fetchReducer, {
-    loading: true,
-    error: null,
-    forecast: null,
-    lastUpdated: null,
-  })
+  // Seed the reducer from the per-location cache so a revisit renders real numbers
+  // on first paint (no skeleton flash) while a fresh forecast loads in the background.
+  const [{ forecast, loading, error, lastUpdated }, dispatch] = useReducer(
+    fetchReducer,
+    { loc: initialState.location, userId: user?.id },
+    initFetchState,
+  )
   const [, setTick] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -472,6 +491,24 @@ export default function Weather() {
     [saveState],
   )
 
+  // Re-seed displayed data when the active location changes: show the location's
+  // cached forecast instantly, or clear to skeletons when it was never viewed.
+  // useLayoutEffect runs synchronously before paint, preventing a brief flash of
+  // the previous location's forecast under the newly selected location name.
+  useLayoutEffect(() => {
+    if (!selectedLocation) return
+    const cached = readForecastCache<ForecastResponse>(selectedLocation.lat, selectedLocation.lon, user?.id)
+    if (cached) {
+      dispatch({ type: 'seed', data: cached.response, lastUpdated: new Date(cached.lastUpdated) })
+    } else {
+      dispatch({ type: 'reset' })
+    }
+    // Key on coordinates + user so reconciling the location object (same lat/lon,
+    // new reference) does not spuriously clear freshly fetched data, and switching
+    // accounts reads from the correct user-scoped cache.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLocation?.lat, selectedLocation?.lon, user?.id])
+
   // Fetch forecast once we know the correct location.
   useEffect(() => {
     if (!locationResolved || !selectedLocation) return
@@ -485,7 +522,10 @@ export default function Weather() {
         return r.json()
       })
       .then((data) => {
-        if (!cancelled) dispatch({ type: 'success', data })
+        if (cancelled) return
+        dispatch({ type: 'success', data })
+        // Persist/refresh this location's cache so future revisits render instantly.
+        writeForecastCache(selectedLocation.lat, selectedLocation.lon, data, user?.id)
       })
       .catch((err) => {
         if (!cancelled) dispatch({ type: 'error', message: err.message })
@@ -494,6 +534,8 @@ export default function Weather() {
     return () => {
       cancelled = true
     }
+    // user?.id is read only for cache-key scoping, not to trigger a re-fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLocation, locationResolved, refreshKey])
 
   // Auto-refresh every 10 minutes, pausing when the tab is hidden.
@@ -607,7 +649,7 @@ export default function Weather() {
         </div>
       )}
 
-      {error && (
+      {error && !forecast && (
         <div className="bg-red-900/30 border border-red-800 rounded-xl p-4 mb-6">
           <p className="text-red-400 text-sm">{error}</p>
         </div>
