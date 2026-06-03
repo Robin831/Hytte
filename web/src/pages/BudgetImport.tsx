@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Upload, ChevronLeft, AlertCircle, CheckCircle, Loader2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { formatBudgetNumber } from './budget/hooks'
 
 // Column mapping: -1 means "not mapped"
 interface ColumnMapping {
@@ -144,11 +145,6 @@ export default function BudgetImport() {
       setLoading(false)
     }
   }
-
-  const fmt = useMemo(
-    () => new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-    [],
-  )
 
   const goodRows = rows.filter(r => !r.error)
   const badRows = rows.filter(r => r.error)
@@ -364,7 +360,7 @@ export default function BudgetImport() {
                     <td className="px-3 py-2 text-gray-300 whitespace-nowrap">{row.date}</td>
                     <td className="px-3 py-2 text-gray-300 max-w-xs truncate">{row.description}</td>
                     <td className={`px-3 py-2 text-right whitespace-nowrap font-mono ${row.amount < 0 ? 'text-red-400' : 'text-green-400'}`}>
-                      {fmt.format(row.amount)}
+                      {formatBudgetNumber(row.amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                     <td className="px-3 py-2">
                       {row.error ? (
