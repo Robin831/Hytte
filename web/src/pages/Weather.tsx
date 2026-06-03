@@ -358,7 +358,9 @@ export default function Weather() {
     { loc: initialState.location, userId: user?.id },
     initFetchState,
   )
-  const [sun, setSun] = useState<SunResponse | null>(null)
+  const [sunEntry, setSunEntry] = useState<{ data: SunResponse; locationKey: string } | null>(null)
+  const currentLocKey = selectedLocation ? `${selectedLocation.lat},${selectedLocation.lon}` : null
+  const sun = sunEntry && sunEntry.locationKey === currentLocKey ? sunEntry.data : null
   const [, setTick] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -555,13 +557,6 @@ export default function Weather() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLocation, locationResolved, refreshKey])
 
-  // Clear stale sun data only when the location actually changes, so a previous
-  // city's values don't linger. Background auto-refreshes (refreshKey) keep the
-  // current values visible and update them in place once the fetch resolves.
-  useEffect(() => {
-    setSun(null)
-  }, [selectedLocation])
-
   // Fetch sunrise/sunset/daylight for the selected location. Computed locally on
   // the backend and cached per day, so this is cheap and updates when the
   // location changes.
@@ -569,14 +564,16 @@ export default function Weather() {
     if (!locationResolved || !selectedLocation) return
 
     let cancelled = false
+    const locKey = `${selectedLocation.lat},${selectedLocation.lon}`
 
     fetch(`/api/weather/sun?lat=${selectedLocation.lat}&lon=${selectedLocation.lon}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (!cancelled && data) setSun(data as SunResponse)
+        if (!cancelled) {
+          setSunEntry(data ? { data: data as SunResponse, locationKey: locKey } : null)
+        }
       })
       .catch((err) => {
-        // Sun data is supplementary; failures must not break the page.
         console.warn('Failed to fetch sun data:', err)
       })
 
