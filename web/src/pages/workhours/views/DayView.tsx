@@ -24,11 +24,15 @@ export default function DayView({
   setCurrentDate,
   onNavigateToSettings,
   punchToggleRef,
+  pendingPunch,
+  onPunchConsumed,
 }: {
   currentDate: string
   setCurrentDate: (d: string | ((prev: string) => string)) => void
   onNavigateToSettings: () => void
   punchToggleRef?: RefObject<(() => void) | null>
+  pendingPunch?: boolean
+  onPunchConsumed?: () => void
 }) {
   const { t } = useTranslation(['workhours', 'common'])
   const api = useWorkHoursApi()
@@ -438,21 +442,31 @@ export default function DayView({
     }
   }
 
+  const latestPunchRef = useRef({ handlePunchIn, handlePunchOut, saving, punchStart })
+
   useEffect(() => {
-    if (!punchToggleRef) return
-    punchToggleRef.current = () => {
-      if (punchStart === null) {
-        handlePunchIn()
-      } else {
-        handlePunchOut()
-      }
-    }
+    latestPunchRef.current = { handlePunchIn, handlePunchOut, saving, punchStart }
   })
 
   useEffect(() => {
     if (!punchToggleRef) return
+    punchToggleRef.current = () => {
+      const { saving, punchStart, handlePunchIn, handlePunchOut } = latestPunchRef.current
+      if (saving) return
+      if (punchStart === null) handlePunchIn()
+      else handlePunchOut()
+    }
     return () => { punchToggleRef.current = null }
   }, [punchToggleRef])
+
+  useEffect(() => {
+    if (!pendingPunch) return
+    const { saving, punchStart, handlePunchIn, handlePunchOut } = latestPunchRef.current
+    if (saving) return
+    if (punchStart === null) handlePunchIn()
+    else handlePunchOut()
+    onPunchConsumed?.()
+  }, [pendingPunch, onPunchConsumed])
 
   const handleEditPunchStart = async (newTime: string) => {
     if (!newTime || !punchStart || newTime === punchStart) return

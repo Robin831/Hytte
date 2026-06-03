@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Settings } from 'lucide-react'
-import { buildNavHolidaySet, getInitialDate, prevWeekday, nextWeekday } from './workhours/dateUtils'
+import { buildNavHolidaySet, getInitialDate, localDateStr, prevWeekday, nextWeekday } from './workhours/dateUtils'
 import type { ViewMode } from './workhours/types'
 import DayView from './workhours/views/DayView'
 import WeekView from './workhours/views/WeekView'
@@ -23,13 +23,6 @@ export default function WorkHoursPage() {
     setCurrentDate(date)
     setActiveTab('day')
   }
-
-  useEffect(() => {
-    if (pendingPunch && punchToggleRef.current) {
-      punchToggleRef.current()
-      setPendingPunch(false)
-    }
-  }, [pendingPunch])
 
   useEffect(() => {
     function isEditableTarget(el: Element | null): boolean {
@@ -82,7 +75,7 @@ export default function WorkHoursPage() {
         case 'T':
           if (e.repeat) return
           e.preventDefault()
-          setCurrentDate(getInitialDate(buildNavHolidaySet(new Date().getFullYear())))
+          setCurrentDate(localDateStr(new Date()))
           break
         case '1':
           if (e.repeat) return
@@ -168,7 +161,7 @@ export default function WorkHoursPage() {
       </div>
 
       {activeTab === 'day' && (
-        <DayView currentDate={currentDate} setCurrentDate={setCurrentDate} onNavigateToSettings={() => setActiveTab('settings')} punchToggleRef={punchToggleRef} />
+        <DayView currentDate={currentDate} setCurrentDate={setCurrentDate} onNavigateToSettings={() => setActiveTab('settings')} punchToggleRef={punchToggleRef} pendingPunch={pendingPunch} onPunchConsumed={() => setPendingPunch(false)} />
       )}
       {activeTab === 'week' && (
         <WeekView currentDate={currentDate} setCurrentDate={setCurrentDate} onSelectDay={handleSelectDay} />
