@@ -110,7 +110,11 @@ func StreamHandler(hub *Hub, membership MembershipFn, backfill BackfillFn) http.
 						return
 					}
 					if err := writeEvent(w, backfillEvent(m, sinceID)); err != nil {
-						return
+						if err != errMarshal {
+							return
+						}
+						log.Printf("familychat: backfill marshal event for msg %d conv %d: %v", m.ID, convID, err)
+						continue
 					}
 				}
 				if len(msgs) > 0 {

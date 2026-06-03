@@ -501,7 +501,7 @@ func TestStreamHandler_ReceivesEventViaPublishRoute(t *testing.T) {
 	r.Get("/api/familychat/conversations/{id}/stream", StreamHandler(hub, mem.fn(), nil))
 	// Stub that publishes an event, standing in for a real POST /messages handler.
 	r.Post("/api/familychat/conversations/{id}/publish", func(w http.ResponseWriter, req *http.Request) {
-		hub.Publish(convID, Event{Type: EventMessageNew, Data: map[string]any{"body": "via-post"}})
+		hub.Publish(convID, Event{Type: EventMessageNew, ID: 1, Data: map[string]any{"body": "via-post"}})
 		w.WriteHeader(http.StatusNoContent)
 	})
 
