@@ -1,6 +1,7 @@
 package familychat
 
 import (
+	"database/sql"
 	"errors"
 	"strings"
 	"testing"
@@ -343,5 +344,149 @@ func TestStoreListConversations_LastMessagePreview(t *testing.T) {
 	}
 	if convos[0].LastMessagePreview == "" {
 		t.Errorf("attachment-only message should have a placeholder preview, got empty")
+	}
+}
+
+// overrideMsgTimes rewrites the created_at (and optionally edited_at/deleted_at)
+// of a message so backfill watermark logic can be tested deterministically,
+// independent of the wall clock. Empty edited/deleted strings leave that column
+// untouched.
+func overrideMsgTimes(t *testing.T, db *sql.DB, msgID int64, created, edited, deleted string) {
+	t.Helper()
+	if _, err := db.Exec(`UPDATE family_chat_messages SET created_at = ? WHERE id = ?`, created, msgID); err != nil {
+		t.Fatalf("override created_at for %d: %v", msgID, err)
+	}
+	if edited != "" {
+		if _, err := db.Exec(`UPDATE family_chat_messages SET edited_at = ? WHERE id = ?`, edited, msgID); err != nil {
+			t.Fatalf("override edited_at for %d: %v", msgID, err)
+		}
+	}
+	if deleted != "" {
+		if _, err := db.Exec(`UPDATE family_chat_messages SET deleted_at = ? WHERE id = ?`, deleted, msgID); err != nil {
+			t.Fatalf("override deleted_at for %d: %v", msgID, err)
+		}
+	}
+}
+
+func TestEventsSince_NewMessagesOnly(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "a@example.com")
+	makeUser(t, db, 2, "b@example.com")
+	conv := seedConversation(t, db, 1, "c", 2)
+
+	m1, err := CreateMessage(db, conv, 1, "one", "", "")
+	if err != nil {
+		t.Fatalf("create m1: %v", err)
+	}
+	m2, err := CreateMessage(db, conv, 2, "two", "", "")
+	if err != nil {
+		t.Fatalf("create m2: %v", err)
+	}
+	m3, err := CreateMessage(db, conv, 1, "three", "", "")
+	if err != nil {
+		t.Fatalf("create m3: %v", err)
+	}
+
+	got, err := EventsSince(db, conv, 1, m1.ID, 100)
+	if err != nil {
+		t.Fatalf("EventsSince: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 backfill messages, got %d", len(got))
+	}
+	// Ascending id order so the client replays in chronological order.
+	if got[0].ID != m2.ID || got[1].ID != m3.ID {
+		t.Fatalf("expected ids [%d %d], got [%d %d]", m2.ID, m3.ID, got[0].ID, got[1].ID)
+	}
+	if got[0].Body != "two" || got[1].Body != "three" {
+		t.Fatalf("bodies not decrypted: %q %q", got[0].Body, got[1].Body)
+	}
+	if got[0].Reactions == nil {
+		t.Errorf("expected non-nil reactions map on backfilled message")
+	}
+}
+
+func TestEventsSince_ReplaysEditAndDeleteOfOlderMessages(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "a@example.com")
+	makeUser(t, db, 2, "b@example.com")
+	conv := seedConversation(t, db, 1, "c", 2)
+
+	m1, _ := CreateMessage(db, conv, 1, "one", "", "")
+	m2, _ := CreateMessage(db, conv, 2, "two", "", "")
+	m3, _ := CreateMessage(db, conv, 1, "three", "", "")
+	m4, _ := CreateMessage(db, conv, 2, "four", "", "")
+
+	// Deterministic ordering of creation timestamps.
+	overrideMsgTimes(t, db, m1.ID, "2026-01-01T00:00:01.000Z", "", "")
+	overrideMsgTimes(t, db, m2.ID, "2026-01-01T00:00:02.000Z", "", "")
+	overrideMsgTimes(t, db, m3.ID, "2026-01-01T00:00:03.000Z", "", "")
+	overrideMsgTimes(t, db, m4.ID, "2026-01-01T00:00:04.000Z", "", "")
+
+	// Edit m1 (after the watermark) and m2 (before the watermark); delete m3
+	// (after the watermark). The resume point is m4, so its created_at (:04) is
+	// the watermark.
+	if _, err := EditMessage(db, conv, m1.ID, 1, "one-edited"); err != nil {
+		t.Fatalf("edit m1: %v", err)
+	}
+	overrideMsgTimes(t, db, m1.ID, "2026-01-01T00:00:01.000Z", "2026-01-01T00:00:10.000Z", "")
+	if _, err := EditMessage(db, conv, m2.ID, 2, "two-edited"); err != nil {
+		t.Fatalf("edit m2: %v", err)
+	}
+	overrideMsgTimes(t, db, m2.ID, "2026-01-01T00:00:02.000Z", "2026-01-01T00:00:02.500Z", "")
+	if _, err := SoftDeleteMessage(db, conv, m3.ID, 1); err != nil {
+		t.Fatalf("delete m3: %v", err)
+	}
+	overrideMsgTimes(t, db, m3.ID, "2026-01-01T00:00:03.000Z", "", "2026-01-01T00:00:11.000Z")
+
+	got, err := EventsSince(db, conv, 1, m4.ID, 100)
+	if err != nil {
+		t.Fatalf("EventsSince: %v", err)
+	}
+	// Expect m1 (edited after watermark) and m3 (deleted after watermark) only —
+	// m2's edit predates the watermark and is excluded, and there are no newer
+	// messages than m4.
+	if len(got) != 2 {
+		t.Fatalf("expected 2 backfill messages, got %d: %+v", len(got), got)
+	}
+	if got[0].ID != m1.ID || got[1].ID != m3.ID {
+		t.Fatalf("expected ids [%d %d], got [%d %d]", m1.ID, m3.ID, got[0].ID, got[1].ID)
+	}
+	if got[0].Body != "one-edited" {
+		t.Errorf("expected edited body for m1, got %q", got[0].Body)
+	}
+	if got[0].EditedAt == nil {
+		t.Errorf("expected edited_at set for m1")
+	}
+	// m3 is a tombstone: deleted_at set, body cleared.
+	if got[1].DeletedAt == nil {
+		t.Errorf("expected deleted_at set for m3")
+	}
+	if got[1].Body != "" {
+		t.Errorf("expected cleared body for tombstone m3, got %q", got[1].Body)
+	}
+}
+
+func TestEventsSince_UnknownResumeIDReturnsOnlyNewer(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "a@example.com")
+	makeUser(t, db, 2, "b@example.com")
+	conv := seedConversation(t, db, 1, "c", 2)
+
+	m1, _ := CreateMessage(db, conv, 1, "one", "", "")
+	// Edit m1 so an edited row exists; a stale/unknown resume id must NOT pull it
+	// in (no watermark → edit predicate skipped).
+	if _, err := EditMessage(db, conv, m1.ID, 1, "one-edited"); err != nil {
+		t.Fatalf("edit m1: %v", err)
+	}
+
+	// Resume from an id larger than any message: unknown row → no watermark, and
+	// id > since matches nothing.
+	got, err := EventsSince(db, conv, 1, m1.ID+9999, 100)
+	if err != nil {
+		t.Fatalf("EventsSince: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected empty backfill for unknown resume id, got %d", len(got))
 	}
 }

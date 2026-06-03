@@ -321,7 +321,7 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 		// Publish to any live SSE subscribers first so they see the message
 		// without waiting for the webpush round trip.
 		if hub != nil {
-			hub.Publish(convID, Event{Type: EventMessageNew, Data: map[string]any{"message": msg}})
+			hub.Publish(convID, Event{Type: EventMessageNew, ID: msg.ID, Data: map[string]any{"message": msg}})
 		}
 
 		// Fan webpush out to recipients who are not currently on SSE. Done
@@ -407,6 +407,7 @@ func editMessageHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 			}
 			hub.Publish(convID, Event{
 				Type: EventMessageEdited,
+				ID:   msgID,
 				Data: map[string]any{
 					"message_id":      msgID,
 					"conversation_id": convID,
@@ -472,6 +473,7 @@ func deleteMessageHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 		if hub != nil {
 			hub.Publish(convID, Event{
 				Type: EventMessageDeleted,
+				ID:   msgID,
 				Data: map[string]any{
 					"message_id":      msgID,
 					"conversation_id": convID,

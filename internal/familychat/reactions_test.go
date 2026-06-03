@@ -396,7 +396,7 @@ func TestReactionHandler_PublishesSSEEventOverHTTP(t *testing.T) {
 
 	r := chi.NewRouter()
 	r.Get("/api/familychat/conversations/{id}/stream",
-		withCtxUser(2, StreamHandler(hub, mem.fn())))
+		withCtxUser(2, StreamHandler(hub, mem.fn(), nil)))
 	r.Post("/api/familychat/conversations/{id}/messages/{messageID}/reactions",
 		withCtxUser(1, addReactionHandler(db, hub)))
 

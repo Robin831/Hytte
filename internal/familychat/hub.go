@@ -15,8 +15,15 @@ import (
 // Type is the SSE `event:` line value (e.g. "message_new"); Data is the JSON
 // payload sent on the `data:` line. Data is marshaled lazily by the SSE
 // handler so non-streaming callers do not pay the JSON cost.
+//
+// ID is the resume point for the event: the message id the SSE handler writes
+// on the `id:` line so a reconnecting browser resends it as Last-Event-ID.
+// Only message-bearing events (new/edited/deleted) set it; ephemeral events
+// (typing, read receipts, call signalling) leave it zero so they never become
+// a resume point.
 type Event struct {
 	Type string
+	ID   int64
 	Data any
 }
 

@@ -543,7 +543,7 @@ func TestCallSSE_RoundTripOverWire(t *testing.T) {
 				next.ServeHTTP(w, req.WithContext(ctx))
 			})
 		})
-		r.Get("/api/familychat/conversations/{id}/stream", StreamHandler(hub, mem.fn()))
+		r.Get("/api/familychat/conversations/{id}/stream", StreamHandler(hub, mem.fn(), nil))
 	})
 	r.Group(func(r chi.Router) {
 		r.Use(func(next http.Handler) http.Handler {

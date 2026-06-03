@@ -504,6 +504,13 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
 
     const connect = async (firstConnect: boolean) => {
       if (controller.signal.aborted) return
+      // Capture the resume point BEFORE fillGap runs. fillGap appends any new
+      // messages and bumps lastId; if we passed the post-fillGap lastId to the
+      // stream, the backfill watermark would advance past edits/deletes that
+      // happened mid-gap (older than the newest message but newer than where we
+      // actually left off), silently dropping them. The pre-gap id is the true
+      // "last seen while connected" point.
+      const resumeId = lastId
       // Skip the gap-fill on the very first connect: the initial /messages
       // fetch already covered everything up to lastId. On reconnects we
       // re-issue it so a disconnect window can't lose messages.
@@ -511,8 +518,19 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       if (controller.signal.aborted) return
       let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
       try {
+        // On reconnect, pass the last-seen message id as since_message_id so the
+        // stream replays anything missed while we were gone — not just new
+        // messages (which fillGap above already covers) but edits and deletes of
+        // older messages too, which a plain id>since fetch can't see. A native
+        // EventSource would resend this via Last-Event-ID automatically; this
+        // fetch-based reader can't set that header, so the query param carries
+        // the resume point instead. All replayed events are applied idempotently
+        // below, so overlap with fillGap (or a never-dropped event) is a no-op.
+        const streamUrl = !firstConnect && resumeId > 0
+          ? `/api/familychat/conversations/${conversationId}/stream?since_message_id=${resumeId}`
+          : `/api/familychat/conversations/${conversationId}/stream`
         const res = await fetch(
-          `/api/familychat/conversations/${conversationId}/stream`,
+          streamUrl,
           { credentials: 'include', signal: controller.signal },
         )
         if (!res.ok || !res.body) {
