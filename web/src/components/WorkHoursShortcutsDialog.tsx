@@ -38,12 +38,14 @@ function WorkHoursShortcutsDialog({ open, onClose }: WorkHoursShortcutsDialogPro
               <span className="text-sm text-gray-300">{t(s.labelKey)}</span>
               <span className="flex items-center gap-1">
                 {s.keys.map((k, i) => (
-                  <kbd
-                    key={i}
-                    className="min-w-[1.75rem] text-center rounded border border-gray-600 bg-gray-800 px-1.5 py-0.5 text-xs font-mono text-gray-200"
-                  >
-                    {k}
-                  </kbd>
+                  <span key={k} className="flex items-center gap-1">
+                    {i > 0 && <span className="text-gray-500 text-xs">/</span>}
+                    <kbd
+                      className="min-w-[1.75rem] text-center rounded border border-gray-600 bg-gray-800 px-1.5 py-0.5 text-xs font-mono text-gray-200"
+                    >
+                      {k}
+                    </kbd>
+                  </span>
                 ))}
               </span>
             </li>

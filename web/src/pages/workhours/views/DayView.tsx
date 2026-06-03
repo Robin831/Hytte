@@ -447,8 +447,12 @@ export default function DayView({
         handlePunchOut()
       }
     }
-    return () => { punchToggleRef.current = null }
   })
+
+  useEffect(() => {
+    if (!punchToggleRef) return
+    return () => { punchToggleRef.current = null }
+  }, [punchToggleRef])
 
   const handleEditPunchStart = async (newTime: string) => {
     if (!newTime || !punchStart || newTime === punchStart) return

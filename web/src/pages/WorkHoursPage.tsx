@@ -16,9 +16,7 @@ export default function WorkHoursPage() {
     getInitialDate(buildNavHolidaySet(new Date().getFullYear()))
   )
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
-  // DayView registers its punch-toggle here so the page-level `P` shortcut can
-  // invoke the exact same handler the punch button uses. Null when DayView is
-  // not mounted (i.e. another tab is active).
+  const [pendingPunch, setPendingPunch] = useState(false)
   const punchToggleRef = useRef<(() => void) | null>(null)
 
   function handleSelectDay(date: string) {
@@ -26,8 +24,13 @@ export default function WorkHoursPage() {
     setActiveTab('day')
   }
 
-  // Global keyboard shortcuts. Suppressed while typing in a field, while the
-  // TimePicker combobox or any dialog (including the cheatsheet) is focused/open.
+  useEffect(() => {
+    if (pendingPunch && punchToggleRef.current) {
+      punchToggleRef.current()
+      setPendingPunch(false)
+    }
+  }, [pendingPunch])
+
   useEffect(() => {
     function isEditableTarget(el: Element | null): boolean {
       if (!el) return false
@@ -35,31 +38,32 @@ export default function WorkHoursPage() {
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
       if ((el as HTMLElement).isContentEditable) return true
       if (el.getAttribute('role') === 'combobox') return true
+      if (tag === 'BUTTON' && el.parentElement?.querySelector('[role="combobox"]')) return true
       return false
     }
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return
       if (isEditableTarget(document.activeElement)) return
-      // Suppress every page shortcut while a dialog is open (the cheatsheet
-      // handles its own Escape/backdrop close via the Dialog component).
       if (document.querySelector('[role="dialog"]')) return
 
       const navYear = (d: string) => buildNavHolidaySet(parseInt(d.split('-')[0], 10))
 
       switch (e.key) {
         case '?':
+          if (e.repeat) return
           e.preventDefault()
           setShortcutsOpen(true)
           break
         case 'p':
         case 'P':
+          if (e.repeat) return
           e.preventDefault()
           if (punchToggleRef.current) {
             punchToggleRef.current()
           } else {
-            // DayView is where punching happens — surface it first.
             setActiveTab('day')
+            setPendingPunch(true)
           }
           break
         case 'j':
@@ -76,22 +80,27 @@ export default function WorkHoursPage() {
           break
         case 't':
         case 'T':
+          if (e.repeat) return
           e.preventDefault()
           setCurrentDate(getInitialDate(buildNavHolidaySet(new Date().getFullYear())))
           break
         case '1':
+          if (e.repeat) return
           e.preventDefault()
           setActiveTab('day')
           break
         case '2':
+          if (e.repeat) return
           e.preventDefault()
           setActiveTab('week')
           break
         case '3':
+          if (e.repeat) return
           e.preventDefault()
           setActiveTab('month')
           break
         case '4':
+          if (e.repeat) return
           e.preventDefault()
           setActiveTab('settings')
           break

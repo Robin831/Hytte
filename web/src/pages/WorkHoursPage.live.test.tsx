@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import WorkHoursPage from './WorkHoursPage'
 import enWorkhours from '../../public/locales/en/workhours.json'
@@ -143,5 +143,105 @@ describe('WorkHoursPage live punch estimate UI', () => {
     expect(tickCalls.length).toBeGreaterThan(0)
     unmount()
     intervalSpy.mockRestore()
+  })
+})
+
+describe('WorkHoursPage keyboard shortcuts', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(FIXED_NOW)
+    vi.stubGlobal('fetch', buildFetch())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  it('opens and closes the shortcuts dialog with ?', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Day')).toBeInTheDocument())
+
+    fireEvent.keyDown(window, { key: '?' })
+    await waitFor(() => expect(screen.getByText('Keyboard shortcuts')).toBeInTheDocument())
+  })
+
+  it('switches tabs with number keys', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Day')).toBeInTheDocument())
+
+    fireEvent.keyDown(window, { key: '2' })
+    await waitFor(() => {
+      const weekBtn = screen.getByText('Week')
+      expect(weekBtn.className).toContain('bg-gray-700')
+    })
+
+    fireEvent.keyDown(window, { key: '3' })
+    await waitFor(() => {
+      const monthBtn = screen.getByText('Month')
+      expect(monthBtn.className).toContain('bg-gray-700')
+    })
+
+    fireEvent.keyDown(window, { key: '1' })
+    await waitFor(() => {
+      const dayBtn = screen.getByText('Day')
+      expect(dayBtn.className).toContain('bg-gray-700')
+    })
+  })
+
+  it('ignores repeat keydown events for single-action shortcuts', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Day')).toBeInTheDocument())
+
+    fireEvent.keyDown(window, { key: '2', repeat: true })
+    const dayBtn = screen.getByText('Day')
+    expect(dayBtn.className).toContain('bg-gray-700')
+  })
+
+  it('suppresses shortcuts when an input is focused', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Day')).toBeInTheDocument())
+
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    input.focus()
+
+    fireEvent.keyDown(window, { key: '2' })
+    const dayBtn = screen.getByText('Day')
+    expect(dayBtn.className).toContain('bg-gray-700')
+
+    document.body.removeChild(input)
+  })
+
+  it('suppresses shortcuts when a combobox sibling button is focused', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Day')).toBeInTheDocument())
+
+    const container = document.createElement('div')
+    const combobox = document.createElement('input')
+    combobox.setAttribute('role', 'combobox')
+    const button = document.createElement('button')
+    container.appendChild(combobox)
+    container.appendChild(button)
+    document.body.appendChild(container)
+    button.focus()
+
+    fireEvent.keyDown(window, { key: '2' })
+    const dayBtn = screen.getByText('Day')
+    expect(dayBtn.className).toContain('bg-gray-700')
+
+    document.body.removeChild(container)
+  })
+
+  it('suppresses shortcuts while a dialog is open', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Day')).toBeInTheDocument())
+
+    fireEvent.keyDown(window, { key: '?' })
+    await waitFor(() => expect(screen.getByText('Keyboard shortcuts')).toBeInTheDocument())
+
+    fireEvent.keyDown(window, { key: '2' })
+    const dayBtn = screen.getByText('Day')
+    expect(dayBtn.className).toContain('bg-gray-700')
   })
 })
