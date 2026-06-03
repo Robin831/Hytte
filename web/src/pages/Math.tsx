@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { ParseKeys } from 'i18next'
 import { Calculator, Timer, Zap, Target, Trophy, Award } from 'lucide-react'
+import MathSummary from './MathSummary'
 
 interface ModeTile {
   to: string
@@ -46,6 +47,8 @@ export default function MathLanding() {
           {t('achievements.viewLink')}
         </Link>
       </div>
+
+      <MathSummary />
 
       <section aria-labelledby="modes-heading">
         <h2 id="modes-heading" className="sr-only">{t('modePickerHeading')}</h2>

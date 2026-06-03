@@ -22,6 +22,15 @@
       "blurb": "Se alle stykker fargelagt etter hvor godt du kan dem."
     }
   },
+  "summary": {
+    "heading": "Din fremgang",
+    "marathonLabel": "Maraton-rekord",
+    "blitzLabel": "Blitz-rekord",
+    "noPbYet": "Ingen rekord ennå",
+    "rank": "#{{rank}}",
+    "weakestHeading": "Svakeste stykker",
+    "chipAria": "{{problem}}, {{accuracy}} % treffsikkerhet — åpne mestringskartet"
+  },
   "keypad": {
     "answerInputLabel": "Svaret ditt",
     "backspaceAria": "Slett",
