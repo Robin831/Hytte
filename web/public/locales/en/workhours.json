@@ -99,5 +99,19 @@
     "overStandard": "+{{amount}} over standard",
     "atStandard": "Standard day reached",
     "invalidStart": "Start time is in the future — cannot estimate"
+  },
+  "shortcuts": {
+    "hint": "Keyboard shortcuts",
+    "title": "Keyboard shortcuts",
+    "close": "Close",
+    "punch": "Punch in / out",
+    "prevDay": "Previous workday",
+    "nextDay": "Next workday",
+    "today": "Jump to today",
+    "viewDay": "Day view",
+    "viewWeek": "Week view",
+    "viewMonth": "Month view",
+    "viewSettings": "Settings view",
+    "help": "Show this cheatsheet"
   }
 }

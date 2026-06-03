@@ -1,0 +1,2 @@
+category: Added
+- **Keyboard shortcuts on Work Hours** - Press `P` to punch in/out, `J`/`K` or arrow keys to step between weekdays (skipping weekends and Norwegian holidays), `T` to jump to today, and `1`/`2`/`3`/`4` to switch between day, week, month, and settings views. A discreet `?` button (or pressing `?`) opens a cheatsheet listing every shortcut. Shortcuts are suppressed while typing in a field, the time picker, or any open dialog. (Hytte-aunx)

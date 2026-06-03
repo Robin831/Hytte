@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Building2, Calendar, ChevronLeft, ChevronRight, Clock, Copy, Plus, Trash2 } from 'lucide-react'
 import { formatDate } from '../../../utils/formatDate'
@@ -23,10 +23,16 @@ export default function DayView({
   currentDate,
   setCurrentDate,
   onNavigateToSettings,
+  punchToggleRef,
+  pendingPunch,
+  onPunchConsumed,
 }: {
   currentDate: string
   setCurrentDate: (d: string | ((prev: string) => string)) => void
   onNavigateToSettings: () => void
+  punchToggleRef?: RefObject<(() => void) | null>
+  pendingPunch?: boolean
+  onPunchConsumed?: () => void
 }) {
   const { t } = useTranslation(['workhours', 'common'])
   const api = useWorkHoursApi()
@@ -435,6 +441,32 @@ export default function DayView({
       setSaving(false)
     }
   }
+
+  const latestPunchRef = useRef({ handlePunchIn, handlePunchOut, saving, punchStart })
+
+  useEffect(() => {
+    latestPunchRef.current = { handlePunchIn, handlePunchOut, saving, punchStart }
+  })
+
+  useEffect(() => {
+    if (!punchToggleRef) return
+    punchToggleRef.current = () => {
+      const { saving, punchStart, handlePunchIn, handlePunchOut } = latestPunchRef.current
+      if (saving) return
+      if (punchStart === null) handlePunchIn()
+      else handlePunchOut()
+    }
+    return () => { punchToggleRef.current = null }
+  }, [punchToggleRef])
+
+  useEffect(() => {
+    if (!pendingPunch) return
+    const { saving, punchStart, handlePunchIn, handlePunchOut } = latestPunchRef.current
+    if (saving) return
+    if (punchStart === null) handlePunchIn()
+    else handlePunchOut()
+    onPunchConsumed?.()
+  }, [pendingPunch, saving, onPunchConsumed])
 
   const handleEditPunchStart = async (newTime: string) => {
     if (!newTime || !punchStart || newTime === punchStart) return
