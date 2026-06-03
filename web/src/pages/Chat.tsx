@@ -22,23 +22,8 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime as fmtTime } from '../utils/formatDate'
-
-interface Conversation {
-  id: number
-  user_id: number
-  title: string
-  model: string
-  created_at: string
-  updated_at: string
-}
-
-interface Message {
-  id: number
-  conversation_id: number
-  role: 'user' | 'assistant'
-  content: string
-  created_at: string
-}
+import { useChatStream } from '../hooks/useChatStream'
+import type { Conversation, Message } from '../hooks/useChatStream'
 
 // Distance from the bottom (px) within which the messages view is considered
 // "pinned": new streamed tokens keep the view glued to the latest message.
@@ -51,13 +36,13 @@ export default function Chat() {
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
+  const [localError, setLocalError] = useState('')
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
   // Track every conversation with an in-flight send so concurrent sends in
   // different conversations don't clobber each other's pending state. Kept
   // immutably (a fresh Set on each update) so React re-renders fire.
   const [sendingConversationIds, setSendingConversationIds] = useState<Set<number>>(new Set())
-  const [error, setError] = useState('')
   const [showSidebar, setShowSidebar] = useState(true)
   const [renamingId, setRenamingId] = useState<number | null>(null)
   const [renameTitle, setRenameTitle] = useState('')
@@ -82,9 +67,6 @@ export default function Chat() {
   // Track locally deleted conversation IDs so we don't resurrect them if a
   // send response arrives after the user deleted the conversation mid-flight.
   const deletedConversationIds = useRef<Set<number>>(new Set())
-  // Tracks the active streaming request so the user can cancel mid-send and
-  // so a conversation switch can abort the in-flight stream.
-  const streamAbortRef = useRef<AbortController | null>(null)
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior })
@@ -112,6 +94,34 @@ export default function Chat() {
       return next
     })
   }, [])
+
+  // Re-pin the messages view to the bottom — used when a send begins so the
+  // user's new message and the streamed reply stay in view.
+  const pinToBottom = useCallback(() => {
+    isPinnedRef.current = true
+    setIsPinned(true)
+  }, [])
+
+  const focusInput = useCallback(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  // SSE streaming state machine: optimistic placeholders, frame parsing, the
+  // three error-recovery branches, abort handling, and the post-stream
+  // conversation-list refetch all live in the hook. Chat keeps only UI state.
+  const { send, stop, error, clearError } = useChatStream({
+    activeConversation,
+    setActiveConversation,
+    setMessages,
+    setConversations,
+    sendingConversationIds,
+    addSendingConversation,
+    removeSendingConversation,
+    deletedConversationIds,
+    setInput,
+    pinToBottom,
+    focusInput,
+  })
 
   // Keep the view glued to the latest message only while the user is pinned
   // near the bottom. If they have scrolled up to read history, leave their
@@ -169,7 +179,7 @@ export default function Chat() {
         setConversations(data.conversations ?? [])
       } catch (err) {
         if (err instanceof Error && err.name !== 'AbortError') {
-          setError(err.message)
+          setLocalError(err.message)
         }
       } finally {
         if (!controller.signal.aborted) setLoadingConversations(false)
@@ -183,15 +193,15 @@ export default function Chat() {
   useEffect(() => {
     // Cancel any in-flight streaming send when switching conversations so the
     // partial tokens do not bleed into the newly selected conversation.
-    streamAbortRef.current?.abort()
-    streamAbortRef.current = null
+    stop()
+    clearError()
 
     const controller = new AbortController()
     ;(async () => {
       if (activeConversationId === null) {
         setMessages([])
         setLoadingMessages(false)
-        setError('')
+        setLocalError('')
         return
       }
       setLoadingMessages(true)
@@ -203,17 +213,17 @@ export default function Chat() {
         if (!res.ok) throw new Error(t('errors.failedToLoadMessages'))
         const data = await res.json()
         setMessages(data.messages ?? [])
-        setError('')
+        setLocalError('')
       } catch (err) {
         if (err instanceof Error && err.name !== 'AbortError') {
-          setError(err.message)
+          setLocalError(err.message)
         }
       } finally {
         if (!controller.signal.aborted) setLoadingMessages(false)
       }
     })()
     return () => { controller.abort() }
-  }, [activeConversationId, t])
+  }, [activeConversationId, t, stop, clearError])
 
   // Resize textarea when input changes (including programmatic clears)
   useEffect(() => {
@@ -227,11 +237,8 @@ export default function Chat() {
   // Abort any in-flight streaming send when the component unmounts so the
   // background fetch does not keep running with a stale state ref.
   useEffect(() => {
-    return () => {
-      streamAbortRef.current?.abort()
-      streamAbortRef.current = null
-    }
-  }, [])
+    return () => { stop() }
+  }, [stop])
 
   // Focus rename input when entering rename mode
   useEffect(() => {
@@ -258,15 +265,15 @@ export default function Chat() {
       setConversations(prev => [conv, ...prev])
       setActiveConversation(conv)
       setShowSidebar(false)
-      setError('')
+      setLocalError('')
       inputRef.current?.focus()
     } catch (err) {
-      if (err instanceof Error) setError(err.message)
+      if (err instanceof Error) setLocalError(err.message)
     }
   }
 
   async function deleteConversation(id: number) {
-    setError('')
+    setLocalError('')
     try {
       const res = await fetch(`/api/chat/conversations/${id}`, {
         method: 'DELETE',
@@ -280,9 +287,9 @@ export default function Chat() {
         setMessages([])
       }
       setDeletingId(null)
-      setError('')
+      setLocalError('')
     } catch (err) {
-      if (err instanceof Error) setError(err.message)
+      if (err instanceof Error) setLocalError(err.message)
     }
   }
 
@@ -291,7 +298,7 @@ export default function Chat() {
       setRenamingId(null)
       return
     }
-    setError('')
+    setLocalError('')
     try {
       const res = await fetch(`/api/chat/conversations/${id}`, {
         method: 'PUT',
@@ -307,267 +314,30 @@ export default function Chat() {
         setActiveConversation(updated)
       }
       setRenamingId(null)
-      setError('')
+      setLocalError('')
     } catch (err) {
-      if (err instanceof Error) setError(err.message)
+      if (err instanceof Error) setLocalError(err.message)
     }
   }
 
-  async function sendMessage() {
-    if (!input.trim() || !activeConversation || sendingConversationIds.has(activeConversation.id)) return
-    const content = input.trim()
-    const sentConversationId = activeConversation.id
-    setInput('')
-    addSendingConversation(sentConversationId)
-    setError('')
-
-    // Optimistic rows: the user bubble and an empty assistant bubble that
-    // we mutate as `token` events arrive. Negative ids mark them as
-    // placeholders that will be swapped for canonical rows on `user_message`
-    // / `done`.
-    const tempUserId = -Date.now()
-    const tempAssistantId = tempUserId - 1
-    const tempUserMsg: Message = {
-      id: tempUserId,
-      conversation_id: sentConversationId,
-      role: 'user',
-      content,
-      created_at: new Date().toISOString(),
-    }
-    const tempAssistantMsg: Message = {
-      id: tempAssistantId,
-      conversation_id: sentConversationId,
-      role: 'assistant',
-      content: '',
-      created_at: new Date().toISOString(),
-    }
-    setMessages(prev => [...prev, tempUserMsg, tempAssistantMsg])
-    // Sending is a deliberate action: re-pin to the bottom so the user's new
-    // message and the streamed reply stay in view, even if they had scrolled up.
-    isPinnedRef.current = true
-    setIsPinned(true)
-
-    // Abort any earlier in-flight stream before starting this one. The
-    // useEffect on activeConversationId also calls abort on conversation
-    // switches.
-    streamAbortRef.current?.abort()
-    const controller = new AbortController()
-    streamAbortRef.current = controller
-
-    // Accumulate streamed text in a local string so the placeholder row's
-    // content reflects the full assistant reply on every render, even though
-    // React batches the setState calls.
-    let accumulated = ''
-    const applyAccumulated = () => {
-      const next = accumulated
-      setMessages(prev =>
-        prev.map(m => (m.id === tempAssistantId ? { ...m, content: next } : m)),
-      )
-    }
-
-    let sawToken = false
-    // Hoisted so the catch block can reference the canonical user row when
-    // deciding whether to keep the user bubble visible after a stream error.
-    let canonicalUserMsg: Message | null = null
-
-    try {
-      const res = await fetch(`/api/chat/conversations/${sentConversationId}/messages/stream`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
-        signal: controller.signal,
-      })
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => null)
-        throw new Error(data?.error || t('errors.failedToSend'))
-      }
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let canonicalAssistantMsg: Message | null = null
-      let serverError: string | null = null
-
-      const handleFrame = (frame: string) => {
-        let eventName = 'message'
-        const dataLines: string[] = []
-        for (const line of frame.split('\n')) {
-          if (line.startsWith('event:')) {
-            eventName = line.slice(6).trim()
-          } else if (line.startsWith('data:')) {
-            dataLines.push(line.slice(5).trim())
-          }
-        }
-        if (dataLines.length === 0) return
-        let payload: unknown
-        try {
-          payload = JSON.parse(dataLines.join('\n'))
-        } catch {
-          return
-        }
-        if (eventName === 'token') {
-          const text = (payload as { text?: string }).text ?? ''
-          if (text) {
-            sawToken = true
-            accumulated += text
-            applyAccumulated()
-          }
-        } else if (eventName === 'user_message') {
-          canonicalUserMsg = payload as Message
-        } else if (eventName === 'done') {
-          canonicalAssistantMsg = (payload as { assistant_message?: Message }).assistant_message ?? null
-        } else if (eventName === 'error') {
-          serverError = (payload as { error?: string }).error ?? t('errors.streamError')
-        }
-      }
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const frames = buffer.split('\n\n')
-        buffer = frames.pop() ?? ''
-        for (const frame of frames) {
-          if (!frame.trim()) continue
-          handleFrame(frame)
-        }
-      }
-      // Flush the TextDecoder's internal buffer so any multi-byte UTF-8
-      // codepoint that was split across the final two chunks is completed.
-      buffer += decoder.decode()
-      // Flush any trailing frame that didn't end with the double-newline.
-      if (buffer.trim()) handleFrame(buffer)
-
-      if (serverError) {
-        throw new Error(serverError)
-      }
-
-      // Detect an unexpected server disconnect: the stream ended without
-      // a `done` or `error` event and the AbortController was not fired
-      // (AbortError from Stop/navigation reaches the catch block, not here).
-      if (!canonicalAssistantMsg && !controller.signal.aborted) {
-        throw new Error(t('errors.streamError'))
-      }
-
-      // Final swap: replace optimistic rows with the canonical ones the
-      // server returned. Skip if the user navigated away from this
-      // conversation while the stream was running.
-      setActiveConversation(current => {
-        if (current?.id !== sentConversationId) return current
-        setMessages(prev => {
-          // Drop the assistant placeholder if Claude returned an empty body
-          // and we never saw a token; otherwise replace with canonical.
-          if (!canonicalAssistantMsg && !sawToken) {
-            return prev.filter(m => m.id !== tempUserId && m.id !== tempAssistantId)
-          }
-          return prev.flatMap(m => {
-            if (m.id === tempUserId) {
-              return canonicalUserMsg ? [canonicalUserMsg] : [m]
-            }
-            if (m.id === tempAssistantId) {
-              return canonicalAssistantMsg ? [canonicalAssistantMsg] : [m]
-            }
-            return [m]
-          })
-        })
-        return current
-      })
-
-      // Refresh conversation list to pick up auto-title updates (non-fatal).
-      try {
-        const convRes = await fetch('/api/chat/conversations', { credentials: 'include' })
-        if (convRes.ok) {
-          const convData = await convRes.json()
-          const allConvs: Conversation[] = convData.conversations ?? []
-          setConversations(_prev => {
-            // Build a merged list: start from the server list, but drop any
-            // conversations the user explicitly deleted locally so we don't
-            // resurrect them.
-            return allConvs.filter(c => !deletedConversationIds.current.has(c.id))
-          })
-          const updated = allConvs.find(c => c.id === sentConversationId)
-          if (updated) {
-            setActiveConversation(current =>
-              current?.id === sentConversationId ? updated : current,
-            )
-          }
-        }
-      } catch (refreshErr) {
-        console.error('Failed to refresh conversations after sending message', refreshErr)
-      }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        if (sawToken) {
-          // Stop semantics: keep the partial assistant text on screen at
-          // whatever was already streamed. The placeholder rows stay in
-          // place as non-persisted local entries.
-          setMessages(prev =>
-            prev.map(m =>
-              m.id === tempAssistantId
-                ? { ...m, content: accumulated || m.content }
-                : m,
-            ),
-          )
-        } else if (canonicalUserMsg) {
-          // Aborted before any tokens arrived but after the server persisted
-          // the user message (we received the `user_message` SSE event).
-          // Drop only the empty assistant placeholder; keep the canonical user
-          // row so the conversation history remains consistent.
-          setMessages(prev =>
-            prev
-              .filter(m => m.id !== tempAssistantId)
-              .map(m => (m.id === tempUserId ? canonicalUserMsg! : m)),
-          )
-        } else {
-          // Aborted before the `user_message` SSE event arrived — the server
-          // may not have persisted the message yet. Remove both optimistic
-          // placeholders and restore the draft so the user can re-send.
-          setMessages(prev =>
-            prev.filter(m => m.id !== tempUserId && m.id !== tempAssistantId),
-          )
-          setInput(content)
-        }
-      } else {
-        // Stream error: the backend has already persisted the user_message
-        // before running Claude, so keep it visible (swap in the canonical
-        // row if one arrived, otherwise leave the optimistic placeholder).
-        // Only remove the assistant placeholder and restore the draft input
-        // so the user can re-send without losing their message context.
-        setMessages(prev =>
-          prev
-            .filter(m => m.id !== tempAssistantId)
-            .map(m => (m.id === tempUserId && canonicalUserMsg ? canonicalUserMsg : m)),
-        )
-        setInput(content)
-        if (err instanceof Error) setError(err.message || t('errors.streamError'))
-        else setError(t('errors.streamError'))
-      }
-    } finally {
-      if (streamAbortRef.current === controller) {
-        streamAbortRef.current = null
-      }
-      removeSendingConversation(sentConversationId)
-      inputRef.current?.focus()
-    }
-  }
-
-  function stopStreaming() {
-    streamAbortRef.current?.abort()
-    streamAbortRef.current = null
+  // Thin wrapper around the hook's send: the trimmed input is the message
+  // content; the hook owns the optimistic rows, streaming, and reconciliation.
+  function handleSend() {
+    send(input.trim())
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      sendMessage()
+      handleSend()
     }
   }
 
   function selectConversation(conv: Conversation) {
     setActiveConversation(conv)
     setShowSidebar(false)
-    setError('')
+    clearError()
+    setLocalError('')
   }
 
   function formatTime(dateStr: string): string {
@@ -846,11 +616,11 @@ export default function Chat() {
         </div>
 
         {/* Error banner */}
-        {error && (
+        {(error || localError) && (
           <div className="px-4 py-2 bg-red-900/50 border-t border-red-800 text-red-300 text-sm flex items-center justify-between">
-            <span>{error}</span>
+            <span>{error || localError}</span>
             <button
-              onClick={() => setError('')}
+              onClick={() => { clearError(); setLocalError('') }}
               className="text-red-400 hover:text-red-300 cursor-pointer"
               aria-label={t('input.dismissError')}
             >
@@ -881,7 +651,7 @@ export default function Chat() {
               />
               {sendingConversationIds.has(activeConversation.id) ? (
                 <button
-                  onClick={stopStreaming}
+                  onClick={stop}
                   className="self-end p-3 rounded-xl bg-red-600 hover:bg-red-500 text-white transition-colors cursor-pointer shrink-0"
                   title={t('input.stopStreaming')}
                   aria-label={t('input.stopStreaming')}
@@ -891,7 +661,7 @@ export default function Chat() {
                 </button>
               ) : (
                 <button
-                  onClick={sendMessage}
+                  onClick={handleSend}
                   disabled={!input.trim()}
                   className="self-end p-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                   title={t('input.sendLabel')}
