@@ -1,0 +1,2 @@
+category: Changed
+- **Real-time grocery list updates** - The shared grocery list now streams changes over server-sent events, so adds, check-offs, reorders, and clears appear on other open sessions within about a second. This replaces the 5-second polling loop, stops idle tabs from repeatedly refetching the list, and keeps optimistic check/uncheck state from being overwritten by background fetches. (Hytte-z5po)
