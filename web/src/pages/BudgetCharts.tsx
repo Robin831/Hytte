@@ -256,7 +256,7 @@ export default function BudgetCharts() {
                     <BarChart data={barData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 11 }} />
-                      <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={formatBudgetNumber} />
+                      <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={(v) => formatBudgetNumber(Number(v))} />
                       <Tooltip
                         {...TOOLTIP_STYLE}
                         formatter={(value) => [formatBudgetNumber(Number(value)), ''] as [string, string]}
@@ -285,7 +285,7 @@ export default function BudgetCharts() {
                   <LineChart data={netWorthData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                     <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 11 }} />
-                    <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={formatBudgetNumber} />
+                    <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={(v) => formatBudgetNumber(Number(v))} />
                     <Tooltip
                       {...TOOLTIP_STYLE}
                       formatter={(value) => [formatBudgetNumber(Number(value)), t('charts.netWorth')] as [string, string]}
@@ -324,7 +324,7 @@ export default function BudgetCharts() {
                     <BarChart data={yoyData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 11 }} />
-                      <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={formatBudgetNumber} />
+                      <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={(v) => formatBudgetNumber(Number(v))} />
                       <Tooltip
                         {...TOOLTIP_STYLE}
                         formatter={(value) => [formatBudgetNumber(Number(value)), ''] as [string, string]}
