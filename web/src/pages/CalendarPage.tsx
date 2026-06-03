@@ -68,6 +68,7 @@ export default function CalendarPage() {
         if (cals.length > 0 && !cals.some(c => c.selected)) {
           cals = cals.map(c => ({ ...c, selected: c.primary }))
         }
+        setCalendarsError(null)
         setCalendars(cals)
         setConnected(data.connected ?? false)
       })
