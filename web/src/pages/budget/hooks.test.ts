@@ -1,22 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
-import { formatNOK, formatBudgetNumber, todayDate, useBudgetResource } from './hooks'
+import { formatNOK, formatBudgetNumber, useBudgetResource } from './hooks'
 
 afterEach(() => {
   vi.restoreAllMocks()
-})
-
-describe('todayDate', () => {
-  it('returns a zero-padded local YYYY-MM-DD string', () => {
-    expect(todayDate()).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-  })
-
-  it('matches the current local date (no UTC drift)', () => {
-    const now = new Date()
-    const expected = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-    expect(todayDate()).toBe(expected)
-  })
 })
 
 describe('formatNOK', () => {

@@ -2,7 +2,8 @@ import { useState, useMemo, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Plus, Trash2, Pencil, X, ArrowLeftRight, ChevronLeft } from 'lucide-react'
-import { formatNOK, todayDate, useBudgetResource } from './budget/hooks'
+import { toLocalDateString } from '../utils/formatDate'
+import { formatNOK, useBudgetResource } from './budget/hooks'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -306,7 +307,7 @@ export default function BudgetAccounts() {
     to_id: 0,
     amount: '',
     description: '',
-    date: todayDate(),
+    date: toLocalDateString(),
   })
   const [transferSaving, setTransferSaving] = useState(false)
   const [transferError, setTransferError] = useState<string | null>(null)

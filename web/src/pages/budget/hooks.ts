@@ -1,16 +1,11 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react'
 import { formatNumber } from '../../utils/formatDate'
 
-// Shared helpers for the Budget sub-pages. Centralizes the date helper, the
-// NOK/number formatting, and the GET + AbortController + loading/error lifecycle
-// that the pages otherwise copy-paste, so locale/format behavior lives in one
-// place and future budget pages can reuse it.
-
-/** Returns today's local date as YYYY-MM-DD (avoids UTC drift from toISOString). */
-export function todayDate(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
+// Shared helpers for the Budget sub-pages. Centralizes the NOK/number
+// formatting and the GET + AbortController + loading/error lifecycle that the
+// pages otherwise copy-paste, so locale/format behavior lives in one place and
+// future budget pages can reuse it. For today's local date, use the shared
+// `toLocalDateString` from `../../utils/formatDate`.
 
 // Formats a signed amount in the given currency using the active locale.
 // Callers without a per-account context fall back to 'NOK'; the negative sign
