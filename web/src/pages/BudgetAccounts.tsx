@@ -383,6 +383,7 @@ export default function BudgetAccounts() {
         throw new Error(body.error ?? t('accounts.errors.saveFailed'))
       }
       closeForm()
+      setError(null)
       reload()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : t('accounts.errors.saveFailed'))
@@ -439,6 +440,7 @@ export default function BudgetAccounts() {
       if (!transferRes.ok) throw new Error(t('accounts.errors.transferFailed'))
       setShowTransfer(false)
       setTransferForm(prev => ({ ...prev, amount: '', description: '' }))
+      setError(null)
       reload()
     } catch (err) {
       setTransferError(err instanceof Error ? err.message : t('accounts.errors.transferFailed'))

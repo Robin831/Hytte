@@ -155,6 +155,7 @@ export default function BudgetCategories() {
       )
       if (!res.ok) throw new Error('save failed')
       cancelEdit()
+      setError(null)
       reload()
     } catch {
       setFormError(t('categories.errors.saveFailed'))

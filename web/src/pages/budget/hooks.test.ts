@@ -5,6 +5,7 @@ import { formatNOK, formatBudgetNumber, useBudgetResource } from './hooks'
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('formatNOK', () => {
