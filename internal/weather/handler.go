@@ -70,6 +70,7 @@ type Service struct {
 	client       *http.Client
 	baseURL      string
 	nominatimURL string
+	now          func() time.Time
 
 	mu    sync.RWMutex
 	cache map[string]*cachedResponse
@@ -86,6 +87,7 @@ func NewService() *Service {
 		client:       &http.Client{Timeout: 10 * time.Second},
 		baseURL:      metBaseURL,
 		nominatimURL: nominatimBaseURL,
+		now:          time.Now,
 		cache:        make(map[string]*cachedResponse),
 		sunCache:     make(map[string]cachedSun),
 	}
@@ -97,6 +99,7 @@ func newTestService(baseURL string) *Service {
 		client:       &http.Client{Timeout: 5 * time.Second},
 		baseURL:      baseURL,
 		nominatimURL: nominatimBaseURL,
+		now:          time.Now,
 		cache:        make(map[string]*cachedResponse),
 		sunCache:     make(map[string]cachedSun),
 	}
@@ -108,6 +111,7 @@ func newTestSearchService(nominatimURL string) *Service {
 		client:       &http.Client{Timeout: 5 * time.Second},
 		baseURL:      metBaseURL,
 		nominatimURL: nominatimURL,
+		now:          time.Now,
 		cache:        make(map[string]*cachedResponse),
 		sunCache:     make(map[string]cachedSun),
 	}
@@ -222,7 +226,7 @@ func (s *Service) SunHandler() http.HandlerFunc {
 // server's timezone.
 func (s *Service) sunDataCached(lat, lon float64) SunData {
 	offset := time.Duration(lon / 15.0 * float64(time.Hour))
-	localNow := time.Now().UTC().Add(offset)
+	localNow := s.now().UTC().Add(offset)
 	y, m, d := localNow.Date()
 	dateKey := fmt.Sprintf("%04d-%02d-%02d", y, int(m), d)
 

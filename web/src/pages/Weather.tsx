@@ -575,6 +575,7 @@ export default function Weather() {
       })
       .catch((err) => {
         console.warn('Failed to fetch sun data:', err)
+        if (!cancelled) setSunEntry(null)
       })
 
     return () => {

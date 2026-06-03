@@ -14,6 +14,12 @@ const (
 	osloLon = 10.7522
 )
 
+func newFixedClockService(t time.Time) *Service {
+	svc := NewService()
+	svc.now = func() time.Time { return t }
+	return svc
+}
+
 func TestComputeSunDataMidLatitude(t *testing.T) {
 	// Spring equinox 2026 — day length should be close to 12 hours everywhere.
 	date := time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)
@@ -145,7 +151,8 @@ func TestComputeSunDataExactPole(t *testing.T) {
 }
 
 func TestSunCacheEviction(t *testing.T) {
-	svc := NewService()
+	fixed := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	svc := newFixedClockService(fixed)
 
 	for i := range maxSunCacheEntries + 10 {
 		lat := float64(i) * 0.01
@@ -162,7 +169,8 @@ func TestSunCacheEviction(t *testing.T) {
 }
 
 func TestSunHandlerSuccess(t *testing.T) {
-	svc := NewService()
+	fixed := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	svc := newFixedClockService(fixed)
 	handler := svc.SunHandler()
 
 	req := httptest.NewRequest("GET", "/api/weather/sun?lat=59.9139&lon=10.7522", nil)
@@ -188,7 +196,8 @@ func TestSunHandlerSuccess(t *testing.T) {
 }
 
 func TestSunHandlerCaches(t *testing.T) {
-	svc := NewService()
+	fixed := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	svc := newFixedClockService(fixed)
 
 	// First call computes and stores in the cache.
 	first := svc.sunDataCached(osloLat, osloLon)
@@ -214,8 +223,39 @@ func TestSunHandlerCaches(t *testing.T) {
 	}
 }
 
-func TestSunHandlerValidation(t *testing.T) {
+func TestSunCacheInvalidatesOnDayChange(t *testing.T) {
+	day1 := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	clock := day1
 	svc := NewService()
+	svc.now = func() time.Time { return clock }
+
+	first := svc.sunDataCached(osloLat, osloLon)
+
+	svc.sunMu.RLock()
+	n := len(svc.sunCache)
+	svc.sunMu.RUnlock()
+	if n != 1 {
+		t.Fatalf("expected 1 cached entry, got %d", n)
+	}
+
+	clock = day1.Add(24 * time.Hour)
+	second := svc.sunDataCached(osloLat, osloLon)
+
+	if first.DaylightSeconds == second.DaylightSeconds {
+		t.Log("daylight seconds happen to match across days — acceptable but unusual")
+	}
+
+	svc.sunMu.RLock()
+	n = len(svc.sunCache)
+	svc.sunMu.RUnlock()
+	if n != 1 {
+		t.Errorf("expected old entry replaced, got %d entries", n)
+	}
+}
+
+func TestSunHandlerValidation(t *testing.T) {
+	fixed := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
+	svc := newFixedClockService(fixed)
 	handler := svc.SunHandler()
 
 	cases := []struct {
