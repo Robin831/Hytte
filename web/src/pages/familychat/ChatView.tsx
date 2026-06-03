@@ -5,6 +5,7 @@ import {
   MessageSquare,
   Download,
   X,
+  Wifi,
   WifiOff,
   Smile,
   MoreVertical,
@@ -122,11 +123,18 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const [error, setError] = useState('')
   const [memberLookup, setMemberLookup] = useState<Map<number, MemberInfo>>(new Map())
   const [lightbox, setLightbox] = useState<{ url: string; alt: string } | null>(null)
-  // streamDropped flips to true while the SSE reconnect backoff is in flight.
-  // It only ever shows the indicator after we've successfully connected once,
-  // so the initial-load skeleton isn't shadowed by a "Reconnecting" badge.
-  const [streamDropped, setStreamDropped] = useState(false)
-  const [hasConnected, setHasConnected] = useState(false)
+  // connStatus tracks the live state of the SSE stream so the header can show
+  // honest connectivity feedback:
+  //   'connecting'   — initial load, before the stream has ever opened
+  //   'live'         — stream is open and messages arrive in real time
+  //   'reconnecting' — the stream dropped after being live and a backoff retry
+  //                    is in flight
+  // The 'connecting' → 'reconnecting' distinction keeps the initial-load
+  // skeleton from being shadowed by a false "Reconnecting" badge.
+  const [connStatus, setConnStatus] = useState<'connecting' | 'live' | 'reconnecting'>('connecting')
+  // justReconnected briefly flips true right after the stream recovers from a
+  // drop so the header can flash a "Connected" confirmation, then auto-clears.
+  const [justReconnected, setJustReconnected] = useState(false)
   // pickerForMsgId is the id of the bubble whose reaction picker is open, or
   // null when nothing is open. We only show one picker at a time.
   const [pickerForMsgId, setPickerForMsgId] = useState<number | null>(null)
@@ -354,6 +362,8 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     // updated by initial load, SSE events, and gap-fill responses.
     let lastId = 0
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    // recoveredTimer clears the brief "Connected" confirmation after a drop.
+    let recoveredTimer: ReturnType<typeof setTimeout> | null = null
     let reconnectAttempts = 0
     let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null
 
@@ -368,8 +378,8 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     setError('')
     setMessages([])
     setConversation(null)
-    setStreamDropped(false)
-    setHasConnected(false)
+    setConnStatus('connecting')
+    setJustReconnected(false)
     setMissedCalls([])
     setEndedCallSummary(null)
     setTypingUsers(new Map())
@@ -490,7 +500,10 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
 
     const scheduleReconnect = () => {
       if (controller.signal.aborted) return
-      setStreamDropped(true)
+      // Only surface the "Reconnecting" badge once we've actually been live —
+      // a failure on the very first connect keeps us in 'connecting' so the
+      // initial load never flashes a false "offline".
+      setConnStatus(prev => (prev === 'connecting' ? 'connecting' : 'reconnecting'))
       reconnectAttempts += 1
       // Exponential backoff capped at 30s to keep a server outage from
       // hammering the endpoint while still recovering quickly from a
@@ -522,8 +535,19 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         reconnectAttempts = 0
         reader = res.body.getReader()
         activeReader = reader
-        setStreamDropped(false)
-        setHasConnected(true)
+        // A non-first connect means the stream just recovered from a drop. The
+        // gap-fill above already backfilled any messages missed during the
+        // outage; flash a brief "Connected" confirmation so the user gets a
+        // visible signal that messages are arriving live again.
+        if (!firstConnect) {
+          setJustReconnected(true)
+          if (recoveredTimer !== null) clearTimeout(recoveredTimer)
+          recoveredTimer = setTimeout(() => {
+            recoveredTimer = null
+            setJustReconnected(false)
+          }, 3000)
+        }
+        setConnStatus('live')
         const decoder = new TextDecoder()
         let buffer = ''
         let eventName = 'message'
@@ -686,6 +710,10 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         clearTimeout(reconnectTimer)
         reconnectTimer = null
       }
+      if (recoveredTimer !== null) {
+        clearTimeout(recoveredTimer)
+        recoveredTimer = null
+      }
       // Cancel the reader so the read loop exits even when the fetch mock
       // doesn't propagate abort to the body (notably in tests). The catch is
       // intentional — cancel can throw if the reader is already detached.
@@ -704,6 +732,10 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       setMessages([])
       setError('')
       setLoading(false)
+      // Reset connection state so the indicator never stays stuck in
+      // 'reconnecting' after the view unmounts or switches conversation.
+      setConnStatus('connecting')
+      setJustReconnected(false)
       setMissedCalls([])
       setEndedCallSummary(null)
       setTypingUsers(new Map())
@@ -1182,16 +1214,30 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
             </ul>
           )}
         </div>
-        {hasConnected && streamDropped && (
+        {connStatus === 'reconnecting' && (
           <span
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-amber-500/15 border border-amber-500/40 text-amber-200 shrink-0"
             role="status"
             aria-live="polite"
+            aria-label={t('chat.connection.ariaLabel')}
             title={t('chat.connection.reconnecting')}
             data-testid="family-chat-reconnecting"
           >
             <WifiOff size={12} aria-hidden="true" />
             <span className="truncate max-w-[8rem] sm:max-w-none">{t('chat.connection.reconnecting')}</span>
+          </span>
+        )}
+        {connStatus === 'live' && justReconnected && (
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-500/15 border border-green-500/40 text-green-200 shrink-0"
+            role="status"
+            aria-live="polite"
+            aria-label={t('chat.connection.ariaLabel')}
+            title={t('chat.connection.live')}
+            data-testid="family-chat-connected"
+          >
+            <Wifi size={12} aria-hidden="true" />
+            <span className="truncate max-w-[8rem] sm:max-w-none">{t('chat.connection.live')}</span>
           </span>
         )}
         {canCall && (

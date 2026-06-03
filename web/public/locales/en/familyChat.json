@@ -32,7 +32,9 @@
     "lightboxTitle": "Image preview",
     "lightboxClose": "Close preview",
     "connection": {
-      "reconnecting": "Reconnecting…"
+      "live": "Connected",
+      "reconnecting": "Reconnecting…",
+      "ariaLabel": "Connection status"
     },
     "typing": {
       "single": "{{name}} is typing…",

@@ -32,7 +32,9 @@
     "lightboxTitle": "ดูตัวอย่างรูปภาพ",
     "lightboxClose": "ปิดการดูตัวอย่าง",
     "connection": {
-      "reconnecting": "กำลังเชื่อมต่อใหม่…"
+      "live": "เชื่อมต่อแล้ว",
+      "reconnecting": "กำลังเชื่อมต่อใหม่…",
+      "ariaLabel": "สถานะการเชื่อมต่อ"
     },
     "typing": {
       "single": "{{name}} กำลังพิมพ์…",

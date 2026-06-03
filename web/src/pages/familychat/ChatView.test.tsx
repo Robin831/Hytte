@@ -49,7 +49,9 @@ const TRANSLATIONS: Record<string, string> = {
   'chat.attachmentFileLabel': 'Download attachment ({{mime}})',
   'chat.lightboxTitle': 'Image preview',
   'chat.lightboxClose': 'Close preview',
+  'chat.connection.live': 'Connected',
   'chat.connection.reconnecting': 'Reconnecting…',
+  'chat.connection.ariaLabel': 'Connection status',
   'newModal.parent': 'Parent',
   'reactions.pickerLabel': 'Add reaction',
   'reactions.add': 'React with {{emoji}}',
@@ -567,6 +569,85 @@ describe('ChatView – reconnect gap-fill', () => {
     await waitFor(() => {
       expect(screen.getByTestId('family-chat-reconnecting')).toBeInTheDocument()
     })
+  }, 15000)
+
+  it('returns to a live indicator and re-fetches recent messages on successful reconnect', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+
+    let closeStream: (() => void) | null = null
+    const firstStream = new ReadableStream<Uint8Array>({
+      start(c) { closeStream = () => c.close() },
+    })
+
+    const initialMsg = makeMessage({ id: 10, body: 'Before disconnect', conversation_id: 1 })
+    const gapMsg = makeMessage({ id: 11, body: 'Filled on reconnect', conversation_id: 1, created_at: '2026-05-01T10:11:00Z' })
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([initialMsg]))
+      .mockResolvedValueOnce({ ok: true, body: firstStream })
+      .mockResolvedValueOnce(msgsOk([gapMsg]))   // gap-fill on reconnect
+      .mockResolvedValueOnce(streamOk())          // reconnect stream opens cleanly
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChatView()
+    await waitFor(() => expect(screen.getByText('Before disconnect')).toBeInTheDocument())
+
+    // Drop the stream → the Reconnecting badge appears.
+    await act(async () => {
+      closeStream!()
+      await Promise.resolve()
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('family-chat-reconnecting')).toBeInTheDocument()
+    })
+
+    // Fast-forward past the backoff so the reconnect lands.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2500)
+    })
+
+    // The Reconnecting badge clears, a brief "Connected" confirmation shows,
+    // and the gap-fill backfilled the message that arrived during the drop.
+    await waitFor(() => {
+      expect(screen.queryByTestId('family-chat-reconnecting')).not.toBeInTheDocument()
+      expect(screen.getByTestId('family-chat-connected')).toBeInTheDocument()
+      expect(screen.getByText('Filled on reconnect')).toBeInTheDocument()
+    })
+    const fetchedUrls = fetchMock.mock.calls.map(([url]) => url as string)
+    expect(fetchedUrls.some(url => url.includes('/messages?since=10'))).toBe(true)
+  }, 15000)
+
+  it('clears the reconnecting indicator when the view unmounts mid-backoff', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+
+    let closeStream: (() => void) | null = null
+    const firstStream = new ReadableStream<Uint8Array>({
+      start(c) { closeStream = () => c.close() },
+    })
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce({ ok: true, body: firstStream })
+      .mockResolvedValue(streamOk())
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { unmount } = renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+
+    await act(async () => {
+      closeStream!()
+      await Promise.resolve()
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('family-chat-reconnecting')).toBeInTheDocument()
+    })
+
+    // Unmounting while the backoff is pending must tear down cleanly without
+    // leaving the indicator stuck.
+    unmount()
+    expect(screen.queryByTestId('family-chat-reconnecting')).not.toBeInTheDocument()
   }, 15000)
 
   it('gap-fills without a since param when the initial message list is empty', async () => {
