@@ -23,6 +23,10 @@ const TRANSLATIONS: Record<string, string> = {
   'conversation.confirmDelete': 'Delete?',
   'conversation.backLabel': 'Back to conversations',
   'header.selectOrStart': 'Select or start a conversation',
+  'header.modelLabel': 'Model',
+  'models.opus': 'Opus',
+  'models.sonnet': 'Sonnet',
+  'models.haiku': 'Haiku',
   'welcome.title': 'Hytte Chat',
   'welcome.subtitle': 'Start a new conversation or pick one from the sidebar',
   'input.placeholder': 'Type a message...',
@@ -35,6 +39,7 @@ const TRANSLATIONS: Record<string, string> = {
   'errors.failedToCreate': 'Failed to create conversation',
   'errors.failedToDelete': 'Failed to delete conversation',
   'errors.failedToRename': 'Failed to rename conversation',
+  'errors.failedToUpdateModel': 'Failed to update model',
   'errors.failedToSend': 'Failed to send message',
   'errors.streamError': 'The response stream was interrupted. Please try again.',
 }
@@ -404,5 +409,118 @@ describe('Chat – streaming send', () => {
       expect(screen.getByText('Send a message to start the conversation')).toBeInTheDocument()
     })
     expect(screen.queryByText('Streaming A reply')).not.toBeInTheDocument()
+  })
+})
+
+describe('Chat – model selector', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('renders the model dropdown listing the three supported models', async () => {
+    const { convListRes, convDetailRes } = await selectExistingConversation([])
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(convListRes)
+      .mockResolvedValueOnce(convDetailRes)
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+
+    await waitFor(() => screen.getByText('Existing chat'))
+    fireEvent.click(screen.getByText('Existing chat'))
+    await waitFor(() => screen.getByPlaceholderText('Type a message...'))
+
+    const select = screen.getByLabelText('Model') as HTMLSelectElement
+    expect(select).toBeInTheDocument()
+    // The active conversation's model is reflected as the selected value.
+    expect(select.value).toBe('claude-sonnet-4-6')
+
+    const optionValues = Array.from(select.options).map(o => o.value)
+    expect(optionValues).toContain('claude-opus-4-8')
+    expect(optionValues).toContain('claude-sonnet-4-6')
+    expect(optionValues).toContain('claude-haiku-4-5')
+    expect(optionValues).toHaveLength(3)
+  })
+
+  it('selecting a model on an existing conversation issues a PUT with the model', async () => {
+    const { conv, convListRes, convDetailRes } = await selectExistingConversation([])
+    const putRes = {
+      ok: true,
+      json: () => Promise.resolve({ conversation: { ...conv, model: 'claude-opus-4-8' } }),
+    }
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(convListRes)
+      .mockResolvedValueOnce(convDetailRes)
+      .mockResolvedValueOnce(putRes)
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+
+    await waitFor(() => screen.getByText('Existing chat'))
+    fireEvent.click(screen.getByText('Existing chat'))
+    await waitFor(() => screen.getByPlaceholderText('Type a message...'))
+
+    const select = screen.getByLabelText('Model') as HTMLSelectElement
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'claude-opus-4-8' } })
+    })
+
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find(
+        ([url, init]) => url === `/api/chat/conversations/${conv.id}` && init?.method === 'PUT',
+      )
+      expect(putCall).toBeDefined()
+      expect(JSON.parse((putCall![1] as RequestInit).body as string)).toEqual({
+        model: 'claude-opus-4-8',
+      })
+    })
+    expect((screen.getByLabelText('Model') as HTMLSelectElement).value).toBe('claude-opus-4-8')
+  })
+
+  it('selecting a model before creating a conversation passes it in the POST body', async () => {
+    const created = makeConv({ id: 5, title: '', model: 'claude-haiku-4-5' })
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/chat/conversations' && init?.method === 'POST') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ conversation: created }) })
+      }
+      if (url === '/api/chat/conversations') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ conversations: [] }) })
+      }
+      if (url === `/api/chat/conversations/${created.id}`) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ conversation: created, messages: [] }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+
+    // With no active conversation, the dropdown selects the next model.
+    await waitFor(() => screen.getByLabelText('Model'))
+    const select = screen.getByLabelText('Model') as HTMLSelectElement
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'claude-haiku-4-5' } })
+    })
+
+    // Start a new conversation via the sidebar button.
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('New chat'))
+    })
+
+    await waitFor(() => {
+      const postCall = fetchMock.mock.calls.find(
+        ([url, init]) => url === '/api/chat/conversations' && init?.method === 'POST',
+      )
+      expect(postCall).toBeDefined()
+      expect(JSON.parse((postCall![1] as RequestInit).body as string)).toEqual({
+        model: 'claude-haiku-4-5',
+      })
+    })
   })
 })

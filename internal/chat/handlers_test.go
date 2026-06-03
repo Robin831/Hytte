@@ -204,6 +204,119 @@ func TestRenameHandler_EmptyTitle(t *testing.T) {
 	}
 }
 
+func TestRenameHandler_UpdateModel(t *testing.T) {
+	db := setupTestDB(t)
+
+	convo, _ := CreateConversation(db, 1, "Keep Title", "claude-sonnet-4-6")
+
+	body := `{"model": "claude-opus-4-8"}`
+	req := httptest.NewRequest(http.MethodPut, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", strconv.FormatInt(convo.ID, 10))
+	rec := httptest.NewRecorder()
+
+	RenameHandler(db)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]*Conversation
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["conversation"].Model != "claude-opus-4-8" {
+		t.Fatalf("expected model 'claude-opus-4-8', got %q", resp["conversation"].Model)
+	}
+	// Title must be left untouched when only the model is supplied.
+	if resp["conversation"].Title != "Keep Title" {
+		t.Fatalf("expected title preserved as 'Keep Title', got %q", resp["conversation"].Title)
+	}
+
+	// Verify persistence.
+	after, err := GetConversation(db, convo.ID, 1)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if after.Model != "claude-opus-4-8" {
+		t.Fatalf("expected persisted model 'claude-opus-4-8', got %q", after.Model)
+	}
+}
+
+func TestRenameHandler_InvalidModel(t *testing.T) {
+	db := setupTestDB(t)
+
+	convo, _ := CreateConversation(db, 1, "Original", "claude-sonnet-4-6")
+
+	body := `{"model": "gpt-4"}`
+	req := httptest.NewRequest(http.MethodPut, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", strconv.FormatInt(convo.ID, 10))
+	rec := httptest.NewRecorder()
+
+	RenameHandler(db)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+
+	// Model must be left untouched on rejection.
+	after, err := GetConversation(db, convo.ID, 1)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if after.Model != "claude-sonnet-4-6" {
+		t.Fatalf("expected model unchanged 'claude-sonnet-4-6', got %q", after.Model)
+	}
+}
+
+func TestRenameHandler_TitleAndModel(t *testing.T) {
+	db := setupTestDB(t)
+
+	convo, _ := CreateConversation(db, 1, "", "claude-sonnet-4-6")
+
+	body := `{"title": "New Title", "model": "claude-haiku-4-5"}`
+	req := httptest.NewRequest(http.MethodPut, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", strconv.FormatInt(convo.ID, 10))
+	rec := httptest.NewRecorder()
+
+	RenameHandler(db)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]*Conversation
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["conversation"].Title != "New Title" {
+		t.Fatalf("expected title 'New Title', got %q", resp["conversation"].Title)
+	}
+	if resp["conversation"].Model != "claude-haiku-4-5" {
+		t.Fatalf("expected model 'claude-haiku-4-5', got %q", resp["conversation"].Model)
+	}
+}
+
+func TestRenameHandler_NoFields(t *testing.T) {
+	db := setupTestDB(t)
+
+	convo, _ := CreateConversation(db, 1, "Original", "claude-sonnet-4-6")
+
+	body := `{}`
+	req := httptest.NewRequest(http.MethodPut, "/", bytes.NewBufferString(body))
+	req = withUser(req)
+	req = withURLParam(req, "id", strconv.FormatInt(convo.ID, 10))
+	rec := httptest.NewRecorder()
+
+	RenameHandler(db)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when neither title nor model supplied, got %d", rec.Code)
+	}
+}
+
 func TestRenameHandler_NotFound(t *testing.T) {
 	db := setupTestDB(t)
 
