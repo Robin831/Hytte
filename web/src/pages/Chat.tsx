@@ -291,7 +291,7 @@ export default function Chat() {
   }
 
   async function updateModel(id: number, model: string) {
-    setError('')
+    setLocalError('')
     const prevModel = activeConversation?.model
     if (model === prevModel) return
     const seq = ++modelUpdateSeqRef.current
@@ -316,7 +316,7 @@ export default function Chat() {
         setActiveConversation(current => (current && current.id === id ? { ...current, model: prevModel } : current))
         setConversations(prev => prev.map(c => (c.id === id ? { ...c, model: prevModel } : c)))
       }
-      if (err instanceof Error) setError(err.message)
+      if (err instanceof Error) setLocalError(err.message)
     }
   }
 
