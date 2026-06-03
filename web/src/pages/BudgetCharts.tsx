@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, TrendingUp, PieChart as PieChartIcon, BarChart2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { formatBudgetNumber, useBudgetResource } from './budget/hooks'
 import {
   ResponsiveContainer,
   PieChart,
@@ -62,10 +63,6 @@ const DEFAULT_COLORS = [
   '#14b8a6', '#eab308', '#6366f1', '#ef4444', '#84cc16',
 ]
 
-function fmt(n: number): string {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n)
-}
-
 // Format a YYYY-MM string as a locale-aware short month label.
 // When showYear is true, appends a 2-digit year to disambiguate labels across calendar years.
 function formatMonthLabel(yyyyMM: string, showYear: boolean): string {
@@ -98,28 +95,10 @@ const TOOLTIP_STYLE = {
 export default function BudgetCharts() {
   const { t } = useTranslation('budget')
   const [months, setMonths] = useState(6)
-  const [data, setData] = useState<TrendsResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
-    setLoading(true)
-    setError(null)
-    fetch(`/api/budget/trends?months=${months}`, { credentials: 'include', signal: controller.signal })
-      .then(r => {
-        if (!r.ok) throw new Error('fetch failed')
-        return r.json() as Promise<TrendsResponse>
-      })
-      .then(setData)
-      .catch(err => {
-        if (err instanceof Error && err.name === 'AbortError') return
-        setError(t('charts.errors.loadFailed'))
-      })
-      .finally(() => setLoading(false))
-    return () => controller.abort()
-  }, [months, t])
+  const { data, loading, error } = useBudgetResource<TrendsResponse>(
+    `/api/budget/trends?months=${months}`,
+    t('charts.errors.loadFailed'),
+  )
 
   // Current month pie chart data (expenses only, from last month in trends).
   const currentMonthData = data?.months[data.months.length - 1]
@@ -204,16 +183,16 @@ export default function BudgetCharts() {
             <div className="grid grid-cols-3 gap-4">
               <div className="bg-gray-800 rounded-xl p-4 text-center">
                 <div className="text-xs text-gray-400 mb-1">{t('summary.income')}</div>
-                <div className="text-xl font-bold text-green-400">{fmt(currentMonthData.income)}</div>
+                <div className="text-xl font-bold text-green-400">{formatBudgetNumber(currentMonthData.income)}</div>
               </div>
               <div className="bg-gray-800 rounded-xl p-4 text-center">
                 <div className="text-xs text-gray-400 mb-1">{t('summary.expenses')}</div>
-                <div className="text-xl font-bold text-red-400">{fmt(currentMonthData.expenses)}</div>
+                <div className="text-xl font-bold text-red-400">{formatBudgetNumber(currentMonthData.expenses)}</div>
               </div>
               <div className="bg-gray-800 rounded-xl p-4 text-center">
                 <div className="text-xs text-gray-400 mb-1">{t('summary.net')}</div>
                 <div className={`text-xl font-bold ${currentMonthData.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {fmt(currentMonthData.net)}
+                  {formatBudgetNumber(currentMonthData.net)}
                 </div>
               </div>
             </div>
@@ -255,7 +234,7 @@ export default function BudgetCharts() {
                       </Pie>
                       <Tooltip
                         {...TOOLTIP_STYLE}
-                        formatter={(value) => [fmt(Number(value)), ''] as [string, string]}
+                        formatter={(value) => [formatBudgetNumber(Number(value)), ''] as [string, string]}
                       />
                     </PieChart>
                   </ResponsiveContainer>
@@ -277,10 +256,10 @@ export default function BudgetCharts() {
                     <BarChart data={barData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 11 }} />
-                      <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={fmt} />
+                      <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={(v) => formatBudgetNumber(Number(v))} />
                       <Tooltip
                         {...TOOLTIP_STYLE}
-                        formatter={(value) => [fmt(Number(value)), ''] as [string, string]}
+                        formatter={(value) => [formatBudgetNumber(Number(value)), ''] as [string, string]}
                       />
                       <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
                       <Bar dataKey="income" fill="#22c55e" radius={[3, 3, 0, 0]} name={t('summary.income')} />
@@ -306,10 +285,10 @@ export default function BudgetCharts() {
                   <LineChart data={netWorthData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                     <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 11 }} />
-                    <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={fmt} />
+                    <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={(v) => formatBudgetNumber(Number(v))} />
                     <Tooltip
                       {...TOOLTIP_STYLE}
-                      formatter={(value) => [fmt(Number(value)), t('charts.netWorth')] as [string, string]}
+                      formatter={(value) => [formatBudgetNumber(Number(value)), t('charts.netWorth')] as [string, string]}
                     />
                     <Line
                       type="monotone"
@@ -345,10 +324,10 @@ export default function BudgetCharts() {
                     <BarChart data={yoyData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                       <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 11 }} />
-                      <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={fmt} />
+                      <YAxis tick={{ fill: '#9ca3af', fontSize: 10 }} tickFormatter={(v) => formatBudgetNumber(Number(v))} />
                       <Tooltip
                         {...TOOLTIP_STYLE}
-                        formatter={(value) => [fmt(Number(value)), ''] as [string, string]}
+                        formatter={(value) => [formatBudgetNumber(Number(value)), ''] as [string, string]}
                       />
                       <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
                       <Bar dataKey="current" fill="#3b82f6" radius={[3, 3, 0, 0]} name={String(yoy.current_year)} />

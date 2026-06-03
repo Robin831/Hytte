@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, type FormEvent } from 'react'
+import { useState, useMemo, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Plus, Trash2, Pencil, X, ArrowLeftRight, ChevronLeft } from 'lucide-react'
-import { formatNumber } from '../utils/formatDate'
+import { toLocalDateString } from '../utils/formatDate'
+import { formatNOK, useBudgetResource } from './budget/hooks'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,26 +38,12 @@ interface TransferForm {
 
 const ACCOUNT_TYPES = ['checking', 'savings', 'credit', 'cash'] as const
 
-function todayDate(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
-
 function blankForm(): AccountForm {
   return { name: '', type: 'checking', currency: 'NOK', icon: '🏦', balance: '0', credit_limit: '0' }
 }
 
 function accountToForm(a: Account): AccountForm {
   return { name: a.name, type: a.type, currency: a.currency, icon: a.icon, balance: String(a.balance), credit_limit: String(a.credit_limit ?? 0) }
-}
-
-function formatBalance(amount: number, currency: string): string {
-  return formatNumber(amount, {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })
 }
 
 // ── Account form ─────────────────────────────────────────────────────────────
@@ -292,8 +279,15 @@ function TransferFormPanel({ accounts, form, onChange, onSubmit, onCancel, savin
 
 export default function BudgetAccounts() {
   const { t } = useTranslation('budget')
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data, loading, error: loadError, reload } = useBudgetResource<{ accounts: Account[] }>(
+    '/api/budget/accounts',
+    t('accounts.errors.loadFailed'),
+  )
+  const accounts = useMemo(
+    () => (data?.accounts ?? []).slice().sort((a, b) => a.id - b.id),
+    [data],
+  )
+  // Mutation (delete) errors; load errors come from the hook above.
   const [error, setError] = useState<string | null>(null)
 
   // Account form state: null = hidden, 0 = create, >0 = edit that id
@@ -313,33 +307,10 @@ export default function BudgetAccounts() {
     to_id: 0,
     amount: '',
     description: '',
-    date: todayDate(),
+    date: toLocalDateString(),
   })
   const [transferSaving, setTransferSaving] = useState(false)
   const [transferError, setTransferError] = useState<string | null>(null)
-
-  const loadAccounts = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/budget/accounts', { credentials: 'include', signal })
-      if (!res.ok) throw new Error(t('accounts.errors.loadFailed'))
-      const data = await res.json() as { accounts: Account[] }
-      setAccounts((data.accounts ?? []).slice().sort((a, b) => a.id - b.id))
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
-      setError(err instanceof Error ? err.message : t('accounts.errors.loadFailed'))
-    } finally {
-      setLoading(false)
-    }
-  }, [t])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
-    void loadAccounts(controller.signal)
-    return () => { controller.abort() }
-  }, [loadAccounts])
 
   function setFormField<K extends keyof AccountForm>(key: K, value: AccountForm[K]) {
     setForm(prev => ({ ...prev, [key]: value }))
@@ -412,7 +383,8 @@ export default function BudgetAccounts() {
         throw new Error(body.error ?? t('accounts.errors.saveFailed'))
       }
       closeForm()
-      await loadAccounts()
+      setError(null)
+      reload()
     } catch (err) {
       setFormError(err instanceof Error ? err.message : t('accounts.errors.saveFailed'))
     } finally {
@@ -430,7 +402,7 @@ export default function BudgetAccounts() {
       })
       if (!res.ok) throw new Error(t('accounts.errors.deleteFailed'))
       setConfirmDeleteId(null)
-      await loadAccounts()
+      reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : t('accounts.errors.deleteFailed'))
     } finally {
@@ -468,7 +440,8 @@ export default function BudgetAccounts() {
       if (!transferRes.ok) throw new Error(t('accounts.errors.transferFailed'))
       setShowTransfer(false)
       setTransferForm(prev => ({ ...prev, amount: '', description: '' }))
-      await loadAccounts()
+      setError(null)
+      reload()
     } catch (err) {
       setTransferError(err instanceof Error ? err.message : t('accounts.errors.transferFailed'))
     } finally {
@@ -539,9 +512,9 @@ export default function BudgetAccounts() {
         />
       )}
 
-      {error && (
+      {(error ?? loadError) && (
         <div className="px-4 py-3 bg-red-900/40 text-red-300 text-sm border-b border-red-800">
-          {error}
+          {error ?? loadError}
         </div>
       )}
 
@@ -599,11 +572,11 @@ export default function BudgetAccounts() {
                   {/* Balance */}
                   <div className="text-right shrink-0">
                     <p className={`text-sm font-semibold tabular-nums ${a.balance < 0 ? 'text-red-400' : 'text-gray-100'}`}>
-                      {formatBalance(a.balance, a.currency)}
+                      {formatNOK(a.balance, a.currency)}
                     </p>
                     {a.type === 'credit' && a.credit_limit > 0 ? (
                       <p className="text-xs text-gray-500">
-                        {t('accounts.creditLimitOf', { limit: formatBalance(a.credit_limit, a.currency) })}
+                        {t('accounts.creditLimitOf', { limit: formatNOK(a.credit_limit, a.currency) })}
                       </p>
                     ) : (
                       <p className="text-xs text-gray-500">{a.currency}</p>

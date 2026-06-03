@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Plus, Trash2, Pencil, X, Check, ChevronLeft } from 'lucide-react'
+import { useBudgetResource } from './budget/hooks'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -88,8 +89,12 @@ function groupCategories(categories: Category[]): [string, Category[]][] {
 export default function BudgetCategories() {
   const { t } = useTranslation('budget')
 
-  const [categories, setCategories] = useState<Category[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data, setData, loading, error: loadError, reload } = useBudgetResource<{ categories: Category[] }>(
+    '/api/budget/categories',
+    t('categories.errors.loadFailed'),
+  )
+  const categories = data?.categories ?? []
+  // Mutation (delete) errors; load errors come from the hook above.
   const [error, setError] = useState<string | null>(null)
 
   // Form state: null = hidden, 0 = new, >0 = editing category id
@@ -98,26 +103,6 @@ export default function BudgetCategories() {
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [customGroup, setCustomGroup] = useState(false)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/budget/categories', { credentials: 'include' })
-      if (!res.ok) throw new Error('load failed')
-      const data = await res.json()
-      setCategories(data.categories ?? [])
-    } catch {
-      setError(t('categories.errors.loadFailed'))
-    } finally {
-      setLoading(false)
-    }
-  }, [t])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch
-    load()
-  }, [load])
 
   function openCreate() {
     const f = blankForm()
@@ -170,7 +155,8 @@ export default function BudgetCategories() {
       )
       if (!res.ok) throw new Error('save failed')
       cancelEdit()
-      await load()
+      setError(null)
+      reload()
     } catch {
       setFormError(t('categories.errors.saveFailed'))
     } finally {
@@ -186,7 +172,7 @@ export default function BudgetCategories() {
         credentials: 'include',
       })
       if (!res.ok) throw new Error('delete failed')
-      setCategories(prev => prev.filter(c => c.id !== id))
+      setData(prev => (prev ? { ...prev, categories: prev.categories.filter(c => c.id !== id) } : prev))
     } catch {
       setError(t('categories.errors.deleteFailed'))
     }
@@ -222,9 +208,9 @@ export default function BudgetCategories() {
         </button>
       </div>
 
-      {error && (
+      {(error ?? loadError) && (
         <div className="mb-4 p-3 bg-red-900/40 border border-red-700 rounded-lg text-red-300 text-sm">
-          {error}
+          {error ?? loadError}
         </div>
       )}
 

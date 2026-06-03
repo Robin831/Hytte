@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight, Plus, Trash2, X, Pencil, Check, TrendingUp, Home, Tag, CreditCard, Repeat, Receipt, Zap, Clock } from 'lucide-react'
-import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
+import { formatDate as fmtDate, toLocalDateString } from '../utils/formatDate'
+import { formatNOK } from './budget/hooks'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -93,24 +94,6 @@ function currentMonth(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
-function todayDate(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
-
-// Formats a signed amount in the given currency using the active locale.
-// Callers without a per-account context fall back to 'NOK'; the negative sign
-// (or parentheses, depending on locale) is rendered by Intl.NumberFormat —
-// red/green tinting belongs on the surrounding cell, not in here.
-function formatAmount(amount: number, currency?: string): string {
-  return formatNumber(amount, {
-    style: 'currency',
-    currency: currency ?? 'NOK',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })
-}
-
 function formatTxDate(date: string): string {
   const [y, m, d] = date.split('-').map(Number)
   return fmtDate(new Date(y, m - 1, d), { day: 'numeric', month: 'short' })
@@ -136,7 +119,7 @@ function QuickAddRow({ accounts, categories, onAdd, onCancel }: QuickAddRowProps
   const { t } = useTranslation('budget')
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
-  const [date, setDate] = useState(todayDate())
+  const [date, setDate] = useState(toLocalDateString())
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? 0)
   const [categoryId, setCategoryId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
@@ -371,11 +354,11 @@ function CategoryRow({ cs, month, onLimitSaved }: CategoryRowProps) {
           <span
             className={`tabular-nums font-medium ${cs.is_income ? 'text-green-400' : cs.total < 0 ? 'text-red-400' : 'text-gray-300'}`}
           >
-            {formatAmount(cs.total)}
+            {formatNOK(cs.total)}
           </span>
           {hasBudget && (
             <span className="text-gray-500 text-xs ml-1">
-              / {formatAmount(cs.budget_amount)}
+              / {formatNOK(cs.budget_amount)}
             </span>
           )}
         </div>
@@ -395,8 +378,8 @@ function CategoryRow({ cs, month, onLimitSaved }: CategoryRowProps) {
             {remaining !== null && (
               <span className={remaining < 0 ? 'text-red-400' : 'text-gray-400'}>
                 {remaining >= 0
-                  ? t('limits.remaining', { amount: formatAmount(remaining) })
-                  : t('limits.over', { amount: formatAmount(Math.abs(remaining)) })}
+                  ? t('limits.remaining', { amount: formatNOK(remaining) })
+                  : t('limits.over', { amount: formatNOK(Math.abs(remaining)) })}
               </span>
             )}
           </div>
@@ -669,8 +652,8 @@ export default function BudgetPage() {
                 />
               </div>
               <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span className="text-green-400">{t('summary.income')}: {formatAmount(summary.income_total)}</span>
-                <span className="text-red-400">{t('summary.expenses')}: {formatAmount(summary.expense_total)}</span>
+                <span className="text-green-400">{t('summary.income')}: {formatNOK(summary.income_total)}</span>
+                <span className="text-red-400">{t('summary.expenses')}: {formatNOK(summary.expense_total)}</span>
               </div>
             </div>
           )}
@@ -679,7 +662,7 @@ export default function BudgetPage() {
             <div className="text-center">
               <p className="text-xs text-gray-400 uppercase tracking-wide">{t('summary.net')}</p>
               <p className={`text-lg font-semibold ${summary.net >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {formatAmount(summary.net)}
+                {formatNOK(summary.net)}
               </p>
             </div>
             <div className="text-center">
@@ -743,13 +726,13 @@ export default function BudgetPage() {
                 <div className="space-y-0.5">
                   <p className="text-sm text-green-300">
                     {t('summary.yourShare', {
-                      amount: formatAmount(summary.income_total * summary.income_split / 100),
+                      amount: formatNOK(summary.income_total * summary.income_split / 100),
                       pct: summary.income_split,
                     })}
                   </p>
                   <p className="text-sm text-blue-300">
                     {t('summary.partnerShare', {
-                      amount: formatAmount(summary.income_total * (100 - summary.income_split) / 100),
+                      amount: formatNOK(summary.income_total * (100 - summary.income_split) / 100),
                       pct: 100 - summary.income_split,
                     })}
                   </p>
@@ -878,10 +861,10 @@ export default function BudgetPage() {
                     <p
                       className={`text-sm font-medium tabular-nums ${isIncome ? 'text-green-400' : 'text-red-400'}`}
                     >
-                      {formatAmount(txn.amount, acct?.currency)}
+                      {formatNOK(txn.amount, acct?.currency)}
                     </p>
                     <p className="text-xs text-gray-500 tabular-nums">
-                      {t('summary.remaining')}: {formatAmount(balance, acct?.currency)}
+                      {t('summary.remaining')}: {formatNOK(balance, acct?.currency)}
                     </p>
                   </div>
 
@@ -951,11 +934,11 @@ export default function BudgetPage() {
                     <p
                       className={`text-sm font-medium tabular-nums ${isIncome ? 'text-green-400/70' : 'text-red-400/70'}`}
                     >
-                      {formatAmount(item.amount)}
+                      {formatNOK(item.amount)}
                     </p>
                     {hasSplit && Math.abs(item.your_share) !== Math.abs(item.amount) && (
                       <p className="text-xs text-gray-500 tabular-nums">
-                        {t('upcoming.yourShare', { amount: formatAmount(item.your_share) })}
+                        {t('upcoming.yourShare', { amount: formatNOK(item.your_share) })}
                       </p>
                     )}
                   </div>
