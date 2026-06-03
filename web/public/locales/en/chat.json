@@ -16,7 +16,13 @@
     "backLabel": "Back to conversations"
   },
   "header": {
-    "selectOrStart": "Select or start a conversation"
+    "selectOrStart": "Select or start a conversation",
+    "modelLabel": "Model"
+  },
+  "models": {
+    "opus": "Opus",
+    "sonnet": "Sonnet",
+    "haiku": "Haiku"
   },
   "welcome": {
     "title": "Hytte Chat",
@@ -38,6 +44,7 @@
     "failedToCreate": "Failed to create conversation",
     "failedToDelete": "Failed to delete conversation",
     "failedToRename": "Failed to rename conversation",
+    "failedToUpdateModel": "Failed to update model",
     "failedToSend": "Failed to send message",
     "streamError": "The response stream was interrupted. Please try again."
   }

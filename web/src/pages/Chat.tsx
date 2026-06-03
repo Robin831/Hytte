@@ -30,6 +30,22 @@ import type { Conversation, Message } from '../hooks/useChatStream'
 // Past this, the user has scrolled up to read history and we leave them be.
 const PIN_THRESHOLD = 80
 
+// MODEL_OPTIONS is a curated subset of the models the backend allows
+// (internal/chat/handlers.go SupportedModels). The backend may accept
+// additional model IDs (e.g. older Opus variants) that we intentionally
+// omit from the UI dropdown.
+const MODEL_OPTIONS = ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'] as const
+const DEFAULT_MODEL = 'claude-sonnet-4-6'
+
+// modelLabelKey maps a model ID to its i18n label key by family so any
+// supported variant (e.g. an older Opus) still shows a friendly name.
+function modelLabelKey(model: string): 'models.opus' | 'models.sonnet' | 'models.haiku' | '' {
+  if (model.startsWith('claude-opus')) return 'models.opus'
+  if (model.startsWith('claude-sonnet')) return 'models.sonnet'
+  if (model.startsWith('claude-haiku')) return 'models.haiku'
+  return ''
+}
+
 export default function Chat() {
   const { t } = useTranslation('chat')
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -46,6 +62,9 @@ export default function Chat() {
   const [showSidebar, setShowSidebar] = useState(true)
   const [renamingId, setRenamingId] = useState<number | null>(null)
   const [renameTitle, setRenameTitle] = useState('')
+  // Model chosen for the next new conversation (used when none is active).
+  // Empty means "let the backend pick" (falls back to user's configured model).
+  const [newConversationModel, setNewConversationModel] = useState<string>('')
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -67,6 +86,7 @@ export default function Chat() {
   // Track locally deleted conversation IDs so we don't resurrect them if a
   // send response arrives after the user deleted the conversation mid-flight.
   const deletedConversationIds = useRef<Set<number>>(new Set())
+  const modelUpdateSeqRef = useRef<Map<number, number>>(new Map())
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior })
@@ -254,7 +274,7 @@ export default function Chat() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify(newConversationModel ? { model: newConversationModel } : {}),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
@@ -268,6 +288,37 @@ export default function Chat() {
       setLocalError('')
       inputRef.current?.focus()
     } catch (err) {
+      if (err instanceof Error) setLocalError(err.message)
+    }
+  }
+
+  async function updateModel(id: number, model: string) {
+    setLocalError('')
+    const prevModel = activeConversation?.model
+    if (model === prevModel) return
+    const seqMap = modelUpdateSeqRef.current
+    const seq = (seqMap.get(id) ?? 0) + 1
+    seqMap.set(id, seq)
+    setActiveConversation(current => (current && current.id === id ? { ...current, model } : current))
+    setConversations(prev => prev.map(c => (c.id === id ? { ...c, model } : c)))
+    try {
+      const res = await fetch(`/api/chat/conversations/${id}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model }),
+      })
+      if (!res.ok) throw new Error(t('errors.failedToUpdateModel'))
+      const data = await res.json()
+      const updated = data.conversation as Conversation
+      if (seqMap.get(id) !== seq) return
+      setConversations(prev => prev.map(c => (c.id === id ? updated : c)))
+      setActiveConversation(current => (current?.id === id ? updated : current))
+    } catch (err) {
+      if (seqMap.get(id) === seq && prevModel !== undefined) {
+        setActiveConversation(current => (current && current.id === id ? { ...current, model: prevModel } : current))
+        setConversations(prev => prev.map(c => (c.id === id ? { ...c, model: prevModel } : c)))
+      }
       if (err instanceof Error) setLocalError(err.message)
     }
   }
@@ -360,6 +411,47 @@ export default function Chat() {
   }
 
   const conversationTitle = (conv: Conversation) => conv.title || t('newConversation')
+
+  // Options for the header model dropdown. If the current selection isn't one
+  // of the fixed options (e.g. an existing conversation on an older variant),
+  // prepend it so the select still reflects the real value.
+  const modelOptionsFor = (current: string): string[] =>
+    MODEL_OPTIONS.includes(current as (typeof MODEL_OPTIONS)[number])
+      ? [...MODEL_OPTIONS]
+      : [current, ...MODEL_OPTIONS]
+
+  const modelLabel = (model: string): string => {
+    const key = modelLabelKey(model)
+    return key ? t(key) : model
+  }
+
+  const selectedModel = activeConversation ? activeConversation.model : (newConversationModel || DEFAULT_MODEL)
+  const modelSelectDisabled =
+    activeConversation != null && sendingConversationIds.has(activeConversation.id)
+  const onModelChange = (model: string) => {
+    if (activeConversation) {
+      updateModel(activeConversation.id, model)
+    } else {
+      setNewConversationModel(model)
+    }
+  }
+
+  const modelSelector = (
+    <select
+      value={selectedModel}
+      onChange={e => onModelChange(e.target.value)}
+      disabled={modelSelectDisabled}
+      aria-label={t('header.modelLabel')}
+      title={t('header.modelLabel')}
+      className="shrink-0 bg-gray-800 border border-gray-600 rounded-lg px-2 py-1 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+    >
+      {modelOptionsFor(selectedModel).map(m => (
+        <option key={m} value={m}>
+          {modelLabel(m)}
+        </option>
+      ))}
+    </select>
+  )
 
   // Conversation sidebar panel
   const sidebarContent = (
@@ -531,16 +623,16 @@ export default function Chat() {
           >
             <ChevronLeft size={20} />
           </button>
-          {activeConversation ? (
-            <div className="min-w-0">
+          <div className="min-w-0 flex-1">
+            {activeConversation ? (
               <h2 className="text-sm font-medium truncate">
                 {conversationTitle(activeConversation)}
               </h2>
-              <p className="text-xs text-gray-500">{activeConversation.model}</p>
-            </div>
-          ) : (
-            <h2 className="text-sm font-medium text-gray-400">{t('header.selectOrStart')}</h2>
-          )}
+            ) : (
+              <h2 className="text-sm font-medium text-gray-400 truncate">{t('header.selectOrStart')}</h2>
+            )}
+          </div>
+          {modelSelector}
         </div>
 
         {/* Messages area */}

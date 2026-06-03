@@ -16,6 +16,17 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// SupportedModels is the allowlist of Claude model IDs a conversation may use.
+// Keep this in sync with the model options offered in the chat header dropdown
+// (web/src/pages/Chat.tsx) and the Settings page (web/src/pages/Settings.tsx).
+var SupportedModels = map[string]bool{
+	"claude-opus-4-8":   true,
+	"claude-opus-4-7":   true,
+	"claude-opus-4-6":   true,
+	"claude-sonnet-4-6": true,
+	"claude-haiku-4-5":  true,
+}
+
 // runPromptFn is the function used to invoke Claude (for auto-title generation).
 var runPromptFn = training.RunPrompt
 
@@ -68,13 +79,17 @@ func CreateHandler(db *sql.DB) http.HandlerFunc {
 
 		model := strings.TrimSpace(body.Model)
 		if model == "" {
-			// Fall back to user's configured Claude model.
+			// Fall back to user's configured Claude model, validated against
+			// the allowlist so an unsupported config value can't slip through.
 			cfg, err := training.LoadClaudeConfig(db, user.ID)
-			if err == nil && cfg.Model != "" {
-				model = cfg.Model
+			if err == nil && SupportedModels[strings.TrimSpace(cfg.Model)] {
+				model = strings.TrimSpace(cfg.Model)
 			} else {
 				model = "claude-sonnet-4-6"
 			}
+		} else if !SupportedModels[model] {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported model"})
+			return
 		}
 
 		convo, err := CreateConversation(db, user.ID, "", model)
@@ -277,9 +292,11 @@ func SendMessageHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// RenameHandler updates a conversation's title.
+// RenameHandler updates a conversation's title and/or model. Both fields are
+// optional; at least one must be supplied. A supplied model is validated
+// against SupportedModels.
 // PUT /api/chat/conversations/{id}
-// Body: {"title": "New Title"}
+// Body: {"title": "New Title"} and/or {"model": "claude-opus-4-8"}
 func RenameHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -291,27 +308,47 @@ func RenameHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		var body struct {
-			Title string `json:"title"`
+			Title *string `json:"title"`
+			Model *string `json:"model"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 			return
 		}
 
-		title := strings.TrimSpace(body.Title)
-		if title == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title is required"})
+		var titlePtr *string
+		if body.Title != nil {
+			title := strings.TrimSpace(*body.Title)
+			if title == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title is required"})
+				return
+			}
+			titlePtr = &title
+		}
+
+		var modelPtr *string
+		if body.Model != nil {
+			model := strings.TrimSpace(*body.Model)
+			if !SupportedModels[model] {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported model"})
+				return
+			}
+			modelPtr = &model
+		}
+
+		if titlePtr == nil && modelPtr == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title or model is required"})
 			return
 		}
 
-		convo, err := RenameConversation(db, id, user.ID, title)
+		convo, err := UpdateConversation(db, id, user.ID, titlePtr, modelPtr)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "conversation not found"})
 				return
 			}
-			log.Printf("Failed to rename conversation: %v", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to rename conversation"})
+			log.Printf("Failed to update conversation: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update conversation"})
 			return
 		}
 

@@ -16,7 +16,13 @@
     "backLabel": "Tilbake til samtaler"
   },
   "header": {
-    "selectOrStart": "Velg eller start en samtale"
+    "selectOrStart": "Velg eller start en samtale",
+    "modelLabel": "Modell"
+  },
+  "models": {
+    "opus": "Opus",
+    "sonnet": "Sonnet",
+    "haiku": "Haiku"
   },
   "welcome": {
     "title": "Hytte Chat",
@@ -38,6 +44,7 @@
     "failedToCreate": "Kunne ikke opprette samtale",
     "failedToDelete": "Kunne ikke slette samtale",
     "failedToRename": "Kunne ikke gi samtalen nytt navn",
+    "failedToUpdateModel": "Kunne ikke oppdatere modell",
     "failedToSend": "Kunne ikke sende melding",
     "streamError": "Strømmen ble avbrutt. Prøv igjen."
   }

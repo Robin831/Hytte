@@ -16,7 +16,13 @@
     "backLabel": "กลับสู่รายการสนทนา"
   },
   "header": {
-    "selectOrStart": "เลือกหรือเริ่มการสนทนา"
+    "selectOrStart": "เลือกหรือเริ่มการสนทนา",
+    "modelLabel": "โมเดล"
+  },
+  "models": {
+    "opus": "Opus",
+    "sonnet": "Sonnet",
+    "haiku": "Haiku"
   },
   "welcome": {
     "title": "Hytte Chat",
@@ -38,6 +44,7 @@
     "failedToCreate": "สร้างการสนทนาไม่สำเร็จ",
     "failedToDelete": "ลบการสนทนาไม่สำเร็จ",
     "failedToRename": "เปลี่ยนชื่อการสนทนาไม่สำเร็จ",
+    "failedToUpdateModel": "อัปเดตโมเดลไม่สำเร็จ",
     "failedToSend": "ส่งข้อความไม่สำเร็จ",
     "streamError": "การสตรีมตอบกลับถูกขัดจังหวะ โปรดลองอีกครั้ง"
   }

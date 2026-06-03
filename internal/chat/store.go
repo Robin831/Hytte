@@ -2,6 +2,7 @@ package chat
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 )
 
@@ -121,6 +122,39 @@ func RenameConversation(db *sql.DB, id, userID int64, title string) (*Conversati
 		`UPDATE chat_conversations SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
 		title, now, id, userID,
 	)
+	if err != nil {
+		return nil, err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, sql.ErrNoRows
+	}
+	return GetConversation(db, id, userID)
+}
+
+// UpdateConversation updates the title and/or model of a conversation owned by
+// the given user. Only the non-nil fields are written; updated_at is always
+// touched. Passing both nil touches only updated_at. Returns sql.ErrNoRows if
+// the conversation doesn't exist or isn't owned by the user.
+func UpdateConversation(db *sql.DB, id, userID int64, title, model *string) (*Conversation, error) {
+	now := time.Now().UTC().Format(timeFormat)
+	sets := []string{"updated_at = ?"}
+	args := []any{now}
+	if title != nil {
+		sets = append(sets, "title = ?")
+		args = append(args, *title)
+	}
+	if model != nil {
+		sets = append(sets, "model = ?")
+		args = append(args, *model)
+	}
+	args = append(args, id, userID)
+
+	query := "UPDATE chat_conversations SET " + strings.Join(sets, ", ") + " WHERE id = ? AND user_id = ?"
+	result, err := db.Exec(query, args...)
 	if err != nil {
 		return nil, err
 	}
