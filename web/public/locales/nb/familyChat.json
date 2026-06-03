@@ -33,8 +33,7 @@
     "lightboxClose": "Lukk forhåndsvisning",
     "connection": {
       "live": "Tilkoblet",
-      "reconnecting": "Kobler til på nytt…",
-      "ariaLabel": "Tilkoblingsstatus"
+      "reconnecting": "Kobler til på nytt…"
     },
     "typing": {
       "single": "{{name}} skriver…",

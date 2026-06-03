@@ -1219,7 +1219,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-amber-500/15 border border-amber-500/40 text-amber-200 shrink-0"
             role="status"
             aria-live="polite"
-            aria-label={t('chat.connection.ariaLabel')}
             title={t('chat.connection.reconnecting')}
             data-testid="family-chat-reconnecting"
           >
@@ -1232,7 +1231,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-500/15 border border-green-500/40 text-green-200 shrink-0"
             role="status"
             aria-live="polite"
-            aria-label={t('chat.connection.ariaLabel')}
             title={t('chat.connection.live')}
             data-testid="family-chat-connected"
           >

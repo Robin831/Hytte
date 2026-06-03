@@ -33,8 +33,7 @@
     "lightboxClose": "ปิดการดูตัวอย่าง",
     "connection": {
       "live": "เชื่อมต่อแล้ว",
-      "reconnecting": "กำลังเชื่อมต่อใหม่…",
-      "ariaLabel": "สถานะการเชื่อมต่อ"
+      "reconnecting": "กำลังเชื่อมต่อใหม่…"
     },
     "typing": {
       "single": "{{name}} กำลังพิมพ์…",
