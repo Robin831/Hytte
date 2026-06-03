@@ -31,6 +31,7 @@ const TRANSLATIONS: Record<string, string> = {
   'input.copyMessage': 'Copy message',
   'errors.failedToLoadMessages': 'Failed to load messages',
   'errors.failedToSend': 'Failed to send message',
+  'loading': 'Loading...',
 }
 
 function stableT(key: string): string {
@@ -124,10 +125,11 @@ function renderChat(id = '1') {
 describe('HomeworkChat – loading and error states', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
-  it('shows loading spinner on initial render', () => {
+  it('shows skeleton loading state on initial render', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
-    const { container } = renderChat()
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument()
+    renderChat()
+    const status = screen.getByRole('status')
+    expect(status).toHaveAttribute('aria-busy', 'true')
   })
 
   it('shows welcome state when no messages', async () => {

@@ -26,6 +26,7 @@ const TRANSLATIONS: Record<string, string> = {
   'helpLevel.answer': 'Answer',
   'noSubject': 'New topic',
   'dismissError': 'Dismiss error',
+  'loading': 'Loading...',
 }
 
 function stableT(key: string, fallback?: string): string {
@@ -126,10 +127,11 @@ function renderPage() {
 describe('HomeworkParentReview – loading children', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
-  it('shows loading spinner on initial render', () => {
+  it('shows skeleton loading state on initial render', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
-    const { container } = renderPage()
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument()
+    renderPage()
+    const status = screen.getByRole('status')
+    expect(status).toHaveAttribute('aria-busy', 'true')
   })
 
   it('shows empty state when no children', async () => {
