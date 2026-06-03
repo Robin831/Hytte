@@ -84,9 +84,6 @@ export default function Chat() {
   // Track locally deleted conversation IDs so we don't resurrect them if a
   // send response arrives after the user deleted the conversation mid-flight.
   const deletedConversationIds = useRef<Set<number>>(new Set())
-  // Tracks the active streaming request so the user can cancel mid-send and
-  // so a conversation switch can abort the in-flight stream.
-  const streamAbortRef = useRef<AbortController | null>(null)
   const modelUpdateSeqRef = useRef(0)
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
