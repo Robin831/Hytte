@@ -713,7 +713,7 @@ export default function BudgetCreditCards() {
     setLoadingSummary(true)
     setSummary(null)
     setError(null)
-    fetch(`/api/budget/credit/summary?account_id=${accountId}&month=${m}`, {
+    fetch(`/api/budget/credit/summary?account_id=${encodeURIComponent(accountId)}&month=${encodeURIComponent(m)}`, {
       credentials: 'include',
       signal: ctrl.signal,
     })
@@ -741,7 +741,7 @@ export default function BudgetCreditCards() {
     setOpeningBalance(0)
     setOpeningBalanceInput('')
     const cardId = String(accountId)
-    fetch(`/api/credit-card/transactions?credit_card_id=${encodeURIComponent(cardId)}&month=${m}`, {
+    fetch(`/api/credit-card/transactions?credit_card_id=${encodeURIComponent(cardId)}&month=${encodeURIComponent(m)}`, {
       credentials: 'include',
       signal: ctrl.signal,
     })
@@ -918,7 +918,7 @@ export default function BudgetCreditCards() {
     const cardId = String(selectedId)
     setSavingOpeningBalance(true)
     try {
-      const r = await fetch(`/api/credit-card/opening-balance?credit_card_id=${encodeURIComponent(cardId)}&month=${month}`, {
+      const r = await fetch(`/api/credit-card/opening-balance?credit_card_id=${encodeURIComponent(cardId)}&month=${encodeURIComponent(month)}`, {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -1423,7 +1423,7 @@ export default function BudgetCreditCards() {
                 <button
                   onClick={async () => {
                     try {
-                      const r = await fetch(`/api/credit-card/sync-variable?credit_card_id=${encodeURIComponent(String(selectedAccount.id))}&month=${month}`, {
+                      const r = await fetch(`/api/credit-card/sync-variable?credit_card_id=${encodeURIComponent(String(selectedAccount.id))}&month=${encodeURIComponent(month)}`, {
                         method: 'POST',
                         credentials: 'include',
                       })
