@@ -495,16 +495,17 @@ export default function Weather() {
   // cached forecast instantly, or clear to skeletons when it was never viewed.
   useEffect(() => {
     if (!selectedLocation) return
-    const cached = readForecastCache<ForecastResponse>(selectedLocation.lat, selectedLocation.lon)
+    const cached = readForecastCache<ForecastResponse>(selectedLocation.lat, selectedLocation.lon, user?.id)
     if (cached) {
       dispatch({ type: 'seed', data: cached.response, lastUpdated: new Date(cached.lastUpdated) })
     } else {
       dispatch({ type: 'reset' })
     }
-    // Key on coordinates so reconciling the location object (same lat/lon, new
-    // reference) does not spuriously clear freshly fetched data.
+    // Key on coordinates + user so reconciling the location object (same lat/lon,
+    // new reference) does not spuriously clear freshly fetched data, and switching
+    // accounts reads from the correct user-scoped cache.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLocation?.lat, selectedLocation?.lon])
+  }, [selectedLocation?.lat, selectedLocation?.lon, user?.id])
 
   // Fetch forecast once we know the correct location.
   useEffect(() => {
@@ -522,7 +523,7 @@ export default function Weather() {
         if (cancelled) return
         dispatch({ type: 'success', data })
         // Persist/refresh this location's cache so future revisits render instantly.
-        writeForecastCache(selectedLocation.lat, selectedLocation.lon, data)
+        writeForecastCache(selectedLocation.lat, selectedLocation.lon, data, user?.id)
       })
       .catch((err) => {
         if (!cancelled) dispatch({ type: 'error', message: err.message })
@@ -531,6 +532,8 @@ export default function Weather() {
     return () => {
       cancelled = true
     }
+    // user?.id is read only for cache-key scoping, not to trigger a re-fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLocation, locationResolved, refreshKey])
 
   // Auto-refresh every 10 minutes, pausing when the tab is hidden.

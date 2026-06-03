@@ -4,9 +4,17 @@
 // localStorage so revisits can render real numbers instantly while a fresh forecast
 // is fetched in the background. A single localStorage key holds a JSON array of
 // entries; array order encodes recency (oldest first, most-recently-used last) so
-// the store can be bounded with simple LRU eviction.
+// the store can be bounded with simple LRU eviction. Reads promote the accessed
+// entry to the tail so actively viewed locations are not evicted.
+//
+// The storage key is scoped by user ID to prevent cross-account data leakage on
+// shared browsers. Anonymous sessions share a single "anon" namespace.
 
-const STORAGE_KEY = 'weather:forecastCache'
+const STORAGE_KEY_PREFIX = 'weather:forecastCache'
+
+function storageKey(userId?: number): string {
+  return userId != null ? `${STORAGE_KEY_PREFIX}:${userId}` : `${STORAGE_KEY_PREFIX}:anon`
+}
 
 // Maximum number of distinct locations to retain. Adding a new location beyond this
 // evicts the oldest (least-recently-used) entry.
@@ -43,10 +51,10 @@ function isValidEntry(item: unknown): item is ForecastCacheEntry {
  * Read the stored entry array, tolerating missing/corrupt/non-array data.
  * Returns only well-formed entries; anything malformed is treated as empty.
  */
-function readEntries(): ForecastCacheEntry[] {
+function readEntries(userId?: number): ForecastCacheEntry[] {
   let raw: string | null
   try {
-    raw = localStorage.getItem(STORAGE_KEY)
+    raw = localStorage.getItem(storageKey(userId))
   } catch {
     return []
   }
@@ -62,12 +70,26 @@ function readEntries(): ForecastCacheEntry[] {
 
 /**
  * Read the cached forecast for a location, or null when there is no valid entry.
- * Never throws — corrupt or missing data falls back to null.
+ * Promotes the accessed entry to the most-recently-used position so actively
+ * viewed locations are not evicted. Never throws — corrupt or missing data falls
+ * back to null.
  */
-export function readForecastCache<T = unknown>(lat: number, lon: number): ForecastCacheEntry<T> | null {
+export function readForecastCache<T = unknown>(lat: number, lon: number, userId?: number): ForecastCacheEntry<T> | null {
   const key = keyFor(lat, lon)
-  const entry = readEntries().find((e) => e.key === key)
-  return (entry as ForecastCacheEntry<T> | undefined) ?? null
+  const entries = readEntries(userId)
+  const idx = entries.findIndex((e) => e.key === key)
+  if (idx === -1) return null
+  // Promote to tail (most-recently-used) if not already there.
+  if (idx < entries.length - 1) {
+    const [entry] = entries.splice(idx, 1)
+    entries.push(entry)
+    try {
+      localStorage.setItem(storageKey(userId), JSON.stringify(entries))
+    } catch {
+      // Best-effort — promotion failure doesn't affect the read.
+    }
+  }
+  return entries[entries.length - 1] as ForecastCacheEntry<T>
 }
 
 /**
@@ -75,17 +97,17 @@ export function readForecastCache<T = unknown>(lat: number, lon: number): Foreca
  * Moves the location to the most-recently-used end and evicts the oldest entries
  * beyond MAX_ENTRIES. Never throws — storage/serialization errors are ignored.
  */
-export function writeForecastCache<T = unknown>(lat: number, lon: number, response: T): void {
+export function writeForecastCache<T = unknown>(lat: number, lon: number, response: T, userId?: number): void {
   const key = keyFor(lat, lon)
   // Drop any existing entry for this key, then append it as most-recently-used.
-  const entries = readEntries().filter((e) => e.key !== key)
+  const entries = readEntries(userId).filter((e) => e.key !== key)
   entries.push({ key, response, lastUpdated: Date.now() })
   // Evict from the oldest (front) end until within the bound.
   while (entries.length > MAX_ENTRIES) {
     entries.shift()
   }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
+    localStorage.setItem(storageKey(userId), JSON.stringify(entries))
   } catch {
     // Quota exceeded or serialization failure — caching is best-effort.
   }
