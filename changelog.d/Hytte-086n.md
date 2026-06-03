@@ -1,0 +1,2 @@
+category: Changed
+- **Skeleton loading states for Homework pages** - The conversations list, chat, settings, and parent review pages now keep their header and primary controls (New conversation, Settings, back arrow) visible during the first load and show animated skeleton placeholders in the content area instead of replacing the whole page with a centered spinner. This removes the unmount-on-reload jank and layout shift on slow connections. (Hytte-086n)

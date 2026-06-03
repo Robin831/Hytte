@@ -18,6 +18,7 @@ import {
   Image,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { SkeletonBlock } from '../components/Skeleton'
 
 type HelpLevel = 'hint' | 'explain' | 'walkthrough' | 'answer'
 
@@ -290,14 +291,6 @@ export default function HomeworkChat() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Loader2 size={32} className="animate-spin text-gray-400" />
-      </div>
-    )
-  }
-
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] md:h-screen">
       {/* Header */}
@@ -319,7 +312,30 @@ export default function HomeworkChat() {
 
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto" role="log" aria-live="polite">
-        {messages.length === 0 && !streamingText ? (
+        {loading ? (
+          <div
+            className="max-w-3xl mx-auto px-4 py-6 space-y-6"
+            role="status"
+            aria-busy="true"
+          >
+            <span className="sr-only">{t('loading')}</span>
+            {/* Assistant bubble */}
+            <div className="flex items-start gap-3">
+              <SkeletonBlock className="w-8 h-8 rounded-full shrink-0" />
+              <SkeletonBlock className="h-16 w-3/4 rounded-2xl" />
+            </div>
+            {/* User bubble */}
+            <div className="flex items-start gap-3 justify-end">
+              <SkeletonBlock className="h-12 w-1/2 rounded-2xl" />
+              <SkeletonBlock className="w-8 h-8 rounded-full shrink-0" />
+            </div>
+            {/* Assistant bubble */}
+            <div className="flex items-start gap-3">
+              <SkeletonBlock className="w-8 h-8 rounded-full shrink-0" />
+              <SkeletonBlock className="h-20 w-2/3 rounded-2xl" />
+            </div>
+          </div>
+        ) : messages.length === 0 && !streamingText ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-500 px-4">
             <Bot size={48} className="mb-4 opacity-30" />
             <p className="text-lg font-medium">{t('welcome.title')}</p>

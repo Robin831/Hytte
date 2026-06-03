@@ -18,6 +18,7 @@ const TRANSLATIONS: Record<string, string> = {
   'empty.startNew': 'Start a new conversation to get help',
   'errors.failedToLoad': 'Failed to load conversations',
   'errors.failedToCreate': 'Failed to create conversation',
+  'loading': 'Loading...',
 }
 
 function stableT(key: string): string {
@@ -70,10 +71,11 @@ function renderPage() {
 describe('HomeworkPage – loading and empty state', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
-  it('shows loading spinner on initial render', () => {
+  it('shows skeleton loading state on initial render', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
-    const { container } = renderPage()
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument()
+    renderPage()
+    const status = screen.getByRole('status')
+    expect(status).toHaveAttribute('aria-busy', 'true')
   })
 
   it('shows empty state when no conversations', async () => {

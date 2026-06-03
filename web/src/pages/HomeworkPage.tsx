@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Plus, BookOpen, Loader2, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime as fmtTime } from '../utils/formatDate'
+import { SkeletonRow } from '../components/Skeleton'
 
 interface Conversation {
   id: number
@@ -84,14 +85,6 @@ export default function HomeworkPage() {
     return formatDate(date, { month: 'short', day: 'numeric' })
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Loader2 size={32} className="animate-spin text-gray-400" />
-      </div>
-    )
-  }
-
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-6">
@@ -125,7 +118,14 @@ export default function HomeworkPage() {
         </div>
       )}
 
-      {conversations.length === 0 ? (
+      {loading ? (
+        <div className="space-y-2" role="status" aria-busy="true">
+          <span className="sr-only">{t('loading')}</span>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <SkeletonRow key={i} />
+          ))}
+        </div>
+      ) : conversations.length === 0 ? (
         <div className="text-center text-gray-500 py-12">
           <BookOpen size={48} className="mx-auto mb-4 opacity-30" />
           <p className="text-lg">{t('empty.noConversations')}</p>

@@ -13,6 +13,7 @@
     "subtitle": "Ask a question or take a photo of your homework to get started"
   },
   "thinking": "Thinking...",
+  "loading": "Loading...",
   "dismissError": "Dismiss error",
   "imagePreview": "Selected image preview",
   "imageAttached": "Image attached",

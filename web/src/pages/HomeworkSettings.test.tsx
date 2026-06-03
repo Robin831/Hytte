@@ -30,6 +30,7 @@ const TRANSLATIONS: Record<string, string> = {
   'settings.errors.ageInvalid': 'Please enter an age between 1 and 25',
   'settings.errors.gradeRequired': 'Please select a grade level',
   'settings.errors.languageRequired': 'Please select a preferred language',
+  'loading': 'Loading...',
 }
 
 function stableT(key: string, opts?: Record<string, unknown>): string {
@@ -92,10 +93,11 @@ function renderPage() {
 describe('HomeworkSettings – load success', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
-  it('shows loading spinner on initial render', () => {
+  it('shows skeleton loading state on initial render', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
-    const { container } = renderPage()
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument()
+    renderPage()
+    const status = screen.getByRole('status')
+    expect(status).toHaveAttribute('aria-busy', 'true')
   })
 
   it('populates form fields from loaded profile', async () => {

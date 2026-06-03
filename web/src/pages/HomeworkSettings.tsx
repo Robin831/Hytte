@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Save, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { SkeletonBlock } from '../components/Skeleton'
 
 interface HomeworkProfile {
   id: number
@@ -165,14 +166,6 @@ export default function HomeworkSettings() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Loader2 size={32} className="animate-spin text-gray-400" />
-      </div>
-    )
-  }
-
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <div className="flex items-center gap-3 mb-6">
@@ -199,6 +192,17 @@ export default function HomeworkSettings() {
         </div>
       )}
 
+      {loading ? (
+        <div className="space-y-6" role="status" aria-busy="true">
+          <span className="sr-only">{t('loading')}</span>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i}>
+              <SkeletonBlock className="h-4 w-32 mb-2" />
+              <SkeletonBlock className="h-10 w-full sm:w-48" />
+            </div>
+          ))}
+        </div>
+      ) : (
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Age */}
         <div>
@@ -357,6 +361,7 @@ export default function HomeworkSettings() {
           </button>
         </div>
       </form>
+      )}
     </div>
   )
 }
