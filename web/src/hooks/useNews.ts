@@ -212,7 +212,18 @@ export function useNews() {
 
   const vote = useCallback((article: NewsArticle, signal: number) => {
     const next = article.feedback === signal ? 0 : signal
-    patch(article.id, { feedback: next })
+    // Apply the vote to this article's score immediately so it reorders without
+    // waiting for the server: 👍 → top, 👎 → bottom, clear → back to model score.
+    if (next > 0) {
+      scoresRef.current.set(article.id, { score: 100, reason: 'you liked this' })
+      patch(article.id, { feedback: next, score: 100, score_reason: 'you liked this' })
+    } else if (next < 0) {
+      scoresRef.current.set(article.id, { score: 0, reason: 'you hid this' })
+      patch(article.id, { feedback: next, score: 0, score_reason: 'you hid this' })
+    } else {
+      scoresRef.current.delete(article.id)
+      patch(article.id, { feedback: next, score: -1, score_reason: '' })
+    }
     fetch('/api/news/feedback', {
       method: 'POST',
       credentials: 'include',

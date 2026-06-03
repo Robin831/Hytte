@@ -3,7 +3,6 @@ package news
 import (
 	"database/sql"
 	"encoding/json"
-	"hash/fnv"
 	"log"
 	"sort"
 
@@ -118,29 +117,28 @@ func FeedbackMap(db *sql.DB, userID int64) (map[string]int, error) {
 	return out, rows.Err()
 }
 
-// Profile holds the liked/disliked headlines used to build the ranking prompt,
-// plus a version that changes whenever the feedback set changes (for score
-// cache invalidation).
+// Profile holds the liked/disliked headlines used to build the ranking prompt
+// for scoring new articles. Votes are applied directly to the voted article's
+// score (see SetScore), so the profile only shapes future scoring — it never
+// invalidates already-computed scores.
 type Profile struct {
 	Likes    []string
 	Dislikes []string
-	Version  int
 }
 
 // GetProfile reconstructs the taste profile from stored feedback.
 func GetProfile(db *sql.DB, userID int64) (Profile, error) {
-	rows, err := db.Query(`SELECT article_id, signal, title FROM news_feedback WHERE user_id=? ORDER BY created_at DESC`, userID)
+	rows, err := db.Query(`SELECT signal, title FROM news_feedback WHERE user_id=? ORDER BY created_at DESC`, userID)
 	if err != nil {
 		return Profile{}, err
 	}
 	defer rows.Close()
 
 	var p Profile
-	h := fnv.New32a()
 	for rows.Next() {
-		var id, titleEnc string
+		var titleEnc string
 		var sig int
-		if err := rows.Scan(&id, &sig, &titleEnc); err != nil {
+		if err := rows.Scan(&sig, &titleEnc); err != nil {
 			return Profile{}, err
 		}
 		title, decErr := encryption.DecryptField(titleEnc)
@@ -148,9 +146,6 @@ func GetProfile(db *sql.DB, userID int64) (Profile, error) {
 			log.Printf("news: decrypt feedback title: %v", decErr)
 			title = ""
 		}
-		// Fold id+signal into the version so any add/remove/flip changes it.
-		_, _ = h.Write([]byte(id))
-		_, _ = h.Write([]byte{byte(sig + 1)})
 		if title == "" {
 			continue
 		}
@@ -160,7 +155,6 @@ func GetProfile(db *sql.DB, userID int64) (Profile, error) {
 			p.Dislikes = append(p.Dislikes, title)
 		}
 	}
-	p.Version = int(h.Sum32())
 	return p, rows.Err()
 }
 
@@ -270,11 +264,11 @@ type ScoreEntry struct {
 	Reason string
 }
 
-// GetScores returns cached scores that are still valid for the given profile
-// version (stale ones are ignored so they get recomputed).
-func GetScores(db *sql.DB, userID int64, version int) (map[string]ScoreEntry, error) {
-	rows, err := db.Query(`SELECT article_id, score, reason FROM news_scores
-		WHERE user_id=? AND profile_version=?`, userID, version)
+// GetScores returns all cached scores for the user. Scores persist across
+// votes — a vote updates only the voted article (see SetScore), so existing
+// scores are never invalidated and never need a full recompute.
+func GetScores(db *sql.DB, userID int64) (map[string]ScoreEntry, error) {
+	rows, err := db.Query(`SELECT article_id, score, reason FROM news_scores WHERE user_id=?`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -291,8 +285,8 @@ func GetScores(db *sql.DB, userID int64, version int) (map[string]ScoreEntry, er
 	return out, rows.Err()
 }
 
-// SaveScores writes freshly computed scores for a profile version.
-func SaveScores(db *sql.DB, userID int64, version int, scores map[string]ScoreEntry) error {
+// SaveScores writes freshly computed model scores.
+func SaveScores(db *sql.DB, userID int64, scores map[string]ScoreEntry) error {
 	if len(scores) == 0 {
 		return nil
 	}
@@ -300,10 +294,10 @@ func SaveScores(db *sql.DB, userID int64, version int, scores map[string]ScoreEn
 	if err != nil {
 		return err
 	}
-	stmt, err := tx.Prepare(`INSERT INTO news_scores (user_id, article_id, score, reason, profile_version)
-		VALUES (?, ?, ?, ?, ?)
+	stmt, err := tx.Prepare(`INSERT INTO news_scores (user_id, article_id, score, reason)
+		VALUES (?, ?, ?, ?)
 		ON CONFLICT(user_id, article_id) DO UPDATE SET
-			score=excluded.score, reason=excluded.reason, profile_version=excluded.profile_version`)
+			score=excluded.score, reason=excluded.reason`)
 	if err != nil {
 		_ = tx.Rollback()
 		return err
@@ -317,12 +311,31 @@ func SaveScores(db *sql.DB, userID int64, version int, scores map[string]ScoreEn
 	sort.Strings(ids)
 	for _, id := range ids {
 		e := scores[id]
-		if _, err := stmt.Exec(userID, id, e.Score, e.Reason, version); err != nil {
+		if _, err := stmt.Exec(userID, id, e.Score, e.Reason); err != nil {
 			_ = tx.Rollback()
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+// SetScore upserts a single article's score. Used to apply a vote directly so
+// the voted article immediately moves to the top (👍) or bottom (👎) without
+// rescoring the whole feed.
+func SetScore(db *sql.DB, userID int64, articleID string, score int, reason string) error {
+	_, err := db.Exec(`INSERT INTO news_scores (user_id, article_id, score, reason)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(user_id, article_id) DO UPDATE SET
+			score=excluded.score, reason=excluded.reason`,
+		userID, articleID, score, reason)
+	return err
+}
+
+// DeleteScore removes an article's cached score so it gets re-scored by the
+// model on the next refresh (used when a vote is cleared).
+func DeleteScore(db *sql.DB, userID int64, articleID string) error {
+	_, err := db.Exec(`DELETE FROM news_scores WHERE user_id=? AND article_id=?`, userID, articleID)
+	return err
 }
 
 // --- helpers ---

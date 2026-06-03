@@ -17,6 +17,9 @@ const (
 	maxHidden     = 120            // cap audit-drawer payload size
 	maxArticleAge = 48 * time.Hour // drop anything older than this
 	maxArticles   = 100            // cap the returned feed size
+
+	voteUpScore   = 100 // 👍 pins an article to the top
+	voteDownScore = 0   // 👎 sinks it to the bottom (below any threshold)
 )
 
 // ArticlesHandler fetches all enabled sources, applies the user's hard filters
@@ -98,7 +101,7 @@ func (s *Service) applyRanking(db *sql.DB, userID int64, articles []Article) (en
 		return true, false
 	}
 
-	cached, _ := GetScores(db, userID, profile.Version)
+	cached, _ := GetScores(db, userID)
 	applyScores(articles, cached)
 
 	var toScore []Article
@@ -133,7 +136,7 @@ func (s *Service) scoreInBackground(db *sql.DB, userID int64, cfg *training.Clau
 		log.Printf("news: background scoring failed: %v", err)
 		return
 	}
-	if err := SaveScores(db, userID, profile.Version, fresh); err != nil {
+	if err := SaveScores(db, userID, fresh); err != nil {
 		log.Printf("news: save scores: %v", err)
 		return
 	}
@@ -204,6 +207,20 @@ func (s *Service) FeedbackHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save feedback"})
 			return
 		}
+
+		// Apply the vote directly to this article's score so it immediately
+		// moves to the top (👍) or bottom (👎) — no full rescore. The updated
+		// taste profile still shapes scoring of future articles. Clearing a vote
+		// drops the override so the model re-scores the article on the next pass.
+		switch {
+		case body.Signal > 0:
+			_ = SetScore(db, user.ID, body.ArticleID, voteUpScore, "you liked this")
+		case body.Signal < 0:
+			_ = SetScore(db, user.ID, body.ArticleID, voteDownScore, "you hid this")
+		default:
+			_ = DeleteScore(db, user.ID, body.ArticleID)
+		}
+
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
