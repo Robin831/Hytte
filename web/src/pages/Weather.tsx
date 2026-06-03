@@ -742,14 +742,14 @@ export default function Weather() {
                       <>
                         <span
                           className="flex items-center gap-1.5"
-                          aria-label={t('sun.sunrise')}
+                          aria-label={`${t('sun.sunrise')} ${formatTime(sun.sunrise, { hour: '2-digit', minute: '2-digit' })}`}
                         >
                           <Sunrise size={16} className="text-amber-400 shrink-0" />
                           {formatTime(sun.sunrise, { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         <span
                           className="flex items-center gap-1.5"
-                          aria-label={t('sun.sunset')}
+                          aria-label={`${t('sun.sunset')} ${formatTime(sun.sunset, { hour: '2-digit', minute: '2-digit' })}`}
                         >
                           <Sunset size={16} className="text-orange-400 shrink-0" />
                           {formatTime(sun.sunset, { hour: '2-digit', minute: '2-digit' })}
