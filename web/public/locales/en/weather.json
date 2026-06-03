@@ -23,6 +23,13 @@
     "minuteAgo": "Updated 1 min ago",
     "minutesAgo": "Updated {{count}} min ago"
   },
+  "sun": {
+    "sunrise": "Sunrise",
+    "sunset": "Sunset",
+    "daylight": "{{hours}}h {{minutes}}m of daylight",
+    "polarDay": "Midnight sun (no sunset)",
+    "polarNight": "Polar night (no sunrise)"
+  },
   "descriptions": {
     "clearsky": "Clear sky",
     "fair": "Fair",

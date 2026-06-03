@@ -48,6 +48,7 @@ const (
 	cacheDuration       = 30 * time.Minute
 	maxResponseSize     = 2 << 20 // 2 MB
 	maxNominatimSize    = 512 << 10 // 512 KB — more than enough for 5 results
+	maxSunCacheEntries  = 1000
 )
 
 // cachedResponse holds a cached MET API response.
@@ -57,45 +58,78 @@ type cachedResponse struct {
 	fetchedAt time.Time
 }
 
+// cachedSun holds computed solar-day data for a location, valid for the local
+// calendar date it was computed for.
+type cachedSun struct {
+	data SunData
+	date string // local date "YYYY-MM-DD" the data was computed for
+}
+
 // Service holds weather-related state (cache, HTTP client, base URLs).
 type Service struct {
 	client       *http.Client
 	baseURL      string
 	nominatimURL string
+	now          func() time.Time
+	osloTZ       *time.Location
 
 	mu    sync.RWMutex
 	cache map[string]*cachedResponse
+
+	sunMu    sync.RWMutex
+	sunCache map[string]cachedSun
 
 	requestGroup singleflight.Group
 }
 
 // NewService creates a weather service with production defaults.
 func NewService() *Service {
+	oslo, _ := time.LoadLocation("Europe/Oslo")
+	if oslo == nil {
+		oslo = time.UTC
+	}
 	return &Service{
 		client:       &http.Client{Timeout: 10 * time.Second},
 		baseURL:      metBaseURL,
 		nominatimURL: nominatimBaseURL,
+		now:          time.Now,
+		osloTZ:       oslo,
 		cache:        make(map[string]*cachedResponse),
+		sunCache:     make(map[string]cachedSun),
 	}
 }
 
 // newTestService creates a weather service pointing at a test MET server.
 func newTestService(baseURL string) *Service {
+	oslo, _ := time.LoadLocation("Europe/Oslo")
+	if oslo == nil {
+		oslo = time.UTC
+	}
 	return &Service{
 		client:       &http.Client{Timeout: 5 * time.Second},
 		baseURL:      baseURL,
 		nominatimURL: nominatimBaseURL,
+		now:          time.Now,
+		osloTZ:       oslo,
 		cache:        make(map[string]*cachedResponse),
+		sunCache:     make(map[string]cachedSun),
 	}
 }
 
 // newTestSearchService creates a weather service pointing at a test Nominatim server.
 func newTestSearchService(nominatimURL string) *Service {
+	oslo, _ := time.LoadLocation("Europe/Oslo")
+	if oslo == nil {
+		oslo = time.UTC
+	}
 	return &Service{
 		client:       &http.Client{Timeout: 5 * time.Second},
 		baseURL:      metBaseURL,
 		nominatimURL: nominatimURL,
+		now:          time.Now,
+		osloTZ:       oslo,
 		cache:        make(map[string]*cachedResponse),
+		sunCache:     make(map[string]cachedSun),
 	}
 }
 
@@ -157,6 +191,107 @@ func (s *Service) ForecastHandler() http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(data)
 	}
+}
+
+// SunResponse is the JSON shape returned by SunHandler. Sunrise and Sunset are
+// RFC3339 UTC strings, omitted entirely on polar day / polar night.
+type SunResponse struct {
+	Sunrise         *string `json:"sunrise,omitempty"`
+	Sunset          *string `json:"sunset,omitempty"`
+	DaylightSeconds int     `json:"daylightSeconds"`
+	PolarDay        bool    `json:"polarDay"`
+	PolarNight      bool    `json:"polarNight"`
+}
+
+// SunHandler returns sunrise, sunset, and daylight length for a lat/lon.
+// Query params: lat and lon (both required). Results are computed locally and
+// cached per location for the current local calendar date, so repeated page
+// loads do not trigger redundant computation or upstream calls.
+func (s *Service) SunHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		latStr := r.URL.Query().Get("lat")
+		lonStr := r.URL.Query().Get("lon")
+		if latStr == "" || lonStr == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "lat and lon are required",
+			})
+			return
+		}
+		lat, err := strconv.ParseFloat(latStr, 64)
+		if err != nil || lat < -90 || lat > 90 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "invalid latitude",
+			})
+			return
+		}
+		lon, err := strconv.ParseFloat(lonStr, 64)
+		if err != nil || lon < -180 || lon > 180 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "invalid longitude",
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, sunResponse(s.sunDataCached(lat, lon)))
+	}
+}
+
+// sunDataCached returns the solar-day data for a location, computing it at most
+// once per local calendar date. The calendar date is determined in Europe/Oslo
+// (the legal timezone for all Norwegian locations) so DST transitions are
+// handled correctly.
+func (s *Service) sunDataCached(lat, lon float64) SunData {
+	localNow := s.now().In(s.osloTZ)
+	y, m, d := localNow.Date()
+	dateKey := fmt.Sprintf("%04d-%02d-%02d", y, int(m), d)
+
+	// Bucket nearby coordinates so minor lat/lon jitter still hits the cache.
+	cacheKey := fmt.Sprintf("%.2f,%.2f", lat, lon)
+
+	s.sunMu.RLock()
+	if c, ok := s.sunCache[cacheKey]; ok && c.date == dateKey {
+		data := c.data
+		s.sunMu.RUnlock()
+		return data
+	}
+	s.sunMu.RUnlock()
+
+	dateUTC := time.Date(y, m, d, 12, 0, 0, 0, time.UTC)
+	data := ComputeSunData(lat, lon, dateUTC)
+
+	s.sunMu.Lock()
+	if len(s.sunCache) >= maxSunCacheEntries {
+		for k, v := range s.sunCache {
+			if v.date != dateKey {
+				delete(s.sunCache, k)
+			}
+		}
+		if len(s.sunCache) >= maxSunCacheEntries {
+			s.sunCache = make(map[string]cachedSun)
+		}
+	}
+	s.sunCache[cacheKey] = cachedSun{data: data, date: dateKey}
+	s.sunMu.Unlock()
+
+	return data
+}
+
+// sunResponse converts internal SunData into the JSON response shape.
+func sunResponse(sun SunData) SunResponse {
+	resp := SunResponse{
+		DaylightSeconds: sun.DaylightSeconds,
+		PolarDay:        sun.PolarDay,
+		PolarNight:      sun.PolarNight,
+	}
+	if sun.Sunrise != nil {
+		v := sun.Sunrise.UTC().Format(time.RFC3339)
+		resp.Sunrise = &v
+	}
+	if sun.Sunset != nil {
+		v := sun.Sunset.UTC().Format(time.RFC3339)
+		resp.Sunset = &v
+	}
+	return resp
 }
 
 const nominatimBaseURL = "https://nominatim.openstreetmap.org/search"

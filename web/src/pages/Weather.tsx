@@ -23,6 +23,8 @@ import {
   MapPin,
   Thermometer,
   RefreshCw,
+  Sunrise,
+  Sunset,
 } from 'lucide-react'
 
 
@@ -56,6 +58,20 @@ interface ForecastResponse {
   properties: {
     timeseries: TimeseriesEntry[]
   }
+}
+
+interface SunResponse {
+  sunrise?: string
+  sunset?: string
+  daylightSeconds: number
+  polarDay: boolean
+  polarNight: boolean
+}
+
+/** Split a daylight duration in seconds into whole hours and minutes. */
+function splitDaylight(seconds: number): { hours: number; minutes: number } {
+  const totalMinutes = Math.max(0, Math.round(seconds / 60))
+  return { hours: Math.floor(totalMinutes / 60), minutes: totalMinutes % 60 }
 }
 
 interface DayForecast {
@@ -342,6 +358,9 @@ export default function Weather() {
     { loc: initialState.location, userId: user?.id },
     initFetchState,
   )
+  const [sunEntry, setSunEntry] = useState<{ data: SunResponse; locationKey: string } | null>(null)
+  const currentLocKey = selectedLocation ? `${selectedLocation.lat},${selectedLocation.lon}` : null
+  const sun = sunEntry && sunEntry.locationKey === currentLocKey ? sunEntry.data : null
   const [, setTick] = useState(0)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -538,6 +557,32 @@ export default function Weather() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLocation, locationResolved, refreshKey])
 
+  // Fetch sunrise/sunset/daylight for the selected location. Computed locally on
+  // the backend and cached per day, so this is cheap and updates when the
+  // location changes.
+  useEffect(() => {
+    if (!locationResolved || !selectedLocation) return
+
+    let cancelled = false
+    const locKey = `${selectedLocation.lat},${selectedLocation.lon}`
+
+    fetch(`/api/weather/sun?lat=${selectedLocation.lat}&lon=${selectedLocation.lon}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled) {
+          setSunEntry(data ? { data: data as SunResponse, locationKey: locKey } : null)
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch sun data:', err)
+        if (!cancelled) setSunEntry(null)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedLocation, locationResolved, refreshKey])
+
   // Auto-refresh every 10 minutes, pausing when the tab is hidden.
   useEffect(() => {
     function startInterval() {
@@ -682,6 +727,41 @@ export default function Weather() {
                     {getWeatherDescription(currentSymbol, t)}
                   </span>
                 </div>
+                {sun && (
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-300">
+                    {sun.polarDay ? (
+                      <span className="flex items-center gap-1.5">
+                        <Sunrise size={16} className="text-amber-400 shrink-0" />
+                        {t('sun.polarDay')}
+                      </span>
+                    ) : sun.polarNight ? (
+                      <span className="flex items-center gap-1.5">
+                        <Sunset size={16} className="text-indigo-400 shrink-0" />
+                        {t('sun.polarNight')}
+                      </span>
+                    ) : sun.sunrise && sun.sunset ? (
+                      <>
+                        <span
+                          className="flex items-center gap-1.5"
+                          aria-label={`${t('sun.sunrise')} ${formatTime(sun.sunrise, { hour: '2-digit', minute: '2-digit' })}`}
+                        >
+                          <Sunrise size={16} className="text-amber-400 shrink-0" />
+                          {formatTime(sun.sunrise, { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <span
+                          className="flex items-center gap-1.5"
+                          aria-label={`${t('sun.sunset')} ${formatTime(sun.sunset, { hour: '2-digit', minute: '2-digit' })}`}
+                        >
+                          <Sunset size={16} className="text-orange-400 shrink-0" />
+                          {formatTime(sun.sunset, { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <span className="text-gray-400">
+                          {t('sun.daylight', splitDaylight(sun.daylightSeconds))}
+                        </span>
+                      </>
+                    ) : null}
+                  </div>
+                )}
               </div>
               <div className="text-blue-400">
                 {getWeatherIcon(currentSymbol, 56)}
