@@ -26986,3 +26986,261 @@ rules:
         - '**/*.json'
         - '**/*.md'
         - '**/*.tsx'
+    - id: batch-load-only-needed-fields
+      category: performance
+      pattern: >-
+        Batch-loading rows to compute or return a subset of data, where the loader also selects and decrypts fields (e.g. notes) not needed for the computation or response
+      check: >-
+        Verify the batch loader only selects/decrypts fields actually required; unneeded decrypted fields add DB I/O and CPU and risk failing the whole operation if one row's field can't be decrypted
+      source: copilot:PR#809
+      added: "2026-06-02"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: resolve-cache-key-inputs-before-compute
+      category: performance
+      pattern: >-
+        A cache key is computed from request parameters before the handler resolves or rewrites those inputs (e.g. via a DB fallback that fills in a default/omitted identifier).
+      check: >-
+        Verify the cache key is computed from the effective, fully-resolved data inputs — after any fallback or rewrite — so requests that omit a parameter don't cache under a default value and collide with or miss entries for the resolved identity.
+      source: copilot:PR#811
+      added: "2026-06-02"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+    - id: cache-vary-on-authorization
+      category: security
+      pattern: >-
+        An HTTP handler sets a cacheable Cache-Control header (e.g. public/max-age) on responses for an endpoint authenticated via Authorization header or token query param
+      check: >-
+        Verify the response varies on the Authorization header (Vary: Authorization) or uses Cache-Control: private, so shared/intermediate caches cannot serve one user's cached response to another or to unauthenticated requests
+      source: copilot:PR#811
+      added: "2026-06-02"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+    - id: no-cache-on-canceled-context
+      category: concurrency
+      pattern: >-
+        Caching the result of a request-scoped operation (cache.Set) after fanning out to upstream sources that respect context cancellation/deadlines
+      check: >-
+        Verify the result is not written to the cache when the request context was canceled or its deadline exceeded (check ctx.Err() before Set), so an incomplete or empty payload isn't cached for the full TTL and served to later healthy requests
+      source: copilot:PR#811
+      added: "2026-06-02"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+    - id: react-hook-stale-location-state
+      category: ui
+      pattern: >-
+        A React callback or effect reads router state (e.g. location.state) or other captured values inside useCallback/useMemo/useEffect, but those values are omitted from the dependency array
+      check: >-
+        Verify the hook's dependency array includes every captured value (especially location.state) so a toggle or re-run cannot re-introduce stale state — such as a previously cleared query re-opening a panel on back/forward navigation
+      source: copilot:PR#808
+      added: "2026-06-02"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: changelog-field-semantics-mismatch
+      category: other
+      pattern: >-
+        Changelog or user-facing copy describes a new/changed data field (e.g. a count, total, or status) in prose
+      check: >-
+        Verify the description accurately reflects what the field actually represents — match the wording to the API field name and the underlying computation (e.g. 'owned variants/collection rows' vs 'owned cards'), so readers aren't misled about the semantics
+      source: copilot:PR#806
+      added: "2026-06-02"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: i18n-count-label-semantics
+      category: ui
+      pattern: >-
+        A pluralized/count i18n string labels a value, but the displayed number measures a different unit than the label's noun (e.g. label says "card(s)" while the value is a distinct-variant count)
+      check: >-
+        Verify the noun in the translation string matches the actual quantity being rendered — distinct variants vs total copies/cards — across all language files (en/nb/th)
+      source: copilot:PR#806
+      added: "2026-06-02"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: label-matches-displayed-data
+      category: ui
+      pattern: >-
+        i18n label or column heading describing a value that is bound to a specific data field (e.g. a count, total, or metric)
+      check: >-
+        Verify the label's wording accurately reflects the underlying field being displayed (e.g. 'variants' when bound to owned_variant_count, not 'cards') across all locale files
+      source: copilot:PR#806
+      added: "2026-06-02"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: i18n-count-label-matches-counted-entity
+      category: ui
+      pattern: >-
+        A translation/label string describes a count whose underlying field counts distinct entities (e.g. variants/types) rather than total quantity (copies/sums).
+      check: >-
+        Verify the wording matches what the value actually counts — distinct variants/types vs. summed quantities/copies — so it doesn't mislead, and that the corrected wording is applied across all locale files (en/nb/th).
+      source: copilot:PR#806
+      added: "2026-06-02"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: test-mock-match-data-model-labels
+      category: testing
+      pattern: >-
+        Test mocks or fixtures hardcode label strings (e.g. 'owned card(s)') that describe the same thing the production UI/data model labels differently (e.g. variants / owned_variant_count)
+      check: >-
+        Verify mock/fixture strings match the actual labels and field semantics used by the component under test, so tests stay consistent with the real data model rather than asserting stale wording
+      source: copilot:PR#806
+      added: "2026-06-02"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: test-assertions-match-ui-labels
+      category: testing
+      pattern: >-
+        Test assertions check for hardcoded UI text/labels (e.g. "owned cards") that describe a value rendered from a specific field or summary (e.g. owned_variant_count)
+      check: >-
+        Verify the expected wording in test assertions matches the actual label the UI renders for that field, so tests don't diverge from the intended UI text
+      source: copilot:PR#806
+      added: "2026-06-02"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: doc-comment-prop-mismatch
+      category: style
+      pattern: >-
+        A component's props doc comment references a prop name that is not declared in the component's props type/interface
+      check: >-
+        Verify every prop mentioned in the doc comment actually exists in the props interface, and that documented fallbacks or defaults match the declared props
+      source: copilot:PR#806
+      added: "2026-06-02"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: non-error-dismiss-aria-label
+      category: ui
+      pattern: >-
+        An informational (non-error) banner or notice has a dismiss/close button whose i18n label or aria-label references an 'error' (e.g. t('chat.dismissError'))
+      check: >-
+        Verify dismiss/close controls on informational banners use a neutral label like 'Dismiss'/'Dismiss notice' rather than an error-specific string, so screen readers don't announce 'error' for non-error content
+      source: copilot:PR#812
+      added: "2026-06-02"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: surface-not-found-on-deleted-row
+      category: error-handling
+      pattern: >-
+        A handler returns a hardcoded 500 when a DB operation (UPDATE/DELETE) fails, but that operation can return sql.ErrNoRows when the row is missing or deleted between an ownership check and the write.
+      check: >-
+        Verify the handler checks for sql.ErrNoRows (or a not-found sentinel) and returns 404 instead of 500, matching the rest of the API's not-found semantics, especially when there is a TOCTOU gap between the ownership check and the mutation.
+      source: copilot:PR#812
+      added: "2026-06-02"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: persist-after-state-decision
+      category: other
+      pattern: >-
+        A handler persists the incoming request data (e.g. inserts the new user message) before computing a decision or watermark that depends on the pre-insert state (e.g. an auto-reset floor based on current max message id)
+      check: >-
+        Verify that state-dependent decisions and watermark/floor calculations happen before persisting the current request's data, so the watermark reflects the prior state's boundary and downstream estimates (e.g. context size) aren't skewed by the just-inserted record
+      source: copilot:PR#812
+      added: "2026-06-02"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: unique-react-keys-for-draft-lists
+      category: ui
+      pattern: >-
+        Rendering a list in React with `key` set to a value that can repeat (e.g. `key={tag}` over a draft array of user-entered tags or items that may contain duplicates)
+      check: >-
+        Verify list keys are unique even when the underlying data contains duplicates — for draft/ephemeral lists where duplicates are possible, combine the value with the index (or use another stable unique identifier) to avoid duplicate React keys and reconciliation bugs
+      source: copilot:PR#815
+      added: "2026-06-02"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: clear-error-before-async-mutation
+      category: error-handling
+      pattern: >-
+        An async action handler (delete, save, submit, retry) in a hook or component begins an operation without resetting a previously set error state
+      check: >-
+        Verify the handler clears any prior error state at the start of the operation (or on success), so a stale error from a past failure doesn't persist in the UI after the action succeeds
+      source: copilot:PR#815
+      added: "2026-06-02"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: set-saving-state-without-try-finally
+      category: error-handling
+      pattern: >-
+        An async handler sets a loading/disabling flag (e.g. saving=true) before an await, and resets it after, without try/finally
+      check: >-
+        Verify the flag is reset in a finally block so the control doesn't stay stuck disabled if the awaited call throws
+      source: copilot:PR#815
+      added: "2026-06-02"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: async-fetch-test-race
+      category: testing
+      pattern: >-
+        A test interacts with a UI element (click, type) that depends on a separate async fetch resolving, but only waits for an unrelated element before acting
+      check: >-
+        Verify the test waits for the specific target element to render (e.g. findBy/waitFor on the tag button) before interacting with it, rather than relying on an independent fetch having already resolved
+      source: copilot:PR#815
+      added: "2026-06-02"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: dead-auth-gating-under-feature-route
+      category: other
+      pattern: >-
+        A page component adds `authLoading` / `!user` gating branches, but the component is only rendered inside a wrapper (e.g. `<FeatureRoute>` / `<ProtectedRoute>`) that already blocks rendering during auth load and redirects when there is no user.
+      check: >-
+        Verify the auth-gating added to the page is actually reachable: if the parent route wrapper already guarantees auth is resolved and `user` is non-null, the new branches are dead code and won't fix the intended flicker. Either remove the redundant gating, or change the wrapper/routing so the page can mount while auth is still resolving.
+      source: copilot:PR#817
+      added: "2026-06-02"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: gate-loading-on-auth-readiness
+      category: ui
+      pattern: >-
+        A component reads `user` from `useAuth()` and runs a data-fetch effect that bails on `!user`, while the PR's acceptance criteria call for gating the loading/skeleton state on auth readiness
+      check: >-
+        Verify the component destructures the `loading` flag from `useAuth()` (e.g. `loading: authLoading`), renders skeletons while `authLoading || requestLoading`, and clears the request-loading state (or shows a non-loading UI) once auth resolves with no user — so loading behavior is actually auth-gated as specified
+      source: copilot:PR#817
+      added: "2026-06-02"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
