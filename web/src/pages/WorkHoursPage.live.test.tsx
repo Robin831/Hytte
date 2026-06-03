@@ -164,6 +164,9 @@ describe('WorkHoursPage keyboard shortcuts', () => {
 
     fireEvent.keyDown(window, { key: '?' })
     await waitFor(() => expect(screen.getByText('Keyboard shortcuts')).toBeInTheDocument())
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByText('Keyboard shortcuts')).not.toBeInTheDocument())
   })
 
   it('switches tabs with number keys', async () => {

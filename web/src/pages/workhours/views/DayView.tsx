@@ -466,7 +466,7 @@ export default function DayView({
     if (punchStart === null) handlePunchIn()
     else handlePunchOut()
     onPunchConsumed?.()
-  }, [pendingPunch, onPunchConsumed])
+  }, [pendingPunch, saving, onPunchConsumed])
 
   const handleEditPunchStart = async (newTime: string) => {
     if (!newTime || !punchStart || newTime === punchStart) return
