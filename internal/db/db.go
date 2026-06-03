@@ -1862,6 +1862,70 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_family_chat_calls_conversation ON family_chat_calls(conversation_id, id DESC);
 
+	-- News feed feature. Per-user settings, feedback (for taste learning),
+	-- read markers, saved articles, and a cache of LLM relevance scores.
+	-- Sensitive free-text fields (keywords, titles, summaries) are encrypted
+	-- at rest via encryption.EncryptField.
+	CREATE TABLE IF NOT EXISTS news_settings (
+		user_id          INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		sources          TEXT NOT NULL DEFAULT '',  -- JSON array of source configs
+		block_keywords   TEXT NOT NULL DEFAULT '',  -- encrypted JSON array
+		block_categories TEXT NOT NULL DEFAULT '',  -- encrypted JSON array
+		hide_paywalled   INTEGER NOT NULL DEFAULT 1,
+		llm_scoring      INTEGER NOT NULL DEFAULT 1,
+		score_threshold  INTEGER NOT NULL DEFAULT 25,
+		layout           TEXT NOT NULL DEFAULT 'timeline',
+		updated_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+	);
+
+	CREATE TABLE IF NOT EXISTS news_feedback (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		article_id TEXT NOT NULL,
+		signal     INTEGER NOT NULL DEFAULT 0,  -- 1 = more like this, -1 = less
+		title      TEXT NOT NULL DEFAULT '',    -- encrypted
+		summary    TEXT NOT NULL DEFAULT '',    -- encrypted
+		source     TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		PRIMARY KEY (user_id, article_id)
+	);
+
+	CREATE TABLE IF NOT EXISTS news_read (
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		article_id TEXT NOT NULL,
+		read_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		PRIMARY KEY (user_id, article_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_news_read_user ON news_read(user_id);
+
+	CREATE TABLE IF NOT EXISTS news_saved (
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		article_id   TEXT NOT NULL,
+		source       TEXT NOT NULL DEFAULT '',
+		source_name  TEXT NOT NULL DEFAULT '',
+		title        TEXT NOT NULL DEFAULT '',  -- encrypted
+		url          TEXT NOT NULL DEFAULT '',  -- encrypted
+		summary      TEXT NOT NULL DEFAULT '',  -- encrypted
+		image_url    TEXT NOT NULL DEFAULT '',
+		published_at TEXT NOT NULL DEFAULT '',
+		saved_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		PRIMARY KEY (user_id, article_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_news_saved_user ON news_saved(user_id, saved_at DESC);
+
+	-- Cache of LLM relevance scores. profile_version is bumped whenever the
+	-- user's feedback set changes, invalidating stale scores.
+	CREATE TABLE IF NOT EXISTS news_scores (
+		user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		article_id      TEXT NOT NULL,
+		score           INTEGER NOT NULL DEFAULT 0,
+		reason          TEXT NOT NULL DEFAULT '',
+		profile_version INTEGER NOT NULL DEFAULT 0,
+		created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+		PRIMARY KEY (user_id, article_id)
+	);
+
 	`
 
 	_, err := db.Exec(schema)

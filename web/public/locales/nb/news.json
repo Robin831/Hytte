@@ -1,0 +1,68 @@
+{
+  "title": "Nyheter",
+  "subtitle": "Dine kilder, filtrert og rangert for deg",
+  "loading": "Henter det siste…",
+  "empty": "Ingenting å vise akkurat nå. Prøv å løsne på filtrene.",
+  "emptySaved": "Ingen lagrede saker ennå. Lagre saker med bokmerke-knappen.",
+  "newArticles_one": "{{count}} ny sak",
+  "newArticles_other": "{{count}} nye saker",
+  "refresh": "Oppdater",
+  "rankedNote": "Rangert for deg",
+  "chronologicalNote": "Nyeste først",
+  "tabs": {
+    "feed": "Strøm",
+    "saved": "Lagret"
+  },
+  "layout": {
+    "timeline": "Tidslinje",
+    "columns": "Kolonner"
+  },
+  "card": {
+    "more": "Mer som dette",
+    "less": "Mindre som dette",
+    "save": "Lagre",
+    "saved": "Lagret",
+    "alsoIn": "Også i",
+    "match": "{{score}}% treff"
+  },
+  "lowRelevance_one": "{{count}} sak med lavere relevans",
+  "lowRelevance_other": "{{count}} saker med lavere relevans",
+  "filters": {
+    "title": "Filtre og kilder",
+    "open": "Filtre",
+    "keywords": "Blokkerte ord",
+    "keywordsHint": "Skjul saker som nevner disse ordene (tittel, sammendrag eller kategori).",
+    "addPlaceholder": "Legg til ord eller uttrykk og trykk Enter",
+    "categories": "Blokkerte kategorier",
+    "categoriesPlaceholder": "Legg til kategori og trykk Enter",
+    "paywall": "Skjul betalingssaker / smakebiter",
+    "paywallHint": "Beste forsøk — kildene merker ikke betalingsmur pålitelig, så noe kan slippe gjennom.",
+    "ranking": "Ranger etter relevans (KI)",
+    "rankingHint": "Bruker Claude til å score saker mot dine 👍/👎. Krever at Claude er på i innstillinger.",
+    "threshold": "Skjul under relevans",
+    "thresholdHint": "Saker som scorer under dette legges i en sammenslått seksjon.",
+    "sources": "Kilder",
+    "sourceName": "Navn",
+    "sourceUrl": "RSS-feed-URL",
+    "addSource": "Legg til kilde",
+    "save": "Lagre",
+    "saving": "Lagrer…",
+    "saved": "Lagret",
+    "remove": "Fjern"
+  },
+  "hidden": {
+    "title": "Skjult av filtrene dine",
+    "none": "Ingenting ble filtrert bort.",
+    "count_one": "{{count}} skjult",
+    "count_other": "{{count}} skjult",
+    "reason": {
+      "keyword": "ord: {{value}}",
+      "category": "kategori: {{value}}",
+      "paywall": "betalingsmur"
+    }
+  },
+  "errors": {
+    "load": "Kunne ikke laste nyheter.",
+    "save": "Kunne ikke lagre innstillinger."
+  }
+}

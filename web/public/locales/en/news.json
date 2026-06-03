@@ -1,0 +1,68 @@
+{
+  "title": "News",
+  "subtitle": "Your sources, filtered and ranked for you",
+  "loading": "Loading the latest…",
+  "empty": "Nothing to show right now. Try loosening your filters.",
+  "emptySaved": "No saved articles yet. Bookmark anything with the save button.",
+  "newArticles_one": "{{count}} new article",
+  "newArticles_other": "{{count}} new articles",
+  "refresh": "Refresh",
+  "rankedNote": "Ranked for you",
+  "chronologicalNote": "Newest first",
+  "tabs": {
+    "feed": "Feed",
+    "saved": "Saved"
+  },
+  "layout": {
+    "timeline": "Timeline",
+    "columns": "Columns"
+  },
+  "card": {
+    "more": "More like this",
+    "less": "Less like this",
+    "save": "Save",
+    "saved": "Saved",
+    "alsoIn": "Also in",
+    "match": "{{score}}% match"
+  },
+  "lowRelevance_one": "{{count}} lower-relevance article",
+  "lowRelevance_other": "{{count}} lower-relevance articles",
+  "filters": {
+    "title": "Filters & sources",
+    "open": "Filters",
+    "keywords": "Blocked keywords",
+    "keywordsHint": "Hide articles mentioning these words (title, summary or category).",
+    "addPlaceholder": "Add a word or phrase and press Enter",
+    "categories": "Blocked categories",
+    "categoriesPlaceholder": "Add a category and press Enter",
+    "paywall": "Hide paywalled / teaser articles",
+    "paywallHint": "Best-effort — feeds don't reliably flag paywalls, so some may slip through.",
+    "ranking": "Rank by relevance (AI)",
+    "rankingHint": "Uses Claude to score articles against your 👍/👎. Needs Claude enabled in settings.",
+    "threshold": "Collapse below relevance",
+    "thresholdHint": "Articles scoring under this are tucked into a collapsed section.",
+    "sources": "Sources",
+    "sourceName": "Name",
+    "sourceUrl": "RSS feed URL",
+    "addSource": "Add source",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "remove": "Remove"
+  },
+  "hidden": {
+    "title": "Hidden by your filters",
+    "none": "Nothing was filtered out.",
+    "count_one": "{{count}} hidden",
+    "count_other": "{{count}} hidden",
+    "reason": {
+      "keyword": "keyword: {{value}}",
+      "category": "category: {{value}}",
+      "paywall": "paywall"
+    }
+  },
+  "errors": {
+    "load": "Failed to load news.",
+    "save": "Failed to save settings."
+  }
+}

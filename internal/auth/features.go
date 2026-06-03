@@ -12,6 +12,7 @@ var FeatureDefaults = map[string]bool{
 	"dashboard":  true,
 	"weather":    true,
 	"calendar":   true,
+	"news":       false,
 	"notes":      false,
 	"tasks":      false,
 	"links":      false,

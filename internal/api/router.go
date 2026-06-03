@@ -28,6 +28,7 @@ import (
 	"github.com/Robin831/Hytte/internal/links"
 	mathgame "github.com/Robin831/Hytte/internal/math"
 	"github.com/Robin831/Hytte/internal/netatmo"
+	"github.com/Robin831/Hytte/internal/news"
 	"github.com/Robin831/Hytte/internal/notes"
 	"github.com/Robin831/Hytte/internal/pokemon"
 	"github.com/Robin831/Hytte/internal/push"
@@ -127,6 +128,9 @@ func NewRouter(db *sql.DB) http.Handler {
 
 	// Transit service (Entur API client with 30-second departure cache).
 	transitSvc := transit.NewService()
+
+	// News service (RSS aggregator with 10-minute per-feed cache).
+	newsSvc := news.NewService()
 
 	// Netatmo weather station client (5-minute API response cache).
 	netatmoOAuth := netatmo.ClientFromEnv()
@@ -747,6 +751,18 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/transit/search", transit.SearchHandler(transitSvc))
 				r.Get("/transit/settings", transit.SettingsGetHandler(db))
 				r.Put("/transit/settings", transit.SettingsPutHandler(db))
+			})
+
+			// News aggregator — gated by "news" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "news"))
+				r.Get("/news/articles", newsSvc.ArticlesHandler(db))
+				r.Post("/news/read", newsSvc.MarkReadHandler(db))
+				r.Post("/news/feedback", newsSvc.FeedbackHandler(db))
+				r.Get("/news/saved", newsSvc.SavedListHandler(db))
+				r.Post("/news/saved", newsSvc.SavedToggleHandler(db))
+				r.Get("/news/settings", news.SettingsGetHandler(db))
+				r.Put("/news/settings", news.SettingsPutHandler(db))
 			})
 
 			// Netatmo weather station — gated by "netatmo" feature.

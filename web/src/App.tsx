@@ -11,6 +11,7 @@ import Settings from './pages/Settings'
 import Weather from './pages/Weather'
 import CalendarPage from './pages/CalendarPage'
 import Webhooks from './pages/Webhooks'
+import News from './pages/News'
 import Notes from './pages/Notes'
 import Tasks from './pages/Tasks'
 import Links from './pages/Links'
@@ -108,6 +109,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="webhooks">
                 <Webhooks />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/news"
+            element={
+              <FeatureRoute feature="news">
+                <News />
               </FeatureRoute>
             }
           />
