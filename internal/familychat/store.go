@@ -20,6 +20,13 @@ import (
 // An (id) tie-breaker in ORDER BY clauses handles same-millisecond writes.
 const timeFormat = "2006-01-02T15:04:05.000Z07:00"
 
+// maxBackfillLimit caps how many catch-up events EventsSince returns for a
+// single reconnect. A reconnect after a brief blip replays only a handful of
+// rows; this ceiling is a safety net for a client that resumes from a very old
+// id (it still gets the oldest portion of the gap and can refresh for the rest,
+// matching ListMessages' own cap).
+const maxBackfillLimit = 500
+
 // Conversation is a single family chat conversation as returned to the client.
 type Conversation struct {
 	ID                  int64   `json:"id"`
@@ -309,7 +316,7 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 	)
 	if since > 0 {
 		rows, queryErr = db.Query(
-			`SELECT id, conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at, edited_at, deleted_at, deleted_by, meta_json
+			messageSelectColumns+`
 			 FROM family_chat_messages
 			 WHERE conversation_id = ? AND id > ?
 			 ORDER BY id DESC
@@ -318,7 +325,7 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 		)
 	} else {
 		rows, queryErr = db.Query(
-			`SELECT id, conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at, edited_at, deleted_at, deleted_by, meta_json
+			messageSelectColumns+`
 			 FROM family_chat_messages
 			 WHERE conversation_id = ?
 			 ORDER BY id DESC
@@ -331,6 +338,28 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 	}
 	defer rows.Close()
 
+	out, err := scanMessageRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := attachReactions(db, out, userID); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// messageSelectColumns is the shared column list (in scan order) for queries
+// that hydrate a Message via scanMessageRows. Kept as a single constant so the
+// SELECT projection and the Scan call below can never drift apart.
+const messageSelectColumns = `SELECT id, conversation_id, sender_user_id, body, attachment_path, attachment_mime, created_at, edited_at, deleted_at, deleted_by, meta_json`
+
+// scanMessageRows scans rows produced by a messageSelectColumns query into
+// []Message, decrypting body/attachment/meta_json and applying the tombstone
+// contract (a soft-deleted row never surfaces its original body, attachment,
+// or edit history). Reactions are NOT attached — callers that need them call
+// attachReactions afterward. The returned slice is non-nil (possibly empty) so
+// JSON callers get [] rather than null.
+func scanMessageRows(rows *sql.Rows) ([]Message, error) {
 	out := []Message{}
 	for rows.Next() {
 		var m Message
@@ -339,6 +368,7 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 		if err := rows.Scan(&m.ID, &m.ConversationID, &m.SenderUserID, &m.Body, &m.AttachmentPath, &m.AttachmentMime, &m.CreatedAt, &editedAt, &deletedAt, &deletedBy, &metaJSON); err != nil {
 			return nil, err
 		}
+		var err error
 		if m.Body, err = encryption.DecryptField(m.Body); err != nil {
 			return nil, fmt.Errorf("decrypt body: %w", err)
 		}
@@ -377,23 +407,104 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	return out, nil
+}
 
-	if len(out) > 0 {
-		ids := make([]int64, len(out))
-		for i := range out {
-			ids[i] = out[i].ID
+// attachReactions populates the Reactions field on every message in msgs with
+// the per-emoji summary (including the requesting user's `me` flag) in a single
+// batched query. Each message ends up with a non-nil map so the JSON shape is
+// stable.
+func attachReactions(db *sql.DB, msgs []Message, userID int64) error {
+	if len(msgs) == 0 {
+		return nil
+	}
+	ids := make([]int64, len(msgs))
+	for i := range msgs {
+		ids[i] = msgs[i].ID
+	}
+	reactions, err := batchReactions(db, ids, userID)
+	if err != nil {
+		return fmt.Errorf("load reactions: %w", err)
+	}
+	for i := range msgs {
+		byEmoji := reactions[msgs[i].ID]
+		if byEmoji == nil {
+			byEmoji = map[string]*ReactionSummary{}
 		}
-		reactions, err := batchReactions(db, ids, userID)
-		if err != nil {
-			return nil, fmt.Errorf("load reactions: %w", err)
+		msgs[i].Reactions = byEmoji
+	}
+	return nil
+}
+
+// EventsSince returns the messages a reconnecting (or buffer-overflowed) SSE
+// client needs to replay to catch up to the live feed, given the highest
+// message id it has already seen (sinceID). The result combines two effects
+// that a naive `id > sinceID` query would miss:
+//
+//   - New messages: every message with id > sinceID (the client never saw these).
+//   - Edits and deletes of OLDER messages: a message with id <= sinceID whose
+//     edited_at/deleted_at is newer than the client's resume point. The resume
+//     point is approximated by created_at of message sinceID — the moment the
+//     client was last provably caught up — so any modification stamped after it
+//     is replayed (modifications stamped before it were delivered live).
+//
+// Messages are returned in ascending id order so the caller emits new messages
+// in chronological order; edits/deletes of older messages are idempotent on the
+// client so their relative order does not matter. Each returned Message carries
+// its current on-disk state (a tombstone for deletes, the new body for edits),
+// which the stream handler maps to the matching SSE event. Reactions are
+// attached so backfilled new-message events render identically to live ones.
+//
+// Membership is NOT re-checked here — the stream handler verifies it before
+// calling this. When sinceID <= 0, or the resume id is unknown to this
+// conversation, the edit/delete predicates are skipped and only new messages
+// (if any) are returned, so an absent or stale resume id degrades to "new
+// messages only" rather than replaying the entire history.
+func EventsSince(db *sql.DB, convID, userID, sinceID int64, limit int) ([]Message, error) {
+	if limit <= 0 {
+		limit = maxBackfillLimit
+	}
+	if limit > maxBackfillLimit {
+		limit = maxBackfillLimit
+	}
+
+	// Look up the resume point's timestamp. If the id is unknown (different
+	// conversation, reset DB), watermark stays empty and we replay new messages
+	// only — comparing against '' would otherwise match every edited/deleted row.
+	var watermark string
+	if sinceID > 0 {
+		err := db.QueryRow(
+			`SELECT created_at FROM family_chat_messages WHERE id = ? AND conversation_id = ?`,
+			sinceID, convID,
+		).Scan(&watermark)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
 		}
-		for i := range out {
-			byEmoji := reactions[out[i].ID]
-			if byEmoji == nil {
-				byEmoji = map[string]*ReactionSummary{}
-			}
-			out[i].Reactions = byEmoji
-		}
+	}
+
+	query := messageSelectColumns + ` FROM family_chat_messages WHERE conversation_id = ? AND (id > ?`
+	args := []any{convID, sinceID}
+	if watermark != "" {
+		// A delete supersedes an edit, so a deleted row is matched purely on
+		// deleted_at; an edited (but not deleted) row on edited_at.
+		query += ` OR (deleted_at IS NOT NULL AND deleted_at > ?) OR (deleted_at IS NULL AND edited_at IS NOT NULL AND edited_at > ?)`
+		args = append(args, watermark, watermark)
+	}
+	query += `) ORDER BY id ASC LIMIT ?`
+	args = append(args, limit)
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out, err := scanMessageRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := attachReactions(db, out, userID); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

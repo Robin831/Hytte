@@ -1,0 +1,2 @@
+category: Fixed
+- **Family Chat no longer drops messages after a connection blip** - The chat stream now accepts a resume point (the standard `Last-Event-ID` header or a `since_message_id` query param) and replays every message, edit, and delete missed while a client was disconnected or its event buffer overflowed, before resuming the live feed. Each message event carries an SSE `id:` line so reconnects pick up exactly where they left off, and replayed events are applied idempotently with no duplicate or resurrected messages. (Hytte-g4iv)
