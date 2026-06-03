@@ -240,6 +240,93 @@ func TestTransactionsListHandler_DeferredCarryoverShownInTargetMonth(t *testing.
 	}
 }
 
+func TestTransactionsListHandler_CarryoversSortedFirst(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Two deferred March carry-overs plus several in-period April rows with
+	// varied dates and ids. The carry-overs are dated before the period start,
+	// so by date alone they would sink below every April row. They live in the
+	// immediately preceding month (March) so the previous-month carry-over
+	// selection includes them.
+	descs := map[string]string{}
+	for _, name := range []string{
+		"Carryover Mar 12", "Carryover Mar 30",
+		"April 02", "April 18", "April 18 second",
+	} {
+		enc, err := encryption.EncryptField(name)
+		if err != nil {
+			t.Fatalf("encrypt %q: %v", name, err)
+		}
+		descs[name] = enc
+	}
+
+	// Insert in a deliberately scrambled order so the ORDER BY clause is what
+	// determines the response order, not insertion order.
+	if _, err := db.Exec(`
+		INSERT INTO credit_card_transactions
+			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, belop_i_valuta, is_pending, is_innbetaling, deferred_to_next_month)
+		VALUES
+			(1, '1', '2026-04-18', ?, -100, -100, 0, 0, 0),
+			(1, '1', '2026-03-12', ?, -300, -300, 0, 0, 1),
+			(1, '1', '2026-04-02', ?, -100, -100, 0, 0, 0),
+			(1, '1', '2026-03-30', ?, -300, -300, 0, 0, 1),
+			(1, '1', '2026-04-18', ?, -100, -100, 0, 0, 0)
+	`, descs["April 18"], descs["Carryover Mar 12"], descs["April 02"], descs["Carryover Mar 30"], descs["April 18 second"]); err != nil {
+		t.Fatalf("insert transactions: %v", err)
+	}
+
+	handler := TransactionsListHandler(db)
+	req := httptest.NewRequest(http.MethodGet, "/api/credit-card/transactions?credit_card_id=1&month=2026-04", nil)
+	req = withUser(req, 1)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp TransactionsListResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(resp.Transactions) != 5 {
+		t.Fatalf("expected 5 transactions, got %d", len(resp.Transactions))
+	}
+
+	// All carry-over rows must precede every in-period row.
+	seenInPeriod := false
+	for i, tx := range resp.Transactions {
+		if tx.DeferredFromPreviousMonth {
+			if seenInPeriod {
+				t.Errorf("carry-over row %q at index %d appears after an in-period row", tx.Beskrivelse, i)
+			}
+		} else {
+			seenInPeriod = true
+		}
+	}
+
+	// Within each block, ordering stays transaksjonsdato DESC, id DESC:
+	// Mar 30 before Mar 12 in the carry-over block; April 18 rows before
+	// April 02 in the in-period block, with the two April 18 rows broken by
+	// descending id.
+	got := make([]string, len(resp.Transactions))
+	for i, tx := range resp.Transactions {
+		got[i] = tx.Beskrivelse
+	}
+	want := []string{
+		"Carryover Mar 30",   // carry-over block, date DESC
+		"Carryover Mar 12",   // carry-over block
+		"April 18 second",    // in-period block, date DESC then id DESC
+		"April 18",           // same date, lower id
+		"April 02",
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("order[%d] = %q, want %q (full order: %v)", i, got[i], want[i], got)
+		}
+	}
+}
+
 func TestTransactionsListHandler_PendingPreviousMonthNotCarriedOver(t *testing.T) {
 	db := setupTestDB(t)
 
