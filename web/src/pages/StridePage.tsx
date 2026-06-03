@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, Trophy, Zap, ChevronRight, RefreshCw, History, Pencil, Loader2 } from 'lucide-react'
 import { formatDate, formatDateTime, formatNumber } from '../utils/formatDate'
+import { formatDistance, formatDuration } from '../utils/training'
 import type { StrideEvaluationRecord, StridePlan, WeekSummary } from '../types/stride'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { TrainingBlockTimeline } from '../components/stride/TrainingBlockTimeline'
@@ -38,22 +39,6 @@ interface Note {
   created_at: string
 }
 
-
-function formatDistance(meters: number): string {
-  if (meters >= 1000) {
-    return `${(meters / 1000).toFixed(1)} km`
-  }
-  return `${meters} m`
-}
-
-function formatDuration(seconds: number | null): string {
-  if (seconds === null) return '—'
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${m}:${String(s).padStart(2, '0')}`
-}
 
 function priorityLabel(priority: string): { label: string; class: string } {
   switch (priority) {
@@ -552,6 +537,9 @@ function EditNoteDialog({
 
 export default function StridePage() {
   const { t } = useTranslation('stride')
+  // Bound to the `training` namespace so the shared distance/duration helpers
+  // resolve their `units.*` keys (the page's own strings use the `stride` ns).
+  const { t: tTraining } = useTranslation('training')
 
   const [races, setRaces] = useState<Race[]>([])
   const [notes, setNotes] = useState<Note[]>([])
@@ -1338,9 +1326,9 @@ export default function StridePage() {
                     <p className="text-xs text-gray-400">
                       {formatDate(`${race.date}T00:00:00`, { dateStyle: 'medium' })}
                       {' · '}
-                      {formatDistance(race.distance_m)}
-                      {race.target_time != null && ` · ${t('races.target')}: ${formatDuration(race.target_time)}`}
-                      {race.result_time != null && ` · ${t('races.result')}: ${formatDuration(race.result_time)}`}
+                      {formatDistance(race.distance_m, tTraining, { fractionDigits: 1 })}
+                      {race.target_time != null && ` · ${t('races.target')}: ${formatDuration(race.target_time, tTraining)}`}
+                      {race.result_time != null && ` · ${t('races.result')}: ${formatDuration(race.result_time, tTraining)}`}
                       {weeks > 0 && ` · ${t('races.weeksAway', { count: weeks })}`}
                     </p>
                   </div>
@@ -1373,9 +1361,9 @@ export default function StridePage() {
                       <p className="text-xs text-gray-400">
                         {formatDate(`${race.date}T00:00:00`, { dateStyle: 'medium' })}
                         {' · '}
-                        {formatDistance(race.distance_m)}
-                        {race.target_time != null && ` · ${t('races.target')}: ${formatDuration(race.target_time)}`}
-                        {race.result_time != null && ` · ${t('races.result')}: ${formatDuration(race.result_time)}`}
+                        {formatDistance(race.distance_m, tTraining, { fractionDigits: 1 })}
+                        {race.target_time != null && ` · ${t('races.target')}: ${formatDuration(race.target_time, tTraining)}`}
+                        {race.result_time != null && ` · ${t('races.result')}: ${formatDuration(race.result_time, tTraining)}`}
                       </p>
                     </div>
                     <button
