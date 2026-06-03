@@ -44,11 +44,10 @@ function isValidEntry(item: unknown): item is ForecastCacheEntry {
  * Returns only well-formed entries; anything malformed is treated as empty.
  */
 function readEntries(): ForecastCacheEntry[] {
-  let raw: string | null = null
+  let raw: string | null
   try {
     raw = localStorage.getItem(STORAGE_KEY)
   } catch {
-    // localStorage may be unavailable (private mode, disabled storage).
     return []
   }
   if (!raw) return []
@@ -57,7 +56,6 @@ function readEntries(): ForecastCacheEntry[] {
     if (!Array.isArray(parsed)) return []
     return parsed.filter(isValidEntry)
   } catch {
-    // Not valid JSON — fall back to an empty cache.
     return []
   }
 }
