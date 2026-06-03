@@ -71,6 +71,7 @@ type Service struct {
 	baseURL      string
 	nominatimURL string
 	now          func() time.Time
+	osloTZ       *time.Location
 
 	mu    sync.RWMutex
 	cache map[string]*cachedResponse
@@ -83,11 +84,16 @@ type Service struct {
 
 // NewService creates a weather service with production defaults.
 func NewService() *Service {
+	oslo, _ := time.LoadLocation("Europe/Oslo")
+	if oslo == nil {
+		oslo = time.UTC
+	}
 	return &Service{
 		client:       &http.Client{Timeout: 10 * time.Second},
 		baseURL:      metBaseURL,
 		nominatimURL: nominatimBaseURL,
 		now:          time.Now,
+		osloTZ:       oslo,
 		cache:        make(map[string]*cachedResponse),
 		sunCache:     make(map[string]cachedSun),
 	}
@@ -95,11 +101,16 @@ func NewService() *Service {
 
 // newTestService creates a weather service pointing at a test MET server.
 func newTestService(baseURL string) *Service {
+	oslo, _ := time.LoadLocation("Europe/Oslo")
+	if oslo == nil {
+		oslo = time.UTC
+	}
 	return &Service{
 		client:       &http.Client{Timeout: 5 * time.Second},
 		baseURL:      baseURL,
 		nominatimURL: nominatimBaseURL,
 		now:          time.Now,
+		osloTZ:       oslo,
 		cache:        make(map[string]*cachedResponse),
 		sunCache:     make(map[string]cachedSun),
 	}
@@ -107,11 +118,16 @@ func newTestService(baseURL string) *Service {
 
 // newTestSearchService creates a weather service pointing at a test Nominatim server.
 func newTestSearchService(nominatimURL string) *Service {
+	oslo, _ := time.LoadLocation("Europe/Oslo")
+	if oslo == nil {
+		oslo = time.UTC
+	}
 	return &Service{
 		client:       &http.Client{Timeout: 5 * time.Second},
 		baseURL:      metBaseURL,
 		nominatimURL: nominatimURL,
 		now:          time.Now,
+		osloTZ:       oslo,
 		cache:        make(map[string]*cachedResponse),
 		sunCache:     make(map[string]cachedSun),
 	}
@@ -221,12 +237,11 @@ func (s *Service) SunHandler() http.HandlerFunc {
 }
 
 // sunDataCached returns the solar-day data for a location, computing it at most
-// once per local calendar date. The location's local date is approximated from
-// its longitude (15° per hour) so the correct day is used regardless of the
-// server's timezone.
+// once per local calendar date. The calendar date is determined in Europe/Oslo
+// (the legal timezone for all Norwegian locations) so DST transitions are
+// handled correctly.
 func (s *Service) sunDataCached(lat, lon float64) SunData {
-	offset := time.Duration(lon / 15.0 * float64(time.Hour))
-	localNow := s.now().UTC().Add(offset)
+	localNow := s.now().In(s.osloTZ)
 	y, m, d := localNow.Date()
 	dateKey := fmt.Sprintf("%04d-%02d-%02d", y, int(m), d)
 
@@ -241,7 +256,8 @@ func (s *Service) sunDataCached(lat, lon float64) SunData {
 	}
 	s.sunMu.RUnlock()
 
-	data := ComputeSunData(lat, lon, localNow)
+	dateUTC := time.Date(y, m, d, 12, 0, 0, 0, time.UTC)
+	data := ComputeSunData(lat, lon, dateUTC)
 
 	s.sunMu.Lock()
 	if len(s.sunCache) >= maxSunCacheEntries {

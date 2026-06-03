@@ -17,6 +17,7 @@ const (
 func newFixedClockService(t time.Time) *Service {
 	svc := NewService()
 	svc.now = func() time.Time { return t }
+	svc.osloTZ = time.UTC
 	return svc
 }
 
