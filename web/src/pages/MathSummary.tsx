@@ -69,24 +69,22 @@ export default function MathSummary() {
       ])
       if (signal.aborted) return
 
-      // If every call failed, hide the banner entirely; the mode grid still
-      // renders below. A single failing call only blanks that one metric.
-      if (results.every(r => r.status === 'rejected')) {
+      if (results.some(r => r.status === 'rejected')) {
         setError(true)
         setLoading(false)
         return
       }
 
-      const marathon = results[0].status === 'fulfilled' ? results[0].value.best : null
-      const blitz = results[1].status === 'fulfilled' ? results[1].value.best : null
-      const entries = results[2].status === 'fulfilled' ? results[2].value.entries : []
-      const stats = results[3].status === 'fulfilled' ? results[3].value : null
+      const marathon = (results[0] as PromiseFulfilledResult<{ best: MarathonBest | null }>).value.best
+      const blitz = (results[1] as PromiseFulfilledResult<{ best: BlitzBest | null }>).value.best
+      const entries = (results[2] as PromiseFulfilledResult<LeaderboardResponse>).value.entries
+      const stats = (results[3] as PromiseFulfilledResult<StatsResponse>).value
 
       setData({
         marathon,
         blitz,
         rank: findUserRank(entries, user?.id),
-        weakest: stats ? computeWeakestFacts(stats, 3) : [],
+        weakest: computeWeakestFacts(stats, 3),
       })
       setLoading(false)
     }
