@@ -245,10 +245,12 @@ func TestTransactionsListHandler_CarryoversSortedFirst(t *testing.T) {
 
 	// Two deferred March carry-overs plus several in-period April rows with
 	// varied dates and ids. The carry-overs are dated before the period start,
-	// so by date alone they would sink below every April row.
+	// so by date alone they would sink below every April row. They live in the
+	// immediately preceding month (March) so the previous-month carry-over
+	// selection includes them.
 	descs := map[string]string{}
 	for _, name := range []string{
-		"Carryover Feb 28", "Carryover Mar 30",
+		"Carryover Mar 12", "Carryover Mar 30",
 		"April 02", "April 18", "April 18 second",
 	} {
 		enc, err := encryption.EncryptField(name)
@@ -265,11 +267,11 @@ func TestTransactionsListHandler_CarryoversSortedFirst(t *testing.T) {
 			(user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, belop_i_valuta, is_pending, is_innbetaling, deferred_to_next_month)
 		VALUES
 			(1, '1', '2026-04-18', ?, -100, -100, 0, 0, 0),
-			(1, '1', '2026-02-28', ?, -300, -300, 0, 0, 1),
+			(1, '1', '2026-03-12', ?, -300, -300, 0, 0, 1),
 			(1, '1', '2026-04-02', ?, -100, -100, 0, 0, 0),
 			(1, '1', '2026-03-30', ?, -300, -300, 0, 0, 1),
 			(1, '1', '2026-04-18', ?, -100, -100, 0, 0, 0)
-	`, descs["April 18"], descs["Carryover Feb 28"], descs["April 02"], descs["Carryover Mar 30"], descs["April 18 second"]); err != nil {
+	`, descs["April 18"], descs["Carryover Mar 12"], descs["April 02"], descs["Carryover Mar 30"], descs["April 18 second"]); err != nil {
 		t.Fatalf("insert transactions: %v", err)
 	}
 
@@ -304,7 +306,7 @@ func TestTransactionsListHandler_CarryoversSortedFirst(t *testing.T) {
 	}
 
 	// Within each block, ordering stays transaksjonsdato DESC, id DESC:
-	// Mar 30 before Feb 28 in the carry-over block; April 18 rows before
+	// Mar 30 before Mar 12 in the carry-over block; April 18 rows before
 	// April 02 in the in-period block, with the two April 18 rows broken by
 	// descending id.
 	got := make([]string, len(resp.Transactions))
@@ -313,7 +315,7 @@ func TestTransactionsListHandler_CarryoversSortedFirst(t *testing.T) {
 	}
 	want := []string{
 		"Carryover Mar 30",   // carry-over block, date DESC
-		"Carryover Feb 28",   // carry-over block
+		"Carryover Mar 12",   // carry-over block
 		"April 18 second",    // in-period block, date DESC then id DESC
 		"April 18",           // same date, lower id
 		"April 02",
