@@ -79,10 +79,11 @@ func CreateHandler(db *sql.DB) http.HandlerFunc {
 
 		model := strings.TrimSpace(body.Model)
 		if model == "" {
-			// Fall back to user's configured Claude model.
+			// Fall back to user's configured Claude model, validated against
+			// the allowlist so an unsupported config value can't slip through.
 			cfg, err := training.LoadClaudeConfig(db, user.ID)
-			if err == nil && cfg.Model != "" {
-				model = cfg.Model
+			if err == nil && SupportedModels[strings.TrimSpace(cfg.Model)] {
+				model = strings.TrimSpace(cfg.Model)
 			} else {
 				model = "claude-sonnet-4-6"
 			}

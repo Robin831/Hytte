@@ -84,6 +84,10 @@ export default function Chat() {
   // Track locally deleted conversation IDs so we don't resurrect them if a
   // send response arrives after the user deleted the conversation mid-flight.
   const deletedConversationIds = useRef<Set<number>>(new Set())
+  // Tracks the active streaming request so the user can cancel mid-send and
+  // so a conversation switch can abort the in-flight stream.
+  const streamAbortRef = useRef<AbortController | null>(null)
+  const modelUpdateSeqRef = useRef(0)
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior })
@@ -293,6 +297,7 @@ export default function Chat() {
     setError('')
     const prevModel = activeConversation?.model
     if (model === prevModel) return
+    const seq = ++modelUpdateSeqRef.current
     // Optimistically reflect the choice so the dropdown updates immediately.
     setActiveConversation(current => (current && current.id === id ? { ...current, model } : current))
     setConversations(prev => prev.map(c => (c.id === id ? { ...c, model } : c)))
@@ -306,11 +311,11 @@ export default function Chat() {
       if (!res.ok) throw new Error(t('errors.failedToUpdateModel'))
       const data = await res.json()
       const updated = data.conversation as Conversation
+      if (modelUpdateSeqRef.current !== seq) return
       setConversations(prev => prev.map(c => (c.id === id ? updated : c)))
       setActiveConversation(current => (current?.id === id ? updated : current))
     } catch (err) {
-      // Revert the optimistic update on failure.
-      if (prevModel !== undefined) {
+      if (modelUpdateSeqRef.current === seq && prevModel !== undefined) {
         setActiveConversation(current => (current && current.id === id ? { ...current, model: prevModel } : current))
         setConversations(prev => prev.map(c => (c.id === id ? { ...c, model: prevModel } : c)))
       }

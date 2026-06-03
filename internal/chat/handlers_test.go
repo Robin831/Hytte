@@ -79,6 +79,30 @@ func TestCreateHandler(t *testing.T) {
 	}
 }
 
+func TestCreateHandler_InvalidModel(t *testing.T) {
+	db := setupTestDB(t)
+
+	body := `{"model": "gpt-4"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/chat/conversations", bytes.NewBufferString(body))
+	req = withUser(req)
+	rec := httptest.NewRecorder()
+
+	CreateHandler(db)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify no conversation was created.
+	convos, err := ListConversations(db, 1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(convos) != 0 {
+		t.Fatalf("expected no conversations after invalid model rejection, got %d", len(convos))
+	}
+}
+
 func TestGetHandler(t *testing.T) {
 	db := setupTestDB(t)
 
