@@ -159,18 +159,6 @@ export default function DayView({
     return () => clearInterval(id)
   }, [punchStart])
 
-  useEffect(() => {
-    if (!punchToggleRef) return
-    punchToggleRef.current = () => {
-      if (punchStart === null) {
-        handlePunchIn()
-      } else {
-        handlePunchOut()
-      }
-    }
-    return () => { punchToggleRef.current = null }
-  })
-
   const loadLeaveDay = useCallback(async (date: string, signal?: AbortSignal) => {
     try {
       const year = date.slice(0, 4)
@@ -449,6 +437,18 @@ export default function DayView({
       setSaving(false)
     }
   }
+
+  useEffect(() => {
+    if (!punchToggleRef) return
+    punchToggleRef.current = () => {
+      if (punchStart === null) {
+        handlePunchIn()
+      } else {
+        handlePunchOut()
+      }
+    }
+    return () => { punchToggleRef.current = null }
+  })
 
   const handleEditPunchStart = async (newTime: string) => {
     if (!newTime || !punchStart || newTime === punchStart) return
