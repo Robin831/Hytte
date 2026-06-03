@@ -57,6 +57,13 @@ type cachedResponse struct {
 	fetchedAt time.Time
 }
 
+// cachedSun holds computed solar-day data for a location, valid for the local
+// calendar date it was computed for.
+type cachedSun struct {
+	data SunData
+	date string // local date "YYYY-MM-DD" the data was computed for
+}
+
 // Service holds weather-related state (cache, HTTP client, base URLs).
 type Service struct {
 	client       *http.Client
@@ -65,6 +72,9 @@ type Service struct {
 
 	mu    sync.RWMutex
 	cache map[string]*cachedResponse
+
+	sunMu    sync.RWMutex
+	sunCache map[string]cachedSun
 
 	requestGroup singleflight.Group
 }
@@ -76,6 +86,7 @@ func NewService() *Service {
 		baseURL:      metBaseURL,
 		nominatimURL: nominatimBaseURL,
 		cache:        make(map[string]*cachedResponse),
+		sunCache:     make(map[string]cachedSun),
 	}
 }
 
@@ -86,6 +97,7 @@ func newTestService(baseURL string) *Service {
 		baseURL:      baseURL,
 		nominatimURL: nominatimBaseURL,
 		cache:        make(map[string]*cachedResponse),
+		sunCache:     make(map[string]cachedSun),
 	}
 }
 
@@ -96,6 +108,7 @@ func newTestSearchService(nominatimURL string) *Service {
 		baseURL:      metBaseURL,
 		nominatimURL: nominatimURL,
 		cache:        make(map[string]*cachedResponse),
+		sunCache:     make(map[string]cachedSun),
 	}
 }
 
@@ -157,6 +170,97 @@ func (s *Service) ForecastHandler() http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(data)
 	}
+}
+
+// SunResponse is the JSON shape returned by SunHandler. Sunrise and Sunset are
+// RFC3339 UTC strings, omitted entirely on polar day / polar night.
+type SunResponse struct {
+	Sunrise         *string `json:"sunrise,omitempty"`
+	Sunset          *string `json:"sunset,omitempty"`
+	DaylightSeconds int     `json:"daylightSeconds"`
+	PolarDay        bool    `json:"polarDay"`
+	PolarNight      bool    `json:"polarNight"`
+}
+
+// SunHandler returns sunrise, sunset, and daylight length for a lat/lon.
+// Query params: lat and lon (both required). Results are computed locally and
+// cached per location for the current local calendar date, so repeated page
+// loads do not trigger redundant computation or upstream calls.
+func (s *Service) SunHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		latStr := r.URL.Query().Get("lat")
+		lonStr := r.URL.Query().Get("lon")
+		if latStr == "" || lonStr == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "lat and lon are required",
+			})
+			return
+		}
+		lat, err := strconv.ParseFloat(latStr, 64)
+		if err != nil || lat < -90 || lat > 90 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "invalid latitude",
+			})
+			return
+		}
+		lon, err := strconv.ParseFloat(lonStr, 64)
+		if err != nil || lon < -180 || lon > 180 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "invalid longitude",
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, sunResponse(s.sunDataCached(lat, lon)))
+	}
+}
+
+// sunDataCached returns the solar-day data for a location, computing it at most
+// once per local calendar date. The location's local date is approximated from
+// its longitude (15° per hour) so the correct day is used regardless of the
+// server's timezone.
+func (s *Service) sunDataCached(lat, lon float64) SunData {
+	offset := time.Duration(lon / 15.0 * float64(time.Hour))
+	localNow := time.Now().UTC().Add(offset)
+	y, m, d := localNow.Date()
+	dateKey := fmt.Sprintf("%04d-%02d-%02d", y, int(m), d)
+
+	// Bucket nearby coordinates so minor lat/lon jitter still hits the cache.
+	cacheKey := fmt.Sprintf("%.2f,%.2f", lat, lon)
+
+	s.sunMu.RLock()
+	if c, ok := s.sunCache[cacheKey]; ok && c.date == dateKey {
+		data := c.data
+		s.sunMu.RUnlock()
+		return data
+	}
+	s.sunMu.RUnlock()
+
+	data := ComputeSunData(lat, lon, localNow)
+
+	s.sunMu.Lock()
+	s.sunCache[cacheKey] = cachedSun{data: data, date: dateKey}
+	s.sunMu.Unlock()
+
+	return data
+}
+
+// sunResponse converts internal SunData into the JSON response shape.
+func sunResponse(sun SunData) SunResponse {
+	resp := SunResponse{
+		DaylightSeconds: sun.DaylightSeconds,
+		PolarDay:        sun.PolarDay,
+		PolarNight:      sun.PolarNight,
+	}
+	if sun.Sunrise != nil {
+		v := sun.Sunrise.UTC().Format(time.RFC3339)
+		resp.Sunrise = &v
+	}
+	if sun.Sunset != nil {
+		v := sun.Sunset.UTC().Format(time.RFC3339)
+		resp.Sunset = &v
+	}
+	return resp
 }
 
 const nominatimBaseURL = "https://nominatim.openstreetmap.org/search"

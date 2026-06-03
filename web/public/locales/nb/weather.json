@@ -23,6 +23,13 @@
     "minuteAgo": "Oppdatert for 1 min siden",
     "minutesAgo": "Oppdatert for {{count}} min siden"
   },
+  "sun": {
+    "sunrise": "Soloppgang",
+    "sunset": "Solnedgang",
+    "daylight": "{{hours}}t {{minutes}}m med dagslys",
+    "polarDay": "Midnattssol (ingen solnedgang)",
+    "polarNight": "Mørketid (ingen soloppgang)"
+  },
   "descriptions": {
     "clearsky": "Klarvær",
     "fair": "Pent vær",
