@@ -1,76 +1,23 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { RefreshCw, ChevronLeft, ChevronRight, Filter, CalendarDays, List, LayoutGrid, Columns3, Calendar, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../auth'
 import { formatDate } from '../utils/formatDate'
 import {
-  type CalendarEvent,
   type CalendarInfo,
   type ViewMode,
   startOfDay,
-  endOfDay,
   addDays,
   startOfWeekMonday,
 } from '../components/calendar/types'
+import { useCalendarEvents } from '../hooks/useCalendarEvents'
+import { AGENDA_DAYS } from '../hooks/calendarUrl'
 import MonthView from '../components/calendar/MonthView'
 import WeekView from '../components/calendar/WeekView'
 import DayView from '../components/calendar/DayView'
 import AgendaView from '../components/calendar/AgendaView'
 
-const AGENDA_DAYS = 14
 const STORAGE_KEY = 'hytte-calendar-view'
-
-interface SyncError {
-  calendar_id: string
-  message: string
-}
-
-interface EventsResponse {
-  events?: CalendarEvent[]
-  sync_errors?: SyncError[]
-}
-
-/** Format a Date as RFC3339 without fractional seconds. */
-function toRFC3339(date: Date): string {
-  return date.toISOString().replace(/\.\d{3}Z$/, 'Z')
-}
-
-function getStartOfMonth(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), 1)
-}
-
-/** Calculate the date range to fetch based on view mode and rangeStart */
-function getViewRange(view: ViewMode, rangeStart: Date): { start: Date; end: Date } {
-  switch (view) {
-    case 'month': {
-      // Fetch from start of first visible week to end of last visible week
-      const firstOfMonth = getStartOfMonth(rangeStart)
-      const lastOfMonth = new Date(rangeStart.getFullYear(), rangeStart.getMonth() + 1, 0)
-      const gridStart = startOfWeekMonday(firstOfMonth)
-      const gridEnd = endOfDay(addDays(startOfWeekMonday(addDays(lastOfMonth, 7)), -1))
-      // Extend end to cover full 6th row if needed, using date-based arithmetic
-      // to avoid DST-sensitive millisecond day calculations.
-      const sixWeekEnd = endOfDay(addDays(gridStart, 41))
-      const endDate = gridEnd.getTime() < sixWeekEnd.getTime() ? sixWeekEnd : gridEnd
-      return { start: gridStart, end: endDate }
-    }
-    case 'week': {
-      const ws = startOfWeekMonday(rangeStart)
-      return { start: ws, end: endOfDay(addDays(ws, 6)) }
-    }
-    case 'day':
-      return { start: startOfDay(rangeStart), end: endOfDay(rangeStart) }
-    case 'agenda':
-    default:
-      return { start: startOfDay(rangeStart), end: endOfDay(addDays(rangeStart, AGENDA_DAYS - 1)) }
-  }
-}
-
-/** Build the events fetch URL for a given view mode and range start. */
-function buildEventsUrl(view: ViewMode, rangeStart: Date, sync = false): string {
-  const { start, end } = getViewRange(view, rangeStart)
-  return `/api/calendar/events?start=${encodeURIComponent(toRFC3339(start))}&end=${encodeURIComponent(toRFC3339(end))}${sync ? '&sync=true' : ''}`
-}
 
 function loadViewMode(): ViewMode {
   try {
@@ -87,55 +34,25 @@ export default function CalendarPage() {
   const { user } = useAuth()
   const locale = i18n.language
 
-  const [events, setEvents] = useState<CalendarEvent[]>([])
   const [calendars, setCalendars] = useState<CalendarInfo[]>([])
   const [connected, setConnected] = useState<boolean | null>(null)
   const [calendarsLoading, setCalendarsLoading] = useState(true)
-  const [loading, setLoading] = useState(true)
+  const [calendarsError, setCalendarsError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [syncErrors, setSyncErrors] = useState<SyncError[]>([])
   const [showSelector, setShowSelector] = useState(false)
   const [savingCalendars, setSavingCalendars] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>(loadViewMode)
   const [rangeStart, setRangeStart] = useState(() => startOfDay(new Date()))
 
+  const { events, loading, error, syncErrors, refetch } = useCalendarEvents(viewMode, rangeStart, user)
+
   const selectorRef = useRef<HTMLDivElement>(null)
-  const fetchControllerRef = useRef<AbortController | null>(null)
 
   const handleSetViewMode = (mode: ViewMode) => {
     if (mode === viewMode) return
-    setLoading(true)
     setViewMode(mode)
     try { localStorage.setItem(STORAGE_KEY, mode) } catch { /* ignore */ }
   }
-
-  const fetchEvents = useCallback(async (sync = false, signal?: AbortSignal) => {
-    if (!user) return
-    // Cancel any previous in-flight fetch so stale responses can't overwrite newer results
-    fetchControllerRef.current?.abort()
-    const ctl = new AbortController()
-    fetchControllerRef.current = ctl
-    // Chain caller's signal (e.g. effect cleanup) so it propagates to our controller
-    if (signal) signal.addEventListener('abort', () => ctl.abort(), { once: true })
-    try {
-      const url = buildEventsUrl(viewMode, rangeStart, sync)
-      const res = await fetch(url, { credentials: 'include', signal: ctl.signal })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data: EventsResponse = await res.json()
-      setEvents(data.events ?? [])
-      // sync_errors only appears on sync requests; clear on any fetch so the
-      // chip vanishes after a successful sync or a plain reload.
-      setSyncErrors(sync ? (data.sync_errors ?? []) : [])
-      setError(null)
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      setError(t('calendar.errors.failedToLoad'))
-      console.error('Failed to load calendar events:', err)
-    } finally {
-      if (!ctl.signal.aborted) setLoading(false)
-    }
-  }, [user, rangeStart, viewMode, t])
 
   // Fetch calendars once on mount
   useEffect(() => {
@@ -156,7 +73,7 @@ export default function CalendarPage() {
       })
       .catch(err => {
         if (err instanceof DOMException && err.name === 'AbortError') return
-        setError(t('calendar.errors.failedToLoad'))
+        setCalendarsError(t('calendar.errors.failedToLoad'))
         console.error('Failed to load calendars:', err)
       })
       .finally(() => {
@@ -164,15 +81,6 @@ export default function CalendarPage() {
       })
     return () => controller.abort()
   }, [user, t])
-
-  // Fetch events whenever rangeStart or viewMode changes
-  useEffect(() => {
-    if (!user) return
-    const controller = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- setState calls in fetchEvents are all async (after await)
-    void fetchEvents(false, controller.signal)
-    return () => controller.abort()
-  }, [fetchEvents])
 
   // Close calendar selector on outside click
   useEffect(() => {
@@ -189,7 +97,7 @@ export default function CalendarPage() {
 
   const handleSync = async () => {
     setSyncing(true)
-    await fetchEvents(true)
+    await refetch(true)
     setSyncing(false)
   }
 
@@ -215,7 +123,7 @@ export default function CalendarPage() {
         body: JSON.stringify({ calendar_ids: selectedIds }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      await fetchEvents(false)
+      await refetch(false)
     } catch (err) {
       setCalendars(prevCalendars)
       console.error('Failed to save calendar settings:', err)
@@ -224,10 +132,9 @@ export default function CalendarPage() {
     }
   }
 
-  const goToday = () => { setLoading(true); setRangeStart(startOfDay(new Date())) }
+  const goToday = () => { setRangeStart(startOfDay(new Date())) }
 
   const goPrev = () => {
-    setLoading(true)
     setRangeStart(prev => {
       switch (viewMode) {
         case 'month': return new Date(prev.getFullYear(), prev.getMonth() - 1, 1)
@@ -239,7 +146,6 @@ export default function CalendarPage() {
   }
 
   const goNext = () => {
-    setLoading(true)
     setRangeStart(prev => {
       switch (viewMode) {
         case 'month': return new Date(prev.getFullYear(), prev.getMonth() + 1, 1)
@@ -253,7 +159,6 @@ export default function CalendarPage() {
   /** Navigate to a specific day — switches to day view */
   const handleNavigateToDay = (date: Date) => {
     handleSetViewMode('day')
-    setLoading(true)
     setRangeStart(startOfDay(date))
   }
 
@@ -462,9 +367,9 @@ export default function CalendarPage() {
       )}
 
       {/* Error state */}
-      {error && (
+      {(error || calendarsError) && (
         <div role="alert" className="rounded-lg bg-red-900/30 border border-red-800 p-4 mb-4 text-red-300 text-sm">
-          {error}
+          {error || calendarsError}
         </div>
       )}
 
