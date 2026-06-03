@@ -60,9 +60,13 @@ interface ArticlesResponse {
 
 // How often to silently re-poll for fresh articles while the page is open.
 const REFRESH_MS = 120_000
-// When the server reports background scoring is running, refetch this soon to
-// pick up the freshly computed relevance scores.
+// When the server reports background scoring is running (or some articles are
+// still unscored), refetch this soon to pick up freshly computed scores.
 const SCORING_REFETCH_MS = 14_000
+// Cap how many consecutive score-chasing refetches we do so we never poll
+// forever if the ranker can't score a few stragglers. ~8 × 14s ≈ 2 min, enough
+// to score a full 100-article feed in 40-article batches several times over.
+const MAX_SCORE_CHASES = 8
 // localStorage key + max age for the stale-while-revalidate cache.
 const CACHE_KEY = 'news-feed-cache-v1'
 const CACHE_MAX_AGE_MS = 30 * 60_000
@@ -98,6 +102,25 @@ export function useNews() {
   const knownIds = useRef<Set<string>>(new Set())
   const scoringTimer = useRef<number | null>(null)
   const loadRef = useRef<(silent: boolean) => void>(() => {})
+  // Remembered scores by article ID, so a score never visibly disappears when a
+  // revalidation arrives before background scoring has (re)computed it.
+  const scoresRef = useRef<Map<string, { score: number; reason: string }>>(new Map())
+  const chaseCount = useRef(0)
+
+  // mergeScores records any fresh scores into memory and backfills still-unscored
+  // articles from previously remembered scores.
+  const mergeScores = useCallback((data: ArticlesResponse): ArticlesResponse => {
+    const mem = scoresRef.current
+    const articles = (data.articles ?? []).map(a => {
+      if (a.score >= 0) {
+        mem.set(a.id, { score: a.score, reason: a.score_reason })
+        return a
+      }
+      const remembered = mem.get(a.id)
+      return remembered ? { ...a, score: remembered.score, score_reason: remembered.reason } : a
+    })
+    return { ...data, articles }
+  }, [])
 
   const apply = useCallback((data: ArticlesResponse) => {
     setArticles(data.articles ?? [])
@@ -113,10 +136,11 @@ export function useNews() {
   }, [])
 
   const load = useCallback(async (silent: boolean) => {
+    if (!silent) chaseCount.current = 0 // a manual/initial load restarts the chase budget
     try {
       const res = await fetch('/api/news/articles', { credentials: 'include' })
       if (!res.ok) throw new Error(t('errors.load'))
-      const data: ArticlesResponse = await res.json()
+      const data = mergeScores(await res.json() as ArticlesResponse)
       if (silent && knownIds.current.size > 0) {
         const fresh = (data.articles ?? []).filter(a => !knownIds.current.has(a.id))
         if (fresh.length > 0) {
@@ -130,22 +154,35 @@ export function useNews() {
         apply(data)
       }
       setError('')
-      // If the server is still scoring in the background, refetch soon so the
-      // relevance scores appear without waiting for the full poll interval.
-      if (data.scoring_pending) {
-        if (scoringTimer.current) window.clearTimeout(scoringTimer.current)
+      // Keep refetching while the server is still scoring or some articles are
+      // not yet scored (the feed is scored in batches), so relevance fills in
+      // without waiting for the full poll interval — bounded by MAX_SCORE_CHASES.
+      const unscored = (data.articles ?? []).filter(a => a.score < 0).length
+      const keepChasing = data.ranking_enabled && (data.scoring_pending || unscored > 0)
+      if (scoringTimer.current) window.clearTimeout(scoringTimer.current)
+      if (keepChasing && chaseCount.current < MAX_SCORE_CHASES) {
+        chaseCount.current += 1
         scoringTimer.current = window.setTimeout(() => loadRef.current(true), SCORING_REFETCH_MS)
+      } else {
+        chaseCount.current = 0
       }
     } catch (err) {
       if (!silent) setError(err instanceof Error ? err.message : t('errors.load'))
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [apply, t])
+  }, [apply, mergeScores, t])
 
   // Revalidate on mount, then poll. (Cache hydration happens in the initial
   // state above, so there's no synchronous setState here.)
   useEffect(() => {
+    // Seed score memory from the hydrated cache so the first revalidation can
+    // backfill any articles the server hasn't re-scored yet.
+    const cached = readCache()
+    cached?.articles?.forEach(a => {
+      if (a.score >= 0) scoresRef.current.set(a.id, { score: a.score, reason: a.score_reason })
+    })
+
     loadRef.current = load
     load(false)
     const id = window.setInterval(() => load(true), REFRESH_MS)

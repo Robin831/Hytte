@@ -14,9 +14,9 @@ import (
 const scoreModel = "claude-haiku-4-5-20251001"
 
 // maxScorePerRefresh bounds how many uncached articles we send to the ranker in
-// a single refresh, to keep latency and token cost predictable. Anything beyond
-// this keeps its previous/neutral score until a later refresh.
-const maxScorePerRefresh = 40
+// a single background job. It matches the feed cap (maxArticles) so a typical
+// refresh scores everything in one Haiku call rather than several batches.
+const maxScorePerRefresh = 100
 
 // scoreBackgroundTimeout caps the background ranking CLI call. The Claude CLI
 // starts an agent session (loading project context) before answering, so a
