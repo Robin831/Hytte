@@ -293,8 +293,8 @@ func SendMessageHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // RenameHandler updates a conversation's title and/or model. Both fields are
-// optional; at least one must be supplied. Title-only requests behave exactly
-// as before. A supplied model is validated against SupportedModels.
+// optional; at least one must be supplied. A supplied model is validated
+// against SupportedModels.
 // PUT /api/chat/conversations/{id}
 // Body: {"title": "New Title"} and/or {"model": "claude-opus-4-8"}
 func RenameHandler(db *sql.DB) http.HandlerFunc {

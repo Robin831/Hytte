@@ -30,9 +30,10 @@ import type { Conversation, Message } from '../hooks/useChatStream'
 // Past this, the user has scrolled up to read history and we leave them be.
 const PIN_THRESHOLD = 80
 
-// MODEL_OPTIONS is the fixed allowlist of Claude models offered in the header
-// dropdown. Keep in sync with the backend allowlist (internal/chat/handlers.go
-// SupportedModels). The default for new conversations is Sonnet.
+// MODEL_OPTIONS is a curated subset of the models the backend allows
+// (internal/chat/handlers.go SupportedModels). The backend may accept
+// additional model IDs (e.g. older Opus variants) that we intentionally
+// omit from the UI dropdown.
 const MODEL_OPTIONS = ['claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'] as const
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
 
@@ -62,7 +63,8 @@ export default function Chat() {
   const [renamingId, setRenamingId] = useState<number | null>(null)
   const [renameTitle, setRenameTitle] = useState('')
   // Model chosen for the next new conversation (used when none is active).
-  const [newConversationModel, setNewConversationModel] = useState<string>(DEFAULT_MODEL)
+  // Empty means "let the backend pick" (falls back to user's configured model).
+  const [newConversationModel, setNewConversationModel] = useState<string>('')
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -84,7 +86,7 @@ export default function Chat() {
   // Track locally deleted conversation IDs so we don't resurrect them if a
   // send response arrives after the user deleted the conversation mid-flight.
   const deletedConversationIds = useRef<Set<number>>(new Set())
-  const modelUpdateSeqRef = useRef(0)
+  const modelUpdateSeqRef = useRef<Map<number, number>>(new Map())
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     messagesEndRef.current?.scrollIntoView({ behavior })
@@ -272,7 +274,7 @@ export default function Chat() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: newConversationModel }),
+        body: JSON.stringify(newConversationModel ? { model: newConversationModel } : {}),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => null)
@@ -294,8 +296,9 @@ export default function Chat() {
     setLocalError('')
     const prevModel = activeConversation?.model
     if (model === prevModel) return
-    const seq = ++modelUpdateSeqRef.current
-    // Optimistically reflect the choice so the dropdown updates immediately.
+    const seqMap = modelUpdateSeqRef.current
+    const seq = (seqMap.get(id) ?? 0) + 1
+    seqMap.set(id, seq)
     setActiveConversation(current => (current && current.id === id ? { ...current, model } : current))
     setConversations(prev => prev.map(c => (c.id === id ? { ...c, model } : c)))
     try {
@@ -308,11 +311,11 @@ export default function Chat() {
       if (!res.ok) throw new Error(t('errors.failedToUpdateModel'))
       const data = await res.json()
       const updated = data.conversation as Conversation
-      if (modelUpdateSeqRef.current !== seq) return
+      if (seqMap.get(id) !== seq) return
       setConversations(prev => prev.map(c => (c.id === id ? updated : c)))
       setActiveConversation(current => (current?.id === id ? updated : current))
     } catch (err) {
-      if (modelUpdateSeqRef.current === seq && prevModel !== undefined) {
+      if (seqMap.get(id) === seq && prevModel !== undefined) {
         setActiveConversation(current => (current && current.id === id ? { ...current, model: prevModel } : current))
         setConversations(prev => prev.map(c => (c.id === id ? { ...c, model: prevModel } : c)))
       }
@@ -422,7 +425,7 @@ export default function Chat() {
     return key ? t(key) : model
   }
 
-  const selectedModel = activeConversation ? activeConversation.model : newConversationModel
+  const selectedModel = activeConversation ? activeConversation.model : (newConversationModel || DEFAULT_MODEL)
   const modelSelectDisabled =
     activeConversation != null && sendingConversationIds.has(activeConversation.id)
   const onModelChange = (model: string) => {
