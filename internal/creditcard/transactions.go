@@ -91,8 +91,8 @@ func TransactionsListHandler(db *sql.DB) http.HandlerFunc {
 			      (t.transaksjonsdato >= ? AND t.transaksjonsdato < ?
 			       AND t.deferred_to_next_month = 1 AND t.is_pending = 0)
 			  )
-			ORDER BY t.transaksjonsdato DESC, t.id DESC
-		`, user.ID, creditCardID, startStr, endStr, prevStartStr, startStr)
+			ORDER BY (t.transaksjonsdato < ?) DESC, t.transaksjonsdato DESC, t.id DESC
+		`, user.ID, creditCardID, startStr, endStr, prevStartStr, startStr, startStr)
 		if err != nil {
 			log.Printf("creditcard: transactions list query: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list transactions"})
