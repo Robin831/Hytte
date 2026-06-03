@@ -32,6 +32,7 @@
     "lightboxTitle": "Image preview",
     "lightboxClose": "Close preview",
     "connection": {
+      "live": "Connected",
       "reconnecting": "Reconnecting…"
     },
     "typing": {

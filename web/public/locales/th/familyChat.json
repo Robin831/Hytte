@@ -32,6 +32,7 @@
     "lightboxTitle": "ดูตัวอย่างรูปภาพ",
     "lightboxClose": "ปิดการดูตัวอย่าง",
     "connection": {
+      "live": "เชื่อมต่อแล้ว",
       "reconnecting": "กำลังเชื่อมต่อใหม่…"
     },
     "typing": {

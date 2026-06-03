@@ -32,6 +32,7 @@
     "lightboxTitle": "Forhåndsvisning av bilde",
     "lightboxClose": "Lukk forhåndsvisning",
     "connection": {
+      "live": "Tilkoblet",
       "reconnecting": "Kobler til på nytt…"
     },
     "typing": {
