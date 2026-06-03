@@ -44,16 +44,6 @@ export function useCalendarEvents(
 
   const fetchControllerRef = useRef<AbortController | null>(null)
 
-  // When the query inputs change, show the loading spinner immediately during
-  // render so stale content for the previous range never flashes. Using state
-  // (not a ref) so React sees the comparison without accessing a ref in render.
-  const inputKey = `${viewMode}|${rangeStart.getTime()}`
-  const [prevInputKey, setPrevInputKey] = useState<string | null>(null)
-  if (prevInputKey !== inputKey) {
-    setPrevInputKey(inputKey)
-    if (!loading) setLoading(true)
-  }
-
   const fetchEvents = useCallback(async (sync = false, signal?: AbortSignal) => {
     if (!user) return
     // Cancel any previous in-flight fetch so stale responses can't overwrite newer results
@@ -62,6 +52,7 @@ export function useCalendarEvents(
     fetchControllerRef.current = ctl
     // Chain caller's signal (e.g. effect cleanup) so it propagates to our controller
     if (signal) signal.addEventListener('abort', () => ctl.abort(), { once: true })
+    setLoading(true)
     try {
       const url = buildEventsUrl(viewMode, rangeStart, sync)
       const res = await fetch(url, { credentials: 'include', signal: ctl.signal })
@@ -81,15 +72,16 @@ export function useCalendarEvents(
     }
   }, [user, rangeStart, viewMode, t])
 
-  // Fetch events whenever rangeStart, viewMode, or user changes (fetchEvents
-  // identity already depends on all three).
   useEffect(() => {
     if (!user) return
     const controller = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- setState calls in fetchEvents are all async (after await)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- setLoading(true) inside fetchEvents is intentional to show the spinner as soon as a fetch starts
     void fetchEvents(false, controller.signal)
-    return () => controller.abort()
-  }, [fetchEvents])
+    return () => {
+      controller.abort()
+      fetchControllerRef.current?.abort()
+    }
+  }, [user, fetchEvents])
 
   const refetch = useCallback((sync = false) => fetchEvents(sync), [fetchEvents])
 

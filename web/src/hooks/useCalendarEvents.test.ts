@@ -5,10 +5,14 @@ import { useCalendarEvents } from './useCalendarEvents'
 import type { CalendarEvent, ViewMode } from '../components/calendar/types'
 
 // ── i18n mock ─────────────────────────────────────────────────────────────────
-// Return the key verbatim so error assertions are deterministic.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
-}))
+// Return the key verbatim so error assertions are deterministic. The t function
+// must be a stable reference (matching real react-i18next) so useCallback deps
+// that include t don't invalidate on every render.
+vi.mock('react-i18next', () => {
+  const t = (key: string) => key
+  const i18n = { language: 'en' }
+  return { useTranslation: () => ({ t, i18n }) }
+})
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -153,6 +157,25 @@ describe('useCalendarEvents', () => {
 
     unmount()
     expect(signal?.aborted).toBe(true)
+  })
+
+  it('aborts a refetch-initiated request on unmount', async () => {
+    const calls = installFetch()
+    const { result, unmount } = renderEvents({ viewMode: 'month', rangeStart: RANGE_A, user: USER })
+
+    // Resolve the initial fetch so we can call refetch.
+    await act(async () => {
+      calls[0].resolve(okJson({ events: [] }))
+    })
+
+    // Start a refetch (no external signal chained).
+    act(() => { void result.current.refetch() })
+    expect(calls.length).toBe(2)
+    const refetchSignal = calls[1].signal
+    expect(refetchSignal?.aborted).toBe(false)
+
+    unmount()
+    expect(refetchSignal?.aborted).toBe(true)
   })
 
   it('refetch() re-runs the current query without changing inputs', async () => {
