@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type CalendarEvent, type ViewMode } from '../components/calendar/types'
 import { buildEventsUrl } from './calendarUrl'
@@ -45,12 +45,12 @@ export function useCalendarEvents(
   const fetchControllerRef = useRef<AbortController | null>(null)
 
   // When the query inputs change, show the loading spinner immediately during
-  // render so stale content for the previous range never flashes. This mirrors
-  // the eager setLoading(true) the page used to do in its navigation handlers.
+  // render so stale content for the previous range never flashes. Using state
+  // (not a ref) so React sees the comparison without accessing a ref in render.
   const inputKey = `${viewMode}|${rangeStart.getTime()}`
-  const prevInputKeyRef = useRef<string | null>(null)
-  if (prevInputKeyRef.current !== inputKey) {
-    prevInputKeyRef.current = inputKey
+  const [prevInputKey, setPrevInputKey] = useState<string | null>(null)
+  if (prevInputKey !== inputKey) {
+    setPrevInputKey(inputKey)
     if (!loading) setLoading(true)
   }
 
