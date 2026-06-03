@@ -21,6 +21,16 @@ interface TranslatedItem {
   language: string
 }
 
+// Mirror the backend ordering (checked ASC, sort_order ASC, created_at ASC) so
+// incremental SSE patches keep the same visual order as a full fetch.
+function sortItems(items: GroceryItem[]): GroceryItem[] {
+  return [...items].sort((a, b) => {
+    if (a.checked !== b.checked) return a.checked ? 1 : -1
+    if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order
+    return a.created_at.localeCompare(b.created_at)
+  })
+}
+
 type SpeechRecognitionType = typeof window extends { SpeechRecognition: infer T } ? T : unknown
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognitionType) | undefined {
@@ -66,24 +76,66 @@ export default function GroceryPage() {
     return () => { controller.abort() }
   }, [user, fetchItems, t])
 
-  // Poll every 5 seconds
+  // Subscribe to the household's SSE stream for instant shared-list updates.
+  // Incremental events patch local state so optimistic check/uncheck is never
+  // clobbered; a single refetch on (re)connect resyncs anything missed while
+  // disconnected. The 5-second polling interval this replaces is gone, so an
+  // idle tab issues no recurring /grocery/items requests.
   useEffect(() => {
     if (!user) return
-    let currentController: AbortController | null = null
-    const poll = async () => {
-      if (document.hidden) return
-      currentController?.abort()
-      const controller = new AbortController()
-      currentController = controller
-      try {
-        const fetched = await fetchItems(controller.signal)
-        if (!controller.signal.aborted) setItems(fetched)
-      } catch {
-        // silently ignore polling errors
-      }
+
+    const source = new EventSource('/api/grocery/events', { withCredentials: true })
+    // The initial load effect already populates the list, so skip the refetch
+    // on the very first open and only resync on subsequent reconnects.
+    let firstOpen = true
+
+    const resync = () => {
+      fetchItems()
+        .then(fetched => {
+          if (source.readyState !== EventSource.CLOSED) setItems(fetched)
+        })
+        .catch(() => { /* a failed resync is retried on the next reconnect */ })
     }
-    const intervalId = setInterval(poll, 5000)
-    return () => { clearInterval(intervalId); currentController?.abort() }
+
+    source.onopen = () => {
+      if (firstOpen) {
+        firstOpen = false
+        return
+      }
+      resync()
+    }
+
+    const on = (name: string, handler: (data: unknown) => void) =>
+      source.addEventListener(name, e => {
+        try {
+          handler(JSON.parse((e as MessageEvent).data))
+        } catch {
+          // Malformed payload — ignore; the next reconnect resyncs full state.
+        }
+      })
+
+    on('item_added', data => {
+      const item = data as GroceryItem
+      setItems(prev => (prev.some(i => i.id === item.id) ? prev : sortItems([...prev, item])))
+    })
+
+    on('item_changed', data => {
+      const { id, checked } = data as { id: number; checked: boolean }
+      setItems(prev => sortItems(prev.map(i => (i.id === id ? { ...i, checked } : i))))
+    })
+
+    on('item_reordered', data => {
+      const { id, sort_order } = data as { id: number; sort_order: number }
+      setItems(prev => sortItems(prev.map(i => (i.id === id ? { ...i, sort_order } : i))))
+    })
+
+    on('item_removed', data => {
+      const { ids } = data as { ids: number[] }
+      const removed = new Set(ids)
+      setItems(prev => prev.filter(i => !removed.has(i.id)))
+    })
+
+    return () => { source.close() }
   }, [user, fetchItems])
 
   // Unmount cleanup: abort any in-flight translation and stop any active recognition

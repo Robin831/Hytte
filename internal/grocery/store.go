@@ -134,6 +134,29 @@ func UpdateSortOrder(db *sql.DB, id int64, householdID int64, order int) error {
 	return nil
 }
 
+// CompletedIDs returns the IDs of all checked items for the given household.
+// Used to tell SSE subscribers exactly which items a clear-completed removed.
+func CompletedIDs(db *sql.DB, householdID int64) ([]int64, error) {
+	rows, err := db.Query("SELECT id FROM grocery_items WHERE household_id = ? AND checked = 1", householdID)
+	if err != nil {
+		return nil, fmt.Errorf("query completed ids: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan completed id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // DeleteCompleted removes all checked items for the given household.
 func DeleteCompleted(db *sql.DB, householdID int64) (int64, error) {
 	res, err := db.Exec("DELETE FROM grocery_items WHERE household_id = ? AND checked = 1", householdID)

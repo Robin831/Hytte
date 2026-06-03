@@ -884,6 +884,7 @@ func NewRouter(db *sql.DB) http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireFeature(db, "grocery"))
 				r.Get("/grocery/items", grocery.HandleList(db))
+				r.Get("/grocery/events", grocery.HandleEvents(db))
 				r.Post("/grocery/items", grocery.HandleAdd(db))
 				r.Patch("/grocery/items/{id}/check", grocery.HandleCheck(db))
 				r.Patch("/grocery/items/{id}/reorder", grocery.HandleReorder(db))
