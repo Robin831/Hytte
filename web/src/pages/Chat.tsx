@@ -36,6 +36,7 @@ export default function Chat() {
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
+  const [localError, setLocalError] = useState('')
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
   // Track every conversation with an in-flight send so concurrent sends in
@@ -108,7 +109,7 @@ export default function Chat() {
   // SSE streaming state machine: optimistic placeholders, frame parsing, the
   // three error-recovery branches, abort handling, and the post-stream
   // conversation-list refetch all live in the hook. Chat keeps only UI state.
-  const { send, stop, error, setError } = useChatStream({
+  const { send, stop, error, clearError } = useChatStream({
     activeConversation,
     setActiveConversation,
     setMessages,
@@ -178,14 +179,14 @@ export default function Chat() {
         setConversations(data.conversations ?? [])
       } catch (err) {
         if (err instanceof Error && err.name !== 'AbortError') {
-          setError(err.message)
+          setLocalError(err.message)
         }
       } finally {
         if (!controller.signal.aborted) setLoadingConversations(false)
       }
     })()
     return () => { controller.abort() }
-  }, [t, setError])
+  }, [t])
 
   // Load messages when conversation changes
   const activeConversationId = activeConversation?.id ?? null
@@ -193,13 +194,14 @@ export default function Chat() {
     // Cancel any in-flight streaming send when switching conversations so the
     // partial tokens do not bleed into the newly selected conversation.
     stop()
+    clearError()
 
     const controller = new AbortController()
     ;(async () => {
       if (activeConversationId === null) {
         setMessages([])
         setLoadingMessages(false)
-        setError('')
+        setLocalError('')
         return
       }
       setLoadingMessages(true)
@@ -211,17 +213,17 @@ export default function Chat() {
         if (!res.ok) throw new Error(t('errors.failedToLoadMessages'))
         const data = await res.json()
         setMessages(data.messages ?? [])
-        setError('')
+        setLocalError('')
       } catch (err) {
         if (err instanceof Error && err.name !== 'AbortError') {
-          setError(err.message)
+          setLocalError(err.message)
         }
       } finally {
         if (!controller.signal.aborted) setLoadingMessages(false)
       }
     })()
     return () => { controller.abort() }
-  }, [activeConversationId, t, stop, setError])
+  }, [activeConversationId, t, stop, clearError])
 
   // Resize textarea when input changes (including programmatic clears)
   useEffect(() => {
@@ -263,15 +265,15 @@ export default function Chat() {
       setConversations(prev => [conv, ...prev])
       setActiveConversation(conv)
       setShowSidebar(false)
-      setError('')
+      setLocalError('')
       inputRef.current?.focus()
     } catch (err) {
-      if (err instanceof Error) setError(err.message)
+      if (err instanceof Error) setLocalError(err.message)
     }
   }
 
   async function deleteConversation(id: number) {
-    setError('')
+    setLocalError('')
     try {
       const res = await fetch(`/api/chat/conversations/${id}`, {
         method: 'DELETE',
@@ -285,9 +287,9 @@ export default function Chat() {
         setMessages([])
       }
       setDeletingId(null)
-      setError('')
+      setLocalError('')
     } catch (err) {
-      if (err instanceof Error) setError(err.message)
+      if (err instanceof Error) setLocalError(err.message)
     }
   }
 
@@ -296,7 +298,7 @@ export default function Chat() {
       setRenamingId(null)
       return
     }
-    setError('')
+    setLocalError('')
     try {
       const res = await fetch(`/api/chat/conversations/${id}`, {
         method: 'PUT',
@@ -312,9 +314,9 @@ export default function Chat() {
         setActiveConversation(updated)
       }
       setRenamingId(null)
-      setError('')
+      setLocalError('')
     } catch (err) {
-      if (err instanceof Error) setError(err.message)
+      if (err instanceof Error) setLocalError(err.message)
     }
   }
 
@@ -334,7 +336,8 @@ export default function Chat() {
   function selectConversation(conv: Conversation) {
     setActiveConversation(conv)
     setShowSidebar(false)
-    setError('')
+    clearError()
+    setLocalError('')
   }
 
   function formatTime(dateStr: string): string {
@@ -613,11 +616,11 @@ export default function Chat() {
         </div>
 
         {/* Error banner */}
-        {error && (
+        {(error || localError) && (
           <div className="px-4 py-2 bg-red-900/50 border-t border-red-800 text-red-300 text-sm flex items-center justify-between">
-            <span>{error}</span>
+            <span>{error || localError}</span>
             <button
-              onClick={() => setError('')}
+              onClick={() => { clearError(); setLocalError('') }}
               className="text-red-400 hover:text-red-300 cursor-pointer"
               aria-label={t('input.dismissError')}
             >

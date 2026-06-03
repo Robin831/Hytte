@@ -48,7 +48,7 @@ export interface UseChatStream {
   streamingId: number | null
   /** Last send/stream error message, or '' when clear. */
   error: string
-  setError: Dispatch<SetStateAction<string>>
+  clearError: () => void
 }
 
 /**
@@ -73,6 +73,7 @@ export function useChatStream({
   const { t } = useTranslation('chat')
   const [error, setError] = useState('')
   const [streamingId, setStreamingId] = useState<number | null>(null)
+  const clearError = useCallback(() => setError(''), [])
   // Tracks the active streaming request so the user can cancel mid-send and so
   // a conversation switch can abort the in-flight stream.
   const streamAbortRef = useRef<AbortController | null>(null)
@@ -250,12 +251,9 @@ export function useChatStream({
           if (convRes.ok) {
             const convData = await convRes.json()
             const allConvs: Conversation[] = convData.conversations ?? []
-            setConversations(_prev => {
-              // Build a merged list: start from the server list, but drop any
-              // conversations the user explicitly deleted locally so we don't
-              // resurrect them.
-              return allConvs.filter(c => !deletedConversationIds.current.has(c.id))
-            })
+            setConversations(
+              allConvs.filter(c => !deletedConversationIds.current.has(c.id)),
+            )
             const updated = allConvs.find(c => c.id === sentConversationId)
             if (updated) {
               setActiveConversation(current =>
@@ -338,5 +336,5 @@ export function useChatStream({
     ],
   )
 
-  return { send, stop, streamingId, error, setError }
+  return { send, stop, streamingId, error, clearError }
 }
