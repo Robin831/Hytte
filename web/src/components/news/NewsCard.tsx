@@ -112,7 +112,7 @@ export default function NewsCard({
             title={t('card.more')}
             className={`p-1.5 rounded-md transition-colors cursor-pointer ${
               upSelected
-                ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-inset ring-emerald-400/70'
+                ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-inset ring-emerald-400/70 hover:bg-emerald-500/30'
                 : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
             }`}
           >
@@ -125,7 +125,7 @@ export default function NewsCard({
             title={t('card.less')}
             className={`p-1.5 rounded-md transition-colors cursor-pointer ${
               downSelected
-                ? 'bg-red-500/20 text-red-400 ring-1 ring-inset ring-red-400/70'
+                ? 'bg-red-500/20 text-red-400 ring-1 ring-inset ring-red-400/70 hover:bg-red-500/30'
                 : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
             }`}
           >
