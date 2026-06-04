@@ -26,6 +26,8 @@ export default function NewsCard({
   const { t: tc } = useTranslation('common')
 
   const horizontal = variant === 'timeline'
+  const upSelected = article.feedback === 1
+  const downSelected = article.feedback === -1
 
   return (
     <article
@@ -106,24 +108,28 @@ export default function NewsCard({
           <button
             type="button"
             onClick={() => onVote(article, 1)}
-            aria-pressed={article.feedback === 1}
+            aria-pressed={upSelected}
             title={t('card.more')}
-            className={`p-1.5 rounded-md transition-colors cursor-pointer hover:bg-gray-800 ${
-              article.feedback === 1 ? 'text-emerald-400' : 'text-gray-500 hover:text-gray-300'
+            className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+              upSelected
+                ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-inset ring-emerald-400/70'
+                : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
             }`}
           >
-            <ThumbsUp size={16} />
+            <ThumbsUp size={16} fill={upSelected ? 'currentColor' : 'none'} />
           </button>
           <button
             type="button"
             onClick={() => onVote(article, -1)}
-            aria-pressed={article.feedback === -1}
+            aria-pressed={downSelected}
             title={t('card.less')}
-            className={`p-1.5 rounded-md transition-colors cursor-pointer hover:bg-gray-800 ${
-              article.feedback === -1 ? 'text-red-400' : 'text-gray-500 hover:text-gray-300'
+            className={`p-1.5 rounded-md transition-colors cursor-pointer ${
+              downSelected
+                ? 'bg-red-500/20 text-red-400 ring-1 ring-inset ring-red-400/70'
+                : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800'
             }`}
           >
-            <ThumbsDown size={16} />
+            <ThumbsDown size={16} fill={downSelected ? 'currentColor' : 'none'} />
           </button>
           <button
             type="button"
