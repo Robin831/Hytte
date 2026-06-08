@@ -23,7 +23,7 @@ var (
 )
 
 const (
-	baseURL              = "https://game06.wordfeud.com/wf"
+	baseURL              = "https://api.wordfeud.com/wf"
 	defaultTimeout       = 10 * time.Second
 	wordfeudPasswordSalt = "JarJarBinks9"
 	userAgent            = "Wordfeud/4.0.0 (Android; 14; Pixel 8)"

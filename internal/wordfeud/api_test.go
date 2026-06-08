@@ -139,7 +139,7 @@ func TestLogin_Redirect_RelativeURL(t *testing.T) {
 	srvURL, _ := url.Parse(srv.URL)
 	transport := &rewriteTransport{target: srvURL.Host}
 	c := NewClient()
-	c.baseURL = "http://game06.wordfeud.com/wf"
+	c.baseURL = "http://api.wordfeud.com/wf"
 	c.httpClient = &http.Client{
 		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
