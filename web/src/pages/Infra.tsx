@@ -93,6 +93,11 @@ const statusConfig = {
   unknown: { icon: HelpCircle, color: 'text-gray-400', bg: 'bg-gray-400/10', border: 'border-gray-400/20', label: 'Unknown' },
 }
 
+// Background polling: refresh roughly every minute while the tab is visible,
+// doubling the interval on consecutive failures up to an 8-minute cap.
+export const POLL_BASE_MS = 60_000
+export const POLL_MAX_MS = 480_000
+
 export default function Infra() {
   const { t } = useTranslation('infra')
   const [modules, setModules] = useState<ModuleInfo[]>([])
@@ -132,23 +137,34 @@ export default function Infra() {
     setStatus(data)
   }, [])
 
-  const loadAll = useCallback(async (background: boolean, signal: AbortSignal) => {
+  const loadInFlightRef = useRef(0)
+
+  const loadAll = useCallback(async (
+    background: boolean,
+    signal: AbortSignal,
+    opts?: { suppressErrors?: boolean },
+  ): Promise<boolean> => {
+    loadInFlightRef.current++
     if (background) {
       setRefreshing(true)
     } else {
       setLoading(true)
     }
-    setError(null)
+    if (!opts?.suppressErrors) {
+      setError(null)
+    }
     try {
       await Promise.all([fetchModules(signal), fetchStatus(signal)])
+      return true
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      if (signal.aborted) return
-      setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
+      if (err instanceof DOMException && err.name === 'AbortError') return true
+      if (signal.aborted) return true
+      if (!opts?.suppressErrors) {
+        setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
+      }
+      return false
     } finally {
-      // Always reset the flag this call set, even on abort: a superseding
-      // handler (e.g. handleRefresh after the mount load) may not touch the
-      // same flag, which would otherwise leave the UI stuck.
+      loadInFlightRef.current--
       if (background) {
         setRefreshing(false)
       } else {
@@ -165,12 +181,66 @@ export default function Infra() {
     }
   }, [loadAll, newAbort])
 
+  // Current poll delay; grows on consecutive failures, resets on success.
+  const pollDelayRef = useRef(POLL_BASE_MS)
+
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+
+    function scheduleNext() {
+      // A tick resuming after an await and the visibilitychange handler can
+      // both reach here; clear any pending timer first so concurrent callers
+      // collapse into a single timer chain instead of doubling the poll rate.
+      window.clearTimeout(timer)
+      if (cancelled || document.visibilityState !== 'visible') return
+      timer = window.setTimeout(() => void tick(), pollDelayRef.current)
+    }
+
+    async function tick() {
+      if (cancelled || document.visibilityState !== 'visible') return
+      // A manual refresh, module toggle, or the initial load is in flight:
+      // skip this tick instead of aborting it, and try again next interval.
+      if (loadInFlightRef.current > 0) {
+        scheduleNext()
+        return
+      }
+      const signal = newAbort()
+      const ok = await loadAll(true, signal, { suppressErrors: true })
+      if (cancelled) return
+      if (!signal.aborted) {
+        pollDelayRef.current = ok
+          ? POLL_BASE_MS
+          : Math.min(pollDelayRef.current * 2, POLL_MAX_MS)
+      }
+      scheduleNext()
+    }
+
+    function onVisibilityChange() {
+      window.clearTimeout(timer)
+      if (document.visibilityState === 'visible') {
+        // Back on the tab: refresh immediately, then resume the loop.
+        void tick()
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    scheduleNext()
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [loadAll, newAbort])
+
   const handleRefresh = async () => {
     await loadAll(true, newAbort())
   }
 
   const handleToggle = async (moduleName: string, currentEnabled: boolean) => {
     const signal = newAbort()
+    loadInFlightRef.current++
     setToggling(moduleName)
     try {
       const res = await fetch(`/api/infra/modules/${encodeURIComponent(moduleName)}`, {
@@ -189,9 +259,7 @@ export default function Infra() {
       if (signal.aborted) return
       setError(err instanceof Error ? err.message : t('errors.failedToToggle'))
     } finally {
-      // Only clear our own module from the toggling slot. If a newer
-      // handleToggle for a different module has since claimed the slot,
-      // leave its value intact.
+      loadInFlightRef.current--
       setToggling(prev => (prev === moduleName ? null : prev))
     }
   }
