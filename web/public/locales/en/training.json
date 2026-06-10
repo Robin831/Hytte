@@ -30,7 +30,10 @@
     "emptyDescription": "Import .fit files from your Coros watch to get started",
     "avgHR": "avg HR",
     "pace": "pace",
-    "newWorkoutsAvailable": "New workouts available — click to refresh"
+    "newWorkoutsAvailable": "New workouts available — click to refresh",
+    "loadMore": "Load more",
+    "loadingMore": "Loading…",
+    "noMoreWorkouts": "No more workouts"
   },
   "nav": {
     "trends": "Trends",

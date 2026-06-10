@@ -3,6 +3,7 @@ package training
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -456,11 +457,103 @@ func scheduleAnalysisAfterContextSave(db *sql.DB, userID int64, isAdmin bool, wo
 	}()
 }
 
+// Pagination bounds for the workout list endpoint.
+const (
+	defaultWorkoutPageSize = 25
+	maxWorkoutPageSize     = 100
+)
+
+// parseLimit reads and clamps the page-size query parameter. Missing, empty,
+// non-numeric, or non-positive values fall back to the default; values above
+// the maximum are clamped down.
+func parseLimit(raw string) int {
+	if raw == "" {
+		return defaultWorkoutPageSize
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 {
+		return defaultWorkoutPageSize
+	}
+	if n > maxWorkoutPageSize {
+		return maxWorkoutPageSize
+	}
+	return n
+}
+
+// encodeCursor serializes a keyset cursor into an opaque base64 token of the
+// form "started_at|id". Returns "" for a nil cursor (final page).
+func encodeCursor(c *Cursor) string {
+	if c == nil {
+		return ""
+	}
+	raw := c.StartedAt + "|" + strconv.FormatInt(c.ID, 10)
+	return base64.RawURLEncoding.EncodeToString([]byte(raw))
+}
+
+// decodeCursor parses an opaque cursor token produced by encodeCursor. An empty
+// token yields a nil cursor (first page). A malformed token is reported as an
+// error so the handler can reject it rather than silently restarting pagination.
+func decodeCursor(token string) (*Cursor, error) {
+	if token == "" {
+		return nil, nil
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil {
+		return nil, errors.New("invalid cursor encoding")
+	}
+	parts := strings.SplitN(string(decoded), "|", 2)
+	if len(parts) != 2 || parts[0] == "" {
+		return nil, errors.New("invalid cursor format")
+	}
+	id, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return nil, errors.New("invalid cursor id")
+	}
+	return &Cursor{StartedAt: parts[0], ID: id}, nil
+}
+
 // ListHandler handles GET /api/training/workouts.
+//
+// When a `limit` or `cursor` query param is present, it returns one bounded page
+// of workouts ordered started_at DESC, id DESC: `limit` sets the page size
+// (default 25, clamped to 100) and the opaque `cursor` walks older pages via
+// keyset pagination. The response is { workouts, next_cursor }, where
+// next_cursor is null on the final page.
+//
+// When neither param is present, it preserves the legacy full-history response
+// (with next_cursor null) so other consumers of this endpoint — the Compare,
+// Stride, and Lactate pages and the dashboard fitness widget — keep receiving
+// every workout in a single response. Only the Training page opts into
+// pagination by sending ?limit=.
 func ListHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
-		workouts, err := List(db, user.ID)
+		q := r.URL.Query()
+
+		if !q.Has("limit") && !q.Has("cursor") {
+			workouts, err := List(db, user.ID)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workouts"})
+				return
+			}
+			if workouts == nil {
+				workouts = []Workout{}
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"workouts":    workouts,
+				"next_cursor": nil,
+			})
+			return
+		}
+
+		limit := parseLimit(q.Get("limit"))
+		cursor, err := decodeCursor(q.Get("cursor"))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid cursor"})
+			return
+		}
+
+		workouts, next, err := ListPaginated(db, user.ID, limit, cursor)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workouts"})
 			return
@@ -468,7 +561,15 @@ func ListHandler(db *sql.DB) http.HandlerFunc {
 		if workouts == nil {
 			workouts = []Workout{}
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"workouts": workouts})
+
+		var nextCursor any
+		if next != nil {
+			nextCursor = encodeCursor(next)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"workouts":    workouts,
+			"next_cursor": nextCursor,
+		})
 	}
 }
 

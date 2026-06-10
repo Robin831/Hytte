@@ -33,19 +33,61 @@ func isIndoorWorkout(pw *ParsedWorkout) bool {
 	return false
 }
 
-// List returns all workouts for a user (without samples), including tags.
-func List(db *sql.DB, userID int64) ([]Workout, error) {
-	rows, err := db.Query(`
+// listSelectColumns is the shared column list for the workout summary list
+// queries (List and ListPaginated). Both order by started_at DESC, id DESC and
+// aggregate tags via a correlated subquery; only the WHERE/LIMIT clauses differ.
+const listSelectColumns = `
 		SELECT w.id, w.user_id, w.sport, w.sub_sport, w.is_indoor, w.title, w.started_at, w.duration_seconds,
 		       w.distance_meters, w.avg_heart_rate, w.max_heart_rate,
 		       w.avg_pace_sec_per_km, w.avg_cadence, w.calories,
 		       w.ascent_meters, w.descent_meters, w.fit_file_hash, w.analysis_status, w.title_source, w.created_at,
 		       w.training_load, w.hr_drift_pct, w.pace_cv_pct, w.race_id,
 		       (SELECT GROUP_CONCAT(tag) FROM (SELECT tag FROM workout_tags WHERE workout_id = w.id ORDER BY tag)) AS tags
-		FROM workouts w
+		FROM workouts w`
+
+// scanWorkoutListRow scans a single row of the workout summary list query
+// (the columns in listSelectColumns) into a Workout, including aggregated tags.
+func scanWorkoutListRow(rows *sql.Rows) (Workout, error) {
+	var w Workout
+	var tagsStr sql.NullString
+	var isIndoor int
+	var trainingLoad, hrDriftPct, paceCVPct sql.NullFloat64
+	var raceID sql.NullInt64
+	if err := rows.Scan(
+		&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
+		&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
+		&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
+		&w.Calories, &w.AscentMeters, &w.DescentMeters,
+		&w.FitFileHash, &w.AnalysisStatus, &w.TitleSource, &w.CreatedAt,
+		&trainingLoad, &hrDriftPct, &paceCVPct, &raceID, &tagsStr,
+	); err != nil {
+		return w, err
+	}
+	w.IsIndoor = isIndoor != 0
+	if trainingLoad.Valid {
+		w.TrainingLoad = &trainingLoad.Float64
+	}
+	if hrDriftPct.Valid {
+		w.HRDriftPct = &hrDriftPct.Float64
+	}
+	if paceCVPct.Valid {
+		w.PaceCVPct = &paceCVPct.Float64
+	}
+	if raceID.Valid {
+		w.RaceID = &raceID.Int64
+	}
+	if tagsStr.Valid && tagsStr.String != "" {
+		w.Tags = strings.Split(tagsStr.String, ",")
+	}
+	return w, nil
+}
+
+// List returns all workouts for a user (without samples), including tags.
+func List(db *sql.DB, userID int64) ([]Workout, error) {
+	rows, err := db.Query(listSelectColumns+`
 		WHERE w.user_id = ?
 		GROUP BY w.id
-		ORDER BY w.started_at DESC`, userID)
+		ORDER BY w.started_at DESC, w.id DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list workouts: %w", err)
 	}
@@ -53,40 +95,81 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 
 	var workouts []Workout
 	for rows.Next() {
-		var w Workout
-		var tagsStr sql.NullString
-		var isIndoor int
-		var trainingLoad, hrDriftPct, paceCVPct sql.NullFloat64
-		var raceID sql.NullInt64
-		if err := rows.Scan(
-			&w.ID, &w.UserID, &w.Sport, &w.SubSport, &isIndoor, &w.Title, &w.StartedAt,
-			&w.DurationSeconds, &w.DistanceMeters, &w.AvgHeartRate,
-			&w.MaxHeartRate, &w.AvgPaceSecPerKm, &w.AvgCadence,
-			&w.Calories, &w.AscentMeters, &w.DescentMeters,
-			&w.FitFileHash, &w.AnalysisStatus, &w.TitleSource, &w.CreatedAt,
-			&trainingLoad, &hrDriftPct, &paceCVPct, &raceID, &tagsStr,
-		); err != nil {
+		w, err := scanWorkoutListRow(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan workout: %w", err)
-		}
-		w.IsIndoor = isIndoor != 0
-		if trainingLoad.Valid {
-			w.TrainingLoad = &trainingLoad.Float64
-		}
-		if hrDriftPct.Valid {
-			w.HRDriftPct = &hrDriftPct.Float64
-		}
-		if paceCVPct.Valid {
-			w.PaceCVPct = &paceCVPct.Float64
-		}
-		if raceID.Valid {
-			w.RaceID = &raceID.Int64
-		}
-		if tagsStr.Valid && tagsStr.String != "" {
-			w.Tags = strings.Split(tagsStr.String, ",")
 		}
 		workouts = append(workouts, w)
 	}
 	return workouts, rows.Err()
+}
+
+// Cursor identifies a position in the started_at DESC, id DESC ordering used by
+// the paginated workout list. Pagination is keyset-based on (started_at, id):
+// ties on started_at are broken by id so successive pages never overlap or skip
+// rows.
+type Cursor struct {
+	StartedAt string
+	ID        int64
+}
+
+// ListPaginated returns up to limit workouts for a user (without samples),
+// ordered by started_at DESC, id DESC, starting strictly after the supplied
+// cursor (pass nil for the first page). It returns the page of workouts and a
+// next cursor pointing at the last returned row; the next cursor is nil once the
+// final page has been reached. limit is used as supplied — callers should clamp
+// it before calling.
+func ListPaginated(db *sql.DB, userID int64, limit int, cursor *Cursor) ([]Workout, *Cursor, error) {
+	if limit < 1 {
+		limit = 1
+	}
+
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	// Fetch one extra row (limit+1) to detect whether a further page exists
+	// without a second COUNT query.
+	if cursor != nil {
+		rows, err = db.Query(listSelectColumns+`
+			WHERE w.user_id = ?
+			  AND (w.started_at < ? OR (w.started_at = ? AND w.id < ?))
+			GROUP BY w.id
+			ORDER BY w.started_at DESC, w.id DESC
+			LIMIT ?`, userID, cursor.StartedAt, cursor.StartedAt, cursor.ID, limit+1)
+	} else {
+		rows, err = db.Query(listSelectColumns+`
+			WHERE w.user_id = ?
+			GROUP BY w.id
+			ORDER BY w.started_at DESC, w.id DESC
+			LIMIT ?`, userID, limit+1)
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("list workouts: %w", err)
+	}
+	defer rows.Close()
+
+	var workouts []Workout
+	for rows.Next() {
+		w, err := scanWorkoutListRow(rows)
+		if err != nil {
+			return nil, nil, fmt.Errorf("scan workout: %w", err)
+		}
+		workouts = append(workouts, w)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	// If we fetched the extra row, there is at least one more page. Trim it and
+	// build a cursor from the last row that remains on this page.
+	var next *Cursor
+	if len(workouts) > limit {
+		workouts = workouts[:limit]
+		last := workouts[len(workouts)-1]
+		next = &Cursor{StartedAt: last.StartedAt, ID: last.ID}
+	}
+	return workouts, next, nil
 }
 
 // GetByID returns a workout with laps, tags, and samples.
