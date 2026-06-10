@@ -122,8 +122,6 @@ export default function Training() {
   // pages the user has already paged in (and the current cursor). New uploads
   // always carry the newest started_at, so prepending keeps the DESC ordering.
   const handleLoadNew = useCallback(async () => {
-    hasNewWorkoutsRef.current = false
-    setHasNewWorkouts(false)
     try {
       const [wRes, sRes] = await Promise.all([
         fetch(`/api/training/workouts?limit=${PAGE_SIZE}`, { credentials: 'include' }),
@@ -132,13 +130,12 @@ export default function Training() {
       if (wRes.ok) {
         const wData = await wRes.json()
         const list: Workout[] = wData.workouts || []
+        hasNewWorkoutsRef.current = false
+        setHasNewWorkouts(false)
         if (workouts.length === 0) {
-          // Nothing loaded yet — adopt the page and its cursor wholesale.
           setWorkouts(list)
           setNextCursor(wData.next_cursor ?? null)
         } else {
-          // Prepend only the workouts not already loaded, preserving the older
-          // pages and the existing cursor that still points past them.
           setWorkouts(prev => {
             const existing = new Set(prev.map(w => w.id))
             return [...list.filter(w => !existing.has(w.id)), ...prev]
@@ -156,8 +153,8 @@ export default function Training() {
         setSummaries(sData.summaries || [])
       }
     } catch {
-      // Transient failure — the banner is already cleared and the SSE reconcile
-      // on the next reconnect will re-flag if new workouts are still pending.
+      // Transient failure — banner stays visible so the user can retry. The SSE
+      // reconcile on the next reconnect will re-flag if needed.
     }
   }, [workouts])
 

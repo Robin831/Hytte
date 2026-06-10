@@ -34,8 +34,8 @@ func isIndoorWorkout(pw *ParsedWorkout) bool {
 }
 
 // listSelectColumns is the shared column list for the workout summary list
-// queries (List and ListPaginated). Both order by started_at DESC and aggregate
-// tags via a correlated subquery; only the WHERE/LIMIT clauses differ.
+// queries (List and ListPaginated). Both order by started_at DESC, id DESC and
+// aggregate tags via a correlated subquery; only the WHERE/LIMIT clauses differ.
 const listSelectColumns = `
 		SELECT w.id, w.user_id, w.sport, w.sub_sport, w.is_indoor, w.title, w.started_at, w.duration_seconds,
 		       w.distance_meters, w.avg_heart_rate, w.max_heart_rate,
@@ -87,7 +87,7 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 	rows, err := db.Query(listSelectColumns+`
 		WHERE w.user_id = ?
 		GROUP BY w.id
-		ORDER BY w.started_at DESC`, userID)
+		ORDER BY w.started_at DESC, w.id DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("list workouts: %w", err)
 	}
