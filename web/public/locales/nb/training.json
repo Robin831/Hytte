@@ -30,7 +30,10 @@
     "emptyDescription": "Importer .fit-filer fra Coros-klokken din for å komme i gang",
     "avgHR": "snitt puls",
     "pace": "tempo",
-    "newWorkoutsAvailable": "Nye økter tilgjengelig — klikk for å oppdatere"
+    "newWorkoutsAvailable": "Nye økter tilgjengelig — klikk for å oppdatere",
+    "loadMore": "Last inn flere",
+    "loadingMore": "Laster…",
+    "noMoreWorkouts": "Ingen flere økter"
   },
   "nav": {
     "trends": "Trender",

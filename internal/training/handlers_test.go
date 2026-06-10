@@ -90,6 +90,209 @@ func TestListHandler_Empty(t *testing.T) {
 	}
 }
 
+// insertWorkoutAt inserts a minimal workout with an explicit started_at and
+// returns its id. Used to exercise keyset pagination ordering, including ties on
+// started_at that must be broken by id.
+func insertWorkoutAt(t *testing.T, db_ *sql.DB, userID int64, startedAt string) int64 {
+	t.Helper()
+	hash := fmt.Sprintf("pagehash%d", testHashCounter.Add(1))
+	res, err := db_.Exec(
+		`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters, fit_file_hash)
+		 VALUES (?, 'running', 'run', ?, 1800, 5000, ?)`,
+		userID, startedAt, hash,
+	)
+	if err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
+	return id
+}
+
+// fetchWorkoutPage calls ListHandler with the given limit/cursor query params
+// and returns the page's workout ids plus the next_cursor token ("" when null).
+func fetchWorkoutPage(t *testing.T, database *sql.DB, userID int64, limit int, cursor string) ([]int64, string) {
+	t.Helper()
+	url := "/api/training/workouts?limit=" + strconv.Itoa(limit)
+	if cursor != "" {
+		url += "&cursor=" + cursor
+	}
+	req := withUser(httptest.NewRequest(http.MethodGet, url, nil), userID)
+	rec := httptest.NewRecorder()
+	ListHandler(database)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Workouts []struct {
+			ID int64 `json:"id"`
+		} `json:"workouts"`
+		NextCursor *string `json:"next_cursor"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	ids := make([]int64, len(resp.Workouts))
+	for i, w := range resp.Workouts {
+		ids[i] = w.ID
+	}
+	next := ""
+	if resp.NextCursor != nil {
+		next = *resp.NextCursor
+	}
+	return ids, next
+}
+
+func TestListHandler_FirstPageHasCursor(t *testing.T) {
+	database := setupTestDB(t)
+
+	for i := 0; i < 5; i++ {
+		insertWorkoutAt(t, database, 1, fmt.Sprintf("2024-01-0%dT10:00:00Z", i+1))
+	}
+
+	ids, next := fetchWorkoutPage(t, database, 1, 2, "")
+	if len(ids) != 2 {
+		t.Fatalf("expected 2 workouts on first page, got %d", len(ids))
+	}
+	if next == "" {
+		t.Fatal("expected non-null next_cursor when more pages remain")
+	}
+}
+
+func TestListHandler_PaginationWalksAllRowsWithTies(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Seed including ties on started_at so the id tiebreak is exercised at page
+	// boundaries. Insertion order fixes the ids (1..5).
+	w1 := insertWorkoutAt(t, database, 1, "2024-01-01T10:00:00Z")
+	w2 := insertWorkoutAt(t, database, 1, "2024-01-03T10:00:00Z")
+	w3 := insertWorkoutAt(t, database, 1, "2024-01-02T10:00:00Z")
+	w4 := insertWorkoutAt(t, database, 1, "2024-01-03T10:00:00Z") // tie with w2
+	w5 := insertWorkoutAt(t, database, 1, "2024-01-01T10:00:00Z") // tie with w1
+
+	// Expected order: started_at DESC, id DESC.
+	want := []int64{w4, w2, w3, w5, w1}
+
+	var got []int64
+	cursor := ""
+	seen := map[int64]bool{}
+	for page := 0; page < 10; page++ {
+		ids, next := fetchWorkoutPage(t, database, 1, 2, cursor)
+		for _, id := range ids {
+			if seen[id] {
+				t.Fatalf("duplicate workout id %d across page boundary", id)
+			}
+			seen[id] = true
+			got = append(got, id)
+		}
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("expected %d workouts walking all pages, got %d (%v)", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("page walk order mismatch at %d: got %v, want %v", i, got, want)
+		}
+	}
+}
+
+func TestListHandler_FinalPageNullCursor(t *testing.T) {
+	database := setupTestDB(t)
+
+	insertWorkoutAt(t, database, 1, "2024-01-01T10:00:00Z")
+	insertWorkoutAt(t, database, 1, "2024-01-02T10:00:00Z")
+
+	// limit equals the total — the single page exhausts the list, cursor null.
+	ids, next := fetchWorkoutPage(t, database, 1, 2, "")
+	if len(ids) != 2 {
+		t.Fatalf("expected 2 workouts, got %d", len(ids))
+	}
+	if next != "" {
+		t.Fatalf("expected null next_cursor on final page, got %q", next)
+	}
+}
+
+func TestListHandler_EmptyHasNullCursor(t *testing.T) {
+	database := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/workouts", nil), 1)
+	rec := httptest.NewRecorder()
+	ListHandler(database)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	workouts, ok := resp["workouts"].([]any)
+	if !ok || len(workouts) != 0 {
+		t.Fatalf("expected empty workouts array, got %v", resp["workouts"])
+	}
+	if resp["next_cursor"] != nil {
+		t.Fatalf("expected null next_cursor for empty list, got %v", resp["next_cursor"])
+	}
+}
+
+func TestListHandler_LimitClampedAndDefaulted(t *testing.T) {
+	database := setupTestDB(t)
+
+	// Seed more than the max page size so an oversized limit can be observed clamping.
+	total := maxWorkoutPageSize + 10
+	for i := 0; i < total; i++ {
+		insertWorkoutAt(t, database, 1, fmt.Sprintf("2024-06-01T10:%02d:%02dZ", i/60, i%60))
+	}
+
+	// Oversized limit is clamped to the max.
+	ids, _ := fetchWorkoutPage(t, database, 1, maxWorkoutPageSize+500, "")
+	if len(ids) != maxWorkoutPageSize {
+		t.Fatalf("expected oversized limit clamped to %d, got %d", maxWorkoutPageSize, len(ids))
+	}
+
+	// Negative limit falls back to the default page size.
+	negIDs, _ := fetchWorkoutPage(t, database, 1, -5, "")
+	if len(negIDs) != defaultWorkoutPageSize {
+		t.Fatalf("expected negative limit defaulted to %d, got %d", defaultWorkoutPageSize, len(negIDs))
+	}
+
+	// Non-numeric limit falls back to the default page size.
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/workouts?limit=abc", nil), 1)
+	rec := httptest.NewRecorder()
+	ListHandler(database)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp struct {
+		Workouts []json.RawMessage `json:"workouts"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Workouts) != defaultWorkoutPageSize {
+		t.Fatalf("expected non-numeric limit defaulted to %d, got %d", defaultWorkoutPageSize, len(resp.Workouts))
+	}
+}
+
+func TestListHandler_InvalidCursorRejected(t *testing.T) {
+	database := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/workouts?cursor=not!base64", nil), 1)
+	rec := httptest.NewRecorder()
+	ListHandler(database)(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for malformed cursor, got %d", rec.Code)
+	}
+}
+
 func TestLatestHandler_Empty(t *testing.T) {
 	database := setupTestDB(t)
 

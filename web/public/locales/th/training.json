@@ -30,7 +30,10 @@
     "emptyDescription": "นำเข้าไฟล์ .fit จากนาฬิกา Coros เพื่อเริ่มต้น",
     "avgHR": "อัตราหัวใจเฉลี่ย",
     "pace": "เพส",
-    "newWorkoutsAvailable": "มีการออกกำลังกายใหม่ — คลิกเพื่อรีเฟรช"
+    "newWorkoutsAvailable": "มีการออกกำลังกายใหม่ — คลิกเพื่อรีเฟรช",
+    "loadMore": "โหลดเพิ่มเติม",
+    "loadingMore": "กำลังโหลด…",
+    "noMoreWorkouts": "ไม่มีการออกกำลังกายเพิ่มเติม"
   },
   "nav": {
     "trends": "แนวโน้ม",

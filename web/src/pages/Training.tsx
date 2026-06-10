@@ -8,6 +8,11 @@ import { formatDistance, formatDuration, formatPace } from '../utils/training'
 import type { Workout, WeeklySummary } from '../types/training'
 import TagBadge from '../components/TagBadge'
 
+// Page size for the paginated workout list. The list endpoint clamps this
+// server-side; keeping it modest bounds the initial payload and DOM size so a
+// large history no longer makes the page load cost grow linearly.
+const PAGE_SIZE = 25
+
 const sportIcons: Record<string, string> = {
   running: '🏃',
   cycling: '🚴',
@@ -24,6 +29,8 @@ export default function Training() {
   const { user } = useAuth()
   const { t } = useTranslation(['training', 'common'])
   const [workouts, setWorkouts] = useState<Workout[]>([])
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [summaries, setSummaries] = useState<WeeklySummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -39,19 +46,32 @@ export default function Training() {
 
   useEffect(() => {
     if (!user) return
+    let cancelled = false
     ;(async () => {
       try {
-        const [wRes, sRes] = await Promise.all([
-          fetch('/api/training/workouts', { credentials: 'include' }),
+        // Load only the first bounded page of workouts. The new-workout baseline
+        // comes from the cheap /latest endpoint rather than the page's max id:
+        // an older-dated .fit import can carry a higher id than anything on page
+        // one, so seeding the ref from the page would falsely trip the banner.
+        const [wRes, sRes, lRes] = await Promise.all([
+          fetch(`/api/training/workouts?limit=${PAGE_SIZE}`, { credentials: 'include' }),
           fetch('/api/training/summary', { credentials: 'include' }),
+          fetch('/api/training/workouts/latest', { credentials: 'include' }),
         ])
+        if (cancelled) return
         if (wRes.ok) {
           const wData = await wRes.json()
           const list: Workout[] = wData.workouts || []
           setWorkouts(list)
-          latestWorkoutIdRef.current = list.length > 0 ? Math.max(...list.map(w => w.id)) : null
+          setNextCursor(wData.next_cursor ?? null)
         } else {
           setError(t('errors.failedToLoadWorkouts'))
+        }
+        if (lRes.ok) {
+          const lData = await lRes.json()
+          latestWorkoutIdRef.current = typeof lData.latest_id === 'number' && lData.latest_id > 0
+            ? lData.latest_id
+            : null
         }
         if (sRes.ok) {
           const sData = await sRes.json()
@@ -60,12 +80,86 @@ export default function Training() {
           setError(t('errors.failedToLoadSummaries'))
         }
       } catch {
-        setError(t('errors.failedToLoadTrainingData'))
+        if (!cancelled) setError(t('errors.failedToLoadTrainingData'))
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     })()
+    return () => { cancelled = true }
   }, [user, refreshTick, t])
+
+  // handleLoadMore appends the next older page of workouts using the keyset
+  // cursor returned by the list endpoint, deduplicating by id at the page
+  // boundary. The control hides once next_cursor is null (history exhausted).
+  const handleLoadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const res = await fetch(
+        `/api/training/workouts?limit=${PAGE_SIZE}&cursor=${encodeURIComponent(nextCursor)}`,
+        { credentials: 'include' },
+      )
+      if (!res.ok) {
+        setError(t('errors.failedToLoadWorkouts'))
+        return
+      }
+      const data = await res.json()
+      const more: Workout[] = data.workouts || []
+      setWorkouts(prev => {
+        const existing = new Set(prev.map(w => w.id))
+        return [...prev, ...more.filter(w => !existing.has(w.id))]
+      })
+      setNextCursor(data.next_cursor ?? null)
+    } catch {
+      setError(t('errors.failedToLoadWorkouts'))
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [nextCursor, loadingMore, t])
+
+  // handleLoadNew fetches the first page after the /latest poll flags an upload
+  // and prepends only the workouts not already loaded, preserving the older
+  // pages the user has already paged in (and the current cursor). New uploads
+  // always carry the newest started_at, so prepending keeps the DESC ordering.
+  const handleLoadNew = useCallback(async () => {
+    hasNewWorkoutsRef.current = false
+    setHasNewWorkouts(false)
+    try {
+      const [wRes, sRes] = await Promise.all([
+        fetch(`/api/training/workouts?limit=${PAGE_SIZE}`, { credentials: 'include' }),
+        fetch('/api/training/summary', { credentials: 'include' }),
+      ])
+      if (wRes.ok) {
+        const wData = await wRes.json()
+        const list: Workout[] = wData.workouts || []
+        if (workouts.length === 0) {
+          // Nothing loaded yet — adopt the page and its cursor wholesale.
+          setWorkouts(list)
+          setNextCursor(wData.next_cursor ?? null)
+        } else {
+          // Prepend only the workouts not already loaded, preserving the older
+          // pages and the existing cursor that still points past them.
+          setWorkouts(prev => {
+            const existing = new Set(prev.map(w => w.id))
+            return [...list.filter(w => !existing.has(w.id)), ...prev]
+          })
+        }
+        if (list.length > 0) {
+          latestWorkoutIdRef.current = Math.max(
+            latestWorkoutIdRef.current ?? 0,
+            ...list.map(w => w.id),
+          )
+        }
+      }
+      if (sRes.ok) {
+        const sData = await sRes.json()
+        setSummaries(sData.summaries || [])
+      }
+    } catch {
+      // Transient failure — the banner is already cleared and the SSE reconcile
+      // on the next reconnect will re-flag if new workouts are still pending.
+    }
+  }, [workouts])
 
   useEffect(() => {
     if (!user) return
@@ -287,7 +381,7 @@ export default function Training() {
         <div className="mb-4 flex items-center justify-between p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg text-sm">
           <button
             type="button"
-            onClick={() => { hasNewWorkoutsRef.current = false; setHasNewWorkouts(false); setRefreshTick(prev => prev + 1) }}
+            onClick={handleLoadNew}
             className="flex items-center gap-2 text-orange-400 hover:text-orange-300 transition-colors"
           >
             <RefreshCw size={16} />
@@ -425,6 +519,22 @@ export default function Training() {
               </Link>
             )
           })}
+          {nextCursor !== null ? (
+            <div className="pt-2 flex justify-center">
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm transition-colors"
+              >
+                {loadingMore ? t('workouts.loadingMore') : t('workouts.loadMore')}
+              </button>
+            </div>
+          ) : (
+            workouts.length > PAGE_SIZE && (
+              <p className="pt-2 text-center text-sm text-gray-500">{t('workouts.noMoreWorkouts')}</p>
+            )
+          )}
         </div>
       )}
     </div>
