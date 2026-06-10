@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Filter } from 'lucide-react'
@@ -43,19 +43,21 @@ export default function EventsPanel({ onBeadClick: _onBeadClick }: EventsPanelPr
   // an anvil filter narrows the fetched events down to a single anvil. The
   // default 'all' load seeds the full set before any filter is applied.
   const [knownAnvils, setKnownAnvils] = useState<string[]>([])
-  useEffect(() => {
-    setKnownAnvils(prev => {
-      const set = new Set(prev)
-      let changed = false
-      for (const e of events) {
-        if (e.anvil && !set.has(e.anvil)) {
-          set.add(e.anvil)
-          changed = true
-        }
+  const [prevEvents, setPrevEvents] = useState(events)
+  if (events !== prevEvents) {
+    setPrevEvents(events)
+    const set = new Set(knownAnvils)
+    let changed = false
+    for (const e of events) {
+      if (e.anvil && !set.has(e.anvil)) {
+        set.add(e.anvil)
+        changed = true
       }
-      return changed ? [...set].sort() : prev
-    })
-  }, [events])
+    }
+    if (changed) {
+      setKnownAnvils([...set].sort())
+    }
+  }
 
   // The level/group/anvil filtering happens server-side (via the hook). Here we
   // only drop noisy poll events — they're 80%+ of all events.

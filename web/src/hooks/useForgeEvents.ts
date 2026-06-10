@@ -49,6 +49,13 @@ export function useForgeEvents({ maxEvents = 200, pollInterval = 3000, filter }:
   // silently truncate the deeper fetch and negate its benefit.
   const effectiveMax = hasFilter ? Math.max(maxEvents, FILTERED_FETCH_LIMIT) : maxEvents
 
+  const [prevFilterKey, setPrevFilterKey] = useState('')
+  const currentFilterKey = `${level}|${group}|${anvil}`
+  if (currentFilterKey !== prevFilterKey) {
+    setPrevFilterKey(currentFilterKey)
+    setEvents([])
+  }
+
   const mergeEvents = useCallback((incoming: WorkerEvent[]) => {
     if (incoming.length === 0) return
     setEvents(prev => {
@@ -67,9 +74,6 @@ export function useForgeEvents({ maxEvents = 200, pollInterval = 3000, filter }:
     const abortController = new AbortController()
     const pollingInFlightRef = { current: false }
 
-    // Reset when the filter changes so a previous (e.g. unfiltered) result set
-    // cannot leak into the new filtered view.
-    setEvents([])
     lastSeenIdRef.current = 0
 
     const params: ForgeEventFilterParams = { level, group, anvil }
