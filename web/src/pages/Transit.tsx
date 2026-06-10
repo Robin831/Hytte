@@ -92,8 +92,10 @@ export default function Transit() {
         if (err instanceof DOMException && err.name === 'AbortError') return
         setError(t('transit:error'))
       } finally {
-        setLoading(false)
-        isInitialLoad.current = false
+        if (!controller.signal.aborted) {
+          setLoading(false)
+          isInitialLoad.current = false
+        }
       }
     }
 
