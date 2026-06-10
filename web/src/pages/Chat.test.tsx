@@ -418,7 +418,7 @@ describe('Chat – model selector', () => {
     vi.clearAllMocks()
   })
 
-  it('renders the model dropdown listing the three supported models', async () => {
+  it('renders the model dropdown listing the four supported models', async () => {
     const { convListRes, convDetailRes } = await selectExistingConversation([])
     const fetchMock = vi
       .fn()
@@ -438,10 +438,11 @@ describe('Chat – model selector', () => {
     expect(select.value).toBe('claude-sonnet-4-6')
 
     const optionValues = Array.from(select.options).map(o => o.value)
+    expect(optionValues).toContain('claude-fable-5')
     expect(optionValues).toContain('claude-opus-4-8')
     expect(optionValues).toContain('claude-sonnet-4-6')
     expect(optionValues).toContain('claude-haiku-4-5')
-    expect(optionValues).toHaveLength(3)
+    expect(optionValues).toHaveLength(4)
   })
 
   it('selecting a model on an existing conversation issues a PUT with the model', async () => {

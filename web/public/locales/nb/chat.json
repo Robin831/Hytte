@@ -20,6 +20,7 @@
     "modelLabel": "Modell"
   },
   "models": {
+    "fable": "Fable",
     "opus": "Opus",
     "sonnet": "Sonnet",
     "haiku": "Haiku"
