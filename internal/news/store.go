@@ -209,7 +209,9 @@ func SetSaved(db *sql.DB, userID int64, a Article, saved bool) error {
 		(user_id, article_id, source, source_name, title, url, summary, image_url, published_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, article_id) DO UPDATE SET
-			title=excluded.title, url=excluded.url, summary=excluded.summary`,
+			source=excluded.source, source_name=excluded.source_name,
+			title=excluded.title, url=excluded.url, summary=excluded.summary,
+			image_url=excluded.image_url, published_at=excluded.published_at`,
 		userID, a.ID, a.Source, a.SourceName, titleEnc, urlEnc, summaryEnc, a.ImageURL, pub)
 	return err
 }
