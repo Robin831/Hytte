@@ -550,157 +550,287 @@ export default function WordfeudBoard() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Board */}
-      <div className="shrink-0">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-gray-400">{t('board.title')}</h3>
-          <button
-            type="button"
-            onClick={clearBoard}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-gray-400 hover:text-red-400 bg-gray-800 hover:bg-gray-700 rounded transition-colors cursor-pointer"
-            title={t('board.clear')}
+      {/* Board and solver side by side so move hover previews stay in view */}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Board */}
+        <div className="shrink-0">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium text-gray-400">{t('board.title')}</h3>
+            <button
+              type="button"
+              onClick={clearBoard}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-gray-400 hover:text-red-400 bg-gray-800 hover:bg-gray-700 rounded transition-colors cursor-pointer"
+              title={t('board.clear')}
+            >
+              <Trash2 size={14} />
+              {t('board.clear')}
+            </button>
+          </div>
+          {/* Active game scores and turn indicator — above the board on all breakpoints */}
+          {activeGame && !loadingGame && (
+            <div className="flex items-center gap-3 mb-3 p-3 bg-gray-800/70 rounded-lg border border-gray-700">
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+                activeGame.is_my_turn
+                  ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
+                  : 'bg-gray-800 text-gray-400'
+              }`}>
+                <span className="font-medium text-sm">{activeGame.players[0].username}</span>
+                <span className="text-lg font-bold">{activeGame.players[0].score}</span>
+              </div>
+              <span className="text-gray-500">&ndash;</span>
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
+                !activeGame.is_my_turn
+                  ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
+                  : 'bg-gray-800 text-gray-400'
+              }`}>
+                <span className="font-medium text-sm">{activeGame.players[1].username}</span>
+                <span className="text-lg font-bold">{activeGame.players[1].score}</span>
+              </div>
+              <span className={`ml-auto text-sm font-medium ${activeGame.is_my_turn ? 'text-green-400' : 'text-gray-400'}`}>
+                {activeGame.is_my_turn ? t('yourTurn') : t('theirTurn')}
+              </span>
+            </div>
+          )}
+          <div
+            className="inline-block border border-gray-700 rounded-lg overflow-hidden"
+            role="grid"
+            aria-label={t('board.title')}
           >
-            <Trash2 size={14} />
-            {t('board.clear')}
-          </button>
-        </div>
-        {/* Active game scores and turn indicator — above the board on all breakpoints */}
-        {activeGame && !loadingGame && (
-          <div className="flex items-center gap-3 mb-3 p-3 bg-gray-800/70 rounded-lg border border-gray-700">
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
-              activeGame.is_my_turn
-                ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
-                : 'bg-gray-800 text-gray-400'
-            }`}>
-              <span className="font-medium text-sm">{activeGame.players[0].username}</span>
-              <span className="text-lg font-bold">{activeGame.players[0].score}</span>
+            <div
+              className="grid"
+              style={{
+                gridTemplateColumns: 'repeat(15, minmax(0, 1fr))',
+                gap: '1px',
+                backgroundColor: '#374151',
+              }}
+            >
+              {Array.from({ length: 15 }, (_, row) =>
+                Array.from({ length: 15 }, (_, col) => {
+                  const cell = board[row][col]
+                  const bonus = BOARD_LAYOUT[row][col]
+                  const isSelected = selectedCell?.row === row && selectedCell?.col === col
+                  const highlight = highlightCells.get(`${row}-${col}`)
+                  const preview = previewCells.get(`${row}-${col}`)
+
+                  let cellClass: string
+                  if (highlight && highlight.isNew) {
+                    cellClass = highlight.isBlank
+                      ? 'bg-emerald-800 text-emerald-100'
+                      : 'bg-emerald-700 text-white'
+                  } else if (preview && preview.isNew) {
+                    cellClass = preview.isBlank
+                      ? 'bg-emerald-900/60 text-emerald-200/80'
+                      : 'bg-emerald-800/50 text-emerald-100/80'
+                  } else if (cell) {
+                    cellClass = cell.isBlank
+                      ? 'bg-purple-700 text-white'
+                      : 'bg-amber-700 text-white'
+                  } else {
+                    cellClass = bonusClass(bonus)
+                  }
+
+                  const activeSource: 'highlight' | 'preview' | 'cell' | undefined =
+                    highlight?.isNew ? 'highlight' : preview?.isNew ? 'preview' : cell ? 'cell' : undefined
+
+                  const displayLetter =
+                    activeSource === 'highlight'
+                      ? highlight!.letter
+                      : activeSource === 'preview'
+                        ? preview!.letter
+                        : activeSource === 'cell'
+                          ? cell!.letter
+                          : undefined
+
+                  const isBlank =
+                    activeSource === 'highlight'
+                      ? !!highlight?.isBlank
+                      : activeSource === 'preview'
+                        ? !!preview?.isBlank
+                        : activeSource === 'cell'
+                          ? !!cell?.isBlank
+                          : false
+
+                  const displayValue = displayLetter && !isBlank
+                    ? LETTER_VALUES[displayLetter]
+                    : undefined
+
+                  return (
+                    <button
+                      key={`${row}-${col}`}
+                      type="button"
+                      ref={(el) => setCellRef(row, col, el)}
+                      role="gridcell"
+                      aria-label={cellAriaLabel(row, col, cell, bonus, t as (key: string) => string)}
+                      onClick={() => setSelectedCell({ row, col })}
+                      onKeyDown={(e) => handleCellKeyDown(e, row, col)}
+                      tabIndex={isSelected || (!selectedCell && row === 0 && col === 0) ? 0 : -1}
+                      className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-xs font-bold relative cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-inset transition-shadow ${
+                        isSelected ? 'ring-2 ring-blue-400 ring-inset z-10' : ''
+                      } ${cellClass}`}
+                    >
+                      {displayLetter ? (
+                        <>
+                          <span>{displayLetter}</span>
+                          {displayValue != null && (
+                            <span className="absolute bottom-0 right-0.5 text-[7px] leading-none opacity-70">
+                              {displayValue}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        bonus > 0 && (
+                          <span className="text-[8px] opacity-60">{BONUS_LABELS[bonus]}</span>
+                        )
+                      )}
+                      {isSelected && (
+                        <span className="absolute top-0 left-0.5 text-[8px] leading-none text-blue-300" aria-hidden="true">
+                          {direction === 'horizontal' ? '→' : '↓'}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })
+              )}
             </div>
-            <span className="text-gray-500">&ndash;</span>
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${
-              !activeGame.is_my_turn
-                ? 'bg-blue-900/50 border border-blue-700 text-blue-200'
-                : 'bg-gray-800 text-gray-400'
-            }`}>
-              <span className="font-medium text-sm">{activeGame.players[1].username}</span>
-              <span className="text-lg font-bold">{activeGame.players[1].score}</span>
-            </div>
-            <span className={`ml-auto text-sm font-medium ${activeGame.is_my_turn ? 'text-green-400' : 'text-gray-400'}`}>
-              {activeGame.is_my_turn ? t('yourTurn') : t('theirTurn')}
+          </div>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-800 text-xs text-gray-300">
+              <span aria-hidden="true">{direction === 'horizontal' ? '→' : '↓'}</span>
+              {t(direction === 'horizontal' ? 'board.directionHorizontal' : 'board.directionVertical')}
             </span>
           </div>
-        )}
-        <div
-          className="inline-block border border-gray-700 rounded-lg overflow-hidden"
-          role="grid"
-          aria-label={t('board.title')}
-        >
-          <div
-            className="grid"
-            style={{
-              gridTemplateColumns: 'repeat(15, minmax(0, 1fr))',
-              gap: '1px',
-              backgroundColor: '#374151',
-            }}
-          >
-            {Array.from({ length: 15 }, (_, row) =>
-              Array.from({ length: 15 }, (_, col) => {
-                const cell = board[row][col]
-                const bonus = BOARD_LAYOUT[row][col]
-                const isSelected = selectedCell?.row === row && selectedCell?.col === col
-                const highlight = highlightCells.get(`${row}-${col}`)
-                const preview = previewCells.get(`${row}-${col}`)
+          <p className="text-xs text-gray-500 mt-2">{t('board.hint')}</p>
+        </div>
 
-                let cellClass: string
-                if (highlight && highlight.isNew) {
-                  cellClass = highlight.isBlank
-                    ? 'bg-emerald-800 text-emerald-100'
-                    : 'bg-emerald-700 text-white'
-                } else if (preview && preview.isNew) {
-                  cellClass = preview.isBlank
-                    ? 'bg-emerald-900/60 text-emerald-200/80'
-                    : 'bg-emerald-800/50 text-emerald-100/80'
-                } else if (cell) {
-                  cellClass = cell.isBlank
-                    ? 'bg-purple-700 text-white'
-                    : 'bg-amber-700 text-white'
-                } else {
-                  cellClass = bonusClass(bonus)
-                }
-
-                const activeSource: 'highlight' | 'preview' | 'cell' | undefined =
-                  highlight?.isNew ? 'highlight' : preview?.isNew ? 'preview' : cell ? 'cell' : undefined
-
-                const displayLetter =
-                  activeSource === 'highlight'
-                    ? highlight!.letter
-                    : activeSource === 'preview'
-                      ? preview!.letter
-                      : activeSource === 'cell'
-                        ? cell!.letter
-                        : undefined
-
-                const isBlank =
-                  activeSource === 'highlight'
-                    ? !!highlight?.isBlank
-                    : activeSource === 'preview'
-                      ? !!preview?.isBlank
-                      : activeSource === 'cell'
-                        ? !!cell?.isBlank
-                        : false
-
-                const displayValue = displayLetter && !isBlank
-                  ? LETTER_VALUES[displayLetter]
-                  : undefined
-
-                return (
-                  <button
-                    key={`${row}-${col}`}
-                    type="button"
-                    ref={(el) => setCellRef(row, col, el)}
-                    role="gridcell"
-                    aria-label={cellAriaLabel(row, col, cell, bonus, t as (key: string) => string)}
-                    onClick={() => setSelectedCell({ row, col })}
-                    onKeyDown={(e) => handleCellKeyDown(e, row, col)}
-                    tabIndex={isSelected || (!selectedCell && row === 0 && col === 0) ? 0 : -1}
-                    className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-xs font-bold relative cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-inset transition-shadow ${
-                      isSelected ? 'ring-2 ring-blue-400 ring-inset z-10' : ''
-                    } ${cellClass}`}
+        {/* Rack + top moves beside the board */}
+        <div className="flex-1 min-w-0 space-y-6">
+          {/* Rack input */}
+          <div>
+            <label htmlFor="rack-input" className="block text-sm font-medium text-gray-400 mb-2">
+              {t('board.rack')}
+            </label>
+            <input
+              id="rack-input"
+              type="text"
+              value={rackInput}
+              onChange={e => {
+                const filtered = e.target.value.toUpperCase().replace(/[^A-ZÆØÅ*]/g, '')
+                if (filtered.length <= 7) setRackInput(filtered)
+              }}
+              onKeyDown={e => { if (e.key === 'Enter') handleSolve() }}
+              placeholder={t('board.rackPlaceholder')}
+              maxLength={7}
+              className="w-full max-w-xs bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase tracking-wider font-mono"
+            />
+            {/* Visual rack tiles */}
+            {rackLetters.length > 0 && (
+              <div className="flex gap-1 mt-2">
+                {rackLetters.map((ch, i) => (
+                  <div
+                    key={i}
+                    className={`w-10 h-10 flex items-center justify-center text-lg font-bold rounded relative ${
+                      ch === '*'
+                        ? 'bg-purple-700 text-white'
+                        : 'bg-amber-700 text-white'
+                    }`}
                   >
-                    {displayLetter ? (
-                      <>
-                        <span>{displayLetter}</span>
-                        {displayValue != null && (
-                          <span className="absolute bottom-0 right-0.5 text-[7px] leading-none opacity-70">
-                            {displayValue}
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      bonus > 0 && (
-                        <span className="text-[8px] opacity-60">{BONUS_LABELS[bonus]}</span>
-                      )
-                    )}
-                    {isSelected && (
-                      <span className="absolute top-0 left-0.5 text-[8px] leading-none text-blue-300" aria-hidden="true">
-                        {direction === 'horizontal' ? '→' : '↓'}
+                    <span>{ch === '*' ? '?' : ch}</span>
+                    {ch !== '*' && LETTER_VALUES[ch] != null && (
+                      <span className="absolute bottom-0.5 right-1 text-[9px] opacity-70">
+                        {LETTER_VALUES[ch]}
                       </span>
                     )}
-                  </button>
-                )
-              })
+                  </div>
+                ))}
+              </div>
             )}
+
+            {/* Solve button */}
+            <button
+              type="button"
+              onClick={handleSolve}
+              disabled={solving || !rackInput.trim()}
+              className="mt-3 flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+            >
+              {solving ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+              {t('solver.solve')}
+            </button>
           </div>
+
+          {/* Solver results */}
+          {solverError && (
+            <div className="bg-red-900/50 border border-red-700 text-red-200 rounded-lg p-3 text-sm">
+              {solverError}
+            </div>
+          )}
+
+          {!solving && hasSolved && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-gray-400">{t('solver.topMoves')}</h3>
+                <span className="text-xs text-gray-500">
+                  {t('solver.elapsed', { ms: solverElapsed })}
+                </span>
+              </div>
+
+              {solverMoves.length > 0 ? (
+                <div className="bg-gray-800/50 rounded-lg border border-gray-700 overflow-hidden">
+                  {/* Header */}
+                  <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-2 bg-gray-800 border-b border-gray-700 text-xs font-medium text-gray-400 uppercase tracking-wide">
+                    <span>{t('finder.colWord')}</span>
+                    <span className="w-12 text-center">{t('solver.position')}</span>
+                    <span className="w-6 text-center">{t('solver.dir')}</span>
+                    <span className="w-12 text-right">{t('finder.colPoints')}</span>
+                  </div>
+
+                  {/* Rows */}
+                  <div className="max-h-[40vh] overflow-y-auto">
+                    {solverMoves.map((move, i) => (
+                      <button
+                        key={`${move.word}-${move.row}-${move.col}-${move.direction}-${i}`}
+                        type="button"
+                        onClick={() => setSelectedMoveIdx(selectedMoveIdx === i ? null : i)}
+                        onMouseEnter={() => setHoveredMoveIdx(i)}
+                        onMouseLeave={() => setHoveredMoveIdx(null)}
+                        onPointerEnter={() => setHoveredMoveIdx(i)}
+                        onPointerLeave={() => setHoveredMoveIdx(null)}
+                        onFocus={() => setHoveredMoveIdx(i)}
+                        onBlur={() => setHoveredMoveIdx(null)}
+                        className={`w-full grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-1.5 text-sm text-left transition-colors cursor-pointer ${
+                          selectedMoveIdx === i
+                            ? 'bg-emerald-900/40 text-emerald-200'
+                            : hoveredMoveIdx === i
+                              ? 'bg-emerald-900/20 text-emerald-100'
+                              : i % 2 === 0
+                                ? 'bg-gray-800/30 hover:bg-gray-700/50'
+                                : 'hover:bg-gray-700/50'
+                        }`}
+                      >
+                        <span className="font-mono tracking-wider text-white truncate">
+                          {renderSolverWord(move)}
+                        </span>
+                        <span className="w-12 text-center text-gray-400 tabular-nums text-xs leading-5">
+                          {formatPosition(move.row, move.col)}
+                        </span>
+                        <span className="w-6 text-center text-gray-500 text-xs leading-5">
+                          {move.direction === 'horizontal' ? '\u2192' : '\u2193'}
+                        </span>
+                        <span className="w-12 text-right font-medium text-amber-400 tabular-nums">
+                          {move.score}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-gray-500 text-sm">{t('solver.noResults')}</p>
+              )}
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-2 mt-2">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gray-800 text-xs text-gray-300">
-            <span aria-hidden="true">{direction === 'horizontal' ? '→' : '↓'}</span>
-            {t(direction === 'horizontal' ? 'board.directionHorizontal' : 'board.directionVertical')}
-          </span>
-        </div>
-        <p className="text-xs text-gray-500 mt-2">{t('board.hint')}</p>
       </div>
 
-      {/* Below the board: game loader + rack + solver + tile tracker */}
+      {/* Below the board: game list + tile tracker */}
       <div className="min-w-0 space-y-6">
         {/* Game list */}
         {gamesAvailable && (games.length > 0 || finishedGames.length > 0) && (() => {
@@ -890,130 +1020,6 @@ export default function WordfeudBoard() {
               <Link to="/settings" className="ml-2 text-blue-400 hover:text-blue-300 underline">
                 {t('goToSettings')}
               </Link>
-            )}
-          </div>
-        )}
-
-        {/* Rack input */}
-        <div>
-          <label htmlFor="rack-input" className="block text-sm font-medium text-gray-400 mb-2">
-            {t('board.rack')}
-          </label>
-          <input
-            id="rack-input"
-            type="text"
-            value={rackInput}
-            onChange={e => {
-              const filtered = e.target.value.toUpperCase().replace(/[^A-ZÆØÅ*]/g, '')
-              if (filtered.length <= 7) setRackInput(filtered)
-            }}
-            onKeyDown={e => { if (e.key === 'Enter') handleSolve() }}
-            placeholder={t('board.rackPlaceholder')}
-            maxLength={7}
-            className="w-full max-w-xs bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase tracking-wider font-mono"
-          />
-          {/* Visual rack tiles */}
-          {rackLetters.length > 0 && (
-            <div className="flex gap-1 mt-2">
-              {rackLetters.map((ch, i) => (
-                <div
-                  key={i}
-                  className={`w-10 h-10 flex items-center justify-center text-lg font-bold rounded relative ${
-                    ch === '*'
-                      ? 'bg-purple-700 text-white'
-                      : 'bg-amber-700 text-white'
-                  }`}
-                >
-                  <span>{ch === '*' ? '?' : ch}</span>
-                  {ch !== '*' && LETTER_VALUES[ch] != null && (
-                    <span className="absolute bottom-0.5 right-1 text-[9px] opacity-70">
-                      {LETTER_VALUES[ch]}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Solve button */}
-          <button
-            type="button"
-            onClick={handleSolve}
-            disabled={solving || !rackInput.trim()}
-            className="mt-3 flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-          >
-            {solving ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-            {t('solver.solve')}
-          </button>
-        </div>
-
-        {/* Solver results */}
-        {solverError && (
-          <div className="bg-red-900/50 border border-red-700 text-red-200 rounded-lg p-3 text-sm">
-            {solverError}
-          </div>
-        )}
-
-        {!solving && hasSolved && (
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-400">{t('solver.topMoves')}</h3>
-              <span className="text-xs text-gray-500">
-                {t('solver.elapsed', { ms: solverElapsed })}
-              </span>
-            </div>
-
-            {solverMoves.length > 0 ? (
-              <div className="bg-gray-800/50 rounded-lg border border-gray-700 overflow-hidden">
-                {/* Header */}
-                <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-2 bg-gray-800 border-b border-gray-700 text-xs font-medium text-gray-400 uppercase tracking-wide">
-                  <span>{t('finder.colWord')}</span>
-                  <span className="w-12 text-center">{t('solver.position')}</span>
-                  <span className="w-6 text-center">{t('solver.dir')}</span>
-                  <span className="w-12 text-right">{t('finder.colPoints')}</span>
-                </div>
-
-                {/* Rows */}
-                <div className="max-h-[40vh] overflow-y-auto">
-                  {solverMoves.map((move, i) => (
-                    <button
-                      key={`${move.word}-${move.row}-${move.col}-${move.direction}-${i}`}
-                      type="button"
-                      onClick={() => setSelectedMoveIdx(selectedMoveIdx === i ? null : i)}
-                      onMouseEnter={() => setHoveredMoveIdx(i)}
-                      onMouseLeave={() => setHoveredMoveIdx(null)}
-                      onPointerEnter={() => setHoveredMoveIdx(i)}
-                      onPointerLeave={() => setHoveredMoveIdx(null)}
-                      onFocus={() => setHoveredMoveIdx(i)}
-                      onBlur={() => setHoveredMoveIdx(null)}
-                      className={`w-full grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-1.5 text-sm text-left transition-colors cursor-pointer ${
-                        selectedMoveIdx === i
-                          ? 'bg-emerald-900/40 text-emerald-200'
-                          : hoveredMoveIdx === i
-                            ? 'bg-emerald-900/20 text-emerald-100'
-                            : i % 2 === 0
-                              ? 'bg-gray-800/30 hover:bg-gray-700/50'
-                              : 'hover:bg-gray-700/50'
-                      }`}
-                    >
-                      <span className="font-mono tracking-wider text-white truncate">
-                        {renderSolverWord(move)}
-                      </span>
-                      <span className="w-12 text-center text-gray-400 tabular-nums text-xs leading-5">
-                        {formatPosition(move.row, move.col)}
-                      </span>
-                      <span className="w-6 text-center text-gray-500 text-xs leading-5">
-                        {move.direction === 'horizontal' ? '\u2192' : '\u2193'}
-                      </span>
-                      <span className="w-12 text-right font-medium text-amber-400 tabular-nums">
-                        {move.score}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <p className="text-gray-500 text-sm">{t('solver.noResults')}</p>
             )}
           </div>
         )}

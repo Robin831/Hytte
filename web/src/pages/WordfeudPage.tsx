@@ -52,7 +52,7 @@ export default function WordfeudPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-8">
+    <div className="max-w-7xl mx-auto p-4 md:p-8">
       <h1 className="text-2xl font-bold mb-4">{t('title')}</h1>
 
       {/* Tabs */}
