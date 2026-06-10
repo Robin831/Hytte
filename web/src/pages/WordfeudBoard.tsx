@@ -549,7 +549,7 @@ export default function WordfeudBoard() {
   const rackLetters = rackInput.toUpperCase().split('').filter(ch => VALID_LETTERS.has(ch) || ch === '*')
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6">
+    <div className="flex flex-col gap-6">
       {/* Board */}
       <div className="shrink-0">
         <div className="flex items-center justify-between mb-3">
@@ -700,8 +700,8 @@ export default function WordfeudBoard() {
         <p className="text-xs text-gray-500 mt-2">{t('board.hint')}</p>
       </div>
 
-      {/* Sidebar: game loader + rack + solver + tile tracker */}
-      <div className="flex-1 min-w-0 space-y-6">
+      {/* Below the board: game loader + rack + solver + tile tracker */}
+      <div className="min-w-0 space-y-6">
         {/* Game list */}
         {gamesAvailable && (games.length > 0 || finishedGames.length > 0) && (() => {
           const yourTurnGames = [...games].filter(g => g.is_my_turn).sort((a, b) => a.opponent.localeCompare(b.opponent))
