@@ -45,6 +45,12 @@ let statusCalls: Array<{ signal: AbortSignal | null }> = []
 let failStatus = false
 let hangStatus = false
 
+type MockResponse = { ok: boolean; status: number; json: () => Promise<unknown> }
+
+// Resolvers for hung /api/infra/status requests, so tests can complete an
+// in-flight poll at a chosen moment instead of leaving it pending forever.
+let hangResolvers: Array<(value: MockResponse) => void> = []
+
 const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input)
   const json = (data: unknown) =>
@@ -52,7 +58,9 @@ const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
   if (url.includes('/api/infra/status')) {
     statusCalls.push({ signal: init?.signal ?? null })
     if (hangStatus) {
-      return new Promise<never>(() => {})
+      return new Promise<MockResponse>((resolve) => {
+        hangResolvers.push(resolve)
+      })
     }
     if (failStatus) {
       return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
@@ -99,6 +107,18 @@ async function advance(ms: number) {
   })
 }
 
+// Completes every hung /api/infra/status request with a successful response.
+async function releaseHungPolls() {
+  const resolvers = hangResolvers
+  hangResolvers = []
+  await act(async () => {
+    for (const resolve of resolvers) {
+      resolve({ ok: true, status: 200, json: () => Promise.resolve(statusPayload) })
+    }
+    await vi.advanceTimersByTimeAsync(0)
+  })
+}
+
 beforeEach(() => {
   vi.useFakeTimers()
   vi.stubGlobal('fetch', fetchMock)
@@ -110,6 +130,7 @@ beforeEach(() => {
   statusCalls = []
   failStatus = false
   hangStatus = false
+  hangResolvers = []
   fetchMock.mockClear()
 })
 
@@ -211,6 +232,30 @@ describe('Infra background polling', () => {
     await advance(POLL_BASE_MS * 2)
     expect(statusCalls.length).toBe(2) // poll ticks skipped, not aborted
     expect(manualSignal?.aborted).toBe(false)
+  })
+
+  it('keeps a single timer chain when visibility flips during an in-flight poll', async () => {
+    await renderInfra()
+
+    // A background poll fires and hangs, so it is still in flight when the
+    // tab is hidden and shown again.
+    hangStatus = true
+    await advance(POLL_BASE_MS)
+    expect(statusCalls.length).toBe(2)
+
+    await setVisibility('hidden')
+    await setVisibility('visible')
+
+    // Let the in-flight poll complete. Both the resumed poll and the
+    // visibility handler have now scheduled — only one chain may survive.
+    hangStatus = false
+    await releaseHungPolls()
+
+    await advance(POLL_BASE_MS)
+    expect(statusCalls.length).toBe(3) // one poll per interval, not two
+
+    await advance(POLL_BASE_MS)
+    expect(statusCalls.length).toBe(4)
   })
 
   it('stops polling after unmount', async () => {

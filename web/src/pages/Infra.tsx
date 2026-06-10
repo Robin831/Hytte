@@ -189,6 +189,10 @@ export default function Infra() {
     let timer: number | undefined
 
     function scheduleNext() {
+      // A tick resuming after an await and the visibilitychange handler can
+      // both reach here; clear any pending timer first so concurrent callers
+      // collapse into a single timer chain instead of doubling the poll rate.
+      window.clearTimeout(timer)
       if (cancelled || document.visibilityState !== 'visible') return
       timer = window.setTimeout(() => void tick(), pollDelayRef.current)
     }
