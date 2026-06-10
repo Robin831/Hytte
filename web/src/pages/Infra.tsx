@@ -137,27 +137,34 @@ export default function Infra() {
     setStatus(data)
   }, [])
 
-  // Returns false only on a real load failure; aborts count as true so the
-  // background poll's backoff doesn't grow when a request is superseded.
-  const loadAll = useCallback(async (background: boolean, signal: AbortSignal): Promise<boolean> => {
+  const loadInFlightRef = useRef(0)
+
+  const loadAll = useCallback(async (
+    background: boolean,
+    signal: AbortSignal,
+    opts?: { suppressErrors?: boolean },
+  ): Promise<boolean> => {
+    loadInFlightRef.current++
     if (background) {
       setRefreshing(true)
     } else {
       setLoading(true)
     }
-    setError(null)
+    if (!opts?.suppressErrors) {
+      setError(null)
+    }
     try {
       await Promise.all([fetchModules(signal), fetchStatus(signal)])
       return true
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return true
       if (signal.aborted) return true
-      setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
+      if (!opts?.suppressErrors) {
+        setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
+      }
       return false
     } finally {
-      // Always reset the flag this call set, even on abort: a superseding
-      // handler (e.g. handleRefresh after the mount load) may not touch the
-      // same flag, which would otherwise leave the UI stuck.
+      loadInFlightRef.current--
       if (background) {
         setRefreshing(false)
       } else {
@@ -173,13 +180,6 @@ export default function Infra() {
       abortRef.current?.abort()
     }
   }, [loadAll, newAbort])
-
-  // Mirror in-flight load state into a ref so the poll tick can read it
-  // without the polling effect depending on (and restarting with) it.
-  const loadInFlightRef = useRef(false)
-  useEffect(() => {
-    loadInFlightRef.current = loading || refreshing || toggling !== null
-  }, [loading, refreshing, toggling])
 
   // Current poll delay; grows on consecutive failures, resets on success.
   const pollDelayRef = useRef(POLL_BASE_MS)
@@ -201,12 +201,12 @@ export default function Infra() {
       if (cancelled || document.visibilityState !== 'visible') return
       // A manual refresh, module toggle, or the initial load is in flight:
       // skip this tick instead of aborting it, and try again next interval.
-      if (loadInFlightRef.current) {
+      if (loadInFlightRef.current > 0) {
         scheduleNext()
         return
       }
       const signal = newAbort()
-      const ok = await loadAll(true, signal)
+      const ok = await loadAll(true, signal, { suppressErrors: true })
       if (cancelled) return
       if (!signal.aborted) {
         pollDelayRef.current = ok
@@ -240,6 +240,7 @@ export default function Infra() {
 
   const handleToggle = async (moduleName: string, currentEnabled: boolean) => {
     const signal = newAbort()
+    loadInFlightRef.current++
     setToggling(moduleName)
     try {
       const res = await fetch(`/api/infra/modules/${encodeURIComponent(moduleName)}`, {
@@ -258,9 +259,7 @@ export default function Infra() {
       if (signal.aborted) return
       setError(err instanceof Error ? err.message : t('errors.failedToToggle'))
     } finally {
-      // Only clear our own module from the toggling slot. If a newer
-      // handleToggle for a different module has since claimed the slot,
-      // leave its value intact.
+      loadInFlightRef.current--
       setToggling(prev => (prev === moduleName ? null : prev))
     }
   }

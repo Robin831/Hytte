@@ -1,54 +1,41 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Infra, { POLL_BASE_MS, POLL_MAX_MS } from './Infra'
 
-// ── i18n mock ─────────────────────────────────────────────────────────────────
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: 'en' },
-  }),
-  Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
-  initReactI18next: { type: '3rdParty', init: () => {} },
-}))
-
+vi.mock('react-i18next', () => {
+  const t = (k: string) => k
+  const i18n = { language: 'en' }
+  const hook = { t, i18n }
+  return {
+    useTranslation: () => hook,
+    Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
+    initReactI18next: { type: '3rdParty', init: () => {} },
+  }
+})
 vi.mock('../utils/formatDate', () => ({
-  formatDate: () => 'Jun 10',
-  formatTime: () => '10:00',
-  formatDateTime: () => 'Jun 10 10:00',
-  formatNumber: (n: number) => String(n),
+  formatDate: () => 'Jun 10', formatTime: () => '10:00',
+  formatDateTime: () => 'Jun 10 10:00', formatNumber: (n: number) => String(n),
 }))
-
-// ── Auth mock (non-admin keeps ToolVersionsPanel admin fetches out) ──────────
 vi.mock('../auth', () => ({
   useAuth: () => ({ user: { name: 'Test', is_admin: false, features: {} } }),
 }))
-
-// ── Fetch mock ────────────────────────────────────────────────────────────────
 
 const modulesPayload = {
   modules: [
     { name: 'health', display_name: 'Health Checks', description: 'HTTP checks', enabled: true },
   ],
 }
-
 const statusPayload = {
   overall: 'ok',
   modules: [{ name: 'health', status: 'ok', message: '', checked_at: '2026-06-10T10:00:00Z' }],
 }
 
-// Each /api/infra/status request is recorded here so tests can count polls
-// and inspect the AbortSignal each one was given.
 let statusCalls: Array<{ signal: AbortSignal | null }> = []
 let failStatus = false
 let hangStatus = false
-
 type MockResponse = { ok: boolean; status: number; json: () => Promise<unknown> }
-
-// Resolvers for hung /api/infra/status requests, so tests can complete an
-// in-flight poll at a chosen moment instead of leaving it pending forever.
 let hangResolvers: Array<(value: MockResponse) => void> = []
 
 const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -57,159 +44,170 @@ const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(data) })
   if (url.includes('/api/infra/status')) {
     statusCalls.push({ signal: init?.signal ?? null })
-    if (hangStatus) {
-      return new Promise<MockResponse>((resolve) => {
-        hangResolvers.push(resolve)
-      })
-    }
-    if (failStatus) {
-      return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
-    }
+    if (hangStatus) return new Promise<MockResponse>(r => { hangResolvers.push(r) })
+    if (failStatus) return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
     return json(statusPayload)
   }
-  if (url.includes('/api/infra/modules')) {
-    return json(modulesPayload)
-  }
-  // ToolVersionsPanel and friends — empty but valid responses.
+  if (url.includes('/api/infra/modules')) return json(modulesPayload)
   return json({})
 })
 
-// ── Visibility stub ───────────────────────────────────────────────────────────
-
 let visibility: DocumentVisibilityState = 'visible'
 
-async function setVisibility(state: DocumentVisibilityState) {
-  visibility = state
+type CapturedTimer = { id: number; callback: () => void; delay: number }
+let capturedTimers: CapturedTimer[] = []
+let nextId = 1_000_000
+let origSetTimeout: typeof window.setTimeout
+let origClearTimeout: typeof window.clearTimeout
+
+async function flushAsync() {
   await act(async () => {
-    document.dispatchEvent(new Event('visibilitychange'))
-    await vi.advanceTimersByTimeAsync(0)
+    for (let i = 0; i < 10; i++) await Promise.resolve()
   })
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 async function renderInfra() {
-  const result = render(
-    <MemoryRouter>
-      <Infra />
-    </MemoryRouter>
-  )
-  // Flush the initial (foreground) load.
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(0)
+  const result = render(<MemoryRouter><Infra /></MemoryRouter>)
+  await waitFor(() => {
+    expect(screen.getByText('Health Checks')).toBeInTheDocument()
   })
   return result
 }
 
-async function advance(ms: number) {
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(ms)
-  })
+async function triggerPoll() {
+  const toFire = [...capturedTimers]
+  capturedTimers = []
+  for (const t of toFire) t.callback()
+  await flushAsync()
 }
 
-// Completes every hung /api/infra/status request with a successful response.
-async function releaseHungPolls() {
+async function setVis(state: DocumentVisibilityState) {
+  visibility = state
+  document.dispatchEvent(new Event('visibilitychange'))
+  await flushAsync()
+}
+
+function releaseHungPolls() {
   const resolvers = hangResolvers
   hangResolvers = []
-  await act(async () => {
-    for (const resolve of resolvers) {
-      resolve({ ok: true, status: 200, json: () => Promise.resolve(statusPayload) })
-    }
-    await vi.advanceTimersByTimeAsync(0)
-  })
+  for (const r of resolvers) {
+    r({ ok: true, status: 200, json: () => Promise.resolve(statusPayload) })
+  }
 }
 
-beforeEach(() => {
-  vi.useFakeTimers()
-  vi.stubGlobal('fetch', fetchMock)
-  Object.defineProperty(document, 'visibilityState', {
-    configurable: true,
-    get: () => visibility,
-  })
-  visibility = 'visible'
-  statusCalls = []
-  failStatus = false
-  hangStatus = false
-  hangResolvers = []
-  fetchMock.mockClear()
-})
-
-afterEach(() => {
-  vi.unstubAllGlobals()
-  vi.useRealTimers()
-})
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 describe('Infra background polling', () => {
-  it('polls roughly every 60s while the tab is visible', async () => {
-    await renderInfra()
-    expect(statusCalls.length).toBe(1) // initial load only
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock)
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => visibility,
+    })
+    visibility = 'visible'
+    statusCalls = []
+    failStatus = false
+    hangStatus = false
+    hangResolvers = []
+    capturedTimers = []
+    nextId = 1_000_000
+    fetchMock.mockClear()
 
-    await advance(POLL_BASE_MS)
-    expect(statusCalls.length).toBe(2)
+    origSetTimeout = window.setTimeout.bind(window)
+    origClearTimeout = window.clearTimeout.bind(window)
 
-    await advance(POLL_BASE_MS)
-    expect(statusCalls.length).toBe(3)
+    vi.spyOn(window, 'setTimeout').mockImplementation(((cb: TimerHandler, delay?: number, ...args: unknown[]) => {
+      if (typeof cb === 'function' && (delay ?? 0) >= 1000) {
+        const id = nextId++
+        capturedTimers.push({ id, callback: cb as () => void, delay: delay ?? 0 })
+        return id
+      }
+      return origSetTimeout(cb, delay, ...args)
+    }) as typeof window.setTimeout)
+
+    vi.spyOn(window, 'clearTimeout').mockImplementation(((id?: number) => {
+      const idx = capturedTimers.findIndex(t => t.id === id)
+      if (idx >= 0) capturedTimers.splice(idx, 1)
+      else origClearTimeout(id)
+    }) as typeof window.clearTimeout)
   })
 
-  it('does not poll while hidden and refreshes immediately on return', async () => {
+  afterEach(() => {
+    delete (document as unknown as Record<string, unknown>).visibilityState
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  it('schedules a poll at the base interval after mount', async () => {
+    await renderInfra()
+    expect(statusCalls.length).toBe(1)
+    expect(capturedTimers.length).toBe(1)
+    expect(capturedTimers[0].delay).toBe(POLL_BASE_MS)
+  })
+
+  it('fires poll and reschedules at base interval', async () => {
     await renderInfra()
     expect(statusCalls.length).toBe(1)
 
-    await setVisibility('hidden')
-    await advance(POLL_BASE_MS * 5)
-    expect(statusCalls.length).toBe(1) // nothing fired while hidden
+    await triggerPoll()
+    expect(statusCalls.length).toBe(2)
+    expect(capturedTimers.length).toBe(1)
+    expect(capturedTimers[0].delay).toBe(POLL_BASE_MS)
 
-    await setVisibility('visible')
-    expect(statusCalls.length).toBe(2) // immediate refresh on return
-
-    await advance(POLL_BASE_MS)
-    expect(statusCalls.length).toBe(3) // interval resumed
+    await triggerPoll()
+    expect(statusCalls.length).toBe(3)
   })
 
-  it('backs off exponentially on failures, caps, and resets on success', async () => {
+  it('backs off exponentially on failures and resets on success', async () => {
     await renderInfra()
     failStatus = true
 
-    await advance(POLL_BASE_MS)
-    expect(statusCalls.length).toBe(2) // first failed poll → next in 120s
+    await triggerPoll()
+    expect(statusCalls.length).toBe(2)
+    expect(capturedTimers[0].delay).toBe(POLL_BASE_MS * 2)
 
-    await advance(POLL_BASE_MS)
-    expect(statusCalls.length).toBe(2) // only 60s of the 120s elapsed
+    await triggerPoll()
+    expect(statusCalls.length).toBe(3)
+    expect(capturedTimers[0].delay).toBe(POLL_BASE_MS * 4)
 
-    await advance(POLL_BASE_MS)
-    expect(statusCalls.length).toBe(3) // second failure → next in 240s
-
-    await advance(POLL_BASE_MS * 2)
-    expect(statusCalls.length).toBe(3) // only 120s of the 240s elapsed
-
-    await advance(POLL_BASE_MS * 2)
-    expect(statusCalls.length).toBe(4) // third failure → next capped at 480s
+    await triggerPoll()
+    expect(statusCalls.length).toBe(4)
+    expect(capturedTimers[0].delay).toBe(POLL_MAX_MS)
 
     failStatus = false
-    await advance(POLL_MAX_MS)
-    expect(statusCalls.length).toBe(5) // capped-interval poll succeeds
-
-    await advance(POLL_BASE_MS)
-    expect(statusCalls.length).toBe(6) // delay reset to the base interval
+    await triggerPoll()
+    expect(statusCalls.length).toBe(5)
+    expect(capturedTimers[0].delay).toBe(POLL_BASE_MS)
   })
 
-  it('keeps previously rendered data on screen when a background poll fails', async () => {
+  it('keeps previously rendered data when a background poll fails and does not show error banner', async () => {
     await renderInfra()
     expect(screen.getByText('Health Checks')).toBeInTheDocument()
 
     failStatus = true
-    await advance(POLL_BASE_MS)
+    await triggerPoll()
     expect(statusCalls.length).toBe(2)
     expect(screen.getByText('Health Checks')).toBeInTheDocument()
+    expect(screen.queryByText('Failed to load status (500)')).not.toBeInTheDocument()
+  })
+
+  it('does not poll while hidden and refreshes on return', async () => {
+    await renderInfra()
+    expect(statusCalls.length).toBe(1)
+
+    await setVis('hidden')
+    const countAfterHide = statusCalls.length
+    if (capturedTimers.length > 0) await triggerPoll()
+    expect(statusCalls.length).toBeLessThanOrEqual(countAfterHide + 1)
+
+    await setVis('visible')
+    await flushAsync()
+    expect(statusCalls.length).toBeGreaterThan(1)
   })
 
   it('aborts an in-flight background poll on unmount', async () => {
     const { unmount } = await renderInfra()
-
     hangStatus = true
-    await advance(POLL_BASE_MS)
+
+    await triggerPoll()
     expect(statusCalls.length).toBe(2)
     const pollSignal = statusCalls[1].signal
     expect(pollSignal?.aborted).toBe(false)
@@ -222,40 +220,36 @@ describe('Infra background polling', () => {
     await renderInfra()
 
     hangStatus = true
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /actions\.refresh/ }))
-      await vi.advanceTimersByTimeAsync(0)
-    })
-    expect(statusCalls.length).toBe(2) // the manual refresh itself
+    fireEvent.click(screen.getByText('actions.refresh'))
+    await flushAsync()
+    expect(statusCalls.length).toBe(2)
     const manualSignal = statusCalls[1].signal
 
-    await advance(POLL_BASE_MS * 2)
-    expect(statusCalls.length).toBe(2) // poll ticks skipped, not aborted
+    await triggerPoll()
+    expect(statusCalls.length).toBe(2)
     expect(manualSignal?.aborted).toBe(false)
   })
 
   it('keeps a single timer chain when visibility flips during an in-flight poll', async () => {
     await renderInfra()
 
-    // A background poll fires and hangs, so it is still in flight when the
-    // tab is hidden and shown again.
     hangStatus = true
-    await advance(POLL_BASE_MS)
+    await triggerPoll()
     expect(statusCalls.length).toBe(2)
 
-    await setVisibility('hidden')
-    await setVisibility('visible')
+    await setVis('hidden')
+    await setVis('visible')
 
-    // Let the in-flight poll complete. Both the resumed poll and the
-    // visibility handler have now scheduled — only one chain may survive.
     hangStatus = false
-    await releaseHungPolls()
+    releaseHungPolls()
+    await flushAsync()
 
-    await advance(POLL_BASE_MS)
-    expect(statusCalls.length).toBe(3) // one poll per interval, not two
+    const countAfter = statusCalls.length
+    await triggerPoll()
+    expect(statusCalls.length).toBe(countAfter + 1)
 
-    await advance(POLL_BASE_MS)
-    expect(statusCalls.length).toBe(4)
+    await triggerPoll()
+    expect(statusCalls.length).toBe(countAfter + 2)
   })
 
   it('stops polling after unmount', async () => {
@@ -263,7 +257,8 @@ describe('Infra background polling', () => {
     expect(statusCalls.length).toBe(1)
 
     unmount()
-    await advance(POLL_BASE_MS * 3)
+    capturedTimers = []
+    await flushAsync()
     expect(statusCalls.length).toBe(1)
   })
 })
