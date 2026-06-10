@@ -93,6 +93,11 @@ const statusConfig = {
   unknown: { icon: HelpCircle, color: 'text-gray-400', bg: 'bg-gray-400/10', border: 'border-gray-400/20', label: 'Unknown' },
 }
 
+// Background polling: refresh roughly every minute while the tab is visible,
+// doubling the interval on consecutive failures up to an 8-minute cap.
+export const POLL_BASE_MS = 60_000
+export const POLL_MAX_MS = 480_000
+
 export default function Infra() {
   const { t } = useTranslation('infra')
   const [modules, setModules] = useState<ModuleInfo[]>([])
@@ -132,7 +137,9 @@ export default function Infra() {
     setStatus(data)
   }, [])
 
-  const loadAll = useCallback(async (background: boolean, signal: AbortSignal) => {
+  // Returns false only on a real load failure; aborts count as true so the
+  // background poll's backoff doesn't grow when a request is superseded.
+  const loadAll = useCallback(async (background: boolean, signal: AbortSignal): Promise<boolean> => {
     if (background) {
       setRefreshing(true)
     } else {
@@ -141,10 +148,12 @@ export default function Infra() {
     setError(null)
     try {
       await Promise.all([fetchModules(signal), fetchStatus(signal)])
+      return true
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      if (signal.aborted) return
+      if (err instanceof DOMException && err.name === 'AbortError') return true
+      if (signal.aborted) return true
       setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
+      return false
     } finally {
       // Always reset the flag this call set, even on abort: a superseding
       // handler (e.g. handleRefresh after the mount load) may not touch the
@@ -162,6 +171,62 @@ export default function Infra() {
     void loadAll(false, newAbort())
     return () => {
       abortRef.current?.abort()
+    }
+  }, [loadAll, newAbort])
+
+  // Mirror in-flight load state into a ref so the poll tick can read it
+  // without the polling effect depending on (and restarting with) it.
+  const loadInFlightRef = useRef(false)
+  useEffect(() => {
+    loadInFlightRef.current = loading || refreshing || toggling !== null
+  }, [loading, refreshing, toggling])
+
+  // Current poll delay; grows on consecutive failures, resets on success.
+  const pollDelayRef = useRef(POLL_BASE_MS)
+
+  useEffect(() => {
+    let cancelled = false
+    let timer: number | undefined
+
+    function scheduleNext() {
+      if (cancelled || document.visibilityState !== 'visible') return
+      timer = window.setTimeout(() => void tick(), pollDelayRef.current)
+    }
+
+    async function tick() {
+      if (cancelled || document.visibilityState !== 'visible') return
+      // A manual refresh, module toggle, or the initial load is in flight:
+      // skip this tick instead of aborting it, and try again next interval.
+      if (loadInFlightRef.current) {
+        scheduleNext()
+        return
+      }
+      const signal = newAbort()
+      const ok = await loadAll(true, signal)
+      if (cancelled) return
+      if (!signal.aborted) {
+        pollDelayRef.current = ok
+          ? POLL_BASE_MS
+          : Math.min(pollDelayRef.current * 2, POLL_MAX_MS)
+      }
+      scheduleNext()
+    }
+
+    function onVisibilityChange() {
+      window.clearTimeout(timer)
+      if (document.visibilityState === 'visible') {
+        // Back on the tab: refresh immediately, then resume the loop.
+        void tick()
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    scheduleNext()
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [loadAll, newAbort])
 
