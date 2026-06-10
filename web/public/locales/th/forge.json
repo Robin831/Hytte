@@ -492,6 +492,8 @@
     "searchLabel": "ค้นหาเหตุการณ์",
     "typeFilterLabel": "กรองตามประเภทเหตุการณ์",
     "allTypes": "ทุกประเภท",
+    "typeErrors": "ข้อผิดพลาด",
+    "typePRs": "PR",
     "typeWorkerStart": "Worker เริ่มทำงาน",
     "typeWorkerDone": "Worker เสร็จสิ้น",
     "typeWorkerFail": "Worker ล้มเหลว",

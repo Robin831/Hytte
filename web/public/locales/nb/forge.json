@@ -492,6 +492,8 @@
     "searchLabel": "S\u00f8k i hendelser",
     "typeFilterLabel": "Filtrer etter hendelsestype",
     "allTypes": "Alle typer",
+    "typeErrors": "Feil",
+    "typePRs": "PRer",
     "typeWorkerStart": "Arbeider startet",
     "typeWorkerDone": "Arbeider ferdig",
     "typeWorkerFail": "Arbeider feilet",

@@ -486,6 +486,58 @@ func TestEventsHandler_FilterByType(t *testing.T) {
 	}
 }
 
+func TestEventsHandler_FilterByLevelError(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO events (timestamp, type, message, bead_id, anvil) VALUES
+		(?, 'worker_start', 'started', 'b1', 'a'),
+		(?, 'worker_fail', 'crashed', 'b2', 'a'),
+		(?, 'ci_done', 'build failed', 'b3', 'a')
+	`, nowStr, nowStr, nowStr) //nolint:errcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/events?level=error", nil)
+	rec := httptest.NewRecorder()
+	EventsHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var events []Event
+	if err := json.NewDecoder(rec.Body).Decode(&events); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 error events, got %d", len(events))
+	}
+}
+
+func TestEventsHandler_FilterByGroupPRs(t *testing.T) {
+	fdb := setupTestDB(t)
+
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	fdb.db.Exec(`INSERT INTO events (timestamp, type, message, bead_id, anvil) VALUES
+		(?, 'worker_start', 'started', 'b1', 'a'),
+		(?, 'pr_merged', 'merged', 'b2', 'a'),
+		(?, 'warden_review', 'review', 'b3', 'a')
+	`, nowStr, nowStr, nowStr) //nolint:errcheck
+
+	req := httptest.NewRequest(http.MethodGet, "/api/forge/events?group=prs", nil)
+	rec := httptest.NewRecorder()
+	EventsHandler(fdb).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var events []Event
+	if err := json.NewDecoder(rec.Body).Decode(&events); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 PR-group events, got %d", len(events))
+	}
+}
+
 // --- CostsHandler ---
 
 func TestCostsHandler_NilDB(t *testing.T) {

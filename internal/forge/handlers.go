@@ -660,8 +660,10 @@ func ClosedPRsHandler(db *DB) http.HandlerFunc {
 // EventsHandler returns recent forge events.
 // Query params:
 //   - limit: maximum number of events to return (default 50)
-//   - type:  filter by event type
+//   - type:  filter by event type (exact match)
 //   - anvil: filter by anvil name
+//   - level: level=error matches failure events (mirrors the frontend heuristic)
+//   - group: group=prs matches PR/merge/warden/review events
 func EventsHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if db == nil {
@@ -681,8 +683,10 @@ func EventsHandler(db *DB) http.HandlerFunc {
 		}
 		eventType := r.URL.Query().Get("type")
 		anvil := r.URL.Query().Get("anvil")
+		level := r.URL.Query().Get("level")
+		group := r.URL.Query().Get("group")
 
-		events, err := db.Events(limit, eventType, anvil)
+		events, err := db.Events(limit, eventType, anvil, level, group)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to load events")
 			return
@@ -700,6 +704,8 @@ func EventsHandler(db *DB) http.HandlerFunc {
 //   - search: text search across message, bead_id, and type
 //   - from:   start date (YYYY-MM-DD)
 //   - to:     end date (YYYY-MM-DD)
+//   - level:  level=error matches failure events (mirrors the frontend heuristic)
+//   - group:  group=prs matches PR/merge/warden/review events
 func EventsPageHandler(db *DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if db == nil {
@@ -729,8 +735,10 @@ func EventsPageHandler(db *DB) http.HandlerFunc {
 		search := r.URL.Query().Get("search")
 		from := r.URL.Query().Get("from")
 		to := r.URL.Query().Get("to")
+		level := r.URL.Query().Get("level")
+		group := r.URL.Query().Get("group")
 
-		result, err := db.EventsPaginated(limit, offset, eventType, anvil, search, from, to)
+		result, err := db.EventsPaginated(limit, offset, eventType, anvil, search, from, to, level, group)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "failed to load events")
 			return
@@ -1098,7 +1106,7 @@ func ActivityStreamHandler(db *DB) http.HandlerFunc {
 
 		if lastID == 0 {
 			// No Last-Event-ID — send initial batch of recent events, oldest first.
-			initial, err := db.Events(50, "", "")
+			initial, err := db.Events(50, "", "", "", "")
 			if err == nil {
 				for i := len(initial) - 1; i >= 0; i-- {
 					e := initial[i]

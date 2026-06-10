@@ -492,6 +492,8 @@
     "searchLabel": "Search events",
     "typeFilterLabel": "Filter by event type",
     "allTypes": "All types",
+    "typeErrors": "Errors",
+    "typePRs": "PRs",
     "typeWorkerStart": "Worker start",
     "typeWorkerDone": "Worker done",
     "typeWorkerFail": "Worker fail",

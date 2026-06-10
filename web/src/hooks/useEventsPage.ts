@@ -5,6 +5,10 @@ export interface EventsPageParams {
   search?: string
   type?: string
   anvil?: string
+  // level=error and group=prs mirror the Mezzanine events panel's "Errors" and
+  // "PRs" filters (see web/src/utils/forgeEventFilter.ts) for consistency.
+  level?: string
+  group?: string
   from?: string
   to?: string
   page: number
@@ -47,6 +51,8 @@ export function useEventsPage(params: EventsPageParams): UseEventsPageReturn {
         if (params.search) qs.set('search', params.search)
         if (params.type) qs.set('type', params.type)
         if (params.anvil) qs.set('anvil', params.anvil)
+        if (params.level) qs.set('level', params.level)
+        if (params.group) qs.set('group', params.group)
         if (params.from) qs.set('from', params.from)
         if (params.to) qs.set('to', params.to)
 
@@ -74,7 +80,7 @@ export function useEventsPage(params: EventsPageParams): UseEventsPageReturn {
       cancelled = true
       controller.abort()
     }
-  }, [params.search, params.type, params.anvil, params.from, params.to, params.page, params.pageSize, refreshKey])
+  }, [params.search, params.type, params.anvil, params.level, params.group, params.from, params.to, params.page, params.pageSize, refreshKey])
 
   return { events, total, loading, error, refresh }
 }

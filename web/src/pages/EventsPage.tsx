@@ -44,17 +44,21 @@ export default function EventsPage() {
   const [to, setTo] = useState('')
   const [page, setPage] = useState(1)
 
-  const params = useMemo(
-    () => ({
+  // The type dropdown doubles as the level/group filter: the sentinel values
+  // 'level:error' and 'group:prs' map to the shared level/group server params
+  // (mirroring the Mezzanine events panel) rather than an exact type match.
+  const params = useMemo(() => {
+    const base = {
       search,
-      type: typeFilter,
       from,
       to,
       page,
       pageSize: PAGE_SIZE,
-    }),
-    [search, typeFilter, from, to, page],
-  )
+    }
+    if (typeFilter === 'level:error') return { ...base, level: 'error' }
+    if (typeFilter === 'group:prs') return { ...base, group: 'prs' }
+    return { ...base, type: typeFilter }
+  }, [search, typeFilter, from, to, page])
 
   const { events, total, loading, error, refresh } = useEventsPage(params)
 
@@ -135,6 +139,8 @@ export default function EventsPage() {
           aria-label={t('eventsPage.typeFilterLabel')}
         >
           <option value="">{t('eventsPage.allTypes')}</option>
+          <option value="level:error">{t('eventsPage.typeErrors')}</option>
+          <option value="group:prs">{t('eventsPage.typePRs')}</option>
           <option value="worker_start">{t('eventsPage.typeWorkerStart')}</option>
           <option value="worker_done">{t('eventsPage.typeWorkerDone')}</option>
           <option value="worker_fail">{t('eventsPage.typeWorkerFail')}</option>
