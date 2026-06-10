@@ -43,6 +43,12 @@ export function useForgeEvents({ maxEvents = 200, pollInterval = 3000, filter }:
   const anvil = filter?.anvil ?? ''
   const hasFilter = !!(level || group || anvil)
 
+  // When a filter is active we fetch a deeper slice (FILTERED_FETCH_LIMIT) so
+  // older matches surface. Cap the retained list to at least that depth,
+  // otherwise a smaller caller-supplied maxEvents (e.g. the panel's 100) would
+  // silently truncate the deeper fetch and negate its benefit.
+  const effectiveMax = hasFilter ? Math.max(maxEvents, FILTERED_FETCH_LIMIT) : maxEvents
+
   const mergeEvents = useCallback((incoming: WorkerEvent[]) => {
     if (incoming.length === 0) return
     setEvents(prev => {
@@ -53,9 +59,9 @@ export function useForgeEvents({ maxEvents = 200, pollInterval = 3000, filter }:
       if (merged.length > 0) {
         lastSeenIdRef.current = Math.max(lastSeenIdRef.current, merged[merged.length - 1].id)
       }
-      return merged.slice(-maxEvents)
+      return merged.slice(-effectiveMax)
     })
-  }, [maxEvents])
+  }, [effectiveMax])
 
   useEffect(() => {
     const abortController = new AbortController()
