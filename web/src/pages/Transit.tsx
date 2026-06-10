@@ -70,6 +70,9 @@ export default function Transit() {
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchAbortRef = useRef<AbortController | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Show the loading skeleton only on the very first fetch; subsequent refreshes
+  // (30s interval, tab-visibility, manual) update departures silently in place.
+  const isInitialLoad = useRef(true)
   const [refreshKey, setRefreshKey] = useState(0)
 
   // Initial load + auto-refresh every 30 seconds, paused while the tab is hidden.
@@ -77,7 +80,7 @@ export default function Transit() {
     const controller = new AbortController()
 
     const fetchDepartures = async () => {
-      setLoading(true)
+      if (isInitialLoad.current) setLoading(true)
       try {
         const res = await fetch('/api/transit/departures', { credentials: 'include', signal: controller.signal })
         if (!res.ok) throw new Error(await res.text())
@@ -90,6 +93,7 @@ export default function Transit() {
         setError(t('transit:error'))
       } finally {
         setLoading(false)
+        isInitialLoad.current = false
       }
     }
 
