@@ -1,39 +1,14 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Filter } from 'lucide-react'
-import type { WorkerEvent } from '../LiveActivity'
 import { formatTime } from '../../utils/formatDate'
 import { useForgeEvents } from '../../hooks/useForgeEvents'
+import { classifyLevel, filterToParams, type EventFilter } from '../../utils/forgeEventFilter'
 import BeadLifecycleModal from './BeadLifecycleModal'
-
-// 'all' | 'errors' | 'prs' | 'anvil:<name>' — the tagged anvil: prefix keeps
-// the type constrained so arbitrary strings cannot slip through accidentally.
-type EventFilter = 'all' | 'errors' | 'prs' | `anvil:${string}`
 
 interface EventsPanelProps {
   onBeadClick?: (beadId: string) => void
-}
-
-function classifyLevel(event: WorkerEvent): 'success' | 'failure' | 'info' {
-  const type = event.type?.toLowerCase() ?? ''
-  const level = event.level?.toLowerCase() ?? ''
-  const message = event.message?.toLowerCase() ?? ''
-
-  if (level === 'error' || type.includes('fail') || type.includes('error') || message.includes('failed')) {
-    return 'failure'
-  }
-  if (
-    level === 'success' ||
-    type.includes('pass') ||
-    type.includes('merged') ||
-    type.includes('done') ||
-    type.includes('success') ||
-    type.includes('complete')
-  ) {
-    return 'success'
-  }
-  return 'info'
 }
 
 const levelStyles: Record<string, string> = {
@@ -56,37 +31,35 @@ export default function EventsPanel({ onBeadClick: _onBeadClick }: EventsPanelPr
   const [lifecycleBeadId, setLifecycleBeadId] = useState<string | null>(null)
 
   // useForgeEvents connects to /api/forge/activity/stream (SSE) and falls back
-  // to polling /api/forge/events. Events are returned in chronological order
-  // (oldest first); we reverse them here for newest-first display.
-  const { events: chronoEvents } = useForgeEvents({ maxEvents: MAX_EVENTS })
+  // to polling /api/forge/events. When a filter is active we pass the matching
+  // server query params so the entire event log is searched (not just the live
+  // in-memory window). Events are returned in chronological order (oldest
+  // first); we reverse them here for newest-first display.
+  const filterParams = useMemo(() => filterToParams(filter), [filter])
+  const { events: chronoEvents } = useForgeEvents({ maxEvents: MAX_EVENTS, filter: filterParams })
   const events = useMemo(() => [...chronoEvents].reverse(), [chronoEvents])
 
-  const anvils = useMemo(() => {
-    const set = new Set<string>()
-    for (const e of events) {
-      if (e.anvil) set.add(e.anvil)
-    }
-    return [...set].sort()
+  // Accumulate every anvil ever seen so the dropdown stays populated even when
+  // an anvil filter narrows the fetched events down to a single anvil. The
+  // default 'all' load seeds the full set before any filter is applied.
+  const [knownAnvils, setKnownAnvils] = useState<string[]>([])
+  useEffect(() => {
+    setKnownAnvils(prev => {
+      const set = new Set(prev)
+      let changed = false
+      for (const e of events) {
+        if (e.anvil && !set.has(e.anvil)) {
+          set.add(e.anvil)
+          changed = true
+        }
+      }
+      return changed ? [...set].sort() : prev
+    })
   }, [events])
 
-  const filtered = useMemo(() => {
-    // Always exclude noisy poll events — they're 80%+ of all events.
-    const meaningful = events.filter(e => e.type !== 'poll')
-    if (filter === 'all') return meaningful
-    if (filter === 'errors') return meaningful.filter(e => classifyLevel(e) === 'failure')
-    if (filter === 'prs') {
-      return meaningful.filter(e => {
-        const type = e.type?.toLowerCase() ?? ''
-        return type.includes('pr') || type.includes('merge') || type.includes('warden') || type.includes('review')
-      })
-    }
-    // per-anvil filter: filter is `anvil:<name>`
-    if (filter.startsWith('anvil:')) {
-      const anvilName = filter.slice(6)
-      return meaningful.filter(e => e.anvil === anvilName)
-    }
-    return meaningful
-  }, [events, filter])
+  // The level/group/anvil filtering happens server-side (via the hook). Here we
+  // only drop noisy poll events — they're 80%+ of all events.
+  const filtered = useMemo(() => events.filter(e => e.type !== 'poll'), [events])
 
   return (
     <div className="flex flex-col rounded-lg border border-gray-700/50 bg-gray-900/60 overflow-hidden">
@@ -104,7 +77,7 @@ export default function EventsPanel({ onBeadClick: _onBeadClick }: EventsPanelPr
               <option value="all">{t('mezzanine.events.filterAll')}</option>
               <option value="errors">{t('mezzanine.events.filterErrors')}</option>
               <option value="prs">{t('mezzanine.events.filterPRs')}</option>
-              {anvils.map(anvil => (
+              {knownAnvils.map(anvil => (
                 <option key={anvil} value={`anvil:${anvil}`}>{anvil}</option>
               ))}
             </select>

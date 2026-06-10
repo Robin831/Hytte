@@ -225,7 +225,7 @@ func TestPRs_OpenOnly(t *testing.T) {
 
 func TestEvents_Empty(t *testing.T) {
 	fdb := setupTestDB(t)
-	events, err := fdb.Events(0, "", "")
+	events, err := fdb.Events(0, "", "", "", "")
 	if err != nil {
 		t.Fatalf("Events: %v", err)
 	}
@@ -248,7 +248,7 @@ func TestEvents_FilterByType(t *testing.T) {
 		t.Fatalf("insert events: %v", err)
 	}
 
-	events, err := fdb.Events(10, "worker_start", "")
+	events, err := fdb.Events(10, "worker_start", "", "", "")
 	if err != nil {
 		t.Fatalf("Events: %v", err)
 	}
@@ -256,12 +256,122 @@ func TestEvents_FilterByType(t *testing.T) {
 		t.Errorf("expected 2 worker_start events, got %d", len(events))
 	}
 
-	events, err = fdb.Events(10, "worker_start", "anvil2")
+	events, err = fdb.Events(10, "worker_start", "anvil2", "", "")
 	if err != nil {
 		t.Fatalf("Events with anvil filter: %v", err)
 	}
 	if len(events) != 1 {
 		t.Errorf("expected 1 event for anvil2, got %d", len(events))
+	}
+}
+
+// seedFilterEvents inserts a representative spread of event types/messages used
+// by the level= and group= predicate tests.
+func seedFilterEvents(t *testing.T, fdb *DB) {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := fdb.db.Exec(`
+		INSERT INTO events (id, timestamp, type, message, bead_id, anvil) VALUES
+		  (1, ?, 'worker_start',  'Worker started',       'b1', 'anvil1'),
+		  (2, ?, 'worker_fail',   'Worker crashed',       'b1', 'anvil1'),
+		  (3, ?, 'worker_error',  'Boom',                 'b2', 'anvil2'),
+		  (4, ?, 'ci_done',       'Build failed on main', 'b3', 'anvil1'),
+		  (5, ?, 'pr_opened',     'PR opened',            'b4', 'anvil2'),
+		  (6, ?, 'pr_merged',     'PR merged',            'b5', 'anvil1'),
+		  (7, ?, 'warden_review', 'Review requested',     'b6', 'anvil2'),
+		  (8, ?, 'dispatch',      'Dispatched',           'b7', 'anvil1')
+	`, now, now, now, now, now, now, now, now)
+	if err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+}
+
+func TestEvents_FilterByLevelError(t *testing.T) {
+	fdb := setupTestDB(t)
+	seedFilterEvents(t, fdb)
+
+	// level=error mirrors classifyLevel's failure heuristic: type contains
+	// fail/error, or message contains failed. Matches ids 2, 3, 4.
+	events, err := fdb.Events(50, "", "", "error", "")
+	if err != nil {
+		t.Fatalf("Events level=error: %v", err)
+	}
+	got := map[int]bool{}
+	for _, e := range events {
+		got[e.ID] = true
+	}
+	for _, id := range []int{2, 3, 4} {
+		if !got[id] {
+			t.Errorf("expected event %d in level=error results", id)
+		}
+	}
+	if len(events) != 3 {
+		t.Errorf("expected 3 error events, got %d: %+v", len(events), events)
+	}
+}
+
+func TestEvents_FilterByGroupPRs(t *testing.T) {
+	fdb := setupTestDB(t)
+	seedFilterEvents(t, fdb)
+
+	// group=prs mirrors the frontend PR-group test: type contains
+	// pr/merge/warden/review. Matches ids 5, 6, 7.
+	events, err := fdb.Events(50, "", "", "", "prs")
+	if err != nil {
+		t.Fatalf("Events group=prs: %v", err)
+	}
+	got := map[int]bool{}
+	for _, e := range events {
+		got[e.ID] = true
+	}
+	for _, id := range []int{5, 6, 7} {
+		if !got[id] {
+			t.Errorf("expected event %d in group=prs results", id)
+		}
+	}
+	if len(events) != 3 {
+		t.Errorf("expected 3 PR-group events, got %d: %+v", len(events), events)
+	}
+}
+
+func TestEvents_FilterByLevelAndAnvil(t *testing.T) {
+	fdb := setupTestDB(t)
+	seedFilterEvents(t, fdb)
+
+	// level=error AND anvil=anvil1 combine with AND. Of the error events
+	// (2, 3, 4), only 2 and 4 are on anvil1.
+	events, err := fdb.Events(50, "", "anvil1", "error", "")
+	if err != nil {
+		t.Fatalf("Events level=error anvil=anvil1: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d: %+v", len(events), events)
+	}
+	for _, e := range events {
+		if e.Anvil != "anvil1" {
+			t.Errorf("expected anvil1, got %q", e.Anvil)
+		}
+	}
+}
+
+func TestEventsPaginated_FilterByLevelAndGroup(t *testing.T) {
+	fdb := setupTestDB(t)
+	seedFilterEvents(t, fdb)
+
+	res, err := fdb.EventsPaginated(50, 0, "", "", "", "", "", "error", "")
+	if err != nil {
+		t.Fatalf("EventsPaginated level=error: %v", err)
+	}
+	if res.Total != 3 {
+		t.Errorf("expected total 3 for level=error, got %d", res.Total)
+	}
+
+	res, err = fdb.EventsPaginated(50, 0, "", "", "", "", "", "", "prs")
+	if err != nil {
+		t.Fatalf("EventsPaginated group=prs: %v", err)
+	}
+	if res.Total != 3 {
+		t.Errorf("expected total 3 for group=prs, got %d", res.Total)
 	}
 }
 
@@ -1186,7 +1296,7 @@ func TestAnvilCosts_DefaultsAndCap(t *testing.T) {
 
 func TestEventsPaginated_Empty(t *testing.T) {
 	fdb := setupTestDB(t)
-	result, err := fdb.EventsPaginated(50, 0, "", "", "", "", "")
+	result, err := fdb.EventsPaginated(50, 0, "", "", "", "", "", "", "")
 	if err != nil {
 		t.Fatalf("EventsPaginated: %v", err)
 	}
@@ -1218,7 +1328,7 @@ func TestEventsPaginated_PaginationAndFilters(t *testing.T) {
 	}
 
 	// Test basic pagination: limit=2, offset=0
-	result, err := fdb.EventsPaginated(2, 0, "", "", "", "", "")
+	result, err := fdb.EventsPaginated(2, 0, "", "", "", "", "", "", "")
 	if err != nil {
 		t.Fatalf("EventsPaginated: %v", err)
 	}
@@ -1234,7 +1344,7 @@ func TestEventsPaginated_PaginationAndFilters(t *testing.T) {
 	}
 
 	// Test offset: limit=2, offset=2
-	result, err = fdb.EventsPaginated(2, 2, "", "", "", "", "")
+	result, err = fdb.EventsPaginated(2, 2, "", "", "", "", "", "", "")
 	if err != nil {
 		t.Fatalf("EventsPaginated offset: %v", err)
 	}
@@ -1246,7 +1356,7 @@ func TestEventsPaginated_PaginationAndFilters(t *testing.T) {
 	}
 
 	// Test type filter
-	result, err = fdb.EventsPaginated(50, 0, "worker_start", "", "", "", "")
+	result, err = fdb.EventsPaginated(50, 0, "worker_start", "", "", "", "", "", "")
 	if err != nil {
 		t.Fatalf("EventsPaginated type filter: %v", err)
 	}
@@ -1255,7 +1365,7 @@ func TestEventsPaginated_PaginationAndFilters(t *testing.T) {
 	}
 
 	// Test anvil filter
-	result, err = fdb.EventsPaginated(50, 0, "", "anvil2", "", "", "")
+	result, err = fdb.EventsPaginated(50, 0, "", "anvil2", "", "", "", "", "")
 	if err != nil {
 		t.Fatalf("EventsPaginated anvil filter: %v", err)
 	}
@@ -1264,7 +1374,7 @@ func TestEventsPaginated_PaginationAndFilters(t *testing.T) {
 	}
 
 	// Test date range filter
-	result, err = fdb.EventsPaginated(50, 0, "", "", "", "2026-04-02", "2026-04-04")
+	result, err = fdb.EventsPaginated(50, 0, "", "", "", "2026-04-02", "2026-04-04", "", "")
 	if err != nil {
 		t.Fatalf("EventsPaginated date range: %v", err)
 	}
@@ -1273,7 +1383,7 @@ func TestEventsPaginated_PaginationAndFilters(t *testing.T) {
 	}
 
 	// Test search
-	result, err = fdb.EventsPaginated(50, 0, "", "", "bead b2", "", "")
+	result, err = fdb.EventsPaginated(50, 0, "", "", "bead b2", "", "", "", "")
 	if err != nil {
 		t.Fatalf("EventsPaginated search: %v", err)
 	}
@@ -1282,7 +1392,7 @@ func TestEventsPaginated_PaginationAndFilters(t *testing.T) {
 	}
 
 	// Test combined filters: type + anvil
-	result, err = fdb.EventsPaginated(50, 0, "worker_start", "anvil1", "", "", "")
+	result, err = fdb.EventsPaginated(50, 0, "worker_start", "anvil1", "", "", "", "", "")
 	if err != nil {
 		t.Fatalf("EventsPaginated combined: %v", err)
 	}
@@ -1305,7 +1415,7 @@ func TestEventsPaginated_SearchEscapesLIKEChars(t *testing.T) {
 	}
 
 	// Search for literal "%" - should match only the event containing "%"
-	result, err := fdb.EventsPaginated(50, 0, "", "", "100%", "", "")
+	result, err := fdb.EventsPaginated(50, 0, "", "", "100%", "", "", "", "")
 	if err != nil {
 		t.Fatalf("EventsPaginated search %%: %v", err)
 	}
@@ -1314,7 +1424,7 @@ func TestEventsPaginated_SearchEscapesLIKEChars(t *testing.T) {
 	}
 
 	// Search for literal "_" - should match only the event containing "_"
-	result, err = fdb.EventsPaginated(50, 0, "", "", "file_name", "", "")
+	result, err = fdb.EventsPaginated(50, 0, "", "", "file_name", "", "", "", "")
 	if err != nil {
 		t.Fatalf("EventsPaginated search _: %v", err)
 	}
@@ -1327,7 +1437,7 @@ func TestEventsPaginated_DefaultLimitAndOffset(t *testing.T) {
 	fdb := setupTestDB(t)
 
 	// limit <= 0 defaults to 50, offset < 0 defaults to 0
-	result, err := fdb.EventsPaginated(-1, -5, "", "", "", "", "")
+	result, err := fdb.EventsPaginated(-1, -5, "", "", "", "", "", "", "")
 	if err != nil {
 		t.Fatalf("EventsPaginated negative params: %v", err)
 	}

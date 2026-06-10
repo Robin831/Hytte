@@ -463,15 +463,17 @@ func (d *DB) RecentlyMergedPRs(since time.Time) ([]PR, error) {
 	return prs, nil
 }
 
-// Events returns recent events, optionally filtered by type and/or anvil.
-// limit controls how many rows are returned (0 means 50).
-func (d *DB) Events(limit int, eventType, anvil string) ([]Event, error) {
-	if limit <= 0 {
-		limit = 50
-	}
-
-	var conditions []string
-	var args []any
+// appendEventFilters appends WHERE conditions (and any bind args) for the
+// shared event filters used by both Events and EventsPaginated: exact type,
+// exact anvil, the "errors" level group, and the "prs" type group.
+//
+// level=="error" mirrors the frontend classifyLevel failure heuristic, and
+// group=="prs" mirrors the frontend PR-group test, so the Mezzanine events
+// panel and the full Events page filter the entire event log identically to
+// the old client-side checks. SQLite LIKE is case-insensitive for ASCII, which
+// matches the frontend's lower-cased substring tests. Unknown level/group
+// values are ignored. See web/src/utils/forgeEventFilter.ts.
+func appendEventFilters(conditions []string, args []any, eventType, anvil, level, group string) ([]string, []any) {
 	if eventType != "" {
 		conditions = append(conditions, "type = ?")
 		args = append(args, eventType)
@@ -480,6 +482,25 @@ func (d *DB) Events(limit int, eventType, anvil string) ([]Event, error) {
 		conditions = append(conditions, "anvil = ?")
 		args = append(args, anvil)
 	}
+	if level == "error" {
+		conditions = append(conditions, "(type LIKE '%fail%' OR type LIKE '%error%' OR message LIKE '%failed%')")
+	}
+	if group == "prs" {
+		conditions = append(conditions, "(type LIKE '%pr%' OR type LIKE '%merge%' OR type LIKE '%warden%' OR type LIKE '%review%')")
+	}
+	return conditions, args
+}
+
+// Events returns recent events, optionally filtered by type, anvil, level, and
+// type group. limit controls how many rows are returned (0 means 50).
+func (d *DB) Events(limit int, eventType, anvil, level, group string) ([]Event, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	var conditions []string
+	var args []any
+	conditions, args = appendEventFilters(conditions, args, eventType, anvil, level, group)
 
 	where := ""
 	if len(conditions) > 0 {
@@ -527,8 +548,9 @@ type EventsPageResult struct {
 
 // EventsPaginated returns a paginated, filtered list of events for the full
 // events page. It supports text search across message/bead_id/type, date range
-// filtering, type and anvil filters, plus offset/limit pagination.
-func (d *DB) EventsPaginated(limit, offset int, eventType, anvil, search, from, to string) (*EventsPageResult, error) {
+// filtering, type and anvil filters, the "errors" level group and "prs" type
+// group (see appendEventFilters), plus offset/limit pagination.
+func (d *DB) EventsPaginated(limit, offset int, eventType, anvil, search, from, to, level, group string) (*EventsPageResult, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -538,14 +560,7 @@ func (d *DB) EventsPaginated(limit, offset int, eventType, anvil, search, from, 
 
 	var conditions []string
 	var args []any
-	if eventType != "" {
-		conditions = append(conditions, "type = ?")
-		args = append(args, eventType)
-	}
-	if anvil != "" {
-		conditions = append(conditions, "anvil = ?")
-		args = append(args, anvil)
-	}
+	conditions, args = appendEventFilters(conditions, args, eventType, anvil, level, group)
 	if search != "" {
 		conditions = append(conditions, "(message LIKE ? ESCAPE '\\' OR bead_id LIKE ? ESCAPE '\\' OR type LIKE ? ESCAPE '\\')")
 		escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(search)

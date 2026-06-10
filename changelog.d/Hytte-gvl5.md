@@ -1,0 +1,2 @@
+category: Fixed
+- **Mezzanine events panel filters search the full event log** - The Errors, PRs, and per-anvil filters on the Hearth events panel now query the entire event history server-side (newest first) instead of only the ~50-100 events in the live in-memory window, so older matching events are no longer hidden. The events endpoints gained `level=error` and `group=prs` query params (mirroring the old client-side heuristics), and the full Events page reuses them for a matching "Errors" / "PRs" filter. (Hytte-gvl5)
