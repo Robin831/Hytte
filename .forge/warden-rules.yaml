@@ -27244,3 +27244,97 @@ rules:
       paths:
         - '**/*.md'
         - '**/*.tsx'
+    - id: background-poll-suppress-transient-errors
+      category: error-handling
+      pattern: >-
+        Background/interval polling that refreshes already-displayed data and shares a fetch function with the initial load, where the fetch sets an error state on failure
+      check: >-
+        Verify the background poll tick opts into suppressing error banners (e.g., a silent/background flag on the fetch) so a transient poll failure does not surface an error in the UI while valid existing data is still displayed; errors should only show for user-initiated or initial loads
+      source: copilot:PR#860
+      added: "2026-06-10"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: ref-mirror-effect-race
+      category: concurrency
+      pattern: >-
+        A ref mirroring state (e.g. an in-flight/loading flag) is updated inside useEffect, while a polling timer or other async callback reads that ref to decide whether to start or abort work
+      check: >-
+        Verify the ref is updated synchronously at the moment the operation starts/finishes (or via useLayoutEffect), not in a post-paint useEffect — otherwise a timer tick firing between the state change and the effect can read a stale ref value and race the user-initiated action (e.g. aborting its request)
+      source: copilot:PR#860
+      added: "2026-06-10"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: restore-global-overrides-in-tests
+      category: testing
+      pattern: >-
+        Test code that overrides global or document-level properties (e.g. Object.defineProperty on document.visibilityState, window properties, or other shared globals) within a test file
+      check: >-
+        Verify the override is restored or deleted in afterEach/cleanup so it does not leak into other test files sharing the same worker. Follow the existing repo pattern (e.g. PokemonScanned.test.tsx deletes the override in afterEach).
+      source: copilot:PR#860
+      added: "2026-06-10"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: background-poll-error-suppression
+      category: error-handling
+      pattern: >-
+        A shared data-loading function (e.g. loadAll/fetchData) that sets or clears a global error banner is called from both background/interval polling and user-initiated actions (refresh, toggle)
+      check: >-
+        Verify that transient background poll failures do not replace previously loaded good data or surface the shared error banner; the load function should accept a flag (or use separate paths) so errors are suppressed for background polls but still shown for user-initiated requests, and successful polls should not unnecessarily clear errors from user actions
+      source: copilot:PR#860
+      added: "2026-06-10"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: consistent-order-by-tiebreaker-across-queries
+      category: other
+      pattern: >-
+        Two or more SQL queries return the same logical list (e.g. a full-history query and a paginated query) but use different ORDER BY clauses
+      check: >-
+        Verify every query over the same data uses an identical ORDER BY with a deterministic tie-breaker (e.g. append a unique column like `id` to non-unique sort keys), so ordering is stable and consistent across all code paths
+      source: copilot:PR#863
+      added: "2026-06-10"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: comment-matches-query-ordering
+      category: style
+      pattern: >-
+        A code comment or doc string describing the ORDER BY / sort semantics of a database query, especially keyset/cursor-paginated queries with tie-breaker columns
+      check: >-
+        Verify the comment accurately reflects the actual ORDER BY clause, including any secondary tie-breaker columns (e.g. id DESC) that the query relies on for stable keyset pagination
+      source: copilot:PR#863
+      added: "2026-06-10"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: clear-ui-state-after-fetch-success
+      category: error-handling
+      pattern: >-
+        A handler optimistically clears UI state (banner, badge, notification, retry affordance) before the async fetch/merge that the state depends on has succeeded
+      check: >-
+        Verify the UI-clearing happens only after the request resolves successfully and its response is parsed/merged; on network error or non-2xx the state must be preserved so the user keeps the retry/refresh affordance
+      source: copilot:PR#863
+      added: "2026-06-10"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: abort-guarded-finally-state
+      category: concurrency
+      pattern: >-
+        An async fetch/effect uses a finally block to reset loading or initial-load flags (e.g. setLoading(false), isInitialLoad.current = false), while also using an AbortController to cancel in-flight requests (common with React StrictMode double-invoked effects).
+      check: >-
+        Verify that state updates and ref mutations in the finally block are guarded so they only run when the request was not aborted. An aborted request must not flip initial-load flags or force loading=false while a newer fetch is still in flight.
+      source: copilot:PR#864
+      added: "2026-06-10"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
