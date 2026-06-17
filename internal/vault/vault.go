@@ -1,7 +1,6 @@
 package vault
 
 import (
-	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -277,7 +276,7 @@ func DownloadStream(userID, fileID int64) (io.ReadCloser, int64, error) {
 		return nil, 0, fmt.Errorf("decrypt file: %w", err)
 	}
 
-	return io.NopCloser(bytes.NewReader([]byte(plaintext))), int64(len(plaintext)), nil
+	return io.NopCloser(strings.NewReader(plaintext)), int64(len(plaintext)), nil
 }
 
 // Download reads and decrypts a vault file's content from disk. It is retained
@@ -453,9 +452,14 @@ func PreviewStream(db *sql.DB, userID, fileID int64) (io.ReadCloser, string, int
 		return nil, "", 0, ErrNotPreviewable
 	}
 
-	rc, _, err := DownloadStream(userID, fileID)
+	rc, actualSize, err := DownloadStream(userID, fileID)
 	if err != nil {
 		return nil, "", 0, err
+	}
+
+	if actualSize != f.SizeBytes {
+		rc.Close()
+		return nil, "", 0, fmt.Errorf("decrypted size %d does not match stored size_bytes %d", actualSize, f.SizeBytes)
 	}
 
 	return rc, f.MimeType, f.SizeBytes, nil

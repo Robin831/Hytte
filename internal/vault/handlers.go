@@ -171,7 +171,7 @@ func DownloadHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		reader, _, err := DownloadStream(user.ID, fileID)
+		reader, actualSize, err := DownloadStream(user.ID, fileID)
 		if err != nil {
 			log.Printf("Failed to download vault file: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to download file"})
@@ -179,9 +179,12 @@ func DownloadHandler(db *sql.DB) http.HandlerFunc {
 		}
 		defer reader.Close()
 
-		// Set headers only after the reader is obtained so error responses above
-		// are not corrupted by a pre-set Content-Length. Use the stored
-		// size_bytes for Content-Length rather than buffering the file to len().
+		if actualSize != f.SizeBytes {
+			log.Printf("Vault file %d: decrypted size %d does not match stored size_bytes %d", fileID, actualSize, f.SizeBytes)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "file integrity error"})
+			return
+		}
+
 		w.Header().Set("Content-Type", f.MimeType)
 		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": f.Filename}))
 		w.Header().Set("Content-Length", strconv.FormatInt(f.SizeBytes, 10))
