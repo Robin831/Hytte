@@ -91,6 +91,9 @@ func (s *AuroraService) AuroraHandler() http.HandlerFunc {
 			return
 		}
 
+		// Match the existing 15-minute upstream cache so clients don't re-fetch
+		// more often than the data can change.
+		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(auroraCacheDuration.Seconds())))
 		writeJSON(w, http.StatusOK, forecast)
 	}
 }
