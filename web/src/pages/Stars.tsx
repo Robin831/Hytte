@@ -166,6 +166,7 @@ function JourneyCard() {
         })
         if (!res.ok) throw new Error('fetch failed')
         const data: JourneyResponse = await res.json()
+        if (controller.signal.aborted) return
         setJourney(data)
       } catch (err: unknown) {
         if (controller.signal.aborted) {
