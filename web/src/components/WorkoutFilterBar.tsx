@@ -57,7 +57,7 @@ export default function WorkoutFilterBar({
             <option value="">{t('filters.allSports')}</option>
             {sports.map((s) => (
               <option key={s} value={s}>
-                {t(`filters.sports.${s}`)}
+                {t(`filters.sports.${s}`, { defaultValue: s })}
               </option>
             ))}
           </select>
