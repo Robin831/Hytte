@@ -38,7 +38,7 @@ export default function WorkoutFilterBar({
     [workouts],
   )
 
-  const hasActiveFilters = sport !== '' || selectedTags.length > 0 || query !== ''
+  const hasActiveFilters = sport !== '' || selectedTags.length > 0 || query.trim() !== ''
 
   return (
     <div className="mb-4 space-y-3 bg-gray-800/50 border border-gray-700 rounded-xl p-3 sm:p-4">
@@ -106,6 +106,7 @@ export default function WorkoutFilterBar({
                 type="button"
                 onClick={() => toggleTag(tag)}
                 aria-pressed={selected}
+                aria-label={tag}
                 className={`rounded-full transition-shadow ${
                   selected
                     ? 'ring-2 ring-orange-400'

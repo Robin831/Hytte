@@ -76,7 +76,7 @@ export default function Training() {
     )
   }, [workouts, sportFilter, selectedTags, query])
 
-  const filtersActive = sportFilter !== '' || selectedTags.length > 0 || query !== ''
+  const filtersActive = sportFilter !== '' || selectedTags.length > 0 || query.trim() !== ''
 
   useEffect(() => {
     if (!user) return

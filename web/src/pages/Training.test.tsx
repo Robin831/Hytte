@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Training from './Training'
@@ -170,6 +170,10 @@ describe('Training filter bar', () => {
       close() {}
     })
     vi.stubGlobal('fetch', mockFetch(WORKOUTS))
+  })
+
+  afterAll(() => {
+    vi.unstubAllGlobals()
   })
 
   it('shows all workouts when no filter is active', async () => {
