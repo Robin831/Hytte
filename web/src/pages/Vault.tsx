@@ -220,8 +220,8 @@ export default function Vault() {
 
   const handleUpload = async (fileList: FileList | File[] | null) => {
     if (!fileList || fileList.length === 0) return
+    if (uploadXhrRef.current) return
     const filesToUpload = Array.from(fileList)
-    uploadXhrRef.current?.abort()
     setUploading(true)
     setError('')
     setUploads(filesToUpload.map((f) => ({ name: f.name, pct: 0, status: 'uploading' as const })))
@@ -257,6 +257,7 @@ export default function Vault() {
     if (!hadError) {
       setShowUploadForm(false)
       setUploads([])
+      setDragActive(false)
       setUploadFolder('')
       setUploadAccess('private')
       setUploadTags('')
@@ -267,6 +268,7 @@ export default function Vault() {
     uploadXhrRef.current?.abort()
     setShowUploadForm(false)
     setUploads([])
+    setDragActive(false)
   }
 
   const handleDelete = async (file: VaultFile) => {
@@ -510,7 +512,6 @@ export default function Vault() {
                   if (e.dataTransfer.files?.length) handleUpload(e.dataTransfer.files)
                 }}
                 disabled={uploading}
-                aria-label={t('chooseFiles')}
                 className={`w-full flex flex-col items-center justify-center gap-2 px-4 py-8 rounded-lg text-sm font-medium transition-colors cursor-pointer border-2 border-dashed disabled:cursor-not-allowed ${
                   dragActive
                     ? 'border-blue-400 bg-blue-500/10 text-blue-300'
