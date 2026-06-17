@@ -1,7 +1,9 @@
 package vault
 
 import (
+	"bytes"
 	"database/sql"
+	"io"
 	"os"
 	"testing"
 
@@ -127,6 +129,47 @@ func TestDownloadRoundTrip(t *testing.T) {
 	}
 	if string(data) != string(content) {
 		t.Errorf("downloaded content = %q, want %q", string(data), string(content))
+	}
+}
+
+func TestDownloadStreamRoundTrip(t *testing.T) {
+	db := setupTestDB(t)
+
+	content := []byte("streamed vault content test payload")
+	f, err := Create(db, 1, "stream.bin", "application/octet-stream", "", "private", nil, content)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	rc, size, err := DownloadStream(1, f.ID)
+	if err != nil {
+		t.Fatalf("DownloadStream: %v", err)
+	}
+	defer rc.Close()
+
+	if size != int64(len(content)) {
+		t.Errorf("size = %d, want %d", size, len(content))
+	}
+	if size != f.SizeBytes {
+		t.Errorf("size = %d, want stored size_bytes %d", size, f.SizeBytes)
+	}
+
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if !bytes.Equal(data, content) {
+		t.Errorf("streamed content = %q, want %q", string(data), string(content))
+	}
+}
+
+func TestDownloadStreamMissingFile(t *testing.T) {
+	// setupTestDB configures the storage dir and encryption key env vars.
+	setupTestDB(t)
+
+	// No file was ever written to disk for this ID, so the read path must error.
+	if _, _, err := DownloadStream(1, 9999); err == nil {
+		t.Error("DownloadStream on missing file: expected error, got nil")
 	}
 }
 
