@@ -1,6 +1,8 @@
 {
   "unavailable": "Unavailable",
   "viewMore": "View more",
+  "loading": "Loading your day…",
+  "loadingWidgets": "Loading widgets…",
   "role": {
     "parent": "Parent",
     "child": "Kid",

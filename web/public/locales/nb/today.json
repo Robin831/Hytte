@@ -1,6 +1,8 @@
 {
   "unavailable": "Ikke tilgjengelig",
   "viewMore": "Se mer",
+  "loading": "Laster dagen din…",
+  "loadingWidgets": "Laster moduler…",
   "role": {
     "parent": "Forelder",
     "child": "Barn",

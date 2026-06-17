@@ -4,6 +4,7 @@ import { useAuth } from '../auth'
 import { useCurrentTime } from '../hooks/useCurrentTime'
 import { formatDate, formatTime } from '../utils/formatDate'
 import AmbientLine from '../components/today/AmbientLine'
+import { TodayHeaderSkeleton, TodayGridSkeleton } from '../components/today/TodaySkeleton'
 
 const ParentTodayView = lazy(() => import('../components/today/ParentTodayView'))
 const KidTodayView = lazy(() => import('../components/today/KidTodayView'))
@@ -32,7 +33,14 @@ export default function TodayView() {
   const role = useFamilyRole()
   const now = useCurrentTime()
 
-  if (role === null) return null
+  if (role === null) {
+    return (
+      <div className="h-[calc(100dvh-3.5rem)] md:h-[100dvh] flex flex-col p-4 sm:p-6 overflow-hidden">
+        <TodayHeaderSkeleton />
+        <TodayGridSkeleton />
+      </div>
+    )
+  }
 
   const timeStr = formatTime(now, { hour: '2-digit', minute: '2-digit' })
   const dateStr = formatDate(now, { weekday: 'long', month: 'long', day: 'numeric' })
@@ -57,11 +65,11 @@ export default function TodayView() {
       </header>
 
       {/* Widget grid */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 flex-1 min-h-0 auto-rows-fr">
-        <Suspense fallback={null}>
+      <Suspense fallback={<TodayGridSkeleton />}>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 flex-1 min-h-0 auto-rows-fr">
           <Widgets />
-        </Suspense>
-      </div>
+        </div>
+      </Suspense>
     </div>
   )
 }
