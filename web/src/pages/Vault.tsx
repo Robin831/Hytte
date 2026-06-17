@@ -31,6 +31,13 @@ interface VaultFile {
   updated_at: string
 }
 
+interface UploadItem {
+  name: string
+  pct: number
+  status: 'uploading' | 'done' | 'error'
+  error?: string
+}
+
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -70,13 +77,15 @@ export default function Vault() {
   const [activeFolder, setActiveFolder] = useState('')
   const [activeTag, setActiveTag] = useState('')
   const [uploading, setUploading] = useState(false)
+  const [uploads, setUploads] = useState<UploadItem[]>([])
+  const [dragActive, setDragActive] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [deleteTarget, setDeleteTarget] = useState<VaultFile | null>(null)
   const [editFile, setEditFile] = useState<VaultFile | null>(null)
   const [previewFile, setPreviewFile] = useState<VaultFile | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const uploadAbortRef = useRef<AbortController | null>(null)
+  const uploadXhrRef = useRef<XMLHttpRequest | null>(null)
   const previewAbortRef = useRef<AbortController | null>(null)
 
   // Edit form state
@@ -122,7 +131,7 @@ export default function Vault() {
 
   useEffect(() => {
     return () => {
-      uploadAbortRef.current?.abort()
+      uploadXhrRef.current?.abort()
       previewAbortRef.current?.abort()
     }
   }, [])
@@ -157,45 +166,109 @@ export default function Vault() {
     return () => controller.abort()
   }, [refreshKey])
 
-  const handleUpload = async (fileList: FileList | null) => {
-    if (!fileList || fileList.length === 0) return
-    uploadAbortRef.current?.abort()
-    const controller = new AbortController()
-    uploadAbortRef.current = controller
-    setUploading(true)
-    setError('')
+  // Upload a single file via XMLHttpRequest so we can surface upload progress.
+  // Resolves with { ok, error? }; rejects only when the upload is aborted.
+  const uploadOne = (file: File, index: number) =>
+    new Promise<{ ok: boolean; error?: string }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      uploadXhrRef.current = xhr
 
-    try {
-      for (const file of Array.from(fileList)) {
-        const formData = new FormData()
-        formData.append('file', file)
-        if (uploadFolder) formData.append('folder', uploadFolder)
-        formData.append('access', uploadAccess)
-        if (uploadTags) formData.append('tags', uploadTags)
+      const formData = new FormData()
+      formData.append('file', file)
+      if (uploadFolder) formData.append('folder', uploadFolder)
+      formData.append('access', uploadAccess)
+      if (uploadTags) formData.append('tags', uploadTags)
 
-        const res = await fetch('/api/vault/files', {
-          method: 'POST',
-          credentials: 'include',
-          body: formData,
-          signal: controller.signal,
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({ error: t('errors.failedToUpload') }))
-          throw new Error(data.error || t('errors.failedToUpload'))
+      xhr.upload.onprogress = (e) => {
+        if (!e.lengthComputable) return
+        const pct = Math.round((e.loaded / e.total) * 100)
+        setUploads((prev) => prev.map((u, idx) => (idx === index ? { ...u, pct } : u)))
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          setUploads((prev) =>
+            prev.map((u, idx) => (idx === index ? { ...u, pct: 100, status: 'done' as const } : u)),
+          )
+          resolve({ ok: true })
+        } else {
+          let msg = t('errors.failedToUpload')
+          try {
+            const data = JSON.parse(xhr.responseText)
+            if (data.error) msg = data.error
+          } catch {
+            // non-JSON error body; fall back to generic message
+          }
+          setUploads((prev) =>
+            prev.map((u, idx) => (idx === index ? { ...u, status: 'error' as const, error: msg } : u)),
+          )
+          resolve({ ok: false, error: msg })
         }
       }
+      xhr.onerror = () => {
+        const msg = t('errors.failedToUpload')
+        setUploads((prev) =>
+          prev.map((u, idx) => (idx === index ? { ...u, status: 'error' as const, error: msg } : u)),
+        )
+        resolve({ ok: false, error: msg })
+      }
+      xhr.onabort = () => reject(new DOMException('Upload aborted', 'AbortError'))
+
+      xhr.open('POST', '/api/vault/files')
+      xhr.withCredentials = true
+      xhr.send(formData)
+    })
+
+  const handleUpload = async (fileList: FileList | File[] | null) => {
+    if (!fileList || fileList.length === 0) return
+    if (uploadXhrRef.current) return
+    const filesToUpload = Array.from(fileList)
+    setUploading(true)
+    setError('')
+    setUploads(filesToUpload.map((f) => ({ name: f.name, pct: 0, status: 'uploading' as const })))
+
+    let hadError = false
+    let anySuccess = false
+
+    try {
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const result = await uploadOne(filesToUpload[i], i)
+        if (result.ok) anySuccess = true
+        else hadError = true
+      }
+    } catch (err) {
+      // Aborted mid-flight (form closed or component unmounted): drop stale state.
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        uploadXhrRef.current = null
+        setUploading(false)
+        setUploads([])
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        return
+      }
+      hadError = true
+    }
+
+    uploadXhrRef.current = null
+    setUploading(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (anySuccess) setRefreshKey((k) => k + 1)
+
+    // Only close and reset the form when every file uploaded cleanly; otherwise
+    // keep it open so the inline per-file errors stay visible.
+    if (!hadError) {
       setShowUploadForm(false)
+      setUploads([])
+      setDragActive(false)
       setUploadFolder('')
       setUploadAccess('private')
       setUploadTags('')
-      setRefreshKey((k) => k + 1)
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
-      setError(err instanceof Error ? err.message : t('errors.failedToUpload'))
-    } finally {
-      setUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
     }
+  }
+
+  const closeUploadForm = () => {
+    uploadXhrRef.current?.abort()
+    setShowUploadForm(false)
+    setUploads([])
+    setDragActive(false)
   }
 
   const handleDelete = async (file: VaultFile) => {
@@ -377,8 +450,8 @@ export default function Vault() {
       </div>
 
       {/* Upload form modal */}
-      <Dialog open={showUploadForm} onClose={() => setShowUploadForm(false)} aria-labelledby={uploadTitleId}>
-        <DialogHeader id={uploadTitleId} title={t('uploadTitle')} onClose={() => setShowUploadForm(false)} />
+      <Dialog open={showUploadForm} onClose={closeUploadForm} aria-labelledby={uploadTitleId}>
+        <DialogHeader id={uploadTitleId} title={t('uploadTitle')} onClose={closeUploadForm} />
         <DialogBody>
           <div className="space-y-4">
             <div>
@@ -423,14 +496,88 @@ export default function Vault() {
                 aria-label={t('chooseFiles')}
               />
               <button
+                type="button"
                 onClick={() => fileInputRef.current?.click()}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setDragActive(true)
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault()
+                  setDragActive(false)
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setDragActive(false)
+                  if (e.dataTransfer.files?.length) handleUpload(e.dataTransfer.files)
+                }}
                 disabled={uploading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-medium transition-colors cursor-pointer border-2 border-dashed border-blue-500"
+                className={`w-full flex flex-col items-center justify-center gap-2 px-4 py-8 rounded-lg text-sm font-medium transition-colors cursor-pointer border-2 border-dashed disabled:cursor-not-allowed ${
+                  dragActive
+                    ? 'border-blue-400 bg-blue-500/10 text-blue-300'
+                    : 'border-blue-500 bg-blue-600/10 hover:bg-blue-600/20 text-blue-300 disabled:opacity-60'
+                }`}
               >
-                <Upload size={16} />
-                {uploading ? t('uploading') : t('chooseFiles')}
+                <Upload size={24} />
+                <span>
+                  {uploading
+                    ? t('uploading')
+                    : dragActive
+                      ? t('dropZoneActive')
+                      : t('dropZoneHint')}
+                </span>
               </button>
             </div>
+
+            {/* Per-file upload progress */}
+            {uploads.length > 0 && (
+              <div className="space-y-3">
+                {uploading && (
+                  <div className="text-xs text-gray-400">
+                    {t('uploadingCount', {
+                      current: Math.min(
+                        uploads.filter((u) => u.status !== 'uploading').length + 1,
+                        uploads.length,
+                      ),
+                      total: uploads.length,
+                    })}
+                  </div>
+                )}
+                {uploads.map((u, idx) => (
+                  <div key={`${u.name}-${idx}`}>
+                    <div className="flex items-center justify-between gap-2 text-xs mb-1">
+                      <span className="truncate text-gray-300">{u.name}</span>
+                      <span
+                        className={
+                          u.status === 'error'
+                            ? 'text-red-400 shrink-0'
+                            : u.status === 'done'
+                              ? 'text-green-400 shrink-0'
+                              : 'text-gray-400 shrink-0'
+                        }
+                      >
+                        {u.status === 'error'
+                          ? t('statusFailed')
+                          : u.status === 'done'
+                            ? t('statusDone')
+                            : `${u.pct}%`}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-gray-800 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          u.status === 'error' ? 'bg-red-500' : 'bg-blue-500'
+                        }`}
+                        style={{ width: `${u.pct}%` }}
+                      />
+                    </div>
+                    {u.status === 'error' && u.error && (
+                      <div className="mt-1 text-xs text-red-400">{u.error}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </DialogBody>
       </Dialog>
