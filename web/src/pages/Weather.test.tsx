@@ -104,6 +104,27 @@ describe('buildDailyForecasts', () => {
     expect(days[0].symbolCode).toBe('cloudy')
   })
 
+  it('parses production RFC3339 Z timestamps and groups by local calendar date', () => {
+    // yr.no returns UTC timestamps with trailing Z. Verify that parsing
+    // and local-calendar grouping work with the production format.
+    const series = [
+      entry('2026-07-15T12:00:00Z', 'rain'),
+      entry('2026-07-13T12:00:00Z', 'cloudy'),
+      entry('2026-07-13T09:00:00Z', 'clearsky_day'),
+      entry('2026-07-14T11:00:00Z', 'fair_day'),
+    ]
+
+    const days = buildDailyForecasts(series, 'Today')
+
+    // Three UTC days may become 3 or 4 local days depending on timezone offset
+    expect(days.length).toBeGreaterThanOrEqual(3)
+    expect(days.length).toBeLessThanOrEqual(4)
+    // Must be chronologically sorted regardless of input order
+    for (let i = 1; i < days.length; i++) {
+      expect(days[i].date > days[i - 1].date).toBe(true)
+    }
+  })
+
   it('caps the result at the first 7 chronological days', () => {
     const series = Array.from({ length: 10 }, (_, i) =>
       entry(`2026-06-${String(20 - i).padStart(2, '0')}T12:00:00`, 'cloudy'),
