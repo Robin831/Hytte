@@ -35,6 +35,25 @@
     "loadingMore": "Laster…",
     "noMoreWorkouts": "Ingen flere økter"
   },
+  "filters": {
+    "sportLabel": "Filtrer etter idrett",
+    "allSports": "Alle idretter",
+    "searchLabel": "Søk i økter etter tittel",
+    "searchPlaceholder": "Søk etter tittel…",
+    "clear": "Nullstill filtre",
+    "noMatches": "Ingen økter samsvarer med filtrene dine",
+    "sports": {
+      "running": "Løping",
+      "cycling": "Sykling",
+      "swimming": "Svømming",
+      "walking": "Gåing",
+      "hiking": "Fjelltur",
+      "strength": "Styrketrening",
+      "rowing": "Roing",
+      "cross_country_skiing": "Langrenn",
+      "other": "Annet"
+    }
+  },
   "nav": {
     "trends": "Trender",
     "compare": "Sammenlign"

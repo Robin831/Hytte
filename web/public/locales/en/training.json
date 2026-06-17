@@ -35,6 +35,25 @@
     "loadingMore": "Loading…",
     "noMoreWorkouts": "No more workouts"
   },
+  "filters": {
+    "sportLabel": "Filter by sport",
+    "allSports": "All sports",
+    "searchLabel": "Search workouts by title",
+    "searchPlaceholder": "Search by title…",
+    "clear": "Clear filters",
+    "noMatches": "No workouts match your filters",
+    "sports": {
+      "running": "Running",
+      "cycling": "Cycling",
+      "swimming": "Swimming",
+      "walking": "Walking",
+      "hiking": "Hiking",
+      "strength": "Strength training",
+      "rowing": "Rowing",
+      "cross_country_skiing": "Cross-country skiing",
+      "other": "Other"
+    }
+  },
   "nav": {
     "trends": "Trends",
     "compare": "Compare"
