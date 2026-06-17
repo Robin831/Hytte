@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -245,30 +246,51 @@ func Get(db *sql.DB, userID, fileID int64) (*File, error) {
 	return &f, nil
 }
 
-// Download reads and decrypts a vault file's content from disk.
-func Download(userID, fileID int64) ([]byte, error) {
+// DownloadStream reads and decrypts a vault file's content from disk and returns
+// it as an io.ReadCloser so the response body can be streamed to the client via
+// io.Copy rather than buffered in a single response-sized allocation.
+//
+// The at-rest format is AES-256-GCM, which authenticates the whole ciphertext on
+// decrypt, so the ciphertext is read and decrypted in full before any plaintext
+// is exposed — no unverified bytes are ever emitted. The returned reader then
+// streams the already-authenticated plaintext. The reported size is the number of
+// decrypted plaintext bytes, which matches the file's stored size_bytes.
+func DownloadStream(userID, fileID int64) (io.ReadCloser, int64, error) {
 	diskPath := filePath(userID, fileID)
 
 	// Symlink protection: ensure the path is not a symlink.
 	info, err := os.Lstat(diskPath)
 	if err != nil {
-		return nil, fmt.Errorf("read file: %w", err)
+		return nil, 0, fmt.Errorf("read file: %w", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return nil, fmt.Errorf("read file: refusing to follow symlink")
+		return nil, 0, fmt.Errorf("read file: refusing to follow symlink")
 	}
 
 	encData, err := os.ReadFile(diskPath)
 	if err != nil {
-		return nil, fmt.Errorf("read file: %w", err)
+		return nil, 0, fmt.Errorf("read file: %w", err)
 	}
 
 	plaintext, err := encryption.Decrypt(string(encData))
 	if err != nil {
-		return nil, fmt.Errorf("decrypt file: %w", err)
+		return nil, 0, fmt.Errorf("decrypt file: %w", err)
 	}
 
-	return []byte(plaintext), nil
+	return io.NopCloser(bytes.NewReader([]byte(plaintext))), int64(len(plaintext)), nil
+}
+
+// Download reads and decrypts a vault file's content from disk. It is retained
+// for callers that need the full decrypted []byte; it delegates to
+// DownloadStream so the disk-read, symlink-protection, and decrypt paths stay in
+// one place.
+func Download(userID, fileID int64) ([]byte, error) {
+	rc, _, err := DownloadStream(userID, fileID)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return io.ReadAll(rc)
 }
 
 // Update modifies a vault file's metadata (filename, folder, access, tags).
@@ -416,24 +438,27 @@ func setTags(tx *sql.Tx, fileID int64, tags []string) error {
 	return nil
 }
 
-// PreviewData reads a vault file and returns its decrypted content, but only
-// for previewable types (images, PDFs). Returns nil for non-previewable types.
-func PreviewData(db *sql.DB, userID, fileID int64) ([]byte, string, error) {
+// PreviewStream reads a vault file and returns a streaming reader over its
+// decrypted content, but only for previewable types (images, PDFs). It returns a
+// nil reader (and no error) when the file does not exist, and ErrNotPreviewable
+// for non-previewable types. The reported size is the file's stored size_bytes so
+// callers can set Content-Length without buffering the whole file.
+func PreviewStream(db *sql.DB, userID, fileID int64) (io.ReadCloser, string, int64, error) {
 	f, err := Get(db, userID, fileID)
 	if err != nil || f == nil {
-		return nil, "", err
+		return nil, "", 0, err
 	}
 
 	if !isPreviewable(f.MimeType) {
-		return nil, "", ErrNotPreviewable
+		return nil, "", 0, ErrNotPreviewable
 	}
 
-	data, err := Download(userID, fileID)
+	rc, _, err := DownloadStream(userID, fileID)
 	if err != nil {
-		return nil, "", err
+		return nil, "", 0, err
 	}
 
-	return data, f.MimeType, nil
+	return rc, f.MimeType, f.SizeBytes, nil
 }
 
 // isPreviewable returns true if the MIME type supports safe inline preview.

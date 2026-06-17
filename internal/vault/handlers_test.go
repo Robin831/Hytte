@@ -369,6 +369,16 @@ func TestDownloadHandler_Success(t *testing.T) {
 	if !strings.Contains(rec.Header().Get("Content-Disposition"), "attachment") {
 		t.Error("expected Content-Disposition to contain 'attachment'")
 	}
+
+	// Content-Length must be set from the stored size_bytes and match the
+	// actual streamed body length (byte-identical round trip).
+	wantLen := strconv.FormatInt(f.SizeBytes, 10)
+	if got := rec.Header().Get("Content-Length"); got != wantLen {
+		t.Errorf("Content-Length = %q, want %q (stored size_bytes)", got, wantLen)
+	}
+	if rec.Body.Len() != int(f.SizeBytes) {
+		t.Errorf("streamed %d bytes, want %d (size_bytes)", rec.Body.Len(), f.SizeBytes)
+	}
 }
 
 func TestDownloadHandler_NotFound(t *testing.T) {
@@ -410,6 +420,16 @@ func TestPreviewHandler_Success(t *testing.T) {
 	}
 	if rec.Body.String() != string(content) {
 		t.Errorf("body = %q, want %q", rec.Body.String(), string(content))
+	}
+
+	// Content-Length must be set from the stored size_bytes and match the
+	// actual streamed body length (byte-identical round trip).
+	wantLen := strconv.FormatInt(f.SizeBytes, 10)
+	if got := rec.Header().Get("Content-Length"); got != wantLen {
+		t.Errorf("Content-Length = %q, want %q (stored size_bytes)", got, wantLen)
+	}
+	if rec.Body.Len() != int(f.SizeBytes) {
+		t.Errorf("streamed %d bytes, want %d (size_bytes)", rec.Body.Len(), f.SizeBytes)
 	}
 }
 

@@ -1,0 +1,2 @@
+category: Changed
+- **Stream vault downloads instead of buffering full files** - Vault download and preview responses now stream the decrypted file to the client via `io.Copy` from an `io.Reader` rather than buffering the entire file in memory before writing, and set `Content-Length` from the stored `size_bytes`. This lowers peak memory and improves time-to-first-byte for large files. (Hytte-ekpm)

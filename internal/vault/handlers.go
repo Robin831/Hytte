@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"mime"
 	"net/http"
@@ -170,17 +171,23 @@ func DownloadHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		data, err := Download(user.ID, fileID)
+		reader, _, err := DownloadStream(user.ID, fileID)
 		if err != nil {
 			log.Printf("Failed to download vault file: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to download file"})
 			return
 		}
+		defer reader.Close()
 
+		// Set headers only after the reader is obtained so error responses above
+		// are not corrupted by a pre-set Content-Length. Use the stored
+		// size_bytes for Content-Length rather than buffering the file to len().
 		w.Header().Set("Content-Type", f.MimeType)
 		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": f.Filename}))
-		w.Header().Set("Content-Length", strconv.FormatInt(int64(len(data)), 10))
-		w.Write(data)
+		w.Header().Set("Content-Length", strconv.FormatInt(f.SizeBytes, 10))
+		if _, err := io.Copy(w, reader); err != nil {
+			log.Printf("Failed to stream vault file: %v", err)
+		}
 	}
 }
 
@@ -194,7 +201,7 @@ func PreviewHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		data, mimeType, err := PreviewData(db, user.ID, fileID)
+		reader, mimeType, size, err := PreviewStream(db, user.ID, fileID)
 		if err != nil {
 			if errors.Is(err, ErrNotPreviewable) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "file type not previewable"})
@@ -204,17 +211,23 @@ func PreviewHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to preview file"})
 			return
 		}
-		if data == nil {
+		if reader == nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "file not found"})
 			return
 		}
+		defer reader.Close()
 
+		// Set headers only after the reader is obtained so error responses above
+		// are not corrupted by a pre-set Content-Length. Use the stored
+		// size_bytes for Content-Length rather than buffering the file to len().
 		w.Header().Set("Content-Type", mimeType)
 		w.Header().Set("Content-Disposition", "inline")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self' blob:; object-src 'self' blob:; plugin-types application/pdf")
-		w.Header().Set("Content-Length", strconv.FormatInt(int64(len(data)), 10))
-		w.Write(data)
+		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+		if _, err := io.Copy(w, reader); err != nil {
+			log.Printf("Failed to stream vault file preview: %v", err)
+		}
 	}
 }
 
