@@ -31,13 +31,13 @@ interface SearchResult {
 
 const REFRESH_INTERVAL_MS = 30_000
 
-function minutesUntil(departureTime: string): number {
-  const diff = new Date(departureTime).getTime() - Date.now()
+function minutesUntil(departureTime: string, now: number): number {
+  const diff = new Date(departureTime).getTime() - now
   return Math.round(diff / 60_000)
 }
 
-function formatDeparture(departureTime: string, t: (key: string) => string): string {
-  const mins = minutesUntil(departureTime)
+function formatDeparture(departureTime: string, now: number, t: (key: string) => string): string {
+  const mins = minutesUntil(departureTime, now)
   if (mins <= 0) return '0 ' + t('transit:min')
   if (mins < 30) return `${mins} ${t('transit:min')}`
   return new Date(departureTime).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
@@ -74,6 +74,16 @@ export default function Transit() {
   // (30s interval, tab-visibility, manual) update departures silently in place.
   const isInitialLoad = useRef(true)
   const [refreshKey, setRefreshKey] = useState(0)
+
+  // Tick a clock value every second so relative departure labels ("5 min")
+  // recompute against the current time between the 30s Entur polls. This is a
+  // pure client-side timer — deliberately NOT wired to refreshKey, so it never
+  // triggers a data fetch.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
 
   // Initial load + auto-refresh every 30 seconds, paused while the tab is hidden.
   useEffect(() => {
@@ -486,7 +496,7 @@ export default function Transit() {
             ) : (
               <div className="divide-y divide-gray-700/50">
                 {stop.departures.map((dep) => {
-                  const mins = minutesUntil(dep.departure_time)
+                  const mins = minutesUntil(dep.departure_time, now)
                   return (
                     <div key={`${dep.line}-${dep.departure_time}`} className="flex items-center gap-3 px-4 py-2.5">
                       {/* Line badge */}
@@ -515,7 +525,7 @@ export default function Transit() {
 
                       {/* Time */}
                       <span className={`text-sm font-medium shrink-0 ${mins <= 1 ? 'text-red-400' : mins <= 5 ? 'text-orange-400' : 'text-white'}`}>
-                        {formatDeparture(dep.departure_time, t as (key: string) => string)}
+                        {formatDeparture(dep.departure_time, now, t as (key: string) => string)}
                       </span>
                     </div>
                   )
