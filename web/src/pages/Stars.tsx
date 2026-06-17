@@ -156,14 +156,37 @@ function JourneyCard() {
   const [journeyError, setJourneyError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/stars/journey', { credentials: 'include' })
-      .then(res => {
+    const controller = new AbortController()
+
+    const fetchJourney = async () => {
+      try {
+        const res = await fetch('/api/stars/journey', {
+          credentials: 'include',
+          signal: controller.signal,
+        })
         if (!res.ok) throw new Error('fetch failed')
-        return res.json()
-      })
-      .then(data => setJourney(data))
-      .catch(() => setJourneyError(t('stars.journey.failedToLoad')))
-      .finally(() => setJourneyLoading(false))
+        const data: JourneyResponse = await res.json()
+        setJourney(data)
+      } catch (err: unknown) {
+        if (controller.signal.aborted) {
+          return
+        }
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          return
+        }
+        setJourneyError(t('stars.journey.failedToLoad'))
+      } finally {
+        if (!controller.signal.aborted) {
+          setJourneyLoading(false)
+        }
+      }
+    }
+
+    fetchJourney()
+
+    return () => {
+      controller.abort()
+    }
   }, [t])
 
   const handleThemeChange = async (themeKey: string) => {
