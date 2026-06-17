@@ -14,6 +14,7 @@ import {
 } from '../recentLocations'
 import LocationSearch from '../components/LocationSearch'
 import { readForecastCache, writeForecastCache } from '../lib/weatherCache'
+import { buildDailyForecasts, type TimeseriesEntry } from '../lib/weatherForecast'
 import { getWeatherIcon, getWeatherDescription } from '../weatherUtils'
 import { formatDate, formatTime } from '../utils/formatDate'
 import {
@@ -28,31 +29,6 @@ import {
 } from 'lucide-react'
 
 
-interface TimeseriesEntry {
-  time: string
-  data: {
-    instant: {
-      details: {
-        air_temperature: number
-        wind_speed: number
-        relative_humidity: number
-        air_pressure_at_sea_level?: number
-        wind_from_direction?: number
-      }
-    }
-    next_1_hours?: {
-      summary: { symbol_code: string }
-      details: { precipitation_amount: number }
-    }
-    next_6_hours?: {
-      summary: { symbol_code: string }
-      details: { precipitation_amount: number }
-    }
-    next_12_hours?: {
-      summary: { symbol_code: string }
-    }
-  }
-}
 
 interface ForecastResponse {
   properties: {
@@ -74,15 +50,6 @@ function splitDaylight(seconds: number): { hours: number; minutes: number } {
   return { hours: Math.floor(totalMinutes / 60), minutes: totalMinutes % 60 }
 }
 
-interface DayForecast {
-  date: string
-  dayName: string
-  symbolCode: string
-  tempMin: number
-  tempMax: number
-  precipitation: number
-  windSpeed: number
-}
 
 type FetchState = { loading: boolean; error: string | null; forecast: ForecastResponse | null; lastUpdated: Date | null }
 type FetchAction =
@@ -159,70 +126,6 @@ function calculateFeelsLike(temp: number, windSpeed: number, humidity: number): 
  */
 function windArrowRotation(windFromDirection: number): number {
   return (windFromDirection + 180) % 360
-}
-
-function buildDailyForecasts(timeseries: TimeseriesEntry[], todayLabel: string): DayForecast[] {
-  const dayMap = new Map<string, {
-    temps: number[]
-    winds: number[]
-    precip: number
-    symbols: string[]
-    date: Date
-  }>()
-
-  for (const entry of timeseries) {
-    const dt = new Date(entry.time)
-    const dateKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
-
-    if (!dayMap.has(dateKey)) {
-      dayMap.set(dateKey, { temps: [], winds: [], precip: 0, symbols: [], date: dt })
-    }
-    const day = dayMap.get(dateKey)!
-
-    day.temps.push(entry.data.instant.details.air_temperature)
-    day.winds.push(entry.data.instant.details.wind_speed)
-
-    const symbol =
-      entry.data.next_1_hours?.summary.symbol_code ||
-      entry.data.next_6_hours?.summary.symbol_code ||
-      entry.data.next_12_hours?.summary.symbol_code
-
-    if (symbol) day.symbols.push(symbol)
-
-    const precip =
-      entry.data.next_1_hours?.details.precipitation_amount ??
-      entry.data.next_6_hours?.details.precipitation_amount ??
-      0
-    day.precip += precip
-  }
-
-  const days: DayForecast[] = []
-  const now = new Date()
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  let count = 0
-
-  for (const [dateKey, data] of dayMap) {
-    if (count >= 7) break
-    const dayName =
-      dateKey === today
-        ? todayLabel
-        : formatDate(data.date, { weekday: 'short' })
-    // Approximate a midday symbol: use the 4th entry if available, otherwise the last, or 'cloudy' if none.
-    const symbolCode = data.symbols[Math.min(3, data.symbols.length - 1)] || 'cloudy'
-
-    days.push({
-      date: dateKey,
-      dayName,
-      symbolCode,
-      tempMin: Math.round(Math.min(...data.temps)),
-      tempMax: Math.round(Math.max(...data.temps)),
-      precipitation: Math.round(data.precip * 10) / 10,
-      windSpeed: Math.round(data.winds.reduce((a, b) => a + b, 0) / data.winds.length * 10) / 10,
-    })
-    count++
-  }
-
-  return days
 }
 
 /** Resolve a location name, checking recents first then the fetched known locations. */
