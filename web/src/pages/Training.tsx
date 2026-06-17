@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Dumbbell, Upload, TrendingUp, BarChart3, RefreshCw, X, Database } from 'lucide-react'
 import { useAuth } from '../auth'
@@ -7,6 +7,7 @@ import { formatDate, formatTime } from '../utils/formatDate'
 import { formatDistance, formatDuration, formatPace } from '../utils/training'
 import type { Workout, WeeklySummary } from '../types/training'
 import TagBadge from '../components/TagBadge'
+import WorkoutFilterBar from '../components/WorkoutFilterBar'
 
 // Page size for the paginated workout list. The list endpoint clamps this
 // server-side; keeping it modest bounds the initial payload and DOM size so a
@@ -43,6 +44,39 @@ export default function Training() {
   const [backfillResult, setBackfillResult] = useState<string | null>(null)
   const latestWorkoutIdRef = useRef<number | null>(null)
   const hasNewWorkoutsRef = useRef(false)
+
+  // Client-side filter state. These narrow the already-loaded `workouts` array
+  // in memory only — no backend query or network request is involved.
+  const [sportFilter, setSportFilter] = useState('')
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [query, setQuery] = useState('')
+
+  const toggleTag = useCallback((tag: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+    )
+  }, [])
+
+  const clearFilters = useCallback(() => {
+    setSportFilter('')
+    setSelectedTags([])
+    setQuery('')
+  }, [])
+
+  // Derived, filtered view of the loaded workouts. Filters combine with AND
+  // across the three types; for tags a workout must carry ALL selected tags.
+  const filteredWorkouts = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return workouts.filter(
+      (w) =>
+        (!sportFilter || w.sport === sportFilter) &&
+        (selectedTags.length === 0 ||
+          selectedTags.every((tag) => (w.tags ?? []).includes(tag))) &&
+        (!q || w.title.toLowerCase().includes(q)),
+    )
+  }, [workouts, sportFilter, selectedTags, query])
+
+  const filtersActive = sportFilter !== '' || selectedTags.length > 0 || query.trim() !== ''
 
   useEffect(() => {
     if (!user) return
@@ -453,7 +487,33 @@ export default function Training() {
       ) : (
         <div className="space-y-2">
           <h2 className="text-lg font-semibold mb-3">{t('workouts.title')}</h2>
-          {workouts.map((w) => {
+          <WorkoutFilterBar
+            workouts={workouts}
+            sports={Object.keys(sportIcons)}
+            sport={sportFilter}
+            setSport={setSportFilter}
+            selectedTags={selectedTags}
+            toggleTag={toggleTag}
+            query={query}
+            setQuery={setQuery}
+            onClear={clearFilters}
+          />
+          {filteredWorkouts.length === 0 ? (
+            <div className="bg-gray-800 rounded-xl p-8 text-center">
+              <p className="text-gray-400">{t('filters.noMatches')}</p>
+              {filtersActive && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="mt-3 inline-flex items-center gap-1 px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-300 transition-colors"
+                >
+                  <X size={16} />
+                  {t('filters.clear')}
+                </button>
+              )}
+            </div>
+          ) : (
+          filteredWorkouts.map((w) => {
             const date = new Date(w.started_at)
             const dateStr = formatDate(date, {
               year: 'numeric',
@@ -515,7 +575,8 @@ export default function Training() {
                 </div>
               </Link>
             )
-          })}
+          })
+          )}
           {nextCursor !== null ? (
             <div className="pt-2 flex justify-center">
               <button

@@ -35,6 +35,25 @@
     "loadingMore": "กำลังโหลด…",
     "noMoreWorkouts": "ไม่มีการออกกำลังกายเพิ่มเติม"
   },
+  "filters": {
+    "sportLabel": "กรองตามกีฬา",
+    "allSports": "กีฬาทั้งหมด",
+    "searchLabel": "ค้นหาการออกกำลังกายตามชื่อ",
+    "searchPlaceholder": "ค้นหาตามชื่อ…",
+    "clear": "ล้างตัวกรอง",
+    "noMatches": "ไม่มีการออกกำลังกายที่ตรงกับตัวกรองของคุณ",
+    "sports": {
+      "running": "วิ่ง",
+      "cycling": "ปั่นจักรยาน",
+      "swimming": "ว่ายน้ำ",
+      "walking": "เดิน",
+      "hiking": "เดินป่า",
+      "strength": "ฝึกความแข็งแรง",
+      "rowing": "พายเรือ",
+      "cross_country_skiing": "สกีทางไกล",
+      "other": "อื่น ๆ"
+    }
+  },
   "nav": {
     "trends": "แนวโน้ม",
     "compare": "เปรียบเทียบ"

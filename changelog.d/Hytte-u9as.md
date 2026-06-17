@@ -1,0 +1,2 @@
+category: Added
+- **Workout list filtering** - Added a client-side filter bar above the Training workout list with a sport dropdown, selectable tag chips, and a free-text title search. Filters combine (a workout must match the selected sport, carry all selected tags, and contain the search text), update live, and can be reset with a clear-filters control. A localized empty state shows when nothing matches. (Hytte-u9as)
