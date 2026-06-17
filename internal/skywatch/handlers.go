@@ -154,7 +154,8 @@ func NowHandler() http.HandlerFunc {
 }
 
 // MoonCalendarHandler returns a moon phase calendar for the given number of days.
-// GET /api/skywatch/moon?days=30&lat=...&lon=...
+// GET /api/skywatch/moon?days=30&lat=...&lon=...&date=YYYY-MM-DD
+// The optional date parameter sets the first day of the calendar (defaults to today).
 func MoonCalendarHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		lat, lon, err := parseCoords(r)
@@ -170,11 +171,20 @@ func MoonCalendarHandler() http.HandlerFunc {
 			}
 		}
 
-		now := time.Now()
+		start := time.Now()
+		if dateStr := r.URL.Query().Get("date"); dateStr != "" {
+			parsed, err := time.ParseInLocation("2006-01-02", dateStr, start.Location())
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid date format, expected YYYY-MM-DD"})
+				return
+			}
+			// Use noon of the requested date for consistent calculations.
+			start = time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 12, 0, 0, 0, start.Location())
+		}
 
 		// Cache key incorporates all inputs that affect output. The calendar is
-		// anchored on today, so include the date to avoid serving yesterday's run.
-		key := fmt.Sprintf("%v|%v|%d|%s", lat, lon, days, now.Format("2006-01-02"))
+		// anchored on the start day, so include the date to avoid serving a stale run.
+		key := fmt.Sprintf("%v|%v|%d|%s", lat, lon, days, start.Format("2006-01-02"))
 		if data, ok := moonCache.get(key); ok {
 			writeCachedJSON(w, data, moonCacheTTL)
 			return
@@ -183,7 +193,7 @@ func MoonCalendarHandler() http.HandlerFunc {
 		calendar := make([]MoonCalendarDay, days)
 
 		for i := range days {
-			date := now.AddDate(0, 0, i)
+			date := start.AddDate(0, 0, i)
 			// Use noon for consistent daily calculations.
 			noon := time.Date(date.Year(), date.Month(), date.Day(), 12, 0, 0, 0, date.Location())
 			illum := GetMoonPhase(noon, lat, lon)
