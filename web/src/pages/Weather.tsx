@@ -28,7 +28,7 @@ import {
 } from 'lucide-react'
 
 
-interface TimeseriesEntry {
+export interface TimeseriesEntry {
   time: string
   data: {
     instant: {
@@ -161,21 +161,36 @@ function windArrowRotation(windFromDirection: number): number {
   return (windFromDirection + 180) % 360
 }
 
-function buildDailyForecasts(timeseries: TimeseriesEntry[], todayLabel: string): DayForecast[] {
+/** Format a Date as a local YYYY-MM-DD calendar key (not UTC, so DST-straddling hours stay on the right day). */
+function localDateKey(dt: Date): string {
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
+
+/** Minutes since local midnight for the given Date. */
+function minutesSinceMidnight(dt: Date): number {
+  return dt.getHours() * 60 + dt.getMinutes()
+}
+
+interface DaySymbolEntry {
+  date: Date
+  symbol: string
+}
+
+export function buildDailyForecasts(timeseries: TimeseriesEntry[], todayLabel: string): DayForecast[] {
   const dayMap = new Map<string, {
     temps: number[]
     winds: number[]
     precip: number
-    symbols: string[]
+    symbolEntries: DaySymbolEntry[]
     date: Date
   }>()
 
   for (const entry of timeseries) {
     const dt = new Date(entry.time)
-    const dateKey = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+    const dateKey = localDateKey(dt)
 
     if (!dayMap.has(dateKey)) {
-      dayMap.set(dateKey, { temps: [], winds: [], precip: 0, symbols: [], date: dt })
+      dayMap.set(dateKey, { temps: [], winds: [], precip: 0, symbolEntries: [], date: dt })
     }
     const day = dayMap.get(dateKey)!
 
@@ -187,7 +202,7 @@ function buildDailyForecasts(timeseries: TimeseriesEntry[], todayLabel: string):
       entry.data.next_6_hours?.summary.symbol_code ||
       entry.data.next_12_hours?.summary.symbol_code
 
-    if (symbol) day.symbols.push(symbol)
+    if (symbol) day.symbolEntries.push({ date: dt, symbol })
 
     const precip =
       entry.data.next_1_hours?.details.precipitation_amount ??
@@ -196,33 +211,51 @@ function buildDailyForecasts(timeseries: TimeseriesEntry[], todayLabel: string):
     day.precip += precip
   }
 
-  const days: DayForecast[] = []
-  const now = new Date()
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  let count = 0
+  const today = localDateKey(new Date())
 
-  for (const [dateKey, data] of dayMap) {
-    if (count >= 7) break
+  // Sort by parsed local calendar date so days always render chronologically,
+  // regardless of timeseries entry order or DST boundaries.
+  const sortedDays = [...dayMap.entries()].sort(([a], [b]) => a.localeCompare(b))
+
+  return sortedDays.slice(0, 7).map(([dateKey, data]) => {
     const dayName =
       dateKey === today
         ? todayLabel
         : formatDate(data.date, { weekday: 'short' })
-    // Approximate a midday symbol: use the 4th entry if available, otherwise the last, or 'cloudy' if none.
-    const symbolCode = data.symbols[Math.min(3, data.symbols.length - 1)] || 'cloudy'
 
-    days.push({
+    return {
       date: dateKey,
       dayName,
-      symbolCode,
+      symbolCode: pickMiddaySymbol(data.symbolEntries),
       tempMin: Math.round(Math.min(...data.temps)),
       tempMax: Math.round(Math.max(...data.temps)),
       precipitation: Math.round(data.precip * 10) / 10,
       windSpeed: Math.round(data.winds.reduce((a, b) => a + b, 0) / data.winds.length * 10) / 10,
-    })
-    count++
+    }
+  })
+}
+
+/**
+ * Choose the symbol whose local time is closest to 12:00, so each day's icon reflects
+ * conditions near midday rather than an arbitrary index. Ties resolve to the earliest
+ * timestamp. Falls back to 'cloudy' when no usable symbol exists.
+ */
+function pickMiddaySymbol(entries: DaySymbolEntry[]): string {
+  if (entries.length === 0) return 'cloudy'
+
+  let best = entries[0]
+  let bestDistance = Math.abs(minutesSinceMidnight(best.date) - 720)
+
+  for (const entry of entries.slice(1)) {
+    const distance = Math.abs(minutesSinceMidnight(entry.date) - 720)
+    // On equal distance from noon, keep the earliest timestamp for deterministic ties.
+    if (distance < bestDistance || (distance === bestDistance && entry.date.getTime() < best.date.getTime())) {
+      best = entry
+      bestDistance = distance
+    }
   }
 
-  return days
+  return best.symbol
 }
 
 /** Resolve a location name, checking recents first then the fetched known locations. */
