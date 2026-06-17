@@ -32,6 +32,19 @@ type Location struct {
 	Lon float64 `json:"lon"`
 }
 
+// Response cache TTLs and their matching Cache-Control max-age values.
+const (
+	nowCacheTTL  = 5 * time.Minute
+	moonCacheTTL = time.Hour
+)
+
+var (
+	// nowCache caches NowHandler responses keyed by lat/lon/date.
+	nowCache = newTTLCache(nowCacheTTL)
+	// moonCache caches MoonCalendarHandler responses keyed by lat/lon/days.
+	moonCache = newTTLCache(moonCacheTTL)
+)
+
 // parseCoords extracts lat/lon from query parameters, falling back to defaults.
 // Both lat and lon must be provided together; if only one is given, an error is returned.
 // Latitude must be in [-90, 90] and longitude in [-180, 180].
@@ -75,6 +88,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
+// writeCachedJSON writes pre-serialized JSON bytes with a matching
+// Cache-Control: public, max-age=<ttl> header.
+func writeCachedJSON(w http.ResponseWriter, data []byte, ttl time.Duration) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(ttl.Seconds())))
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
 // NowHandler returns the current moon phase and sun times.
 // GET /api/skywatch/now?lat=...&lon=...&date=YYYY-MM-DD
 // The optional date parameter allows fetching data for a specific date (defaults to today).
@@ -97,6 +119,14 @@ func NowHandler() http.HandlerFunc {
 			t = time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 12, 0, 0, 0, t.Location())
 		}
 
+		// Cache key incorporates all inputs that affect output. The no-date path
+		// resolves to today's date so repeat visits within the TTL are cached too.
+		key := fmt.Sprintf("%v|%v|%s", lat, lon, t.Format("2006-01-02"))
+		if data, ok := nowCache.get(key); ok {
+			writeCachedJSON(w, data, nowCacheTTL)
+			return
+		}
+
 		// Compute planet positions once to avoid redundant rise/set calculations.
 		planets := GetPlanetPositions(t, lat, lon)
 		highlights := GetTonightHighlights(t, lat, lon, planets)
@@ -112,7 +142,14 @@ func NowHandler() http.HandlerFunc {
 			Planets:    planets,
 			Highlights: highlights,
 		}
-		writeJSON(w, http.StatusOK, resp)
+
+		data, err := json.Marshal(resp)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to encode response"})
+			return
+		}
+		nowCache.set(key, data)
+		writeCachedJSON(w, data, nowCacheTTL)
 	}
 }
 
@@ -134,6 +171,15 @@ func MoonCalendarHandler() http.HandlerFunc {
 		}
 
 		now := time.Now()
+
+		// Cache key incorporates all inputs that affect output. The calendar is
+		// anchored on today, so include the date to avoid serving yesterday's run.
+		key := fmt.Sprintf("%v|%v|%d|%s", lat, lon, days, now.Format("2006-01-02"))
+		if data, ok := moonCache.get(key); ok {
+			writeCachedJSON(w, data, moonCacheTTL)
+			return
+		}
+
 		calendar := make([]MoonCalendarDay, days)
 
 		for i := range days {
@@ -149,10 +195,16 @@ func MoonCalendarHandler() http.HandlerFunc {
 			}
 		}
 
-		writeJSON(w, http.StatusOK, map[string]any{
+		data, err := json.Marshal(map[string]any{
 			"location": Location{Lat: lat, Lon: lon},
 			"days":     days,
 			"calendar": calendar,
 		})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to encode response"})
+			return
+		}
+		moonCache.set(key, data)
+		writeCachedJSON(w, data, moonCacheTTL)
 	}
 }

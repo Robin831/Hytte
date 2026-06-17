@@ -1,0 +1,2 @@
+category: Changed
+- **Cache skywatch responses with short TTLs** - The `/api/skywatch/now` and `/moon` endpoints now serve repeat requests from a small in-memory TTL cache keyed by location and date, avoiding redundant astronomy math, and all three skywatch endpoints emit `Cache-Control: public, max-age=...` headers (300s for now, 3600s for moon, 900s for aurora) for snappier repeat visits. (Hytte-u5ps)
