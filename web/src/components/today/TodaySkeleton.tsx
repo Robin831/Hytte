@@ -1,9 +1,6 @@
 import { useTranslation } from 'react-i18next'
+import type { FamilyRole } from '../../pages/TodayView'
 
-/**
- * Pulsing placeholder that mirrors the watch-face header (time + date lines)
- * so the frame stays stable while auth resolves.
- */
 export function TodayHeaderSkeleton() {
   const { t } = useTranslation('today')
   return (
@@ -12,23 +9,50 @@ export function TodayHeaderSkeleton() {
       aria-busy="true"
       aria-label={t('loading')}
     >
-      {/* Time line */}
       <div className="mx-auto h-10 sm:h-12 w-40 sm:w-48 rounded bg-gray-800 animate-pulse" />
-      {/* Date line */}
       <div className="mx-auto mt-2 h-4 sm:h-5 w-48 sm:w-56 rounded bg-gray-800 animate-pulse" />
-      {/* Ambient line */}
       <div className="mx-auto mt-2 h-3 w-32 rounded bg-gray-800 animate-pulse" />
-      {/* Role line */}
       <div className="mx-auto mt-2 h-3 w-16 rounded bg-gray-800 animate-pulse" />
     </header>
   )
 }
 
-/**
- * Pulsing 2-column grid that mirrors the real widget grid layout so there is
- * no layout shift when the lazy role chunk finishes downloading.
- */
-export function TodayGridSkeleton() {
+const cell = "rounded-xl bg-gray-800 animate-pulse"
+const wide = `${cell} col-span-2`
+
+function GuestGridCells() {
+  return (
+    <>
+      <div className={wide} />
+      <div className={wide} />
+      <div className={wide} />
+    </>
+  )
+}
+
+function ChildGridCells() {
+  return (
+    <>
+      <div className={wide} />
+      <div className={cell} />
+      <div className={cell} />
+    </>
+  )
+}
+
+function ParentGridCells() {
+  return (
+    <>
+      <div className={wide} />
+      <div className={cell} />
+      <div className={cell} />
+      <div className={cell} />
+      <div className={cell} />
+    </>
+  )
+}
+
+export function TodayGridSkeleton({ role }: { role?: FamilyRole | null }) {
   const { t } = useTranslation('today')
   return (
     <div
@@ -36,9 +60,9 @@ export function TodayGridSkeleton() {
       aria-busy="true"
       aria-label={t('loadingWidgets')}
     >
-      {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="rounded-xl bg-gray-800 animate-pulse" />
-      ))}
+      {role === 'child' ? <ChildGridCells /> :
+       role === 'parent' ? <ParentGridCells /> :
+       <GuestGridCells />}
     </div>
   )
 }

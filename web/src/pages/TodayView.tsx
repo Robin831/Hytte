@@ -65,7 +65,7 @@ export default function TodayView() {
       </header>
 
       {/* Widget grid */}
-      <Suspense fallback={<TodayGridSkeleton />}>
+      <Suspense fallback={<TodayGridSkeleton role={role} />}>
         <div className="grid grid-cols-2 gap-3 sm:gap-4 flex-1 min-h-0 auto-rows-fr">
           <Widgets />
         </div>
