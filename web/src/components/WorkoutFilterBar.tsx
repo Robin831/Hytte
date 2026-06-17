@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Workout } from '../types/training'
-import { displayTag } from '../tags'
+import TagBadge from './TagBadge'
 
 interface WorkoutFilterBarProps {
   // The already-loaded workouts; used to derive the available tag set so chips
@@ -106,13 +106,13 @@ export default function WorkoutFilterBar({
                 type="button"
                 onClick={() => toggleTag(tag)}
                 aria-pressed={selected}
-                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs transition-colors ${
+                className={`rounded-full transition-shadow ${
                   selected
-                    ? 'bg-orange-500 text-white ring-2 ring-orange-400'
-                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    ? 'ring-2 ring-orange-400'
+                    : 'hover:ring-2 hover:ring-gray-500'
                 }`}
               >
-                {displayTag(tag)}
+                <TagBadge tag={tag} />
               </button>
             )
           })}
