@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest'
-import { buildDailyForecasts, type TimeseriesEntry } from './Weather'
+import { buildDailyForecasts, type TimeseriesEntry } from '../lib/weatherForecast'
 
 /**
  * Build a minimal timeseries entry. `time` is parsed with `new Date(time)`; using

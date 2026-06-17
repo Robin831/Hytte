@@ -14,6 +14,7 @@ import {
 } from '../recentLocations'
 import LocationSearch from '../components/LocationSearch'
 import { readForecastCache, writeForecastCache } from '../lib/weatherCache'
+import { buildDailyForecasts, type TimeseriesEntry } from '../lib/weatherForecast'
 import { getWeatherIcon, getWeatherDescription } from '../weatherUtils'
 import { formatDate, formatTime } from '../utils/formatDate'
 import {
@@ -28,31 +29,6 @@ import {
 } from 'lucide-react'
 
 
-export interface TimeseriesEntry {
-  time: string
-  data: {
-    instant: {
-      details: {
-        air_temperature: number
-        wind_speed: number
-        relative_humidity: number
-        air_pressure_at_sea_level?: number
-        wind_from_direction?: number
-      }
-    }
-    next_1_hours?: {
-      summary: { symbol_code: string }
-      details: { precipitation_amount: number }
-    }
-    next_6_hours?: {
-      summary: { symbol_code: string }
-      details: { precipitation_amount: number }
-    }
-    next_12_hours?: {
-      summary: { symbol_code: string }
-    }
-  }
-}
 
 interface ForecastResponse {
   properties: {
@@ -74,15 +50,6 @@ function splitDaylight(seconds: number): { hours: number; minutes: number } {
   return { hours: Math.floor(totalMinutes / 60), minutes: totalMinutes % 60 }
 }
 
-interface DayForecast {
-  date: string
-  dayName: string
-  symbolCode: string
-  tempMin: number
-  tempMax: number
-  precipitation: number
-  windSpeed: number
-}
 
 type FetchState = { loading: boolean; error: string | null; forecast: ForecastResponse | null; lastUpdated: Date | null }
 type FetchAction =
@@ -159,103 +126,6 @@ function calculateFeelsLike(temp: number, windSpeed: number, humidity: number): 
  */
 function windArrowRotation(windFromDirection: number): number {
   return (windFromDirection + 180) % 360
-}
-
-/** Format a Date as a local YYYY-MM-DD calendar key (not UTC, so DST-straddling hours stay on the right day). */
-function localDateKey(dt: Date): string {
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
-}
-
-/** Minutes since local midnight for the given Date. */
-function minutesSinceMidnight(dt: Date): number {
-  return dt.getHours() * 60 + dt.getMinutes()
-}
-
-interface DaySymbolEntry {
-  date: Date
-  symbol: string
-}
-
-export function buildDailyForecasts(timeseries: TimeseriesEntry[], todayLabel: string): DayForecast[] {
-  const dayMap = new Map<string, {
-    temps: number[]
-    winds: number[]
-    precip: number
-    symbolEntries: DaySymbolEntry[]
-    date: Date
-  }>()
-
-  for (const entry of timeseries) {
-    const dt = new Date(entry.time)
-    const dateKey = localDateKey(dt)
-
-    if (!dayMap.has(dateKey)) {
-      dayMap.set(dateKey, { temps: [], winds: [], precip: 0, symbolEntries: [], date: dt })
-    }
-    const day = dayMap.get(dateKey)!
-
-    day.temps.push(entry.data.instant.details.air_temperature)
-    day.winds.push(entry.data.instant.details.wind_speed)
-
-    const symbol =
-      entry.data.next_1_hours?.summary.symbol_code ||
-      entry.data.next_6_hours?.summary.symbol_code ||
-      entry.data.next_12_hours?.summary.symbol_code
-
-    if (symbol) day.symbolEntries.push({ date: dt, symbol })
-
-    const precip =
-      entry.data.next_1_hours?.details.precipitation_amount ??
-      entry.data.next_6_hours?.details.precipitation_amount ??
-      0
-    day.precip += precip
-  }
-
-  const today = localDateKey(new Date())
-
-  // Sort by parsed local calendar date so days always render chronologically,
-  // regardless of timeseries entry order or DST boundaries.
-  const sortedDays = [...dayMap.entries()].sort(([a], [b]) => a.localeCompare(b))
-
-  return sortedDays.slice(0, 7).map(([dateKey, data]) => {
-    const dayName =
-      dateKey === today
-        ? todayLabel
-        : formatDate(data.date, { weekday: 'short' })
-
-    return {
-      date: dateKey,
-      dayName,
-      symbolCode: pickMiddaySymbol(data.symbolEntries),
-      tempMin: Math.round(Math.min(...data.temps)),
-      tempMax: Math.round(Math.max(...data.temps)),
-      precipitation: Math.round(data.precip * 10) / 10,
-      windSpeed: Math.round(data.winds.reduce((a, b) => a + b, 0) / data.winds.length * 10) / 10,
-    }
-  })
-}
-
-/**
- * Choose the symbol whose local time is closest to 12:00, so each day's icon reflects
- * conditions near midday rather than an arbitrary index. Ties resolve to the earliest
- * timestamp. Falls back to 'cloudy' when no usable symbol exists.
- */
-function pickMiddaySymbol(entries: DaySymbolEntry[]): string {
-  if (entries.length === 0) return 'cloudy'
-
-  let best = entries[0]
-  let bestDistance = Math.abs(minutesSinceMidnight(best.date) - 720)
-
-  for (const entry of entries.slice(1)) {
-    const distance = Math.abs(minutesSinceMidnight(entry.date) - 720)
-    // On equal distance from noon, keep the earliest timestamp for deterministic ties.
-    if (distance < bestDistance || (distance === bestDistance && entry.date.getTime() < best.date.getTime())) {
-      best = entry
-      bestDistance = distance
-    }
-  }
-
-  return best.symbol
 }
 
 /** Resolve a location name, checking recents first then the fetched known locations. */
