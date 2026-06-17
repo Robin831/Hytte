@@ -49,9 +49,16 @@ func (c *ttlCache) get(key string) ([]byte, bool) {
 	return e.data, true
 }
 
-// set stores data under key with the cache's TTL.
+// set stores data under key with the cache's TTL. It opportunistically drops
+// expired entries so keys that are never read again don't accumulate.
 func (c *ttlCache) set(key string, data []byte) {
+	now := time.Now()
 	c.mu.Lock()
-	c.entries[key] = ttlEntry{data: data, expires: time.Now().Add(c.ttl)}
+	c.entries[key] = ttlEntry{data: data, expires: now.Add(c.ttl)}
+	for k, e := range c.entries {
+		if k != key && now.After(e.expires) {
+			delete(c.entries, k)
+		}
+	}
 	c.mu.Unlock()
 }

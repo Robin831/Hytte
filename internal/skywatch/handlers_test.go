@@ -88,17 +88,16 @@ func TestNowHandlerCacheControl(t *testing.T) {
 
 func TestNowHandlerServesFromCache(t *testing.T) {
 	lat, lon := 31.0, 41.0
-	key := nowKey(lat, lon, time.Now())
+	date := "2026-01-15"
+	key := fmt.Sprintf("%v|%v|%s", lat, lon, date)
 	sentinel := []byte(`{"sentinel":"now"}`)
 	nowCache.set(key, sentinel)
 
-	req := httptest.NewRequest("GET", "/api/skywatch/now?lat=31&lon=41", nil)
+	req := httptest.NewRequest("GET", "/api/skywatch/now?lat=31&lon=41&date="+date, nil)
 	w := httptest.NewRecorder()
 
 	NowHandler().ServeHTTP(w, req)
 
-	// Receiving the sentinel bytes back proves the handler served from cache
-	// rather than recomputing planet/moon/sun positions.
 	if got := w.Body.String(); got != string(sentinel) {
 		t.Errorf("body = %q, want cached sentinel %q", got, sentinel)
 	}
@@ -130,13 +129,13 @@ func TestNowHandlerKeySeparation(t *testing.T) {
 }
 
 func TestNowHandlerDefaultCoordsCached(t *testing.T) {
-	// Clear any prior entry for the default-coords key.
-	key := nowKey(DefaultLat, DefaultLon, time.Now())
+	date := "2026-01-15"
+	key := fmt.Sprintf("%v|%v|%s", DefaultLat, DefaultLon, date)
 	nowCache.mu.Lock()
 	delete(nowCache.entries, key)
 	nowCache.mu.Unlock()
 
-	req := httptest.NewRequest("GET", "/api/skywatch/now", nil)
+	req := httptest.NewRequest("GET", "/api/skywatch/now?date="+date, nil)
 	w := httptest.NewRecorder()
 	NowHandler().ServeHTTP(w, req)
 
@@ -175,19 +174,35 @@ func TestMoonHandlerCacheControl(t *testing.T) {
 
 func TestMoonHandlerServesFromCache(t *testing.T) {
 	lat, lon, days := 33.0, 44.0, 7
-	key := fmt.Sprintf("%v|%v|%d|%s", lat, lon, days, time.Now().Format("2006-01-02"))
+
+	// Call the handler once to discover the date it uses internally,
+	// avoiding a flaky mismatch if the test runs across midnight.
+	req1 := httptest.NewRequest("GET", "/api/skywatch/moon?days=7&lat=33&lon=44", nil)
+	w1 := httptest.NewRecorder()
+	MoonCalendarHandler().ServeHTTP(w1, req1)
+
+	var first struct {
+		Calendar []struct {
+			Date string `json:"date"`
+		} `json:"calendar"`
+	}
+	if err := json.NewDecoder(w1.Body).Decode(&first); err != nil {
+		t.Fatalf("decode first response: %v", err)
+	}
+	date := first.Calendar[0].Date
+
+	key := fmt.Sprintf("%v|%v|%d|%s", lat, lon, days, date)
 	sentinel := []byte(`{"sentinel":"moon"}`)
 	moonCache.set(key, sentinel)
 
-	req := httptest.NewRequest("GET", "/api/skywatch/moon?days=7&lat=33&lon=44", nil)
-	w := httptest.NewRecorder()
+	req2 := httptest.NewRequest("GET", "/api/skywatch/moon?days=7&lat=33&lon=44", nil)
+	w2 := httptest.NewRecorder()
+	MoonCalendarHandler().ServeHTTP(w2, req2)
 
-	MoonCalendarHandler().ServeHTTP(w, req)
-
-	if got := w.Body.String(); got != string(sentinel) {
+	if got := w2.Body.String(); got != string(sentinel) {
 		t.Errorf("body = %q, want cached sentinel %q", got, sentinel)
 	}
-	if got := w.Header().Get("Cache-Control"); got != "public, max-age=3600" {
+	if got := w2.Header().Get("Cache-Control"); got != "public, max-age=3600" {
 		t.Errorf("Cache-Control = %q, want %q", got, "public, max-age=3600")
 	}
 }
