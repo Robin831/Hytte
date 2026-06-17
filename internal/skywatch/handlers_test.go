@@ -221,6 +221,82 @@ func TestMoonHandlerKeySeparationByDays(t *testing.T) {
 	}
 }
 
+func TestMoonHandlerDefaultDateStartsToday(t *testing.T) {
+	before := time.Now().Format("2006-01-02")
+	req := httptest.NewRequest("GET", "/api/skywatch/moon?days=3&lat=15&lon=25", nil)
+	w := httptest.NewRecorder()
+	MoonCalendarHandler().ServeHTTP(w, req)
+	after := time.Now().Format("2006-01-02")
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp struct {
+		Calendar []MoonCalendarDay `json:"calendar"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(resp.Calendar) == 0 {
+		t.Fatal("expected non-empty calendar")
+	}
+	got := resp.Calendar[0].Date
+	if got != before && got != after {
+		t.Errorf("first date = %q, want today (%q or %q)", got, before, after)
+	}
+}
+
+func TestMoonHandlerHonorsDateParam(t *testing.T) {
+	const date = "2026-03-10"
+	req := httptest.NewRequest("GET", "/api/skywatch/moon?days=5&lat=16&lon=26&date="+date, nil)
+	w := httptest.NewRecorder()
+	MoonCalendarHandler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp struct {
+		Days     int               `json:"days"`
+		Calendar []MoonCalendarDay `json:"calendar"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if resp.Days != 5 || len(resp.Calendar) != 5 {
+		t.Fatalf("days = %d, calendar len = %d, want 5/5", resp.Days, len(resp.Calendar))
+	}
+	if resp.Calendar[0].Date != date {
+		t.Errorf("first date = %q, want %q", resp.Calendar[0].Date, date)
+	}
+	// Subsequent entries increment by one day from the requested date.
+	start := time.Date(2026, 3, 10, 12, 0, 0, 0, time.Now().Location())
+	for i, day := range resp.Calendar {
+		want := start.AddDate(0, 0, i).Format("2006-01-02")
+		if day.Date != want {
+			t.Errorf("calendar[%d].Date = %q, want %q", i, day.Date, want)
+		}
+	}
+}
+
+func TestMoonHandlerInvalidDate(t *testing.T) {
+	req := httptest.NewRequest("GET", "/api/skywatch/moon?date=2026-13-99&lat=17&lon=27", nil)
+	w := httptest.NewRecorder()
+	MoonCalendarHandler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+	var resp map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if resp["error"] != "invalid date format, expected YYYY-MM-DD" {
+		t.Errorf("error = %q, want %q", resp["error"], "invalid date format, expected YYYY-MM-DD")
+	}
+}
+
 func TestAuroraHandlerCacheControl(t *testing.T) {
 	mockObserved := `[
 		["time_tag", "Kp"],
