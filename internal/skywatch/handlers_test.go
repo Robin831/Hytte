@@ -222,9 +222,11 @@ func TestMoonHandlerKeySeparationByDays(t *testing.T) {
 }
 
 func TestMoonHandlerDefaultDateStartsToday(t *testing.T) {
+	before := time.Now().Format("2006-01-02")
 	req := httptest.NewRequest("GET", "/api/skywatch/moon?days=3&lat=15&lon=25", nil)
 	w := httptest.NewRecorder()
 	MoonCalendarHandler().ServeHTTP(w, req)
+	after := time.Now().Format("2006-01-02")
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
@@ -239,9 +241,9 @@ func TestMoonHandlerDefaultDateStartsToday(t *testing.T) {
 	if len(resp.Calendar) == 0 {
 		t.Fatal("expected non-empty calendar")
 	}
-	want := time.Now().Format("2006-01-02")
-	if resp.Calendar[0].Date != want {
-		t.Errorf("first date = %q, want today %q", resp.Calendar[0].Date, want)
+	got := resp.Calendar[0].Date
+	if got != before && got != after {
+		t.Errorf("first date = %q, want today (%q or %q)", got, before, after)
 	}
 }
 
