@@ -24,12 +24,18 @@ export function useWakeLock(): void {
     }
 
     let wakeLock: WakeLockSentinel | null = null
+    let cancelled = false
 
     async function acquire() {
+      if (cancelled || (wakeLock && !wakeLock.released)) return
       try {
-        wakeLock = await navigator.wakeLock.request('screen')
+        const sentinel = await navigator.wakeLock.request('screen')
+        if (cancelled) {
+          sentinel.release().catch(() => {})
+          return
+        }
+        wakeLock = sentinel
       } catch (err) {
-        // e.g. lock denied while not visible, or battery saver active
         console.debug('Wake lock request failed', err)
       }
     }
@@ -42,6 +48,7 @@ export function useWakeLock(): void {
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
+      cancelled = true
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       wakeLock?.release().catch(() => {})
       wakeLock = null
