@@ -8,6 +8,7 @@ import type { ForecastData } from '../components/kiosk/KioskWeather'
 import KioskSunrise from '../components/kiosk/KioskSunrise'
 import KioskStaleBadge from '../components/kiosk/KioskStaleBadge'
 import mockData from '../mocks/kioskData.json'
+import { useWakeLock } from '../hooks/useWakeLock'
 
 // Error boundary so that JS errors show a visible message instead of a blank
 // white page. This is especially important on older browsers (Android 5 /
@@ -145,6 +146,10 @@ const KIOSK_TOKEN_KEY = 'hytte_kiosk_token'
 
 function KioskPageInner() {
   const [searchParams] = useSearchParams()
+
+  // Keep the screen awake while the kiosk is displayed (re-acquires on
+  // visibility change; no-ops on browsers without the Wake Lock API).
+  useWakeLock()
 
   // Override the PWA manifest so "Add to Home Screen" uses /kiosk as start_url
   useEffect(() => {
