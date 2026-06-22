@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"sync"
 	"time"
 )
@@ -206,10 +207,17 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 
 	stopName := gqlResp.Data.StopPlace.Name
 
+	now := time.Now()
 	departures := make([]Departure, 0, len(gqlResp.Data.StopPlace.EstimatedCalls))
 	for _, call := range gqlResp.Data.StopPlace.EstimatedCalls {
 		expected, err := time.Parse(time.RFC3339, call.ExpectedDepartureTime)
 		if err != nil {
+			continue
+		}
+		// Drop departures whose expected (real-time) time is already in the
+		// past — Entur orders calls by scheduled time, so a delayed earlier bus
+		// can otherwise linger above on-time later ones.
+		if expected.Before(now) {
 			continue
 		}
 		aimed, err := time.Parse(time.RFC3339, call.AimedDepartureTime)
@@ -234,6 +242,12 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 			DelayMinutes:  delayMinutes,
 		})
 	}
+
+	// Sort by expected departure time so real-time delays don't leave the list
+	// out of chronological order (Entur returns calls ordered by scheduled time).
+	sort.Slice(departures, func(i, j int) bool {
+		return departures[i].DepartureTime.Before(departures[j].DepartureTime)
+	})
 
 	// Store in cache.
 	s.mu.Lock()

@@ -262,6 +262,76 @@ func TestDeparturesHandler_StaleCache_ServedOnUpstreamFailure(t *testing.T) {
 	}
 }
 
+func TestFetchDepartures_SortsByExpectedAndDropsPast(t *testing.T) {
+	now := time.Now().UTC()
+	// Build calls in SCHEDULED order (as Entur returns them) but with divergent
+	// real-time delays so the expected order differs, plus one already-departed call.
+	past := now.Add(-2 * time.Minute).Format(time.RFC3339)
+	soon := now.Add(5 * time.Minute).Format(time.RFC3339)
+	later := now.Add(10 * time.Minute).Format(time.RFC3339)
+
+	// First call (scheduled earliest) is heavily delayed so it departs LAST;
+	// second call is on time so it departs FIRST among the future ones.
+	body := `{
+		"data": {
+			"stopPlace": {
+				"name": "Test Stop",
+				"estimatedCalls": [
+					{
+						"expectedDepartureTime": "` + past + `",
+						"aimedDepartureTime":    "` + past + `",
+						"destinationDisplay": {"frontText": "Departed"},
+						"serviceJourney": {"line": {"publicCode": "1"}},
+						"realtime": true
+					},
+					{
+						"expectedDepartureTime": "` + later + `",
+						"aimedDepartureTime":    "` + soon + `",
+						"destinationDisplay": {"frontText": "Delayed"},
+						"serviceJourney": {"line": {"publicCode": "2"}},
+						"realtime": true
+					},
+					{
+						"expectedDepartureTime": "` + soon + `",
+						"aimedDepartureTime":    "` + soon + `",
+						"destinationDisplay": {"frontText": "OnTime"},
+						"serviceJourney": {"line": {"publicCode": "3"}},
+						"realtime": true
+					}
+				]
+			}
+		}
+	}`
+
+	enturServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+	}))
+	defer enturServer.Close()
+
+	svc := newTestService(enturServer.URL, "http://unused")
+
+	_, deps, err := svc.FetchDepartures(context.Background(), "NSR:StopPlace:1", numberOfDepartures)
+	if err != nil {
+		t.Fatalf("FetchDepartures: %v", err)
+	}
+
+	// The past departure must be dropped.
+	if len(deps) != 2 {
+		t.Fatalf("expected 2 future departures, got %d", len(deps))
+	}
+
+	// Output must be sorted ascending by expected departure time:
+	// OnTime (5 min) before Delayed (10 min), even though Delayed was scheduled earlier.
+	if deps[0].Destination != "OnTime" || deps[1].Destination != "Delayed" {
+		t.Errorf("expected [OnTime, Delayed] sorted by expected time, got [%s, %s]",
+			deps[0].Destination, deps[1].Destination)
+	}
+	if deps[1].DepartureTime.Before(deps[0].DepartureTime) {
+		t.Errorf("departures not sorted ascending by expected time")
+	}
+}
+
 // --- SearchHandler ---
 
 func TestSearchHandler_MissingQuery(t *testing.T) {
