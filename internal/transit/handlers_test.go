@@ -332,6 +332,73 @@ func TestFetchDepartures_SortsByExpectedAndDropsPast(t *testing.T) {
 	}
 }
 
+func TestFetchDepartures_CacheFiltersPastOnReturn(t *testing.T) {
+	// A departure that is in the future when cached can age past its departure
+	// time before the cache expires. The cache-return path must filter it out.
+	soonish := time.Now().Add(2 * time.Second).UTC().Format(time.RFC3339)
+	later := time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339)
+
+	body := `{
+		"data": {
+			"stopPlace": {
+				"name": "Cache Test",
+				"estimatedCalls": [
+					{
+						"expectedDepartureTime": "` + soonish + `",
+						"aimedDepartureTime":    "` + soonish + `",
+						"destinationDisplay": {"frontText": "Imminent"},
+						"serviceJourney": {"line": {"publicCode": "1"}},
+						"realtime": true
+					},
+					{
+						"expectedDepartureTime": "` + later + `",
+						"aimedDepartureTime":    "` + later + `",
+						"destinationDisplay": {"frontText": "Later"},
+						"serviceJourney": {"line": {"publicCode": "2"}},
+						"realtime": true
+					}
+				]
+			}
+		}
+	}`
+
+	enturServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+	}))
+	defer enturServer.Close()
+
+	svc := newTestService(enturServer.URL, "http://unused")
+	stopID := "NSR:StopPlace:cache-test"
+
+	_, deps, err := svc.FetchDepartures(context.Background(), stopID, numberOfDepartures)
+	if err != nil {
+		t.Fatalf("first fetch: %v", err)
+	}
+	if len(deps) != 2 {
+		t.Fatalf("expected 2 departures on first fetch, got %d", len(deps))
+	}
+
+	// Manually move the first departure into the past in the cache so that
+	// the cache-return path must filter it out.
+	cacheKey := fmt.Sprintf("%s:%d", stopID, numberOfDepartures)
+	svc.mu.Lock()
+	svc.cache[cacheKey].data[0].DepartureTime = time.Now().Add(-1 * time.Minute)
+	svc.mu.Unlock()
+
+	// Second fetch hits the cache.
+	_, deps2, err := svc.FetchDepartures(context.Background(), stopID, numberOfDepartures)
+	if err != nil {
+		t.Fatalf("second fetch: %v", err)
+	}
+	if len(deps2) != 1 {
+		t.Fatalf("expected 1 departure after cache filter, got %d", len(deps2))
+	}
+	if deps2[0].Destination != "Later" {
+		t.Errorf("expected remaining departure to be 'Later', got %q", deps2[0].Destination)
+	}
+}
+
 // --- SearchHandler ---
 
 func TestSearchHandler_MissingQuery(t *testing.T) {

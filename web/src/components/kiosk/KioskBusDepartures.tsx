@@ -91,6 +91,10 @@ export default function KioskBusDepartures({ stops }: Props) {
           </div>
           <div className="space-y-1">
             {[...stop.departures]
+              .filter((dep) => {
+                const t = new Date(dep.departure_time).getTime()
+                return !isNaN(t) && t > Date.now()
+              })
               .sort(
                 (a, b) =>
                   new Date(a.departure_time).getTime() -

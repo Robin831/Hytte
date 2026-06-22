@@ -123,7 +123,7 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	if hasCached {
 		if time.Now().Before(c.expires) {
 			stopName := c.stopName
-			data := c.data
+			data := filterCurrent(c.data)
 			s.mu.RUnlock()
 			return stopName, data, nil
 		}
@@ -141,7 +141,7 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	if err != nil {
 		if stale != nil {
 			s.extendStale(cacheKey, stale)
-			return stale.stopName, stale.data, nil
+			return stale.stopName, filterCurrent(stale.data), nil
 		}
 		return "", nil, err
 	}
@@ -150,7 +150,7 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	if err != nil {
 		if stale != nil {
 			s.extendStale(cacheKey, stale)
-			return stale.stopName, stale.data, nil
+			return stale.stopName, filterCurrent(stale.data), nil
 		}
 		return "", nil, err
 	}
@@ -161,7 +161,7 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	if err != nil {
 		if stale != nil {
 			s.extendStale(cacheKey, stale)
-			return stale.stopName, stale.data, nil
+			return stale.stopName, filterCurrent(stale.data), nil
 		}
 		return "", nil, err
 	}
@@ -170,7 +170,7 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	if resp.StatusCode != http.StatusOK {
 		if stale != nil {
 			s.extendStale(cacheKey, stale)
-			return stale.stopName, stale.data, nil
+			return stale.stopName, filterCurrent(stale.data), nil
 		}
 		return "", nil, fmt.Errorf("entur returned status %d", resp.StatusCode)
 	}
@@ -188,7 +188,7 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	if err := json.Unmarshal(respBody, &gqlResp); err != nil {
 		if stale != nil {
 			s.extendStale(cacheKey, stale)
-			return stale.stopName, stale.data, nil
+			return stale.stopName, filterCurrent(stale.data), nil
 		}
 		return "", nil, err
 	}
@@ -196,7 +196,7 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	if len(gqlResp.Errors) > 0 {
 		if stale != nil {
 			s.extendStale(cacheKey, stale)
-			return stale.stopName, stale.data, nil
+			return stale.stopName, filterCurrent(stale.data), nil
 		}
 		return "", nil, fmt.Errorf("entur GraphQL error: %s", gqlResp.Errors[0].Message)
 	}
@@ -259,6 +259,19 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	s.mu.Unlock()
 
 	return stopName, departures, nil
+}
+
+// filterCurrent returns only departures whose expected time is still in the
+// future. Because the input is already sorted ascending by DepartureTime, we
+// can skip the leading past entries and return the tail.
+func filterCurrent(deps []Departure) []Departure {
+	now := time.Now()
+	for i, d := range deps {
+		if !d.DepartureTime.Before(now) {
+			return deps[i:]
+		}
+	}
+	return nil
 }
 
 // extendStale bumps a stale cache entry's TTL to avoid hammering a failing upstream.
