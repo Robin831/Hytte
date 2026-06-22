@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"sync"
 	"time"
 )
@@ -122,7 +123,7 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	if hasCached {
 		if time.Now().Before(c.expires) {
 			stopName := c.stopName
-			data := c.data
+			data := filterCurrent(c.data)
 			s.mu.RUnlock()
 			return stopName, data, nil
 		}
@@ -140,7 +141,7 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	if err != nil {
 		if stale != nil {
 			s.extendStale(cacheKey, stale)
-			return stale.stopName, stale.data, nil
+			return stale.stopName, filterCurrent(stale.data), nil
 		}
 		return "", nil, err
 	}
@@ -149,7 +150,7 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	if err != nil {
 		if stale != nil {
 			s.extendStale(cacheKey, stale)
-			return stale.stopName, stale.data, nil
+			return stale.stopName, filterCurrent(stale.data), nil
 		}
 		return "", nil, err
 	}
@@ -160,7 +161,7 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	if err != nil {
 		if stale != nil {
 			s.extendStale(cacheKey, stale)
-			return stale.stopName, stale.data, nil
+			return stale.stopName, filterCurrent(stale.data), nil
 		}
 		return "", nil, err
 	}
@@ -169,7 +170,7 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	if resp.StatusCode != http.StatusOK {
 		if stale != nil {
 			s.extendStale(cacheKey, stale)
-			return stale.stopName, stale.data, nil
+			return stale.stopName, filterCurrent(stale.data), nil
 		}
 		return "", nil, fmt.Errorf("entur returned status %d", resp.StatusCode)
 	}
@@ -187,7 +188,7 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	if err := json.Unmarshal(respBody, &gqlResp); err != nil {
 		if stale != nil {
 			s.extendStale(cacheKey, stale)
-			return stale.stopName, stale.data, nil
+			return stale.stopName, filterCurrent(stale.data), nil
 		}
 		return "", nil, err
 	}
@@ -195,7 +196,7 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	if len(gqlResp.Errors) > 0 {
 		if stale != nil {
 			s.extendStale(cacheKey, stale)
-			return stale.stopName, stale.data, nil
+			return stale.stopName, filterCurrent(stale.data), nil
 		}
 		return "", nil, fmt.Errorf("entur GraphQL error: %s", gqlResp.Errors[0].Message)
 	}
@@ -206,10 +207,17 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 
 	stopName := gqlResp.Data.StopPlace.Name
 
+	now := time.Now()
 	departures := make([]Departure, 0, len(gqlResp.Data.StopPlace.EstimatedCalls))
 	for _, call := range gqlResp.Data.StopPlace.EstimatedCalls {
 		expected, err := time.Parse(time.RFC3339, call.ExpectedDepartureTime)
 		if err != nil {
+			continue
+		}
+		// Drop departures whose expected (real-time) time is already in the
+		// past — Entur orders calls by scheduled time, so a delayed earlier bus
+		// can otherwise linger above on-time later ones.
+		if expected.Before(now) {
 			continue
 		}
 		aimed, err := time.Parse(time.RFC3339, call.AimedDepartureTime)
@@ -235,6 +243,12 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 		})
 	}
 
+	// Sort by expected departure time so real-time delays don't leave the list
+	// out of chronological order (Entur returns calls ordered by scheduled time).
+	sort.Slice(departures, func(i, j int) bool {
+		return departures[i].DepartureTime.Before(departures[j].DepartureTime)
+	})
+
 	// Store in cache.
 	s.mu.Lock()
 	s.cache[cacheKey] = &departureCache{
@@ -245,6 +259,19 @@ func (s *Service) FetchDepartures(ctx context.Context, stopID string, count int)
 	s.mu.Unlock()
 
 	return stopName, departures, nil
+}
+
+// filterCurrent returns only departures whose expected time is still in the
+// future. Because the input is already sorted ascending by DepartureTime, we
+// can skip the leading past entries and return the tail.
+func filterCurrent(deps []Departure) []Departure {
+	now := time.Now()
+	for i, d := range deps {
+		if !d.DepartureTime.Before(now) {
+			return deps[i:]
+		}
+	}
+	return nil
 }
 
 // extendStale bumps a stale cache entry's TTL to avoid hammering a failing upstream.

@@ -56,11 +56,11 @@ export default function KioskBusDepartures({ stops }: Props) {
   // Toggle visibility to retrigger the fade-in animation whenever stops data refreshes
   const [visible, setVisible] = useState(true)
   const prevStopsRef = useRef(stops)
-  // Tick every 30s so minutesUntil() stays accurate between data refreshes
+  // Tick every second so the countdown stays accurate and minutes don't visibly jump
   const [, setTick] = useState(0)
 
   useEffect(() => {
-    const id = window.setInterval(() => setTick((n) => n + 1), 30_000)
+    const id = window.setInterval(() => setTick((n) => n + 1), 1_000)
     return () => window.clearInterval(id)
   }, [])
 
@@ -90,7 +90,18 @@ export default function KioskBusDepartures({ stops }: Props) {
             {stop.stop_name}
           </div>
           <div className="space-y-1">
-            {stop.departures.slice(0, 6).map((dep) => {
+            {[...stop.departures]
+              .filter((dep) => {
+                const t = new Date(dep.departure_time).getTime()
+                return !isNaN(t) && t > Date.now()
+              })
+              .sort(
+                (a, b) =>
+                  new Date(a.departure_time).getTime() -
+                  new Date(b.departure_time).getTime(),
+              )
+              .slice(0, 6)
+              .map((dep) => {
               const mins = minutesUntil(dep.departure_time)
               return (
                 <div
@@ -116,8 +127,8 @@ export default function KioskBusDepartures({ stops }: Props) {
                     <span className="text-xs text-red-400">+{dep.delay_minutes}</span>
                   )}
                 </div>
-              )
-            })}
+                )
+              })}
           </div>
         </div>
       ))}
