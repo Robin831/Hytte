@@ -27244,3 +27244,39 @@ rules:
       paths:
         - '**/*.md'
         - '**/*.tsx'
+    - id: filter-departed-before-slice
+      category: ui
+      pattern: >-
+        Rendering a top-N list of time-based events (e.g. bus/train departures) by only sorting and slicing the data, relying on a clamp like minutesUntil() that floors past values to 0
+      check: >-
+        Verify past/expired entries are filtered out (departure_time before now) and invalid timestamps are dropped before sorting and slicing, so stale or departed items can't occupy visible slots between backend refreshes
+      source: copilot:PR#875
+      added: "2026-06-22"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: filter-stale-cached-departures
+      category: error-handling
+      pattern: >-
+        Time-based filtering (e.g. dropping past/expired items) applied only when building a cached value, while the cache is served for some TTL or via stale-fallback
+      check: >-
+        Verify the time-relative filter (and any time-dependent sort) is also re-applied against time.Now() when returning cached or stale data, so entries that expired while cached aren't served to clients
+      source: copilot:PR#875
+      added: "2026-06-22"
+      paths:
+        - '**/*.go'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: async-effect-cleanup-leak
+      category: concurrency
+      pattern: >-
+        A React effect (useEffect/hook) starts an async request (e.g. navigator.wakeLock.request, fetch, getMedia) and stores the resolved resource in state or a ref, and may re-trigger on repeated events like visibilitychange.
+      check: >-
+        Verify a cancelled/mounted flag guards state updates after the async resolves: if the effect was cleaned up (unmount/navigation) before the promise settles, the acquired resource must be released immediately rather than stored. Also confirm the code skips re-requesting when an active resource is already held.
+      source: copilot:PR#876
+      added: "2026-06-22"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
