@@ -23,6 +23,11 @@ type ScoredMove struct {
 	Score      int    `json:"score"`
 	TilesUsed  int    `json:"tiles_used"`
 	BlankTiles []int  `json:"blank_tiles,omitempty"`
+	// VowelsUsed counts newly-placed, non-blank vowel tiles drawn from the rack.
+	VowelsUsed int `json:"vowels_used"`
+	// OppBest is the opponent's best possible reply score after this move. It is
+	// only populated for the "block" sort order; nil otherwise.
+	OppBest *int `json:"opp_best,omitempty"`
 }
 
 // SolveResult holds the solver output.
@@ -64,6 +69,22 @@ type rowMoveGen struct {
 // Returns moves sorted by score descending, capped at 200 results.
 func Solve(board *SolverBoard, rackStr string, trie *Trie) *SolveResult {
 	start := time.Now()
+	scored := solveAll(board, rackStr, trie)
+	if len(scored) > maxSolveResults {
+		scored = scored[:maxSolveResults]
+	}
+	return &SolveResult{
+		Moves:     scored,
+		ElapsedMs: time.Since(start).Milliseconds(),
+	}
+}
+
+// solveAll generates, scores, and deduplicates every valid move, returning the
+// set sorted by score descending. Results are NOT capped — callers apply their
+// own ordering and result limit. Each move carries auxiliary metrics (tiles
+// used, vowels used) so alternate sort orders can be applied without
+// regenerating the move list.
+func solveAll(board *SolverBoard, rackStr string, trie *Trie) []ScoredMove {
 	rack := parseRack(rackStr)
 
 	var allMoves []rawMove
@@ -137,38 +158,14 @@ func Solve(board *SolverBoard, rackStr string, trie *Trie) *SolveResult {
 			Score:      s,
 			TilesUsed:  countNewTiles(board, m),
 			BlankTiles: blankIndices(m),
+			VowelsUsed: countNewVowels(board, m),
 		})
 	}
 
-	// Sort by score descending, then word alphabetically, then by other fields for stability
+	// Sort by score descending (with stable tiebreakers) so deduplication keeps
+	// the highest-scoring variant of each placement.
 	sort.Slice(scored, func(i, j int) bool {
-		if scored[i].Score != scored[j].Score {
-			return scored[i].Score > scored[j].Score
-		}
-		if scored[i].Word != scored[j].Word {
-			return scored[i].Word < scored[j].Word
-		}
-		if scored[i].Direction != scored[j].Direction {
-			return scored[i].Direction < scored[j].Direction
-		}
-		if scored[i].Row != scored[j].Row {
-			return scored[i].Row < scored[j].Row
-		}
-		if scored[i].Col != scored[j].Col {
-			return scored[i].Col < scored[j].Col
-		}
-		if scored[i].TilesUsed != scored[j].TilesUsed {
-			return scored[i].TilesUsed < scored[j].TilesUsed
-		}
-		if len(scored[i].BlankTiles) != len(scored[j].BlankTiles) {
-			return len(scored[i].BlankTiles) < len(scored[j].BlankTiles)
-		}
-		for k := 0; k < len(scored[i].BlankTiles); k++ {
-			if scored[i].BlankTiles[k] != scored[j].BlankTiles[k] {
-				return scored[i].BlankTiles[k] < scored[j].BlankTiles[k]
-			}
-		}
-		return false
+		return lessByScore(scored[i], scored[j])
 	})
 
 	// Deduplicate: keep highest-scoring variant per (word, row, col, direction)
@@ -188,16 +185,7 @@ func Solve(board *SolverBoard, rackStr string, trie *Trie) *SolveResult {
 		seen[k] = true
 		unique = append(unique, m)
 	}
-	scored = unique
-
-	if len(scored) > maxSolveResults {
-		scored = scored[:maxSolveResults]
-	}
-
-	return &SolveResult{
-		Moves:     scored,
-		ElapsedMs: time.Since(start).Milliseconds(),
-	}
+	return unique
 }
 
 // --- Rack parsing ---
