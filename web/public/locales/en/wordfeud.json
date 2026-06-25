@@ -47,7 +47,7 @@
     "letterList": "All remaining letters:",
     "vowelTradeChance": "Vowel chance on trade: {{percent}}%",
     "opponentRack": "Opponent's likely rack",
-    "opponentRackHint": "Bag has \u22647 tiles \u2014 these tiles must be in your opponent's rack.",
+    "opponentRackHint": "Bag has ≤7 tiles — these tiles must be in your opponent's rack.",
     "blank": "blank",
     "loadFromGame": "Load from game"
   },
@@ -86,7 +86,17 @@
     "error": "Solver failed",
     "elapsed": "Found in {{ms}}ms",
     "position": "Pos",
-    "dir": "Dir"
+    "dir": "Dir",
+    "sortBy": "Sort by",
+    "sortScore": "Score",
+    "sortVowels": "Fewest vowels",
+    "sortTiles": "Most tiles",
+    "sortBlock": "Block opponent",
+    "blockHint": "Ranking moves that leave your opponent their weakest reply, based on their known tiles.",
+    "blockDisabledHint": "Available only when the bag is empty and the opponent's tiles are known.",
+    "colVowels": "Vowels",
+    "colTiles": "Tiles",
+    "colOppBest": "Opp"
   },
   "errors": {
     "failedToLoadGames": "Failed to load games",

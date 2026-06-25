@@ -52,6 +52,74 @@ func TestSolveHandlerSuccess(t *testing.T) {
 	}
 }
 
+func TestSolveHandlerSortModes(t *testing.T) {
+	dict := solverMockDictionary()
+	handler := SolveHandler(dict)
+
+	for _, sort := range []string{"score", "least_vowels", "most_tiles"} {
+		body := `{"board":` + emptyBoardPayload() + `,"rack":"HEST","sort":"` + sort + `"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/wordfeud/solve", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Errorf("sort %q: status = %d, want %d; body: %s", sort, rr.Code, http.StatusOK, rr.Body.String())
+		}
+	}
+}
+
+func TestSolveHandlerBlockSort(t *testing.T) {
+	dict := solverMockDictionary()
+	handler := SolveHandler(dict)
+
+	body := `{"board":` + emptyBoardPayload() + `,"rack":"HEST","sort":"block","opponent_rack":"ER"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/wordfeud/solve", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	var resp SolveResult
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	for _, m := range resp.Moves {
+		if m.OppBest == nil {
+			t.Errorf("block move %q missing opp_best", m.Word)
+		}
+	}
+}
+
+func TestSolveHandlerInvalidSortMode(t *testing.T) {
+	dict := solverMockDictionary()
+	handler := SolveHandler(dict)
+
+	body := `{"board":` + emptyBoardPayload() + `,"rack":"HEST","sort":"bogus"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/wordfeud/solve", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+}
+
+func TestSolveHandlerBlockSortMissingOpponentRack(t *testing.T) {
+	dict := solverMockDictionary()
+	handler := SolveHandler(dict)
+
+	body := `{"board":` + emptyBoardPayload() + `,"rack":"HEST","sort":"block"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/wordfeud/solve", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusBadRequest)
+	}
+}
+
 func TestSolveHandlerInvalidBoardDimensions(t *testing.T) {
 	dict := solverMockDictionary()
 	handler := SolveHandler(dict)

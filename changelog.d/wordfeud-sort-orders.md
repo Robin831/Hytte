@@ -1,0 +1,2 @@
+category: Added
+- **Wordfeud solver sort orders** - The move finder can now be sorted four ways: by score (default), fewest vowels played (to keep vowels in your rack), most tiles placed regardless of points, and "block opponent" — a defensive sort that, when the bag is empty and the opponent's rack is known, simulates each of your strongest moves and ranks them by the opponent's weakest possible reply. Each non-default sort shows its key metric in an extra results column.

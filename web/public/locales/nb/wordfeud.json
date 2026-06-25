@@ -47,7 +47,7 @@
     "letterList": "Alle gjenværende bokstaver:",
     "vowelTradeChance": "Vokalsjanse ved bytte: {{percent}} %",
     "opponentRack": "Motstanderens sannsynlige brikker",
-    "opponentRackHint": "Posen har \u22647 brikker \u2014 disse brikkene må være hos motstanderen.",
+    "opponentRackHint": "Posen har ≤7 brikker — disse brikkene må være hos motstanderen.",
     "blank": "blanko",
     "loadFromGame": "Last fra spill"
   },
@@ -84,9 +84,19 @@
     "topMoves": "Beste trekk",
     "noResults": "Ingen gyldige trekk funnet.",
     "error": "Trekkfinner feilet",
-    "elapsed": "Funnet p\u00e5 {{ms}}ms",
+    "elapsed": "Funnet på {{ms}}ms",
     "position": "Pos",
-    "dir": "Retn"
+    "dir": "Retn",
+    "sortBy": "Sorter etter",
+    "sortScore": "Poeng",
+    "sortVowels": "Færrest vokaler",
+    "sortTiles": "Flest brikker",
+    "sortBlock": "Blokker motstander",
+    "blockHint": "Rangerer trekk som gir motstanderen det svakeste svaret, basert på de kjente brikkene deres.",
+    "blockDisabledHint": "Tilgjengelig kun når posen er tom og motstanderens brikker er kjent.",
+    "colVowels": "Vokaler",
+    "colTiles": "Brikker",
+    "colOppBest": "Motst."
   },
   "errors": {
     "failedToLoadGames": "Kunne ikke laste spill",

@@ -17,6 +17,21 @@ type solveRequestCell struct {
 type solveRequest struct {
 	Board [][]*solveRequestCell `json:"board"`
 	Rack  string                `json:"rack"`
+	// Sort selects the result ordering: "score" (default), "least_vowels",
+	// "most_tiles", or "block".
+	Sort string `json:"sort"`
+	// OpponentRack holds the opponent's known tiles. Required for the "block"
+	// sort, ignored otherwise.
+	OpponentRack string `json:"opponent_rack"`
+}
+
+// validSortModes is the set of accepted sort values for the solve endpoint.
+var validSortModes = map[string]bool{
+	"":              true, // defaults to score
+	SortScore:       true,
+	SortLeastVowels: true,
+	SortMostTiles:   true,
+	SortBlock:       true,
 }
 
 // SolveHandler returns an http.HandlerFunc for POST /api/wordfeud/solve.
@@ -57,6 +72,28 @@ func SolveHandler(dict *Dictionary) http.HandlerFunc {
 			}
 		}
 
+		// Validate sort mode
+		if !validSortModes[req.Sort] {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid sort mode"})
+			return
+		}
+
+		// The block sort needs the opponent's known tiles
+		oppRack := strings.ToUpper(strings.TrimSpace(req.OpponentRack))
+		if req.Sort == SortBlock {
+			oppLen := utf8.RuneCountInString(oppRack)
+			if oppLen == 0 || oppLen > 7 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "block sort requires opponent_rack of 1-7 tiles"})
+				return
+			}
+			for _, ch := range oppRack {
+				if ch != '*' && !isWordfeudLetter(ch) {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "opponent_rack contains invalid characters"})
+					return
+				}
+			}
+		}
+
 		// Parse board
 		board := NewSolverBoard()
 		for row := 0; row < BoardSize; row++ {
@@ -82,7 +119,7 @@ func SolveHandler(dict *Dictionary) http.HandlerFunc {
 			return
 		}
 
-		result := Solve(board, rack, trie)
+		result := SolveSorted(board, rack, trie, req.Sort, oppRack)
 		writeJSON(w, http.StatusOK, result)
 	}
 }
