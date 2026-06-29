@@ -30,10 +30,10 @@ export const TILE_BAG: { letter: string; count: number }[] = [
 // 0=normal, 1=DL, 2=TL, 3=DW, 4=TW, 5=center
 export type BonusType = 0 | 1 | 2 | 3 | 4 | 5
 
-// Standard Wordfeud board layout (15x15, symmetric)
-// prettier-ignore
-// Standard Wordfeud board layout (board ID 0), fetched from POST /board/0/.
+// Standard Wordfeud board layout (board ID 0, 15x15 symmetric),
+// fetched from POST /board/0/.
 // 0=normal, 1=DL, 2=TL, 3=DW, 4=TW, 5=center star
+// prettier-ignore
 export const BOARD_LAYOUT: BonusType[][] = [
   [2,0,0,0,4,0,0,1,0,0,4,0,0,0,2],
   [0,1,0,0,0,2,0,0,0,2,0,0,0,1,0],
