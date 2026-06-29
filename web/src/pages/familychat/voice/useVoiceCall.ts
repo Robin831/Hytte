@@ -1346,9 +1346,9 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
   const setFilter = useCallback(async (kind: FilterKind) => {
     if (filterRef.current === kind) return
     if (kind !== 'none' && !isFilterSupported(kind)) return
+    if (callKindRef.current !== 'video') return
     filterRef.current = kind
     setFilterState(kind)
-    if (callKindRef.current !== 'video') return
     await syncVideoOutput()
   }, [syncVideoOutput])
 

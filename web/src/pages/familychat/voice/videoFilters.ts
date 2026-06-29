@@ -325,8 +325,6 @@ export function createVideoFilterPipeline(): VideoFilterPipeline | null {
     try { outputTrack.stop() } catch { /* already stopped */ }
   }
 
-  startLoop()
-
   return {
     outputTrack,
     setSource,

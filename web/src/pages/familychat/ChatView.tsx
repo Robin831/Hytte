@@ -1259,6 +1259,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     // Reset PiP to the default top-right corner so each new call starts fresh
     // regardless of where the user dragged it during the previous call.
     setPipPosition(null)
+    setFilterPickerOpen(false)
     void voiceCall.startCall(kind)
   }, [canCall, voiceCall])
 
@@ -1280,6 +1281,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // matching the behaviour of outgoing calls (handleStartCall above).
   const handleAcceptCall = useCallback(() => {
     setPipPosition(null)
+    setFilterPickerOpen(false)
     void voiceCall.acceptCall()
   }, [voiceCall])
 
