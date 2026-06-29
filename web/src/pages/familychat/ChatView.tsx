@@ -39,6 +39,8 @@ import VoiceBubble from './voice/VoiceBubble'
 import { readCachedWaveform, parseWaveformJSON, DEFAULT_BAR_COUNT, type Waveform } from './voice/waveform'
 import * as voicePlayer from './voice/voicePlayer'
 import { useVoiceCall, type CallKind, type CallSignalEventName, type CallSignalPayload } from './voice/useVoiceCall'
+import { useGroupCall, type GroupSignalEventName } from './voice/useGroupCall'
+import GroupCallOverlay from './GroupCallOverlay'
 
 interface ChatViewProps {
   conversationId: number | null
@@ -201,6 +203,14 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     skipSignalSubscription: true,
   })
 
+  // Group-call mesh for conversations with 3+ members. Like voiceCall it does
+  // not open its own SSE stream — ChatView routes call_* / call_join /
+  // call_leave frames into it via groupCallSignalRef below.
+  const groupCall = useGroupCall({
+    conversationId,
+    userId: user?.id ?? null,
+  })
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   // voiceCallSignalRef shadows handleSignalEvent so the long-lived SSE reader
   // can dispatch into the latest hook state without re-running on every
@@ -224,6 +234,19 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   useEffect(() => {
     voiceCallKindRef.current = voiceCall.callKind
   })
+  // groupCallSignalRef shadows groupCall.handleSignalEvent so the long-lived
+  // SSE reader can dispatch group-call frames into the latest hook state without
+  // re-subscribing on every render.
+  const groupCallSignalRef = useRef(groupCall.handleSignalEvent)
+  useEffect(() => {
+    groupCallSignalRef.current = groupCall.handleSignalEvent
+  })
+  // groupCallLeaveRef lets the conversationId-change cleanup leave any active
+  // group call on the old conversation.
+  const groupCallLeaveRef = useRef(groupCall.leaveCall)
+  useEffect(() => {
+    groupCallLeaveRef.current = groupCall.leaveCall
+  })
   // Derive the effective PiP position: passthrough while a call is live,
   // null otherwise. pipPosition is reset to null when a new call is initiated
   // (in handleStartCall / handleAcceptCall) so each call starts from the
@@ -236,7 +259,10 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // Tear down any active call when switching conversations so the mic and
   // RTCPeerConnection don't remain active against the old conversation.
   useEffect(() => {
-    return () => { void voiceCallEndRef.current() }
+    return () => {
+      void voiceCallEndRef.current()
+      void groupCallLeaveRef.current()
+    }
   }, [conversationId])
   // currentUserIdRef shadows user?.id so the long-lived SSE reader closure
   // (recreated only when conversationId changes) can read the most recent
@@ -610,14 +636,31 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                   ) {
                     recordTyping(payload.user_id as number)
                   } else if (
+                    eventName === 'call_join'
+                    || eventName === 'call_leave'
+                  ) {
+                    // Group-call lifecycle events only exist for 3+ member
+                    // conversations; route them straight into the mesh hook.
+                    if ((conversationRef.current?.member_ids.length ?? 0) >= 3) {
+                      void groupCallSignalRef.current(
+                        eventName as GroupSignalEventName,
+                        payload as CallSignalPayload,
+                      )
+                    }
+                  } else if (
                     eventName === 'call_offer'
                     || eventName === 'call_answer'
                     || eventName === 'call_ice'
                     || eventName === 'call_end'
                   ) {
-                    // Only process call events for 1:1 conversations — group
-                    // calls are not supported; ignore call_* events from them.
-                    if (conversationRef.current?.member_ids.length === 2) {
+                    // 3+ member conversations use the group mesh; 1:1 uses the
+                    // single-peer voice-call hook. Route by member count.
+                    if ((conversationRef.current?.member_ids.length ?? 0) >= 3) {
+                      void groupCallSignalRef.current(
+                        eventName as GroupSignalEventName,
+                        payload as CallSignalPayload,
+                      )
+                    } else if (conversationRef.current?.member_ids.length === 2) {
                       // Route call signalling into the voice-call hook. We also
                       // track missed calls locally so the bubble area can render
                       // a tombstone-style row with a call-back button: a
@@ -1080,20 +1123,36 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       .map(id => memberLookup.get(id)?.label ?? t('chat.memberFallback', { id }))
   }, [typingUsers, memberLookup, user?.id, t])
 
-  // Voice calls are 1:1 only — see useVoiceCall.ts. The phone button is
-  // hidden for group conversations rather than disabled so users don't see
-  // an interactive control they can't use.
+  // 1:1 calls use the single-peer voice-call hook (callPeerId is the other
+  // member). 3+ member conversations use the group-call mesh instead, gated by
+  // canGroupCall. The two paths are mutually exclusive by member count.
   const callPeerId = useMemo<number | null>(() => {
     if (!conversation || user?.id === undefined) return null
     if (conversation.member_ids.length !== 2) return null
     return conversation.member_ids.find(id => id !== user.id) ?? null
   }, [conversation, user])
   const canCall = callPeerId !== null
+  const canGroupCall = (conversation?.member_ids.length ?? 0) >= 3
 
   const peerLabel = useCallback((peerId: number | null) => {
     if (peerId === null) return t('chat.memberFallback', { id: 0 })
     return memberLookup.get(peerId)?.label ?? t('chat.memberFallback', { id: peerId })
   }, [memberLookup, t])
+
+  // Label/emoji accessors for the group-call overlay tiles.
+  const groupMemberInfo = useCallback((id: number) => {
+    const info = memberLookup.get(id)
+    return { label: info?.label ?? t('chat.memberFallback', { id }), emoji: info?.emoji ?? '👤' }
+  }, [memberLookup, t])
+  const groupMemberLabel = useCallback((id: number) => groupMemberInfo(id).label, [groupMemberInfo])
+  const selfEmoji = (user?.id !== undefined ? memberLookup.get(user.id)?.emoji : undefined) ?? '👤'
+
+  // Start a group call from the header buttons. A second press while already in
+  // a call is a no-op (the hook guards re-entry).
+  const handleStartGroupCall = useCallback((kind: CallKind = 'voice') => {
+    if (!canGroupCall) return
+    void groupCall.startCall(kind)
+  }, [canGroupCall, groupCall])
 
   const incomingCallerLabel = peerLabel(voiceCall.remoteUserId)
   const activeCallPeerLabel = peerLabel(voiceCall.remoteUserId ?? callPeerId)
@@ -1277,6 +1336,32 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
               title={t('call.startVideo')}
               className="shrink-0 p-2 rounded-full text-blue-300 hover:text-blue-200 hover:bg-blue-500/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               data-testid="family-chat-video-call-button"
+            >
+              <Video size={20} aria-hidden="true" />
+            </button>
+          </>
+        )}
+        {canGroupCall && (
+          <>
+            <button
+              type="button"
+              onClick={() => handleStartGroupCall('voice')}
+              disabled={groupCall.state === 'active'}
+              aria-label={t('call.group.start')}
+              title={t('call.group.start')}
+              className="shrink-0 p-2 rounded-full text-green-300 hover:text-green-200 hover:bg-green-500/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              data-testid="family-chat-group-call-button"
+            >
+              <Phone size={20} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleStartGroupCall('video')}
+              disabled={groupCall.state === 'active'}
+              aria-label={t('call.group.startVideo')}
+              title={t('call.group.startVideo')}
+              className="shrink-0 p-2 rounded-full text-blue-300 hover:text-blue-200 hover:bg-blue-500/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              data-testid="family-chat-group-video-call-button"
             >
               <Video size={20} aria-hidden="true" />
             </button>
@@ -1714,6 +1799,49 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
           conditional overlays so the element survives state transitions and
           srcObject assignment isn't fighting React re-renders. */}
       <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+
+      {/* Group-call (3+ member) mesh UI. The incoming banner lets an idle
+          member join an in-progress group call; the overlay is the active
+          in-call grid. */}
+      {canGroupCall && groupCall.state === 'idle' && groupCall.incomingCall && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('call.group.title')}
+          className="fixed inset-x-0 top-0 z-50 flex items-center gap-3 px-4 py-3 bg-blue-900/95 text-white shadow-lg"
+          data-testid="family-chat-group-incoming"
+        >
+          <PhoneIncoming size={20} aria-hidden="true" className="text-blue-200 shrink-0" />
+          <span className="flex-1 min-w-0 text-sm truncate">
+            {groupCall.incomingCall.kind === 'video'
+              ? t('call.group.incomingVideo', { name: peerLabel(groupCall.incomingCall.fromUserId) })
+              : t('call.group.incoming', { name: peerLabel(groupCall.incomingCall.fromUserId) })}
+          </span>
+          <button
+            type="button"
+            onClick={() => { void groupCall.joinCall() }}
+            className="shrink-0 px-3 py-1.5 rounded-full bg-green-600 hover:bg-green-500 text-sm font-medium cursor-pointer"
+            data-testid="family-chat-group-join"
+          >
+            {t('call.group.join')}
+          </button>
+          <button
+            type="button"
+            onClick={() => groupCall.declineCall()}
+            aria-label={t('call.group.decline')}
+            className="shrink-0 p-1.5 rounded-full hover:bg-white/10 cursor-pointer"
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
+      )}
+
+      <GroupCallOverlay
+        call={groupCall}
+        memberLabel={groupMemberLabel}
+        memberInfo={groupMemberInfo}
+        selfEmoji={selfEmoji}
+      />
 
       {voiceCall.state === 'incoming-ringing' && (
         <div

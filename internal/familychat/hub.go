@@ -49,6 +49,16 @@ const (
 	EventCallAnswer = "call_answer"
 	EventCallICE    = "call_ice"
 	EventCallEnd    = "call_end"
+
+	// Group-call (3+ participant) signalling events (Hytte-70qf). A group call
+	// is a WebRTC mesh: each member holds one RTCPeerConnection per peer.
+	// call_join announces a member entering the call so existing participants
+	// can dial the newcomer; call_leave announces one leaving so peers tear
+	// down that single connection. The pairwise offer/answer/ice events are the
+	// same as the 1:1 case but carry a `to_user_id` so the relay's fan-out to
+	// all members is addressed to exactly one peer.
+	EventCallJoin  = "call_join"
+	EventCallLeave = "call_leave"
 )
 
 // Subscriber is a single SSE client subscription. The channel is buffered so

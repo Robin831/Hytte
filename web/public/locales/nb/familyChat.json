@@ -112,7 +112,19 @@
     "ended": "Samtale avsluttet — {{duration}}",
     "missedFrom": "Tapt anrop fra {{name}}",
     "callBack": "Ring tilbake",
-    "dismiss": "Lukk"
+    "dismiss": "Lukk",
+    "group": {
+      "start": "Start gruppesamtale",
+      "startVideo": "Start videogruppesamtale",
+      "incoming": "{{name}} startet en gruppesamtale",
+      "incomingVideo": "{{name}} startet en videogruppesamtale",
+      "join": "Bli med",
+      "decline": "Lukk",
+      "leave": "Forlat samtalen",
+      "title": "Gruppesamtale",
+      "connecting": "Kobler til…",
+      "waiting": "Venter på at andre blir med…"
+    }
   },
   "newModal": {
     "title": "Ny samtale",

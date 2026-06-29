@@ -152,6 +152,158 @@ func GetCallStatus(db *sql.DB, convID int64, callID string) (string, error) {
 	return status, err
 }
 
+// JoinCall records that userID is a participant in the group call identified by
+// (convID, callID) and returns the user IDs of every *other* member already in
+// the call (those whose left_at is NULL). It is the group-call counterpart to
+// InsertCall: the first joiner becomes the call's initiator and the row starts
+// in 'ringing'; once at least two participants are active the call flips to
+// 'answered'. Re-joining (e.g. after a transient disconnect) clears a prior
+// left_at so the participant counts as active again.
+//
+// The returned list lets the joining client know which peers to dial in the
+// WebRTC mesh. Pairwise glare is resolved client-side (the lower user ID makes
+// the offer), so this helper does not impose any ordering beyond ascending IDs.
+func JoinCall(db *sql.DB, convID, userID int64, callID, kind string) ([]int64, error) {
+	now := time.Now().UTC().Format(timeFormat)
+
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Ensure the call envelope exists. The first joiner is recorded as the
+	// initiator; subsequent joins are ignored by the UNIQUE constraint.
+	if _, err := tx.Exec(
+		`INSERT OR IGNORE INTO family_chat_calls
+			(conversation_id, initiator_user_id, call_id, started_at, status, kind)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		convID, userID, callID, now, CallStatusRinging, NormalizeCallKind(kind),
+	); err != nil {
+		return nil, err
+	}
+
+	// Collect the existing active participants before inserting ourselves so the
+	// caller does not see its own id in the peer list.
+	others, err := activeParticipantsTx(tx, convID, callID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := tx.Exec(
+		`INSERT INTO family_chat_call_participants
+			(conversation_id, call_id, user_id, joined_at, left_at)
+		 VALUES (?, ?, ?, ?, NULL)
+		 ON CONFLICT(conversation_id, call_id, user_id)
+		 DO UPDATE SET joined_at = excluded.joined_at, left_at = NULL`,
+		convID, callID, userID, now,
+	); err != nil {
+		return nil, err
+	}
+
+	// Two or more active participants means the call has connected — flip the
+	// envelope to 'answered' so it is not later recorded as a missed call. The
+	// update is a no-op once the row has already left the 'ringing' state.
+	if len(others) >= 1 {
+		if _, err := tx.Exec(
+			`UPDATE family_chat_calls SET status = ?
+			  WHERE conversation_id = ? AND call_id = ? AND status = ?`,
+			CallStatusAnswered, convID, callID, CallStatusRinging,
+		); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return others, nil
+}
+
+// LeaveCall marks userID as having left the group call and returns the number of
+// participants still active afterwards along with the call's final status when
+// the room has emptied. When the last participant leaves, the call envelope is
+// finalised via MarkEnded (transitioning to 'ended', or 'missed' if it was never
+// answered) and finalStatus carries that value; while others remain, remaining
+// is the live count and finalStatus is empty.
+func LeaveCall(db *sql.DB, convID, userID int64, callID string) (remaining int, finalStatus string, err error) {
+	now := time.Now().UTC().Format(timeFormat)
+	if _, err = db.Exec(
+		`UPDATE family_chat_call_participants SET left_at = ?
+		  WHERE conversation_id = ? AND call_id = ? AND user_id = ? AND left_at IS NULL`,
+		now, convID, callID, userID,
+	); err != nil {
+		return 0, "", err
+	}
+
+	remaining, err = CountActiveParticipants(db, convID, callID)
+	if err != nil {
+		return 0, "", err
+	}
+	if remaining > 0 {
+		return remaining, "", nil
+	}
+
+	// Room is empty — finalise the envelope. ErrCallNotFound is treated as a
+	// no-op: a leave for a call that was never recorded should not error.
+	finalStatus, err = MarkEnded(db, convID, callID)
+	if errors.Is(err, ErrCallNotFound) {
+		return 0, "", nil
+	}
+	return 0, finalStatus, err
+}
+
+// ActiveParticipants returns the user IDs (ascending) currently in the call,
+// i.e. those rows with left_at IS NULL.
+func ActiveParticipants(db *sql.DB, convID int64, callID string) ([]int64, error) {
+	return activeParticipantsTx(db, convID, callID, 0)
+}
+
+// CountActiveParticipants returns how many members are currently in the call.
+func CountActiveParticipants(db *sql.DB, convID int64, callID string) (int, error) {
+	var n int
+	err := db.QueryRow(
+		`SELECT COUNT(*) FROM family_chat_call_participants
+		  WHERE conversation_id = ? AND call_id = ? AND left_at IS NULL`,
+		convID, callID,
+	).Scan(&n)
+	return n, err
+}
+
+// rowQuerier is satisfied by both *sql.DB and *sql.Tx so activeParticipantsTx
+// can run inside or outside a transaction.
+type rowQuerier interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
+// activeParticipantsTx lists active participant user IDs, optionally excluding
+// excludeID (pass 0 to exclude nobody).
+func activeParticipantsTx(q rowQuerier, convID int64, callID string, excludeID int64) ([]int64, error) {
+	rows, err := q.Query(
+		`SELECT user_id FROM family_chat_call_participants
+		  WHERE conversation_id = ? AND call_id = ? AND left_at IS NULL
+		  ORDER BY user_id`,
+		convID, callID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []int64{}
+	for rows.Next() {
+		var uid int64
+		if err := rows.Scan(&uid); err != nil {
+			return nil, err
+		}
+		if uid == excludeID {
+			continue
+		}
+		out = append(out, uid)
+	}
+	return out, rows.Err()
+}
+
 // GetCallKind returns the persisted kind ('voice' or 'video') for a call.
 // Used by tests verifying that the offer handler plumbed the kind through.
 func GetCallKind(db *sql.DB, convID int64, callID string) (string, error) {

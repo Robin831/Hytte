@@ -112,7 +112,19 @@
     "ended": "Call ended — {{duration}}",
     "missedFrom": "Missed call from {{name}}",
     "callBack": "Call back",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "group": {
+      "start": "Start group voice call",
+      "startVideo": "Start group video call",
+      "incoming": "{{name}} started a group call",
+      "incomingVideo": "{{name}} started a group video call",
+      "join": "Join",
+      "decline": "Dismiss",
+      "leave": "Leave call",
+      "title": "Group call",
+      "connecting": "Connecting…",
+      "waiting": "Waiting for others to join…"
+    }
   },
   "newModal": {
     "title": "New conversation",

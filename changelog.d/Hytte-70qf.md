@@ -1,0 +1,2 @@
+category: Added
+- **Group voice & video calls in Family Chat** - Conversations with three or more members can now start a group call. Calling uses a WebRTC mesh (one connection per participant): the header phone/video buttons start a call, other members see a "join the call" banner (and an offline phone rings via push), and the in-call view shows a grid of participants with per-self mute, camera, and leave controls. One-to-one calls are unchanged. (Hytte-70qf)
