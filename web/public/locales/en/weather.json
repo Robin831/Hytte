@@ -18,6 +18,23 @@
     "attribution": "Weather data from",
     "windFromDirectionAria": "Wind from {{degrees}}°"
   },
+  "chart": {
+    "title": "Next 24 hours",
+    "expand": "Show hourly details",
+    "collapse": "Hide hourly details",
+    "expandHint": "Tap to see the hourly breakdown",
+    "collapseHint": "Tap to hide the hourly breakdown",
+    "tempLegend": "Temperature (°C)",
+    "precipLegend": "Precipitation (mm)",
+    "ariaChart": "Temperature and precipitation for the next {{hours}} hours, from {{min}}° to {{max}}°",
+    "table": {
+      "hour": "Hour",
+      "temp": "Temp",
+      "precip": "Precip",
+      "symbol": "Conditions",
+      "precipValue": "{{mm}} mm"
+    }
+  },
   "updated": {
     "justNow": "Updated just now",
     "minuteAgo": "Updated 1 min ago",
