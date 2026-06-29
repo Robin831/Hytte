@@ -100,8 +100,19 @@ function reconcileMessage(
   if (clientId) {
     const idx = prev.findIndex(m => m.client_id === clientId)
     if (idx !== -1) {
-      const next = prev.slice()
-      next[idx] = { ...incoming, client_id: clientId, status: undefined }
+      const reconciled = { ...incoming, client_id: clientId, status: undefined }
+      // Replace the optimistic bubble in place, and drop any *other* row that
+      // already carries the same authoritative id. That second row appears when
+      // an SSE message_new for this same send lands before the POST response
+      // and gets appended separately (e.g. an event that omitted our
+      // client_id); without this filter the reconcile would leave two bubbles
+      // sharing one id.
+      const next: ChatMessage[] = []
+      prev.forEach((m, i) => {
+        if (i === idx) { next.push(reconciled); return }
+        if (m.id === incoming.id) return
+        next.push(m)
+      })
       return next
     }
   }
