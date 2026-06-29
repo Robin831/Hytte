@@ -18,6 +18,23 @@
     "attribution": "Værdata fra",
     "windFromDirectionAria": "Vind fra {{degrees}}°"
   },
+  "chart": {
+    "title": "Neste 24 timer",
+    "expand": "Vis timesdetaljer",
+    "collapse": "Skjul timesdetaljer",
+    "expandHint": "Trykk for å se timesoversikten",
+    "collapseHint": "Trykk for å skjule timesoversikten",
+    "tempLegend": "Temperatur (°C)",
+    "precipLegend": "Nedbør (mm)",
+    "ariaChart": "Temperatur og nedbør for de neste {{hours}} timene, fra {{min}}° til {{max}}°",
+    "table": {
+      "hour": "Time",
+      "temp": "Temp",
+      "precip": "Nedbør",
+      "symbol": "Forhold",
+      "precipValue": "{{mm}} mm"
+    }
+  },
   "updated": {
     "justNow": "Oppdatert akkurat nå",
     "minuteAgo": "Oppdatert for 1 min siden",

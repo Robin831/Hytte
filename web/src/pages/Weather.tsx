@@ -13,6 +13,7 @@ import {
   buildDefaultLocations,
 } from '../recentLocations'
 import LocationSearch from '../components/LocationSearch'
+import HourlyChart from '../components/HourlyChart'
 import { readForecastCache, writeForecastCache } from '../lib/weatherCache'
 import { buildDailyForecasts, type TimeseriesEntry } from '../lib/weatherForecast'
 import { getWeatherIcon, getWeatherDescription } from '../weatherUtils'
@@ -714,6 +715,9 @@ export default function Weather() {
               <p className="text-xs text-gray-500 mt-4">{timeAgo}</p>
             )}
           </section>
+
+          {/* Hourly trend chart (next 24 hours) */}
+          <HourlyChart timeseries={timeseries.slice(0, 24)} />
 
           {/* Hourly Preview */}
           <section className="bg-gray-800 rounded-xl p-6 mb-6">
