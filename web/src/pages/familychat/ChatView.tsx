@@ -223,8 +223,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // speakerOn controls the remote audio volume: true = full volume (1.0),
   // false = muted (0) so "Speaker off" means no audio is heard.
   const [speakerOn, setSpeakerOn] = useState(true)
-  // filterPickerOpen toggles the in-call video-effects popover. Closed by
-  // default; reset whenever a call ends (see the call-state effect below).
   const [filterPickerOpen, setFilterPickerOpen] = useState(false)
   // pipPosition holds the {x, y} offset for the draggable local-preview
   // window. Initialised to null so the PiP renders in its default top-right
@@ -951,11 +949,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     return () => clearTimeout(timer)
   }, [endedCallSummary])
 
-  // Close the video-effects popover whenever the call isn't active so it never
-  // lingers into the next call (the hook resets the filter itself on each call).
-  useEffect(() => {
-    if (voiceCall.state !== 'active') setFilterPickerOpen(false)
-  }, [voiceCall.state])
+  const effectiveFilterPickerOpen = filterPickerOpen && voiceCall.state === 'active'
 
   // Sweep stale typing indicators: drop any member whose most recent signal is
   // older than 5s so the row clears shortly after they stop composing. The
@@ -2301,7 +2295,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
             {canFilterVideo && (
               <div className="relative flex flex-col items-center">
                 {/* Effects popover — opens above the control bar. */}
-                {filterPickerOpen && (
+                {effectiveFilterPickerOpen && (
                   <div
                     role="menu"
                     aria-label={t('call.filters.title')}
@@ -2339,7 +2333,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                   onClick={() => setFilterPickerOpen(prev => !prev)}
                   aria-label={t('call.filters.button')}
                   aria-haspopup="menu"
-                  aria-expanded={filterPickerOpen}
+                  aria-expanded={effectiveFilterPickerOpen}
                   disabled={voiceCall.state !== 'active'}
                   className={`flex flex-col items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                     voiceCall.filter !== 'none' ? 'text-blue-300' : 'text-gray-200'
