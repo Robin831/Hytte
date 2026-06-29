@@ -109,6 +109,14 @@ func setupTestDB(t *testing.T) *sql.DB {
 			kind              TEXT NOT NULL DEFAULT 'voice',
 			UNIQUE(conversation_id, call_id)
 		);
+		CREATE TABLE family_chat_call_participants (
+			conversation_id INTEGER NOT NULL REFERENCES family_chat_conversations(id) ON DELETE CASCADE,
+			call_id         TEXT NOT NULL,
+			user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			joined_at       TEXT NOT NULL,
+			left_at         TEXT,
+			PRIMARY KEY (conversation_id, call_id, user_id)
+		);
 	`); err != nil {
 		t.Fatalf("create schema: %v", err)
 	}

@@ -1862,6 +1862,25 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_family_chat_calls_conversation ON family_chat_calls(conversation_id, id DESC);
 
+	-- family_chat_call_participants (Hytte-70qf): tracks who is currently in a
+	-- group (3+ member) call so a joining client can discover the existing
+	-- participants to connect to in the WebRTC mesh, and so the call envelope in
+	-- family_chat_calls can transition to 'answered'/'ended' as members come and
+	-- go. left_at is NULL while the member is in the call and stamped when they
+	-- leave. 1:1 calls never write to this table — they keep the legacy single
+	-- offer/answer flow.
+	CREATE TABLE IF NOT EXISTS family_chat_call_participants (
+		conversation_id INTEGER NOT NULL REFERENCES family_chat_conversations(id) ON DELETE CASCADE,
+		call_id         TEXT NOT NULL,
+		user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		joined_at       TEXT NOT NULL,
+		left_at         TEXT,
+		PRIMARY KEY (conversation_id, call_id, user_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_family_chat_call_participants_active
+		ON family_chat_call_participants(conversation_id, call_id) WHERE left_at IS NULL;
+
 	-- News feed feature. Per-user settings, feedback (for taste learning),
 	-- read markers, saved articles, and a cache of LLM relevance scores.
 	-- Sensitive free-text fields (keywords, titles, summaries) are encrypted

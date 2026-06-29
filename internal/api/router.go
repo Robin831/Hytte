@@ -574,6 +574,12 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/familychat/conversations/{id}/calls/{call_id}/answer", familychat.CallAnswerHandler(db))
 				r.Post("/familychat/conversations/{id}/calls/{call_id}/ice", familychat.CallICEHandler(db))
 				r.Post("/familychat/conversations/{id}/calls/{call_id}/end", familychat.CallEndHandler(db))
+				// Group-call (3+ member) mesh signalling (Hytte-70qf). join records
+				// the caller as a participant and returns the existing peers to dial;
+				// leave tears their single connection down. offer/answer/ice above are
+				// reused with a to_user_id to address each pairwise leg of the mesh.
+				r.Post("/familychat/conversations/{id}/calls/{call_id}/join", familychat.CallJoinHandler(db))
+				r.Post("/familychat/conversations/{id}/calls/{call_id}/leave", familychat.CallLeaveHandler(db))
 				// STUN/TURN ICE config endpoint (Hytte-n3f6). Mints short-lived
 				// coturn credentials per request when WEBRTC_TURN_SHARED_SECRET
 				// is set, falls back to static creds, then to STUN-only.

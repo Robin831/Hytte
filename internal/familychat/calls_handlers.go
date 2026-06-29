@@ -68,47 +68,57 @@ func requireCallMember(w http.ResponseWriter, db *sql.DB, userID, convID int64) 
 // end). Using json.RawMessage avoids decoding cost and keeps the relay
 // forward-compatible with future WebRTC payload shapes. A nil/empty body is
 // allowed for the end handler so a "hang up" request need not carry data.
-func readSignalBody(w http.ResponseWriter, r *http.Request, allowEmpty bool) (json.RawMessage, bool) {
+func readSignalBody(w http.ResponseWriter, r *http.Request, allowEmpty bool) (json.RawMessage, int64, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxSignalPayloadLen)
 	defer r.Body.Close()
 	var body struct {
 		Data json.RawMessage `json:"data"`
+		// To addresses the relay at a single peer in a group-call mesh. Zero
+		// (the default / absent) means "broadcast to every member", which is the
+		// 1:1 behaviour. Receivers ignore a frame whose to_user_id is set and is
+		// not their own id.
+		To int64 `json:"to_user_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		if allowEmpty && errors.Is(err, io.EOF) {
 			// Treat a genuinely empty body as no payload — useful for /end.
 			// Any other error (malformed JSON, body-too-large) still returns 400.
-			return nil, true
+			return nil, 0, true
 		}
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
-		return nil, false
+		return nil, 0, false
 	}
 	if len(body.Data) == 0 && !allowEmpty {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "data is required"})
-		return nil, false
+		return nil, 0, false
 	}
-	return body.Data, true
+	return body.Data, body.To, true
 }
 
 // readOfferBody extends readSignalBody for the offer endpoint, which also
 // carries a top-level `kind` field ('voice'|'video'). The kind is optional
 // so older clients that pre-date video support continue to ring as voice.
-func readOfferBody(w http.ResponseWriter, r *http.Request) (json.RawMessage, string, bool) {
+func readOfferBody(w http.ResponseWriter, r *http.Request) (data json.RawMessage, kind string, to int64, ok bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxSignalPayloadLen)
 	defer r.Body.Close()
 	var body struct {
 		Data json.RawMessage `json:"data"`
 		Kind string          `json:"kind"`
+		// To is set when this offer is one leg of a group-call mesh, addressed
+		// to a single peer. When set the handler treats the offer as a pure
+		// relay (no call-envelope insert, no webpush wake-up) — the call lifecycle
+		// for group calls is driven by the join/leave endpoints instead.
+		To int64 `json:"to_user_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
-		return nil, "", false
+		return nil, "", 0, false
 	}
 	if len(body.Data) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "data is required"})
-		return nil, "", false
+		return nil, "", 0, false
 	}
-	return body.Data, NormalizeCallKind(body.Kind), true
+	return body.Data, NormalizeCallKind(body.Kind), body.To, true
 }
 
 // callRelayPayload builds the SSE event payload for a single relay hop. The
@@ -121,6 +131,16 @@ func callRelayPayload(convID, fromUserID int64, callID string, data json.RawMess
 		"from_user_id":    fromUserID,
 		"data":            data,
 	}
+}
+
+// withTarget annotates a relay payload with the addressed peer for group-call
+// mesh signalling. A zero target is left off entirely so 1:1 frames keep their
+// original (untargeted) shape and existing receivers are unaffected.
+func withTarget(payload map[string]any, toUserID int64) map[string]any {
+	if toUserID != 0 {
+		payload["to_user_id"] = toUserID
+	}
+	return payload
 }
 
 // callOfferRelayPayload extends callRelayPayload with the call kind so the
@@ -151,28 +171,36 @@ func callOfferHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync bo
 			return
 		}
 
-		data, kind, ok := readOfferBody(w, r)
+		data, kind, to, ok := readOfferBody(w, r)
 		if !ok {
 			return
 		}
 
-		if err := InsertCall(db, convID, user.ID, callID, kind); err != nil {
-			log.Printf("familychat: insert call conv=%d call=%s user=%d: %v", convID, callID, user.ID, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to record call"})
-			return
+		// A targeted offer (to_user_id set) is one leg of a group-call mesh: the
+		// call envelope and the webpush wake-up are owned by the join endpoint,
+		// so here we relay the SDP to the addressed peer and nothing else. An
+		// untargeted offer is the legacy 1:1 flow that records the call and rings
+		// the recipients.
+		if to == 0 {
+			if err := InsertCall(db, convID, user.ID, callID, kind); err != nil {
+				log.Printf("familychat: insert call conv=%d call=%s user=%d: %v", convID, callID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to record call"})
+				return
+			}
 		}
 
 		if hub != nil {
 			hub.Publish(convID, Event{
 				Type: EventCallOffer,
-				Data: callOfferRelayPayload(convID, user.ID, callID, kind, data),
+				Data: withTarget(callOfferRelayPayload(convID, user.ID, callID, kind, data), to),
 			})
 		}
 
 		// Webpush wake-up — only to recipients who aren't already streaming
 		// the conversation. The same gating used by message delivery applies:
-		// a phone that already shows the chat doesn't need a banner.
-		if sender != nil {
+		// a phone that already shows the chat doesn't need a banner. Targeted
+		// (group) offers skip this — the join endpoint already woke everyone.
+		if sender != nil && to == 0 {
 			senderName := senderDisplayName(user)
 			fire := func() {
 				notifyCallRecipients(db, hub, sender, convID, user.ID, callID, senderName)
@@ -208,7 +236,7 @@ func callAnswerHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 			return
 		}
 
-		data, ok := readSignalBody(w, r, false)
+		data, to, ok := readSignalBody(w, r, false)
 		if !ok {
 			return
 		}
@@ -229,7 +257,7 @@ func callAnswerHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 		if hub != nil {
 			hub.Publish(convID, Event{
 				Type: EventCallAnswer,
-				Data: callRelayPayload(convID, user.ID, callID, data),
+				Data: withTarget(callRelayPayload(convID, user.ID, callID, data), to),
 			})
 		}
 
@@ -255,7 +283,7 @@ func callICEHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 			return
 		}
 
-		data, ok := readSignalBody(w, r, false)
+		data, to, ok := readSignalBody(w, r, false)
 		if !ok {
 			return
 		}
@@ -263,7 +291,7 @@ func callICEHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 		if hub != nil {
 			hub.Publish(convID, Event{
 				Type: EventCallICE,
-				Data: callRelayPayload(convID, user.ID, callID, data),
+				Data: withTarget(callRelayPayload(convID, user.ID, callID, data), to),
 			})
 		}
 
@@ -291,8 +319,10 @@ func callEndHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 
 		// An /end request can legitimately be empty — the client just wants to
 		// hang up. allowEmpty also covers the network-hiccup case where the
-		// retry handler resends with an empty body.
-		data, ok := readSignalBody(w, r, true)
+		// retry handler resends with an empty body. /end is never targeted at a
+		// single peer (a hang-up tears the whole 1:1 call down), so the relay
+		// target is ignored here.
+		data, _, ok := readSignalBody(w, r, true)
 		if !ok {
 			return
 		}
@@ -328,11 +358,162 @@ func callEndHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
 	}
 }
 
+// readJoinBody reads the optional `kind` for a group-call join. An empty body
+// is allowed (the call kind defaults to voice) so a bare "join" POST works.
+func readJoinBody(w http.ResponseWriter, r *http.Request) (string, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxSignalPayloadLen)
+	defer r.Body.Close()
+	var body struct {
+		Kind string `json:"kind"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if errors.Is(err, io.EOF) {
+			return CallKindVoice, true
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return "", false
+	}
+	return NormalizeCallKind(body.Kind), true
+}
+
+// CallJoinHandler records the caller as a participant in a group (3+ member)
+// call and returns the user IDs of the peers already in the call so the client
+// can build out the WebRTC mesh. It broadcasts a call_join event to the
+// conversation (existing participants dial the newcomer) and wakes offline
+// members with a high-priority webpush, mirroring the 1:1 offer flow.
+func CallJoinHandler(db *sql.DB) http.HandlerFunc {
+	return callJoinHandler(db, DefaultHub(), defaultPushSender(db), false /* notify async */)
+}
+
+func callJoinHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		convID, callID, ok := parseCallParams(w, r)
+		if !ok {
+			return
+		}
+		if !requireCallMember(w, db, user.ID, convID) {
+			return
+		}
+
+		kind, ok := readJoinBody(w, r)
+		if !ok {
+			return
+		}
+
+		peers, err := JoinCall(db, convID, user.ID, callID, kind)
+		if err != nil {
+			log.Printf("familychat: join call conv=%d call=%s user=%d: %v", convID, callID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to join call"})
+			return
+		}
+
+		if hub != nil {
+			hub.Publish(convID, Event{
+				Type: EventCallJoin,
+				Data: map[string]any{
+					"conversation_id": convID,
+					"call_id":         callID,
+					"from_user_id":    user.ID,
+					"kind":            NormalizeCallKind(kind),
+				},
+			})
+		}
+
+		// Wake offline members so an unattended phone rings, the same way an
+		// incoming 1:1 offer does. Only the first joiner triggers a ring — once
+		// peers are present, later joins are people answering, not new calls.
+		if sender != nil && len(peers) == 0 {
+			senderName := senderDisplayName(user)
+			fire := func() {
+				notifyCallRecipientsBody(db, hub, sender, convID, user.ID, callID, senderName, "Group call")
+			}
+			if notifySync {
+				fire()
+			} else {
+				go func() {
+					pushSem <- struct{}{}
+					defer func() { <-pushSem }()
+					fire()
+				}()
+			}
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"call_id":      callID,
+			"kind":         NormalizeCallKind(kind),
+			"participants": peers,
+		})
+	}
+}
+
+// CallLeaveHandler records the caller leaving a group call and relays a
+// call_leave so peers tear down their single connection to them. When the last
+// participant leaves, the call envelope is finalised and a call_end is relayed
+// so any in-app "active group call" banner clears.
+func CallLeaveHandler(db *sql.DB) http.HandlerFunc {
+	return callLeaveHandler(db, DefaultHub())
+}
+
+func callLeaveHandler(db *sql.DB, hub *Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		convID, callID, ok := parseCallParams(w, r)
+		if !ok {
+			return
+		}
+		if !requireCallMember(w, db, user.ID, convID) {
+			return
+		}
+
+		remaining, finalStatus, err := LeaveCall(db, convID, user.ID, callID)
+		if err != nil {
+			log.Printf("familychat: leave call conv=%d call=%s user=%d: %v", convID, callID, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to leave call"})
+			return
+		}
+
+		if hub != nil {
+			hub.Publish(convID, Event{
+				Type: EventCallLeave,
+				Data: map[string]any{
+					"conversation_id": convID,
+					"call_id":         callID,
+					"from_user_id":    user.ID,
+				},
+			})
+			// Room emptied — broadcast a terminal call_end so non-participants'
+			// "join group call" banners disappear and history reflects the end.
+			if remaining == 0 {
+				payload := map[string]any{
+					"conversation_id": convID,
+					"call_id":         callID,
+					"from_user_id":    user.ID,
+				}
+				if finalStatus != "" {
+					payload["status"] = finalStatus
+				}
+				hub.Publish(convID, Event{Type: EventCallEnd, Data: payload})
+			}
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 // notifyCallRecipients fans a high-priority webpush notification out to every
 // conversation member except the initiator who is not already subscribed via
 // SSE. The tag is keyed on conversation_id so a fresh incoming call replaces
 // any stale call banner on the recipient's device rather than stacking up.
 func notifyCallRecipients(db *sql.DB, hub *Hub, sender PushSenderFunc, convID, initiatorID int64, callID, initiatorName string) {
+	notifyCallRecipientsBody(db, hub, sender, convID, initiatorID, callID, initiatorName, "Incoming call")
+}
+
+// notifyCallRecipientsBody is the shared fan-out used by both 1:1 calls
+// ("Incoming call") and group calls ("Group call"). The body text is the only
+// thing that differs; the tag stays keyed on conversation_id so a fresh ring
+// replaces any stale banner rather than stacking.
+func notifyCallRecipientsBody(db *sql.DB, hub *Hub, sender PushSenderFunc, convID, initiatorID int64, callID, initiatorName, body string) {
 	members, err := listMemberIDs(db, convID)
 	if err != nil {
 		log.Printf("familychat: notify call: list members conv=%d: %v", convID, err)
@@ -343,7 +524,7 @@ func notifyCallRecipients(db *sql.DB, hub *Hub, sender PushSenderFunc, convID, i
 	// URL characters (or stray '?'/'&'/spaces) cannot break the deep link.
 	note := push.Notification{
 		Title:   initiatorName,
-		Body:    "Incoming call",
+		Body:    body,
 		URL:     fmt.Sprintf("/familychat/%d?call=%s", convID, url.QueryEscape(callID)),
 		Tag:     fmt.Sprintf("familychat-call-%d", convID),
 		Urgency: "high",
@@ -366,4 +547,3 @@ func notifyCallRecipients(db *sql.DB, hub *Hub, sender PushSenderFunc, convID, i
 		}
 	}
 }
-
