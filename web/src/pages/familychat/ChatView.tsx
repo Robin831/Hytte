@@ -20,6 +20,7 @@ import {
   Video,
   VideoOff,
   SwitchCamera,
+  Sparkles,
 } from 'lucide-react'
 import { Skeleton } from '../../components/ui/skeleton'
 import { useAuth } from '../../auth'
@@ -39,6 +40,7 @@ import VoiceBubble from './voice/VoiceBubble'
 import { readCachedWaveform, parseWaveformJSON, DEFAULT_BAR_COUNT, type Waveform } from './voice/waveform'
 import * as voicePlayer from './voice/voicePlayer'
 import { useVoiceCall, type CallKind, type CallSignalEventName, type CallSignalPayload } from './voice/useVoiceCall'
+import { supportedFilters, type FilterKind } from './voice/videoFilters'
 import { useGroupCall, type GroupSignalEventName } from './voice/useGroupCall'
 import GroupCallOverlay from './GroupCallOverlay'
 
@@ -221,6 +223,9 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // speakerOn controls the remote audio volume: true = full volume (1.0),
   // false = muted (0) so "Speaker off" means no audio is heard.
   const [speakerOn, setSpeakerOn] = useState(true)
+  // filterPickerOpen toggles the in-call video-effects popover. Closed by
+  // default; reset whenever a call ends (see the call-state effect below).
+  const [filterPickerOpen, setFilterPickerOpen] = useState(false)
   // pipPosition holds the {x, y} offset for the draggable local-preview
   // window. Initialised to null so the PiP renders in its default top-right
   // corner via Tailwind classes; once the user drags it switches to inline
@@ -946,6 +951,12 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     return () => clearTimeout(timer)
   }, [endedCallSummary])
 
+  // Close the video-effects popover whenever the call isn't active so it never
+  // lingers into the next call (the hook resets the filter itself on each call).
+  useEffect(() => {
+    if (voiceCall.state !== 'active') setFilterPickerOpen(false)
+  }, [voiceCall.state])
+
   // Sweep stale typing indicators: drop any member whose most recent signal is
   // older than 5s so the row clears shortly after they stop composing. The
   // interval only runs while at least one member is typing.
@@ -1230,6 +1241,19 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     const seconds = safe % 60
     return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }, [])
+
+  // Video effects the current browser can actually run, in display order. When
+  // the device can't run any effect (no canvas pipeline) this is just ['none']
+  // and the effects button stays hidden. Computed once — capability is static.
+  const availableVideoFilters = useMemo<FilterKind[]>(() => supportedFilters(), [])
+  const canFilterVideo = availableVideoFilters.length > 1
+
+  // selectVideoFilter applies a chosen effect and closes the popover. setFilter
+  // itself is a no-op for unsupported effects, but we only render supported ones.
+  const selectVideoFilter = useCallback((kind: FilterKind) => {
+    setFilterPickerOpen(false)
+    void voiceCall.setFilter(kind)
+  }, [voiceCall])
 
   // startOrIgnoreCall fires the outgoing-call flow only when we're idle. A
   // second press while already ringing is a no-op so a double-tap can't kick
@@ -2274,6 +2298,65 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                 {t('call.switchCamera')}
               </span>
             </button>
+            {canFilterVideo && (
+              <div className="relative flex flex-col items-center">
+                {/* Effects popover — opens above the control bar. */}
+                {filterPickerOpen && (
+                  <div
+                    role="menu"
+                    aria-label={t('call.filters.title')}
+                    className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-44 rounded-xl bg-gray-800 border border-gray-700 shadow-xl p-1.5 flex flex-col gap-0.5"
+                    data-testid="family-chat-call-filter-menu"
+                  >
+                    <p className="px-2 py-1 text-[11px] uppercase tracking-wide text-gray-400">
+                      {t('call.filters.title')}
+                    </p>
+                    {availableVideoFilters.map(kind => {
+                      const active = voiceCall.filter === kind
+                      return (
+                        <button
+                          key={kind}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={active}
+                          onClick={() => selectVideoFilter(kind)}
+                          className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer text-left ${
+                            active
+                              ? 'bg-blue-500/20 text-blue-200'
+                              : 'text-gray-200 hover:bg-gray-700'
+                          }`}
+                          data-testid={`family-chat-call-filter-${kind}`}
+                        >
+                          <span>{t(`call.filters.${kind}`)}</span>
+                          {active && <span aria-hidden="true">✓</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setFilterPickerOpen(prev => !prev)}
+                  aria-label={t('call.filters.button')}
+                  aria-haspopup="menu"
+                  aria-expanded={filterPickerOpen}
+                  disabled={voiceCall.state !== 'active'}
+                  className={`flex flex-col items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                    voiceCall.filter !== 'none' ? 'text-blue-300' : 'text-gray-200'
+                  }`}
+                  data-testid="family-chat-call-filter"
+                >
+                  <span className={`p-3 rounded-full ${
+                    voiceCall.filter !== 'none' ? 'bg-blue-500/20' : 'bg-gray-700'
+                  }`}>
+                    <Sparkles size={24} aria-hidden="true" />
+                  </span>
+                  <span className="text-xs hidden sm:inline">
+                    {t('call.filters.button')}
+                  </span>
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => { void voiceCall.endCall() }}

@@ -1,4 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  createVideoFilterPipeline,
+  isFilterSupported,
+  type FilterKind,
+  type VideoFilterPipeline,
+} from './videoFilters'
 
 // useVoiceCall manages the WebRTC lifecycle of a 1:1 voice call between two
 // members of a Family Chat conversation. Voice calling is only supported for
@@ -192,6 +198,16 @@ export interface UseVoiceCallApi {
   // by re-requesting the video track with the opposite facingMode hint and
   // replaceTrack-ing the sender. No-op outside video calls.
   switchCamera: () => Promise<void>
+  // filter is the active local video effect. 'none' (the default) is a
+  // zero-overhead passthrough; other kinds route the camera through a canvas
+  // pipeline before the sender / local preview. Always 'none' for voice calls.
+  filter: FilterKind
+  // setFilter swaps the active local video effect live. It builds/updates the
+  // canvas pipeline and replaceTrack()s the processed track onto the existing
+  // video sender (no renegotiation) so the peer and the local PiP both see it.
+  // Falls back to 'none' if the browser can't run the requested effect. No-op
+  // for voice calls.
+  setFilter: (filter: FilterKind) => Promise<void>
   // Drive the call state machine from an external signal source. Exposed so
   // tests can simulate incoming events without a real SSE connection, and so
   // an outer page that already owns an SSE stream can route call_* frames in.
@@ -270,12 +286,16 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
   const [remoteUserId, setRemoteUserId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
+  // localStream is the stream the UI binds to the self-view (PiP). It is the
+  // raw camera stream while filter==='none', and a processed stream (canvas
+  // video track + the raw audio tracks) while a filter is active.
   const [localStream, setLocalStreamState] = useState<MediaStream | null>(null)
   const [muted, setMutedState] = useState(false)
   const [callKind, setCallKindState] = useState<CallKind>('voice')
   const [cameraEnabled, setCameraEnabledState] = useState(true)
   const [facingMode, setFacingModeState] = useState<CameraFacingMode>('user')
   const [remoteCameraEnabled, setRemoteCameraEnabledState] = useState(true)
+  const [filter, setFilterState] = useState<FilterKind>('none')
 
   // Refs hold values the async signalling callbacks must read without
   // capturing stale closures. React state is used for things the UI needs to
@@ -285,7 +305,27 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
   // continuation can detect that the call was ended and bail out rather than
   // re-creating a PeerConnection or POSTing a stale offer.
   const callEpochRef = useRef<number>(0)
+  // localStreamRef holds the RAW camera stream (audio + unprocessed video). All
+  // camera management (switch / toggle / bandwidth adapt) mutates this stream;
+  // the displayed/sent video is derived from it via syncVideoOutput so a filter
+  // can be inserted without disturbing the capture plumbing.
   const localStreamRef = useRef<MediaStream | null>(null)
+  // displayStreamRef shadows the exposed `localStream` state — the stream the UI
+  // renders and which carries the sent video track. Equals localStreamRef when
+  // filter==='none', otherwise a processed stream.
+  const displayStreamRef = useRef<MediaStream | null>(null)
+  // filterRef shadows the filter state for the async routing callbacks.
+  const filterRef = useRef<FilterKind>('none')
+  // filterPipelineRef holds the active canvas pipeline, or null when filter is
+  // 'none' / the camera is off / the browser can't run a pipeline.
+  const filterPipelineRef = useRef<VideoFilterPipeline | null>(null)
+  // cameraEnabledRef shadows cameraEnabled so syncVideoOutput knows whether the
+  // sender should carry a track at all.
+  const cameraEnabledRef = useRef<boolean>(true)
+  // currentSenderVideoTrackRef remembers the track currently on the video sender
+  // so syncVideoOutput can skip a redundant replaceTrack (and the SDP churn some
+  // engines do on every replace).
+  const currentSenderVideoTrackRef = useRef<MediaStreamTrack | null>(null)
   const callIdRef = useRef<string | null>(null)
   const remoteUserIdRef = useRef<number | null>(null)
   const stateRef = useRef<VoiceCallState>('idle')
@@ -346,10 +386,102 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     setFacingModeState(next)
   }, [])
 
-  const setLocalStream = useCallback((next: MediaStream | null) => {
+  // setRawStream updates the raw camera stream ref. It does NOT touch the
+  // displayed `localStream` state — that is owned by setDisplayStream, driven by
+  // syncVideoOutput once the (possibly filtered) output track is resolved.
+  const setRawStream = useCallback((next: MediaStream | null) => {
     localStreamRef.current = next
+  }, [])
+
+  const setDisplayStream = useCallback((next: MediaStream | null) => {
+    displayStreamRef.current = next
     setLocalStreamState(next)
   }, [])
+
+  const updateCameraEnabled = useCallback((next: boolean) => {
+    cameraEnabledRef.current = next
+    setCameraEnabledState(next)
+  }, [])
+
+  // stopFilterPipeline tears down the canvas pipeline (RAF loop + output track)
+  // if one is running. Safe to call when none exists.
+  const stopFilterPipeline = useCallback(() => {
+    const pipeline = filterPipelineRef.current
+    filterPipelineRef.current = null
+    if (pipeline) {
+      try { pipeline.stop() } catch { /* already stopped */ }
+    }
+  }, [])
+
+  // syncVideoOutput reconciles the video sender + the displayed local stream with
+  // the current raw camera track, the selected filter, and the camera on/off
+  // flag. It is the single chokepoint every camera operation funnels through so
+  // a filter can be inserted (or removed) without each call site re-implementing
+  // the routing. Stable identity (refs only) so it never re-creates the effects.
+  const syncVideoOutput = useCallback(async () => {
+    if (callKindRef.current !== 'video') return
+    const raw = localStreamRef.current
+    const sender = videoSenderRef.current
+    const rawVideo = raw?.getVideoTracks()[0] ?? null
+
+    const wantFilter = filterRef.current !== 'none'
+      && cameraEnabledRef.current
+      && rawVideo !== null
+      && isFilterSupported(filterRef.current)
+
+    // Passthrough path: no filter (or unsupported / camera off). Tear down any
+    // pipeline and route the raw track (or null when the camera is off) to the
+    // sender; the displayed stream is the raw stream itself.
+    if (!wantFilter) {
+      stopFilterPipeline()
+      const target = cameraEnabledRef.current ? rawVideo : null
+      if (sender && currentSenderVideoTrackRef.current !== target) {
+        try { await sender.replaceTrack(target) } catch { /* sender may be closed */ }
+        currentSenderVideoTrackRef.current = target
+      }
+      if (raw && displayStreamRef.current !== raw) setDisplayStream(raw)
+      return
+    }
+
+    // Filtered path: build the pipeline on first use, then feed it the current
+    // raw track and effect. The output track is stable, so the sender / display
+    // only change when the pipeline is (re)created.
+    let pipeline = filterPipelineRef.current
+    if (!pipeline) {
+      pipeline = createVideoFilterPipeline()
+      if (!pipeline) {
+        // Pipeline unavailable at runtime — fall back to passthrough so the call
+        // keeps working with the unfiltered feed.
+        filterRef.current = 'none'
+        setFilterState('none')
+        const target = cameraEnabledRef.current ? rawVideo : null
+        if (sender && currentSenderVideoTrackRef.current !== target) {
+          try { await sender.replaceTrack(target) } catch { /* sender may be closed */ }
+          currentSenderVideoTrackRef.current = target
+        }
+        if (raw && displayStreamRef.current !== raw) setDisplayStream(raw)
+        return
+      }
+      filterPipelineRef.current = pipeline
+    }
+    pipeline.setSource(rawVideo)
+    pipeline.setFilter(filterRef.current)
+    const out = pipeline.outputTrack
+    if (sender && currentSenderVideoTrackRef.current !== out) {
+      try { await sender.replaceTrack(out) } catch { /* sender may be closed */ }
+      currentSenderVideoTrackRef.current = out
+    }
+    // Build the display stream once and keep its identity stable across source /
+    // filter changes (the output track is reused) so the <video> element doesn't
+    // re-bind on every swap.
+    const currentDisplay = displayStreamRef.current
+    if (!currentDisplay || currentDisplay.getVideoTracks()[0] !== out) {
+      const display = new MediaStream()
+      display.addTrack(out)
+      if (raw) for (const a of raw.getAudioTracks()) display.addTrack(a)
+      setDisplayStream(display)
+    }
+  }, [setDisplayStream, stopFilterPipeline])
 
   // tearDown closes the peer connection, stops local tracks, releases the
   // AudioContext, and clears every transient buffer. It is safe to call from
@@ -368,8 +500,16 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     }
     pcRef.current = null
 
+    // Stop the canvas filter pipeline (RAF loop + processed output track) before
+    // dropping the raw stream so neither outlives the call.
+    stopFilterPipeline()
+    filterRef.current = 'none'
+    setFilterState('none')
+    currentSenderVideoTrackRef.current = null
+
     const prevLocalStream = localStreamRef.current
     localStreamRef.current = null
+    displayStreamRef.current = null
     setLocalStreamState(null)
     if (prevLocalStream) {
       for (const track of prevLocalStream.getTracks()) {
@@ -379,6 +519,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
 
     setRemoteStream(null)
     setMutedState(false)
+    cameraEnabledRef.current = true
     setCameraEnabledState(true)
     setRemoteCameraEnabledState(true)
     callKindRef.current = 'voice'
@@ -406,7 +547,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     updateRemoteUserId(null)
     updateCallId(null)
     updateState(nextState)
-  }, [updateCallId, updateRemoteUserId, updateState])
+  }, [stopFilterPipeline, updateCallId, updateRemoteUserId, updateState])
 
   // installAudioContextKick keeps a silent AudioContext alive for the
   // duration of the call. Browsers throttle background tabs aggressively; an
@@ -549,7 +690,10 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     updateCallId(theCallId)
     updateCallKind(kind)
     updateFacingMode('user')
-    setCameraEnabledState(true)
+    updateCameraEnabled(true)
+    // Every call starts with the passthrough filter — fresh and zero-overhead.
+    filterRef.current = 'none'
+    setFilterState('none')
     updateState('outgoing-ringing')
 
     try {
@@ -572,12 +716,17 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         for (const t of stream.getTracks()) { try { t.stop() } catch { /* ok */ } }
         return
       }
-      setLocalStream(stream)
+      // The raw stream feeds both the camera plumbing and (with filter 'none')
+      // the displayed/sent video directly.
+      setRawStream(stream)
+      setDisplayStream(stream)
       videoSenderRef.current = null
+      currentSenderVideoTrackRef.current = null
       for (const track of stream.getTracks()) {
         const sender = pc.addTrack(track, stream)
         if (track.kind === 'video') {
           videoSenderRef.current = sender
+          currentSenderVideoTrackRef.current = track
         }
       }
 
@@ -603,10 +752,12 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     }
   }, [
     conversationId,
-    setLocalStream,
+    setRawStream,
+    setDisplayStream,
     tearDown,
     updateCallId,
     updateCallKind,
+    updateCameraEnabled,
     updateFacingMode,
     updateState,
     wirePeerConnection,
@@ -654,12 +805,15 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         for (const t of stream.getTracks()) { try { t.stop() } catch { /* ok */ } }
         return
       }
-      setLocalStream(stream)
+      setRawStream(stream)
+      setDisplayStream(stream)
       videoSenderRef.current = null
+      currentSenderVideoTrackRef.current = null
       for (const track of stream.getTracks()) {
         const sender = pc.addTrack(track, stream)
         if (track.kind === 'video') {
           videoSenderRef.current = sender
+          currentSenderVideoTrackRef.current = track
         }
       }
 
@@ -690,7 +844,8 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     conversationId,
     flushBufferedCandidates,
     installAudioContextKick,
-    setLocalStream,
+    setRawStream,
+    setDisplayStream,
     tearDown,
     updateState,
     wirePeerConnection,
@@ -756,7 +911,9 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         const incomingKind: CallKind = payload.kind === 'video' ? 'video' : 'voice'
         updateCallKind(incomingKind)
         updateFacingMode('user')
-        setCameraEnabledState(true)
+        updateCameraEnabled(true)
+        filterRef.current = 'none'
+        setFilterState('none')
         setError(null)
         updateCallId(incomingCallId)
         updateRemoteUserId(payload.from_user_id)
@@ -813,6 +970,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     tearDown,
     updateCallId,
     updateCallKind,
+    updateCameraEnabled,
     updateFacingMode,
     updateRemoteUserId,
     updateState,
@@ -967,13 +1125,9 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
           for (const t of fresh.getTracks()) { try { t.stop() } catch { /* ok */ } }
           return
         }
-        await sender.replaceTrack(videoTrack)
-        if (callEpochRef.current !== epoch) {
-          try { videoTrack.stop() } catch { /* ok */ }
-          return
-        }
-        // Swap the new video track into our local preview stream so the UI
-        // re-renders with the fresh feed. Audio track is preserved.
+        // Swap the new raw video track into the camera stream so the camera
+        // plumbing (and, with filter 'none', the preview) picks it up. Audio is
+        // preserved.
         const oldVideos = stream.getVideoTracks()
         for (const t of oldVideos) {
           try { stream.removeTrack(t) } catch { /* old browsers */ }
@@ -983,6 +1137,16 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         // Defensive: stop any audio tracks the stream may carry (should be
         // none since we passed audio:false, but guard against browser quirks).
         for (const t of fresh.getAudioTracks()) { try { t.stop() } catch { /* ok */ } }
+        // Mark the camera on before routing so syncVideoOutput puts a track
+        // (raw or filtered) back on the sender rather than leaving it null.
+        cameraEnabledRef.current = true
+        // Route the fresh raw track to the sender + preview, applying the active
+        // filter if one is selected.
+        await syncVideoOutput()
+        if (callEpochRef.current !== epoch) {
+          try { videoTrack.stop() } catch { /* ok */ }
+          return
+        }
         setCameraEnabledState(true)
       } catch (err) {
         if (typeof console !== 'undefined') {
@@ -990,6 +1154,10 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         }
       }
     } else {
+      // Disable: mark the camera off and tear the filter pipeline down (no point
+      // burning CPU drawing frames nobody receives), then drop the sent track.
+      cameraEnabledRef.current = false
+      stopFilterPipeline()
       try {
         await sender.replaceTrack(null)
       } catch {
@@ -1003,9 +1171,15 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
           }
         }
       }
+      currentSenderVideoTrackRef.current = null
+      // If a filter had been active the displayed stream pointed at the (now
+      // stopped) processed track; fall back to the raw stream so the preview
+      // isn't a dead track behind the camera-off overlay.
+      const raw = localStreamRef.current
+      if (raw && displayStreamRef.current !== raw) setDisplayStream(raw)
       setCameraEnabledState(false)
     }
-  }, [])
+  }, [setDisplayStream, stopFilterPipeline, syncVideoOutput])
 
   // switchCamera toggles to the next available camera. The bead asks for
   // navigator.mediaDevices.enumerateDevices(); when the platform exposes more
@@ -1074,11 +1248,9 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         for (const t of fresh.getTracks()) { try { t.stop() } catch { /* ok */ } }
         return
       }
-      await sender.replaceTrack(videoTrack)
-      if (callEpochRef.current !== epoch) {
-        try { videoTrack.stop() } catch { /* ok */ }
-        return
-      }
+      // Swap the fresh raw track into the camera stream, then route it to the
+      // sender + preview (re-applying the active filter, whose stable output
+      // track means no SDP renegotiation on the swap).
       const oldVideos = stream.getVideoTracks()
       for (const t of oldVideos) {
         try { stream.removeTrack(t) } catch { /* old browsers */ }
@@ -1087,12 +1259,17 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
       stream.addTrack(videoTrack)
       updateFacingMode(nextFacing)
       lastVideoSizeRef.current = { width, height }
+      await syncVideoOutput()
+      if (callEpochRef.current !== epoch) {
+        try { videoTrack.stop() } catch { /* ok */ }
+        return
+      }
     } catch (err) {
       if (typeof console !== 'undefined') {
         console.warn('voice call: switchCamera failed', err)
       }
     }
-  }, [pickNextCameraDeviceId, updateFacingMode])
+  }, [pickNextCameraDeviceId, syncVideoOutput, updateFacingMode])
 
   // adaptVideoToConnection re-requests the video track at the resolution
   // matching the current effectiveType (slow→320×240, fast→640×480) and
@@ -1134,11 +1311,6 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         for (const t of fresh.getTracks()) { try { t.stop() } catch { /* ok */ } }
         return
       }
-      await sender.replaceTrack(videoTrack)
-      if (callEpochRef.current !== epoch) {
-        try { videoTrack.stop() } catch { /* ok */ }
-        return
-      }
       const oldVideos = stream.getVideoTracks()
       for (const t of oldVideos) {
         try { stream.removeTrack(t) } catch { /* old browsers */ }
@@ -1146,12 +1318,33 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
       }
       stream.addTrack(videoTrack)
       lastVideoSizeRef.current = target
+      // Route the resized raw track to the sender + preview (re-applying any
+      // active filter). The filter pipeline simply re-points at the new source.
+      await syncVideoOutput()
+      if (callEpochRef.current !== epoch) {
+        try { videoTrack.stop() } catch { /* ok */ }
+        return
+      }
     } catch (err) {
       if (typeof console !== 'undefined') {
         console.warn('voice call: bandwidth adapt failed', err)
       }
     }
-  }, [cameraEnabled])
+  }, [cameraEnabled, syncVideoOutput])
+
+  // setFilter swaps the active local video effect. It records the choice
+  // (synchronously, via the ref) then re-routes the current camera track
+  // through syncVideoOutput, which builds/updates the canvas pipeline and
+  // replaceTrack()s the processed track onto the existing sender. A no-op for
+  // voice calls or when the requested effect isn't supported by this browser.
+  const setFilter = useCallback(async (kind: FilterKind) => {
+    if (filterRef.current === kind) return
+    if (kind !== 'none' && !isFilterSupported(kind)) return
+    filterRef.current = kind
+    setFilterState(kind)
+    if (callKindRef.current !== 'video') return
+    await syncVideoOutput()
+  }, [syncVideoOutput])
 
   // Subscribe to navigator.connection.change while a call is active so the
   // local capture downscales on slow networks. We do nothing in environments
@@ -1187,6 +1380,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     cameraEnabled,
     facingMode,
     remoteCameraEnabled,
+    filter,
     startCall,
     acceptCall,
     rejectCall,
@@ -1194,6 +1388,7 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     setMuted,
     setCameraEnabled,
     switchCamera,
+    setFilter,
     handleSignalEvent,
   }
 }

@@ -115,6 +115,14 @@
     "missedFrom": "Missed call from {{name}}",
     "callBack": "Call back",
     "dismiss": "Dismiss",
+    "filters": {
+      "button": "Effects",
+      "title": "Video effects",
+      "none": "None",
+      "blur": "Soft blur",
+      "grading": "Vintage",
+      "face": "Party face"
+    },
     "group": {
       "start": "Start group voice call",
       "startVideo": "Start group video call",
