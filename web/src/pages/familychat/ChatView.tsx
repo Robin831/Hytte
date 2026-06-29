@@ -1815,15 +1815,17 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       </div>
 
       <div className="border-t border-gray-800 bg-gray-950 shrink-0">
-        <Composer
-          conversationId={conversationId}
-          currentUserId={user?.id ?? 0}
-          onMessageCreated={handleMessageCreated}
-          onOptimisticMessage={handleOptimisticMessage}
-          onMessageFailed={handleMessageFailed}
-          retryRef={composerRetryRef}
-          onTyping={notifyTyping}
-        />
+        {user && (
+          <Composer
+            conversationId={conversationId}
+            currentUserId={user.id}
+            onMessageCreated={handleMessageCreated}
+            onOptimisticMessage={handleOptimisticMessage}
+            onMessageFailed={handleMessageFailed}
+            retryRef={composerRetryRef}
+            onTyping={notifyTyping}
+          />
+        )}
       </div>
 
       {lightbox && (

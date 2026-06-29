@@ -368,7 +368,8 @@ describe('ChatView – optimistic send + reconciliation', () => {
       .mockResolvedValueOnce(convOk())
       .mockResolvedValueOnce(msgsOk([]))
       .mockResolvedValueOnce(sse.response)
-      .mockImplementationOnce(() => new Promise(() => {})) // POST never resolves
+      .mockResolvedValueOnce({ ok: true }) // typing indicator POST
+      .mockImplementationOnce(() => new Promise(() => {})) // message POST never resolves
     vi.stubGlobal('fetch', fetchMock)
     renderChatView()
     await waitFor(() => screen.getByText('No messages yet. Say hello!'))
@@ -399,7 +400,8 @@ describe('ChatView – optimistic send + reconciliation', () => {
       .mockResolvedValueOnce(convOk())
       .mockResolvedValueOnce(msgsOk([]))
       .mockResolvedValueOnce(streamOk())
-      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ error: 'down' }) }) // POST fails
+      .mockResolvedValueOnce({ ok: true }) // typing indicator POST
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ error: 'down' }) }) // message POST fails
       .mockResolvedValueOnce(sendOk(okMsg)) // retry succeeds
     vi.stubGlobal('fetch', fetchMock)
     renderChatView()
@@ -426,7 +428,8 @@ describe('ChatView – optimistic send + reconciliation', () => {
       .mockResolvedValueOnce(convOk(makeConversation({ id: 1, name: 'One' })))
       .mockResolvedValueOnce(msgsOk([]))
       .mockResolvedValueOnce(streamOk())
-      .mockImplementationOnce(() => new Promise(() => {})) // conv 1 POST never resolves
+      .mockResolvedValueOnce({ ok: true }) // typing indicator POST
+      .mockImplementationOnce(() => new Promise(() => {})) // conv 1 message POST never resolves
       .mockResolvedValueOnce(convOk(makeConversation({ id: 2, name: 'Two' })))
       .mockResolvedValueOnce(msgsOk([]))
       .mockResolvedValueOnce(streamOk())
@@ -547,6 +550,7 @@ describe('ChatView – SSE live updates', () => {
       .mockResolvedValueOnce(convOk())
       .mockResolvedValueOnce(msgsOk([]))
       .mockResolvedValueOnce(sse.response)
+      .mockResolvedValueOnce({ ok: true }) // typing indicator POST
       .mockResolvedValueOnce(sendOk(newMsg)),
     )
     renderChatView()
