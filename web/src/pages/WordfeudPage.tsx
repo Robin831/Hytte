@@ -224,6 +224,7 @@ function WordFinder() {
               setSearching(false)
               setMode(m.value)
               setResults([])
+              setTotalMatches(0)
               setHasSearched(false)
               setError(null)
             }}
