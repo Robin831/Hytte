@@ -436,8 +436,10 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
       stopFilterPipeline()
       const target = cameraEnabledRef.current ? rawVideo : null
       if (sender && currentSenderVideoTrackRef.current !== target) {
-        try { await sender.replaceTrack(target) } catch { /* sender may be closed */ }
-        currentSenderVideoTrackRef.current = target
+        try {
+          await sender.replaceTrack(target)
+          currentSenderVideoTrackRef.current = target
+        } catch { /* sender may be closed */ }
       }
       if (raw && displayStreamRef.current !== raw) setDisplayStream(raw)
       return
@@ -456,8 +458,10 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
         setFilterState('none')
         const target = cameraEnabledRef.current ? rawVideo : null
         if (sender && currentSenderVideoTrackRef.current !== target) {
-          try { await sender.replaceTrack(target) } catch { /* sender may be closed */ }
-          currentSenderVideoTrackRef.current = target
+          try {
+            await sender.replaceTrack(target)
+            currentSenderVideoTrackRef.current = target
+          } catch { /* sender may be closed */ }
         }
         if (raw && displayStreamRef.current !== raw) setDisplayStream(raw)
         return
@@ -468,8 +472,10 @@ export function useVoiceCall(options: UseVoiceCallOptions): UseVoiceCallApi {
     pipeline.setFilter(filterRef.current)
     const out = pipeline.outputTrack
     if (sender && currentSenderVideoTrackRef.current !== out) {
-      try { await sender.replaceTrack(out) } catch { /* sender may be closed */ }
-      currentSenderVideoTrackRef.current = out
+      try {
+        await sender.replaceTrack(out)
+        currentSenderVideoTrackRef.current = out
+      } catch { /* sender may be closed */ }
     }
     // Build the display stream once and keep its identity stable across source /
     // filter changes (the output track is reused) so the <video> element doesn't

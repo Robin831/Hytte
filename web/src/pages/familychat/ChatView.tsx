@@ -2302,7 +2302,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                     className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-44 rounded-xl bg-gray-800 border border-gray-700 shadow-xl p-1.5 flex flex-col gap-0.5"
                     data-testid="family-chat-call-filter-menu"
                   >
-                    <p className="px-2 py-1 text-[11px] uppercase tracking-wide text-gray-400">
+                    <p role="presentation" className="px-2 py-1 text-[11px] uppercase tracking-wide text-gray-400">
                       {t('call.filters.title')}
                     </p>
                     {availableVideoFilters.map(kind => {
