@@ -39,6 +39,8 @@ const TRANSLATIONS: Record<string, string> = {
   'composer.send': 'Send message',
   'composer.attach': 'Attach a file',
   'composer.removeAttachment': 'Remove attachment',
+  'composer.sending': 'Sending…',
+  'composer.failedRetry': 'Failed — tap to retry',
   'composer.errors.send': 'Failed to send message',
   'composer.errors.tooLong': 'Message is too long',
   'composer.errors.upload': 'Failed to upload file',
@@ -329,6 +331,127 @@ describe('ChatView – optimistic message append', () => {
   })
 })
 
+describe('ChatView – optimistic send + reconciliation', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  // postBody pulls the parsed JSON body of the first POST to the messages
+  // endpoint so a test can read the client_id the Composer generated.
+  function postClientId(fetchMock: ReturnType<typeof vi.fn>): string {
+    const call = fetchMock.mock.calls.find(
+      c => /\/messages$/.test(String(c[0])) && (c[1] as RequestInit | undefined)?.method === 'POST',
+    )
+    return JSON.parse((call![1] as RequestInit).body as string).client_id
+  }
+
+  it('renders a typed message instantly in a sending state before any network response', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce(streamOk())
+      .mockImplementationOnce(() => new Promise(() => {})) // POST never resolves
+    vi.stubGlobal('fetch', fetchMock)
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+
+    const textarea = screen.getByRole('textbox')
+    fireEvent.change(textarea, { target: { value: 'Instant render' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false })
+
+    // Visible immediately, with the sending indicator, before the POST resolves.
+    expect(screen.getByText('Instant render')).toBeInTheDocument()
+    expect(screen.getByText('Sending…')).toBeInTheDocument()
+  })
+
+  it('reconciles the optimistic bubble when the SSE message_new arrives first (no duplicate)', async () => {
+    const sse = streamWithController()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce(sse.response)
+      .mockResolvedValueOnce({ ok: true }) // typing indicator POST
+      .mockImplementationOnce(() => new Promise(() => {})) // message POST never resolves
+    vi.stubGlobal('fetch', fetchMock)
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+
+    const textarea = screen.getByRole('textbox')
+    fireEvent.change(textarea, { target: { value: 'SSE first' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false })
+    await waitFor(() => screen.getByText('SSE first'))
+    expect(screen.getByText('Sending…')).toBeInTheDocument()
+
+    const clientId = postClientId(fetchMock)
+
+    await act(async () => {
+      sse.push('message_new', {
+        message: makeMessage({ id: 77, body: 'SSE first', sender_user_id: 1, client_id: clientId }),
+      })
+      await Promise.resolve()
+    })
+
+    // The authoritative row replaces the optimistic bubble in place.
+    expect(screen.getAllByText('SSE first')).toHaveLength(1)
+    expect(screen.queryByText('Sending…')).not.toBeInTheDocument()
+  })
+
+  it('shows a failed affordance on POST error and reconciles after a tap-to-retry', async () => {
+    const okMsg = makeMessage({ id: 88, body: 'Flaky', sender_user_id: 1 })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce(streamOk())
+      .mockResolvedValueOnce({ ok: true }) // typing indicator POST
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({ error: 'down' }) }) // message POST fails
+      .mockResolvedValueOnce(sendOk(okMsg)) // retry succeeds
+    vi.stubGlobal('fetch', fetchMock)
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+
+    const textarea = screen.getByRole('textbox')
+    fireEvent.change(textarea, { target: { value: 'Flaky' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false })
+
+    const retryBtn = await screen.findByText('Failed — tap to retry')
+
+    await act(async () => {
+      fireEvent.click(retryBtn)
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText('Failed — tap to retry')).not.toBeInTheDocument()
+    })
+    expect(screen.getAllByText('Flaky')).toHaveLength(1)
+  })
+
+  it('does not leak an optimistic bubble into another conversation when switching mid-send', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk(makeConversation({ id: 1, name: 'One' })))
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce(streamOk())
+      .mockResolvedValueOnce({ ok: true }) // typing indicator POST
+      .mockImplementationOnce(() => new Promise(() => {})) // conv 1 message POST never resolves
+      .mockResolvedValueOnce(convOk(makeConversation({ id: 2, name: 'Two' })))
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce(streamOk())
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { rerender } = renderChatView(1)
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+
+    const textarea = screen.getByRole('textbox')
+    fireEvent.change(textarea, { target: { value: 'Leaky' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false })
+    await waitFor(() => screen.getByText('Leaky'))
+
+    await act(async () => {
+      rerender(<ChatView conversationId={2} onBack={vi.fn()} />)
+    })
+
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+    expect(screen.queryByText('Leaky')).not.toBeInTheDocument()
+  })
+})
+
 describe('ChatView – attachment rendering', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
 
@@ -427,6 +550,7 @@ describe('ChatView – SSE live updates', () => {
       .mockResolvedValueOnce(convOk())
       .mockResolvedValueOnce(msgsOk([]))
       .mockResolvedValueOnce(sse.response)
+      .mockResolvedValueOnce({ ok: true }) // typing indicator POST
       .mockResolvedValueOnce(sendOk(newMsg)),
     )
     renderChatView()

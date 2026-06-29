@@ -323,6 +323,80 @@ func TestPostMessageHandler_Success(t *testing.T) {
 	}
 }
 
+func TestPostMessageHandler_ClientIDEchoedNotPersisted(t *testing.T) {
+	// The optimistic-send UI passes a client-generated client_id. The server
+	// must echo it back on both the HTTP response and the SSE broadcast so the
+	// sender can reconcile its local bubble, but must never persist it.
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+
+	hub := NewHub()
+	// Subscribe a second member so we can observe the broadcast payload.
+	sub := hub.Subscribe(2, convID)
+	defer hub.Unsubscribe(convID, sub)
+
+	handler := postMessageHandler(db, hub, nil, true /* notifySync */)
+
+	idStr := strconv.FormatInt(convID, 10)
+	const clientID = "11111111-2222-3333-4444-555555555555"
+	payload := fmt.Sprintf(`{"body":"optimistic hi","client_id":%q}`, clientID)
+	req := withUser(httptest.NewRequest("POST", "/api/familychat/conversations/"+idStr+"/messages", strings.NewReader(payload)), 1)
+	req.Header.Set("Content-Type", "application/json")
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		Message Message `json:"message"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+	if created.Message.ClientID != clientID {
+		t.Errorf("response client_id = %q, want %q", created.Message.ClientID, clientID)
+	}
+
+	// The broadcast must carry the same client_id so an SSE-first arrival can
+	// reconcile the optimistic bubble.
+	select {
+	case evt := <-sub.Events():
+		data, _ := evt.Data.(map[string]any)
+		bcMsg, _ := data["message"].(*Message)
+		if bcMsg == nil {
+			t.Fatalf("broadcast missing message payload: %#v", evt.Data)
+		}
+		if bcMsg.ClientID != clientID {
+			t.Errorf("broadcast client_id = %q, want %q", bcMsg.ClientID, clientID)
+		}
+	default:
+		t.Fatal("expected a message_new broadcast on the subscriber channel")
+	}
+
+	// Reading the message back from storage must leave client_id empty — it is
+	// a passthrough field, never written to the database.
+	listReq := withUser(httptest.NewRequest("GET", "/api/familychat/conversations/"+idStr+"/messages", nil), 1)
+	listReq = withChiParam(listReq, "id", idStr)
+	listRec := httptest.NewRecorder()
+	ListMessagesHandler(db).ServeHTTP(listRec, listReq)
+	var list struct {
+		Messages []Message `json:"messages"`
+	}
+	if err := json.NewDecoder(listRec.Body).Decode(&list); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(list.Messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(list.Messages))
+	}
+	if list.Messages[0].ClientID != "" {
+		t.Errorf("persisted message leaked client_id = %q, want empty", list.Messages[0].ClientID)
+	}
+}
+
 func TestPostMessageHandler_NonMember(t *testing.T) {
 	db := setupTestDB(t)
 	makeUser(t, db, 1, "alice@example.com")

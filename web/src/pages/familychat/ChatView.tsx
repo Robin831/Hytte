@@ -72,6 +72,41 @@ export interface ChatMessage {
   // Voice notes use it to ship the precomputed waveform (see voice/waveform.ts).
   meta_json?: string | null
   reactions?: ReactionMap
+  // client_id is a client-generated correlation id for optimistic sends. It is
+  // present on the locally-rendered "sending" bubble and is echoed back by the
+  // server on the POST response and the SSE message_new event, so whichever
+  // arrives first reconciles the bubble. Kept on the message after reconciling
+  // so the React key stays stable (no remount/flicker). Absent on messages
+  // loaded from the server.
+  client_id?: string
+  // status drives the optimistic-send affordance: 'sending' while the POST is
+  // in flight, 'failed' once it errors (tap to retry). Absent for authoritative
+  // (reconciled or server-loaded) messages.
+  status?: 'sending' | 'failed'
+}
+
+// reconcileMessage merges an authoritative message into the list. When the
+// incoming message carries a client_id that matches a local optimistic bubble,
+// it replaces that bubble in place — preserving the client_id (so the React key
+// stays stable and the row doesn't remount/flicker) and dropping the optimistic
+// status. Otherwise it dedupes by id so a message delivered via both the POST
+// response and the SSE stream (or gap-fill) shows up exactly once, regardless of
+// arrival order.
+function reconcileMessage(
+  prev: ChatMessage[],
+  clientId: string | undefined,
+  incoming: ChatMessage,
+): ChatMessage[] {
+  if (clientId) {
+    const idx = prev.findIndex(m => m.client_id === clientId)
+    if (idx !== -1) {
+      const next = prev.slice()
+      next[idx] = { ...incoming, client_id: clientId, status: undefined }
+      return next
+    }
+  }
+  if (prev.some(m => m.id === incoming.id)) return prev
+  return [...prev, incoming]
 }
 
 // parseVoiceMeta extracts a {bars, durationMs} pair from a meta_json blob.
@@ -425,10 +460,9 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         next.delete(msg.sender_user_id)
         return next
       })
-      setMessages(prev => {
-        if (prev.some(m => m.id === msg.id)) return prev
-        return [...prev, msg]
-      })
+      // Reconcile against an optimistic bubble when the server echoed our
+      // client_id (the SSE-first arrival path); otherwise dedupe by id.
+      setMessages(prev => reconcileMessage(prev, msg.client_id, msg))
     }
 
     // applyReactionEventLocal merges an incoming reaction event into the
@@ -952,13 +986,46 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     // Defensive: if the user switched conversations while a send was in
     // flight, drop the message rather than leaking it into the wrong chat.
     if (msg.conversation_id !== conversationId) return
-    setMessages(prev => {
-      // Guard against the rare case where SSE (sub-task 4) and the REST
-      // response both deliver the same message: drop any duplicate id.
-      if (prev.some(m => m.id === msg.id)) return prev
-      return [...prev, msg]
-    })
+    // Reconcile against an optimistic bubble when the message carries a
+    // client_id (the POST-response path for text sends); otherwise dedupe by
+    // id (voice notes and attachments, which are not rendered optimistically).
+    setMessages(prev => reconcileMessage(prev, msg.client_id, msg))
   }, [conversationId])
+
+  // handleOptimisticMessage renders a just-typed text message immediately in a
+  // 'sending' state, before any network round-trip. Scoped to the active
+  // conversation so a stray emit can't leak into the wrong chat.
+  const handleOptimisticMessage = useCallback((msg: ChatMessage) => {
+    if (msg.conversation_id !== conversationId) return
+    setMessages(prev => [...prev, msg])
+  }, [conversationId])
+
+  // handleMessageFailed flips an optimistic bubble to the 'failed' state when
+  // its POST errors, preserving the typed text so the user can tap to retry.
+  // No conversation guard is needed: after a switch the bubble is gone, so the
+  // client_id no longer matches and this is a no-op.
+  const handleMessageFailed = useCallback((clientId: string) => {
+    setMessages(prev => prev.map(m =>
+      m.client_id === clientId ? { ...m, status: 'failed' as const } : m,
+    ))
+  }, [])
+
+  // composerRetryRef holds the Composer's retry entry point. The failed bubble's
+  // tap target calls it to re-POST the preserved text under the same client_id
+  // so a successful retry reconciles normally.
+  const composerRetryRef = useRef<
+    ((clientId: string, text: string, targetConversationId: number) => void) | null
+  >(null)
+
+  const retryFailedMessage = useCallback((msg: ChatMessage) => {
+    if (!msg.client_id) return
+    const clientId = msg.client_id
+    // Flip back to 'sending' immediately so the affordance reflects the retry.
+    setMessages(prev => prev.map(m =>
+      m.client_id === clientId ? { ...m, status: 'sending' as const } : m,
+    ))
+    composerRetryRef.current?.(clientId, msg.body, msg.conversation_id)
+  }, [])
 
   // toggleReaction applies the change optimistically (chips update before the
   // network round-trip) and rolls back on failure. The eventual SSE
@@ -1425,14 +1492,18 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
           const voiceDurationMs = cachedWaveform?.durationMs ?? 0
           const pickerOpen = pickerForMsgId === msg.id
           const menuOpen = menuForMsgId === msg.id
-          const showActions = isOwn && !isDeleted && !isEditing
+          // Optimistic bubbles (still sending or failed) have no authoritative
+          // id yet, so reactions and edit/delete are suppressed until the row
+          // reconciles to the persisted message.
+          const isPending = msg.status === 'sending' || msg.status === 'failed'
+          const showActions = isOwn && !isDeleted && !isEditing && !isPending
           const deletedByInfo = msg.deleted_by != null ? memberLookup.get(msg.deleted_by) : undefined
           const deletedByLabel = msg.deleted_by != null && user?.id === msg.deleted_by
             ? t('edit.tombstoneSelf')
             : t('edit.tombstone', { name: deletedByInfo?.label ?? t('chat.memberFallback', { id: msg.deleted_by ?? 0 }) })
           return (
             <div
-              key={msg.id}
+              key={msg.client_id ?? msg.id}
               className={`flex flex-col group ${isOwn ? 'items-end' : 'items-start'}`}
               data-testid={`chat-bubble-${msg.id}`}
             >
@@ -1498,7 +1569,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                       isOwn
                         ? 'bg-blue-600 text-white rounded-br-sm'
                         : 'bg-gray-800 text-gray-100 rounded-bl-sm'
-                    }`}
+                    } ${msg.status === 'sending' ? 'opacity-70' : ''}`}
                     onPointerDown={(e) => { lastPointerTypeRef.current = e.pointerType }}
                     onContextMenu={(e) => {
                       // Only intercept touch long-press (suppress native menu, open
@@ -1570,7 +1641,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                     )}
                   </div>
                 )}
-                {!isDeleted && !isEditing && (
+                {!isDeleted && !isEditing && !isPending && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -1658,6 +1729,25 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                 onToggle={(emoji, mine) => { void toggleReaction(msg.id, emoji, mine) }}
               />
               <div className="flex items-center gap-1 mt-0.5 px-1">
+                {msg.status === 'sending' && (
+                  <span
+                    className="text-[10px] text-gray-400 italic"
+                    role="status"
+                    data-testid={`chat-sending-${msg.id}`}
+                  >
+                    {t('composer.sending')}
+                  </span>
+                )}
+                {msg.status === 'failed' && (
+                  <button
+                    type="button"
+                    onClick={() => retryFailedMessage(msg)}
+                    className="text-[10px] text-red-400 hover:text-red-300 italic cursor-pointer"
+                    data-testid={`chat-failed-${msg.id}`}
+                  >
+                    {t('composer.failedRetry')}
+                  </button>
+                )}
                 {!isDeleted && msg.edited_at && (
                   <span
                     className="text-[10px] text-gray-500 italic"
@@ -1725,11 +1815,17 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       </div>
 
       <div className="border-t border-gray-800 bg-gray-950 shrink-0">
-        <Composer
-          conversationId={conversationId}
-          onMessageCreated={handleMessageCreated}
-          onTyping={notifyTyping}
-        />
+        {user && (
+          <Composer
+            conversationId={conversationId}
+            currentUserId={user.id}
+            onMessageCreated={handleMessageCreated}
+            onOptimisticMessage={handleOptimisticMessage}
+            onMessageFailed={handleMessageFailed}
+            retryRef={composerRetryRef}
+            onTyping={notifyTyping}
+          />
+        )}
       </div>
 
       {lightbox && (

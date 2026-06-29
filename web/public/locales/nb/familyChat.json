@@ -45,6 +45,8 @@
     "send": "Send melding",
     "attach": "Legg ved fil",
     "removeAttachment": "Fjern vedlegg",
+    "sending": "Sender…",
+    "failedRetry": "Mislyktes – trykk for å prøve igjen",
     "voice": {
       "record": "Ta opp talemelding",
       "start": "Hold inne for å spille inn talemelding",
