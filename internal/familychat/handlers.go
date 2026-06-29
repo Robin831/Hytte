@@ -25,6 +25,10 @@ const (
 	maxBodyLen        = 8000
 	maxAttachmentPath = 1024
 	maxAttachmentMime = 128
+	// maxClientIDLen caps the optional client-generated correlation id used by
+	// the optimistic-send UI. A UUID is 36 chars; 128 leaves headroom without
+	// letting a client smuggle a large blob through the passthrough field.
+	maxClientIDLen = 128
 	maxMembersPerConv = 100
 	defaultMsgLimit   = 50
 	maxMsgLimit       = 500
@@ -241,6 +245,12 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 			Body           string  `json:"body"`
 			AttachmentPath string  `json:"attachment_path"`
 			AttachmentMime string  `json:"attachment_mime"`
+			// ClientID is an optional correlation id the optimistic-send UI
+			// generates before the POST. The server never persists it; it is
+			// echoed back on the HTTP response and the SSE broadcast so the
+			// sender can reconcile its local "sending" bubble with the
+			// authoritative row (see Message.ClientID).
+			ClientID string `json:"client_id"`
 			// MetaJSON is opaque client-supplied JSON the server stores and
 			// returns verbatim. Pointer so the client can distinguish "omit
 			// the field" from "store an empty object"; the server never parses
@@ -253,6 +263,11 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 		body.Body = strings.TrimSpace(body.Body)
 		body.AttachmentPath = strings.TrimSpace(body.AttachmentPath)
 		body.AttachmentMime = strings.TrimSpace(body.AttachmentMime)
+		body.ClientID = strings.TrimSpace(body.ClientID)
+		if len(body.ClientID) > maxClientIDLen {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "client_id is too long"})
+			return
+		}
 		if body.Body == "" && body.AttachmentPath == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body or attachment_path is required"})
 			return
@@ -317,6 +332,12 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to post message"})
 			return
 		}
+
+		// Echo the sender's correlation id (never persisted) onto the in-memory
+		// message so it rides along on both the SSE broadcast below and the HTTP
+		// response, letting the sender reconcile its optimistic bubble with the
+		// authoritative row regardless of which delivery lands first.
+		msg.ClientID = body.ClientID
 
 		// Publish to any live SSE subscribers first so they see the message
 		// without waiting for the webpush round trip.

@@ -69,6 +69,14 @@ type Message struct {
 	DeletedBy      *int64                      `json:"deleted_by"`
 	MetaJSON       *string                     `json:"meta_json"`
 	Reactions      map[string]*ReactionSummary `json:"reactions"`
+	// ClientID is an optional, client-generated correlation id used by the
+	// optimistic-send UI to reconcile a locally-rendered "sending" bubble with
+	// the authoritative row. It is never persisted: the POST handler copies the
+	// value the sender supplied onto the freshly-created message so it rides
+	// along on both the HTTP response and the SSE message_new broadcast, letting
+	// whichever lands first replace the optimistic bubble. Messages read back
+	// from the database always leave it empty (omitted from JSON).
+	ClientID string `json:"client_id,omitempty"`
 }
 
 // IsMember reports whether userID belongs to convID. It delegates to

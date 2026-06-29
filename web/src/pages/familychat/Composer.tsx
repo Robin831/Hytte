@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type PointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type MutableRefObject, type PointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Send, Loader2, Paperclip, X, Mic, Trash2 } from 'lucide-react'
 import type { ChatMessage } from './ChatView'
@@ -8,13 +8,43 @@ import { useVoiceRecorder } from './voice/useVoiceRecorder'
 import { trimLeadingTrailingSilence } from './voice/silenceTrim'
 import { computeWaveform, writeCachedWaveform } from './voice/waveform'
 
+// RetryHandle re-POSTs a failed optimistic message, reusing its original
+// client_id so a successful retry reconciles the existing bubble in place.
+export type RetryHandle = (clientId: string, text: string, targetConversationId: number) => void
+
 interface ComposerProps {
   conversationId: number
+  // currentUserId stamps the optimistic bubble so it renders on the sender's
+  // side immediately, before the authoritative row arrives.
+  currentUserId: number
   onMessageCreated: (msg: ChatMessage) => void
+  // onOptimisticMessage renders a typed text message instantly in a 'sending'
+  // state, before the POST. Voice notes and attachments do not use this path.
+  onOptimisticMessage: (msg: ChatMessage) => void
+  // onMessageFailed flips the optimistic bubble to a 'failed — tap to retry'
+  // state when its POST errors, preserving the typed text for re-send.
+  onMessageFailed: (clientId: string) => void
+  // retryRef receives the retry entry point so the parent's failed-bubble tap
+  // target can re-POST the preserved text.
+  retryRef?: MutableRefObject<RetryHandle | null>
   // onTyping fires on each keystroke in the message field so the parent can
   // broadcast a debounced "typing" signal to the other members. Optional so
   // the composer stays usable without a typing-aware parent.
   onTyping?: () => void
+}
+
+// genClientId returns a unique correlation id for an optimistic send. Prefers
+// crypto.randomUUID and falls back to a timestamp+random string where it is
+// unavailable (older browsers, some test environments).
+function genClientId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID()
+    }
+  } catch {
+    /* fall through to the manual id below */
+  }
+  return `c-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 // Match the backend cap so we surface "too long" errors locally instead of
@@ -43,7 +73,7 @@ function formatVoiceTime(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export default function Composer({ conversationId, onMessageCreated, onTyping }: ComposerProps) {
+export default function Composer({ conversationId, currentUserId, onMessageCreated, onOptimisticMessage, onMessageFailed, retryRef, onTyping }: ComposerProps) {
   const { t } = useTranslation('familyChat')
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
@@ -56,6 +86,13 @@ export default function Composer({ conversationId, onMessageCreated, onTyping }:
   const abortRef = useRef<AbortController | null>(null)
   const uploadAbortRef = useRef<AbortController | null>(null)
   const voiceAbortRef = useRef<AbortController | null>(null)
+  // sendAbortsRef tracks every in-flight optimistic text POST (and retry) so
+  // switching conversations aborts them all — an optimistic send is fire-and-
+  // forget once kicked off, so there can be several outstanding at once.
+  const sendAbortsRef = useRef<Set<AbortController>>(new Set())
+  // tempIdRef hands out unique negative ids for optimistic bubbles so their
+  // React keys never collide with each other or with real (positive) ids.
+  const tempIdRef = useRef(-1)
   const pointerStartRef = useRef<{ id: number; y: number; mode: 'hold' | 'toggle' } | null>(null)
 
   const shipVoiceNoteRef = useRef<((blob: Blob, mimeType: string) => Promise<void>) | null>(null)
@@ -96,6 +133,10 @@ export default function Composer({ conversationId, onMessageCreated, onTyping }:
       uploadAbortRef.current = null
       voiceAbortRef.current?.abort()
       voiceAbortRef.current = null
+      // Abort every outstanding optimistic send so a response that resolves
+      // after the switch can't reconcile (or fail) a bubble in the new chat.
+      for (const c of sendAbortsRef.current) c.abort()
+      sendAbortsRef.current.clear()
     }
   }, [conversationId])
 
@@ -162,15 +203,63 @@ export default function Composer({ conversationId, onMessageCreated, onTyping }:
     setError('')
   }
 
-  async function submit() {
-    const trimmed = body.trim()
-    const rState = recorder.state
-    if (sending || uploading || voiceSending || rState === 'recording' || rState === 'starting' || rState === 'processing') return
-    if (!trimmed && !attachment) return
-    if ([...trimmed].length > MAX_BODY_LEN) {
-      setError(t('composer.errors.tooLong'))
-      return
+  // postText runs the POST for an optimistic text message (initial send or a
+  // retry). It owns no UI state: success reconciles the bubble via
+  // onMessageCreated (the server echoes our client_id), failure flips it to the
+  // 'failed' state via onMessageFailed. Each call carries its own AbortController
+  // tracked in sendAbortsRef so a conversation switch tears it down.
+  const postText = useCallback(async (targetConversationId: number, clientId: string, text: string) => {
+    const controller = new AbortController()
+    sendAbortsRef.current.add(controller)
+    try {
+      const res = await fetch(`/api/familychat/conversations/${targetConversationId}/messages`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: text, client_id: clientId }),
+        signal: controller.signal,
+      })
+      if (controller.signal.aborted) return
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || t('composer.errors.send'))
+      }
+      const data = await res.json()
+      if (controller.signal.aborted) return
+      const msg = data?.message as ChatMessage | undefined
+      if (!msg || typeof msg.id !== 'number') {
+        throw new Error(t('composer.errors.send'))
+      }
+      // Stamp the client_id onto the authoritative row so the parent reconciles
+      // the optimistic bubble even if the server response omitted it.
+      onMessageCreated({ ...msg, client_id: clientId })
+    } catch (err) {
+      if (controller.signal.aborted) return
+      if (err instanceof Error && err.name === 'AbortError') return
+      onMessageFailed(clientId)
+    } finally {
+      sendAbortsRef.current.delete(controller)
     }
+  }, [onMessageCreated, onMessageFailed, t])
+
+  // retry re-sends a failed message under its original client_id so a success
+  // reconciles the existing bubble in place. Exposed to the parent via retryRef.
+  const retry = useCallback<RetryHandle>((clientId, text, targetConversationId) => {
+    void postText(targetConversationId, clientId, text)
+  }, [postText])
+
+  useEffect(() => {
+    if (!retryRef) return
+    retryRef.current = retry
+    return () => {
+      if (retryRef.current === retry) retryRef.current = null
+    }
+  }, [retry, retryRef])
+
+  // submitAttachment keeps the non-optimistic flow for messages that carry an
+  // attachment (and for the empty-body attachment-only case): it awaits the
+  // POST behind the spinner because there is no precomputed bubble to show.
+  async function submitAttachment(trimmed: string, pending: PendingAttachment) {
     const controller = new AbortController()
     abortRef.current?.abort()
     abortRef.current = controller
@@ -178,16 +267,15 @@ export default function Composer({ conversationId, onMessageCreated, onTyping }:
     setSending(true)
     setError('')
     try {
-      const payload: Record<string, string> = { body: trimmed }
-      if (attachment) {
-        payload.attachment_path = attachment.uploadId
-        payload.attachment_mime = attachment.mime
-      }
       const res = await fetch(`/api/familychat/conversations/${targetConversationId}/messages`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          body: trimmed,
+          attachment_path: pending.uploadId,
+          attachment_mime: pending.mime,
+        }),
         signal: controller.signal,
       })
       if (controller.signal.aborted) return
@@ -213,6 +301,44 @@ export default function Composer({ conversationId, onMessageCreated, onTyping }:
       if (!controller.signal.aborted) setSending(false)
       if (abortRef.current === controller) abortRef.current = null
     }
+  }
+
+  function submit() {
+    const trimmed = body.trim()
+    const rState = recorder.state
+    if (uploading || voiceSending || rState === 'recording' || rState === 'starting' || rState === 'processing') return
+    if (!trimmed && !attachment) return
+    if ([...trimmed].length > MAX_BODY_LEN) {
+      setError(t('composer.errors.tooLong'))
+      return
+    }
+
+    // Attachment messages keep the awaited spinner flow (no optimistic bubble).
+    if (attachment) {
+      if (sending) return
+      void submitAttachment(trimmed, attachment)
+      return
+    }
+
+    // Optimistic text path: render the bubble + clear the input immediately,
+    // then fire the POST. The bubble reconciles (or flips to 'failed') later.
+    const clientId = genClientId()
+    const targetConversationId = conversationId
+    const optimistic: ChatMessage = {
+      id: tempIdRef.current,
+      conversation_id: targetConversationId,
+      sender_user_id: currentUserId,
+      body: trimmed,
+      created_at: new Date().toISOString(),
+      client_id: clientId,
+      status: 'sending',
+    }
+    tempIdRef.current -= 1
+    onOptimisticMessage(optimistic)
+    setBody('')
+    setError('')
+    textareaRef.current?.focus()
+    void postText(targetConversationId, clientId, trimmed)
   }
 
   function handleSubmit(e: FormEvent) {

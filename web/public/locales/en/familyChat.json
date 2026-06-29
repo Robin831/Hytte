@@ -45,6 +45,8 @@
     "send": "Send message",
     "attach": "Attach a file",
     "removeAttachment": "Remove attachment",
+    "sending": "Sending…",
+    "failedRetry": "Failed — tap to retry",
     "voice": {
       "record": "Record voice note",
       "start": "Hold to record voice note",
