@@ -156,10 +156,17 @@ async function postJoin(convId: number, callId: string, kind: CallKind): Promise
 }
 
 async function postLeave(convId: number, callId: string): Promise<void> {
-  await fetch(
-    `/api/familychat/conversations/${convId}/calls/${callId}/leave`,
-    { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' },
-  ).catch(() => {})
+  const url = `/api/familychat/conversations/${convId}/calls/${callId}/leave`
+  const opts: RequestInit = { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url, opts)
+      if (res.ok) return
+      if (typeof console !== 'undefined') console.warn(`group call: leave returned ${res.status}`)
+    } catch (err) {
+      if (typeof console !== 'undefined') console.warn('group call: leave request failed', err)
+    }
+  }
 }
 
 function defaultPeerConnectionFactory(config: RTCConfiguration): RTCPeerConnection {

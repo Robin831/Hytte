@@ -27,6 +27,17 @@ function makeFakeMediaStream(): MediaStream {
   } as unknown as MediaStream
 }
 
+function makeFakeVideoMediaStream(): MediaStream {
+  const audioTrack = new FakeMediaStreamTrack('audio')
+  const videoTrack = new FakeMediaStreamTrack('video')
+  const allTracks = [audioTrack, videoTrack]
+  return {
+    getTracks: () => allTracks,
+    getAudioTracks: () => [audioTrack],
+    getVideoTracks: () => [videoTrack],
+  } as unknown as MediaStream
+}
+
 interface FakeSender {
   track: MediaStreamTrack | null
   replaceTrack: ReturnType<typeof vi.fn>
@@ -396,5 +407,146 @@ describe('useGroupCall — leaving', () => {
     expect(result.current.state).toBe('idle')
     expect(result.current.participants).toEqual([])
     expect(result.current.callId).toBeNull()
+  })
+
+  it('retries leave on server error and still tears down locally', async () => {
+    installRtcGlobals()
+    let leaveAttempts = 0
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      const method = (init?.method ?? 'GET').toUpperCase()
+      if (url.endsWith('/api/familychat/turn')) {
+        return new Response(JSON.stringify({ iceServers: [], ttl: 3600 }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.endsWith('/join') && method === 'POST') {
+        return new Response(JSON.stringify({ participants: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url.endsWith('/leave') && method === 'POST') {
+        leaveAttempts++
+        return new Response('internal error', { status: 500 })
+      }
+      return new Response(null, { status: 204 })
+    }))
+
+    const { result } = renderHook(() => useGroupCall({
+      conversationId: 7,
+      userId: 5,
+      rtcPeerConnectionFactory: vi.fn(makeFakePeerConnection),
+      generateCallId: () => 'grp-retry',
+    }))
+
+    await act(async () => { await result.current.startCall('voice') })
+    await act(async () => { await result.current.leaveCall() })
+
+    expect(leaveAttempts).toBe(2)
+    expect(result.current.state).toBe('idle')
+  })
+})
+
+describe('useGroupCall — camera toggle (replaceTrack)', () => {
+  it('replaces video sender tracks across all peer connections when toggling camera', async () => {
+    installFetchMock([2, 3])
+    const videoStream = makeFakeVideoMediaStream()
+    const getUserMedia = vi.fn(async () => videoStream)
+    vi.stubGlobal('RTCPeerConnection', FakePeerConnection)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+
+    const { result } = renderHook(() => useGroupCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: vi.fn(makeFakePeerConnection),
+      getUserMedia,
+      generateCallId: () => 'grp-cam',
+    }))
+
+    await act(async () => { await result.current.startCall('video') })
+
+    // Wait for offers to be sent (userId 1 < peers 2,3)
+    await waitFor(() => {
+      expect(FakePeerConnection.instances).toHaveLength(2)
+    })
+
+    // Each PC should have a video sender from addTrack
+    const videoSenders = FakePeerConnection.instances.flatMap(pc =>
+      pc.senders.filter(s => (s.track as unknown as FakeMediaStreamTrack)?.kind === 'video')
+    )
+    expect(videoSenders).toHaveLength(2)
+
+    // Disable camera — replaceTrack(null) on every video sender
+    await act(async () => { await result.current.setCameraEnabled(false) })
+
+    expect(result.current.cameraEnabled).toBe(false)
+    for (const sender of videoSenders) {
+      expect(sender.replaceTrack).toHaveBeenCalledWith(null)
+    }
+
+    // Re-enable camera — replaceTrack(videoTrack) on every video sender
+    const videoTrack = videoStream.getVideoTracks()[0]
+    await act(async () => { await result.current.setCameraEnabled(true) })
+
+    expect(result.current.cameraEnabled).toBe(true)
+    for (const sender of videoSenders) {
+      expect(sender.replaceTrack).toHaveBeenCalledWith(videoTrack)
+    }
+  })
+
+  it('falls back to track.enabled when replaceTrack throws', async () => {
+    installFetchMock([2])
+    const videoStream = makeFakeVideoMediaStream()
+    const getUserMedia = vi.fn(async () => videoStream)
+    vi.stubGlobal('RTCPeerConnection', FakePeerConnection)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+
+    const { result } = renderHook(() => useGroupCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: vi.fn(makeFakePeerConnection),
+      getUserMedia,
+      generateCallId: () => 'grp-cam-fail',
+    }))
+
+    await act(async () => { await result.current.startCall('video') })
+
+    await waitFor(() => {
+      expect(FakePeerConnection.instances).toHaveLength(1)
+    })
+
+    // Make replaceTrack throw
+    const pc = FakePeerConnection.instances[0]
+    const videoSender = pc.senders.find(s => (s.track as unknown as FakeMediaStreamTrack)?.kind === 'video')
+    expect(videoSender).toBeDefined()
+    videoSender!.replaceTrack.mockRejectedValueOnce(new Error('replaceTrack failed'))
+
+    const videoTrack = videoStream.getVideoTracks()[0] as unknown as FakeMediaStreamTrack
+
+    await act(async () => { await result.current.setCameraEnabled(false) })
+
+    // Falls back to setting track.enabled
+    expect(videoTrack.enabled).toBe(false)
+    expect(result.current.cameraEnabled).toBe(false)
+  })
+
+  it('is a no-op for voice-only calls', async () => {
+    installFetchMock([])
+    installRtcGlobals()
+
+    const { result } = renderHook(() => useGroupCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: vi.fn(makeFakePeerConnection),
+      generateCallId: () => 'grp-voice-cam',
+    }))
+
+    await act(async () => { await result.current.startCall('voice') })
+    await act(async () => { await result.current.setCameraEnabled(false) })
+
+    // Camera state unchanged for voice calls
+    expect(result.current.cameraEnabled).toBe(true)
   })
 })
