@@ -209,15 +209,15 @@ export default function HourlyChart({ timeseries }: { timeseries: TimeseriesEntr
                     {formatTime(p.time, { hour: '2-digit', minute: '2-digit' })}
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap font-medium">
-                    {Math.round(p.temp)}°C
+                    {Math.round(p.temp)}°
                   </td>
                   <td className="py-2 pr-3 whitespace-nowrap text-blue-400">
                     {p.precip > 0 ? t('chart.table.precipValue', { mm: p.precip }) : '—'}
                   </td>
                   <td className="py-2">
                     <span className="flex items-center gap-2 text-gray-300">
-                      <span className="text-blue-400">{getWeatherIcon(p.symbol, 20)}</span>
-                      <span className="hidden sm:inline">{getWeatherDescription(p.symbol, t)}</span>
+                      <span className="text-blue-400">{getWeatherIcon(p.symbol, 20, getWeatherDescription(p.symbol, t))}</span>
+                      <span className="hidden sm:inline" aria-hidden="true">{getWeatherDescription(p.symbol, t)}</span>
                     </span>
                   </td>
                 </tr>
