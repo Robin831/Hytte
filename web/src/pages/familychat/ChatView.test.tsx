@@ -567,11 +567,12 @@ describe('ChatView – SSE live updates', () => {
     // client_id collapses the optimistic bubble and the SSE row into one
     // regardless of whether the POST response or the SSE event lands first —
     // which is what makes this dedup deterministic instead of timing-dependent.
-    const clientId = JSON.parse(
-      (fetchMock.mock.calls.find(
-        c => /\/messages$/.test(String(c[0])) && (c[1] as RequestInit | undefined)?.method === 'POST',
-      )![1] as RequestInit).body as string,
-    ).client_id
+    const postCall = fetchMock.mock.calls.find(
+      c => /\/messages$/.test(String(c[0])) && (c[1] as RequestInit | undefined)?.method === 'POST',
+    )
+    expect(postCall).toBeDefined()
+    const clientId = JSON.parse((postCall![1] as RequestInit).body as string).client_id
+    expect(clientId).toBeTruthy()
 
     await act(async () => {
       sse.push('message_new', { message: { ...newMsg, client_id: clientId } })
