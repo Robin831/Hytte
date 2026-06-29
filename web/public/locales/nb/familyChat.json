@@ -115,6 +115,14 @@
     "missedFrom": "Tapt anrop fra {{name}}",
     "callBack": "Ring tilbake",
     "dismiss": "Lukk",
+    "filters": {
+      "button": "Effekter",
+      "title": "Videoeffekter",
+      "none": "Ingen",
+      "blur": "Myk uskarphet",
+      "grading": "Vintage",
+      "face": "Festfjes"
+    },
     "group": {
       "start": "Start gruppesamtale",
       "startVideo": "Start videogruppesamtale",

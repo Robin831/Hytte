@@ -893,6 +893,120 @@ describe('useVoiceCall — video controls', () => {
   })
 })
 
+const filterMocks = vi.hoisted(() => ({
+  outputTrack: null as FakeMediaStreamTrack | null,
+  stop: vi.fn(),
+  setSource: vi.fn(),
+  setFilter: vi.fn(),
+  enabled: false,
+}))
+
+vi.mock('./videoFilters', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./videoFilters')>()
+  return {
+    ...actual,
+    isFilterSupported: (kind: string) => {
+      if (!filterMocks.enabled) return actual.isFilterSupported(kind as import('./videoFilters').FilterKind)
+      return kind !== 'face'
+    },
+    createVideoFilterPipeline: () => {
+      if (!filterMocks.enabled) return actual.createVideoFilterPipeline()
+      return {
+        outputTrack: filterMocks.outputTrack as unknown as MediaStreamTrack,
+        setSource: filterMocks.setSource,
+        setFilter: filterMocks.setFilter,
+        stop: filterMocks.stop,
+      }
+    },
+  }
+})
+
+describe('useVoiceCall — video filters', () => {
+  beforeEach(() => {
+    filterMocks.outputTrack = new FakeMediaStreamTrack('video')
+    filterMocks.stop.mockClear()
+    filterMocks.setSource.mockClear()
+    filterMocks.setFilter.mockClear()
+    filterMocks.enabled = true
+  })
+
+  afterEach(() => {
+    filterMocks.enabled = false
+  })
+
+  it('setFilter routes the processed track through replaceTrack and updates localStream', async () => {
+    installFetchMock()
+    const original = makeFakeVideoStream()
+    vi.stubGlobal('RTCPeerConnection', FakePeerConnection)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn(async () => original.stream) },
+    })
+
+    const { result } = renderHook(() => useVoiceCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: makeFakePeerConnection,
+      skipSignalSubscription: true,
+      generateCallId: () => 'video-filter-1',
+    }))
+
+    await act(async () => { await result.current.startCall('video') })
+    expect(result.current.filter).toBe('none')
+
+    await act(async () => { await result.current.setFilter('blur') })
+
+    expect(result.current.filter).toBe('blur')
+    expect(filterMocks.setSource).toHaveBeenCalled()
+    expect(filterMocks.setFilter).toHaveBeenCalledWith('blur')
+
+    const pc = FakePeerConnection.instances[0]
+    const videoSender = pc.senders.find(s =>
+      s.replaceTrack.mock.calls.some((c: unknown[]) => c[0] === filterMocks.outputTrack)
+    )
+    expect(videoSender).toBeDefined()
+
+    const localStream = result.current.localStream
+    expect(localStream).toBeDefined()
+    expect(localStream!.getVideoTracks()[0]).toBe(filterMocks.outputTrack)
+  })
+
+  it('setFilter("none") tears down the pipeline and restores the raw track', async () => {
+    installFetchMock()
+    const original = makeFakeVideoStream()
+    vi.stubGlobal('RTCPeerConnection', FakePeerConnection)
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn(async () => original.stream) },
+    })
+
+    const { result } = renderHook(() => useVoiceCall({
+      conversationId: 7,
+      userId: 1,
+      rtcPeerConnectionFactory: makeFakePeerConnection,
+      skipSignalSubscription: true,
+      generateCallId: () => 'video-filter-2',
+    }))
+
+    await act(async () => { await result.current.startCall('video') })
+    await act(async () => { await result.current.setFilter('blur') })
+    expect(result.current.filter).toBe('blur')
+
+    await act(async () => { await result.current.setFilter('none') })
+
+    expect(result.current.filter).toBe('none')
+    expect(filterMocks.stop).toHaveBeenCalled()
+
+    const pc = FakePeerConnection.instances[0]
+    const videoSender = pc.senders.find(s =>
+      s.replaceTrack.mock.calls.some(
+        (c: unknown[]) => c[0] !== null && c[0] !== filterMocks.outputTrack
+      )
+    )
+    expect(videoSender).toBeDefined()
+  })
+})
+
 describe('useVoiceCall — bandwidth adaptation', () => {
   // Each test sets navigator.connection on the fly so the hook reads the
   // current effectiveType. afterEach in the outer suite tears it down.

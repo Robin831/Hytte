@@ -1,0 +1,2 @@
+category: Added
+- **Video call effects** - Family Chat video calls gain a real-time effects picker in the in-call controls: a soft blur, a vintage colour grade, and a face party-overlay. Effects process the local camera through a canvas pipeline and are sent to the peer (and shown in your own preview) with no renegotiation. The default is no effect (zero overhead), and options the browser can't run are hidden so it degrades gracefully on older devices. (Hytte-pcc2)
