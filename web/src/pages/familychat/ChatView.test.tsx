@@ -546,13 +546,13 @@ describe('ChatView – SSE live updates', () => {
   it('deduplicates a message delivered via both POST response and SSE', async () => {
     const sse = streamWithController()
     const newMsg = makeMessage({ id: 7, body: 'Dedup me', sender_user_id: 1 })
-    vi.stubGlobal('fetch', vi.fn()
+    const fetchMock = vi.fn()
       .mockResolvedValueOnce(convOk())
       .mockResolvedValueOnce(msgsOk([]))
       .mockResolvedValueOnce(sse.response)
       .mockResolvedValueOnce({ ok: true }) // typing indicator POST
-      .mockResolvedValueOnce(sendOk(newMsg)),
-    )
+      .mockResolvedValueOnce(sendOk(newMsg))
+    vi.stubGlobal('fetch', fetchMock)
     renderChatView()
     await waitFor(() => screen.getByText('No messages yet. Say hello!'))
 
@@ -562,8 +562,19 @@ describe('ChatView – SSE live updates', () => {
 
     await waitFor(() => screen.getByText('Dedup me'))
 
+    // The server echoes the sender's client_id on the message_new broadcast
+    // (see internal/familychat/handlers.go), so model that here. Reconciling by
+    // client_id collapses the optimistic bubble and the SSE row into one
+    // regardless of whether the POST response or the SSE event lands first —
+    // which is what makes this dedup deterministic instead of timing-dependent.
+    const clientId = JSON.parse(
+      (fetchMock.mock.calls.find(
+        c => /\/messages$/.test(String(c[0])) && (c[1] as RequestInit | undefined)?.method === 'POST',
+      )![1] as RequestInit).body as string,
+    ).client_id
+
     await act(async () => {
-      sse.push('message_new', { message: newMsg })
+      sse.push('message_new', { message: { ...newMsg, client_id: clientId } })
       await Promise.resolve()
     })
 
