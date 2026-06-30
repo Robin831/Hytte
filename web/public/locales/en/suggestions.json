@@ -46,6 +46,12 @@
     "count_other": "{{count}} suggestions",
     "toggleAria": "Toggle {{page}} section"
   },
+  "sort": {
+    "label": "Sort",
+    "grouped": "Grouped",
+    "date": "Date (newest first)",
+    "size": "Size"
+  },
   "recentRuns": {
     "title": "Recent runs",
     "show": "Show recent runs",
