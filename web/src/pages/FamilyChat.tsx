@@ -1,13 +1,19 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import ConversationList from './familychat/ConversationList'
 import ChatView from './familychat/ChatView'
 import NewConversationModal from './familychat/NewConversationModal'
 import { FamilyChatProvider, useFamilyChat } from './familychat/FamilyChatContext'
+import { useKeyboardInset } from '../hooks/useKeyboardInset'
 
 function FamilyChatInner() {
   const { refreshConversations } = useFamilyChat()
   const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null)
   const [newConversationOpen, setNewConversationOpen] = useState(false)
+  // When the mobile on-screen keyboard opens it covers the bottom of the
+  // viewport. We shrink the chat shell by that amount (and use dvh instead of
+  // vh) so the composer stays pinned above the keyboard and the message list
+  // keeps the newest messages visible instead of scrolling off the top.
+  const keyboardInset = useKeyboardInset()
 
   const handleSelectConversation = (id: number) => {
     setSelectedConversationId(id)
@@ -32,7 +38,10 @@ function FamilyChatInner() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] md:h-screen">
+    <div
+      className="flex h-[calc(100dvh-3.5rem-var(--kb,0px))] md:h-[calc(100dvh-var(--kb,0px))]"
+      style={{ '--kb': `${keyboardInset}px` } as CSSProperties}
+    >
       {/* Left column: conversation list. Hidden on mobile when a conversation is selected. */}
       <aside
         className={`${

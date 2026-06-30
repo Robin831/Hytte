@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { Skeleton } from '../../components/ui/skeleton'
 import { useAuth } from '../../auth'
+import { useKeyboardInset } from '../../hooks/useKeyboardInset'
 import Composer from './Composer'
 import ReactionChips from './ReactionChips'
 import ReactionPicker from './ReactionPicker'
@@ -859,6 +860,18 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     }
   }, [messages.length, conversationId])
 
+  // keyboardInset drives the shell height in FamilyChat (the composer stays
+  // pinned above the on-screen keyboard). When it changes — the keyboard opens
+  // or closes and the visible viewport resizes — re-anchor to the bottom so the
+  // newest messages stay in view above the input instead of being left
+  // scrolled out of sight.
+  const keyboardInset = useKeyboardInset()
+  useLayoutEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ block: 'end' })
+    }
+  }, [keyboardInset])
+
   // Lightbox: ESC closes; scroll on body locked while open.
   useEffect(() => {
     if (!lightbox) return
@@ -1468,7 +1481,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       </header>
 
       <div
-        className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 py-3 space-y-2"
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-4 py-3 space-y-2"
         role="log"
         aria-live="polite"
         aria-relevant="additions"
