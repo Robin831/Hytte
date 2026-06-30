@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Suggestions from './Suggestions'
-import { nextRunHintKey } from './suggestionsUtils'
+import { nextRunHintKey, sortSuggestions } from './suggestionsUtils'
 import enCommon from '../../public/locales/en/common.json'
 import enSuggestions from '../../public/locales/en/suggestions.json'
 import type { Suggestion } from '../components/suggestions/SuggestionCard'
@@ -1762,6 +1762,170 @@ describe('Suggestions – Created tab', () => {
       const panel = screen.getByRole('tabpanel')
       expect(within(panel).getByText(/No beads created yet/)).toBeInTheDocument()
     })
+  })
+})
+
+describe('sortSuggestions', () => {
+  it('sorts by generated_at descending (newest first)', () => {
+    const list = [
+      makeSuggestion({ id: 1, generated_at: '2026-01-01T00:00:00Z' }),
+      makeSuggestion({ id: 2, generated_at: '2026-06-01T00:00:00Z' }),
+      makeSuggestion({ id: 3, generated_at: '2026-03-01T00:00:00Z' }),
+    ]
+    expect(sortSuggestions(list, 'date').map(s => s.id)).toEqual([2, 3, 1])
+  })
+
+  it('sorts by size largest first (L > M > S)', () => {
+    const list = [
+      makeSuggestion({ id: 1, size: 's' }),
+      makeSuggestion({ id: 2, size: 'l' }),
+      makeSuggestion({ id: 3, size: 'm' }),
+    ]
+    expect(sortSuggestions(list, 'size').map(s => s.id)).toEqual([2, 3, 1])
+  })
+
+  it('breaks size ties by generated_at descending, then id ascending', () => {
+    const list = [
+      makeSuggestion({ id: 3, size: 'm', generated_at: '2026-01-01T00:00:00Z' }),
+      makeSuggestion({ id: 1, size: 'm', generated_at: '2026-06-01T00:00:00Z' }),
+      makeSuggestion({ id: 5, size: 'm', generated_at: '2026-06-01T00:00:00Z' }),
+    ]
+    expect(sortSuggestions(list, 'size').map(s => s.id)).toEqual([1, 5, 3])
+  })
+
+  it('does not mutate the input array', () => {
+    const list = [
+      makeSuggestion({ id: 1, generated_at: '2026-01-01T00:00:00Z' }),
+      makeSuggestion({ id: 2, generated_at: '2026-06-01T00:00:00Z' }),
+    ]
+    const before = list.map(s => s.id)
+    sortSuggestions(list, 'date')
+    expect(list.map(s => s.id)).toEqual(before)
+  })
+})
+
+describe('Suggestions – sort/view control', () => {
+  // Read the rendered order of suggestion cards (cards expose data-suggestion-id
+  // in their always-visible header, so order is observable even when collapsed).
+  function renderedIds(): number[] {
+    return Array.from(document.querySelectorAll('[data-suggestion-id]')).map(el =>
+      Number(el.getAttribute('data-suggestion-id')),
+    )
+  }
+
+  it('renders the control with three options and defaults to Grouped', async () => {
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ pending: [], planned: [], rejected: [] }),
+      }),
+    ))
+
+    renderPage()
+
+    const control = (await screen.findByLabelText('Sort')) as HTMLSelectElement
+    expect(control.value).toBe('grouped')
+    const options = within(control).getAllByRole('option').map(o => o.textContent)
+    expect(options).toEqual(['Grouped', 'Date (newest first)', 'Size'])
+  })
+
+  it('Date (newest first) ungroups into a flat list ordered by generated_at descending', async () => {
+    const list = {
+      pending: [
+        makeSuggestion({ id: 1, page_slug: 'budget', generated_at: '2026-01-01T00:00:00Z' }),
+        makeSuggestion({ id: 2, page_slug: 'weather', generated_at: '2026-06-01T00:00:00Z' }),
+        makeSuggestion({ id: 3, page_slug: 'dashboard', generated_at: '2026-03-01T00:00:00Z' }),
+      ],
+      planned: [],
+      rejected: [],
+    }
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
+
+    renderPage()
+
+    const control = await screen.findByLabelText('Sort')
+    fireEvent.change(control, { target: { value: 'date' } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('suggestion-flat-list')).toBeInTheDocument()
+    })
+    // Grouped sections are gone.
+    expect(screen.queryByTestId('suggestion-group-budget')).not.toBeInTheDocument()
+    expect(renderedIds()).toEqual([2, 3, 1])
+  })
+
+  it('Size ungroups into a flat list ordered largest first (L > M > S)', async () => {
+    const list = {
+      pending: [
+        makeSuggestion({ id: 1, page_slug: 'budget', size: 's' }),
+        makeSuggestion({ id: 2, page_slug: 'weather', size: 'l' }),
+        makeSuggestion({ id: 3, page_slug: 'dashboard', size: 'm' }),
+      ],
+      planned: [],
+      rejected: [],
+    }
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
+
+    renderPage()
+
+    const control = await screen.findByLabelText('Sort')
+    fireEvent.change(control, { target: { value: 'size' } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('suggestion-flat-list')).toBeInTheDocument()
+    })
+    expect(renderedIds()).toEqual([2, 3, 1])
+  })
+
+  it('switching back to Grouped restores grouped rendering and expansion behaviour', async () => {
+    const list = {
+      pending: [],
+      planned: [
+        makeSuggestion({ id: 1, status: 'planned', page_slug: 'budget', plan: 'A plan' }),
+        makeSuggestion({ id: 2, status: 'planned', page_slug: 'weather', plan: 'A plan' }),
+      ],
+      rejected: [],
+    }
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(list) }),
+    ))
+
+    renderPage()
+
+    // Move to the Planned tab where page-group sections start expanded.
+    fireEvent.click(await screen.findByRole('tab', { name: /Planned/ }))
+    await waitFor(() => {
+      expect(screen.getByTestId('suggestion-group-budget')).toBeInTheDocument()
+    })
+
+    const control = screen.getByLabelText('Sort')
+
+    // Switch to a sort — sections collapse into a single flat list.
+    fireEvent.change(control, { target: { value: 'date' } })
+    await waitFor(() => {
+      expect(screen.getByTestId('suggestion-flat-list')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('suggestion-group-budget')).not.toBeInTheDocument()
+
+    // Switch back to Grouped — grouped sections reappear, expanded by default
+    // for the Planned tab, so the cards are visible again.
+    fireEvent.change(control, { target: { value: 'grouped' } })
+    await waitFor(() => {
+      expect(screen.getByTestId('suggestion-group-budget')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('suggestion-flat-list')).not.toBeInTheDocument()
+    expect(screen.getByTestId('suggestion-group-header-budget')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    expect(screen.getByTestId('suggestion-group-header-weather')).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
   })
 })
 

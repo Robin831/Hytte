@@ -46,6 +46,12 @@
     "count_other": "{{count}} forslag",
     "toggleAria": "Slå seksjonen {{page}} på/av"
   },
+  "sort": {
+    "label": "Sorter",
+    "grouped": "Gruppert",
+    "date": "Dato (nyeste først)",
+    "size": "Størrelse"
+  },
   "recentRuns": {
     "title": "Nylige kjøringer",
     "show": "Vis nylige kjøringer",

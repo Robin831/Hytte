@@ -1,3 +1,23 @@
+import type { Suggestion, SuggestionSize } from '../components/suggestions/SuggestionCard'
+
+export type SortMode = 'date' | 'size'
+
+const SIZE_RANK: Record<SuggestionSize, number> = { l: 0, m: 1, s: 2 }
+
+export function sortSuggestions(list: Suggestion[], mode: SortMode): Suggestion[] {
+  const sorted = [...list]
+  if (mode === 'date') {
+    sorted.sort((a, b) => b.generated_at.localeCompare(a.generated_at))
+  } else {
+    sorted.sort((a, b) =>
+      SIZE_RANK[a.size] - SIZE_RANK[b.size]
+      || b.generated_at.localeCompare(a.generated_at)
+      || a.id - b.id,
+    )
+  }
+  return sorted
+}
+
 // A fixed Date at 03:00 Europe/Oslo in winter (UTC+1). Used only to format
 // the scheduler's run time for display.
 const OSLO_03H_UTC = new Date('2000-01-01T02:00:00Z')

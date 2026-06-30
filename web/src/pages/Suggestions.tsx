@@ -9,7 +9,7 @@ import { SuggestionActions } from '../components/suggestions/SuggestionActions'
 import { NewSuggestionForm } from '../components/suggestions/NewSuggestionForm'
 import { SettingsPanel } from '../components/suggestions/SettingsPanel'
 import { RecentRunsPanel } from '../components/suggestions/RecentRunsPanel'
-import { nextRunHintKey, formatRunTime } from './suggestionsUtils'
+import { nextRunHintKey, formatRunTime, sortSuggestions, type SortMode } from './suggestionsUtils'
 
 type TabKey = 'pending' | 'planned' | 'created' | 'rejected' | 'pages'
 type GroupTabKey = Exclude<TabKey, 'pages'>
@@ -77,6 +77,8 @@ function defaultGroupExpanded(tab: GroupTabKey): boolean {
   return tab !== 'pending'
 }
 
+type ViewMode = 'grouped' | SortMode
+
 function groupBySlug(list: Suggestion[]): Map<string, Suggestion[]> {
   const groups = new Map<string, Suggestion[]>()
   for (const s of list) {
@@ -103,6 +105,7 @@ export default function Suggestions() {
   const [runError, setRunError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const [activeTab, setActiveTab] = useState<TabKey>('pending')
+  const [viewMode, setViewMode] = useState<ViewMode>('grouped')
   const [reloadKey, setReloadKey] = useState(0)
   const [newOpen, setNewOpen] = useState(false)
   const [runProgress, setRunProgress] = useState<RunProgress | null>(null)
@@ -448,6 +451,16 @@ export default function Suggestions() {
         </p>
       )
     }
+    // A sort is active: ungroup into a single flat, sorted list of cards
+    // across all page slugs.
+    if (viewMode !== 'grouped') {
+      const sorted = sortSuggestions(list, viewMode)
+      return (
+        <div data-testid="suggestion-flat-list" className="space-y-3">
+          {sorted.map(renderCard)}
+        </div>
+      )
+    }
     const groups = groupBySlug(list)
     const sortedKeys = sortPageSlugs([...groups.keys()])
     return (
@@ -509,6 +522,25 @@ export default function Suggestions() {
               <Plus size={16} />
               <span>{t('actions.newSuggestion')}</span>
             </button>
+            <div className="ml-auto flex items-center gap-2">
+              <label
+                htmlFor="suggestions-sort"
+                className="text-xs font-medium text-gray-400"
+              >
+                {t('sort.label')}
+              </label>
+              <select
+                id="suggestions-sort"
+                data-testid="suggestions-sort"
+                value={viewMode}
+                onChange={e => setViewMode(e.target.value as ViewMode)}
+                className="rounded-lg border border-gray-700 bg-gray-800 px-2 py-2 text-sm font-medium text-gray-200 hover:border-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+              >
+                <option value="grouped">{t('sort.grouped')}</option>
+                <option value="date">{t('sort.date')}</option>
+                <option value="size">{t('sort.size')}</option>
+              </select>
+            </div>
           </div>
 
           {alreadyRunning && (
