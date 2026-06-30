@@ -852,25 +852,16 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     }
   }, [conversationId, t])
 
-  // Auto-scroll to the bottom whenever the message list updates. useLayoutEffect
-  // avoids a visible jump between initial paint and the scroll snap.
-  useLayoutEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ block: 'end' })
-    }
-  }, [messages.length, conversationId])
-
-  // keyboardInset drives the shell height in FamilyChat (the composer stays
-  // pinned above the on-screen keyboard). When it changes — the keyboard opens
-  // or closes and the visible viewport resizes — re-anchor to the bottom so the
-  // newest messages stay in view above the input instead of being left
-  // scrolled out of sight.
   const keyboardInset = useKeyboardInset()
+
+  // Auto-scroll to the bottom whenever the message list updates or the keyboard
+  // opens/closes (keyboardInset changes). useLayoutEffect avoids a visible jump
+  // between initial paint and the scroll snap.
   useLayoutEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ block: 'end' })
     }
-  }, [keyboardInset])
+  }, [messages.length, conversationId, keyboardInset])
 
   // Lightbox: ESC closes; scroll on body locked while open.
   useEffect(() => {

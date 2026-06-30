@@ -18,6 +18,7 @@ export function useKeyboardInset(): number {
   const [inset, setInset] = useState(0)
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
     const vv = window.visualViewport
     if (!vv) return
     const opts: AddEventListenerOptions = { passive: true }
