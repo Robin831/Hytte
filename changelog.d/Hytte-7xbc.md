@@ -1,0 +1,2 @@
+category: Fixed
+- **Family chat stays readable with the keyboard open on mobile** - Focusing the message input no longer scrolls the conversation off the top of the screen. The chat now resizes to the keyboard-reduced viewport (via the VisualViewport API, `dvh` heights, and `interactive-widget=resizes-content`) so the composer stays pinned above the keyboard and the newest messages remain visible. (Hytte-7xbc)
