@@ -105,9 +105,6 @@ export default function Suggestions() {
   const [runError, setRunError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const [activeTab, setActiveTab] = useState<TabKey>('pending')
-  // View/sort mode for the suggestion tabs, held in component state like the
-  // group/card expansion state (per tab, not persisted across reloads).
-  // 'grouped' is the default and preserves the per-page-slug sections.
   const [viewMode, setViewMode] = useState<ViewMode>('grouped')
   const [reloadKey, setReloadKey] = useState(0)
   const [newOpen, setNewOpen] = useState(false)
