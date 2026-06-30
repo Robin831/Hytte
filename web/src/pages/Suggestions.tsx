@@ -3,13 +3,13 @@ import { Lightbulb, Plus, Play, X, AlertTriangle, CheckCircle2, XCircle, MinusCi
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../components/ui/skeleton'
 import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
-import { SuggestionCard, NEW_PAGE_SLUG, type Suggestion, type SuggestionSize } from '../components/suggestions/SuggestionCard'
+import { SuggestionCard, NEW_PAGE_SLUG, type Suggestion } from '../components/suggestions/SuggestionCard'
 import { SuggestionGroup } from '../components/suggestions/SuggestionGroup'
 import { SuggestionActions } from '../components/suggestions/SuggestionActions'
 import { NewSuggestionForm } from '../components/suggestions/NewSuggestionForm'
 import { SettingsPanel } from '../components/suggestions/SettingsPanel'
 import { RecentRunsPanel } from '../components/suggestions/RecentRunsPanel'
-import { nextRunHintKey, formatRunTime } from './suggestionsUtils'
+import { nextRunHintKey, formatRunTime, sortSuggestions } from './suggestionsUtils'
 
 type TabKey = 'pending' | 'planned' | 'created' | 'rejected' | 'pages'
 type GroupTabKey = Exclude<TabKey, 'pages'>
@@ -77,27 +77,7 @@ function defaultGroupExpanded(tab: GroupTabKey): boolean {
   return tab !== 'pending'
 }
 
-// The active sort/view mode for the suggestion tabs. 'grouped' keeps the
-// per-page-slug sections; the other modes flatten every page slug into one
-// sorted list.
 type ViewMode = 'grouped' | 'date' | 'size'
-type SortMode = Exclude<ViewMode, 'grouped'>
-
-// Largest-first ordering for the size sort (L > M > S). Lower rank sorts first.
-const SIZE_RANK: Record<SuggestionSize, number> = { l: 0, m: 1, s: 2 }
-
-// Flatten + sort suggestions for the ungrouped views. Returns a new array and
-// never mutates the input. Date sorts newest first (generated_at is an ISO
-// string, so it sorts lexically); size sorts largest first (L > M > S).
-export function sortSuggestions(list: Suggestion[], mode: SortMode): Suggestion[] {
-  const sorted = [...list]
-  if (mode === 'date') {
-    sorted.sort((a, b) => b.generated_at.localeCompare(a.generated_at))
-  } else {
-    sorted.sort((a, b) => SIZE_RANK[a.size] - SIZE_RANK[b.size])
-  }
-  return sorted
-}
 
 function groupBySlug(list: Suggestion[]): Map<string, Suggestion[]> {
   const groups = new Map<string, Suggestion[]>()
