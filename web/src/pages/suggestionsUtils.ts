@@ -9,7 +9,11 @@ export function sortSuggestions(list: Suggestion[], mode: SortMode): Suggestion[
   if (mode === 'date') {
     sorted.sort((a, b) => b.generated_at.localeCompare(a.generated_at))
   } else {
-    sorted.sort((a, b) => SIZE_RANK[a.size] - SIZE_RANK[b.size])
+    sorted.sort((a, b) =>
+      SIZE_RANK[a.size] - SIZE_RANK[b.size]
+      || b.generated_at.localeCompare(a.generated_at)
+      || a.id - b.id,
+    )
   }
   return sorted
 }

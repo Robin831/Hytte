@@ -9,7 +9,7 @@ import { SuggestionActions } from '../components/suggestions/SuggestionActions'
 import { NewSuggestionForm } from '../components/suggestions/NewSuggestionForm'
 import { SettingsPanel } from '../components/suggestions/SettingsPanel'
 import { RecentRunsPanel } from '../components/suggestions/RecentRunsPanel'
-import { nextRunHintKey, formatRunTime, sortSuggestions } from './suggestionsUtils'
+import { nextRunHintKey, formatRunTime, sortSuggestions, type SortMode } from './suggestionsUtils'
 
 type TabKey = 'pending' | 'planned' | 'created' | 'rejected' | 'pages'
 type GroupTabKey = Exclude<TabKey, 'pages'>
@@ -77,7 +77,7 @@ function defaultGroupExpanded(tab: GroupTabKey): boolean {
   return tab !== 'pending'
 }
 
-type ViewMode = 'grouped' | 'date' | 'size'
+type ViewMode = 'grouped' | SortMode
 
 function groupBySlug(list: Suggestion[]): Map<string, Suggestion[]> {
   const groups = new Map<string, Suggestion[]>()

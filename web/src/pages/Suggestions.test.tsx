@@ -1784,6 +1784,15 @@ describe('sortSuggestions', () => {
     expect(sortSuggestions(list, 'size').map(s => s.id)).toEqual([2, 3, 1])
   })
 
+  it('breaks size ties by generated_at descending, then id ascending', () => {
+    const list = [
+      makeSuggestion({ id: 3, size: 'm', generated_at: '2026-01-01T00:00:00Z' }),
+      makeSuggestion({ id: 1, size: 'm', generated_at: '2026-06-01T00:00:00Z' }),
+      makeSuggestion({ id: 5, size: 'm', generated_at: '2026-06-01T00:00:00Z' }),
+    ]
+    expect(sortSuggestions(list, 'size').map(s => s.id)).toEqual([1, 5, 3])
+  })
+
   it('does not mutate the input array', () => {
     const list = [
       makeSuggestion({ id: 1, generated_at: '2026-01-01T00:00:00Z' }),
