@@ -5,7 +5,10 @@
   "olderSets": "Older sets",
   "sets": {
     "filterOwnedOnly": "Owned only",
-    "emptyOwned": "You don't own any cards yet — go scan some!"
+    "emptyOwned": "You don't own any cards yet — go scan some!",
+    "searchLabel": "Search sets by name or series",
+    "searchPlaceholder": "Search sets — e.g. \"Obsidian Flames\"",
+    "noMatches": "No sets match \"{{query}}\"."
   },
   "value": {
     "title": "Collection value",
