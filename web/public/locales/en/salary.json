@@ -189,6 +189,12 @@
     "failedToLoad": "Failed to load salary data",
     "failedToSave": "Failed to save config",
     "failedToConfirm": "Failed to confirm record",
-    "failedToSyncBudget": "Failed to sync to budget"
+    "failedToSyncBudget": "Failed to sync to budget",
+    "failedToDelete": "Delete failed",
+    "failedToReset": "Reset failed",
+    "failedToImport": "Import failed",
+    "failedToLoadAssignments": "Failed to load assignments",
+    "failedToSaveAssignment": "Save failed",
+    "failedToFetchDefaults": "Failed to fetch defaults"
   }
 }

@@ -1,0 +1,2 @@
+category: Changed
+- **Refactor the Salary page into focused subcomponents** - Split the monolithic `SalaryPage.tsx` into `MonthView`, `YearView`, `ConfigEditor`, `TrekktabellEditor`, `AssignmentsList` and `VacationCard` under `web/src/pages/salary/`, and lifted all shared fetches/mutations into a `useSalaryData` hook. `SalaryPage` is now a thin tab router. No user-visible behavior change; month/year navigation stays in sync across year boundaries. (Hytte-hsa53)
