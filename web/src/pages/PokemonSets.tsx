@@ -177,6 +177,15 @@ export default function PokemonSets() {
     return params.get('older')?.toLowerCase() === 'true'
   }, [location.search])
 
+  // The free-text search box is mirrored to ?q=<value> in the URL, matching the
+  // ownedOnly / showOlder pattern, so reloads, the Back button and shared links
+  // preserve the query. Filtering itself happens client-side over the already
+  // loaded `sets` array (see `filtered` below).
+  const query = useMemo(() => {
+    const params = new URLSearchParams(location.search)
+    return params.get('q') ?? ''
+  }, [location.search])
+
   const [sets, setSets] = useState<PokemonSet[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -212,6 +221,17 @@ export default function PokemonSets() {
     const next = params.toString()
     navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: false, state: location.state })
   }, [showOlder, navigate, location.pathname, location.search, location.state])
+
+  const handleSearchChange = useCallback((value: string) => {
+    const params = new URLSearchParams(location.search)
+    if (value.trim()) {
+      params.set('q', value)
+    } else {
+      params.delete('q')
+    }
+    const next = params.toString()
+    navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: false, state: location.state })
+  }, [navigate, location.pathname, location.search, location.state])
 
   // After the AddCardPanel consumes its initialQuery we strip the hint from
   // history so a subsequent back/forward navigation doesn't re-open the
@@ -308,13 +328,24 @@ export default function PokemonSets() {
     return () => { controller.abort() }
   }, [attempt])
 
+  // Free-text filter applied client-side over the already-loaded sets. A set
+  // matches when the case-insensitive, trimmed query is a substring of its
+  // name or series. An empty query matches everything.
+  const filtered = useMemo(() => {
+    const term = query.trim().toLowerCase()
+    if (!term) return sets
+    return sets.filter(
+      s => s.name.toLowerCase().includes(term) || s.series.toLowerCase().includes(term),
+    )
+  }, [sets, query])
+
   // The top 3 series ranked by the most-recent release_date in each series are
   // shown expanded; everything else is hidden behind the "Show older sets"
   // toggle. Older series are sorted newest-first by their max release_date,
   // with ties broken alphabetically for determinism.
   const { recent, older } = useMemo(() => {
     const byEra = new Map<string, PokemonSet[]>()
-    for (const s of sets) {
+    for (const s of filtered) {
       const list = byEra.get(s.series)
       if (list) list.push(s)
       else byEra.set(s.series, [s])
@@ -333,7 +364,7 @@ export default function PokemonSets() {
     const recentGroups = erasByLatest.slice(0, 3)
     const olderGroups = erasByLatest.slice(3)
     return { recent: recentGroups, older: olderGroups }
-  }, [sets])
+  }, [filtered])
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -428,6 +459,31 @@ export default function PokemonSets() {
 
         {!loading && !error && !(ownedOnly && sets.length === 0) && (
           <>
+            <div>
+              <label htmlFor="pokemon-sets-search" className="sr-only">
+                {t('sets.searchLabel')}
+              </label>
+              <input
+                id="pokemon-sets-search"
+                type="search"
+                value={query}
+                onChange={e => handleSearchChange(e.target.value)}
+                placeholder={t('sets.searchPlaceholder')}
+                aria-label={t('sets.searchLabel')}
+                data-testid="pokemon-sets-search"
+                className="w-full px-3 py-2 text-sm bg-gray-800/60 border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+              />
+            </div>
+
+            {query.trim() && filtered.length === 0 ? (
+              <p
+                data-testid="pokemon-sets-empty-search"
+                className="text-sm text-gray-400 px-3 py-8 text-center"
+              >
+                {t('sets.noMatches', { query: query.trim() })}
+              </p>
+            ) : (
+              <>
             {recent.map(([era, list]) => {
               const slug = eraSlug(era)
               return (
@@ -460,6 +516,8 @@ export default function PokemonSets() {
                   )
                 })}
               </section>
+            )}
+              </>
             )}
           </>
         )}

@@ -5,7 +5,10 @@
   "olderSets": "ชุดเก่ากว่า",
   "sets": {
     "filterOwnedOnly": "เฉพาะที่มี",
-    "emptyOwned": "คุณยังไม่มีการ์ดเลย — ไปสแกนก่อนสิ!"
+    "emptyOwned": "คุณยังไม่มีการ์ดเลย — ไปสแกนก่อนสิ!",
+    "searchLabel": "ค้นหาชุดตามชื่อหรือซีรีส์",
+    "searchPlaceholder": "ค้นหาชุด — เช่น \"Obsidian Flames\"",
+    "noMatches": "ไม่มีชุดที่ตรงกับ \"{{query}}\""
   },
   "value": {
     "title": "มูลค่าคอลเลกชัน",

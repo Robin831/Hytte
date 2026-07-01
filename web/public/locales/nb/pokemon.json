@@ -5,7 +5,10 @@
   "olderSets": "Eldre sett",
   "sets": {
     "filterOwnedOnly": "Bare eide",
-    "emptyOwned": "Du eier ingen kort enda — gå og scan noen!"
+    "emptyOwned": "Du eier ingen kort enda — gå og scan noen!",
+    "searchLabel": "Søk i sett etter navn eller serie",
+    "searchPlaceholder": "Søk i sett — f.eks. «Obsidian Flames»",
+    "noMatches": "Ingen sett samsvarer med «{{query}}»."
   },
   "value": {
     "title": "Samlingsverdi",
