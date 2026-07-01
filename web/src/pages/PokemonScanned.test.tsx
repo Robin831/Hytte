@@ -199,6 +199,23 @@ function makeQueued(over: Partial<ScanFixture> = {}): ScanFixture {
   }
 }
 
+function makeNeedsReviewPageWithQueuedChild(over: {
+  pageId?: number
+  matchedId?: number
+  queuedId?: number
+} = {}): PageFixture {
+  return {
+    id: over.pageId ?? 100,
+    expected_count: 2,
+    matched_count: 1,
+    created_at: new Date('2026-05-15T10:00:00Z').toISOString(),
+    children: [
+      makeMatched({ id: over.matchedId ?? 10 }),
+      makeQueued({ id: over.queuedId ?? 11 }),
+    ],
+  }
+}
+
 interface PageFixture {
   id: number
   expected_count: number
@@ -853,8 +870,12 @@ describe('PokemonScanned – visibility-aware polling', () => {
   it('polls /api/pokemon/scans at the SCAN_POLL_MS cadence while visible with in-flight work', async () => {
     setVisibility('visible')
     vi.useFakeTimers()
-    // A queued job is loaded, so there is something worth polling for.
-    const fetchMock = makeFetchMock({ needsReview: [makeMatched(), makeQueued()] })
+    // A page block with a queued child triggers hasInFlightWork even on the
+    // needsReview tab (children are returned regardless of individual status).
+    const fetchMock = makeFetchMock({
+      needsReview: [makeMatched()],
+      pages: { needsReview: [makeNeedsReviewPageWithQueuedChild()] },
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     renderPage()
@@ -901,14 +922,24 @@ describe('PokemonScanned – visibility-aware polling', () => {
   it('clears the interval once the last in-flight job settles', async () => {
     setVisibility('visible')
     vi.useFakeTimers()
-    // Phase 0 returns a queued job (poll armed); after the first poll we flip to
-    // phase 1, which returns the same job settled, so the interval should stop.
+    // Phase 0: a page block has a matched child (so it appears on needsReview)
+    // plus a queued child (arms the poll). Phase 1: the queued child settles to
+    // matched, so hasInFlightWork flips false and the interval tears down.
     let phase = 0
     const fetchMock = vi.fn((url: string) => {
       if (url.startsWith('/api/pokemon/scans?')) {
-        const scans = phase === 0 ? [makeQueued()] : [makeMatched({ id: 4 })]
+        const children = phase === 0
+          ? [makeMatched({ id: 10 }), makeQueued({ id: 11 })]
+          : [makeMatched({ id: 10 }), makeMatched({ id: 11 })]
+        const pages = [{
+          id: 100,
+          expected_count: 2,
+          matched_count: phase === 0 ? 1 : 2,
+          created_at: new Date('2026-05-15T10:00:00Z').toISOString(),
+          children,
+        }]
         return Promise.resolve(
-          jsonResponse({ scans, pages: [], today: { used: 0, cap: 600 } }),
+          jsonResponse({ scans: [], pages, today: { used: 0, cap: 600 } }),
         )
       }
       return Promise.resolve(jsonResponse({}, 404))
@@ -973,7 +1004,11 @@ describe('PokemonScanned – visibility-aware polling', () => {
   it('stops polling once the tab becomes hidden', async () => {
     setVisibility('visible')
     vi.useFakeTimers()
-    const fetchMock = makeFetchMock({ needsReview: [makeQueued()] })
+    // In-flight work via a page block child so the poll is armed.
+    const fetchMock = makeFetchMock({
+      needsReview: [],
+      pages: { needsReview: [makeNeedsReviewPageWithQueuedChild()] },
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     renderPage()
@@ -999,7 +1034,11 @@ describe('PokemonScanned – visibility-aware polling', () => {
   it('refetches immediately on refocus and resumes the interval while work is in flight', async () => {
     setVisibility('visible')
     vi.useFakeTimers()
-    const fetchMock = makeFetchMock({ needsReview: [makeQueued()] })
+    // In-flight work via a page block child so the poll is armed.
+    const fetchMock = makeFetchMock({
+      needsReview: [],
+      pages: { needsReview: [makeNeedsReviewPageWithQueuedChild()] },
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     renderPage()
@@ -1060,8 +1099,11 @@ describe('PokemonScanned – visibility-aware polling', () => {
   it('clears the interval and removes the visibilitychange listener on unmount', async () => {
     setVisibility('visible')
     vi.useFakeTimers()
-    // In-flight work so the poll (and its visibilitychange listener) is armed.
-    const fetchMock = makeFetchMock({ needsReview: [makeQueued()] })
+    // In-flight work via a page block child so the poll is armed.
+    const fetchMock = makeFetchMock({
+      needsReview: [],
+      pages: { needsReview: [makeNeedsReviewPageWithQueuedChild()] },
+    })
     vi.stubGlobal('fetch', fetchMock)
     const removeSpy = vi.spyOn(document, 'removeEventListener')
 
