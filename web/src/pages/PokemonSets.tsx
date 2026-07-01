@@ -82,6 +82,7 @@ interface SetTileProps {
 
 function SetTile({ set, t }: SetTileProps) {
   const percent = ownershipPercent(set.owned_count, set.total_cards)
+  const [errored, setErrored] = useState(false)
   return (
     <Link
       to={`/pokemon/sets/${set.id}`}
@@ -90,12 +91,13 @@ function SetTile({ set, t }: SetTileProps) {
       data-testid={`set-tile-${set.id}`}
     >
       <div className="h-14 flex items-center justify-center">
-        {set.logo_url ? (
+        {set.logo_url && !errored ? (
           <img
             src={set.logo_url}
             alt=""
             className="max-h-14 max-w-full object-contain"
             loading="lazy"
+            onError={() => setErrored(true)}
           />
         ) : (
           <span className="text-xs uppercase tracking-wide text-gray-500">{set.id}</span>
