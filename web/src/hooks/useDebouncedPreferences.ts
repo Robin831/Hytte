@@ -100,9 +100,21 @@ export function useDebouncedPreferences(
         if (!res.ok) throw new Error(`save failed (${res.status})`)
         const data = await res.json()
         if (!mountedRef.current) return true
-        optionsRef.current.onSaved(data.preferences || {})
-        setSectionStatus(sections, 'saved')
-        scheduleSavedReset(sections)
+        // Merge edits queued during the in-flight request over the server
+        // snapshot so the caller's state reflects the latest values.
+        const merged = { ...(data.preferences || {}), ...pendingRef.current }
+        optionsRef.current.onSaved(merged)
+        // Only mark sections as "saved" if they have no pending keys;
+        // sections with queued edits stay in "saving".
+        const pendingSections = sectionsOf(Object.keys(pendingRef.current))
+        const doneSections = new Set<string>()
+        for (const section of sections) {
+          if (!pendingSections.has(section)) doneSections.add(section)
+        }
+        if (doneSections.size > 0) {
+          setSectionStatus(doneSections, 'saved')
+          scheduleSavedReset(doneSections)
+        }
         if (toastOnSuccess) optionsRef.current.onSuccessToast?.()
         return true
       } catch {
