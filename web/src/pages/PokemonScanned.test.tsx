@@ -199,6 +199,23 @@ function makeQueued(over: Partial<ScanFixture> = {}): ScanFixture {
   }
 }
 
+function makeNeedsReviewPageWithQueuedChild(over: {
+  pageId?: number
+  matchedId?: number
+  queuedId?: number
+} = {}): PageFixture {
+  return {
+    id: over.pageId ?? 100,
+    expected_count: 2,
+    matched_count: 1,
+    created_at: new Date('2026-05-15T10:00:00Z').toISOString(),
+    children: [
+      makeMatched({ id: over.matchedId ?? 10 }),
+      makeQueued({ id: over.queuedId ?? 11 }),
+    ],
+  }
+}
+
 interface PageFixture {
   id: number
   expected_count: number
@@ -850,10 +867,15 @@ describe('PokemonScanned – visibility-aware polling', () => {
     })
   }
 
-  it('polls /api/pokemon/scans at the SCAN_POLL_MS cadence while visible', async () => {
+  it('polls /api/pokemon/scans at the SCAN_POLL_MS cadence while visible with in-flight work', async () => {
     setVisibility('visible')
     vi.useFakeTimers()
-    const fetchMock = makeFetchMock({ needsReview: [makeMatched()] })
+    // A page block with a queued child triggers hasInFlightWork even on the
+    // needsReview tab (children are returned regardless of individual status).
+    const fetchMock = makeFetchMock({
+      needsReview: [makeMatched()],
+      pages: { needsReview: [makeNeedsReviewPageWithQueuedChild()] },
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     renderPage()
@@ -873,10 +895,120 @@ describe('PokemonScanned – visibility-aware polling', () => {
     expect(scanListCalls(fetchMock)).toBe(baseline + 3)
   })
 
+  it('does not poll on needsReview when nothing is queued or processing', async () => {
+    setVisibility('visible')
+    vi.useFakeTimers()
+    // Everything on this tab is already settled — no queued/processing jobs.
+    const fetchMock = makeFetchMock({
+      needsReview: [makeMatched(), makeNoMatch(), makeFailed()],
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await flush()
+
+    const baseline = scanListCalls(fetchMock)
+    expect(baseline).toBe(1) // only the initial mount fetch
+
+    // Advancing well past the poll cadence must not fire any background poll.
+    await act(async () => {
+      vi.advanceTimersByTime(SCAN_POLL_MS * 3)
+    })
+    await flush()
+
+    expect(scanListCalls(fetchMock)).toBe(baseline)
+  })
+
+  it('clears the interval once the last in-flight job settles', async () => {
+    setVisibility('visible')
+    vi.useFakeTimers()
+    // Phase 0: a page block has a matched child (so it appears on needsReview)
+    // plus a queued child (arms the poll). Phase 1: the queued child settles to
+    // matched, so hasInFlightWork flips false and the interval tears down.
+    let phase = 0
+    const fetchMock = vi.fn((url: string) => {
+      if (url.startsWith('/api/pokemon/scans?')) {
+        const children = phase === 0
+          ? [makeMatched({ id: 10 }), makeQueued({ id: 11 })]
+          : [makeMatched({ id: 10 }), makeMatched({ id: 11 })]
+        const pages = [{
+          id: 100,
+          expected_count: 2,
+          matched_count: phase === 0 ? 1 : 2,
+          created_at: new Date('2026-05-15T10:00:00Z').toISOString(),
+          children,
+        }]
+        return Promise.resolve(
+          jsonResponse({ scans: [], pages, today: { used: 0, cap: 600 } }),
+        )
+      }
+      return Promise.resolve(jsonResponse({}, 404))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await flush()
+    const baseline = scanListCalls(fetchMock)
+    expect(baseline).toBe(1)
+
+    // Next poll returns the job settled → the derived in-flight signal flips off.
+    phase = 1
+    await act(async () => {
+      vi.advanceTimersByTime(SCAN_POLL_MS)
+    })
+    await flush()
+    const afterSettle = scanListCalls(fetchMock)
+    expect(afterSettle).toBe(baseline + 1) // the poll that observed the settle
+
+    // Interval torn down: further time advances produce no more polls.
+    await act(async () => {
+      vi.advanceTimersByTime(SCAN_POLL_MS * 3)
+    })
+    await flush()
+    expect(scanListCalls(fetchMock)).toBe(afterSettle)
+  })
+
+  it('re-arms the poll when switching to the pending filter', async () => {
+    setVisibility('visible')
+    vi.useFakeTimers()
+    const fetchMock = makeFetchMock({ needsReview: [makeMatched()], pending: [] })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await flush()
+
+    // needsReview is settled → no polling yet.
+    const baseline = scanListCalls(fetchMock)
+    await act(async () => {
+      vi.advanceTimersByTime(SCAN_POLL_MS * 2)
+    })
+    await flush()
+    expect(scanListCalls(fetchMock)).toBe(baseline)
+
+    // Switching to "pending" refetches for the new filter and arms the poll.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('scanned-filter-pending'))
+    })
+    await flush()
+    const afterSwitch = scanListCalls(fetchMock)
+    expect(afterSwitch).toBeGreaterThan(baseline)
+
+    // The interval is now running for the pending tab.
+    await act(async () => {
+      vi.advanceTimersByTime(SCAN_POLL_MS)
+    })
+    await flush()
+    expect(scanListCalls(fetchMock)).toBe(afterSwitch + 1)
+  })
+
   it('stops polling once the tab becomes hidden', async () => {
     setVisibility('visible')
     vi.useFakeTimers()
-    const fetchMock = makeFetchMock({ needsReview: [makeMatched()] })
+    // In-flight work via a page block child so the poll is armed.
+    const fetchMock = makeFetchMock({
+      needsReview: [],
+      pages: { needsReview: [makeNeedsReviewPageWithQueuedChild()] },
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     renderPage()
@@ -899,10 +1031,14 @@ describe('PokemonScanned – visibility-aware polling', () => {
     expect(scanListCalls(fetchMock)).toBe(baseline)
   })
 
-  it('refetches immediately on refocus and resumes the interval', async () => {
+  it('refetches immediately on refocus and resumes the interval while work is in flight', async () => {
     setVisibility('visible')
     vi.useFakeTimers()
-    const fetchMock = makeFetchMock({ needsReview: [makeMatched()] })
+    // In-flight work via a page block child so the poll is armed.
+    const fetchMock = makeFetchMock({
+      needsReview: [],
+      pages: { needsReview: [makeNeedsReviewPageWithQueuedChild()] },
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     renderPage()
@@ -935,10 +1071,39 @@ describe('PokemonScanned – visibility-aware polling', () => {
     expect(scanListCalls(fetchMock)).toBe(beforeRefocus + 2)
   })
 
-  it('clears the interval and removes the visibilitychange listener on unmount', async () => {
+  it('does not re-poll on refocus when nothing is in flight', async () => {
     setVisibility('visible')
     vi.useFakeTimers()
     const fetchMock = makeFetchMock({ needsReview: [makeMatched()] })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await flush()
+    const baseline = scanListCalls(fetchMock)
+
+    // Background then refocus: with no queued/processing work, the poll effect
+    // never armed its visibilitychange listener, so refocus triggers no refetch.
+    await act(async () => {
+      setVisibility('hidden')
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await act(async () => {
+      setVisibility('visible')
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await flush()
+
+    expect(scanListCalls(fetchMock)).toBe(baseline)
+  })
+
+  it('clears the interval and removes the visibilitychange listener on unmount', async () => {
+    setVisibility('visible')
+    vi.useFakeTimers()
+    // In-flight work via a page block child so the poll is armed.
+    const fetchMock = makeFetchMock({
+      needsReview: [],
+      pages: { needsReview: [makeNeedsReviewPageWithQueuedChild()] },
+    })
     vi.stubGlobal('fetch', fetchMock)
     const removeSpy = vi.spyOn(document, 'removeEventListener')
 
