@@ -1,0 +1,2 @@
+category: Changed
+- **Extract shared stars types and reason-emoji map** - Moved the `REASON_EMOJI` lookup table and `formatRelativeTime` helper into `utils/stars.ts` and the shared `Balance`, `Transaction`, streak, and journey interfaces into a new `types/stars.ts`, giving a single source of truth for transaction-reason iconography and stars data shapes. Pure refactor with no behavior change. (Hytte-cugq2)
