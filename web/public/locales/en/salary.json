@@ -94,7 +94,10 @@
     "used": "{{used}} of {{allowance}} days used",
     "remaining": "{{remaining}} days remaining",
     "feriepenger": "Holiday pay (feriepenger)",
-    "feriepengerAccrued": "{{amount}} accrued ({{pct}}% of confirmed gross)"
+    "feriepengerAccrued": "{{amount}} accrued ({{pct}}% of confirmed gross)",
+    "feriepengerProgress": "Accrued vs. projected",
+    "feriepengerProjected": "{{amount}} projected",
+    "feriepengerProgressAria": "Feriepenger accrued against projected full-year payout"
   },
   "tax": {
     "title": "Tax Brackets",

@@ -94,7 +94,10 @@
     "used": "ใช้ไปแล้ว {{used}} จาก {{allowance}} วัน",
     "remaining": "เหลือ {{remaining}} วัน",
     "feriepenger": "เงินค่าลาพักร้อน (feriepenger)",
-    "feriepengerAccrued": "สะสม {{amount}} ({{pct}}% ของรายได้รวมที่ยืนยันแล้ว)"
+    "feriepengerAccrued": "สะสม {{amount}} ({{pct}}% ของรายได้รวมที่ยืนยันแล้ว)",
+    "feriepengerProgress": "สะสมเทียบกับที่คาดการณ์",
+    "feriepengerProjected": "คาดการณ์ {{amount}}",
+    "feriepengerProgressAria": "เงินค่าลาพักร้อนที่สะสมเทียบกับยอดจ่ายที่คาดการณ์ตลอดทั้งปี"
   },
   "tax": {
     "title": "ขั้นอัตราภาษี",
