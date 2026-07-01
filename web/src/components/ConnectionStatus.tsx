@@ -67,10 +67,10 @@ export default function ConnectionStatus({ state, emphasizeLabel = false }: Conn
       data-testid={meta.testId}
     >
       <span
-        className={`w-2 h-2 rounded-full ${meta.dot} ${meta.pulse ? 'animate-pulse' : ''}`}
+        className={`w-2 h-2 rounded-full ${meta.dot} ${meta.pulse ? 'motion-safe:animate-pulse' : ''}`}
         aria-hidden="true"
       />
-      <span className={`${emphasizeLabel ? 'inline' : 'hidden sm:inline'} truncate max-w-[8rem]`}>
+      <span className={`${emphasizeLabel ? 'inline' : 'sr-only sm:not-sr-only sm:inline'} truncate max-w-[8rem]`}>
         {label}
       </span>
     </span>

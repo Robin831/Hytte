@@ -442,6 +442,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     let recoveredTimer: ReturnType<typeof setTimeout> | null = null
     let reconnectAttempts = 0
     let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null
+    let connectInFlight = false
     // browserOffline mirrors navigator.onLine so scheduleReconnect can label a
     // drop as "Offline" (no network) vs "Reconnecting" (server blip) without a
     // separate stream or poll.
@@ -458,7 +459,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     setError('')
     setMessages([])
     setConversation(null)
-    setConnStatus('connecting')
+    setConnStatus(browserOffline ? 'offline' : 'connecting')
     setJustReconnected(false)
     setMissedCalls([])
     setEndedCallSummary(null)
@@ -599,6 +600,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
 
     const connect = async (firstConnect: boolean) => {
       if (controller.signal.aborted) return
+      connectInFlight = true
       // Capture the resume point BEFORE fillGap runs. fillGap appends any new
       // messages and bumps lastId; if we passed the post-fillGap lastId to the
       // stream, the backfill watermark would advance past edits/deletes that
@@ -783,6 +785,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         if (err instanceof Error && err.name === 'AbortError') return
         if (!controller.signal.aborted) scheduleReconnect()
       } finally {
+        connectInFlight = false
         if (activeReader === reader) activeReader = null
       }
     }
@@ -793,6 +796,10 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     // instead of waiting out the remaining backoff.
     const handleOffline = () => {
       browserOffline = true
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
       setConnStatus(prev => (prev === 'connecting' ? 'connecting' : 'offline'))
     }
     const handleOnline = () => {
@@ -800,7 +807,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       if (controller.signal.aborted) return
       // If a stream is already open/opening, leave it alone; otherwise surface
       // 'reconnecting' and retry immediately, cancelling any pending backoff.
-      if (activeReader) return
+      if (activeReader || connectInFlight) return
       setConnStatus(prev => (prev === 'connecting' ? 'connecting' : 'reconnecting'))
       if (reconnectTimer !== null) {
         clearTimeout(reconnectTimer)
