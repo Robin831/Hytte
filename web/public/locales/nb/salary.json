@@ -94,7 +94,10 @@
     "used": "{{used}} av {{allowance}} feriedager brukt",
     "remaining": "{{remaining}} dager gjenstår",
     "feriepenger": "Feriepenger",
-    "feriepengerAccrued": "{{amount}} opptjent ({{pct}}% av bekreftet bruttolønn)"
+    "feriepengerAccrued": "{{amount}} opptjent ({{pct}}% av bekreftet bruttolønn)",
+    "feriepengerProgress": "Opptjent mot forventet",
+    "feriepengerProjected": "{{amount}} forventet",
+    "feriepengerProgressAria": "Feriepenger opptjent mot forventet utbetaling for hele året"
   },
   "tax": {
     "title": "Skattetrinn",
