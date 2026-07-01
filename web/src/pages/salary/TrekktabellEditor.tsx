@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TrekktabellParams } from './types'
 import type { SalaryData } from './useSalaryData'
@@ -19,11 +19,6 @@ export default function TrekktabellEditor({ salary }: TrekktabellEditorProps) {
   const [editorTrekktabell, setEditorTrekktabell] = useState<TrekktabellParams | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync editor draft with upstream data
-    setEditorTrekktabell(trekktabell)
-  }, [trekktabell])
 
   if (!trekktabell) return null
 

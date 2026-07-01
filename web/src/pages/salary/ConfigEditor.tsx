@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { SalaryData } from './useSalaryData'
 
@@ -17,27 +17,15 @@ export default function ConfigEditor({ salary, noConfig, noConfigPastMonth, onCl
   const { t } = useTranslation('salary')
   const { estimate, saveConfig } = salary
 
-  const [baseSalary, setBaseSalary] = useState('')
-  const [hourlyRate, setHourlyRate] = useState('')
-  const [internalHourlyRate, setInternalHourlyRate] = useState('0')
-  const [taxableBenefits, setTaxableBenefits] = useState('0')
-  const [standardHours, setStandardHours] = useState('7.5')
-  const [currency, setCurrency] = useState('NOK')
+  const [baseSalary, setBaseSalary] = useState(() => estimate ? String(estimate.config.base_salary) : '')
+  const [hourlyRate, setHourlyRate] = useState(() => estimate ? String(estimate.config.hourly_rate) : '')
+  const [internalHourlyRate, setInternalHourlyRate] = useState(() => estimate ? String(estimate.config.internal_hourly_rate ?? 0) : '0')
+  const [taxableBenefits, setTaxableBenefits] = useState(() => estimate ? String(estimate.config.taxable_benefits ?? 0) : '0')
+  const [standardHours, setStandardHours] = useState(() => estimate ? String(estimate.config.standard_hours) : '7.5')
+  const [currency, setCurrency] = useState(() => estimate?.config.currency ?? 'NOK')
 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!estimate) return
-    /* eslint-disable react-hooks/set-state-in-effect -- seed form from loaded estimate */
-    setBaseSalary(String(estimate.config.base_salary))
-    setHourlyRate(String(estimate.config.hourly_rate))
-    setInternalHourlyRate(String(estimate.config.internal_hourly_rate ?? 0))
-    setTaxableBenefits(String(estimate.config.taxable_benefits ?? 0))
-    setStandardHours(String(estimate.config.standard_hours))
-    setCurrency(estimate.config.currency)
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, [estimate])
 
   const handleSave = async () => {
     setSaving(true)
