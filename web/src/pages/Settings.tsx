@@ -113,8 +113,6 @@ function Settings() {
     onSuccessToast: () => showToast('success', t('training.saveSuccess')),
     onErrorToast: () => showToast('error', t('training.saveError')),
   })
-  const { queuePreference } = prefWriter
-
   const savePreferences = async (prefs: Record<string, string>, toast = false) => {
     setSaving(true)
     try {
