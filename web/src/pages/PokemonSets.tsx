@@ -83,6 +83,11 @@ interface SetTileProps {
 function SetTile({ set, t }: SetTileProps) {
   const percent = ownershipPercent(set.owned_count, set.total_cards)
   const [errored, setErrored] = useState(false)
+  const [prevUrl, setPrevUrl] = useState(set.logo_url)
+  if (set.logo_url !== prevUrl) {
+    setPrevUrl(set.logo_url)
+    setErrored(false)
+  }
   return (
     <Link
       to={`/pokemon/sets/${set.id}`}

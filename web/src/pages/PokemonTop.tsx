@@ -123,6 +123,11 @@ function TopCardTile({ card, rank, onClick, t }: TileProps) {
     ? t(`variantKind.${card.top_variant_kind}`, { defaultValue: card.top_variant_kind })
     : ''
   const [errored, setErrored] = useState(false)
+  const [prevUrl, setPrevUrl] = useState(card.image_small_url)
+  if (card.image_small_url !== prevUrl) {
+    setPrevUrl(card.image_small_url)
+    setErrored(false)
+  }
   return (
     <button
       type="button"
