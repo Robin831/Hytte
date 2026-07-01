@@ -122,6 +122,12 @@ function TopCardTile({ card, rank, onClick, t }: TileProps) {
   const variantLabel = card.top_variant_kind
     ? t(`variantKind.${card.top_variant_kind}`, { defaultValue: card.top_variant_kind })
     : ''
+  const [errored, setErrored] = useState(false)
+  const [prevUrl, setPrevUrl] = useState(card.image_small_url)
+  if (card.image_small_url !== prevUrl) {
+    setPrevUrl(card.image_small_url)
+    setErrored(false)
+  }
   return (
     <button
       type="button"
@@ -135,12 +141,13 @@ function TopCardTile({ card, rank, onClick, t }: TileProps) {
         }`}
     >
       <div className="relative aspect-[5/7] flex items-center justify-center bg-gray-900/40 rounded overflow-hidden">
-        {card.image_small_url ? (
+        {card.image_small_url && !errored ? (
           <img
             src={card.image_small_url}
             alt=""
             loading="lazy"
             className="max-h-full max-w-full object-contain"
+            onError={() => setErrored(true)}
           />
         ) : (
           <span className="text-xs text-gray-500">{card.collector_no}</span>
