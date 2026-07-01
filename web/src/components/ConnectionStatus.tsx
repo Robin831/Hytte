@@ -11,10 +11,7 @@ export type ChatConnectionState = 'connecting' | 'live' | 'reconnecting' | 'offl
 // Per-state presentation: dot colour, badge colours, i18n key and test id. The
 // 'connecting' state is intentionally absent — it renders nothing so the initial
 // skeleton isn't shadowed by a premature status badge.
-const STATE_META: Record<
-  Exclude<ChatConnectionState, 'connecting'>,
-  { dot: string; badge: string; labelKey: string; testId: string; pulse: boolean }
-> = {
+const STATE_META = {
   live: {
     dot: 'bg-green-400',
     badge: 'bg-green-500/15 border-green-500/40 text-green-200',
@@ -36,7 +33,10 @@ const STATE_META: Record<
     testId: 'family-chat-offline',
     pulse: false,
   },
-}
+} as const satisfies Record<
+  Exclude<ChatConnectionState, 'connecting'>,
+  { dot: string; badge: string; labelKey: string; testId: string; pulse: boolean }
+>
 
 interface ConnectionStatusProps {
   state: ChatConnectionState
