@@ -40,6 +40,8 @@ export interface OverrideInput {
 export function useSalaryData(selectedMonth: string, selectedYear: number, activeTab: Tab) {
   const { t } = useTranslation('salary')
 
+  const monthYear = Number.parseInt(selectedMonth.split('-')[0] ?? '', 10) || selectedYear
+
   // Month estimate
   const [estimate, setEstimate] = useState<EstimateResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -106,11 +108,13 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
   }, [selectedMonth, estimateRefreshToken])
 
   // Load vacation data when estimate is available (has config).
+  // Use monthYear so vacation data always matches the selected month's year,
+  // not the independently-selectable year tab year.
   useEffect(() => {
     if (!estimate) return
     let cancelled = false
 
-    fetch(`/api/salary/vacation?year=${selectedYear}`, { credentials: 'include' })
+    fetch(`/api/salary/vacation?year=${monthYear}`, { credentials: 'include' })
       .then(async res => {
         if (!res.ok) throw new Error(await res.text())
         return res.json() as Promise<VacationResponse>
@@ -119,14 +123,14 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
       .catch(err => { if (!cancelled) console.error('Failed to load vacation data:', err) })
 
     return () => { cancelled = true }
-  }, [estimate, selectedYear])
+  }, [estimate, monthYear])
 
   // Load trekktabell params when estimate is available.
   useEffect(() => {
     if (!estimate) return
     let cancelled = false
 
-    fetch(`/api/salary/trekktabell?year=${selectedYear}`, { credentials: 'include' })
+    fetch(`/api/salary/trekktabell?year=${monthYear}`, { credentials: 'include' })
       .then(async res => {
         if (!res.ok) throw new Error(await res.text())
         return res.json() as Promise<TrekktabellParams>
@@ -135,7 +139,7 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
       .catch(err => { if (!cancelled) console.error('Failed to load trekktabell:', err) })
 
     return () => { cancelled = true }
-  }, [estimate, selectedYear])
+  }, [estimate, monthYear])
 
   useEffect(() => {
     if (activeTab !== 'year') return

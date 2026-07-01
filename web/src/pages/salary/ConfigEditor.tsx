@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { parseDecimal } from '../../utils/parseDecimal'
 import type { SalaryData } from './useSalaryData'
 
 interface ConfigEditorProps {
@@ -32,11 +33,11 @@ export default function ConfigEditor({ salary, noConfig, noConfigPastMonth, onCl
     setSaveError(null)
     try {
       await saveConfig({
-        base_salary: parseFloat(baseSalary) || 0,
-        hourly_rate: parseFloat(hourlyRate) || 0,
-        internal_hourly_rate: parseFloat(internalHourlyRate) || 0,
-        taxable_benefits: parseFloat(taxableBenefits) || 0,
-        standard_hours: isNaN(parseFloat(standardHours)) ? 7.5 : parseFloat(standardHours),
+        base_salary: parseDecimal(baseSalary) || 0,
+        hourly_rate: parseDecimal(hourlyRate) || 0,
+        internal_hourly_rate: parseDecimal(internalHourlyRate) || 0,
+        taxable_benefits: parseDecimal(taxableBenefits) || 0,
+        standard_hours: isNaN(parseDecimal(standardHours)) ? 7.5 : parseDecimal(standardHours),
         currency: currency || 'NOK',
       })
       onClose()
