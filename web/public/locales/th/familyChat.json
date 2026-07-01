@@ -33,7 +33,8 @@
     "lightboxClose": "ปิดการดูตัวอย่าง",
     "connection": {
       "live": "เชื่อมต่อแล้ว",
-      "reconnecting": "กำลังเชื่อมต่อใหม่…"
+      "reconnecting": "กำลังเชื่อมต่อใหม่…",
+      "offline": "ออฟไลน์"
     },
     "typing": {
       "single": "{{name}} กำลังพิมพ์…",

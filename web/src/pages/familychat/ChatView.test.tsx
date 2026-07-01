@@ -53,6 +53,7 @@ const TRANSLATIONS: Record<string, string> = {
   'chat.lightboxClose': 'Close preview',
   'chat.connection.live': 'Connected',
   'chat.connection.reconnecting': 'Reconnecting…',
+  'chat.connection.offline': 'Offline',
   'newModal.parent': 'Parent',
   'reactions.pickerLabel': 'Add reaction',
   'reactions.add': 'React with {{emoji}}',
@@ -821,6 +822,134 @@ describe('ChatView – reconnect gap-fill', () => {
     expect(msgUrls.some(url => !url.includes('?since'))).toBe(true)
 
     await waitFor(() => expect(screen.getByText('Arrived during disconnect')).toBeInTheDocument())
+  }, 15000)
+})
+
+describe('ChatView – offline / online transitions', () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  it('shows the Offline indicator when the browser goes offline after being live', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+
+    let closeStream: (() => void) | null = null
+    const firstStream = new ReadableStream<Uint8Array>({
+      start(c) { closeStream = () => c.close() },
+    })
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce({ ok: true, body: firstStream })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+    expect(screen.getByTestId('family-chat-connected')).toBeInTheDocument()
+
+    // Simulate going offline: close the stream, then fire the offline event.
+    Object.defineProperty(navigator, 'onLine', { value: false, writable: true, configurable: true })
+    await act(async () => {
+      closeStream!()
+      window.dispatchEvent(new Event('offline'))
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('family-chat-offline')).toBeInTheDocument()
+    })
+
+    // Clean up
+    Object.defineProperty(navigator, 'onLine', { value: true, writable: true, configurable: true })
+  }, 15000)
+
+  it('cancels pending backoff timer when going offline', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+
+    let closeStream: (() => void) | null = null
+    const firstStream = new ReadableStream<Uint8Array>({
+      start(c) { closeStream = () => c.close() },
+    })
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce({ ok: true, body: firstStream })
+      .mockResolvedValue(streamOk())
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+
+    // Drop the stream to trigger a backoff timer.
+    await act(async () => {
+      closeStream!()
+      await Promise.resolve()
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('family-chat-reconnecting')).toBeInTheDocument()
+    })
+
+    // Go offline before the timer fires — no reconnect attempt should happen.
+    const callsBefore = fetchMock.mock.calls.length
+    Object.defineProperty(navigator, 'onLine', { value: false, writable: true, configurable: true })
+    await act(async () => {
+      window.dispatchEvent(new Event('offline'))
+      await Promise.resolve()
+    })
+
+    // Advance past what the backoff delay would have been.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+
+    // No additional fetch calls should have been made (the timer was cleared).
+    expect(fetchMock.mock.calls.length).toBe(callsBefore)
+    expect(screen.getByTestId('family-chat-offline')).toBeInTheDocument()
+
+    // Clean up
+    Object.defineProperty(navigator, 'onLine', { value: true, writable: true, configurable: true })
+  }, 15000)
+
+  it('retries immediately when coming back online from offline', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+
+    let closeStream: (() => void) | null = null
+    const firstStream = new ReadableStream<Uint8Array>({
+      start(c) { closeStream = () => c.close() },
+    })
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([]))
+      .mockResolvedValueOnce({ ok: true, body: firstStream })
+      .mockResolvedValueOnce(msgsOk([]))   // gap-fill on reconnect
+      .mockResolvedValueOnce(streamOk())   // reconnect stream
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChatView()
+    await waitFor(() => screen.getByText('No messages yet. Say hello!'))
+
+    // Drop the stream then go offline.
+    Object.defineProperty(navigator, 'onLine', { value: false, writable: true, configurable: true })
+    await act(async () => {
+      closeStream!()
+      window.dispatchEvent(new Event('offline'))
+      await Promise.resolve()
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('family-chat-offline')).toBeInTheDocument()
+    })
+
+    // Come back online — should retry immediately without waiting for backoff.
+    Object.defineProperty(navigator, 'onLine', { value: true, writable: true, configurable: true })
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('family-chat-connected')).toBeInTheDocument()
+    })
   }, 15000)
 })
 

@@ -33,7 +33,8 @@
     "lightboxClose": "Lukk forhåndsvisning",
     "connection": {
       "live": "Tilkoblet",
-      "reconnecting": "Kobler til på nytt…"
+      "reconnecting": "Kobler til på nytt…",
+      "offline": "Frakoblet"
     },
     "typing": {
       "single": "{{name}} skriver…",
