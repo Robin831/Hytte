@@ -1,6 +1,11 @@
 {
   "title": "Innstillinger",
   "loading": "Laster innstillinger...",
+  "saveStatus": {
+    "saving": "Lagrer…",
+    "saved": "Lagret",
+    "error": "Feil"
+  },
   "profile": {
     "heading": "Profil",
     "memberSince": "Medlem siden {{date}}. Profilinformasjon administreres av Google-kontoen din."

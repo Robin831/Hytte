@@ -1,0 +1,2 @@
+category: Changed
+- **Debounced batched preference saving on Settings** - Editing several preference fields in quick succession (e.g. the training heart-rate and pace fields) now flushes as a single request ~500ms after the last edit instead of one PUT per field. Each section header shows an inline Saving… → Saved status, failures surface as a single toast, and pending edits flush before navigating away. (Hytte-ped5f)

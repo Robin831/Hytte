@@ -433,13 +433,12 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		// All keys validated — now persist them.
-		for k, v := range toWrite {
-			if err := SetPreference(db, user.ID, k, v); err != nil {
-				log.Printf("Failed to set preference %s: %v", k, err)
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save preferences"})
-				return
-			}
+		// All keys validated — now persist them atomically in a single
+		// transaction so a batched write is all-or-nothing.
+		if err := SetPreferences(db, user.ID, toWrite); err != nil {
+			log.Printf("Failed to set preferences: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save preferences"})
+			return
 		}
 
 		prefs, err := GetPreferences(db, user.ID)

@@ -1599,3 +1599,170 @@ func TestPreferencesPutHandler_RegnemesterMutedRoundtrip(t *testing.T) {
 		t.Errorf("GET response: expected regnemester_muted=false, got %q", getResp["regnemester_muted"])
 	}
 }
+
+// TestPreferencesPutHandler_BatchMultipleKeys verifies that a single request
+// carrying several keys persists all of them (one atomic batch write).
+func TestPreferencesPutHandler_BatchMultipleKeys(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	// All five HR/pace fields in one batch (the motivating use case).
+	body := `{"preferences":{"max_hr":"190","threshold_hr":"175","threshold_pace":"300","resting_hr":"50","easy_pace_min":"360"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	want := map[string]string{
+		"max_hr":         "190",
+		"threshold_hr":   "175",
+		"threshold_pace": "300",
+		"resting_hr":     "50",
+		"easy_pace_min":  "360",
+	}
+	for k, v := range want {
+		if resp["preferences"][k] != v {
+			t.Errorf("response %s: expected %q, got %q", k, v, resp["preferences"][k])
+		}
+	}
+
+	// Verify every key was persisted to the DB.
+	stored, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	for k, v := range want {
+		if stored[k] != v {
+			t.Errorf("DB %s: expected %q, got %q", k, v, stored[k])
+		}
+	}
+}
+
+// TestPreferencesPutHandler_BatchPartialInvalidRejectsAll verifies that if any
+// key in a batch fails validation, the whole batch is rejected and no key is
+// written (all-or-nothing).
+func TestPreferencesPutHandler_BatchPartialInvalidRejectsAll(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	// max_hr is valid, but resting_hr is out of range (30–100) — the batch must fail.
+	body := `{"preferences":{"max_hr":"185","resting_hr":"5"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for out-of-range value, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Neither key should have been persisted (validation happens before any write).
+	stored, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if _, ok := stored["max_hr"]; ok {
+		t.Errorf("max_hr must not be persisted when the batch is rejected, got %q", stored["max_hr"])
+	}
+	if _, ok := stored["resting_hr"]; ok {
+		t.Errorf("resting_hr must not be persisted when the batch is rejected, got %q", stored["resting_hr"])
+	}
+}
+
+// TestPreferencesPutHandler_BatchEmpty verifies that an empty batch is accepted
+// as a no-op and returns the current preferences.
+func TestPreferencesPutHandler_BatchEmpty(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	// Seed one existing preference so we can confirm it survives the no-op.
+	if err := SetPreference(db, userID, "theme", "dark"); err != nil {
+		t.Fatalf("SetPreference: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	body := `{"preferences":{}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for empty batch, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["preferences"]["theme"] != "dark" {
+		t.Errorf("expected existing theme=dark to survive empty batch, got %q", resp["preferences"]["theme"])
+	}
+}
+
+// TestSetPreferences_Transaction verifies the batched upsert helper writes every
+// pair and that an empty map is a no-op.
+func TestSetPreferences_Transaction(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	// Empty map is a no-op.
+	if err := SetPreferences(db, userID, map[string]string{}); err != nil {
+		t.Fatalf("SetPreferences(empty): %v", err)
+	}
+
+	// Insert several keys.
+	if err := SetPreferences(db, userID, map[string]string{
+		"theme":  "dark",
+		"max_hr": "190",
+	}); err != nil {
+		t.Fatalf("SetPreferences(insert): %v", err)
+	}
+	stored, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if stored["theme"] != "dark" || stored["max_hr"] != "190" {
+		t.Errorf("after insert: got %v", stored)
+	}
+
+	// Upsert one existing key and add a new one.
+	if err := SetPreferences(db, userID, map[string]string{
+		"max_hr":     "185",
+		"resting_hr": "48",
+	}); err != nil {
+		t.Fatalf("SetPreferences(upsert): %v", err)
+	}
+	stored, err = GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if stored["max_hr"] != "185" || stored["resting_hr"] != "48" || stored["theme"] != "dark" {
+		t.Errorf("after upsert: got %v", stored)
+	}
+}
