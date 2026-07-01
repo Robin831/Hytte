@@ -580,13 +580,14 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
 
     const scheduleReconnect = () => {
       if (controller.signal.aborted) return
+      if (browserOffline) {
+        setConnStatus('offline')
+        return
+      }
       // Only surface the "Reconnecting" badge once we've actually been live —
       // a failure on the very first connect keeps us in 'connecting' so the
-      // initial load never flashes a false "offline". When the browser reports
-      // no network, prefer the clearer "Offline" label over "Reconnecting".
-      setConnStatus(prev =>
-        prev === 'connecting' ? 'connecting' : browserOffline ? 'offline' : 'reconnecting',
-      )
+      // initial load never flashes a false "offline".
+      setConnStatus(prev => (prev === 'connecting' ? 'connecting' : 'reconnecting'))
       reconnectAttempts += 1
       // Exponential backoff capped at 30s to keep a server outage from
       // hammering the endpoint while still recovering quickly from a
@@ -800,7 +801,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         clearTimeout(reconnectTimer)
         reconnectTimer = null
       }
-      setConnStatus(prev => (prev === 'connecting' ? 'connecting' : 'offline'))
+      setConnStatus('offline')
     }
     const handleOnline = () => {
       browserOffline = false
