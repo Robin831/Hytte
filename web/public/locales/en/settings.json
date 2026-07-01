@@ -1,6 +1,11 @@
 {
   "title": "Settings",
   "loading": "Loading settings...",
+  "saveStatus": {
+    "saving": "Saving…",
+    "saved": "Saved",
+    "error": "Error"
+  },
   "profile": {
     "heading": "Profile",
     "memberSince": "Member since {{date}}. Profile info is managed by your Google account."
