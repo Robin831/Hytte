@@ -77,17 +77,13 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
     }
   }
 
-  const estimateFetchKey = `${selectedMonth}:${estimateRefreshToken}`
-  const [prevEstimateFetchKey, setPrevEstimateFetchKey] = useState(estimateFetchKey)
-  if (prevEstimateFetchKey !== estimateFetchKey) {
-    setPrevEstimateFetchKey(estimateFetchKey)
+  useEffect(() => {
+    let cancelled = false
+    /* eslint-disable react-hooks/set-state-in-effect -- reset before fetch */
     setLoading(true)
     setError(null)
     setEstimate(null)
-  }
-
-  useEffect(() => {
-    let cancelled = false
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     fetch(`/api/salary/estimate/month?month=${selectedMonth}`, { credentials: 'include' })
       .then(async res => {
@@ -187,8 +183,7 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
 
   // --- Mutations -----------------------------------------------------------
 
-  // Save config, then reload the estimate. Throws on save failure.
-  // Returns true when the estimate reloaded (so the caller can close the panel).
+  // Save config, then reload the estimate in the background. Throws on save failure.
   const saveConfig = async (values: ConfigInput): Promise<void> => {
     const res = await fetch('/api/salary/config', {
       method: 'PUT',

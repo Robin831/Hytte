@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { SalaryData } from './useSalaryData'
 
@@ -27,16 +27,17 @@ export default function ConfigEditor({ salary, noConfig, noConfigPastMonth, onCl
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  const [prevEstimate, setPrevEstimate] = useState(estimate)
-  if (prevEstimate !== estimate && estimate) {
-    setPrevEstimate(estimate)
+  useEffect(() => {
+    if (!estimate) return
+    /* eslint-disable react-hooks/set-state-in-effect -- seed form from loaded estimate */
     setBaseSalary(String(estimate.config.base_salary))
     setHourlyRate(String(estimate.config.hourly_rate))
     setInternalHourlyRate(String(estimate.config.internal_hourly_rate ?? 0))
     setTaxableBenefits(String(estimate.config.taxable_benefits ?? 0))
     setStandardHours(String(estimate.config.standard_hours))
     setCurrency(estimate.config.currency)
-  }
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [estimate])
 
   const handleSave = async () => {
     setSaving(true)

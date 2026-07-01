@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { formatMonthLabel, formatHours, formatCompact } from './types'
@@ -54,7 +54,7 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
   const [savingOverride, setSavingOverride] = useState(false)
   const [overrideError, setOverrideError] = useState<string | null>(null)
 
-  const resetOverrideForm = () => {
+  const resetOverrideForm = useCallback(() => {
     setOverrideBillableHours('')
     setOverrideInternalHours('')
     setOverrideVacationDays('')
@@ -62,14 +62,13 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
     setOverrideGross('')
     setOverrideNet('')
     setOverrideError(null)
-  }
+  }, [])
 
-  const [prevMonth, setPrevMonth] = useState(selectedMonth)
-  if (prevMonth !== selectedMonth) {
-    setPrevMonth(selectedMonth)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset form on month change
     setShowOverride(false)
     resetOverrideForm()
-  }
+  }, [selectedMonth, resetOverrideForm])
 
   const handleSaveOverride = async () => {
     setSavingOverride(true)
