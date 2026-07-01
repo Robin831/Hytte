@@ -16,14 +16,17 @@ describe('parseDecimal', () => {
     expect(parseDecimal('42')).toBe(42)
   })
 
-  it('returns a falsy value for empty input so `|| 0` / `|| 7.5` fallbacks apply', () => {
-    expect(parseDecimal('') || 0).toBe(0)
-    expect(parseDecimal('') || 7.5).toBe(7.5)
+  it('returns NaN for empty input', () => {
+    expect(Number.isNaN(parseDecimal(''))).toBe(true)
+    expect(Number.isNaN(parseDecimal('  '))).toBe(true)
   })
 
-  it('returns NaN for unparseable input so fallbacks apply', () => {
+  it('returns NaN for unparseable input', () => {
     expect(Number.isNaN(parseDecimal('abc'))).toBe(true)
-    expect(parseDecimal('abc') || 0).toBe(0)
-    expect(parseDecimal('abc') || 7.5).toBe(7.5)
+  })
+
+  it('preserves explicit zero', () => {
+    expect(parseDecimal('0')).toBe(0)
+    expect(parseDecimal('0,0')).toBe(0)
   })
 })
