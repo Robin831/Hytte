@@ -334,7 +334,7 @@ function parseWebhook(headers: Record<string, string>, body: string): ParsedWebh
   }
 }
 
-function formatRelativeTime(date: Date, t: TFunction<'common'>): string {
+function formatWebhookTime(date: Date, t: TFunction<'common'>): string {
   const diff = Date.now() - date.getTime()
   if (diff < 60_000) return t('time.justNow')
   if (diff < 3_600_000) return t('time.minutesAgo', { count: Math.floor(diff / 60_000) })
@@ -497,7 +497,7 @@ function RequestRow({ req, endpointURL }: { req: WebhookRequest; endpointURL: st
     [req.id, req.body, req.headers],
   )
   const receivedAt = new Date(req.received_at)
-  const relTime = formatRelativeTime(receivedAt, tCommon)
+  const relTime = formatWebhookTime(receivedAt, tCommon)
   const fullTime = formatDateTime(receivedAt)
 
   const parsedJSON = parsed.parsedBody

@@ -52,7 +52,7 @@ export const REASON_EMOJI: Record<string, string> = {
   bingo_jackpot: '🎉',
 }
 
-export function formatRelativeTime(dateStr: string, locale: string): string {
+export function formatRelativeTime(dateStr: string, locale?: string): string {
   const date = new Date(dateStr)
   const now = Date.now()
   const diffMs = now - date.getTime()
