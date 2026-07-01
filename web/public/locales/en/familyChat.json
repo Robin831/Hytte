@@ -33,7 +33,8 @@
     "lightboxClose": "Close preview",
     "connection": {
       "live": "Connected",
-      "reconnecting": "Reconnecting…"
+      "reconnecting": "Reconnecting…",
+      "offline": "Offline"
     },
     "typing": {
       "single": "{{name}} is typing…",

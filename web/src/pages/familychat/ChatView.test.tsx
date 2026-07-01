@@ -53,6 +53,7 @@ const TRANSLATIONS: Record<string, string> = {
   'chat.lightboxClose': 'Close preview',
   'chat.connection.live': 'Connected',
   'chat.connection.reconnecting': 'Reconnecting…',
+  'chat.connection.offline': 'Offline',
   'newModal.parent': 'Parent',
   'reactions.pickerLabel': 'Add reaction',
   'reactions.add': 'React with {{emoji}}',

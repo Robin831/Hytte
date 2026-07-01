@@ -5,8 +5,6 @@ import {
   MessageSquare,
   Download,
   X,
-  Wifi,
-  WifiOff,
   Smile,
   MoreVertical,
   Phone,
@@ -23,6 +21,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { Skeleton } from '../../components/ui/skeleton'
+import ConnectionStatus, { type ChatConnectionState } from '../../components/ConnectionStatus'
 import { useAuth } from '../../auth'
 import { useKeyboardInset } from '../../hooks/useKeyboardInset'
 import Composer from './Composer'
@@ -180,9 +179,10 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   //   'live'         — stream is open and messages arrive in real time
   //   'reconnecting' — the stream dropped after being live and a backoff retry
   //                    is in flight
+  //   'offline'      — the browser reports no network connectivity
   // The 'connecting' → 'reconnecting' distinction keeps the initial-load
   // skeleton from being shadowed by a false "Reconnecting" badge.
-  const [connStatus, setConnStatus] = useState<'connecting' | 'live' | 'reconnecting'>('connecting')
+  const [connStatus, setConnStatus] = useState<ChatConnectionState>('connecting')
   // justReconnected briefly flips true right after the stream recovers from a
   // drop so the header can flash a "Connected" confirmation, then auto-clears.
   const [justReconnected, setJustReconnected] = useState(false)
@@ -442,6 +442,10 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     let recoveredTimer: ReturnType<typeof setTimeout> | null = null
     let reconnectAttempts = 0
     let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null
+    // browserOffline mirrors navigator.onLine so scheduleReconnect can label a
+    // drop as "Offline" (no network) vs "Reconnecting" (server blip) without a
+    // separate stream or poll.
+    let browserOffline = typeof navigator !== 'undefined' && navigator.onLine === false
 
     // Initialise loading state at the start of every new conversation fetch.
     // setLoading(true) must live here (not in cleanup) because cleanup runs
@@ -577,8 +581,11 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       if (controller.signal.aborted) return
       // Only surface the "Reconnecting" badge once we've actually been live —
       // a failure on the very first connect keeps us in 'connecting' so the
-      // initial load never flashes a false "offline".
-      setConnStatus(prev => (prev === 'connecting' ? 'connecting' : 'reconnecting'))
+      // initial load never flashes a false "offline". When the browser reports
+      // no network, prefer the clearer "Offline" label over "Reconnecting".
+      setConnStatus(prev =>
+        prev === 'connecting' ? 'connecting' : browserOffline ? 'offline' : 'reconnecting',
+      )
       reconnectAttempts += 1
       // Exponential backoff capped at 30s to keep a server outage from
       // hammering the endpoint while still recovering quickly from a
@@ -780,6 +787,33 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       }
     }
 
+    // Reflect browser connectivity in the indicator. These only surface state
+    // the EventSource-style reader already drives — 'offline' is the honest
+    // label while there's no network, and coming back online retries at once
+    // instead of waiting out the remaining backoff.
+    const handleOffline = () => {
+      browserOffline = true
+      setConnStatus(prev => (prev === 'connecting' ? 'connecting' : 'offline'))
+    }
+    const handleOnline = () => {
+      browserOffline = false
+      if (controller.signal.aborted) return
+      // If a stream is already open/opening, leave it alone; otherwise surface
+      // 'reconnecting' and retry immediately, cancelling any pending backoff.
+      if (activeReader) return
+      setConnStatus(prev => (prev === 'connecting' ? 'connecting' : 'reconnecting'))
+      if (reconnectTimer !== null) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
+      reconnectAttempts = 0
+      void connect(false)
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('offline', handleOffline)
+      window.addEventListener('online', handleOnline)
+    }
+
     ;(async () => {
       try {
         const [convRes, msgRes] = await Promise.all([
@@ -816,6 +850,10 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
 
     return () => {
       controller.abort()
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('offline', handleOffline)
+        window.removeEventListener('online', handleOnline)
+      }
       if (reconnectTimer !== null) {
         clearTimeout(reconnectTimer)
         reconnectTimer = null
@@ -1393,30 +1431,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
             </ul>
           )}
         </div>
-        {connStatus === 'reconnecting' && (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-amber-500/15 border border-amber-500/40 text-amber-200 shrink-0"
-            role="status"
-            aria-live="polite"
-            title={t('chat.connection.reconnecting')}
-            data-testid="family-chat-reconnecting"
-          >
-            <WifiOff size={12} aria-hidden="true" />
-            <span className="truncate max-w-[8rem] sm:max-w-none">{t('chat.connection.reconnecting')}</span>
-          </span>
-        )}
-        {connStatus === 'live' && justReconnected && (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-500/15 border border-green-500/40 text-green-200 shrink-0"
-            role="status"
-            aria-live="polite"
-            title={t('chat.connection.live')}
-            data-testid="family-chat-connected"
-          >
-            <Wifi size={12} aria-hidden="true" />
-            <span className="truncate max-w-[8rem] sm:max-w-none">{t('chat.connection.live')}</span>
-          </span>
-        )}
+        <ConnectionStatus state={connStatus} emphasizeLabel={connStatus === 'live' && justReconnected} />
         {canCall && (
           <>
             <button
