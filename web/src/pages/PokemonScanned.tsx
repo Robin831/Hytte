@@ -532,11 +532,27 @@ export default function PokemonScannedPage() {
     return () => controller.abort()
   }, [filter, attempt, t])
 
-  // Poll while the page is visible so the kid sees queued→processing→matched
-  // transitions without manually refreshing. We pause polling when the tab is
-  // hidden to avoid wasting bandwidth on background tabs.
+  // hasInFlightWork is true when there is something worth polling for: at least
+  // one loaded scan (standalone or inside a page block) is still queued or
+  // processing, OR the user is sitting on the "pending" filter (where a freshly
+  // enqueued scan would land). When it's false — e.g. the needsReview/resolved
+  // tabs with everything settled — the poll below tears itself down so the page
+  // goes quiet instead of hitting the scan API forever.
+  const hasInFlightWork = useMemo(() => {
+    if (filter === 'pending') return true
+    const isInFlight = (status: string) => status === 'queued' || status === 'processing'
+    if (scans.some(s => isInFlight(s.status))) return true
+    return pages.some(p => p.children.some(c => isInFlight(c.status)))
+  }, [filter, scans, pages])
+
+  // Poll while the page is visible AND there is in-flight work so the kid sees
+  // queued→processing→matched transitions without manually refreshing. We pause
+  // polling when the tab is hidden to avoid wasting bandwidth on background tabs,
+  // and skip it entirely once nothing is queued/processing so idle needsReview/
+  // resolved tabs don't keep hitting the API.
   useEffect(() => {
     if (typeof document === 'undefined') return
+    if (!hasInFlightWork) return
     let intervalId: ReturnType<typeof window.setInterval> | null = null
 
     const start = () => {
@@ -568,7 +584,7 @@ export default function PokemonScannedPage() {
       stop()
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [silentRefetch])
+  }, [silentRefetch, hasInFlightWork])
 
   const visibleScans = useMemo(() => {
     if (filter !== 'resolved') return scans
