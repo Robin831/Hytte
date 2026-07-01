@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Activity, ChevronDown, Clock, MapPin, Star } from 'lucide-react'
-import { xpForLevel, xpProgressPercent, getFlameVariant } from '../utils/stars'
+import { xpForLevel, xpProgressPercent, getFlameVariant, REASON_EMOJI, formatRelativeTime } from '../utils/stars'
+import type { Balance, Transaction, TransactionsResponse, StreaksResponse, JourneyResponse } from '../types/stars'
 import { formatNumber } from '../utils/formatDate'
 import LevelBadge from '../components/LevelBadge'
 import Confetti from '../components/Confetti'
@@ -12,44 +13,6 @@ import { Skeleton } from '../components/ui/skeleton'
 import '../stars.css'
 
 const LAST_SEEN_LEVEL_KEY = 'hytte_last_seen_level'
-
-interface Balance {
-  current_balance: number
-  total_earned: number
-  total_spent: number
-  level: number
-  xp: number
-  title: string
-  emoji?: string
-}
-
-interface Transaction {
-  id: number
-  amount: number
-  reason: string
-  description: string
-  created_at: string
-}
-
-interface TransactionsResponse {
-  transactions: Transaction[]
-  weekly_stars: number
-  weekly_starred_workouts: number
-  weekly_distance_meters: number
-  weekly_duration_seconds: number
-}
-
-interface StreakEntry {
-  current_count: number
-  longest_count: number
-  last_activity: string
-  shield_active: boolean
-}
-
-interface StreaksResponse {
-  daily_workout: StreakEntry
-  weekly_workout: StreakEntry
-}
 
 interface WeeklyBonusItem {
   reason: string
@@ -64,88 +27,12 @@ interface WeeklyBonusSummaryResponse {
   perfect_week: boolean
 }
 
-interface JourneyWaypoint {
-  name: string
-  distance_km: number
-  description: string
-  emoji: string
-  crossed?: boolean
-}
-
-interface JourneyTheme {
-  key: string
-  name: string
-  emoji: string
-  total_distance_km: number
-}
-
-interface JourneyResponse {
-  theme: string
-  theme_name: string
-  theme_emoji: string
-  total_distance_m: number
-  total_journey_distance_km: number
-  current_waypoint: JourneyWaypoint
-  next_waypoint: JourneyWaypoint | null
-  progress_in_leg_percent: number
-  distance_to_next_km: number
-  waypoints: JourneyWaypoint[]
-  available_themes: JourneyTheme[]
-}
-
 const NAV_CARDS = [
   { to: '/stars/badges', emoji: '🏅', key: 'nav.badges' },
   { to: '/stars/rewards', emoji: '🎁', key: 'nav.rewards' },
   { to: '/stars/challenges', emoji: '🎯', key: 'nav.challenges' },
   { to: '/stars/leaderboard', emoji: '🏆', key: 'nav.leaderboard' },
 ] as const
-
-const REASON_EMOJI: Record<string, string> = {
-  showed_up: '💪',
-  duration_bonus: '⏱️',
-  effort_bonus: '❤️',
-  distance_milestone: '🏃',
-  first_kilometer: '🏃',
-  '5k_finisher': '🏃',
-  '10k_hero': '🏃',
-  half_marathon_legend: '🏃',
-  century_club: '🏃',
-  explorer_500k: '🏃',
-  titan_1000k: '🏃',
-  streak: '🔥',
-  weekly_bonus: '📅',
-  personal_record: '🏆',
-  pr_longest_run: '🏆',
-  pr_calorie_burn: '🏆',
-  pr_elevation: '🏆',
-  pr_fastest_5k: '🏆',
-  pr_fastest_pace: '🏆',
-  badge: '🏅',
-  zone_commander: '🏅',
-  zone_explorer: '🏅',
-  easy_day_hero: '🏅',
-  threshold_trainer: '🏅',
-  waypoint_reached: '🗺️',
-  savings_deposit: '🐷',
-  savings_withdrawal: '🐷',
-  savings_interest: '📈',
-  bingo_line: '🎱',
-  bingo_jackpot: '🎉',
-}
-
-function formatRelativeTime(dateStr: string, locale: string): string {
-  const date = new Date(dateStr)
-  const now = Date.now()
-  const diffMs = now - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
-  if (diffMins < 60) return rtf.format(-diffMins, 'minute')
-  if (diffHours < 24) return rtf.format(-diffHours, 'hour')
-  return rtf.format(-diffDays, 'day')
-}
 
 function JourneyCard() {
   const { t } = useTranslation('common')
