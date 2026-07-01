@@ -56,6 +56,7 @@ export function useDebouncedPreferences(
   const pendingRef = useRef<Record<string, string>>({})
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedResetTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const mountedRef = useRef(true)
 
   const sectionsOf = useCallback((keys: string[]): Set<string> => {
     const set = new Set<string>()
@@ -98,14 +99,14 @@ export function useDebouncedPreferences(
         })
         if (!res.ok) throw new Error(`save failed (${res.status})`)
         const data = await res.json()
+        if (!mountedRef.current) return true
         optionsRef.current.onSaved(data.preferences || {})
         setSectionStatus(sections, 'saved')
         scheduleSavedReset(sections)
         if (toastOnSuccess) optionsRef.current.onSuccessToast?.()
         return true
       } catch {
-        // Leave the section in an error state; the next edit re-queues the key
-        // and re-attempts the write.
+        if (!mountedRef.current) return false
         setSectionStatus(sections, 'error')
         optionsRef.current.onErrorToast()
         return false
@@ -164,6 +165,7 @@ export function useDebouncedPreferences(
   // teardown; no state is touched here since the component is gone.
   useEffect(() => {
     return () => {
+      mountedRef.current = false
       if (timerRef.current) clearTimeout(timerRef.current)
       for (const timer of Object.values(savedResetTimers.current)) clearTimeout(timer)
       const pending = pendingRef.current
