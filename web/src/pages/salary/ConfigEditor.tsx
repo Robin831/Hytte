@@ -41,9 +41,8 @@ export default function ConfigEditor({ salary, noConfig, noConfigPastMonth, onCl
   const handleSave = async () => {
     setSaving(true)
     setSaveError(null)
-    let closed = false
     try {
-      closed = await saveConfig({
+      await saveConfig({
         base_salary: parseFloat(baseSalary) || 0,
         hourly_rate: parseFloat(hourlyRate) || 0,
         internal_hourly_rate: parseFloat(internalHourlyRate) || 0,
@@ -51,12 +50,12 @@ export default function ConfigEditor({ salary, noConfig, noConfigPastMonth, onCl
         standard_hours: isNaN(parseFloat(standardHours)) ? 7.5 : parseFloat(standardHours),
         currency: currency || 'NOK',
       })
+      onClose()
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : t('errors.failedToSave'))
     } finally {
       setSaving(false)
     }
-    if (closed) onClose()
   }
 
   return (

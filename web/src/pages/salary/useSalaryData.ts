@@ -189,7 +189,7 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
 
   // Save config, then reload the estimate. Throws on save failure.
   // Returns true when the estimate reloaded (so the caller can close the panel).
-  const saveConfig = async (values: ConfigInput): Promise<boolean> => {
+  const saveConfig = async (values: ConfigInput): Promise<void> => {
     const res = await fetch('/api/salary/config', {
       method: 'PUT',
       credentials: 'include',
@@ -209,18 +209,16 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
       throw new Error((data as { error?: string }).error ?? t('errors.failedToSave'))
     }
 
-    // Reload estimate independently of the save error handling.
+    // Reload estimate in the background — non-fatal if it fails.
     try {
       const estimateRes = await fetch(`/api/salary/estimate/month?month=${selectedMonth}`, { credentials: 'include' })
       if (estimateRes.ok) {
         const data = await estimateRes.json() as EstimateResponse
         setEstimate(data)
-        return true
       }
     } catch {
       // Non-fatal: the save succeeded; the page will show stale data until reload.
     }
-    return false
   }
 
   // Confirm a past estimate month, then reload the year projections. Throws on failure.
