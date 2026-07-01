@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Settings, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Trash2, Upload } from 'lucide-react'
 import { useAuth } from '../auth'
@@ -243,7 +243,7 @@ export default function SalaryPage() {
   const [savingOverride, setSavingOverride] = useState(false)
   const [overrideError, setOverrideError] = useState<string | null>(null)
 
-  const resetOverrideForm = () => {
+  const resetOverrideForm = useCallback(() => {
     setOverrideBillableHours('')
     setOverrideInternalHours('')
     setOverrideVacationDays('')
@@ -251,7 +251,7 @@ export default function SalaryPage() {
     setOverrideGross('')
     setOverrideNet('')
     setOverrideError(null)
-  }
+  }, [])
 
   const formatCurrency = (amount: number) => {
     const curr = estimate?.config.currency ?? currency
@@ -317,7 +317,7 @@ export default function SalaryPage() {
       return
     }
     setOverrideError(null)
-  }, [selectedMonth, showOverride])
+  }, [selectedMonth, showOverride, resetOverrideForm])
 
   // Load vacation data when estimate is available (has config).
   useEffect(() => {
@@ -387,15 +387,22 @@ export default function SalaryPage() {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          base_salary: Number.isNaN(parseDecimal(baseSalary)) ? 0 : parseDecimal(baseSalary),
-          hourly_rate: Number.isNaN(parseDecimal(hourlyRate)) ? 0 : parseDecimal(hourlyRate),
-          internal_hourly_rate: Number.isNaN(parseDecimal(internalHourlyRate)) ? 0 : parseDecimal(internalHourlyRate),
-          taxable_benefits: Number.isNaN(parseDecimal(taxableBenefits)) ? 0 : parseDecimal(taxableBenefits),
-          standard_hours: Number.isNaN(parseDecimal(standardHours)) ? 7.5 : parseDecimal(standardHours),
-          currency: currency || 'NOK',
-          effective_from: `${selectedMonth}-01`,
-        }),
+        body: JSON.stringify((() => {
+          const bs = parseDecimal(baseSalary)
+          const hr = parseDecimal(hourlyRate)
+          const ihr = parseDecimal(internalHourlyRate)
+          const tb = parseDecimal(taxableBenefits)
+          const sh = parseDecimal(standardHours)
+          return {
+            base_salary: Number.isNaN(bs) ? 0 : bs,
+            hourly_rate: Number.isNaN(hr) ? 0 : hr,
+            internal_hourly_rate: Number.isNaN(ihr) ? 0 : ihr,
+            taxable_benefits: Number.isNaN(tb) ? 0 : tb,
+            standard_hours: Number.isNaN(sh) ? 7.5 : sh,
+            currency: currency || 'NOK',
+            effective_from: `${selectedMonth}-01`,
+          }
+        })()),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
