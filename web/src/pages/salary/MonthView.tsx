@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { formatMonthLabel, formatHours, formatCompact } from './types'
@@ -64,17 +64,12 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
     setOverrideError(null)
   }
 
-  useEffect(() => {
+  const [prevMonth, setPrevMonth] = useState(selectedMonth)
+  if (prevMonth !== selectedMonth) {
+    setPrevMonth(selectedMonth)
     setShowOverride(false)
-  }, [selectedMonth])
-
-  useEffect(() => {
-    if (!showOverride) {
-      resetOverrideForm()
-      return
-    }
-    setOverrideError(null)
-  }, [selectedMonth, showOverride]) // eslint-disable-line react-hooks/exhaustive-deps
+    resetOverrideForm()
+  }
 
   const handleSaveOverride = async () => {
     setSavingOverride(true)
@@ -130,6 +125,7 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
     }
     setSavingOverride(false)
     setShowOverride(false)
+    resetOverrideForm()
   }
 
   if (!estimate) return null
@@ -271,6 +267,7 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
             <button
               type="button"
               onClick={() => {
+                if (showOverride) resetOverrideForm()
                 setShowOverride(v => !v)
                 setOverrideError(null)
               }}
@@ -372,7 +369,7 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setShowOverride(false); setOverrideError(null) }}
+                  onClick={() => { setShowOverride(false); resetOverrideForm() }}
                   className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
                 >
                   {t('override.cancel')}

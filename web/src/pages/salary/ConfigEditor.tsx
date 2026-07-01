@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { SalaryData } from './useSalaryData'
 
@@ -27,16 +27,16 @@ export default function ConfigEditor({ salary, noConfig, noConfigPastMonth, onCl
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  // Seed the form from the loaded config whenever it changes.
-  useEffect(() => {
-    if (!estimate) return
+  const [prevEstimate, setPrevEstimate] = useState(estimate)
+  if (prevEstimate !== estimate && estimate) {
+    setPrevEstimate(estimate)
     setBaseSalary(String(estimate.config.base_salary))
     setHourlyRate(String(estimate.config.hourly_rate))
     setInternalHourlyRate(String(estimate.config.internal_hourly_rate ?? 0))
     setTaxableBenefits(String(estimate.config.taxable_benefits ?? 0))
     setStandardHours(String(estimate.config.standard_hours))
     setCurrency(estimate.config.currency)
-  }, [estimate])
+  }
 
   const handleSave = async () => {
     setSaving(true)

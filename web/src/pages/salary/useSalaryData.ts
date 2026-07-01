@@ -61,7 +61,7 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
   // Trekktabell assignments (per-month table number selection). Shared because
   // both the initial fetch and the mutations write the same error state.
   const [assignments, setAssignments] = useState<TrekktabellAssignment[]>([])
-  const [assignmentsLoading, setAssignmentsLoading] = useState(false)
+  const [assignmentsLoading, setAssignmentsLoading] = useState(true)
   const [assignmentsError, setAssignmentsError] = useState<string | null>(null)
 
   const formatCurrency = (amount: number) => {
@@ -77,11 +77,17 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
     }
   }
 
-  useEffect(() => {
-    let cancelled = false
+  const estimateFetchKey = `${selectedMonth}:${estimateRefreshToken}`
+  const [prevEstimateFetchKey, setPrevEstimateFetchKey] = useState(estimateFetchKey)
+  if (prevEstimateFetchKey !== estimateFetchKey) {
+    setPrevEstimateFetchKey(estimateFetchKey)
     setLoading(true)
     setError(null)
     setEstimate(null)
+  }
+
+  useEffect(() => {
+    let cancelled = false
 
     fetch(`/api/salary/estimate/month?month=${selectedMonth}`, { credentials: 'include' })
       .then(async res => {
@@ -159,8 +165,6 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
 
   useEffect(() => {
     let cancelled = false
-    setAssignmentsLoading(true)
-    setAssignmentsError(null)
 
     fetch('/api/salary/trekktabell-assignments', { credentials: 'include' })
       .then(async res => {
