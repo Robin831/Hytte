@@ -36,7 +36,7 @@ export default function TrekktabellEditor({ salary }: TrekktabellEditorProps) {
       setEditorTrekktabell(updated)
       setShowEditor(false)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Save failed')
+      setSaveError(err instanceof Error ? err.message : t('errors.failedToSave'))
     } finally {
       setSaving(false)
     }
@@ -50,7 +50,7 @@ export default function TrekktabellEditor({ salary }: TrekktabellEditorProps) {
       setEditorTrekktabell(updated)
       setShowEditor(false)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Reset failed')
+      setSaveError(err instanceof Error ? err.message : t('errors.failedToReset'))
     } finally {
       setSaving(false)
     }

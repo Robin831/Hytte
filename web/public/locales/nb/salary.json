@@ -189,6 +189,12 @@
     "failedToLoad": "Klarte ikke å laste lønnsdata",
     "failedToSave": "Klarte ikke å lagre konfigurasjon",
     "failedToConfirm": "Klarte ikke å bekrefte lønnspost",
-    "failedToSyncBudget": "Klarte ikke å synkronisere til budsjett"
+    "failedToSyncBudget": "Klarte ikke å synkronisere til budsjett",
+    "failedToDelete": "Sletting mislyktes",
+    "failedToReset": "Tilbakestilling mislyktes",
+    "failedToImport": "Importering mislyktes",
+    "failedToLoadAssignments": "Klarte ikke å laste tilknytninger",
+    "failedToSaveAssignment": "Lagring mislyktes",
+    "failedToFetchDefaults": "Klarte ikke å hente standardverdier"
   }
 }

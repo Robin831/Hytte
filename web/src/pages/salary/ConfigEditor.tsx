@@ -71,8 +71,9 @@ export default function ConfigEditor({ salary, noConfig, noConfigPastMonth, onCl
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-xs text-gray-400 mb-1">{t('config.baseSalary')}</label>
+          <label htmlFor="cfg-base-salary" className="block text-xs text-gray-400 mb-1">{t('config.baseSalary')}</label>
           <input
+            id="cfg-base-salary"
             type="number"
             value={baseSalary}
             onChange={e => setBaseSalary(e.target.value)}
@@ -82,8 +83,9 @@ export default function ConfigEditor({ salary, noConfig, noConfigPastMonth, onCl
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">{t('config.hourlyRate')}</label>
+          <label htmlFor="cfg-hourly-rate" className="block text-xs text-gray-400 mb-1">{t('config.hourlyRate')}</label>
           <input
+            id="cfg-hourly-rate"
             type="number"
             value={hourlyRate}
             onChange={e => setHourlyRate(e.target.value)}
@@ -93,8 +95,9 @@ export default function ConfigEditor({ salary, noConfig, noConfigPastMonth, onCl
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">{t('config.internalHourlyRate')}</label>
+          <label htmlFor="cfg-internal-rate" className="block text-xs text-gray-400 mb-1">{t('config.internalHourlyRate')}</label>
           <input
+            id="cfg-internal-rate"
             type="number"
             value={internalHourlyRate}
             onChange={e => setInternalHourlyRate(e.target.value)}
@@ -104,8 +107,9 @@ export default function ConfigEditor({ salary, noConfig, noConfigPastMonth, onCl
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">{t('config.taxableBenefits')}</label>
+          <label htmlFor="cfg-taxable-benefits" className="block text-xs text-gray-400 mb-1">{t('config.taxableBenefits')}</label>
           <input
+            id="cfg-taxable-benefits"
             type="number"
             value={taxableBenefits}
             onChange={e => setTaxableBenefits(e.target.value)}
@@ -115,8 +119,9 @@ export default function ConfigEditor({ salary, noConfig, noConfigPastMonth, onCl
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">{t('config.standardHours')}</label>
+          <label htmlFor="cfg-standard-hours" className="block text-xs text-gray-400 mb-1">{t('config.standardHours')}</label>
           <input
+            id="cfg-standard-hours"
             type="number"
             value={standardHours}
             onChange={e => setStandardHours(e.target.value)}
@@ -127,8 +132,9 @@ export default function ConfigEditor({ salary, noConfig, noConfigPastMonth, onCl
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-400 mb-1">{t('config.currency')}</label>
+          <label htmlFor="cfg-currency" className="block text-xs text-gray-400 mb-1">{t('config.currency')}</label>
           <input
+            id="cfg-currency"
             type="text"
             value={currency}
             onChange={e => setCurrency(e.target.value.toUpperCase())}

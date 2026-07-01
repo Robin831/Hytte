@@ -157,23 +157,28 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
     return () => { cancelled = true }
   }, [activeTab, selectedYear])
 
-  const fetchAssignments = async () => {
+  useEffect(() => {
+    let cancelled = false
     setAssignmentsLoading(true)
     setAssignmentsError(null)
-    try {
-      const res = await fetch('/api/salary/trekktabell-assignments', { credentials: 'include' })
-      if (!res.ok) throw new Error('Failed to load assignments')
-      const data = await res.json() as { assignments: TrekktabellAssignment[] }
-      setAssignments(data.assignments ?? [])
-    } catch (err) {
-      setAssignmentsError(err instanceof Error ? err.message : 'Load failed')
-    } finally {
-      setAssignmentsLoading(false)
-    }
-  }
 
-  useEffect(() => {
-    void fetchAssignments()
+    fetch('/api/salary/trekktabell-assignments', { credentials: 'include' })
+      .then(async res => {
+        if (!res.ok) throw new Error(t('errors.failedToLoadAssignments'))
+        return res.json() as Promise<{ assignments: TrekktabellAssignment[] }>
+      })
+      .then(data => {
+        if (!cancelled) setAssignments(data.assignments ?? [])
+      })
+      .catch(err => {
+        if (!cancelled) setAssignmentsError(err instanceof Error ? err.message : t('errors.failedToLoadAssignments'))
+      })
+      .finally(() => {
+        if (!cancelled) setAssignmentsLoading(false)
+      })
+
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // --- Mutations -----------------------------------------------------------
@@ -197,7 +202,7 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
-      throw new Error((data as { error?: string }).error ?? 'Save failed')
+      throw new Error((data as { error?: string }).error ?? t('errors.failedToSave'))
     }
 
     // Reload estimate independently of the save error handling.
@@ -259,7 +264,7 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
-      throw new Error((data as { error?: string }).error ?? 'Save failed')
+      throw new Error((data as { error?: string }).error ?? t('errors.failedToSave'))
     }
     const updated = await res.json() as TrekktabellParams
     setTrekktabell(updated)
@@ -269,7 +274,7 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
   // Reset trekktabell params to the year's defaults. Throws on failure. Returns the updated params.
   const resetTrekktabellDefaults = async (current: TrekktabellParams): Promise<TrekktabellParams> => {
     const defaultsRes = await fetch(`/api/salary/trekktabell/defaults?year=${current.year}`, { credentials: 'include' })
-    if (!defaultsRes.ok) throw new Error('Failed to fetch defaults')
+    if (!defaultsRes.ok) throw new Error(t('errors.failedToFetchDefaults'))
     const defaults = await defaultsRes.json() as TrekktabellParams
     const body = { ...defaults, user_id: current.user_id, id: current.id, year: current.year }
     const res = await fetch('/api/salary/trekktabell', {
@@ -278,7 +283,7 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
-    if (!res.ok) throw new Error('Reset failed')
+    if (!res.ok) throw new Error(t('errors.failedToReset'))
     const updated = await res.json() as TrekktabellParams
     setTrekktabell(updated)
     return updated
@@ -297,7 +302,7 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        throw new Error((data as { error?: string }).error ?? 'Save failed')
+        throw new Error((data as { error?: string }).error ?? t('errors.failedToSaveAssignment'))
       }
       const data = await res.json() as { assignments: TrekktabellAssignment[] }
       setAssignments(data.assignments ?? [])
@@ -305,7 +310,7 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
       setEstimateRefreshToken(tok => tok + 1)
       return true
     } catch (err) {
-      setAssignmentsError(err instanceof Error ? err.message : 'Save failed')
+      setAssignmentsError(err instanceof Error ? err.message : t('errors.failedToSaveAssignment'))
       return false
     }
   }
@@ -320,12 +325,12 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
       })
       if (!res.ok && res.status !== 204) {
         const data = await res.json().catch(() => ({}))
-        throw new Error((data as { error?: string }).error ?? 'Delete failed')
+        throw new Error((data as { error?: string }).error ?? t('errors.failedToDelete'))
       }
       setAssignments(prev => prev.filter(a => a.effective_from !== effectiveFrom))
       setEstimateRefreshToken(tok => tok + 1)
     } catch (err) {
-      setAssignmentsError(err instanceof Error ? err.message : 'Delete failed')
+      setAssignmentsError(err instanceof Error ? err.message : t('errors.failedToDelete'))
     }
   }
 
@@ -344,7 +349,7 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
     })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
-      throw new Error((data as { error?: string }).error ?? 'Import failed')
+      throw new Error((data as { error?: string }).error ?? t('errors.failedToImport'))
     }
     const data = await res.json() as { rows: number; tables: number; year: number }
     setEstimateRefreshToken(tok => tok + 1)

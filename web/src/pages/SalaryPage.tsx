@@ -8,34 +8,6 @@ import ConfigEditor from './salary/ConfigEditor'
 import MonthView from './salary/MonthView'
 import YearView from './salary/YearView'
 
-// Projects the full-year feriepenger payout by extrapolating gross_ytd across the
-// selected year (based on the fraction of the year elapsed) and applying the
-// feriepenger rate. For a past year the full year has elapsed, so it uses gross_ytd
-// as-is. Returns 0 when there is no basis to project (avoids NaN/divide-by-zero).
-function computeProjectedFullYearFeriepenger(
-  grossYtd: number,
-  feriepengerPct: number,
-  selectedYear: number,
-  now: Date,
-): number {
-  if (grossYtd <= 0) return 0
-
-  let fractionElapsed: number
-  if (selectedYear < now.getFullYear()) {
-    fractionElapsed = 1
-  } else if (selectedYear > now.getFullYear()) {
-    fractionElapsed = 0
-  } else {
-    const startOfYear = new Date(selectedYear, 0, 1).getTime()
-    const startOfNextYear = new Date(selectedYear + 1, 0, 1).getTime()
-    fractionElapsed = (now.getTime() - startOfYear) / (startOfNextYear - startOfYear)
-  }
-  if (fractionElapsed <= 0) return 0
-
-  const projectedGross = grossYtd / fractionElapsed
-  return projectedGross * (feriepengerPct / 100)
-}
-
 export default function SalaryPage() {
   const { t, i18n } = useTranslation('salary')
   const locale = i18n.language

@@ -29,7 +29,7 @@ export default function VacationCard({ vacation, formatCurrency }: VacationCardP
           <div
             className="bg-emerald-500 h-2 rounded-full transition-all"
             style={{
-              width: `${Math.min((vacation.days_used / vacation.days_allowance) * 100, 100)}%`,
+              width: `${vacation.days_allowance > 0 ? Math.min((vacation.days_used / vacation.days_allowance) * 100, 100) : 0}%`,
             }}
           />
         </div>

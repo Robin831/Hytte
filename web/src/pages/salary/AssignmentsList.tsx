@@ -76,7 +76,7 @@ export default function AssignmentsList({ salary }: AssignmentsListProps) {
       setImportMessage(t('trekktabellImport.success', { rows: data.rows, tables: data.tables, year: data.year }))
       if (importFileInputRef.current) importFileInputRef.current.value = ''
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Import failed')
+      setImportError(err instanceof Error ? err.message : t('errors.failedToImport'))
     } finally {
       setImporting(false)
     }

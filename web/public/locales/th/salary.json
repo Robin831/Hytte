@@ -189,6 +189,12 @@
     "failedToLoad": "โหลดข้อมูลเงินเดือนไม่สำเร็จ",
     "failedToSave": "บันทึกการตั้งค่าไม่สำเร็จ",
     "failedToConfirm": "ยืนยันบันทึกเงินเดือนไม่สำเร็จ",
-    "failedToSyncBudget": "ซิงค์ไปยังงบประมาณไม่สำเร็จ"
+    "failedToSyncBudget": "ซิงค์ไปยังงบประมาณไม่สำเร็จ",
+    "failedToDelete": "การลบล้มเหลว",
+    "failedToReset": "การรีเซ็ตล้มเหลว",
+    "failedToImport": "การนำเข้าล้มเหลว",
+    "failedToLoadAssignments": "โหลดการกำหนดไม่สำเร็จ",
+    "failedToSaveAssignment": "การบันทึกล้มเหลว",
+    "failedToFetchDefaults": "ดึงค่าเริ่มต้นไม่สำเร็จ"
   }
 }
