@@ -141,6 +141,13 @@ interface VacationResponse {
 
 type Tab = 'month' | 'year'
 
+// Parse a numeric input string, accepting the Norwegian comma decimal
+// separator (e.g. "7,5") as well as the dot form ("7.5"). Returns NaN for
+// unparseable input, so callers can keep their `|| 0` / `|| 7.5` fallbacks.
+export function parseDecimal(value: string): number {
+  return Number(String(value).replace(',', '.'))
+}
+
 function formatMonthLabel(month: string, locale: string): string {
   const [year, mon] = month.split('-').map(Number)
   const date = new Date(year, mon - 1, 1)
@@ -387,11 +394,11 @@ export default function SalaryPage() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          base_salary: parseFloat(baseSalary) || 0,
-          hourly_rate: parseFloat(hourlyRate) || 0,
-          internal_hourly_rate: parseFloat(internalHourlyRate) || 0,
-          taxable_benefits: parseFloat(taxableBenefits) || 0,
-          standard_hours: isNaN(parseFloat(standardHours)) ? 7.5 : parseFloat(standardHours),
+          base_salary: parseDecimal(baseSalary) || 0,
+          hourly_rate: parseDecimal(hourlyRate) || 0,
+          internal_hourly_rate: parseDecimal(internalHourlyRate) || 0,
+          taxable_benefits: parseDecimal(taxableBenefits) || 0,
+          standard_hours: parseDecimal(standardHours) || 7.5,
           currency: currency || 'NOK',
           effective_from: `${selectedMonth}-01`,
         }),
@@ -675,13 +682,12 @@ export default function SalaryPage() {
       return
     }
 
-    const parseNum = (s: string) => Number(s.replace(',', '.'))
-    const billable = parseNum(billableText)
-    const internal = internalText ? parseNum(internalText) : 0
+    const billable = parseDecimal(billableText)
+    const internal = internalText ? parseDecimal(internalText) : 0
     const vacDays = vacDaysText ? Number.parseInt(vacDaysText, 10) : 0
     const sickDays = sickDaysText ? Number.parseInt(sickDaysText, 10) : 0
-    const gross = parseNum(grossText)
-    const net = parseNum(netText)
+    const gross = parseDecimal(grossText)
+    const net = parseDecimal(netText)
 
     if ([billable, gross, net].some(value => Number.isNaN(value))) {
       setOverrideError(t('override.saveError'))
