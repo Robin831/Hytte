@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Settings, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Trash2, Upload } from 'lucide-react'
 import { useAuth } from '../auth'
+import { parseDecimal } from '../utils/parseDecimal'
 import {
   LineChart,
   Line,
@@ -270,7 +271,7 @@ export default function SalaryPage() {
   const [savingOverride, setSavingOverride] = useState(false)
   const [overrideError, setOverrideError] = useState<string | null>(null)
 
-  const resetOverrideForm = () => {
+  const resetOverrideForm = useCallback(() => {
     setOverrideBillableHours('')
     setOverrideInternalHours('')
     setOverrideVacationDays('')
@@ -278,7 +279,7 @@ export default function SalaryPage() {
     setOverrideGross('')
     setOverrideNet('')
     setOverrideError(null)
-  }
+  }, [])
 
   const formatCurrency = (amount: number) => {
     const curr = estimate?.config.currency ?? currency
@@ -344,7 +345,7 @@ export default function SalaryPage() {
       return
     }
     setOverrideError(null)
-  }, [selectedMonth, showOverride]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedMonth, showOverride, resetOverrideForm])
 
   // Load vacation data when estimate is available (has config).
   useEffect(() => {
@@ -414,15 +415,22 @@ export default function SalaryPage() {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          base_salary: parseFloat(baseSalary) || 0,
-          hourly_rate: parseFloat(hourlyRate) || 0,
-          internal_hourly_rate: parseFloat(internalHourlyRate) || 0,
-          taxable_benefits: parseFloat(taxableBenefits) || 0,
-          standard_hours: isNaN(parseFloat(standardHours)) ? 7.5 : parseFloat(standardHours),
-          currency: currency || 'NOK',
-          effective_from: `${selectedMonth}-01`,
-        }),
+        body: JSON.stringify((() => {
+          const bs = parseDecimal(baseSalary)
+          const hr = parseDecimal(hourlyRate)
+          const ihr = parseDecimal(internalHourlyRate)
+          const tb = parseDecimal(taxableBenefits)
+          const sh = parseDecimal(standardHours)
+          return {
+            base_salary: Number.isNaN(bs) ? 0 : bs,
+            hourly_rate: Number.isNaN(hr) ? 0 : hr,
+            internal_hourly_rate: Number.isNaN(ihr) ? 0 : ihr,
+            taxable_benefits: Number.isNaN(tb) ? 0 : tb,
+            standard_hours: Number.isNaN(sh) ? 7.5 : sh,
+            currency: currency || 'NOK',
+            effective_from: `${selectedMonth}-01`,
+          }
+        })()),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -703,13 +711,12 @@ export default function SalaryPage() {
       return
     }
 
-    const parseNum = (s: string) => Number(s.replace(',', '.'))
-    const billable = parseNum(billableText)
-    const internal = internalText ? parseNum(internalText) : 0
+    const billable = parseDecimal(billableText)
+    const internal = internalText ? parseDecimal(internalText) : 0
     const vacDays = vacDaysText ? Number.parseInt(vacDaysText, 10) : 0
     const sickDays = sickDaysText ? Number.parseInt(sickDaysText, 10) : 0
-    const gross = parseNum(grossText)
-    const net = parseNum(netText)
+    const gross = parseDecimal(grossText)
+    const net = parseDecimal(netText)
 
     if ([billable, gross, net].some(value => Number.isNaN(value))) {
       setOverrideError(t('override.saveError'))
