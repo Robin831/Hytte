@@ -230,8 +230,13 @@ export default function PokemonSets() {
       params.delete('q')
     }
     const next = params.toString()
-    navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace: false, state: location.state })
-  }, [navigate, location.pathname, location.search, location.state])
+    // Replace the current history entry while editing within an active search
+    // (both the old and new query are non-empty) so each keystroke doesn't push
+    // a new back-stack entry. Only the empty <-> non-empty transitions push, so
+    // Back leaves the search as a single step rather than one entry per char.
+    const replace = query.trim() !== '' && value.trim() !== ''
+    navigate({ pathname: location.pathname, search: next ? `?${next}` : '' }, { replace, state: location.state })
+  }, [query, navigate, location.pathname, location.search, location.state])
 
   // After the AddCardPanel consumes its initialQuery we strip the hint from
   // history so a subsequent back/forward navigation doesn't re-open the
