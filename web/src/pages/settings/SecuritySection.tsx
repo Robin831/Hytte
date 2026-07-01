@@ -10,6 +10,7 @@ function SecuritySection() {
   const { logout } = useAuth()
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<SessionInfo[]>([])
+  const [sessionsLoaded, setSessionsLoaded] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
 
@@ -33,6 +34,8 @@ function SecuritySection() {
         }
       } catch (err) {
         console.error('Failed to load sessions:', err)
+      } finally {
+        if (!cancelled) setSessionsLoaded(true)
       }
     }
     loadSessions()
@@ -82,7 +85,7 @@ function SecuritySection() {
             </div>
           </div>
         ))}
-        {sessions.length === 0 && (
+        {sessionsLoaded && sessions.length === 0 && (
           <p className="text-sm text-gray-400">{t('sessions.noSessions')}</p>
         )}
       </div>

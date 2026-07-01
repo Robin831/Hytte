@@ -92,7 +92,6 @@ function IntegrationsSection({ preferences, saving, savePreference }: Integratio
 
   // Debounce CLI path saves: auto-save 800ms after typing stops.
   useEffect(() => {
-    // Skip on initial load (draft matches prefs or both empty).
     const saved = preferences.claude_cli_path || ''
     if (claudeCliPathDraft === saved) return
 
@@ -103,25 +102,18 @@ function IntegrationsSection({ preferences, saving, savePreference }: Integratio
     return () => {
       if (claudeCliPathTimer.current) clearTimeout(claudeCliPathTimer.current)
     }
-  }, [claudeCliPathDraft]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [claudeCliPathDraft, preferences.claude_cli_path, savePreference])
 
   // Load Hetzner token status — skip for users without infra access.
   useEffect(() => {
     if (!user?.is_admin && !hasFeature('infra')) return
     const controller = new AbortController()
     async function load() {
-      try {
-        const res = await fetch('/api/infra/hetzner/token', { credentials: 'include', signal: controller.signal })
-        if (!res.ok) throw new Error(`Failed to load token status (${res.status})`)
-        setHetznerToken(await res.json())
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setHetznerError(err instanceof Error ? err.message : 'Failed to load token status')
-      }
+      await loadHetznerToken(controller.signal)
     }
     load()
     return () => controller.abort()
-  }, [hasFeature, user?.is_admin])
+  }, [hasFeature, user?.is_admin, loadHetznerToken])
 
   // Load Netatmo connection status — admin only.
   useEffect(() => {
