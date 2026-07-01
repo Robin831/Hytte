@@ -9,7 +9,10 @@ import {
   type PreferenceSectionProps,
 } from './types'
 
-type TrainingSectionProps = PreferenceSectionProps
+interface TrainingSectionProps extends PreferenceSectionProps {
+  queuePreference: (key: string, value: string) => void
+  flushPreferences: () => void
+}
 
 // Initialize zone drafts from stored boundaries or computed defaults.
 function initialZoneDrafts(prefs: Record<string, string>): Array<{ min: string; max: string }> {
@@ -50,7 +53,7 @@ function initialZoneDrafts(prefs: Record<string, string>): Array<{ min: string; 
   return []
 }
 
-function TrainingSection({ preferences, saving, savePreference, savePreferences }: TrainingSectionProps) {
+function TrainingSection({ preferences, saving, savePreference, savePreferences, queuePreference, flushPreferences }: TrainingSectionProps) {
   const { t } = useTranslation(['settings', 'common'])
   const [maxHRDraft, setMaxHRDraft] = useState<string>(preferences.max_hr || '')
   const [thresholdHRDraft, setThresholdHRDraft] = useState<string>(preferences.threshold_hr || '')
@@ -169,16 +172,15 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences 
           onChange={(e) => setMaxHRDraft(e.target.value)}
           onBlur={() => {
             if (maxHRDraft === '') {
-              savePreference('max_hr', '')
+              queuePreference('max_hr', '')
             } else {
               const num = parseInt(maxHRDraft)
               if (num >= 100 && num <= 230) {
-                savePreference('max_hr', maxHRDraft)
+                queuePreference('max_hr', maxHRDraft)
                 if (zoneDrafts.length === 0 && !preferences.zone_boundaries) {
                   setZoneDrafts(computeDefaultZoneDrafts(num))
                 }
               } else {
-                // Revert to last saved value on invalid input
                 setMaxHRDraft(preferences.max_hr || '')
               }
             }
@@ -205,11 +207,11 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences 
             onChange={(e) => setThresholdHRDraft(e.target.value)}
             onBlur={() => {
               if (thresholdHRDraft === '') {
-                savePreference('threshold_hr', '')
+                queuePreference('threshold_hr', '')
               } else {
                 const num = parseInt(thresholdHRDraft)
                 if (num >= 100 && num <= 220) {
-                  savePreference('threshold_hr', thresholdHRDraft)
+                  queuePreference('threshold_hr', thresholdHRDraft)
                 } else {
                   setThresholdHRDraft(preferences.threshold_hr || '')
                 }
@@ -234,11 +236,11 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences 
             onChange={(e) => setThresholdPaceDraft(e.target.value)}
             onBlur={() => {
               if (thresholdPaceDraft === '') {
-                savePreference('threshold_pace', '')
+                queuePreference('threshold_pace', '')
               } else {
                 const secStr = mmssToSec(thresholdPaceDraft)
                 if (secStr) {
-                  savePreference('threshold_pace', secStr)
+                  queuePreference('threshold_pace', secStr)
                 } else {
                   setThresholdPaceDraft(secToMMSS(preferences.threshold_pace || ''))
                 }
@@ -265,11 +267,11 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences 
             onChange={(e) => setRestingHRDraft(e.target.value)}
             onBlur={() => {
               if (restingHRDraft === '') {
-                savePreference('resting_hr', '')
+                queuePreference('resting_hr', '')
               } else {
                 const num = parseInt(restingHRDraft)
                 if (num >= 30 && num <= 100) {
-                  savePreference('resting_hr', restingHRDraft)
+                  queuePreference('resting_hr', restingHRDraft)
                 } else {
                   setRestingHRDraft(preferences.resting_hr || '')
                 }
@@ -294,11 +296,11 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences 
             onChange={(e) => setEasyPaceMinDraft(e.target.value)}
             onBlur={() => {
               if (easyPaceMinDraft === '') {
-                savePreference('easy_pace_min', '', true)
+                queuePreference('easy_pace_min', '')
               } else {
                 const secStr = mmssToSec(easyPaceMinDraft)
                 if (secStr) {
-                  savePreference('easy_pace_min', secStr, true)
+                  queuePreference('easy_pace_min', secStr)
                 } else {
                   setEasyPaceMinDraft(secToMMSS(preferences.easy_pace_min || ''))
                 }
@@ -323,11 +325,11 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences 
             onChange={(e) => setEasyPaceMaxDraft(e.target.value)}
             onBlur={() => {
               if (easyPaceMaxDraft === '') {
-                savePreference('easy_pace_max', '', true)
+                queuePreference('easy_pace_max', '')
               } else {
                 const secStr = mmssToSec(easyPaceMaxDraft)
                 if (secStr) {
-                  savePreference('easy_pace_max', secStr, true)
+                  queuePreference('easy_pace_max', secStr)
                 } else {
                   setEasyPaceMaxDraft(secToMMSS(preferences.easy_pace_max || ''))
                 }
@@ -479,8 +481,11 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences 
               id="stride-custom-prompt"
               rows={4}
               value={strideCustomPromptDraft}
-              onChange={(e) => setStrideCustomPromptDraft(e.target.value)}
-              onBlur={() => savePreference('stride_custom_prompt', strideCustomPromptDraft)}
+              onChange={(e) => {
+                setStrideCustomPromptDraft(e.target.value)
+                queuePreference('stride_custom_prompt', e.target.value)
+              }}
+              onBlur={() => flushPreferences()}
               placeholder={t('training.strideCustomPromptPlaceholder')}
               disabled={saving}
               className="mt-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
@@ -499,7 +504,7 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences 
                 type="text"
                 value={goalRaceNameDraft}
                 onChange={(e) => setGoalRaceNameDraft(e.target.value)}
-                onBlur={() => savePreference('goal_race_name', goalRaceNameDraft, true)}
+                onBlur={() => queuePreference('goal_race_name', goalRaceNameDraft)}
                 placeholder={t('goalRace.raceNamePlaceholder')}
                 disabled={saving}
                 className="w-56 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -554,9 +559,9 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences 
                 onChange={(e) => setGoalRaceTargetTimeDraft(e.target.value)}
                 onBlur={() => {
                   if (goalRaceTargetTimeDraft === '') {
-                    savePreference('goal_race_target_time', '', true)
+                    queuePreference('goal_race_target_time', '')
                   } else if (isValidTargetTime(goalRaceTargetTimeDraft)) {
-                    savePreference('goal_race_target_time', goalRaceTargetTimeDraft, true)
+                    queuePreference('goal_race_target_time', goalRaceTargetTimeDraft)
                   } else {
                     setGoalRaceTargetTimeDraft(preferences.goal_race_target_time || '')
                   }

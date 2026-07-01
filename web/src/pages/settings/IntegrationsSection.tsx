@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
@@ -6,9 +6,12 @@ import { useAuth } from '../../auth'
 import { Skeleton } from '../../components/ui/skeleton'
 import type { HetznerTokenState, PreferenceSectionProps } from './types'
 
-type IntegrationsSectionProps = Pick<PreferenceSectionProps, 'preferences' | 'saving' | 'savePreference'>
+type IntegrationsSectionProps = Pick<PreferenceSectionProps, 'preferences' | 'saving' | 'savePreference'> & {
+  queuePreference: (key: string, value: string) => void
+  flushPreferences: () => void
+}
 
-function IntegrationsSection({ preferences, saving, savePreference }: IntegrationsSectionProps) {
+function IntegrationsSection({ preferences, saving, savePreference, queuePreference, flushPreferences }: IntegrationsSectionProps) {
   const { t } = useTranslation(['settings', 'common'])
   const { user, hasFeature } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -35,7 +38,6 @@ function IntegrationsSection({ preferences, saving, savePreference }: Integratio
   const [claudeTesting, setClaudeTesting] = useState(false)
   const [claudeTestResult, setClaudeTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [claudeCliPathDraft, setClaudeCliPathDraft] = useState(preferences.claude_cli_path || '')
-  const claudeCliPathTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadHetznerToken = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -89,20 +91,6 @@ function IntegrationsSection({ preferences, saving, savePreference }: Integratio
       setHetznerDeleting(false)
     }
   }
-
-  // Debounce CLI path saves: auto-save 800ms after typing stops.
-  useEffect(() => {
-    const saved = preferences.claude_cli_path || ''
-    if (claudeCliPathDraft === saved) return
-
-    if (claudeCliPathTimer.current) clearTimeout(claudeCliPathTimer.current)
-    claudeCliPathTimer.current = setTimeout(() => {
-      savePreference('claude_cli_path', claudeCliPathDraft)
-    }, 800)
-    return () => {
-      if (claudeCliPathTimer.current) clearTimeout(claudeCliPathTimer.current)
-    }
-  }, [claudeCliPathDraft, preferences.claude_cli_path, savePreference])
 
   // Load Hetzner token status — skip for users without infra access.
   useEffect(() => {
@@ -319,14 +307,11 @@ function IntegrationsSection({ preferences, saving, savePreference }: Integratio
                 id="claude-cli-path"
                 type="text"
                 value={claudeCliPathDraft}
-                onChange={(e) => setClaudeCliPathDraft(e.target.value)}
-                onBlur={() => {
-                  // Flush any pending debounce immediately on blur.
-                  if (claudeCliPathTimer.current) clearTimeout(claudeCliPathTimer.current)
-                  if (claudeCliPathDraft !== (preferences.claude_cli_path || '')) {
-                    savePreference('claude_cli_path', claudeCliPathDraft)
-                  }
+                onChange={(e) => {
+                  setClaudeCliPathDraft(e.target.value)
+                  queuePreference('claude_cli_path', e.target.value)
                 }}
+                onBlur={() => flushPreferences()}
                 placeholder="claude"
                 disabled={saving}
                 className="w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"

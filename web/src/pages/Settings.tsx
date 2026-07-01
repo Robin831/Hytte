@@ -107,7 +107,12 @@ function Settings() {
   // Debounced, batched preference writer. Queued edits accumulate and flush as
   // a single request; toggles/selects use saveNow for an immediate write. Both
   // paths drive a per-section Saving… → Saved / Error status.
-  const prefWriter = useDebouncedPreferences({
+  const {
+    status: prefSectionStatus,
+    queuePreference: prefQueue,
+    saveNow: prefSaveNow,
+    flush: prefFlush,
+  } = useDebouncedPreferences({
     sectionForKey: sectionForPrefKey,
     onSaved: (prefs) => setPreferences(prefs),
     onSuccessToast: () => showToast('success', t('training.saveSuccess')),
@@ -116,11 +121,23 @@ function Settings() {
   const savePreferences = async (prefs: Record<string, string>, toast = false) => {
     setSaving(true)
     try {
-      await prefWriter.saveNow(prefs, toast)
+      await prefSaveNow(prefs, toast)
     } finally {
       setSaving(false)
     }
   }
+
+  const queuePreference = useCallback(
+    (key: string, value: string) => {
+      setPreferences((prev) => ({ ...prev, [key]: value }))
+      prefQueue(key, value)
+    },
+    [prefQueue],
+  )
+
+  const flushPreferences = useCallback(() => {
+    void prefFlush()
+  }, [prefFlush])
 
   const savePreference = async (key: string, value: string, toast = false) => {
     await savePreferences({ [key]: value }, toast)
@@ -179,7 +196,7 @@ function Settings() {
         title={
           <span className="inline-flex items-center gap-2">
             {t('profile.heading')}
-            <SectionStatusBadge status={prefWriter.status.profile} texts={statusTexts} />
+            <SectionStatusBadge status={prefSectionStatus.profile} texts={statusTexts} />
           </span>
         }
       >
@@ -193,7 +210,7 @@ function Settings() {
           title={
             <span className="inline-flex items-center gap-2">
               {t('training.heading')}
-              <SectionStatusBadge status={prefWriter.status.training} texts={statusTexts} />
+              <SectionStatusBadge status={prefSectionStatus.training} texts={statusTexts} />
             </span>
           }
         >
@@ -202,6 +219,8 @@ function Settings() {
             saving={saving}
             savePreference={savePreference}
             savePreferences={savePreferences}
+            queuePreference={queuePreference}
+            flushPreferences={flushPreferences}
           />
         </CollapsibleSection>
       )}
@@ -213,7 +232,7 @@ function Settings() {
           title={
             <span className="inline-flex items-center gap-2">
               {t('notifications.heading')}
-              <SectionStatusBadge status={prefWriter.status.notifications} texts={statusTexts} />
+              <SectionStatusBadge status={prefSectionStatus.notifications} texts={statusTexts} />
             </span>
           }
         >
@@ -238,11 +257,11 @@ function Settings() {
           title={
             <span className="inline-flex items-center gap-2">
               {t('integrations.heading')}
-              <SectionStatusBadge status={prefWriter.status.integrations} texts={statusTexts} />
+              <SectionStatusBadge status={prefSectionStatus.integrations} texts={statusTexts} />
             </span>
           }
         >
-          <IntegrationsSection preferences={preferences} saving={saving} savePreference={savePreference} />
+          <IntegrationsSection preferences={preferences} saving={saving} savePreference={savePreference} queuePreference={queuePreference} flushPreferences={flushPreferences} />
         </CollapsibleSection>
       )}
 
@@ -253,7 +272,7 @@ function Settings() {
           title={
             <span className="inline-flex items-center gap-2">
               {t('pokemon.heading')}
-              <SectionStatusBadge status={prefWriter.status.pokemon} texts={statusTexts} />
+              <SectionStatusBadge status={prefSectionStatus.pokemon} texts={statusTexts} />
             </span>
           }
         >
