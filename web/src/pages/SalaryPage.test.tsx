@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect } from 'vitest'
-import { parseDecimal } from './SalaryPage'
+import { parseDecimal } from '../utils/parseDecimal'
 
 describe('parseDecimal', () => {
   it('parses Norwegian comma decimals', () => {

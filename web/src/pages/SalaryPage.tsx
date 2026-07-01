@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Settings, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Trash2, Upload } from 'lucide-react'
 import { useAuth } from '../auth'
+import { parseDecimal } from '../utils/parseDecimal'
 import {
   LineChart,
   Line,
@@ -140,13 +141,6 @@ interface VacationResponse {
 }
 
 type Tab = 'month' | 'year'
-
-// Parse a numeric input string, accepting the Norwegian comma decimal
-// separator (e.g. "7,5") as well as the dot form ("7.5"). Returns NaN for
-// unparseable input, so callers can keep their `|| 0` / `|| 7.5` fallbacks.
-export function parseDecimal(value: string): number {
-  return Number(String(value).replace(',', '.'))
-}
 
 function formatMonthLabel(month: string, locale: string): string {
   const [year, mon] = month.split('-').map(Number)
@@ -323,7 +317,7 @@ export default function SalaryPage() {
       return
     }
     setOverrideError(null)
-  }, [selectedMonth, showOverride]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedMonth, showOverride])
 
   // Load vacation data when estimate is available (has config).
   useEffect(() => {
