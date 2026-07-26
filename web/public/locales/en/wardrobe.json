@@ -1,0 +1,120 @@
+{
+  "title": "Kids' Wardrobe",
+  "empty": "No children yet",
+  "emptyHint": "Add a child to start tracking clothes, shoes and sizes",
+  "kidSelector": "Select child",
+  "addKid": "Add child",
+  "editKid": "Edit child",
+  "deleteKid": "Delete child",
+  "deleteKidConfirm": "Delete {{name}} along with all their items and measurements?",
+  "deleteItemConfirm": "Delete \"{{name}}\"?",
+  "confirmTitle": "Are you sure?",
+  "kidForm": {
+    "name": "Name",
+    "birthdate": "Birthdate",
+    "emoji": "Avatar"
+  },
+  "tabs": {
+    "inventory": "Inventory",
+    "measurements": "Measurements",
+    "needs": "Needs"
+  },
+  "stats": {
+    "height": "Height",
+    "foot": "Foot length",
+    "clothingSize": "Clothing size",
+    "shoeSize": "Shoe size",
+    "buy": "buy {{size}}",
+    "growthHeight": "~{{rate}} cm/month",
+    "growthFoot": "~{{rate}} mm/month",
+    "measuredOn": "measured {{date}}",
+    "noMeasurements": "No measurements yet — add height and foot length to get size recommendations"
+  },
+  "addItem": "Add item",
+  "editItem": "Edit item",
+  "inventory": {
+    "empty": "No items here yet",
+    "filterLabel": "Filter by status",
+    "filterAll": "All",
+    "markTooSmall": "Too small?",
+    "deleteItem": "Delete {{name}}"
+  },
+  "itemForm": {
+    "name": "Name",
+    "namePlaceholder": "e.g. blue rain jacket",
+    "category": "Category",
+    "categoryPlaceholder": "Choose category",
+    "size": "Size",
+    "sizeHint": "Recommended: {{size}}",
+    "quantity": "Quantity",
+    "condition": "Condition",
+    "status": "Status",
+    "location": "Location",
+    "season": "Season",
+    "notes": "Notes",
+    "notesPlaceholder": "e.g. storage box 3 in the attic"
+  },
+  "condition": {
+    "new": "New",
+    "good": "Good",
+    "worn": "Worn"
+  },
+  "status": {
+    "active": "In use",
+    "too_small": "Too small",
+    "stored": "Stored"
+  },
+  "location": {
+    "home": "Home",
+    "kindergarten": "Kindergarten",
+    "school": "School",
+    "cabin": "Cabin",
+    "other": "Other"
+  },
+  "season": {
+    "all": "All year",
+    "summer": "Summer",
+    "winter": "Winter"
+  },
+  "measurements": {
+    "add": "New measurement",
+    "date": "Date",
+    "height": "Height (cm)",
+    "foot": "Foot (mm)",
+    "weight": "Weight (kg)",
+    "footHint": "Measure the foot from heel to longest toe, standing against a wall",
+    "empty": "No measurements yet",
+    "delete": "Delete measurement"
+  },
+  "needs": {
+    "empty": "All covered — nothing needed right now 🎉",
+    "missingTitle": "Missing",
+    "have": "{{have}} of {{target}}",
+    "buySize": "Buy {{size}}",
+    "tooSmallTitle": "Outgrown — needs replacing",
+    "replaceWith": "Replace with {{size}}"
+  },
+  "categories": {
+    "manage": "Categories",
+    "name": "Name",
+    "icon": "Icon",
+    "target": "Target",
+    "targetFor": "Target quantity for {{name}}",
+    "targetHint": "The target is how many of each category the child should have (e.g. 2 sets of spare clothes for kindergarten). Anything below target shows up under Needs.",
+    "sizeSystem": "Sizing",
+    "sizeSystems": {
+      "clothing": "Clothing",
+      "shoe": "Shoes",
+      "none": "None"
+    },
+    "add": "New category",
+    "addButton": "Add",
+    "deleteCategory": "Delete category {{name}}",
+    "inUse": "This category still has items and cannot be deleted"
+  },
+  "errors": {
+    "failedToLoad": "Failed to load wardrobe data",
+    "failedToSave": "Failed to save",
+    "failedToDelete": "Failed to delete"
+  }
+}
