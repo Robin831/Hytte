@@ -333,6 +333,7 @@ function IntegrationsSection({ preferences, saving, savePreference, queuePrefere
                 className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="claude-fable-5">Claude Fable 5</option>
+                <option value="claude-opus-5">Claude Opus 5</option>
                 <option value="claude-opus-4-8">Claude Opus 4.8</option>
                 <option value="claude-opus-4-7">Claude Opus 4.7</option>
                 <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>

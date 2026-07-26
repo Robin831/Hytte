@@ -21,6 +21,7 @@ import (
 // (web/src/pages/Chat.tsx) and the Settings page (web/src/pages/Settings.tsx).
 var SupportedModels = map[string]bool{
 	"claude-fable-5":    true,
+	"claude-opus-5":     true,
 	"claude-opus-4-8":   true,
 	"claude-opus-4-7":   true,
 	"claude-opus-4-6":   true,

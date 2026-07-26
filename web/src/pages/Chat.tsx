@@ -34,7 +34,7 @@ const PIN_THRESHOLD = 80
 // (internal/chat/handlers.go SupportedModels). The backend may accept
 // additional model IDs (e.g. older Opus variants) that we intentionally
 // omit from the UI dropdown.
-const MODEL_OPTIONS = ['claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'] as const
+const MODEL_OPTIONS = ['claude-fable-5', 'claude-opus-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'] as const
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
 
 // modelLabelKey maps a model ID to its i18n label key by family so any
@@ -45,6 +45,15 @@ function modelLabelKey(model: string): 'models.fable' | 'models.opus' | 'models.
   if (model.startsWith('claude-sonnet')) return 'models.sonnet'
   if (model.startsWith('claude-haiku')) return 'models.haiku'
   return ''
+}
+
+// modelVersionSuffix extracts the version from a model ID ("claude-opus-4-8"
+// → "4.8", "claude-opus-5" → "5") so two variants of the same family (a
+// conversation pinned to an older Opus alongside the current one) render
+// distinguishable labels.
+function modelVersionSuffix(model: string): string {
+  const m = model.match(/^claude-[a-z]+-(\d+(?:-\d+)*)$/)
+  return m ? m[1].replace(/-/g, '.') : ''
 }
 
 export default function Chat() {
@@ -423,7 +432,9 @@ export default function Chat() {
 
   const modelLabel = (model: string): string => {
     const key = modelLabelKey(model)
-    return key ? t(key) : model
+    if (!key) return model
+    const suffix = modelVersionSuffix(model)
+    return suffix ? `${t(key)} ${suffix}` : t(key)
   }
 
   const selectedModel = activeConversation ? activeConversation.model : (newConversationModel || DEFAULT_MODEL)
