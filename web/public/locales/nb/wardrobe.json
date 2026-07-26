@@ -1,0 +1,120 @@
+{
+  "title": "Barnas garderobe",
+  "empty": "Ingen barn ennå",
+  "emptyHint": "Legg til et barn for å holde oversikt over klær, sko og størrelser",
+  "kidSelector": "Velg barn",
+  "addKid": "Legg til barn",
+  "editKid": "Rediger barn",
+  "deleteKid": "Slett barn",
+  "deleteKidConfirm": "Slette {{name}} med alle plagg og målinger?",
+  "deleteItemConfirm": "Slette «{{name}}»?",
+  "confirmTitle": "Er du sikker?",
+  "kidForm": {
+    "name": "Navn",
+    "birthdate": "Fødselsdato",
+    "emoji": "Avatar"
+  },
+  "tabs": {
+    "inventory": "Garderobe",
+    "measurements": "Målinger",
+    "needs": "Mangler"
+  },
+  "stats": {
+    "height": "Høyde",
+    "foot": "Fotlengde",
+    "clothingSize": "Klesstørrelse",
+    "shoeSize": "Skostørrelse",
+    "buy": "kjøp {{size}}",
+    "growthHeight": "~{{rate}} cm/mnd",
+    "growthFoot": "~{{rate}} mm/mnd",
+    "measuredOn": "målt {{date}}",
+    "noMeasurements": "Ingen målinger ennå — legg inn høyde og fotlengde for å få størrelsesanbefalinger"
+  },
+  "addItem": "Legg til plagg",
+  "editItem": "Rediger plagg",
+  "inventory": {
+    "empty": "Ingen plagg her ennå",
+    "filterLabel": "Filtrer på status",
+    "filterAll": "Alle",
+    "markTooSmall": "For liten?",
+    "deleteItem": "Slett {{name}}"
+  },
+  "itemForm": {
+    "name": "Navn",
+    "namePlaceholder": "f.eks. blå regnjakke",
+    "category": "Kategori",
+    "categoryPlaceholder": "Velg kategori",
+    "size": "Størrelse",
+    "sizeHint": "Anbefalt: {{size}}",
+    "quantity": "Antall",
+    "condition": "Tilstand",
+    "status": "Status",
+    "location": "Sted",
+    "season": "Sesong",
+    "notes": "Notater",
+    "notesPlaceholder": "f.eks. boks 3 på loftet"
+  },
+  "condition": {
+    "new": "Ny",
+    "good": "God",
+    "worn": "Slitt"
+  },
+  "status": {
+    "active": "I bruk",
+    "too_small": "For liten",
+    "stored": "Lagret"
+  },
+  "location": {
+    "home": "Hjemme",
+    "kindergarten": "Barnehagen",
+    "school": "Skolen",
+    "cabin": "Hytta",
+    "other": "Annet"
+  },
+  "season": {
+    "all": "Hele året",
+    "summer": "Sommer",
+    "winter": "Vinter"
+  },
+  "measurements": {
+    "add": "Ny måling",
+    "date": "Dato",
+    "height": "Høyde (cm)",
+    "foot": "Fot (mm)",
+    "weight": "Vekt (kg)",
+    "footHint": "Mål foten fra hæl til lengste tå, stående inntil en vegg",
+    "empty": "Ingen målinger ennå",
+    "delete": "Slett måling"
+  },
+  "needs": {
+    "empty": "Alt på plass — ingenting mangler nå 🎉",
+    "missingTitle": "Mangler",
+    "have": "{{have}} av {{target}}",
+    "buySize": "Kjøp {{size}}",
+    "tooSmallTitle": "For lite — må erstattes",
+    "replaceWith": "Erstatt med {{size}}"
+  },
+  "categories": {
+    "manage": "Kategorier",
+    "name": "Navn",
+    "icon": "Ikon",
+    "target": "Mål",
+    "targetFor": "Målantall for {{name}}",
+    "targetHint": "Målet er hvor mange av hver kategori barnet bør ha (f.eks. 2 sett skiftetøy i barnehagen). Alt under målet vises under Mangler.",
+    "sizeSystem": "Størrelse",
+    "sizeSystems": {
+      "clothing": "Klær",
+      "shoe": "Sko",
+      "none": "Ingen"
+    },
+    "add": "Ny kategori",
+    "addButton": "Legg til",
+    "deleteCategory": "Slett kategorien {{name}}",
+    "inUse": "Kategorien har fortsatt plagg og kan ikke slettes"
+  },
+  "errors": {
+    "failedToLoad": "Kunne ikke laste garderobedata",
+    "failedToSave": "Kunne ikke lagre",
+    "failedToDelete": "Kunne ikke slette"
+  }
+}

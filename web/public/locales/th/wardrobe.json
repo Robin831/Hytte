@@ -1,0 +1,120 @@
+{
+  "title": "ตู้เสื้อผ้าเด็ก",
+  "empty": "ยังไม่มีรายชื่อเด็ก",
+  "emptyHint": "เพิ่มลูกเพื่อเริ่มติดตามเสื้อผ้า รองเท้า และไซซ์",
+  "kidSelector": "เลือกเด็ก",
+  "addKid": "เพิ่มลูก",
+  "editKid": "แก้ไขข้อมูลเด็ก",
+  "deleteKid": "ลบข้อมูลเด็ก",
+  "deleteKidConfirm": "ลบ {{name}} พร้อมเสื้อผ้าและข้อมูลการวัดทั้งหมด?",
+  "deleteItemConfirm": "ลบ \"{{name}}\"?",
+  "confirmTitle": "แน่ใจหรือไม่?",
+  "kidForm": {
+    "name": "ชื่อ",
+    "birthdate": "วันเกิด",
+    "emoji": "อวตาร"
+  },
+  "tabs": {
+    "inventory": "เสื้อผ้า",
+    "measurements": "การวัดตัว",
+    "needs": "ที่ยังขาด"
+  },
+  "stats": {
+    "height": "ส่วนสูง",
+    "foot": "ความยาวเท้า",
+    "clothingSize": "ไซซ์เสื้อผ้า",
+    "shoeSize": "ไซซ์รองเท้า",
+    "buy": "ควรซื้อ {{size}}",
+    "growthHeight": "~{{rate}} ซม./เดือน",
+    "growthFoot": "~{{rate}} มม./เดือน",
+    "measuredOn": "วัดเมื่อ {{date}}",
+    "noMeasurements": "ยังไม่มีการวัดตัว — เพิ่มส่วนสูงและความยาวเท้าเพื่อรับคำแนะนำไซซ์"
+  },
+  "addItem": "เพิ่มรายการ",
+  "editItem": "แก้ไขรายการ",
+  "inventory": {
+    "empty": "ยังไม่มีรายการ",
+    "filterLabel": "กรองตามสถานะ",
+    "filterAll": "ทั้งหมด",
+    "markTooSmall": "เล็กไปแล้ว?",
+    "deleteItem": "ลบ {{name}}"
+  },
+  "itemForm": {
+    "name": "ชื่อ",
+    "namePlaceholder": "เช่น เสื้อกันฝนสีฟ้า",
+    "category": "หมวดหมู่",
+    "categoryPlaceholder": "เลือกหมวดหมู่",
+    "size": "ไซซ์",
+    "sizeHint": "แนะนำ: {{size}}",
+    "quantity": "จำนวน",
+    "condition": "สภาพ",
+    "status": "สถานะ",
+    "location": "สถานที่",
+    "season": "ฤดู",
+    "notes": "หมายเหตุ",
+    "notesPlaceholder": "เช่น กล่อง 3 ในห้องเก็บของ"
+  },
+  "condition": {
+    "new": "ใหม่",
+    "good": "ดี",
+    "worn": "เก่า"
+  },
+  "status": {
+    "active": "ใช้อยู่",
+    "too_small": "เล็กเกินไป",
+    "stored": "เก็บไว้"
+  },
+  "location": {
+    "home": "บ้าน",
+    "kindergarten": "โรงเรียนอนุบาล",
+    "school": "โรงเรียน",
+    "cabin": "บ้านพักตากอากาศ",
+    "other": "อื่น ๆ"
+  },
+  "season": {
+    "all": "ทั้งปี",
+    "summer": "ฤดูร้อน",
+    "winter": "ฤดูหนาว"
+  },
+  "measurements": {
+    "add": "วัดตัวใหม่",
+    "date": "วันที่",
+    "height": "ส่วนสูง (ซม.)",
+    "foot": "เท้า (มม.)",
+    "weight": "น้ำหนัก (กก.)",
+    "footHint": "วัดเท้าจากส้นถึงนิ้วที่ยาวที่สุด โดยยืนชิดกำแพง",
+    "empty": "ยังไม่มีการวัดตัว",
+    "delete": "ลบการวัด"
+  },
+  "needs": {
+    "empty": "ครบทุกอย่าง — ไม่ขาดอะไรตอนนี้ 🎉",
+    "missingTitle": "ยังขาด",
+    "have": "{{have}} จาก {{target}}",
+    "buySize": "ซื้อ {{size}}",
+    "tooSmallTitle": "เล็กเกินไป — ต้องซื้อใหม่",
+    "replaceWith": "แทนด้วย {{size}}"
+  },
+  "categories": {
+    "manage": "หมวดหมู่",
+    "name": "ชื่อ",
+    "icon": "ไอคอน",
+    "target": "เป้า",
+    "targetFor": "จำนวนเป้าหมายของ {{name}}",
+    "targetHint": "เป้าคือจำนวนที่เด็กควรมีในแต่ละหมวด (เช่น ชุดสำรอง 2 ชุดที่โรงเรียนอนุบาล) รายการที่ต่ำกว่าเป้าจะแสดงในแท็บที่ยังขาด",
+    "sizeSystem": "ระบบไซซ์",
+    "sizeSystems": {
+      "clothing": "เสื้อผ้า",
+      "shoe": "รองเท้า",
+      "none": "ไม่มี"
+    },
+    "add": "หมวดหมู่ใหม่",
+    "addButton": "เพิ่ม",
+    "deleteCategory": "ลบหมวดหมู่ {{name}}",
+    "inUse": "หมวดหมู่นี้ยังมีรายการอยู่ จึงลบไม่ได้"
+  },
+  "errors": {
+    "failedToLoad": "โหลดข้อมูลตู้เสื้อผ้าไม่สำเร็จ",
+    "failedToSave": "บันทึกไม่สำเร็จ",
+    "failedToDelete": "ลบไม่สำเร็จ"
+  }
+}

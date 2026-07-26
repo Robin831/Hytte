@@ -65,6 +65,7 @@ import BudgetVariables from './pages/BudgetVariables'
 import Vault from './pages/Vault'
 import SkyWatchPage from './pages/SkyWatchPage'
 import GroceryPage from './pages/GroceryPage'
+import WardrobePage from './pages/WardrobePage'
 import HomeworkPage from './pages/HomeworkPage'
 import HomeworkChat from './pages/HomeworkChat'
 import HomeworkSettings from './pages/HomeworkSettings'
@@ -475,6 +476,16 @@ function MainLayout() {
             element={
               <FeatureRoute feature="grocery">
                 <GroceryPage />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Kids' wardrobe route */}
+          <Route
+            path="/wardrobe"
+            element={
+              <FeatureRoute feature="wardrobe">
+                <WardrobePage />
               </FeatureRoute>
             }
           />

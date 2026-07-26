@@ -1933,6 +1933,67 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_news_saved_user ON news_saved(user_id, saved_at DESC);
 
+	-- Kids' wardrobe: profiles, measurement history, categories, items (Hytte-wdrb).
+	-- Kid profiles are standalone rows (not linked users) since kindergarten-age
+	-- children have no Google account; user_id optionally links one.
+	CREATE TABLE IF NOT EXISTS wardrobe_kids (
+		id           INTEGER PRIMARY KEY,
+		parent_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		user_id      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		name         TEXT NOT NULL DEFAULT '',  -- encrypted
+		birthdate    TEXT NOT NULL DEFAULT '',
+		avatar_emoji TEXT NOT NULL DEFAULT '',
+		created_at   TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_wardrobe_kids_parent ON wardrobe_kids(parent_id);
+
+	CREATE TABLE IF NOT EXISTS wardrobe_measurements (
+		id             INTEGER PRIMARY KEY,
+		kid_id         INTEGER NOT NULL REFERENCES wardrobe_kids(id) ON DELETE CASCADE,
+		measured_at    TEXT NOT NULL DEFAULT '',
+		height_cm      REAL NOT NULL DEFAULT 0,
+		foot_length_mm REAL NOT NULL DEFAULT 0,
+		weight_kg      REAL NOT NULL DEFAULT 0,
+		note           TEXT NOT NULL DEFAULT '',  -- encrypted
+		created_at     TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_wardrobe_measurements_kid ON wardrobe_measurements(kid_id);
+
+	CREATE TABLE IF NOT EXISTS wardrobe_categories (
+		id          INTEGER PRIMARY KEY,
+		parent_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name        TEXT NOT NULL DEFAULT '',
+		icon        TEXT NOT NULL DEFAULT '',
+		size_system TEXT NOT NULL DEFAULT 'clothing' CHECK (size_system IN ('clothing', 'shoe', 'none')),
+		target_qty  INTEGER NOT NULL DEFAULT 0,
+		sort_order  INTEGER NOT NULL DEFAULT 0,
+		created_at  TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_wardrobe_categories_parent ON wardrobe_categories(parent_id);
+
+	CREATE TABLE IF NOT EXISTS wardrobe_items (
+		id          INTEGER PRIMARY KEY,
+		parent_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		kid_id      INTEGER NOT NULL REFERENCES wardrobe_kids(id) ON DELETE CASCADE,
+		category_id INTEGER NOT NULL REFERENCES wardrobe_categories(id),
+		name        TEXT NOT NULL DEFAULT '',  -- encrypted
+		size_label  TEXT NOT NULL DEFAULT '',
+		quantity    INTEGER NOT NULL DEFAULT 1,
+		condition   TEXT NOT NULL DEFAULT 'good' CHECK (condition IN ('new', 'good', 'worn')),
+		status      TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'too_small', 'stored')),
+		location    TEXT NOT NULL DEFAULT 'home' CHECK (location IN ('home', 'kindergarten', 'school', 'cabin', 'other')),
+		season      TEXT NOT NULL DEFAULT 'all' CHECK (season IN ('all', 'summer', 'winter')),
+		notes       TEXT NOT NULL DEFAULT '',  -- encrypted
+		created_at  TEXT NOT NULL DEFAULT '',
+		updated_at  TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_wardrobe_items_parent ON wardrobe_items(parent_id);
+	CREATE INDEX IF NOT EXISTS idx_wardrobe_items_kid ON wardrobe_items(kid_id);
+
 	-- Cache of LLM relevance scores. profile_version is bumped whenever the
 	-- user's feedback set changes, invalidating stale scores.
 	CREATE TABLE IF NOT EXISTS news_scores (

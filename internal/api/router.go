@@ -21,6 +21,7 @@ import (
 	"github.com/Robin831/Hytte/internal/familychat"
 	"github.com/Robin831/Hytte/internal/forge"
 	"github.com/Robin831/Hytte/internal/grocery"
+	"github.com/Robin831/Hytte/internal/wardrobe"
 	"github.com/Robin831/Hytte/internal/homework"
 	"github.com/Robin831/Hytte/internal/infra"
 	"github.com/Robin831/Hytte/internal/kiosk"
@@ -896,6 +897,27 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Patch("/grocery/items/{id}/reorder", grocery.HandleReorder(db))
 				r.Delete("/grocery/completed", grocery.HandleClearCompleted(db))
 				r.Post("/grocery/translate", grocery.HandleTranslate(db))
+			})
+
+			// Kids' wardrobe — gated by "wardrobe" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "wardrobe"))
+				r.Get("/wardrobe/kids", wardrobe.HandleListKids(db))
+				r.Post("/wardrobe/kids", wardrobe.HandleAddKid(db))
+				r.Patch("/wardrobe/kids/{id}", wardrobe.HandleUpdateKid(db))
+				r.Delete("/wardrobe/kids/{id}", wardrobe.HandleDeleteKid(db))
+				r.Get("/wardrobe/kids/{id}/measurements", wardrobe.HandleListMeasurements(db))
+				r.Post("/wardrobe/kids/{id}/measurements", wardrobe.HandleAddMeasurement(db))
+				r.Delete("/wardrobe/measurements/{id}", wardrobe.HandleDeleteMeasurement(db))
+				r.Get("/wardrobe/categories", wardrobe.HandleListCategories(db))
+				r.Post("/wardrobe/categories", wardrobe.HandleAddCategory(db))
+				r.Patch("/wardrobe/categories/{id}", wardrobe.HandleUpdateCategory(db))
+				r.Delete("/wardrobe/categories/{id}", wardrobe.HandleDeleteCategory(db))
+				r.Get("/wardrobe/items", wardrobe.HandleListItems(db))
+				r.Post("/wardrobe/items", wardrobe.HandleAddItem(db))
+				r.Patch("/wardrobe/items/{id}", wardrobe.HandleUpdateItem(db))
+				r.Delete("/wardrobe/items/{id}", wardrobe.HandleDeleteItem(db))
+				r.Get("/wardrobe/needs", wardrobe.HandleNeeds(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.
