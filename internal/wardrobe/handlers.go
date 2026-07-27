@@ -32,9 +32,16 @@ func urlID(r *http.Request) (int64, bool) {
 // --- Kids ---
 
 // HandleListKids returns the user's kid profiles with derived size guidance.
+// Children linked via family_links are imported automatically first, so an
+// existing family setup needs no manual re-entry here.
 func HandleListKids(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
+		if err := SyncLinkedChildren(db, user.ID); err != nil {
+			log.Printf("wardrobe: sync linked children: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to list kids")
+			return
+		}
 		kids, err := ListKids(db, user.ID)
 		if err != nil {
 			log.Printf("wardrobe: list kids: %v", err)
