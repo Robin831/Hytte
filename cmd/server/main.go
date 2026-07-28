@@ -18,6 +18,7 @@ import (
 	"github.com/Robin831/Hytte/internal/daemon"
 	"github.com/Robin831/Hytte/internal/db"
 	"github.com/Robin831/Hytte/internal/familychat"
+	"github.com/Robin831/Hytte/internal/offers"
 	"github.com/Robin831/Hytte/internal/pokemon"
 	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/stars"
@@ -385,6 +386,39 @@ func main() {
 					log.Printf("currency: scheduled EUR/NOK sync failed: %v", err)
 				} else {
 					log.Println("currency: EUR/NOK rate synced")
+				}
+				syncCancel()
+			}
+		}
+	}()
+
+	// Daily grocery-offer sync from the Tjek API at 06:30 Europe/Oslo
+	// (Hytte-offr). Warm-runs at startup only when stored offers are stale
+	// (>20h) so a redeploy doesn't re-sweep. Failures are logged; the page
+	// serves the last stored offers with their fetched_at timestamp.
+	go func() {
+		loc, err := time.LoadLocation("Europe/Oslo")
+		if err != nil {
+			log.Printf("offers: failed to load Europe/Oslo timezone, falling back to UTC: %v", err)
+			loc = time.UTC
+		}
+		startupCtx, startupCancel := context.WithTimeout(notifCtx, 5*time.Minute)
+		if err := offers.SyncIfStale(startupCtx, database); err != nil {
+			log.Printf("offers: startup sync failed: %v", err)
+		}
+		startupCancel()
+
+		for {
+			next := offers.NextDailyRun(time.Now(), loc)
+			timer := time.NewTimer(time.Until(next))
+			select {
+			case <-notifCtx.Done():
+				timer.Stop()
+				return
+			case <-timer.C:
+				syncCtx, syncCancel := context.WithTimeout(notifCtx, 5*time.Minute)
+				if err := offers.Sync(syncCtx, database); err != nil {
+					log.Printf("offers: scheduled sync failed: %v", err)
 				}
 				syncCancel()
 			}

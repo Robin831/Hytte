@@ -66,6 +66,7 @@ import Vault from './pages/Vault'
 import SkyWatchPage from './pages/SkyWatchPage'
 import GroceryPage from './pages/GroceryPage'
 import WardrobePage from './pages/WardrobePage'
+import OffersPage from './pages/OffersPage'
 import HomeworkPage from './pages/HomeworkPage'
 import HomeworkChat from './pages/HomeworkChat'
 import HomeworkSettings from './pages/HomeworkSettings'
@@ -486,6 +487,16 @@ function MainLayout() {
             element={
               <FeatureRoute feature="wardrobe">
                 <WardrobePage />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Grocery offers route */}
+          <Route
+            path="/offers"
+            element={
+              <FeatureRoute feature="offers">
+                <OffersPage />
               </FeatureRoute>
             }
           />

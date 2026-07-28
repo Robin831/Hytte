@@ -1,0 +1,28 @@
+{
+  "title": "Mattilbud",
+  "fetchedAt": "Oppdatert {{time}} — nye tilbud kommer søndag morgen",
+  "refresh": "Oppdater nå",
+  "empty": "Ingen tilbud lastet ennå",
+  "emptyHint": "Tilbud hentes hver morgen — kom tilbake om litt",
+  "searchPlaceholder": "Søk i tilbud...",
+  "chainFilter": "Filtrer på kjede",
+  "watchedSection": "Dine varer ({{count}})",
+  "topSection": "Toppene ({{count}})",
+  "validTill": "til {{date}}",
+  "unitPrice": "{{price}}/{{unit}}",
+  "addToGrocery": "Legg {{name}} i handlelisten",
+  "addedToGrocery": "Lagt i handlelisten",
+  "watchlist": {
+    "title": "Varer jeg ser etter",
+    "empty": "Legg inn ting du alltid kjøper — som melk eller vaskemiddel — så løftes treffene til toppen",
+    "placeholder": "f.eks. melk, kaffe, vaskemiddel",
+    "add": "Legg til",
+    "remove": "Fjern {{keyword}}"
+  },
+  "errors": {
+    "failedToLoad": "Kunne ikke laste tilbud",
+    "failedToSave": "Kunne ikke oppdatere varelisten",
+    "failedToAddGrocery": "Kunne ikke legge i handlelisten",
+    "failedToRefresh": "Oppdatering feilet — sjekk serverloggen"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "title": "Grocery Offers",
+  "fetchedAt": "Updated {{time}} — new offers arrive Sunday mornings",
+  "refresh": "Refresh now",
+  "empty": "No offers loaded yet",
+  "emptyHint": "Offers are fetched every morning — check back shortly",
+  "searchPlaceholder": "Search offers...",
+  "chainFilter": "Filter by chain",
+  "watchedSection": "Your items ({{count}})",
+  "topSection": "Top offers ({{count}})",
+  "validTill": "until {{date}}",
+  "unitPrice": "{{price}}/{{unit}}",
+  "addToGrocery": "Add {{name}} to grocery list",
+  "addedToGrocery": "Added to grocery list",
+  "watchlist": {
+    "title": "Items I'm looking for",
+    "empty": "Add things you always buy — like milk or laundry detergent — and matching offers rise to the top",
+    "placeholder": "e.g. milk, coffee, laundry detergent",
+    "add": "Add",
+    "remove": "Remove {{keyword}}"
+  },
+  "errors": {
+    "failedToLoad": "Failed to load offers",
+    "failedToSave": "Failed to update watchlist",
+    "failedToAddGrocery": "Failed to add to grocery list",
+    "failedToRefresh": "Refresh failed — check the server logs"
+  }
+}

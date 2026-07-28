@@ -21,6 +21,7 @@ import (
 	"github.com/Robin831/Hytte/internal/familychat"
 	"github.com/Robin831/Hytte/internal/forge"
 	"github.com/Robin831/Hytte/internal/grocery"
+	"github.com/Robin831/Hytte/internal/offers"
 	"github.com/Robin831/Hytte/internal/wardrobe"
 	"github.com/Robin831/Hytte/internal/homework"
 	"github.com/Robin831/Hytte/internal/infra"
@@ -918,6 +919,15 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Patch("/wardrobe/items/{id}", wardrobe.HandleUpdateItem(db))
 				r.Delete("/wardrobe/items/{id}", wardrobe.HandleDeleteItem(db))
 				r.Get("/wardrobe/needs", wardrobe.HandleNeeds(db))
+			})
+
+			// Grocery offers — gated by "offers" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "offers"))
+				r.Get("/offers", offers.HandleList(db))
+				r.Post("/offers/watchlist", offers.HandleAddWatch(db))
+				r.Delete("/offers/watchlist/{id}", offers.HandleDeleteWatch(db))
+				r.With(auth.RequireAdmin()).Post("/offers/refresh", offers.HandleRefresh(db))
 			})
 
 			// Infrastructure monitoring — gated by "infra" feature.

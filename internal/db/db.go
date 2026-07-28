@@ -1994,6 +1994,38 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_wardrobe_items_parent ON wardrobe_items(parent_id);
 	CREATE INDEX IF NOT EXISTS idx_wardrobe_items_kid ON wardrobe_items(kid_id);
 
+	-- Grocery offers mirrored daily from the Tjek API behind mattilbud.no
+	-- (Hytte-offr). Offer content is public data (plaintext, SQL-filterable);
+	-- per-user watchlist keywords are encrypted like news keywords.
+	CREATE TABLE IF NOT EXISTS shop_offers (
+		id          TEXT PRIMARY KEY,
+		dealer_id   TEXT NOT NULL,
+		dealer_name TEXT NOT NULL DEFAULT '',
+		heading     TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
+		price       REAL NOT NULL DEFAULT 0,
+		pre_price   REAL NOT NULL DEFAULT 0,
+		currency    TEXT NOT NULL DEFAULT 'NOK',
+		unit_price  REAL NOT NULL DEFAULT 0,
+		unit_label  TEXT NOT NULL DEFAULT '',
+		image_url   TEXT NOT NULL DEFAULT '',
+		run_from    TEXT NOT NULL DEFAULT '',
+		run_till    TEXT NOT NULL DEFAULT '',
+		fetched_at  TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_shop_offers_dealer ON shop_offers(dealer_id);
+	CREATE INDEX IF NOT EXISTS idx_shop_offers_run_till ON shop_offers(run_till);
+
+	CREATE TABLE IF NOT EXISTS offer_watchlist (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		keyword    TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_offer_watchlist_user ON offer_watchlist(user_id);
+
 	-- Cache of LLM relevance scores. profile_version is bumped whenever the
 	-- user's feedback set changes, invalidating stale scores.
 	CREATE TABLE IF NOT EXISTS news_scores (
