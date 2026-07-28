@@ -406,8 +406,10 @@ describe('PokemonSet – set value sums owned variants', () => {
 
     renderPage()
     await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+    // A zero set value renders as '—' by design: 0 means "no owned variants
+    // priced yet", not "worth 0 kr" (see formatNok in PokemonSet.tsx).
     const valueBefore = screen.getByTestId('set-value').textContent ?? ''
-    expect(valueBefore).toMatch(/0/)
+    expect(valueBefore).toBe('—')
 
     fireEvent.click(screen.getByTestId('card-tile-sv1-1'))
     fireEvent.click(await screen.findByRole('button', { name: 'Mark as owned' }))

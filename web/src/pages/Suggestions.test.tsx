@@ -44,9 +44,23 @@ const namespaces: Record<string, JsonObject> = {
   suggestions: enSuggestions as unknown as JsonObject,
 }
 
+// t must be referentially stable across renders like real react-i18next's:
+// components put it in effect dependency arrays (e.g. NewSuggestionForm's
+// pages fetch), and a fresh function per render turns those effects into an
+// infinite render/fetch loop that OOMs the test worker.
+const tCache = new Map<string, ReturnType<typeof makeT>>()
+function cachedT(ns: string) {
+  let t = tCache.get(ns)
+  if (!t) {
+    t = makeT(namespaces[ns] ?? namespaces.common)
+    tCache.set(ns, t)
+  }
+  return t
+}
+
 vi.mock('react-i18next', () => ({
   useTranslation: (ns?: string) => ({
-    t: makeT(namespaces[ns ?? 'common'] ?? namespaces.common),
+    t: cachedT(ns ?? 'common'),
     i18n: { language: 'en' },
   }),
   Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,
@@ -84,7 +98,11 @@ function expandCard(id: number) {
 // need to interact with cards or assert on card content must expand the
 // surrounding group first.
 async function expandPendingGroup(slug: string = 'dashboard') {
-  const header = await screen.findByTestId(`suggestion-group-header-${slug}`)
+  // Scope to the visible tabpanel: inactive panels stay mounted (hidden), so
+  // the same group testid can exist once per tab and an unscoped query
+  // matches several. Role queries exclude hidden nodes, testid queries don't.
+  const panel = await screen.findByRole('tabpanel')
+  const header = await within(panel).findByTestId(`suggestion-group-header-${slug}`)
   if (header.getAttribute('aria-expanded') === 'false') {
     fireEvent.click(header)
   }
@@ -961,10 +979,12 @@ describe('Suggestions – New suggestion happy path', () => {
       body: 'Some body content',
     })
 
-    // Dialog closes and the list refreshes — the new suggestion appears.
+    // Dialog closes and the list refreshes — the new suggestion appears once
+    // its page group (collapsed by default on the Pending tab) is expanded.
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
+    await expandPendingGroup('weather')
     await waitFor(() => {
       expect(screen.getByText('My new idea')).toBeInTheDocument()
     })
@@ -1557,14 +1577,15 @@ describe('Suggestions – collapsed cards', () => {
     })
 
     // Switch away and back — the card should still be expanded (the page
-    // group also remains expanded across tab switches).
+    // group also remains expanded across tab switches). Inactive tab panels
+    // stay mounted but hidden, so assert visibility rather than presence.
     fireEvent.click(screen.getByRole('tab', { name: /Rejected/ }))
     await waitFor(() => {
-      expect(screen.queryByText('Persisted body')).not.toBeInTheDocument()
+      expect(screen.getByText('Persisted body')).not.toBeVisible()
     })
     fireEvent.click(screen.getByRole('tab', { name: /Pending/ }))
     await waitFor(() => {
-      expect(screen.getByText('Persisted body')).toBeInTheDocument()
+      expect(screen.getByText('Persisted body')).toBeVisible()
     })
   })
 })

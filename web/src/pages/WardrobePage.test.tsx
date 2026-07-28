@@ -135,8 +135,10 @@ describe('WardrobePage', () => {
     await waitFor(() => {
       expect(screen.getAllByText('Ola').length).toBeGreaterThan(0)
     })
-    // Size guidance from the backend is displayed.
-    expect(screen.getByText('100 cm')).toBeInTheDocument()
+    // Size guidance from the backend is displayed. The height also appears in
+    // the measurements history (mounted but hidden tab panel) once that fetch
+    // resolves, so assert on all matches rather than racing the second one.
+    expect(screen.getAllByText('100 cm').length).toBeGreaterThan(0)
     expect(screen.getByText('EU 26')).toBeInTheDocument()
     expect(screen.getByText('buy EU 27')).toBeInTheDocument()
     // Inventory items grouped under their category.

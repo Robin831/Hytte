@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 
@@ -35,6 +37,10 @@ jobs:
 
       - name: Frontend lint
         run: npm run lint
+        working-directory: web
+
+      - name: Frontend test
+        run: npm test
         working-directory: web
 
       - name: Frontend build

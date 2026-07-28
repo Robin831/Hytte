@@ -30,9 +30,13 @@ function makeT(translations: JsonObject) {
   }
 }
 
+// t is cached so it stays referentially stable across renders like real
+// react-i18next's — components may use it in effect dependency arrays.
+const stableT = makeT(enWorkhours as unknown as JsonObject)
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: makeT(enWorkhours as unknown as JsonObject),
+    t: stableT,
     i18n: { language: 'en' },
   }),
   Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,

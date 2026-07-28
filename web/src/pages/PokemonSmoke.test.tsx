@@ -236,9 +236,10 @@ describe('Pokémon smoke flow', () => {
     fireEvent.click(markButton)
 
     // 5) The owned count should increment to 1 / 1 and the tile should report
-    //    aria-pressed=true.
+    //    ownership. Tiles expose it via data-ownership (they open a detail
+    //    panel rather than toggling, so aria-pressed no longer applies).
     await waitFor(() => expect(screen.getByTestId('owned-count')).toHaveTextContent('1 / 1'))
-    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('card-tile-sv1-1')).toHaveAttribute('data-ownership', 'owned')
 
     // 6) The POST went out with the expected payload.
     const post = fetchMock.mock.calls.find(([url, init]) =>

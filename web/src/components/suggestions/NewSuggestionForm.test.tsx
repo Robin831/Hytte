@@ -35,9 +35,23 @@ const namespaceMap: Record<string, JsonObject> = {
   suggestions: enSuggestions as unknown as JsonObject,
 }
 
+// t must be referentially stable across renders like real react-i18next's:
+// NewSuggestionForm's pages-fetch effect depends on [open, t], and a fresh
+// function per render turns it into an infinite render/fetch loop that OOMs
+// the test worker.
+const tCache = new Map<string, ReturnType<typeof makeT>>()
+function cachedT(ns: string) {
+  let t = tCache.get(ns)
+  if (!t) {
+    t = makeT(namespaceMap[ns] ?? (enCommon as unknown as JsonObject))
+    tCache.set(ns, t)
+  }
+  return t
+}
+
 vi.mock('react-i18next', () => ({
   useTranslation: (ns: string = 'common') => ({
-    t: makeT(namespaceMap[ns] ?? (enCommon as unknown as JsonObject)),
+    t: cachedT(ns),
     i18n: { language: 'en' },
   }),
   Trans: ({ i18nKey }: { i18nKey: string }) => i18nKey,

@@ -103,26 +103,28 @@ describe('TodayView – widget sets', () => {
     vi.clearAllMocks()
   })
 
-  it('renders parent widgets (Weather, Work Hours, Sky Watch) for parent role', () => {
+  // The widget sets are lazy-loaded (React.lazy per role), so queries must
+  // await the chunk resolving before the widget titles exist in the DOM.
+  it('renders parent widgets (Weather, Work Hours, Sky Watch) for parent role', async () => {
     setAuth({ id: 1 }, { is_parent: true, is_child: false })
     renderPage()
-    expect(screen.getByText('Weather')).toBeInTheDocument()
-    expect(screen.getByText('Work Hours')).toBeInTheDocument()
-    expect(screen.getByText('Sky Watch')).toBeInTheDocument()
+    expect(await screen.findByText('Weather')).toBeInTheDocument()
+    expect(await screen.findByText('Work Hours')).toBeInTheDocument()
+    expect(await screen.findByText('Sky Watch')).toBeInTheDocument()
   })
 
-  it('renders kid widgets (Stars, Calendar) for kid role', () => {
+  it('renders kid widgets (Stars, Calendar) for kid role', async () => {
     setAuth({ id: 1 }, { is_parent: false, is_child: true })
     renderPage()
-    expect(screen.getByText('Stars')).toBeInTheDocument()
-    expect(screen.getByText('Calendar')).toBeInTheDocument()
+    expect(await screen.findByText('Stars')).toBeInTheDocument()
+    expect(await screen.findByText('Calendar')).toBeInTheDocument()
   })
 
-  it('renders guest widgets (Weather, Calendar) without Work Hours for guest role', () => {
+  it('renders guest widgets (Weather, Calendar) without Work Hours for guest role', async () => {
     setAuth(null, null)
     renderPage()
-    expect(screen.getByText('Weather')).toBeInTheDocument()
-    expect(screen.getByText('Calendar')).toBeInTheDocument()
+    expect(await screen.findByText('Weather')).toBeInTheDocument()
+    expect(await screen.findByText('Calendar')).toBeInTheDocument()
     expect(screen.queryByText('Work Hours')).not.toBeInTheDocument()
   })
 })

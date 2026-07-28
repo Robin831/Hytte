@@ -249,7 +249,9 @@ describe('FamilyChat – sending a message', () => {
       expect(postCalled).toBe(true)
       expect(textarea.value).toBe('')
     })
-    expect(postBody).toEqual({ body: 'Sent via composer' })
+    // The composer also sends a per-message client_id (random UUID) so the
+    // server can reconcile the optimistic message with the SSE broadcast.
+    expect(postBody).toEqual({ body: 'Sent via composer', client_id: expect.any(String) })
     expect(screen.getByText('Sent via composer')).toBeInTheDocument()
   })
 })

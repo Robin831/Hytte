@@ -363,13 +363,17 @@ describe('WorkoutContextModal', () => {
         { kind: 'interval', speed_kmph: 14, duration_sec: 60, repeats: 1, same_as_previous: false },
       ])
 
+      // The shared pause duration is split into minutes + seconds inputs
+      // (see SpeedPlanEditor's testIdPrefix rendering).
       const sharedPauseSpeed = screen.getByTestId('speed-plan-shared-pause-speed') as HTMLInputElement
-      const sharedPauseDuration = screen.getByTestId('speed-plan-shared-pause-duration') as HTMLInputElement
+      const sharedPauseMinutes = screen.getByTestId('speed-plan-shared-pause-duration-minutes') as HTMLInputElement
+      const sharedPauseSeconds = screen.getByTestId('speed-plan-shared-pause-duration-seconds') as HTMLInputElement
       expect(sharedPauseSpeed.value).toBe('6')
-      expect(sharedPauseDuration.value).toBe('30')
+      expect(sharedPauseMinutes.value).toBe('0')
+      expect(sharedPauseSeconds.value).toBe('30')
 
       fireEvent.change(sharedPauseSpeed, { target: { value: '5.5' } })
-      fireEvent.change(sharedPauseDuration, { target: { value: '45' } })
+      fireEvent.change(sharedPauseSeconds, { target: { value: '45' } })
 
       const body = await saveAndReadBody()
       const pauses = (body.speed_plan as Array<{ kind: string; speed_kmph: number; duration_sec: number }>)

@@ -76,10 +76,14 @@ function makeTrack(opts: { torch?: boolean } = {}) {
 }
 
 function makeStream(track: ReturnType<typeof makeTrack>['track']) {
-  return {
+  // Must be a real MediaStream instance: happy-dom type-checks assignments to
+  // video.srcObject, so a plain object cast would throw in the component.
+  const stream = new MediaStream()
+  Object.assign(stream, {
     getTracks: () => [track],
     getVideoTracks: () => [track],
-  } as unknown as MediaStream
+  })
+  return stream
 }
 
 // Save/restore navigator.mediaDevices descriptor so each describe block's

@@ -13,7 +13,10 @@ interface MockAudio {
 
 function installAudioMock(canPlay: (type: string) => '' | 'maybe' | 'probably') {
   const instances: MockAudio[] = []
-  const ctor = vi.fn().mockImplementation(() => {
+  // Must be a `function` expression, not an arrow: the engine calls
+  // `new Audio()`, and vitest constructs the implementation, which throws
+  // "not a constructor" for arrows.
+  const ctor = vi.fn().mockImplementation(function () {
     const a: MockAudio = {
       src: '',
       preload: '',
