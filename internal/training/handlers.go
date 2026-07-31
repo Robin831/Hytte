@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/hrzones"
@@ -512,19 +514,75 @@ func decodeCursor(token string) (*Cursor, error) {
 	return &Cursor{StartedAt: parts[0], ID: id}, nil
 }
 
+// Bounds on the workout list filter params. Values beyond these are trimmed
+// rather than rejected: a garbage filter should return an empty list, never a
+// 400 or a runaway query.
+const (
+	maxWorkoutFilterTags     = 20
+	maxWorkoutFilterTagLen   = 100
+	maxWorkoutFilterQueryLen = 200
+	maxWorkoutFilterSportLen = 64
+)
+
+// truncateRuneSafe truncates s to at most maxBytes bytes without splitting a
+// multi-byte UTF-8 rune at the boundary.
+func truncateRuneSafe(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	for maxBytes > 0 && !utf8.RuneStart(s[maxBytes]) {
+		maxBytes--
+	}
+	return s[:maxBytes]
+}
+
+// parseWorkoutFilter reads the `sport`, repeatable `tag`, and `q` query params
+// into a WorkoutFilter. Values are trimmed and clamped; unknown sports or tags
+// are passed through as-is and simply match nothing.
+func parseWorkoutFilter(q url.Values) WorkoutFilter {
+	filter := WorkoutFilter{}
+
+	sport := strings.TrimSpace(q.Get("sport"))
+	sport = truncateRuneSafe(sport, maxWorkoutFilterSportLen)
+	filter.Sport = sport
+
+	for _, tag := range q["tag"] {
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			continue
+		}
+		tag = truncateRuneSafe(tag, maxWorkoutFilterTagLen)
+		filter.Tags = append(filter.Tags, tag)
+		if len(filter.Tags) == maxWorkoutFilterTags {
+			break
+		}
+	}
+
+	query := strings.TrimSpace(q.Get("q"))
+	query = truncateRuneSafe(query, maxWorkoutFilterQueryLen)
+	filter.Query = query
+
+	return filter
+}
+
 // ListHandler handles GET /api/training/workouts.
 //
 // When a `limit` or `cursor` query param is present, it returns one bounded page
-// of workouts ordered started_at DESC, id DESC: `limit` sets the page size
-// (default 25, clamped to 100) and the opaque `cursor` walks older pages via
-// keyset pagination. The response is { workouts, next_cursor }, where
+// of matching workouts ordered started_at DESC, id DESC: `limit` sets the page
+// size (default 25, clamped to 100) and the opaque `cursor` walks older pages of
+// matches via keyset pagination. On this branch the optional `sport`, repeatable
+// `tag`, and `q` (title substring) params filter the whole workout history
+// server-side; they combine with AND, and multiple tags require the workout to
+// carry all of them. The response is { workouts, next_cursor }, where
 // next_cursor is null on the final page.
 //
 // When neither param is present, it preserves the legacy full-history response
 // (with next_cursor null) so other consumers of this endpoint — the Compare,
 // Stride, and Lactate pages and the dashboard fitness widget — keep receiving
-// every workout in a single response. Only the Training page opts into
-// pagination by sending ?limit=.
+// every workout in a single response. Filtering is a property of the paginated
+// list, so filter params are not applied on that branch: it always returns the
+// complete history. Only the Training page opts into pagination (and therefore
+// into filtering) by sending ?limit=.
 func ListHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -553,7 +611,7 @@ func ListHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		workouts, next, err := ListPaginated(db, user.ID, limit, cursor)
+		workouts, next, err := ListPaginated(db, user.ID, parseWorkoutFilter(q), limit, cursor)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workouts"})
 			return
@@ -570,6 +628,26 @@ func ListHandler(db *sql.DB) http.HandlerFunc {
 			"workouts":    workouts,
 			"next_cursor": nextCursor,
 		})
+	}
+}
+
+// TagsHandler handles GET /api/training/tags. It returns every distinct tag
+// across the user's whole workout history as { tags: [...] }, so the filter
+// chips are not limited to the pages the client happens to have loaded.
+func TagsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if user == nil {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+
+		tags, err := ListDistinctTags(db, user.ID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load tags"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"tags": tags})
 	}
 }
 

@@ -473,6 +473,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Use(auth.RequireFeature(db, "training"))
 				r.Get("/training/workouts", training.ListHandler(db))
 				r.Get("/training/workouts/latest", training.LatestHandler(db))
+				r.Get("/training/tags", training.TagsHandler(db))
 				r.Get("/training/events", training.StreamHandler(training.DefaultHub()))
 				r.Get("/training/workouts/{id}", training.GetHandler(db))
 				r.Put("/training/workouts/{id}", training.UpdateHandler(db))

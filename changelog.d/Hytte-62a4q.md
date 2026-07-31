@@ -1,0 +1,2 @@
+category: Changed
+- **Workout filters now search your whole training history** - The sport, tag, and text filters on the Training page are applied by the backend instead of narrowing only the pages already loaded, so a match deep in your history shows up and "Load more" pages through matching workouts. The tag chips now list every tag you have via a new `GET /api/training/tags` endpoint, and the search box is debounced so rapid typing no longer flickers the list. (Hytte-62a4q)

@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -290,6 +291,251 @@ func TestListHandler_InvalidCursorRejected(t *testing.T) {
 	ListHandler(database)(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for malformed cursor, got %d", rec.Code)
+	}
+}
+
+// listWorkouts calls ListHandler with a raw query string and returns the
+// response status, the ids in the page, and the next_cursor token ("" if null).
+func listWorkouts(t *testing.T, database *sql.DB, userID int64, query string) (int, []int64, string) {
+	t.Helper()
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/workouts"+query, nil), userID)
+	rec := httptest.NewRecorder()
+	ListHandler(database)(rec, req)
+
+	var resp struct {
+		Workouts []struct {
+			ID int64 `json:"id"`
+		} `json:"workouts"`
+		NextCursor *string `json:"next_cursor"`
+	}
+	if rec.Code == http.StatusOK {
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+	}
+	ids := make([]int64, len(resp.Workouts))
+	for i, w := range resp.Workouts {
+		ids[i] = w.ID
+	}
+	next := ""
+	if resp.NextCursor != nil {
+		next = *resp.NextCursor
+	}
+	return rec.Code, ids, next
+}
+
+func TestListHandler_FilterBySport(t *testing.T) {
+	database := setupTestDB(t)
+	run1, run2, _, _ := seedFilterFixture(t, database)
+
+	code, ids, _ := listWorkouts(t, database, 1, "?limit=25&sport=running")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	assertIDs(t, ids, run1, run2)
+}
+
+func TestListHandler_FilterByRepeatedTagParams(t *testing.T) {
+	database := setupTestDB(t)
+	run1, _, _, _ := seedFilterFixture(t, database)
+
+	code, ids, _ := listWorkouts(t, database, 1, "?limit=25&tag=easy&tag=ai%3Arecovery")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	assertIDs(t, ids, run1)
+}
+
+func TestListHandler_FilterByTextQuery(t *testing.T) {
+	database := setupTestDB(t)
+	_, _, ride, _ := seedFilterFixture(t, database)
+
+	code, ids, _ := listWorkouts(t, database, 1, "?limit=25&q=SPIN")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	assertIDs(t, ids, ride)
+}
+
+func TestListHandler_FilterPagesThroughMatches(t *testing.T) {
+	database := setupTestDB(t)
+
+	var runs []int64
+	for i := 0; i < 5; i++ {
+		insertFilterWorkout(t, database, 1, "cycling", "Ride", fmt.Sprintf("2024-04-%02dT09:00:00Z", i+1))
+		runs = append(runs, insertFilterWorkout(t, database, 1, "running", "Run", fmt.Sprintf("2024-04-%02dT10:00:00Z", i+1)))
+	}
+	for i, j := 0, len(runs)-1; i < j; i, j = i+1, j-1 {
+		runs[i], runs[j] = runs[j], runs[i]
+	}
+
+	var got []int64
+	cursor := ""
+	for page := 0; page < 10; page++ {
+		q := "?limit=2&sport=running"
+		if cursor != "" {
+			q += "&cursor=" + cursor
+		}
+		code, ids, next := listWorkouts(t, database, 1, q)
+		if code != http.StatusOK {
+			t.Fatalf("page %d: expected 200, got %d", page, code)
+		}
+		got = append(got, ids...)
+		if next == "" {
+			break
+		}
+		cursor = next
+	}
+	assertIDs(t, got, runs...)
+}
+
+func TestListHandler_FilterEmptyResultIsNotAnError(t *testing.T) {
+	database := setupTestDB(t)
+	seedFilterFixture(t, database)
+
+	code, ids, next := listWorkouts(t, database, 1, "?limit=25&sport=running&q=definitely-not-a-title")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	if len(ids) != 0 {
+		t.Fatalf("expected no matches, got %v", ids)
+	}
+	if next != "" {
+		t.Fatalf("expected null next_cursor, got %q", next)
+	}
+}
+
+func TestListHandler_GarbageFilterParamsDoNotError(t *testing.T) {
+	database := setupTestDB(t)
+	seedFilterFixture(t, database)
+
+	cases := []string{
+		"?limit=25&sport=" + strings.Repeat("x", 500),
+		"?limit=25&q=" + strings.Repeat("y", 500),
+		"?limit=25&q=%25%25%25",
+		"?limit=25&q=" + url.QueryEscape("'; DROP TABLE workouts; --"),
+		"?limit=25&tag=&tag=%20&tag=nope",
+		"?limit=25&sport=&q=&tag=",
+	}
+	for _, q := range cases {
+		code, _, _ := listWorkouts(t, database, 1, q)
+		if code != http.StatusOK {
+			t.Fatalf("query %q: expected 200, got %d", q, code)
+		}
+	}
+
+	// The table survived the injection attempt.
+	code, ids, _ := listWorkouts(t, database, 1, "?limit=25")
+	if code != http.StatusOK || len(ids) != 4 {
+		t.Fatalf("expected the seeded history intact, got status %d with %v", code, ids)
+	}
+}
+
+func TestListHandler_ManyTagParamsAreClamped(t *testing.T) {
+	database := setupTestDB(t)
+	seedFilterFixture(t, database)
+
+	q := "?limit=25"
+	for i := 0; i < maxWorkoutFilterTags+30; i++ {
+		q += fmt.Sprintf("&tag=t%d", i)
+	}
+	code, ids, _ := listWorkouts(t, database, 1, q)
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	if len(ids) != 0 {
+		t.Fatalf("expected no matches for nonsense tags, got %v", ids)
+	}
+}
+
+func TestListHandler_UnpaginatedIgnoresPaging(t *testing.T) {
+	database := setupTestDB(t)
+	seedFilterFixture(t, database)
+	for i := 0; i < 40; i++ {
+		insertFilterWorkout(t, database, 1, "running", "Run", fmt.Sprintf("2024-05-%02dT10:00:00Z", (i%28)+1))
+	}
+
+	// No limit/cursor — Compare/Trends/dashboard callers still get everything.
+	code, ids, next := listWorkouts(t, database, 1, "")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	if len(ids) != 44 {
+		t.Fatalf("expected the full unpaginated list of 44, got %d", len(ids))
+	}
+	if next != "" {
+		t.Fatalf("expected null next_cursor on the unpaginated branch, got %q", next)
+	}
+}
+
+// The legacy no-limit/no-cursor branch is the contract Compare, Stride, Lactate
+// and the dashboard widget rely on: it returns the complete history regardless
+// of any filter params, which only apply to the paginated list.
+func TestListHandler_UnpaginatedIgnoresFilterParams(t *testing.T) {
+	database := setupTestDB(t)
+	run1, run2, ride, swim := seedFilterFixture(t, database)
+
+	code, ids, _ := listWorkouts(t, database, 1, "?sport=running&tag=easy&q=spin")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	assertIDs(t, ids, run1, run2, ride, swim)
+}
+
+func TestTagsHandler(t *testing.T) {
+	database := setupTestDB(t)
+	if _, err := database.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'google-2')`); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	seedFilterFixture(t, database)
+	insertFilterWorkout(t, database, 2, "running", "Other Run", "2024-01-06T10:00:00Z", "someone-elses-tag")
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/tags", nil), 1)
+	rec := httptest.NewRecorder()
+	TagsHandler(database)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp struct {
+		Tags []string `json:"tags"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	want := []string{"ai:recovery", "auto:intervals", "easy", "hard"}
+	if len(resp.Tags) != len(want) {
+		t.Fatalf("expected %v, got %v", want, resp.Tags)
+	}
+	for i := range want {
+		if resp.Tags[i] != want[i] {
+			t.Fatalf("expected %v, got %v", want, resp.Tags)
+		}
+	}
+}
+
+func TestTagsHandler_EmptyReturnsArray(t *testing.T) {
+	database := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/tags", nil), 1)
+	rec := httptest.NewRecorder()
+	TagsHandler(database)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if body := strings.TrimSpace(rec.Body.String()); !strings.Contains(body, `"tags":[]`) {
+		t.Fatalf("expected an empty tags array, got %s", body)
+	}
+}
+
+func TestTagsHandler_Unauthenticated(t *testing.T) {
+	database := setupTestDB(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/training/tags", nil)
+	rec := httptest.NewRecorder()
+	TagsHandler(database)(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
 	}
 }
 

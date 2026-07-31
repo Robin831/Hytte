@@ -98,7 +98,7 @@ Hytte/
   - `encryption.DecryptField(ciphertext)` → plaintext for use in code
   - Handle decrypt errors gracefully — if decrypt fails, the value may be legacy plaintext (return as-is with a log warning)
 - **Fields that MUST be encrypted on write and decrypted on read:**
-  - Workout: title, notes
+  - Workout: notes (title is intentionally plaintext — needed for server-side SQL LIKE search)
   - Notes: title, content
   - Lactate: stage data
   - Push subscriptions: endpoint URLs

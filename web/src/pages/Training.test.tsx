@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Training from './Training'
 import type { Workout } from '../types/training'
@@ -68,12 +68,14 @@ vi.mock('react-i18next', async () => {
   }
 })
 
-vi.mock('../auth', () => ({
-  useAuth: () => ({
-    user: { id: 1, email: 'a@b.c', name: 'Tester', is_admin: true, features: {} },
-    hasFeature: () => false,
-  }),
-}))
+vi.mock('../auth', () => {
+  // The real AuthContext holds `user` in state, so it is referentially stable
+  // across re-renders. Keep the stub stable too — a fresh object per call would
+  // retrigger every effect that depends on `user` on each render.
+  const user = { id: 1, email: 'a@b.c', name: 'Tester', is_admin: true, features: {} }
+  const auth = { user, hasFeature: () => false }
+  return { useAuth: () => auth }
+})
 
 vi.mock('../components/TagBadge', () => ({
   default: ({ tag }: { tag: string }) => <span data-testid={`tag-${tag}`}>{tag}</span>,
@@ -125,31 +127,81 @@ const WORKOUTS: Workout[] = [
   makeWorkout({ id: 4, title: 'Pool Laps', sport: 'swimming', tags: [] }),
 ]
 
-function mockFetch(workouts: Workout[]) {
+// Tags the "server" reports for the user. Deliberately includes a tag that no
+// loaded workout carries, so the chips can be shown to come from the endpoint
+// rather than from the loaded pages.
+const ALL_TAGS = ['ai:recovery', 'auto:intervals', 'easy', 'hard', 'deep-history']
+
+// Must match SEARCH_DEBOUNCE_MS in Training.tsx.
+const SEARCH_DEBOUNCE_MS = 300
+
+// Requests the component issued, in order. Reset per test.
+let requests: string[] = []
+
+function jsonResponse(body: unknown) {
+  return Promise.resolve({ ok: true, json: () => Promise.resolve(body) })
+}
+
+// mockFetch stands in for the backend and applies the same filter semantics the
+// server does (sport/tag/text AND-combined, tags requiring every selected tag)
+// plus keyset paging over the *matches*, so the tests exercise the real
+// request-driven flow rather than any client-side narrowing.
+function mockFetch(workouts: Workout[], tags: string[] = ALL_TAGS) {
   return vi.fn().mockImplementation((url: string) => {
-    if (url.includes('/api/training/workouts/latest')) {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ latest_id: workouts.length > 0 ? Math.max(...workouts.map(w => w.id)) : 0 }),
+    requests.push(url)
+    const parsed = new URL(url, 'http://localhost')
+    const path = parsed.pathname
+    const params = parsed.searchParams
+
+    if (path === '/api/training/workouts/latest') {
+      return jsonResponse({
+        latest_id: workouts.length > 0 ? Math.max(...workouts.map(w => w.id)) : 0,
       })
     }
-    if (url.includes('/api/training/workouts')) {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ workouts, next_cursor: null }),
-      })
+    if (path === '/api/training/tags') {
+      return jsonResponse({ tags })
     }
-    if (url.includes('/api/training/summary')) {
-      return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve({ summaries: [] }),
-      })
+    if (path === '/api/training/workouts') {
+      const sport = params.get('sport') ?? ''
+      const wanted = params.getAll('tag')
+      const q = (params.get('q') ?? '').toLowerCase()
+      const matches = workouts.filter(
+        w =>
+          (!sport || w.sport === sport) &&
+          wanted.every(tag => (w.tags ?? []).includes(tag)) &&
+          (!q || w.title.toLowerCase().includes(q)),
+      )
+
+      // Without limit/cursor the backend serves the legacy full history and
+      // ignores the filter params (Compare/Trends/dashboard contract).
+      const limit = Number(params.get('limit') ?? '0')
+      if (!limit) return jsonResponse({ workouts, next_cursor: null })
+
+      const cursor = params.get('cursor')
+      const start = cursor ? matches.findIndex(w => String(w.id) === cursor) + 1 : 0
+      const page = matches.slice(start, start + limit)
+      const next = start + limit < matches.length ? String(page[page.length - 1].id) : null
+      return jsonResponse({ workouts: page, next_cursor: next })
     }
-    if (url.includes('/api/training/events')) {
+    if (path === '/api/training/summary') {
+      return jsonResponse({ summaries: [] })
+    }
+    if (path === '/api/training/events') {
       return Promise.resolve({ ok: true })
     }
     return Promise.resolve({ ok: false, json: () => Promise.resolve({}) })
   })
+}
+
+// listRequests returns just the workout-list requests, which are the ones the
+// filters drive.
+function listRequests() {
+  return requests.filter(u => new URL(u, 'http://localhost').pathname === '/api/training/workouts')
+}
+
+function lastListRequest() {
+  const all = listRequests()
+  return new URL(all[all.length - 1], 'http://localhost')
 }
 
 function renderTraining() {
@@ -160,15 +212,19 @@ function renderTraining() {
   )
 }
 
+function stubEventSource() {
+  vi.stubGlobal('EventSource', class {
+    onopen: (() => void) | null = null
+    addEventListener() {}
+    close() {}
+  })
+}
+
 describe('Training filter bar', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
-    // Stub EventSource globally
-    vi.stubGlobal('EventSource', class {
-      onopen: (() => void) | null = null
-      addEventListener() {}
-      close() {}
-    })
+    requests = []
+    stubEventSource()
     vi.stubGlobal('fetch', mockFetch(WORKOUTS))
   })
 
@@ -181,83 +237,135 @@ describe('Training filter bar', () => {
     for (const w of WORKOUTS) {
       expect(await screen.findByText(w.title)).toBeInTheDocument()
     }
+    const first = lastListRequest()
+    expect(first.searchParams.get('limit')).toBe('25')
+    expect(first.searchParams.get('sport')).toBeNull()
+    expect(first.searchParams.get('q')).toBeNull()
+    expect(first.searchParams.getAll('tag')).toEqual([])
   })
 
-  it('filters by sport', async () => {
+  it('issues exactly one list request on mount', async () => {
+    renderTraining()
+    await screen.findByText('Morning Run')
+
+    // Let the search debounce window elapse: an untouched search box must not
+    // commit an (identical) empty query and refetch page 1.
+    await new Promise(resolve => setTimeout(resolve, SEARCH_DEBOUNCE_MS + 100))
+    expect(listRequests().length).toBe(1)
+  })
+
+  it('lists every tag the user has, not only tags on loaded workouts', async () => {
+    renderTraining()
+    await screen.findByText('Morning Run')
+
+    // "deep-history" is on no loaded workout — it can only come from the
+    // /api/training/tags endpoint.
+    expect(await screen.findByRole('button', { name: 'deep-history' })).toBeInTheDocument()
+    expect(requests.some(u => u.startsWith('/api/training/tags'))).toBe(true)
+  })
+
+  it('requests the backend with sport= and resets to page 1 when a sport is picked', async () => {
     renderTraining()
     await screen.findByText('Morning Run')
 
     const select = screen.getByLabelText('Filter by sport') as HTMLSelectElement
     fireEvent.change(select, { target: { value: 'cycling' } })
 
-    expect(screen.getByText('Easy Spin')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(lastListRequest().searchParams.get('sport')).toBe('cycling')
+    })
+    const req = lastListRequest()
+    expect(req.searchParams.get('cursor')).toBeNull()
+
+    expect(await screen.findByText('Easy Spin')).toBeInTheDocument()
     expect(screen.queryByText('Morning Run')).not.toBeInTheDocument()
     expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
     expect(screen.queryByText('Pool Laps')).not.toBeInTheDocument()
   })
 
-  it('filters by title search query', async () => {
+  it('sends one tag param per selected tag and combines them with AND', async () => {
     renderTraining()
     await screen.findByText('Morning Run')
 
+    fireEvent.click(screen.getByRole('button', { name: 'easy' }))
+    await waitFor(() => {
+      expect(lastListRequest().searchParams.getAll('tag')).toEqual(['easy'])
+    })
+    expect(await screen.findByText('Easy Spin')).toBeInTheDocument()
+    expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'ai:recovery' }))
+    await waitFor(() => {
+      expect(lastListRequest().searchParams.getAll('tag')).toEqual(['easy', 'ai:recovery'])
+    })
+    expect(await screen.findByText('Morning Run')).toBeInTheDocument()
+    expect(screen.queryByText('Easy Spin')).not.toBeInTheDocument()
+  })
+
+  it('debounces typing into a single q= request', async () => {
+    renderTraining()
+    await screen.findByText('Morning Run')
+    const before = listRequests().length
+
     const input = screen.getByPlaceholderText(/search by title/i)
+    fireEvent.change(input, { target: { value: 'p' } })
+    fireEvent.change(input, { target: { value: 'po' } })
+    fireEvent.change(input, { target: { value: 'poo' } })
     fireEvent.change(input, { target: { value: 'pool' } })
 
-    expect(screen.getByText('Pool Laps')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(lastListRequest().searchParams.get('q')).toBe('pool')
+    })
+    // Four keystrokes, one request.
+    expect(listRequests().length).toBe(before + 1)
+
+    expect(await screen.findByText('Pool Laps')).toBeInTheDocument()
     expect(screen.queryByText('Morning Run')).not.toBeInTheDocument()
   })
 
-  it('filters by tag (AND across multiple tags)', async () => {
+  it('combines sport + tag + query filters with AND in one request', async () => {
     renderTraining()
     await screen.findByText('Morning Run')
 
-    const easyBtn = screen.getByRole('button', { name: /easy/i, pressed: false })
-    fireEvent.click(easyBtn)
+    fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'running' } })
+    fireEvent.click(screen.getByRole('button', { name: 'easy' }))
+    fireEvent.change(screen.getByPlaceholderText(/search by title/i), { target: { value: 'morning' } })
 
-    expect(screen.getByText('Morning Run')).toBeInTheDocument()
-    expect(screen.getByText('Easy Spin')).toBeInTheDocument()
-    expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
+    await waitFor(() => {
+      const req = lastListRequest()
+      expect(req.searchParams.get('sport')).toBe('running')
+      expect(req.searchParams.getAll('tag')).toEqual(['easy'])
+      expect(req.searchParams.get('q')).toBe('morning')
+    })
 
-    const aiRecoveryBtn = screen.getByRole('button', { name: /ai:recovery/i })
-    fireEvent.click(aiRecoveryBtn)
-
-    expect(screen.getByText('Morning Run')).toBeInTheDocument()
-    expect(screen.queryByText('Easy Spin')).not.toBeInTheDocument()
-  })
-
-  it('combines sport + tag + query filters with AND', async () => {
-    renderTraining()
-    await screen.findByText('Morning Run')
-
-    const select = screen.getByLabelText('Filter by sport') as HTMLSelectElement
-    fireEvent.change(select, { target: { value: 'running' } })
-
-    const easyBtn = screen.getByRole('button', { name: /easy/i, pressed: false })
-    fireEvent.click(easyBtn)
-
-    const input = screen.getByPlaceholderText(/search by title/i)
-    fireEvent.change(input, { target: { value: 'morning' } })
-
-    expect(screen.getByText('Morning Run')).toBeInTheDocument()
+    expect(await screen.findByText('Morning Run')).toBeInTheDocument()
     expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
     expect(screen.queryByText('Easy Spin')).not.toBeInTheDocument()
   })
 
-  it('shows empty state when no workouts match and offers clear-filters', async () => {
+  it('shows the no-matches state when the backend returns nothing, and clears back to page 1', async () => {
     renderTraining()
     await screen.findByText('Morning Run')
 
-    const input = screen.getByPlaceholderText(/search by title/i)
-    fireEvent.change(input, { target: { value: 'nonexistent workout title xyz' } })
+    fireEvent.change(screen.getByPlaceholderText(/search by title/i), {
+      target: { value: 'nonexistent workout title xyz' },
+    })
 
-    expect(screen.getByText('No workouts match your filters')).toBeInTheDocument()
+    expect(await screen.findByText('No workouts match your filters')).toBeInTheDocument()
 
     const clearBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Clear filters'))
     expect(clearBtn).toBeTruthy()
     fireEvent.click(clearBtn!)
 
+    await waitFor(() => {
+      const req = lastListRequest()
+      expect(req.searchParams.get('q')).toBeNull()
+      expect(req.searchParams.get('sport')).toBeNull()
+      expect(req.searchParams.getAll('tag')).toEqual([])
+      expect(req.searchParams.get('cursor')).toBeNull()
+    })
     for (const w of WORKOUTS) {
-      expect(screen.getByText(w.title)).toBeInTheDocument()
+      expect(await screen.findByText(w.title)).toBeInTheDocument()
     }
   })
 
@@ -265,10 +373,9 @@ describe('Training filter bar', () => {
     renderTraining()
     await screen.findByText('Morning Run')
 
-    const select = screen.getByLabelText('Filter by sport') as HTMLSelectElement
-    fireEvent.change(select, { target: { value: 'swimming' } })
+    fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'swimming' } })
 
-    expect(screen.getByText('Pool Laps')).toBeInTheDocument()
+    expect(await screen.findByText('Pool Laps')).toBeInTheDocument()
     expect(screen.queryByText('Morning Run')).not.toBeInTheDocument()
 
     const clearBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Clear filters'))
@@ -276,7 +383,7 @@ describe('Training filter bar', () => {
     fireEvent.click(clearBtn!)
 
     for (const w of WORKOUTS) {
-      expect(screen.getByText(w.title)).toBeInTheDocument()
+      expect(await screen.findByText(w.title)).toBeInTheDocument()
     }
   })
 
@@ -284,11 +391,218 @@ describe('Training filter bar', () => {
     renderTraining()
     await screen.findByText('Morning Run')
 
-    const easyBtn = screen.getByRole('button', { name: /easy/i, pressed: false })
-    fireEvent.click(easyBtn)
-    expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'easy' }))
+    await waitFor(() => {
+      expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
+    })
 
-    fireEvent.click(easyBtn)
-    expect(screen.getByText('Hill Intervals')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'easy' }))
+    expect(await screen.findByText('Hill Intervals')).toBeInTheDocument()
+  })
+})
+
+describe('Training filtered pagination', () => {
+  // 30 runs and 30 rides, interleaved: a filtered page can only be assembled by
+  // the backend, and paging must walk matches rather than raw history.
+  const MANY: Workout[] = []
+  for (let i = 0; i < 30; i++) {
+    MANY.push(makeWorkout({ id: i * 2 + 1, title: `Run ${i}`, sport: 'running', tags: ['easy'] }))
+    MANY.push(makeWorkout({ id: i * 2 + 2, title: `Ride ${i}`, sport: 'cycling', tags: [] }))
+  }
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    requests = []
+    stubEventSource()
+    vi.stubGlobal('fetch', mockFetch(MANY, ['easy']))
+  })
+
+  afterAll(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('sends the cursor together with the active filters when loading more', async () => {
+    renderTraining()
+    await screen.findByText('Run 0')
+
+    fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'running' } })
+    await waitFor(() => {
+      expect(lastListRequest().searchParams.get('sport')).toBe('running')
+    })
+    // 30 matching runs, page size 25 — a second page of matches remains.
+    const loadMore = await screen.findByRole('button', { name: /load more/i })
+
+    fireEvent.click(loadMore)
+    await waitFor(() => {
+      const req = lastListRequest()
+      expect(req.searchParams.get('cursor')).toBeTruthy()
+      expect(req.searchParams.get('sport')).toBe('running')
+    })
+
+    // The tail of the matching runs is appended, and the control disappears
+    // once next_cursor is null for the filtered set.
+    expect(await screen.findByText('Run 29')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument()
+    })
+    expect(screen.queryByText('Ride 0')).not.toBeInTheDocument()
+  })
+
+  it('drops an in-flight "load more" when the filters change underneath it', async () => {
+    const base = mockFetch(MANY, ['easy'])
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    let cursorFetches = 0
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      const parsed = new URL(url, 'http://localhost')
+      if (parsed.pathname === '/api/training/workouts' && parsed.searchParams.get('cursor')) {
+        // Hold the append open so a filter change can land while it is still
+        // in flight, with its cursor pointing into the old result set.
+        cursorFetches++
+        return gate.then(() => base(url))
+      }
+      return base(url)
+    }))
+
+    renderTraining()
+    await screen.findByText('Run 0')
+
+    fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'running' } })
+    const loadMore = await screen.findByRole('button', { name: /load more/i })
+    fireEvent.click(loadMore)
+    await waitFor(() => { expect(cursorFetches).toBe(1) })
+
+    fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'cycling' } })
+    expect(await screen.findByText('Ride 0')).toBeInTheDocument()
+
+    await act(async () => {
+      release()
+      await new Promise(resolve => setTimeout(resolve, 20))
+    })
+
+    // The superseded page of runs must not be appended on top of the rides.
+    expect(screen.queryByText('Run 29')).not.toBeInTheDocument()
+    expect(screen.queryByText('Run 0')).not.toBeInTheDocument()
+    expect(screen.getByText('Ride 0')).toBeInTheDocument()
+  })
+})
+
+describe('Training zero-workout user', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    requests = []
+    stubEventSource()
+    vi.stubGlobal('fetch', mockFetch([], []))
+  })
+
+  afterAll(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('shows the empty state when the user has no workouts', async () => {
+    renderTraining()
+    expect(await screen.findByText('No workouts yet')).toBeInTheDocument()
+    expect(screen.queryByText('Workouts')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /trends/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /compare/i })).not.toBeInTheDocument()
+  })
+})
+
+describe('Training error handling', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    requests = []
+    stubEventSource()
+  })
+
+  afterAll(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('clears stale workouts when a filtered request fails', async () => {
+    const base = mockFetch(WORKOUTS)
+    vi.stubGlobal('fetch', base)
+
+    renderTraining()
+    await screen.findByText('Morning Run')
+
+    // Make the next workout-list request fail.
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      const parsed = new URL(url, 'http://localhost')
+      if (parsed.pathname === '/api/training/workouts') {
+        return Promise.resolve({ ok: false, json: () => Promise.resolve({ error: 'boom' }) })
+      }
+      return base(url)
+    }))
+
+    fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'cycling' } })
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to load workouts')).toBeInTheDocument()
+    })
+    // Stale workouts from the previous filter must not remain visible.
+    expect(screen.queryByText('Morning Run')).not.toBeInTheDocument()
+    expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
+  })
+})
+
+describe('Training new-workouts banner', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    requests = []
+  })
+
+  afterAll(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('shows banner when SSE fires and loads new workouts on click', async () => {
+    const base = mockFetch(WORKOUTS)
+    let onWorkoutNew: ((e: MessageEvent) => void) | null = null
+
+    // Don't auto-fire onopen — let the filter-independent effect set the
+    // baseline latestWorkoutIdRef first so the SSE event triggers the banner
+    // via a genuine id > seen comparison.
+    vi.stubGlobal('EventSource', class {
+      onopen: (() => void) | null = null
+      addEventListener(event: string, handler: (e: MessageEvent) => void) {
+        if (event === 'workout_new') onWorkoutNew = handler
+      }
+      close() {}
+    })
+    vi.stubGlobal('fetch', base)
+
+    renderTraining()
+    await screen.findByText('Morning Run')
+
+    // Simulate a new workout arriving.
+    const newWorkout = makeWorkout({
+      id: 99,
+      title: 'New Upload',
+      sport: 'running',
+      started_at: '2026-12-01T08:00:00Z',
+    })
+    const allWorkouts = [newWorkout, ...WORKOUTS]
+    vi.stubGlobal('fetch', mockFetch(allWorkouts))
+
+    // Fire the SSE event with a higher id than the initial baseline (4).
+    await act(async () => {
+      onWorkoutNew?.(new MessageEvent('workout_new', {
+        data: JSON.stringify({ latest_id: 99 }),
+      }))
+    })
+
+    // Banner should appear.
+    const banner = await screen.findByText(/New workouts available/)
+    expect(banner).toBeInTheDocument()
+
+    // Click the banner to load new workouts.
+    fireEvent.click(banner)
+
+    expect(await screen.findByText('New Upload')).toBeInTheDocument()
+    // Banner should be dismissed.
+    await waitFor(() => {
+      expect(screen.queryByText(/New workouts available/)).not.toBeInTheDocument()
+    })
   })
 })
