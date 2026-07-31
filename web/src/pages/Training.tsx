@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Dumbbell, Upload, TrendingUp, BarChart3, RefreshCw, X, Database } from 'lucide-react'
 import { useAuth } from '../auth'
@@ -8,6 +8,7 @@ import { formatDistance, formatDuration, formatPace } from '../utils/training'
 import type { Workout, WeeklySummary } from '../types/training'
 import TagBadge from '../components/TagBadge'
 import WorkoutFilterBar from '../components/WorkoutFilterBar'
+import { useTrainingListCache, isReloadNavigation } from '../hooks/useTrainingListCache'
 
 // Page size for the paginated workout list. The list endpoint clamps this
 // server-side; keeping it modest bounds the initial payload and DOM size so a
@@ -17,6 +18,46 @@ const PAGE_SIZE = 25
 // Debounce for the title search box, so typing issues one request per pause
 // rather than one per keystroke.
 const SEARCH_DEBOUNCE_MS = 300
+
+// Trailing debounce for persisting the scroll offset. Long enough that a flick
+// scroll writes once rather than once per frame, short enough that a click into
+// a workout right after scrolling still records where the user was.
+const SCROLL_SAVE_DEBOUNCE_MS = 250
+
+// compareWorkouts orders two workouts the way the list endpoint does
+// (started_at DESC, id DESC), so merged-in workouts land in the same position
+// the server would have put them.
+function compareWorkouts(a: Workout, b: Workout): number {
+  if (a.started_at !== b.started_at) return a.started_at < b.started_at ? 1 : -1
+  return b.id - a.id
+}
+
+// mergeFirstPage folds a freshly fetched page 1 into an already-loaded list
+// instead of replacing it, which is what lets a restored list keep the older
+// pages the user paged in. Matching ids are replaced (edits), workouts the page
+// introduces are inserted in order (uploads), and cached workouts that fall
+// inside the window the page covers but are absent from it are dropped
+// (deletes). Cached workouts older than the window are left alone: page 1 says
+// nothing about them.
+function mergeFirstPage(prev: Workout[], page: Workout[], pageExhausted: boolean): Workout[] {
+  const byId = new Map(page.map(w => [w.id, w]))
+  const oldest = page.length > 0 ? page[page.length - 1] : null
+  const kept = prev.filter(w => {
+    const fresh = byId.get(w.id)
+    if (fresh) return true
+    // next_cursor === null means page 1 was the entire result set, so anything
+    // it omits no longer exists (or no longer matches).
+    if (pageExhausted) return false
+    if (!oldest) return true
+    return compareWorkouts(w, oldest) > 0
+  })
+  const merged = kept.map(w => byId.get(w.id) ?? w)
+  const existing = new Set(merged.map(w => w.id))
+  const added = page.filter(w => !existing.has(w.id))
+  // Sorting rather than prepending: a backdated .fit import (or an edit that
+  // moved a workout's start time) belongs in the middle of the list, not on top.
+  return [...added, ...merged].sort(compareWorkouts)
+}
 
 const sportIcons: Record<string, string> = {
   running: '🏃',
@@ -33,11 +74,25 @@ const sportIcons: Record<string, string> = {
 export default function Training() {
   const { user } = useAuth()
   const { t } = useTranslation(['training', 'common'])
-  const [workouts, setWorkouts] = useState<Workout[]>([])
-  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const listCache = useTrainingListCache(user?.id)
+
+  // Snapshot of the list as it was when the user last left this page in this
+  // tab, read once before the first paint so a return from a workout detail
+  // renders the already-loaded pages immediately. A reload (F5) deliberately
+  // skips it: sessionStorage survives F5, but asking for the page again means
+  // asking for fresh data.
+  const [hydrated] = useState(() => {
+    if (isReloadNavigation()) return null
+    const snapshot = listCache.read()
+    return snapshot && snapshot.workouts.length > 0 ? snapshot : null
+  })
+
+  const [workouts, setWorkouts] = useState<Workout[]>(hydrated?.workouts ?? [])
+  const [nextCursor, setNextCursor] = useState<string | null>(hydrated?.nextCursor ?? null)
   const [loadingMore, setLoadingMore] = useState(false)
   const [summaries, setSummaries] = useState<WeeklySummary[]>([])
-  const [loading, setLoading] = useState(true)
+  // A restored list is already on screen, so the skeleton would only flash.
+  const [loading, setLoading] = useState(hydrated === null)
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState<{ imported: number; errors: string[] } | null>(null)
@@ -46,10 +101,16 @@ export default function Training() {
   const [hasNewWorkouts, setHasNewWorkouts] = useState(false)
   const [backfilling, setBackfilling] = useState(false)
   const [backfillResult, setBackfillResult] = useState<string | null>(null)
-  const [hasAnyWorkouts, setHasAnyWorkouts] = useState(false)
+  const [hasAnyWorkouts, setHasAnyWorkouts] = useState(hydrated !== null)
   const [availableTags, setAvailableTags] = useState<string[]>([])
-  const latestWorkoutIdRef = useRef<number | null>(null)
+  const latestWorkoutIdRef = useRef<number | null>(hydrated?.latestWorkoutId ?? null)
   const hasNewWorkoutsRef = useRef(false)
+
+  // Armed while the restored list is still authoritative. The first page-1 load
+  // after a hydrated mount is a background refresh that merges into the restored
+  // pages; any filter change or explicit refresh disarms it, because those own
+  // the list outright and must replace it.
+  const mergeArmedRef = useRef(hydrated !== null)
 
   // Filter state. These are request parameters, not a client-side narrowing of
   // the loaded pages: changing any of them refetches page 1 from the backend so
@@ -137,25 +198,39 @@ export default function Training() {
     const requestId = ++listRequestIdRef.current
     let cancelled = false
     const isCurrent = () => !cancelled && requestId === listRequestIdRef.current
+    // Merge only while the restored list is untouched by a filter or a refresh.
+    // The check itself disarms: once a filter has been applied, later loads
+    // replace even after the filters are cleared again.
+    const merge = mergeArmedRef.current && filterParams === '' && refreshTick === 0
+    if (!merge) mergeArmedRef.current = false
     ;(async () => {
       // Drop the previous filter's cursor up front: it points into a different
       // result set, so "Load more" must not stay clickable with it while page 1
-      // of the new filter is in flight.
-      setNextCursor(null)
+      // of the new filter is in flight. A background refresh keeps its cursor —
+      // the restored pages it points past are still on screen.
+      if (!merge) setNextCursor(null)
       try {
         const res = await fetch(workoutsUrl(null), { credentials: 'include' })
         if (!isCurrent()) return
         if (!res.ok) {
-          setWorkouts([])
+          // A failed background refresh leaves the restored list alone: it is
+          // the last thing the user actually saw, and dropping it would be a
+          // worse answer than showing it alongside the error.
+          if (!merge) setWorkouts([])
           setError(t('errors.failedToLoadWorkouts'))
           return
         }
         const data = await res.json()
         if (!isCurrent()) return
         const list: Workout[] = data.workouts || []
-        setWorkouts(list)
-        setNextCursor(data.next_cursor ?? null)
-        setHasAnyWorkouts(list.length > 0 || filtersActive)
+        if (merge) {
+          setWorkouts(prev => mergeFirstPage(prev, list, (data.next_cursor ?? null) === null))
+          setHasAnyWorkouts(list.length > 0 || filtersActive)
+        } else {
+          setWorkouts(list)
+          setNextCursor(data.next_cursor ?? null)
+          setHasAnyWorkouts(list.length > 0 || filtersActive)
+        }
       } catch {
         if (isCurrent()) setError(t('errors.failedToLoadWorkouts'))
       } finally {
@@ -163,7 +238,7 @@ export default function Training() {
       }
     })()
     return () => { cancelled = true }
-  }, [user, refreshTick, workoutsUrl, filtersActive, t])
+  }, [user, refreshTick, workoutsUrl, filterParams, filtersActive, t])
 
   // Filter-independent page data: weekly summaries, the tag chip source, and
   // the new-workout baseline. The baseline comes from the cheap /latest
@@ -205,6 +280,66 @@ export default function Training() {
     })()
     return () => { cancelled = true }
   }, [user, refreshTick, t])
+
+  // Persist the loaded pages so leaving for a workout detail and coming back
+  // restores them. Only the unfiltered list is cached — filter state is not
+  // restored, so a snapshot taken under a filter would come back as a silently
+  // narrowed history. While a filter is active the snapshot is dropped instead,
+  // which just means the next mount does a normal fresh load.
+  useEffect(() => {
+    if (!user) return
+    if (filterParams !== '') {
+      listCache.clear()
+      return
+    }
+    if (loading || workouts.length === 0) return
+    listCache.write({
+      workouts,
+      nextCursor,
+      latestWorkoutId: latestWorkoutIdRef.current,
+    })
+  }, [user, filterParams, loading, workouts, nextCursor, listCache])
+
+  // Restore the scroll offset once the restored rows are in the DOM, in a layout
+  // effect so the jump happens before the browser paints. Runs at most once per
+  // mount: later renders (the background refresh, "load more") must not yank the
+  // page back.
+  const pendingScrollRef = useRef(hydrated?.scrollY ?? 0)
+  const scrollRestoredRef = useRef(hydrated === null)
+  useLayoutEffect(() => {
+    if (scrollRestoredRef.current || workouts.length === 0) return
+    scrollRestoredRef.current = true
+    const top = pendingScrollRef.current
+    if (top > 0 && typeof window.scrollTo === 'function') {
+      window.scrollTo({ top, behavior: 'auto' })
+    }
+  }, [workouts])
+
+  // Record where the user is, debounced while scrolling and flushed on unmount
+  // so a click straight into a workout detail still captures the offset.
+  useEffect(() => {
+    if (!user) return
+    let timer: ReturnType<typeof setTimeout> | undefined
+    // Only attach the offset to a snapshot that already holds a list: with
+    // nothing to restore, an offset on its own would just be litter.
+    const saveScroll = () => {
+      if (!listCache.read()) return
+      listCache.write({ scrollY: window.scrollY })
+    }
+    const onScroll = () => {
+      if (timer) return
+      timer = setTimeout(() => {
+        timer = undefined
+        saveScroll()
+      }, SCROLL_SAVE_DEBOUNCE_MS)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      if (timer) clearTimeout(timer)
+      saveScroll()
+    }
+  }, [user, listCache])
 
   // handleLoadMore appends the next older page of *matching* workouts using the
   // keyset cursor returned by the list endpoint, deduplicating by id at the page
