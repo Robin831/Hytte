@@ -137,11 +137,11 @@ export default function Training() {
     const requestId = ++listRequestIdRef.current
     let cancelled = false
     const isCurrent = () => !cancelled && requestId === listRequestIdRef.current
-    // Drop the previous filter's cursor up front: it points into a different
-    // result set, so "Load more" must not stay clickable with it while page 1
-    // of the new filter is in flight.
-    setNextCursor(null)
     ;(async () => {
+      // Drop the previous filter's cursor up front: it points into a different
+      // result set, so "Load more" must not stay clickable with it while page 1
+      // of the new filter is in flight.
+      setNextCursor(null)
       try {
         const res = await fetch(workoutsUrl(null), { credentials: 'include' })
         if (!isCurrent()) return
