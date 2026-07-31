@@ -936,6 +936,13 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.With(auth.RequireAdmin()).Post("/offers/refresh", offers.HandleRefresh(db))
 			})
 
+			// Recipes — gated by "recipes" feature. The store landed in
+			// Hytte-evi4c; the /api/recipes/* handlers are wired into this
+			// group by the follow-up sub-task.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "recipes"))
+			})
+
 			// Infrastructure monitoring — gated by "infra" feature.
 			r.Group(func(r chi.Router) {
 				r.Use(auth.RequireFeature(db, "infra"))

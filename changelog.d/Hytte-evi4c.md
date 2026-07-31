@@ -1,0 +1,2 @@
+category: Added
+- **Recipes backend foundation** - Added the `recipes` feature flag (off by default), the recipe/ingredient/step/tag/cook/meal-plan schema, and a store with CRUD, tag filtering, servings scaling, ratings, a cooking log, and seasonal "cook again" suggestions. Recipe titles, notes, ingredient lines and step text are encrypted at rest; the recipes pages and API handlers land in follow-up work. (Hytte-evi4c)
