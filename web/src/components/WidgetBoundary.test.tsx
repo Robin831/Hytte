@@ -16,7 +16,7 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
-function Boom() {
+function Boom(): React.ReactNode {
   throw new Error('widget exploded')
 }
 
