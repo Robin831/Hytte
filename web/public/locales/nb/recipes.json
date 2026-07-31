@@ -141,6 +141,7 @@
     "exit": "Avslutt kokemodus",
     "ingredientsHere": "Ingredienser til dette steget",
     "timerStart": "Start tidtaker",
+    "timeRemaining": "Tid igjen",
     "timerPause": "Pause tidtaker",
     "timerResume": "Fortsett tidtaker",
     "timerReset": "Nullstill tidtaker",

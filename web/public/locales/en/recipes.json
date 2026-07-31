@@ -141,6 +141,7 @@
     "exit": "Exit cook mode",
     "ingredientsHere": "Ingredients for this step",
     "timerStart": "Start timer",
+    "timeRemaining": "Time remaining",
     "timerPause": "Pause timer",
     "timerResume": "Resume timer",
     "timerReset": "Reset timer",

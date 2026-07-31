@@ -141,6 +141,7 @@
     "exit": "ออกจากโหมดทำอาหาร",
     "ingredientsHere": "วัตถุดิบสำหรับขั้นตอนนี้",
     "timerStart": "เริ่มจับเวลา",
+    "timeRemaining": "เวลาที่เหลือ",
     "timerPause": "หยุดจับเวลาชั่วคราว",
     "timerResume": "จับเวลาต่อ",
     "timerReset": "รีเซ็ตการจับเวลา",

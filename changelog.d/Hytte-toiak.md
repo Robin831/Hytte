@@ -1,0 +1,2 @@
+category: Added
+- **Cook mode for recipes** - Walk a recipe one step at a time with a large, readable step view, next/previous controls and a step position indicator. Timed steps get a countdown with start, pause and reset that starts fresh on every step, the ingredient list stays on screen scaled to the portions chosen on the recipe page, and the screen is kept awake while you cook. (Hytte-toiak)
