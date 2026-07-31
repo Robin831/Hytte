@@ -236,7 +236,7 @@ afterEach(() => {
 describe('RecipeDetail', () => {
   it('renders the stored quantities at the recipe’s own yield', async () => {
     await renderAndWait()
-    expect(ingredientLines()).toEqual(['400 g cod', '2 dl cream', 'salt'])
+    expect(ingredientLines()).toEqual(['400 g cod, cubed', '2 dl cream', 'salt'])
     expect(screen.queryByText('Scaled from 4 servings')).toBeNull()
   })
 
@@ -244,20 +244,20 @@ describe('RecipeDetail', () => {
     await renderAndWait()
 
     setPortions(8)
-    expect(ingredientLines()).toEqual(['800 g cod', '4 dl cream', 'salt'])
+    expect(ingredientLines()).toEqual(['800 g cod, cubed', '4 dl cream', 'salt'])
 
     setPortions(6)
-    expect(ingredientLines()).toEqual(['600 g cod', '3 dl cream', 'salt'])
+    expect(ingredientLines()).toEqual(['600 g cod, cubed', '3 dl cream', 'salt'])
 
     setPortions(2)
-    expect(ingredientLines()).toEqual(['200 g cod', '1 dl cream', 'salt'])
+    expect(ingredientLines()).toEqual(['200 g cod, cubed', '1 dl cream', 'salt'])
 
     // 4 -> 3 portions leaves cream on 1.5 dl, which reads as a mixed number.
     setPortions(3)
-    expect(ingredientLines()).toEqual(['300 g cod', '1 1/2 dl cream', 'salt'])
+    expect(ingredientLines()).toEqual(['300 g cod, cubed', '1 1/2 dl cream', 'salt'])
 
     setPortions(1)
-    expect(ingredientLines()).toEqual(['100 g cod', '1/2 dl cream', 'salt'])
+    expect(ingredientLines()).toEqual(['100 g cod, cubed', '1/2 dl cream', 'salt'])
 
     expect(screen.getByText('Scaled from 4 servings')).toBeTruthy()
   })
@@ -266,21 +266,21 @@ describe('RecipeDetail', () => {
     await renderAndWait()
 
     fireEvent.click(screen.getByRole('button', { name: 'One more portion' }))
-    expect(ingredientLines()[0]).toBe('500 g cod')
+    expect(ingredientLines()[0]).toBe('500 g cod, cubed')
 
     fireEvent.click(screen.getByRole('button', { name: 'One fewer portion' }))
-    expect(ingredientLines()[0]).toBe('400 g cod')
+    expect(ingredientLines()[0]).toBe('400 g cod, cubed')
 
     setPortions(8)
     fireEvent.click(screen.getByRole('button', { name: 'Reset to 4' }))
-    expect(ingredientLines()[0]).toBe('400 g cod')
+    expect(ingredientLines()[0]).toBe('400 g cod, cubed')
   })
 
   it('saves base quantities even while a scaled view is on screen', async () => {
     const fetchMock = await renderAndWait()
 
     setPortions(8)
-    expect(ingredientLines()).toEqual(['800 g cod', '4 dl cream', 'salt'])
+    expect(ingredientLines()).toEqual(['800 g cod, cubed', '4 dl cream', 'salt'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit recipe' }))
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Fish gratin, revised' } })
@@ -306,7 +306,7 @@ describe('RecipeDetail', () => {
 
     // The portion count is a view concern, so it survives the save untouched.
     await screen.findByRole('heading', { name: 'Fish gratin' })
-    expect(ingredientLines()).toEqual(['800 g cod', '4 dl cream', 'salt'])
+    expect(ingredientLines()).toEqual(['800 g cod, cubed', '4 dl cream', 'salt'])
   })
 
   it('edits base quantities rather than the scaled ones', async () => {
@@ -349,7 +349,7 @@ describe('RecipeDetail', () => {
   it('pushes exactly the selected ingredients to the grocery list', async () => {
     const fetchMock = await renderAndWait({ grocery: { added: 2, skipped: 0 } })
 
-    fireEvent.click(screen.getByLabelText('Select ingredient: 400 g cod'))
+    fireEvent.click(screen.getByLabelText('Select ingredient: 400 g cod, cubed'))
     fireEvent.click(screen.getByLabelText('Select ingredient: salt'))
     fireEvent.click(screen.getByRole('button', { name: 'Add missing to grocery list' }))
 
@@ -365,7 +365,7 @@ describe('RecipeDetail', () => {
     const fetchMock = await renderAndWait()
 
     fireEvent.click(screen.getByLabelText('Select ingredient: 2 dl cream'))
-    fireEvent.click(screen.getByLabelText('Select ingredient: 400 g cod'))
+    fireEvent.click(screen.getByLabelText('Select ingredient: 400 g cod, cubed'))
     fireEvent.click(screen.getByRole('button', { name: 'Add missing to grocery list' }))
 
     await waitFor(() => {
@@ -395,7 +395,7 @@ describe('RecipeDetail', () => {
   it('scales the selection labels too, so a checkbox names what will be bought', async () => {
     await renderAndWait()
     setPortions(8)
-    expect(screen.getByLabelText('Select ingredient: 800 g cod')).toBeTruthy()
+    expect(screen.getByLabelText('Select ingredient: 800 g cod, cubed')).toBeTruthy()
   })
 
   it('keeps the grocery push disabled until something is selected', async () => {
