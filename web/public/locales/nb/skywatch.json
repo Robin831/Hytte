@@ -2,6 +2,19 @@
   "title": "Himmelvakt",
   "loading": "Laster himmeldata...",
   "error": "Kunne ikke laste himmeldata",
+  "location": {
+    "label": "Sted",
+    "select": "Velg sted",
+    "choose": "Velg et sted",
+    "myLocation": "Min posisjon",
+    "useMyLocation": "Bruk posisjonen min",
+    "useMyLocationAria": "Bruk nåværende posisjon for himmeldata",
+    "locating": "Finner posisjonen din…",
+    "denied": "Tilgang til posisjon ble avslått. Slå den på i nettleserinnstillingene for å bruke dette.",
+    "unavailable": "Posisjonen din kunne ikke bestemmes akkurat nå.",
+    "timeout": "Det tok for lang tid å finne posisjonen din. Prøv igjen.",
+    "unsupported": "Denne nettleseren støtter ikke posisjonstjenester."
+  },
   "phases": {
     "newMoon": "Nym\u00e5ne",
     "waxingCrescent": "Voksende sigd",

@@ -1,8 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { Moon, Sun, Sunrise, Sunset, RefreshCw, Circle, Sparkles, Zap } from 'lucide-react'
 import { formatDate as sharedFormatDate, formatTime as sharedFormatTime } from '../utils/formatDate'
+import { useAuth } from '../auth'
+import { isValidRecentLocation } from '../recentLocations'
+import LocationPicker, { type PickedLocation } from '../components/LocationPicker'
 
 type PhaseKey = 'newMoon' | 'waxingCrescent' | 'firstQuarter' | 'waxingGibbous' | 'fullMoon' | 'waningGibbous' | 'lastQuarter' | 'waningCrescent'
 
@@ -365,8 +368,51 @@ function AuroraCard({ aurora, t }: { aurora: AuroraData; t: TFunction<readonly [
   )
 }
 
+/** Preference key and localStorage key for the Sky Watch location (same name in both stores). */
+const LOCATION_STORAGE_KEY = 'skywatch_location'
+
+/**
+ * Build a Sky Watch API URL, appending the selected coordinates when one is set.
+ * With no selection the backend falls back to its own default location.
+ */
+function skywatchUrl(
+  path: string,
+  location: PickedLocation | null,
+  extraParams: Record<string, string> = {},
+): string {
+  const params = new URLSearchParams(extraParams)
+  if (location) {
+    params.set('lat', String(location.lat))
+    params.set('lon', String(location.lon))
+  }
+  const query = params.toString()
+  return query ? `${path}?${query}` : path
+}
+
+/** Parse a stored location (preference or localStorage), returning null when unusable. */
+function parseStoredLocation(raw: unknown): PickedLocation | null {
+  if (typeof raw !== 'string' || raw === '') return null
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    return isValidRecentLocation(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+/** Read the anonymous fallback selection from localStorage. */
+function readStoredLocation(): PickedLocation | null {
+  try {
+    return parseStoredLocation(localStorage.getItem(LOCATION_STORAGE_KEY))
+  } catch {
+    // localStorage may be unavailable.
+    return null
+  }
+}
+
 export default function SkyWatchPage() {
   const { t } = useTranslation(['skywatch', 'common'])
+  const { user, loading: authLoading } = useAuth()
 
   const [now, setNow] = useState<NowResponse | null>(null)
   const [calendar, setCalendar] = useState<CalendarResponse | null>(null)
@@ -377,16 +423,137 @@ export default function SkyWatchPage() {
   const [retryCount, setRetryCount] = useState(0)
   const calendarScrollRef = useRef<HTMLDivElement>(null)
 
+  // Location selection. `null` means "not chosen" — the backend default is used.
+  const [location, setLocation] = useState<PickedLocation | null>(null)
+  const [knownLocations, setKnownLocations] = useState<PickedLocation[]>([])
+  const [locationsLoaded, setLocationsLoaded] = useState(false)
+  const [storedLocationLoaded, setStoredLocationLoaded] = useState(false)
+  const [pendingLocationName, setPendingLocationName] = useState<string | null>(null)
+  const userHasSelected = useRef(false)
+
+  // Fetch selectable locations (single source of truth for coordinates).
   useEffect(() => {
+    let cancelled = false
+    fetch('/api/weather/locations')
+      .then((r) => {
+        if (!r.ok) throw new Error('Failed to fetch locations')
+        return r.json()
+      })
+      .then((data) => {
+        if (cancelled) return
+        const locs = [...((data.locations ?? []) as PickedLocation[])]
+        locs.sort((a, b) => a.name.localeCompare(b.name))
+        setKnownLocations(locs)
+      })
+      .catch((err: unknown) => {
+        // Best-effort: the page still works with the backend default location.
+        console.warn('Failed to fetch locations:', err)
+      })
+      .finally(() => {
+        if (!cancelled) setLocationsLoaded(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Restore the saved selection: server preference when signed in, localStorage otherwise.
+  useEffect(() => {
+    if (authLoading) return
+
+    if (!user) {
+      const stored = readStoredLocation()
+      if (stored && !userHasSelected.current) setLocation(stored)
+      setStoredLocationLoaded(true)
+      return
+    }
+
+    let cancelled = false
+    fetch('/api/settings/preferences', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || userHasSelected.current) return
+        const stored = parseStoredLocation(data?.preferences?.[LOCATION_STORAGE_KEY])
+        if (stored) {
+          setLocation(stored)
+          return
+        }
+        // No Sky Watch selection yet — seed from the user's home location by name,
+        // resolved against the known-locations list once it arrives.
+        const seedName = data?.preferences?.home_location
+        if (typeof seedName === 'string' && seedName !== '') setPendingLocationName(seedName)
+      })
+      .catch((err: unknown) => {
+        // Preference load is best-effort; the backend default is used instead.
+        console.warn('Failed to fetch preferences:', err)
+      })
+      .finally(() => {
+        if (!cancelled) setStoredLocationLoaded(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [user, authLoading])
+
+  // Resolve a seeded home-location name once the known locations are available.
+  useEffect(() => {
+    if (!pendingLocationName || !locationsLoaded) return
+    if (!userHasSelected.current) {
+      const found = knownLocations.find((l) => l.name === pendingLocationName)
+      if (found) setLocation(found)
+    }
+    setPendingLocationName(null)
+  }, [pendingLocationName, locationsLoaded, knownLocations])
+
+  // Only fetch sky data once the selection is settled, so the page never fetches
+  // the default location first and then immediately refetches the saved one.
+  const locationResolved =
+    !authLoading && storedLocationLoaded && locationsLoaded && pendingLocationName === null
+
+  const handleLocationChange = useCallback(
+    (picked: PickedLocation) => {
+      userHasSelected.current = true
+      setLocation(picked)
+      const serialized = JSON.stringify(picked)
+      if (user) {
+        // Signed-in selections live server-side only, so they cannot leak between accounts.
+        fetch('/api/settings/preferences', {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ preferences: { [LOCATION_STORAGE_KEY]: serialized } }),
+        }).catch((err: unknown) => {
+          // Best-effort save; the selection still applies for this session.
+          console.warn('Failed to save Sky Watch location:', err)
+        })
+      } else {
+        try {
+          localStorage.setItem(LOCATION_STORAGE_KEY, serialized)
+        } catch {
+          // localStorage may be unavailable.
+        }
+      }
+    },
+    [user],
+  )
+
+  useEffect(() => {
+    if (!locationResolved) return
+
     const controller = new AbortController()
     const signal = controller.signal
     ;(async () => {
       setLoading(true)
       setError(null)
+      // Clear location-dependent extras so a failed refetch cannot leave the
+      // previous location's aurora or day-length comparison on screen.
+      setAurora(null)
+      setYesterdayLength(null)
       try {
         const [nowRes, calRes] = await Promise.all([
-          fetch('/api/skywatch/now', { credentials: 'include', signal }),
-          fetch('/api/skywatch/moon?days=30', { credentials: 'include', signal }),
+          fetch(skywatchUrl('/api/skywatch/now', location), { credentials: 'include', signal }),
+          fetch(skywatchUrl('/api/skywatch/moon', location, { days: '30' }), { credentials: 'include', signal }),
         ])
 
         if (!nowRes.ok || !calRes.ok) {
@@ -404,7 +571,7 @@ export default function SkyWatchPage() {
         // Aurora fetch is non-critical — don't block the page on failure.
         if (!signal.aborted) {
           try {
-            const auroraRes = await fetch(`/api/skywatch/aurora?lat=${nowData.location.lat}&lon=${nowData.location.lon}`, { credentials: 'include', signal })
+            const auroraRes = await fetch(skywatchUrl('/api/skywatch/aurora', location), { credentials: 'include', signal })
             if (auroraRes.ok) {
               const auroraData = await auroraRes.json() as AuroraData
               setAurora(auroraData)
@@ -421,7 +588,7 @@ export default function SkyWatchPage() {
             yesterday.setDate(yesterday.getDate() - 1)
             const yDate = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
             const yRes = await fetch(
-              `/api/skywatch/now?lat=${nowData.location.lat}&lon=${nowData.location.lon}&date=${yDate}`,
+              skywatchUrl('/api/skywatch/now', location, { date: yDate }),
               { credentials: 'include', signal }
             )
             if (yRes.ok) {
@@ -440,28 +607,55 @@ export default function SkyWatchPage() {
       }
     })()
     return () => controller.abort()
-  }, [t, retryCount])
+  }, [t, retryCount, locationResolved, location])
+
+  // The page frame (header + location picker) renders in every state, so the
+  // picker stays reachable while data is loading or after a failed load.
+  const renderPage = (body: ReactNode) => (
+    <div className="min-h-screen bg-gray-950 relative">
+      <StarField />
+
+      <div className="relative z-10 max-w-2xl mx-auto px-4 py-6 sm:py-10 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold text-white">{t('skywatch:title')}</h1>
+          <button
+            onClick={() => setRetryCount(c => c + 1)}
+            className="p-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
+            aria-label={t('common:actions.refresh')}
+          >
+            <RefreshCw size={18} />
+          </button>
+        </div>
+
+        <LocationPicker
+          value={location}
+          onChange={handleLocationChange}
+          locations={knownLocations}
+          loading={!locationsLoaded}
+        />
+
+        {body}
+      </div>
+    </div>
+  )
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="text-gray-400 animate-pulse">{t('skywatch:loading')}</div>
-      </div>
+    return renderPage(
+      <div className="py-16 text-center text-gray-400 animate-pulse">{t('skywatch:loading')}</div>
     )
   }
 
   if (error || !now || !calendar) {
-    return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-400 mb-4">{error || t('skywatch:error')}</p>
-          <button
-            onClick={() => setRetryCount(c => c + 1)}
-            className="px-4 py-2 bg-gray-800 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors cursor-pointer"
-          >
-            {t('common:actions.refresh')}
-          </button>
-        </div>
+    return renderPage(
+      <div className="py-16 text-center">
+        <p className="text-red-400 mb-4">{error || t('skywatch:error')}</p>
+        <button
+          onClick={() => setRetryCount(c => c + 1)}
+          className="px-4 py-2 bg-gray-800 rounded-lg text-gray-300 hover:bg-gray-700 transition-colors cursor-pointer"
+        >
+          {t('common:actions.refresh')}
+        </button>
       </div>
     )
   }
@@ -474,23 +668,8 @@ export default function SkyWatchPage() {
     ? now.sun.day_length_hours - yesterdayLength
     : null
 
-  return (
-    <div className="min-h-screen bg-gray-950 relative">
-      <StarField />
-
-      <div className="relative z-10 max-w-2xl mx-auto px-4 py-6 sm:py-10 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white">{t('skywatch:title')}</h1>
-          <button
-            onClick={() => setRetryCount(c => c + 1)}
-            className="p-2 text-gray-400 hover:text-white transition-colors cursor-pointer"
-            aria-label={t('common:actions.refresh')}
-          >
-            <RefreshCw size={18} />
-          </button>
-        </div>
-
+  return renderPage(
+    <>
         {/* Moon Hero Section */}
         <div className="bg-gradient-to-b from-indigo-950/50 to-gray-900/50 rounded-2xl p-6 sm:p-8 border border-indigo-900/30 text-center">
           <div className="flex justify-center mb-4">
@@ -737,7 +916,6 @@ export default function SkyWatchPage() {
             </div>
           </div>
         </div>
-      </div>
-    </div>
+    </>
   )
 }
