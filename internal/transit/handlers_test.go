@@ -622,6 +622,244 @@ func TestDeparturesHandler_RouteFilter_UsesFilteredDepartureCount(t *testing.T) 
 	}
 }
 
+// --- walk_minutes offset ---
+
+func TestSettingsPutHandler_WalkMinutesRoundTrip(t *testing.T) {
+	db := setupTestDB(t)
+
+	putHandler := SettingsPutHandler(db)
+	getHandler := SettingsGetHandler(db)
+
+	stops := []FavoriteStop{
+		{ID: "NSR:StopPlace:99999", Name: "Test Stop", Routes: []string{"1"}, WalkMinutes: 5},
+		{ID: "NSR:StopPlace:88888", Name: "Other Stop", Routes: []string{}},
+	}
+	payload, _ := json.Marshal(map[string]any{"stops": stops})
+
+	putReq := httptest.NewRequest("PUT", "/api/transit/settings", strings.NewReader(string(payload)))
+	putReq.Header.Set("Content-Type", "application/json")
+	putReq = withTestUser(putReq, 1)
+	putRec := httptest.NewRecorder()
+	putHandler.ServeHTTP(putRec, putReq)
+
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("PUT expected 200, got %d: %s", putRec.Code, putRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest("GET", "/api/transit/settings", nil)
+	getReq = withTestUser(getReq, 1)
+	getRec := httptest.NewRecorder()
+	getHandler.ServeHTTP(getRec, getReq)
+
+	var body struct {
+		Stops []FavoriteStop `json:"stops"`
+	}
+	if err := json.NewDecoder(getRec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode GET: %v", err)
+	}
+	if len(body.Stops) != 2 {
+		t.Fatalf("expected 2 stops after PUT, got %d", len(body.Stops))
+	}
+	if body.Stops[0].WalkMinutes != 5 {
+		t.Errorf("expected walk_minutes 5, got %d", body.Stops[0].WalkMinutes)
+	}
+	if body.Stops[1].WalkMinutes != 0 {
+		t.Errorf("expected walk_minutes 0 for unset stop, got %d", body.Stops[1].WalkMinutes)
+	}
+}
+
+func TestSettingsPutHandler_WalkMinutesOutOfRange(t *testing.T) {
+	cases := []struct {
+		name  string
+		value int
+	}{
+		{"negative", -1},
+		{"above max", maxWalkMinutes + 1},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupTestDB(t)
+			putHandler := SettingsPutHandler(db)
+
+			// Seed a valid stored blob so we can assert the rejected PUT leaves it unchanged.
+			seeded := []FavoriteStop{{ID: "NSR:StopPlace:1", Name: "Seeded", Routes: []string{}, WalkMinutes: 3}}
+			seededJSON, _ := json.Marshal(seeded)
+			if _, err := db.Exec(
+				`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`,
+				transitStopsPreferenceKey, string(seededJSON),
+			); err != nil {
+				t.Fatalf("seed preference: %v", err)
+			}
+
+			stops := []FavoriteStop{{ID: "NSR:StopPlace:2", Name: "Rejected", WalkMinutes: tc.value}}
+			payload, _ := json.Marshal(map[string]any{"stops": stops})
+
+			req := httptest.NewRequest("PUT", "/api/transit/settings", strings.NewReader(string(payload)))
+			req.Header.Set("Content-Type", "application/json")
+			req = withTestUser(req, 1)
+			rec := httptest.NewRecorder()
+			putHandler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400 for walk_minutes=%d, got %d", tc.value, rec.Code)
+			}
+
+			var stored string
+			if err := db.QueryRow(
+				`SELECT value FROM user_preferences WHERE user_id = 1 AND key = ?`,
+				transitStopsPreferenceKey,
+			).Scan(&stored); err != nil {
+				t.Fatalf("read preference: %v", err)
+			}
+			if stored != string(seededJSON) {
+				t.Errorf("stored blob changed after rejected PUT:\n got: %s\nwant: %s", stored, seededJSON)
+			}
+		})
+	}
+}
+
+func TestSettingsPutHandler_WalkMinutesBoundariesAccepted(t *testing.T) {
+	for _, value := range []int{0, maxWalkMinutes} {
+		db := setupTestDB(t)
+		handler := SettingsPutHandler(db)
+
+		stops := []FavoriteStop{{ID: "NSR:StopPlace:1", Name: "Stop", WalkMinutes: value}}
+		payload, _ := json.Marshal(map[string]any{"stops": stops})
+
+		req := httptest.NewRequest("PUT", "/api/transit/settings", strings.NewReader(string(payload)))
+		req.Header.Set("Content-Type", "application/json")
+		req = withTestUser(req, 1)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200 for walk_minutes=%d, got %d: %s", value, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestLoadFavoriteStops_LegacyBlobWithoutWalkMinutes(t *testing.T) {
+	db := setupTestDB(t)
+
+	// A blob written before walk_minutes existed.
+	legacy := `[{"id":"NSR:StopPlace:42175","name":"Bjørndalsbakken","routes":["3"]}]`
+	if _, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`,
+		transitStopsPreferenceKey, legacy,
+	); err != nil {
+		t.Fatalf("insert preference: %v", err)
+	}
+
+	stops := loadFavoriteStops(db, 1)
+	if len(stops) != 1 {
+		t.Fatalf("expected 1 stop from legacy blob, got %d", len(stops))
+	}
+	if stops[0].WalkMinutes != 0 {
+		t.Errorf("expected walk_minutes 0 for legacy blob, got %d", stops[0].WalkMinutes)
+	}
+	if stops[0].Name != "Bjørndalsbakken" {
+		t.Errorf("unexpected stop name: %q", stops[0].Name)
+	}
+}
+
+func TestDeparturesHandler_EchoesWalkMinutes(t *testing.T) {
+	enturServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(fakeEnturResponse()))
+	}))
+	defer enturServer.Close()
+
+	db := setupTestDB(t)
+
+	stops := []FavoriteStop{
+		{ID: "NSR:StopPlace:42175", Name: "Bjørndalsbakken", Routes: []string{}, WalkMinutes: 7},
+	}
+	stopsJSON, _ := json.Marshal(stops)
+	if _, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`,
+		transitStopsPreferenceKey, string(stopsJSON),
+	); err != nil {
+		t.Fatalf("insert preference: %v", err)
+	}
+
+	svc := newTestService(enturServer.URL, "http://unused")
+	handler := DeparturesHandler(db, svc)
+
+	req := httptest.NewRequest("GET", "/api/transit/departures", nil)
+	req = withTestUser(req, 1)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Stops []StopDepartures `json:"stops"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Stops) != 1 {
+		t.Fatalf("expected 1 stop, got %d", len(body.Stops))
+	}
+	if body.Stops[0].WalkMinutes != 7 {
+		t.Errorf("expected walk_minutes 7 in departures response, got %d", body.Stops[0].WalkMinutes)
+	}
+}
+
+func TestDeparturesHandler_AdHocStopsReuseSavedWalkOffset(t *testing.T) {
+	enturServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(fakeEnturResponse()))
+	}))
+	defer enturServer.Close()
+
+	db := setupTestDB(t)
+
+	// The offset belongs to the stop, so an explicit ?stops= list must still pick
+	// it up for IDs the user has saved, and report 0 for IDs they have not.
+	stops := []FavoriteStop{
+		{ID: "NSR:StopPlace:42175", Name: "Bjørndalsbakken", Routes: []string{}, WalkMinutes: 7},
+	}
+	stopsJSON, _ := json.Marshal(stops)
+	if _, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`,
+		transitStopsPreferenceKey, string(stopsJSON),
+	); err != nil {
+		t.Fatalf("insert preference: %v", err)
+	}
+
+	svc := newTestService(enturServer.URL, "http://unused")
+	handler := DeparturesHandler(db, svc)
+
+	req := httptest.NewRequest("GET", "/api/transit/departures?stops=NSR:StopPlace:42175,NSR:StopPlace:99999", nil)
+	req = withTestUser(req, 1)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Stops []StopDepartures `json:"stops"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Stops) != 2 {
+		t.Fatalf("expected 2 stops, got %d", len(body.Stops))
+	}
+	if body.Stops[0].WalkMinutes != 7 {
+		t.Errorf("expected walk_minutes 7 for saved stop requested ad hoc, got %d", body.Stops[0].WalkMinutes)
+	}
+	if body.Stops[1].WalkMinutes != 0 {
+		t.Errorf("expected walk_minutes 0 for unsaved ad-hoc stop, got %d", body.Stops[1].WalkMinutes)
+	}
+}
+
 func TestSettingsPutHandler_TooManyStops(t *testing.T) {
 	db := setupTestDB(t)
 

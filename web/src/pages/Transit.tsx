@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bus, RefreshCw, Settings, Search, Plus, Trash2, Circle, GripVertical } from 'lucide-react'
+import { Bus, RefreshCw, Settings, Search, Plus, Trash2, Circle, GripVertical, Footprints } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
 
 interface Departure {
@@ -15,6 +15,8 @@ interface Departure {
 interface StopDepartures {
   stop_id: string
   stop_name: string
+  /** Walking offset for this stop, mirrored from the saved settings blob. */
+  walk_minutes?: number
   departures: Departure[]
 }
 
@@ -22,6 +24,7 @@ interface FavoriteStop {
   id: string
   name: string
   routes: string[]
+  walk_minutes?: number
 }
 
 interface SearchResult {
@@ -30,17 +33,39 @@ interface SearchResult {
 }
 
 const REFRESH_INTERVAL_MS = 30_000
+const MAX_WALK_MINUTES = 120
 
-function minutesUntil(departureTime: string, now: number): number {
-  const diff = new Date(departureTime).getTime() - now
+/** NSR stop IDs contain colons; strip them so the DOM id stays selector-safe. */
+function walkInputId(stopId: string): string {
+  return `walk-${stopId.replace(/[^A-Za-z0-9_-]/g, '-')}`
+}
+
+/**
+ * Minutes until the user has to leave: the departure time minus the stop's
+ * walking offset. With no offset configured this is simply the time until
+ * departure, which keeps the pre-offset rendering unchanged.
+ */
+function minutesUntil(departureTime: string, now: number, walkMinutes = 0): number {
+  const diff = new Date(departureTime).getTime() - walkMinutes * 60_000 - now
   return Math.round(diff / 60_000)
 }
 
-function formatDeparture(departureTime: string, now: number, t: (key: string) => string): string {
-  const mins = minutesUntil(departureTime, now)
-  if (mins <= 0) return '0 ' + t('transit:min')
+function formatDeparture(
+  departureTime: string,
+  now: number,
+  walkMinutes: number,
+  t: (key: string) => string,
+): string {
+  const mins = minutesUntil(departureTime, now, walkMinutes)
+  if (mins <= 0) {
+    // A walking offset turns "0 min" into an actionable state: leave right now,
+    // or too late to make it. Without an offset, keep the original clamped label.
+    if (walkMinutes <= 0) return '0 ' + t('transit:min')
+    return mins === 0 ? t('transit:leaveNow') : t('transit:missed')
+  }
   if (mins < 30) return `${mins} ${t('transit:min')}`
-  return new Date(departureTime).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  return new Date(new Date(departureTime).getTime() - walkMinutes * 60_000)
+    .toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
 export default function Transit() {
@@ -191,7 +216,7 @@ export default function Transit() {
 
   function addStop(result: SearchResult) {
     if (favoriteStops.some(s => s.id === result.id)) return
-    setFavoriteStops(prev => [...prev, { id: result.id, name: result.name, routes: [] }])
+    setFavoriteStops(prev => [...prev, { id: result.id, name: result.name, routes: [], walk_minutes: 0 }])
     setSearchQuery('')
     setSearchResults([])
   }
@@ -212,6 +237,18 @@ export default function Transit() {
       .filter(r => r.length > 0)
     setFavoriteStops(prev =>
       prev.map(s => s.id === id ? { ...s, routes } : s)
+    )
+  }
+
+  // Clamp client-side to the same 0-120 range the API enforces, so a rejected
+  // PUT is an edge case rather than the normal way to discover the limit.
+  function updateWalkMinutes(id: string, value: string) {
+    const parsed = Number.parseInt(value, 10)
+    const walkMinutes = Number.isNaN(parsed)
+      ? 0
+      : Math.min(MAX_WALK_MINUTES, Math.max(0, parsed))
+    setFavoriteStops(prev =>
+      prev.map(s => s.id === id ? { ...s, walk_minutes: walkMinutes } : s)
     )
   }
 
@@ -415,6 +452,26 @@ export default function Transit() {
                       aria-label={t('transit:filterRoutes')}
                       className="mt-1 w-full px-2 py-1 bg-gray-600 border border-gray-500 rounded text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500"
                     />
+                    <div className="mt-1 flex items-center gap-2">
+                      <label
+                        htmlFor={walkInputId(stop.id)}
+                        className="flex items-center gap-1 text-xs text-gray-300 shrink-0"
+                      >
+                        <Footprints size={12} className="text-gray-400" aria-hidden="true" />
+                        {t('transit:walkMinutes')}
+                      </label>
+                      <input
+                        id={walkInputId(stop.id)}
+                        type="number"
+                        min={0}
+                        max={MAX_WALK_MINUTES}
+                        step={1}
+                        inputMode="numeric"
+                        value={String(stop.walk_minutes ?? 0)}
+                        onChange={e => updateWalkMinutes(stop.id, e.target.value)}
+                        className="w-16 px-2 py-1 bg-gray-600 border border-gray-500 rounded text-xs text-gray-200 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
                   </div>
 
                   {/* Remove button or inline confirmation */}
@@ -449,6 +506,7 @@ export default function Transit() {
                   )}
                 </div>
               ))}
+              <p className="text-xs text-gray-400">{t('transit:walkMinutesHint')}</p>
             </div>
           )}
 
@@ -496,18 +554,40 @@ export default function Transit() {
             ) : (
               <div className="divide-y divide-gray-700/50">
                 {stop.departures.map((dep) => {
-                  const mins = minutesUntil(dep.departure_time, now)
+                  const walkMinutes = stop.walk_minutes ?? 0
+                  // Minutes until the user must leave, not until the bus goes.
+                  const mins = minutesUntil(dep.departure_time, now, walkMinutes)
+                  // Only de-emphasise once an offset makes "too late" meaningful.
+                  const unreachable = walkMinutes > 0 && mins <= 0
                   return (
-                    <div key={`${dep.line}-${dep.departure_time}`} className="flex items-center gap-3 px-4 py-2.5">
+                    <div
+                      key={`${dep.line}-${dep.departure_time}`}
+                      className={`flex items-center gap-2 px-4 py-2.5 sm:gap-3 ${unreachable ? 'opacity-40' : ''}`}
+                    >
                       {/* Line badge */}
                       <span className="inline-flex items-center justify-center min-w-[2.25rem] px-1.5 py-0.5 rounded bg-blue-700 text-white text-xs font-bold shrink-0">
                         {dep.line}
                       </span>
 
                       {/* Destination */}
-                      <span className="flex-1 text-sm text-gray-200 truncate">
+                      <span className="flex-1 min-w-0 text-sm text-gray-200 truncate">
                         {dep.destination}
                       </span>
+
+                      {/* Walking offset badge — only when the stop has one configured.
+                          Kept compact (icon + minutes) so it fits alongside the delay
+                          text and the time column at 375px; the full wording lives in
+                          the accessible label. */}
+                      {walkMinutes > 0 && (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-700 text-gray-300 text-xs whitespace-nowrap shrink-0"
+                          title={t('transit:walkBadgeTitle', { minutes: walkMinutes })}
+                          aria-label={t('transit:walkBadgeTitle', { minutes: walkMinutes })}
+                        >
+                          <Footprints size={12} aria-hidden="true" />
+                          {t('transit:walkBadge', { minutes: walkMinutes })}
+                        </span>
+                      )}
 
                       {/* Delay indicator */}
                       {dep.delay_minutes > 0 && (
@@ -523,9 +603,9 @@ export default function Transit() {
                         aria-label={dep.is_realtime ? t('transit:realtime') : t('transit:scheduled')}
                       />
 
-                      {/* Time */}
-                      <span className={`text-sm font-medium shrink-0 ${mins <= 1 ? 'text-red-400' : mins <= 5 ? 'text-orange-400' : 'text-white'}`}>
-                        {formatDeparture(dep.departure_time, now, t as (key: string) => string)}
+                      {/* Time to leave */}
+                      <span className={`text-sm font-medium whitespace-nowrap shrink-0 ${unreachable ? 'text-gray-400' : mins <= 1 ? 'text-red-400' : mins <= 5 ? 'text-orange-400' : 'text-white'}`}>
+                        {formatDeparture(dep.departure_time, now, walkMinutes, t as (key: string) => string)}
                       </span>
                     </div>
                   )

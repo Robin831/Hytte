@@ -20,6 +20,7 @@ const (
 	maxStopNameLen    = 256
 	maxRoutesPerStop  = 100
 	maxRouteLen       = 50
+	maxWalkMinutes    = 120
 	maxSettingsBodySz = 64 << 10 // 64 KB
 )
 
@@ -34,11 +35,19 @@ func DeparturesHandler(db *sql.DB, svc *Service) http.HandlerFunc {
 
 		var stops []FavoriteStop
 		if stopsParam != "" {
-			// Caller provided explicit stop IDs; construct minimal FavoriteStop entries.
+			// Caller provided explicit stop IDs; construct minimal FavoriteStop
+			// entries. The walking offset is a property of the stop rather than of
+			// the request, so carry it over from the saved favorites when the ID
+			// matches one — otherwise a ?stops= request would silently render raw
+			// departure times for a stop the user has configured an offset for.
+			walkByStopID := make(map[string]int)
+			for _, fav := range loadFavoriteStops(db, user.ID) {
+				walkByStopID[fav.ID] = fav.WalkMinutes
+			}
 			for _, id := range strings.Split(stopsParam, ",") {
 				id = strings.TrimSpace(id)
 				if id != "" {
-					stops = append(stops, FavoriteStop{ID: id})
+					stops = append(stops, FavoriteStop{ID: id, WalkMinutes: walkByStopID[id]})
 				}
 			}
 		} else {
@@ -74,9 +83,10 @@ func DeparturesHandler(db *sql.DB, svc *Service) http.HandlerFunc {
 					name = stop.ID
 				}
 				result = append(result, StopDepartures{
-					StopID:     stop.ID,
-					StopName:   name,
-					Departures: []Departure{},
+					StopID:      stop.ID,
+					StopName:    name,
+					WalkMinutes: stop.WalkMinutes,
+					Departures:  []Departure{},
 				})
 				continue
 			}
@@ -91,9 +101,10 @@ func DeparturesHandler(db *sql.DB, svc *Service) http.HandlerFunc {
 			filtered := filterDepartures(departures, stop.Routes)
 
 			result = append(result, StopDepartures{
-				StopID:     stop.ID,
-				StopName:   name,
-				Departures: filtered,
+				StopID:      stop.ID,
+				StopName:    name,
+				WalkMinutes: stop.WalkMinutes,
+				Departures:  filtered,
 			})
 		}
 
@@ -138,7 +149,7 @@ func SettingsGetHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // SettingsPutHandler saves the user's favorite transit stops.
-// Body: {"stops": [{id, name, routes}]}
+// Body: {"stops": [{id, name, routes, walk_minutes}]}
 func SettingsPutHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -175,6 +186,11 @@ func SettingsPutHandler(db *sql.DB) http.HandlerFunc {
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "route label too long"})
 					return
 				}
+			}
+			// Validate before any write so a rejected payload leaves the stored blob untouched.
+			if stop.WalkMinutes < 0 || stop.WalkMinutes > maxWalkMinutes {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("walk_minutes must be between 0 and %d", maxWalkMinutes)})
+				return
 			}
 		}
 
