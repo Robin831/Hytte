@@ -40,7 +40,8 @@
     "homeworkReview": "Homework Review",
     "regnemester": "Regnemester",
     "suggestions": "Suggestions",
-    "pokemon": "Pokémon"
+    "pokemon": "Pokémon",
+    "recipes": "Recipes"
   },
   "actions": {
     "save": "Save",

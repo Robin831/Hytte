@@ -43,6 +43,7 @@ import {
   Calculator,
   Lightbulb,
   Sparkles,
+  ChefHat,
 } from 'lucide-react'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
@@ -89,6 +90,7 @@ const navItems: NavItem[] = [
   { to: '/stars', icon: <Star size={20} />, label: 'nav.stars', requiresAuth: true, feature: 'kids_stars', familyRole: 'child' },
   { to: '/skywatch', icon: <Moon size={20} />, label: 'nav.skywatch', requiresAuth: true, feature: 'skywatch' },
   { to: '/grocery', icon: <ShoppingCart size={20} />, label: 'nav.grocery', requiresAuth: true, feature: 'grocery' },
+  { to: '/recipes', icon: <ChefHat size={20} />, label: 'nav.recipes', requiresAuth: true, feature: 'recipes' },
   { to: '/wardrobe', icon: <Shirt size={20} />, label: 'nav.wardrobe', requiresAuth: true, feature: 'wardrobe' },
   { to: '/offers', icon: <Percent size={20} />, label: 'nav.offers', requiresAuth: true, feature: 'offers' },
   { to: '/wordfeud', icon: <Gamepad2 size={20} />, label: 'nav.wordfeud', requiresAuth: true, feature: 'wordfeud' },
