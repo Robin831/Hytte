@@ -188,14 +188,13 @@ export function useRecipe(id: string | number | undefined): UseRecipeResult {
   const [notFound, setNotFound] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
+  const numericID = Number(id)
+  const isValidID = id !== undefined && id !== '' && Number.isFinite(numericID)
+
   const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
 
   useEffect(() => {
-    const numericID = Number(id)
-    if (id === undefined || id === '' || !Number.isFinite(numericID)) {
-      setRecipe(null)
-      setNotFound(true)
-      setLoading(false)
+    if (!isValidID) {
       return
     }
 
@@ -226,7 +225,11 @@ export function useRecipe(id: string | number | undefined): UseRecipeResult {
       }
     })()
     return () => { controller.abort() }
-  }, [id, refreshKey, t])
+  }, [isValidID, numericID, refreshKey, t])
+
+  if (!isValidID) {
+    return { recipe: null, loading: false, error: '', notFound: true, refresh }
+  }
 
   return { recipe, loading, error, notFound, refresh }
 }
