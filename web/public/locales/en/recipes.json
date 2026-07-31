@@ -149,6 +149,41 @@
     "keepAwake": "Keeping the screen awake",
     "noSteps": "This recipe has no steps to cook through"
   },
+  "planner": {
+    "title": "Meal plan",
+    "subtitle": "Plan the week, then tick meals off as you cook them",
+    "open": "Meal plan",
+    "loading": "Loading the meal plan…",
+    "previousWeek": "Previous week",
+    "nextWeek": "Next week",
+    "thisWeek": "This week",
+    "weekRange": "{{start}} – {{end}}",
+    "mealCount_one": "{{count}} meal planned",
+    "mealCount_other": "{{count}} meals planned",
+    "today": "Today",
+    "emptyDay": "Nothing planned",
+    "addMeal": "Add a meal on {{day}}",
+    "remove": "Remove {{title}} from the plan",
+    "markCooked": "Mark as cooked",
+    "cooked": "Cooked",
+    "slot": "Meal",
+    "slots": {
+      "breakfast": "Breakfast",
+      "lunch": "Lunch",
+      "dinner": "Dinner",
+      "snack": "Snack"
+    },
+    "pickerTitle": "Choose a recipe",
+    "pickerFor": "{{slot}} on {{day}}",
+    "pickerSearch": "Search recipes",
+    "pickerSearchPlaceholder": "Search by title, ingredient or tag",
+    "pickerEmpty": "No recipes match that search",
+    "pickerNoRecipes": "Create a recipe first, then plan it in",
+    "close": "Close",
+    "ratePrompt": "How was {{title}}?",
+    "rateHint": "Your rating decides what comes back as a cook-again suggestion",
+    "rateSkip": "Skip for now"
+  },
   "empty": {
     "title": "No recipes yet",
     "description": "Create your first recipe, or import one from a web page.",
@@ -165,6 +200,9 @@
     "failedToRate": "Could not save the rating",
     "failedToLogCook": "Could not log this cook",
     "failedToImport": "Could not import a recipe from that page",
+    "failedToLoadPlan": "Could not load the meal plan",
+    "failedToSavePlan": "Could not save the meal plan",
+    "failedToClearPlan": "Could not clear that meal",
     "retry": "Try again"
   }
 }

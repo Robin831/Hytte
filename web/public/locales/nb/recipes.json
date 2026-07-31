@@ -149,6 +149,41 @@
     "keepAwake": "Holder skjermen våken",
     "noSteps": "Denne oppskriften har ingen steg å følge"
   },
+  "planner": {
+    "title": "Måltidsplan",
+    "subtitle": "Planlegg uken, og kryss av måltidene etter hvert som du lager dem",
+    "open": "Måltidsplan",
+    "loading": "Laster måltidsplanen …",
+    "previousWeek": "Forrige uke",
+    "nextWeek": "Neste uke",
+    "thisWeek": "Denne uken",
+    "weekRange": "{{start}} – {{end}}",
+    "mealCount_one": "{{count}} måltid planlagt",
+    "mealCount_other": "{{count}} måltider planlagt",
+    "today": "I dag",
+    "emptyDay": "Ingenting planlagt",
+    "addMeal": "Legg til et måltid på {{day}}",
+    "remove": "Fjern {{title}} fra planen",
+    "markCooked": "Marker som laget",
+    "cooked": "Laget",
+    "slot": "Måltid",
+    "slots": {
+      "breakfast": "Frokost",
+      "lunch": "Lunsj",
+      "dinner": "Middag",
+      "snack": "Snacks"
+    },
+    "pickerTitle": "Velg en oppskrift",
+    "pickerFor": "{{slot}} {{day}}",
+    "pickerSearch": "Søk i oppskrifter",
+    "pickerSearchPlaceholder": "Søk på tittel, ingrediens eller tagg",
+    "pickerEmpty": "Ingen oppskrifter passer det søket",
+    "pickerNoRecipes": "Lag en oppskrift først, så kan du planlegge den inn",
+    "close": "Lukk",
+    "ratePrompt": "Hvordan ble {{title}}?",
+    "rateHint": "Vurderingen din avgjør hva som kommer tilbake som forslag under «Lag igjen»",
+    "rateSkip": "Hopp over"
+  },
   "empty": {
     "title": "Ingen oppskrifter ennå",
     "description": "Lag din første oppskrift, eller importer en fra en nettside.",
@@ -165,6 +200,9 @@
     "failedToRate": "Kunne ikke lagre vurderingen",
     "failedToLogCook": "Kunne ikke registrere at du laget denne",
     "failedToImport": "Kunne ikke importere en oppskrift fra den siden",
+    "failedToLoadPlan": "Kunne ikke laste måltidsplanen",
+    "failedToSavePlan": "Kunne ikke lagre måltidsplanen",
+    "failedToClearPlan": "Kunne ikke fjerne det måltidet",
     "retry": "Prøv igjen"
   }
 }

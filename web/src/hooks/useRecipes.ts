@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import type {
   GroceryPushRequest,
   GroceryPushResponse,
+  MealSlot,
+  PlanEntry,
+  PlanWeek,
   Recipe,
   RecipeFilters,
   RecipeInput,
@@ -417,6 +421,138 @@ export function useRecipeActions(): UseRecipeActionsResult {
   }, [t])
 
   return { rate, logCooked, remove, busy, error, clearError }
+}
+
+export interface UsePlanWeekResult {
+  /** Null until the first week has loaded. */
+  week: PlanWeek | null
+  /**
+   * Local override for the loaded week, so an assign or a clear shows before the
+   * round trip finishes. Every mutation still goes through the plan endpoints,
+   * so what is on screen survives a reload; a failed call rolls this back.
+   */
+  setWeek: Dispatch<SetStateAction<PlanWeek | null>>
+  loading: boolean
+  error: string
+  refresh: () => void
+}
+
+/**
+ * Loads one ISO week of the meal plan. `weekStart` may be any day of the wanted
+ * week — the endpoint normalises it to the Monday — and the response always
+ * carries all seven days.
+ */
+export function usePlanWeek(weekStart: string): UsePlanWeekResult {
+  const { t } = useTranslation('recipes')
+  const [week, setWeek] = useState<PlanWeek | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const refresh = useCallback(() => setRefreshKey(k => k + 1), [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    ;(async () => {
+      setLoading(true)
+      try {
+        const query = weekStart ? `?week=${encodeURIComponent(weekStart)}` : ''
+        const res = await fetch(`/api/recipes/plan${query}`, {
+          credentials: 'include',
+          signal: controller.signal,
+        })
+        if (!res.ok) throw new Error(await errorMessage(res, t('errors.failedToLoadPlan')))
+        // The plan endpoint returns the week unwrapped, not under a key.
+        setWeek((await res.json()) as PlanWeek)
+        setError('')
+      } catch (err) {
+        if (err instanceof Error && err.name !== 'AbortError') {
+          setError(err.message)
+        }
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    })()
+    return () => { controller.abort() }
+  }, [weekStart, refreshKey, t])
+
+  return { week, setWeek, loading, error, refresh }
+}
+
+export interface UsePlanActionsResult {
+  /**
+   * Schedules a recipe into one (day, slot), replacing whatever occupied it.
+   * Returns the stored entry — with the ID the server gave it — or null on failure.
+   */
+  assign: (date: string, slot: MealSlot, recipeId: number) => Promise<PlanEntry | null>
+  /** Empties one (day, slot). Returns true on success. */
+  clear: (date: string, slot: MealSlot) => Promise<boolean>
+  busy: boolean
+  error: string
+  clearError: () => void
+}
+
+/**
+ * The two meal-plan mutations the planner needs. They share one busy flag and
+ * one error slot: the page only ever runs one of them at a time.
+ */
+export function usePlanActions(): UsePlanActionsResult {
+  const { t } = useTranslation('recipes')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const clearError = useCallback(() => setError(''), [])
+
+  const assign = useCallback(
+    async (date: string, slot: MealSlot, recipeId: number): Promise<PlanEntry | null> => {
+      setBusy(true)
+      setError('')
+      try {
+        // The endpoint takes a batch so a whole week can go out at once; the
+        // planner assigns one slot per tap.
+        const res = await fetch('/api/recipes/plan', {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entries: [{ date, slot, recipe_id: recipeId }] }),
+        })
+        if (!res.ok) throw new Error(await errorMessage(res, t('errors.failedToSavePlan')))
+        const data = await res.json()
+        const entries = (data.entries ?? []) as PlanEntry[]
+        return entries[0] ?? null
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t('errors.failedToSavePlan'))
+        return null
+      } finally {
+        setBusy(false)
+      }
+    },
+    [t],
+  )
+
+  const clear = useCallback(
+    async (date: string, slot: MealSlot): Promise<boolean> => {
+      setBusy(true)
+      setError('')
+      try {
+        const query = `?date=${encodeURIComponent(date)}&slot=${encodeURIComponent(slot)}`
+        const res = await fetch(`/api/recipes/plan${query}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        })
+        if (!res.ok) throw new Error(await errorMessage(res, t('errors.failedToClearPlan')))
+        return true
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t('errors.failedToClearPlan'))
+        return false
+      } finally {
+        setBusy(false)
+      }
+    },
+    [t],
+  )
+
+  return { assign, clear, busy, error, clearError }
 }
 
 export interface UsePushMissingToGroceryResult {

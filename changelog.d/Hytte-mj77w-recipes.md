@@ -1,0 +1,2 @@
+category: Added
+- **Weekly meal planner** - Plan a week of meals from the recipes page: seven day cards, a recipe picker you tap to fill breakfast, lunch, dinner or a snack, and arrows to move between weeks. Every assignment is saved server-side, so a planned week survives a reload. Marking a planned meal as cooked logs the cook and asks for a 1-5 rating, which is what decides the "cook again" suggestions. (Hytte-mj77w)
