@@ -1,0 +1,2 @@
+category: Added
+- **Recipe API: CRUD, rating, cooking log and cook-again suggestions** - `/api/recipes` now supports listing (with tag filters), creating, reading, updating and deleting recipes, plus `POST /api/recipes/{id}/rating`, `POST /api/recipes/{id}/cooked` for logging a cook, and `GET /api/recipes/cook-again` for suggestions ranked by season and time since last cooked. Every route is scoped to the signed-in user and gated by the `recipes` feature flag. (Hytte-q7q57)
