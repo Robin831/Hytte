@@ -57,10 +57,11 @@ export default function HomeworkPage() {
   // Close the open menu when clicking outside of it.
   useEffect(() => {
     if (menuOpenId === null) return
+    const openId = menuOpenId
     function handlePointerDown(e: MouseEvent) {
       const target = e.target as Node
       if (menuRef.current?.contains(target)) return
-      if (menuTriggerRefs.current[menuOpenId]?.contains(target)) return
+      if (menuTriggerRefs.current[openId]?.contains(target)) return
       setMenuOpenId(null)
       setConfirmDeleteId(null)
     }
