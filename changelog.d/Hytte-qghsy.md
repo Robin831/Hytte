@@ -1,0 +1,2 @@
+category: Added
+- **Extra payment / early payoff what-if on loans** - The amortisation view on Loans & Mortgages now has a collapsible panel for a recurring extra monthly payment and a one-off lump sum on a chosen date. The schedule re-renders against the overpayments and a summary card shows the original and new payoff dates, months saved and interest saved. Overpayments reuse the existing server-side amortisation engine, so rate changes and actual/365 accrual are replayed exactly as in the contractual schedule. (Hytte-qghsy)

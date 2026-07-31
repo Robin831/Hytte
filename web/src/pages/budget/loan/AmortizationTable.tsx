@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import type { TFunction } from 'i18next'
-import type { AmortizationResponse } from './types'
+import type { AmortizationResponse, WhatIfParams } from './types'
+import { EMPTY_WHAT_IF, whatIfQuery } from './types'
 import { fmt, fmtPct, localDateString } from './format'
 import { RateHistoryPanel } from './RateHistoryPanel'
+import { WhatIfPanel } from './WhatIfPanel'
 
 const INITIAL_AMORTIZATION_ROWS = 24
 const FULL_AMORTIZATION_ROWS = 360
+/** Trailing debounce on the what-if inputs so typing doesn't fire a request per keystroke. */
+const WHAT_IF_DEBOUNCE_MS = 350
 
 interface AmortizationTableProps {
   loanId: number
@@ -20,47 +24,75 @@ export function AmortizationTable({ loanId, version, t }: AmortizationTableProps
   const [error, setError] = useState<string | null>(null)
   const [showAll, setShowAll] = useState(false)
   const [showPast, setShowPast] = useState(false)
-  const [cacheKey, setCacheKey] = useState('')
+  const [cache, setCache] = useState<{ key: string; rows: number } | null>(null)
+  // Request key the backend rejected (400). Kept so the effect doesn't retry the
+  // same invalid what-if in a loop; the inline error is derived from it.
+  const [failedKey, setFailedKey] = useState<string | null>(null)
+  // whatIf is what the user types; appliedWhatIf is its debounced counterpart
+  // and is the value that actually reaches the request.
+  const [whatIf, setWhatIf] = useState<WhatIfParams>(EMPTY_WHAT_IF)
+  const [appliedWhatIf, setAppliedWhatIf] = useState<WhatIfParams>(EMPTY_WHAT_IF)
 
   useEffect(() => {
-    const requestedRows = showAll ? FULL_AMORTIZATION_ROWS : INITIAL_AMORTIZATION_ROWS
-    const requestedKey = `${loanId}:${requestedRows}:${version}`
-
-    // Skip fetch if already-loaded data satisfies the smaller request (e.g. toggling showAll off)
-    if (cacheKey) {
-      const [storedLoanId, storedRows, storedVersion] = cacheKey.split(':')
-      if (
-        storedLoanId === String(loanId) &&
-        storedVersion === String(version) &&
-        Number(storedRows) >= requestedRows
-      ) {
-        return
-      }
+    // Nothing to debounce once the committed params match the input, so a settled
+    // panel schedules no timer at all.
+    if (
+      whatIf.extraMonthly === appliedWhatIf.extraMonthly &&
+      whatIf.lumpSum === appliedWhatIf.lumpSum &&
+      whatIf.lumpSumDate === appliedWhatIf.lumpSumDate
+    ) {
+      return
     }
+    const timer = setTimeout(() => setAppliedWhatIf(whatIf), WHAT_IF_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [whatIf, appliedWhatIf])
+
+  const query = whatIfQuery(appliedWhatIf)
+  const requestedRows = showAll ? FULL_AMORTIZATION_ROWS : INITIAL_AMORTIZATION_ROWS
+  // The what-if params are part of the key so a baseline and a what-if result
+  // never satisfy each other from cache.
+  const requestedKey = `${loanId}|${version}|${query}`
+  const whatIfError = failedKey === requestedKey ? t('loan.whatIf.errors.invalid') : null
+
+  useEffect(() => {
+    // Skip fetch if already-loaded data satisfies the smaller request (e.g. toggling showAll off)
+    if (cache && cache.key === requestedKey && cache.rows >= requestedRows) return
+    // The backend already rejected these params — don't retry until they change.
+    if (failedKey === requestedKey) return
 
     const controller = new AbortController()
+    // Async data fetch; AbortController prevents stale updates on unmount.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; AbortController prevents stale updates on unmount
     setLoading(true)
     setError(null)
-    fetch(`/api/budget/loans/${loanId}/amortization?rows=${requestedRows}`, { credentials: 'include', signal: controller.signal })
-      .then(r => {
+    const url = `/api/budget/loans/${loanId}/amortization?rows=${requestedRows}${query ? `&${query}` : ''}`
+    fetch(url, { credentials: 'include', signal: controller.signal })
+      .then(async r => {
+        // Invalid what-if input: surface it inline and keep the schedule that is
+        // already on screen rather than blanking the table.
+        if (r.status === 400) throw new Error('what-if')
         if (!r.ok) throw new Error('fetch failed')
-        return r.json() as Promise<AmortizationResponse>
+        return (await r.json()) as AmortizationResponse
       })
       .then(response => {
         setData(response)
-        setCacheKey(requestedKey)
+        setFailedKey(null)
+        setCache({ key: requestedKey, rows: requestedRows })
       })
       .catch(err => {
         if (err instanceof Error && err.name === 'AbortError') return
+        if (err instanceof Error && err.message === 'what-if') {
+          setFailedKey(requestedKey)
+          return
+        }
         setError(t('loan.errors.loadFailed'))
       })
       .finally(() => setLoading(false))
     return () => controller.abort()
-  }, [loanId, cacheKey, version, showAll, t])
+  }, [loanId, cache, failedKey, requestedKey, requestedRows, query, t])
 
-  if (loading) return <p className="text-gray-400 text-sm py-4">{t('loading')}</p>
-  if (error) return <p className="text-red-400 text-sm py-4">{error}</p>
+  if (loading && !data) return <p className="text-gray-400 text-sm py-4">{t('loading')}</p>
+  if (error && !data) return <p className="text-red-400 text-sm py-4">{error}</p>
   if (!data || data.amortization.length === 0) {
     return <p className="text-gray-500 text-sm py-4">{t('loan.noAmortization')}</p>
   }
@@ -84,7 +116,7 @@ export function AmortizationTable({ loanId, version, t }: AmortizationTableProps
       })
       if (!r.ok) throw new Error('create failed')
       // Force reload amortization
-      setCacheKey('')
+      setCache(null)
     } catch {
       setError(t('loan.errors.saveFailed'))
     }
@@ -97,7 +129,7 @@ export function AmortizationTable({ loanId, version, t }: AmortizationTableProps
         credentials: 'include',
       })
       if (!r.ok) throw new Error('delete failed')
-      setCacheKey('')
+      setCache(null)
     } catch {
       setError(t('loan.errors.deleteFailed'))
     }
@@ -122,11 +154,24 @@ export function AmortizationTable({ loanId, version, t }: AmortizationTableProps
         </div>
       )}
 
+      {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+
       {/* Rate history */}
       <RateHistoryPanel
         rateChanges={rateChanges}
         onAdd={addRateChange}
         onDelete={deleteRateChange}
+        t={t}
+      />
+
+      {/* Extra payment / early payoff what-if */}
+      <WhatIfPanel
+        loanId={loanId}
+        params={whatIf}
+        onChange={setWhatIf}
+        summary={data.payoff_summary}
+        error={whatIfError}
+        pending={loading}
         t={t}
       />
 

@@ -3,8 +3,10 @@ package budget
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -255,6 +257,358 @@ func TestBuildAmortization_CalculatesPayment(t *testing.T) {
 	last := rows[len(rows)-1]
 	if last.RemainingBalance > 10 {
 		t.Errorf("expected near-zero final balance, got %v", last.RemainingBalance)
+	}
+}
+
+// -- Overpayment (what-if) tests --
+
+// whatIfLoan is the shared fixture for the overpayment tests: 90 000 kr over
+// three months at 5 %, paid on the 1st, disbursed 2020-01-01.
+func whatIfLoan() *Loan {
+	return &Loan{
+		Principal:      90000,
+		CurrentBalance: 90000,
+		AnnualRate:     0.05,
+		MonthlyPayment: 30000,
+		TermMonths:     3,
+		PaymentDay:     1,
+		StartDate:      "2020-01-01",
+	}
+}
+
+func round2(v float64) float64 { return math.Round(v*100) / 100 }
+
+func TestBuildAmortizationWithOverpayments_ZeroOptionsMatchesBaseline(t *testing.T) {
+	l := whatIfLoan()
+	rateChanges := []LoanRateChange{{EffectiveDate: "2020-02-15", AnnualRate: 0.10}}
+
+	base, err := BuildAmortization(l, 0, rateChanges)
+	if err != nil {
+		t.Fatalf("BuildAmortization: %v", err)
+	}
+	got, err := BuildAmortizationWithOverpayments(l, 0, rateChanges, OverpaymentOptions{})
+	if err != nil {
+		t.Fatalf("BuildAmortizationWithOverpayments: %v", err)
+	}
+	if !reflect.DeepEqual(base, got) {
+		t.Errorf("zero options changed the schedule:\nbase = %+v\ngot  = %+v", base, got)
+	}
+}
+
+func TestBuildPayoffSummary_NilWithoutOverpayments(t *testing.T) {
+	summary, err := BuildPayoffSummary(whatIfLoan(), nil, OverpaymentOptions{})
+	if err != nil {
+		t.Fatalf("BuildPayoffSummary: %v", err)
+	}
+	if summary != nil {
+		t.Errorf("expected nil summary without overpayments, got %+v", summary)
+	}
+}
+
+func TestBuildAmortizationWithOverpayments_ExtraMonthlyShortensTerm(t *testing.T) {
+	l := &Loan{
+		Principal:      1000000,
+		CurrentBalance: 1000000,
+		AnnualRate:     0.05,
+		MonthlyPayment: 0, // auto-calculated
+		TermMonths:     120,
+		PaymentDay:     1,
+		StartDate:      "2020-01-01",
+	}
+	base, err := BuildAmortization(l, 0, nil)
+	if err != nil {
+		t.Fatalf("BuildAmortization: %v", err)
+	}
+	got, err := BuildAmortizationWithOverpayments(l, 0, nil, OverpaymentOptions{ExtraMonthly: 3000})
+	if err != nil {
+		t.Fatalf("BuildAmortizationWithOverpayments: %v", err)
+	}
+	if len(got) >= len(base) {
+		t.Fatalf("expected a shorter schedule, got %d rows vs baseline %d", len(got), len(base))
+	}
+	last := got[len(got)-1]
+	if last.RemainingBalance != 0 {
+		t.Errorf("final remaining balance = %v, want 0", last.RemainingBalance)
+	}
+	// The final payment is reduced so the balance never goes negative.
+	regular := got[0].Payment
+	if last.Payment > regular {
+		t.Errorf("final payment %v exceeds a regular payment %v", last.Payment, regular)
+	}
+	for _, r := range got {
+		if r.RemainingBalance < 0 {
+			t.Fatalf("negative balance at payment %d: %v", r.PaymentNum, r.RemainingBalance)
+		}
+	}
+	// Overpaying must not increase total interest.
+	baseInterest, gotInterest := 0.0, 0.0
+	for _, r := range base {
+		baseInterest += r.Interest
+	}
+	for _, r := range got {
+		gotInterest += r.Interest
+	}
+	if gotInterest >= baseInterest {
+		t.Errorf("interest with overpayments = %v, want less than baseline %v", gotInterest, baseInterest)
+	}
+}
+
+func TestBuildAmortizationWithOverpayments_LumpSumTiming(t *testing.T) {
+	l := &Loan{
+		Principal:      1000000,
+		CurrentBalance: 1000000,
+		AnnualRate:     0.05,
+		TermMonths:     120,
+		PaymentDay:     1,
+		StartDate:      "2020-01-01",
+	}
+	base, err := BuildAmortization(l, 0, nil)
+	if err != nil {
+		t.Fatalf("BuildAmortization: %v", err)
+	}
+
+	// The lump sum lands on the first scheduled payment on or after its date.
+	got, err := BuildAmortizationWithOverpayments(l, 0, nil, OverpaymentOptions{
+		LumpSum: 100000, LumpSumDate: "2020-04-15",
+	})
+	if err != nil {
+		t.Fatalf("BuildAmortizationWithOverpayments: %v", err)
+	}
+	// Payments 1-3 fall in Feb-Apr, so nothing changes before the May payment.
+	for i := 0; i < 3; i++ {
+		if got[i].RemainingBalance != base[i].RemainingBalance {
+			t.Errorf("row %d changed before the lump sum date: %v vs %v",
+				i+1, got[i].RemainingBalance, base[i].RemainingBalance)
+		}
+	}
+	if got[3].Date < "2020-04-15" {
+		t.Fatalf("row 4 date = %s, expected the first payment on or after 2020-04-15", got[3].Date)
+	}
+	drop := base[3].RemainingBalance - got[3].RemainingBalance
+	if math.Abs(drop-100000) > 1 {
+		t.Errorf("balance drop on the lump sum payment = %v, want ~100000", drop)
+	}
+	// It is applied exactly once: the next payment is a regular one again, so the
+	// gap only widens by the interest saved on the lump sum (a few hundred kroner),
+	// not by another 100 000.
+	nextDrop := (base[4].RemainingBalance - got[4].RemainingBalance) - drop
+	if nextDrop < 0 || nextDrop > 1000 {
+		t.Errorf("lump sum looks applied more than once (extra drop %v)", nextDrop)
+	}
+
+	// A lump sum dated after payoff is a no-op.
+	after, err := BuildAmortizationWithOverpayments(l, 0, nil, OverpaymentOptions{
+		LumpSum: 100000, LumpSumDate: "2099-01-01",
+	})
+	if err != nil {
+		t.Fatalf("BuildAmortizationWithOverpayments: %v", err)
+	}
+	if !reflect.DeepEqual(base, after) {
+		t.Errorf("lump sum after payoff changed the schedule")
+	}
+}
+
+// TestBuildAmortizationWithOverpayments_RateChangeFixture replays a loan with a
+// mid-period rate change against a hand-computed schedule.
+//
+// Fixture: 90 000 kr, 5 % nominal, 30 000 kr/month, term 3 months, payment day 1,
+// disbursed 2020-01-01, rate raised to 10 % on 2020-02-15 (mid-period), with a
+// 20 000 kr recurring extra payment.
+func TestBuildAmortizationWithOverpayments_RateChangeFixture(t *testing.T) {
+	l := whatIfLoan()
+	rateChanges := []LoanRateChange{{EffectiveDate: "2020-02-15", AnnualRate: 0.10}}
+
+	// -- Hand-computed baseline (actual/365, interest excludes the disbursement day) --
+	// Period 1: 2020-01-02 → 2020-02-01 = 30 days at 5 %.
+	b0 := 90000.0
+	i1 := b0 * 0.05 * 30 / 365
+	b1 := b0 - (30000 - i1)
+	// Period 2: 2020-02-01 → 2020-02-15 = 14 days at 5 %, then 15 days at 10 %.
+	i2 := b1*0.05*14/365 + b1*0.10*15/365
+	// The rate change recalculates the annuity over the 2 remaining months at 10 %.
+	r := 0.10 / 12
+	pay2 := b1 * r / (1 - math.Pow(1+r, -2))
+	b2 := b1 - (pay2 - i2)
+	// Period 3: 2020-03-01 → 2020-04-01 = 31 days at 10 %; the last payment clears
+	// the balance.
+	i3 := b2 * 0.10 * 31 / 365
+	baseInterest := i1 + i2 + i3
+
+	base, err := BuildAmortization(l, 0, rateChanges)
+	if err != nil {
+		t.Fatalf("BuildAmortization: %v", err)
+	}
+	if len(base) != 3 {
+		t.Fatalf("baseline rows = %d, want 3", len(base))
+	}
+	for i, want := range []float64{round2(i1), round2(i2), round2(i3)} {
+		if math.Abs(base[i].Interest-want) > 0.02 {
+			t.Errorf("baseline row %d interest = %v, want %v", i+1, base[i].Interest, want)
+		}
+	}
+
+	// -- Hand-computed what-if with 20 000 kr extra per month --
+	// Period 1: same interest, but 20 000 kr more principal.
+	e := 20000.0
+	w1 := b0 - (30000 - i1 + e) // remaining balance after payment 1
+	// Period 2: same 14/15 day split, now on the smaller balance.
+	wi2 := w1*0.05*14/365 + w1*0.10*15/365
+	// The contractual payment stays pay2 (overpayments shorten the term, they do
+	// not lower the payment), so pay2 - wi2 + 20 000 > w1: the loan is cleared.
+	whatIfInterest := i1 + wi2
+
+	got, err := BuildAmortizationWithOverpayments(l, 0, rateChanges, OverpaymentOptions{ExtraMonthly: e})
+	if err != nil {
+		t.Fatalf("BuildAmortizationWithOverpayments: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("what-if rows = %d, want 2", len(got))
+	}
+	if math.Abs(got[0].Interest-round2(i1)) > 0.02 {
+		t.Errorf("what-if row 1 interest = %v, want %v", got[0].Interest, round2(i1))
+	}
+	if math.Abs(got[0].RemainingBalance-round2(w1)) > 0.02 {
+		t.Errorf("what-if row 1 balance = %v, want %v", got[0].RemainingBalance, round2(w1))
+	}
+	if math.Abs(got[1].Interest-round2(wi2)) > 0.02 {
+		t.Errorf("what-if row 2 interest = %v, want %v", got[1].Interest, round2(wi2))
+	}
+	if got[1].RemainingBalance != 0 {
+		t.Errorf("what-if final balance = %v, want 0", got[1].RemainingBalance)
+	}
+	if math.Abs(got[1].Payment-round2(wi2+w1)) > 0.02 {
+		t.Errorf("what-if final payment = %v, want %v", got[1].Payment, round2(wi2+w1))
+	}
+	if got[1].Rate != 0.10 {
+		t.Errorf("what-if row 2 rate = %v, want 0.10", got[1].Rate)
+	}
+
+	// -- Summary --
+	summary, err := BuildPayoffSummary(l, rateChanges, OverpaymentOptions{ExtraMonthly: e})
+	if err != nil {
+		t.Fatalf("BuildPayoffSummary: %v", err)
+	}
+	if summary == nil {
+		t.Fatal("expected a payoff summary")
+	}
+	if summary.MonthsSaved != 1 {
+		t.Errorf("MonthsSaved = %d, want 1", summary.MonthsSaved)
+	}
+	if summary.OriginalPayoffDate != base[2].Date {
+		t.Errorf("OriginalPayoffDate = %s, want %s", summary.OriginalPayoffDate, base[2].Date)
+	}
+	if summary.NewPayoffDate != got[1].Date {
+		t.Errorf("NewPayoffDate = %s, want %s", summary.NewPayoffDate, got[1].Date)
+	}
+	wantSaved := round2(baseInterest - whatIfInterest)
+	if math.Abs(summary.InterestSaved-wantSaved) > 0.05 {
+		t.Errorf("InterestSaved = %v, want %v", summary.InterestSaved, wantSaved)
+	}
+}
+
+func TestLoansAmortizationHandler_WhatIf(t *testing.T) {
+	db := setupTestDB(t)
+
+	l := &Loan{
+		Name: "Test Loan", StartDate: "2020-01-01", Principal: 1000000,
+		CurrentBalance: 1000000, AnnualRate: 0.05, TermMonths: 120, PaymentDay: 1,
+	}
+	if err := CreateLoan(db, 1, l); err != nil {
+		t.Fatalf("CreateLoan: %v", err)
+	}
+
+	url := fmt.Sprintf("/api/budget/loans/%d/amortization?rows=12&extra_monthly=3000", l.ID)
+	req := withUser(httptest.NewRequest("GET", url, nil), 1)
+	req = withChiParam(req, "id", fmt.Sprintf("%d", l.ID))
+	rec := httptest.NewRecorder()
+	LoansAmortizationHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Amortization  []AmortizationRow `json:"amortization"`
+		PayoffSummary *PayoffSummary    `json:"payoff_summary"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.PayoffSummary == nil {
+		t.Fatal("expected a payoff_summary when extra_monthly is set")
+	}
+	if body.PayoffSummary.MonthsSaved <= 0 {
+		t.Errorf("MonthsSaved = %d, want > 0", body.PayoffSummary.MonthsSaved)
+	}
+	if body.PayoffSummary.InterestSaved <= 0 {
+		t.Errorf("InterestSaved = %v, want > 0", body.PayoffSummary.InterestSaved)
+	}
+	if body.PayoffSummary.NewPayoffDate >= body.PayoffSummary.OriginalPayoffDate {
+		t.Errorf("NewPayoffDate %s should precede OriginalPayoffDate %s",
+			body.PayoffSummary.NewPayoffDate, body.PayoffSummary.OriginalPayoffDate)
+	}
+}
+
+func TestLoansAmortizationHandler_NoWhatIfSummary(t *testing.T) {
+	db := setupTestDB(t)
+
+	l := &Loan{Name: "Test", StartDate: "2020-01-01", Principal: 100000, CurrentBalance: 100000, AnnualRate: 0.048, MonthlyPayment: 1000}
+	if err := CreateLoan(db, 1, l); err != nil {
+		t.Fatalf("CreateLoan: %v", err)
+	}
+
+	req := withUser(httptest.NewRequest("GET", fmt.Sprintf("/api/budget/loans/%d/amortization?rows=6", l.ID), nil), 1)
+	req = withChiParam(req, "id", fmt.Sprintf("%d", l.ID))
+	rec := httptest.NewRecorder()
+	LoansAmortizationHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		PayoffSummary *PayoffSummary `json:"payoff_summary"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.PayoffSummary != nil {
+		t.Errorf("expected null payoff_summary without overpayments, got %+v", body.PayoffSummary)
+	}
+}
+
+func TestLoansAmortizationHandler_InvalidWhatIfParams(t *testing.T) {
+	db := setupTestDB(t)
+
+	l := &Loan{Name: "Test", StartDate: "2020-01-01", Principal: 100000, CurrentBalance: 100000, AnnualRate: 0.048, MonthlyPayment: 1000}
+	if err := CreateLoan(db, 1, l); err != nil {
+		t.Fatalf("CreateLoan: %v", err)
+	}
+
+	cases := []struct{ name, query string }{
+		{"negative extra_monthly", "extra_monthly=-100"},
+		{"non-numeric extra_monthly", "extra_monthly=abc"},
+		{"negative lump_sum", "lump_sum=-1&lump_sum_date=2025-01-01"},
+		{"malformed lump_sum_date", "lump_sum=1000&lump_sum_date=01-01-2025"},
+		{"lump_sum without date", "lump_sum=1000"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			url := fmt.Sprintf("/api/budget/loans/%d/amortization?%s", l.ID, tc.query)
+			req := withUser(httptest.NewRequest("GET", url, nil), 1)
+			req = withChiParam(req, "id", fmt.Sprintf("%d", l.ID))
+			rec := httptest.NewRecorder()
+			LoansAmortizationHandler(db).ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+			var body map[string]string
+			if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if body["error"] == "" {
+				t.Error("expected a non-empty error message")
+			}
+		})
 	}
 }
 
