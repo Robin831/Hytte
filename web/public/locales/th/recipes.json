@@ -11,7 +11,7 @@
     "importCancel": "ยกเลิก",
     "importing": "กำลังอ่านหน้าเว็บ…",
     "cookAgain": "ทำอีกครั้ง",
-    "cookAgainSubtitle": "อยู่ในฤดูกาลและไม่ได้ทำมานานแล้ว",
+    "cookAgainSubtitle": "เมนูตามฤดูกาลมาก่อน ตามด้วยเมนูที่ไม่ได้ทำมานานที่สุด",
     "lastCooked": "ทำครั้งล่าสุด {{date}}",
     "neverCooked": "ยังไม่เคยทำ",
     "servings_one": "{{count}} ที่",
