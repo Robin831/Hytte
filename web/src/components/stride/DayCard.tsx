@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Circle, RefreshCw } from 'lucide-react'
 import { formatDate } from '../../utils/formatDate'
 import type { DayPlan, StrideEvaluationRecord } from '../../types/stride'
+import EvalThread from './EvalThread'
 import { complianceBadgeClass, complianceIcon, flagIsSevere } from './strideHelpers'
 
 interface DayCardProps {
@@ -12,9 +13,10 @@ interface DayCardProps {
   changedDates?: Set<string>
   onRerun?: (date: string) => void
   rerunning?: boolean
+  onEvalRevised?: () => void
 }
 
-export function DayCard({ day, completed, evaluation, changedDates, onRerun, rerunning }: DayCardProps) {
+export function DayCard({ day, completed, evaluation, changedDates, onRerun, rerunning, onEvalRevised }: DayCardProps) {
   const { t } = useTranslation('stride')
   const [expanded, setExpanded] = useState(false)
 
@@ -189,6 +191,11 @@ export function DayCard({ day, completed, evaluation, changedDates, onRerun, rer
                       <p className="text-sm text-gray-400">{evaluation.eval.adjustments}</p>
                     </div>
                   )}
+                  <EvalThread
+                    evaluationId={evaluation.id}
+                    questions={evaluation.eval.questions}
+                    onEvalRevised={onEvalRevised}
+                  />
                 </div>
               )
             })()}

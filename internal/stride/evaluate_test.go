@@ -124,9 +124,9 @@ func TestBuildEvalPrompt_WithSession(t *testing.T) {
 	session := &PlannedSession{
 		Date: "2026-04-06",
 		Session: &Session{
-			MainSet:      "4x10min threshold",
-			Description:  "Threshold session",
-			TargetHRCap:  165,
+			MainSet:     "4x10min threshold",
+			Description: "Threshold session",
+			TargetHRCap: 165,
 		},
 	}
 	workout := training.Workout{
@@ -652,4 +652,3 @@ func TestAppendWorkoutContextNote_NoContextLeavesNotesUnchanged(t *testing.T) {
 		t.Errorf("expected original note preserved, got %q", got[0].Content)
 	}
 }
-

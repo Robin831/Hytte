@@ -365,7 +365,8 @@
       "overtraining": "ความเสี่ยงฝึกซ้อมมากเกินไป",
       "injury_risk": "ความเสี่ยงบาดเจ็บ",
       "pacing_issue": "ปัญหาเพส"
-    }
+    },
+    "coachQuestions": "คำถามจากโค้ช"
   },
   "speedPlan": {
     "kinds": {

@@ -179,5 +179,21 @@
     "startFreshHint": "Start a fresh conversation to speed up replies",
     "startFreshError": "Couldn't start a fresh conversation. Please try again.",
     "freshContext": "Started a fresh conversation to keep replies fast. Your plan and history are unchanged."
+  },
+  "evalThread": {
+    "discuss": "Discuss with coach",
+    "coachAsked": "Coach has a question — reply",
+    "coach": "Coach",
+    "you": "You",
+    "loading": "Loading conversation…",
+    "empty": "Ask the coach about this evaluation or correct something it got wrong.",
+    "placeholder": "Reply to the coach…",
+    "send": "Send",
+    "coachThinking": "Coach is thinking…",
+    "evalRevised": "Evaluation updated",
+    "errors": {
+      "failedToLoad": "Failed to load the conversation",
+      "failedToSend": "The coach could not reply — try again"
+    }
   }
 }

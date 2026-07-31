@@ -1433,6 +1433,25 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_stride_chat_messages_plan ON stride_chat_messages(plan_id);
 
+	-- Stride per-evaluation coach threads (Hytte-sevc). Keyed by workout id
+	-- (or plan+eval_date for rest/missed evaluations), NOT the evaluation row
+	-- id: re-evaluations delete and reinsert stride_evaluations rows and the
+	-- conversation must survive that.
+	CREATE TABLE IF NOT EXISTS stride_eval_messages (
+		id           INTEGER PRIMARY KEY,
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		plan_id      INTEGER NOT NULL,
+		workout_id   INTEGER,
+		eval_date    TEXT NOT NULL DEFAULT '',
+		role         TEXT NOT NULL CHECK (role IN ('user', 'coach')),
+		content      TEXT NOT NULL DEFAULT '',
+		eval_revised INTEGER NOT NULL DEFAULT 0,
+		created_at   TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_stride_eval_messages_workout ON stride_eval_messages(user_id, workout_id);
+	CREATE INDEX IF NOT EXISTS idx_stride_eval_messages_date ON stride_eval_messages(user_id, plan_id, eval_date);
+
 	-- Vault: encrypted personal file storage (Hytte-r43)
 	CREATE TABLE IF NOT EXISTS vault_files (
 		id           INTEGER PRIMARY KEY,

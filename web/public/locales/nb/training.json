@@ -365,7 +365,8 @@
       "overtraining": "Overtrening",
       "injury_risk": "Skaderisiko",
       "pacing_issue": "Tempoproblemer"
-    }
+    },
+    "coachQuestions": "Trenerens spørsmål"
   },
   "speedPlan": {
     "kinds": {

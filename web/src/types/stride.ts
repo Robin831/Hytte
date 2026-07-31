@@ -21,6 +21,7 @@ export interface StrideEvaluation {
   notes: string
   flags: string[] | null
   adjustments: string
+  questions?: string[]
 }
 
 export interface StrideEvaluationRecord {

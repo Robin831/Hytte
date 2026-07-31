@@ -18,10 +18,10 @@ import (
 // RaceMatchResult describes the outcome of automatic race matching for a
 // workout classified as a race.
 type RaceMatchResult struct {
-	Status     string `json:"status"`      // "linked", "ambiguous", "no_match"
-	RaceID     int64  `json:"race_id"`     // set when Status == "linked"
-	RaceName   string `json:"race_name"`   // set when Status == "linked"
-	Candidates int    `json:"candidates"`  // number of matching races found
+	Status     string `json:"status"`     // "linked", "ambiguous", "no_match"
+	RaceID     int64  `json:"race_id"`    // set when Status == "linked"
+	RaceName   string `json:"race_name"`  // set when Status == "linked"
+	Candidates int    `json:"candidates"` // number of matching races found
 }
 
 // TryMatchRaceForWorkout attempts to auto-link a workout classified as a race

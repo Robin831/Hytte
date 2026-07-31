@@ -179,5 +179,21 @@
     "startFreshHint": "Start en ny samtale for raskere svar",
     "startFreshError": "Kunne ikke starte en ny samtale. Prøv igjen.",
     "freshContext": "Startet en ny samtale for å holde svarene raske. Planen og historikken din er uendret."
+  },
+  "evalThread": {
+    "discuss": "Diskuter med treneren",
+    "coachAsked": "Treneren har et spørsmål — svar",
+    "coach": "Trener",
+    "you": "Du",
+    "loading": "Laster samtalen…",
+    "empty": "Spør treneren om denne vurderingen, eller korriger noe som ble feil.",
+    "placeholder": "Svar treneren…",
+    "send": "Send",
+    "coachThinking": "Treneren tenker…",
+    "evalRevised": "Vurderingen er oppdatert",
+    "errors": {
+      "failedToLoad": "Kunne ikke laste samtalen",
+      "failedToSend": "Treneren kunne ikke svare — prøv igjen"
+    }
   }
 }

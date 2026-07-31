@@ -23,8 +23,8 @@ var ErrNoStridePlan = errors.New("no stride plan covers this date")
 
 // Evaluation note templates for rest days and missed sessions.
 const (
-	noteRestDay        = "Rest day taken as planned \u2014 good recovery."
-	noteMissedSession  = "Planned %s was not completed. Consider adjusting the remaining week if needed."
+	noteRestDay       = "Rest day taken as planned \u2014 good recovery."
+	noteMissedSession = "Planned %s was not completed. Consider adjusting the remaining week if needed."
 )
 
 // criticalFlags is the set of evaluation flag values that warrant an immediate push notification.
@@ -36,13 +36,14 @@ var criticalFlags = map[string]bool{
 
 // Evaluation holds the AI-generated assessment of a completed workout against its planned session.
 type Evaluation struct {
-	PlannedType string   `json:"planned_type"` // session type that was planned (e.g. "threshold", "easy", "long_run", "none")
-	ActualType  string   `json:"actual_type"`  // session type that was performed
-	Compliance  string   `json:"compliance"`   // "compliant", "partial", "missed", "bonus", or "rest_day"
-	Notes       string   `json:"notes"`        // narrative assessment
-	Flags       []string `json:"flags"`        // warning flags, e.g. "hr_too_high", "overtraining"
-	Adjustments string   `json:"adjustments"`  // suggested adjustments to upcoming training
-	Date        string   `json:"date,omitempty"` // date (YYYY-MM-DD) for rest_day/missed evaluations without a workout
+	PlannedType string   `json:"planned_type"`        // session type that was planned (e.g. "threshold", "easy", "long_run", "none")
+	ActualType  string   `json:"actual_type"`         // session type that was performed
+	Compliance  string   `json:"compliance"`          // "compliant", "partial", "missed", "bonus", or "rest_day"
+	Notes       string   `json:"notes"`               // narrative assessment
+	Flags       []string `json:"flags"`               // warning flags, e.g. "hr_too_high", "overtraining"
+	Adjustments string   `json:"adjustments"`         // suggested adjustments to upcoming training
+	Date        string   `json:"date,omitempty"`      // date (YYYY-MM-DD) for rest_day/missed evaluations without a workout
+	Questions   []string `json:"questions,omitempty"` // up to 2 clarifying questions for the runner (Hytte-sevc)
 }
 
 // EvaluateWorkout calls Claude to assess how well a completed workout matched its planned session.
@@ -280,8 +281,12 @@ func ReEvaluateDate(ctx context.Context, db *sql.DB, httpClient *http.Client, us
 	var newRecords []reEvalRecord
 	for _, workout := range workouts {
 		matchedSession := MatchWorkoutToSession(workout, sessions)
+		// Inject the saved workout-context self-report like the automatic
+		// evaluation path does — without it, a manual re-run silently loses
+		// the runner's own account of the session (Hytte-sevc).
+		workoutNotes := appendWorkoutContextNote(db, workout, date, notes)
 		evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
-		eval, err := EvaluateWorkout(evalCtx, claudeCfg, workout, matchedSession, *plan, profile, notes)
+		eval, err := EvaluateWorkout(evalCtx, claudeCfg, workout, matchedSession, *plan, profile, workoutNotes)
 		cancel()
 		if err != nil {
 			return 0, fmt.Errorf("evaluate workout %d: %w", workout.ID, err)
@@ -681,7 +686,21 @@ func storeEvaluation(ctx context.Context, db *sql.DB, userID, workoutID, planID 
 		INSERT INTO stride_evaluations (user_id, plan_id, workout_id, eval_json, created_at)
 		VALUES (?, ?, ?, ?, ?)
 	`, userID, planID, workoutID, encEval, now)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Seed the coach's clarifying questions as the opening message of the
+	// per-workout thread so the athlete can answer in place. Best-effort: a
+	// failure here must not fail the evaluation itself.
+	if workoutID > 0 && len(eval.Questions) > 0 {
+		wid := workoutID
+		if err := insertEvalMessage(ctx, db, userID, planID, &wid, "", roleCoach,
+			strings.Join(eval.Questions, "\n"), false); err != nil {
+			log.Printf("stride eval: seed question thread for workout %d: %v", workoutID, err)
+		}
+	}
+	return nil
 }
 
 // evaluateDateWithNotes calls Claude to produce a contextual evaluation for a date
@@ -761,6 +780,7 @@ Return ONLY a JSON object with these fields:
 - "notes": string — 2-4 sentence contextual evaluation considering the user's notes
 - "flags": array of strings — zero or more warning flags (empty array if none)
 - "adjustments": string — 1-2 sentences of suggested adjustments based on the situation
+- "questions": array of strings — at most 2 short clarifying questions for the runner, ONLY when the answer would materially change your assessment. Most evaluations should return an empty array.
 - "date": string — "` + date + `"
 
 Output ONLY the JSON object, no other text.
@@ -1003,6 +1023,7 @@ Return ONLY a JSON object with these fields:
 - "notes": string — 2-4 sentence narrative assessment of the workout compliance and quality
 - "flags": array of strings — zero or more warning flags from: "hr_too_high", "hr_too_low", "too_short", "too_long", "overtraining", "injury_risk", "pacing_issue"
 - "adjustments": string — 1-2 sentences of suggested adjustments to the next session(s) based on this result
+- "questions": array of strings — at most 2 short clarifying questions for the runner, ONLY when the answer would materially change your assessment (e.g. ambiguous HR data that could be a strap issue, an unexplained deviation from the plan). Most evaluations should return an empty array.
 
 Output ONLY the JSON object, no other text.
 `)
@@ -1035,6 +1056,12 @@ func parseEvalResponse(response string) (*Evaluation, error) {
 
 	if eval.Flags == nil {
 		eval.Flags = []string{}
+	}
+
+	// The prompt asks for at most 2 questions; enforce the cap so a chatty
+	// model can't flood the thread UI.
+	if len(eval.Questions) > 2 {
+		eval.Questions = eval.Questions[:2]
 	}
 
 	return &eval, nil

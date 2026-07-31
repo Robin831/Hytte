@@ -791,6 +791,22 @@ export default function StridePage() {
     return () => { controller.abort() }
   }, [planId, previousPlanId])
 
+  async function refreshEvaluations() {
+    if (!currentPlan) return
+    try {
+      const [curr, prev] = await Promise.all([
+        loadEvaluationsForPlan(currentPlan.id),
+        previousPlanId ? loadEvaluationsForPlan(previousPlanId) : Promise.resolve([]),
+      ])
+      const byId = new Map<number, StrideEvaluationRecord>()
+      for (const e of [...prev, ...curr]) byId.set(e.id, e)
+      setEvaluations(Array.from(byId.values()))
+    } catch {
+      // Non-fatal: the thread already shows the coach's reply; the revised
+      // evaluation appears on the next full load.
+    }
+  }
+
   async function handleRerunDay(date: string) {
     setRerunError('')
     setRerunningDate(date)
@@ -1160,6 +1176,7 @@ export default function StridePage() {
                   changedDates={changedDates}
                   onRerun={handleRerunDay}
                   rerunning={rerunningDate === day.date}
+                  onEvalRevised={refreshEvaluations}
                 />
               ))}
             </div>

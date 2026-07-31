@@ -7,6 +7,7 @@ import { formatDate, formatTime, formatNumber } from '../utils/formatDate'
 import { formatDistance, formatDuration, formatPace } from '../utils/training'
 import type { Workout, ZoneDistribution, WorkoutAnalysis, CachedInsights, Lap, RacePredictions } from '../types/training'
 import type { StrideEvaluationRecord } from '../types/stride'
+import EvalThread from '../components/stride/EvalThread'
 import WorkoutHRChart from '../components/charts/WorkoutHRChart'
 import WorkoutPaceChart from '../components/charts/WorkoutPaceChart'
 import HRZoneCard from '../components/training/HRZoneCard'
@@ -75,6 +76,17 @@ export default function TrainingDetail() {
   const [racePredictions, setRacePredictions] = useState<RacePredictions | null>(null)
   const [showLactateImport, setShowLactateImport] = useState(false)
   const [strideEval, setStrideEval] = useState<StrideEvaluationRecord | null>(null)
+  const reloadStrideEval = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/stride/evaluations?workout_id=${id}`, { credentials: 'include' })
+      if (!res.ok) return
+      const data = await res.json()
+      const evals: StrideEvaluationRecord[] = data.evaluations ?? []
+      setStrideEval(evals[0] ?? null)
+    } catch {
+      // Non-fatal: the revised evaluation shows on next page load.
+    }
+  }, [id])
   const [linkedRace, setLinkedRace] = useState<{ name: string; date: string; distance_m: number; target_time: number | null; result_time: number | null } | null>(null)
   const [workoutContext, setWorkoutContext] = useState<WorkoutContext | null>(null)
   const [contextLoaded, setContextLoaded] = useState(false)
@@ -781,7 +793,7 @@ export default function TrainingDetail() {
 
       {/* Stride evaluation */}
       {strideEval && (
-        <StrideEvalCard evaluation={strideEval} />
+        <StrideEvalCard evaluation={strideEval} onEvalRevised={reloadStrideEval} />
       )}
 
       {/* Effort & Pacing Card */}
@@ -917,7 +929,7 @@ export default function TrainingDetail() {
   )
 }
 
-function StrideEvalCard({ evaluation }: { evaluation: StrideEvaluationRecord }) {
+function StrideEvalCard({ evaluation, onEvalRevised }: { evaluation: StrideEvaluationRecord; onEvalRevised?: () => void }) {
   const { t } = useTranslation('training')
   const { eval: ev } = evaluation
   const flags = Array.isArray(ev.flags) ? ev.flags : []
@@ -989,6 +1001,15 @@ function StrideEvalCard({ evaluation }: { evaluation: StrideEvaluationRecord }) 
             <p className="text-sm text-gray-400">{ev.adjustments}</p>
           </div>
         )}
+        {Array.isArray(ev.questions) && ev.questions.length > 0 && (
+          <div className="pt-1">
+            <p className="text-xs text-amber-400 mb-1">{t('strideEval.coachQuestions')}</p>
+            <ul className="text-sm text-amber-200/90 list-disc pl-4 space-y-0.5">
+              {ev.questions.map((q, i) => <li key={i}>{q}</li>)}
+            </ul>
+          </div>
+        )}
+        <EvalThread evaluationId={evaluation.id} questions={ev.questions} onEvalRevised={onEvalRevised} />
       </div>
     </div>
   )

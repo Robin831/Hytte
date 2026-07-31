@@ -113,6 +113,17 @@ func setupTestDB(t *testing.T) *sql.DB {
 			FOREIGN KEY (user_id, plan_id) REFERENCES stride_plans(user_id, id)
 		);
 		CREATE INDEX idx_stride_chat_messages_plan ON stride_chat_messages(plan_id);
+		CREATE TABLE stride_eval_messages (
+			id           INTEGER PRIMARY KEY,
+			user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			plan_id      INTEGER NOT NULL,
+			workout_id   INTEGER,
+			eval_date    TEXT NOT NULL DEFAULT '',
+			role         TEXT NOT NULL CHECK (role IN ('user', 'coach')),
+			content      TEXT NOT NULL DEFAULT '',
+			eval_revised INTEGER NOT NULL DEFAULT 0,
+			created_at   TEXT NOT NULL DEFAULT ''
+		);
 		CREATE TABLE stride_evaluations (
 			id          INTEGER PRIMARY KEY,
 			user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -592,26 +603,26 @@ func TestNextStrideRun(t *testing.T) {
 	}{
 		{
 			name:          "Monday before 02:00 returns same day",
-			now:           time.Date(2026, 4, 6, 1, 0, 0, 0, oslo),  // Monday 01:00
-			want:          time.Date(2026, 4, 6, 2, 0, 0, 0, oslo),  // Same Monday 02:00
+			now:           time.Date(2026, 4, 6, 1, 0, 0, 0, oslo), // Monday 01:00
+			want:          time.Date(2026, 4, 6, 2, 0, 0, 0, oslo), // Same Monday 02:00
 			maxFutureDiff: 7 * 24 * time.Hour,
 		},
 		{
 			name:          "Monday exactly 02:00 returns next Monday",
-			now:           time.Date(2026, 4, 6, 2, 0, 0, 0, oslo),   // Monday 02:00
-			want:          time.Date(2026, 4, 13, 2, 0, 0, 0, oslo),  // Next Monday 02:00
+			now:           time.Date(2026, 4, 6, 2, 0, 0, 0, oslo),  // Monday 02:00
+			want:          time.Date(2026, 4, 13, 2, 0, 0, 0, oslo), // Next Monday 02:00
 			maxFutureDiff: 7 * 24 * time.Hour,
 		},
 		{
 			name:          "Monday after 02:00 returns next Monday",
-			now:           time.Date(2026, 4, 6, 10, 0, 0, 0, oslo),  // Monday 10:00
-			want:          time.Date(2026, 4, 13, 2, 0, 0, 0, oslo),  // Next Monday 02:00
+			now:           time.Date(2026, 4, 6, 10, 0, 0, 0, oslo), // Monday 10:00
+			want:          time.Date(2026, 4, 13, 2, 0, 0, 0, oslo), // Next Monday 02:00
 			maxFutureDiff: 7 * 24 * time.Hour,
 		},
 		{
 			name:          "Sunday returns next Monday",
-			now:           time.Date(2026, 4, 5, 12, 0, 0, 0, oslo),  // Sunday noon
-			want:          time.Date(2026, 4, 6, 2, 0, 0, 0, oslo),   // Next day Monday 02:00
+			now:           time.Date(2026, 4, 5, 12, 0, 0, 0, oslo), // Sunday noon
+			want:          time.Date(2026, 4, 6, 2, 0, 0, 0, oslo),  // Next day Monday 02:00
 			maxFutureDiff: 7 * 24 * time.Hour,
 		},
 		{
@@ -622,8 +633,8 @@ func TestNextStrideRun(t *testing.T) {
 		},
 		{
 			name:          "Wednesday returns next Monday",
-			now:           time.Date(2026, 4, 8, 15, 0, 0, 0, oslo),  // Wednesday
-			want:          time.Date(2026, 4, 13, 2, 0, 0, 0, oslo),  // Next Monday 02:00
+			now:           time.Date(2026, 4, 8, 15, 0, 0, 0, oslo), // Wednesday
+			want:          time.Date(2026, 4, 13, 2, 0, 0, 0, oslo), // Next Monday 02:00
 			maxFutureDiff: 7 * 24 * time.Hour,
 		},
 	}

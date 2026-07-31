@@ -238,7 +238,7 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 	}
 
 	// User training constraints.
-	availableDays := prefs["stride_available_days"] // e.g. "5" or comma-separated list
+	availableDays := prefs["stride_available_days"]          // e.g. "5" or comma-separated list
 	weeklyDistanceCap := prefs["stride_weekly_distance_cap"] // km, e.g. "70"
 
 	// Compute current ACR to inform load recommendations.

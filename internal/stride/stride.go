@@ -32,12 +32,12 @@ const (
 type Race struct {
 	ID         int64   `json:"id"`
 	UserID     int64   `json:"user_id"`
-	Name       string  `json:"name"`       // encrypted at rest
-	Date       string  `json:"date"`       // YYYY-MM-DD
-	DistanceM  float64 `json:"distance_m"` // meters
+	Name       string  `json:"name"`        // encrypted at rest
+	Date       string  `json:"date"`        // YYYY-MM-DD
+	DistanceM  float64 `json:"distance_m"`  // meters
 	TargetTime *int    `json:"target_time"` // seconds, nullable
-	Priority   string  `json:"priority"`   // A, B, or C
-	Notes      string  `json:"notes"`      // encrypted at rest
+	Priority   string  `json:"priority"`    // A, B, or C
+	Notes      string  `json:"notes"`       // encrypted at rest
 	ResultTime *int    `json:"result_time"` // seconds, nullable
 	CreatedAt  string  `json:"created_at"`
 }
@@ -47,12 +47,12 @@ type Race struct {
 type Note struct {
 	ID         int64      `json:"id"`
 	UserID     int64      `json:"user_id"`
-	PlanID     *int64     `json:"plan_id"`      // nullable — linked to plan when created during a plan week
-	Content    string     `json:"content"`      // encrypted at rest
-	TargetDate string     `json:"target_date"`  // YYYY-MM-DD — which date this note applies to
-	ConsumedAt *time.Time `json:"consumed_at"`  // nullable — set when consumed by a process (e.g. plan generation)
-	ConsumedBy *string    `json:"consumed_by"`  // nullable — identifier of the consuming process
-	Scope      string     `json:"scope"`        // 'any' | 'nightly' | 'weekly' — routes the note to a specific consumer
+	PlanID     *int64     `json:"plan_id"`     // nullable — linked to plan when created during a plan week
+	Content    string     `json:"content"`     // encrypted at rest
+	TargetDate string     `json:"target_date"` // YYYY-MM-DD — which date this note applies to
+	ConsumedAt *time.Time `json:"consumed_at"` // nullable — set when consumed by a process (e.g. plan generation)
+	ConsumedBy *string    `json:"consumed_by"` // nullable — identifier of the consuming process
+	Scope      string     `json:"scope"`       // 'any' | 'nightly' | 'weekly' — routes the note to a specific consumer
 	CreatedAt  string     `json:"created_at"`
 }
 
@@ -883,17 +883,17 @@ func ListEvaluations(db *sql.DB, userID int64, planID *int64, workoutID *int64) 
 // boundaries (zones 1-2 → easy, zones 3-4 → threshold, zone 5 → hard).
 // Workouts without a usable avg_heart_rate are excluded from these buckets.
 type WeekSummary struct {
-	PlanID               int64   `json:"plan_id"`
-	WeekStart            string  `json:"week_start"`
-	WeekEnd              string  `json:"week_end"`
-	Phase                string  `json:"phase"`
-	SessionsPlanned      int     `json:"sessions_planned"`
-	SessionsCompleted    int     `json:"sessions_completed"`
-	CompletionRate       float64 `json:"completion_rate"`
-	EasySeconds          int     `json:"easy_seconds"`
-	ThresholdSeconds     int     `json:"threshold_seconds"`
-	HardSeconds          int     `json:"hard_seconds"`
-	TotalDistanceMeters  float64 `json:"total_distance_meters"`
+	PlanID              int64   `json:"plan_id"`
+	WeekStart           string  `json:"week_start"`
+	WeekEnd             string  `json:"week_end"`
+	Phase               string  `json:"phase"`
+	SessionsPlanned     int     `json:"sessions_planned"`
+	SessionsCompleted   int     `json:"sessions_completed"`
+	CompletionRate      float64 `json:"completion_rate"`
+	EasySeconds         int     `json:"easy_seconds"`
+	ThresholdSeconds    int     `json:"threshold_seconds"`
+	HardSeconds         int     `json:"hard_seconds"`
+	TotalDistanceMeters float64 `json:"total_distance_meters"`
 }
 
 // MonthSummary aggregates completion data across all weeks in a calendar month.
