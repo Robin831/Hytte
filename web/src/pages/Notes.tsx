@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, Search, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useBlocker, type BlockerFunction } from 'react-router-dom'
 import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
@@ -83,6 +84,57 @@ export default function Notes() {
     clearError()
   }
 
+  // Browser refresh / tab close can't be intercepted by the app's own dialog,
+  // so fall back to the native "leave site?" prompt while the draft is dirty.
+  // Browsers ignore any custom message, hence the empty `returnValue`.
+  useEffect(() => {
+    if (!isDirty) return
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isDirty])
+
+  // In-app route changes (sidebar links, browser back/forward) are caught by
+  // the router blocker and funnelled through the same discard dialog as the
+  // in-page guards. Requires the data router set up in main.tsx.
+  const shouldBlock = useCallback<BlockerFunction>(
+    ({ currentLocation, nextLocation }) =>
+      isDirty && currentLocation.pathname !== nextLocation.pathname,
+    [isDirty],
+  )
+  const blocker = useBlocker(shouldBlock)
+
+  // ConfirmDialog calls onClose right after onConfirm. Without this flag that
+  // close would reset the blocker and cancel the navigation we just allowed.
+  const proceedingRef = useRef(false)
+  // Mirrors the blocker so the unmount cleanup below can see its final state.
+  const blockerRef = useRef(blocker)
+  useEffect(() => {
+    blockerRef.current = blocker
+  }, [blocker])
+
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return
+    proceedingRef.current = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the block is reported by the router, not derivable during render
+    setPendingAction(() => () => {
+      proceedingRef.current = true
+      blocker.proceed()
+    })
+  }, [blocker])
+
+  // Release a still-blocked navigation if the page goes away underneath it,
+  // so the router isn't left holding a pending navigation.
+  useEffect(
+    () => () => {
+      if (blockerRef.current.state === 'blocked') blockerRef.current.reset?.()
+    },
+    [],
+  )
+
   // Run `action` immediately when the draft is clean, otherwise stash it behind
   // the discard-changes confirmation dialog so unsaved work isn't lost silently.
   function guardDirty(action: () => void) {
@@ -106,8 +158,22 @@ export default function Notes() {
   }
 
   function confirmDiscard() {
-    pendingAction?.()
+    const action = pendingAction
+    // Clear first so the action can only ever run once, even if the dialog
+    // re-renders while the router is completing a blocked navigation.
     setPendingAction(null)
+    action?.()
+  }
+
+  // Dismissing the dialog keeps the draft — and, for a blocked navigation,
+  // keeps the user on this page.
+  function cancelDiscard() {
+    setPendingAction(null)
+    if (proceedingRef.current) {
+      proceedingRef.current = false
+      return
+    }
+    if (blocker.state === 'blocked') blocker.reset()
   }
 
   async function handleSave(input: NoteInput): Promise<Note | null> {
@@ -138,7 +204,7 @@ export default function Notes() {
     />
     <ConfirmDialog
       open={showDiscardConfirm}
-      onClose={() => setPendingAction(null)}
+      onClose={cancelDiscard}
       onConfirm={confirmDiscard}
       title={t('discardConfirm.title')}
       message={t('discardConfirm.message')}

@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { act, screen, waitFor, fireEvent } from '@testing-library/react'
 import Notes from '../Notes'
+import { renderWithDataRouter } from '../../test/renderWithDataRouter'
 import type { Note } from '../../hooks/useNotes'
 
 // t returns interpolated keys so assertions can target stable strings.
@@ -40,6 +41,22 @@ function jsonResponse(body: unknown, ok = true): Response {
   } as unknown as Response
 }
 
+// Notes uses `useBlocker`, which only works under a data router. `/links`
+// stands in for any other route the user might navigate to.
+function renderNotes() {
+  return renderWithDataRouter(<Notes />, {
+    path: '/notes',
+    extraRoutes: [{ path: '/links', element: <div>links page</div> }],
+  })
+}
+
+/** Dispatches a cancelable `beforeunload` and reports whether it was blocked. */
+function dispatchBeforeUnload(): boolean {
+  const event = new Event('beforeunload', { cancelable: true })
+  window.dispatchEvent(event)
+  return event.defaultPrevented
+}
+
 const fetchMock = vi.fn()
 
 beforeEach(() => {
@@ -63,12 +80,12 @@ afterEach(() => {
 
 describe('Notes', () => {
   it('loads and renders the note list', async () => {
-    render(<Notes />)
+    renderNotes()
     expect(await screen.findByText('First note')).toBeInTheDocument()
   })
 
   it('filters by tag by issuing a query with the tag param', async () => {
-    render(<Notes />)
+    renderNotes()
     await screen.findByText('First note')
 
     // Tag filter chips render once tags load; wait for the button before clicking.
@@ -83,7 +100,7 @@ describe('Notes', () => {
   })
 
   it('keeps the save button disabled until an opened note is edited', async () => {
-    render(<Notes />)
+    renderNotes()
     fireEvent.click(await screen.findByText('First note'))
 
     const saveButton = screen.getByRole('button', { name: /editor.save/ })
@@ -94,7 +111,7 @@ describe('Notes', () => {
   })
 
   it('creates a note via POST when saving a new draft', async () => {
-    render(<Notes />)
+    renderNotes()
     await screen.findByText('First note')
 
     fireEvent.click(screen.getAllByRole('button', { name: 'newNote' })[0])
@@ -114,7 +131,7 @@ describe('Notes', () => {
   })
 
   it('opens the delete confirmation dialog and issues DELETE on confirm', async () => {
-    render(<Notes />)
+    renderNotes()
     fireEvent.click(await screen.findByText('First note'))
 
     fireEvent.click(screen.getByRole('button', { name: 'editor.deleteNote' }))
@@ -130,5 +147,138 @@ describe('Notes', () => {
       expect(del).toBeTruthy()
       expect(del![0]).toBe('/api/notes/1')
     })
+  })
+})
+
+describe('Notes unsaved-changes guard', () => {
+  /** Renders, opens the seeded note and edits its title so the draft is dirty. */
+  async function renderDirty() {
+    const result = renderNotes()
+    fireEvent.click(await screen.findByText('First note'))
+    fireEvent.change(screen.getByLabelText('fields.titleLabel'), { target: { value: 'Edited title' } })
+    return result
+  }
+
+  it('does not block unload while the editor is closed', async () => {
+    renderNotes()
+    await screen.findByText('First note')
+    expect(dispatchBeforeUnload()).toBe(false)
+  })
+
+  it('does not block unload for an opened but unedited note', async () => {
+    renderNotes()
+    fireEvent.click(await screen.findByText('First note'))
+    expect(dispatchBeforeUnload()).toBe(false)
+  })
+
+  it('blocks unload while the draft has unsaved changes', async () => {
+    await renderDirty()
+    expect(dispatchBeforeUnload()).toBe(true)
+  })
+
+  it('stops blocking unload once the draft is saved', async () => {
+    await renderDirty()
+
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve(jsonResponse({ note: makeNote({ title: 'Edited title' }) }))
+    )
+    fireEvent.click(screen.getByRole('button', { name: /editor.save/ }))
+
+    await waitFor(() => expect(dispatchBeforeUnload()).toBe(false))
+  })
+
+  it('removes the beforeunload listener when the page unmounts', async () => {
+    const { unmount } = await renderDirty()
+    expect(dispatchBeforeUnload()).toBe(true)
+
+    unmount()
+    expect(dispatchBeforeUnload()).toBe(false)
+  })
+
+  it('blocks in-app navigation and shows the discard dialog', async () => {
+    const { router } = await renderDirty()
+
+    await act(async () => {
+      router.navigate('/links')
+    })
+
+    expect(router.state.location.pathname).toBe('/notes')
+    expect(screen.getByText('discardConfirm.title')).toBeInTheDocument()
+    expect(screen.queryByText('links page')).not.toBeInTheDocument()
+  })
+
+  it('completes the blocked navigation exactly once when confirmed', async () => {
+    const { router } = await renderDirty()
+
+    await act(async () => {
+      router.navigate('/links')
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'discardConfirm.confirm' }))
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/links'))
+    expect(await screen.findByText('links page')).toBeInTheDocument()
+
+    // A single history entry was pushed, so one step back lands on /notes.
+    await act(async () => {
+      router.navigate(-1)
+    })
+    expect(router.state.location.pathname).toBe('/notes')
+  })
+
+  it('stays on the page with the draft intact when the dialog is cancelled', async () => {
+    const { router } = await renderDirty()
+
+    await act(async () => {
+      router.navigate('/links')
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'discardConfirm.cancel' }))
+
+    await waitFor(() => expect(screen.queryByText('discardConfirm.title')).not.toBeInTheDocument())
+    expect(router.state.location.pathname).toBe('/notes')
+    expect(screen.getByLabelText('fields.titleLabel')).toHaveValue('Edited title')
+    // Still dirty: the save button stays enabled and unload is still blocked.
+    expect(screen.getByRole('button', { name: /editor.save/ })).not.toBeDisabled()
+    expect(dispatchBeforeUnload()).toBe(true)
+  })
+
+  it('allows navigation again after the draft is saved', async () => {
+    const { router } = await renderDirty()
+
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve(jsonResponse({ note: makeNote({ title: 'Edited title' }) }))
+    )
+    fireEvent.click(screen.getByRole('button', { name: /editor.save/ }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /editor.save/ })).toBeDisabled())
+
+    await act(async () => {
+      router.navigate('/links')
+    })
+
+    expect(router.state.location.pathname).toBe('/links')
+    expect(screen.queryByText('discardConfirm.title')).not.toBeInTheDocument()
+  })
+
+  it('still guards opening another note in the same page', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.startsWith('/api/notes/tags')) {
+        return Promise.resolve(jsonResponse({ tags: [] }))
+      }
+      if (url.startsWith('/api/notes')) {
+        return Promise.resolve(
+          jsonResponse({ notes: [makeNote(), makeNote({ id: 2, title: 'Second note' })] })
+        )
+      }
+      return Promise.reject(new Error(`unexpected url: ${url}`))
+    })
+
+    renderNotes()
+    fireEvent.click(await screen.findByText('First note'))
+    fireEvent.change(screen.getByLabelText('fields.titleLabel'), { target: { value: 'Edited title' } })
+
+    fireEvent.click(screen.getByText('Second note'))
+    expect(screen.getByText('discardConfirm.title')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'discardConfirm.confirm' }))
+    await waitFor(() => expect(screen.getByLabelText('fields.titleLabel')).toHaveValue('Second note'))
   })
 })
