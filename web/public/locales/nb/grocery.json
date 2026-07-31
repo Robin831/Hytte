@@ -3,6 +3,12 @@
   "addPlaceholder": "Legg til en vare...",
   "add": "Legg til",
   "clearCompleted": "Fjern fullførte",
+  "undo": "Angre",
+  "toast": {
+    "itemCheckedOff": "Vare huket av",
+    "itemsCleared_one": "{{count}} vare fjernet",
+    "itemsCleared_other": "{{count}} varer fjernet"
+  },
   "empty": "Handlelisten er tom",
   "emptyHint": "Legg til varer med feltet over",
   "errors": {
@@ -10,6 +16,7 @@
     "failedToAdd": "Kunne ikke legge til vare",
     "failedToUpdate": "Kunne ikke oppdatere vare",
     "failedToClear": "Kunne ikke fjerne fullførte varer",
+    "failedToUndo": "Kunne ikke angre – viser siste tilstand fra serveren",
     "failedToTranslate": "Kunne ikke oversette taleinndata",
     "failedToStartRecording": "Kunne ikke starte opptak"
   },

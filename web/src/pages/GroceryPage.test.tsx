@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import GroceryPage from './GroceryPage'
 
@@ -14,6 +14,8 @@ const TRANSLATIONS: Record<string, string> = {
   'addPlaceholder': 'Add an item...',
   'add': 'Add',
   'clearCompleted': 'Clear completed',
+  'undo': 'Undo',
+  'toast.itemCheckedOff': 'Item checked off',
   'empty': 'Your grocery list is empty',
   'emptyHint': 'Add items using the input above',
   'checkedSection': 'Completed',
@@ -24,13 +26,18 @@ const TRANSLATIONS: Record<string, string> = {
   'errors.failedToAdd': 'Failed to add item',
   'errors.failedToUpdate': 'Failed to update item',
   'errors.failedToClear': 'Failed to clear completed items',
+  'errors.failedToUndo': 'Failed to undo',
   'errors.failedToTranslate': 'Failed to translate voice input',
   'errors.failedToStartRecording': 'Failed to start recording',
   'common:actions.close': 'Close',
 }
 
-function mockT(key: string, opts?: Record<string, string>): string {
+function mockT(key: string, opts?: Record<string, string | number>): string {
   if (key === 'item.original') return `Original: ${opts?.text ?? ''}`
+  if (key === 'toast.itemsCleared') {
+    const count = Number(opts?.count ?? 0)
+    return `${count} item${count === 1 ? '' : 's'} cleared`
+  }
   return TRANSLATIONS[key] ?? key
 }
 
@@ -75,6 +82,7 @@ beforeEach(() => { vi.stubGlobal('EventSource', MockEventSource) })
 
 function makeItem(overrides: Partial<{
   id: number; content: string; checked: boolean; sort_order: number
+  original_text: string; source_language: string
 }> = {}) {
   return {
     id: 1,
@@ -251,6 +259,188 @@ describe('GroceryPage – failure paths', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Failed to update item')
     // After refetch, item is back to its server state (unchecked)
     expect(screen.getByRole('checkbox', { name: /milk/i })).toHaveAttribute('aria-checked', 'false')
+  })
+})
+
+// ── Undo tests ────────────────────────────────────────────────────────────────
+
+describe('GroceryPage – undo', () => {
+  beforeEach(() => { authState.user = { id: 1 } })
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  const ok = () => ({ ok: true, json: () => Promise.resolve({}) })
+
+  it('offers undo after checking an item and unchecks it again on click', async () => {
+    const item = makeItem({ id: 1, content: 'Milk', checked: false })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(itemsResponse([item]))   // initial load
+      .mockResolvedValueOnce(ok())                    // check PATCH
+      .mockResolvedValueOnce(ok())                    // undo PATCH
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Milk')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /milk/i }))
+
+    const undo = await screen.findByRole('button', { name: 'Undo' })
+    expect(screen.getByRole('status')).toHaveTextContent('Item checked off')
+    // The undo affordance is a real button, so it is focusable by keyboard
+    expect(undo.tagName).toBe('BUTTON')
+    undo.focus()
+    expect(undo).toHaveFocus()
+
+    fireEvent.click(undo)
+
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /milk/i })).toHaveAttribute('aria-checked', 'false')
+    })
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/grocery/items/1/check', expect.objectContaining({
+      method: 'PATCH',
+      body: JSON.stringify({ checked: false }),
+    }))
+    // Tapping undo dismisses the toast immediately
+    expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+  })
+
+  it('restores cleared items via POST + check when undo is tapped', async () => {
+    const unchecked = makeItem({ id: 1, content: 'Milk', checked: false })
+    const bread = makeItem({
+      id: 2, content: 'Bread', checked: true,
+      original_text: 'ขนมปัง', source_language: 'th',
+    })
+    const eggs = makeItem({ id: 3, content: 'Eggs', checked: true })
+    const restoredBread = makeItem({ id: 4, content: 'Bread', checked: true, original_text: 'ขนมปัง', source_language: 'th' })
+    const restoredEggs = makeItem({ id: 5, content: 'Eggs', checked: true })
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(itemsResponse([unchecked, bread, eggs]))                    // initial load
+      .mockResolvedValueOnce(ok())                                                       // DELETE completed
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ item: restoredBread }) }) // POST Bread
+      .mockResolvedValueOnce(ok())                                                       // PATCH 4 checked
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ item: restoredEggs }) })  // POST Eggs
+      .mockResolvedValueOnce(ok())                                                       // PATCH 5 checked
+      .mockResolvedValueOnce(itemsResponse([unchecked, restoredBread, restoredEggs]))     // resync
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Clear completed')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByText('Clear completed'))
+
+    const undo = await screen.findByRole('button', { name: 'Undo' })
+    expect(screen.getByRole('status')).toHaveTextContent('2 items cleared')
+
+    fireEvent.click(undo)
+
+    await waitFor(() => {
+      expect(screen.getByText('Bread')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Eggs')).toBeInTheDocument()
+    // Each cleared item is re-created with its original fields preserved
+    expect(fetchMock).toHaveBeenCalledWith('/api/grocery/items', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ content: 'Bread', original_text: 'ขนมปัง', source_language: 'th' }),
+    }))
+    expect(fetchMock).toHaveBeenCalledWith('/api/grocery/items', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ content: 'Eggs', original_text: '', source_language: 'en' }),
+    }))
+    // ...and checked again so the pre-clear state is visible
+    expect(fetchMock).toHaveBeenCalledWith('/api/grocery/items/4/check', expect.objectContaining({
+      method: 'PATCH',
+      body: JSON.stringify({ checked: true }),
+    }))
+    expect(fetchMock).toHaveBeenCalledWith('/api/grocery/items/5/check', expect.objectContaining({
+      method: 'PATCH',
+      body: JSON.stringify({ checked: true }),
+    }))
+    expect(screen.getAllByRole('checkbox', { name: /bread/i })).toHaveLength(1)
+  })
+
+  it('drops the undo affordance once the 8s window elapses', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const item = makeItem({ id: 1, content: 'Milk', checked: false })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(itemsResponse([item]))
+      .mockResolvedValueOnce(ok())
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Milk')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /milk/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument())
+
+    act(() => { vi.advanceTimersByTime(8000) })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
+    })
+    // No undo request fired — only the initial load and the check PATCH
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('replaces a pending undo toast when a second action is taken', async () => {
+    const milk = makeItem({ id: 1, content: 'Milk', checked: false })
+    const bread = makeItem({ id: 2, content: 'Bread', checked: false, sort_order: 1 })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(itemsResponse([milk, bread]))  // initial load
+      .mockResolvedValueOnce(ok())                          // check Milk
+      .mockResolvedValueOnce(ok())                          // check Bread
+      .mockResolvedValueOnce(ok())                          // undo (Bread only)
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Milk')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /milk/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /bread/i }))
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /bread/i })).toHaveAttribute('aria-checked', 'true')
+    })
+    // The older toast is gone — only the newest action is undoable
+    expect(screen.getAllByRole('button', { name: 'Undo' })).toHaveLength(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /bread/i })).toHaveAttribute('aria-checked', 'false')
+    })
+    // Milk stays checked — its undo window already closed
+    expect(screen.getByRole('checkbox', { name: /milk/i })).toHaveAttribute('aria-checked', 'true')
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/grocery/items/2/check', expect.objectContaining({
+      method: 'PATCH',
+      body: JSON.stringify({ checked: false }),
+    }))
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+  })
+
+  it('shows an error toast and refetches when the undo request fails', async () => {
+    const item = makeItem({ id: 1, content: 'Milk', checked: false })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(itemsResponse([item]))                              // initial load
+      .mockResolvedValueOnce(ok())                                               // check PATCH
+      .mockResolvedValueOnce({ ok: false })                                      // undo PATCH fails
+      .mockResolvedValueOnce(itemsResponse([{ ...item, checked: true }]))        // resync
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Milk')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /milk/i }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent('Failed to undo')
+    })
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/grocery/items', expect.objectContaining({
+      credentials: 'include',
+    }))
+    // The refetched server state wins over the optimistic uncheck
+    expect(screen.getByRole('checkbox', { name: /milk/i })).toHaveAttribute('aria-checked', 'true')
   })
 })
 
