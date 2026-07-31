@@ -451,11 +451,22 @@ describe('Chat – model selector', () => {
       ok: true,
       json: () => Promise.resolve({ conversation: { ...conv, model: 'claude-opus-5' } }),
     }
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(convListRes)
-      .mockResolvedValueOnce(convDetailRes)
-      .mockResolvedValueOnce(putRes)
+    // Dispatch on URL+method rather than call order: an occasional extra
+    // list/detail refetch otherwise shifts the queue so the PUT consumes the
+    // detail response (old model) and the select silently reverts — the CI
+    // flake this replaces.
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === `/api/chat/conversations/${conv.id}` && init?.method === 'PUT') {
+        return Promise.resolve(putRes)
+      }
+      if (url === `/api/chat/conversations/${conv.id}`) {
+        return Promise.resolve(convDetailRes)
+      }
+      if (url === '/api/chat/conversations') {
+        return Promise.resolve(convListRes)
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     renderChat()
