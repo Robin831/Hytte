@@ -19,6 +19,7 @@ import {
   Copy,
   CheckCheck,
   ArrowDown,
+  RotateCcw,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime as fmtTime } from '../utils/formatDate'
@@ -76,6 +77,10 @@ export default function Chat() {
   // Empty means "let the backend pick" (falls back to user's configured model).
   const [newConversationModel, setNewConversationModel] = useState<string>('')
   const [deletingId, setDeletingId] = useState<number | null>(null)
+  // Id of the user message currently being re-edited in the composer. The
+  // message row is already gone (truncation happened server-side when Edit was
+  // clicked); this only drives the "editing" affordance above the textarea.
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -278,6 +283,16 @@ export default function Chat() {
     }
   }, [renamingId])
 
+  // Focus the composer when an edit begins and put the caret at the end so the
+  // user can amend the recalled message straight away.
+  useEffect(() => {
+    if (editingMessageId === null) return
+    const el = inputRef.current
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  }, [editingMessageId])
+
   async function createConversation() {
     try {
       const res = await fetch('/api/chat/conversations', {
@@ -295,6 +310,7 @@ export default function Chat() {
       setConversations(prev => [conv, ...prev])
       setActiveConversation(conv)
       setShowSidebar(false)
+      setEditingMessageId(null)
       setLocalError('')
       inputRef.current?.focus()
     } catch (err) {
@@ -346,6 +362,7 @@ export default function Chat() {
       if (activeConversation?.id === id) {
         setActiveConversation(null)
         setMessages([])
+        setEditingMessageId(null)
       }
       setDeletingId(null)
       setLocalError('')
@@ -381,13 +398,91 @@ export default function Chat() {
     }
   }
 
+  // Deletes `messageId` and every later message in the conversation, both
+  // server-side and in local state, and returns the deleted message so the
+  // caller can re-send (Regenerate) or recall (Edit) its content. Truncating
+  // also clears the conversation's Claude CLI session so the next turn starts
+  // fresh instead of resuming context that references the removed messages.
+  const truncateFrom = useCallback(
+    async (conversationId: number, messageId: number): Promise<Message> => {
+      const res = await fetch(`/api/chat/conversations/${conversationId}/messages/${messageId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || t('errors.failedToTruncate'))
+      }
+      const data = await res.json()
+      setMessages(prev => {
+        const idx = prev.findIndex(m => m.id === messageId)
+        return idx === -1 ? prev : prev.slice(0, idx)
+      })
+      return data.message as Message
+    },
+    [t, setMessages],
+  )
+
+  // Regenerate: discard this reply and the user turn that produced it, then
+  // re-send that same text so a fresh reply streams in its place.
+  async function handleRegenerate(assistantMsg: Message) {
+    if (!activeConversation || sendingConversationIds.has(activeConversation.id)) return
+    const idx = messages.findIndex(m => m.id === assistantMsg.id)
+    if (idx < 0) return
+    // Walk back to the user turn this reply answered.
+    const userMsg = messages.slice(0, idx).reverse().find(m => m.role === 'user')
+    // Optimistic rows (negative ids) aren't persisted yet, so they can't be truncated.
+    if (!userMsg || userMsg.id < 0) return
+
+    clearError()
+    setLocalError('')
+    try {
+      const removed = await truncateFrom(activeConversation.id, userMsg.id)
+      setEditingMessageId(null)
+      await send(removed.content)
+    } catch (err) {
+      if (err instanceof Error) setLocalError(err.message)
+    }
+  }
+
+  // Edit: drop this user message and everything after it, then recall its text
+  // into the composer so the user can amend and resend.
+  async function handleEdit(userMsg: Message) {
+    if (!activeConversation || sendingConversationIds.has(activeConversation.id)) return
+    if (userMsg.id < 0) return
+
+    clearError()
+    setLocalError('')
+    try {
+      const removed = await truncateFrom(activeConversation.id, userMsg.id)
+      setInput(removed.content)
+      setEditingMessageId(removed.id)
+    } catch (err) {
+      if (err instanceof Error) setLocalError(err.message)
+    }
+  }
+
+  // Cancelling an edit only leaves the editing mode — the truncated messages
+  // stay deleted, matching what the server already persisted.
+  function cancelEdit() {
+    setEditingMessageId(null)
+    setInput('')
+    inputRef.current?.focus()
+  }
+
   // Thin wrapper around the hook's send: the trimmed input is the message
   // content; the hook owns the optimistic rows, streaming, and reconciliation.
   function handleSend() {
+    setEditingMessageId(null)
     send(input.trim())
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Escape' && editingMessageId !== null) {
+      e.preventDefault()
+      cancelEdit()
+      return
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -397,6 +492,7 @@ export default function Chat() {
   function selectConversation(conv: Conversation) {
     setActiveConversation(conv)
     setShowSidebar(false)
+    setEditingMessageId(null)
     clearError()
     setLocalError('')
   }
@@ -438,8 +534,11 @@ export default function Chat() {
   }
 
   const selectedModel = activeConversation ? activeConversation.model : (newConversationModel || DEFAULT_MODEL)
-  const modelSelectDisabled =
+  // True while the active conversation has a stream in flight — disables the
+  // model selector and the per-message Regenerate/Edit actions.
+  const isSending =
     activeConversation != null && sendingConversationIds.has(activeConversation.id)
+  const modelSelectDisabled = isSending
   const onModelChange = (model: string) => {
     if (activeConversation) {
       updateModel(activeConversation.id, model)
@@ -680,11 +779,7 @@ export default function Chat() {
                 // indicator only when its content is still empty so once
                 // tokens arrive the user sees the live text.
                 const isStreamingPlaceholder =
-                  activeConversation != null &&
-                  sendingConversationIds.has(activeConversation.id) &&
-                  msg.role === 'assistant' &&
-                  msg.id < 0 &&
-                  msg.content === ''
+                  isSending && msg.role === 'assistant' && msg.id < 0 && msg.content === ''
                 if (isStreamingPlaceholder) {
                   return (
                     <div key={msg.id} className="flex items-start gap-3">
@@ -700,7 +795,22 @@ export default function Chat() {
                     </div>
                   )
                 }
-                return <MessageBubble key={msg.id} message={msg} />
+                const isLast = msg.id === messages[messages.length - 1].id
+                return (
+                  <MessageBubble
+                    key={msg.id}
+                    message={msg}
+                    // Regenerate targets only the newest reply, and only once
+                    // it is a persisted row and nothing is streaming.
+                    showRegenerate={msg.role === 'assistant' && isLast && msg.id > 0 && !isSending}
+                    // Optimistic user rows (negative ids) aren't persisted yet
+                    // and so can't be truncated server-side.
+                    showEdit={msg.role === 'user' && msg.id > 0}
+                    actionsDisabled={isSending}
+                    onRegenerate={handleRegenerate}
+                    onEdit={handleEdit}
+                  />
+                )
               })}
               <div ref={messagesEndRef} />
             </div>
@@ -736,6 +846,24 @@ export default function Chat() {
         {/* Input area */}
         {activeConversation && (
           <div className="border-t border-gray-700 bg-gray-900 p-4">
+            {editingMessageId !== null && (
+              <div className="max-w-3xl mx-auto mb-2 flex items-center justify-between gap-2 text-xs text-gray-400">
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <Pencil size={12} className="shrink-0" />
+                  <span className="truncate">{t('input.editingNotice')}</span>
+                </span>
+                <button
+                  onClick={cancelEdit}
+                  className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition-colors cursor-pointer"
+                  title={t('input.cancelEdit')}
+                  aria-label={t('input.cancelEdit')}
+                  data-testid="chat-cancel-edit-button"
+                >
+                  <X size={12} />
+                  {t('input.cancelEdit')}
+                </button>
+              </div>
+            )}
             <div className="max-w-3xl mx-auto flex gap-2">
               <textarea
                 ref={inputRef}
@@ -783,7 +911,32 @@ export default function Chat() {
   )
 }
 
-function MessageBubble({ message }: { message: Message }) {
+// Shared styling for the per-message action buttons (Copy / Regenerate / Edit):
+// always visible on touch layouts, revealed on hover or keyboard focus on
+// desktop so the bubbles stay uncluttered.
+const MESSAGE_ACTIONS_CLASS =
+  'mt-2 flex items-center gap-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity'
+
+interface MessageBubbleProps {
+  message: Message
+  /** Show Regenerate — set only for the newest assistant reply when idle. */
+  showRegenerate?: boolean
+  /** Show Edit — set for persisted user messages. */
+  showEdit?: boolean
+  /** Disables the actions while a stream is in flight. */
+  actionsDisabled?: boolean
+  onRegenerate?: (message: Message) => void
+  onEdit?: (message: Message) => void
+}
+
+function MessageBubble({
+  message,
+  showRegenerate = false,
+  showEdit = false,
+  actionsDisabled = false,
+  onRegenerate,
+  onEdit,
+}: MessageBubbleProps) {
   const { t } = useTranslation('chat')
   const isUser = message.role === 'user'
   const [copied, setCopied] = useState(false)
@@ -815,9 +968,22 @@ function MessageBubble({ message }: { message: Message }) {
 
   if (isUser) {
     return (
-      <div className="flex items-start gap-3 justify-end">
-        <div className="bg-blue-600 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%]">
+      <div className="flex items-start gap-3 justify-end group">
+        <div className="bg-blue-600 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] min-w-0">
           <p className="text-sm text-white whitespace-pre-wrap break-words">{message.content}</p>
+          {showEdit && (
+            <div className={`${MESSAGE_ACTIONS_CLASS} justify-end`}>
+              <button
+                onClick={() => onEdit?.(message)}
+                disabled={actionsDisabled}
+                className="text-blue-200 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-blue-600 cursor-pointer"
+                title={t('input.editMessage')}
+                aria-label={t('input.editMessage')}
+              >
+                <Pencil size={14} />
+              </button>
+            </div>
+          )}
         </div>
         <div className="w-8 h-8 rounded-full bg-blue-600/20 flex items-center justify-center shrink-0">
           <User size={16} className="text-blue-400" />
@@ -879,14 +1045,27 @@ function MessageBubble({ message }: { message: Message }) {
             {message.content}
           </ReactMarkdown>
         </div>
-        <button
-          onClick={copyContent}
-          className="mt-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-800 transition-opacity text-gray-500 hover:text-gray-300 cursor-pointer"
-          title={t('input.copyMessage')}
-          aria-label={t('input.copyMessage')}
-        >
-          {copied ? <CheckCheck size={14} className="text-green-400" /> : <Copy size={14} />}
-        </button>
+        <div className={MESSAGE_ACTIONS_CLASS}>
+          <button
+            onClick={copyContent}
+            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-800 text-gray-500 hover:text-gray-300 cursor-pointer"
+            title={t('input.copyMessage')}
+            aria-label={t('input.copyMessage')}
+          >
+            {copied ? <CheckCheck size={14} className="text-green-400" /> : <Copy size={14} />}
+          </button>
+          {showRegenerate && (
+            <button
+              onClick={() => onRegenerate?.(message)}
+              disabled={actionsDisabled}
+              className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-800 text-gray-500 hover:text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              title={t('input.regenerate')}
+              aria-label={t('input.regenerate')}
+            >
+              <RotateCcw size={14} />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

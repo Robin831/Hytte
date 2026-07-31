@@ -1,0 +1,2 @@
+category: Added
+- **Regenerate and edit actions on chat messages** - The latest assistant reply now has a Regenerate button that discards it and re-sends the preceding user turn, and every user message has an Edit button that truncates the conversation from that point and recalls the text into the composer for amending. Truncation clears the conversation's Claude CLI session so the next turn starts from the trimmed history. (Hytte-9qbqu)

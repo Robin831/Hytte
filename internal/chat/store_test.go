@@ -2,6 +2,7 @@ package chat
 
 import (
 	"database/sql"
+	"strconv"
 	"testing"
 
 	"github.com/Robin831/Hytte/internal/db"
@@ -215,5 +216,215 @@ func TestMessages(t *testing.T) {
 	}
 	if len(msgs) != 0 {
 		t.Fatalf("expected 0 messages after cascade delete, got %d", len(msgs))
+	}
+}
+
+// insertUser adds an extra user row so ownership rejection can be exercised.
+func insertUser(t *testing.T, d *sql.DB, id int64) {
+	t.Helper()
+	_, err := d.Exec(
+		`INSERT INTO users (id, google_id, email, name, picture) VALUES (?, ?, ?, 'Other', '')`,
+		id, "g"+strconv.FormatInt(id, 10), "other"+strconv.FormatInt(id, 10)+"@example.com",
+	)
+	if err != nil {
+		t.Fatalf("create user %d: %v", id, err)
+	}
+}
+
+func TestTruncateFrom(t *testing.T) {
+	d := setupTestDB(t)
+
+	c, err := CreateConversation(d, 1, "Truncate me", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// A second conversation that must be left untouched.
+	other, err := CreateConversation(d, 1, "Untouched", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create other: %v", err)
+	}
+	if _, err := InsertMessage(d, other.ID, "user", "Other conversation"); err != nil {
+		t.Fatalf("insert other: %v", err)
+	}
+
+	m1, err := InsertMessage(d, c.ID, "user", "First question")
+	if err != nil {
+		t.Fatalf("insert m1: %v", err)
+	}
+	m2, err := InsertMessage(d, c.ID, "assistant", "First answer")
+	if err != nil {
+		t.Fatalf("insert m2: %v", err)
+	}
+	m3, err := InsertMessage(d, c.ID, "user", "Second question")
+	if err != nil {
+		t.Fatalf("insert m3: %v", err)
+	}
+	if _, err := InsertMessage(d, c.ID, "assistant", "Second answer"); err != nil {
+		t.Fatalf("insert m4: %v", err)
+	}
+
+	if err := UpdateSessionID(d, c.ID, 1, "session-abc"); err != nil {
+		t.Fatalf("set session id: %v", err)
+	}
+
+	got, err := TruncateFrom(d, c.ID, 1, m3.ID)
+	if err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	if got.ID != m3.ID || got.Role != "user" || got.Content != "Second question" {
+		t.Fatalf("unexpected truncated message: %+v", got)
+	}
+
+	msgs, err := GetMessages(d, c.ID)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 surviving messages, got %d", len(msgs))
+	}
+	if msgs[0].ID != m1.ID || msgs[1].ID != m2.ID {
+		t.Fatalf("wrong messages survived: %+v", msgs)
+	}
+
+	// session_id is cleared so the next turn starts a fresh Claude CLI session.
+	convo, err := GetConversation(d, c.ID, 1)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if convo.SessionID != "" {
+		t.Fatalf("expected session_id to be cleared, got %q", convo.SessionID)
+	}
+
+	// The other conversation is untouched.
+	otherMsgs, err := GetMessages(d, other.ID)
+	if err != nil {
+		t.Fatalf("get other messages: %v", err)
+	}
+	if len(otherMsgs) != 1 {
+		t.Fatalf("expected other conversation untouched, got %d messages", len(otherMsgs))
+	}
+}
+
+func TestTruncateFrom_FirstMessageRemovesAll(t *testing.T) {
+	d := setupTestDB(t)
+
+	c, err := CreateConversation(d, 1, "Wipe", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	m1, err := InsertMessage(d, c.ID, "user", "Hello")
+	if err != nil {
+		t.Fatalf("insert m1: %v", err)
+	}
+	if _, err := InsertMessage(d, c.ID, "assistant", "Hi"); err != nil {
+		t.Fatalf("insert m2: %v", err)
+	}
+
+	if _, err := TruncateFrom(d, c.ID, 1, m1.ID); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+
+	msgs, err := GetMessages(d, c.ID)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Fatalf("expected 0 messages, got %d", len(msgs))
+	}
+}
+
+func TestTruncateFrom_UnknownMessage(t *testing.T) {
+	d := setupTestDB(t)
+
+	c, err := CreateConversation(d, 1, "Chat", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := InsertMessage(d, c.ID, "user", "Hello"); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	if _, err := TruncateFrom(d, c.ID, 1, 99999); err != sql.ErrNoRows {
+		t.Fatalf("expected sql.ErrNoRows, got %v", err)
+	}
+
+	msgs, err := GetMessages(d, c.ID)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected the message to survive, got %d", len(msgs))
+	}
+}
+
+func TestTruncateFrom_ForeignConversation(t *testing.T) {
+	d := setupTestDB(t)
+	insertUser(t, d, 2)
+
+	c, err := CreateConversation(d, 2, "Someone else's chat", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	m1, err := InsertMessage(d, c.ID, "user", "Private")
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	if err := UpdateSessionID(d, c.ID, 2, "session-xyz"); err != nil {
+		t.Fatalf("set session id: %v", err)
+	}
+
+	if _, err := TruncateFrom(d, c.ID, 1, m1.ID); err != sql.ErrNoRows {
+		t.Fatalf("expected sql.ErrNoRows for foreign conversation, got %v", err)
+	}
+
+	msgs, err := GetMessages(d, c.ID)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected message to survive, got %d", len(msgs))
+	}
+	convo, err := GetConversation(d, c.ID, 2)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if convo.SessionID != "session-xyz" {
+		t.Fatalf("expected session_id untouched, got %q", convo.SessionID)
+	}
+}
+
+func TestTruncateFrom_MessageFromAnotherConversation(t *testing.T) {
+	d := setupTestDB(t)
+
+	a, err := CreateConversation(d, 1, "A", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create a: %v", err)
+	}
+	b, err := CreateConversation(d, 1, "B", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create b: %v", err)
+	}
+	bMsg, err := InsertMessage(d, b.ID, "user", "In B")
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	if _, err := InsertMessage(d, a.ID, "user", "In A"); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	if _, err := TruncateFrom(d, a.ID, 1, bMsg.ID); err != sql.ErrNoRows {
+		t.Fatalf("expected sql.ErrNoRows, got %v", err)
+	}
+
+	aMsgs, err := GetMessages(d, a.ID)
+	if err != nil {
+		t.Fatalf("get a messages: %v", err)
+	}
+	bMsgs, err := GetMessages(d, b.ID)
+	if err != nil {
+		t.Fatalf("get b messages: %v", err)
+	}
+	if len(aMsgs) != 1 || len(bMsgs) != 1 {
+		t.Fatalf("expected both conversations untouched, got a=%d b=%d", len(aMsgs), len(bMsgs))
 	}
 }

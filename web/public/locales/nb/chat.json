@@ -37,7 +37,11 @@
     "sendLabel": "Send melding",
     "stopStreaming": "Stopp generering",
     "dismissError": "Lukk feil",
-    "copyMessage": "Kopier melding"
+    "copyMessage": "Kopier melding",
+    "regenerate": "Generer svaret på nytt",
+    "editMessage": "Rediger melding",
+    "cancelEdit": "Avbryt redigering",
+    "editingNotice": "Redigerer melding — send for å fortsette samtalen herfra"
   },
   "errors": {
     "failedToLoad": "Kunne ikke laste samtaler",
@@ -47,6 +51,7 @@
     "failedToRename": "Kunne ikke gi samtalen nytt navn",
     "failedToUpdateModel": "Kunne ikke oppdatere modell",
     "failedToSend": "Kunne ikke sende melding",
-    "streamError": "Strømmen ble avbrutt. Prøv igjen."
+    "streamError": "Strømmen ble avbrutt. Prøv igjen.",
+    "failedToTruncate": "Kunne ikke oppdatere samtalen"
   }
 }

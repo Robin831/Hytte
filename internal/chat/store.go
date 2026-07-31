@@ -193,6 +193,62 @@ func GetMessages(db *sql.DB, conversationID int64) ([]Message, error) {
 	return msgs, rows.Err()
 }
 
+// TruncateFrom deletes the given message and every message ordered after it in
+// the same conversation, then clears the stored Claude CLI session ID so the
+// next turn starts a fresh session instead of resuming context that references
+// the removed messages.
+//
+// The conversation must be owned by userID and the message must belong to that
+// conversation; otherwise sql.ErrNoRows is returned and no rows are changed.
+// The deleted target message is returned so callers can echo its content back
+// to the client (used to re-send on Regenerate / prefill the composer on Edit).
+func TruncateFrom(db *sql.DB, conversationID, userID, messageID int64) (*Message, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var m Message
+	err = tx.QueryRow(
+		`SELECT m.id, m.conversation_id, m.role, m.content, m.created_at
+		 FROM chat_messages m
+		 JOIN chat_conversations c ON c.id = m.conversation_id
+		 WHERE m.id = ? AND m.conversation_id = ? AND c.user_id = ?`,
+		messageID, conversationID, userID,
+	).Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.CreatedAt)
+	if err != nil {
+		// sql.ErrNoRows when the message is unknown, belongs to another
+		// conversation, or the conversation isn't owned by this user.
+		return nil, err
+	}
+
+	// Delete the target and everything after it using the same
+	// (created_at, id) ordering GetMessages reads with, so the surviving
+	// history is exactly the prefix the client still displays.
+	if _, err := tx.Exec(
+		`DELETE FROM chat_messages
+		 WHERE conversation_id = ?
+		   AND (created_at > ? OR (created_at = ? AND id >= ?))`,
+		conversationID, m.CreatedAt, m.CreatedAt, m.ID,
+	); err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC().Format(timeFormat)
+	if _, err := tx.Exec(
+		`UPDATE chat_conversations SET session_id = '', updated_at = ? WHERE id = ? AND user_id = ?`,
+		now, conversationID, userID,
+	); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
 // UpdateSessionID stores the Claude CLI session ID on a conversation owned by the given user.
 func UpdateSessionID(db *sql.DB, conversationID, userID int64, sessionID string) error {
 	now := time.Now().UTC().Format(timeFormat)

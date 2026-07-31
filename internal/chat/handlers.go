@@ -171,6 +171,45 @@ func DeleteHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// TruncateHandler removes a message and every later message in the
+// conversation, clearing the Claude CLI session so the next turn starts fresh.
+// It backs the chat UI's Regenerate (truncate from the preceding user turn,
+// then re-send it) and Edit (truncate from the user message, then amend it)
+// actions. The truncated message is returned so the client can re-send or
+// prefill the composer with its content.
+//
+// DELETE /api/chat/conversations/{id}/messages/{messageID}
+func TruncateHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid conversation ID"})
+			return
+		}
+
+		messageID, err := strconv.ParseInt(chi.URLParam(r, "messageID"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid message ID"})
+			return
+		}
+
+		msg, err := TruncateFrom(db, id, user.ID, messageID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "message not found"})
+				return
+			}
+			log.Printf("Failed to truncate conversation %d from message %d: %v", id, messageID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to truncate conversation"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"message": msg})
+	}
+}
+
 // SendMessageHandler adds a user message, calls Claude CLI, and returns the assistant response.
 // POST /api/chat/conversations/{id}/messages
 // Body: {"content": "Hello, Claude!"}

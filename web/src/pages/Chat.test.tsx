@@ -34,6 +34,10 @@ const TRANSLATIONS: Record<string, string> = {
   'input.stopStreaming': 'Stop generating',
   'input.dismissError': 'Dismiss error',
   'input.copyMessage': 'Copy message',
+  'input.regenerate': 'Regenerate response',
+  'input.editMessage': 'Edit message',
+  'input.cancelEdit': 'Cancel edit',
+  'input.editingNotice': 'Editing message',
   'errors.failedToLoad': 'Failed to load conversations',
   'errors.failedToLoadMessages': 'Failed to load messages',
   'errors.failedToCreate': 'Failed to create conversation',
@@ -42,6 +46,7 @@ const TRANSLATIONS: Record<string, string> = {
   'errors.failedToUpdateModel': 'Failed to update model',
   'errors.failedToSend': 'Failed to send message',
   'errors.streamError': 'The response stream was interrupted. Please try again.',
+  'errors.failedToTruncate': 'Failed to update the conversation',
 }
 
 function stableT(key: string): string {
@@ -538,5 +543,241 @@ describe('Chat – model selector', () => {
         model: 'claude-haiku-4-5',
       })
     })
+  })
+})
+
+describe('Chat – regenerate and edit', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  const conv = makeConv()
+
+  // A two-turn history: user 1 / assistant 2 / user 3 / assistant 4.
+  function history() {
+    return [
+      { id: 1, conversation_id: conv.id, role: 'user', content: 'First question', created_at: '2026-05-01T01:00:00Z' },
+      { id: 2, conversation_id: conv.id, role: 'assistant', content: 'First answer', created_at: '2026-05-01T01:00:01Z' },
+      { id: 3, conversation_id: conv.id, role: 'user', content: 'Second question', created_at: '2026-05-01T01:00:02Z' },
+      { id: 4, conversation_id: conv.id, role: 'assistant', content: 'Second answer', created_at: '2026-05-01T01:00:03Z' },
+    ]
+  }
+
+  // Dispatches by URL + method so extra refetches can't shift a call queue.
+  function mockFetch(handlers: {
+    truncate?: (messageId: string) => unknown
+    stream?: (init?: RequestInit) => unknown
+  } = {}) {
+    return vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/chat/conversations') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ conversations: [conv] }) })
+      }
+      if (url === `/api/chat/conversations/${conv.id}`) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ conversation: conv, messages: history() }),
+        })
+      }
+      if (url.endsWith('/messages/stream')) {
+        return Promise.resolve(handlers.stream?.(init) ?? { ok: true, body: null, json: () => Promise.resolve({}) })
+      }
+      const match = url.match(new RegExp(`^/api/chat/conversations/${conv.id}/messages/(\\d+)$`))
+      if (match && init?.method === 'DELETE') {
+        return Promise.resolve(handlers.truncate?.(match[1]) ?? { ok: false, json: () => Promise.resolve(null) })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    })
+  }
+
+  async function openConversation() {
+    await waitFor(() => screen.getByText('Existing chat'))
+    fireEvent.click(screen.getByText('Existing chat'))
+    await waitFor(() => screen.getByPlaceholderText('Type a message...'))
+  }
+
+  it('shows Regenerate only on the last assistant message and Edit on every user message', async () => {
+    vi.stubGlobal('fetch', mockFetch())
+    renderChat()
+    await openConversation()
+
+    await waitFor(() => expect(screen.getByText('Second answer')).toBeInTheDocument())
+
+    // Only the newest assistant reply is regenerable.
+    expect(screen.getAllByLabelText('Regenerate response')).toHaveLength(1)
+    // Both user turns are editable.
+    expect(screen.getAllByLabelText('Edit message')).toHaveLength(2)
+  })
+
+  it('hides Regenerate while a stream is in flight', async () => {
+    const stream = manualSSEResponse()
+    vi.stubGlobal('fetch', mockFetch({ stream: () => stream.response }))
+    renderChat()
+    await openConversation()
+
+    await waitFor(() => expect(screen.getAllByLabelText('Regenerate response')).toHaveLength(1))
+
+    const textarea = screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'Third question' } })
+    fireEvent.click(screen.getByTestId('chat-send-button'))
+
+    await screen.findByText('Streaming…')
+    expect(screen.queryByLabelText('Regenerate response')).not.toBeInTheDocument()
+  })
+
+  it('Regenerate truncates from the preceding user turn and re-streams it once', async () => {
+    const stream = manualSSEResponse()
+    const fetchMock = mockFetch({
+      truncate: messageId => ({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            message: {
+              id: Number(messageId),
+              conversation_id: conv.id,
+              role: 'user',
+              content: 'Second question',
+              created_at: '2026-05-01T01:00:02Z',
+            },
+          }),
+      }),
+      stream: () => stream.response,
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderChat()
+    await openConversation()
+
+    await waitFor(() => expect(screen.getByText('Second answer')).toBeInTheDocument())
+
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Regenerate response'))
+    })
+
+    // The preceding user message (id 3) is the truncation point.
+    await waitFor(() => {
+      const del = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'DELETE')
+      expect(del).toBeDefined()
+      expect(del![0]).toBe(`/api/chat/conversations/${conv.id}/messages/3`)
+    })
+
+    // The same text is re-sent through the normal streaming path.
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/messages/stream'))
+      expect(post).toBeDefined()
+      expect(JSON.parse((post![1] as RequestInit).body as string)).toEqual({ content: 'Second question' })
+    })
+
+    // The stale reply is gone and exactly one user bubble remains for that turn.
+    await waitFor(() => expect(screen.queryByText('Second answer')).not.toBeInTheDocument())
+    expect(screen.getAllByText('Second question')).toHaveLength(1)
+    expect(screen.getByText('First answer')).toBeInTheDocument()
+
+    await act(async () => {
+      stream.push(frame('token', { text: 'A better answer' }))
+    })
+    await waitFor(() => expect(screen.getByText(/A better answer/)).toBeInTheDocument())
+    expect(screen.getAllByText('Second question')).toHaveLength(1)
+  })
+
+  it('Edit truncates the conversation and recalls the text into a focused composer', async () => {
+    const fetchMock = mockFetch({
+      truncate: messageId => ({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            message: {
+              id: Number(messageId),
+              conversation_id: conv.id,
+              role: 'user',
+              content: 'Second question',
+              created_at: '2026-05-01T01:00:02Z',
+            },
+          }),
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderChat()
+    await openConversation()
+
+    await waitFor(() => expect(screen.getByText('Second answer')).toBeInTheDocument())
+
+    // Edit the second user turn.
+    await act(async () => {
+      fireEvent.click(screen.getAllByLabelText('Edit message')[1])
+    })
+
+    await waitFor(() => {
+      const del = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'DELETE')
+      expect(del![0]).toBe(`/api/chat/conversations/${conv.id}/messages/3`)
+    })
+
+    const textarea = screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement
+    await waitFor(() => expect(textarea.value).toBe('Second question'))
+    expect(document.activeElement).toBe(textarea)
+
+    // The message and everything after it are gone; earlier turns survive.
+    expect(screen.queryByText('Second answer')).not.toBeInTheDocument()
+    expect(screen.getByText('First question')).toBeInTheDocument()
+    expect(screen.getByText('First answer')).toBeInTheDocument()
+    expect(screen.getByTestId('chat-cancel-edit-button')).toBeInTheDocument()
+  })
+
+  it('cancelling an edit clears the composer without restoring the deleted messages', async () => {
+    const fetchMock = mockFetch({
+      truncate: messageId => ({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            message: {
+              id: Number(messageId),
+              conversation_id: conv.id,
+              role: 'user',
+              content: 'Second question',
+              created_at: '2026-05-01T01:00:02Z',
+            },
+          }),
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderChat()
+    await openConversation()
+
+    await waitFor(() => expect(screen.getByText('Second answer')).toBeInTheDocument())
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByLabelText('Edit message')[1])
+    })
+    await waitFor(() => screen.getByTestId('chat-cancel-edit-button'))
+
+    fireEvent.click(screen.getByTestId('chat-cancel-edit-button'))
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('chat-cancel-edit-button')).not.toBeInTheDocument(),
+    )
+    const textarea = screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement
+    expect(textarea.value).toBe('')
+    // Cancelling does not resurrect the truncated messages.
+    expect(screen.queryByText('Second question')).not.toBeInTheDocument()
+    expect(screen.queryByText('Second answer')).not.toBeInTheDocument()
+    expect(screen.getByText('First question')).toBeInTheDocument()
+  })
+
+  it('surfaces an error when truncation fails and keeps the messages on screen', async () => {
+    const fetchMock = mockFetch({
+      truncate: () => ({ ok: false, json: () => Promise.resolve({ error: 'message not found' }) }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderChat()
+    await openConversation()
+
+    await waitFor(() => expect(screen.getByText('Second answer')).toBeInTheDocument())
+
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Regenerate response'))
+    })
+
+    await waitFor(() => expect(screen.getByText('message not found')).toBeInTheDocument())
+    expect(screen.getByText('Second answer')).toBeInTheDocument()
+    expect(screen.getAllByText('Second question')).toHaveLength(1)
   })
 })
