@@ -178,6 +178,32 @@ var Pages = []Page{
 		FeatureFlag: "grocery",
 	},
 	{
+		Slug:        "offers",
+		Title:       "Grocery Offers",
+		Route:       "/offers",
+		Description: "Weekly grocery offers from Norwegian chains (via the Tjek API behind mattilbud.no), ranked by a per-user priority watchlist and discount, with unit prices and one-tap add-to-grocery-list.",
+		SourceFiles: []string{
+			"web/src/pages/OffersPage.tsx",
+			"internal/offers/handlers.go",
+			"internal/offers/match.go",
+			"internal/offers/client.go",
+		},
+		FeatureFlag: "offers",
+	},
+	{
+		Slug:        "wardrobe",
+		Title:       "Kids' Wardrobe",
+		Route:       "/wardrobe",
+		Description: "Per-child clothing and gear inventory with measurement history, Nordic clothing-size and EU shoe-size recommendations, category targets, and a computed needs list.",
+		SourceFiles: []string{
+			"web/src/pages/WardrobePage.tsx",
+			"internal/wardrobe/handlers.go",
+			"internal/wardrobe/sizes.go",
+			"internal/wardrobe/store.go",
+		},
+		FeatureFlag: "wardrobe",
+	},
+	{
 		Slug:        "infra",
 		Title:       "Infra",
 		Route:       "/infra",
