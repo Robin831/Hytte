@@ -44,11 +44,15 @@ function positivePortions(value: unknown): number | null {
 }
 
 interface Countdown {
-  /** Whole seconds left. */
+  /** Whole seconds left, rounded up so the display only reads 0:00 at the end. */
   remaining: number
   running: boolean
   /** True once a timed step has run out — the caller shows "time is up". */
   done: boolean
+  /** Paused part-way through: the primary action resumes rather than restarts. */
+  resumable: boolean
+  /** Untouched, or reset back to the full duration — nothing to reset. */
+  pristine: boolean
   start: () => void
   pause: () => void
   reset: () => void
@@ -59,33 +63,37 @@ interface Countdown {
  *
  * The interval only exists while the timer runs, and its effect cleanup clears
  * it — on pause, on completion and on unmount — so no timer outlives the step
- * that started it. `remaining` is computed from a deadline on every tick, which
- * keeps a backgrounded tab (where intervals are throttled) honest.
+ * that started it. The time left is computed from a deadline on every tick,
+ * which keeps a backgrounded tab (where intervals are throttled) honest.
+ *
+ * It is tracked in milliseconds rather than whole seconds: rounding at pause
+ * would hand back the part-second already spent, so a timer paused and resumed
+ * often enough would gain minutes. Rounding happens only on the way to the
+ * display.
  */
 function useCountdown(durationSeconds: number): Countdown {
-  const [remaining, setRemaining] = useState(durationSeconds)
+  const durationMs = durationSeconds * 1000
+  const [remainingMs, setRemainingMs] = useState(durationMs)
   const [running, setRunning] = useState(false)
   const deadlineRef = useRef(0)
-  // Mirrors `remaining` so start/pause can read the current value without
+  // Mirrors `remainingMs` so start/pause can read the current value without
   // depending on it (a state updater must stay free of side effects).
-  const remainingRef = useRef(durationSeconds)
+  const remainingRef = useRef(durationMs)
 
-  const applyRemaining = useCallback((seconds: number) => {
-    remainingRef.current = seconds
-    setRemaining(seconds)
+  const applyRemaining = useCallback((ms: number) => {
+    const clamped = Math.max(0, ms)
+    remainingRef.current = clamped
+    setRemainingMs(clamped)
   }, [])
 
-  /** Whole seconds between now and the deadline, never below zero. */
-  const secondsLeft = useCallback(
-    () => Math.max(0, Math.ceil((deadlineRef.current - Date.now()) / 1000)),
-    [],
-  )
+  /** Milliseconds between now and the deadline, never below zero. */
+  const msLeft = useCallback(() => Math.max(0, deadlineRef.current - Date.now()), [])
 
   useEffect(() => {
     if (!running) return
 
     const tick = () => {
-      const left = secondsLeft()
+      const left = msLeft()
       applyRemaining(left)
       if (left === 0) setRunning(false)
     }
@@ -95,31 +103,33 @@ function useCountdown(durationSeconds: number): Countdown {
     return () => {
       clearInterval(interval)
     }
-  }, [running, applyRemaining, secondsLeft])
+  }, [running, applyRemaining, msLeft])
 
   const start = useCallback(() => {
     // Starting from zero restarts the whole duration; otherwise it resumes.
-    const from = remainingRef.current > 0 ? remainingRef.current : durationSeconds
+    const from = remainingRef.current > 0 ? remainingRef.current : durationMs
     if (from <= 0) return
-    deadlineRef.current = Date.now() + from * 1000
+    deadlineRef.current = Date.now() + from
     applyRemaining(from)
     setRunning(true)
-  }, [durationSeconds, applyRemaining])
+  }, [durationMs, applyRemaining])
 
   const pause = useCallback(() => {
-    if (running) applyRemaining(secondsLeft())
+    if (running) applyRemaining(msLeft())
     setRunning(false)
-  }, [running, applyRemaining, secondsLeft])
+  }, [running, applyRemaining, msLeft])
 
   const reset = useCallback(() => {
     setRunning(false)
-    applyRemaining(durationSeconds)
-  }, [durationSeconds, applyRemaining])
+    applyRemaining(durationMs)
+  }, [durationMs, applyRemaining])
 
   return {
-    remaining,
+    remaining: Math.ceil(remainingMs / 1000),
     running,
-    done: durationSeconds > 0 && remaining === 0,
+    done: durationMs > 0 && remainingMs === 0,
+    resumable: !running && remainingMs > 0 && remainingMs < durationMs,
+    pristine: !running && remainingMs === durationMs,
     start,
     pause,
     reset,
@@ -129,10 +139,8 @@ function useCountdown(durationSeconds: number): Countdown {
 /** The countdown for one timed step. Mount it keyed by step so it resets on navigation. */
 function StepTimer({ durationSeconds }: { durationSeconds: number }) {
   const { t } = useTranslation('recipes')
-  const { remaining, running, done, start, pause, reset } = useCountdown(durationSeconds)
-
-  // Started once and now paused mid-way — the primary action reads "resume".
-  const resumable = !running && remaining > 0 && remaining < durationSeconds
+  const { remaining, running, done, resumable, pristine, start, pause, reset } =
+    useCountdown(durationSeconds)
 
   return (
     <div className="mt-6 rounded-2xl bg-gray-800/60 border border-gray-700 p-4">
@@ -172,7 +180,7 @@ function StepTimer({ durationSeconds }: { durationSeconds: number }) {
         <button
           type="button"
           onClick={reset}
-          disabled={!running && remaining === durationSeconds}
+          disabled={pristine}
           className="flex items-center justify-center gap-2 min-h-12 px-5 py-3 rounded-xl bg-gray-700 hover:bg-gray-600 text-gray-100 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <RotateCcw size={20} aria-hidden="true" />
@@ -216,7 +224,10 @@ export default function RecipeCookMode() {
   const { recipe, loading, error, notFound, refresh } = useRecipe(id)
   const [stepIndex, setStepIndex] = useState(0)
 
-  // Cooking means wet hands and long pauses; the screen must not sleep.
+  // Cooking means wet hands and long pauses; the screen must not sleep. The
+  // hook feature-detects the Wake Lock API and swallows a refused request, so
+  // there is nothing to handle here — an unsupported or locked-down browser
+  // just cooks with the screen timeout it already had.
   useWakeLock()
 
   const steps: RecipeStep[] = recipe?.steps ?? []

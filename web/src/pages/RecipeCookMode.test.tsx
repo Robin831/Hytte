@@ -123,6 +123,22 @@ function timerDisplay() {
   return screen.queryByRole('timer', { name: 'Time remaining' })
 }
 
+/**
+ * Installs a fake `navigator.wakeLock` and returns a teardown that removes it
+ * again. happy-dom has no Wake Lock API of its own, so without this the hook
+ * takes its feature-detect branch and never calls anything.
+ */
+function stubWakeLock(request: () => Promise<unknown>) {
+  Object.defineProperty(navigator, 'wakeLock', {
+    value: { request },
+    configurable: true,
+    writable: true,
+  })
+  return () => {
+    Reflect.deleteProperty(navigator as unknown as object, 'wakeLock')
+  }
+}
+
 /** Runs the fake clock forward inside `act` so React flushes the tick. */
 function advance(ms: number) {
   act(() => {
@@ -220,6 +236,27 @@ describe('RecipeCookMode', () => {
     expect(timerDisplay()).toHaveTextContent('30:00')
   })
 
+  it('keeps the part-second already spent across a pause', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    await renderCookMode()
+
+    fireEvent.click(nextButton())
+    fireEvent.click(screen.getByRole('button', { name: 'Start timer' }))
+
+    // Two pauses landing mid-second. Rounding the remainder up at each pause
+    // would hand a whole second back to the cook, so 30 seconds of running
+    // would show as 29:31 instead of 29:30.
+    advance(500)
+    fireEvent.click(screen.getByRole('button', { name: 'Pause timer' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Resume timer' }))
+    advance(500)
+    fireEvent.click(screen.getByRole('button', { name: 'Pause timer' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Resume timer' }))
+    advance(29_000)
+
+    expect(timerDisplay()).toHaveTextContent('29:30')
+  })
+
   it('stops at zero and announces that the time is up', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     await renderCookMode()
@@ -283,6 +320,40 @@ describe('RecipeCookMode', () => {
     await renderCookMode({ search: '?portions=nonsense' })
     expect(screen.getByText('400 g cod, cubed')).toBeInTheDocument()
     expect(screen.queryByText('Scaled from 4 servings')).toBeNull()
+  })
+
+  it('holds a screen wake lock while cooking and releases it on exit', async () => {
+    const release = vi.fn(() => Promise.resolve())
+    const request = vi.fn(() => Promise.resolve({ released: false, release }))
+    const restoreWakeLock = stubWakeLock(request)
+
+    try {
+      const { unmount } = await renderCookMode()
+      // Let the request promise settle so the sentinel is stored before unmount.
+      await act(async () => {})
+      expect(request).toHaveBeenCalledWith('screen')
+
+      unmount()
+      expect(release).toHaveBeenCalled()
+    } finally {
+      restoreWakeLock()
+    }
+  })
+
+  it('cooks on when the browser refuses the wake lock', async () => {
+    const request = vi.fn(() => Promise.reject(new Error('denied')))
+    const restoreWakeLock = stubWakeLock(request)
+
+    try {
+      await renderCookMode()
+      await act(async () => {})
+
+      expect(request).toHaveBeenCalled()
+      expect(screen.getByText('Cube the cod.')).toBeInTheDocument()
+      expect(nextButton()).toBeEnabled()
+    } finally {
+      restoreWakeLock()
+    }
   })
 
   it('says so when the recipe has no steps to cook through', async () => {
