@@ -462,10 +462,16 @@ export default function SkyWatchPage() {
     if (authLoading) return
 
     if (!user) {
-      const stored = readStoredLocation()
-      if (stored && !userHasSelected.current) setLocation(stored)
-      setStoredLocationLoaded(true)
-      return
+      let cancelled = false
+      Promise.resolve().then(() => {
+        if (cancelled) return
+        const stored = readStoredLocation()
+        if (stored && !userHasSelected.current) setLocation(stored)
+        setStoredLocationLoaded(true)
+      })
+      return () => {
+        cancelled = true
+      }
     }
 
     let cancelled = false
@@ -499,11 +505,18 @@ export default function SkyWatchPage() {
   // Resolve a seeded home-location name once the known locations are available.
   useEffect(() => {
     if (!pendingLocationName || !locationsLoaded) return
-    if (!userHasSelected.current) {
-      const found = knownLocations.find((l) => l.name === pendingLocationName)
-      if (found) setLocation(found)
+    let cancelled = false
+    Promise.resolve().then(() => {
+      if (cancelled) return
+      if (!userHasSelected.current) {
+        const found = knownLocations.find((l) => l.name === pendingLocationName)
+        if (found) setLocation(found)
+      }
+      setPendingLocationName(null)
+    })
+    return () => {
+      cancelled = true
     }
-    setPendingLocationName(null)
   }, [pendingLocationName, locationsLoaded, knownLocations])
 
   // Only fetch sky data once the selection is settled, so the page never fetches

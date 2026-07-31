@@ -22,7 +22,7 @@ interface LocationPickerProps {
 const GEOLOCATION_TIMEOUT_MS = 10_000
 
 /** Stable option/select key for a location — coordinates avoid duplicate-name collisions. */
-export function locationKey(location: PickedLocation): string {
+function locationKey(location: PickedLocation): string {
   return `${location.lat},${location.lon}`
 }
 
