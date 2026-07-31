@@ -20,6 +20,7 @@ const (
 	maxStopNameLen    = 256
 	maxRoutesPerStop  = 100
 	maxRouteLen       = 50
+	maxWalkMinutes    = 120
 	maxSettingsBodySz = 64 << 10 // 64 KB
 )
 
@@ -74,9 +75,10 @@ func DeparturesHandler(db *sql.DB, svc *Service) http.HandlerFunc {
 					name = stop.ID
 				}
 				result = append(result, StopDepartures{
-					StopID:     stop.ID,
-					StopName:   name,
-					Departures: []Departure{},
+					StopID:      stop.ID,
+					StopName:    name,
+					WalkMinutes: stop.WalkMinutes,
+					Departures:  []Departure{},
 				})
 				continue
 			}
@@ -91,9 +93,10 @@ func DeparturesHandler(db *sql.DB, svc *Service) http.HandlerFunc {
 			filtered := filterDepartures(departures, stop.Routes)
 
 			result = append(result, StopDepartures{
-				StopID:     stop.ID,
-				StopName:   name,
-				Departures: filtered,
+				StopID:      stop.ID,
+				StopName:    name,
+				WalkMinutes: stop.WalkMinutes,
+				Departures:  filtered,
 			})
 		}
 
@@ -138,7 +141,7 @@ func SettingsGetHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // SettingsPutHandler saves the user's favorite transit stops.
-// Body: {"stops": [{id, name, routes}]}
+// Body: {"stops": [{id, name, routes, walk_minutes}]}
 func SettingsPutHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -175,6 +178,11 @@ func SettingsPutHandler(db *sql.DB) http.HandlerFunc {
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "route label too long"})
 					return
 				}
+			}
+			// Validate before any write so a rejected payload leaves the stored blob untouched.
+			if stop.WalkMinutes < 0 || stop.WalkMinutes > maxWalkMinutes {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("walk_minutes must be between 0 and %d", maxWalkMinutes)})
+				return
 			}
 		}
 
