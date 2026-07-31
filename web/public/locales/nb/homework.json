@@ -4,6 +4,13 @@
   "noSubject": "Nytt emne",
   "yesterday": "I g\u00e5r",
   "backToList": "Tilbake til samtaler",
+  "conversationActions": "Handlinger for samtalen",
+  "rename": "Gi nytt navn",
+  "renameLabel": "Navn p\u00e5 samtalen",
+  "delete": "Slett",
+  "cancel": "Avbryt",
+  "deleteConfirm": "Vil du slette denne samtalen? Dette kan ikke angres.",
+  "deleteConfirmYes": "Slett",
   "empty": {
     "noConversations": "Ingen leksesamtaler enn\u00e5",
     "startNew": "Start en ny samtale for \u00e5 f\u00e5 hjelp"
@@ -36,7 +43,10 @@
     "failedToLoad": "Kunne ikke laste samtaler",
     "failedToCreate": "Kunne ikke opprette samtale",
     "failedToLoadMessages": "Kunne ikke laste meldinger",
-    "failedToSend": "Kunne ikke sende melding"
+    "failedToSend": "Kunne ikke sende melding",
+    "failedToRename": "Kunne ikke gi samtalen nytt navn",
+    "failedToDelete": "Kunne ikke slette samtalen",
+    "nameRequired": "Navnet kan ikke v\u00e6re tomt"
   },
   "review": {
     "title": "Lekseoversikt",
@@ -97,7 +107,7 @@
       "failedToSave": "Kunne ikke lagre profilen",
       "ageInvalid": "Skriv inn en alder mellom 1 og 25",
       "gradeRequired": "Velg et klassetrinn",
-      "languageRequired": "Velg et foretrukket språk"
+      "languageRequired": "Velg et foretrukket spr\u00e5k"
     }
   }
 }

@@ -2,6 +2,10 @@ package homework
 
 import (
 	"database/sql"
+	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -476,5 +480,109 @@ func TestUpdateConversationSubject(t *testing.T) {
 	}
 	if rawSubject == "math" {
 		t.Error("expected subject to be encrypted in DB, but found plaintext")
+	}
+}
+
+func TestDeleteConversation(t *testing.T) {
+	d := setupTestDB(t)
+	uploadsRoot := t.TempDir()
+	t.Setenv("HOMEWORK_UPLOADS_DIR", uploadsRoot)
+
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "Math"})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+	if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv.ID, Role: "user", Content: "Help", HelpLevel: HelpLevelHint}); err != nil {
+		t.Fatalf("add message: %v", err)
+	}
+
+	convDir := filepath.Join(uploadsRoot, strconv.FormatInt(conv.ID, 10))
+	if err := os.MkdirAll(convDir, 0700); err != nil {
+		t.Fatalf("create upload dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(convDir, "hw.png"), []byte("image"), 0600); err != nil {
+		t.Fatalf("write upload file: %v", err)
+	}
+
+	if err := DeleteConversation(d, conv.ID, 2); err != nil {
+		t.Fatalf("delete conversation: %v", err)
+	}
+
+	got, err := GetConversation(d, conv.ID, 2)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if got != nil {
+		t.Error("expected conversation to be gone")
+	}
+
+	var msgCount int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM homework_messages WHERE conversation_id = ?`, conv.ID).Scan(&msgCount); err != nil {
+		t.Fatalf("count messages: %v", err)
+	}
+	if msgCount != 0 {
+		t.Errorf("expected 0 messages left, got %d", msgCount)
+	}
+
+	if _, err := os.Stat(convDir); !os.IsNotExist(err) {
+		t.Errorf("expected upload dir to be removed, stat err = %v", err)
+	}
+}
+
+func TestDeleteConversationWrongKid(t *testing.T) {
+	d := setupTestDB(t)
+	t.Setenv("HOMEWORK_UPLOADS_DIR", t.TempDir())
+
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "Math"})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+	if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv.ID, Role: "user", Content: "Help", HelpLevel: HelpLevelHint}); err != nil {
+		t.Fatalf("add message: %v", err)
+	}
+
+	// Kid 3 does not own this conversation.
+	if err := DeleteConversation(d, conv.ID, 3); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected sql.ErrNoRows, got %v", err)
+	}
+
+	// The row and its messages must be untouched.
+	got, err := GetConversation(d, conv.ID, 2)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected conversation to still exist")
+	}
+	msgs, err := GetMessages(d, conv.ID, 2)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Errorf("expected 1 message to remain, got %d", len(msgs))
+	}
+}
+
+func TestDeleteConversationMissingUploadsDir(t *testing.T) {
+	d := setupTestDB(t)
+	t.Setenv("HOMEWORK_UPLOADS_DIR", filepath.Join(t.TempDir(), "does-not-exist"))
+
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "Science"})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	// A missing uploads directory is not an error.
+	if err := DeleteConversation(d, conv.ID, 2); err != nil {
+		t.Fatalf("delete conversation: %v", err)
+	}
+}
+
+func TestDeleteConversationNotFound(t *testing.T) {
+	d := setupTestDB(t)
+	t.Setenv("HOMEWORK_UPLOADS_DIR", t.TempDir())
+
+	if err := DeleteConversation(d, 999, 2); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected sql.ErrNoRows, got %v", err)
 	}
 }

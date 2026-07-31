@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -253,6 +256,58 @@ func UpdateConversationSubject(db *sql.DB, convID, kidID int64, subject string) 
 	if n == 0 {
 		return sql.ErrNoRows
 	}
+	return nil
+}
+
+// DeleteConversation permanently removes a homework conversation, its messages
+// and its uploaded-image directory. Scoped to a specific kid so a caller can
+// only delete their own conversations.
+// Returns sql.ErrNoRows if no matching row was found (wrong ID or kid mismatch).
+func DeleteConversation(db *sql.DB, convID, kidID int64) error {
+	// Verify ownership first so a cross-kid delete reports not-found without
+	// touching any rows.
+	var id int64
+	err := db.QueryRow(`SELECT id FROM homework_conversations WHERE id = ? AND kid_id = ?`, convID, kidID).Scan(&id)
+	if err == sql.ErrNoRows {
+		return sql.ErrNoRows
+	}
+	if err != nil {
+		return fmt.Errorf("get homework conversation: %w", err)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// homework_messages has an ON DELETE CASCADE foreign key, but SQLite only
+	// enforces it when foreign_keys is on — delete explicitly to be safe.
+	if _, err := tx.Exec(`DELETE FROM homework_messages WHERE conversation_id = ?`, convID); err != nil {
+		return fmt.Errorf("delete homework messages: %w", err)
+	}
+	result, err := tx.Exec(`DELETE FROM homework_conversations WHERE id = ? AND kid_id = ?`, convID, kidID)
+	if err != nil {
+		return fmt.Errorf("delete homework conversation: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	// Remove uploaded images for this conversation. The rows are already gone,
+	// so a filesystem failure is logged rather than failing the request.
+	uploadDir := filepath.Join(homeworkUploadsDir(), strconv.FormatInt(convID, 10))
+	if err := os.RemoveAll(uploadDir); err != nil {
+		log.Printf("homework: remove uploads dir for conv %d: %v", convID, err)
+	}
+
 	return nil
 }
 

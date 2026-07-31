@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -1221,5 +1222,233 @@ func TestStreamClaudeStderrCapturedOnError(t *testing.T) {
 	}
 	if !strings.Contains(respBody, "Please try again") {
 		t.Errorf("expected generic error message, got: %s", respBody)
+	}
+}
+
+// --- Rename / delete conversation ---
+
+func TestHandleRenameMyConversation(t *testing.T) {
+	d := setupTestDB(t)
+
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "math"})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	handler := HandleRenameMyConversation(d)
+	body := map[string]any{"subject": "  Fractions homework  "}
+	r := withChiParams(withUser(newRequest(http.MethodPatch, "/api/homework/conversations/1", body), testChildUser), map[string]string{"id": "1"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp struct {
+		Conversation HomeworkConversation `json:"conversation"`
+	}
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Conversation.Subject != "Fractions homework" {
+		t.Errorf("expected trimmed subject, got %q", resp.Conversation.Subject)
+	}
+
+	// Persisted.
+	got, err := GetConversation(d, conv.ID, 2)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if got.Subject != "Fractions homework" {
+		t.Errorf("expected persisted subject 'Fractions homework', got %q", got.Subject)
+	}
+}
+
+func TestHandleRenameMyConversationEmptySubject(t *testing.T) {
+	d := setupTestDB(t)
+
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "math"})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	handler := HandleRenameMyConversation(d)
+	for _, subject := range []string{"", "   "} {
+		r := withChiParams(withUser(newRequest(http.MethodPatch, "/api/homework/conversations/1", map[string]any{"subject": subject}), testChildUser), map[string]string{"id": "1"})
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("subject %q: expected 400, got %d: %s", subject, w.Code, w.Body.String())
+		}
+	}
+
+	got, err := GetConversation(d, conv.ID, 2)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if got.Subject != "math" {
+		t.Errorf("expected subject unchanged, got %q", got.Subject)
+	}
+}
+
+func TestHandleRenameMyConversationTooLong(t *testing.T) {
+	d := setupTestDB(t)
+
+	if _, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "math"}); err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	handler := HandleRenameMyConversation(d)
+	body := map[string]any{"subject": strings.Repeat("a", maxSubjectLen+1)}
+	r := withChiParams(withUser(newRequest(http.MethodPatch, "/api/homework/conversations/1", body), testChildUser), map[string]string{"id": "1"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHandleRenameMyConversationOtherKid(t *testing.T) {
+	d := setupTestDB(t)
+
+	// Conversation belongs to kid 3, but the caller is kid 2.
+	if _, err := d.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'other@example.com', 'Other', 'g3')`); err != nil {
+		t.Fatalf("insert other kid: %v", err)
+	}
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 3, Subject: "science"})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	handler := HandleRenameMyConversation(d)
+	r := withChiParams(withUser(newRequest(http.MethodPatch, "/api/homework/conversations/1", map[string]any{"subject": "hijacked"}), testChildUser), map[string]string{"id": "1"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+
+	got, err := GetConversation(d, conv.ID, 3)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if got.Subject != "science" {
+		t.Errorf("expected subject unchanged, got %q", got.Subject)
+	}
+}
+
+func TestHandleDeleteMyConversation(t *testing.T) {
+	d := setupTestDB(t)
+	uploadsRoot := t.TempDir()
+	t.Setenv("HOMEWORK_UPLOADS_DIR", uploadsRoot)
+
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 2, Subject: "math"})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+	if _, err := AddMessage(d, HomeworkMessage{ConversationID: conv.ID, Role: "user", Content: "Help", HelpLevel: HelpLevelHint}); err != nil {
+		t.Fatalf("add message: %v", err)
+	}
+
+	convDir := filepath.Join(uploadsRoot, fmt.Sprintf("%d", conv.ID))
+	if err := os.MkdirAll(convDir, 0700); err != nil {
+		t.Fatalf("create upload dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(convDir, "hw.png"), []byte("image"), 0600); err != nil {
+		t.Fatalf("write upload file: %v", err)
+	}
+
+	handler := HandleDeleteMyConversation(d)
+	r := withChiParams(withUser(newRequest(http.MethodDelete, "/api/homework/conversations/1", nil), testChildUser), map[string]string{"id": "1"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", w.Code, w.Body.String())
+	}
+	if w.Body.Len() != 0 {
+		t.Errorf("expected empty body, got %q", w.Body.String())
+	}
+	if _, err := os.Stat(convDir); !os.IsNotExist(err) {
+		t.Errorf("expected upload dir to be removed, stat err = %v", err)
+	}
+
+	// Gone from the student list endpoint.
+	listHandler := HandleMyConversations(d)
+	lr := withUser(newRequest(http.MethodGet, "/api/homework/conversations", nil), testChildUser)
+	lw := httptest.NewRecorder()
+	listHandler.ServeHTTP(lw, lr)
+
+	var listResp struct {
+		Conversations []HomeworkConversation `json:"conversations"`
+	}
+	decode(t, lw.Body.Bytes(), &listResp)
+	if len(listResp.Conversations) != 0 {
+		t.Errorf("expected 0 conversations after delete, got %d", len(listResp.Conversations))
+	}
+
+	// Gone from the parent review dashboard too.
+	if _, err := d.Exec(`INSERT INTO family_links (parent_id, child_id, nickname, avatar_emoji, created_at) VALUES (1, 2, 'Kid', '📚', '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("insert family link: %v", err)
+	}
+	reviewHandler := HandleParentReview(d)
+	rr := withChiParams(withUser(newRequest(http.MethodGet, "/api/homework/children/2/review", nil), testParent), map[string]string{"childId": "2"})
+	rw := httptest.NewRecorder()
+	reviewHandler.ServeHTTP(rw, rr)
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("expected 200 from review, got %d: %s", rw.Code, rw.Body.String())
+	}
+	var reviewResp struct {
+		Review ParentReviewResponse `json:"review"`
+	}
+	decode(t, rw.Body.Bytes(), &reviewResp)
+	if len(reviewResp.Review.Conversations) != 0 {
+		t.Errorf("expected deleted conversation to be absent from review, got %d", len(reviewResp.Review.Conversations))
+	}
+}
+
+func TestHandleDeleteMyConversationOtherKid(t *testing.T) {
+	d := setupTestDB(t)
+	t.Setenv("HOMEWORK_UPLOADS_DIR", t.TempDir())
+
+	if _, err := d.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'other@example.com', 'Other', 'g3')`); err != nil {
+		t.Fatalf("insert other kid: %v", err)
+	}
+	conv, err := CreateConversation(d, HomeworkConversation{KidID: 3, Subject: "science"})
+	if err != nil {
+		t.Fatalf("create conversation: %v", err)
+	}
+
+	handler := HandleDeleteMyConversation(d)
+	r := withChiParams(withUser(newRequest(http.MethodDelete, "/api/homework/conversations/1", nil), testChildUser), map[string]string{"id": "1"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+
+	got, err := GetConversation(d, conv.ID, 3)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if got == nil {
+		t.Error("expected other kid's conversation to survive")
+	}
+}
+
+func TestHandleDeleteMyConversationInvalidID(t *testing.T) {
+	d := setupTestDB(t)
+
+	handler := HandleDeleteMyConversation(d)
+	r := withChiParams(withUser(newRequest(http.MethodDelete, "/api/homework/conversations/abc", nil), testChildUser), map[string]string{"id": "abc"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
 	}
 }
