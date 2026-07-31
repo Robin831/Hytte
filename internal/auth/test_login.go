@@ -25,7 +25,7 @@ func TestLoginHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Create session.
-		token, expiresAt, err := CreateSession(db, user.ID)
+		token, expiresAt, err := CreateSessionForRequest(db, user.ID, r)
 		if err != nil {
 			log.Printf("test-login: failed to create session: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create session"})

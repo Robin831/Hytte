@@ -105,6 +105,7 @@ Hytte/
   - VAPID: private_key
   - Analysis: prompt, response_json
   - User preferences: claude_cli_path
+  - Sessions: user_agent, ip_address (sign-in metadata; the token column holds a SHA-256 hash, not ciphertext)
 - **Fields that must NOT be encrypted** (needed for queries/filtering): IDs, timestamps, status fields, sport, duration, distance, heart rate, tags, labels, email
 - **When adding a new feature that stores user data**: always encrypt sensitive text fields using `encryption.EncryptField()` on write and `encryption.DecryptField()` on read. If in doubt, encrypt it.
 - **Encryption key** is at `~/.config/hytte/.encryption_key` (auto-generated, mode 0600). The `ENCRYPTION_KEY` env var overrides it.
@@ -156,6 +157,7 @@ All prefixed with `/api/`.
 | PUT | /settings/preferences | Required | Set a preference |
 | GET | /settings/sessions | Required | List active sessions |
 | POST | /settings/sessions/revoke-others | Required | Sign out other sessions |
+| GET | /settings/export | Required | Stream a JSON archive of the user's profile, notes, workouts, lactate tests, preferences and session metadata |
 | DELETE | /settings/account | Required | Delete account + cascade |
 
 ## CI
