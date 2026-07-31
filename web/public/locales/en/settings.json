@@ -225,6 +225,14 @@
     "resetSuccess": "Prompt reset to default",
     "resetError": "Failed to reset prompt"
   },
+  "dataExport": {
+    "heading": "Data export",
+    "description": "Download a JSON archive of your notes, workouts, lactate tests, preferences and session history.",
+    "button": "Download my data",
+    "inProgress": "Preparing your export…",
+    "success": "Your export has been downloaded.",
+    "error": "Could not create your export. Please try again."
+  },
   "dangerZone": {
     "heading": "Danger Zone",
     "deleteAccount": "Delete account",

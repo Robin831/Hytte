@@ -1,9 +1,23 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
+import { Download, Loader2 } from 'lucide-react'
 import { useAuth } from '../../auth'
 import { formatDate } from '../../utils/formatDate'
 import type { SessionInfo } from './types'
+
+/** Local-time YYYY-MM-DD, used as the export filename fallback. */
+function localDateStamp(): string {
+  const now = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
+
+/** Pulls the filename out of a Content-Disposition header, if present. */
+function filenameFromDisposition(header: string | null): string {
+  const match = header?.match(/filename="?([^";]+)"?/)
+  return match?.[1] ?? `hytte-export-${localDateStamp()}.json`
+}
 
 function SecuritySection() {
   const { t } = useTranslation(['settings', 'common'])
@@ -13,6 +27,9 @@ function SecuritySection() {
   const [sessionsLoaded, setSessionsLoaded] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [exportDone, setExportDone] = useState(false)
 
   const fetchSessions = useCallback(async () => {
     const res = await fetch('/api/settings/sessions', { credentials: 'include' })
@@ -46,6 +63,40 @@ function SecuritySection() {
     const res = await fetch('/api/settings/sessions/revoke-others', { method: 'POST', credentials: 'include' })
     if (res.ok) {
       await fetchSessions()
+    }
+  }
+
+  const downloadExport = async () => {
+    setIsExporting(true)
+    setExportError(null)
+    setExportDone(false)
+    let objectUrl: string | null = null
+    try {
+      const res = await fetch('/api/settings/export', { credentials: 'include' })
+      if (!res.ok) {
+        throw new Error(`export request failed with status ${res.status}`)
+      }
+      const filename = filenameFromDisposition(res.headers.get('Content-Disposition'))
+      const blob = await res.blob()
+      objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setExportDone(true)
+    } catch (err) {
+      console.error('Failed to export data:', err)
+      setExportError(t('dataExport.error'))
+    } finally {
+      if (objectUrl) {
+        // Defer revocation — revoking synchronously after click() can abort
+        // the download in some browsers.
+        const url = objectUrl
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+      }
+      setIsExporting(false)
     }
   }
 
@@ -97,6 +148,33 @@ function SecuritySection() {
           {t('sessions.signOutEverywhere')}
         </button>
       )}
+
+      {/* Data export — a safe off-ramp, kept above the destructive actions. */}
+      <div className="border-t border-gray-700 pt-4 mt-4">
+        <p className="text-sm font-medium text-gray-300 mb-3">{t('dataExport.heading')}</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-gray-400">{t('dataExport.description')}</p>
+          <button
+            onClick={downloadExport}
+            disabled={isExporting}
+            aria-busy={isExporting}
+            className="flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed text-sm text-white px-4 py-2 rounded-lg transition-colors cursor-pointer shrink-0"
+          >
+            {isExporting ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Download size={16} />
+            )}
+            {isExporting ? t('dataExport.inProgress') : t('dataExport.button')}
+          </button>
+        </div>
+        {exportError && (
+          <p className="text-sm text-red-400 mt-2" role="alert">{exportError}</p>
+        )}
+        {exportDone && !exportError && (
+          <p className="text-sm text-green-400 mt-2">{t('dataExport.success')}</p>
+        )}
+      </div>
 
       {/* Danger Zone */}
       <div className="border-t border-gray-700 pt-4 mt-4">

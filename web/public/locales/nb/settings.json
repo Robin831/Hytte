@@ -225,6 +225,14 @@
     "resetSuccess": "Ledetekst tilbakestilt til standard",
     "resetError": "Kunne ikke tilbakestille ledetekst"
   },
+  "dataExport": {
+    "heading": "Dataeksport",
+    "description": "Last ned et JSON-arkiv med notatene, øktene, laktattestene, innstillingene og øktloggen din.",
+    "button": "Last ned dataene mine",
+    "inProgress": "Forbereder eksporten din …",
+    "success": "Eksporten din er lastet ned.",
+    "error": "Kunne ikke lage eksporten. Prøv igjen."
+  },
   "dangerZone": {
     "heading": "Faresone",
     "deleteAccount": "Slett konto",

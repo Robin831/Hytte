@@ -17,6 +17,7 @@ import (
 	"github.com/Robin831/Hytte/internal/salary"
 	"github.com/Robin831/Hytte/internal/chat"
 	"github.com/Robin831/Hytte/internal/dashboard"
+	"github.com/Robin831/Hytte/internal/export"
 	"github.com/Robin831/Hytte/internal/family"
 	"github.com/Robin831/Hytte/internal/familychat"
 	"github.com/Robin831/Hytte/internal/forge"
@@ -304,6 +305,9 @@ func NewRouter(db *sql.DB) http.Handler {
 			// Session management.
 			r.Get("/settings/sessions", auth.SessionsListHandler(db))
 			r.Post("/settings/sessions/revoke-others", auth.SignOutEverywhereHandler(db))
+
+			// Self-service data export (JSON archive of the user's own data).
+			r.Get("/settings/export", export.ExportHandler(db))
 
 			// Account deletion.
 			r.Delete("/settings/account", auth.DeleteAccountHandler(db))

@@ -156,6 +156,7 @@ All prefixed with `/api/`.
 | PUT | /settings/preferences | Required | Set a preference |
 | GET | /settings/sessions | Required | List active sessions |
 | POST | /settings/sessions/revoke-others | Required | Sign out other sessions |
+| GET | /settings/export | Required | Stream a JSON archive of the user's own data |
 | DELETE | /settings/account | Required | Delete account + cascade |
 
 ## CI
