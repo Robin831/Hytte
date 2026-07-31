@@ -726,16 +726,6 @@ func TestRecordsConfirmHandler_InvalidMonth(t *testing.T) {
 	}
 }
 
-// previousMonth returns the first day of the month before the current one.
-// Anchoring to day 1 first matters: time.Now().AddDate(0, -1, 0) on the 31st of
-// a month normalizes forward into the *current* month (e.g. 2026-07-31 minus a
-// month is 2026-06-31 → 2026-07-01), which makes month-sensitive tests fail on
-// those days only.
-func previousMonth() time.Time {
-	now := time.Now()
-	return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).AddDate(0, -1, 0)
-}
-
 func TestRecordsConfirmHandler_NoConfig(t *testing.T) {
 	db := setupTestDB(t)
 	h := RecordsConfirmHandler(db)
