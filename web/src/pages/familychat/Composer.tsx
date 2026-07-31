@@ -7,6 +7,7 @@ import { uploadAttachment, UploadError } from './api'
 import { useVoiceRecorder } from './voice/useVoiceRecorder'
 import { trimLeadingTrailingSilence } from './voice/silenceTrim'
 import { computeWaveform, writeCachedWaveform } from './voice/waveform'
+import { clearDraft, getDraft, setDraft } from './drafts'
 
 // RetryHandle re-POSTs a failed optimistic message, reusing its original
 // client_id so a successful retry reconciles the existing bubble in place.
@@ -105,13 +106,25 @@ export default function Composer({ conversationId, currentUserId, onMessageCreat
   const recorderRef = useRef(recorder)
   useEffect(() => { recorderRef.current = recorder })
 
-  // Clear draft + focus the textarea when the conversation changes so the
-  // composer doesn't carry a half-typed message to a different chat. Also
+  // bodyRef mirrors the current text so the conversation-change cleanup can
+  // persist it — the cleanup closure captures a stale `body` otherwise.
+  const bodyRef = useRef(body)
+  useEffect(() => { bodyRef.current = body })
+
+  // Swap in the stored draft + focus the textarea when the conversation
+  // changes so the composer never carries a half-typed message into a
+  // different chat, while the outgoing chat's text is kept for later. Also
   // abort any in-flight send so its response cannot leak the message into
   // the newly selected conversation. The cleanup also runs on unmount.
   useEffect(() => {
+    const id = conversationId
+    const draft = getDraft(id)
+    // Seed the mirror as well: a cleanup that runs before the next render
+    // (React StrictMode's double-mount, or a very fast switch) would otherwise
+    // persist a stale empty body and wipe the draft we just restored.
+    bodyRef.current = draft
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setBody('')
+    setBody(draft)
     setError('')
     setSending(false)
     setUploading(false)
@@ -127,6 +140,9 @@ export default function Composer({ conversationId, currentUserId, onMessageCreat
       recorderRef.current.cancel()
     }
     return () => {
+      // Keep the outgoing conversation's half-typed message so coming back
+      // restores it. A blank body clears the stored draft instead.
+      setDraft(id, bodyRef.current)
       abortRef.current?.abort()
       abortRef.current = null
       uploadAbortRef.current?.abort()
@@ -290,6 +306,10 @@ export default function Composer({ conversationId, currentUserId, onMessageCreat
         throw new Error(t('composer.errors.send'))
       }
       onMessageCreated(msg)
+      // Update the ref before the state so a conversation switch racing this
+      // cleanup cannot re-persist the text we just sent.
+      bodyRef.current = ''
+      clearDraft(targetConversationId)
       setBody('')
       setAttachment(null)
       textareaRef.current?.focus()
@@ -335,6 +355,10 @@ export default function Composer({ conversationId, currentUserId, onMessageCreat
     }
     tempIdRef.current -= 1
     onOptimisticMessage(optimistic)
+    // Update the ref before the state so a conversation switch racing this
+    // cleanup cannot re-persist the text we just sent.
+    bodyRef.current = ''
+    clearDraft(targetConversationId)
     setBody('')
     setError('')
     textareaRef.current?.focus()
