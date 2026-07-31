@@ -327,6 +327,13 @@ func buildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange, opts 
 	if limit <= 0 {
 		limit = 360 // safety cap: 30 years
 	}
+	// A what-if run can never need more periods than the contractual baseline:
+	// overpayments only ever shorten the term. Capping here keeps the run inside
+	// the baseline payment array, so extra payments are never applied to periods
+	// the contractual schedule never had.
+	if len(contractual) > 0 && limit > len(contractual) {
+		limit = len(contractual)
+	}
 
 	var startTime time.Time
 	if l.StartDate != "" {
@@ -463,13 +470,10 @@ func buildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange, opts 
 			}
 		}
 		// A what-if run reuses the baseline payment for this period so that the
-		// reduced balance does not lower the payment at a rate change.
+		// reduced balance does not lower the payment at a rate change. The loop
+		// limit is capped at len(contractual) above, so the index is always valid.
 		if len(contractual) > 0 {
-			if i <= len(contractual) {
-				payment = contractual[i-1]
-			} else {
-				payment = contractual[len(contractual)-1]
-			}
+			payment = contractual[i-1]
 		}
 
 		// Regular monthly interest using actual/365 for the first regular period.

@@ -66,22 +66,36 @@ export interface AmortizationResponse {
   payoff_summary?: PayoffSummary | null
 }
 
+/** True when the field holds a usable, non-zero amount. */
+function hasAmount(raw: string): boolean {
+  const n = Number(raw)
+  return raw.trim() !== '' && !isNaN(n) && n !== 0
+}
+
+/**
+ * True when a lump sum amount is entered without a date. The amount cannot be
+ * sent to the backend in that state (it rejects an amount without a date), so
+ * the UI must say so instead of silently ignoring the input.
+ */
+export function lumpSumNeedsDate(p: WhatIfParams): boolean {
+  return hasAmount(p.lumpSum) && p.lumpSumDate.trim() === ''
+}
+
 /**
  * Builds the amortization query params for a what-if scenario. Returns an empty
  * string when nothing is set, so the baseline request URL is unchanged.
  * A lump sum is only sent when both the amount and the date are filled in —
- * the backend rejects an amount without a date.
+ * the backend rejects an amount without a date. Use `lumpSumNeedsDate` to warn
+ * about the half-filled case rather than dropping it silently.
  */
 export function whatIfQuery(p: WhatIfParams): string {
   const parts: string[] = []
-  const extra = Number(p.extraMonthly)
-  if (p.extraMonthly.trim() !== '' && !isNaN(extra) && extra !== 0) {
+  if (hasAmount(p.extraMonthly)) {
     parts.push(`extra_monthly=${encodeURIComponent(p.extraMonthly.trim())}`)
   }
-  const lump = Number(p.lumpSum)
-  if (p.lumpSum.trim() !== '' && !isNaN(lump) && lump !== 0 && p.lumpSumDate !== '') {
+  if (hasAmount(p.lumpSum) && p.lumpSumDate.trim() !== '') {
     parts.push(`lump_sum=${encodeURIComponent(p.lumpSum.trim())}`)
-    parts.push(`lump_sum_date=${encodeURIComponent(p.lumpSumDate)}`)
+    parts.push(`lump_sum_date=${encodeURIComponent(p.lumpSumDate.trim())}`)
   }
   return parts.join('&')
 }

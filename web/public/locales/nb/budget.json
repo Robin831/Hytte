@@ -152,8 +152,10 @@
       "interestSaved": "Spart rente",
       "interestCompare": "Total rente {{original}} → {{updated}}",
       "errors": {
-        "invalid": "Sjekk beløpene og datoen — beløp kan ikke være negative, og et engangsbeløp må ha en dato."
-      }
+        "invalid": "Sjekk beløpene og datoen — beløp kan ikke være negative, og et engangsbeløp må ha en dato.",
+        "lumpSumDateRequired": "Legg inn en dato for engangsbeløpet — uten dato blir det ikke regnet med."
+      },
+      "retry": "Prøv igjen"
     },
     "errors": {
       "loadFailed": "Kunne ikke laste lån.",

@@ -4,11 +4,12 @@ import type { TFunction } from 'i18next'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { WhatIfPanel } from './WhatIfPanel'
 import type { PayoffSummary, WhatIfParams } from './types'
-import { EMPTY_WHAT_IF, whatIfQuery } from './types'
+import { EMPTY_WHAT_IF, lumpSumNeedsDate, whatIfQuery } from './types'
 import enBudget from '../../../../public/locales/en/budget.json'
 
 // Mock lucide-react to avoid loading the full icon library (~30 MB) in tests.
 vi.mock('lucide-react', () => ({
+  AlertTriangle: () => null,
   ChevronDown: () => null,
   ChevronUp: () => null,
   RotateCcw: () => null,
@@ -131,6 +132,47 @@ describe('WhatIfPanel', () => {
     renderPanel()
     open()
     expect(screen.queryByText(t('loan.whatIf.reset'))).toBeNull()
+  })
+
+  it('warns when a lump sum has no date instead of silently dropping it', () => {
+    renderPanel({ params: { ...EMPTY_WHAT_IF, lumpSum: '50000' } })
+    open()
+    expect(screen.getByText(t('loan.whatIf.errors.lumpSumDateRequired'))).toBeTruthy()
+  })
+
+  it('drops the warning once the date is filled in', () => {
+    renderPanel({ params: { extraMonthly: '', lumpSum: '50000', lumpSumDate: '2026-01-01' } })
+    open()
+    expect(screen.queryByText(t('loan.whatIf.errors.lumpSumDateRequired'))).toBeNull()
+  })
+
+  it('offers a retry for a failed request', () => {
+    const onRetry = vi.fn()
+    renderPanel({ error: 'Request failed.', onRetry })
+    open()
+
+    fireEvent.click(screen.getByText(t('loan.whatIf.retry')))
+    expect(onRetry).toHaveBeenCalled()
+  })
+
+  it('shows the recalculating hint only while pending', () => {
+    const { view } = renderPanel({ pending: true })
+    open()
+    expect(screen.getByText(t('loan.whatIf.calculating'))).toBeTruthy()
+
+    view.rerender(
+      <WhatIfPanel loanId={7} params={EMPTY_WHAT_IF} onChange={vi.fn()} pending={false} t={tFn} />,
+    )
+    expect(screen.queryByText(t('loan.whatIf.calculating'))).toBeNull()
+  })
+})
+
+describe('lumpSumNeedsDate', () => {
+  it('is true only for a non-zero lump sum without a date', () => {
+    expect(lumpSumNeedsDate(EMPTY_WHAT_IF)).toBe(false)
+    expect(lumpSumNeedsDate({ ...EMPTY_WHAT_IF, lumpSum: '0' })).toBe(false)
+    expect(lumpSumNeedsDate({ ...EMPTY_WHAT_IF, lumpSum: '50000' })).toBe(true)
+    expect(lumpSumNeedsDate({ extraMonthly: '', lumpSum: '50000', lumpSumDate: '2026-01-01' })).toBe(false)
   })
 })
 

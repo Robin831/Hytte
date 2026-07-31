@@ -353,6 +353,40 @@ func TestBuildAmortizationWithOverpayments_ExtraMonthlyShortensTerm(t *testing.T
 	}
 }
 
+// A maxRows larger than the contractual term must not make the what-if run
+// continue past the baseline schedule — extra payments would then be applied to
+// periods the loan never had.
+func TestBuildAmortizationWithOverpayments_NeverOutlastsBaseline(t *testing.T) {
+	// Payment is deliberately too small to repay within the term, so the
+	// baseline stops at TermMonths with a balance still outstanding.
+	l := &Loan{
+		Principal:      1000000,
+		CurrentBalance: 1000000,
+		AnnualRate:     0.05,
+		MonthlyPayment: 5000,
+		TermMonths:     120,
+		PaymentDay:     1,
+		StartDate:      "2020-01-01",
+	}
+	base, err := BuildAmortization(l, 0, nil)
+	if err != nil {
+		t.Fatalf("BuildAmortization: %v", err)
+	}
+	if len(base) != 120 {
+		t.Fatalf("baseline rows = %d, want 120 (the contractual term)", len(base))
+	}
+	if base[len(base)-1].RemainingBalance <= 0 {
+		t.Fatalf("expected an outstanding balance at end of term, got %v", base[len(base)-1].RemainingBalance)
+	}
+	got, err := BuildAmortizationWithOverpayments(l, 360, nil, OverpaymentOptions{ExtraMonthly: 1000})
+	if err != nil {
+		t.Fatalf("BuildAmortizationWithOverpayments: %v", err)
+	}
+	if len(got) > len(base) {
+		t.Errorf("what-if rows = %d, want at most the baseline %d", len(got), len(base))
+	}
+}
+
 func TestBuildAmortizationWithOverpayments_LumpSumTiming(t *testing.T) {
 	l := &Loan{
 		Principal:      1000000,

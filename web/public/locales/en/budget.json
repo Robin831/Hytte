@@ -152,8 +152,10 @@
       "interestSaved": "Interest saved",
       "interestCompare": "Total interest {{original}} → {{updated}}",
       "errors": {
-        "invalid": "Check the extra payment amounts and date — amounts cannot be negative and a lump sum needs a date."
-      }
+        "invalid": "Check the extra payment amounts and date — amounts cannot be negative and a lump sum needs a date.",
+        "lumpSumDateRequired": "Add a date for the lump sum — without one it is not included in the schedule."
+      },
+      "retry": "Try again"
     },
     "errors": {
       "loadFailed": "Failed to load loans.",

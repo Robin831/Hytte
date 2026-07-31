@@ -26,8 +26,11 @@ export function AmortizationTable({ loanId, version, t }: AmortizationTableProps
   const [showPast, setShowPast] = useState(false)
   const [cache, setCache] = useState<{ key: string; rows: number } | null>(null)
   // Request key the backend rejected (400). Kept so the effect doesn't retry the
-  // same invalid what-if in a loop; the inline error is derived from it.
+  // same invalid what-if in a loop; the inline error is derived from it. Editing
+  // the inputs or hitting retry clears it, so a transient failure is recoverable.
   const [failedKey, setFailedKey] = useState<string | null>(null)
+  // Query string the currently rendered schedule was built from.
+  const [loadedQuery, setLoadedQuery] = useState('')
   // whatIf is what the user types; appliedWhatIf is its debounced counterpart
   // and is the value that actually reaches the request.
   const [whatIf, setWhatIf] = useState<WhatIfParams>(EMPTY_WHAT_IF)
@@ -53,6 +56,11 @@ export function AmortizationTable({ loanId, version, t }: AmortizationTableProps
   // never satisfy each other from cache.
   const requestedKey = `${loanId}|${version}|${query}`
   const whatIfError = failedKey === requestedKey ? t('loan.whatIf.errors.invalid') : null
+  // "Recalculating" is about the what-if only: it shows while the typed params
+  // differ from the ones the rendered schedule was built from (debounce plus
+  // request), and stays quiet for unrelated refetches such as show-all or a
+  // rate-change reload.
+  const whatIfPending = data !== null && !whatIfError && whatIfQuery(whatIf) !== loadedQuery
 
   useEffect(() => {
     // Skip fetch if already-loaded data satisfies the smaller request (e.g. toggling showAll off)
@@ -77,6 +85,7 @@ export function AmortizationTable({ loanId, version, t }: AmortizationTableProps
       .then(response => {
         setData(response)
         setFailedKey(null)
+        setLoadedQuery(query)
         setCache({ key: requestedKey, rows: requestedRows })
       })
       .catch(err => {
@@ -115,7 +124,9 @@ export function AmortizationTable({ loanId, version, t }: AmortizationTableProps
         body: JSON.stringify({ effective_date: effectiveDate, annual_rate: annualRate }),
       })
       if (!r.ok) throw new Error('create failed')
-      // Force reload amortization
+      // Force reload amortization. Clear any 400 marker as well, otherwise the
+      // guard against retrying a rejected what-if would block this reload too.
+      setFailedKey(null)
       setCache(null)
     } catch {
       setError(t('loan.errors.saveFailed'))
@@ -129,6 +140,7 @@ export function AmortizationTable({ loanId, version, t }: AmortizationTableProps
         credentials: 'include',
       })
       if (!r.ok) throw new Error('delete failed')
+      setFailedKey(null)
       setCache(null)
     } catch {
       setError(t('loan.errors.deleteFailed'))
@@ -171,7 +183,8 @@ export function AmortizationTable({ loanId, version, t }: AmortizationTableProps
         onChange={setWhatIf}
         summary={data.payoff_summary}
         error={whatIfError}
-        pending={loading}
+        pending={whatIfPending}
+        onRetry={() => setFailedKey(null)}
         t={t}
       />
 
