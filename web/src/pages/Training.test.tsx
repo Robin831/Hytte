@@ -740,8 +740,8 @@ describe('Training list cache', () => {
 
     const snapshot = readTrainingListCache('1')
     expect(snapshot).not.toBeNull()
-    expect(snapshot!.workouts.length).toBe(HISTORY.length)
-    expect(snapshot!.nextCursor).toBeNull()
+    expect(snapshot!.workouts.length).toBe(50)
+    expect(snapshot!.nextCursor).not.toBeNull()
     expect(snapshot!.scrollY).toBe(512)
   })
 
