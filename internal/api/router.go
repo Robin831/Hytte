@@ -35,6 +35,7 @@ import (
 	"github.com/Robin831/Hytte/internal/notes"
 	"github.com/Robin831/Hytte/internal/pokemon"
 	"github.com/Robin831/Hytte/internal/push"
+	"github.com/Robin831/Hytte/internal/recipes"
 	"github.com/Robin831/Hytte/internal/settings"
 	"github.com/Robin831/Hytte/internal/skywatch"
 	"github.com/Robin831/Hytte/internal/stars"
@@ -944,12 +945,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.With(auth.RequireAdmin()).Post("/offers/refresh", offers.HandleRefresh(db))
 			})
 
-			// Recipes — gated by "recipes" feature. The store landed in
-			// Hytte-evi4c; the /api/recipes/* handlers are wired into this
-			// group by the follow-up sub-task.
-			r.Group(func(r chi.Router) {
-				r.Use(auth.RequireFeature(db, "recipes"))
-			})
+			// Recipes — gated by "recipes" feature (routes in recipes.RegisterRoutes).
+			recipes.RegisterRoutes(r, db)
 
 			// Infrastructure monitoring — gated by "infra" feature.
 			r.Group(func(r chi.Router) {
