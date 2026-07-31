@@ -1394,9 +1394,11 @@ describe('ChatView – call UI', () => {
       await Promise.resolve()
     })
 
+    // Generous timeout: the offer travels SSE stream -> reader loop -> React
+    // state, which can exceed waitFor's 1s default on slow CI runners.
     await waitFor(() => {
       expect(screen.getByTestId('family-chat-incoming-overlay')).toBeInTheDocument()
-    })
+    }, { timeout: 5000 })
     expect(screen.getByTestId('family-chat-call-accept')).toBeInTheDocument()
     expect(screen.getByTestId('family-chat-call-decline')).toBeInTheDocument()
   })
@@ -1540,9 +1542,11 @@ describe('ChatView – call UI', () => {
       await Promise.resolve()
     })
 
+    // Generous timeout: the offer travels SSE stream -> reader loop -> React
+    // state, which can exceed waitFor's 1s default on slow CI runners.
     await waitFor(() => {
       expect(screen.getByTestId('family-chat-incoming-overlay')).toBeInTheDocument()
-    })
+    }, { timeout: 5000 })
     expect(screen.getByTestId('family-chat-incoming-kind-label').textContent).toBe('Incoming video call')
   })
 })
