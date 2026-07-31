@@ -155,8 +155,9 @@ All prefixed with `/api/`.
 | GET | /weather/locations | Public | Available Norwegian cities |
 | GET | /settings/preferences | Required | Get user prefs |
 | PUT | /settings/preferences | Required | Set a preference |
-| GET | /settings/sessions | Required | List active sessions |
+| GET | /settings/sessions | Required | List active sessions (device label + last-active) |
 | POST | /settings/sessions/revoke-others | Required | Sign out other sessions |
+| DELETE | /settings/sessions/{id} | Required | Revoke a single session by token prefix |
 | GET | /settings/export | Required | Stream a JSON archive of the user's profile, notes, workouts, lactate tests, preferences and session metadata |
 | DELETE | /settings/account | Required | Delete account + cascade |
 

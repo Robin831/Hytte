@@ -37,7 +37,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			expires_at DATETIME NOT NULL,
 			user_agent TEXT NOT NULL DEFAULT '',
-			ip_address TEXT NOT NULL DEFAULT ''
+			ip_address TEXT NOT NULL DEFAULT '',
+			last_seen_at DATETIME
 		);
 		CREATE TABLE user_preferences (
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -204,6 +205,92 @@ func TestClientIP(t *testing.T) {
 				t.Errorf("ClientIP() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestValidateSessionAndTouch_ThrottlesWrites(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	lastSeen := func() time.Time {
+		t.Helper()
+		var seen sql.NullTime
+		if err := db.QueryRow(
+			"SELECT last_seen_at FROM sessions WHERE token = ?", hashToken(token),
+		).Scan(&seen); err != nil {
+			t.Fatalf("select last_seen_at: %v", err)
+		}
+		if !seen.Valid {
+			t.Fatal("expected last_seen_at to be set")
+		}
+		return seen.Time
+	}
+
+	// A session is stamped on creation, so an immediate request must not write.
+	atCreation := lastSeen()
+	if _, err := ValidateSessionAndTouch(db, token); err != nil {
+		t.Fatalf("ValidateSessionAndTouch: %v", err)
+	}
+	if got := lastSeen(); !got.Equal(atCreation) {
+		t.Errorf("last_seen_at moved inside the throttle window: %v -> %v", atCreation, got)
+	}
+
+	// Backdate past the throttle window: the next request should refresh it.
+	stale := time.Now().Add(-2 * touchInterval)
+	if _, err := db.Exec(
+		"UPDATE sessions SET last_seen_at = ? WHERE token = ?", stale, hashToken(token),
+	); err != nil {
+		t.Fatalf("backdate last_seen_at: %v", err)
+	}
+	if _, err := ValidateSessionAndTouch(db, token); err != nil {
+		t.Fatalf("ValidateSessionAndTouch after backdating: %v", err)
+	}
+	if got := lastSeen(); !got.After(stale) {
+		t.Errorf("expected last_seen_at to advance past %v, got %v", stale, got)
+	}
+}
+
+func TestValidateSessionAndTouch_LegacyRowWithoutLastSeen(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	// A session created before last-seen tracking existed has a NULL column.
+	if _, err := db.Exec(
+		"INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
+		hashToken("legacy-token"), userID, time.Now().Add(time.Hour),
+	); err != nil {
+		t.Fatalf("insert legacy session: %v", err)
+	}
+
+	gotID, err := ValidateSessionAndTouch(db, "legacy-token")
+	if err != nil {
+		t.Fatalf("ValidateSessionAndTouch: %v", err)
+	}
+	if gotID != userID {
+		t.Errorf("expected user %d, got %d", userID, gotID)
+	}
+
+	var seen sql.NullTime
+	if err := db.QueryRow(
+		"SELECT last_seen_at FROM sessions WHERE token = ?", hashToken("legacy-token"),
+	).Scan(&seen); err != nil {
+		t.Fatalf("select last_seen_at: %v", err)
+	}
+	if !seen.Valid {
+		t.Error("expected a legacy session to get a last_seen_at on first use")
+	}
+}
+
+func TestValidateSessionAndTouch_Invalid(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := ValidateSessionAndTouch(db, "nonexistent-token"); err != sql.ErrNoRows {
+		t.Errorf("expected ErrNoRows, got %v", err)
 	}
 }
 

@@ -151,7 +151,15 @@
     "current": "Current",
     "createdExpires": "Created {{created}} — Expires {{expires}}",
     "noSessions": "No active sessions found.",
-    "signOutEverywhere": "Sign out everywhere else"
+    "signOutEverywhere": "Sign out everywhere else",
+    "unknownDevice": "Unknown device",
+    "lastActive": "Active {{time}}",
+    "lastActiveUnknown": "Last active unknown",
+    "revoke": "Sign out",
+    "revokeConfirmPrompt": "Sign out this device?",
+    "revokeConfirm": "Sign out device",
+    "revokeCancel": "Cancel",
+    "revokeError": "Could not sign out that session. Please try again."
   },
   "integrations": {
     "heading": "Integrations",

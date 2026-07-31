@@ -15,8 +15,17 @@ export interface SessionInfo {
   id: string
   created_at: string
   expires_at: string
+  device_label: string
+  last_seen_at: string | null
   current: boolean
 }
+
+/**
+ * Value the backend sends when a session's User-Agent tells us nothing.
+ * Must match auth.UnknownDeviceLabel in internal/auth/useragent.go — the UI
+ * swaps it for a localized string.
+ */
+export const UNKNOWN_DEVICE_LABEL = 'Unknown device'
 
 export interface EventTypeInfo {
   key: string

@@ -151,7 +151,15 @@
     "current": "Gjeldende",
     "createdExpires": "Opprettet {{created}} — Utløper {{expires}}",
     "noSessions": "Ingen aktive sesjoner funnet.",
-    "signOutEverywhere": "Logg ut alle andre steder"
+    "signOutEverywhere": "Logg ut alle andre steder",
+    "unknownDevice": "Ukjent enhet",
+    "lastActive": "Aktiv {{time}}",
+    "lastActiveUnknown": "Sist aktiv ukjent",
+    "revoke": "Logg ut",
+    "revokeConfirmPrompt": "Logge ut denne enheten?",
+    "revokeConfirm": "Logg ut enheten",
+    "revokeCancel": "Avbryt",
+    "revokeError": "Kunne ikke logge ut den sesjonen. Prøv igjen."
   },
   "integrations": {
     "heading": "Integrasjoner",
