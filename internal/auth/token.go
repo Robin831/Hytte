@@ -86,7 +86,7 @@ func RequireAuthOrToken(db *sql.DB) func(http.Handler) http.Handler {
 				return
 			}
 
-			userID, err := ValidateSession(db, cookie.Value)
+			userID, err := ValidateSessionAndTouch(db, cookie.Value)
 			if err != nil {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 				return

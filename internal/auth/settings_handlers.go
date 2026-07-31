@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/go-chi/chi/v5"
 )
 
 // validCLIPathRe matches safe CLI paths: alphanumeric, slashes, backslashes,
@@ -498,7 +499,7 @@ func SessionsListHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		rows, err := db.Query(
-			"SELECT token, created_at, expires_at FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC",
+			"SELECT token, created_at, expires_at, user_agent, last_seen_at FROM sessions WHERE user_id = ? AND expires_at > ? ORDER BY created_at DESC",
 			user.ID, time.Now(),
 		)
 		if err != nil {
@@ -509,17 +510,20 @@ func SessionsListHandler(db *sql.DB) http.HandlerFunc {
 		defer rows.Close()
 
 		type sessionInfo struct {
-			ID        string `json:"id"`
-			CreatedAt string `json:"created_at"`
-			ExpiresAt string `json:"expires_at"`
-			Current   bool   `json:"current"`
+			ID          string  `json:"id"`
+			CreatedAt   string  `json:"created_at"`
+			ExpiresAt   string  `json:"expires_at"`
+			DeviceLabel string  `json:"device_label"`
+			LastSeenAt  *string `json:"last_seen_at"`
+			Current     bool    `json:"current"`
 		}
 
 		var sessions []sessionInfo
 		for rows.Next() {
-			var token string
+			var token, userAgent string
 			var createdAt, expiresAt time.Time
-			if err := rows.Scan(&token, &createdAt, &expiresAt); err != nil {
+			var lastSeenAt sql.NullTime
+			if err := rows.Scan(&token, &createdAt, &expiresAt, &userAgent, &lastSeenAt); err != nil {
 				log.Printf("Failed to scan session: %v", err)
 				continue
 			}
@@ -529,11 +533,18 @@ func SessionsListHandler(db *sql.DB) http.HandlerFunc {
 			if len(displayID) > 8 {
 				displayID = displayID[:8]
 			}
+			var lastSeen *string
+			if lastSeenAt.Valid {
+				formatted := lastSeenAt.Time.Format(time.RFC3339)
+				lastSeen = &formatted
+			}
 			sessions = append(sessions, sessionInfo{
-				ID:        displayID,
-				CreatedAt: createdAt.Format(time.RFC3339),
-				ExpiresAt: expiresAt.Format(time.RFC3339),
-				Current:   token == currentTokenHash,
+				ID:          displayID,
+				CreatedAt:   createdAt.Format(time.RFC3339),
+				ExpiresAt:   expiresAt.Format(time.RFC3339),
+				DeviceLabel: DeviceLabel(decryptSessionUserAgent(userAgent)),
+				LastSeenAt:  lastSeen,
+				Current:     token == currentTokenHash,
 			})
 		}
 		if sessions == nil {
@@ -541,6 +552,95 @@ func SessionsListHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions})
+	}
+}
+
+// decryptSessionUserAgent decrypts a stored session user agent. Sessions created
+// before user agents were captured hold an empty string, and a decrypt failure
+// means the value is unusable — both return "" so the caller falls back to a
+// generic device label.
+func decryptSessionUserAgent(stored string) string {
+	if stored == "" {
+		return ""
+	}
+	ua, err := encryption.DecryptField(stored)
+	if err != nil {
+		log.Printf("Warning: failed to decrypt session user agent: %v", err)
+		return ""
+	}
+	return ua
+}
+
+// sessionIDRe matches the token prefix used as a session ID in the API. Session
+// tokens are hex, so anything else can never match a row.
+var sessionIDRe = regexp.MustCompile(`^[0-9a-f]{4,64}$`)
+
+// SessionRevokeHandler deletes a single session belonging to the authenticated
+// user, identified by the token prefix returned from SessionsListHandler.
+func SessionRevokeHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := UserFromContext(r.Context())
+
+		id := chi.URLParam(r, "id")
+		if !sessionIDRe.MatchString(id) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+			return
+		}
+
+		var currentTokenHash string
+		if cookie, err := r.Cookie("session"); err == nil {
+			currentTokenHash = hashToken(cookie.Value)
+		}
+
+		// Resolve the prefix against this user's sessions only, so one user can
+		// never revoke (or probe for) another user's session.
+		rows, err := db.Query(
+			"SELECT token FROM sessions WHERE user_id = ? AND token LIKE ? || '%'",
+			user.ID, id,
+		)
+		if err != nil {
+			log.Printf("Failed to look up session for revoke: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to revoke session"})
+			return
+		}
+		defer rows.Close()
+
+		var matches []string
+		for rows.Next() {
+			var token string
+			if err := rows.Scan(&token); err != nil {
+				log.Printf("Failed to scan session for revoke: %v", err)
+				continue
+			}
+			matches = append(matches, token)
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("Failed to iterate sessions for revoke: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to revoke session"})
+			return
+		}
+
+		// An unknown or ambiguous prefix is indistinguishable from "no such
+		// session" as far as the caller is concerned.
+		if len(matches) != 1 {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+			return
+		}
+		if matches[0] == currentTokenHash {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "cannot revoke the current session; sign out instead"})
+			return
+		}
+
+		if _, err := db.Exec(
+			"DELETE FROM sessions WHERE token = ? AND user_id = ?",
+			matches[0], user.ID,
+		); err != nil {
+			log.Printf("Failed to revoke session: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to revoke session"})
+			return
+		}
+
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

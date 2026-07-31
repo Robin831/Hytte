@@ -1,13 +1,16 @@
 package auth
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/go-chi/chi/v5"
 )
 
 func TestPreferencesGetHandler_Empty(t *testing.T) {
@@ -963,17 +966,7 @@ func TestSessionsListHandler(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
-	var resp struct {
-		Sessions []struct {
-			ID        string `json:"id"`
-			CreatedAt string `json:"created_at"`
-			ExpiresAt string `json:"expires_at"`
-			Current   bool   `json:"current"`
-		} `json:"sessions"`
-	}
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	resp := decodeSessionsList(t, rec)
 	if len(resp.Sessions) != 1 {
 		t.Fatalf("expected 1 session, got %d", len(resp.Sessions))
 	}
@@ -983,6 +976,257 @@ func TestSessionsListHandler(t *testing.T) {
 	expectedID := hashToken(token)[:8]
 	if resp.Sessions[0].ID != expectedID {
 		t.Errorf("expected ID %s, got %s", expectedID, resp.Sessions[0].ID)
+	}
+	// A session created without a request has no user agent to label.
+	if resp.Sessions[0].DeviceLabel != UnknownDeviceLabel {
+		t.Errorf("expected %q, got %q", UnknownDeviceLabel, resp.Sessions[0].DeviceLabel)
+	}
+	if resp.Sessions[0].LastSeenAt == nil {
+		t.Error("expected last_seen_at to be set on a fresh session")
+	}
+}
+
+// sessionListItem mirrors one entry returned by SessionsListHandler.
+type sessionListItem struct {
+	ID          string  `json:"id"`
+	CreatedAt   string  `json:"created_at"`
+	ExpiresAt   string  `json:"expires_at"`
+	DeviceLabel string  `json:"device_label"`
+	LastSeenAt  *string `json:"last_seen_at"`
+	Current     bool    `json:"current"`
+}
+
+type sessionsListResponse struct {
+	Sessions []sessionListItem `json:"sessions"`
+}
+
+func decodeSessionsList(t *testing.T, rec *httptest.ResponseRecorder) sessionsListResponse {
+	t.Helper()
+	var resp sessionsListResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return resp
+}
+
+// listSessions runs SessionsListHandler behind RequireAuth for the given token.
+func listSessions(t *testing.T, db *sql.DB, token string) sessionsListResponse {
+	t.Helper()
+	handler := RequireAuth(db)(SessionsListHandler(db))
+	req := httptest.NewRequest("GET", "/api/settings/sessions", nil)
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	return decodeSessionsList(t, rec)
+}
+
+func TestSessionsListHandler_DeviceLabelFromUserAgent(t *testing.T) {
+	t.Setenv("ENCRYPTION_KEY", "test-key-session-device-label")
+	encryption.ResetEncryptionKey()
+	defer encryption.ResetEncryptionKey()
+
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	signIn := httptest.NewRequest("GET", "/api/auth/google/callback", nil)
+	signIn.Header.Set("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1")
+	token, _, err := CreateSessionForRequest(db, userID, signIn)
+	if err != nil {
+		t.Fatalf("CreateSessionForRequest: %v", err)
+	}
+
+	resp := listSessions(t, db, token)
+	if len(resp.Sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(resp.Sessions))
+	}
+	if resp.Sessions[0].DeviceLabel != "Safari on iPhone" {
+		t.Errorf("expected %q, got %q", "Safari on iPhone", resp.Sessions[0].DeviceLabel)
+	}
+	if resp.Sessions[0].LastSeenAt == nil {
+		t.Fatal("expected last_seen_at to be set")
+	}
+	if _, err := time.Parse(time.RFC3339, *resp.Sessions[0].LastSeenAt); err != nil {
+		t.Errorf("last_seen_at is not RFC3339: %v", err)
+	}
+}
+
+func TestSessionsListHandler_LegacySessionWithoutMetadata(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	// The current session, plus a row predating user_agent/last_seen_at.
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if _, err := db.Exec(
+		"INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
+		hashToken("legacy-token"), userID, time.Now().Add(time.Hour),
+	); err != nil {
+		t.Fatalf("insert legacy session: %v", err)
+	}
+
+	resp := listSessions(t, db, token)
+	if len(resp.Sessions) != 2 {
+		t.Fatalf("expected 2 sessions, got %d", len(resp.Sessions))
+	}
+	var legacy *sessionListItem
+	for i := range resp.Sessions {
+		if resp.Sessions[i].ID == hashToken("legacy-token")[:8] {
+			legacy = &resp.Sessions[i]
+		}
+	}
+	if legacy == nil {
+		t.Fatal("legacy session missing from the list")
+	}
+	if legacy.DeviceLabel != UnknownDeviceLabel {
+		t.Errorf("expected %q, got %q", UnknownDeviceLabel, legacy.DeviceLabel)
+	}
+	if legacy.LastSeenAt != nil {
+		t.Errorf("expected last_seen_at to be null, got %q", *legacy.LastSeenAt)
+	}
+}
+
+// revokeSession runs SessionRevokeHandler behind a chi router so {id} resolves.
+func revokeSession(t *testing.T, db *sql.DB, cookieToken, id string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := chi.NewRouter()
+	r.With(RequireAuth(db)).Delete("/api/settings/sessions/{id}", SessionRevokeHandler(db))
+	req := httptest.NewRequest("DELETE", "/api/settings/sessions/"+id, nil)
+	req.AddCookie(&http.Cookie{Name: "session", Value: cookieToken})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestSessionRevokeHandler_DeletesOnlyTheTargetSession(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	current, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession current: %v", err)
+	}
+	other, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession other: %v", err)
+	}
+
+	rec := revokeSession(t, db, current, hashToken(other)[:8])
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d (%s)", rec.Code, rec.Body.String())
+	}
+
+	// The revoked session's cookie is rejected on its next request.
+	if _, err := ValidateSession(db, other); err != sql.ErrNoRows {
+		t.Errorf("expected the revoked session to be gone, got %v", err)
+	}
+	if _, err := ValidateSession(db, current); err != nil {
+		t.Errorf("current session should survive: %v", err)
+	}
+}
+
+func TestSessionRevokeHandler_CurrentSession(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	current, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	rec := revokeSession(t, db, current, hashToken(current)[:8])
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+	if _, err := ValidateSession(db, current); err != nil {
+		t.Errorf("current session should survive: %v", err)
+	}
+}
+
+func TestSessionRevokeHandler_UnknownAndInvalidIDs(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	current, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	// Unknown prefix, too short, non-hex, and uppercase all fail to resolve.
+	for _, id := range []string{"deadbeef", "abc", "zzzzzzzz", "DEADBEEF"} {
+		rec := revokeSession(t, db, current, id)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("id %q: expected 404, got %d", id, rec.Code)
+		}
+	}
+}
+
+func TestSessionRevokeHandler_AmbiguousPrefix(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	current, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	// Two sessions sharing a prefix: the prefix alone can't identify either.
+	for _, token := range []string{"aaaa1111", "aaaa2222"} {
+		if _, err := db.Exec(
+			"INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
+			token, userID, time.Now().Add(time.Hour),
+		); err != nil {
+			t.Fatalf("insert session %s: %v", token, err)
+		}
+	}
+
+	rec := revokeSession(t, db, current, "aaaa")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for an ambiguous prefix, got %d", rec.Code)
+	}
+	var remaining int
+	if err := db.QueryRow(
+		"SELECT COUNT(*) FROM sessions WHERE token LIKE 'aaaa%'",
+	).Scan(&remaining); err != nil {
+		t.Fatalf("count sessions: %v", err)
+	}
+	if remaining != 2 {
+		t.Errorf("expected both ambiguous sessions to survive, got %d", remaining)
+	}
+}
+
+func TestSessionRevokeHandler_OtherUsersSession(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	if _, err := db.Exec(
+		"INSERT INTO users (google_id, email, name) VALUES ('g-other', 'other@test.com', 'Other')",
+	); err != nil {
+		t.Fatalf("insert other user: %v", err)
+	}
+	var otherID int64
+	if err := db.QueryRow("SELECT id FROM users WHERE google_id = 'g-other'").Scan(&otherID); err != nil {
+		t.Fatalf("select other user: %v", err)
+	}
+
+	current, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	victim, _, err := CreateSession(db, otherID)
+	if err != nil {
+		t.Fatalf("CreateSession victim: %v", err)
+	}
+
+	rec := revokeSession(t, db, current, hashToken(victim)[:8])
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+	if _, err := ValidateSession(db, victim); err != nil {
+		t.Errorf("another user's session must not be revoked: %v", err)
 	}
 }
 

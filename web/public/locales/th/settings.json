@@ -151,7 +151,15 @@
     "current": "ปัจจุบัน",
     "createdExpires": "สร้าง {{created}} — หมดอายุ {{expires}}",
     "noSessions": "ไม่พบเซสชันที่ใช้งานอยู่",
-    "signOutEverywhere": "ออกจากระบบทุกที่อื่น"
+    "signOutEverywhere": "ออกจากระบบทุกที่อื่น",
+    "unknownDevice": "อุปกรณ์ที่ไม่รู้จัก",
+    "lastActive": "ใช้งาน {{time}}",
+    "lastActiveUnknown": "ไม่ทราบเวลาใช้งานล่าสุด",
+    "revoke": "ออกจากระบบ",
+    "revokeConfirmPrompt": "ออกจากระบบอุปกรณ์นี้หรือไม่?",
+    "revokeConfirm": "ออกจากระบบอุปกรณ์",
+    "revokeCancel": "ยกเลิก",
+    "revokeError": "ไม่สามารถออกจากระบบเซสชันนั้นได้ กรุณาลองอีกครั้ง"
   },
   "integrations": {
     "heading": "การเชื่อมต่อ",

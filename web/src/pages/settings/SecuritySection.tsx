@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { Download, Loader2 } from 'lucide-react'
 import { useAuth } from '../../auth'
 import { formatDate } from '../../utils/formatDate'
-import type { SessionInfo } from './types'
+import { timeAgo } from '../../utils/timeAgo'
+import { UNKNOWN_DEVICE_LABEL, type SessionInfo } from './types'
 
 /** Local-time YYYY-MM-DD, used as the export filename fallback. */
 function localDateStamp(): string {
@@ -21,10 +22,14 @@ function filenameFromDisposition(header: string | null): string {
 
 function SecuritySection() {
   const { t } = useTranslation(['settings', 'common'])
+  const { t: tCommon } = useTranslation('common')
   const { logout } = useAuth()
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<SessionInfo[]>([])
   const [sessionsLoaded, setSessionsLoaded] = useState(false)
+  const [revokeConfirmId, setRevokeConfirmId] = useState<string | null>(null)
+  const [revokingId, setRevokingId] = useState<string | null>(null)
+  const [revokeError, setRevokeError] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [isExporting, setIsExporting] = useState(false)
@@ -63,6 +68,27 @@ function SecuritySection() {
     const res = await fetch('/api/settings/sessions/revoke-others', { method: 'POST', credentials: 'include' })
     if (res.ok) {
       await fetchSessions()
+    }
+  }
+
+  const revokeSession = async (id: string) => {
+    setRevokingId(id)
+    setRevokeError(null)
+    try {
+      const res = await fetch(`/api/settings/sessions/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        throw new Error(`revoke failed with status ${res.status}`)
+      }
+      setRevokeConfirmId(null)
+      await fetchSessions()
+    } catch (err) {
+      console.error('Failed to revoke session:', err)
+      setRevokeError(t('sessions.revokeError'))
+    } finally {
+      setRevokingId(null)
     }
   }
 
@@ -116,11 +142,13 @@ function SecuritySection() {
         {sessions.map((session) => (
           <div
             key={session.id}
-            className="flex items-center justify-between bg-gray-700/50 rounded-lg px-4 py-3"
+            className="flex flex-col gap-2 bg-gray-700/50 rounded-lg px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
           >
-            <div>
+            <div className="min-w-0">
               <p className="text-sm font-medium">
-                {t('sessions.session', { id: session.id })}
+                {session.device_label && session.device_label !== UNKNOWN_DEVICE_LABEL
+                  ? session.device_label
+                  : t('sessions.unknownDevice')}
                 {session.current && (
                   <span className="ml-2 text-xs bg-green-600/20 text-green-400 px-2 py-0.5 rounded-full">
                     {t('sessions.current')}
@@ -128,14 +156,58 @@ function SecuritySection() {
                 )}
               </p>
               <p className="text-xs text-gray-400">
+                {session.last_seen_at
+                  ? t('sessions.lastActive', { time: timeAgo(session.last_seen_at, tCommon) })
+                  : t('sessions.lastActiveUnknown')}
+              </p>
+              <p className="text-xs text-gray-500">
+                {t('sessions.session', { id: session.id })} —{' '}
                 {t('sessions.createdExpires', {
                   created: formatDate(session.created_at),
                   expires: formatDate(session.expires_at),
                 })}
               </p>
             </div>
+            {!session.current && (
+              revokeConfirmId === session.id ? (
+                <div className="flex flex-col gap-2 sm:items-end shrink-0">
+                  <p className="text-xs text-gray-300">{t('sessions.revokeConfirmPrompt')}</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => revokeSession(session.id)}
+                      disabled={revokingId === session.id}
+                      className="bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                    >
+                      {t('sessions.revokeConfirm')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setRevokeConfirmId(null)
+                        setRevokeError(null)
+                      }}
+                      className="bg-gray-700 hover:bg-gray-600 text-xs text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                    >
+                      {t('sessions.revokeCancel')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setRevokeConfirmId(session.id)
+                    setRevokeError(null)
+                  }}
+                  className="bg-gray-700 hover:bg-gray-600 text-xs text-white px-3 py-1.5 rounded-lg transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
+                >
+                  {t('sessions.revoke')}
+                </button>
+              )
+            )}
           </div>
         ))}
+        {revokeError && (
+          <p className="text-sm text-red-400" role="alert">{revokeError}</p>
+        )}
         {sessionsLoaded && sessions.length === 0 && (
           <p className="text-sm text-gray-400">{t('sessions.noSessions')}</p>
         )}

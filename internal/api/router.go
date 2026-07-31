@@ -305,6 +305,7 @@ func NewRouter(db *sql.DB) http.Handler {
 			// Session management.
 			r.Get("/settings/sessions", auth.SessionsListHandler(db))
 			r.Post("/settings/sessions/revoke-others", auth.SignOutEverywhereHandler(db))
+			r.Delete("/settings/sessions/{id}", auth.SessionRevokeHandler(db))
 
 			// Self-service data export (JSON archive of the user's own data).
 			r.Get("/settings/export", export.ExportHandler(db))

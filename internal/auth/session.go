@@ -24,6 +24,14 @@ func hashToken(token string) string {
 
 const sessionDuration = 30 * 24 * time.Hour // 30 days
 
+// touchInterval is the minimum gap between last_seen_at writes for a session.
+// Every authenticated request would otherwise write to the sessions table.
+const touchInterval = 5 * time.Minute
+
+// maxUserAgentLength caps how much of a User-Agent header we keep. Real agents
+// are well under this; the cap keeps a hostile client from bloating the row.
+const maxUserAgentLength = 512
+
 // SessionMeta describes the sign-in that created a session. It is stored
 // alongside the session so a user can tell their sessions apart in the settings
 // page and in the data export. Both fields are encrypted at rest.
@@ -41,8 +49,12 @@ func CreateSession(db *sql.DB, userID int64) (string, time.Time, error) {
 // CreateSessionForRequest creates a session and records the user agent and
 // client IP of the request that signed in.
 func CreateSessionForRequest(db *sql.DB, userID int64, r *http.Request) (string, time.Time, error) {
+	ua := r.UserAgent()
+	if len(ua) > maxUserAgentLength {
+		ua = ua[:maxUserAgentLength]
+	}
 	return CreateSessionWithMeta(db, userID, SessionMeta{
-		UserAgent: r.UserAgent(),
+		UserAgent: ua,
 		IPAddress: ClientIP(r),
 	})
 }
@@ -55,13 +67,15 @@ func CreateSessionWithMeta(db *sql.DB, userID int64, meta SessionMeta) (string, 
 		return "", time.Time{}, fmt.Errorf("generate token: %w", err)
 	}
 
-	expiresAt := time.Now().Add(sessionDuration)
+	now := time.Now()
+	expiresAt := now.Add(sessionDuration)
 
 	_, err = db.Exec(
-		"INSERT INTO sessions (token, user_id, expires_at, user_agent, ip_address) VALUES (?, ?, ?, ?, ?)",
+		"INSERT INTO sessions (token, user_id, expires_at, user_agent, ip_address, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)",
 		hashToken(token), userID, expiresAt,
 		encryptSessionMeta("user_agent", meta.UserAgent),
 		encryptSessionMeta("ip_address", meta.IPAddress),
+		now,
 	)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("insert session: %w", err)
@@ -104,12 +118,50 @@ func ClientIP(r *http.Request) string {
 // ValidateSession looks up a session token and returns the associated user ID.
 // Returns sql.ErrNoRows if the session is invalid or expired.
 func ValidateSession(db *sql.DB, token string) (int64, error) {
-	var userID int64
-	err := db.QueryRow(
-		"SELECT user_id FROM sessions WHERE token = ? AND expires_at > ?",
-		hashToken(token), time.Now(),
-	).Scan(&userID)
+	userID, _, err := validateSession(db, token)
 	return userID, err
+}
+
+// ValidateSessionAndTouch validates a session and, at most once every
+// touchInterval, records that the session was just used. A failed touch is
+// logged but never fails the request — last-seen is informational only.
+func ValidateSessionAndTouch(db *sql.DB, token string) (int64, error) {
+	userID, lastSeen, err := validateSession(db, token)
+	if err != nil {
+		return 0, err
+	}
+	now := time.Now()
+	if now.Sub(lastSeen) > touchInterval {
+		if err := TouchSession(db, token, now); err != nil {
+			log.Printf("Warning: failed to update session last_seen_at: %v", err)
+		}
+	}
+	return userID, nil
+}
+
+// validateSession looks up a session and returns the user ID together with the
+// last time the session was seen. Sessions created before last-seen tracking
+// existed report the zero time.
+func validateSession(db *sql.DB, token string) (int64, time.Time, error) {
+	var userID int64
+	var lastSeen sql.NullTime
+	err := db.QueryRow(
+		"SELECT user_id, last_seen_at FROM sessions WHERE token = ? AND expires_at > ?",
+		hashToken(token), time.Now(),
+	).Scan(&userID, &lastSeen)
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	return userID, lastSeen.Time, nil
+}
+
+// TouchSession records that a session was used at the given time.
+func TouchSession(db *sql.DB, token string, at time.Time) error {
+	_, err := db.Exec(
+		"UPDATE sessions SET last_seen_at = ? WHERE token = ?",
+		at, hashToken(token),
+	)
+	return err
 }
 
 // DeleteSession removes a session from the database.

@@ -125,7 +125,8 @@ func createSchema(db *sql.DB) error {
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		expires_at DATETIME NOT NULL,
 		user_agent TEXT NOT NULL DEFAULT '',
-		ip_address TEXT NOT NULL DEFAULT ''
+		ip_address TEXT NOT NULL DEFAULT '',
+		last_seen_at DATETIME
 	);
 
 	CREATE TABLE IF NOT EXISTS user_preferences (
@@ -2949,6 +2950,21 @@ func createSchema(db *sql.DB) error {
 			if _, err := db.Exec(col.ddl); err != nil {
 				return fmt.Errorf("add sessions %s column: %w", col.name, err)
 			}
+		}
+	}
+
+	// Add last_seen_at to sessions (Hytte-kuij4): the last time the session made
+	// an authenticated request, refreshed at most once every few minutes. Nullable
+	// so existing sessions read back as "never seen" until their next request.
+	var hasSessionsLastSeen int
+	if err := db.QueryRow(
+		`SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = 'last_seen_at'`,
+	).Scan(&hasSessionsLastSeen); err != nil {
+		return fmt.Errorf("check sessions last_seen_at column: %w", err)
+	}
+	if hasSessionsLastSeen == 0 {
+		if _, err := db.Exec(`ALTER TABLE sessions ADD COLUMN last_seen_at DATETIME`); err != nil {
+			return fmt.Errorf("add sessions last_seen_at column: %w", err)
 		}
 	}
 
