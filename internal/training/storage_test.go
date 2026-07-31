@@ -243,23 +243,24 @@ func TestListPaginated_DuplicateTagsDoNotBreakAndSemantics(t *testing.T) {
 	assertIDs(t, workoutIDs(workouts), run1)
 }
 
-func TestList_UnpaginatedFilterMatchesPaginated(t *testing.T) {
+// List backs the legacy full-history branch of the list endpoint, so it must
+// keep returning every workout in started_at DESC, id DESC order — the same
+// rows the unfiltered paginated path walks.
+func TestList_ReturnsFullHistoryUnfiltered(t *testing.T) {
 	database := setupTestDB(t)
-	run1, run2, _, _ := seedFilterFixture(t, database)
+	run1, run2, ride, swim := seedFilterFixture(t, database)
 
-	all, err := List(database, 1, WorkoutFilter{})
+	all, err := List(database, 1)
 	if err != nil {
 		t.Fatalf("list all: %v", err)
 	}
-	if len(all) != 4 {
-		t.Fatalf("expected the full unfiltered history, got %d", len(all))
-	}
+	assertIDs(t, workoutIDs(all), run1, run2, ride, swim)
 
-	runs, err := List(database, 1, WorkoutFilter{Sport: "running"})
+	paged, _, err := ListPaginated(database, 1, WorkoutFilter{}, 25, nil)
 	if err != nil {
-		t.Fatalf("list runs: %v", err)
+		t.Fatalf("list paginated: %v", err)
 	}
-	assertIDs(t, workoutIDs(runs), run1, run2)
+	assertIDs(t, workoutIDs(paged), workoutIDs(all)...)
 }
 
 func TestListPaginated_FilterScopedToUser(t *testing.T) {

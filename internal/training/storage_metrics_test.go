@@ -79,7 +79,7 @@ func TestWorkoutMetrics_UpdateAndRetrieveViaList(t *testing.T) {
 		t.Fatalf("UpdateMetrics: %v", err)
 	}
 
-	workouts, err := List(db, 1, WorkoutFilter{})
+	workouts, err := List(db, 1)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}

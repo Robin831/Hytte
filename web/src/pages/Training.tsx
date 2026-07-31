@@ -61,15 +61,20 @@ export default function Training() {
   const [queryInput, setQueryInput] = useState('')
   const [query, setQuery] = useState('')
 
-  // Monotonic id for workout-list requests. Every response checks that it is
-  // still the newest in flight before touching state, so a slow request from an
-  // earlier filter cannot overwrite a newer one's results.
+  // Generation counter for page-1 loads (mount, filter change, refresh). Only
+  // those bump it; "load more" captures the current value and drops its response
+  // if a newer page-1 load has started since. A slow request from an earlier
+  // filter therefore can never overwrite — or append to — a newer one's results.
   const listRequestIdRef = useRef(0)
 
   useEffect(() => {
+    // Nothing to debounce while the committed query already matches the input,
+    // so mount (and the settle after each commit) schedules no timer at all —
+    // page 1 is fetched once, not once more 300 ms later.
+    if (queryInput === query) return
     const timer = setTimeout(() => setQuery(queryInput), SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [queryInput])
+  }, [queryInput, query])
 
   const toggleTag = useCallback((tag: string) => {
     setSelectedTags((prev) =>
@@ -85,6 +90,22 @@ export default function Training() {
   }, [])
 
   const filtersActive = sportFilter !== '' || selectedTags.length > 0 || query.trim() !== ''
+
+  // Chip source for the filter bar: every tag /api/training/tags reports for the
+  // user (the whole history, not just the loaded pages), unioned with the tags
+  // the loaded workouts carry and whatever is currently selected. The endpoint is
+  // the authority; the union keeps a tag that was edited onto a workout after the
+  // chip list was fetched — an edit on the detail page, an ai: tag from a
+  // background analysis — selectable without waiting for a full refresh, and
+  // keeps an active tag filter de-selectable even if it has since disappeared
+  // from the server's list.
+  const filterTags = useMemo(() => {
+    const tags = new Set([...availableTags, ...selectedTags])
+    for (const w of workouts) {
+      for (const tag of w.tags ?? []) tags.add(tag)
+    }
+    return [...tags].sort((a, b) => a.localeCompare(b))
+  }, [availableTags, selectedTags, workouts])
 
   // Serialized filter params shared by every workout-list request. Kept as a
   // string so it can be a stable effect dependency despite selectedTags being
@@ -116,6 +137,10 @@ export default function Training() {
     const requestId = ++listRequestIdRef.current
     let cancelled = false
     const isCurrent = () => !cancelled && requestId === listRequestIdRef.current
+    // Drop the previous filter's cursor up front: it points into a different
+    // result set, so "Load more" must not stay clickable with it while page 1
+    // of the new filter is in flight.
+    setNextCursor(null)
     ;(async () => {
       try {
         const res = await fetch(workoutsUrl(null), { credentials: 'include' })
@@ -183,7 +208,11 @@ export default function Training() {
   // boundary. The control hides once next_cursor is null (matches exhausted).
   const handleLoadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return
-    const requestId = ++listRequestIdRef.current
+    // Capture the current page-1 generation rather than bumping it: a filter
+    // change or refresh that starts while this page is in flight supersedes the
+    // append, and page 1's own response must never be discarded in favour of a
+    // page fetched with the previous filter's cursor.
+    const requestId = listRequestIdRef.current
     const isCurrent = () => requestId === listRequestIdRef.current
     setLoadingMore(true)
     try {
@@ -215,6 +244,11 @@ export default function Training() {
   // newest started_at, so prepending keeps the DESC ordering. The fetch carries
   // the active filters, so only matching new workouts are pulled in.
   const handleLoadNew = useCallback(async () => {
+    // Same generation guard as handleLoadMore: a filter change that lands while
+    // this fetch is in flight owns the list, so the prepend is dropped rather
+    // than mixing the previous filter's workouts into the new result set.
+    const requestId = listRequestIdRef.current
+    const isCurrent = () => requestId === listRequestIdRef.current
     try {
       const [wRes, sRes, tRes] = await Promise.all([
         fetch(workoutsUrl(null), { credentials: 'include' }),
@@ -228,23 +262,27 @@ export default function Training() {
       if (wRes.ok) {
         const wData = await wRes.json()
         const list: Workout[] = wData.workouts || []
+        // The banner is dismissed either way: if a newer page-1 load superseded
+        // this fetch, that load carries the new workouts itself.
         hasNewWorkoutsRef.current = false
         setHasNewWorkouts(false)
-        if (workouts.length === 0) {
-          setWorkouts(list)
-          setNextCursor(wData.next_cursor ?? null)
-        } else {
-          setWorkouts(prev => {
-            const existing = new Set(prev.map(w => w.id))
-            return [...list.filter(w => !existing.has(w.id)), ...prev]
-          })
-        }
         if (list.length > 0) {
           setHasAnyWorkouts(true)
           latestWorkoutIdRef.current = Math.max(
             latestWorkoutIdRef.current ?? 0,
             ...list.map(w => w.id),
           )
+        }
+        if (isCurrent()) {
+          if (workouts.length === 0) {
+            setWorkouts(list)
+            setNextCursor(wData.next_cursor ?? null)
+          } else {
+            setWorkouts(prev => {
+              const existing = new Set(prev.map(w => w.id))
+              return [...list.filter(w => !existing.has(w.id)), ...prev]
+            })
+          }
         }
       }
       if (sRes.ok) {
@@ -554,7 +592,7 @@ export default function Training() {
         <div className="space-y-2">
           <h2 className="text-lg font-semibold mb-3">{t('workouts.title')}</h2>
           <WorkoutFilterBar
-            availableTags={availableTags}
+            availableTags={filterTags}
             sports={Object.keys(sportIcons)}
             sport={sportFilter}
             setSport={setSportFilter}

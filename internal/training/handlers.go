@@ -560,29 +560,29 @@ func parseWorkoutFilter(q url.Values) WorkoutFilter {
 
 // ListHandler handles GET /api/training/workouts.
 //
-// The optional `sport`, repeatable `tag`, and `q` (title substring) params
-// filter the whole workout history server-side; they combine with AND, and
-// multiple tags require the workout to carry all of them.
-//
 // When a `limit` or `cursor` query param is present, it returns one bounded page
 // of matching workouts ordered started_at DESC, id DESC: `limit` sets the page
 // size (default 25, clamped to 100) and the opaque `cursor` walks older pages of
-// matches via keyset pagination. The response is { workouts, next_cursor },
-// where next_cursor is null on the final page.
+// matches via keyset pagination. On this branch the optional `sport`, repeatable
+// `tag`, and `q` (title substring) params filter the whole workout history
+// server-side; they combine with AND, and multiple tags require the workout to
+// carry all of them. The response is { workouts, next_cursor }, where
+// next_cursor is null on the final page.
 //
 // When neither param is present, it preserves the legacy full-history response
 // (with next_cursor null) so other consumers of this endpoint — the Compare,
 // Stride, and Lactate pages and the dashboard fitness widget — keep receiving
-// every workout in a single response. Only the Training page opts into
-// pagination by sending ?limit=.
+// every workout in a single response. Filtering is a property of the paginated
+// list, so filter params are not applied on that branch: it always returns the
+// complete history. Only the Training page opts into pagination (and therefore
+// into filtering) by sending ?limit=.
 func ListHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 		q := r.URL.Query()
-		filter := parseWorkoutFilter(q)
 
 		if !q.Has("limit") && !q.Has("cursor") {
-			workouts, err := List(db, user.ID, filter)
+			workouts, err := List(db, user.ID)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workouts"})
 				return
@@ -604,7 +604,7 @@ func ListHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		workouts, next, err := ListPaginated(db, user.ID, filter, limit, cursor)
+		workouts, next, err := ListPaginated(db, user.ID, parseWorkoutFilter(q), limit, cursor)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load workouts"})
 			return

@@ -468,15 +468,18 @@ func TestListHandler_UnpaginatedIgnoresPaging(t *testing.T) {
 	}
 }
 
-func TestListHandler_UnpaginatedAppliesFilters(t *testing.T) {
+// The legacy no-limit/no-cursor branch is the contract Compare, Stride, Lactate
+// and the dashboard widget rely on: it returns the complete history regardless
+// of any filter params, which only apply to the paginated list.
+func TestListHandler_UnpaginatedIgnoresFilterParams(t *testing.T) {
 	database := setupTestDB(t)
-	run1, run2, _, _ := seedFilterFixture(t, database)
+	run1, run2, ride, swim := seedFilterFixture(t, database)
 
-	code, ids, _ := listWorkouts(t, database, 1, "?sport=running")
+	code, ids, _ := listWorkouts(t, database, 1, "?sport=running&tag=easy&q=spin")
 	if code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", code)
 	}
-	assertIDs(t, ids, run1, run2)
+	assertIDs(t, ids, run1, run2, ride, swim)
 }
 
 func TestTagsHandler(t *testing.T) {

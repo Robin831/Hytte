@@ -175,10 +175,13 @@ func buildWorkoutListQuery(userID int64, filter WorkoutFilter, cursor *Cursor, l
 	return query, args
 }
 
-// List returns all matching workouts for a user (without samples), including
-// tags. Pass WorkoutFilter{} for the full history.
-func List(db *sql.DB, userID int64, filter WorkoutFilter) ([]Workout, error) {
-	query, args := buildWorkoutListQuery(userID, filter, nil, 0)
+// List returns all workouts for a user (without samples), including tags. It is
+// deliberately unfiltered: its callers (the legacy full-history branch of the
+// list endpoint, used by Compare, Stride, Lactate and the dashboard widget)
+// expect every workout. Filtering lives on the paginated path — see
+// ListPaginated.
+func List(db *sql.DB, userID int64) ([]Workout, error) {
+	query, args := buildWorkoutListQuery(userID, WorkoutFilter{}, nil, 0)
 	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list workouts: %w", err)

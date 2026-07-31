@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Training from './Training'
 import type { Workout } from '../types/training'
@@ -132,6 +132,9 @@ const WORKOUTS: Workout[] = [
 // rather than from the loaded pages.
 const ALL_TAGS = ['ai:recovery', 'auto:intervals', 'easy', 'hard', 'deep-history']
 
+// Must match SEARCH_DEBOUNCE_MS in Training.tsx.
+const SEARCH_DEBOUNCE_MS = 300
+
 // Requests the component issued, in order. Reset per test.
 let requests: string[] = []
 
@@ -169,8 +172,10 @@ function mockFetch(workouts: Workout[], tags: string[] = ALL_TAGS) {
           (!q || w.title.toLowerCase().includes(q)),
       )
 
+      // Without limit/cursor the backend serves the legacy full history and
+      // ignores the filter params (Compare/Trends/dashboard contract).
       const limit = Number(params.get('limit') ?? '0')
-      if (!limit) return jsonResponse({ workouts: matches, next_cursor: null })
+      if (!limit) return jsonResponse({ workouts, next_cursor: null })
 
       const cursor = params.get('cursor')
       const start = cursor ? matches.findIndex(w => String(w.id) === cursor) + 1 : 0
@@ -237,6 +242,16 @@ describe('Training filter bar', () => {
     expect(first.searchParams.get('sport')).toBeNull()
     expect(first.searchParams.get('q')).toBeNull()
     expect(first.searchParams.getAll('tag')).toEqual([])
+  })
+
+  it('issues exactly one list request on mount', async () => {
+    renderTraining()
+    await screen.findByText('Morning Run')
+
+    // Let the search debounce window elapse: an untouched search box must not
+    // commit an (identical) empty query and refetch page 1.
+    await new Promise(resolve => setTimeout(resolve, SEARCH_DEBOUNCE_MS + 100))
+    expect(listRequests().length).toBe(1)
   })
 
   it('lists every tag the user has, not only tags on loaded workouts', async () => {
@@ -431,5 +446,43 @@ describe('Training filtered pagination', () => {
       expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument()
     })
     expect(screen.queryByText('Ride 0')).not.toBeInTheDocument()
+  })
+
+  it('drops an in-flight "load more" when the filters change underneath it', async () => {
+    const base = mockFetch(MANY, ['easy'])
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    let cursorFetches = 0
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      const parsed = new URL(url, 'http://localhost')
+      if (parsed.pathname === '/api/training/workouts' && parsed.searchParams.get('cursor')) {
+        // Hold the append open so a filter change can land while it is still
+        // in flight, with its cursor pointing into the old result set.
+        cursorFetches++
+        return gate.then(() => base(url))
+      }
+      return base(url)
+    }))
+
+    renderTraining()
+    await screen.findByText('Run 0')
+
+    fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'running' } })
+    const loadMore = await screen.findByRole('button', { name: /load more/i })
+    fireEvent.click(loadMore)
+    await waitFor(() => { expect(cursorFetches).toBe(1) })
+
+    fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'cycling' } })
+    expect(await screen.findByText('Ride 0')).toBeInTheDocument()
+
+    await act(async () => {
+      release()
+      await new Promise(resolve => setTimeout(resolve, 20))
+    })
+
+    // The superseded page of runs must not be appended on top of the rides.
+    expect(screen.queryByText('Run 29')).not.toBeInTheDocument()
+    expect(screen.queryByText('Run 0')).not.toBeInTheDocument()
+    expect(screen.getByText('Ride 0')).toBeInTheDocument()
   })
 })
