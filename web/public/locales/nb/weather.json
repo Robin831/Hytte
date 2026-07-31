@@ -18,6 +18,20 @@
     "attribution": "Værdata fra",
     "windFromDirectionAria": "Vind fra {{degrees}}°"
   },
+  "geolocation": {
+    "button": "Bruk posisjonen min",
+    "buttonAria": "Bruk nåværende posisjon for varselet",
+    "locating": "Finner posisjonen din…",
+    "denied": "Tilgang til posisjon ble avslått. Slå den på i nettleserinnstillingene for å bruke dette.",
+    "unavailable": "Posisjonen din kunne ikke bestemmes akkurat nå.",
+    "timeout": "Det tok for lang tid å finne posisjonen din. Prøv igjen.",
+    "unsupported": "Denne nettleseren støtter ikke posisjonstjenester.",
+    "coordinates": "{{lat}}°{{latDir}}, {{lon}}°{{lonDir}}",
+    "north": "N",
+    "south": "S",
+    "east": "Ø",
+    "west": "V"
+  },
   "chart": {
     "title": "Neste 24 timer",
     "expand": "Vis timesdetaljer",
