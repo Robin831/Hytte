@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/hrzones"
@@ -523,6 +524,18 @@ const (
 	maxWorkoutFilterSportLen = 64
 )
 
+// truncateRuneSafe truncates s to at most maxBytes bytes without splitting a
+// multi-byte UTF-8 rune at the boundary.
+func truncateRuneSafe(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	for maxBytes > 0 && !utf8.RuneStart(s[maxBytes]) {
+		maxBytes--
+	}
+	return s[:maxBytes]
+}
+
 // parseWorkoutFilter reads the `sport`, repeatable `tag`, and `q` query params
 // into a WorkoutFilter. Values are trimmed and clamped; unknown sports or tags
 // are passed through as-is and simply match nothing.
@@ -530,9 +543,7 @@ func parseWorkoutFilter(q url.Values) WorkoutFilter {
 	filter := WorkoutFilter{}
 
 	sport := strings.TrimSpace(q.Get("sport"))
-	if len(sport) > maxWorkoutFilterSportLen {
-		sport = sport[:maxWorkoutFilterSportLen]
-	}
+	sport = truncateRuneSafe(sport, maxWorkoutFilterSportLen)
 	filter.Sport = sport
 
 	for _, tag := range q["tag"] {
@@ -540,9 +551,7 @@ func parseWorkoutFilter(q url.Values) WorkoutFilter {
 		if tag == "" {
 			continue
 		}
-		if len(tag) > maxWorkoutFilterTagLen {
-			tag = tag[:maxWorkoutFilterTagLen]
-		}
+		tag = truncateRuneSafe(tag, maxWorkoutFilterTagLen)
 		filter.Tags = append(filter.Tags, tag)
 		if len(filter.Tags) == maxWorkoutFilterTags {
 			break
@@ -550,9 +559,7 @@ func parseWorkoutFilter(q url.Values) WorkoutFilter {
 	}
 
 	query := strings.TrimSpace(q.Get("q"))
-	if len(query) > maxWorkoutFilterQueryLen {
-		query = query[:maxWorkoutFilterQueryLen]
-	}
+	query = truncateRuneSafe(query, maxWorkoutFilterQueryLen)
 	filter.Query = query
 
 	return filter
@@ -639,9 +646,6 @@ func TagsHandler(db *sql.DB) http.HandlerFunc {
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load tags"})
 			return
-		}
-		if tags == nil {
-			tags = []string{}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"tags": tags})
 	}

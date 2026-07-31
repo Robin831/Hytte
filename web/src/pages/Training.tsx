@@ -146,6 +146,7 @@ export default function Training() {
         const res = await fetch(workoutsUrl(null), { credentials: 'include' })
         if (!isCurrent()) return
         if (!res.ok) {
+          setWorkouts([])
           setError(t('errors.failedToLoadWorkouts'))
           return
         }
@@ -154,7 +155,7 @@ export default function Training() {
         const list: Workout[] = data.workouts || []
         setWorkouts(list)
         setNextCursor(data.next_cursor ?? null)
-        if (list.length > 0) setHasAnyWorkouts(true)
+        setHasAnyWorkouts(list.length > 0 || filtersActive)
       } catch {
         if (isCurrent()) setError(t('errors.failedToLoadWorkouts'))
       } finally {
@@ -162,7 +163,7 @@ export default function Training() {
       }
     })()
     return () => { cancelled = true }
-  }, [user, refreshTick, workoutsUrl, t])
+  }, [user, refreshTick, workoutsUrl, filtersActive, t])
 
   // Filter-independent page data: weekly summaries, the tag chip source, and
   // the new-workout baseline. The baseline comes from the cheap /latest
@@ -182,9 +183,11 @@ export default function Training() {
         if (cancelled) return
         if (lRes.ok) {
           const lData = await lRes.json()
-          const latestId = typeof lData.latest_id === 'number' ? lData.latest_id : 0
-          latestWorkoutIdRef.current = latestId > 0 ? latestId : null
-          if (latestId > 0) setHasAnyWorkouts(true)
+          if (!cancelled) {
+            const latestId = typeof lData.latest_id === 'number' ? lData.latest_id : 0
+            latestWorkoutIdRef.current = latestId > 0 ? latestId : null
+            if (latestId > 0) setHasAnyWorkouts(true)
+          }
         }
         if (tRes.ok) {
           const tData = await tRes.json()

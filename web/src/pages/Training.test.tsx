@@ -486,3 +486,123 @@ describe('Training filtered pagination', () => {
     expect(screen.getByText('Ride 0')).toBeInTheDocument()
   })
 })
+
+describe('Training zero-workout user', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    requests = []
+    stubEventSource()
+    vi.stubGlobal('fetch', mockFetch([], []))
+  })
+
+  afterAll(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('shows the empty state when the user has no workouts', async () => {
+    renderTraining()
+    expect(await screen.findByText('No workouts yet')).toBeInTheDocument()
+    expect(screen.queryByText('Workouts')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /trends/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /compare/i })).not.toBeInTheDocument()
+  })
+})
+
+describe('Training error handling', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    requests = []
+    stubEventSource()
+  })
+
+  afterAll(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('clears stale workouts when a filtered request fails', async () => {
+    const base = mockFetch(WORKOUTS)
+    vi.stubGlobal('fetch', base)
+
+    renderTraining()
+    await screen.findByText('Morning Run')
+
+    // Make the next workout-list request fail.
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      const parsed = new URL(url, 'http://localhost')
+      if (parsed.pathname === '/api/training/workouts') {
+        return Promise.resolve({ ok: false, json: () => Promise.resolve({ error: 'boom' }) })
+      }
+      return base(url)
+    }))
+
+    fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'cycling' } })
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to load workouts')).toBeInTheDocument()
+    })
+    // Stale workouts from the previous filter must not remain visible.
+    expect(screen.queryByText('Morning Run')).not.toBeInTheDocument()
+    expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
+  })
+})
+
+describe('Training new-workouts banner', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    requests = []
+  })
+
+  afterAll(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('shows banner when SSE fires and loads new workouts on click', async () => {
+    const base = mockFetch(WORKOUTS)
+    let onWorkoutNew: ((e: MessageEvent) => void) | null = null
+
+    // Don't auto-fire onopen — let the filter-independent effect set the
+    // baseline latestWorkoutIdRef first so the SSE event triggers the banner
+    // via a genuine id > seen comparison.
+    vi.stubGlobal('EventSource', class {
+      onopen: (() => void) | null = null
+      addEventListener(event: string, handler: (e: MessageEvent) => void) {
+        if (event === 'workout_new') onWorkoutNew = handler
+      }
+      close() {}
+    })
+    vi.stubGlobal('fetch', base)
+
+    renderTraining()
+    await screen.findByText('Morning Run')
+
+    // Simulate a new workout arriving.
+    const newWorkout = makeWorkout({
+      id: 99,
+      title: 'New Upload',
+      sport: 'running',
+      started_at: '2026-12-01T08:00:00Z',
+    })
+    const allWorkouts = [newWorkout, ...WORKOUTS]
+    vi.stubGlobal('fetch', mockFetch(allWorkouts))
+
+    // Fire the SSE event with a higher id than the initial baseline (4).
+    await act(async () => {
+      onWorkoutNew?.(new MessageEvent('workout_new', {
+        data: JSON.stringify({ latest_id: 99 }),
+      }))
+    })
+
+    // Banner should appear.
+    const banner = await screen.findByText(/New workouts available/)
+    expect(banner).toBeInTheDocument()
+
+    // Click the banner to load new workouts.
+    fireEvent.click(banner)
+
+    expect(await screen.findByText('New Upload')).toBeInTheDocument()
+    // Banner should be dismissed.
+    await waitFor(() => {
+      expect(screen.queryByText(/New workouts available/)).not.toBeInTheDocument()
+    })
+  })
+})

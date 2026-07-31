@@ -301,6 +301,60 @@ func TestListDistinctTags(t *testing.T) {
 	}
 }
 
+func TestListPaginated_FilterByTitleNonASCII(t *testing.T) {
+	database := setupTestDB(t)
+	okt := insertFilterWorkout(t, database, 1, "running", "Økt på Grefsenkollen", "2024-01-01T10:00:00Z")
+
+	// Exact case matches.
+	workouts, _, err := ListPaginated(database, 1, WorkoutFilter{Query: "Økt"}, 25, nil)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	assertIDs(t, workoutIDs(workouts), okt)
+
+	// Lowercase non-ASCII also matches (LIKE compares bytes literally when
+	// both sides use the same case).
+	workouts, _, err = ListPaginated(database, 1, WorkoutFilter{Query: "økt"}, 25, nil)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	// SQLite LIKE is ASCII-only case-insensitive, so "økt" won't match "Økt".
+	// This documents the known limitation rather than asserting it matches.
+	if len(workouts) != 0 {
+		t.Log("non-ASCII case mismatch unexpectedly matched — SQLite LIKE may have gained Unicode folding")
+	}
+
+	// Lowercase ASCII part of the title still matches via LIKE.
+	workouts, _, err = ListPaginated(database, 1, WorkoutFilter{Query: "grefsenkollen"}, 25, nil)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	assertIDs(t, workoutIDs(workouts), okt)
+}
+
+func TestTruncateRuneSafe(t *testing.T) {
+	cases := []struct {
+		input    string
+		maxBytes int
+		want     string
+	}{
+		{"hello", 10, "hello"},
+		{"hello", 5, "hello"},
+		{"hello", 3, "hel"},
+		// "åøæ" is 6 bytes (2 per rune); cutting at 3 should back up to 2.
+		{"åøæ", 3, "åø"[:2]},
+		// Thai: 3 bytes per rune; cutting at 4 should back up to 3.
+		{"กข", 4, "กข"[:3]},
+		{"", 5, ""},
+	}
+	for _, tc := range cases {
+		got := truncateRuneSafe(tc.input, tc.maxBytes)
+		if got != tc.want {
+			t.Errorf("truncateRuneSafe(%q, %d) = %q; want %q", tc.input, tc.maxBytes, got, tc.want)
+		}
+	}
+}
+
 func TestListDistinctTags_EmptyForUserWithNoTags(t *testing.T) {
 	database := setupTestDB(t)
 	insertFilterWorkout(t, database, 1, "running", "Untagged", "2024-01-01T10:00:00Z")

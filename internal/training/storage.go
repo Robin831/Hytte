@@ -34,8 +34,9 @@ func isIndoorWorkout(pw *ParsedWorkout) bool {
 }
 
 // listSelectColumns is the shared column list for the workout summary list
-// queries (List and ListPaginated). Both order by started_at DESC, id DESC and
-// aggregate tags via a correlated subquery; only the WHERE/LIMIT clauses differ.
+// queries (List and ListPaginated). buildWorkoutListQuery assembles the
+// complete query by appending JOIN, WHERE, GROUP BY, HAVING, ORDER BY, and
+// LIMIT clauses based on the caller's filter, cursor, and limit.
 const listSelectColumns = `
 		SELECT w.id, w.user_id, w.sport, w.sub_sport, w.is_indoor, w.title, w.started_at, w.duration_seconds,
 		       w.distance_meters, w.avg_heart_rate, w.max_heart_rate,
@@ -91,7 +92,9 @@ type WorkoutFilter struct {
 	Sport string
 	// Tags must all be present on the workout (empty means any tags).
 	Tags []string
-	// Query is a case-insensitive substring match against the workout title.
+	// Query is a substring match against the workout title. SQLite LIKE
+	// provides ASCII case-insensitive matching; non-ASCII characters (ø, å,
+	// etc.) match exactly as typed.
 	Query string
 }
 
@@ -150,8 +153,11 @@ func buildWorkoutListQuery(userID int64, filter WorkoutFilter, cursor *Cursor, l
 		args = append(args, filter.Sport)
 	}
 	if q := strings.TrimSpace(filter.Query); q != "" {
-		where = append(where, `LOWER(w.title) LIKE ? ESCAPE '\'`)
-		args = append(args, "%"+escapeLikePattern(strings.ToLower(q))+"%")
+		// LIKE is ASCII case-insensitive by default in SQLite. Applying
+		// LOWER()/strings.ToLower() would diverge on non-ASCII (Go folds
+		// Unicode, SQLite's LOWER does not), so we pass the pattern as-is.
+		where = append(where, `w.title LIKE ? ESCAPE '\'`)
+		args = append(args, "%"+escapeLikePattern(q)+"%")
 	}
 	// Keyset predicate: everything strictly older than the cursor position in
 	// the (started_at DESC, id DESC) ordering, ANDed with the filters so paging
