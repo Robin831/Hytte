@@ -732,6 +732,8 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Get("/homework/conversations", homework.HandleMyConversations(db))
 					r.Post("/homework/conversations", homework.HandleNewMyConversation(db))
 					r.Get("/homework/conversations/{id}", homework.HandleGetMyConversation(db))
+					r.Patch("/homework/conversations/{id}", homework.HandleRenameMyConversation(db))
+					r.Delete("/homework/conversations/{id}", homework.HandleDeleteMyConversation(db))
 					r.Post("/homework/conversations/{id}/messages", homework.HandleSendMyMessage(db))
 				})
 				// Parent-facing: these handlers enforce the parent↔child link.

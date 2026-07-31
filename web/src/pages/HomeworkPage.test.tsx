@@ -18,7 +18,17 @@ const TRANSLATIONS: Record<string, string> = {
   'empty.startNew': 'Start a new conversation to get help',
   'errors.failedToLoad': 'Failed to load conversations',
   'errors.failedToCreate': 'Failed to create conversation',
+  'errors.failedToRename': 'Failed to rename conversation',
+  'errors.failedToDelete': 'Failed to delete conversation',
+  'errors.nameRequired': 'Name cannot be empty',
   'loading': 'Loading...',
+  'conversationActions': 'Conversation actions',
+  'rename': 'Rename',
+  'renameLabel': 'Conversation name',
+  'delete': 'Delete',
+  'cancel': 'Cancel',
+  'deleteConfirm': 'Delete this conversation? This cannot be undone.',
+  'deleteConfirmYes': 'Delete',
 }
 
 function stableT(key: string): string {
@@ -175,5 +185,174 @@ describe('HomeworkPage – create conversation', () => {
     })
     // No create-error message should appear after a successful POST
     expect(screen.queryByText('Failed to create conversation')).not.toBeInTheDocument()
+  })
+})
+
+describe('HomeworkPage – overflow menu', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  async function renderWithMenuOpen(conversations = [makeConversation({ subject: 'Algebra' })]) {
+    const fetchMock = vi.fn().mockResolvedValue(convListResponse(conversations))
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Algebra')).toBeInTheDocument())
+    fireEvent.click(screen.getAllByLabelText('Conversation actions')[0])
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    return fetchMock
+  }
+
+  it('opens the menu with Rename and Delete items', async () => {
+    await renderWithMenuOpen()
+    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
+  })
+
+  it('marks the trigger as expanded while the menu is open', async () => {
+    await renderWithMenuOpen()
+    expect(screen.getByLabelText('Conversation actions')).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('closes the menu on Escape', async () => {
+    await renderWithMenuOpen()
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+  })
+
+  it('closes the menu on outside click', async () => {
+    await renderWithMenuOpen()
+    fireEvent.mouseDown(document.body)
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+  })
+})
+
+describe('HomeworkPage – rename conversation', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  async function openRename(fetchMock: ReturnType<typeof vi.fn>) {
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Algebra')).toBeInTheDocument())
+    fireEvent.click(screen.getByLabelText('Conversation actions'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }))
+    return screen.getByLabelText('Conversation name') as HTMLInputElement
+  }
+
+  it('PATCHes the trimmed subject and shows it immediately', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convListResponse([makeConversation({ subject: 'Algebra' })]))
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ conversation: makeConversation({ subject: 'Geometry' }) }) })
+    const input = await openRename(fetchMock)
+
+    fireEvent.change(input, { target: { value: '  Geometry  ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/homework/conversations/1',
+        expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ subject: 'Geometry' }) }),
+      )
+    })
+    expect(screen.getByText('Geometry')).toBeInTheDocument()
+  })
+
+  it('rejects a whitespace-only name without firing a request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(convListResponse([makeConversation({ subject: 'Algebra' })]))
+    const input = await openRename(fetchMock)
+
+    fireEvent.change(input, { target: { value: '   ' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => expect(screen.getByText('Name cannot be empty')).toBeInTheDocument())
+    expect(fetchMock).toHaveBeenCalledTimes(1) // only the initial list load
+  })
+
+  it('cancels rename on Escape leaving the original subject', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(convListResponse([makeConversation({ subject: 'Algebra' })]))
+    const input = await openRename(fetchMock)
+
+    fireEvent.change(input, { target: { value: 'Geometry' } })
+    fireEvent.keyDown(input, { key: 'Escape' })
+
+    await waitFor(() => expect(screen.getByText('Algebra')).toBeInTheDocument())
+    expect(screen.queryByText('Geometry')).not.toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('rolls back and shows an inline error when PATCH fails', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convListResponse([makeConversation({ subject: 'Algebra' })]))
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({}) })
+    const input = await openRename(fetchMock)
+
+    fireEvent.change(input, { target: { value: 'Geometry' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => expect(screen.getByText('Failed to rename conversation')).toBeInTheDocument())
+    expect(screen.getByText('Algebra')).toBeInTheDocument()
+    expect(screen.queryByText('Geometry')).not.toBeInTheDocument()
+  })
+})
+
+describe('HomeworkPage – delete conversation', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  async function openDeleteMenu(fetchMock: ReturnType<typeof vi.fn>) {
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Algebra')).toBeInTheDocument())
+    fireEvent.click(screen.getByLabelText('Conversation actions'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+  }
+
+  it('asks for confirmation before deleting', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(convListResponse([makeConversation({ subject: 'Algebra' })]))
+    await openDeleteMenu(fetchMock)
+
+    expect(screen.getByText('Delete this conversation? This cannot be undone.')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('Algebra')).toBeInTheDocument()
+  })
+
+  it('cancelling the confirmation leaves the row alone', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(convListResponse([makeConversation({ subject: 'Algebra' })]))
+    await openDeleteMenu(fetchMock)
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Cancel' }))
+
+    await waitFor(() => {
+      expect(screen.queryByText('Delete this conversation? This cannot be undone.')).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('Algebra')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('removes the row and calls DELETE on confirm', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convListResponse([makeConversation({ subject: 'Algebra' })]))
+      .mockResolvedValueOnce({ ok: true, status: 204, json: () => Promise.resolve({}) })
+    await openDeleteMenu(fetchMock)
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/homework/conversations/1',
+        expect.objectContaining({ method: 'DELETE' }),
+      )
+    })
+    expect(screen.queryByText('Algebra')).not.toBeInTheDocument()
+    expect(screen.getByText('No homework conversations yet')).toBeInTheDocument()
+  })
+
+  it('restores the row and shows an inline error when DELETE fails', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convListResponse([makeConversation({ subject: 'Algebra' })]))
+      .mockResolvedValueOnce({ ok: false, json: () => Promise.resolve({}) })
+    await openDeleteMenu(fetchMock)
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }))
+
+    await waitFor(() => expect(screen.getByText('Failed to delete conversation')).toBeInTheDocument())
+    expect(screen.getByText('Algebra')).toBeInTheDocument()
   })
 })

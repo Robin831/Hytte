@@ -33,6 +33,9 @@ const maxConversationBodySize = 8 << 10
 // maxMessageUploadSize is the maximum allowed multipart body size for send message (10 MB).
 const maxMessageUploadSize = 10 << 20
 
+// maxSubjectLen is the maximum rune length of a conversation subject.
+const maxSubjectLen = 200
+
 // allowedImageTypes lists MIME types accepted for homework image uploads.
 var allowedImageTypes = map[string]bool{
 	"image/jpeg": true,
@@ -832,6 +835,102 @@ func HandleGetMyConversation(db *sql.DB) http.HandlerFunc {
 		user := auth.UserFromContext(r.Context())
 		getConversation(db, w, r, user.ID)
 	}
+}
+
+// HandleRenameMyConversation updates the subject of one of the authenticated
+// child's conversations.
+// PATCH /api/homework/conversations/{id}
+func HandleRenameMyConversation(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		renameConversation(db, w, r, user.ID)
+	}
+}
+
+// renameConversation is the shared core for renaming a conversation.
+func renameConversation(db *sql.DB, w http.ResponseWriter, r *http.Request, kidID int64) {
+	convID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid conversation ID"})
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxConversationBodySize)
+	var body struct {
+		Subject string `json:"subject"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request body too large"})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+
+	subject := strings.TrimSpace(body.Subject)
+	if subject == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "subject is required"})
+		return
+	}
+	if len([]rune(subject)) > maxSubjectLen {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("subject must be at most %d characters", maxSubjectLen)})
+		return
+	}
+
+	if err := UpdateConversationSubject(db, convID, kidID, subject); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "conversation not found"})
+			return
+		}
+		log.Printf("homework: rename conversation %d kid %d: %v", convID, kidID, err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to rename conversation"})
+		return
+	}
+
+	conv, err := GetConversation(db, convID, kidID)
+	if err != nil {
+		log.Printf("homework: re-read conversation %d kid %d: %v", convID, kidID, err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read updated conversation"})
+		return
+	}
+	if conv == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "conversation not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"conversation": conv})
+}
+
+// HandleDeleteMyConversation permanently deletes one of the authenticated
+// child's conversations, along with its messages and uploaded images.
+// DELETE /api/homework/conversations/{id}
+func HandleDeleteMyConversation(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		deleteConversation(db, w, r, user.ID)
+	}
+}
+
+// deleteConversation is the shared core for deleting a conversation.
+func deleteConversation(db *sql.DB, w http.ResponseWriter, r *http.Request, kidID int64) {
+	convID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid conversation ID"})
+		return
+	}
+
+	if err := DeleteConversation(db, convID, kidID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "conversation not found"})
+			return
+		}
+		log.Printf("homework: delete conversation %d kid %d: %v", convID, kidID, err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete conversation"})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // HandleSendMyMessage accepts a multipart form with a text message and optional

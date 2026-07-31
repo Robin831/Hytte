@@ -4,6 +4,13 @@
   "noSubject": "New topic",
   "yesterday": "Yesterday",
   "backToList": "Back to conversations",
+  "conversationActions": "Conversation actions",
+  "rename": "Rename",
+  "renameLabel": "Conversation name",
+  "delete": "Delete",
+  "cancel": "Cancel",
+  "deleteConfirm": "Delete this conversation? This cannot be undone.",
+  "deleteConfirmYes": "Delete",
   "empty": {
     "noConversations": "No homework conversations yet",
     "startNew": "Start a new conversation to get help"
@@ -36,7 +43,10 @@
     "failedToLoad": "Failed to load conversations",
     "failedToCreate": "Failed to create conversation",
     "failedToLoadMessages": "Failed to load messages",
-    "failedToSend": "Failed to send message"
+    "failedToSend": "Failed to send message",
+    "failedToRename": "Failed to rename conversation",
+    "failedToDelete": "Failed to delete conversation",
+    "nameRequired": "Name cannot be empty"
   },
   "review": {
     "title": "Homework Review",
