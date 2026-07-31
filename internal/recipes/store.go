@@ -17,6 +17,52 @@ import (
 // 0 clears an existing rating; 1-5 set one.
 var ErrInvalidRating = errors.New("rating must be between 0 and 5")
 
+// ErrInvalidSlot is returned for a meal slot outside the allowed set.
+var ErrInvalidSlot = errors.New("slot must be breakfast, lunch, dinner or snack")
+
+// ErrInvalidPlanDate is returned for a plan date that is not a YYYY-MM-DD
+// calendar day.
+var ErrInvalidPlanDate = errors.New("plan date must be YYYY-MM-DD")
+
+// ErrIngredientNotInRecipe is returned when an ingredient ID does not belong to
+// the recipe it was requested against.
+var ErrIngredientNotInRecipe = errors.New("ingredient does not belong to this recipe")
+
+// PlanDateLayout is the calendar-day format meal plan entries are stored and
+// exchanged in. Entries are days, not instants — no time zone is attached.
+const PlanDateLayout = "2006-01-02"
+
+// slotOrder ranks the meal slots for display: a day's entries come back in the
+// order they are eaten rather than in insertion order.
+var slotOrder = map[string]int{"breakfast": 0, "lunch": 1, "dinner": 2, "snack": 3}
+
+// NormalizeSlot trims and lowercases a slot name and reports whether it is one
+// of the four the schema allows.
+func NormalizeSlot(slot string) (string, bool) {
+	slot = strings.ToLower(strings.TrimSpace(slot))
+	_, ok := slotOrder[slot]
+	return slot, ok
+}
+
+// ParsePlanDate parses a YYYY-MM-DD calendar day, rejecting anything else
+// (including timestamps and out-of-range days such as 2026-02-30).
+func ParsePlanDate(s string) (time.Time, error) {
+	day, err := time.Parse(PlanDateLayout, strings.TrimSpace(s))
+	if err != nil {
+		return time.Time{}, ErrInvalidPlanDate
+	}
+	return day, nil
+}
+
+// ISOWeekStart returns the Monday of the ISO week containing day, keeping the
+// day's location so a week never shifts across a time-zone boundary.
+func ISOWeekStart(day time.Time) time.Time {
+	// time.Weekday counts from Sunday; ISO weeks start on Monday.
+	offset := (int(day.Weekday()) + 6) % 7
+	y, m, d := day.AddDate(0, 0, -offset).Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, day.Location())
+}
+
 // Store is the persistence layer for the recipes feature. It owns all
 // encryption and decryption of recipe text — callers above it only ever see
 // plaintext models.
@@ -433,6 +479,257 @@ func (s *Store) ListCooks(ctx context.Context, userID, recipeID int64) ([]Cook, 
 		cooks = append(cooks, c)
 	}
 	return cooks, rows.Err()
+}
+
+// --- Meal plan ---
+
+// ListPlanEntries returns the user's meal plan entries for the inclusive date
+// range [from, to], ordered by day and then by the order the slots are eaten
+// in (see slotOrder). Both bounds are YYYY-MM-DD; the lexicographic comparison
+// SQLite performs on that format is also the chronological one.
+func (s *Store) ListPlanEntries(ctx context.Context, userID int64, from, to string) ([]PlanEntry, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT p.id, p.user_id, p.recipe_id, p.plan_date, p.slot, p.created_at, r.title
+		FROM meal_plan_entries p
+		JOIN recipes r ON r.id = p.recipe_id
+		WHERE p.user_id = ? AND p.plan_date >= ? AND p.plan_date <= ?
+	`, userID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("query meal plan entries: %w", err)
+	}
+	defer rows.Close()
+
+	entries := []PlanEntry{}
+	for rows.Next() {
+		var e PlanEntry
+		var createdAt string
+		if err := rows.Scan(&e.ID, &e.UserID, &e.RecipeID, &e.PlanDate, &e.Slot, &createdAt, &e.RecipeTitle); err != nil {
+			return nil, fmt.Errorf("scan meal plan entry: %w", err)
+		}
+		if e.RecipeTitle, err = encryption.DecryptField(e.RecipeTitle); err != nil {
+			return nil, fmt.Errorf("decrypt recipe title: %w", err)
+		}
+		e.CreatedAt = parseTime(createdAt)
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate meal plan entries: %w", err)
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].PlanDate != entries[j].PlanDate {
+			return entries[i].PlanDate < entries[j].PlanDate
+		}
+		return slotOrder[entries[i].Slot] < slotOrder[entries[j].Slot]
+	})
+	return entries, nil
+}
+
+// UpsertPlanEntries writes one or more plan entries for the user and returns
+// them as stored. Each entry replaces whatever occupied its (day, slot), so
+// sending the same payload twice is a no-op the second time rather than a
+// duplicate row. created_at is the moment the slot was first filled and is kept
+// across replacements.
+//
+// Every referenced recipe must belong to the user: a foreign or unknown recipe
+// ID fails the whole batch with sql.ErrNoRows and nothing is written. Invalid
+// dates and slots fail with ErrInvalidPlanDate / ErrInvalidSlot.
+func (s *Store) UpsertPlanEntries(ctx context.Context, userID int64, entries []PlanEntry) ([]PlanEntry, error) {
+	if len(entries) == 0 {
+		return []PlanEntry{}, nil
+	}
+
+	// Validate and normalise up front so a bad entry never opens a transaction.
+	normalized := make([]PlanEntry, len(entries))
+	recipeIDs := make([]any, 0, len(entries))
+	seenRecipe := make(map[int64]struct{}, len(entries))
+	for i, e := range entries {
+		day, err := ParsePlanDate(e.PlanDate)
+		if err != nil {
+			return nil, err
+		}
+		slot, ok := NormalizeSlot(e.Slot)
+		if !ok {
+			return nil, ErrInvalidSlot
+		}
+		if e.RecipeID <= 0 {
+			return nil, sql.ErrNoRows
+		}
+		normalized[i] = PlanEntry{
+			UserID:   userID,
+			RecipeID: e.RecipeID,
+			PlanDate: day.Format(PlanDateLayout),
+			Slot:     slot,
+		}
+		if _, dup := seenRecipe[e.RecipeID]; !dup {
+			seenRecipe[e.RecipeID] = struct{}{}
+			recipeIDs = append(recipeIDs, e.RecipeID)
+		}
+	}
+
+	titles, err := s.recipeTitles(ctx, userID, recipeIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	now := nowRFC3339()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin upsert plan entries: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	for i := range normalized {
+		e := &normalized[i]
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO meal_plan_entries (user_id, recipe_id, plan_date, slot, created_at)
+			VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT (user_id, plan_date, slot) DO UPDATE SET recipe_id = excluded.recipe_id
+		`, userID, e.RecipeID, e.PlanDate, e.Slot, now); err != nil {
+			return nil, fmt.Errorf("upsert meal plan entry: %w", err)
+		}
+
+		// Read the row back rather than trusting LastInsertId, which reports the
+		// pre-existing row only on insert and not on the conflict path.
+		var createdAt string
+		if err := tx.QueryRowContext(ctx, `
+			SELECT id, created_at FROM meal_plan_entries
+			WHERE user_id = ? AND plan_date = ? AND slot = ?
+		`, userID, e.PlanDate, e.Slot).Scan(&e.ID, &createdAt); err != nil {
+			return nil, fmt.Errorf("reload meal plan entry: %w", err)
+		}
+		e.CreatedAt = parseTime(createdAt)
+		e.RecipeTitle = titles[e.RecipeID]
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit upsert plan entries: %w", err)
+	}
+	return normalized, nil
+}
+
+// DeletePlanEntry clears the entry occupying one (day, slot) for the user.
+// Returns sql.ErrNoRows when the slot was already empty.
+func (s *Store) DeletePlanEntry(ctx context.Context, userID int64, planDate, slot string) error {
+	day, err := ParsePlanDate(planDate)
+	if err != nil {
+		return err
+	}
+	normalizedSlot, ok := NormalizeSlot(slot)
+	if !ok {
+		return ErrInvalidSlot
+	}
+
+	res, err := s.db.ExecContext(ctx, `
+		DELETE FROM meal_plan_entries WHERE user_id = ? AND plan_date = ? AND slot = ?
+	`, userID, day.Format(PlanDateLayout), normalizedSlot)
+	if err != nil {
+		return fmt.Errorf("delete meal plan entry: %w", err)
+	}
+	return requireRow(res)
+}
+
+// recipeTitles loads the decrypted titles of the given recipe IDs, scoped to
+// the user. Any ID that is missing or owned by someone else makes the lookup
+// fail with sql.ErrNoRows, so callers can treat foreign recipes as not found
+// without leaking that they exist.
+func (s *Store) recipeTitles(ctx context.Context, userID int64, ids []any) (map[int64]string, error) {
+	titles := make(map[int64]string, len(ids))
+	if len(ids) == 0 {
+		return titles, nil
+	}
+
+	args := append([]any{userID}, ids...)
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
+		SELECT id, title FROM recipes WHERE user_id = ? AND id IN (%s)
+	`, placeholders(len(ids))), args...)
+	if err != nil {
+		return nil, fmt.Errorf("query recipe titles: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int64
+		var title string
+		if err := rows.Scan(&id, &title); err != nil {
+			return nil, fmt.Errorf("scan recipe title: %w", err)
+		}
+		if title, err = encryption.DecryptField(title); err != nil {
+			return nil, fmt.Errorf("decrypt recipe title: %w", err)
+		}
+		titles[id] = title
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate recipe titles: %w", err)
+	}
+	if len(titles) != len(ids) {
+		return nil, sql.ErrNoRows
+	}
+	return titles, nil
+}
+
+// IngredientNamesForRecipe resolves ingredient IDs to the names a shopping list
+// should carry, in the order they were requested. The parsed Name is preferred;
+// ingredients that were never parsed fall back to their free-form line.
+//
+// Returns sql.ErrNoRows when the recipe is not the user's (or does not exist)
+// and ErrIngredientNotInRecipe when an ID is not one of that recipe's
+// ingredients, so a caller can tell "wrong recipe" from "wrong ingredient".
+func (s *Store) IngredientNamesForRecipe(ctx context.Context, userID, recipeID int64, ingredientIDs []int64) ([]string, error) {
+	var exists int
+	if err := s.db.QueryRowContext(ctx,
+		"SELECT 1 FROM recipes WHERE id = ? AND user_id = ?", recipeID, userID).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("check recipe ownership: %w", err)
+	}
+	if len(ingredientIDs) == 0 {
+		return []string{}, nil
+	}
+
+	args := make([]any, 0, len(ingredientIDs)+1)
+	args = append(args, recipeID)
+	for _, id := range ingredientIDs {
+		args = append(args, id)
+	}
+	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`
+		SELECT id, text, name FROM recipe_ingredients WHERE recipe_id = ? AND id IN (%s)
+	`, placeholders(len(ingredientIDs))), args...)
+	if err != nil {
+		return nil, fmt.Errorf("query recipe ingredients: %w", err)
+	}
+	defer rows.Close()
+
+	byID := make(map[int64]string, len(ingredientIDs))
+	for rows.Next() {
+		var id int64
+		var text, name string
+		if err := rows.Scan(&id, &text, &name); err != nil {
+			return nil, fmt.Errorf("scan recipe ingredient: %w", err)
+		}
+		name = strings.TrimSpace(name)
+		if name == "" {
+			if text, err = encryption.DecryptField(text); err != nil {
+				return nil, fmt.Errorf("decrypt ingredient text: %w", err)
+			}
+			name = strings.TrimSpace(text)
+		}
+		byID[id] = name
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate recipe ingredients: %w", err)
+	}
+
+	names := make([]string, 0, len(ingredientIDs))
+	for _, id := range ingredientIDs {
+		name, ok := byID[id]
+		if !ok {
+			return nil, ErrIngredientNotInRecipe
+		}
+		names = append(names, name)
+	}
+	return names, nil
 }
 
 // --- Scaling ---

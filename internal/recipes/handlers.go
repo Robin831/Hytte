@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/grocery"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -108,16 +109,70 @@ type CookedRequest struct {
 	CookedAt *time.Time `json:"cooked_at"`
 }
 
+// PlanEntryResponse is one scheduled meal. The day it falls on is the key it
+// is filed under in PlanWeekResponse.Days and is repeated here so an entry
+// stays self-describing once the client pulls it out of the map.
+type PlanEntryResponse struct {
+	ID          int64  `json:"id"`
+	Date        string `json:"date"`
+	Slot        string `json:"slot"`
+	RecipeID    int64  `json:"recipe_id"`
+	RecipeTitle string `json:"recipe_title"`
+}
+
+// PlanWeekResponse is the body of GET /api/recipes/plan: one ISO week, keyed
+// by calendar day. Days always holds all seven keys — an empty day is an empty
+// array rather than a missing key — so the client can render the grid straight
+// from the response.
+type PlanWeekResponse struct {
+	WeekStart string                         `json:"week_start"`
+	WeekEnd   string                         `json:"week_end"`
+	Days      map[string][]PlanEntryResponse `json:"days"`
+}
+
+// PlanEntryRequest is one entry of a PUT /api/recipes/plan body.
+type PlanEntryRequest struct {
+	Date     string `json:"date"` // YYYY-MM-DD
+	Slot     string `json:"slot"` // breakfast | lunch | dinner | snack
+	RecipeID int64  `json:"recipe_id"`
+}
+
+// UpdatePlanRequest is the body of PUT /api/recipes/plan. Several entries may
+// be sent at once so a whole week can be planned in one round trip; each one
+// replaces whatever occupied its day and slot.
+type UpdatePlanRequest struct {
+	Entries []PlanEntryRequest `json:"entries"`
+}
+
+// GroceryPushRequest is the body of POST /api/recipes/{id}/grocery: the subset
+// of the recipe's ingredients to put on the grocery list.
+type GroceryPushRequest struct {
+	IngredientIDs []int64 `json:"ingredient_ids"`
+}
+
+// GroceryPushResponse reports what the push did. Added counts the items that
+// reached the list; Skipped counts the requested ingredients that were already
+// on it (or repeated within the request), which the grocery store de-duplicates
+// case-insensitively.
+type GroceryPushResponse struct {
+	Added   int                   `json:"added"`
+	Skipped int                   `json:"skipped"`
+	Items   []grocery.GroceryItem `json:"items"`
+}
+
 // --- Handlers ---
 
-// Handlers serves the recipes REST API on top of the recipe Store.
+// Handlers serves the recipes REST API on top of the recipe Store. It keeps
+// the database handle as well: pushing ingredients onto the grocery list goes
+// through the grocery package, which owns that table.
 type Handlers struct {
 	store *Store
+	db    *sql.DB
 }
 
 // NewHandlers builds the recipe handlers around a database handle.
 func NewHandlers(db *sql.DB) *Handlers {
-	return &Handlers{store: NewStore(db)}
+	return &Handlers{store: NewStore(db), db: db}
 }
 
 // RegisterRoutes mounts every /api/recipes route on r behind the "recipes"
@@ -132,11 +187,15 @@ func RegisterRoutes(r chi.Router, db *sql.DB) {
 		// Registered before /recipes/{id} so the literal segment wins even if
 		// chi's static-over-wildcard preference ever changes.
 		r.Get("/recipes/cook-again", h.HandleCookAgain)
+		r.Get("/recipes/plan", h.HandlePlanGet)
+		r.Put("/recipes/plan", h.HandlePlanPut)
+		r.Delete("/recipes/plan", h.HandlePlanDelete)
 		r.Get("/recipes/{id}", h.HandleGet)
 		r.Put("/recipes/{id}", h.HandleUpdate)
 		r.Delete("/recipes/{id}", h.HandleDelete)
 		r.Post("/recipes/{id}/rating", h.HandleRate)
 		r.Post("/recipes/{id}/cooked", h.HandleCooked)
+		r.Post("/recipes/{id}/grocery", h.HandleGroceryPush)
 	})
 }
 
@@ -363,6 +422,188 @@ func (h *Handlers) HandleCookAgain(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"recipes": toRecipeResponses(recipes)})
 }
 
+// HandlePlanGet returns one ISO week of the caller's meal plan, keyed by
+// calendar day. ?week=YYYY-MM-DD selects the week containing that date — any
+// day of the week works, it is normalised to the Monday — and defaults to the
+// week containing today.
+func (h *Handlers) HandlePlanGet(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+
+	day := time.Now()
+	if raw := r.URL.Query().Get("week"); raw != "" {
+		parsed, err := ParsePlanDate(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "week must be a YYYY-MM-DD date")
+			return
+		}
+		day = parsed
+	}
+	start := ISOWeekStart(day)
+	end := start.AddDate(0, 0, 6)
+
+	entries, err := h.store.ListPlanEntries(r.Context(), user.ID,
+		start.Format(PlanDateLayout), end.Format(PlanDateLayout))
+	if err != nil {
+		log.Printf("recipes: list plan entries: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to load meal plan")
+		return
+	}
+
+	// Seed all seven days so the client always gets a full week back, then file
+	// each entry under its own date.
+	days := make(map[string][]PlanEntryResponse, 7)
+	for i := 0; i < 7; i++ {
+		days[start.AddDate(0, 0, i).Format(PlanDateLayout)] = []PlanEntryResponse{}
+	}
+	for _, e := range entries {
+		days[e.PlanDate] = append(days[e.PlanDate], toPlanEntryResponse(e))
+	}
+
+	writeJSON(w, http.StatusOK, PlanWeekResponse{
+		WeekStart: start.Format(PlanDateLayout),
+		WeekEnd:   end.Format(PlanDateLayout),
+		Days:      days,
+	})
+}
+
+// HandlePlanPut schedules one or more recipes into meal slots. Each entry
+// replaces whatever occupied its (date, slot), so re-sending the same payload
+// is idempotent. The whole batch is rejected if any entry is malformed or names
+// a recipe the caller does not own.
+func (h *Handlers) HandlePlanPut(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+
+	var body UpdatePlanRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if len(body.Entries) == 0 {
+		writeError(w, http.StatusBadRequest, "at least one entry is required")
+		return
+	}
+
+	entries := make([]PlanEntry, 0, len(body.Entries))
+	for _, in := range body.Entries {
+		entries = append(entries, PlanEntry{
+			RecipeID: in.RecipeID,
+			PlanDate: in.Date,
+			Slot:     in.Slot,
+		})
+	}
+
+	stored, err := h.store.UpsertPlanEntries(r.Context(), user.ID, entries)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidPlanDate):
+			writeError(w, http.StatusBadRequest, "date must be YYYY-MM-DD")
+		case errors.Is(err, ErrInvalidSlot):
+			writeError(w, http.StatusBadRequest, "slot must be breakfast, lunch, dinner or snack")
+		case errors.Is(err, sql.ErrNoRows):
+			// A recipe belonging to someone else is reported as missing rather
+			// than forbidden, matching the single-recipe routes.
+			writeError(w, http.StatusNotFound, "recipe not found")
+		default:
+			log.Printf("recipes: upsert plan entries: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to save meal plan")
+		}
+		return
+	}
+
+	out := make([]PlanEntryResponse, 0, len(stored))
+	for _, e := range stored {
+		out = append(out, toPlanEntryResponse(e))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"entries": out})
+}
+
+// HandlePlanDelete clears one meal slot, identified by ?date= and ?slot=.
+// An already-empty slot is a 404 so the client can tell a no-op from a delete.
+func (h *Handlers) HandlePlanDelete(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+
+	query := r.URL.Query()
+	date, slot := query.Get("date"), query.Get("slot")
+	if date == "" || slot == "" {
+		writeError(w, http.StatusBadRequest, "date and slot are required")
+		return
+	}
+
+	if err := h.store.DeletePlanEntry(r.Context(), user.ID, date, slot); err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidPlanDate):
+			writeError(w, http.StatusBadRequest, "date must be YYYY-MM-DD")
+		case errors.Is(err, ErrInvalidSlot):
+			writeError(w, http.StatusBadRequest, "slot must be breakfast, lunch, dinner or snack")
+		case errors.Is(err, sql.ErrNoRows):
+			writeError(w, http.StatusNotFound, "meal plan entry not found")
+		default:
+			log.Printf("recipes: delete plan entry: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to clear meal plan entry")
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// HandleGroceryPush puts the named ingredients of one of the caller's recipes
+// onto their grocery list. Ingredients already on the list are skipped rather
+// than duplicated, and the response says how many of each there were.
+//
+// The route sits behind the "recipes" gate only: it is a recipe action, and the
+// list it writes to is the caller's own.
+func (h *Handlers) HandleGroceryPush(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+
+	id, ok := urlID(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid recipe ID")
+		return
+	}
+
+	var body GroceryPushRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if len(body.IngredientIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "ingredient_ids is required")
+		return
+	}
+
+	names, err := h.store.IngredientNamesForRecipe(r.Context(), user.ID, id, body.IngredientIDs)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrIngredientNotInRecipe):
+			writeError(w, http.StatusBadRequest, "ingredient does not belong to this recipe")
+		case errors.Is(err, sql.ErrNoRows):
+			writeError(w, http.StatusNotFound, "recipe not found")
+		default:
+			log.Printf("recipes: resolve ingredient names: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to load ingredients")
+		}
+		return
+	}
+
+	// The grocery list is keyed by household, which is the user's own ID
+	// throughout the grocery package.
+	created, err := grocery.AddItems(r.Context(), h.db, user.ID, user.ID, names)
+	if err != nil {
+		log.Printf("recipes: push ingredients to grocery list: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to add items to the grocery list")
+		return
+	}
+	for _, item := range created {
+		grocery.DefaultBroker.Publish(user.ID, grocery.GroceryEvent{Type: grocery.EventItemAdded, Payload: item})
+	}
+
+	writeJSON(w, http.StatusOK, GroceryPushResponse{
+		Added:   len(created),
+		Skipped: len(names) - len(created),
+		Items:   created,
+	})
+}
+
 // respondWithRecipe re-reads a recipe and writes it as the response body. The
 // mutating endpoints use it so the client always gets the stored state back
 // rather than having to re-fetch.
@@ -472,6 +713,16 @@ func toRecipeResponse(r Recipe) RecipeResponse {
 		})
 	}
 	return resp
+}
+
+func toPlanEntryResponse(e PlanEntry) PlanEntryResponse {
+	return PlanEntryResponse{
+		ID:          e.ID,
+		Date:        e.PlanDate,
+		Slot:        e.Slot,
+		RecipeID:    e.RecipeID,
+		RecipeTitle: e.RecipeTitle,
+	}
 }
 
 func toRecipeResponses(recipes []Recipe) []RecipeResponse {
