@@ -82,12 +82,104 @@ func scanWorkoutListRow(rows *sql.Rows) (Workout, error) {
 	return w, nil
 }
 
-// List returns all workouts for a user (without samples), including tags.
-func List(db *sql.DB, userID int64) ([]Workout, error) {
-	rows, err := db.Query(listSelectColumns+`
-		WHERE w.user_id = ?
-		GROUP BY w.id
-		ORDER BY w.started_at DESC, w.id DESC`, userID)
+// WorkoutFilter narrows the workout list queries. The zero value matches every
+// workout, so callers that do not filter can pass WorkoutFilter{}. All three
+// dimensions combine with AND, and multiple tags require the workout to carry
+// every one of them.
+type WorkoutFilter struct {
+	// Sport matches workouts.sport exactly (empty means any sport).
+	Sport string
+	// Tags must all be present on the workout (empty means any tags).
+	Tags []string
+	// Query is a case-insensitive substring match against the workout title.
+	Query string
+}
+
+// normalizedTags drops blank tag entries and de-duplicates the rest, preserving
+// the caller's order. Duplicate tags would otherwise inflate the HAVING count
+// and make the query match nothing.
+func (f WorkoutFilter) normalizedTags() []string {
+	if len(f.Tags) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(f.Tags))
+	tags := make([]string, 0, len(f.Tags))
+	for _, tag := range f.Tags {
+		tag = strings.TrimSpace(tag)
+		if tag == "" || seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		tags = append(tags, tag)
+	}
+	return tags
+}
+
+// escapeLikePattern escapes the SQL LIKE wildcards so a title search for "50%"
+// or "a_b" matches those characters literally. Pairs with ESCAPE '\' in the
+// query.
+func escapeLikePattern(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
+// buildWorkoutListQuery assembles the workout summary list query for a filter,
+// an optional keyset cursor and an optional page size. limit <= 0 omits the
+// LIMIT clause (the unpaginated List path). The returned args are ordered to
+// match the placeholders as they appear in the SQL: JOIN, WHERE, HAVING, LIMIT.
+func buildWorkoutListQuery(userID int64, filter WorkoutFilter, cursor *Cursor, limit int) (string, []any) {
+	var args []any
+	query := listSelectColumns
+
+	// Tags are matched by joining the tag rows the filter asks for and then
+	// requiring the group to contain all of them (AND semantics).
+	tags := filter.normalizedTags()
+	if len(tags) > 0 {
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(tags)), ",")
+		query += "\n\t\tJOIN workout_tags ft ON ft.workout_id = w.id AND ft.tag IN (" + placeholders + ")"
+		for _, tag := range tags {
+			args = append(args, tag)
+		}
+	}
+
+	where := []string{"w.user_id = ?"}
+	args = append(args, userID)
+
+	if filter.Sport != "" {
+		where = append(where, "w.sport = ?")
+		args = append(args, filter.Sport)
+	}
+	if q := strings.TrimSpace(filter.Query); q != "" {
+		where = append(where, `LOWER(w.title) LIKE ? ESCAPE '\'`)
+		args = append(args, "%"+escapeLikePattern(strings.ToLower(q))+"%")
+	}
+	// Keyset predicate: everything strictly older than the cursor position in
+	// the (started_at DESC, id DESC) ordering, ANDed with the filters so paging
+	// walks matches rather than raw history.
+	if cursor != nil {
+		where = append(where, "(w.started_at < ? OR (w.started_at = ? AND w.id < ?))")
+		args = append(args, cursor.StartedAt, cursor.StartedAt, cursor.ID)
+	}
+
+	query += "\n\t\tWHERE " + strings.Join(where, " AND ")
+	query += "\n\t\tGROUP BY w.id"
+	if len(tags) > 0 {
+		query += "\n\t\tHAVING COUNT(DISTINCT ft.tag) = ?"
+		args = append(args, len(tags))
+	}
+	query += "\n\t\tORDER BY w.started_at DESC, w.id DESC"
+	if limit > 0 {
+		query += "\n\t\tLIMIT ?"
+		args = append(args, limit)
+	}
+	return query, args
+}
+
+// List returns all matching workouts for a user (without samples), including
+// tags. Pass WorkoutFilter{} for the full history.
+func List(db *sql.DB, userID int64, filter WorkoutFilter) ([]Workout, error) {
+	query, args := buildWorkoutListQuery(userID, filter, nil, 0)
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list workouts: %w", err)
 	}
@@ -104,6 +196,32 @@ func List(db *sql.DB, userID int64) ([]Workout, error) {
 	return workouts, rows.Err()
 }
 
+// ListDistinctTags returns every distinct tag used across a user's workouts,
+// sorted alphabetically. It backs the filter chips so the tag list is not
+// limited to whichever workouts happen to be loaded in the client.
+func ListDistinctTags(db *sql.DB, userID int64) ([]string, error) {
+	rows, err := db.Query(`
+		SELECT DISTINCT t.tag
+		FROM workout_tags t
+		JOIN workouts w ON w.id = t.workout_id
+		WHERE w.user_id = ?
+		ORDER BY t.tag`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list workout tags: %w", err)
+	}
+	defer rows.Close()
+
+	tags := []string{}
+	for rows.Next() {
+		var tag string
+		if err := rows.Scan(&tag); err != nil {
+			return nil, fmt.Errorf("scan tag: %w", err)
+		}
+		tags = append(tags, tag)
+	}
+	return tags, rows.Err()
+}
+
 // Cursor identifies a position in the started_at DESC, id DESC ordering used by
 // the paginated workout list. Pagination is keyset-based on (started_at, id):
 // ties on started_at are broken by id so successive pages never overlap or skip
@@ -113,37 +231,21 @@ type Cursor struct {
 	ID        int64
 }
 
-// ListPaginated returns up to limit workouts for a user (without samples),
-// ordered by started_at DESC, id DESC, starting strictly after the supplied
-// cursor (pass nil for the first page). It returns the page of workouts and a
-// next cursor pointing at the last returned row; the next cursor is nil once the
-// final page has been reached. limit is used as supplied — callers should clamp
-// it before calling.
-func ListPaginated(db *sql.DB, userID int64, limit int, cursor *Cursor) ([]Workout, *Cursor, error) {
+// ListPaginated returns up to limit workouts for a user (without samples) that
+// match the supplied filter, ordered by started_at DESC, id DESC, starting
+// strictly after the supplied cursor (pass nil for the first page). It returns
+// the page of workouts and a next cursor pointing at the last returned row; the
+// next cursor is nil once the final page of *matches* has been reached. limit is
+// used as supplied — callers should clamp it before calling.
+func ListPaginated(db *sql.DB, userID int64, filter WorkoutFilter, limit int, cursor *Cursor) ([]Workout, *Cursor, error) {
 	if limit < 1 {
 		limit = 1
 	}
 
-	var (
-		rows *sql.Rows
-		err  error
-	)
 	// Fetch one extra row (limit+1) to detect whether a further page exists
 	// without a second COUNT query.
-	if cursor != nil {
-		rows, err = db.Query(listSelectColumns+`
-			WHERE w.user_id = ?
-			  AND (w.started_at < ? OR (w.started_at = ? AND w.id < ?))
-			GROUP BY w.id
-			ORDER BY w.started_at DESC, w.id DESC
-			LIMIT ?`, userID, cursor.StartedAt, cursor.StartedAt, cursor.ID, limit+1)
-	} else {
-		rows, err = db.Query(listSelectColumns+`
-			WHERE w.user_id = ?
-			GROUP BY w.id
-			ORDER BY w.started_at DESC, w.id DESC
-			LIMIT ?`, userID, limit+1)
-	}
+	query, args := buildWorkoutListQuery(userID, filter, cursor, limit+1)
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list workouts: %w", err)
 	}

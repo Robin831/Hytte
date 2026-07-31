@@ -1,13 +1,11 @@
-import { useMemo } from 'react'
 import { Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { Workout } from '../types/training'
 import TagBadge from './TagBadge'
 
 interface WorkoutFilterBarProps {
-  // The already-loaded workouts; used to derive the available tag set so chips
-  // only ever show tags the user actually has.
-  workouts: Workout[]
+  // Every tag the user has across their whole history, sorted. Supplied by the
+  // page from /api/training/tags so the chips are not limited to loaded pages.
+  availableTags: string[]
   // The sport keys to offer in the dropdown (the sportIcons keys from the page).
   sports: string[]
   sport: string
@@ -20,7 +18,7 @@ interface WorkoutFilterBarProps {
 }
 
 export default function WorkoutFilterBar({
-  workouts,
+  availableTags,
   sports,
   sport,
   setSport,
@@ -31,12 +29,6 @@ export default function WorkoutFilterBar({
   onClear,
 }: WorkoutFilterBarProps) {
   const { t } = useTranslation('training')
-
-  // Unique, stably-sorted set of tags present across the loaded workouts.
-  const availableTags = useMemo(
-    () => Array.from(new Set(workouts.flatMap((w) => w.tags ?? []))).sort(),
-    [workouts],
-  )
 
   const hasActiveFilters = sport !== '' || selectedTags.length > 0 || query.trim() !== ''
 

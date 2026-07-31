@@ -14,6 +14,10 @@ import WorkoutFilterBar from '../components/WorkoutFilterBar'
 // large history no longer makes the page load cost grow linearly.
 const PAGE_SIZE = 25
 
+// Debounce for the title search box, so typing issues one request per pause
+// rather than one per keystroke.
+const SEARCH_DEBOUNCE_MS = 300
+
 const sportIcons: Record<string, string> = {
   running: '🏃',
   cycling: '🚴',
@@ -42,14 +46,30 @@ export default function Training() {
   const [hasNewWorkouts, setHasNewWorkouts] = useState(false)
   const [backfilling, setBackfilling] = useState(false)
   const [backfillResult, setBackfillResult] = useState<string | null>(null)
+  const [hasAnyWorkouts, setHasAnyWorkouts] = useState(false)
+  const [availableTags, setAvailableTags] = useState<string[]>([])
   const latestWorkoutIdRef = useRef<number | null>(null)
   const hasNewWorkoutsRef = useRef(false)
 
-  // Client-side filter state. These narrow the already-loaded `workouts` array
-  // in memory only — no backend query or network request is involved.
+  // Filter state. These are request parameters, not a client-side narrowing of
+  // the loaded pages: changing any of them refetches page 1 from the backend so
+  // matches are drawn from the whole workout history.
   const [sportFilter, setSportFilter] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
+  // queryInput is what the user sees; query is its debounced counterpart and is
+  // the value that actually reaches the request.
+  const [queryInput, setQueryInput] = useState('')
   const [query, setQuery] = useState('')
+
+  // Monotonic id for workout-list requests. Every response checks that it is
+  // still the newest in flight before touching state, so a slow request from an
+  // earlier filter cannot overwrite a newer one's results.
+  const listRequestIdRef = useRef(0)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(queryInput), SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [queryInput])
 
   const toggleTag = useCallback((tag: string) => {
     setSelectedTags((prev) =>
@@ -60,84 +80,122 @@ export default function Training() {
   const clearFilters = useCallback(() => {
     setSportFilter('')
     setSelectedTags([])
+    setQueryInput('')
     setQuery('')
   }, [])
 
-  // Derived, filtered view of the loaded workouts. Filters combine with AND
-  // across the three types; for tags a workout must carry ALL selected tags.
-  const filteredWorkouts = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return workouts.filter(
-      (w) =>
-        (!sportFilter || w.sport === sportFilter) &&
-        (selectedTags.length === 0 ||
-          selectedTags.every((tag) => (w.tags ?? []).includes(tag))) &&
-        (!q || w.title.toLowerCase().includes(q)),
-    )
-  }, [workouts, sportFilter, selectedTags, query])
-
   const filtersActive = sportFilter !== '' || selectedTags.length > 0 || query.trim() !== ''
 
+  // Serialized filter params shared by every workout-list request. Kept as a
+  // string so it can be a stable effect dependency despite selectedTags being
+  // a new array on each toggle.
+  const filterParams = useMemo(() => {
+    const params = new URLSearchParams()
+    if (sportFilter) params.set('sport', sportFilter)
+    for (const tag of selectedTags) params.append('tag', tag)
+    const q = query.trim()
+    if (q) params.set('q', q)
+    return params.toString()
+  }, [sportFilter, selectedTags, query])
+
+  const workoutsUrl = useCallback(
+    (cursor: string | null) => {
+      let url = `/api/training/workouts?limit=${PAGE_SIZE}`
+      if (filterParams) url += `&${filterParams}`
+      if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`
+      return url
+    },
+    [filterParams],
+  )
+
+  // Load the first page whenever the active filters change (and on mount /
+  // after an upload). The result replaces the list and resets the cursor, so
+  // "Load more" continues through matches rather than raw history.
+  useEffect(() => {
+    if (!user) return
+    const requestId = ++listRequestIdRef.current
+    let cancelled = false
+    const isCurrent = () => !cancelled && requestId === listRequestIdRef.current
+    ;(async () => {
+      try {
+        const res = await fetch(workoutsUrl(null), { credentials: 'include' })
+        if (!isCurrent()) return
+        if (!res.ok) {
+          setError(t('errors.failedToLoadWorkouts'))
+          return
+        }
+        const data = await res.json()
+        if (!isCurrent()) return
+        const list: Workout[] = data.workouts || []
+        setWorkouts(list)
+        setNextCursor(data.next_cursor ?? null)
+        if (list.length > 0) setHasAnyWorkouts(true)
+      } catch {
+        if (isCurrent()) setError(t('errors.failedToLoadWorkouts'))
+      } finally {
+        if (isCurrent()) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [user, refreshTick, workoutsUrl, t])
+
+  // Filter-independent page data: weekly summaries, the tag chip source, and
+  // the new-workout baseline. The baseline comes from the cheap /latest
+  // endpoint rather than the page's max id: an older-dated .fit import can
+  // carry a higher id than anything on page one, so seeding the ref from the
+  // page would falsely trip the banner.
   useEffect(() => {
     if (!user) return
     let cancelled = false
     ;(async () => {
       try {
-        // Load only the first bounded page of workouts. The new-workout baseline
-        // comes from the cheap /latest endpoint rather than the page's max id:
-        // an older-dated .fit import can carry a higher id than anything on page
-        // one, so seeding the ref from the page would falsely trip the banner.
-        const [wRes, sRes, lRes] = await Promise.all([
-          fetch(`/api/training/workouts?limit=${PAGE_SIZE}`, { credentials: 'include' }),
+        const [sRes, lRes, tRes] = await Promise.all([
           fetch('/api/training/summary', { credentials: 'include' }),
           fetch('/api/training/workouts/latest', { credentials: 'include' }),
+          fetch('/api/training/tags', { credentials: 'include' }),
         ])
         if (cancelled) return
-        if (wRes.ok) {
-          const wData = await wRes.json()
-          const list: Workout[] = wData.workouts || []
-          setWorkouts(list)
-          setNextCursor(wData.next_cursor ?? null)
-        } else {
-          setError(t('errors.failedToLoadWorkouts'))
-        }
         if (lRes.ok) {
           const lData = await lRes.json()
-          latestWorkoutIdRef.current = typeof lData.latest_id === 'number' && lData.latest_id > 0
-            ? lData.latest_id
-            : null
+          const latestId = typeof lData.latest_id === 'number' ? lData.latest_id : 0
+          latestWorkoutIdRef.current = latestId > 0 ? latestId : null
+          if (latestId > 0) setHasAnyWorkouts(true)
+        }
+        if (tRes.ok) {
+          const tData = await tRes.json()
+          if (!cancelled) setAvailableTags(tData.tags || [])
         }
         if (sRes.ok) {
           const sData = await sRes.json()
-          setSummaries(sData.summaries || [])
-        } else {
+          if (!cancelled) setSummaries(sData.summaries || [])
+        } else if (!cancelled) {
           setError(t('errors.failedToLoadSummaries'))
         }
       } catch {
         if (!cancelled) setError(t('errors.failedToLoadTrainingData'))
-      } finally {
-        if (!cancelled) setLoading(false)
       }
     })()
     return () => { cancelled = true }
   }, [user, refreshTick, t])
 
-  // handleLoadMore appends the next older page of workouts using the keyset
-  // cursor returned by the list endpoint, deduplicating by id at the page
-  // boundary. The control hides once next_cursor is null (history exhausted).
+  // handleLoadMore appends the next older page of *matching* workouts using the
+  // keyset cursor returned by the list endpoint, deduplicating by id at the page
+  // boundary. The control hides once next_cursor is null (matches exhausted).
   const handleLoadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return
+    const requestId = ++listRequestIdRef.current
+    const isCurrent = () => requestId === listRequestIdRef.current
     setLoadingMore(true)
     try {
-      const res = await fetch(
-        `/api/training/workouts?limit=${PAGE_SIZE}&cursor=${encodeURIComponent(nextCursor)}`,
-        { credentials: 'include' },
-      )
+      const res = await fetch(workoutsUrl(nextCursor), { credentials: 'include' })
       if (!res.ok) {
-        setError(t('errors.failedToLoadWorkouts'))
+        if (isCurrent()) setError(t('errors.failedToLoadWorkouts'))
         return
       }
       const data = await res.json()
+      // A filter change while this page was in flight supersedes it — dropping
+      // the response avoids appending workouts from the previous filter.
+      if (!isCurrent()) return
       const more: Workout[] = data.workouts || []
       setWorkouts(prev => {
         const existing = new Set(prev.map(w => w.id))
@@ -145,22 +203,28 @@ export default function Training() {
       })
       setNextCursor(data.next_cursor ?? null)
     } catch {
-      setError(t('errors.failedToLoadWorkouts'))
+      if (isCurrent()) setError(t('errors.failedToLoadWorkouts'))
     } finally {
       setLoadingMore(false)
     }
-  }, [nextCursor, loadingMore, t])
+  }, [nextCursor, loadingMore, workoutsUrl, t])
 
-  // handleLoadNew fetches the first page after the /latest poll flags an upload
-  // and prepends only the workouts not already loaded, preserving the older
-  // pages the user has already paged in (and the current cursor). New uploads
-  // always carry the newest started_at, so prepending keeps the DESC ordering.
+  // handleLoadNew fetches the first page after an upload is flagged and prepends
+  // only the workouts not already loaded, preserving the older pages the user
+  // has already paged in (and the current cursor). New uploads always carry the
+  // newest started_at, so prepending keeps the DESC ordering. The fetch carries
+  // the active filters, so only matching new workouts are pulled in.
   const handleLoadNew = useCallback(async () => {
     try {
-      const [wRes, sRes] = await Promise.all([
-        fetch(`/api/training/workouts?limit=${PAGE_SIZE}`, { credentials: 'include' }),
+      const [wRes, sRes, tRes] = await Promise.all([
+        fetch(workoutsUrl(null), { credentials: 'include' }),
         fetch('/api/training/summary', { credentials: 'include' }),
+        fetch('/api/training/tags', { credentials: 'include' }),
       ])
+      if (tRes.ok) {
+        const tData = await tRes.json()
+        setAvailableTags(tData.tags || [])
+      }
       if (wRes.ok) {
         const wData = await wRes.json()
         const list: Workout[] = wData.workouts || []
@@ -176,6 +240,7 @@ export default function Training() {
           })
         }
         if (list.length > 0) {
+          setHasAnyWorkouts(true)
           latestWorkoutIdRef.current = Math.max(
             latestWorkoutIdRef.current ?? 0,
             ...list.map(w => w.id),
@@ -190,7 +255,7 @@ export default function Training() {
       // Transient failure — banner stays visible so the user can retry. The SSE
       // reconcile on the next reconnect will re-flag if needed.
     }
-  }, [workouts])
+  }, [workouts, workoutsUrl])
 
   useEffect(() => {
     if (!user) return
@@ -352,7 +417,7 @@ export default function Training() {
           <h1 className="text-2xl font-bold truncate">{t('title')}</h1>
         </div>
         <div className="flex gap-2 flex-shrink-0">
-          {workouts.length > 0 && (
+          {hasAnyWorkouts && (
             <>
               <Link
                 to="/training/trends"
@@ -477,8 +542,9 @@ export default function Training() {
         </div>
       )}
 
-      {/* Workout list */}
-      {workouts.length === 0 ? (
+      {/* Workout list. The filter bar stays mounted whenever the user has any
+          history at all, so a filter that matches nothing can still be cleared. */}
+      {!hasAnyWorkouts ? (
         <div className="bg-gray-800 rounded-xl p-12 text-center">
           <Dumbbell size={48} className="mx-auto mb-4 text-gray-600" />
           <h2 className="text-xl font-semibold mb-2">{t('workouts.emptyTitle')}</h2>
@@ -488,17 +554,17 @@ export default function Training() {
         <div className="space-y-2">
           <h2 className="text-lg font-semibold mb-3">{t('workouts.title')}</h2>
           <WorkoutFilterBar
-            workouts={workouts}
+            availableTags={availableTags}
             sports={Object.keys(sportIcons)}
             sport={sportFilter}
             setSport={setSportFilter}
             selectedTags={selectedTags}
             toggleTag={toggleTag}
-            query={query}
-            setQuery={setQuery}
+            query={queryInput}
+            setQuery={setQueryInput}
             onClear={clearFilters}
           />
-          {filteredWorkouts.length === 0 ? (
+          {workouts.length === 0 ? (
             <div className="bg-gray-800 rounded-xl p-8 text-center">
               <p className="text-gray-400">{t('filters.noMatches')}</p>
               {filtersActive && (
@@ -513,7 +579,7 @@ export default function Training() {
               )}
             </div>
           ) : (
-          filteredWorkouts.map((w) => {
+          workouts.map((w) => {
             const date = new Date(w.started_at)
             const dateStr = formatDate(date, {
               year: 'numeric',

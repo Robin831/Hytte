@@ -131,7 +131,7 @@ func TestAnalysisStatusInList(t *testing.T) {
 		t.Fatalf("set pending: %v", err)
 	}
 
-	workouts, err := List(database, 1)
+	workouts, err := List(database, 1, WorkoutFilter{})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
