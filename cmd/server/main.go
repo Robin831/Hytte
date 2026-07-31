@@ -212,6 +212,18 @@ func main() {
 						continue
 					}
 
+					// Prune expired, duplicate, and superseded suggestions
+					// before counting caps so freed slots re-enter tonight's
+					// rotation rather than next month's.
+					cleanupCtx, cleanupCancel := context.WithTimeout(notifCtx, 30*time.Second)
+					if removed, err := suggestions.CleanupPending(cleanupCtx, database, adminID); err != nil {
+						log.Printf("suggestions: cleanup for admin=%d: %v", adminID, err)
+					} else if removed.Total() > 0 {
+						log.Printf("suggestions: cleanup for admin=%d removed %d (expired=%d rejected=%d dupes=%d superseded=%d)",
+							adminID, removed.Total(), removed.ExpiredPending, removed.ExpiredRejected, removed.Duplicates, removed.Superseded)
+					}
+					cleanupCancel()
+
 					// FilterUnderCap and PickRotation are per-admin because
 					// the cap counts each admin's pending suggestions
 					// independently. Running them inside the per-admin loop

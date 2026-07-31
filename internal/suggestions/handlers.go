@@ -194,6 +194,15 @@ func RunHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Same pre-run pruning as the nightly scheduler: expired, duplicate,
+		// and superseded suggestions release their cap slots before filtering.
+		if removed, err := CleanupPending(r.Context(), db, user.ID); err != nil {
+			log.Printf("suggestions: cleanup for user %d: %v", user.ID, err)
+		} else if removed.Total() > 0 {
+			log.Printf("suggestions: cleanup for user %d removed %d (expired=%d rejected=%d dupes=%d superseded=%d)",
+				user.ID, removed.Total(), removed.ExpiredPending, removed.ExpiredRejected, removed.Duplicates, removed.Superseded)
+		}
+
 		// Drop pages already at the per-page cap before scheduling work. The
 		// per-page deficit check inside runForPage is the authoritative guard,
 		// but this filter keeps the rotation slots focused on pages that need
@@ -746,41 +755,22 @@ func PlanHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		page := findPageBySlug(existing.PageSlug)
-		prompt := buildPlanPrompt(*existing, page, body.Feedback)
-
-		ctx, cancel := context.WithTimeout(r.Context(), PlanTimeout)
-		defer cancel()
-
-		plan, _, err := runPromptFn(ctx, cfg, prompt)
+		updated, err := PlanSuggestion(r.Context(), db, cfg, existing, body.Feedback)
 		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			switch {
+			case errors.Is(err, context.DeadlineExceeded):
 				log.Printf("suggestions: plan %d timed out after %s", id, PlanTimeout)
 				writeJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "Claude timed out generating the plan"})
-				return
+			case errors.Is(err, ErrEmptyPlan):
+				log.Printf("suggestions: plan %d: empty response from Claude", id)
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "Claude returned an empty plan"})
+			case errors.Is(err, ErrPlanPersist):
+				log.Printf("suggestions: plan %d: %v", id, err)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save plan"})
+			default:
+				log.Printf("suggestions: plan %d claude error: %v", id, err)
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to generate plan"})
 			}
-			log.Printf("suggestions: plan %d claude error: %v", id, err)
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "failed to generate plan"})
-			return
-		}
-
-		plan = strings.TrimSpace(plan)
-		if plan == "" {
-			log.Printf("suggestions: plan %d: empty response from Claude", id)
-			writeJSON(w, http.StatusBadGateway, map[string]string{"error": "Claude returned an empty plan"})
-			return
-		}
-
-		if err := MarkPlanned(r.Context(), db, id, plan); err != nil {
-			log.Printf("suggestions: mark planned %d: %v", id, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save plan"})
-			return
-		}
-
-		updated, err := GetByID(r.Context(), db, id)
-		if err != nil {
-			log.Printf("suggestions: reload planned %d: %v", id, err)
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load suggestion"})
 			return
 		}
 		writeJSON(w, http.StatusOK, updated)
