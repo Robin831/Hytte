@@ -1,12 +1,20 @@
 package grocery
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
+
+// execer is satisfied by both *sql.DB and *sql.Tx so the single-item insert can
+// run standalone or as one step of a bulk transaction.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
 
 // ListByHousehold returns all grocery items for the given household, ordered by checked, then sort_order, then created_at.
 func ListByHousehold(db *sql.DB, householdID int64) ([]GroceryItem, error) {
@@ -59,15 +67,6 @@ func ListByHousehold(db *sql.DB, householdID int64) ([]GroceryItem, error) {
 
 // Add inserts a new grocery item and returns it with its generated ID.
 func Add(db *sql.DB, item GroceryItem) (GroceryItem, error) {
-	encContent, err := encryption.EncryptField(item.Content)
-	if err != nil {
-		return GroceryItem{}, fmt.Errorf("encrypt content: %w", err)
-	}
-	encOriginalText, err := encryption.EncryptField(item.OriginalText)
-	if err != nil {
-		return GroceryItem{}, fmt.Errorf("encrypt original_text: %w", err)
-	}
-
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	// Default sort_order to the next value for this household.
@@ -79,7 +78,111 @@ func Add(db *sql.DB, item GroceryItem) (GroceryItem, error) {
 		item.SortOrder = int(maxOrder.Int64) + 1
 	}
 
-	res, err := db.Exec(`
+	return insertItem(context.Background(), db, item, now)
+}
+
+// AddItems bulk-inserts grocery items for a household from a list of names,
+// skipping any name that already appears on the list and any repeat within the
+// batch. Matching is case- and whitespace-insensitive.
+//
+// Item content is encrypted at rest, so de-duplication cannot be pushed into
+// SQL: the household's current list is loaded and decrypted, and comparison
+// happens in Go on the trimmed, lowercased name. Names are stored trimmed, and
+// both content and original_text are set to the name — callers pushing already
+// normalized text (e.g. recipe ingredients) have nothing to translate back.
+//
+// The inserts run in a single transaction and the created items are returned in
+// input order, so callers can publish one event per added item.
+func AddItems(ctx context.Context, db *sql.DB, householdID, addedBy int64, names []string) ([]GroceryItem, error) {
+	if len(names) == 0 {
+		return []GroceryItem{}, nil
+	}
+
+	existing, err := ListByHousehold(db, householdID)
+	if err != nil {
+		return nil, fmt.Errorf("load existing items: %w", err)
+	}
+	seen := make(map[string]struct{}, len(existing)+len(names))
+	for _, item := range existing {
+		seen[dedupeKey(item.Content)] = struct{}{}
+	}
+
+	toInsert := make([]string, 0, len(names))
+	for _, name := range names {
+		trimmed := strings.TrimSpace(name)
+		key := dedupeKey(trimmed)
+		if key == "" {
+			continue
+		}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
+		toInsert = append(toInsert, trimmed)
+	}
+	if len(toInsert) == 0 {
+		return []GroceryItem{}, nil
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin add grocery items: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Sort order continues from the end of the list, matching what repeated
+	// Add calls would produce.
+	var maxOrder sql.NullInt64
+	if err := tx.QueryRowContext(ctx, "SELECT MAX(sort_order) FROM grocery_items WHERE household_id = ?", householdID).Scan(&maxOrder); err != nil {
+		return nil, fmt.Errorf("select max sort_order: %w", err)
+	}
+	sortOrder := 0
+	if maxOrder.Valid {
+		sortOrder = int(maxOrder.Int64) + 1
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	created := make([]GroceryItem, 0, len(toInsert))
+	for _, name := range toInsert {
+		item, err := insertItem(ctx, tx, GroceryItem{
+			HouseholdID:  householdID,
+			Content:      name,
+			OriginalText: name,
+			SortOrder:    sortOrder,
+			AddedBy:      addedBy,
+		}, now)
+		if err != nil {
+			return nil, err
+		}
+		created = append(created, item)
+		sortOrder++
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit add grocery items: %w", err)
+	}
+	return created, nil
+}
+
+// dedupeKey normalizes an item name for duplicate comparison.
+func dedupeKey(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+// insertItem writes one grocery item, encrypting the free-form fields. The
+// caller owns sort_order and the created_at timestamp so a bulk insert can
+// share one clock reading and number its rows consecutively.
+func insertItem(ctx context.Context, ex execer, item GroceryItem, now string) (GroceryItem, error) {
+	encContent, err := encryption.EncryptField(item.Content)
+	if err != nil {
+		return GroceryItem{}, fmt.Errorf("encrypt content: %w", err)
+	}
+	encOriginalText, err := encryption.EncryptField(item.OriginalText)
+	if err != nil {
+		return GroceryItem{}, fmt.Errorf("encrypt original_text: %w", err)
+	}
+
+	res, err := ex.ExecContext(ctx, `
 		INSERT INTO grocery_items (household_id, content, original_text, source_language, checked, sort_order, added_by, created_at)
 		VALUES (?, ?, ?, ?, 0, ?, ?, ?)
 	`, item.HouseholdID, encContent, encOriginalText, item.SourceLanguage, item.SortOrder, item.AddedBy, now)
