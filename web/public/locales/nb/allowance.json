@@ -33,6 +33,21 @@
     "close": "Lukk",
     "refresh": "Oppdater"
   },
+  "bulk": {
+    "select": "Velg",
+    "cancelSelection": "Avbryt",
+    "selectAll": "Velg alle",
+    "selectItem": "Velg {{name}}",
+    "selectedCount": "{{selected}} valgt",
+    "approveSelected": "Godkjenn valgte",
+    "rejectSelected": "Avvis valgte",
+    "toast": {
+      "approved": "{{succeeded}} godkjent",
+      "rejected": "{{succeeded}} avvist",
+      "approvedPartial": "{{succeeded}} godkjent, {{failed}} mislyktes",
+      "rejectedPartial": "{{succeeded}} avvist, {{failed}} mislyktes"
+    }
+  },
   "form": {
     "newChore": "Ny oppgave",
     "editChore": "Rediger oppgave",
