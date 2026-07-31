@@ -429,8 +429,10 @@ function RecipeDetailInner() {
           <Check size={16} aria-hidden="true" />
           {cookLogged ? t('detail.markedCooked') : t('detail.markCooked')}
         </button>
+        {/* Cook mode scales its ingredient list for whatever is on screen here. */}
         <Link
           to={`/recipes/${recipe.id}/cook`}
+          state={{ portions }}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors text-sm"
         >
           <Utensils size={16} aria-hidden="true" />
