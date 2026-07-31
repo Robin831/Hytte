@@ -219,7 +219,9 @@ export function useRecipe(id: string | number | undefined): UseRecipeResult {
           return
         }
         if (!res.ok) throw new Error(await errorMessage(res, t('errors.failedToLoadRecipe')))
-        setRecipe(await res.json())
+        // Single-recipe endpoints wrap their payload: {"recipe": {...}}.
+        const data = await res.json()
+        setRecipe(data.recipe ?? null)
         setNotFound(false)
         setError('')
       } catch (err) {
@@ -287,7 +289,8 @@ export function useUpdateRecipe(): UseUpdateRecipeResult {
         body: JSON.stringify(body),
       })
       if (!res.ok) throw new Error(await errorMessage(res, t('errors.failedToSave')))
-      return (await res.json()) as Recipe
+      const data = await res.json()
+      return (data.recipe ?? null) as Recipe | null
     } catch (err) {
       setError(err instanceof Error ? err.message : t('errors.failedToSave'))
       return null
@@ -297,6 +300,123 @@ export function useUpdateRecipe(): UseUpdateRecipeResult {
   }, [t])
 
   return { update, saving, error, clearError }
+}
+
+export interface UseCreateRecipeResult {
+  /** POSTs a whole recipe. Returns the saved recipe (with its new ID), or null on failure. */
+  create: (input: RecipeInput) => Promise<Recipe | null>
+  saving: boolean
+  error: string
+  clearError: () => void
+}
+
+/** Mutation hook for POST /api/recipes. */
+export function useCreateRecipe(): UseCreateRecipeResult {
+  const { t } = useTranslation('recipes')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const clearError = useCallback(() => setError(''), [])
+
+  const create = useCallback(async (input: RecipeInput): Promise<Recipe | null> => {
+    setSaving(true)
+    setError('')
+    try {
+      const res = await fetch('/api/recipes', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!res.ok) throw new Error(await errorMessage(res, t('errors.failedToSave')))
+      const data = await res.json()
+      return (data.recipe ?? null) as Recipe | null
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('errors.failedToSave'))
+      return null
+    } finally {
+      setSaving(false)
+    }
+  }, [t])
+
+  return { create, saving, error, clearError }
+}
+
+export interface UseRecipeActionsResult {
+  /** Sets a 1-5 star rating; 0 clears it. Returns the reloaded recipe, or null on failure. */
+  rate: (recipeId: number, rating: number) => Promise<Recipe | null>
+  /** Logs a cook as happening now. Returns the reloaded recipe, or null on failure. */
+  logCooked: (recipeId: number) => Promise<Recipe | null>
+  /** Deletes the recipe and its child rows. Returns true on success. */
+  remove: (recipeId: number) => Promise<boolean>
+  busy: boolean
+  error: string
+  clearError: () => void
+}
+
+/**
+ * The small per-recipe actions the detail page offers — rating, logging a cook
+ * and deleting. They share one busy flag and one error slot because the page
+ * only ever runs one of them at a time.
+ */
+export function useRecipeActions(): UseRecipeActionsResult {
+  const { t } = useTranslation('recipes')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const clearError = useCallback(() => setError(''), [])
+
+  const post = useCallback(async (path: string, body: unknown, fallback: string): Promise<Recipe | null> => {
+    setBusy(true)
+    setError('')
+    try {
+      const res = await fetch(path, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error(await errorMessage(res, fallback))
+      const data = await res.json()
+      return (data.recipe ?? null) as Recipe | null
+    } catch (err) {
+      setError(err instanceof Error ? err.message : fallback)
+      return null
+    } finally {
+      setBusy(false)
+    }
+  }, [])
+
+  const rate = useCallback(
+    (recipeId: number, rating: number) =>
+      post(`/api/recipes/${recipeId}/rating`, { rating }, t('errors.failedToRate')),
+    [post, t],
+  )
+
+  const logCooked = useCallback(
+    (recipeId: number) => post(`/api/recipes/${recipeId}/cooked`, {}, t('errors.failedToLogCook')),
+    [post, t],
+  )
+
+  const remove = useCallback(async (recipeId: number): Promise<boolean> => {
+    setBusy(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/recipes/${recipeId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error(await errorMessage(res, t('errors.failedToDelete')))
+      return true
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('errors.failedToDelete'))
+      return false
+    } finally {
+      setBusy(false)
+    }
+  }, [t])
+
+  return { rate, logCooked, remove, busy, error, clearError }
 }
 
 export interface UsePushMissingToGroceryResult {

@@ -153,8 +153,58 @@ export function scaleQuantity(quantity: number, servings: number, portions: numb
   return (quantity * portions) / servings
 }
 
-/** Formats a scaled quantity for display, trimming trailing zeros (1.50 -> "1.5"). */
+/**
+ * Denominators worth rendering as a fraction. Scaling lands on these far more
+ * often than on a tidy decimal — a third of a recipe turns 1 egg into 0.333 —
+ * and a cook reads "1 1/2 dl" faster than "1.5 dl".
+ */
+const FRACTION_DENOMINATORS = [2, 3, 4, 8]
+
+/**
+ * How far a value may sit from a whole number or a fraction and still be shown
+ * as one. 0.01 is below the resolution of any kitchen measure, so 0.6667 reads
+ * as "2/3" while 0.6 stays "0.6".
+ */
+const FRACTION_TOLERANCE = 0.01
+
+/**
+ * Formats a scaled quantity for display: whole numbers plain, near-fractions as
+ * mixed numbers ("1 1/2"), anything else rounded to two decimals. A quantity of
+ * 0 means the line states no amount, and renders as nothing at all.
+ */
 export function formatQuantity(quantity: number): string {
-  if (!Number.isFinite(quantity) || quantity === 0) return ''
+  if (!Number.isFinite(quantity) || quantity <= 0) return ''
+
+  const rounded = Math.round(quantity)
+  if (Math.abs(quantity - rounded) < FRACTION_TOLERANCE) return String(rounded)
+
+  const whole = Math.floor(quantity)
+  const remainder = quantity - whole
+  for (const denominator of FRACTION_DENOMINATORS) {
+    const numerator = Math.round(remainder * denominator)
+    if (numerator <= 0 || numerator >= denominator) continue
+    if (Math.abs(remainder - numerator / denominator) > FRACTION_TOLERANCE) continue
+    const fraction = `${numerator}/${denominator}`
+    return whole > 0 ? `${whole} ${fraction}` : fraction
+  }
+
   return String(Math.round(quantity * 100) / 100)
+}
+
+/**
+ * How an ingredient should read at the chosen portion count: the scaled amount,
+ * its unit and the parsed name. A line without a parsed amount — or without a
+ * parsed name to put the amount in front of — cannot be rebuilt that way, so
+ * the free-form line the user (or the importer) wrote is shown untouched.
+ */
+export function ingredientLine(
+  ingredient: RecipeIngredient,
+  baseServings: number,
+  portions: number,
+): string {
+  const { quantity, unit, name, text } = ingredient
+  if (quantity <= 0 || name === '') return text || name
+  const amount = formatQuantity(scaleQuantity(quantity, baseServings, portions))
+  if (amount === '') return text || name
+  return [amount, unit, name].filter(Boolean).join(' ')
 }
