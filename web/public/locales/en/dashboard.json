@@ -22,6 +22,12 @@
     },
     "unknown": "Activity"
   },
+  "widgetError": {
+    "title": "Widget unavailable",
+    "titleWithLabel": "{{label}} unavailable",
+    "message": "This widget failed to load.",
+    "retry": "Retry"
+  },
   "widgets": {
     "weather": {
       "title": "Weather",

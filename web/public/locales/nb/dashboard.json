@@ -22,6 +22,12 @@
     },
     "unknown": "Aktivitet"
   },
+  "widgetError": {
+    "title": "Modulen er utilgjengelig",
+    "titleWithLabel": "{{label}} er utilgjengelig",
+    "message": "Denne modulen kunne ikke lastes.",
+    "retry": "Prøv igjen"
+  },
   "widgets": {
     "weather": {
       "title": "Vær",

@@ -22,6 +22,12 @@
     },
     "unknown": "กิจกรรม"
   },
+  "widgetError": {
+    "title": "วิดเจ็ตไม่พร้อมใช้งาน",
+    "titleWithLabel": "{{label}} ไม่พร้อมใช้งาน",
+    "message": "ไม่สามารถโหลดวิดเจ็ตนี้ได้",
+    "retry": "ลองอีกครั้ง"
+  },
   "widgets": {
     "weather": {
       "title": "สภาพอากาศ",
