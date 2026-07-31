@@ -5,17 +5,20 @@ import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { ChefHat, Link2, Loader2, Plus, Search, Star } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
-import { useCookAgain, useRecipes } from '../hooks/useRecipes'
+import { matchesSearch, useCookAgain, useRecipes } from '../hooks/useRecipes'
 import { CUISINE_TAGS, OCCASION_TAGS, SEASON_TAGS, type Recipe } from '../types/recipes'
 
 /**
  * Recipe list: tag filters, rating and last-cooked per card, a "cook again"
  * row and the entry points for creating or importing a recipe.
  *
- * Filtering runs client-side over the fetched list rather than through the
- * endpoint's `tag_all` parameter: the chips are multi-select, and `tag_all`
+ * The list is fetched once, unfiltered, and both the search box and the tag
+ * chips narrow it in the browser — no request is made while the user types or
+ * toggles a chip. Tags could go out as `tag_all` params, but that endpoint
  * requires *every* selected tag to be present, which cannot express "Italian
- * or Thai". The rule here is OR within a dimension, AND across dimensions.
+ * or Thai"; the rule here is OR within a dimension, AND across dimensions.
+ * Search has no server-side equivalent at all, because recipe text is
+ * encrypted at rest.
  */
 
 /** The three tag dimensions the filter chips expose. */
@@ -161,15 +164,16 @@ export default function RecipesPage() {
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState('')
 
-  // The hook applies `search` client-side; the tag filters deliberately stay
-  // out of the query so the chip vocabulary is derived from the full list
-  // rather than from an already-narrowed one.
-  const { recipes, loading, error } = useRecipes({ search })
+  // Fetched without any filter arguments, so the effect never re-runs while the
+  // user types or toggles a chip, and the chip vocabulary below is derived from
+  // the full list rather than from an already-narrowed one.
+  const { recipes, loading, error } = useRecipes()
   const cookAgain = useCookAgain()
 
   const filtered = useMemo(
-    () => recipes.filter(recipe => matchesFilters(recipe, filters)),
-    [recipes, filters],
+    () =>
+      recipes.filter(recipe => matchesFilters(recipe, filters) && matchesSearch(recipe, search)),
+    [recipes, filters, search],
   )
 
   const filtersActive = hasActiveFilters(filters)

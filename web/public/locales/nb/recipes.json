@@ -11,7 +11,7 @@
     "importCancel": "Avbryt",
     "importing": "Leser siden …",
     "cookAgain": "Lag igjen",
-    "cookAgainSubtitle": "I sesong og en stund siden sist",
+    "cookAgainSubtitle": "Sesongens først, deretter det det er lengst siden du lagde",
     "lastCooked": "Sist laget {{date}}",
     "neverCooked": "Aldri laget",
     "servings_one": "{{count}} porsjon",

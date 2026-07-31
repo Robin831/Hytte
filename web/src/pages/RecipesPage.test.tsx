@@ -22,7 +22,7 @@ const TRANSLATIONS: Record<string, string> = {
   'list.importCancel': 'Cancel',
   'list.importing': 'Reading the page…',
   'list.cookAgain': 'Cook again',
-  'list.cookAgainSubtitle': 'In season and a while since you last made it',
+  'list.cookAgainSubtitle': 'Seasonal picks first, then whatever you have gone longest without making',
   'list.lastCooked': 'Last cooked {{date}}',
   'list.neverCooked': 'Never cooked',
   'list.loading': 'Loading recipes…',
@@ -186,9 +186,18 @@ function listedTitles(): string[] {
 }
 
 async function renderAndWait(options?: Parameters<typeof mockFetch>[0]) {
-  mockFetch(options)
+  const fetchMock = mockFetch(options)
   renderPage()
   await screen.findByRole('region', { name: 'Recipes' })
+  return fetchMock
+}
+
+/** How many times the list endpoint has been hit. */
+function listRequestCount(fetchMock: ReturnType<typeof mockFetch>): number {
+  return fetchMock.mock.calls.filter(call => {
+    const url = String(call[0])
+    return url.startsWith('/api/recipes') && !url.startsWith('/api/recipes/')
+  }).length
 }
 
 function clickChip(name: string) {
@@ -288,6 +297,38 @@ describe('RecipesPage', () => {
 
     clickChip('Italian')
     expect(listedTitles()).toEqual(['Carbonara', 'Green curry', 'Rakfisk'])
+  })
+
+  it('narrows the list as the user types without re-requesting it', async () => {
+    const fetchMock = await renderAndWait()
+    expect(listRequestCount(fetchMock)).toBe(1)
+
+    const box = screen.getByLabelText('Search recipes')
+    // One change event per keystroke: if search were a query parameter, each of
+    // these would cost a round trip.
+    for (const value of ['c', 'cu', 'cur', 'curr', 'curry']) {
+      fireEvent.change(box, { target: { value } })
+    }
+
+    expect(listedTitles()).toEqual(['Green curry'])
+    expect(listRequestCount(fetchMock)).toBe(1)
+
+    fireEvent.change(box, { target: { value: '' } })
+    expect(listedTitles()).toEqual(['Carbonara', 'Green curry', 'Rakfisk'])
+    expect(listRequestCount(fetchMock)).toBe(1)
+  })
+
+  it('combines the search box with the tag chips', async () => {
+    await renderAndWait()
+
+    clickChip('Weeknight')
+    fireEvent.change(screen.getByLabelText('Search recipes'), { target: { value: 'carbo' } })
+    expect(listedTitles()).toEqual(['Carbonara'])
+
+    // Rakfisk matches the text but not the occasion chip, so nothing is left.
+    fireEvent.change(screen.getByLabelText('Search recipes'), { target: { value: 'rakfisk' } })
+    expect(screen.queryByRole('region', { name: 'Recipes' })).toBeNull()
+    expect(screen.getByText('No recipes match these filters')).toBeTruthy()
   })
 
   it('offers only the tag values the fetched recipes actually carry', async () => {

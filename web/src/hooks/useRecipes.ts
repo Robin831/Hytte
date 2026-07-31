@@ -45,8 +45,13 @@ function buildListQuery(filters: RecipeFilters): string {
   return query ? `?${query}` : ''
 }
 
-/** Case-insensitive match over title, tags and ingredient lines. */
-function matchesSearch(recipe: Recipe, search: string): boolean {
+/**
+ * Case-insensitive match over title, tags and ingredient lines. Exported so a
+ * page can narrow an already-fetched list as the user types without going back
+ * to the server — recipe text is encrypted at rest, so there is no server-side
+ * search to call.
+ */
+export function matchesSearch(recipe: Recipe, search: string): boolean {
   const needle = search.trim().toLowerCase()
   if (!needle) return true
   if (recipe.title.toLowerCase().includes(needle)) return true
@@ -125,8 +130,9 @@ export interface UseCookAgainResult {
 }
 
 /**
- * Loads the "cook again" suggestions: recipes tagged for the current season,
- * ranked by how long it has been since they were last made. `limit` is passed
+ * Loads the "cook again" suggestions. The endpoint ranks recipes tagged for the
+ * current season ahead of the rest and, within each group, puts the one cooked
+ * longest ago first — it does not drop out-of-season recipes. `limit` is passed
  * straight through to the endpoint's own bounds check.
  */
 export function useCookAgain(limit?: number): UseCookAgainResult {
