@@ -13,6 +13,7 @@ import {
   buildDefaultLocations,
 } from '../recentLocations'
 import LocationSearch from '../components/LocationSearch'
+import UseMyLocationButton from '../components/UseMyLocationButton'
 import HourlyChart from '../components/HourlyChart'
 import { readForecastCache, writeForecastCache } from '../lib/weatherCache'
 import { buildDailyForecasts, type TimeseriesEntry } from '../lib/weatherForecast'
@@ -554,6 +555,7 @@ export default function Weather() {
         <div className="flex items-center gap-2 flex-wrap">
           <MapPin size={16} className="text-gray-400" />
           <LocationSearch onSelect={handleSearchSelect} />
+          <UseMyLocationButton onSelect={handleSearchSelect} />
           <select
             value={selectedLocation?.name ?? ''}
             onChange={(e) => handleLocationChange(e.target.value)}

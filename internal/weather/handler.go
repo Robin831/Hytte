@@ -67,11 +67,12 @@ type cachedSun struct {
 
 // Service holds weather-related state (cache, HTTP client, base URLs).
 type Service struct {
-	client       *http.Client
-	baseURL      string
-	nominatimURL string
-	now          func() time.Time
-	osloTZ       *time.Location
+	client              *http.Client
+	baseURL             string
+	nominatimURL        string
+	nominatimReverseURL string
+	now                 func() time.Time
+	osloTZ              *time.Location
 
 	mu    sync.RWMutex
 	cache map[string]*cachedResponse
@@ -89,13 +90,14 @@ func NewService() *Service {
 		oslo = time.UTC
 	}
 	return &Service{
-		client:       &http.Client{Timeout: 10 * time.Second},
-		baseURL:      metBaseURL,
-		nominatimURL: nominatimBaseURL,
-		now:          time.Now,
-		osloTZ:       oslo,
-		cache:        make(map[string]*cachedResponse),
-		sunCache:     make(map[string]cachedSun),
+		client:              &http.Client{Timeout: 10 * time.Second},
+		baseURL:             metBaseURL,
+		nominatimURL:        nominatimBaseURL,
+		nominatimReverseURL: nominatimReverseBaseURL,
+		now:                 time.Now,
+		osloTZ:              oslo,
+		cache:               make(map[string]*cachedResponse),
+		sunCache:            make(map[string]cachedSun),
 	}
 }
 
@@ -106,13 +108,14 @@ func newTestService(baseURL string) *Service {
 		oslo = time.UTC
 	}
 	return &Service{
-		client:       &http.Client{Timeout: 5 * time.Second},
-		baseURL:      baseURL,
-		nominatimURL: nominatimBaseURL,
-		now:          time.Now,
-		osloTZ:       oslo,
-		cache:        make(map[string]*cachedResponse),
-		sunCache:     make(map[string]cachedSun),
+		client:              &http.Client{Timeout: 5 * time.Second},
+		baseURL:             baseURL,
+		nominatimURL:        nominatimBaseURL,
+		nominatimReverseURL: nominatimReverseBaseURL,
+		now:                 time.Now,
+		osloTZ:              oslo,
+		cache:               make(map[string]*cachedResponse),
+		sunCache:            make(map[string]cachedSun),
 	}
 }
 
@@ -123,13 +126,37 @@ func newTestSearchService(nominatimURL string) *Service {
 		oslo = time.UTC
 	}
 	return &Service{
-		client:       &http.Client{Timeout: 5 * time.Second},
-		baseURL:      metBaseURL,
-		nominatimURL: nominatimURL,
-		now:          time.Now,
-		osloTZ:       oslo,
-		cache:        make(map[string]*cachedResponse),
-		sunCache:     make(map[string]cachedSun),
+		client:              &http.Client{Timeout: 5 * time.Second},
+		baseURL:             metBaseURL,
+		nominatimURL:        nominatimURL,
+		nominatimReverseURL: nominatimReverseBaseURL,
+		now:                 time.Now,
+		osloTZ:              oslo,
+		cache:               make(map[string]*cachedResponse),
+		sunCache:            make(map[string]cachedSun),
+	}
+}
+
+// newTestReverseService creates a weather service pointing at a test Nominatim
+// reverse-geocoding server. Optionally accepts a client timeout so tests can
+// exercise the upstream-timeout path.
+func newTestReverseService(reverseURL string, timeout time.Duration) *Service {
+	oslo, _ := time.LoadLocation("Europe/Oslo")
+	if oslo == nil {
+		oslo = time.UTC
+	}
+	if timeout == 0 {
+		timeout = 5 * time.Second
+	}
+	return &Service{
+		client:              &http.Client{Timeout: timeout},
+		baseURL:             metBaseURL,
+		nominatimURL:        nominatimBaseURL,
+		nominatimReverseURL: reverseURL,
+		now:                 time.Now,
+		osloTZ:              oslo,
+		cache:               make(map[string]*cachedResponse),
+		sunCache:            make(map[string]cachedSun),
 	}
 }
 
@@ -294,7 +321,10 @@ func sunResponse(sun SunData) SunResponse {
 	return resp
 }
 
-const nominatimBaseURL = "https://nominatim.openstreetmap.org/search"
+const (
+	nominatimBaseURL        = "https://nominatim.openstreetmap.org/search"
+	nominatimReverseBaseURL = "https://nominatim.openstreetmap.org/reverse"
+)
 
 // nominatimResult matches the JSON returned by Nominatim's search endpoint.
 type nominatimResult struct {
@@ -401,60 +431,173 @@ func (s *Service) SearchHandler() http.HandlerFunc {
 
 		results := make([]SearchResult, 0, len(raw))
 		for _, item := range raw {
-			// Use the most specific available place name as the primary label.
-			name := item.Address.Hamlet
-			if name == "" {
-				name = item.Address.Suburb
-			}
-			if name == "" {
-				name = item.Address.Neighbourhood
-			}
-			if name == "" {
-				name = item.Address.Quarter
-			}
-			if name == "" {
-				name = item.Address.Village
-			}
-			if name == "" {
-				name = item.Address.Town
-			}
-			if name == "" {
-				name = item.Address.City
-			}
-			if name == "" {
-				name = item.Address.County
-			}
-			if name == "" {
-				name = item.DisplayName
-			}
-
-			// Build context from municipality + county, omitting duplicates of the primary name.
-			municipality := item.Address.Municipality
-			if municipality == "" {
-				municipality = item.Address.City
-			}
-			if municipality == "" {
-				municipality = item.Address.Town
-			}
-			county := item.Address.County
-			var contextParts []string
-			if municipality != "" && municipality != name {
-				contextParts = append(contextParts, municipality)
-			}
-			if county != "" && county != municipality && county != name {
-				contextParts = append(contextParts, county)
-			}
-
-			results = append(results, SearchResult{
-				Name:    name,
-				Context: strings.Join(contextParts, ", "),
-				Country: item.Address.Country,
-				Lat:     item.Lat,
-				Lon:     item.Lon,
-			})
+			results = append(results, toSearchResult(item))
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{"results": results})
+	}
+}
+
+// toSearchResult converts a raw Nominatim entry into the shape the frontend
+// consumes, picking the most specific available place name as the primary label
+// and building a "municipality, county" context around it.
+func toSearchResult(item nominatimResult) SearchResult {
+	// Use the most specific available place name as the primary label.
+	name := item.Address.Hamlet
+	if name == "" {
+		name = item.Address.Suburb
+	}
+	if name == "" {
+		name = item.Address.Neighbourhood
+	}
+	if name == "" {
+		name = item.Address.Quarter
+	}
+	if name == "" {
+		name = item.Address.Village
+	}
+	if name == "" {
+		name = item.Address.Town
+	}
+	if name == "" {
+		name = item.Address.City
+	}
+	if name == "" {
+		name = item.Address.County
+	}
+	if name == "" {
+		name = item.DisplayName
+	}
+
+	// Build context from municipality + county, omitting duplicates of the primary name.
+	municipality := item.Address.Municipality
+	if municipality == "" {
+		municipality = item.Address.City
+	}
+	if municipality == "" {
+		municipality = item.Address.Town
+	}
+	county := item.Address.County
+	var contextParts []string
+	if municipality != "" && municipality != name {
+		contextParts = append(contextParts, municipality)
+	}
+	if county != "" && county != municipality && county != name {
+		contextParts = append(contextParts, county)
+	}
+
+	return SearchResult{
+		Name:    name,
+		Context: strings.Join(contextParts, ", "),
+		Country: item.Address.Country,
+		Lat:     item.Lat,
+		Lon:     item.Lon,
+	}
+}
+
+// ReverseHandler resolves a lat/lon pair to a display name via Nominatim's
+// reverse-geocoding endpoint. It mirrors SearchHandler's timeout, User-Agent,
+// response size cap and JSON error shape.
+// Query params: lat and lon (both required).
+func (s *Service) ReverseHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		latStr := r.URL.Query().Get("lat")
+		lonStr := r.URL.Query().Get("lon")
+		if latStr == "" || lonStr == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "lat and lon are required",
+			})
+			return
+		}
+		lat, err := strconv.ParseFloat(latStr, 64)
+		if err != nil || lat < -90 || lat > 90 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "invalid latitude",
+			})
+			return
+		}
+		lon, err := strconv.ParseFloat(lonStr, 64)
+		if err != nil || lon < -180 || lon > 180 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "invalid longitude",
+			})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		reverseURL := fmt.Sprintf(
+			"%s?lat=%s&lon=%s&format=json&addressdetails=1&zoom=14",
+			s.nominatimReverseURL,
+			url.QueryEscape(strconv.FormatFloat(lat, 'f', -1, 64)),
+			url.QueryEscape(strconv.FormatFloat(lon, 'f', -1, 64)),
+		)
+		req, err := http.NewRequestWithContext(ctx, "GET", reverseURL, nil)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{
+				"error": "failed to build reverse geocode request",
+			})
+			return
+		}
+		req.Header.Set("User-Agent", metUserAgent)
+
+		resp, err := s.client.Do(req)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{
+				"error": "reverse geocoding failed",
+			})
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			writeJSON(w, http.StatusBadGateway, map[string]string{
+				"error": fmt.Sprintf("Nominatim returned status %d", resp.StatusCode),
+			})
+			return
+		}
+
+		limitedReader := &io.LimitedReader{
+			R: resp.Body,
+			N: maxNominatimSize + 1,
+		}
+		body, err := io.ReadAll(limitedReader)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{
+				"error": "failed to read reverse geocode result",
+			})
+			return
+		}
+		if int64(len(body)) > maxNominatimSize {
+			writeJSON(w, http.StatusBadGateway, map[string]string{
+				"error": "reverse geocode response too large",
+			})
+			return
+		}
+
+		var raw nominatimResult
+		if err := json.Unmarshal(body, &raw); err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]string{
+				"error": "failed to parse reverse geocode result",
+			})
+			return
+		}
+
+		result := toSearchResult(raw)
+		if result.Name == "" {
+			writeJSON(w, http.StatusBadGateway, map[string]string{
+				"error": "no place found for those coordinates",
+			})
+			return
+		}
+		// Nominatim's reverse response echoes the matched feature's coordinates,
+		// which can differ from the device position. Keep the requested ones so
+		// the forecast is fetched for exactly where the user is.
+		result.Lat = strconv.FormatFloat(lat, 'f', -1, 64)
+		result.Lon = strconv.FormatFloat(lon, 'f', -1, 64)
+
+		writeJSON(w, http.StatusOK, map[string]any{"result": result})
 	}
 }
 

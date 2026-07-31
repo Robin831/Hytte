@@ -547,3 +547,220 @@ func TestForecastHandler_ErrorMessageDoesNotLeakInput(t *testing.T) {
 		t.Errorf("error message should be generic, got: %s", body["error"])
 	}
 }
+
+func TestReverseHandler_Success(t *testing.T) {
+	nominatimResp := `{
+		"display_name": "Geilo, Hol, Buskerud, Norge",
+		"lat": "60.5340",
+		"lon": "8.2024",
+		"address": {
+			"town": "Geilo",
+			"municipality": "Hol",
+			"county": "Buskerud",
+			"country": "Norge"
+		}
+	}`
+
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("lat") != "60.1" || r.URL.Query().Get("lon") != "9.2" {
+			t.Errorf("expected lat/lon to be forwarded, got lat=%q lon=%q",
+				r.URL.Query().Get("lat"), r.URL.Query().Get("lon"))
+		}
+		if r.Header.Get("User-Agent") == "" {
+			t.Error("expected User-Agent header")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(nominatimResp))
+	}))
+	defer mock.Close()
+
+	svc := newTestReverseService(mock.URL, 0)
+	handler := svc.ReverseHandler()
+
+	req := httptest.NewRequest("GET", "/api/weather/reverse?lat=60.1&lon=9.2", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Result SearchResult `json:"result"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Result.Name != "Geilo" {
+		t.Errorf("expected name=Geilo, got %q", body.Result.Name)
+	}
+	if body.Result.Context != "Hol, Buskerud" {
+		t.Errorf("expected context=Hol, Buskerud, got %q", body.Result.Context)
+	}
+	if body.Result.Country != "Norge" {
+		t.Errorf("expected country=Norge, got %q", body.Result.Country)
+	}
+	// The requested coordinates are echoed back, not Nominatim's feature centre.
+	if body.Result.Lat != "60.1" || body.Result.Lon != "9.2" {
+		t.Errorf("expected requested coordinates, got lat=%q lon=%q", body.Result.Lat, body.Result.Lon)
+	}
+}
+
+func TestReverseHandler_FallsBackToDisplayName(t *testing.T) {
+	// No address fields Nominatim recognises as a place name — display_name wins.
+	nominatimResp := `{"display_name": "Somewhere remote", "lat": "70.0", "lon": "25.0", "address": {"country": "Norge"}}`
+
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(nominatimResp))
+	}))
+	defer mock.Close()
+
+	svc := newTestReverseService(mock.URL, 0)
+	rec := httptest.NewRecorder()
+	svc.ReverseHandler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/weather/reverse?lat=70&lon=25", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Result SearchResult `json:"result"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Result.Name != "Somewhere remote" {
+		t.Errorf("expected display_name fallback, got %q", body.Result.Name)
+	}
+}
+
+func TestReverseHandler_InvalidParams(t *testing.T) {
+	tests := []struct {
+		name  string
+		query string
+	}{
+		{"missing both", ""},
+		{"missing lon", "?lat=60"},
+		{"missing lat", "?lon=10"},
+		{"non-numeric lat", "?lat=abc&lon=10"},
+		{"non-numeric lon", "?lat=60&lon=abc"},
+		{"lat too high", "?lat=91&lon=10"},
+		{"lat too low", "?lat=-91&lon=10"},
+		{"lon too high", "?lat=60&lon=181"},
+		{"lon too low", "?lat=60&lon=-181"},
+	}
+
+	svc := newTestReverseService("http://unused", 0)
+	handler := svc.ReverseHandler()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest("GET", "/api/weather/reverse"+tt.query, nil))
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d", rec.Code)
+			}
+			var body map[string]string
+			if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if body["error"] == "" {
+				t.Error("expected an error message in the JSON body")
+			}
+		})
+	}
+}
+
+func TestReverseHandler_UpstreamError(t *testing.T) {
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer mock.Close()
+
+	svc := newTestReverseService(mock.URL, 0)
+	rec := httptest.NewRecorder()
+	svc.ReverseHandler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/weather/reverse?lat=60&lon=10", nil))
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 on upstream error, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["error"] == "" {
+		t.Error("expected an error message in the JSON body")
+	}
+}
+
+func TestReverseHandler_UpstreamTimeout(t *testing.T) {
+	release := make(chan struct{})
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	}))
+	defer func() {
+		close(release)
+		mock.Close()
+	}()
+
+	svc := newTestReverseService(mock.URL, 50*time.Millisecond)
+	rec := httptest.NewRecorder()
+	svc.ReverseHandler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/weather/reverse?lat=60&lon=10", nil))
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 on upstream timeout, got %d", rec.Code)
+	}
+}
+
+func TestReverseHandler_InvalidJSON(t *testing.T) {
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("not json"))
+	}))
+	defer mock.Close()
+
+	svc := newTestReverseService(mock.URL, 0)
+	rec := httptest.NewRecorder()
+	svc.ReverseHandler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/weather/reverse?lat=60&lon=10", nil))
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 on invalid JSON, got %d", rec.Code)
+	}
+}
+
+func TestReverseHandler_OversizedResponse(t *testing.T) {
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		padding := strings.Repeat("x", maxNominatimSize+1024)
+		fmt.Fprintf(w, `{"display_name": %q, "address": {"country": "Norge"}}`, padding)
+	}))
+	defer mock.Close()
+
+	svc := newTestReverseService(mock.URL, 0)
+	rec := httptest.NewRecorder()
+	svc.ReverseHandler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/weather/reverse?lat=60&lon=10", nil))
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 on oversized response, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["error"] != "reverse geocode response too large" {
+		t.Errorf("expected size-cap error, got %q", body["error"])
+	}
+}
+
+func TestReverseHandler_NoPlaceFound(t *testing.T) {
+	// Nominatim returns an "error" object for ocean coordinates with no feature.
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"error": "Unable to geocode"}`))
+	}))
+	defer mock.Close()
+
+	svc := newTestReverseService(mock.URL, 0)
+	rec := httptest.NewRecorder()
+	svc.ReverseHandler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/weather/reverse?lat=0&lon=0", nil))
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 when no place matches, got %d", rec.Code)
+	}
+}

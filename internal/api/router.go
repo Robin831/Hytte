@@ -152,6 +152,7 @@ func NewRouter(db *sql.DB) http.Handler {
 		r.Get("/weather/forecast", weatherSvc.ForecastHandler())
 		r.Get("/weather/locations", weather.LocationsHandler())
 		r.Get("/weather/search", weatherSvc.SearchHandler())
+		r.Get("/weather/reverse", weatherSvc.ReverseHandler())
 		r.Get("/weather/sun", weatherSvc.SunHandler())
 
 		// Push notifications — public VAPID key endpoint.

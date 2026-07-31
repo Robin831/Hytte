@@ -153,6 +153,7 @@ All prefixed with `/api/`.
 | GET | /auth/me | Optional | Current user or null |
 | GET | /weather/forecast | Public | Weather via yr.no |
 | GET | /weather/locations | Public | Available Norwegian cities |
+| GET | /weather/reverse | Public | Reverse-geocode lat/lon to a place name (Nominatim proxy) |
 | GET | /settings/preferences | Required | Get user prefs |
 | PUT | /settings/preferences | Required | Set a preference |
 | GET | /settings/sessions | Required | List active sessions (device label + last-active) |
