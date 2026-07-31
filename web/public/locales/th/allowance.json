@@ -33,6 +33,21 @@
     "close": "ปิด",
     "refresh": "รีเฟรช"
   },
+  "bulk": {
+    "select": "เลือก",
+    "cancelSelection": "ยกเลิก",
+    "selectAll": "เลือกทั้งหมด",
+    "selectItem": "เลือก {{name}}",
+    "selectedCount": "เลือกแล้ว {{selected}} รายการ",
+    "approveSelected": "อนุมัติรายการที่เลือก",
+    "rejectSelected": "ปฏิเสธรายการที่เลือก",
+    "toast": {
+      "approved": "อนุมัติแล้ว {{succeeded}} รายการ",
+      "rejected": "ปฏิเสธแล้ว {{succeeded}} รายการ",
+      "approvedPartial": "อนุมัติแล้ว {{succeeded}} รายการ, ล้มเหลว {{failed}} รายการ",
+      "rejectedPartial": "ปฏิเสธแล้ว {{succeeded}} รายการ, ล้มเหลว {{failed}} รายการ"
+    }
+  },
   "form": {
     "newChore": "งานใหม่",
     "editChore": "แก้ไขงาน",

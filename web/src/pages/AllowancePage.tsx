@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Camera, CheckCircle, XCircle, Plus, Pencil, Trash2, Star, X, ClipboardCheck, RefreshCw } from 'lucide-react'
+import { Camera, CheckCircle, XCircle, Plus, Pencil, Trash2, Star, X, ClipboardCheck, RefreshCw, ListChecks } from 'lucide-react'
 import { formatDate, formatNumber } from '../utils/formatDate'
 import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
@@ -23,6 +23,19 @@ function fetchPendingDeduped(): Promise<{ pending: CompletionWithDetails[] }> {
       .finally(() => { pendingInFlight = null })
   }
   return pendingInFlight
+}
+
+/** Per-ID outcome returned by the batch approve/reject endpoints. */
+interface BatchCompletionResult {
+  id: number
+  status: 'approved' | 'rejected' | 'skipped' | 'error'
+  error?: string
+}
+
+interface BatchCompletionResponse {
+  succeeded: number
+  failed: number
+  results: BatchCompletionResult[]
 }
 
 interface CompletionWithDetails {
@@ -161,6 +174,12 @@ export default function AllowancePage() {
   const enlargedCloseRef = useRef<HTMLButtonElement>(null)
   const enlargedTriggerRef = useRef<HTMLElement | null>(null)
 
+  // Bulk approve/reject selection state (Today tab only)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set())
+  const [batchRunning, setBatchRunning] = useState(false)
+  const selectAllRef = useRef<HTMLInputElement>(null)
+
   // Chores tab state
   const [chores, setChores] = useState<Chore[]>([])
   const [showChoreForm, setShowChoreForm] = useState(false)
@@ -236,7 +255,11 @@ export default function AllowancePage() {
   const pendingFetch = useTabFetch<{ pending: CompletionWithDetails[] }>(
     true,
     () => fetchPendingDeduped(),
-    data => setPending(data.pending ?? []),
+    data => {
+      setPending(data.pending ?? [])
+      // A refreshed list can no longer be matched against the old selection.
+      setSelectedIds(new Set())
+    },
     loadFailed,
   )
 
@@ -350,6 +373,99 @@ export default function AllowancePage() {
       payoutsFetch.invalidate()
     } catch {
       setActionError(t('errors.actionFailed'))
+    }
+  }
+
+  // Only IDs still listed count as selected — a refetch may have removed rows.
+  const selectedPendingIds = pending.filter(c => selectedIds.has(c.id)).map(c => c.id)
+  const allPendingSelected = pending.length > 0 && selectedPendingIds.length === pending.length
+  const somePendingSelected = selectedPendingIds.length > 0 && !allPendingSelected
+
+  // Selection mode is meaningless once the queue is empty, so derive it from
+  // the list rather than resetting the flag in an effect.
+  const inSelectionMode = selectionMode && pending.length > 0
+
+  // Native checkboxes expose "indeterminate" only via the DOM property.
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = somePendingSelected
+    }
+  }, [somePendingSelected, inSelectionMode])
+
+  const toggleSelectionMode = () => {
+    setSelectionMode(prev => !prev)
+    setSelectedIds(new Set())
+  }
+
+  const toggleSelected = (id: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allPendingSelected ? new Set() : new Set(pending.map(c => c.id)))
+  }
+
+  const handleBatchAction = async (action: 'approve' | 'reject') => {
+    const ids = selectedPendingIds
+    if (ids.length === 0 || batchRunning) return
+
+    setBatchRunning(true)
+    setActionError('')
+    try {
+      const res = await fetch(`/api/allowance/${action}/batch`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        // Rejection sends the same empty reason as the single-item path.
+        body: JSON.stringify(action === 'reject' ? { ids, reason: '' } : { ids }),
+      })
+      if (!res.ok) throw new Error()
+      const data: BatchCompletionResponse = await res.json()
+
+      const resolvedIds = new Set(
+        (data.results ?? [])
+          .filter(r => r.status === 'approved' || r.status === 'rejected')
+          .map(r => r.id),
+      )
+      setPending(prev => prev.filter(c => !resolvedIds.has(c.id)))
+      // Failed rows stay selected so the parent can retry them.
+      setSelectedIds(prev => {
+        const next = new Set(prev)
+        resolvedIds.forEach(id => next.delete(id))
+        return next
+      })
+      payoutsFetch.invalidate()
+
+      const succeeded = data.succeeded ?? resolvedIds.size
+      const failed = data.failed ?? 0
+      if (failed > 0) {
+        showToast(
+          action === 'approve'
+            ? t('bulk.toast.approvedPartial', { succeeded, failed })
+            : t('bulk.toast.rejectedPartial', { succeeded, failed }),
+          'warning',
+        )
+      } else {
+        showToast(
+          action === 'approve'
+            ? t('bulk.toast.approved', { succeeded })
+            : t('bulk.toast.rejected', { succeeded }),
+          'success',
+        )
+        setSelectionMode(false)
+      }
+    } catch {
+      setActionError(t('errors.actionFailed'))
+    } finally {
+      setBatchRunning(false)
     }
   }
 
@@ -583,6 +699,8 @@ export default function AllowancePage() {
   const handleTabSwitch = (newTab: Tab) => {
     if (newTab === tab) return
     setShowEmojiPicker(false)
+    setSelectionMode(false)
+    setSelectedIds(new Set())
     setTab(newTab)
   }
 
@@ -638,11 +756,61 @@ export default function AllowancePage() {
 
       {/* Today — pending approvals */}
       <TabPanel value="today">
-          <div className="flex justify-end mb-3">
+          <div className="flex items-center justify-end gap-2 mb-3">
+            {pending.length > 0 && !pendingFetch.loading && (
+              <button
+                type="button"
+                onClick={toggleSelectionMode}
+                aria-pressed={inSelectionMode}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-gray-300 hover:text-white hover:bg-gray-700 transition-colors cursor-pointer"
+              >
+                <ListChecks size={16} />
+                {inSelectionMode ? t('bulk.cancelSelection') : t('bulk.select')}
+              </button>
+            )}
             {renderRefresh(() => pendingFetch.reload(), pendingFetch.loading)}
           </div>
           {actionError && (
             <p className="text-red-400 text-sm mb-3">{actionError}</p>
+          )}
+          {inSelectionMode && (
+            <div className="bg-gray-800 rounded-xl p-3 mb-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    checked={allPendingSelected}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 accent-green-500 cursor-pointer"
+                  />
+                  {t('bulk.selectAll')}
+                </label>
+                <span className="ml-auto text-xs text-gray-400">
+                  {t('bulk.selectedCount', { selected: selectedPendingIds.length })}
+                </span>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleBatchAction('approve')}
+                  disabled={selectedPendingIds.length === 0 || batchRunning}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-500 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <CheckCircle size={16} />
+                  {t('bulk.approveSelected')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleBatchAction('reject')}
+                  disabled={selectedPendingIds.length === 0 || batchRunning}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-500 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <XCircle size={16} />
+                  {t('bulk.rejectSelected')}
+                </button>
+              </div>
+            </div>
           )}
           {pendingFetch.loading ? (
             <div role="status" aria-live="polite">
@@ -660,7 +828,16 @@ export default function AllowancePage() {
             <div className="space-y-3">
               {pending.map(comp => (
                 <div key={comp.id} className="bg-gray-800 rounded-xl p-4 space-y-2">
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    {inSelectionMode && (
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(comp.id)}
+                        onChange={() => toggleSelected(comp.id)}
+                        aria-label={t('bulk.selectItem', { name: comp.chore_name })}
+                        className="w-5 h-5 shrink-0 accent-green-500 cursor-pointer"
+                      />
+                    )}
                     <div className="text-3xl select-none">{comp.child_avatar || '⭐'}</div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-gray-400 uppercase tracking-wide">
@@ -710,22 +887,27 @@ export default function AllowancePage() {
                           <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-blue-400 rounded-full" />
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => handleReject(comp.id)}
-                        className="p-1.5 rounded-full text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
-                        aria-label={t('actions.reject')}
-                      >
-                        <XCircle size={32} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleApprove(comp.id)}
-                        className="p-1.5 rounded-full text-green-400 hover:bg-green-500/20 transition-colors cursor-pointer"
-                        aria-label={t('actions.approve')}
-                      >
-                        <CheckCircle size={32} />
-                      </button>
+                      {/* Per-item actions make room for the checkbox in selection mode. */}
+                      {!inSelectionMode && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleReject(comp.id)}
+                            className="p-1.5 rounded-full text-red-400 hover:bg-red-500/20 transition-colors cursor-pointer"
+                            aria-label={t('actions.reject')}
+                          >
+                            <XCircle size={32} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleApprove(comp.id)}
+                            className="p-1.5 rounded-full text-green-400 hover:bg-green-500/20 transition-colors cursor-pointer"
+                            aria-label={t('actions.approve')}
+                          >
+                            <CheckCircle size={32} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                   {/* Photo thumbnail */}

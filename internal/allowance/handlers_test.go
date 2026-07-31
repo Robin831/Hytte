@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -2553,3 +2554,349 @@ func TestRecordCompletionHandler_ChoreOwnedByDifferentParent(t *testing.T) {
 	}
 }
 
+
+// ---- Batch approve / reject handler tests ----
+
+// captureApprovalNotifications swaps the package-level approval notifier for a
+// recorder and restores it when the test ends. The stub is invoked
+// synchronously by the handler, so no extra synchronisation is needed.
+func captureApprovalNotifications(t *testing.T) *[]int64 {
+	t.Helper()
+	notified := []int64{}
+	original := notifyApproval
+	notifyApproval = func(_ *sql.DB, _ int64, comp *Completion) {
+		notified = append(notified, comp.ID)
+	}
+	t.Cleanup(func() { notifyApproval = original })
+	return &notified
+}
+
+// seedPendingCompletions creates n pending completions for child 2 on distinct
+// dates under a single chore owned by parent 1.
+func seedPendingCompletions(t *testing.T, db *sql.DB, n int) []int64 {
+	t.Helper()
+	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true, "solo", 2, 10.0)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	ids := make([]int64, 0, n)
+	for i := 0; i < n; i++ {
+		comp, err := CreateCompletion(db, chore.ID, 2, fmt.Sprintf("2026-03-%02d", i+1), "")
+		if err != nil {
+			t.Fatalf("CreateCompletion %d: %v", i, err)
+		}
+		ids = append(ids, comp.ID)
+	}
+	return ids
+}
+
+func completionStatus(t *testing.T, db *sql.DB, id int64) string {
+	t.Helper()
+	var status string
+	if err := db.QueryRow(`SELECT status FROM allowance_completions WHERE id = ?`, id).Scan(&status); err != nil {
+		t.Fatalf("read status for completion %d: %v", id, err)
+	}
+	return status
+}
+
+func statusByID(results []batchCompletionResult) map[int64]string {
+	byID := make(map[int64]string, len(results))
+	for _, res := range results {
+		byID[res.ID] = res.Status
+	}
+	return byID
+}
+
+func TestBatchApproveCompletionsHandlerRequiresParent(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	handler := BatchApproveCompletionsHandler(db)
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/approve/batch", map[string]any{"ids": []int64{1}}), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestBatchRejectCompletionsHandlerRequiresParent(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	handler := BatchRejectCompletionsHandler(db)
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/reject/batch", map[string]any{"ids": []int64{1}}), testChild)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestBatchCompletionHandlersRejectInvalidPayloads(t *testing.T) {
+	oversized := make([]string, maxBatchCompletionIDs+1)
+	for i := range oversized {
+		oversized[i] = strconv.Itoa(i + 1)
+	}
+
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"malformed json", `{"ids": [1,`},
+		{"missing ids", `{}`},
+		{"empty ids", `{"ids": []}`},
+		{"non-numeric ids", `{"ids": ["abc"]}`},
+		{"zero id", `{"ids": [0]}`},
+		{"negative id", `{"ids": [-3]}`},
+		{"oversized ids", `{"ids": [` + strings.Join(oversized, ",") + `]}`},
+	}
+
+	handlers := map[string]func(*sql.DB) http.HandlerFunc{
+		"approve": BatchApproveCompletionsHandler,
+		"reject":  BatchRejectCompletionsHandler,
+	}
+
+	for action, newHandler := range handlers {
+		for _, tc := range cases {
+			t.Run(action+"/"+tc.name, func(t *testing.T) {
+				db := setupTestDB(t)
+				linkParentChild(t, db)
+
+				r := httptest.NewRequest(http.MethodPost, "/api/allowance/"+action+"/batch", strings.NewReader(tc.body))
+				r.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				newHandler(db).ServeHTTP(w, withUser(r, testParent))
+
+				if w.Code != http.StatusBadRequest {
+					t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+				}
+			})
+		}
+	}
+}
+
+func TestBatchApproveCompletionsHandler(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	notified := captureApprovalNotifications(t)
+
+	ids := seedPendingCompletions(t, db, 3)
+
+	handler := BatchApproveCompletionsHandler(db)
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/approve/batch", map[string]any{"ids": ids}), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp batchCompletionResponse
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Succeeded != 3 || resp.Failed != 0 {
+		t.Fatalf("expected 3 succeeded / 0 failed, got %d/%d", resp.Succeeded, resp.Failed)
+	}
+	if len(resp.Results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(resp.Results))
+	}
+	for _, res := range resp.Results {
+		if res.Status != "approved" {
+			t.Errorf("completion %d: expected status approved, got %q", res.ID, res.Status)
+		}
+	}
+	for _, id := range ids {
+		if got := completionStatus(t, db, id); got != "approved" {
+			t.Errorf("completion %d: expected DB status approved, got %q", id, got)
+		}
+	}
+	if len(*notified) != 3 {
+		t.Errorf("expected 3 approval notifications, got %d", len(*notified))
+	}
+}
+
+func TestBatchApproveCompletionsHandlerDeduplicatesIDs(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	captureApprovalNotifications(t)
+
+	ids := seedPendingCompletions(t, db, 1)
+
+	handler := BatchApproveCompletionsHandler(db)
+	body := map[string]any{"ids": []int64{ids[0], ids[0], ids[0]}}
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/approve/batch", body), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp batchCompletionResponse
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Succeeded != 1 || resp.Failed != 0 || len(resp.Results) != 1 {
+		t.Fatalf("expected a single deduplicated result, got %d/%d with %d results",
+			resp.Succeeded, resp.Failed, len(resp.Results))
+	}
+}
+
+func TestBatchApproveCompletionsHandlerPartialFailure(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	notified := captureApprovalNotifications(t)
+
+	ids := seedPendingCompletions(t, db, 2)
+	pendingID, alreadyApprovedID := ids[0], ids[1]
+	if _, err := ApproveCompletion(db, alreadyApprovedID, 1); err != nil {
+		t.Fatalf("ApproveCompletion: %v", err)
+	}
+	const unknownID int64 = 9999
+
+	handler := BatchApproveCompletionsHandler(db)
+	body := map[string]any{"ids": []int64{pendingID, unknownID, alreadyApprovedID}}
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/approve/batch", body), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp batchCompletionResponse
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Succeeded != 1 || resp.Failed != 2 {
+		t.Fatalf("expected 1 succeeded / 2 failed, got %d/%d", resp.Succeeded, resp.Failed)
+	}
+	byID := statusByID(resp.Results)
+	if byID[pendingID] != "approved" {
+		t.Errorf("completion %d: expected approved, got %q", pendingID, byID[pendingID])
+	}
+	if byID[unknownID] != "skipped" {
+		t.Errorf("unknown completion: expected skipped, got %q", byID[unknownID])
+	}
+	if byID[alreadyApprovedID] != "skipped" {
+		t.Errorf("already-approved completion: expected skipped, got %q", byID[alreadyApprovedID])
+	}
+	if got := completionStatus(t, db, pendingID); got != "approved" {
+		t.Errorf("completion %d: expected DB status approved, got %q", pendingID, got)
+	}
+	if len(*notified) != 1 {
+		t.Errorf("expected 1 approval notification, got %d", len(*notified))
+	}
+}
+
+func TestBatchApproveCompletionsHandlerSkipsOtherParentsCompletions(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	captureApprovalNotifications(t)
+
+	// Chore owned by parent 10, so parent 1 must not be able to approve it.
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (10, 'other@test.com', 'Other', 'g10'), (11, 'kid@test.com', 'Kid', 'g11')`); err != nil {
+		t.Fatalf("seed other family: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, created_at) VALUES (10, 11, '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("link other family: %v", err)
+	}
+	otherChore, err := CreateChore(db, 10, nil, "Other chore", "", 15, "daily", "🧹", true, "solo", 2, 10.0)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	otherComp, err := CreateCompletion(db, otherChore.ID, 11, "2026-04-01", "")
+	if err != nil {
+		t.Fatalf("CreateCompletion: %v", err)
+	}
+
+	handler := BatchApproveCompletionsHandler(db)
+	body := map[string]any{"ids": []int64{otherComp.ID}}
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/approve/batch", body), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp batchCompletionResponse
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Succeeded != 0 || resp.Failed != 1 {
+		t.Fatalf("expected 0 succeeded / 1 failed, got %d/%d", resp.Succeeded, resp.Failed)
+	}
+	if got := completionStatus(t, db, otherComp.ID); got != "pending" {
+		t.Errorf("expected other family's completion to stay pending, got %q", got)
+	}
+}
+
+func TestBatchRejectCompletionsHandler(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	ids := seedPendingCompletions(t, db, 2)
+
+	handler := BatchRejectCompletionsHandler(db)
+	// The UI sends an empty reason, matching the single-item reject payload.
+	body := map[string]any{"ids": ids, "reason": ""}
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/reject/batch", body), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp batchCompletionResponse
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Succeeded != 2 || resp.Failed != 0 {
+		t.Fatalf("expected 2 succeeded / 0 failed, got %d/%d", resp.Succeeded, resp.Failed)
+	}
+	for _, res := range resp.Results {
+		if res.Status != "rejected" {
+			t.Errorf("completion %d: expected status rejected, got %q", res.ID, res.Status)
+		}
+	}
+	for _, id := range ids {
+		if got := completionStatus(t, db, id); got != "rejected" {
+			t.Errorf("completion %d: expected DB status rejected, got %q", id, got)
+		}
+		var notes string
+		if err := db.QueryRow(`SELECT notes FROM allowance_completions WHERE id = ?`, id).Scan(&notes); err != nil {
+			t.Fatalf("read notes for completion %d: %v", id, err)
+		}
+		if notes != "" {
+			t.Errorf("completion %d: expected notes to stay empty with an empty reason, got %q", id, notes)
+		}
+	}
+}
+
+func TestBatchRejectCompletionsHandlerPartialFailure(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	ids := seedPendingCompletions(t, db, 2)
+	pendingID, rejectedID := ids[0], ids[1]
+	if _, err := RejectCompletion(db, rejectedID, 1, ""); err != nil {
+		t.Fatalf("RejectCompletion: %v", err)
+	}
+	const unknownID int64 = 4242
+
+	handler := BatchRejectCompletionsHandler(db)
+	body := map[string]any{"ids": []int64{pendingID, rejectedID, unknownID}, "reason": ""}
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/reject/batch", body), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp batchCompletionResponse
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Succeeded != 1 || resp.Failed != 2 {
+		t.Fatalf("expected 1 succeeded / 2 failed, got %d/%d", resp.Succeeded, resp.Failed)
+	}
+	byID := statusByID(resp.Results)
+	if byID[pendingID] != "rejected" {
+		t.Errorf("completion %d: expected rejected, got %q", pendingID, byID[pendingID])
+	}
+	if byID[rejectedID] != "skipped" || byID[unknownID] != "skipped" {
+		t.Errorf("expected skipped for already-rejected and unknown IDs, got %q and %q", byID[rejectedID], byID[unknownID])
+	}
+}

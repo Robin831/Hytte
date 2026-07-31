@@ -33,6 +33,21 @@
     "close": "Close",
     "refresh": "Refresh"
   },
+  "bulk": {
+    "select": "Select",
+    "cancelSelection": "Cancel",
+    "selectAll": "Select all",
+    "selectItem": "Select {{name}}",
+    "selectedCount": "{{selected}} selected",
+    "approveSelected": "Approve selected",
+    "rejectSelected": "Reject selected",
+    "toast": {
+      "approved": "{{succeeded}} approved",
+      "rejected": "{{succeeded}} rejected",
+      "approvedPartial": "{{succeeded}} approved, {{failed}} failed",
+      "rejectedPartial": "{{succeeded}} rejected, {{failed}} failed"
+    }
+  },
   "form": {
     "newChore": "New Chore",
     "editChore": "Edit Chore",

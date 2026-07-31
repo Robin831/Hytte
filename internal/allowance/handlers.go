@@ -405,32 +405,42 @@ func ApproveCompletionHandler(db *sql.DB) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, comp)
 
-		// Notify the child asynchronously.
-		go func(childID, completionID int64) {
-			// Respect the child's quiet hours before sending.
-			if quiethours.IsActive(db, childID) {
-				return
-			}
-			body := "A chore was approved — check your earnings!"
-			// Try to enrich the message with the chore name.
-			if chore, err := GetChoreByID(db, comp.ChoreID, user.ID); err == nil {
-				body = fmt.Sprintf("'%s' approved — check your earnings!", chore.Name)
-			}
-			payload, err := json.Marshal(push.Notification{
-				Title: "Chore approved!",
-				Body:  body,
-				URL:   "/chores",
-				Tag:   fmt.Sprintf("allowance-approval-%d", completionID),
-			})
-			if err != nil {
-				log.Printf("allowance: marshal approval push payload child %d completion %d: %v", childID, completionID, err)
-				return
-			}
-			if _, err := push.SendToUser(db, push.DefaultHTTPClient, childID, payload); err != nil {
-				log.Printf("allowance: approval push child %d: %v", childID, err)
-			}
-		}(comp.ChildID, comp.ID)
+		notifyApproval(db, user.ID, comp)
 	}
+}
+
+// notifyApproval pushes an approval notification to the child in the
+// background. It is a package-level variable so tests can observe calls
+// without a live push stack.
+var notifyApproval = sendApprovalNotification
+
+// sendApprovalNotification tells the child asynchronously that one of their
+// completions was approved, respecting the child's quiet hours.
+func sendApprovalNotification(db *sql.DB, parentID int64, comp *Completion) {
+	go func(childID, completionID, choreID int64) {
+		// Respect the child's quiet hours before sending.
+		if quiethours.IsActive(db, childID) {
+			return
+		}
+		body := "A chore was approved — check your earnings!"
+		// Try to enrich the message with the chore name.
+		if chore, err := GetChoreByID(db, choreID, parentID); err == nil {
+			body = fmt.Sprintf("'%s' approved — check your earnings!", chore.Name)
+		}
+		payload, err := json.Marshal(push.Notification{
+			Title: "Chore approved!",
+			Body:  body,
+			URL:   "/chores",
+			Tag:   fmt.Sprintf("allowance-approval-%d", completionID),
+		})
+		if err != nil {
+			log.Printf("allowance: marshal approval push payload child %d completion %d: %v", childID, completionID, err)
+			return
+		}
+		if _, err := push.SendToUser(db, push.DefaultHTTPClient, childID, payload); err != nil {
+			log.Printf("allowance: approval push child %d: %v", childID, err)
+		}
+	}(comp.ChildID, comp.ID, comp.ChoreID)
 }
 
 // RejectCompletionHandler rejects a pending completion with an optional reason.
@@ -470,6 +480,155 @@ func RejectCompletionHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, comp)
+	}
+}
+
+// maxBatchCompletionIDs caps how many completion IDs a single batch
+// approve/reject request may carry.
+const maxBatchCompletionIDs = 100
+
+type batchCompletionRequest struct {
+	IDs []int64 `json:"ids"`
+	// Reason mirrors the single-item reject payload; ignored by the approve
+	// endpoint. The current UI always sends an empty string.
+	Reason string `json:"reason"`
+}
+
+// batchCompletionResult reports the outcome for a single completion ID.
+// Status is one of "approved", "rejected", "skipped" or "error".
+type batchCompletionResult struct {
+	ID     int64  `json:"id"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
+type batchCompletionResponse struct {
+	Succeeded int                     `json:"succeeded"`
+	Failed    int                     `json:"failed"`
+	Results   []batchCompletionResult `json:"results"`
+}
+
+// decodeBatchCompletionIDs parses and validates a batch request body. It writes
+// a 400 response and returns ok=false when the payload is unusable.
+func decodeBatchCompletionIDs(w http.ResponseWriter, r *http.Request) (batchCompletionRequest, bool) {
+	var req batchCompletionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errResponse("invalid request body"))
+		return req, false
+	}
+	if len(req.IDs) == 0 {
+		writeJSON(w, http.StatusBadRequest, errResponse("ids must contain at least one completion ID"))
+		return req, false
+	}
+	if len(req.IDs) > maxBatchCompletionIDs {
+		writeJSON(w, http.StatusBadRequest, errResponse(fmt.Sprintf("ids must contain at most %d completion IDs", maxBatchCompletionIDs)))
+		return req, false
+	}
+
+	// Drop duplicates while preserving the caller's order.
+	seen := make(map[int64]struct{}, len(req.IDs))
+	unique := make([]int64, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		if id <= 0 {
+			writeJSON(w, http.StatusBadRequest, errResponse("ids must contain positive completion IDs"))
+			return req, false
+		}
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	req.IDs = unique
+	return req, true
+}
+
+// batchCompletionFailure maps a per-completion error to a result entry. Missing
+// or already-resolved completions are skipped rather than failing the batch.
+func batchCompletionFailure(id, parentID int64, action string, err error) batchCompletionResult {
+	switch {
+	case errors.Is(err, ErrCompletionNotFound):
+		return batchCompletionResult{ID: id, Status: "skipped", Error: "completion not found"}
+	case errors.Is(err, ErrCompletionNotPending):
+		return batchCompletionResult{ID: id, Status: "skipped", Error: "completion is not pending"}
+	default:
+		log.Printf("allowance: batch %s completion %d parent %d: %v", action, id, parentID, err)
+		return batchCompletionResult{ID: id, Status: "error", Error: "failed to " + action + " completion"}
+	}
+}
+
+// BatchApproveCompletionsHandler approves several pending completions in one
+// request. Individual failures are reported per ID instead of aborting the
+// batch, so the response is always 200 once the payload validates.
+// POST /api/allowance/approve/batch
+func BatchApproveCompletionsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if !requireParent(db, w, user) {
+			return
+		}
+
+		req, ok := decodeBatchCompletionIDs(w, r)
+		if !ok {
+			return
+		}
+
+		results := make([]batchCompletionResult, 0, len(req.IDs))
+		approved := make([]*Completion, 0, len(req.IDs))
+		for _, id := range req.IDs {
+			comp, err := ApproveCompletion(db, id, user.ID)
+			if err != nil {
+				results = append(results, batchCompletionFailure(id, user.ID, "approve", err))
+				continue
+			}
+			results = append(results, batchCompletionResult{ID: id, Status: "approved"})
+			approved = append(approved, comp)
+		}
+
+		writeJSON(w, http.StatusOK, batchCompletionResponse{
+			Succeeded: len(approved),
+			Failed:    len(results) - len(approved),
+			Results:   results,
+		})
+
+		// Same per-completion notification as the single-approve path.
+		for _, comp := range approved {
+			notifyApproval(db, user.ID, comp)
+		}
+	}
+}
+
+// BatchRejectCompletionsHandler rejects several pending completions in one
+// request, using the same optional reason as the single-item path.
+// POST /api/allowance/reject/batch
+func BatchRejectCompletionsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if !requireParent(db, w, user) {
+			return
+		}
+
+		req, ok := decodeBatchCompletionIDs(w, r)
+		if !ok {
+			return
+		}
+
+		results := make([]batchCompletionResult, 0, len(req.IDs))
+		succeeded := 0
+		for _, id := range req.IDs {
+			if _, err := RejectCompletion(db, id, user.ID, req.Reason); err != nil {
+				results = append(results, batchCompletionFailure(id, user.ID, "reject", err))
+				continue
+			}
+			succeeded++
+			results = append(results, batchCompletionResult{ID: id, Status: "rejected"})
+		}
+
+		writeJSON(w, http.StatusOK, batchCompletionResponse{
+			Succeeded: succeeded,
+			Failed:    len(results) - succeeded,
+			Results:   results,
+		})
 	}
 }
 

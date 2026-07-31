@@ -667,6 +667,8 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Delete("/allowance/chores/{id}", allowance.DeactivateChoreHandler(db))
 				// Parent: approval flow.
 				r.Get("/allowance/pending", allowance.ListPendingHandler(db))
+				r.Post("/allowance/approve/batch", allowance.BatchApproveCompletionsHandler(db))
+				r.Post("/allowance/reject/batch", allowance.BatchRejectCompletionsHandler(db))
 				r.Post("/allowance/approve/{id}", allowance.ApproveCompletionHandler(db))
 				r.Post("/allowance/reject/{id}", allowance.RejectCompletionHandler(db))
 				r.Post("/allowance/quality-bonus/{id}", allowance.QualityBonusHandler(db))
