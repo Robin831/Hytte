@@ -22,7 +22,7 @@
   "filterRoutesPlaceholder": "Alle ruter",
   "walkMinutes": "Gangtid (min)",
   "walkMinutesHint": "Antall minutter du bruker på å gå til denne holdeplassen. Avgangene viser når du må gå.",
-  "walkBadge": "{{minutes}} min gange",
+  "walkBadge": "{{minutes}} min",
   "walkBadgeTitle": "{{minutes}} min gangtid er trukket fra",
   "leaveNow": "Gå nå",
   "missed": "Rukket ikke",

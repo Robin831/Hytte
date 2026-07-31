@@ -22,7 +22,7 @@
   "filterRoutesPlaceholder": "All routes",
   "walkMinutes": "Walking time (min)",
   "walkMinutesHint": "Minutes it takes you to walk to this stop. Departures show the time you need to leave.",
-  "walkBadge": "{{minutes}} min walk",
+  "walkBadge": "{{minutes}} min",
   "walkBadgeTitle": "{{minutes}} min walking time subtracted",
   "leaveNow": "Leave now",
   "missed": "Missed",

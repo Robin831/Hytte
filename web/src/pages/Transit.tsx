@@ -574,11 +574,15 @@ export default function Transit() {
                         {dep.destination}
                       </span>
 
-                      {/* Walking offset badge — only when the stop has one configured */}
+                      {/* Walking offset badge — only when the stop has one configured.
+                          Kept compact (icon + minutes) so it fits alongside the delay
+                          text and the time column at 375px; the full wording lives in
+                          the accessible label. */}
                       {walkMinutes > 0 && (
                         <span
                           className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-700 text-gray-300 text-xs whitespace-nowrap shrink-0"
                           title={t('transit:walkBadgeTitle', { minutes: walkMinutes })}
+                          aria-label={t('transit:walkBadgeTitle', { minutes: walkMinutes })}
                         >
                           <Footprints size={12} aria-hidden="true" />
                           {t('transit:walkBadge', { minutes: walkMinutes })}
@@ -587,9 +591,7 @@ export default function Transit() {
 
                       {/* Delay indicator */}
                       {dep.delay_minutes > 0 && (
-                        // With a walk badge in the row there is no space for the
-                        // delay text at 375px; it stays visible from `sm` up.
-                        <span className={`text-xs text-orange-400 shrink-0 ${walkMinutes > 0 ? 'hidden sm:inline' : ''}`}>
+                        <span className="text-xs text-orange-400 shrink-0">
                           {t('transit:delayed', { minutes: dep.delay_minutes })}
                         </span>
                       )}

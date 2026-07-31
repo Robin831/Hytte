@@ -22,7 +22,7 @@
   "filterRoutesPlaceholder": "ทุกสาย",
   "walkMinutes": "เวลาเดิน (นาที)",
   "walkMinutesHint": "จำนวนนาทีที่คุณใช้เดินไปยังป้ายหยุดนี้ เวลาออกเดินทางจะแสดงเวลาที่คุณต้องออกจากบ้าน",
-  "walkBadge": "เดิน {{minutes}} นาที",
+  "walkBadge": "{{minutes}} นาที",
   "walkBadgeTitle": "หักเวลาเดิน {{minutes}} นาทีแล้ว",
   "leaveNow": "ออกเดินทางเลย",
   "missed": "ไม่ทันแล้ว",

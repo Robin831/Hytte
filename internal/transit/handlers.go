@@ -35,11 +35,19 @@ func DeparturesHandler(db *sql.DB, svc *Service) http.HandlerFunc {
 
 		var stops []FavoriteStop
 		if stopsParam != "" {
-			// Caller provided explicit stop IDs; construct minimal FavoriteStop entries.
+			// Caller provided explicit stop IDs; construct minimal FavoriteStop
+			// entries. The walking offset is a property of the stop rather than of
+			// the request, so carry it over from the saved favorites when the ID
+			// matches one — otherwise a ?stops= request would silently render raw
+			// departure times for a stop the user has configured an offset for.
+			walkByStopID := make(map[string]int)
+			for _, fav := range loadFavoriteStops(db, user.ID) {
+				walkByStopID[fav.ID] = fav.WalkMinutes
+			}
 			for _, id := range strings.Split(stopsParam, ",") {
 				id = strings.TrimSpace(id)
 				if id != "" {
-					stops = append(stops, FavoriteStop{ID: id})
+					stops = append(stops, FavoriteStop{ID: id, WalkMinutes: walkByStopID[id]})
 				}
 			}
 		} else {

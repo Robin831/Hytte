@@ -809,7 +809,7 @@ func TestDeparturesHandler_EchoesWalkMinutes(t *testing.T) {
 	}
 }
 
-func TestDeparturesHandler_AdHocStopsHaveNoWalkOffset(t *testing.T) {
+func TestDeparturesHandler_AdHocStopsReuseSavedWalkOffset(t *testing.T) {
 	enturServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(fakeEnturResponse()))
@@ -818,7 +818,8 @@ func TestDeparturesHandler_AdHocStopsHaveNoWalkOffset(t *testing.T) {
 
 	db := setupTestDB(t)
 
-	// The same stop is saved with an offset, but an explicit ?stops= list bypasses favorites.
+	// The offset belongs to the stop, so an explicit ?stops= list must still pick
+	// it up for IDs the user has saved, and report 0 for IDs they have not.
 	stops := []FavoriteStop{
 		{ID: "NSR:StopPlace:42175", Name: "Bjørndalsbakken", Routes: []string{}, WalkMinutes: 7},
 	}
@@ -833,7 +834,7 @@ func TestDeparturesHandler_AdHocStopsHaveNoWalkOffset(t *testing.T) {
 	svc := newTestService(enturServer.URL, "http://unused")
 	handler := DeparturesHandler(db, svc)
 
-	req := httptest.NewRequest("GET", "/api/transit/departures?stops=NSR:StopPlace:42175", nil)
+	req := httptest.NewRequest("GET", "/api/transit/departures?stops=NSR:StopPlace:42175,NSR:StopPlace:99999", nil)
 	req = withTestUser(req, 1)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -848,11 +849,14 @@ func TestDeparturesHandler_AdHocStopsHaveNoWalkOffset(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(body.Stops) != 1 {
-		t.Fatalf("expected 1 stop, got %d", len(body.Stops))
+	if len(body.Stops) != 2 {
+		t.Fatalf("expected 2 stops, got %d", len(body.Stops))
 	}
-	if body.Stops[0].WalkMinutes != 0 {
-		t.Errorf("expected walk_minutes 0 for ad-hoc stop, got %d", body.Stops[0].WalkMinutes)
+	if body.Stops[0].WalkMinutes != 7 {
+		t.Errorf("expected walk_minutes 7 for saved stop requested ad hoc, got %d", body.Stops[0].WalkMinutes)
+	}
+	if body.Stops[1].WalkMinutes != 0 {
+		t.Errorf("expected walk_minutes 0 for unsaved ad-hoc stop, got %d", body.Stops[1].WalkMinutes)
 	}
 }
 

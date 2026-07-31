@@ -17,7 +17,7 @@ const TRANSLATIONS: Record<string, string> = {
   'transit:delayed': '+{{minutes}} min late',
   'transit:walkMinutes': 'Walking time (min)',
   'transit:walkMinutesHint': 'Minutes it takes you to walk to this stop.',
-  'transit:walkBadge': '{{minutes}} min walk',
+  'transit:walkBadge': '{{minutes}} min',
   'transit:walkBadgeTitle': '{{minutes}} min walking time subtracted',
   'transit:leaveNow': 'Leave now',
   'transit:missed': 'Missed',
@@ -119,7 +119,8 @@ describe('Transit walking offset', () => {
     mockDepartures([stopPayload(5, [departureIn(12)])])
     render(<Transit />)
 
-    expect(await screen.findByText('5 min walk')).toBeInTheDocument()
+    const badge = await screen.findByLabelText('5 min walking time subtracted')
+    expect(badge).toHaveTextContent('5 min')
   })
 
   it('renders no badge and the raw minutes when the offset is zero', async () => {
@@ -127,7 +128,7 @@ describe('Transit walking offset', () => {
     render(<Transit />)
 
     expect(await screen.findByText('12 min')).toBeInTheDocument()
-    expect(screen.queryByText(/min walk/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/walking time subtracted/)).not.toBeInTheDocument()
   })
 
   it('renders identically when the payload omits walk_minutes entirely', async () => {
@@ -135,7 +136,16 @@ describe('Transit walking offset', () => {
     render(<Transit />)
 
     expect(await screen.findByText('12 min')).toBeInTheDocument()
-    expect(screen.queryByText(/min walk/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/walking time subtracted/)).not.toBeInTheDocument()
+  })
+
+  it('keeps the delay indicator visible at every breakpoint alongside a walk badge', async () => {
+    mockDepartures([stopPayload(5, [departureIn(12, { delay_minutes: 2 })])])
+    render(<Transit />)
+
+    const delay = await screen.findByText('+2 min late')
+    // No responsive hiding — the delay is as relevant on mobile as on desktop.
+    expect(delay.className).not.toMatch(/hidden/)
   })
 
   it('shows "leave now" and dims the row when the offset exactly consumes the time', async () => {
