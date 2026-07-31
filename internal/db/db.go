@@ -2040,6 +2040,75 @@ func createSchema(db *sql.DB) error {
 		PRIMARY KEY (user_id, article_id)
 	);
 
+	-- Recipes (Hytte-evi4c). Free-form text — recipe title and notes, the
+	-- ingredient line, the step instruction — is encrypted at rest. Tags,
+	-- ratings, timestamps, ingredient quantity/unit/name and step duration stay
+	-- plaintext because the store filters, sorts and scales on them.
+	CREATE TABLE IF NOT EXISTS recipes (
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		title          TEXT NOT NULL DEFAULT '',  -- encrypted
+		notes          TEXT NOT NULL DEFAULT '',  -- encrypted
+		servings       INTEGER NOT NULL DEFAULT 0,
+		rating         INTEGER,
+		rated_at       TEXT,
+		last_cooked_at TEXT,
+		created_at     TEXT NOT NULL DEFAULT '',
+		updated_at     TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_recipes_user ON recipes(user_id);
+
+	CREATE TABLE IF NOT EXISTS recipe_ingredients (
+		id        INTEGER PRIMARY KEY,
+		recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+		position  INTEGER NOT NULL DEFAULT 0,
+		text      TEXT NOT NULL DEFAULT '',  -- encrypted
+		quantity  REAL NOT NULL DEFAULT 0,
+		unit      TEXT NOT NULL DEFAULT '',
+		name      TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_recipe_ingredients_recipe ON recipe_ingredients(recipe_id, position);
+
+	CREATE TABLE IF NOT EXISTS recipe_steps (
+		id               INTEGER PRIMARY KEY,
+		recipe_id        INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+		position         INTEGER NOT NULL DEFAULT 0,
+		text             TEXT NOT NULL DEFAULT '',  -- encrypted
+		duration_seconds INTEGER NOT NULL DEFAULT 0
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_recipe_steps_recipe ON recipe_steps(recipe_id, position);
+
+	CREATE TABLE IF NOT EXISTS recipe_tags (
+		recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+		tag       TEXT NOT NULL,
+		PRIMARY KEY (recipe_id, tag)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_recipe_tags_tag ON recipe_tags(tag);
+
+	CREATE TABLE IF NOT EXISTS recipe_cooks (
+		id        INTEGER PRIMARY KEY,
+		recipe_id INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+		user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		cooked_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_recipe_cooks_recipe ON recipe_cooks(recipe_id, cooked_at);
+
+	CREATE TABLE IF NOT EXISTS meal_plan_entries (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		recipe_id  INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+		plan_date  TEXT NOT NULL DEFAULT '',
+		slot       TEXT NOT NULL DEFAULT 'dinner' CHECK (slot IN ('breakfast', 'lunch', 'dinner', 'snack')),
+		created_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_meal_plan_entries_user_date ON meal_plan_entries(user_id, plan_date);
+
 	`
 
 	_, err := db.Exec(schema)

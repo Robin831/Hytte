@@ -204,6 +204,17 @@ var Pages = []Page{
 		FeatureFlag: "wardrobe",
 	},
 	{
+		Slug:        "recipes",
+		Title:       "Recipes",
+		Route:       "/recipes",
+		Description: "Personal recipe collection with encrypted ingredients and steps, tag filtering, servings scaling, ratings, a cooking log, and seasonal cook-again suggestions.",
+		SourceFiles: []string{
+			"internal/recipes/store.go",
+			"internal/recipes/models.go",
+		},
+		FeatureFlag: "recipes",
+	},
+	{
 		Slug:        "infra",
 		Title:       "Infra",
 		Route:       "/infra",
