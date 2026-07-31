@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -894,6 +895,83 @@ func TestPreferencesPutHandler_QuickLinksRejectsTooMany(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for too many links, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPreferencesPutHandler_SkyWatchLocation(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	value := `{"name":"Bergen","lat":60.3913,"lon":5.3221}`
+	body := `{"preferences":{"skywatch_location":` + strconv.Quote(value) + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got := resp["preferences"]["skywatch_location"]; got != value {
+		t.Errorf("expected skywatch_location %q, got %q", value, got)
+	}
+
+	// It must also round-trip through a GET.
+	stored, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if stored["skywatch_location"] != value {
+		t.Errorf("expected stored skywatch_location %q, got %q", value, stored["skywatch_location"])
+	}
+}
+
+func TestPreferencesPutHandler_SkyWatchLocationRejectsInvalid(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{"not JSON", "Bergen"},
+		{"missing coordinates", `{"name":"Bergen"}`},
+		{"latitude out of range", `{"name":"Nowhere","lat":95,"lon":5}`},
+		{"longitude out of range", `{"name":"Nowhere","lat":60,"lon":-181}`},
+		{"name too long", `{"name":"` + strings.Repeat("a", 101) + `","lat":60,"lon":5}`},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"preferences":{"skywatch_location":` + strconv.Quote(tc.value) + `}}`
+			req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			req.AddCookie(&http.Cookie{Name: "session", Value: token})
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d; body: %s", rec.Code, rec.Body.String())
+			}
+		})
 	}
 }
 

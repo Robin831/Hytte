@@ -174,6 +174,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"theme":                       true,
 			"home_location":               true,
 			"weather_location":            true,
+			"skywatch_location":           true,
 			"recent_locations":            true,
 			"notifications_enabled":       true,
 			"notifications_degraded":      true,
@@ -304,6 +305,27 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "quick link URLs must use http or https with a valid host"})
 						return
 					}
+				}
+			}
+			// Validate skywatch_location: a JSON object {name, lat, lon} with sane coordinates.
+			// An empty name is allowed — it marks coordinates from browser geolocation.
+			if k == "skywatch_location" && v != "" {
+				var loc struct {
+					Name string   `json:"name"`
+					Lat  *float64 `json:"lat"`
+					Lon  *float64 `json:"lon"`
+				}
+				if err := json.Unmarshal([]byte(v), &loc); err != nil || loc.Lat == nil || loc.Lon == nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "skywatch_location must be a JSON object with name, lat and lon"})
+					return
+				}
+				if *loc.Lat < -90 || *loc.Lat > 90 || *loc.Lon < -180 || *loc.Lon > 180 {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "skywatch_location coordinates are out of range"})
+					return
+				}
+				if len(loc.Name) > 100 {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "skywatch_location name must not exceed 100 characters"})
+					return
 				}
 			}
 			// Validate CLI path to prevent command injection.

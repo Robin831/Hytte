@@ -2,6 +2,19 @@
   "title": "Sky Watch",
   "loading": "Loading sky data...",
   "error": "Failed to load sky data",
+  "location": {
+    "label": "Location",
+    "select": "Select location",
+    "choose": "Choose a location",
+    "myLocation": "My location",
+    "useMyLocation": "Use my location",
+    "useMyLocationAria": "Use current position for sky data",
+    "locating": "Finding your location…",
+    "denied": "Location access was denied. Enable it in your browser settings to use this.",
+    "unavailable": "Your location could not be determined right now.",
+    "timeout": "Finding your location took too long. Try again.",
+    "unsupported": "This browser does not support location services."
+  },
   "phases": {
     "newMoon": "New Moon",
     "waxingCrescent": "Waxing Crescent",
