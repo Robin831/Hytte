@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, Search, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useBlocker, type BlockerFunction } from 'react-router-dom'
+import { useUnloadWarning } from '../hooks/useUnloadWarning'
 import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
@@ -87,15 +88,7 @@ export default function Notes() {
   // Browser refresh / tab close can't be intercepted by the app's own dialog,
   // so fall back to the native "leave site?" prompt while the draft is dirty.
   // Browsers ignore any custom message, hence the empty `returnValue`.
-  useEffect(() => {
-    if (!isDirty) return
-    function handleBeforeUnload(e: BeforeUnloadEvent) {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [isDirty])
+  useUnloadWarning(isDirty)
 
   // In-app route changes (sidebar links, browser back/forward) are caught by
   // the router blocker and funnelled through the same discard dialog as the
@@ -128,12 +121,11 @@ export default function Notes() {
 
   // Release a still-blocked navigation if the page goes away underneath it,
   // so the router isn't left holding a pending navigation.
-  useEffect(
-    () => () => {
-      if (blockerRef.current.state === 'blocked') blockerRef.current.reset?.()
-    },
-    [],
-  )
+  useEffect(() => {
+    return () => {
+      if (blockerRef.current.state === 'blocked') blockerRef.current.reset()
+    }
+  }, [])
 
   // Run `action` immediately when the draft is clean, otherwise stash it behind
   // the discard-changes confirmation dialog so unsaved work isn't lost silently.

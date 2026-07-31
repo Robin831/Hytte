@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useUnloadWarning } from '../hooks/useUnloadWarning'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Trophy } from 'lucide-react'
 import { MathAnswerPad } from '../components/math/MathAnswerPad'
@@ -248,15 +249,7 @@ export default function MathBlitz() {
   const handleSubmit = useCallback(() => { void submitAnswer() }, [submitAnswer])
 
   // Warn before navigating away from a Blitz in progress.
-  useEffect(() => {
-    if (phase !== 'playing') return
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => window.removeEventListener('beforeunload', onBeforeUnload)
-  }, [phase])
+  useUnloadWarning(phase === 'playing')
 
   // Cancel any lingering streak-pop timer when the component unmounts so we
   // don't touch a detached element after it's gone.

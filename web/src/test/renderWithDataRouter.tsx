@@ -14,9 +14,13 @@ interface Options {
  * data router — notably `useBlocker`, which Notes uses to guard unsaved edits.
  * Returns the router alongside the usual RTL result so tests can drive and
  * assert on navigation.
+ *
+ * The page mounts under a `path: '*'` splat route to match the production
+ * router shape in main.tsx, where App handles all paths via a single splat.
+ * Extra routes are siblings so tests can navigate away from the page under test.
  */
 export function renderWithDataRouter(ui: ReactElement, { path = '/', extraRoutes = [] }: Options = {}) {
-  const router = createMemoryRouter([{ path, element: ui }, ...extraRoutes], {
+  const router = createMemoryRouter([{ path: '*', element: ui }, ...extraRoutes], {
     initialEntries: [path],
   })
   return { router, ...render(<RouterProvider router={router} />) }
