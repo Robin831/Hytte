@@ -44,7 +44,9 @@ func setupTestDB(t *testing.T) *sql.DB {
 			token      TEXT PRIMARY KEY,
 			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			expires_at DATETIME NOT NULL
+			expires_at DATETIME NOT NULL,
+			user_agent TEXT NOT NULL DEFAULT '',
+			ip_address TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE user_preferences (
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -215,8 +217,9 @@ func seedUser(t *testing.T, db *sql.DB, userID int64, suffix string) {
 	}
 
 	if _, err := db.Exec(
-		`INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)`,
+		`INSERT INTO sessions (token, user_id, created_at, expires_at, user_agent, ip_address) VALUES (?, ?, ?, ?, ?, ?)`,
 		"hashed-token-"+suffix, userID, time.Now().UTC(), time.Now().UTC().Add(24*time.Hour),
+		enc(t, "Firefox on Linux "+suffix), enc(t, "203.0.113.7"),
 	); err != nil {
 		t.Fatalf("insert session: %v", err)
 	}
@@ -274,6 +277,23 @@ func TestExportHandler_Headers(t *testing.T) {
 	want := `attachment; filename="hytte-export-` + time.Now().Format("2006-01-02") + `.json"`
 	if got := rec.Header().Get("Content-Disposition"); got != want {
 		t.Errorf("expected Content-Disposition %q, got %q", want, got)
+	}
+}
+
+func TestExportHandler_BodyIsCompactJSON(t *testing.T) {
+	db := setupTestDB(t)
+	createUser(t, db, 1, "a@example.com")
+	seedUser(t, db, 1, "one")
+
+	rec := doExport(t, db, 1)
+
+	if !json.Valid(rec.Body.Bytes()) {
+		t.Fatalf("export body is not valid JSON:\n%s", rec.Body.String())
+	}
+	// The envelope is streamed fragment by fragment, so guard against stray
+	// separators leaking in between values.
+	if strings.ContainsAny(rec.Body.String(), "\n\r") {
+		t.Errorf("export body must be compact JSON without line breaks:\n%s", rec.Body.String())
 	}
 }
 
@@ -372,10 +392,38 @@ func TestExportHandler_DecryptsFieldsAndRedactsSecrets(t *testing.T) {
 	if _, err := time.Parse(time.RFC3339, a.Sessions[0].CreatedAt); err != nil {
 		t.Errorf("session created_at %q is not RFC3339: %v", a.Sessions[0].CreatedAt, err)
 	}
+	if a.Sessions[0].UserAgent != "Firefox on Linux one" {
+		t.Errorf("session user agent not decrypted: %q", a.Sessions[0].UserAgent)
+	}
+	if a.Sessions[0].IPAddress != "203.0.113.7" {
+		t.Errorf("session ip not decrypted: %q", a.Sessions[0].IPAddress)
+	}
 	for _, forbidden := range []string{"hashed-token-one", "token"} {
 		if strings.Contains(rec.Body.String(), forbidden) {
 			t.Errorf("export body must not contain %q", forbidden)
 		}
+	}
+}
+
+func TestExportHandler_LegacySessionWithoutMetadata(t *testing.T) {
+	db := setupTestDB(t)
+	createUser(t, db, 1, "a@example.com")
+
+	// Sessions created before user_agent/ip_address existed keep the empty
+	// default and must export as empty strings rather than raw ciphertext.
+	if _, err := db.Exec(
+		`INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES ('hash', 1, ?, ?)`,
+		time.Now().UTC(), time.Now().UTC().Add(time.Hour),
+	); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+
+	a := decodeArchive(t, doExport(t, db, 1))
+	if len(a.Sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(a.Sessions))
+	}
+	if a.Sessions[0].UserAgent != "" || a.Sessions[0].IPAddress != "" {
+		t.Errorf("expected empty session metadata, got %+v", a.Sessions[0])
 	}
 }
 

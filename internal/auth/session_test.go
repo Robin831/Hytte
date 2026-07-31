@@ -2,9 +2,12 @@ package auth
 
 import (
 	"database/sql"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/Robin831/Hytte/internal/encryption"
 	_ "modernc.org/sqlite"
 )
 
@@ -32,7 +35,9 @@ func setupTestDB(t *testing.T) *sql.DB {
 			token TEXT PRIMARY KEY,
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			expires_at DATETIME NOT NULL
+			expires_at DATETIME NOT NULL,
+			user_agent TEXT NOT NULL DEFAULT '',
+			ip_address TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE user_preferences (
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -110,6 +115,95 @@ func TestCreateAndValidateSession(t *testing.T) {
 	}
 	if gotID != userID {
 		t.Errorf("expected user %d, got %d", userID, gotID)
+	}
+}
+
+func TestCreateSessionForRequest_StoresEncryptedMetadata(t *testing.T) {
+	t.Setenv("ENCRYPTION_KEY", "test-key-session-metadata")
+	encryption.ResetEncryptionKey()
+	defer encryption.ResetEncryptionKey()
+
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/google/callback", nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (TestBrowser)")
+	req.Header.Set("X-Forwarded-For", "203.0.113.7, 10.0.0.1")
+
+	token, _, err := CreateSessionForRequest(db, userID, req)
+	if err != nil {
+		t.Fatalf("CreateSessionForRequest: %v", err)
+	}
+
+	var storedUA, storedIP string
+	if err := db.QueryRow(
+		"SELECT user_agent, ip_address FROM sessions WHERE token = ?", hashToken(token),
+	).Scan(&storedUA, &storedIP); err != nil {
+		t.Fatalf("select session metadata: %v", err)
+	}
+	if storedUA == "Mozilla/5.0 (TestBrowser)" || storedIP == "203.0.113.7" {
+		t.Fatal("session metadata must not be stored in plaintext")
+	}
+
+	ua, err := encryption.DecryptField(storedUA)
+	if err != nil {
+		t.Fatalf("decrypt user agent: %v", err)
+	}
+	if ua != "Mozilla/5.0 (TestBrowser)" {
+		t.Errorf("expected the request user agent, got %q", ua)
+	}
+	ip, err := encryption.DecryptField(storedIP)
+	if err != nil {
+		t.Fatalf("decrypt ip: %v", err)
+	}
+	if ip != "203.0.113.7" {
+		t.Errorf("expected the left-most forwarded IP, got %q", ip)
+	}
+}
+
+func TestCreateSession_LeavesMetadataEmpty(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	var ua, ip string
+	if err := db.QueryRow(
+		"SELECT user_agent, ip_address FROM sessions WHERE token = ?", hashToken(token),
+	).Scan(&ua, &ip); err != nil {
+		t.Fatalf("select session metadata: %v", err)
+	}
+	if ua != "" || ip != "" {
+		t.Errorf("expected empty metadata, got user_agent=%q ip=%q", ua, ip)
+	}
+}
+
+func TestClientIP(t *testing.T) {
+	tests := []struct {
+		name       string
+		forwarded  string
+		remoteAddr string
+		want       string
+	}{
+		{"forwarded chain", "198.51.100.5, 10.0.0.1", "10.0.0.1:1234", "198.51.100.5"},
+		{"single forwarded", "198.51.100.5", "10.0.0.1:1234", "198.51.100.5"},
+		{"remote addr fallback", "", "192.0.2.9:4321", "192.0.2.9"},
+		{"remote addr without port", "", "192.0.2.9", "192.0.2.9"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.RemoteAddr = tt.remoteAddr
+			if tt.forwarded != "" {
+				req.Header.Set("X-Forwarded-For", tt.forwarded)
+			}
+			if got := ClientIP(req); got != tt.want {
+				t.Errorf("ClientIP() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

@@ -38,7 +38,9 @@ func setupFeaturesTestDB(t *testing.T) *sql.DB {
 			token TEXT PRIMARY KEY,
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			expires_at DATETIME NOT NULL
+			expires_at DATETIME NOT NULL,
+			user_agent TEXT NOT NULL DEFAULT '',
+			ip_address TEXT NOT NULL DEFAULT ''
 		);
 		CREATE TABLE user_preferences (
 			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

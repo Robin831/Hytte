@@ -16,6 +16,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,7 +49,7 @@ var encryptedPreferenceKeys = map[string]bool{
 // touching the envelope logic.
 type domain struct {
 	key   string
-	write func(w io.Writer, enc *json.Encoder, db *sql.DB, userID int64) error
+	write func(s *jsonStream, db *sql.DB, userID int64) error
 }
 
 // allDomains is the ordered list of sections written into the archive.
@@ -104,46 +105,114 @@ func ExportHandler(db *sql.DB) http.HandlerFunc {
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusOK)
 
-		enc := json.NewEncoder(w)
-		flush := func() {
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
+		s := &jsonStream{w: w}
 
-		p := loadProfile(db, user)
+		s.raw("{")
+		s.field("schema_version", SchemaVersion)
+		s.raw(",")
+		s.field("exported_at", now.UTC().Format(time.RFC3339))
+		s.raw(",")
+		s.field("profile", loadProfile(db, user))
+		s.flush()
 
-		writeRaw(w, "{")
-		writeKey(w, "schema_version")
-		writeRaw(w, fmt.Sprintf("%d,", SchemaVersion))
-		writeKey(w, "exported_at")
-		encodeValue(enc, now.UTC().Format(time.RFC3339))
-		writeRaw(w, ",")
-		writeKey(w, "profile")
-		encodeValue(enc, p)
-		flush()
-
-		var failures []domainError
+		failures := []domainError{}
 		for _, d := range allDomains {
-			writeRaw(w, ",")
-			if err := d.write(w, enc, db, user.ID); err != nil {
-				// streamArray always closes the array it opened, so the
-				// document stays well-formed and we only record the failure
-				// here — the headers are long since committed.
+			s.raw(",")
+			if err := d.write(s, db, user.ID); err != nil {
+				// Each domain writer closes the array it opened before
+				// returning, so the document stays well-formed and the failure
+				// is only recorded here — the headers are long since committed.
 				log.Printf("export: failed to export %s for user %d: %v", d.key, user.ID, err)
 				failures = append(failures, domainError{Domain: d.key, Error: "this section could not be exported"})
 			}
-			flush()
+			s.flush()
 		}
 
-		writeRaw(w, ",")
-		writeKey(w, "errors")
-		if failures == nil {
-			failures = []domainError{}
+		s.raw(",")
+		s.field("errors", failures)
+		s.raw("}")
+		s.flush()
+	}
+}
+
+// jsonStream writes a JSON document incrementally onto the response writer.
+// Values are marshalled one at a time — a single row is the largest thing ever
+// held in memory — and written without the trailing newline json.Encoder would
+// append, so the archive is compact JSON rather than a ragged mix of raw
+// fragments and newline-terminated values.
+//
+// The response status is committed before the first byte is written, so write
+// and marshal errors can only be logged, never turned into an error status.
+type jsonStream struct {
+	w io.Writer
+}
+
+// raw writes a literal JSON fragment such as a brace, bracket or comma.
+func (s *jsonStream) raw(fragment string) {
+	if _, err := io.WriteString(s.w, fragment); err != nil {
+		log.Printf("export: write failed: %v", err)
+	}
+}
+
+// value writes a single JSON value. A value that cannot be marshalled is
+// written as null so the surrounding document stays parseable.
+func (s *jsonStream) value(v any) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		log.Printf("export: marshal failed: %v", err)
+		s.raw("null")
+		return
+	}
+	if _, err := s.w.Write(b); err != nil {
+		log.Printf("export: write failed: %v", err)
+	}
+}
+
+// field writes a `"key":value` pair without any surrounding separators.
+func (s *jsonStream) field(key string, v any) {
+	s.raw(strconv.Quote(key) + ":")
+	s.value(v)
+}
+
+// emptyArray writes `"key":[]`, used when a domain query fails before any rows
+// could be read so the envelope still contains the key.
+func (s *jsonStream) emptyArray(key string) {
+	s.field(key, []any{})
+}
+
+// array writes `"key":[...]` by scanning rows one at a time and encoding each
+// straight onto the writer. The bracket is closed on every path — including a
+// scan error partway through — so the surrounding document stays well-formed.
+func (s *jsonStream) array(key string, rows *sql.Rows, scan func(*sql.Rows) (any, error)) error {
+	defer rows.Close()
+
+	s.raw(strconv.Quote(key) + ":[")
+	err := s.arrayBody(rows, scan)
+	s.raw("]")
+	return err
+}
+
+func (s *jsonStream) arrayBody(rows *sql.Rows, scan func(*sql.Rows) (any, error)) error {
+	first := true
+	for rows.Next() {
+		v, err := scan(rows)
+		if err != nil {
+			return err
 		}
-		encodeValue(enc, failures)
-		writeRaw(w, "}\n")
-		flush()
+		if !first {
+			s.raw(",")
+		}
+		first = false
+		s.value(v)
+	}
+	return rows.Err()
+}
+
+// flush pushes what has been written so far to the client, so a large export
+// starts arriving before every domain has been queried.
+func (s *jsonStream) flush() {
+	if f, ok := s.w.(http.Flusher); ok {
+		f.Flush()
 	}
 }
 
@@ -191,59 +260,6 @@ func formatTimestamp(v any) string {
 	}
 }
 
-// writeRaw writes a literal JSON fragment, logging (but not propagating) write
-// errors since the response is already committed.
-func writeRaw(w io.Writer, s string) {
-	if _, err := io.WriteString(w, s); err != nil {
-		log.Printf("export: write failed: %v", err)
-	}
-}
-
-// writeKey writes a quoted object key followed by its colon.
-func writeKey(w io.Writer, key string) {
-	writeRaw(w, `"`+key+`":`)
-}
-
-// encodeValue encodes a single JSON value. json.Encoder appends a newline,
-// which is insignificant whitespace between JSON tokens.
-func encodeValue(enc *json.Encoder, v any) {
-	if err := enc.Encode(v); err != nil {
-		log.Printf("export: encode failed: %v", err)
-	}
-}
-
-// streamArray writes `"key":[...]` by scanning rows one at a time and encoding
-// each straight onto the writer. The array is always closed, even when a scan
-// fails partway through, so the surrounding document stays well-formed.
-func streamArray(w io.Writer, enc *json.Encoder, key string, rows *sql.Rows, scan func(*sql.Rows) (any, error)) error {
-	defer rows.Close()
-
-	writeKey(w, key)
-	writeRaw(w, "[")
-	defer writeRaw(w, "]")
-
-	first := true
-	for rows.Next() {
-		v, err := scan(rows)
-		if err != nil {
-			return err
-		}
-		if !first {
-			writeRaw(w, ",")
-		}
-		first = false
-		encodeValue(enc, v)
-	}
-	return rows.Err()
-}
-
-// emptyArray writes `"key":[]`, used when a domain query fails before any rows
-// could be read so the envelope still contains the key.
-func emptyArray(w io.Writer, key string) {
-	writeKey(w, key)
-	writeRaw(w, "[]")
-}
-
 // decryptOrKeep decrypts an encrypted field, falling back to the stored value
 // and logging a warning when decryption fails. A single corrupt row must never
 // abort the whole export.
@@ -254,6 +270,15 @@ func decryptOrKeep(domainKey, field string, id int64, value string) string {
 		return value
 	}
 	return plain
+}
+
+// decryptOptional is decryptOrKeep for columns that are legitimately empty,
+// such as session metadata recorded before the columns existed.
+func decryptOptional(domainKey, field string, id int64, value string) string {
+	if value == "" {
+		return ""
+	}
+	return decryptOrKeep(domainKey, field, id, value)
 }
 
 // splitTags turns a GROUP_CONCAT result into a sorted tag slice.
@@ -275,7 +300,7 @@ type exportedNote struct {
 	UpdatedAt string   `json:"updated_at"`
 }
 
-func writeNotes(w io.Writer, enc *json.Encoder, db *sql.DB, userID int64) error {
+func writeNotes(s *jsonStream, db *sql.DB, userID int64) error {
 	// char(31) is the ASCII unit separator used as the tag delimiter elsewhere
 	// in the codebase (see notes.List).
 	rows, err := db.Query(`
@@ -287,10 +312,10 @@ func writeNotes(w io.Writer, enc *json.Encoder, db *sql.DB, userID int64) error 
 		GROUP BY n.id
 		ORDER BY n.id`, userID)
 	if err != nil {
-		emptyArray(w, "notes")
+		s.emptyArray("notes")
 		return err
 	}
-	return streamArray(w, enc, "notes", rows, func(rows *sql.Rows) (any, error) {
+	return s.array("notes", rows, func(rows *sql.Rows) (any, error) {
 		var n exportedNote
 		var tags sql.NullString
 		if err := rows.Scan(&n.ID, &n.Title, &n.Content, &n.CreatedAt, &n.UpdatedAt, &tags); err != nil {
@@ -327,7 +352,7 @@ type exportedWorkout struct {
 	CreatedAt       string   `json:"created_at"`
 }
 
-func writeWorkouts(w io.Writer, enc *json.Encoder, db *sql.DB, userID int64) error {
+func writeWorkouts(s *jsonStream, db *sql.DB, userID int64) error {
 	rows, err := db.Query(`
 		SELECT wo.id, wo.sport, wo.sub_sport, wo.is_indoor, wo.title, wo.title_source,
 		       wo.started_at, wo.duration_seconds, wo.distance_meters,
@@ -341,10 +366,10 @@ func writeWorkouts(w io.Writer, enc *json.Encoder, db *sql.DB, userID int64) err
 		GROUP BY wo.id
 		ORDER BY wo.id`, userID)
 	if err != nil {
-		emptyArray(w, "workouts")
+		s.emptyArray("workouts")
 		return err
 	}
-	return streamArray(w, enc, "workouts", rows, func(rows *sql.Rows) (any, error) {
+	return s.array("workouts", rows, func(rows *sql.Rows) (any, error) {
 		var wo exportedWorkout
 		var isIndoor int
 		var trainingLoad, hrDrift, paceCV sql.NullFloat64
@@ -390,7 +415,7 @@ type exportedLactateTest struct {
 	UpdatedAt         string  `json:"updated_at"`
 }
 
-func writeLactateTests(w io.Writer, enc *json.Encoder, db *sql.DB, userID int64) error {
+func writeLactateTests(s *jsonStream, db *sql.DB, userID int64) error {
 	rows, err := db.Query(`
 		SELECT id, workout_id, date, comment, protocol_type,
 		       warmup_duration_min, stage_duration_min,
@@ -399,10 +424,10 @@ func writeLactateTests(w io.Writer, enc *json.Encoder, db *sql.DB, userID int64)
 		WHERE user_id = ?
 		ORDER BY id`, userID)
 	if err != nil {
-		emptyArray(w, "lactate_tests")
+		s.emptyArray("lactate_tests")
 		return err
 	}
-	return streamArray(w, enc, "lactate_tests", rows, func(rows *sql.Rows) (any, error) {
+	return s.array("lactate_tests", rows, func(rows *sql.Rows) (any, error) {
 		var lt exportedLactateTest
 		var workoutID sql.NullInt64
 		if err := rows.Scan(
@@ -436,7 +461,7 @@ type exportedLactateStage struct {
 // than nested inside lactate_tests, so both domains can stream row by row.
 // lactate_test_stages has no user_id of its own, so ownership is enforced by
 // joining through lactate_tests.
-func writeLactateStages(w io.Writer, enc *json.Encoder, db *sql.DB, userID int64) error {
+func writeLactateStages(s *jsonStream, db *sql.DB, userID int64) error {
 	rows, err := db.Query(`
 		SELECT s.id, s.test_id, s.stage_number, s.speed_kmh, s.lactate_mmol,
 		       s.heart_rate_bpm, s.rpe, s.notes
@@ -445,24 +470,24 @@ func writeLactateStages(w io.Writer, enc *json.Encoder, db *sql.DB, userID int64
 		WHERE t.user_id = ?
 		ORDER BY s.test_id, s.stage_number`, userID)
 	if err != nil {
-		emptyArray(w, "lactate_stages")
+		s.emptyArray("lactate_stages")
 		return err
 	}
-	return streamArray(w, enc, "lactate_stages", rows, func(rows *sql.Rows) (any, error) {
-		var s exportedLactateStage
+	return s.array("lactate_stages", rows, func(rows *sql.Rows) (any, error) {
+		var stage exportedLactateStage
 		var rpe sql.NullInt64
 		if err := rows.Scan(
-			&s.ID, &s.TestID, &s.StageNumber, &s.SpeedKmh, &s.LactateMmol,
-			&s.HeartRateBpm, &rpe, &s.Notes,
+			&stage.ID, &stage.TestID, &stage.StageNumber, &stage.SpeedKmh, &stage.LactateMmol,
+			&stage.HeartRateBpm, &rpe, &stage.Notes,
 		); err != nil {
 			return nil, err
 		}
 		if rpe.Valid {
 			v := int(rpe.Int64)
-			s.RPE = &v
+			stage.RPE = &v
 		}
-		s.Notes = decryptOrKeep("lactate_stages", "notes", s.ID, s.Notes)
-		return s, nil
+		stage.Notes = decryptOrKeep("lactate_stages", "notes", stage.ID, stage.Notes)
+		return stage, nil
 	})
 }
 
@@ -471,14 +496,14 @@ type exportedPreference struct {
 	Value string `json:"value"`
 }
 
-func writePreferences(w io.Writer, enc *json.Encoder, db *sql.DB, userID int64) error {
+func writePreferences(s *jsonStream, db *sql.DB, userID int64) error {
 	rows, err := db.Query(`
 		SELECT key, value FROM user_preferences WHERE user_id = ? ORDER BY key`, userID)
 	if err != nil {
-		emptyArray(w, "preferences")
+		s.emptyArray("preferences")
 		return err
 	}
-	return streamArray(w, enc, "preferences", rows, func(rows *sql.Rows) (any, error) {
+	return s.array("preferences", rows, func(rows *sql.Rows) (any, error) {
 		var p exportedPreference
 		if err := rows.Scan(&p.Key, &p.Value); err != nil {
 			return nil, err
@@ -499,26 +524,33 @@ func writePreferences(w io.Writer, enc *json.Encoder, db *sql.DB, userID int64) 
 type exportedSession struct {
 	CreatedAt string `json:"created_at"`
 	ExpiresAt string `json:"expires_at"`
+	UserAgent string `json:"user_agent"`
+	IPAddress string `json:"ip_address"`
 }
 
-// writeSessions exports session metadata only. The sessions table stores just
-// the hashed token plus the two timestamps — no user agent or IP is recorded —
-// and neither the token nor its hash is ever selected here.
-func writeSessions(w io.Writer, enc *json.Encoder, db *sql.DB, userID int64) error {
+// writeSessions exports session metadata only: the timestamps plus the user
+// agent and client IP recorded at sign-in (both stored encrypted, so they are
+// decrypted here). Sessions created before those columns existed export them as
+// empty strings. The token column holds a SHA-256 hash and is never selected.
+func writeSessions(s *jsonStream, db *sql.DB, userID int64) error {
 	rows, err := db.Query(`
-		SELECT created_at, expires_at FROM sessions WHERE user_id = ? ORDER BY created_at DESC`, userID)
+		SELECT created_at, expires_at, user_agent, ip_address
+		FROM sessions WHERE user_id = ? ORDER BY created_at DESC`, userID)
 	if err != nil {
-		emptyArray(w, "sessions")
+		s.emptyArray("sessions")
 		return err
 	}
-	return streamArray(w, enc, "sessions", rows, func(rows *sql.Rows) (any, error) {
+	return s.array("sessions", rows, func(rows *sql.Rows) (any, error) {
 		var createdAt, expiresAt any
-		if err := rows.Scan(&createdAt, &expiresAt); err != nil {
+		var userAgent, ipAddress string
+		if err := rows.Scan(&createdAt, &expiresAt, &userAgent, &ipAddress); err != nil {
 			return nil, err
 		}
 		return exportedSession{
 			CreatedAt: formatTimestamp(createdAt),
 			ExpiresAt: formatTimestamp(expiresAt),
+			UserAgent: decryptOptional("sessions", "user_agent", userID, userAgent),
+			IPAddress: decryptOptional("sessions", "ip_address", userID, ipAddress),
 		}, nil
 	})
 }

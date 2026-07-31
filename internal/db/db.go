@@ -123,7 +123,9 @@ func createSchema(db *sql.DB) error {
 		token      TEXT PRIMARY KEY,
 		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-		expires_at DATETIME NOT NULL
+		expires_at DATETIME NOT NULL,
+		user_agent TEXT NOT NULL DEFAULT '',
+		ip_address TEXT NOT NULL DEFAULT ''
 	);
 
 	CREATE TABLE IF NOT EXISTS user_preferences (
@@ -2852,6 +2854,32 @@ func createSchema(db *sql.DB) error {
 	if hasCallKind == 0 {
 		if _, err := db.Exec(`ALTER TABLE family_chat_calls ADD COLUMN kind TEXT NOT NULL DEFAULT 'voice'`); err != nil {
 			return fmt.Errorf("add family_chat_calls kind column: %w", err)
+		}
+	}
+
+	// Add sign-in metadata to sessions (Hytte-8mg76): the user agent and client
+	// IP recorded when the session was created, so the data export can tell a
+	// user which device each session came from. Both are encrypted at rest;
+	// existing sessions keep the empty default.
+	sessionMetaCols := []struct {
+		name string
+		ddl  string
+	}{
+		{"user_agent", `ALTER TABLE sessions ADD COLUMN user_agent TEXT NOT NULL DEFAULT ''`},
+		{"ip_address", `ALTER TABLE sessions ADD COLUMN ip_address TEXT NOT NULL DEFAULT ''`},
+	}
+	for _, col := range sessionMetaCols {
+		var present int
+		if err := db.QueryRow(
+			`SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name = ?`,
+			col.name,
+		).Scan(&present); err != nil {
+			return fmt.Errorf("check sessions %s column: %w", col.name, err)
+		}
+		if present == 0 {
+			if _, err := db.Exec(col.ddl); err != nil {
+				return fmt.Errorf("add sessions %s column: %w", col.name, err)
+			}
 		}
 	}
 

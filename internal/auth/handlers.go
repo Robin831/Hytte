@@ -142,7 +142,7 @@ func GoogleCallbackHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Create session.
-		sessionToken, expiresAt, err := CreateSession(db, user.ID)
+		sessionToken, expiresAt, err := CreateSessionForRequest(db, user.ID, r)
 		if err != nil {
 			log.Printf("Failed to create session: %v", err)
 			http.Error(w, "failed to create session", http.StatusInternalServerError)
