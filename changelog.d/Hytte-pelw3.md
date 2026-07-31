@@ -1,0 +1,2 @@
+category: Added
+- **Recipe list with tag filters and cook-again suggestions** - The recipes page now lists every recipe with its rating and last-cooked date, filters by cuisine, season and occasion (multi-select chips that OR within a dimension and AND across them), surfaces a "Cook again" row of in-season recipes you have not made in a while, and offers entry points for creating a recipe or importing one from a URL. (Hytte-pelw3)
