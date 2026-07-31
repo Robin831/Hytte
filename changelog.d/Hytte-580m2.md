@@ -1,0 +1,3 @@
+category: Added
+- **Meal plan endpoints** - `GET/PUT/DELETE /api/recipes/plan` schedule recipes into breakfast, lunch, dinner and snack slots. GET returns a full ISO week keyed by calendar day (defaulting to the week containing today), and PUT upserts on (day, slot) so repeated saves replace an entry instead of stacking duplicates. (Hytte-580m2)
+- **Push recipe ingredients to the grocery list** - `POST /api/recipes/{id}/grocery` takes a list of ingredient IDs from one of your recipes and adds them to your grocery list, skipping anything already on it (case-insensitively) and reporting how many were added versus skipped. (Hytte-580m2)

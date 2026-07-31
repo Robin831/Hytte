@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/grocery"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -516,6 +517,11 @@ func TestFeatureFlagGating(t *testing.T) {
 		{http.MethodDelete, fmt.Sprintf("/api/recipes/%d", created.ID), ""},
 		{http.MethodPost, fmt.Sprintf("/api/recipes/%d/rating", created.ID), `{"rating":3}`},
 		{http.MethodPost, fmt.Sprintf("/api/recipes/%d/cooked", created.ID), ""},
+		{http.MethodGet, "/api/recipes/plan", ""},
+		{http.MethodPut, "/api/recipes/plan",
+			fmt.Sprintf(`{"entries":[{"date":"2024-01-03","slot":"dinner","recipe_id":%d}]}`, created.ID)},
+		{http.MethodDelete, "/api/recipes/plan?date=2024-01-03&slot=dinner", ""},
+		{http.MethodPost, fmt.Sprintf("/api/recipes/%d/grocery", created.ID), `{"ingredient_ids":[1]}`},
 	}
 	for _, rt := range routes {
 		rec := env.do(t, otherID, rt.method, rt.path, rt.body)
@@ -548,5 +554,474 @@ func TestUnauthenticatedRequestsRejected(t *testing.T) {
 	env.router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("status = %d, want 401 (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+// --- meal plan ---
+
+// 2024-01-01 is a Monday, so the fixed week below runs 2024-01-01 (Mon) to
+// 2024-01-07 (Sun) and the following week starts on 2024-01-08.
+const (
+	weekMonday    = "2024-01-01"
+	weekWednesday = "2024-01-03"
+	weekSunday    = "2024-01-07"
+	nextMonday    = "2024-01-08"
+)
+
+func decodePlanWeek(t *testing.T, rec *httptest.ResponseRecorder) PlanWeekResponse {
+	t.Helper()
+	var week PlanWeekResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &week); err != nil {
+		t.Fatalf("decode plan week response: %v (body: %s)", err, rec.Body.String())
+	}
+	return week
+}
+
+func decodePlanEntries(t *testing.T, rec *httptest.ResponseRecorder) []PlanEntryResponse {
+	t.Helper()
+	var env struct {
+		Entries []PlanEntryResponse `json:"entries"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &env); err != nil {
+		t.Fatalf("decode plan entries response: %v (body: %s)", err, rec.Body.String())
+	}
+	return env.Entries
+}
+
+// putPlan schedules one recipe and returns the recorded response.
+func (e *testEnv) putPlan(t *testing.T, userID int64, date, slot string, recipeID int64) *httptest.ResponseRecorder {
+	t.Helper()
+	body := fmt.Sprintf(`{"entries":[{"date":%q,"slot":%q,"recipe_id":%d}]}`, date, slot, recipeID)
+	return e.do(t, userID, http.MethodPut, "/api/recipes/plan", body)
+}
+
+// getPlanWeek fetches the week containing the given day.
+func (e *testEnv) getPlanWeek(t *testing.T, userID int64, week string) PlanWeekResponse {
+	t.Helper()
+	rec := e.do(t, userID, http.MethodGet, "/api/recipes/plan?week="+week, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get plan status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	return decodePlanWeek(t, rec)
+}
+
+// TestHandlePlanRoundTrip walks a plan entry through PUT, GET and DELETE and
+// checks it lands on — and leaves — the right day.
+func TestHandlePlanRoundTrip(t *testing.T) {
+	env := setupHandlerTest(t)
+	recipe := mustCreate(t, env.store, ownerID, Recipe{Title: "Fiskegrateng"})
+
+	// An untouched week comes back as seven empty days.
+	week := env.getPlanWeek(t, ownerID, weekWednesday)
+	if week.WeekStart != weekMonday || week.WeekEnd != weekSunday {
+		t.Fatalf("week = %s..%s, want %s..%s", week.WeekStart, week.WeekEnd, weekMonday, weekSunday)
+	}
+	if len(week.Days) != 7 {
+		t.Fatalf("week has %d days, want 7: %+v", len(week.Days), week.Days)
+	}
+	if entries, ok := week.Days[weekWednesday]; !ok || len(entries) != 0 {
+		t.Fatalf("empty week day %s = %+v (present: %t), want an empty list", weekWednesday, entries, ok)
+	}
+
+	rec := env.putPlan(t, ownerID, weekWednesday, "dinner", recipe.ID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("put plan status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	stored := decodePlanEntries(t, rec)
+	if len(stored) != 1 || stored[0].ID == 0 {
+		t.Fatalf("put returned %+v, want one entry with an ID", stored)
+	}
+	if stored[0].Date != weekWednesday || stored[0].Slot != "dinner" || stored[0].RecipeID != recipe.ID {
+		t.Errorf("stored entry = %+v, want %s/dinner/%d", stored[0], weekWednesday, recipe.ID)
+	}
+	if stored[0].RecipeTitle != "Fiskegrateng" {
+		t.Errorf("recipe_title = %q, want %q", stored[0].RecipeTitle, "Fiskegrateng")
+	}
+
+	week = env.getPlanWeek(t, ownerID, weekWednesday)
+	day := week.Days[weekWednesday]
+	if len(day) != 1 || day[0].ID != stored[0].ID {
+		t.Fatalf("%s = %+v, want the stored entry %d", weekWednesday, day, stored[0].ID)
+	}
+	if day[0].RecipeTitle != "Fiskegrateng" {
+		t.Errorf("recipe_title = %q, want the joined title", day[0].RecipeTitle)
+	}
+	if len(week.Days[weekMonday]) != 0 {
+		t.Errorf("%s = %+v, want no entries", weekMonday, week.Days[weekMonday])
+	}
+
+	rec = env.do(t, ownerID, http.MethodDelete, "/api/recipes/plan?date="+weekWednesday+"&slot=dinner", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete plan status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if week = env.getPlanWeek(t, ownerID, weekWednesday); len(week.Days[weekWednesday]) != 0 {
+		t.Errorf("%s after delete = %+v, want empty", weekWednesday, week.Days[weekWednesday])
+	}
+
+	// Deleting an already-empty slot is a 404, not a silent success.
+	rec = env.do(t, ownerID, http.MethodDelete, "/api/recipes/plan?date="+weekWednesday+"&slot=dinner", "")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("second delete status = %d, want 404 (body: %s)", rec.Code, rec.Body.String())
+	}
+}
+
+// TestHandlePlanDefaultsToCurrentWeek checks that GET without ?week= returns
+// the week containing today, keyed by the local calendar day.
+func TestHandlePlanDefaultsToCurrentWeek(t *testing.T) {
+	env := setupHandlerTest(t)
+	recipe := mustCreate(t, env.store, ownerID, Recipe{Title: "Today's dinner"})
+
+	today := time.Now().Format(PlanDateLayout)
+	if rec := env.putPlan(t, ownerID, today, "dinner", recipe.ID); rec.Code != http.StatusOK {
+		t.Fatalf("put plan status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	rec := env.do(t, ownerID, http.MethodGet, "/api/recipes/plan", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get plan status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	week := decodePlanWeek(t, rec)
+	if len(week.Days[today]) != 1 {
+		t.Fatalf("today (%s) = %+v, want the entry just scheduled", today, week.Days[today])
+	}
+	if week.WeekStart > today || week.WeekEnd < today {
+		t.Errorf("week %s..%s does not contain today (%s)", week.WeekStart, week.WeekEnd, today)
+	}
+}
+
+// TestHandlePlanWeekBoundary asserts entries are filed by ISO week: the Sunday
+// of one week and the Monday of the next never show up together.
+func TestHandlePlanWeekBoundary(t *testing.T) {
+	env := setupHandlerTest(t)
+	sundayRecipe := mustCreate(t, env.store, ownerID, Recipe{Title: "Sunday roast"})
+	mondayRecipe := mustCreate(t, env.store, ownerID, Recipe{Title: "Monday soup"})
+
+	if rec := env.putPlan(t, ownerID, weekSunday, "dinner", sundayRecipe.ID); rec.Code != http.StatusOK {
+		t.Fatalf("put sunday status = %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	if rec := env.putPlan(t, ownerID, nextMonday, "dinner", mondayRecipe.ID); rec.Code != http.StatusOK {
+		t.Fatalf("put monday status = %d (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	first := env.getPlanWeek(t, ownerID, weekWednesday)
+	if first.WeekEnd != weekSunday {
+		t.Fatalf("first week ends %s, want %s", first.WeekEnd, weekSunday)
+	}
+	if len(first.Days[weekSunday]) != 1 || first.Days[weekSunday][0].RecipeID != sundayRecipe.ID {
+		t.Errorf("%s = %+v, want the Sunday recipe", weekSunday, first.Days[weekSunday])
+	}
+	if _, leaked := first.Days[nextMonday]; leaked {
+		t.Errorf("first week leaked the next Monday: %+v", first.Days)
+	}
+
+	second := env.getPlanWeek(t, ownerID, nextMonday)
+	if second.WeekStart != nextMonday {
+		t.Fatalf("second week starts %s, want %s", second.WeekStart, nextMonday)
+	}
+	if len(second.Days[nextMonday]) != 1 || second.Days[nextMonday][0].RecipeID != mondayRecipe.ID {
+		t.Errorf("%s = %+v, want the Monday recipe", nextMonday, second.Days[nextMonday])
+	}
+	if _, leaked := second.Days[weekSunday]; leaked {
+		t.Errorf("second week leaked the previous Sunday: %+v", second.Days)
+	}
+}
+
+// TestHandlePlanPutIsIdempotent checks that re-sending the same slot replaces
+// it in place instead of stacking up rows, and that a different recipe in the
+// same slot takes it over.
+func TestHandlePlanPutIsIdempotent(t *testing.T) {
+	env := setupHandlerTest(t)
+	first := mustCreate(t, env.store, ownerID, Recipe{Title: "First"})
+	second := mustCreate(t, env.store, ownerID, Recipe{Title: "Second"})
+
+	rec := env.putPlan(t, ownerID, weekWednesday, "dinner", first.ID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first put status = %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	original := decodePlanEntries(t, rec)[0]
+
+	rec = env.putPlan(t, ownerID, weekWednesday, "dinner", first.ID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("repeat put status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if repeated := decodePlanEntries(t, rec)[0]; repeated.ID != original.ID {
+		t.Errorf("repeat put created entry %d, want the existing %d", repeated.ID, original.ID)
+	}
+
+	week := env.getPlanWeek(t, ownerID, weekWednesday)
+	if len(week.Days[weekWednesday]) != 1 {
+		t.Fatalf("%s = %+v, want exactly one entry after a repeated PUT", weekWednesday, week.Days[weekWednesday])
+	}
+
+	// The same slot with another recipe replaces rather than appends.
+	if rec = env.putPlan(t, ownerID, weekWednesday, "dinner", second.ID); rec.Code != http.StatusOK {
+		t.Fatalf("replace put status = %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	week = env.getPlanWeek(t, ownerID, weekWednesday)
+	if len(week.Days[weekWednesday]) != 1 || week.Days[weekWednesday][0].RecipeID != second.ID {
+		t.Fatalf("%s = %+v, want only the second recipe", weekWednesday, week.Days[weekWednesday])
+	}
+
+	// A different slot on the same day is its own entry.
+	if rec = env.putPlan(t, ownerID, weekWednesday, "lunch", first.ID); rec.Code != http.StatusOK {
+		t.Fatalf("lunch put status = %d (body: %s)", rec.Code, rec.Body.String())
+	}
+	week = env.getPlanWeek(t, ownerID, weekWednesday)
+	day := week.Days[weekWednesday]
+	if len(day) != 2 {
+		t.Fatalf("%s = %+v, want lunch and dinner", weekWednesday, day)
+	}
+	// Days come back in the order the slots are eaten in.
+	if day[0].Slot != "lunch" || day[1].Slot != "dinner" {
+		t.Errorf("slot order = [%s %s], want [lunch dinner]", day[0].Slot, day[1].Slot)
+	}
+}
+
+// TestHandlePlanPutMultipleEntries checks a whole week can be planned in one
+// request.
+func TestHandlePlanPutMultipleEntries(t *testing.T) {
+	env := setupHandlerTest(t)
+	recipe := mustCreate(t, env.store, ownerID, Recipe{Title: "Batch"})
+
+	body := fmt.Sprintf(`{"entries":[
+		{"date":%q,"slot":"dinner","recipe_id":%d},
+		{"date":%q,"slot":"Breakfast","recipe_id":%d},
+		{"date":%q,"slot":"dinner","recipe_id":%d}
+	]}`, weekMonday, recipe.ID, weekWednesday, recipe.ID, weekSunday, recipe.ID)
+
+	rec := env.do(t, ownerID, http.MethodPut, "/api/recipes/plan", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("put status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if stored := decodePlanEntries(t, rec); len(stored) != 3 {
+		t.Fatalf("put returned %d entries, want 3", len(stored))
+	}
+
+	week := env.getPlanWeek(t, ownerID, weekMonday)
+	for _, date := range []string{weekMonday, weekWednesday, weekSunday} {
+		if len(week.Days[date]) != 1 {
+			t.Errorf("%s = %+v, want one entry", date, week.Days[date])
+		}
+	}
+	// Slot names are normalised on the way in.
+	if got := week.Days[weekWednesday][0].Slot; got != "breakfast" {
+		t.Errorf("slot = %q, want %q", got, "breakfast")
+	}
+}
+
+// TestHandlePlanValidation covers the malformed and out-of-range inputs the
+// plan routes must reject before touching the database.
+func TestHandlePlanValidation(t *testing.T) {
+	env := setupHandlerTest(t)
+	recipe := mustCreate(t, env.store, ownerID, Recipe{Title: "Valid"})
+	foreign := mustCreate(t, env.store, otherID, Recipe{Title: "Someone else's"})
+
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+		want   int
+	}{
+		{"malformed JSON", http.MethodPut, "/api/recipes/plan", `{"entries":`, http.StatusBadRequest},
+		{"no entries", http.MethodPut, "/api/recipes/plan", `{"entries":[]}`, http.StatusBadRequest},
+		{"bad date", http.MethodPut, "/api/recipes/plan",
+			fmt.Sprintf(`{"entries":[{"date":"03-01-2024","slot":"dinner","recipe_id":%d}]}`, recipe.ID), http.StatusBadRequest},
+		{"impossible date", http.MethodPut, "/api/recipes/plan",
+			fmt.Sprintf(`{"entries":[{"date":"2024-02-30","slot":"dinner","recipe_id":%d}]}`, recipe.ID), http.StatusBadRequest},
+		{"bad slot", http.MethodPut, "/api/recipes/plan",
+			fmt.Sprintf(`{"entries":[{"date":%q,"slot":"brunch","recipe_id":%d}]}`, weekWednesday, recipe.ID), http.StatusBadRequest},
+		{"missing recipe", http.MethodPut, "/api/recipes/plan",
+			fmt.Sprintf(`{"entries":[{"date":%q,"slot":"dinner","recipe_id":9999}]}`, weekWednesday), http.StatusNotFound},
+		{"foreign recipe", http.MethodPut, "/api/recipes/plan",
+			fmt.Sprintf(`{"entries":[{"date":%q,"slot":"dinner","recipe_id":%d}]}`, weekWednesday, foreign.ID), http.StatusNotFound},
+		{"bad week param", http.MethodGet, "/api/recipes/plan?week=2024", "", http.StatusBadRequest},
+		{"delete without params", http.MethodDelete, "/api/recipes/plan", "", http.StatusBadRequest},
+		{"delete without slot", http.MethodDelete, "/api/recipes/plan?date=" + weekWednesday, "", http.StatusBadRequest},
+		{"delete bad date", http.MethodDelete, "/api/recipes/plan?date=nope&slot=dinner", "", http.StatusBadRequest},
+		{"delete bad slot", http.MethodDelete, "/api/recipes/plan?date=" + weekWednesday + "&slot=brunch", "", http.StatusBadRequest},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := env.do(t, ownerID, tc.method, tc.path, tc.body)
+			if rec.Code != tc.want {
+				t.Errorf("status = %d, want %d (body: %s)", rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+
+	// A batch containing one bad entry writes none of them.
+	body := fmt.Sprintf(`{"entries":[
+		{"date":%q,"slot":"dinner","recipe_id":%d},
+		{"date":%q,"slot":"brunch","recipe_id":%d}
+	]}`, weekMonday, recipe.ID, weekWednesday, recipe.ID)
+	if rec := env.do(t, ownerID, http.MethodPut, "/api/recipes/plan", body); rec.Code != http.StatusBadRequest {
+		t.Fatalf("mixed batch status = %d, want 400 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if week := env.getPlanWeek(t, ownerID, weekMonday); len(week.Days[weekMonday]) != 0 {
+		t.Errorf("%s = %+v, want nothing written by the rejected batch", weekMonday, week.Days[weekMonday])
+	}
+}
+
+// TestHandlePlanUserIsolation asserts one user's plan is invisible and
+// untouchable from another account.
+func TestHandlePlanUserIsolation(t *testing.T) {
+	env := setupHandlerTest(t)
+	recipe := mustCreate(t, env.store, ownerID, Recipe{Title: "Owner's dinner"})
+
+	if rec := env.putPlan(t, ownerID, weekWednesday, "dinner", recipe.ID); rec.Code != http.StatusOK {
+		t.Fatalf("put status = %d (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	if week := env.getPlanWeek(t, otherID, weekWednesday); len(week.Days[weekWednesday]) != 0 {
+		t.Errorf("other user sees %+v, want an empty plan", week.Days[weekWednesday])
+	}
+
+	rec := env.do(t, otherID, http.MethodDelete, "/api/recipes/plan?date="+weekWednesday+"&slot=dinner", "")
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("other user's delete status = %d, want 404 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if week := env.getPlanWeek(t, ownerID, weekWednesday); len(week.Days[weekWednesday]) != 1 {
+		t.Errorf("owner's entry = %+v, want it untouched", week.Days[weekWednesday])
+	}
+}
+
+// --- grocery push ---
+
+// TestHandleGroceryPush pushes recipe ingredients onto the grocery list and
+// checks the added/skipped split, including de-duplication against items that
+// are already on the list.
+func TestHandleGroceryPush(t *testing.T) {
+	env := setupHandlerTest(t)
+
+	created := decodeRecipe(t, env.do(t, ownerID, http.MethodPost, "/api/recipes", createBody))
+	torsk, melk := created.Ingredients[0].ID, created.Ingredients[1].ID
+
+	// "Torsk" is already on the list under a different casing.
+	if _, err := grocery.Add(env.db, grocery.GroceryItem{
+		HouseholdID:  ownerID,
+		Content:      "Torsk",
+		OriginalText: "Torsk",
+		AddedBy:      ownerID,
+	}); err != nil {
+		t.Fatalf("seed grocery item: %v", err)
+	}
+
+	path := fmt.Sprintf("/api/recipes/%d/grocery", created.ID)
+	rec := env.do(t, ownerID, http.MethodPost, path, fmt.Sprintf(`{"ingredient_ids":[%d,%d]}`, torsk, melk))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("push status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	var push GroceryPushResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &push); err != nil {
+		t.Fatalf("decode push response: %v (body: %s)", err, rec.Body.String())
+	}
+	if push.Added != 1 || push.Skipped != 1 {
+		t.Errorf("added/skipped = %d/%d, want 1/1", push.Added, push.Skipped)
+	}
+	if len(push.Items) != 1 || push.Items[0].Content != "melk" {
+		t.Errorf("items = %+v, want only melk", push.Items)
+	}
+
+	items, err := grocery.ListByHousehold(env.db, ownerID)
+	if err != nil {
+		t.Fatalf("list grocery items: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("grocery list has %d items, want 2 (no duplicate torsk): %+v", len(items), items)
+	}
+
+	// Pushing the same ingredients again adds nothing.
+	rec = env.do(t, ownerID, http.MethodPost, path, fmt.Sprintf(`{"ingredient_ids":[%d,%d]}`, torsk, melk))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("second push status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	push = GroceryPushResponse{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &push); err != nil {
+		t.Fatalf("decode second push response: %v", err)
+	}
+	if push.Added != 0 || push.Skipped != 2 {
+		t.Errorf("second push added/skipped = %d/%d, want 0/2", push.Added, push.Skipped)
+	}
+	if items, err = grocery.ListByHousehold(env.db, ownerID); err != nil || len(items) != 2 {
+		t.Errorf("grocery list = %+v (err %v), want the same 2 items", items, err)
+	}
+}
+
+// TestHandleGroceryPushUsesIngredientLineWhenUnparsed checks the fallback for
+// ingredients the client never parsed into a name.
+func TestHandleGroceryPushUsesIngredientLineWhenUnparsed(t *testing.T) {
+	env := setupHandlerTest(t)
+
+	created := decodeRecipe(t, env.do(t, ownerID, http.MethodPost, "/api/recipes",
+		`{"title":"Unparsed","ingredients":[{"text":"En klype salt"}]}`))
+
+	rec := env.do(t, ownerID, http.MethodPost, fmt.Sprintf("/api/recipes/%d/grocery", created.ID),
+		fmt.Sprintf(`{"ingredient_ids":[%d]}`, created.Ingredients[0].ID))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("push status = %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	items, err := grocery.ListByHousehold(env.db, ownerID)
+	if err != nil {
+		t.Fatalf("list grocery items: %v", err)
+	}
+	if len(items) != 1 || items[0].Content != "En klype salt" {
+		t.Errorf("grocery list = %+v, want the free-form ingredient line", items)
+	}
+}
+
+// TestHandleGroceryPushValidation checks the ownership and membership rules:
+// an ingredient from another recipe is a bad request, someone else's recipe is
+// simply not found, and neither writes to the list.
+func TestHandleGroceryPushValidation(t *testing.T) {
+	env := setupHandlerTest(t)
+
+	created := decodeRecipe(t, env.do(t, ownerID, http.MethodPost, "/api/recipes", createBody))
+	otherRecipe := decodeRecipe(t, env.do(t, ownerID, http.MethodPost, "/api/recipes",
+		`{"title":"Another","ingredients":[{"text":"1 løk","name":"løk"}]}`))
+	foreign := mustCreate(t, env.store, otherID, Recipe{
+		Title:       "Someone else's",
+		Ingredients: []Ingredient{{Text: "1 dl fløte", Name: "fløte"}},
+	})
+
+	path := fmt.Sprintf("/api/recipes/%d/grocery", created.ID)
+	cases := []struct {
+		name   string
+		caller int64
+		path   string
+		body   string
+		want   int
+	}{
+		{"malformed JSON", ownerID, path, `{"ingredient_ids":`, http.StatusBadRequest},
+		{"no ingredients", ownerID, path, `{"ingredient_ids":[]}`, http.StatusBadRequest},
+		{"invalid recipe id", ownerID, "/api/recipes/abc/grocery", `{"ingredient_ids":[1]}`, http.StatusBadRequest},
+		{"unknown ingredient", ownerID, path, `{"ingredient_ids":[999999]}`, http.StatusBadRequest},
+		{"ingredient from another recipe", ownerID, path,
+			fmt.Sprintf(`{"ingredient_ids":[%d]}`, otherRecipe.Ingredients[0].ID), http.StatusBadRequest},
+		{"missing recipe", ownerID, "/api/recipes/9999/grocery", `{"ingredient_ids":[1]}`, http.StatusNotFound},
+		{"another user's recipe", otherID, path,
+			fmt.Sprintf(`{"ingredient_ids":[%d]}`, created.Ingredients[0].ID), http.StatusNotFound},
+		{"owner reaching into a foreign recipe", ownerID,
+			fmt.Sprintf("/api/recipes/%d/grocery", foreign.ID),
+			fmt.Sprintf(`{"ingredient_ids":[%d]}`, foreign.Ingredients[0].ID), http.StatusNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := env.do(t, tc.caller, http.MethodPost, tc.path, tc.body)
+			if rec.Code != tc.want {
+				t.Errorf("status = %d, want %d (body: %s)", rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+
+	for _, userID := range []int64{ownerID, otherID} {
+		items, err := grocery.ListByHousehold(env.db, userID)
+		if err != nil {
+			t.Fatalf("list grocery items for %d: %v", userID, err)
+		}
+		if len(items) != 0 {
+			t.Errorf("user %d's grocery list = %+v, want nothing written by rejected pushes", userID, items)
+		}
 	}
 }

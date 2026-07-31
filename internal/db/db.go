@@ -2127,7 +2127,12 @@ func createSchema(db *sql.DB) error {
 		created_at TEXT NOT NULL DEFAULT ''
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_meal_plan_entries_user_date ON meal_plan_entries(user_id, plan_date);
+	-- One entry per user, day and slot: PUT /api/recipes/plan upserts on this
+	-- conflict target so repeated writes of the same slot stay idempotent. The
+	-- index also covers the (user_id, plan_date) week lookups, so the earlier
+	-- non-unique index on that prefix is redundant and gets dropped.
+	DROP INDEX IF EXISTS idx_meal_plan_entries_user_date;
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_meal_plan_entries_user_date_slot ON meal_plan_entries(user_id, plan_date, slot);
 
 	`
 

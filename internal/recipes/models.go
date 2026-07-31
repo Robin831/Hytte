@@ -89,7 +89,8 @@ type Cook struct {
 	CookedAt time.Time `json:"cooked_at"`
 }
 
-// PlanEntry schedules a recipe into a meal slot on a given day.
+// PlanEntry schedules a recipe into a meal slot on a given day. At most one
+// entry exists per (user, day, slot) — the store upserts on that triple.
 type PlanEntry struct {
 	ID        int64     `json:"id"`
 	UserID    int64     `json:"user_id"`
@@ -97,6 +98,10 @@ type PlanEntry struct {
 	PlanDate  string    `json:"plan_date"` // YYYY-MM-DD, local calendar day
 	Slot      string    `json:"slot"`      // breakfast | lunch | dinner | snack
 	CreatedAt time.Time `json:"created_at"`
+	// RecipeTitle is the scheduled recipe's (decrypted) title, joined in on
+	// read so a plan week can be rendered without fetching every recipe. It is
+	// derived, never stored on the entry row.
+	RecipeTitle string `json:"recipe_title"`
 }
 
 // TagFilter narrows a recipe listing by tags. Any matches recipes carrying at
