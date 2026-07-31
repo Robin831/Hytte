@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useUnloadWarning } from '../hooks/useUnloadWarning'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Trophy } from 'lucide-react'
 import { MathAnswerPad } from '../components/math/MathAnswerPad'
@@ -265,15 +266,7 @@ export default function MathMarathon() {
 
   // Warn before navigating away from a run in progress so a stray back-
   // tap or refresh doesn't silently lose 5 minutes of grinding.
-  useEffect(() => {
-    if (phase !== 'playing') return
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
-      e.returnValue = ''
-    }
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => window.removeEventListener('beforeunload', onBeforeUnload)
-  }, [phase])
+  useUnloadWarning(phase === 'playing')
 
   const isNewPB = useMemo(() => {
     if (!summary) return false
