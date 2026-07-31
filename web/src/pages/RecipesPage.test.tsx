@@ -27,6 +27,7 @@ const TRANSLATIONS: Record<string, string> = {
   'list.neverCooked': 'Never cooked',
   'list.loading': 'Loading recipes…',
   'list.open': 'Open recipe',
+  'planner.open': 'Meal plan',
   'filters.label': 'Filters',
   'filters.cuisine': 'Cuisine',
   'filters.season': 'Season',

@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
-import { ChefHat, Link2, Loader2, Plus, Search, Star } from 'lucide-react'
+import { CalendarDays, ChefHat, Link2, Loader2, Plus, Search, Star } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
 import { matchesSearch, useCookAgain, useRecipes } from '../hooks/useRecipes'
 import { CUISINE_TAGS, OCCASION_TAGS, SEASON_TAGS, type Recipe } from '../types/recipes'
@@ -231,6 +231,13 @@ export default function RecipesPage() {
           <p className="text-sm text-gray-400">{t('list.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            to="/recipes/planner"
+            className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors text-sm"
+          >
+            <CalendarDays size={16} aria-hidden="true" />
+            {t('planner.open')}
+          </Link>
           <button
             type="button"
             onClick={() => {

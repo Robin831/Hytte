@@ -103,6 +103,79 @@ export interface GroceryPushResponse {
 }
 
 /**
+ * The meal slots the backend accepts, in eating order — the same set and order
+ * as `slotOrder` in `internal/recipes/store.go`. Each value doubles as an i18n
+ * key under `recipes:planner.slots.*`.
+ */
+export const MEAL_SLOTS = ['breakfast', 'lunch', 'dinner', 'snack'] as const
+
+export type MealSlot = (typeof MEAL_SLOTS)[number]
+
+/**
+ * One scheduled meal, as GET and PUT /api/recipes/plan return it. `recipe_title`
+ * is joined in by the server so a planned week renders without fetching each
+ * recipe.
+ */
+export interface PlanEntry {
+  id: number
+  /** YYYY-MM-DD calendar day, no time zone attached. */
+  date: string
+  slot: MealSlot
+  recipe_id: number
+  recipe_title: string
+}
+
+/**
+ * One ISO week of the meal plan (GET /api/recipes/plan). `days` always holds all
+ * seven keys — an unplanned day is an empty array, never a missing key.
+ */
+export interface PlanWeek {
+  week_start: string
+  week_end: string
+  days: Record<string, PlanEntry[]>
+}
+
+/**
+ * Formats a local Date as the YYYY-MM-DD calendar day the plan endpoints speak.
+ *
+ * `utils/formatDate` has an equivalent helper, but it pulls in the i18n
+ * singleton; plan dates carry no locale, and keeping this module free of app
+ * singletons lets it be imported (and tested) on its own.
+ */
+export function toPlanDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+/**
+ * Reads a YYYY-MM-DD plan date as a local calendar day. `new Date(iso)` would
+ * read it as UTC midnight, which renders as the previous day west of Greenwich.
+ */
+export function parsePlanDate(iso: string): Date {
+  const [year, month, day] = iso.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+/**
+ * The Monday of the ISO week containing `day`, as a plan date. Mirrors
+ * `ISOWeekStart` in the store so the client asks for the week the server would
+ * have normalised to anyway.
+ */
+export function isoWeekStart(day: Date): string {
+  // getDay counts from Sunday; ISO weeks start on Monday.
+  const offset = (day.getDay() + 6) % 7
+  return toPlanDate(new Date(day.getFullYear(), day.getMonth(), day.getDate() - offset))
+}
+
+/** A plan date shifted by whole days, staying a plan date. */
+export function addPlanDays(iso: string, days: number): string {
+  const date = parsePlanDate(iso)
+  date.setDate(date.getDate() + days)
+  return toPlanDate(date)
+}
+
+/**
  * Recipes carry free-form tags; these vocabularies are the subsets the list
  * filters expose. Each value doubles as the i18n key under
  * `recipes:filters.<group>Values.*`, so adding a value means adding the label

@@ -68,6 +68,7 @@ import GroceryPage from './pages/GroceryPage'
 import RecipesPage from './pages/RecipesPage'
 import RecipeDetail from './pages/RecipeDetail'
 import RecipeCookMode from './pages/RecipeCookMode'
+import MealPlanner from './pages/MealPlanner'
 import WardrobePage from './pages/WardrobePage'
 import OffersPage from './pages/OffersPage'
 import HomeworkPage from './pages/HomeworkPage'
@@ -490,6 +491,16 @@ function MainLayout() {
             element={
               <FeatureRoute feature="recipes">
                 <RecipesPage />
+              </FeatureRoute>
+            }
+          />
+          {/* Registered before /recipes/:id for readability; React Router ranks
+              the static segment above the dynamic one either way. */}
+          <Route
+            path="/recipes/planner"
+            element={
+              <FeatureRoute feature="recipes">
+                <MealPlanner />
               </FeatureRoute>
             }
           />
