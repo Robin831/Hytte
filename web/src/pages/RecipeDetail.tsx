@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -180,6 +180,11 @@ function totalMinutes(recipe: Recipe): number {
 // --- page ---
 
 export default function RecipeDetail() {
+  const { id } = useParams<{ id: string }>()
+  return <RecipeDetailInner key={id} />
+}
+
+function RecipeDetailInner() {
   const { t } = useTranslation('recipes')
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -210,21 +215,8 @@ export default function RecipeDetail() {
   const [pushResult, setPushResult] = useState<GroceryPushResponse | null>(null)
   const [cookLogged, setCookLogged] = useState(false)
 
-  const recipeId = recipe?.id
   const baseServings = recipe?.servings ?? 0
   const portions = portionsOverride ?? baseServings
-
-  // Re-anchor the portion control when an edit changes the yield it scales
-  // from. A plain refresh (rating, cook log) leaves the user's choice alone.
-  useEffect(() => {
-    setPortionsOverride(null)
-  }, [recipeId, baseServings])
-
-  useEffect(() => {
-    setSelectedIds(new Set())
-    setPushResult(null)
-    setCookLogged(false)
-  }, [recipeId])
 
   const toggleIngredient = useCallback((ingredientId: number) => {
     setSelectedIds(prev => {
@@ -259,6 +251,7 @@ export default function RecipeDetail() {
     const saved = await update(recipe, input)
     if (!saved) return
     setDraft(null)
+    if (input.servings !== recipe.servings) setPortionsOverride(null)
     refresh()
   }
 
