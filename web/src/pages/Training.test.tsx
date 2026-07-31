@@ -4,6 +4,12 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Training from './Training'
 import type { Workout } from '../types/training'
+import {
+  trainingListCacheKey,
+  readTrainingListCache,
+  TRAINING_LIST_CACHE_VERSION,
+  TRAINING_LIST_CACHE_TTL_MS,
+} from '../hooks/useTrainingListCache'
 
 vi.mock('react-i18next', async () => {
   const { default: enTraining } = await import('../../public/locales/en/training.json')
@@ -223,6 +229,9 @@ function stubEventSource() {
 describe('Training filter bar', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    // The page now caches its loaded pages per tab — leaking a snapshot between
+    // tests would let one test hydrate from another's list.
+    window.sessionStorage.clear()
     requests = []
     stubEventSource()
     vi.stubGlobal('fetch', mockFetch(WORKOUTS))
@@ -412,6 +421,9 @@ describe('Training filtered pagination', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks()
+    // The page now caches its loaded pages per tab — leaking a snapshot between
+    // tests would let one test hydrate from another's list.
+    window.sessionStorage.clear()
     requests = []
     stubEventSource()
     vi.stubGlobal('fetch', mockFetch(MANY, ['easy']))
@@ -490,6 +502,9 @@ describe('Training filtered pagination', () => {
 describe('Training zero-workout user', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    // The page now caches its loaded pages per tab — leaking a snapshot between
+    // tests would let one test hydrate from another's list.
+    window.sessionStorage.clear()
     requests = []
     stubEventSource()
     vi.stubGlobal('fetch', mockFetch([], []))
@@ -511,6 +526,9 @@ describe('Training zero-workout user', () => {
 describe('Training error handling', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    // The page now caches its loaded pages per tab — leaking a snapshot between
+    // tests would let one test hydrate from another's list.
+    window.sessionStorage.clear()
     requests = []
     stubEventSource()
   })
@@ -546,9 +564,223 @@ describe('Training error handling', () => {
   })
 })
 
+describe('Training list cache', () => {
+  // A history deep enough to need paging, ordered the way the list endpoint
+  // orders it: started_at DESC (id DESC as the tiebreak). Index 0 is newest.
+  const HISTORY: Workout[] = []
+  for (let i = 0; i < 60; i++) {
+    HISTORY.push(makeWorkout({
+      id: 1000 - i,
+      title: `History ${i}`,
+      sport: 'running',
+      started_at: new Date(Date.UTC(2026, 0, 1) - i * 86_400_000).toISOString(),
+    }))
+  }
+
+  // What the user had loaded when they clicked into a workout: two pages of
+  // history, a cursor pointing past them, and a scroll offset.
+  const CACHED = HISTORY.slice(0, 50)
+  const CACHED_CURSOR = String(CACHED[CACHED.length - 1].id)
+
+  function primeCache(overrides: Record<string, unknown> = {}, userId = '1') {
+    window.sessionStorage.setItem(trainingListCacheKey(userId), JSON.stringify({
+      version: TRAINING_LIST_CACHE_VERSION,
+      userId,
+      savedAt: Date.now(),
+      workouts: CACHED,
+      nextCursor: CACHED_CURSOR,
+      latestWorkoutId: HISTORY[0].id,
+      scrollY: 420,
+      ...overrides,
+    }))
+  }
+
+  // Patched onto window itself (not just globalThis) because that is what the
+  // page calls, and happy-dom keeps the two property slots separate.
+  let scrollToSpy: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    window.sessionStorage.clear()
+    requests = []
+    stubEventSource()
+    scrollToSpy = vi.fn()
+    Object.defineProperty(window, 'scrollTo', {
+      value: scrollToSpy,
+      configurable: true,
+      writable: true,
+    })
+    vi.stubGlobal('fetch', mockFetch(HISTORY, []))
+  })
+
+  afterAll(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('renders the cached pages on the first paint, without a loading skeleton', () => {
+    primeCache()
+    const { container } = renderTraining()
+
+    // No await: the restored rows must be there before any request resolves.
+    expect(screen.getByText('History 0')).toBeInTheDocument()
+    expect(screen.getByText('History 49')).toBeInTheDocument()
+    expect(container.querySelector('.animate-pulse')).toBeNull()
+  })
+
+  it('keeps the cached cursor so "Load more" continues where the user left off', async () => {
+    // The refreshed page 1 carries an edited title, which is how the test knows
+    // the background refresh has landed.
+    const edited = HISTORY.map(w => w.id === HISTORY[0].id ? { ...w, title: 'History 0 renamed' } : w)
+    vi.stubGlobal('fetch', mockFetch(edited, []))
+
+    primeCache()
+    renderTraining()
+
+    // The edit reconciles in place — no second row for the same workout.
+    expect(await screen.findByText('History 0 renamed')).toBeInTheDocument()
+    expect(screen.queryByText('History 0')).not.toBeInTheDocument()
+    expect(screen.getByText('History 49')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /load more/i }))
+
+    await waitFor(() => {
+      expect(lastListRequest().searchParams.get('cursor')).toBe(CACHED_CURSOR)
+    })
+    expect(await screen.findByText('History 59')).toBeInTheDocument()
+    expect(screen.getByText('History 49')).toBeInTheDocument()
+  })
+
+  it('merges a workout uploaded while away without duplicating restored rows', async () => {
+    const uploaded = makeWorkout({
+      id: 2000,
+      title: 'New Upload',
+      sport: 'running',
+      started_at: '2026-06-01T08:00:00Z',
+    })
+    vi.stubGlobal('fetch', mockFetch([uploaded, ...HISTORY], []))
+
+    primeCache()
+    renderTraining()
+
+    expect(await screen.findByText('New Upload')).toBeInTheDocument()
+    // Every restored row survives, exactly once each.
+    expect(screen.getAllByText('History 0')).toHaveLength(1)
+    expect(screen.getAllByText('History 24')).toHaveLength(1)
+    expect(screen.getByText('History 49')).toBeInTheDocument()
+  })
+
+  it('drops a workout deleted while away', async () => {
+    vi.stubGlobal('fetch', mockFetch(HISTORY.filter(w => w.title !== 'History 5'), []))
+
+    primeCache()
+    renderTraining()
+
+    await waitFor(() => {
+      expect(screen.queryByText('History 5')).not.toBeInTheDocument()
+    })
+    // Only the deleted workout goes: its neighbours and the deeper pages stay.
+    expect(screen.getByText('History 4')).toBeInTheDocument()
+    expect(screen.getByText('History 6')).toBeInTheDocument()
+    expect(screen.getByText('History 49')).toBeInTheDocument()
+  })
+
+  it('does a normal fresh load when the snapshot is older than the TTL', async () => {
+    primeCache({ savedAt: Date.now() - TRAINING_LIST_CACHE_TTL_MS - 1000 })
+    const { container } = renderTraining()
+
+    expect(container.querySelector('.animate-pulse')).not.toBeNull()
+    expect(await screen.findByText('History 0')).toBeInTheDocument()
+    // Only page 1 — the stale deeper pages are not restored.
+    expect(screen.queryByText('History 49')).not.toBeInTheDocument()
+    expect(screen.queryByText('History 30')).not.toBeInTheDocument()
+  })
+
+  it('does a normal fresh load after a reload navigation', async () => {
+    vi.spyOn(performance, 'getEntriesByType').mockReturnValue([
+      { type: 'reload' } as unknown as PerformanceEntry,
+    ])
+    primeCache()
+    renderTraining()
+
+    expect(await screen.findByText('History 0')).toBeInTheDocument()
+    expect(screen.queryByText('History 49')).not.toBeInTheDocument()
+  })
+
+  it('never restores another user\'s snapshot', async () => {
+    primeCache({}, '2')
+    renderTraining()
+
+    expect(await screen.findByText('History 0')).toBeInTheDocument()
+    expect(screen.queryByText('History 49')).not.toBeInTheDocument()
+  })
+
+  it('restores the cached scroll offset once the rows are rendered', () => {
+    primeCache({ scrollY: 640 })
+    renderTraining()
+
+    expect(scrollToSpy).toHaveBeenCalledWith({ top: 640, behavior: 'auto' })
+  })
+
+  it('does not scroll on a fresh load', async () => {
+    renderTraining()
+    expect(await screen.findByText('History 0')).toBeInTheDocument()
+    expect(scrollToSpy).not.toHaveBeenCalled()
+  })
+
+  it('persists the loaded pages and the scroll offset for the next mount', async () => {
+    const { unmount } = renderTraining()
+    await screen.findByText('History 0')
+
+    fireEvent.click(await screen.findByRole('button', { name: /load more/i }))
+    expect(await screen.findByText('History 30')).toBeInTheDocument()
+
+    // Leaving for a workout detail flushes the offset even mid-debounce.
+    Object.defineProperty(window, 'scrollY', { value: 512, configurable: true })
+    unmount()
+
+    const snapshot = readTrainingListCache('1')
+    expect(snapshot).not.toBeNull()
+    expect(snapshot!.workouts.length).toBe(HISTORY.length)
+    expect(snapshot!.nextCursor).toBeNull()
+    expect(snapshot!.scrollY).toBe(512)
+  })
+
+  it('drops the snapshot while a filter is active, since filters are not restored', async () => {
+    primeCache()
+    renderTraining()
+
+    expect(await screen.findByText('History 0')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'cycling' } })
+
+    await waitFor(() => {
+      expect(readTrainingListCache('1')).toBeNull()
+    })
+    // A filtered load replaces the restored list rather than merging into it.
+    expect(screen.queryByText('History 49')).not.toBeInTheDocument()
+  })
+
+  it('falls back to a fresh load when sessionStorage throws', async () => {
+    primeCache()
+    vi.spyOn(window.sessionStorage, 'getItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError')
+    })
+    vi.spyOn(window.sessionStorage, 'setItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError')
+    })
+
+    const { unmount } = renderTraining()
+    expect(await screen.findByText('History 0')).toBeInTheDocument()
+    expect(screen.queryByText('History 49')).not.toBeInTheDocument()
+    expect(() => unmount()).not.toThrow()
+  })
+})
+
 describe('Training new-workouts banner', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    // The page now caches its loaded pages per tab — leaking a snapshot between
+    // tests would let one test hydrate from another's list.
+    window.sessionStorage.clear()
     requests = []
   })
 

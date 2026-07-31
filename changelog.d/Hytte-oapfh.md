@@ -1,0 +1,2 @@
+category: Changed
+- **Training list keeps your place when you come back** - Opening a workout and pressing back now restores every page you had loaded with "Load more", along with your scroll position, instead of resetting to the first page at the top. The list is shown immediately from a per-tab cache and refreshed in the background, so new, edited and deleted workouts still reconcile. A reload, a stale cache, or a different user always gets a fresh load. (Hytte-oapfh)

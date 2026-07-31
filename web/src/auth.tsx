@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
+import { clearTrainingListCache } from './hooks/useTrainingListCache'
 
 interface User {
   id: number
@@ -74,6 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetch('/api/auth/logout', { method: 'POST' })
     setUser(null)
     setFamilyStatus(null)
+    // Drop every cached training list in this tab, so signing in as a different
+    // user cannot surface the previous user's workouts.
+    clearTrainingListCache()
   }, [])
 
   const hasFeature = useCallback((key: string): boolean => {
