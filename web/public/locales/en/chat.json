@@ -37,7 +37,11 @@
     "sendLabel": "Send message",
     "stopStreaming": "Stop generating",
     "dismissError": "Dismiss error",
-    "copyMessage": "Copy message"
+    "copyMessage": "Copy message",
+    "regenerate": "Regenerate response",
+    "editMessage": "Edit message",
+    "cancelEdit": "Cancel edit",
+    "editingNotice": "Editing message — send to continue the conversation from here"
   },
   "errors": {
     "failedToLoad": "Failed to load conversations",
@@ -47,6 +51,7 @@
     "failedToRename": "Failed to rename conversation",
     "failedToUpdateModel": "Failed to update model",
     "failedToSend": "Failed to send message",
-    "streamError": "The response stream was interrupted. Please try again."
+    "streamError": "The response stream was interrupted. Please try again.",
+    "failedToTruncate": "Failed to update the conversation"
   }
 }

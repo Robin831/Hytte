@@ -940,3 +940,166 @@ func TestStreamMessageHandler_NotFound(t *testing.T) {
 		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 }
+
+// withURLParams attaches multiple chi URL params to the request.
+func withURLParams(r *http.Request, kv map[string]string) *http.Request {
+	rctx := chi.NewRouteContext()
+	for k, v := range kv {
+		rctx.URLParams.Add(k, v)
+	}
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
+
+func truncateRequest(convoID, messageID int64) *http.Request {
+	req := httptest.NewRequest(http.MethodDelete,
+		"/api/chat/conversations/"+strconv.FormatInt(convoID, 10)+"/messages/"+strconv.FormatInt(messageID, 10), nil)
+	req = withUser(req)
+	return withURLParams(req, map[string]string{
+		"id":        strconv.FormatInt(convoID, 10),
+		"messageID": strconv.FormatInt(messageID, 10),
+	})
+}
+
+func TestTruncateHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	convo, err := CreateConversation(db, 1, "Chat", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	keep, err := InsertMessage(db, convo.ID, "user", "Keep me")
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	if _, err := InsertMessage(db, convo.ID, "assistant", "Answer"); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	target, err := InsertMessage(db, convo.ID, "user", "Edit me")
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	if _, err := InsertMessage(db, convo.ID, "assistant", "Stale reply"); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	if err := UpdateSessionID(db, convo.ID, 1, "session-abc"); err != nil {
+		t.Fatalf("set session id: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	TruncateHandler(db)(rec, truncateRequest(convo.ID, target.ID))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]*Message
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	msg := resp["message"]
+	if msg == nil {
+		t.Fatal("expected message in response")
+	}
+	if msg.ID != target.ID || msg.Role != "user" || msg.Content != "Edit me" {
+		t.Fatalf("unexpected message in response: %+v", msg)
+	}
+
+	msgs, err := GetMessages(db, convo.ID)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 2 || msgs[0].ID != keep.ID {
+		t.Fatalf("expected only the first exchange to survive, got %+v", msgs)
+	}
+
+	updated, err := GetConversation(db, convo.ID, 1)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if updated.SessionID != "" {
+		t.Fatalf("expected session_id cleared, got %q", updated.SessionID)
+	}
+}
+
+func TestTruncateHandler_UnknownMessage(t *testing.T) {
+	db := setupTestDB(t)
+
+	convo, err := CreateConversation(db, 1, "Chat", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := InsertMessage(db, convo.ID, "user", "Hello"); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	TruncateHandler(db)(rec, truncateRequest(convo.ID, 4242))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	msgs, err := GetMessages(db, convo.ID)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected no rows changed, got %d messages", len(msgs))
+	}
+}
+
+func TestTruncateHandler_ForeignConversation(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := db.Exec(
+		`INSERT INTO users (id, google_id, email, name, picture) VALUES (2, 'g2', 'other@example.com', 'Other', '')`,
+	); err != nil {
+		t.Fatalf("create other user: %v", err)
+	}
+
+	convo, err := CreateConversation(db, 2, "Not yours", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	msg, err := InsertMessage(db, convo.ID, "user", "Private")
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	TruncateHandler(db)(rec, truncateRequest(convo.ID, msg.ID))
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	msgs, err := GetMessages(db, convo.ID)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected the foreign message to survive, got %d", len(msgs))
+	}
+}
+
+func TestTruncateHandler_InvalidMessageID(t *testing.T) {
+	db := setupTestDB(t)
+
+	convo, err := CreateConversation(db, 1, "Chat", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/chat/conversations/1/messages/abc", nil)
+	req = withUser(req)
+	req = withURLParams(req, map[string]string{
+		"id":        strconv.FormatInt(convo.ID, 10),
+		"messageID": "abc",
+	})
+	rec := httptest.NewRecorder()
+
+	TruncateHandler(db)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}

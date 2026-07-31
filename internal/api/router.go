@@ -552,6 +552,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Put("/chat/conversations/{id}", chat.RenameHandler(db))
 				r.Post("/chat/conversations/{id}/messages", chat.SendMessageHandler(db))
 				r.Post("/chat/conversations/{id}/messages/stream", chat.StreamMessageHandler(db))
+				r.Delete("/chat/conversations/{id}/messages/{messageID}", chat.TruncateHandler(db))
 			})
 
 			// Family Chat — gated by "family_chat" feature (Hytte-56j7).
