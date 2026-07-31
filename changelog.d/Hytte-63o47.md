@@ -1,0 +1,2 @@
+category: Added
+- **Undo for grocery check-off and clear-completed** - Checking an item off or clearing completed items now shows a toast with an Undo button for 8 seconds. Undoing a check-off flips the item back to unchecked; undoing a clear re-creates the removed items (keeping their text, original text and source language) and marks them completed again. Only the most recent action is undoable, and a failed undo shows an error and resyncs the list with the server. (Hytte-63o47)

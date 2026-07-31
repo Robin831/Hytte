@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Check, X, Mic, MicOff } from 'lucide-react'
 import { useAuth } from '../auth'
+import { useToast } from '../hooks/useToast'
+import ToastList from '../components/ToastList'
 
 interface GroceryItem {
   id: number
@@ -31,6 +33,15 @@ function sortItems(items: GroceryItem[]): GroceryItem[] {
   })
 }
 
+// How long the Undo button stays available after a destructive action.
+const UNDO_WINDOW_MS = 8000
+
+// The most recent undoable action. Only one is ever pending: starting a new
+// destructive action replaces it, so an older action can no longer be undone.
+type PendingUndo =
+  | { kind: 'check'; itemId: number }
+  | { kind: 'clear'; items: GroceryItem[] }
+
 type SpeechRecognitionType = typeof window extends { SpeechRecognition: infer T } ? T : unknown
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognitionType) | undefined {
@@ -51,6 +62,9 @@ export default function GroceryPage() {
   const [isTranslating, setIsTranslating] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<SpeechRecognitionType | null>(null)
+  const { toasts, showToast, dismissToast } = useToast()
+  const pendingUndoRef = useRef<PendingUndo | null>(null)
+  const pendingToastIdRef = useRef<number | null>(null)
 
   const fetchItems = useCallback(async (signal?: AbortSignal) => {
     const res = await fetch('/api/grocery/items', { credentials: 'include', signal })
@@ -284,37 +298,104 @@ export default function GroceryPage() {
     }
   }
 
+  // Resync with the server so what's on screen matches what was actually stored.
+  const resync = async () => {
+    try {
+      const fetched = await fetchItems()
+      setItems(fetched)
+    } catch {
+      // If the refetch also fails, leave the current state in place
+    }
+  }
+
+  // Optimistically flip an item's checked flag, then persist it. Throws if the
+  // request fails so callers can decide how to surface the error.
+  const applyCheck = async (itemId: number, newChecked: boolean) => {
+    setItems(prev => {
+      const updated = prev.map(i => i.id === itemId ? { ...i, checked: newChecked } : i)
+      return [...updated.filter(i => !i.checked), ...updated.filter(i => i.checked)]
+    })
+    const res = await fetch(`/api/grocery/items/${itemId}/check`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ checked: newChecked }),
+    })
+    if (!res.ok) throw new Error('toggle failed')
+  }
+
+  const runUndo = async () => {
+    const pending = pendingUndoRef.current
+    pendingUndoRef.current = null
+    pendingToastIdRef.current = null
+    if (!pending) return
+    try {
+      if (pending.kind === 'check') {
+        await applyCheck(pending.itemId, false)
+      } else {
+        // No restore endpoint exists, so re-create each cleared item and check it
+        // again. Restored rows get new ids and land at the end of the sort order.
+        for (const item of pending.items) {
+          const res = await fetch('/api/grocery/items', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              content: item.content,
+              original_text: item.original_text,
+              source_language: item.source_language,
+            }),
+          })
+          if (!res.ok) throw new Error('restore failed')
+          const data = await res.json()
+          const restored = data.item as GroceryItem
+          const checkRes = await fetch(`/api/grocery/items/${restored.id}/check`, {
+            method: 'PATCH',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ checked: true }),
+          })
+          if (!checkRes.ok) throw new Error('restore failed')
+        }
+        // Let the server be the single source of truth for the restored rows so
+        // they can't duplicate what the SSE stream already delivered.
+        const fetched = await fetchItems()
+        setItems(fetched)
+      }
+    } catch {
+      showToast(t('errors.failedToUndo'), 'error')
+      await resync()
+    }
+  }
+
+  // Replaces any still-pending undo toast — only the most recent action is undoable.
+  const showUndoToast = (message: string) => {
+    if (pendingToastIdRef.current !== null) dismissToast(pendingToastIdRef.current)
+    pendingToastIdRef.current = showToast(message, 'success', {
+      durationMs: UNDO_WINDOW_MS,
+      action: { label: t('undo'), onClick: () => { void runUndo() } },
+    })
+  }
+
   const handleToggle = async (item: GroceryItem) => {
     const newChecked = !item.checked
     setError('')
-    // Optimistic update
-    setItems(prev => {
-      const updated = prev.map(i => i.id === item.id ? { ...i, checked: newChecked } : i)
-      return [...updated.filter(i => !i.checked), ...updated.filter(i => i.checked)]
-    })
     try {
-      const res = await fetch(`/api/grocery/items/${item.id}/check`, {
-        method: 'PATCH',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ checked: newChecked }),
-      })
-      if (!res.ok) throw new Error('toggle failed')
+      await applyCheck(item.id, newChecked)
+      if (newChecked) {
+        pendingUndoRef.current = { kind: 'check', itemId: item.id }
+        showUndoToast(t('toast.itemCheckedOff'))
+      }
     } catch {
       // Refetch on failure to get authoritative state, avoiding stale-closure overwrites
-      try {
-        const fetched = await fetchItems()
-        setItems(fetched)
-      } catch {
-        // If refetch also fails, leave the optimistic state in place
-      }
+      await resync()
       setError(t('errors.failedToUpdate'))
     }
   }
 
   const handleClearCompleted = async () => {
-    const checked = items.filter(i => i.checked)
-    if (checked.length === 0) return
+    const cleared = items.filter(i => i.checked)
+    if (cleared.length === 0) return
     setError('')
     const snapshot = [...items]
     // Optimistic remove
@@ -325,6 +406,8 @@ export default function GroceryPage() {
         credentials: 'include',
       })
       if (!res.ok) throw new Error('clear failed')
+      pendingUndoRef.current = { kind: 'clear', items: cleared }
+      showUndoToast(t('toast.itemsCleared', { count: cleared.length }))
     } catch {
       // Revert to pre-optimistic snapshot to avoid duplicates and ordering issues
       setItems(snapshot)
@@ -441,6 +524,8 @@ export default function GroceryPage() {
           )}
         </div>
       )}
+
+      <ToastList toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }

@@ -3,6 +3,12 @@
   "addPlaceholder": "เพิ่มรายการ...",
   "add": "เพิ่ม",
   "clearCompleted": "ล้างรายการที่เสร็จแล้ว",
+  "undo": "เลิกทำ",
+  "toast": {
+    "itemCheckedOff": "ทำเครื่องหมายรายการว่าเสร็จแล้ว",
+    "itemsCleared_one": "ล้างแล้ว {{count}} รายการ",
+    "itemsCleared_other": "ล้างแล้ว {{count}} รายการ"
+  },
   "empty": "รายการซื้อของว่างเปล่า",
   "emptyHint": "เพิ่มรายการโดยใช้ช่องด้านบน",
   "errors": {
@@ -10,6 +16,7 @@
     "failedToAdd": "ไม่สามารถเพิ่มรายการ",
     "failedToUpdate": "ไม่สามารถอัปเดตรายการ",
     "failedToClear": "ไม่สามารถล้างรายการที่เสร็จแล้ว",
+    "failedToUndo": "ไม่สามารถเลิกทำ — กำลังแสดงสถานะล่าสุดจากเซิร์ฟเวอร์",
     "failedToTranslate": "ไม่สามารถแปลเสียงพูด",
     "failedToStartRecording": "ไม่สามารถเริ่มบันทึกเสียง"
   },

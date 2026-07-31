@@ -3,6 +3,12 @@
   "addPlaceholder": "Add an item...",
   "add": "Add",
   "clearCompleted": "Clear completed",
+  "undo": "Undo",
+  "toast": {
+    "itemCheckedOff": "Item checked off",
+    "itemsCleared_one": "{{count}} item cleared",
+    "itemsCleared_other": "{{count}} items cleared"
+  },
   "empty": "Your grocery list is empty",
   "emptyHint": "Add items using the input above",
   "errors": {
@@ -10,6 +16,7 @@
     "failedToAdd": "Failed to add item",
     "failedToUpdate": "Failed to update item",
     "failedToClear": "Failed to clear completed items",
+    "failedToUndo": "Failed to undo — showing the latest server state",
     "failedToTranslate": "Failed to translate voice input",
     "failedToStartRecording": "Failed to start recording"
   },
