@@ -13,6 +13,7 @@ import (
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/grocery"
+	"github.com/Robin831/Hytte/internal/training"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -160,6 +161,12 @@ type GroceryPushResponse struct {
 	Items   []grocery.GroceryItem `json:"items"`
 }
 
+// ImportRequest is the body of POST /api/recipes/import: the page to read a
+// recipe from.
+type ImportRequest struct {
+	URL string `json:"url"`
+}
+
 // --- Handlers ---
 
 // Handlers serves the recipes REST API on top of the recipe Store. It keeps
@@ -187,6 +194,7 @@ func RegisterRoutes(r chi.Router, db *sql.DB) {
 		// Registered before /recipes/{id} so the literal segment wins even if
 		// chi's static-over-wildcard preference ever changes.
 		r.Get("/recipes/cook-again", h.HandleCookAgain)
+		r.Post("/recipes/import", h.HandleImport)
 		r.Get("/recipes/plan", h.HandlePlanGet)
 		r.Put("/recipes/plan", h.HandlePlanPut)
 		r.Delete("/recipes/plan", h.HandlePlanDelete)
@@ -602,6 +610,60 @@ func (h *Handlers) HandleGroceryPush(w http.ResponseWriter, r *http.Request) {
 		Skipped: len(names) - len(created),
 		Items:   created,
 	})
+}
+
+// HandleImport reads a recipe off a web page and returns the parsed structure
+// for the user to review and edit.
+//
+// The endpoint is read-only by design: it performs no database writes at all.
+// A failed fetch or a response Claude could not parse therefore cannot leave a
+// partial recipe behind — the recipe is only persisted when the user submits
+// the (possibly edited) result through POST /api/recipes.
+func (h *Handlers) HandleImport(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+
+	var body ImportRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxImportBodyBytes)).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	target, err := NormalizeImportURL(body.URL)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "url must be an absolute http or https address")
+		return
+	}
+
+	cfg, err := training.LoadClaudeConfig(h.db, user.ID)
+	if err != nil {
+		log.Printf("recipes: import: load claude config: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to load import config")
+		return
+	}
+	if !cfg.Enabled {
+		writeError(w, http.StatusBadRequest, "claude is not enabled")
+		return
+	}
+
+	parsed, err := ImportFromURL(r.Context(), cfg, target)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidURL):
+			writeError(w, http.StatusBadRequest, "url must be an absolute http or https address")
+		case errors.Is(err, ErrFetch):
+			log.Printf("recipes: import: fetch %s: %v", target, err)
+			writeError(w, http.StatusBadGateway, "could not fetch the page")
+		case errors.Is(err, ErrParse):
+			log.Printf("recipes: import: parse %s: %v", target, err)
+			writeError(w, http.StatusUnprocessableEntity, "could not find a recipe on that page")
+		default:
+			log.Printf("recipes: import: %s: %v", target, err)
+			writeError(w, http.StatusBadGateway, "recipe import failed")
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"recipe": parsed})
 }
 
 // respondWithRecipe re-reads a recipe and writes it as the response body. The
