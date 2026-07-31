@@ -138,6 +138,25 @@
     "noRateChanges": "No rate changes recorded. The loan uses a fixed rate.",
     "showPastPayments": "Show {{count}} past payments",
     "hidePastPayments": "Hide past payments",
+    "whatIf": {
+      "title": "Extra payment / early payoff",
+      "hint": "Model a recurring extra payment and/or a one-off lump sum. Extra payments always shorten the term.",
+      "extraMonthly": "Extra per month (kr)",
+      "lumpSum": "Lump sum (kr)",
+      "lumpSumDate": "Lump sum date",
+      "reset": "Reset",
+      "calculating": "Recalculating…",
+      "originalPayoff": "Original payoff",
+      "newPayoff": "New payoff",
+      "monthsSaved": "Months saved",
+      "interestSaved": "Interest saved",
+      "interestCompare": "Total interest {{original}} → {{updated}}",
+      "errors": {
+        "invalid": "Check the extra payment amounts and date — amounts cannot be negative and a lump sum needs a date.",
+        "lumpSumDateRequired": "Add a date for the lump sum — without one it is not included in the schedule."
+      },
+      "retry": "Try again"
+    },
     "errors": {
       "loadFailed": "Failed to load loans.",
       "saveFailed": "Failed to save loan.",

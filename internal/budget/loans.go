@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -243,9 +244,78 @@ func annuityPayment365(balance, annualRate float64, nMonths int, accrualStart ti
 // rateChanges is an optional sorted list of rate changes; when provided the rate switches
 // at the effective_date of each change and the payment is recalculated.
 func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]AmortizationRow, error) {
+	rows, _, err := buildAmortization(l, maxRows, rateChanges, OverpaymentOptions{}, nil)
+	return rows, err
+}
+
+// BuildAmortizationWithOverpayments computes the schedule with optional what-if
+// overpayments applied on top of the contractual payments. With the zero
+// OverpaymentOptions it is identical to BuildAmortization.
+//
+// Overpayments always shorten the term: the contractual annuity payment for each
+// period is taken from the baseline (no-overpayment) run, so a mid-term rate
+// change does not silently convert the savings into a lower monthly payment.
+// The final payment is reduced so the remaining balance never goes negative.
+func BuildAmortizationWithOverpayments(l *Loan, maxRows int, rateChanges []LoanRateChange, opts OverpaymentOptions) ([]AmortizationRow, error) {
+	if opts.IsZero() {
+		return BuildAmortization(l, maxRows, rateChanges)
+	}
+	// Baseline run over the full term to pin the contractual payment per period.
+	_, contractual, err := buildAmortization(l, 0, rateChanges, OverpaymentOptions{}, nil)
+	if err != nil {
+		return nil, err
+	}
+	rows, _, err := buildAmortization(l, maxRows, rateChanges, opts, contractual)
+	return rows, err
+}
+
+// BuildPayoffSummary compares the what-if schedule against the contractual
+// baseline over the full term. It returns nil when no overpayments are requested.
+func BuildPayoffSummary(l *Loan, rateChanges []LoanRateChange, opts OverpaymentOptions) (*PayoffSummary, error) {
+	if opts.IsZero() {
+		return nil, nil
+	}
+	baseRows, contractual, err := buildAmortization(l, 0, rateChanges, OverpaymentOptions{}, nil)
+	if err != nil {
+		return nil, err
+	}
+	whatIfRows, _, err := buildAmortization(l, 0, rateChanges, opts, contractual)
+	if err != nil {
+		return nil, err
+	}
+	if len(baseRows) == 0 || len(whatIfRows) == 0 {
+		return nil, nil
+	}
+
+	baseInterest := 0.0
+	for _, r := range baseRows {
+		baseInterest += r.Interest
+	}
+	newInterest := 0.0
+	for _, r := range whatIfRows {
+		newInterest += r.Interest
+	}
+	return &PayoffSummary{
+		OriginalPayoffDate:    baseRows[len(baseRows)-1].Date,
+		NewPayoffDate:         whatIfRows[len(whatIfRows)-1].Date,
+		OriginalPayments:      len(baseRows),
+		NewPayments:           len(whatIfRows),
+		MonthsSaved:           len(baseRows) - len(whatIfRows),
+		OriginalTotalInterest: math.Round(baseInterest*100) / 100,
+		NewTotalInterest:      math.Round(newInterest*100) / 100,
+		InterestSaved:         math.Round((baseInterest-newInterest)*100) / 100,
+	}, nil
+}
+
+// buildAmortization is the shared amortization engine. It returns the schedule
+// rows plus the annuity payment used for each period (1-indexed, same length as
+// rows). When contractual is non-nil its values override the internally
+// recalculated payment, which keeps a what-if run tied to the baseline payment
+// so overpayments reduce the term rather than the payment.
+func buildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange, opts OverpaymentOptions, contractual []float64) ([]AmortizationRow, []float64, error) {
 	balance := l.Principal
 	if balance <= 0 {
-		return []AmortizationRow{}, nil
+		return []AmortizationRow{}, []float64{}, nil
 	}
 
 	payment := l.MonthlyPayment
@@ -256,6 +326,13 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 	}
 	if limit <= 0 {
 		limit = 360 // safety cap: 30 years
+	}
+	// A what-if run can never need more periods than the contractual baseline:
+	// overpayments only ever shorten the term. Capping here keeps the run inside
+	// the baseline payment array, so extra payments are never applied to periods
+	// the contractual schedule never had.
+	if len(contractual) > 0 && limit > len(contractual) {
+		limit = len(contractual)
 	}
 
 	var startTime time.Time
@@ -294,7 +371,7 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		payment = balance * r / (1 - math.Pow(1+r, -float64(l.TermMonths)))
 	}
 	if payment <= 0 {
-		return []AmortizationRow{}, nil
+		return []AmortizationRow{}, []float64{}, nil
 	}
 
 	rcIdx := 0 // index into rateChanges
@@ -332,6 +409,8 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 	}
 
 	rows := make([]AmortizationRow, 0, limit)
+	payments := make([]float64, 0, limit)
+	lumpApplied := false
 	for i := 1; i <= limit && balance > 0.005; i++ {
 		// payDate is only used for display (business-day adjusted).
 
@@ -390,6 +469,12 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 				payment = balance * r / (1 - math.Pow(1+r, -float64(remainingMonths)))
 			}
 		}
+		// A what-if run reuses the baseline payment for this period so that the
+		// reduced balance does not lower the payment at a rate change. The loop
+		// limit is capped at len(contractual) above, so the index is always valid.
+		if len(contractual) > 0 {
+			payment = contractual[i-1]
+		}
 
 		// Regular monthly interest using actual/365 for the first regular period.
 		// Banks determine the principal split from a regular-length period,
@@ -420,7 +505,21 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 		if principal < 0 {
 			principal = 0
 		}
+		// What-if overpayments go straight to principal on top of the
+		// contractual payment.
+		extra := 0.0
+		if opts.ExtraMonthly > 0 {
+			extra += opts.ExtraMonthly
+		}
+		if !lumpApplied && opts.LumpSum > 0 && opts.LumpSumDate != "" && payDateStr >= opts.LumpSumDate {
+			extra += opts.LumpSum
+			lumpApplied = true
+		}
+		if extra > 0 {
+			principal += extra
+		}
 		if principal > balance {
+			// Final payment: reduce it so the balance never goes negative.
 			principal = balance
 		}
 		balance -= principal
@@ -443,8 +542,9 @@ func BuildAmortization(l *Loan, maxRows int, rateChanges []LoanRateChange) ([]Am
 			RemainingBalance: math.Round(balance*100) / 100,
 			Rate:             currentRate,
 		})
+		payments = append(payments, payment)
 	}
-	return rows, nil
+	return rows, payments, nil
 }
 
 // LTV returns the loan-to-value ratio (0-1) for a loan with a property value set.
@@ -633,8 +733,61 @@ func DeleteRateChange(db *sql.DB, loanID, id int64) error {
 
 // -- Handlers --
 
+// parseOverpaymentOptions reads the what-if query params (extra_monthly,
+// lump_sum, lump_sum_date). It returns a user-facing error message for invalid
+// input; the caller turns that into a 400.
+func parseOverpaymentOptions(q url.Values) (OverpaymentOptions, string) {
+	var opts OverpaymentOptions
+
+	parseAmount := func(name string) (float64, string) {
+		raw := q.Get(name)
+		if raw == "" {
+			return 0, ""
+		}
+		v, err := strconv.ParseFloat(raw, 64)
+		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+			return 0, name + " must be a number"
+		}
+		if v < 0 {
+			return 0, name + " must not be negative"
+		}
+		return v, ""
+	}
+
+	extra, errMsg := parseAmount("extra_monthly")
+	if errMsg != "" {
+		return opts, errMsg
+	}
+	lump, errMsg := parseAmount("lump_sum")
+	if errMsg != "" {
+		return opts, errMsg
+	}
+
+	lumpDate := q.Get("lump_sum_date")
+	if lumpDate != "" {
+		if _, err := time.Parse("2006-01-02", lumpDate); err != nil {
+			return opts, "lump_sum_date must be YYYY-MM-DD"
+		}
+	}
+	if lump > 0 && lumpDate == "" {
+		return opts, "lump_sum_date is required when lump_sum is set"
+	}
+
+	opts.ExtraMonthly = extra
+	opts.LumpSum = lump
+	opts.LumpSumDate = lumpDate
+	return opts, ""
+}
+
 // LoansAmortizationHandler returns the amortization schedule for a single loan.
-// Query param: rows (max rows to return; when omitted, BuildAmortization uses term_months, capped at 360).
+// Query params:
+//   - rows: max rows to return (when omitted, BuildAmortization uses term_months, capped at 360)
+//   - extra_monthly: what-if recurring extra payment added to principal each month
+//   - lump_sum + lump_sum_date: what-if one-off extra payment applied on the first
+//     scheduled payment on or after lump_sum_date
+//
+// When any what-if param is set the response also carries a payoff_summary
+// comparing the overpaid schedule against the contractual baseline.
 func LoansAmortizationHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -664,24 +817,37 @@ func LoansAmortizationHandler(db *sql.DB) http.HandlerFunc {
 			maxRows = n
 		}
 
+		opts, errMsg := parseOverpaymentOptions(r.URL.Query())
+		if errMsg != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": errMsg})
+			return
+		}
+
 		rateChanges, err := ListRateChanges(db, loan.ID)
 		if err != nil {
 			log.Printf("budget: list rate changes for loan %d: %v", loan.ID, err)
 			rateChanges = []LoanRateChange{} // non-fatal, fall back to fixed rate
 		}
 
-		rows, err := BuildAmortization(loan, maxRows, rateChanges)
+		rows, err := BuildAmortizationWithOverpayments(loan, maxRows, rateChanges, opts)
 		if err != nil {
 			log.Printf("budget: amortization for loan %d user %d: %v", id, user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to compute amortization"})
 			return
 		}
+		summary, err := BuildPayoffSummary(loan, rateChanges, opts)
+		if err != nil {
+			log.Printf("budget: payoff summary for loan %d user %d: %v", id, user.ID, err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to compute amortization"})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"loan":         loan,
-			"amortization": rows,
-			"rate_changes": rateChanges,
-			"ltv_ratio":    LTV(loan),
-			"ltv_max":      DefaultLTVMax,
+			"loan":           loan,
+			"amortization":   rows,
+			"rate_changes":   rateChanges,
+			"ltv_ratio":      LTV(loan),
+			"ltv_max":        DefaultLTVMax,
+			"payoff_summary": summary,
 		})
 	}
 }

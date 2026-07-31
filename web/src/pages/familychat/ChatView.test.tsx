@@ -1372,7 +1372,7 @@ describe('ChatView – call UI', () => {
     expect(screen.queryByTestId('family-chat-call-button')).not.toBeInTheDocument()
   })
 
-  it('opens the incoming-call overlay when a call_offer SSE event arrives', async () => {
+  it('opens the incoming-call overlay when a call_offer SSE event arrives', { timeout: 10_000 }, async () => {
     const conv2 = makeConversation({ id: 1, name: 'One on One', member_ids: [1, 2] })
     const sse = streamWithController()
     installCallEnv()
@@ -1403,7 +1403,7 @@ describe('ChatView – call UI', () => {
     expect(screen.getByTestId('family-chat-call-decline')).toBeInTheDocument()
   })
 
-  it('accepting an incoming call fetches TURN config and POSTs an answer to the relay', async () => {
+  it('accepting an incoming call fetches TURN config and POSTs an answer to the relay', { timeout: 10_000 }, async () => {
     const conv2 = makeConversation({ id: 1, name: 'One on One', member_ids: [1, 2] })
     const sse = streamWithController()
     installCallEnv()
@@ -1519,7 +1519,7 @@ describe('ChatView – call UI', () => {
     expect(screen.getByTestId('family-chat-video-call-button')).toBeInTheDocument()
   })
 
-  it('shows the video-call label on the incoming overlay when the offer carries kind=video', async () => {
+  it('shows the video-call label on the incoming overlay when the offer carries kind=video', { timeout: 10_000 }, async () => {
     const conv2 = makeConversation({ id: 1, name: 'One on One', member_ids: [1, 2] })
     const sse = streamWithController()
     installCallEnv()

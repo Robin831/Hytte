@@ -120,6 +120,36 @@ type AmortizationRow struct {
 	Rate             float64 `json:"rate"`
 }
 
+// OverpaymentOptions describes optional what-if overpayments applied on top of
+// the contractual amortization schedule. The zero value means "no overpayments"
+// and reproduces the contractual schedule exactly.
+type OverpaymentOptions struct {
+	// ExtraMonthly is added to the principal portion of every scheduled payment.
+	ExtraMonthly float64
+	// LumpSum is applied once, on the first scheduled payment whose date is on
+	// or after LumpSumDate. Ignored when LumpSumDate is empty or falls after payoff.
+	LumpSum float64
+	// LumpSumDate is a YYYY-MM-DD date.
+	LumpSumDate string
+}
+
+// IsZero reports whether no overpayments were requested.
+func (o OverpaymentOptions) IsZero() bool {
+	return o.ExtraMonthly <= 0 && o.LumpSum <= 0
+}
+
+// PayoffSummary compares a what-if schedule against the contractual baseline.
+type PayoffSummary struct {
+	OriginalPayoffDate    string  `json:"original_payoff_date"`
+	NewPayoffDate         string  `json:"new_payoff_date"`
+	OriginalPayments      int     `json:"original_payments"`
+	NewPayments           int     `json:"new_payments"`
+	MonthsSaved           int     `json:"months_saved"`
+	OriginalTotalInterest float64 `json:"original_total_interest"`
+	NewTotalInterest      float64 `json:"new_total_interest"`
+	InterestSaved         float64 `json:"interest_saved"`
+}
+
 // VariableBill represents a named variable expense group (e.g. "Electricity").
 // It may optionally link to a recurring rule via RecurringID and/or to a credit
 // card via CreditCardID — when set, confirmed CSV imports for that card

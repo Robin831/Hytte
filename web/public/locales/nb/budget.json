@@ -138,6 +138,25 @@
     "noRateChanges": "Ingen renteendringer registrert. Lånet bruker fast rente.",
     "showPastPayments": "Vis {{count}} tidligere betalinger",
     "hidePastPayments": "Skjul tidligere betalinger",
+    "whatIf": {
+      "title": "Ekstra innbetaling / tidlig nedbetaling",
+      "hint": "Se hva en fast ekstra innbetaling og/eller et engangsbeløp gjør. Ekstra innbetalinger korter alltid ned løpetiden.",
+      "extraMonthly": "Ekstra per måned (kr)",
+      "lumpSum": "Engangsbeløp (kr)",
+      "lumpSumDate": "Dato for engangsbeløp",
+      "reset": "Nullstill",
+      "calculating": "Regner om …",
+      "originalPayoff": "Opprinnelig nedbetalt",
+      "newPayoff": "Ny nedbetalt",
+      "monthsSaved": "Måneder spart",
+      "interestSaved": "Spart rente",
+      "interestCompare": "Total rente {{original}} → {{updated}}",
+      "errors": {
+        "invalid": "Sjekk beløpene og datoen — beløp kan ikke være negative, og et engangsbeløp må ha en dato.",
+        "lumpSumDateRequired": "Legg inn en dato for engangsbeløpet — uten dato blir det ikke regnet med."
+      },
+      "retry": "Prøv igjen"
+    },
     "errors": {
       "loadFailed": "Kunne ikke laste lån.",
       "saveFailed": "Kunne ikke lagre lån.",
