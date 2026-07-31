@@ -478,7 +478,11 @@ describe('Chat – model selector', () => {
         model: 'claude-opus-5',
       })
     })
-    expect((screen.getByLabelText('Model') as HTMLSelectElement).value).toBe('claude-opus-5')
+    // The select reflects the PUT response only after its json() resolves and
+    // state applies — poll rather than assert synchronously (flaked in CI).
+    await waitFor(() => {
+      expect((screen.getByLabelText('Model') as HTMLSelectElement).value).toBe('claude-opus-5')
+    })
   })
 
   it('selecting a model before creating a conversation passes it in the POST body', async () => {
