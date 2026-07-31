@@ -198,45 +198,42 @@ describe('Notes unsaved-changes guard', () => {
   it('blocks in-app navigation and shows the discard dialog', async () => {
     const { router } = await renderDirty()
 
-    await act(async () => {
-      router.navigate('/links')
-    })
+    // Wait for dirty state to propagate
+    await waitFor(() => expect(screen.getByRole('button', { name: /editor.save/ })).not.toBeDisabled())
+
+    // Navigate without awaiting — the returned promise hangs when blocked
+    act(() => { router.navigate('/links') })
+
+    expect(await screen.findByText('discardConfirm.title')).toBeInTheDocument()
 
     expect(router.state.location.pathname).toBe('/notes')
-    expect(screen.getByText('discardConfirm.title')).toBeInTheDocument()
     expect(screen.queryByText('links page')).not.toBeInTheDocument()
   })
 
   it('completes the blocked navigation exactly once when confirmed', async () => {
     const { router } = await renderDirty()
+    await waitFor(() => expect(screen.getByRole('button', { name: /editor.save/ })).not.toBeDisabled())
 
-    await act(async () => {
-      router.navigate('/links')
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'discardConfirm.confirm' }))
+    act(() => { router.navigate('/links') })
+    fireEvent.click(await screen.findByRole('button', { name: 'discardConfirm.confirm' }))
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/links'))
     expect(await screen.findByText('links page')).toBeInTheDocument()
 
-    // A single history entry was pushed, so one step back lands on /notes.
-    await act(async () => {
-      router.navigate(-1)
-    })
-    expect(router.state.location.pathname).toBe('/notes')
+    act(() => { router.navigate(-1) })
+    await waitFor(() => expect(router.state.location.pathname).toBe('/notes'))
   })
 
   it('stays on the page with the draft intact when the dialog is cancelled', async () => {
     const { router } = await renderDirty()
+    await waitFor(() => expect(screen.getByRole('button', { name: /editor.save/ })).not.toBeDisabled())
 
-    await act(async () => {
-      router.navigate('/links')
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'discardConfirm.cancel' }))
+    act(() => { router.navigate('/links') })
+    fireEvent.click(await screen.findByRole('button', { name: 'discardConfirm.cancel' }))
 
     await waitFor(() => expect(screen.queryByText('discardConfirm.title')).not.toBeInTheDocument())
     expect(router.state.location.pathname).toBe('/notes')
     expect(screen.getByLabelText('fields.titleLabel')).toHaveValue('Edited title')
-    // Still dirty: the save button stays enabled and unload is still blocked.
     expect(screen.getByRole('button', { name: /editor.save/ })).not.toBeDisabled()
     expect(dispatchBeforeUnload()).toBe(true)
   })
@@ -250,11 +247,9 @@ describe('Notes unsaved-changes guard', () => {
     fireEvent.click(screen.getByRole('button', { name: /editor.save/ }))
     await waitFor(() => expect(screen.getByRole('button', { name: /editor.save/ })).toBeDisabled())
 
-    await act(async () => {
-      router.navigate('/links')
-    })
+    act(() => { router.navigate('/links') })
 
-    expect(router.state.location.pathname).toBe('/links')
+    await waitFor(() => expect(router.state.location.pathname).toBe('/links'))
     expect(screen.queryByText('discardConfirm.title')).not.toBeInTheDocument()
   })
 
@@ -275,8 +270,11 @@ describe('Notes unsaved-changes guard', () => {
     fireEvent.click(await screen.findByText('First note'))
     fireEvent.change(screen.getByLabelText('fields.titleLabel'), { target: { value: 'Edited title' } })
 
-    fireEvent.click(screen.getByText('Second note'))
-    expect(screen.getByText('discardConfirm.title')).toBeInTheDocument()
+    // Wait for dirty state to propagate before clicking the second note
+    await waitFor(() => expect(screen.getByRole('button', { name: /editor.save/ })).not.toBeDisabled())
+
+    fireEvent.click(await screen.findByText('Second note'))
+    expect(await screen.findByText('discardConfirm.title')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'discardConfirm.confirm' }))
     await waitFor(() => expect(screen.getByLabelText('fields.titleLabel')).toHaveValue('Second note'))
