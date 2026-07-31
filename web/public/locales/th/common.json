@@ -40,7 +40,8 @@
     "homeworkReview": "ตรวจสอบการบ้าน",
     "regnemester": "เกมคณิตศาสตร์",
     "suggestions": "ข้อเสนอแนะ",
-    "pokemon": "โปเกมอน"
+    "pokemon": "โปเกมอน",
+    "recipes": "สูตรอาหาร"
   },
   "actions": {
     "save": "บันทึก",

@@ -65,6 +65,9 @@ import BudgetVariables from './pages/BudgetVariables'
 import Vault from './pages/Vault'
 import SkyWatchPage from './pages/SkyWatchPage'
 import GroceryPage from './pages/GroceryPage'
+import RecipesPage from './pages/RecipesPage'
+import RecipeDetail from './pages/RecipeDetail'
+import RecipeCookMode from './pages/RecipeCookMode'
 import WardrobePage from './pages/WardrobePage'
 import OffersPage from './pages/OffersPage'
 import HomeworkPage from './pages/HomeworkPage'
@@ -477,6 +480,32 @@ function MainLayout() {
             element={
               <FeatureRoute feature="grocery">
                 <GroceryPage />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Recipe routes */}
+          <Route
+            path="/recipes"
+            element={
+              <FeatureRoute feature="recipes">
+                <RecipesPage />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/recipes/:id"
+            element={
+              <FeatureRoute feature="recipes">
+                <RecipeDetail />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/recipes/:id/cook"
+            element={
+              <FeatureRoute feature="recipes">
+                <RecipeCookMode />
               </FeatureRoute>
             }
           />
