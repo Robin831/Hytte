@@ -25,30 +25,30 @@ type Location struct {
 
 // NorwegianLocations maps city names to their coordinates.
 var NorwegianLocations = map[string]Location{
-	"Oslo":          {Name: "Oslo", Lat: 59.9139, Lon: 10.7522},
-	"Bergen":        {Name: "Bergen", Lat: 60.3913, Lon: 5.3221},
-	"Trondheim":     {Name: "Trondheim", Lat: 63.4305, Lon: 10.3951},
-	"Stavanger":     {Name: "Stavanger", Lat: 58.9700, Lon: 5.7331},
-	"Tromsø":        {Name: "Tromsø", Lat: 69.6492, Lon: 18.9553},
-	"Kristiansand":  {Name: "Kristiansand", Lat: 58.1599, Lon: 8.0182},
-	"Drammen":       {Name: "Drammen", Lat: 59.7441, Lon: 10.2045},
-	"Fredrikstad":   {Name: "Fredrikstad", Lat: 59.2181, Lon: 10.9298},
-	"Bodø":          {Name: "Bodø", Lat: 67.2804, Lon: 14.4049},
-	"Ålesund":       {Name: "Ålesund", Lat: 62.4722, Lon: 6.1495},
-	"Lillehammer":   {Name: "Lillehammer", Lat: 61.1153, Lon: 10.4662},
-	"Haugesund":     {Name: "Haugesund", Lat: 59.4138, Lon: 5.2680},
-	"Molde":         {Name: "Molde", Lat: 62.7375, Lon: 7.1591},
-	"Narvik":        {Name: "Narvik", Lat: 68.4385, Lon: 17.4272},
-	"Alta":          {Name: "Alta", Lat: 69.9689, Lon: 23.2716},
+	"Oslo":         {Name: "Oslo", Lat: 59.9139, Lon: 10.7522},
+	"Bergen":       {Name: "Bergen", Lat: 60.3913, Lon: 5.3221},
+	"Trondheim":    {Name: "Trondheim", Lat: 63.4305, Lon: 10.3951},
+	"Stavanger":    {Name: "Stavanger", Lat: 58.9700, Lon: 5.7331},
+	"Tromsø":       {Name: "Tromsø", Lat: 69.6492, Lon: 18.9553},
+	"Kristiansand": {Name: "Kristiansand", Lat: 58.1599, Lon: 8.0182},
+	"Drammen":      {Name: "Drammen", Lat: 59.7441, Lon: 10.2045},
+	"Fredrikstad":  {Name: "Fredrikstad", Lat: 59.2181, Lon: 10.9298},
+	"Bodø":         {Name: "Bodø", Lat: 67.2804, Lon: 14.4049},
+	"Ålesund":      {Name: "Ålesund", Lat: 62.4722, Lon: 6.1495},
+	"Lillehammer":  {Name: "Lillehammer", Lat: 61.1153, Lon: 10.4662},
+	"Haugesund":    {Name: "Haugesund", Lat: 59.4138, Lon: 5.2680},
+	"Molde":        {Name: "Molde", Lat: 62.7375, Lon: 7.1591},
+	"Narvik":       {Name: "Narvik", Lat: 68.4385, Lon: 17.4272},
+	"Alta":         {Name: "Alta", Lat: 69.9689, Lon: 23.2716},
 }
 
 const (
-	metBaseURL          = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
-	metUserAgent        = "Hytte/1.0 github.com/Robin831/Hytte"
-	cacheDuration       = 30 * time.Minute
-	maxResponseSize     = 2 << 20 // 2 MB
-	maxNominatimSize    = 512 << 10 // 512 KB — more than enough for 5 results
-	maxSunCacheEntries  = 1000
+	metBaseURL         = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
+	metUserAgent       = "Hytte/1.0 github.com/Robin831/Hytte"
+	cacheDuration      = 30 * time.Minute
+	maxResponseSize    = 2 << 20   // 2 MB
+	maxNominatimSize   = 512 << 10 // 512 KB — more than enough for 5 results
+	maxSunCacheEntries = 1000
 )
 
 // cachedResponse holds a cached MET API response.
@@ -328,23 +328,23 @@ const (
 
 // nominatimResult matches the JSON returned by Nominatim's search endpoint.
 type nominatimResult struct {
-	DisplayName string          `json:"display_name"`
-	Lat         string          `json:"lat"`
-	Lon         string          `json:"lon"`
+	DisplayName string           `json:"display_name"`
+	Lat         string           `json:"lat"`
+	Lon         string           `json:"lon"`
 	Address     nominatimAddress `json:"address"`
 }
 
 type nominatimAddress struct {
-	Hamlet       string `json:"hamlet"`
-	Suburb       string `json:"suburb"`
+	Hamlet        string `json:"hamlet"`
+	Suburb        string `json:"suburb"`
 	Neighbourhood string `json:"neighbourhood"`
-	Quarter      string `json:"quarter"`
-	Village      string `json:"village"`
-	Town         string `json:"town"`
-	City         string `json:"city"`
-	Municipality string `json:"municipality"`
-	County       string `json:"county"`
-	Country      string `json:"country"`
+	Quarter       string `json:"quarter"`
+	Village       string `json:"village"`
+	Town          string `json:"town"`
+	City          string `json:"city"`
+	Municipality  string `json:"municipality"`
+	County        string `json:"county"`
+	Country       string `json:"country"`
 }
 
 // SearchResult is returned to the frontend for each Nominatim hit.
@@ -630,7 +630,7 @@ func (s *Service) fetchForecastWithStampedeProtection(loc Location) ([]byte, err
 	val, err, _ := s.requestGroup.Do(cacheKey, func() (interface{}, error) {
 		return s.fetchForecast(loc, cacheKey)
 	})
-	
+
 	if err != nil {
 		return nil, err
 	}
