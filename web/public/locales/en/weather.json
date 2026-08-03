@@ -18,6 +18,11 @@
     "attribution": "Weather data from",
     "windFromDirectionAria": "Wind from {{degrees}}°"
   },
+  "locationSearch": {
+    "placeholder": "Search location…",
+    "ariaLabel": "Search for a location",
+    "error": "Search failed"
+  },
   "geolocation": {
     "button": "Use my location",
     "buttonAria": "Use my current location for the forecast",
