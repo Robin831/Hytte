@@ -111,6 +111,12 @@ export default function Composer({ conversationId, currentUserId, onMessageCreat
   const bodyRef = useRef(body)
   useEffect(() => { bodyRef.current = body })
 
+  function resetComposerText(targetConversationId: number) {
+    bodyRef.current = ''
+    clearDraft(currentUserId, targetConversationId)
+    setBody('')
+  }
+
   // Swap in the stored draft + focus the textarea when the conversation
   // changes so the composer never carries a half-typed message into a
   // different chat, while the outgoing chat's text is kept for later. Also
@@ -118,7 +124,8 @@ export default function Composer({ conversationId, currentUserId, onMessageCreat
   // the newly selected conversation. The cleanup also runs on unmount.
   useEffect(() => {
     const id = conversationId
-    const draft = getDraft(id)
+    const uid = currentUserId
+    const draft = getDraft(uid, id)
     // Seed the mirror as well: a cleanup that runs before the next render
     // (React StrictMode's double-mount, or a very fast switch) would otherwise
     // persist a stale empty body and wipe the draft we just restored.
@@ -139,10 +146,13 @@ export default function Composer({ conversationId, currentUserId, onMessageCreat
     if (rs === 'recording' || rs === 'starting' || rs === 'processing') {
       recorderRef.current.cancel()
     }
+    const persistDraft = () => { setDraft(uid, id, bodyRef.current) }
+    window.addEventListener('pagehide', persistDraft)
     return () => {
+      window.removeEventListener('pagehide', persistDraft)
       // Keep the outgoing conversation's half-typed message so coming back
       // restores it. A blank body clears the stored draft instead.
-      setDraft(id, bodyRef.current)
+      setDraft(uid, id, bodyRef.current)
       abortRef.current?.abort()
       abortRef.current = null
       uploadAbortRef.current?.abort()
@@ -154,7 +164,7 @@ export default function Composer({ conversationId, currentUserId, onMessageCreat
       for (const c of sendAbortsRef.current) c.abort()
       sendAbortsRef.current.clear()
     }
-  }, [conversationId])
+  }, [conversationId, currentUserId])
 
   // Auto-grow the textarea up to a max height; collapse back when emptied.
   useEffect(() => {
@@ -306,11 +316,7 @@ export default function Composer({ conversationId, currentUserId, onMessageCreat
         throw new Error(t('composer.errors.send'))
       }
       onMessageCreated(msg)
-      // Update the ref before the state so a conversation switch racing this
-      // cleanup cannot re-persist the text we just sent.
-      bodyRef.current = ''
-      clearDraft(targetConversationId)
-      setBody('')
+      resetComposerText(targetConversationId)
       setAttachment(null)
       textareaRef.current?.focus()
     } catch (err) {
@@ -355,11 +361,7 @@ export default function Composer({ conversationId, currentUserId, onMessageCreat
     }
     tempIdRef.current -= 1
     onOptimisticMessage(optimistic)
-    // Update the ref before the state so a conversation switch racing this
-    // cleanup cannot re-persist the text we just sent.
-    bodyRef.current = ''
-    clearDraft(targetConversationId)
-    setBody('')
+    resetComposerText(targetConversationId)
     setError('')
     textareaRef.current?.focus()
     void postText(targetConversationId, clientId, trimmed)

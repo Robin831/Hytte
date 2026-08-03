@@ -333,7 +333,7 @@ describe('Composer – per-conversation drafts', () => {
 
   it('restores a stored draft on mount', () => {
     vi.stubGlobal('fetch', vi.fn())
-    setDraft(3, 'half typed message')
+    setDraft(1, 3, 'half typed message')
     renderComposer(3)
     expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('half typed message')
   })
@@ -347,12 +347,12 @@ describe('Composer – per-conversation drafts', () => {
 
     rerender(composerFor(2))
     expect(textarea.value).toBe('')
-    expect(getDraft(1)).toBe('a long unfinished thought')
+    expect(getDraft(1, 1)).toBe('a long unfinished thought')
 
     fireEvent.change(textarea, { target: { value: 'for the other thread' } })
     rerender(composerFor(1))
     expect(textarea.value).toBe('a long unfinished thought')
-    expect(getDraft(2)).toBe('for the other thread')
+    expect(getDraft(1, 2)).toBe('for the other thread')
   })
 
   it('persists the draft on unmount', () => {
@@ -360,23 +360,23 @@ describe('Composer – per-conversation drafts', () => {
     const { unmount } = renderComposer(4)
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'saved for later' } })
     unmount()
-    expect(getDraft(4)).toBe('saved for later')
+    expect(getDraft(1, 4)).toBe('saved for later')
   })
 
   it('stores no draft for a whitespace-only composer and drops a previous one', () => {
     vi.stubGlobal('fetch', vi.fn())
-    setDraft(5, 'previously typed')
+    setDraft(1, 5, 'previously typed')
     const { unmount } = renderComposer(5)
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '   ' } })
     unmount()
-    expect(getDraft(5)).toBe('')
-    expect(localStorage.getItem(draftKey(5))).toBeNull()
+    expect(getDraft(1, 5)).toBe('')
+    expect(localStorage.getItem(draftKey(1, 5))).toBeNull()
   })
 
   it('clears the stored draft after a successful send', async () => {
     const msg = makeMessage({ id: 12, conversation_id: 6, body: 'Sent for real' })
     vi.stubGlobal('fetch', vi.fn(() => sendOk(msg)))
-    setDraft(6, 'an older draft')
+    setDraft(1, 6, 'an older draft')
     const { unmount } = renderComposer(6)
 
     const textarea = screen.getByRole('textbox') as HTMLTextAreaElement
@@ -385,11 +385,11 @@ describe('Composer – per-conversation drafts', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
 
     await waitFor(() => { expect(textarea.value).toBe('') })
-    expect(getDraft(6)).toBe('')
+    expect(getDraft(1, 6)).toBe('')
 
     // The unmount persist must not resurrect the just-sent text.
     unmount()
-    expect(getDraft(6)).toBe('')
+    expect(getDraft(1, 6)).toBe('')
   })
 
   it('clears the stored draft after a successful attachment send', async () => {
@@ -416,9 +416,9 @@ describe('Composer – per-conversation drafts', () => {
     await waitFor(() => {
       expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('')
     })
-    expect(getDraft(7)).toBe('')
+    expect(getDraft(1, 7)).toBe('')
     unmount()
-    expect(getDraft(7)).toBe('')
+    expect(getDraft(1, 7)).toBe('')
   })
 
   it('still aborts in-flight sends, resets error/attachment state and focuses the input on a switch', async () => {
