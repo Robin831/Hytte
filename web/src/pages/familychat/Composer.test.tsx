@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import Composer, { type RetryHandle } from './Composer'
 import type { ChatMessage } from './ChatView'
+import { getDraft, setDraft, draftKey, __resetDrafts } from './drafts'
 
 // ── Translation mock ──────────────────────────────────────────────────────────
 
@@ -64,6 +65,10 @@ function renderComposer(conversationId = 1, onMessageCreated = vi.fn(), extra: E
     />,
   )
 }
+
+// Drafts outlive a render (that is the point of them), so wipe the store
+// before every test to keep suites independent.
+beforeEach(() => { __resetDrafts() })
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -306,5 +311,157 @@ describe('Composer – attachments', () => {
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent('File is too large (max 10 MB)')
     })
+  })
+})
+
+describe('Composer – per-conversation drafts', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  // composerFor builds the element so a test can rerender the same component
+  // under a different conversation id — the switch the drafts protect.
+  function composerFor(conversationId: number, onMessageCreated = vi.fn()) {
+    return (
+      <Composer
+        conversationId={conversationId}
+        currentUserId={1}
+        onMessageCreated={onMessageCreated}
+        onOptimisticMessage={vi.fn()}
+        onMessageFailed={vi.fn()}
+      />
+    )
+  }
+
+  it('restores a stored draft on mount', () => {
+    vi.stubGlobal('fetch', vi.fn())
+    setDraft(1, 3, 'half typed message')
+    renderComposer(3)
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('half typed message')
+  })
+
+  it('persists the draft when switching conversations and restores it on return', () => {
+    vi.stubGlobal('fetch', vi.fn())
+    const { rerender } = render(composerFor(1))
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement
+
+    fireEvent.change(textarea, { target: { value: 'a long unfinished thought' } })
+
+    rerender(composerFor(2))
+    expect(textarea.value).toBe('')
+    expect(getDraft(1, 1)).toBe('a long unfinished thought')
+
+    fireEvent.change(textarea, { target: { value: 'for the other thread' } })
+    rerender(composerFor(1))
+    expect(textarea.value).toBe('a long unfinished thought')
+    expect(getDraft(1, 2)).toBe('for the other thread')
+  })
+
+  it('persists the draft on unmount', () => {
+    vi.stubGlobal('fetch', vi.fn())
+    const { unmount } = renderComposer(4)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'saved for later' } })
+    unmount()
+    expect(getDraft(1, 4)).toBe('saved for later')
+  })
+
+  it('stores no draft for a whitespace-only composer and drops a previous one', () => {
+    vi.stubGlobal('fetch', vi.fn())
+    setDraft(1, 5, 'previously typed')
+    const { unmount } = renderComposer(5)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '   ' } })
+    unmount()
+    expect(getDraft(1, 5)).toBe('')
+    expect(localStorage.getItem(draftKey(1, 5))).toBeNull()
+  })
+
+  it('clears the stored draft after a successful send', async () => {
+    const msg = makeMessage({ id: 12, conversation_id: 6, body: 'Sent for real' })
+    vi.stubGlobal('fetch', vi.fn(() => sendOk(msg)))
+    setDraft(1, 6, 'an older draft')
+    const { unmount } = renderComposer(6)
+
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement
+    expect(textarea.value).toBe('an older draft')
+    fireEvent.change(textarea, { target: { value: 'Sent for real' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+
+    await waitFor(() => { expect(textarea.value).toBe('') })
+    expect(getDraft(1, 6)).toBe('')
+
+    // The unmount persist must not resurrect the just-sent text.
+    unmount()
+    expect(getDraft(1, 6)).toBe('')
+  })
+
+  it('clears the stored draft after a successful attachment send', async () => {
+    const newMsg = makeMessage({ id: 13, conversation_id: 7, body: 'With a file' })
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ upload_id: 'a'.repeat(32), mime: 'image/png', size: 12 }),
+      })
+      .mockResolvedValueOnce(sendOk(newMsg))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { container, unmount } = renderComposer(7)
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'With a file' } })
+    const file = new File([new Uint8Array([0x89, 0x50])], 'pic.png', { type: 'image/png' })
+    fireEvent.change(container.querySelector('input[type="file"]') as HTMLInputElement, {
+      target: { files: [file] },
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('family-chat-attachment-chip')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    await waitFor(() => {
+      expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('')
+    })
+    expect(getDraft(1, 7)).toBe('')
+    unmount()
+    expect(getDraft(1, 7)).toBe('')
+  })
+
+  it('still aborts in-flight sends, resets error/attachment state and focuses the input on a switch', async () => {
+    // The message POST never resolves so its abort is observable; the upload
+    // succeeds so the attachment chip is on screen at switch time.
+    const sendSignals: AbortSignal[] = []
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => {
+      if (init?.body instanceof FormData) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ upload_id: 'b'.repeat(32), mime: 'image/png', size: 12 }),
+        })
+      }
+      if (init?.signal) sendSignals.push(init.signal)
+      return new Promise(() => {})
+    }))
+
+    const { container, rerender } = render(composerFor(8))
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'In flight' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    expect(sendSignals).toHaveLength(1)
+    expect(sendSignals[0].aborted).toBe(false)
+
+    const file = new File([new Uint8Array([0x89, 0x50])], 'pic.png', { type: 'image/png' })
+    fireEvent.change(container.querySelector('input[type="file"]') as HTMLInputElement, {
+      target: { files: [file] },
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('family-chat-attachment-chip')).toBeInTheDocument()
+    })
+
+    // An over-long body raises the inline error without any network call.
+    fireEvent.change(textarea, { target: { value: 'x'.repeat(8001) } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Message is too long')
+
+    rerender(composerFor(9))
+
+    expect(sendSignals[0].aborted).toBe(true)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('family-chat-attachment-chip')).not.toBeInTheDocument()
+    expect(textarea.value).toBe('')
+    expect(document.activeElement).toBe(textarea)
   })
 })

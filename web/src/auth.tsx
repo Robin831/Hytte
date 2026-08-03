@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
 import { clearTrainingListCache } from './hooks/useTrainingListCache'
+import { clearAllDrafts } from './pages/familychat/drafts'
 
 interface User {
   id: number
@@ -73,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(async () => {
     await fetch('/api/auth/logout', { method: 'POST' })
+    clearAllDrafts()
     setUser(null)
     setFamilyStatus(null)
     // Drop every cached training list in this tab, so signing in as a different
