@@ -1,0 +1,2 @@
+category: Changed
+- **Package updates** - Bump Go dependencies (golang.org/x/net v0.57.0, google.golang.org/api v0.291.0, modernc.org/sqlite v1.55.0) and npm dependencies (react, react-dom, react-router-dom, react-i18next, react-window, recharts, lucide-react, tailwindcss, vite, eslint, typescript-eslint, happy-dom and related types/plugins). Also upgrades @testing-library/jest-dom to v7. (Hytte-sb1ff)
