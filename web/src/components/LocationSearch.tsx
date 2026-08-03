@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Search } from 'lucide-react'
 
 interface SearchResult {
@@ -12,16 +13,21 @@ interface SearchResult {
 interface LocationSearchProps {
   onSelect: (result: { name: string; country: string; lat: number; lon: number }) => void
   inputClassName?: string
+  /** Optional override; defaults to the translated placeholder. */
   placeholder?: string
+  /** Optional override; defaults to the translated aria-label. */
   ariaLabel?: string
   inputId?: string
 }
 
-export default function LocationSearch({ onSelect, inputClassName = 'w-44', placeholder = 'Search location…', ariaLabel = 'Search for a location', inputId }: LocationSearchProps) {
+export default function LocationSearch({ onSelect, inputClassName = 'w-44', placeholder, ariaLabel, inputId }: LocationSearchProps) {
+  const { t } = useTranslation('weather')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // Search failures show a single translated message; the underlying error is
+  // logged instead of rendered, since the API returns untranslated detail.
+  const [failed, setFailed] = useState(false)
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
 
@@ -48,23 +54,24 @@ export default function LocationSearch({ onSelect, inputClassName = 'w-44', plac
       if (trimmed.length < 2) {
         setResults([])
         setOpen(false)
-        setError(null)
+        setFailed(false)
         return
       }
       setLoading(true)
-      setError(null)
+      setFailed(false)
       try {
         const res = await fetch(`/api/weather/search?q=${encodeURIComponent(trimmed)}`)
         if (!res.ok) {
           const body = await res.json().catch(() => ({}))
-          throw new Error((body as { error?: string }).error || 'Search failed')
+          throw new Error((body as { error?: string }).error || `Search request failed with status ${res.status}`)
         }
         const data = await res.json() as { results: SearchResult[] }
         setResults(data.results ?? [])
         setOpen(true)
         setActiveIndex(-1)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Search failed')
+        console.warn('Location search failed:', err)
+        setFailed(true)
         setResults([])
         setOpen(false)
       } finally {
@@ -125,8 +132,8 @@ export default function LocationSearch({ onSelect, inputClassName = 'w-44', plac
           onFocus={() => {
             if (results.length > 0) setOpen(true)
           }}
-          placeholder={placeholder}
-          aria-label={ariaLabel}
+          placeholder={placeholder ?? t('locationSearch.placeholder')}
+          aria-label={ariaLabel ?? t('locationSearch.ariaLabel')}
           className={`pl-8 pr-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 ${inputClassName}`}
         />
         {loading && (
@@ -134,8 +141,8 @@ export default function LocationSearch({ onSelect, inputClassName = 'w-44', plac
         )}
       </div>
 
-      {error && (
-        <p className="mt-1 text-xs text-red-400">{error}</p>
+      {failed && (
+        <p role="alert" className="mt-1 text-xs text-red-400">{t('locationSearch.error')}</p>
       )}
 
       {open && results.length > 0 && (

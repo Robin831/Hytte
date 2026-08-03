@@ -18,6 +18,11 @@
     "attribution": "ข้อมูลสภาพอากาศจาก",
     "windFromDirectionAria": "ลมจากทิศ {{degrees}}°"
   },
+  "locationSearch": {
+    "placeholder": "ค้นหาสถานที่…",
+    "ariaLabel": "ค้นหาสถานที่",
+    "error": "การค้นหาล้มเหลว"
+  },
   "geolocation": {
     "button": "ใช้ตำแหน่งของฉัน",
     "buttonAria": "ใช้ตำแหน่งปัจจุบันสำหรับพยากรณ์อากาศ",

@@ -18,6 +18,11 @@
     "attribution": "Værdata fra",
     "windFromDirectionAria": "Vind fra {{degrees}}°"
   },
+  "locationSearch": {
+    "placeholder": "Søk etter sted…",
+    "ariaLabel": "Søk etter et sted",
+    "error": "Søket mislyktes"
+  },
   "geolocation": {
     "button": "Bruk posisjonen min",
     "buttonAria": "Bruk nåværende posisjon for varselet",
