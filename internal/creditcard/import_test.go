@@ -219,9 +219,9 @@ func TestParseDNBAmount(t *testing.T) {
 		input string
 		want  float64
 	}{
-		{"−1 234,56", -1234.56},  // unicode minus + space thousands + comma decimal
-		{"-1234,56", -1234.56},   // ASCII minus
-		{"1 234,56", 1234.56},    // space thousands separator
+		{"−1 234,56", -1234.56}, // unicode minus + space thousands + comma decimal
+		{"-1234,56", -1234.56},  // ASCII minus
+		{"1 234,56", 1234.56},   // space thousands separator
 		{"100,00", 100.00},
 		{"0,00", 0},
 		{"", 0},
@@ -437,7 +437,7 @@ func TestImportConfirmHandler_AppliesMerchantRules(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Create a group and a rule.
-	db.Exec(`INSERT INTO credit_card_groups (id, user_id, name) VALUES (10, 1, 'Dagligvarer')`) //nolint:errcheck
+	db.Exec(`INSERT INTO credit_card_groups (id, user_id, name) VALUES (10, 1, 'Dagligvarer')`)              //nolint:errcheck
 	db.Exec(`INSERT INTO merchant_group_rules (user_id, merchant_pattern, group_id) VALUES (1, 'rema', 10)`) //nolint:errcheck
 
 	rows := []DNBRow{

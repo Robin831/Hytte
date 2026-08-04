@@ -17,7 +17,7 @@ import (
 	"github.com/Robin831/Hytte/internal/encryption"
 )
 
-const maxCSVSize = 10 << 20     // 10 MB
+const maxCSVSize = 10 << 20       // 10 MB
 const maxCommitBodySize = 5 << 20 // 5 MB
 
 // ColumnMapping specifies which CSV column index (0-based) maps to each field.

@@ -469,10 +469,10 @@ func BalanceHandler(db *sql.DB) http.HandlerFunc {
 				xpForNext = LevelDefinitions[1].XP
 			}
 			resp = BalanceResponse{
-				Level:          lvl1.Level,
-				Title:          lvl1.Title,
-				Emoji:          lvl1.Emoji,
-				XPForNextLevel: xpForNext,
+				Level:           lvl1.Level,
+				Title:           lvl1.Title,
+				Emoji:           lvl1.Emoji,
+				XPForNextLevel:  xpForNext,
 				ProgressPercent: 0,
 			}
 			writeJSON(w, http.StatusOK, resp)
@@ -738,11 +738,11 @@ func TransactionsHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
-			"transactions":             txns,
-			"weekly_stars":             weeklyStars,
-			"weekly_starred_workouts":  weeklyStarredWorkouts,
-			"weekly_distance_meters":   weeklyDistanceMeters,
-			"weekly_duration_seconds":  weeklyDurationSeconds,
+			"transactions":            txns,
+			"weekly_stars":            weeklyStars,
+			"weekly_starred_workouts": weeklyStarredWorkouts,
+			"weekly_distance_meters":  weeklyDistanceMeters,
+			"weekly_duration_seconds": weeklyDurationSeconds,
 		})
 	}
 }

@@ -400,4 +400,3 @@ func LeaderboardHandler(db *sql.DB) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, lb)
 	}
 }
-

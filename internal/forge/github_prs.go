@@ -37,9 +37,9 @@ type ExternalPR struct {
 // AllPRsResponse contains all forge-tracked and external PRs returned by the API.
 // Any grouping (e.g., by anvil) is performed client-side.
 type AllPRsResponse struct {
-	ForgePRs        []PR         `json:"forge_prs"`
-	ExternalPRs     []ExternalPR `json:"external_prs"`
-	RecentlyMerged  []PR         `json:"recently_merged"`
+	ForgePRs       []PR         `json:"forge_prs"`
+	ExternalPRs    []ExternalPR `json:"external_prs"`
+	RecentlyMerged []PR         `json:"recently_merged"`
 }
 
 // ghPR is the JSON shape returned by `gh pr list --json`.
@@ -53,10 +53,10 @@ type ghPR struct {
 	Author      struct {
 		Login string `json:"login"`
 	} `json:"author"`
-	ReviewDecision     string            `json:"reviewDecision"`
-	Mergeable          string            `json:"mergeable"`
-	StatusCheckRollup  []ghCheckStatus   `json:"statusCheckRollup"`
-	ReviewRequests     []ghReviewRequest `json:"reviewRequests"`
+	ReviewDecision    string            `json:"reviewDecision"`
+	Mergeable         string            `json:"mergeable"`
+	StatusCheckRollup []ghCheckStatus   `json:"statusCheckRollup"`
+	ReviewRequests    []ghReviewRequest `json:"reviewRequests"`
 }
 
 // ghCheckStatus represents a single CI check from `statusCheckRollup`.
@@ -78,8 +78,8 @@ type ghReviewRequest struct {
 type prCache struct {
 	mu          sync.Mutex
 	data        []ExternalPR
-	raw         map[string]ghPR    // keyed by "repo:number"
-	anvilToRepo map[string]string  // short anvil name → "owner/repo"
+	raw         map[string]ghPR   // keyed by "repo:number"
+	anvilToRepo map[string]string // short anvil name → "owner/repo"
 	fetchedAt   time.Time
 	ttl         time.Duration
 }
@@ -133,7 +133,7 @@ func parseGitHubRepo(remote string) string {
 // ghPRResult holds the output of fetchGitHubPRs.
 type ghPRResult struct {
 	external    []ExternalPR
-	raw         map[string]ghPR // keyed by "repo:number"
+	raw         map[string]ghPR   // keyed by "repo:number"
 	anvilToRepo map[string]string // short anvil name → "owner/repo"
 }
 

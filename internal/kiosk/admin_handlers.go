@@ -24,13 +24,13 @@ type createTokenRequest struct {
 // tokenResponse is the response body for token list entries.
 // The raw token is only returned on creation; thereafter only metadata is exposed.
 type tokenResponse struct {
-	ID          int64   `json:"id"`
-	Name        string  `json:"name"`
-	Config      any     `json:"config"`
-	CreatedBy   string  `json:"created_by"`
-	CreatedAt   string  `json:"created_at"`
-	ExpiresAt   *string `json:"expires_at"`
-	LastUsedAt  *string `json:"last_used_at"`
+	ID         int64   `json:"id"`
+	Name       string  `json:"name"`
+	Config     any     `json:"config"`
+	CreatedBy  string  `json:"created_by"`
+	CreatedAt  string  `json:"created_at"`
+	ExpiresAt  *string `json:"expires_at"`
+	LastUsedAt *string `json:"last_used_at"`
 }
 
 // createTokenResponse extends tokenResponse with the plaintext token returned once on creation.
@@ -157,13 +157,13 @@ func ListTokensHandler(db *sql.DB) http.HandlerFunc {
 		tokens := []tokenResponse{}
 		for rows.Next() {
 			var (
-				id          int64
-				name        string
-				configRaw   string
-				createdBy   string
-				createdAt   string
-				expiresAt   sql.NullString
-				lastUsedAt  sql.NullString
+				id         int64
+				name       string
+				configRaw  string
+				createdBy  string
+				createdAt  string
+				expiresAt  sql.NullString
+				lastUsedAt sql.NullString
 			)
 			if err := rows.Scan(&id, &name, &configRaw, &createdBy, &createdAt, &expiresAt, &lastUsedAt); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read token"})

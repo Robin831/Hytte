@@ -59,10 +59,10 @@ func TestComputeTimeInZonesFromBoundaries_Basic(t *testing.T) {
 	zones := sampleBoundaries()
 	// 60s in Z1 (HR=100), 60s in Z2 (HR=120), 60s in Z3 (HR=140)
 	samples := []HRSample{
-		{OffsetMs: 0, HeartRate: 100},     // Z1: covers 0→60 000 ms = 60s in Z1
-		{OffsetMs: 60000, HeartRate: 120}, // Z2: covers 60→120 000 ms = 60s in Z2
+		{OffsetMs: 0, HeartRate: 100},      // Z1: covers 0→60 000 ms = 60s in Z1
+		{OffsetMs: 60000, HeartRate: 120},  // Z2: covers 60→120 000 ms = 60s in Z2
 		{OffsetMs: 120000, HeartRate: 140}, // Z3: covers 120→180 000 ms = 60s in Z3
-		{OffsetMs: 180000, HeartRate: 0},  // sentinel — no interval after this
+		{OffsetMs: 180000, HeartRate: 0},   // sentinel — no interval after this
 	}
 	result := computeTimeInZonesFromBoundaries(samples, zones)
 	if result[1] != 60 {

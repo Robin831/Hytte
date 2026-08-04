@@ -213,7 +213,7 @@ func parseKpData(data []byte) ([]KpEntry, error) {
 			entries = append(entries, KpEntry{
 				TimeTag: o.TimeTag,
 				Kp:      kp,
-				Source:   source,
+				Source:  source,
 			})
 		}
 		return entries, nil
@@ -262,7 +262,7 @@ func parseKpData(data []byte) ([]KpEntry, error) {
 		entries = append(entries, KpEntry{
 			TimeTag: timeTag,
 			Kp:      kp,
-			Source:   source,
+			Source:  source,
 		})
 	}
 

@@ -1358,4 +1358,3 @@ func TestAnalyzeHandler_RunsInsightsWithoutAutoAnalyzePref(t *testing.T) {
 		t.Errorf("expected insights to run on manual click regardless of ai_auto_analyze, got %d calls", insightsCalls)
 	}
 }
-

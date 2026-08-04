@@ -22,15 +22,15 @@ type ForgeConfig struct {
 
 // AnvilConfig represents per-anvil (repository) settings.
 type AnvilConfig struct {
-	Path                   string   `json:"path" yaml:"path"`
-	MaxSmiths              int      `json:"max_smiths" yaml:"max_smiths"`
-	AutoDispatch           string   `json:"auto_dispatch" yaml:"auto_dispatch"`
-	AutoDispatchMinPriority int     `json:"auto_dispatch_min_priority" yaml:"auto_dispatch_min_priority"`
-	AutoDispatchTag        string   `json:"auto_dispatch_tag" yaml:"auto_dispatch_tag"`
-	AutoMerge              bool     `json:"auto_merge" yaml:"auto_merge"`
-	WicketEnabled          bool     `json:"wicket_enabled,omitempty" yaml:"wicket_enabled,omitempty"`
-	WicketAutoDispatch     bool     `json:"wicket_auto_dispatch,omitempty" yaml:"wicket_auto_dispatch,omitempty"`
-	WicketTrustedUsers     []string `json:"wicket_trusted_users,omitempty" yaml:"wicket_trusted_users,omitempty"`
+	Path                    string   `json:"path" yaml:"path"`
+	MaxSmiths               int      `json:"max_smiths" yaml:"max_smiths"`
+	AutoDispatch            string   `json:"auto_dispatch" yaml:"auto_dispatch"`
+	AutoDispatchMinPriority int      `json:"auto_dispatch_min_priority" yaml:"auto_dispatch_min_priority"`
+	AutoDispatchTag         string   `json:"auto_dispatch_tag" yaml:"auto_dispatch_tag"`
+	AutoMerge               bool     `json:"auto_merge" yaml:"auto_merge"`
+	WicketEnabled           bool     `json:"wicket_enabled,omitempty" yaml:"wicket_enabled,omitempty"`
+	WicketAutoDispatch      bool     `json:"wicket_auto_dispatch,omitempty" yaml:"wicket_auto_dispatch,omitempty"`
+	WicketTrustedUsers      []string `json:"wicket_trusted_users,omitempty" yaml:"wicket_trusted_users,omitempty"`
 }
 
 // ForgeSettings holds global forge daemon settings.
@@ -53,7 +53,7 @@ type ForgeSettings struct {
 	SchematicEnabled         bool     `json:"schematic_enabled" yaml:"schematic_enabled"`
 	CrucibleEnabled          bool     `json:"crucible_enabled" yaml:"crucible_enabled"`
 	WicketEnabled            bool     `json:"wicket_enabled" yaml:"wicket_enabled"`
-	CopilotDailyRequestLimit int     `json:"copilot_daily_request_limit" yaml:"copilot_daily_request_limit"`
+	CopilotDailyRequestLimit int      `json:"copilot_daily_request_limit" yaml:"copilot_daily_request_limit"`
 	SmelterInterval          string   `json:"smelter_interval" yaml:"smelter_interval"`
 }
 

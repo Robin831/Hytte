@@ -48,7 +48,7 @@ func SyncCreditCardExpense(db *sql.DB, userID int64, creditCardID, period string
 	if err != nil {
 		return fmt.Errorf("invalid period %q: %w", period, err)
 	}
-	periodStartStr := periodStart.Format("2006-01-02")                 // e.g. "2026-03-01"
+	periodStartStr := periodStart.Format("2006-01-02")                // e.g. "2026-03-01"
 	periodEndStr := periodStart.AddDate(0, 1, 0).Format("2006-01-02") // e.g. "2026-04-01"
 
 	// The previous period's range is used to pick up deferred transactions that

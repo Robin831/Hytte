@@ -18,11 +18,11 @@ const (
 	enturGeocoderURL = "https://api.entur.io/geocoder/v1/autocomplete"
 	enturClientName  = "hytte-transit"
 
-	departureCacheTTL       = 30 * time.Second
-	maxResponseSize         = 512 << 10 // 512 KB
-	maxGeocoderSize         = 256 << 10 // 256 KB
-	numberOfDepartures      = 10
-	filteredDepartureCount  = 30 // fetch more when route filters are active
+	departureCacheTTL      = 30 * time.Second
+	maxResponseSize        = 512 << 10 // 512 KB
+	maxGeocoderSize        = 256 << 10 // 256 KB
+	numberOfDepartures     = 10
+	filteredDepartureCount = 30 // fetch more when route filters are active
 )
 
 // departureCache holds a cached list of departures for a stop.

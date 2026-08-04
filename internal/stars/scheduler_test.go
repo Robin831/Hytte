@@ -197,27 +197,27 @@ func TestSchedulerShouldFireStreakWarning(t *testing.T) {
 	}{
 		{
 			name: "fires at 19:xx UTC",
-			loc: utc, lastSent: "", now: base,
+			loc:  utc, lastSent: "", now: base,
 			wantFire: true, wantKey: "2025-03-10",
 		},
 		{
 			name: "already sent today",
-			loc: utc, lastSent: "2025-03-10", now: base,
+			loc:  utc, lastSent: "2025-03-10", now: base,
 			wantFire: false,
 		},
 		{
 			name: "18:xx does not fire",
-			loc: utc, lastSent: "", now: base.Add(-1 * time.Hour),
+			loc:  utc, lastSent: "", now: base.Add(-1 * time.Hour),
 			wantFire: false,
 		},
 		{
 			name: "20:xx does not fire",
-			loc: utc, lastSent: "", now: base.Add(1 * time.Hour),
+			loc:  utc, lastSent: "", now: base.Add(1 * time.Hour),
 			wantFire: false,
 		},
 		{
 			name: "fires again on new day",
-			loc: utc, lastSent: "2025-03-09", now: base,
+			loc:  utc, lastSent: "2025-03-09", now: base,
 			wantFire: true, wantKey: "2025-03-10",
 		},
 	}
@@ -251,27 +251,27 @@ func TestSchedulerShouldFireWeeklySummary(t *testing.T) {
 	}{
 		{
 			name: "Monday 08:xx fires",
-			loc: utc, lastSent: "", now: monday8,
+			loc:  utc, lastSent: "", now: monday8,
 			wantFire: true, wantKey: "2025-W11",
 		},
 		{
 			name: "already sent this week",
-			loc: utc, lastSent: "2025-W11", now: monday8,
+			loc:  utc, lastSent: "2025-W11", now: monday8,
 			wantFire: false,
 		},
 		{
 			name: "Monday 09:xx does not fire",
-			loc: utc, lastSent: "", now: monday8.Add(time.Hour),
+			loc:  utc, lastSent: "", now: monday8.Add(time.Hour),
 			wantFire: false,
 		},
 		{
 			name: "Tuesday 08:xx does not fire",
-			loc: utc, lastSent: "", now: monday8.AddDate(0, 0, 1),
+			loc:  utc, lastSent: "", now: monday8.AddDate(0, 0, 1),
 			wantFire: false,
 		},
 		{
 			name: "fires again in a new week",
-			loc: utc, lastSent: "2025-W10", now: monday8,
+			loc:  utc, lastSent: "2025-W10", now: monday8,
 			wantFire: true, wantKey: "2025-W11",
 		},
 	}
@@ -294,7 +294,7 @@ func TestSchedulerShouldFireWeeklySummary(t *testing.T) {
 func lastMonday8() time.Time {
 	now := time.Now().UTC()
 	daysSince := (int(now.Weekday()) - int(time.Monday) + 7) % 7
-	return now.Truncate(24 * time.Hour).AddDate(0, 0, -daysSince).Add(8 * time.Hour)
+	return now.Truncate(24*time.Hour).AddDate(0, 0, -daysSince).Add(8 * time.Hour)
 }
 
 func TestMaybeWarnStreakAtRisk_SendsWhenAtRisk(t *testing.T) {

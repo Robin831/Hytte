@@ -14,7 +14,6 @@ import (
 // 250 is the maximum the API allows and minimises total HTTP requests.
 const PageSize = 250
 
-
 // SyncSets paginates /v2/sets and upserts each set into pokemon_sets.
 func SyncSets(ctx context.Context, db *sql.DB, client *Client) error {
 	if client == nil {

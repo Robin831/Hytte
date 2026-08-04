@@ -747,7 +747,7 @@ type RaceContext struct {
 // from a reference race.
 type RiegelComparison struct {
 	RefRaceName string
-	RefDistance  float64
+	RefDistance float64
 	RefTime     int // seconds
 	PredictedS  float64
 	ActualS     int
@@ -961,7 +961,7 @@ func buildRiegelComparisons(db *sql.DB, workout *Workout) []RiegelComparison {
 		delta := riegelCompare(workout.DurationSeconds, workout.DistanceMeters, float64(resultTime), distM)
 		comps = append(comps, RiegelComparison{
 			RefRaceName: name,
-			RefDistance:  distM,
+			RefDistance: distM,
 			RefTime:     resultTime,
 			PredictedS:  riegelPredict(float64(resultTime), distM, workout.DistanceMeters),
 			ActualS:     workout.DurationSeconds,

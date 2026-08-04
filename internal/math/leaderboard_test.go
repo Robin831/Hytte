@@ -443,4 +443,3 @@ func findEntry(t *testing.T, entries []LeaderboardEntry, userID int64) Leaderboa
 	t.Fatalf("entry for user %d not found in %+v", userID, entries)
 	return LeaderboardEntry{}
 }
-

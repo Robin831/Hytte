@@ -262,7 +262,7 @@ func EvaluateWeeklyBonuses(ctx context.Context, db *sql.DB, userID int64, anyDat
 		for _, a := range awards {
 			baseTotal += a.Amount
 		}
-		bonus := int(float64(baseTotal)*0.5+0.5) // round half-up
+		bonus := int(float64(baseTotal)*0.5 + 0.5) // round half-up
 		if bonus > 0 {
 			awards = append(awards, StarAward{
 				Amount:      bonus,

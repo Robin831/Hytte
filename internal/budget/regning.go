@@ -38,7 +38,7 @@ type RegningResponse struct {
 	IncomeSplitPct    int           `json:"income_split_pct"`
 	YourIncomeDay     int           `json:"your_income_day"`
 	PartnerIncomeDay  int           `json:"partner_income_day"`
-	YourIncomeDue     string        `json:"your_income_due"`  // business-day-adjusted next payday (YYYY-MM-DD)
+	YourIncomeDue     string        `json:"your_income_due"`    // business-day-adjusted next payday (YYYY-MM-DD)
 	PartnerIncomeDue  string        `json:"partner_income_due"` // business-day-adjusted next payday (YYYY-MM-DD)
 }
 

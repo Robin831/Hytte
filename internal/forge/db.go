@@ -697,12 +697,12 @@ func (d *DB) StuckPRs(ciFixMax, reviewFixMax int) ([]Retry, error) {
 	var result []Retry
 	for rows.Next() {
 		var (
-			anvil, beadID string
-			ciFixCount    int
+			anvil, beadID  string
+			ciFixCount     int
 			reviewFixCount int
-			ciPassing     int
-			hasUnresolved int
-			lastChecked   sql.NullString
+			ciPassing      int
+			hasUnresolved  int
+			lastChecked    sql.NullString
 		)
 		if err := rows.Scan(&anvil, &beadID,
 			&ciFixCount, &reviewFixCount, &ciPassing, &hasUnresolved,
@@ -1338,13 +1338,13 @@ type Ingot struct {
 
 // IngotMetrics holds aggregated success/failure/duration statistics.
 type IngotMetrics struct {
-	TotalBeads      int     `json:"total_beads"`
-	SuccessCount    int     `json:"success_count"`
-	FailureCount    int     `json:"failure_count"`
-	RunningCount    int     `json:"running_count"`
-	CancelledCount  int     `json:"cancelled_count"`
-	SuccessRate     float64 `json:"success_rate"`
-	AvgDurationSec  float64 `json:"avg_duration_seconds"`
+	TotalBeads     int     `json:"total_beads"`
+	SuccessCount   int     `json:"success_count"`
+	FailureCount   int     `json:"failure_count"`
+	RunningCount   int     `json:"running_count"`
+	CancelledCount int     `json:"cancelled_count"`
+	SuccessRate    float64 `json:"success_rate"`
+	AvgDurationSec float64 `json:"avg_duration_seconds"`
 }
 
 // IngotsResult is the paginated response for the ingots endpoint.

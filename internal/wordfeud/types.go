@@ -43,12 +43,12 @@ type Player struct {
 
 // GameState is the full state of a single game.
 type GameState struct {
-	ID          int64      `json:"id"`
+	ID          int64         `json:"id"`
 	Board       [15][15]*Tile `json:"board"`
-	Rack        []Tile     `json:"rack"`
-	Players     [2]Player  `json:"players"`
-	IsMyTurn    bool       `json:"is_my_turn"`
-	MoveHistory []Move     `json:"move_history"`
-	IsRunning   bool       `json:"is_running"`
-	BagCount    int        `json:"bag_count"`
+	Rack        []Tile        `json:"rack"`
+	Players     [2]Player     `json:"players"`
+	IsMyTurn    bool          `json:"is_my_turn"`
+	MoveHistory []Move        `json:"move_history"`
+	IsRunning   bool          `json:"is_running"`
+	BagCount    int           `json:"bag_count"`
 }

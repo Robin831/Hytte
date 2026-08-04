@@ -348,4 +348,3 @@ func TestUploadMetrics_MaxHRPreferenceOverride(t *testing.T) {
 		t.Errorf("expected TrainingLoad %v, got %v", *tlWithPref, w.TrainingLoad)
 	}
 }
-

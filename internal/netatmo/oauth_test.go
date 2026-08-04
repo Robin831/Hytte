@@ -347,4 +347,3 @@ func (rt *redirectTransport) RoundTrip(req *http.Request) (*http.Response, error
 	r2.URL = u
 	return http.DefaultTransport.RoundTrip(r2)
 }
-

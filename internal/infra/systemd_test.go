@@ -255,10 +255,10 @@ func TestValidateUnitName(t *testing.T) {
 		{"daily-backup.timer", false},
 		{"home.mount", false},
 		{"multi-user.target", false},
-		{"", true},                 // no suffix
-		{"nginx", true},            // no suffix
-		{"../etc/passwd", true},    // path traversal
-		{"rm -rf /.service", true}, // spaces
+		{"", true},                                    // no suffix
+		{"nginx", true},                               // no suffix
+		{"../etc/passwd", true},                       // path traversal
+		{"rm -rf /.service", true},                    // spaces
 		{strings.Repeat("a", 257) + ".service", true}, // too long
 	}
 

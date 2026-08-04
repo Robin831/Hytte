@@ -12,18 +12,18 @@ import (
 
 // UpcomingTransaction represents a future transaction from a recurring rule.
 type UpcomingTransaction struct {
-	Date           string    `json:"date"`
-	Description    string    `json:"description"`
-	Amount         float64   `json:"amount"`
-	YourShare      float64   `json:"your_share"`
-	SplitType      SplitType `json:"split_type"`
-	CategoryID     *int64    `json:"category_id"`
-	CategoryName   string    `json:"category_name"`
-	CategoryColor  string    `json:"category_color"`
-	CategoryIcon   string    `json:"category_icon"`
-	Frequency      Frequency `json:"frequency"`
-	RecurringID    int64     `json:"recurring_id"`
-	VariableName   string    `json:"variable_name,omitempty"`
+	Date          string    `json:"date"`
+	Description   string    `json:"description"`
+	Amount        float64   `json:"amount"`
+	YourShare     float64   `json:"your_share"`
+	SplitType     SplitType `json:"split_type"`
+	CategoryID    *int64    `json:"category_id"`
+	CategoryName  string    `json:"category_name"`
+	CategoryColor string    `json:"category_color"`
+	CategoryIcon  string    `json:"category_icon"`
+	Frequency     Frequency `json:"frequency"`
+	RecurringID   int64     `json:"recurring_id"`
+	VariableName  string    `json:"variable_name,omitempty"`
 }
 
 // UpcomingHandler returns upcoming transactions for the next 30 days.

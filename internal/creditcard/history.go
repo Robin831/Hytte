@@ -20,11 +20,11 @@ type MonthlyHistoryRow struct {
 
 // MonthlyHistoryResponse is returned by MonthlyHistoryHandler.
 type MonthlyHistoryResponse struct {
-	Months            []string           `json:"months"`             // YYYY-MM, oldest first
+	Months            []string            `json:"months"`             // YYYY-MM, oldest first
 	Rows              []MonthlyHistoryRow `json:"rows"`               // one per group, sorted by sort_order
-	MonthTotals       map[string]float64 `json:"month_totals"`       // total expenses per month (payments excluded)
-	InnbetalingTotals map[string]float64 `json:"innbetaling_totals"` // total payments per month (negative values: payment belop is positive, negated by query)
-	NetTotals         map[string]float64 `json:"net_totals"`         // net outstanding = expenses + innbetaling_totals (positive = still owe)
+	MonthTotals       map[string]float64  `json:"month_totals"`       // total expenses per month (payments excluded)
+	InnbetalingTotals map[string]float64  `json:"innbetaling_totals"` // total payments per month (negative values: payment belop is positive, negated by query)
+	NetTotals         map[string]float64  `json:"net_totals"`         // net outstanding = expenses + innbetaling_totals (positive = still owe)
 }
 
 // MonthlyHistoryHandler returns group expense totals grouped by month for a

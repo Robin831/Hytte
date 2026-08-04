@@ -28,26 +28,26 @@ func AllPlanets() []PlanetName {
 // PlanetInfo holds computed position and visibility data for a planet.
 type PlanetInfo struct {
 	Name       PlanetName `json:"name"`
-	Altitude   float64    `json:"altitude"`    // degrees above horizon (negative = below)
-	Azimuth    float64    `json:"azimuth"`     // degrees from north, clockwise
-	Direction  string     `json:"direction"`   // compass direction (N/NE/E/SE/S/SW/W/NW)
-	Visible    bool       `json:"visible"`     // true if above horizon and far enough from sun
-	Status     string     `json:"status"`      // "visible_now", "rises_at", "not_visible"
-	RiseTime   *string    `json:"rise_time"`   // next rise time (RFC3339), nil if always up/down
-	SetTime    *string    `json:"set_time"`    // next set time (RFC3339), nil if always up/down
-	Magnitude  float64    `json:"magnitude"`   // approximate visual magnitude
-	Elongation float64    `json:"elongation"`  // angular distance from sun in degrees
+	Altitude   float64    `json:"altitude"`   // degrees above horizon (negative = below)
+	Azimuth    float64    `json:"azimuth"`    // degrees from north, clockwise
+	Direction  string     `json:"direction"`  // compass direction (N/NE/E/SE/S/SW/W/NW)
+	Visible    bool       `json:"visible"`    // true if above horizon and far enough from sun
+	Status     string     `json:"status"`     // "visible_now", "rises_at", "not_visible"
+	RiseTime   *string    `json:"rise_time"`  // next rise time (RFC3339), nil if always up/down
+	SetTime    *string    `json:"set_time"`   // next set time (RFC3339), nil if always up/down
+	Magnitude  float64    `json:"magnitude"`  // approximate visual magnitude
+	Elongation float64    `json:"elongation"` // angular distance from sun in degrees
 }
 
 // orbitalElements holds the mean orbital elements for a planet at J2000.0 epoch,
 // plus their rates of change per century.
 type orbitalElements struct {
-	a0, aRate     float64 // semi-major axis (AU) and rate
-	e0, eRate     float64 // eccentricity and rate
-	i0, iRate     float64 // inclination (deg) and rate
-	L0, LRate     float64 // mean longitude (deg) and rate
-	w0, wRate     float64 // longitude of perihelion (deg) and rate
-	node0, nRate  float64 // longitude of ascending node (deg) and rate
+	a0, aRate    float64 // semi-major axis (AU) and rate
+	e0, eRate    float64 // eccentricity and rate
+	i0, iRate    float64 // inclination (deg) and rate
+	L0, LRate    float64 // mean longitude (deg) and rate
+	w0, wRate    float64 // longitude of perihelion (deg) and rate
+	node0, nRate float64 // longitude of ascending node (deg) and rate
 }
 
 // planetElements contains Keplerian elements for J2000.0 epoch from JPL.

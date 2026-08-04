@@ -91,8 +91,8 @@ func TestGroupsListHandler_Empty(t *testing.T) {
 func TestGroupsListHandler_OrderedBySortOrder(t *testing.T) {
 	db := setupTestDB(t)
 
-	db.Exec(`INSERT INTO credit_card_groups (user_id, name, sort_order) VALUES (1, 'Beta', 2)`)   //nolint:errcheck
-	db.Exec(`INSERT INTO credit_card_groups (user_id, name, sort_order) VALUES (1, 'Alpha', 1)`)  //nolint:errcheck
+	db.Exec(`INSERT INTO credit_card_groups (user_id, name, sort_order) VALUES (1, 'Beta', 2)`)  //nolint:errcheck
+	db.Exec(`INSERT INTO credit_card_groups (user_id, name, sort_order) VALUES (1, 'Alpha', 1)`) //nolint:errcheck
 
 	req := withUser(httptest.NewRequest("GET", "/credit-card/groups", nil), 1)
 	rec := httptest.NewRecorder()
@@ -566,7 +566,7 @@ func TestReapplyRulesHandler_AssignsUngrouped(t *testing.T) {
 	// Insert one ungrouped transaction that matches the rule, one that doesn't.
 	encRema, _ := encryption.EncryptField("Rema 1000")
 	encOther, _ := encryption.EncryptField("Other Shop")
-	db.Exec(`INSERT INTO credit_card_transactions (id, user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, imported_at) VALUES (10, 1, 'card1', '2026-01-10', ?, -100.0, '2026-01-20')`, encRema)   //nolint:errcheck
+	db.Exec(`INSERT INTO credit_card_transactions (id, user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, imported_at) VALUES (10, 1, 'card1', '2026-01-10', ?, -100.0, '2026-01-20')`, encRema) //nolint:errcheck
 	db.Exec(`INSERT INTO credit_card_transactions (id, user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, imported_at) VALUES (11, 1, 'card1', '2026-01-11', ?, -50.0, '2026-01-20')`, encOther) //nolint:errcheck
 
 	payload := `{"credit_card_id": "card1"}`
@@ -636,8 +636,8 @@ func TestReapplyRulesHandler_NoMatches(t *testing.T) {
 	t.Setenv("ENCRYPTION_KEY", "test-key-for-creditcard-tests")
 	encryption.ResetEncryptionKey()
 
-	db.Exec(`INSERT INTO credit_card_groups (id, user_id, name, sort_order) VALUES (1, 1, 'Groceries', 0)`)  //nolint:errcheck
-	db.Exec(`INSERT INTO merchant_group_rules (user_id, merchant_pattern, group_id) VALUES (1, 'Rema', 1)`)  //nolint:errcheck
+	db.Exec(`INSERT INTO credit_card_groups (id, user_id, name, sort_order) VALUES (1, 1, 'Groceries', 0)`) //nolint:errcheck
+	db.Exec(`INSERT INTO merchant_group_rules (user_id, merchant_pattern, group_id) VALUES (1, 'Rema', 1)`) //nolint:errcheck
 
 	encOther, _ := encryption.EncryptField("Unrelated Merchant")
 	db.Exec(`INSERT INTO credit_card_transactions (id, user_id, credit_card_id, transaksjonsdato, beskrivelse, belop, imported_at) VALUES (30, 1, 'card1', '2026-01-10', ?, -75.0, '2026-01-20')`, encOther) //nolint:errcheck

@@ -24,14 +24,14 @@ import (
 // optional hyphen/dash, and optional whitespace — case-insensitively.
 var reservertPrefixRe = regexp.MustCompile(`(?i)^Reservert\s*-?\s*`)
 
-const maxCSVSize = 10 << 20      // 10 MB
+const maxCSVSize = 10 << 20        // 10 MB
 const maxConfirmBodySize = 5 << 20 // 5 MB
 
 // DNBRow represents a single parsed row from a DNB credit card CSV export.
 type DNBRow struct {
 	Line                 int     `json:"line"`
-	Transaksjonsdato     string  `json:"transaksjonsdato"`       // YYYY-MM-DD
-	Bokforingsdato       string  `json:"bokforingsdato"`         // YYYY-MM-DD
+	Transaksjonsdato     string  `json:"transaksjonsdato"` // YYYY-MM-DD
+	Bokforingsdato       string  `json:"bokforingsdato"`   // YYYY-MM-DD
 	Beskrivelse          string  `json:"beskrivelse"`
 	MottakersKontonummer string  `json:"mottakers_kontonummer"`
 	KID                  string  `json:"kid"`
@@ -363,16 +363,17 @@ func collectPeriods(rows []DNBRow) map[string]struct{} {
 // row, 10 columns) and returns a slice of DNBRow values.
 //
 // The DNB export format columns (0-based):
-//   0: Transaksjonsdato (dd.mm.yyyy)
-//   1: Bokføringsdato   (dd.mm.yyyy)
-//   2: Beskrivelse
-//   3: Mottakers kontonummer
-//   4: KID
-//   5: Beløp            (Norwegian number format, may use unicode minus U+2212)
-//   6: Beløp i valuta
-//   7: Utsatt           ("Ja" or empty)
-//   8: Utsatt periode
-//   9: Utløpsdato       (dd.mm.yyyy or empty)
+//
+//	0: Transaksjonsdato (dd.mm.yyyy)
+//	1: Bokføringsdato   (dd.mm.yyyy)
+//	2: Beskrivelse
+//	3: Mottakers kontonummer
+//	4: KID
+//	5: Beløp            (Norwegian number format, may use unicode minus U+2212)
+//	6: Beløp i valuta
+//	7: Utsatt           ("Ja" or empty)
+//	8: Utsatt periode
+//	9: Utløpsdato       (dd.mm.yyyy or empty)
 func parseDNBCSV(r io.Reader) ([]DNBRow, []string) {
 	raw, err := io.ReadAll(r)
 	if err != nil {

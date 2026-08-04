@@ -399,9 +399,9 @@ func TestIsAutoLap(t *testing.T) {
 
 func TestTrimOutlierLaps(t *testing.T) {
 	tests := []struct {
-		name     string
-		laps     []ParsedLap
-		wantLen  int
+		name    string
+		laps    []ParsedLap
+		wantLen int
 	}{
 		{
 			name: "warmup and trailing trimmed",
@@ -475,13 +475,13 @@ func TestFormatDistance(t *testing.T) {
 	}{
 		{0, ""},
 		{200, "200m"},
-		{395, "400m"},   // within 5% of 400
+		{395, "400m"}, // within 5% of 400
 		{400, "400m"},
 		{800, "800m"},
 		{1000, "1km"},
-		{1605, "1mi"},   // within 5% of 1609
+		{1605, "1mi"}, // within 5% of 1609
 		{2000, "2km"},
-		{750, "750m"},   // not near a common distance
+		{750, "750m"}, // not near a common distance
 	}
 	for _, tt := range tests {
 		got := formatDistance(tt.meters)

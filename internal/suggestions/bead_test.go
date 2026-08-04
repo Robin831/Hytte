@@ -203,7 +203,7 @@ func TestCreateBeadHandlerOmitsFeedbackWhenEmpty(t *testing.T) {
 		UserID: 1, PageSlug: "weather", Source: SourceClaude,
 		Type: TypeImprovement, Size: SizeS,
 		Title: "X", Body: "b",
-		Plan: "## Scope\nDo it.",
+		Plan:   "## Scope\nDo it.",
 		Status: StatusPlanned,
 	})
 	if err != nil {
@@ -363,4 +363,3 @@ func TestBuildBeadBodyOrdersSections(t *testing.T) {
 		t.Fatalf("unexpected section order in body:\n%s", body)
 	}
 }
-

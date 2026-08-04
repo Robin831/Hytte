@@ -207,7 +207,7 @@ func TestParseFIT_Integration(t *testing.T) {
 
 	act := &filedef.Activity{
 		FileId: mesgdef.FileId{
-			Type:        typedef.FileActivity,
+			Type:         typedef.FileActivity,
 			Manufacturer: typedef.ManufacturerGarmin,
 			Product:      1,
 			SerialNumber: 12345,
@@ -239,8 +239,8 @@ func TestParseFIT_Integration(t *testing.T) {
 			{
 				Timestamp:        now.Add(15 * time.Minute),
 				StartTime:        now,
-				TotalElapsedTime: 900000,  // 900s
-				TotalDistance:    5000,    // 50m
+				TotalElapsedTime: 900000, // 900s
+				TotalDistance:    5000,   // 50m
 				Event:            typedef.EventLap,
 				EventType:        typedef.EventTypeStop,
 				AvgHeartRate:     145,

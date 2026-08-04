@@ -168,9 +168,9 @@ func TestFormatPaceFromSpeed(t *testing.T) {
 		speed float64
 		want  string
 	}{
-		{10.0, "6:00"},  // 3600/10 = 360s = 6:00
-		{12.0, "5:00"},  // 3600/12 = 300s = 5:00
-		{15.0, "4:00"},  // 3600/15 = 240s = 4:00
+		{10.0, "6:00"}, // 3600/10 = 360s = 6:00
+		{12.0, "5:00"}, // 3600/12 = 300s = 5:00
+		{15.0, "4:00"}, // 3600/15 = 240s = 4:00
 		{0, "--:--"},
 		{-1, "--:--"},
 		// Near-boundary case: 3600/10.01 ≈ 359.64s → rounds to 360s = 6:00.
@@ -259,12 +259,12 @@ func insertTestLactateTest(t *testing.T, db *sql.DB, userID int64) {
 		{StageNumber: 5, SpeedKmh: 16.0, LactateMmol: 8.0, HeartRateBpm: 182},
 	}
 	test := &lactate.Test{
-		Date:          "2024-01-15",
-		ProtocolType:  "treadmill",
-		StageDurationMin: 5,
-		StartSpeedKmh: 8.0,
+		Date:              "2024-01-15",
+		ProtocolType:      "treadmill",
+		StageDurationMin:  5,
+		StartSpeedKmh:     8.0,
 		SpeedIncrementKmh: 2.0,
-		Stages: stages,
+		Stages:            stages,
 	}
 	if _, err := lactate.Create(db, userID, test); err != nil {
 		t.Fatalf("insertTestLactateTest: %v", err)
@@ -767,16 +767,16 @@ func TestTrendDirection(t *testing.T) {
 		previous float64
 		want     string
 	}{
-		{110, 100, "increasing"},  // +10% > 5%
-		{90, 100, "decreasing"},   // -10% < -5%
-		{103, 100, "stable"},      // +3% within ±5%
-		{98, 100, "stable"},       // -2% within ±5%
-		{106, 100, "increasing"},  // exactly > 5%
-		{94, 100, "decreasing"},   // exactly < -5%
-		{105, 100, "stable"},      // exactly 5% — not > 5%, so stable
-		{95, 100, "stable"},       // exactly -5% — not < -5%, so stable
-		{100, 0, "increasing"},    // previous=0, current>0
-		{0, 0, "stable"},          // both zero
+		{110, 100, "increasing"}, // +10% > 5%
+		{90, 100, "decreasing"},  // -10% < -5%
+		{103, 100, "stable"},     // +3% within ±5%
+		{98, 100, "stable"},      // -2% within ±5%
+		{106, 100, "increasing"}, // exactly > 5%
+		{94, 100, "decreasing"},  // exactly < -5%
+		{105, 100, "stable"},     // exactly 5% — not > 5%, so stable
+		{95, 100, "stable"},      // exactly -5% — not < -5%, so stable
+		{100, 0, "increasing"},   // previous=0, current>0
+		{0, 0, "stable"},         // both zero
 	}
 	for _, tt := range tests {
 		got := trendDirection(tt.current, tt.previous)

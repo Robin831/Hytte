@@ -252,7 +252,7 @@ func getWorkoutAnalysisStatus(t *testing.T, database *sql.DB, workoutID int64) s
 
 // TestScheduleAnalysisAfterContextSave_Fires_WhenStatusEmpty verifies that
 // Claude analysis is triggered (and status is claimed atomically) when the
-// workout has never been analysed (analysis_status='').
+// workout has never been analysed (analysis_status="").
 func TestScheduleAnalysisAfterContextSave_Fires_WhenStatusEmpty(t *testing.T) {
 	database := setupTestDB(t)
 	workoutID := createWorkoutForUser(t, database, 1, "saa-empty-hash")

@@ -8,40 +8,40 @@ import (
 
 func TestAngularSepAltAz(t *testing.T) {
 	tests := []struct {
-		name     string
-		alt1     float64
-		az1      float64
-		alt2     float64
-		az2      float64
-		wantDeg  float64
+		name      string
+		alt1      float64
+		az1       float64
+		alt2      float64
+		az2       float64
+		wantDeg   float64
 		tolerance float64
 	}{
 		{
-			name:     "same position",
-			alt1:     45, az1: 180,
-			alt2:     45, az2: 180,
-			wantDeg:  0,
+			name: "same position",
+			alt1: 45, az1: 180,
+			alt2: 45, az2: 180,
+			wantDeg:   0,
 			tolerance: 0.01,
 		},
 		{
-			name:     "opposite azimuth at horizon",
-			alt1:     0, az1: 0,
-			alt2:     0, az2: 180,
-			wantDeg:  180,
+			name: "opposite azimuth at horizon",
+			alt1: 0, az1: 0,
+			alt2: 0, az2: 180,
+			wantDeg:   180,
 			tolerance: 0.01,
 		},
 		{
-			name:     "zenith to horizon",
-			alt1:     90, az1: 0,
-			alt2:     0, az2: 0,
-			wantDeg:  90,
+			name: "zenith to horizon",
+			alt1: 90, az1: 0,
+			alt2: 0, az2: 0,
+			wantDeg:   90,
 			tolerance: 0.01,
 		},
 		{
-			name:     "small separation",
-			alt1:     45, az1: 100,
-			alt2:     47, az2: 101,
-			wantDeg:  2.12,
+			name: "small separation",
+			alt1: 45, az1: 100,
+			alt2: 47, az2: 101,
+			wantDeg:   2.12,
 			tolerance: 0.1,
 		},
 	}

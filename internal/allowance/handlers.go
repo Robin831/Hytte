@@ -1121,7 +1121,7 @@ func CompleteChoreHandler(db *sql.DB) http.HandlerFunc {
 			}
 			if dbErr := SetCompletionPhotoPath(db, completion.ID, photoPath); dbErr != nil {
 				log.Printf("allowance: set photo_path completion %d: %v", completion.ID, dbErr)
-				os.Remove(photoPath)              //nolint:errcheck
+				os.Remove(photoPath)                //nolint:errcheck
 				DeleteCompletion(db, completion.ID) //nolint:errcheck
 				writeJSON(w, http.StatusInternalServerError, errResponse("failed to record photo"))
 				return

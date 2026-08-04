@@ -164,7 +164,7 @@ All prefixed with `/api/`.
 
 ## CI
 
-GitHub Actions on PR to main: `go build`, `go vet`, `go test`, `npm ci`, `npm run lint`, `npm run build`.
+GitHub Actions on PR to main: `gofmt -l`, `go build`, `go vet`, `go test`, `npm ci`, `npm run lint`, `npm run build`.
 
 ## Shell Safety (on Windows)
 

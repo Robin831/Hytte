@@ -53,11 +53,11 @@ func (c *TCGdexClient) WithHTTPClient(hc *http.Client) *TCGdexClient {
 // TCGdexSet mirrors the response shape of GET /sets/{id}. We only declare
 // the fields the sync actually reads; TCGdex returns more.
 type TCGdexSet struct {
-	ID        string             `json:"id"`
-	Name      string             `json:"name"`
-	Logo      string             `json:"logo"`
-	Symbol    string             `json:"symbol"`
-	CardCount TCGdexCardCount    `json:"cardCount"`
+	ID        string              `json:"id"`
+	Name      string              `json:"name"`
+	Logo      string              `json:"logo"`
+	Symbol    string              `json:"symbol"`
+	CardCount TCGdexCardCount     `json:"cardCount"`
 	Cards     []TCGdexCardSummary `json:"cards"`
 	Serie     struct {
 		Name string `json:"name"`
@@ -86,13 +86,13 @@ type TCGdexCardSummary struct {
 // into our DB; everything else (hp, attacks, abilities, types) is ignored
 // for now.
 type TCGdexCard struct {
-	ID              string                  `json:"id"`
-	LocalID         string                  `json:"localId"`
-	Name            string                  `json:"name"`
-	Rarity          string                  `json:"rarity"`
-	Image           string                  `json:"image"`
-	Variants        TCGdexVariants          `json:"variants"`
-	VariantsDetail  []TCGdexVariantDetail   `json:"variants_detailed"`
+	ID             string                `json:"id"`
+	LocalID        string                `json:"localId"`
+	Name           string                `json:"name"`
+	Rarity         string                `json:"rarity"`
+	Image          string                `json:"image"`
+	Variants       TCGdexVariants        `json:"variants"`
+	VariantsDetail []TCGdexVariantDetail `json:"variants_detailed"`
 }
 
 // TCGdexVariants is the boolean-flag summary of which print variants exist.
@@ -111,9 +111,9 @@ type TCGdexVariants struct {
 // firstEdition, wPromo}; we map to our two-variant model (normal,
 // reverse_holofoil) below.
 type TCGdexVariantDetail struct {
-	Type      string         `json:"type"`
-	VariantID string         `json:"variantId"`
-	Pricing   TCGdexPricing  `json:"pricing"`
+	Type      string        `json:"type"`
+	VariantID string        `json:"variantId"`
+	Pricing   TCGdexPricing `json:"pricing"`
 }
 
 // TCGdexPricing surfaces cardmarket + tcgplayer blocks. We only consume

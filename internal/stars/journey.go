@@ -105,12 +105,12 @@ var ErrInvalidTheme = errors.New("invalid theme")
 
 // Journey is the persistent state of a user's story journey.
 type Journey struct {
-	ID               int64   `json:"id"`
-	UserID           int64   `json:"user_id"`
-	Theme            string  `json:"theme"`
-	TotalDistanceM   float64 `json:"total_distance_m"`
-	CreatedAt        string  `json:"created_at"`
-	UpdatedAt        string  `json:"updated_at"`
+	ID             int64   `json:"id"`
+	UserID         int64   `json:"user_id"`
+	Theme          string  `json:"theme"`
+	TotalDistanceM float64 `json:"total_distance_m"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
 }
 
 // JourneyResponse is the full journey state returned by the API.

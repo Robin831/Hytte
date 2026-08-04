@@ -1198,7 +1198,6 @@ func TestMergePRHandler_Success(t *testing.T) {
 	}
 }
 
-
 // --- KillWorkerHandler ---
 
 func killWorkerRequest(workerID string) *http.Request {
@@ -4324,7 +4323,7 @@ func TestAnvilCostsHandler_WithData(t *testing.T) {
 	fdb := setupTestDB(t)
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	fdb.db.Exec(`INSERT INTO bead_costs (bead_id, anvil, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, updated_at) VALUES ('b1', 'anvil-a', 100, 50, 0, 0, 0.01, ?)`, now) //nolint:errcheck
+	fdb.db.Exec(`INSERT INTO bead_costs (bead_id, anvil, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, updated_at) VALUES ('b1', 'anvil-a', 100, 50, 0, 0, 0.01, ?)`, now)  //nolint:errcheck
 	fdb.db.Exec(`INSERT INTO bead_costs (bead_id, anvil, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, updated_at) VALUES ('b2', 'anvil-a', 200, 100, 0, 0, 0.02, ?)`, now) //nolint:errcheck
 	fdb.db.Exec(`INSERT INTO bead_costs (bead_id, anvil, input_tokens, output_tokens, cache_read, cache_write, estimated_cost, updated_at) VALUES ('b3', 'anvil-b', 300, 150, 0, 0, 0.05, ?)`, now) //nolint:errcheck
 

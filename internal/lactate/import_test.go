@@ -163,8 +163,8 @@ func TestExtractStageHR_SpeedMatch(t *testing.T) {
 	// Lap 2: stage 1 at 10 km/h (pace=360 s/km)
 	// Lap 3: stage 2 at ~11 km/h (pace=327.3 s/km → 3600/327.3 ≈ 11 km/h)
 	laps := []ImportLap{
-		makeImportLap(1, 0, 600, 600),       // warmup 6 km/h
-		makeImportLap(2, 600000, 300, 360),  // stage 10 km/h
+		makeImportLap(1, 0, 600, 600),        // warmup 6 km/h
+		makeImportLap(2, 600000, 300, 360),   // stage 10 km/h
 		makeImportLap(3, 900000, 300, 327.3), // stage ~11 km/h
 	}
 
@@ -198,9 +198,9 @@ func TestExtractStageHR_SpeedMatch(t *testing.T) {
 func TestExtractStageHR_DurationFallback(t *testing.T) {
 	// All laps have pace=0 so speed matching will produce no matches.
 	laps := []ImportLap{
-		makeImportLap(1, 0, 600, 0),         // warmup 10 min
-		makeImportLap(2, 600000, 300, 0),    // stage 1
-		makeImportLap(3, 900000, 300, 0),    // stage 2
+		makeImportLap(1, 0, 600, 0),      // warmup 10 min
+		makeImportLap(2, 600000, 300, 0), // stage 1
+		makeImportLap(3, 900000, 300, 0), // stage 2
 	}
 
 	hrPerLap := []int{120, 140, 155}
@@ -240,7 +240,7 @@ func TestExtractStageHR_SpeedToleranceEnforced(t *testing.T) {
 	// Pair speed is 10.0 km/h → diff ≈ 0.8 km/h > 0.4 km/h tolerance.
 	// Speed match must NOT succeed; the result should fall back to duration.
 	laps := []ImportLap{
-		makeImportLap(1, 0, 300, 333.3), // ~10.8 km/h — too far from 10.0 km/h
+		makeImportLap(1, 0, 300, 333.3),      // ~10.8 km/h — too far from 10.0 km/h
 		makeImportLap(2, 300000, 300, 327.3), // ~11.0 km/h — matches pair 2
 	}
 	samples := makeImportSamples(laps, []int{140, 155})
@@ -265,10 +265,10 @@ func TestExtractStageHR_StageDurationMinFiltersShortLaps(t *testing.T) {
 	// After warmup, lap 2 is a short auto-lap (30 s < StageDurationMin=5 min),
 	// and laps 3 and 4 are real 5-min stages. Only laps 3 and 4 should be used.
 	laps := []ImportLap{
-		makeImportLap(1, 0, 600, 0),          // warmup 10 min
-		makeImportLap(2, 600000, 30, 0),      // short auto-lap (30 s) — must be skipped
-		makeImportLap(3, 630000, 300, 0),     // stage 1 (5 min)
-		makeImportLap(4, 930000, 300, 0),     // stage 2 (5 min)
+		makeImportLap(1, 0, 600, 0),      // warmup 10 min
+		makeImportLap(2, 600000, 30, 0),  // short auto-lap (30 s) — must be skipped
+		makeImportLap(3, 630000, 300, 0), // stage 1 (5 min)
+		makeImportLap(4, 930000, 300, 0), // stage 2 (5 min)
 	}
 	samples := makeImportSamples(laps, []int{120, 130, 145, 158})
 

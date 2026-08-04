@@ -230,7 +230,7 @@ func TestFormatRacePromptSection(t *testing.T) {
 		RiegelComparisons: []RiegelComparison{
 			{
 				RefRaceName: "10K City Run",
-				RefDistance:  10000,
+				RefDistance: 10000,
 				RefTime:     2500,
 				PredictedS:  1194,
 				ActualS:     1170,

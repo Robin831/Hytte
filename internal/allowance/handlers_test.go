@@ -2554,7 +2554,6 @@ func TestRecordCompletionHandler_ChoreOwnedByDifferentParent(t *testing.T) {
 	}
 }
 
-
 // ---- Batch approve / reject handler tests ----
 
 // captureApprovalNotifications swaps the package-level approval notifier for a

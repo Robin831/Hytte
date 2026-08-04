@@ -69,4 +69,3 @@ func shouldFireWeeklyChallenges(now time.Time) bool {
 	utcNow := now.UTC()
 	return utcNow.Weekday() == time.Monday && utcNow.Hour() >= 8
 }
-

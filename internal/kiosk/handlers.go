@@ -56,8 +56,8 @@ type SunTimes struct {
 type KioskData struct {
 	Transit   []transit.StopDepartures `json:"transit"`
 	Outdoor   *netatmo.OutdoorReadings `json:"outdoor,omitempty"`
-	Indoor    *netatmo.IndoorReadings `json:"indoor,omitempty"`
-	Wind      *netatmo.WindReadings   `json:"wind,omitempty"`
+	Indoor    *netatmo.IndoorReadings  `json:"indoor,omitempty"`
+	Wind      *netatmo.WindReadings    `json:"wind,omitempty"`
 	Forecast  json.RawMessage          `json:"forecast,omitempty"`
 	Sun       *SunTimes                `json:"sun,omitempty"`
 	FetchedAt time.Time                `json:"fetched_at"`

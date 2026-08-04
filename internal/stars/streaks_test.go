@@ -377,7 +377,7 @@ func TestCheckStreakAtRisk_DailyAtRisk(t *testing.T) {
 	ctx := context.Background()
 
 	// Set last_activity to yesterday manually.
-	yesterday := time.Now().UTC().Truncate(24 * time.Hour).AddDate(0, 0, -1)
+	yesterday := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -1)
 	if _, err := db.Exec(`
 		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
 		VALUES (?, 'daily_workout', 3, 3, ?)
@@ -463,7 +463,7 @@ func TestUseStreakShield_Basic(t *testing.T) {
 	ctx := context.Background()
 
 	// Insert a streak for the child.
-	yesterday := time.Now().UTC().Truncate(24 * time.Hour).AddDate(0, 0, -1)
+	yesterday := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -1)
 	if _, err := db.Exec(`
 		INSERT INTO streaks (user_id, streak_type, current_count, longest_count, last_activity)
 		VALUES (?, 'daily_workout', 5, 5, ?)

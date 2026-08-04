@@ -9,4 +9,3 @@ import (
 // distinct from sql.ErrNoRows so callers can map it to 403 (or 404 if they
 // prefer to hide existence).
 var ErrForbidden = errors.New("familychat: not a conversation member")
-

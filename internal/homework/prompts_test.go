@@ -7,9 +7,9 @@ import (
 
 func TestDetectSubject(t *testing.T) {
 	tests := []struct {
-		name    string
-		input   string
-		want    string
+		name  string
+		input string
+		want  string
 	}{
 		{"math keywords", "I need help to solve this equation", "math"},
 		{"writing keywords", "Help me write an essay with a good thesis", "writing"},
@@ -183,8 +183,8 @@ func TestParseGrade(t *testing.T) {
 		{"grade 7", 7},
 		{"grade7", 7},
 		{"12th", 12},
-		{"5th ", 5},  // trailing whitespace must not break suffix removal
-		{" 3rd", 3},  // leading whitespace must not break suffix removal
+		{"5th ", 5}, // trailing whitespace must not break suffix removal
+		{" 3rd", 3}, // leading whitespace must not break suffix removal
 		{"invalid", 0},
 		{"", 0},
 	}

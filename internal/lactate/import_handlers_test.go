@@ -231,7 +231,7 @@ func TestPreviewFromWorkoutHandler_HappyPath(t *testing.T) {
 
 	// Insert HR samples — one sample in the last 30 s of each stage.
 	insertTestSamples(t, db, wid, []samplePoint{
-		{OffsetMs: 870_000, HeartRate: 135}, // last 30s of lap 2
+		{OffsetMs: 870_000, HeartRate: 135},   // last 30s of lap 2
 		{OffsetMs: 1_170_000, HeartRate: 150}, // last 30s of lap 3
 		{OffsetMs: 1_470_000, HeartRate: 163}, // last 30s of lap 4
 	})

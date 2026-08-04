@@ -271,4 +271,3 @@ func TestMilestoneOnlyOnce(t *testing.T) {
 		t.Errorf("5k_finisher should only be awarded once, got %d", count2)
 	}
 }
-

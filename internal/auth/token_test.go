@@ -186,4 +186,3 @@ func TestRequireAuthOrToken_TokenDisabledWhenEnvUnset(t *testing.T) {
 		t.Errorf("expected 401, got %d", rec.Code)
 	}
 }
-
