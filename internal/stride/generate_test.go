@@ -1186,3 +1186,19 @@ func TestGeneratePlan_PromptIncludesRecentEvaluations(t *testing.T) {
 		t.Error("expected workout-eval notes in generated prompt")
 	}
 }
+
+func TestMariusBakkenInstructions_ContainsTreadmillSpeedCaveat(t *testing.T) {
+	// The generation prompt derives a km/h figure from an outdoor pace target.
+	// It must also carry the caveat that this figure is not a belt setting,
+	// otherwise sessions get prescribed treadmill speeds that are too fast.
+	for _, want := range []string{
+		"Treadmill speeds are NOT the same number as outdoor speeds",
+		"under-reads the belt by 5-15%",
+		"TIME and BELT SPEED",
+		"give the two prescriptions SEPARATELY",
+	} {
+		if !strings.Contains(mariusBakkenInstructions, want) {
+			t.Errorf("generation instructions should contain treadmill speed caveat %q, but they do not", want)
+		}
+	}
+}

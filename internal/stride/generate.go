@@ -31,15 +31,29 @@ const dayPlanSchemaFields = `Each day object:
 
 // workoutFormatGuidance instructs the model to express interval/rep sessions in
 // both distance and time, and target pace in both min/km and km/h, so sessions
-// transfer cleanly to a treadmill. Shared between plan generation and chat
-// editing so both produce the same format.
+// transfer cleanly to a treadmill. It also warns that a belt speed is NOT the
+// same number as an outdoor pace target, mirroring the treadmill caveat the
+// evaluation prompt already gives (see buildEvalPrompt). Shared between
+// plan generation and chat editing so both produce the same format.
 const workoutFormatGuidance = `## Workout Description Formatting
 When a main set has intervals or reps with a target pace, make it treadmill-friendly by giving BOTH units:
 - Distance AND its time equivalent: "4x2000m (or 4x9min)". Compute the time from distance × pace.
 - Pace in min/km AND speed in km/h: "at 4:28-4:32/km (13.2-13.4 km/h)". Speed = 60 / pace_in_min_per_km; a faster pace (lower min/km) is a higher km/h, so list the km/h range ascending.
 - Full example: "4x2000m (or 4x9min) at 4:28-4:32/km (13.2-13.4 km/h)".
 - For time-based blocks (e.g. 6x6min) add the distance equivalent the same way: "6x6min (or 6x~1350m) at 4:25-4:30/km (13.3-13.6 km/h)".
-Round time equivalents to the nearest half-minute and km/h to one decimal. Continuous easy/recovery/long runs described by time or HR don't need this dual-unit treatment.`
+Round time equivalents to the nearest half-minute and km/h to one decimal. Continuous easy/recovery/long runs described by time or HR don't need this dual-unit treatment.
+
+### Treadmill speeds are NOT the same number as outdoor speeds
+The km/h figure derived from an outdoor pace target is NOT a belt setting. Never present it as one. Two independent effects make the belt number lower:
+1. **Measurement.** Indoors there is no GPS, so the watch estimates distance from wrist or foot-pod accelerometry and typically under-reads the belt by 5-15%. A watch-reported indoor pace is not comparable to an outdoor one, and an interval prescribed as "1000m" indoors is measured by a sensor that does not agree with the belt.
+2. **Physiology.** A treadmill removes the self-generated airflow that evaporates sweat outdoors, so heat accumulates, plasma and stroke volume fall, and HR climbs for the same mechanical work. The same effort therefore costs more HR indoors, and HR drift over a session is markedly higher.
+
+Consequences for how you write sessions:
+- Prescribe treadmill intervals by TIME and BELT SPEED, never by watch distance. Write "4x5min at belt 12.0-12.2 km/h", not "4x1000m at 12.5 km/h".
+- When a session may be run either indoors or out, give the two prescriptions SEPARATELY and label them — an outdoor pace/distance target, and a distinct belt-speed/time target. Do not present one number as serving both.
+- As a starting estimate, a matched-HR belt speed is roughly 3-5% below the outdoor km/h figure. Prefer the athlete's own matched-HR history over this default whenever indoor and outdoor sessions at known HR are available.
+- The HR cap governs in both settings. State explicitly that on a treadmill the athlete should judge the session by HR and belt speed and ignore the watch's pace and distance readouts.
+- Recommend a fan directed at the torso for any indoor threshold or long session, and a chest strap rather than wrist HR — indoors HR is the only reliable signal, so it must not also be noisy.`
 
 // mariusBakkenInstructions contains the Marius Bakken threshold-dominant model
 // coaching instructions injected verbatim into every plan generation prompt.

@@ -166,6 +166,23 @@ func TestBuildChatSystemPrompt_ContainsWorkoutFormatGuidance(t *testing.T) {
 	}
 }
 
+func TestBuildChatSystemPrompt_ContainsTreadmillSpeedCaveat(t *testing.T) {
+	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes)
+
+	// Editing a session over chat must not reintroduce the bug where an
+	// outdoor km/h figure is handed over as a treadmill belt setting.
+	for _, want := range []string{
+		"Treadmill speeds are NOT the same number as outdoor speeds",
+		"belt setting",
+		"TIME and BELT SPEED",
+	} {
+		if !strings.Contains(result, want) {
+			t.Errorf("chat prompt should contain treadmill speed caveat %q, but it does not", want)
+		}
+	}
+}
+
 func TestBuildChatSystemPrompt_ContainsProfile(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
 	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes)
