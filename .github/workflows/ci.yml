@@ -24,14 +24,12 @@ jobs:
 
       - name: Go fmt
         run: |
-          files=$(gofmt -l .)
-          if [ -n "$files" ]; then
-            echo "The following files are not gofmt-formatted:"
-            echo "$files"
-            gofmt -d $files
-            echo "Run 'gofmt -w .' to fix."
-            exit 1
-          fi
+          if ! gofmt -l . | tee /tmp/unformatted | grep -q .; then exit 0; fi
+          echo "The following files are not gofmt-formatted:"
+          cat /tmp/unformatted
+          xargs -r -d '\n' gofmt -d < /tmp/unformatted
+          echo "Run 'gofmt -w .' to fix."
+          exit 1
 
       - name: Go build
         run: go build ./...
