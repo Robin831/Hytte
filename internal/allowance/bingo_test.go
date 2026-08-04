@@ -167,7 +167,10 @@ func TestIsChallengeCompleted_Weekdays(t *testing.T) {
 	comps := []Completion{
 		{ChoreID: 1, ChildID: 2, Date: "2026-01-06", Status: "approved"}, // Tuesday
 	}
-	cases := []struct{ key string; want bool }{
+	cases := []struct {
+		key  string
+		want bool
+	}{
 		{"chore_monday", false},
 		{"chore_tuesday", true},
 		{"chore_wednesday", false},
@@ -309,15 +312,15 @@ func TestUpdateBingoProgress_AwardsLineBonus(t *testing.T) {
 	// Set all 9 cells explicitly: row 0 has satisfiable challenges, rows 1-2 have
 	// challenges that are NOT satisfied by 3 Mon/Tue/Wed completions, ensuring
 	// exactly one line completes regardless of the random seed.
-	card.Cells[0] = AllowanceBingoCell{ChallengeKey: "chore_monday",    Label: "Monday"}
-	card.Cells[1] = AllowanceBingoCell{ChallengeKey: "chore_tuesday",   Label: "Tuesday"}
+	card.Cells[0] = AllowanceBingoCell{ChallengeKey: "chore_monday", Label: "Monday"}
+	card.Cells[1] = AllowanceBingoCell{ChallengeKey: "chore_tuesday", Label: "Tuesday"}
 	card.Cells[2] = AllowanceBingoCell{ChallengeKey: "chore_wednesday", Label: "Wednesday"}
-	card.Cells[3] = AllowanceBingoCell{ChallengeKey: "chore_thursday",  Label: "Thursday"}
-	card.Cells[4] = AllowanceBingoCell{ChallengeKey: "chore_friday",    Label: "Friday"}
-	card.Cells[5] = AllowanceBingoCell{ChallengeKey: "chore_weekend",   Label: "Weekend"}
-	card.Cells[6] = AllowanceBingoCell{ChallengeKey: "two_in_one_day",  Label: "Two in one day"}
-	card.Cells[7] = AllowanceBingoCell{ChallengeKey: "five_in_week",    Label: "Five in week"}
-	card.Cells[8] = AllowanceBingoCell{ChallengeKey: "extra_task",      Label: "Extra task"}
+	card.Cells[3] = AllowanceBingoCell{ChallengeKey: "chore_thursday", Label: "Thursday"}
+	card.Cells[4] = AllowanceBingoCell{ChallengeKey: "chore_friday", Label: "Friday"}
+	card.Cells[5] = AllowanceBingoCell{ChallengeKey: "chore_weekend", Label: "Weekend"}
+	card.Cells[6] = AllowanceBingoCell{ChallengeKey: "two_in_one_day", Label: "Two in one day"}
+	card.Cells[7] = AllowanceBingoCell{ChallengeKey: "five_in_week", Label: "Five in week"}
+	card.Cells[8] = AllowanceBingoCell{ChallengeKey: "extra_task", Label: "Extra task"}
 	overrideBingoCells(t, db, card.ID, card.Cells)
 
 	updated, err := UpdateBingoProgress(db, 2, 1, weekStart)
@@ -344,8 +347,8 @@ func TestUpdateBingoProgress_Idempotent(t *testing.T) {
 	insertApprovedCompletion(t, db, 1, "2026-01-07")
 
 	card, _ := GetOrCreateBingoCard(db, 2, 1, weekStart)
-	card.Cells[0] = AllowanceBingoCell{ChallengeKey: "chore_monday",    Label: "Monday"}
-	card.Cells[1] = AllowanceBingoCell{ChallengeKey: "chore_tuesday",   Label: "Tuesday"}
+	card.Cells[0] = AllowanceBingoCell{ChallengeKey: "chore_monday", Label: "Monday"}
+	card.Cells[1] = AllowanceBingoCell{ChallengeKey: "chore_tuesday", Label: "Tuesday"}
 	card.Cells[2] = AllowanceBingoCell{ChallengeKey: "chore_wednesday", Label: "Wednesday"}
 	overrideBingoCells(t, db, card.ID, card.Cells)
 
@@ -434,15 +437,15 @@ func TestGetBingoBonusForWeek_AfterProgress(t *testing.T) {
 
 	card, _ := GetOrCreateBingoCard(db, 2, 1, weekStart)
 	// Set all 9 cells explicitly so only row 0 completes with 3 Mon/Tue/Wed completions.
-	card.Cells[0] = AllowanceBingoCell{ChallengeKey: "chore_monday",    Label: "Monday"}
-	card.Cells[1] = AllowanceBingoCell{ChallengeKey: "chore_tuesday",   Label: "Tuesday"}
+	card.Cells[0] = AllowanceBingoCell{ChallengeKey: "chore_monday", Label: "Monday"}
+	card.Cells[1] = AllowanceBingoCell{ChallengeKey: "chore_tuesday", Label: "Tuesday"}
 	card.Cells[2] = AllowanceBingoCell{ChallengeKey: "chore_wednesday", Label: "Wednesday"}
-	card.Cells[3] = AllowanceBingoCell{ChallengeKey: "chore_thursday",  Label: "Thursday"}
-	card.Cells[4] = AllowanceBingoCell{ChallengeKey: "chore_friday",    Label: "Friday"}
-	card.Cells[5] = AllowanceBingoCell{ChallengeKey: "chore_weekend",   Label: "Weekend"}
-	card.Cells[6] = AllowanceBingoCell{ChallengeKey: "two_in_one_day",  Label: "Two in one day"}
-	card.Cells[7] = AllowanceBingoCell{ChallengeKey: "five_in_week",    Label: "Five in week"}
-	card.Cells[8] = AllowanceBingoCell{ChallengeKey: "extra_task",      Label: "Extra task"}
+	card.Cells[3] = AllowanceBingoCell{ChallengeKey: "chore_thursday", Label: "Thursday"}
+	card.Cells[4] = AllowanceBingoCell{ChallengeKey: "chore_friday", Label: "Friday"}
+	card.Cells[5] = AllowanceBingoCell{ChallengeKey: "chore_weekend", Label: "Weekend"}
+	card.Cells[6] = AllowanceBingoCell{ChallengeKey: "two_in_one_day", Label: "Two in one day"}
+	card.Cells[7] = AllowanceBingoCell{ChallengeKey: "five_in_week", Label: "Five in week"}
+	card.Cells[8] = AllowanceBingoCell{ChallengeKey: "extra_task", Label: "Extra task"}
 	overrideBingoCells(t, db, card.ID, card.Cells)
 
 	UpdateBingoProgress(db, 2, 1, weekStart) //nolint:errcheck

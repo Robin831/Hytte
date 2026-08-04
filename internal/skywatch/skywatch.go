@@ -50,18 +50,18 @@ type MoonInfo struct {
 // SunTimes holds computed sun data for a specific date and location.
 // Fields are nil in polar day/night conditions where a time does not occur.
 type SunTimes struct {
-	Sunrise                *string `json:"sunrise,omitempty"`
-	Sunset                 *string `json:"sunset,omitempty"`
-	SolarNoon              *string `json:"solar_noon,omitempty"`
-	DayLength              float64 `json:"day_length_hours"`
-	GoldenHourStart        *string `json:"golden_hour_start,omitempty"`
-	GoldenHourEnd          *string `json:"golden_hour_end,omitempty"`
-	CivilDawn              *string `json:"civil_dawn,omitempty"`
-	CivilDusk              *string `json:"civil_dusk,omitempty"`
-	NauticalDawn           *string `json:"nautical_dawn,omitempty"`
-	NauticalDusk           *string `json:"nautical_dusk,omitempty"`
-	AstronomicalDawn       *string `json:"astronomical_dawn,omitempty"`
-	AstronomicalDusk       *string `json:"astronomical_dusk,omitempty"`
+	Sunrise          *string `json:"sunrise,omitempty"`
+	Sunset           *string `json:"sunset,omitempty"`
+	SolarNoon        *string `json:"solar_noon,omitempty"`
+	DayLength        float64 `json:"day_length_hours"`
+	GoldenHourStart  *string `json:"golden_hour_start,omitempty"`
+	GoldenHourEnd    *string `json:"golden_hour_end,omitempty"`
+	CivilDawn        *string `json:"civil_dawn,omitempty"`
+	CivilDusk        *string `json:"civil_dusk,omitempty"`
+	NauticalDawn     *string `json:"nautical_dawn,omitempty"`
+	NauticalDusk     *string `json:"nautical_dusk,omitempty"`
+	AstronomicalDawn *string `json:"astronomical_dawn,omitempty"`
+	AstronomicalDusk *string `json:"astronomical_dusk,omitempty"`
 }
 
 // formatTime formats a time as RFC3339, returning nil for zero times.

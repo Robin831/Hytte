@@ -526,12 +526,12 @@ func TestRecurringCRUD(t *testing.T) {
 	accID := createTestAccount(t, db)
 
 	r := &Recurring{
-		AccountID:   accID,
-		Amount:      -500,
-		Frequency:   FrequencyMonthly,
-		DayOfMonth:  1,
-		StartDate:   time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:     "",
+		AccountID:     accID,
+		Amount:        -500,
+		Frequency:     FrequencyMonthly,
+		DayOfMonth:    1,
+		StartDate:     time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:       "",
 		LastGenerated: "",
 	}
 	if err := CreateRecurring(db, 1, r); err != nil {
@@ -636,10 +636,10 @@ func TestIsRecurringDue_EdgeCases(t *testing.T) {
 	startDate := time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC)
 
 	tests := []struct {
-		name          string
-		r             Recurring
-		today         string
-		wantDue       bool
+		name    string
+		r       Recurring
+		today   string
+		wantDue bool
 	}{
 		{
 			name: "monthly DayOfMonth=31 clamps to Feb 28",

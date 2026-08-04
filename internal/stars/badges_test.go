@@ -386,14 +386,14 @@ func TestIsPalindromeStr(t *testing.T) {
 		input string
 		want  bool
 	}{
-		{"555", true},   // 5:55
-		{"444", true},   // 4:44
-		{"121", true},   // 1:21
-		{"1221", true},  // 12:21
-		{"530", false},  // 5:30
-		{"600", false},  // 6:00
-		{"", true},      // empty is trivially palindrome
-		{"a", true},     // single char
+		{"555", true},  // 5:55
+		{"444", true},  // 4:44
+		{"121", true},  // 1:21
+		{"1221", true}, // 12:21
+		{"530", false}, // 5:30
+		{"600", false}, // 6:00
+		{"", true},     // empty is trivially palindrome
+		{"a", true},    // single char
 		{"ab", false},
 	}
 

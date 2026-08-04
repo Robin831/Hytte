@@ -549,12 +549,12 @@ func WeekSummaryHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
-			"week_start":  monday.Format("2006-01-02"),
-			"week_end":    sunday.Format("2006-01-02"),
-			"days":        days,
-			"summaries":   summaries,
-			"flex":        flex,
-			"leave_days":  leaveDays,
+			"week_start": monday.Format("2006-01-02"),
+			"week_end":   sunday.Format("2006-01-02"),
+			"days":       days,
+			"summaries":  summaries,
+			"flex":       flex,
+			"leave_days": leaveDays,
 		})
 	}
 }

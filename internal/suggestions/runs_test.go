@@ -145,10 +145,10 @@ func TestListSuggestionRunsScopedByUser(t *testing.T) {
 
 func TestBuildPageSlugsCSV(t *testing.T) {
 	cases := []struct {
-		name        string
-		slugs       []string
-		newPage     bool
-		want        string
+		name    string
+		slugs   []string
+		newPage bool
+		want    string
 	}{
 		{"empty no new", nil, false, ""},
 		{"empty with new", nil, true, NewPageSlug},

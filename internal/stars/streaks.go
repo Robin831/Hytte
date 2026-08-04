@@ -162,7 +162,7 @@ func CheckStreakAtRisk(ctx context.Context, db *sql.DB, userID int64) (StreakAtR
 	if streaks.DailyWorkout.CurrentCount > 0 && streaks.DailyWorkout.LastActivity != "" {
 		last, parseErr := parseStreakDate("daily_workout", streaks.DailyWorkout.LastActivity)
 		if parseErr == nil {
-			yesterday := now.Truncate(24 * time.Hour).AddDate(0, 0, -1)
+			yesterday := now.Truncate(24*time.Hour).AddDate(0, 0, -1)
 			result.DailyAtRisk = sameDay(last, yesterday)
 		}
 	}
@@ -193,7 +193,7 @@ func UseStreakShield(ctx context.Context, db *sql.DB, parentID, childID int64) e
 
 	// Compute the start of the current calendar week (Monday).
 	daysSinceMonday := (int(now.Weekday()) + 6) % 7
-	weekStart := now.Truncate(24 * time.Hour).AddDate(0, 0, -daysSinceMonday)
+	weekStart := now.Truncate(24*time.Hour).AddDate(0, 0, -daysSinceMonday)
 
 	var weeklyCount int
 	if err := db.QueryRowContext(ctx, `

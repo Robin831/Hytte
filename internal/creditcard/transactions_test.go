@@ -314,10 +314,10 @@ func TestTransactionsListHandler_CarryoversSortedFirst(t *testing.T) {
 		got[i] = tx.Beskrivelse
 	}
 	want := []string{
-		"Carryover Mar 30",   // carry-over block, date DESC
-		"Carryover Mar 12",   // carry-over block
-		"April 18 second",    // in-period block, date DESC then id DESC
-		"April 18",           // same date, lower id
+		"Carryover Mar 30", // carry-over block, date DESC
+		"Carryover Mar 12", // carry-over block
+		"April 18 second",  // in-period block, date DESC then id DESC
+		"April 18",         // same date, lower id
 		"April 02",
 	}
 	for i := range want {

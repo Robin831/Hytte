@@ -388,7 +388,7 @@ func scheduleBackgroundAnalysis(db *sql.DB, userID int64, isAdmin bool, workouts
 // workout_context row is saved or updated, mirroring the FIT-import auto-trigger
 // in scheduleBackgroundAnalysis. It gates on:
 //   - admin user with the claude_ai feature flag
-//   - an atomic conditional UPDATE that flips analysis_status '' or 'failed' →
+//   - an atomic conditional UPDATE that flips analysis_status ” or 'failed' →
 //     'pending', preventing duplicate runs from concurrent context saves
 //     (TOCTOU-safe; the goroutine is spawned only when RowsAffected == 1)
 func scheduleAnalysisAfterContextSave(db *sql.DB, userID int64, isAdmin bool, workoutID int64) {

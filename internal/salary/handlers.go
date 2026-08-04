@@ -85,14 +85,14 @@ func ConfigGetHandler(db *sql.DB) http.HandlerFunc {
 
 // ConfigPutRequest is the request body for PUT /api/salary/config.
 type ConfigPutRequest struct {
-	BaseSalary           float64          `json:"base_salary"`
-	HourlyRate           float64          `json:"hourly_rate"`
-	InternalHourlyRate   float64          `json:"internal_hourly_rate"`
-	StandardHours        float64          `json:"standard_hours"`
-	Currency             string           `json:"currency"`
-	TaxableBenefits      float64          `json:"taxable_benefits"`
-	EffectiveFrom        string           `json:"effective_from"` // YYYY-MM-DD; defaults to today
-	CommissionTiers      []CommissionTier `json:"commission_tiers"`
+	BaseSalary         float64          `json:"base_salary"`
+	HourlyRate         float64          `json:"hourly_rate"`
+	InternalHourlyRate float64          `json:"internal_hourly_rate"`
+	StandardHours      float64          `json:"standard_hours"`
+	Currency           string           `json:"currency"`
+	TaxableBenefits    float64          `json:"taxable_benefits"`
+	EffectiveFrom      string           `json:"effective_from"` // YYYY-MM-DD; defaults to today
+	CommissionTiers    []CommissionTier `json:"commission_tiers"`
 }
 
 // ConfigPutHandler handles PUT /api/salary/config.

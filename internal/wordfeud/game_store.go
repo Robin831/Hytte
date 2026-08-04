@@ -10,7 +10,6 @@ import (
 	"github.com/Robin831/Hytte/internal/encryption"
 )
 
-
 // decryptField decrypts a field, logging a warning and returning an empty
 // string if decryption fails (e.g. corrupted or invalid ciphertext).
 func decryptField(ciphertext string) string {

@@ -919,15 +919,15 @@ func TestVacationHandler_WithVacationDays(t *testing.T) {
 
 	// Save a confirmed record with 5 vacation days and some gross.
 	rec := &Record{
-		UserID:       1,
-		Month:        "2026-02",
-		WorkingDays:  20,
-		HoursWorked:  150,
+		UserID:        1,
+		Month:         "2026-02",
+		WorkingDays:   20,
+		HoursWorked:   150,
 		BillableHours: 150,
-		Gross:        80000,
-		Net:          55000,
-		VacationDays: 5,
-		IsEstimate:   false,
+		Gross:         80000,
+		Net:           55000,
+		VacationDays:  5,
+		IsEstimate:    false,
 	}
 	if err := SaveRecord(db, rec); err != nil {
 		t.Fatalf("SaveRecord: %v", err)

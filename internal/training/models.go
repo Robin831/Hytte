@@ -4,23 +4,23 @@ import "time"
 
 // Workout is the summary record for a single imported workout.
 type Workout struct {
-	ID              int64   `json:"id"`
-	UserID          int64   `json:"user_id"`
-	Sport           string  `json:"sport"`
-	Title           string  `json:"title"`
-	StartedAt       string  `json:"started_at"`
-	DurationSeconds int     `json:"duration_seconds"`
-	DistanceMeters  float64 `json:"distance_meters"`
-	AvgHeartRate    int     `json:"avg_heart_rate"`
-	MaxHeartRate    int     `json:"max_heart_rate"`
-	AvgPaceSecPerKm float64 `json:"avg_pace_sec_per_km"`
-	AvgCadence      int     `json:"avg_cadence"`
-	Calories        int     `json:"calories"`
-	AscentMeters    float64 `json:"ascent_meters"`
-	DescentMeters   float64 `json:"descent_meters"`
-	SubSport        string  `json:"sub_sport"`
-	IsIndoor        bool    `json:"is_indoor"`
-	FitFileHash     string  `json:"fit_file_hash"`
+	ID              int64    `json:"id"`
+	UserID          int64    `json:"user_id"`
+	Sport           string   `json:"sport"`
+	Title           string   `json:"title"`
+	StartedAt       string   `json:"started_at"`
+	DurationSeconds int      `json:"duration_seconds"`
+	DistanceMeters  float64  `json:"distance_meters"`
+	AvgHeartRate    int      `json:"avg_heart_rate"`
+	MaxHeartRate    int      `json:"max_heart_rate"`
+	AvgPaceSecPerKm float64  `json:"avg_pace_sec_per_km"`
+	AvgCadence      int      `json:"avg_cadence"`
+	Calories        int      `json:"calories"`
+	AscentMeters    float64  `json:"ascent_meters"`
+	DescentMeters   float64  `json:"descent_meters"`
+	SubSport        string   `json:"sub_sport"`
+	IsIndoor        bool     `json:"is_indoor"`
+	FitFileHash     string   `json:"fit_file_hash"`
 	AnalysisStatus  string   `json:"analysis_status"`
 	TitleSource     string   `json:"title_source"`
 	CreatedAt       string   `json:"created_at"`
@@ -51,12 +51,12 @@ type Lap struct {
 
 // Sample is a single time-series data point within a workout.
 type Sample struct {
-	OffsetMs      int64   `json:"t"`
-	HeartRate     int     `json:"hr,omitempty"`
-	SpeedMPerS    float64 `json:"spd,omitempty"`
-	Cadence       int     `json:"cad,omitempty"`
-	AltitudeM     float64 `json:"alt,omitempty"`
-	DistanceM     float64 `json:"dist,omitempty"`
+	OffsetMs   int64   `json:"t"`
+	HeartRate  int     `json:"hr,omitempty"`
+	SpeedMPerS float64 `json:"spd,omitempty"`
+	Cadence    int     `json:"cad,omitempty"`
+	AltitudeM  float64 `json:"alt,omitempty"`
+	DistanceM  float64 `json:"dist,omitempty"`
 }
 
 // Samples wraps the time-series data for a workout.
@@ -99,12 +99,12 @@ type ParsedLap struct {
 
 // ComparisonResult holds the result of comparing two workouts.
 type ComparisonResult struct {
-	WorkoutA   WorkoutSummary       `json:"workout_a"`
-	WorkoutB   WorkoutSummary       `json:"workout_b"`
-	Compatible bool                 `json:"compatible"`
-	Reason     string               `json:"reason,omitempty"`
-	LapDeltas  []LapDelta           `json:"lap_deltas,omitempty"`
-	Summary    *ComparisonSummary   `json:"summary,omitempty"`
+	WorkoutA   WorkoutSummary     `json:"workout_a"`
+	WorkoutB   WorkoutSummary     `json:"workout_b"`
+	Compatible bool               `json:"compatible"`
+	Reason     string             `json:"reason,omitempty"`
+	LapDeltas  []LapDelta         `json:"lap_deltas,omitempty"`
+	Summary    *ComparisonSummary `json:"summary,omitempty"`
 }
 
 // WorkoutSummary is a minimal workout reference for comparison results.
@@ -131,9 +131,9 @@ type LapDelta struct {
 
 // ComparisonSummary gives an overall comparison summary.
 type ComparisonSummary struct {
-	AvgHRDelta  float64 `json:"avg_hr_delta"`
+	AvgHRDelta   float64 `json:"avg_hr_delta"`
 	AvgPaceDelta float64 `json:"avg_pace_delta"`
-	Verdict     string  `json:"verdict"`
+	Verdict      string  `json:"verdict"`
 }
 
 // ProgressionPoint is a single data point in a progression trend.
@@ -147,19 +147,19 @@ type ProgressionPoint struct {
 
 // ProgressionGroup groups workouts with similar structure.
 type ProgressionGroup struct {
-	Tag        string             `json:"tag"`
-	Sport      string             `json:"sport"`
-	LapCount   int                `json:"lap_count"`
-	Workouts   []ProgressionPoint `json:"workouts"`
+	Tag      string             `json:"tag"`
+	Sport    string             `json:"sport"`
+	LapCount int                `json:"lap_count"`
+	Workouts []ProgressionPoint `json:"workouts"`
 }
 
 // WeeklySummary aggregates training volume per week.
 type WeeklySummary struct {
-	WeekStart      string  `json:"week_start"`
-	TotalDuration  int     `json:"total_duration_seconds"`
-	TotalDistance   float64 `json:"total_distance_meters"`
-	WorkoutCount   int     `json:"workout_count"`
-	AvgHeartRate   float64 `json:"avg_heart_rate"`
+	WeekStart     string  `json:"week_start"`
+	TotalDuration int     `json:"total_duration_seconds"`
+	TotalDistance float64 `json:"total_distance_meters"`
+	WorkoutCount  int     `json:"workout_count"`
+	AvgHeartRate  float64 `json:"avg_heart_rate"`
 }
 
 // TrendAnalysis holds AI-generated trend context relative to recent training history.
@@ -273,8 +273,8 @@ type WeeklyLoad struct {
 // TrainingSummary caches the computed training status for a given period.
 type TrainingSummary struct {
 	UserID       int64          `json:"user_id"`
-	Period       string         `json:"period"`      // e.g. "week", "month"
-	WeekStart    string         `json:"week_start"`  // period start date (YYYY-MM-DD)
+	Period       string         `json:"period"`     // e.g. "week", "month"
+	WeekStart    string         `json:"week_start"` // period start date (YYYY-MM-DD)
 	Status       TrainingStatus `json:"status"`
 	ACR          *float64       `json:"acr,omitempty"`
 	AcuteLoad    float64        `json:"acute_load"`
@@ -339,11 +339,11 @@ type SportDistribution struct {
 // an interval rep, or a recovery block. SameAsPrevious lets the UI compress
 // repeated segments without duplicating their fields.
 type SpeedSegment struct {
-	Kind            string  `json:"kind"`
-	SpeedKmph       float64 `json:"speed_kmph"`
-	DurationSec     int     `json:"duration_sec"`
-	Repeats         int     `json:"repeats"`
-	SameAsPrevious  bool    `json:"same_as_previous"`
+	Kind           string  `json:"kind"`
+	SpeedKmph      float64 `json:"speed_kmph"`
+	DurationSec    int     `json:"duration_sec"`
+	Repeats        int     `json:"repeats"`
+	SameAsPrevious bool    `json:"same_as_previous"`
 }
 
 // WorkoutContext is the user-entered context for a single workout: surface,

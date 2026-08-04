@@ -54,7 +54,7 @@ func NewSystemdModule(db *sql.DB) *SystemdModule {
 	}
 }
 
-func (m *SystemdModule) Name() string       { return "systemd" }
+func (m *SystemdModule) Name() string        { return "systemd" }
 func (m *SystemdModule) DisplayName() string { return "System Services" }
 func (m *SystemdModule) Description() string {
 	return "Monitor systemd service units on the local host"

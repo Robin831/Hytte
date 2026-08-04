@@ -926,8 +926,8 @@ func batchLastMessages(db *sql.DB, convIDs []int64) (map[int64]lastMessage, erro
 	defer rows.Close()
 	for rows.Next() {
 		var (
-			convID, senderID       int64
-			body, attachmentPath   string
+			convID, senderID     int64
+			body, attachmentPath string
 		)
 		if err := rows.Scan(&convID, &senderID, &body, &attachmentPath); err != nil {
 			return nil, err

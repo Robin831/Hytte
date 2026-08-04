@@ -305,8 +305,8 @@ func (c *Client) setAuth(req *http.Request, sessionToken string) {
 
 // rawGame maps the JSON structure from the Wordfeud games list endpoint.
 type rawGame struct {
-	ID       int64 `json:"id"`
-	Players  []struct {
+	ID      int64 `json:"id"`
+	Players []struct {
 		Username string `json:"username"`
 		ID       int64  `json:"id"`
 		Score    int    `json:"score"`
@@ -319,7 +319,7 @@ type rawGame struct {
 		Points   int    `json:"points"`
 	} `json:"last_move"`
 	CurrentPlayer int   `json:"current_player"` // index into Players
-	Updated       int64 `json:"updated"`         // Unix timestamp of last activity
+	Updated       int64 `json:"updated"`        // Unix timestamp of last activity
 }
 
 func (g rawGame) toSummary() GameSummary {
@@ -359,12 +359,12 @@ type rawGameDetail struct {
 		IsLocal  bool              `json:"is_local"`
 		Rack     []json.RawMessage `json:"rack"` // per-player rack (some API versions)
 	} `json:"players"`
-	Rack          []json.RawMessage `json:"rack"`     // game-level rack: each element is [letter_id, count]
-	Tiles         []json.RawMessage `json:"tiles"`    // each: [row, col, letter_id, value, is_wildcard] — mixed types
-	BoardID       int               `json:"board"`    // board layout ID (integer, not the grid)
-	BagCount      int               `json:"bag_count"`
-	IsRunning     bool              `json:"is_running"`
-	Moves         []struct {
+	Rack      []json.RawMessage `json:"rack"`  // game-level rack: each element is [letter_id, count]
+	Tiles     []json.RawMessage `json:"tiles"` // each: [row, col, letter_id, value, is_wildcard] — mixed types
+	BoardID   int               `json:"board"` // board layout ID (integer, not the grid)
+	BagCount  int               `json:"bag_count"`
+	IsRunning bool              `json:"is_running"`
+	Moves     []struct {
 		UserID   int64  `json:"user_id"`
 		MoveType string `json:"move_type"`
 		Points   int    `json:"points"`

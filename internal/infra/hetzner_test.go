@@ -506,7 +506,7 @@ func TestBandwidthModule_Success(t *testing.T) {
 					"name":             "db-01",
 					"included_traffic": int64(1_000_000_000_000), // 1 TB
 					"ingoing_traffic":  int64(0),
-					"outgoing_traffic": int64(850_000_000_000),  // 0.85 TB → 85% → StatusDegraded
+					"outgoing_traffic": int64(850_000_000_000), // 0.85 TB → 85% → StatusDegraded
 				},
 			},
 		})

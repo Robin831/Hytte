@@ -38,11 +38,11 @@ type GitHubWorkflowRun struct {
 
 // GitHubRepoResult holds workflow run results for a single repository.
 type GitHubRepoResult struct {
-	Owner    string              `json:"owner"`
-	Repo     string              `json:"repo"`
-	Status   string              `json:"status"`
-	Error    string              `json:"error,omitempty"`
-	Runs     []GitHubWorkflowRun `json:"runs"`
+	Owner  string              `json:"owner"`
+	Repo   string              `json:"repo"`
+	Status string              `json:"status"`
+	Error  string              `json:"error,omitempty"`
+	Runs   []GitHubWorkflowRun `json:"runs"`
 }
 
 // GitHubActionsModule monitors GitHub Actions workflow status.

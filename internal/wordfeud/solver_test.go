@@ -620,8 +620,8 @@ func TestSolveAllMovesAreValidWords(t *testing.T) {
 	trie := testSolverTrie()
 
 	tests := []struct {
-		name string
-		rack string
+		name  string
+		rack  string
 		setup func(*SolverBoard)
 	}{
 		{

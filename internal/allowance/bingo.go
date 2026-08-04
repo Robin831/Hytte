@@ -66,18 +66,18 @@ type AllowanceBingoCard struct {
 // AllowanceChallengePool is the complete set of possible bingo challenges.
 // Must contain at least 9 entries for a 3×3 grid.
 var AllowanceChallengePool = []AllowanceBingoChallenge{
-	{Key: "chore_monday",    Label: "Do a chore on Monday"},
-	{Key: "chore_tuesday",   Label: "Do a chore on Tuesday"},
+	{Key: "chore_monday", Label: "Do a chore on Monday"},
+	{Key: "chore_tuesday", Label: "Do a chore on Tuesday"},
 	{Key: "chore_wednesday", Label: "Do a chore on Wednesday"},
-	{Key: "chore_thursday",  Label: "Do a chore on Thursday"},
-	{Key: "chore_friday",    Label: "Do a chore on Friday"},
-	{Key: "chore_weekend",   Label: "Do a chore on the weekend"},
-	{Key: "two_in_one_day",  Label: "Complete 2 chores in one day"},
-	{Key: "three_in_week",   Label: "Complete 3 chores this week"},
-	{Key: "five_in_week",    Label: "Complete 5 chores this week"},
-	{Key: "streak_3_days",   Label: "Do chores 3 days in a row"},
-	{Key: "quality_bonus",   Label: "Earn a quality bonus"},
-	{Key: "extra_task",      Label: "Complete an extra task"},
+	{Key: "chore_thursday", Label: "Do a chore on Thursday"},
+	{Key: "chore_friday", Label: "Do a chore on Friday"},
+	{Key: "chore_weekend", Label: "Do a chore on the weekend"},
+	{Key: "two_in_one_day", Label: "Complete 2 chores in one day"},
+	{Key: "three_in_week", Label: "Complete 3 chores this week"},
+	{Key: "five_in_week", Label: "Complete 5 chores this week"},
+	{Key: "streak_3_days", Label: "Do chores 3 days in a row"},
+	{Key: "quality_bonus", Label: "Earn a quality bonus"},
+	{Key: "extra_task", Label: "Complete an extra task"},
 }
 
 // allowanceBingoLines defines the 8 winning lines on a 3×3 grid (cell indices 0–8,

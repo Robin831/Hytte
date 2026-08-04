@@ -176,9 +176,9 @@ func TestTransactionsHandler_Empty(t *testing.T) {
 	}
 
 	var resp struct {
-		Transactions    []Transaction `json:"transactions"`
-		WeeklyStars     int           `json:"weekly_stars"`
-		WeeklyStarredWorkouts  int           `json:"weekly_starred_workouts"`
+		Transactions          []Transaction `json:"transactions"`
+		WeeklyStars           int           `json:"weekly_stars"`
+		WeeklyStarredWorkouts int           `json:"weekly_starred_workouts"`
 	}
 	decode(t, w.Body.Bytes(), &resp)
 
@@ -227,8 +227,8 @@ func TestTransactionsHandler_WithData(t *testing.T) {
 	}
 
 	var resp struct {
-		Transactions   []Transaction `json:"transactions"`
-		WeeklyStars    int           `json:"weekly_stars"`
+		Transactions          []Transaction `json:"transactions"`
+		WeeklyStars           int           `json:"weekly_stars"`
 		WeeklyStarredWorkouts int           `json:"weekly_starred_workouts"`
 	}
 	decode(t, w.Body.Bytes(), &resp)
@@ -702,8 +702,8 @@ func TestKidRewardsHandler_WithRewards(t *testing.T) {
 	}
 	var resp struct {
 		Rewards []struct {
-			StarCost    int  `json:"star_cost"`
-			CanAfford   bool `json:"can_afford"`
+			StarCost     int  `json:"star_cost"`
+			CanAfford    bool `json:"can_afford"`
 			TimesClaimed int  `json:"times_claimed"`
 		} `json:"rewards"`
 	}

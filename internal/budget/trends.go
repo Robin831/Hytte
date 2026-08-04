@@ -52,9 +52,9 @@ type YearOverYear struct {
 
 // TrendsResponse is the full response body for TrendsHandler.
 type TrendsResponse struct {
-	Months       []MonthlyTrend `json:"months"`
+	Months       []MonthlyTrend  `json:"months"`
 	NetWorth     []NetWorthPoint `json:"net_worth"`
-	YearOverYear *YearOverYear  `json:"year_over_year"`
+	YearOverYear *YearOverYear   `json:"year_over_year"`
 }
 
 // GetTrends queries transaction data and returns aggregated trend data for the
@@ -80,7 +80,7 @@ func GetTrends(db *sql.DB, userID int64, months int) (*TrendsResponse, error) {
 	}
 	slots := make([]monthSlot, months)
 	for i := 0; i < months; i++ {
-		t := nowFirst.AddDate(0, -(months-1-i), 0)
+		t := nowFirst.AddDate(0, -(months - 1 - i), 0)
 		slots[i] = monthSlot{
 			year:  t.Year(),
 			month: t.Month(),

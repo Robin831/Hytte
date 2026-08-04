@@ -26,8 +26,8 @@ type DBOverview struct {
 
 // dbStatsCache holds a cached result for a single user.
 type dbStatsCache struct {
-	result    *DBOverview
-	cachedAt  time.Time
+	result   *DBOverview
+	cachedAt time.Time
 }
 
 // DBStatsModule reports SQLite database statistics.

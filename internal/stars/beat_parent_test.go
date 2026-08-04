@@ -110,7 +110,7 @@ func TestBeatParentComparison_TableDriven(t *testing.T) {
 	}{
 		{"child_ahead_no_scaling", 15000, 10000, 0, 0, true},
 		{"parent_ahead_no_scaling", 5000, 20000, 0, 0, false},
-		{"tied_no_scaling", 10000, 10000, 0, 0, false}, // strict greater-than required
+		{"tied_no_scaling", 10000, 10000, 0, 0, false},             // strict greater-than required
 		{"child_wins_via_age_scaling", 3000, 10000, 10, 40, true},  // 3000 * 4 = 12000 > 10000
 		{"child_loses_despite_scaling", 2000, 10000, 8, 32, false}, // 2000 * 4 = 8000 < 10000
 	}

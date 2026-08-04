@@ -14,9 +14,9 @@ type Chore struct {
 	RequiresApproval bool    `json:"requires_approval"`
 	Active           bool    `json:"active"`
 	CreatedAt        string  `json:"created_at"`
-	CompletionMode   string  `json:"completion_mode"`  // solo, team
-	MinTeamSize      int64   `json:"min_team_size"`    // minimum participants for team mode
-	TeamBonusPct     float64 `json:"team_bonus_pct"`   // bonus percentage awarded for team completion
+	CompletionMode   string  `json:"completion_mode"` // solo, team
+	MinTeamSize      int64   `json:"min_team_size"`   // minimum participants for team mode
+	TeamBonusPct     float64 `json:"team_bonus_pct"`  // bonus percentage awarded for team completion
 }
 
 // Completion records a child's claim that a chore is done.
@@ -24,7 +24,7 @@ type Completion struct {
 	ID           int64   `json:"id"`
 	ChoreID      int64   `json:"chore_id"`
 	ChildID      int64   `json:"child_id"`
-	Date         string  `json:"date"` // YYYY-MM-DD
+	Date         string  `json:"date"`   // YYYY-MM-DD
 	Status       string  `json:"status"` // pending, approved, rejected
 	ApprovedBy   *int64  `json:"approved_by,omitempty"`
 	ApprovedAt   *string `json:"approved_at,omitempty"`
@@ -44,23 +44,23 @@ type TeamCompletion struct {
 
 // CompletionWithDetails is a completion enriched with chore and child info.
 type CompletionWithDetails struct {
-	ID               int64    `json:"id"`
-	ChoreID          int64    `json:"chore_id"`
-	ChoreName        string   `json:"chore_name"`
-	ChoreIcon        string   `json:"chore_icon"`
-	ChoreAmount      float64  `json:"chore_amount"`
-	ChildID          int64    `json:"child_id"`
-	ChildNickname    string   `json:"child_nickname"`
-	ChildAvatar      string   `json:"child_avatar"`
-	Date             string   `json:"date"`
-	Status           string   `json:"status"`
-	ApprovedBy       *int64   `json:"approved_by,omitempty"`
-	ApprovedAt       *string  `json:"approved_at,omitempty"`
-	Notes            string   `json:"notes,omitempty"`
-	QualityBonus     float64  `json:"quality_bonus,omitempty"`
-	PhotoURL         string   `json:"photo_url,omitempty"`
-	CreatedAt        string   `json:"created_at"`
-	TeamMemberNames  []string `json:"team_member_names,omitempty"`
+	ID              int64    `json:"id"`
+	ChoreID         int64    `json:"chore_id"`
+	ChoreName       string   `json:"chore_name"`
+	ChoreIcon       string   `json:"chore_icon"`
+	ChoreAmount     float64  `json:"chore_amount"`
+	ChildID         int64    `json:"child_id"`
+	ChildNickname   string   `json:"child_nickname"`
+	ChildAvatar     string   `json:"child_avatar"`
+	Date            string   `json:"date"`
+	Status          string   `json:"status"`
+	ApprovedBy      *int64   `json:"approved_by,omitempty"`
+	ApprovedAt      *string  `json:"approved_at,omitempty"`
+	Notes           string   `json:"notes,omitempty"`
+	QualityBonus    float64  `json:"quality_bonus,omitempty"`
+	PhotoURL        string   `json:"photo_url,omitempty"`
+	CreatedAt       string   `json:"created_at"`
+	TeamMemberNames []string `json:"team_member_names,omitempty"`
 }
 
 // ActiveTeamSession describes the open team session for a team chore on a given date.

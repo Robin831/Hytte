@@ -37,22 +37,22 @@ const maxReactionUsers = 20
 // database in the binary while still letting clients that prefer textual
 // shortcodes (legacy keyboards, accessibility tools) react to messages.
 var allowedShortcodes = map[string]struct{}{
-	"thumbsup": {},
+	"thumbsup":   {},
 	"thumbsdown": {},
-	"heart": {},
-	"tada": {},
-	"laugh": {},
-	"cry": {},
-	"fire": {},
-	"clap": {},
-	"eyes": {},
-	"smile": {},
-	"sob": {},
-	"angry": {},
-	"thinking": {},
-	"100": {},
-	"pray": {},
-	"rocket": {},
+	"heart":      {},
+	"tada":       {},
+	"laugh":      {},
+	"cry":        {},
+	"fire":       {},
+	"clap":       {},
+	"eyes":       {},
+	"smile":      {},
+	"sob":        {},
+	"angry":      {},
+	"thinking":   {},
+	"100":        {},
+	"pray":       {},
+	"rocket":     {},
 }
 
 // ReactionSummary is the per-emoji bucket attached to each message in the

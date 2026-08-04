@@ -828,17 +828,17 @@ func LimitsPutHandler(db *sql.DB) http.HandlerFunc {
 
 // recurringRequest is the body for create/update recurring endpoints.
 type recurringRequest struct {
-	AccountID   int64    `json:"account_id"`
-	CategoryID  *int64   `json:"category_id"`
-	Amount      float64  `json:"amount"`
-	Description string   `json:"description"`
-	Frequency   string   `json:"frequency"`
-	DayOfMonth  int      `json:"day_of_month"`
-	StartDate   string   `json:"start_date"` // YYYY-MM-DD
-	EndDate     string   `json:"end_date"`   // YYYY-MM-DD or empty
-	Active      *bool    `json:"active"`
+	AccountID   int64     `json:"account_id"`
+	CategoryID  *int64    `json:"category_id"`
+	Amount      float64   `json:"amount"`
+	Description string    `json:"description"`
+	Frequency   string    `json:"frequency"`
+	DayOfMonth  int       `json:"day_of_month"`
+	StartDate   string    `json:"start_date"` // YYYY-MM-DD
+	EndDate     string    `json:"end_date"`   // YYYY-MM-DD or empty
+	Active      *bool     `json:"active"`
 	SplitType   string    `json:"split_type"`  // percentage, equal, fixed_you, fixed_partner
-	SplitPct    **float64 `json:"split_pct"`  // tri-state: absent=keep existing, null=set NULL, number=set value
+	SplitPct    **float64 `json:"split_pct"`   // tri-state: absent=keep existing, null=set NULL, number=set value
 	VariableID  **int64   `json:"variable_id"` // tri-state: absent=keep existing, null=set NULL, value=set value
 }
 

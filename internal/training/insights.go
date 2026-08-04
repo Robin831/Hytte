@@ -18,7 +18,6 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-
 // GetCachedInsights retrieves cached insights for a workout owned by userID, or returns nil if none exist.
 func GetCachedInsights(db *sql.DB, workoutID, userID int64) (*CachedInsights, error) {
 	var response, model, createdAt string

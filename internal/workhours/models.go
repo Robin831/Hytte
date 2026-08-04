@@ -16,8 +16,8 @@ type WorkDay struct {
 type WorkSession struct {
 	ID         int64  `json:"id"`
 	DayID      int64  `json:"day_id"`
-	StartTime  string `json:"start_time"`  // HH:MM (24h)
-	EndTime    string `json:"end_time"`    // HH:MM (24h)
+	StartTime  string `json:"start_time"` // HH:MM (24h)
+	EndTime    string `json:"end_time"`   // HH:MM (24h)
 	SortOrder  int    `json:"sort_order"`
 	IsInternal bool   `json:"is_internal"` // true = internal company time (meetings/admin)
 }
@@ -102,7 +102,7 @@ var validLeaveTypes = map[LeaveType]bool{
 type LeaveDay struct {
 	ID        int64     `json:"id"`
 	UserID    int64     `json:"user_id"`
-	Date      string    `json:"date"`       // YYYY-MM-DD
+	Date      string    `json:"date"` // YYYY-MM-DD
 	LeaveType LeaveType `json:"leave_type"`
 	Note      string    `json:"note"`
 	CreatedAt string    `json:"created_at"`

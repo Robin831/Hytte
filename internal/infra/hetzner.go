@@ -305,12 +305,12 @@ func HetznerTokenDeleteHandler(db *sql.DB) http.HandlerFunc {
 
 // BandwidthServer holds traffic data for a single Hetzner server.
 type BandwidthServer struct {
-	ID               int64   `json:"id"`
-	Name             string  `json:"name"`
+	ID                int64   `json:"id"`
+	Name              string  `json:"name"`
 	IncludedTrafficTB float64 `json:"included_traffic_tb"`
 	IngoingTrafficTB  float64 `json:"ingoing_traffic_tb"`
 	OutgoingTrafficTB float64 `json:"outgoing_traffic_tb"`
-	UsagePercent     float64 `json:"usage_percent"`
+	UsagePercent      float64 `json:"usage_percent"`
 }
 
 // BandwidthModule monitors Hetzner server bandwidth/transfer usage.
@@ -441,11 +441,11 @@ func (m *BandwidthModule) fetchTraffic(token string) ([]BandwidthServer, error) 
 
 	var result struct {
 		Servers []struct {
-			ID               int64  `json:"id"`
-			Name             string `json:"name"`
-			IncludedTraffic  int64  `json:"included_traffic"`
-			IngoingTraffic   int64  `json:"ingoing_traffic"`
-			OutgoingTraffic  int64  `json:"outgoing_traffic"`
+			ID              int64  `json:"id"`
+			Name            string `json:"name"`
+			IncludedTraffic int64  `json:"included_traffic"`
+			IngoingTraffic  int64  `json:"ingoing_traffic"`
+			OutgoingTraffic int64  `json:"outgoing_traffic"`
 		} `json:"servers"`
 	}
 
@@ -487,13 +487,13 @@ type DockerHost struct {
 
 // DockerContainer represents a container from the Docker API.
 type DockerContainer struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Image   string `json:"image"`
-	State   string `json:"state"`
-	Status  string `json:"status"`
-	HostID  int64  `json:"host_id"`
-	Host    string `json:"host"`
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Image  string `json:"image"`
+	State  string `json:"state"`
+	Status string `json:"status"`
+	HostID int64  `json:"host_id"`
+	Host   string `json:"host"`
 }
 
 // DockerHostResult holds the check result for a single Docker host.

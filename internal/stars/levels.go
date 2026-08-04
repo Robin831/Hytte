@@ -8,10 +8,10 @@ import (
 
 // Level holds the definition for a single level tier.
 type Level struct {
-	Level     int
-	XP        int
-	Title     string
-	Emoji     string
+	Level int
+	XP    int
+	Title string
+	Emoji string
 }
 
 // LevelDefinitions lists all 12 tiers in ascending XP order.
@@ -33,13 +33,13 @@ var LevelDefinitions = []Level{
 
 // LevelInfo contains full progress information for a user's level.
 type LevelInfo struct {
-	Level              int     `json:"level"`
-	Title              string  `json:"title"`
-	Emoji              string  `json:"emoji"`
-	CurrentXP          int     `json:"current_xp"`
-	XPForCurrentLevel  int     `json:"xp_for_current_level"`
-	XPForNextLevel     int     `json:"xp_for_next_level"`
-	ProgressPercent    float64 `json:"progress_percent"`
+	Level             int     `json:"level"`
+	Title             string  `json:"title"`
+	Emoji             string  `json:"emoji"`
+	CurrentXP         int     `json:"current_xp"`
+	XPForCurrentLevel int     `json:"xp_for_current_level"`
+	XPForNextLevel    int     `json:"xp_for_next_level"`
+	ProgressPercent   float64 `json:"progress_percent"`
 }
 
 // LevelUpResult is returned by AddXP and describes whether a level-up occurred.

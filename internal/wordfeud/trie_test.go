@@ -17,7 +17,7 @@ func TestTrieInsertAndContains(t *testing.T) {
 		{"HEST", true},
 		{"HEI", true},
 		{"HESTELANSEN", true},
-		{"HES", false},  // prefix only, not a word
+		{"HES", false}, // prefix only, not a word
 		{"HESTER", false},
 		{"", false},
 	}

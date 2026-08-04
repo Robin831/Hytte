@@ -591,8 +591,8 @@ func TestGetGame_TileValueAndIsWild(t *testing.T) {
 						{"username": "other", "id": 2, "score": 0},
 					},
 					"tiles": [][]int{
-						{3, 5, 1, 1, 0},  // A at (3,5), not wild
-						{7, 7, 8, 3, 1},  // H at (7,7), wildcard
+						{3, 5, 1, 1, 0}, // A at (3,5), not wild
+						{7, 7, 8, 3, 1}, // H at (7,7), wildcard
 					},
 					"rack":           [][]int{},
 					"is_running":     true,
@@ -774,10 +774,10 @@ func TestGetGame_StringRackBlankReachesGameState(t *testing.T) {
 func TestParseBoardTiles(t *testing.T) {
 	var board [15][15]*Tile
 	tiles := [][]int{
-		{0, 0, 1, 1, 0}, // A at (0,0)
+		{0, 0, 1, 1, 0},     // A at (0,0)
 		{14, 14, 26, 10, 1}, // Z wildcard at (14,14)
-		{-1, 0, 1, 1, 0}, // out of bounds — should be skipped
-		{0},               // too short — should be skipped
+		{-1, 0, 1, 1, 0},    // out of bounds — should be skipped
+		{0},                 // too short — should be skipped
 	}
 	parseBoardTiles(&board, tiles)
 

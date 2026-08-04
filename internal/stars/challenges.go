@@ -102,7 +102,7 @@ func GetActiveChallenges(db *sql.DB, childID int64) ([]ChallengeWithProgress, er
 //   - streak: current daily_workout streak count
 //
 // Double-awarding is prevented by updating completed_at only when it is still
-// empty ('' → now) inside a transaction; concurrent calls that race are ignored.
+// empty (” → now) inside a transaction; concurrent calls that race are ignored.
 func UpdateChallengeProgress(ctx context.Context, db *sql.DB, userID int64, _ WorkoutInput) error {
 	// Fetch all active, uncompleted challenge participations for this user.
 	rows, err := db.QueryContext(ctx, `
@@ -369,7 +369,7 @@ func batchChallengeProgress(db *sql.DB, childID int64, challenges []ChallengeWit
 			challenges[idx].CurrentValue = float64(workoutCount)
 		case "streak":
 			challenges[idx].CurrentValue = currentStreak
-		// "custom" and future types: CurrentValue stays 0.
+			// "custom" and future types: CurrentValue stays 0.
 		}
 		c := &challenges[idx]
 		c.Completed = c.TargetValue > 0 && c.CurrentValue >= c.TargetValue

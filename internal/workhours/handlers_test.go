@@ -1379,4 +1379,3 @@ func TestPunchEditHandler_FutureTime(t *testing.T) {
 		t.Fatalf("expected 400 for future start_time, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
-

@@ -244,15 +244,15 @@ func TestComputeBlitzPoints(t *testing.T) {
 		want         int
 	}{
 		// Speed bonus boundaries (streakBefore=0, so streak_mult = 1.0).
-		{"fast under 1s", 500, 0, 2},       // round(1.5 * 1.0) = 2
+		{"fast under 1s", 500, 0, 2},           // round(1.5 * 1.0) = 2
 		{"exactly 1000 is medium", 1000, 0, 1}, // round(1.2 * 1.0) = 1
-		{"medium under 2s", 1500, 0, 1},    // round(1.2 * 1.0) = 1
-		{"exactly 2000 is slow", 2000, 0, 1}, // round(1.0 * 1.0) = 1
-		{"slow over 2s", 3000, 0, 1},       // round(1.0 * 1.0) = 1
+		{"medium under 2s", 1500, 0, 1},        // round(1.2 * 1.0) = 1
+		{"exactly 2000 is slow", 2000, 0, 1},   // round(1.0 * 1.0) = 1
+		{"slow over 2s", 3000, 0, 1},           // round(1.0 * 1.0) = 1
 
 		// Streak multiplier steps (responseMs=500, so speed_bonus=1.5).
-		{"streak 0 fast", 500, 0, 2},   // round(1.5 * 1.0) = 2
-		{"streak 10 fast", 500, 10, 3}, // round(1.5 * 2.0) = 3
+		{"streak 0 fast", 500, 0, 2},                 // round(1.5 * 1.0) = 2
+		{"streak 10 fast", 500, 10, 3},               // round(1.5 * 2.0) = 3
 		{"streak 20 fast capped at 3.0", 500, 20, 5}, // round(1.5 * 3.0) = 5 (half-away rounds 4.5 → 5)
 		{"streak 30 still capped", 500, 30, 5},       // same as 20
 
@@ -285,11 +285,11 @@ func TestFinishBlitzUsesWeightedScoring(t *testing.T) {
 		a, b, userAnswer, responseMs int
 		op                           string
 	}{
-		{3, 4, 12, 500, OpMultiply},   // correct, streak 0 → round(1.5*1.0)=2
-		{5, 6, 30, 700, OpMultiply},   // correct, streak 1 → round(1.5*1.1)=2
-		{2, 2, 5, 800, OpMultiply},    // WRONG
-		{4, 4, 16, 1500, OpMultiply},  // correct, streak 0 → round(1.2*1.0)=1
-		{7, 2, 14, 900, OpMultiply},   // correct, streak 1 → round(1.5*1.1)=2
+		{3, 4, 12, 500, OpMultiply},  // correct, streak 0 → round(1.5*1.0)=2
+		{5, 6, 30, 700, OpMultiply},  // correct, streak 1 → round(1.5*1.1)=2
+		{2, 2, 5, 800, OpMultiply},   // WRONG
+		{4, 4, 16, 1500, OpMultiply}, // correct, streak 0 → round(1.2*1.0)=1
+		{7, 2, 14, 900, OpMultiply},  // correct, streak 1 → round(1.5*1.1)=2
 	}
 	for _, s := range steps {
 		if _, _, _, err := svc.RecordAttempt(ctx, id, 1, s.a, s.b, s.op, s.userAnswer, s.responseMs); err != nil {

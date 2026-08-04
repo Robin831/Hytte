@@ -1061,4 +1061,3 @@ func TestBuildComparisonAnalysisPrompt_NeitherTreadmill(t *testing.T) {
 		t.Error("outdoor-only comparison prompt should not contain any treadmill-specific caveats")
 	}
 }
-

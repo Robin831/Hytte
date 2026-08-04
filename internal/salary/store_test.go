@@ -929,4 +929,3 @@ func TestBulkInsertTrekktabellData_IdempotentOnConflict(t *testing.T) {
 		t.Errorf("after replace, got tax %.0f, want 9999", got)
 	}
 }
-

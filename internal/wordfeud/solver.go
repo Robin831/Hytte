@@ -7,10 +7,10 @@ import (
 )
 
 const (
-	dirHorizontal = 0
-	dirVertical   = 1
-	allTilesBonus = 40
-	maxRackSize   = 7
+	dirHorizontal   = 0
+	dirVertical     = 1
+	allTilesBonus   = 40
+	maxRackSize     = 7
 	maxSolveResults = 200
 )
 

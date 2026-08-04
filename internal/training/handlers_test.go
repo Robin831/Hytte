@@ -1175,9 +1175,9 @@ func TestGetZoneDistribution_BoundaryConditions(t *testing.T) {
 	pw := &ParsedWorkout{
 		Sport: "running", DurationSeconds: 600, DistanceMeters: 2000, AvgHeartRate: 170,
 		Samples: []Sample{
-			{OffsetMs: 0, HeartRate: maxHR, SpeedMPerS: 3.0},     // exactly maxHR
+			{OffsetMs: 0, HeartRate: maxHR, SpeedMPerS: 3.0},        // exactly maxHR
 			{OffsetMs: 1000, HeartRate: maxHR + 5, SpeedMPerS: 3.0}, // above maxHR
-			{OffsetMs: 2000, HeartRate: 120, SpeedMPerS: 3.0},    // well below maxHR
+			{OffsetMs: 2000, HeartRate: 120, SpeedMPerS: 3.0},       // well below maxHR
 		},
 	}
 	workout, err := Create(database, 1, pw, "boundaryhash")
@@ -1490,7 +1490,7 @@ func buildMinimalFITBytes(t *testing.T) []byte {
 	now := time.Date(2024, 6, 1, 8, 0, 0, 0, time.UTC)
 	act := &filedef.Activity{
 		FileId: mesgdef.FileId{
-			Type:        typedef.FileActivity,
+			Type:         typedef.FileActivity,
 			Manufacturer: typedef.ManufacturerGarmin,
 			TimeCreated:  now,
 		},

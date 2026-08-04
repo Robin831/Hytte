@@ -28,7 +28,7 @@ const (
 	// maxClientIDLen caps the optional client-generated correlation id used by
 	// the optimistic-send UI. A UUID is 36 chars; 128 leaves headroom without
 	// letting a client smuggle a large blob through the passthrough field.
-	maxClientIDLen = 128
+	maxClientIDLen    = 128
 	maxMembersPerConv = 100
 	defaultMsgLimit   = 50
 	maxMsgLimit       = 500
@@ -49,7 +49,6 @@ const (
 // pushSem is a counting semaphore that enforces pushWorkerLimit. Each async
 // push goroutine acquires one slot before starting DB + HTTP work.
 var pushSem = make(chan struct{}, pushWorkerLimit)
-
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -73,7 +72,6 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	}
 	return true
 }
-
 
 // parseConvID extracts and validates the {id} path parameter for the
 // conversation routes. On failure we respond 404 (not 400) because an
@@ -242,9 +240,9 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 		}
 
 		var body struct {
-			Body           string  `json:"body"`
-			AttachmentPath string  `json:"attachment_path"`
-			AttachmentMime string  `json:"attachment_mime"`
+			Body           string `json:"body"`
+			AttachmentPath string `json:"attachment_path"`
+			AttachmentMime string `json:"attachment_mime"`
 			// ClientID is an optional correlation id the optimistic-send UI
 			// generates before the POST. The server never persists it; it is
 			// echoed back on the HTTP response and the SSE broadcast so the
@@ -361,7 +359,6 @@ func postMessageHandler(db *sql.DB, hub *Hub, sender PushSenderFunc, notifySync 
 				}()
 			}
 		}
-
 
 		writeJSON(w, http.StatusCreated, map[string]any{"message": msg})
 	}
