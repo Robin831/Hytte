@@ -399,19 +399,49 @@ func parseLetter(raw json.RawMessage) string {
 	return ""
 }
 
+// blankTile returns a rack tile representing a blank/wildcard.
+func blankTile() Tile {
+	return Tile{Letter: "", Value: 0, IsWild: true}
+}
+
 // parseRackEntries converts raw JSON rack entries into Tile slices.
 // Each entry can be a string letter, an integer letter ID, or a [letter_id, count] array.
+//
+// A blank tile in the rack has no letter yet, so the API represents it as the
+// empty string "" (the form the live API uses) or as letter ID 0. Both must be
+// mapped to a wild tile rather than skipped, otherwise the blank silently
+// disappears and the rack comes back one tile short.
 func parseRackEntries(entries []json.RawMessage) []Tile {
 	tiles := make([]Tile, 0, len(entries))
 	for _, raw := range entries {
-		letter := parseLetter(raw)
-		if letter != "" {
-			tiles = append(tiles, Tile{
-				Letter: letter,
-				Value:  letterPoints(letter),
-			})
+		// Scalar string entry: "" is a blank, anything else is a letter.
+		var s string
+		if json.Unmarshal(raw, &s) == nil {
+			if s == "" {
+				tiles = append(tiles, blankTile())
+			} else {
+				tiles = append(tiles, Tile{
+					Letter: s,
+					Value:  letterPoints(s),
+				})
+			}
 			continue
 		}
+
+		// Scalar integer entry: 0 is a blank, 1-n index into the tile set.
+		var id int
+		if json.Unmarshal(raw, &id) == nil {
+			if id == 0 {
+				tiles = append(tiles, blankTile())
+			} else if l := letterFromID(id); l != "" {
+				tiles = append(tiles, Tile{
+					Letter: l,
+					Value:  letterPoints(l),
+				})
+			}
+			continue
+		}
+
 		// Try parsing as [letter_id, count] array
 		var arr []int
 		if json.Unmarshal(raw, &arr) == nil && len(arr) >= 1 {
@@ -429,11 +459,7 @@ func parseRackEntries(entries []json.RawMessage) []Tile {
 			if letterID == 0 {
 				// Blank/wild tiles
 				for i := 0; i < count; i++ {
-					tiles = append(tiles, Tile{
-						Letter: "",
-						Value:  0,
-						IsWild: true,
-					})
+					tiles = append(tiles, blankTile())
 				}
 				continue
 			}

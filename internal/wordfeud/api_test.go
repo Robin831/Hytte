@@ -679,6 +679,98 @@ func TestGetGame_PerPlayerRackFallback(t *testing.T) {
 	}
 }
 
+// The live Wordfeud API sends the rack as a list of letter strings, where a
+// blank tile — which has no letter assigned until it is played — is the empty
+// string. It must parse to a wild tile, not be dropped.
+func TestParseRackEntries_StringRackWithBlank(t *testing.T) {
+	var entries []json.RawMessage
+	if err := json.Unmarshal([]byte(`["K","T","N","N","D","A",""]`), &entries); err != nil {
+		t.Fatalf("unmarshal entries: %v", err)
+	}
+
+	tiles := parseRackEntries(entries)
+	if len(tiles) != 7 {
+		t.Fatalf("got %d rack tiles, want 7 (6 letters + 1 blank)", len(tiles))
+	}
+	for i, want := range []string{"K", "T", "N", "N", "D", "A"} {
+		if tiles[i].Letter != want {
+			t.Errorf("tile[%d] letter = %q, want %q", i, tiles[i].Letter, want)
+		}
+		if tiles[i].IsWild {
+			t.Errorf("tile[%d] (%q) marked wild, want a normal letter tile", i, want)
+		}
+	}
+	if !tiles[6].IsWild {
+		t.Error("expected tile[6] to be a blank/wild tile")
+	}
+	if tiles[6].Letter != "" {
+		t.Errorf("blank tile letter = %q, want empty", tiles[6].Letter)
+	}
+}
+
+// Some API versions send scalar letter IDs instead of strings; ID 0 is a blank.
+func TestParseRackEntries_ScalarIDsWithBlank(t *testing.T) {
+	var entries []json.RawMessage
+	if err := json.Unmarshal([]byte(`[1,0,5]`), &entries); err != nil {
+		t.Fatalf("unmarshal entries: %v", err)
+	}
+
+	tiles := parseRackEntries(entries)
+	if len(tiles) != 3 {
+		t.Fatalf("got %d rack tiles, want 3", len(tiles))
+	}
+	if tiles[0].Letter != "A" {
+		t.Errorf("tile[0] letter = %q, want %q", tiles[0].Letter, "A")
+	}
+	if !tiles[1].IsWild {
+		t.Error("expected tile[1] (letter ID 0) to be a blank/wild tile")
+	}
+	if tiles[2].Letter != "E" {
+		t.Errorf("tile[2] letter = %q, want %q", tiles[2].Letter, "E")
+	}
+}
+
+// A blank must survive the whole GetGame path, not just parseRackEntries.
+func TestGetGame_StringRackBlankReachesGameState(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+			"content": map[string]any{
+				"game": map[string]any{
+					"id": 4342947390,
+					"players": []map[string]any{
+						{
+							"username": "me",
+							"id":       1,
+							"score":    0,
+							"is_local": true,
+							"rack":     []string{"K", "T", "N", "N", "D", "A", ""},
+						},
+						{"username": "other", "id": 2, "score": 0},
+					},
+					"tiles":          [][]int{},
+					"is_running":     true,
+					"current_player": 0,
+					"moves":          []map[string]any{},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := &Client{httpClient: srv.Client(), baseURL: srv.URL + "/wf"}
+	gs, err := c.GetGame("session123", 4342947390)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(gs.Rack) != 7 {
+		t.Fatalf("got %d rack tiles, want 7 — the blank was dropped", len(gs.Rack))
+	}
+	if !gs.Rack[6].IsWild {
+		t.Error("expected rack[6] to be a blank/wild tile")
+	}
+}
+
 func TestParseBoardTiles(t *testing.T) {
 	var board [15][15]*Tile
 	tiles := [][]int{

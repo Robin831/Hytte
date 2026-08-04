@@ -1,0 +1,2 @@
+category: Fixed
+- **Blank tiles missing from the Wordfeud rack** - Loading a game whose rack contained a blank returned only six tiles. The live Wordfeud API represents an unplayed blank as an empty letter string, which the rack parser treated as an unrecognised entry and skipped, so the blank never reached the board page and the solver searched a rack one tile short. Blanks (as an empty string or as letter ID 0) now parse correctly and appear in the rack as `*`.
