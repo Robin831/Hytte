@@ -24,6 +24,11 @@ function bonusClass(type: BonusType): string {
 // Valid Wordfeud letters (Norwegian)
 const VALID_LETTERS = new Set('ABCDEFGHIJKLMNOPQRSTUVWXYZÆØÅ')
 
+// Shared empty set for "no rack tiles excluded". Reusing one instance keeps the
+// identity stable across renders so the solve-on-toggle effect doesn't re-fire
+// while the user is typing a rack.
+const NO_EXCLUSIONS: ReadonlySet<number> = new Set<number>()
+
 export interface BoardCell {
   letter: string
   isBlank: boolean
@@ -105,6 +110,14 @@ export default function WordfeudBoard() {
   const [selectedCell, setSelectedCell] = useState<{ row: number; col: number } | null>(null)
   const [direction, setDirection] = useState<'horizontal' | 'vertical'>('horizontal')
   const [rackInput, setRackInput] = useState('')
+  // Indices into rackLetters that the solver must not use. The tiles stay on
+  // the rack — they are only withheld from move generation. The rack string
+  // they were chosen against is stored alongside them so that editing the rack
+  // invalidates the (index-based) exclusions without an extra sync effect.
+  const [exclusion, setExclusion] = useState<{ rack: string; excluded: ReadonlySet<number> }>(
+    () => ({ rack: '', excluded: NO_EXCLUSIONS })
+  )
+  const excludedTiles = exclusion.rack === rackInput ? exclusion.excluded : NO_EXCLUSIONS
   const cellRefs = useRef<(HTMLButtonElement | null)[][]>(
     Array.from({ length: 15 }, () => Array.from({ length: 15 }, () => null))
   )
@@ -365,9 +378,36 @@ export default function WordfeudBoard() {
     }
   }, [board, clearCell, direction, moveSelection, placeCell])
 
+  // Rack tiles parsed from the input.
+  const rackLetters = useMemo(
+    () => rackInput.toUpperCase().split('').filter(ch => VALID_LETTERS.has(ch) || ch === '*'),
+    [rackInput]
+  )
+
+  // The subset of the rack the solver is allowed to use. Excluded tiles are
+  // still yours — they stay in rackInput so the tile tracker and the bag-empty
+  // opponent deduction keep counting them.
+  const activeRack = useMemo(
+    () => rackLetters.filter((_, i) => !excludedTiles.has(i)).join(''),
+    [rackLetters, excludedTiles]
+  )
+
+  const toggleTile = useCallback((idx: number) => {
+    setExclusion(prev => {
+      const next = new Set(prev.rack === rackInput ? prev.excluded : [])
+      if (next.has(idx)) next.delete(idx)
+      else next.add(idx)
+      return { rack: rackInput, excluded: next }
+    })
+  }, [rackInput])
+
+  const includeAllTiles = useCallback(() => {
+    setExclusion({ rack: rackInput, excluded: NO_EXCLUSIONS })
+  }, [rackInput])
+
   // Solver: find moves
   const handleSolve = useCallback(async () => {
-    const rack = rackInput.trim().toUpperCase()
+    const rack = activeRack
     if (!rack) return
 
     solveControllerRef.current?.abort()
@@ -427,7 +467,7 @@ export default function WordfeudBoard() {
         setSolving(false)
       }
     }
-  }, [board, rackInput, sortOrder, bagCount, t])
+  }, [board, rackInput, activeRack, sortOrder, bagCount, t])
 
   useEffect(() => {
     return () => { solveControllerRef.current?.abort() }
@@ -441,11 +481,19 @@ export default function WordfeudBoard() {
 
   // Re-run the solver when the user changes the sort order (after a first solve).
   useEffect(() => {
-    if (!hasSolved || !rackInput.trim()) return
+    if (!hasSolved || !activeRack) return
     handleSolveRef.current()
     // Only re-solve on sort changes; board/rack edits clear results separately.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortOrder])
+
+  // Re-run the solver when tiles are excluded or included again, mirroring the
+  // sort-order behaviour above.
+  useEffect(() => {
+    if (!hasSolved || !activeRack) return
+    handleSolveRef.current()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [excludedTiles])
 
   // Stable serialized signature of the current position (board + rack). It changes
   // only on real board/rack edits, not on unrelated re-renders or object-identity
@@ -472,11 +520,10 @@ export default function WordfeudBoard() {
     // Game has finished loading; clear the pending flag regardless of rack contents
     startTransition(() => { setAutoSolvePending(false) })
 
-    const rack = rackInput.trim()
-    if (rack) {
+    if (activeRack) {
       handleSolveRef.current()
     }
-  }, [autoSolvePending, loadingGame, rackInput])
+  }, [autoSolvePending, loadingGame, activeRack])
 
   // Expand a move into a per-cell map
   const cellsForMove = useCallback((moveIdx: number | null) => {
@@ -552,9 +599,6 @@ export default function WordfeudBoard() {
   const moveGridCols = metricColumn
     ? 'grid-cols-[1fr_auto_auto_auto_auto]'
     : 'grid-cols-[1fr_auto_auto_auto]'
-
-  // Rack tiles parsed
-  const rackLetters = rackInput.toUpperCase().split('').filter(ch => VALID_LETTERS.has(ch) || ch === '*')
 
   return (
     <div className="flex flex-col gap-6">
@@ -730,26 +774,55 @@ export default function WordfeudBoard() {
               maxLength={7}
               className="w-full max-w-xs bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase tracking-wider font-mono"
             />
-            {/* Visual rack tiles */}
+            {/* Visual rack tiles — click one to exclude it from the suggestions */}
             {rackLetters.length > 0 && (
-              <div className="flex gap-1 mt-2">
-                {rackLetters.map((ch, i) => (
-                  <div
-                    key={i}
-                    className={`w-10 h-10 flex items-center justify-center text-lg font-bold rounded relative ${
-                      ch === '*'
-                        ? 'bg-purple-700 text-white'
-                        : 'bg-amber-700 text-white'
-                    }`}
-                  >
-                    <span>{ch === '*' ? '?' : ch}</span>
-                    {ch !== '*' && LETTER_VALUES[ch] != null && (
-                      <span className="absolute bottom-0.5 right-1 text-[9px] opacity-70">
-                        {LETTER_VALUES[ch]}
-                      </span>
-                    )}
-                  </div>
-                ))}
+              <div className="mt-2">
+                <div className="flex flex-wrap gap-1">
+                  {rackLetters.map((ch, i) => {
+                    const excluded = excludedTiles.has(i)
+                    const display = ch === '*' ? '?' : ch
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => toggleTile(i)}
+                        aria-pressed={!excluded}
+                        aria-label={t(excluded ? 'board.includeTile' : 'board.excludeTile', { letter: display })}
+                        title={t(excluded ? 'board.includeTile' : 'board.excludeTile', { letter: display })}
+                        className={`w-10 h-10 flex items-center justify-center text-lg font-bold rounded relative cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
+                          excluded
+                            ? 'bg-gray-800 border border-gray-700 text-gray-600 line-through hover:bg-gray-700'
+                            : ch === '*'
+                              ? 'bg-purple-700 text-white hover:bg-purple-600'
+                              : 'bg-amber-700 text-white hover:bg-amber-600'
+                        }`}
+                      >
+                        <span>{display}</span>
+                        {ch !== '*' && LETTER_VALUES[ch] != null && (
+                          <span className="absolute bottom-0.5 right-1 text-[9px] opacity-70">
+                            {LETTER_VALUES[ch]}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                  <span className="text-xs text-gray-500">
+                    {excludedTiles.size > 0
+                      ? t('board.tilesInPlay', { used: rackLetters.length - excludedTiles.size, total: rackLetters.length })
+                      : t('board.excludeHint')}
+                  </span>
+                  {excludedTiles.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={includeAllTiles}
+                      className="text-xs text-blue-400 hover:text-blue-300 underline cursor-pointer"
+                    >
+                      {t('board.includeAllTiles')}
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -757,7 +830,7 @@ export default function WordfeudBoard() {
             <button
               type="button"
               onClick={handleSolve}
-              disabled={solving || !rackInput.trim()}
+              disabled={solving || !activeRack}
               className="mt-3 flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
             >
               {solving ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
