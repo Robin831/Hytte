@@ -28,11 +28,6 @@ import Composer from './Composer'
 import ReactionChips from './ReactionChips'
 import ReactionPicker from './ReactionPicker'
 import {
-  addReaction,
-  removeReaction,
-  applyReactionEvent,
-  editMessage,
-  deleteMessage,
   fetchOlderMessages,
   markConversationRead,
   OLDER_PAGE_SIZE,
@@ -40,11 +35,11 @@ import {
 import { useFamilyChat } from './FamilyChatContext'
 import {
   useFamilyChatStream,
-  reconcileMessage,
   type ChatMessage,
   type MissedCallEntry,
   type ReadReceiptPayload,
 } from './useFamilyChatStream'
+import { useMessageActions } from './useMessageActions'
 import { formatRelative } from './utils'
 import VoiceBubble from './voice/VoiceBubble'
 import { readCachedWaveform, parseWaveformJSON, DEFAULT_BAR_COUNT, type Waveform } from './voice/waveform'
@@ -123,17 +118,9 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // menuForMsgId is the id of the own-message bubble whose actions menu (edit /
   // delete) is open. Only one menu is open at a time.
   const [menuForMsgId, setMenuForMsgId] = useState<number | null>(null)
-  // editingMsgId is the id of the message currently being edited inline, with
-  // editingDraft holding the in-progress text and editingError the most recent
-  // save failure (so the user can retry without losing their draft).
-  const [editingMsgId, setEditingMsgId] = useState<number | null>(null)
-  const [editingDraft, setEditingDraft] = useState('')
-  const [editingSaving, setEditingSaving] = useState(false)
-  const [editingError, setEditingError] = useState('')
-  // confirmDeleteId holds the id of the message whose delete-confirm modal is
-  // open, or null when the modal is closed.
-  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
-  const [deleteError, setDeleteError] = useState('')
+  // Inline-edit and delete-confirm state live in useMessageActions below; only
+  // the focus bookkeeping for the confirmation modal stays here, since it is a
+  // pure view concern.
   const deleteConfirmBtnRef = useRef<HTMLButtonElement>(null)
   const deletePrevFocusRef = useRef<Element | null>(null)
   // lastTypingSentRef throttles outbound typing POSTs to at most one per ~3s
@@ -283,6 +270,30 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     },
   })
 
+  // Every mutation a message can undergo — optimistic send + reconcile, retry,
+  // inline edit, soft delete and reaction toggles — lives in this hook. It
+  // shares the stream's messages/setMessages pair so optimistic bubbles and
+  // SSE-delivered rows reconcile through a single list.
+  const {
+    send,
+    retry: retryFailedMessage,
+    editDraft,
+    setEditText,
+    beginEdit,
+    saveEdit,
+    cancelEdit,
+    deleteTarget,
+    confirmDelete,
+    cancelDelete,
+    doDelete,
+    toggleReaction,
+  } = useMessageActions({
+    conversationId,
+    messages,
+    setMessages,
+    userId: user?.id,
+  })
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   // conversationIdRef shadows the current conversation so an in-flight
   // "load older" response can tell whether the user has since switched chats.
@@ -335,6 +346,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
 
   // Focus management + Escape handling for the delete confirmation modal,
   // matching the pattern used by ConfirmDialog.
+  const confirmDeleteId = deleteTarget.msgId
   useEffect(() => {
     if (confirmDeleteId !== null) {
       deletePrevFocusRef.current = document.activeElement
@@ -347,11 +359,11 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   useEffect(() => {
     if (confirmDeleteId === null) return
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setConfirmDeleteId(null); setDeleteError('') }
+      if (e.key === 'Escape') cancelDelete()
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [confirmDeleteId])
+  }, [confirmDeleteId, cancelDelete])
 
   const rtf = useMemo(
     () => new Intl.RelativeTimeFormat(i18n.language, { numeric: 'auto' }),
@@ -720,189 +732,12 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     }).catch(() => {})
   }, [conversationId])
 
-  const handleMessageCreated = useCallback((msg: ChatMessage) => {
-    // Defensive: if the user switched conversations while a send was in
-    // flight, drop the message rather than leaking it into the wrong chat.
-    if (msg.conversation_id !== conversationId) return
-    // Reconcile against an optimistic bubble when the message carries a
-    // client_id (the POST-response path for text sends); otherwise dedupe by
-    // id (voice notes and attachments, which are not rendered optimistically).
-    setMessages(prev => reconcileMessage(prev, msg.client_id, msg))
-  }, [conversationId, setMessages])
-
-  // handleOptimisticMessage renders a just-typed text message immediately in a
-  // 'sending' state, before any network round-trip. Scoped to the active
-  // conversation so a stray emit can't leak into the wrong chat.
-  const handleOptimisticMessage = useCallback((msg: ChatMessage) => {
-    if (msg.conversation_id !== conversationId) return
-    setMessages(prev => [...prev, msg])
-  }, [conversationId, setMessages])
-
-  // handleMessageFailed flips an optimistic bubble to the 'failed' state when
-  // its POST errors, preserving the typed text so the user can tap to retry.
-  // No conversation guard is needed: after a switch the bubble is gone, so the
-  // client_id no longer matches and this is a no-op.
-  const handleMessageFailed = useCallback((clientId: string) => {
-    setMessages(prev => prev.map(m =>
-      m.client_id === clientId ? { ...m, status: 'failed' as const } : m,
-    ))
-  }, [setMessages])
-
-  // composerRetryRef holds the Composer's retry entry point. The failed bubble's
-  // tap target calls it to re-POST the preserved text under the same client_id
-  // so a successful retry reconciles normally.
-  const composerRetryRef = useRef<
-    ((clientId: string, text: string, targetConversationId: number) => void) | null
-  >(null)
-
-  const retryFailedMessage = useCallback((msg: ChatMessage) => {
-    if (!msg.client_id) return
-    const clientId = msg.client_id
-    // Flip back to 'sending' immediately so the affordance reflects the retry.
-    setMessages(prev => prev.map(m =>
-      m.client_id === clientId ? { ...m, status: 'sending' as const } : m,
-    ))
-    composerRetryRef.current?.(clientId, msg.body, msg.conversation_id)
-  }, [setMessages])
-
-  // toggleReaction applies the change optimistically (chips update before the
-  // network round-trip) and rolls back on failure. The eventual SSE
-  // confirmation overwrites the optimistic state with the server-authoritative
-  // count, which keeps two clients in sync even if either one races.
-  const userId = user?.id
-  const toggleReaction = useCallback(async (msgId: number, emoji: string, currentlyMine: boolean) => {
-    if (conversationId === null || userId === undefined) return
-    const meID = userId
-    const snapshot = messages.find(m => m.id === msgId) ?? null
-    setMessages(prev => prev.map(m => {
-      if (m.id !== msgId) return m
-      const synthetic = currentlyMine
-        ? { user_id: meID, emoji, count: Math.max((m.reactions?.[emoji]?.count ?? 1) - 1, 0) }
-        : { user_id: meID, emoji, count: (m.reactions?.[emoji]?.count ?? 0) + 1 }
-      return {
-        ...m,
-        reactions: applyReactionEvent(m.reactions, synthetic, meID, currentlyMine),
-      }
-    }))
-    try {
-      if (currentlyMine) {
-        await removeReaction(conversationId, msgId, emoji)
-      } else {
-        await addReaction(conversationId, msgId, emoji)
-      }
-    } catch {
-      // Roll back only the reactions field to the pre-toggle snapshot. Rolling
-      // back the whole message would clobber any concurrent SSE updates (edits,
-      // other reactions) that arrived between the optimistic update and the
-      // network failure.
-      if (snapshot) {
-        setMessages(prev => prev.map(m =>
-          m.id === msgId ? { ...m, reactions: snapshot.reactions } : m,
-        ))
-      }
-    }
-  }, [conversationId, userId, messages, setMessages])
-
   const handlePickFromPicker = useCallback((msgId: number, emoji: string) => {
     setPickerForMsgId(null)
     const msg = messages.find(m => m.id === msgId)
     const mine = !!msg?.reactions?.[emoji]?.me
     void toggleReaction(msgId, emoji, mine)
   }, [messages, toggleReaction])
-
-  // openEditor opens the inline editor for a message bubble. Seeds the draft
-  // from the current body so the user starts from what's on screen.
-  const openEditor = useCallback((msg: ChatMessage) => {
-    setMenuForMsgId(null)
-    setEditingMsgId(msg.id)
-    setEditingDraft(msg.body)
-    setEditingError('')
-    setEditingSaving(false)
-  }, [])
-
-  const cancelEditor = useCallback(() => {
-    setEditingMsgId(null)
-    setEditingDraft('')
-    setEditingError('')
-    setEditingSaving(false)
-  }, [])
-
-  const saveEditor = useCallback(async (msgId: number) => {
-    if (conversationId === null) return
-    const trimmed = editingDraft.trim()
-    if (!trimmed) {
-      setEditingError(t('edit.saveError'))
-      return
-    }
-    setEditingSaving(true)
-    setEditingError('')
-    // Capture the pre-edit body/edited_at so a failed save can revert the
-    // optimistic update — otherwise the bubble would keep showing the
-    // unsaved draft as if it had been persisted.
-    const snapshot = messages.find(m => m.id === msgId) ?? null
-    // Optimistic update first: the SSE confirmation will overwrite shortly
-    // with the server's authoritative edited_at, which matches the pattern
-    // used by reactions / message sends in this view.
-    const optimisticTime = new Date().toISOString()
-    setMessages(prev => prev.map(m =>
-      m.id === msgId ? { ...m, body: trimmed, edited_at: optimisticTime } : m,
-    ))
-    try {
-      const updated = await editMessage(conversationId, msgId, trimmed)
-      setMessages(prev => prev.map(m =>
-        m.id === msgId
-          ? { ...m, body: updated.body, edited_at: updated.edited_at }
-          : m,
-      ))
-      setEditingMsgId(null)
-      setEditingDraft('')
-      setEditingSaving(false)
-    } catch {
-      if (snapshot) {
-        setMessages(prev => prev.map(m =>
-          m.id === msgId
-            ? { ...m, body: snapshot.body, edited_at: snapshot.edited_at ?? null }
-            : m,
-        ))
-      }
-      setEditingError(t('edit.saveError'))
-      setEditingSaving(false)
-    }
-  }, [conversationId, editingDraft, messages, t, setMessages])
-
-  const confirmDelete = useCallback(async (msgId: number) => {
-    if (conversationId === null) return
-    setDeleteError('')
-    const meID = user?.id ?? null
-    const now = new Date().toISOString()
-    // Capture the pre-delete snapshot from the current render's state so the
-    // rollback in catch{} doesn't depend on the setState updater having run.
-    const snapshot = messages.find(m => m.id === msgId) ?? null
-    setMessages(prev => prev.map(m => {
-      if (m.id !== msgId) return m
-      return {
-        ...m,
-        body: '',
-        attachment_path: '',
-        attachment_mime: '',
-        edited_at: null,
-        deleted_at: now,
-        deleted_by: meID,
-      }
-    }))
-    try {
-      await deleteMessage(conversationId, msgId)
-      // Only dismiss the confirm modal after the server has accepted the
-      // delete — closing it earlier would hide the error message rendered
-      // inside the same modal if the request fails.
-      setConfirmDeleteId(null)
-    } catch {
-      if (snapshot) {
-        setMessages(prev => prev.map(m => (m.id === msgId ? snapshot : m)))
-      }
-      setDeleteError(t('edit.deleteError'))
-    }
-  }, [conversationId, user?.id, t, messages, setMessages])
 
   const memberChips = useMemo(() => {
     if (!conversation) return []
@@ -1244,7 +1079,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         {!loading && !error && messages.map(msg => {
           const isOwn = user?.id === msg.sender_user_id
           const isDeleted = !!msg.deleted_at
-          const isEditing = editingMsgId === msg.id
+          const isEditing = editDraft.msgId === msg.id
           const senderInfo = memberLookup.get(msg.sender_user_id)
           const senderLabel = senderInfo?.label ?? t('chat.memberFallback', { id: msg.sender_user_id })
           const relative = formatRelative(msg.created_at, rtf, t('time.justNow'))
@@ -1300,15 +1135,15 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                     isOwn ? 'bg-blue-600/40 border border-blue-500' : 'bg-gray-800 border border-gray-700'
                   }`}>
                     <textarea
-                      value={editingDraft}
-                      onChange={(e) => setEditingDraft(e.target.value)}
+                      value={editDraft.text}
+                      onChange={(e) => setEditText(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Escape') {
                           e.preventDefault()
-                          cancelEditor()
+                          cancelEdit()
                         } else if (e.key === 'Enter' && !e.shiftKey) {
                           e.preventDefault()
-                          void saveEditor(msg.id)
+                          void saveEdit(msg.id)
                         }
                       }}
                       aria-label={t('edit.edit')}
@@ -1317,13 +1152,13 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                       rows={3}
                       autoFocus
                     />
-                    {editingError && (
-                      <div className="text-xs text-red-400 mt-1">{editingError}</div>
+                    {editDraft.error && (
+                      <div className="text-xs text-red-400 mt-1">{editDraft.error}</div>
                     )}
                     <div className="flex gap-2 mt-2 justify-end">
                       <button
                         type="button"
-                        onClick={cancelEditor}
+                        onClick={cancelEdit}
                         className="px-2 py-1 text-xs rounded-md bg-gray-700 text-gray-200 hover:bg-gray-600"
                         data-testid={`chat-edit-cancel-${msg.id}`}
                       >
@@ -1331,12 +1166,12 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => { void saveEditor(msg.id) }}
-                        disabled={editingSaving || !editingDraft.trim()}
+                        onClick={() => { void saveEdit(msg.id) }}
+                        disabled={editDraft.saving || !editDraft.text.trim()}
                         className="px-2 py-1 text-xs rounded-md bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         data-testid={`chat-edit-save-${msg.id}`}
                       >
-                        {editingSaving ? t('edit.saving') : t('edit.save')}
+                        {editDraft.saving ? t('edit.saving') : t('edit.save')}
                       </button>
                     </div>
                   </div>
@@ -1470,7 +1305,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                       <button
                         type="button"
                         role="menuitem"
-                        onClick={() => openEditor(msg)}
+                        onClick={() => { setMenuForMsgId(null); beginEdit(msg) }}
                         className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-700"
                         data-testid={`chat-edit-action-${msg.id}`}
                       >
@@ -1481,8 +1316,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
                         role="menuitem"
                         onClick={() => {
                           setMenuForMsgId(null)
-                          setDeleteError('')
-                          setConfirmDeleteId(msg.id)
+                          confirmDelete(msg.id)
                         }}
                         className="w-full text-left px-3 py-2 text-sm text-red-300 hover:bg-gray-700"
                         data-testid={`chat-delete-action-${msg.id}`}
@@ -1605,10 +1439,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
           <Composer
             conversationId={conversationId}
             currentUserId={user.id}
-            onMessageCreated={handleMessageCreated}
-            onOptimisticMessage={handleOptimisticMessage}
-            onMessageFailed={handleMessageFailed}
-            retryRef={composerRetryRef}
+            {...send}
             onTyping={notifyTyping}
           />
         )}
@@ -1644,20 +1475,20 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
           aria-modal="true"
           aria-labelledby="family-chat-confirm-delete-title"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setConfirmDeleteId(null) }}
+          onClick={(e) => { if (e.target === e.currentTarget) cancelDelete() }}
           data-testid="chat-delete-confirm"
         >
           <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-md w-full p-4 shadow-xl">
             <p id="family-chat-confirm-delete-title" className="text-sm text-gray-100">
               {t('edit.confirmDelete')}
             </p>
-            {deleteError && (
-              <p className="mt-2 text-xs text-red-400">{deleteError}</p>
+            {deleteTarget.error && (
+              <p className="mt-2 text-xs text-red-400">{deleteTarget.error}</p>
             )}
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setConfirmDeleteId(null)}
+                onClick={cancelDelete}
                 className="px-3 py-1.5 text-sm rounded-md bg-gray-800 text-gray-200 hover:bg-gray-700"
                 data-testid="chat-delete-cancel"
               >
@@ -1666,7 +1497,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
               <button
                 ref={deleteConfirmBtnRef}
                 type="button"
-                onClick={() => { void confirmDelete(confirmDeleteId) }}
+                onClick={() => { void doDelete(confirmDeleteId) }}
                 className="px-3 py-1.5 text-sm rounded-md bg-red-600 text-white hover:bg-red-500"
                 data-testid="chat-delete-confirm-button"
               >
