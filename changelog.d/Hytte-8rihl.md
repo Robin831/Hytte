@@ -1,0 +1,2 @@
+category: Changed
+- **Family Chat streaming extracted into useFamilyChatStream** - The ~475-line SSE effect in ChatView (reader loop, reconnect backoff, backfill-since-lastId de-duplication, connection status, typing expiry, missed-call synthesis) now lives in a dedicated `useFamilyChatStream` hook with direct unit tests. Call signalling frames are forwarded to the voice/group call hooks through injected callbacks. No behavior change. (Hytte-8rihl)
