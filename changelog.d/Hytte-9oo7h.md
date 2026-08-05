@@ -1,0 +1,3 @@
+category: Fixed
+- **Show the latest-threshold card after a single lactate test** - The summary card on the lactate list used to require two tests, so the first recorded test showed no threshold speed or heart rate at all. It now appears from the first test, with the "no previous test to compare" note in place of the delta badges. The Insights link still needs two tests. (Hytte-9oo7h)
+- **Render the threshold heart-rate delta neutrally** - A rising threshold heart rate was coloured green like a speed improvement, which it is not. The bpm badge is now gray in every direction while keeping its arrow and signed value. (Hytte-9oo7h)
