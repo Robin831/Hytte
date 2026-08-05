@@ -147,7 +147,9 @@
     "trinnskattTiers": "Trinnskatt tiers (income from → rate)",
     "trinnskattFrom": "From {{from}}",
     "incomeFromHeader": "Income from",
-    "rate": "Rate (0–1)"
+    "rate": "Rate (0–1)",
+    "tierIncomeFromAria": "Income from, tier {{n}}",
+    "tierRateAria": "Rate, tier {{n}}"
   },
   "trekktabellAssignments": {
     "title": "Tabelltrekk assignments",
@@ -197,6 +199,10 @@
     "actualGross": "Actual Gross",
     "actualNet": "Actual Net",
     "saveError": "Failed to save actual data"
+  },
+  "validation": {
+    "invalidNumber": "Enter a valid number (use , or . for decimals)",
+    "required": "This field is required"
   },
   "errors": {
     "failedToLoad": "Failed to load salary data",

@@ -4,6 +4,8 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { formatMonthLabel, formatHours, formatCompact } from './types'
 import { getTierProgress, getTierEarnings, isTierActive } from './tierMath'
 import type { SalaryData } from './useSalaryData'
+import DecimalField from './DecimalField'
+import { collectDecimalErrors, parseOptionalDecimal, parseOptionalInteger, parseRequiredDecimal } from './decimalDraft'
 import VacationCard from './VacationCard'
 import InlineRetry from './InlineRetry'
 import TrekktabellEditor from './TrekktabellEditor'
@@ -37,6 +39,9 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
   const [overrideNet, setOverrideNet] = useState('')
   const [savingOverride, setSavingOverride] = useState(false)
   const [overrideError, setOverrideError] = useState<string | null>(null)
+  // Field keys that failed to parse — drives aria-invalid on the offending
+  // inputs while the message itself lives in the shared overrideError slot.
+  const [invalidOverrideFields, setInvalidOverrideFields] = useState<string[]>([])
 
   const resetOverrideForm = useCallback(() => {
     setOverrideBillableHours('')
@@ -46,6 +51,7 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
     setOverrideGross('')
     setOverrideNet('')
     setOverrideError(null)
+    setInvalidOverrideFields([])
   }, [])
 
   useEffect(() => {
@@ -55,51 +61,50 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
   }, [selectedMonth, resetOverrideForm])
 
   const handleSaveOverride = async () => {
+    // Every field is raw text so Norwegian comma decimals reach the parser.
+    // Parsing happens up front: a bad value blocks the save instead of being
+    // coerced to 0 and written to the payslip record.
+    const drafts = {
+      billable: parseRequiredDecimal(overrideBillableHours),
+      internal: parseOptionalDecimal(overrideInternalHours),
+      vacationDays: parseOptionalInteger(overrideVacationDays),
+      sickDays: parseOptionalInteger(overrideSickDays),
+      gross: parseRequiredDecimal(overrideGross),
+      net: parseRequiredDecimal(overrideNet),
+    }
+    const errors = collectDecimalErrors(drafts, {
+      required: t('validation.required'),
+      invalid: t('validation.invalidNumber'),
+    })
+    const invalidKeys = Object.keys(errors)
+    if (invalidKeys.length > 0) {
+      setInvalidOverrideFields(invalidKeys)
+      // One shared message slot: an unparseable value is the more specific
+      // complaint, so it wins over a missing required field.
+      const hasUnparseable = Object.values(drafts).some(draft => draft.error === 'invalid')
+      setOverrideError(hasUnparseable ? t('validation.invalidNumber') : t('validation.required'))
+      return
+    }
+
+    setInvalidOverrideFields([])
     setSavingOverride(true)
     setOverrideError(null)
 
-    const billableText = overrideBillableHours.trim()
-    const internalText = overrideInternalHours.trim()
-    const vacDaysText = overrideVacationDays.trim()
-    const sickDaysText = overrideSickDays.trim()
-    const grossText = overrideGross.trim()
-    const netText = overrideNet.trim()
-
-    if (!billableText || !grossText || !netText) {
-      setOverrideError(t('override.saveError'))
-      setSavingOverride(false)
-      return
-    }
-
-    const parseNum = (s: string) => Number(s.replace(',', '.'))
-    const billable = parseNum(billableText)
-    const internal = internalText ? parseNum(internalText) : 0
-    const vacDays = vacDaysText ? Number.parseInt(vacDaysText, 10) : 0
-    const sickDays = sickDaysText ? Number.parseInt(sickDaysText, 10) : 0
-    const gross = parseNum(grossText)
-    const net = parseNum(netText)
-
-    if ([billable, gross, net].some(value => Number.isNaN(value))) {
-      setOverrideError(t('override.saveError'))
-      setSavingOverride(false)
-      return
-    }
-
-    const hoursWorked = billable + internal
-    const tax = Math.max(0, gross - net)
+    const hoursWorked = drafts.billable.value + drafts.internal.value
+    const tax = Math.max(0, drafts.gross.value - drafts.net.value)
 
     try {
       await saveOverride({
         hours_worked: hoursWorked,
-        billable_hours: billable,
-        internal_hours: internal,
-        base_amount: gross,
+        billable_hours: drafts.billable.value,
+        internal_hours: drafts.internal.value,
+        base_amount: drafts.gross.value,
         commission: 0,
-        gross,
+        gross: drafts.gross.value,
         tax,
-        net,
-        vacation_days: vacDays,
-        sick_days: sickDays,
+        net: drafts.net.value,
+        vacation_days: drafts.vacationDays.value,
+        sick_days: drafts.sickDays.value,
       })
     } catch (err) {
       setOverrideError(err instanceof Error ? err.message : t('override.saveError'))
@@ -269,6 +274,7 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
                 if (showOverride) resetOverrideForm()
                 setShowOverride(v => !v)
                 setOverrideError(null)
+                setInvalidOverrideFields([])
               }}
               className="text-xs text-gray-400 hover:text-white transition-colors"
             >
@@ -281,80 +287,54 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
           {showOverride && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <div>
-                  <label htmlFor="override-billable-hours" className="block text-xs text-gray-400 mb-1">{t('override.billableHours')}</label>
-                  <input
-                    id="override-billable-hours"
-                    type="number"
-                    value={overrideBillableHours}
-                    onChange={e => setOverrideBillableHours(e.target.value)}
-                    className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="0"
-                    min="0"
-                    step="0.5"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="override-internal-hours" className="block text-xs text-gray-400 mb-1">{t('override.internalHours')}</label>
-                  <input
-                    id="override-internal-hours"
-                    type="number"
-                    value={overrideInternalHours}
-                    onChange={e => setOverrideInternalHours(e.target.value)}
-                    className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="0"
-                    min="0"
-                    step="0.5"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="override-vacation-days" className="block text-xs text-gray-400 mb-1">{t('override.vacationDays')}</label>
-                  <input
-                    id="override-vacation-days"
-                    type="number"
-                    value={overrideVacationDays}
-                    onChange={e => setOverrideVacationDays(e.target.value)}
-                    className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="0"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="override-sick-days" className="block text-xs text-gray-400 mb-1">{t('override.sickDays')}</label>
-                  <input
-                    id="override-sick-days"
-                    type="number"
-                    value={overrideSickDays}
-                    onChange={e => setOverrideSickDays(e.target.value)}
-                    className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="0"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="override-actual-gross" className="block text-xs text-gray-400 mb-1">{t('override.actualGross')}</label>
-                  <input
-                    id="override-actual-gross"
-                    type="number"
-                    value={overrideGross}
-                    onChange={e => setOverrideGross(e.target.value)}
-                    className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="0"
-                    min="0"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="override-actual-net" className="block text-xs text-gray-400 mb-1">{t('override.actualNet')}</label>
-                  <input
-                    id="override-actual-net"
-                    type="number"
-                    value={overrideNet}
-                    onChange={e => setOverrideNet(e.target.value)}
-                    className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="0"
-                    min="0"
-                  />
-                </div>
+                <DecimalField
+                  id="override-billable-hours"
+                  label={t('override.billableHours')}
+                  value={overrideBillableHours}
+                  onChange={setOverrideBillableHours}
+                  placeholder="0"
+                  invalid={invalidOverrideFields.includes('billable')}
+                />
+                <DecimalField
+                  id="override-internal-hours"
+                  label={t('override.internalHours')}
+                  value={overrideInternalHours}
+                  onChange={setOverrideInternalHours}
+                  placeholder="0"
+                  invalid={invalidOverrideFields.includes('internal')}
+                />
+                <DecimalField
+                  id="override-vacation-days"
+                  label={t('override.vacationDays')}
+                  value={overrideVacationDays}
+                  onChange={setOverrideVacationDays}
+                  placeholder="0"
+                  invalid={invalidOverrideFields.includes('vacationDays')}
+                />
+                <DecimalField
+                  id="override-sick-days"
+                  label={t('override.sickDays')}
+                  value={overrideSickDays}
+                  onChange={setOverrideSickDays}
+                  placeholder="0"
+                  invalid={invalidOverrideFields.includes('sickDays')}
+                />
+                <DecimalField
+                  id="override-actual-gross"
+                  label={t('override.actualGross')}
+                  value={overrideGross}
+                  onChange={setOverrideGross}
+                  placeholder="0"
+                  invalid={invalidOverrideFields.includes('gross')}
+                />
+                <DecimalField
+                  id="override-actual-net"
+                  label={t('override.actualNet')}
+                  value={overrideNet}
+                  onChange={setOverrideNet}
+                  placeholder="0"
+                  invalid={invalidOverrideFields.includes('net')}
+                />
               </div>
               {overrideError && <p className="text-sm text-red-400">{overrideError}</p>}
               <div className="flex gap-3">

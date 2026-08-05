@@ -147,7 +147,9 @@
     "trinnskattTiers": "ขั้น trinnskatt (รายได้จาก → อัตรา)",
     "trinnskattFrom": "จาก {{from}}",
     "incomeFromHeader": "รายได้จาก",
-    "rate": "อัตรา (0–1)"
+    "rate": "อัตรา (0–1)",
+    "tierIncomeFromAria": "รายได้จาก ขั้นที่ {{n}}",
+    "tierRateAria": "อัตรา ขั้นที่ {{n}}"
   },
   "trekktabellAssignments": {
     "title": "การกำหนด Tabelltrekk",
@@ -197,6 +199,10 @@
     "actualGross": "รายได้รวมจริง",
     "actualNet": "รายได้สุทธิจริง",
     "saveError": "บันทึกข้อมูลจริงไม่สำเร็จ"
+  },
+  "validation": {
+    "invalidNumber": "กรุณากรอกตัวเลขที่ถูกต้อง (ใช้ , หรือ . เป็นจุดทศนิยม)",
+    "required": "จำเป็นต้องกรอกข้อมูลนี้"
   },
   "errors": {
     "failedToLoad": "โหลดข้อมูลเงินเดือนไม่สำเร็จ",

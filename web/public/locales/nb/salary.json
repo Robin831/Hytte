@@ -147,7 +147,9 @@
     "trinnskattTiers": "Trinnskatttrinn (inntekt fra → sats)",
     "trinnskattFrom": "Fra {{from}}",
     "incomeFromHeader": "Inntekt fra",
-    "rate": "Sats (0–1)"
+    "rate": "Sats (0–1)",
+    "tierIncomeFromAria": "Inntekt fra, trinn {{n}}",
+    "tierRateAria": "Sats, trinn {{n}}"
   },
   "trekktabellAssignments": {
     "title": "Tabelltrekk-tilknytninger",
@@ -197,6 +199,10 @@
     "actualGross": "Faktisk bruttolønn",
     "actualNet": "Faktisk nettolønn",
     "saveError": "Klarte ikke å lagre faktiske data"
+  },
+  "validation": {
+    "invalidNumber": "Skriv inn et gyldig tall (bruk , eller . som desimaltegn)",
+    "required": "Dette feltet må fylles ut"
   },
   "errors": {
     "failedToLoad": "Klarte ikke å laste lønnsdata",
