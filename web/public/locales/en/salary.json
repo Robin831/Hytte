@@ -36,7 +36,20 @@
     "inactive": "Not reached",
     "adjustedForAbsence_one": "Adjusted for {{count}} absence day",
     "adjustedForAbsence_other": "Adjusted for {{count}} absence days",
-    "internalRevenue": "Internal: {{amount}}"
+    "internalRevenue": "Internal: {{amount}}",
+    "whatIf": {
+      "title": "What if I work more?",
+      "label": "Extra billable hours",
+      "sliderAria": "Extra billable hours this month",
+      "hint": "{{hours}} hours to the next tier (+{{amount}} net)",
+      "revenue": "Projected revenue",
+      "commission": "Commission",
+      "gross": "Gross",
+      "net": "Net (estimate)",
+      "delta": "+{{amount}}",
+      "netNote": "Net is estimated from your current marginal tax rate — the payslip may differ.",
+      "reset": "Reset"
+    }
   },
   "absenceCost": {
     "title": "Absence Impact",

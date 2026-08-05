@@ -1,0 +1,2 @@
+category: Added
+- **What-if slider for extra billable hours on the Salary month tab** - Under the commission-tier bars, a slider and numeric input project how additional billable hours this month would change revenue, tier placement, commission, gross and net, plus a hint showing how many hours remain to the next tier and what it is worth. Everything is computed client-side from the existing estimate response, with net shown as an estimate from the current marginal tax rate. (Hytte-jnmjc)
