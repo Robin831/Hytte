@@ -53,7 +53,9 @@ export default function DayView({
   const [newEnd, setNewEnd] = useState('')
   const [newIsInternal, setNewIsInternal] = useState(false)
   const [newCrossesMidnight, setNewCrossesMidnight] = useState(false)
-  const [editSessionId, setEditSessionId] = useState<number | null>(null)
+  // Session ids are per day, so the open editor is tagged with the day it was
+  // opened on and derived away on a day change instead of being reset in an effect.
+  const [editSession, setEditSession] = useState<{ date: string; id: number } | null>(null)
   const [editStart, setEditStart] = useState('')
   const [editEnd, setEditEnd] = useState('')
   const [editCrossesMidnight, setEditCrossesMidnight] = useState(false)
@@ -77,6 +79,11 @@ export default function DayView({
       return []
     }
   })
+
+  const editSessionId = editSession && editSession.date === currentDate ? editSession.id : null
+  const setEditSessionId = useCallback((id: number | null) => {
+    setEditSession(id === null ? null : { date: currentDate, id })
+  }, [currentDate])
 
   useEffect(() => {
     currentDateRef.current = currentDate
@@ -167,11 +174,6 @@ export default function DayView({
     const id = setInterval(() => setNow(new Date()), 60_000)
     return () => clearInterval(id)
   }, [punchStart])
-
-  // Session ids are per day, so an open editor must not survive a day change.
-  useEffect(() => {
-    setEditSessionId(null)
-  }, [currentDate])
 
   const loadLeaveDay = useCallback(async (date: string, signal?: AbortSignal) => {
     try {
