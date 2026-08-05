@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bus, RefreshCw, Settings, Search, Plus, Trash2, Circle, GripVertical, Footprints } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
@@ -32,8 +32,19 @@ interface SearchResult {
   name: string
 }
 
+/** A stop paired with the departures that are still reachable right now. */
+interface VisibleStop {
+  stop: StopDepartures
+  visible: Departure[]
+  departedCount: number
+}
+
 const REFRESH_INTERVAL_MS = 30_000
 const MAX_WALK_MINUTES = 120
+/** Below this many still-reachable departures a stop asks for fresh data. */
+const LOW_DEPARTURE_THRESHOLD = 2
+/** Minimum gap between off-cycle refreshes, counted across all stops. */
+const OFF_CYCLE_REFRESH_MIN_GAP_MS = 10_000
 
 /** NSR stop IDs contain colons; strip them so the DOM id stays selector-safe. */
 function walkInputId(stopId: string): string {
@@ -50,6 +61,14 @@ function minutesUntil(departureTime: string, now: number, walkMinutes = 0): numb
   return Math.round(diff / 60_000)
 }
 
+/**
+ * Epoch millis at which the user has to set off to catch this departure. With
+ * no walking offset this is the departure time itself.
+ */
+function leaveTime(departureTime: string, walkMinutes: number): number {
+  return new Date(departureTime).getTime() - walkMinutes * 60_000
+}
+
 function formatDeparture(
   departureTime: string,
   now: number,
@@ -58,10 +77,10 @@ function formatDeparture(
 ): string {
   const mins = minutesUntil(departureTime, now, walkMinutes)
   if (mins <= 0) {
-    // A walking offset turns "0 min" into an actionable state: leave right now,
-    // or too late to make it. Without an offset, keep the original clamped label.
+    // Only departures whose leave time is still ahead are rendered, so a
+    // rounded-down zero means "right now", never "too late".
     if (walkMinutes <= 0) return '0 ' + t('transit:min')
-    return mins === 0 ? t('transit:leaveNow') : t('transit:missed')
+    return t('transit:leaveNow')
   }
   if (mins < 30) return `${mins} ${t('transit:min')}`
   return new Date(new Date(departureTime).getTime() - walkMinutes * 60_000)
@@ -109,6 +128,40 @@ export default function Transit() {
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
+
+  // Drop departures the user can no longer make. Recomputed on every 1s tick,
+  // so a row leaves the list the moment its leave time passes instead of
+  // lingering until the next 30s poll. The strict `>` keeps a zero-offset stop
+  // showing "0 min" right up to the departure timestamp.
+  const visibleStops = useMemo<VisibleStop[]>(
+    () =>
+      stops.map(stop => {
+        const walkMinutes = stop.walk_minutes ?? 0
+        const visible = stop.departures.filter(
+          dep => leaveTime(dep.departure_time, walkMinutes) > now
+        )
+        return { stop, visible, departedCount: stop.departures.length - visible.length }
+      }),
+    [stops, now]
+  )
+
+  // Timestamp of the last off-cycle refresh. Held in a ref so the rate limit
+  // survives re-renders without feeding back into the render cycle.
+  const lastOffCycleRefreshRef = useRef(0)
+
+  // When pruning leaves a stop with almost nothing to show, pull fresh data
+  // rather than waiting out the rest of the 30s cadence. The 10s gate is what
+  // stops this from looping if Entur keeps handing back the same stale window.
+  useEffect(() => {
+    const isShort = visibleStops.some(
+      ({ stop, visible }) =>
+        visible.length < LOW_DEPARTURE_THRESHOLD && visible.length < stop.departures.length
+    )
+    if (!isShort) return
+    if (now - lastOffCycleRefreshRef.current < OFF_CYCLE_REFRESH_MIN_GAP_MS) return
+    lastOffCycleRefreshRef.current = now
+    setRefreshKey(k => k + 1)
+  }, [visibleStops, now])
 
   // Initial load + auto-refresh every 30 seconds, paused while the tab is hidden.
   useEffect(() => {
@@ -542,27 +595,25 @@ export default function Transit() {
       )}
 
       <div className="space-y-4">
-        {stops.map(stop => (
+        {visibleStops.map(({ stop, visible, departedCount }) => (
           <div key={stop.stop_id} className="bg-gray-800 rounded-xl overflow-hidden">
             <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-700">
               <Bus size={16} className="text-blue-400 shrink-0" />
               <h2 className="text-sm font-semibold text-white">{stop.stop_name}</h2>
             </div>
 
-            {stop.departures.length === 0 ? (
+            {visible.length === 0 ? (
               <p className="px-4 py-3 text-sm text-gray-400">{t('transit:noDepartures')}</p>
             ) : (
               <div className="divide-y divide-gray-700/50">
-                {stop.departures.map((dep) => {
+                {visible.map((dep) => {
                   const walkMinutes = stop.walk_minutes ?? 0
                   // Minutes until the user must leave, not until the bus goes.
                   const mins = minutesUntil(dep.departure_time, now, walkMinutes)
-                  // Only de-emphasise once an offset makes "too late" meaningful.
-                  const unreachable = walkMinutes > 0 && mins <= 0
                   return (
                     <div
                       key={`${dep.line}-${dep.departure_time}`}
-                      className={`flex items-center gap-2 px-4 py-2.5 sm:gap-3 ${unreachable ? 'opacity-40' : ''}`}
+                      className="flex items-center gap-2 px-4 py-2.5 sm:gap-3"
                     >
                       {/* Line badge */}
                       <span className="inline-flex items-center justify-center min-w-[2.25rem] px-1.5 py-0.5 rounded bg-blue-700 text-white text-xs font-bold shrink-0">
@@ -604,13 +655,21 @@ export default function Transit() {
                       />
 
                       {/* Time to leave */}
-                      <span className={`text-sm font-medium whitespace-nowrap shrink-0 ${unreachable ? 'text-gray-400' : mins <= 1 ? 'text-red-400' : mins <= 5 ? 'text-orange-400' : 'text-white'}`}>
+                      <span className={`text-sm font-medium whitespace-nowrap shrink-0 ${mins <= 1 ? 'text-red-400' : mins <= 5 ? 'text-orange-400' : 'text-white'}`}>
                         {formatDeparture(dep.departure_time, now, walkMinutes, t as (key: string) => string)}
                       </span>
                     </div>
                   )
                 })}
               </div>
+            )}
+
+            {/* Pruned rows are accounted for below the list so they never push
+                an actionable departure down the card. */}
+            {departedCount > 0 && (
+              <p className="px-4 py-2 text-xs text-gray-500">
+                {t('transit:departed', { count: departedCount })}
+              </p>
             )}
           </div>
         ))}
