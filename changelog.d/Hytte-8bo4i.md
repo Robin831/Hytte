@@ -1,0 +1,2 @@
+category: Fixed
+- **Award-stars failures now show inside the modal** - A failed star award reported its error in the page-level banner behind the full-screen overlay, so the dialog looked like it did nothing. The message now renders inside the dialog as a live alert, clears when the modal is reopened and on each resubmit, and focus lands on the amount field when the modal opens so Escape closes it right away. (Hytte-8bo4i)

@@ -88,6 +88,8 @@ export default function Family() {
   const [awardDescription, setAwardDescription] = useState('')
   const [awarding, setAwarding] = useState(false)
   const [awardSuccess, setAwardSuccess] = useState(false)
+  const [awardError, setAwardError] = useState('')
+  const awardAmountRef = useRef<HTMLInputElement>(null)
   const [myFamily, setMyFamily] = useState<MyFamilyData | null>(null)
   const [myFamilyLoading, setMyFamilyLoading] = useState(false)
 
@@ -124,6 +126,12 @@ export default function Family() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadData().catch(err => console.error('Family: loadData failed', err))
   }, [loadData])
+
+  // Move focus into the award dialog when it opens, so the Escape handler on
+  // the dialog container receives key events without the admin tabbing first.
+  useEffect(() => {
+    if (awardingForChild) awardAmountRef.current?.focus()
+  }, [awardingForChild])
 
   async function loadMyFamily() {
     try {
@@ -305,6 +313,7 @@ export default function Family() {
     setAwardReason('')
     setAwardDescription('')
     setAwardSuccess(false)
+    setAwardError('')
   }
 
   function closeAwardModal() {
@@ -317,6 +326,7 @@ export default function Family() {
     const amount = Number(awardAmount)
     if (!Number.isInteger(amount) || amount === 0) return
     if (!awardReason.trim()) return
+    setAwardError('')
     try {
       setAwarding(true)
       const res = await fetch('/api/admin/stars/award', {
@@ -335,7 +345,9 @@ export default function Family() {
       // Refresh stats to show updated balance.
       loadStats(children).catch(err => console.error('Family: loadStats failed', err))
     } catch {
-      setError(t('family.errors.failedToAward'))
+      // Report inside the dialog: the page-level banner renders behind the
+      // fixed overlay, so a failed award would look like a no-op.
+      setAwardError(t('family.errors.failedToAward'))
     } finally {
       setAwarding(false)
     }
@@ -775,6 +787,7 @@ export default function Family() {
                   </label>
                   <input
                     id="award-amount"
+                    ref={awardAmountRef}
                     type="number"
                     value={awardAmount}
                     onChange={e => setAwardAmount(e.target.value)}
@@ -809,6 +822,9 @@ export default function Family() {
                     className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white text-sm"
                   />
                 </div>
+                {awardError && (
+                  <p role="alert" className="text-red-400 text-sm">{awardError}</p>
+                )}
                 <div className="flex gap-2 pt-2">
                   <button
                     onClick={submitAward}
