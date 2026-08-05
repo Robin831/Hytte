@@ -26,7 +26,7 @@ When reviewing PRs, check against the warden rules in `.forge/warden-rules.yaml`
 ### Security & Encryption
 - **All sensitive user data must be encrypted at rest** using `internal/encryption/encryption.go`
 - Use `encryption.EncryptField()` on write, `encryption.DecryptField()` on read
-- Encrypted fields: workout title/notes, note title/content, lactate stage data, push endpoints, VAPID private key, analysis prompt/response, claude_cli_path
+- Encrypted fields: workout title/notes, note title/content, lactate stage data, push endpoints, VAPID private key, analysis prompt/response, claude_cli_path, chat conversation titles and message content
 - Do NOT encrypt fields needed for SQL queries: IDs, timestamps, sport, duration, distance, HR, tags, email
 - Session tokens must be hashed (SHA-256) — never store raw tokens in the DB
 - Public route lists in docs/changelog must match actual code

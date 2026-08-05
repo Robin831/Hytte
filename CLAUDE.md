@@ -104,6 +104,7 @@ Hytte/
   - Push subscriptions: endpoint URLs
   - VAPID: private_key
   - Analysis: prompt, response_json
+  - Chat: conversation title, message content (`chat_conversations.title`, `chat_messages.content`)
   - User preferences: claude_cli_path
   - Sessions: user_agent, ip_address (sign-in metadata; the token column holds a SHA-256 hash, not ciphertext)
 - **Fields that must NOT be encrypted** (needed for queries/filtering): IDs, timestamps, status fields, sport, duration, distance, heart rate, tags, labels, email

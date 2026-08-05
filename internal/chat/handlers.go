@@ -602,14 +602,12 @@ func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, event string, pa
 // and updates the row in place. The caller controls the deadline via ctx.
 func autoTitle(ctx context.Context, db *sql.DB, cfg *training.ClaudeConfig, convoID, userID int64, firstMessage string) {
 	// Re-check the title under the caller's context to avoid overwriting a user-set title.
-	var currentTitle string
-	if err := db.QueryRowContext(ctx,
-		"SELECT title FROM chat_conversations WHERE id = ? AND user_id = ?",
-		convoID, userID,
-	).Scan(&currentTitle); err != nil {
+	// Read through the store so the stored ciphertext is decrypted before comparison.
+	convo, err := GetConversationContext(ctx, db, convoID, userID)
+	if err != nil {
 		return
 	}
-	if currentTitle != "" {
+	if convo.Title != "" {
 		return
 	}
 
