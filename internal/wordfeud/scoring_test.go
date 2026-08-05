@@ -11,9 +11,9 @@ func TestScoreWordSimple(t *testing.T) {
 	}{
 		{"HEST", 3 + 1 + 1 + 1}, // H=3, E=1, S=1, T=1
 		{"ÆRE", 8 + 1 + 1},      // Æ=8, R=1, E=1
-		{"ØST", 5 + 1 + 1},      // Ø=5, S=1, T=1
+		{"ØST", 4 + 1 + 1},      // Ø=4, S=1, T=1
 		{"ÅR", 4 + 1},           // Å=4, R=1
-		{"QZ", 10 + 10},         // Q=10, Z=10
+		{"QZ", 0 + 0},           // Q and Z are 0-point (bag has none; blanks score 0)
 	}
 
 	for _, tt := range tests {

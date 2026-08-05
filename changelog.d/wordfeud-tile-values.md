@@ -1,0 +1,2 @@
+category: Fixed
+- **Wordfeud Ø scored as 5 instead of 4** - The letter-value tables (frontend and solver) had Ø at 5 points; the real game scores it 4, confirmed live against the Wordfeud API's tile_points endpoint. Also aligned Q, X, Z to the API's 0 points (they have no tiles in the Norwegian bag and can only appear via blanks, which score 0), so finder scores no longer overvalue them. Solver move scores and the finder's point column now match the game exactly.
