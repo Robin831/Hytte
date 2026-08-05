@@ -175,8 +175,16 @@ func GetConversationHandler(db *sql.DB) http.HandlerFunc {
 
 // ListMessagesHandler returns messages, newest first. Optional query params:
 //
-//	since=<id>  - return only messages with id > since
+//	since=<id>  - return only messages with id > since (forward catch-up)
+//	before=<id> - return only messages with id < before (older-history paging)
 //	limit=<n>   - cap the response size (default 50, max 500)
+//
+// since and before are mutually exclusive: a request carrying both is rejected
+// with 400 rather than silently picking one, because the two cursors describe
+// opposite directions of travel and a client combining them is confused about
+// which page it wants. A short page (fewer than limit messages) means the
+// caller has reached the end of history in that direction; there is no separate
+// has_more flag.
 func ListMessagesHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -195,6 +203,19 @@ func ListMessagesHandler(db *sql.DB) http.HandlerFunc {
 			}
 			since = n
 		}
+		var before int64
+		if v := strings.TrimSpace(r.URL.Query().Get("before")); v != "" {
+			n, err := strconv.ParseInt(v, 10, 64)
+			if err != nil || n < 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid before parameter"})
+				return
+			}
+			before = n
+		}
+		if since > 0 && before > 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "since and before cannot be combined"})
+			return
+		}
 		limit := defaultMsgLimit
 		if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
 			n, err := strconv.Atoi(v)
@@ -205,7 +226,7 @@ func ListMessagesHandler(db *sql.DB) http.HandlerFunc {
 			limit = n
 		}
 
-		msgs, err := ListMessages(db, convID, user.ID, since, limit)
+		msgs, err := ListMessages(db, convID, user.ID, ListMessagesOpts{Since: since, Before: before, Limit: limit})
 		if err != nil {
 			if errors.Is(err, ErrForbidden) {
 				notFound(w)

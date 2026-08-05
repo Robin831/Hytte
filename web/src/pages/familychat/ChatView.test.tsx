@@ -33,6 +33,8 @@ const TRANSLATIONS: Record<string, string> = {
   'chat.memberFallback': 'Member #{{id}}',
   'chat.you': 'You',
   'chat.emptyMessages': 'No messages yet. Say hello!',
+  'chat.loadingOlder': 'Loading older messages…',
+  'chat.beginningOfConversation': 'This is the beginning of the conversation',
   'chat.noSelectionTitle': 'Pick a conversation',
   'chat.noSelectionHint': 'Choose a chat from the list to start reading.',
   'composer.placeholder': 'Write a message…',
@@ -280,6 +282,113 @@ describe('ChatView – message rendering order', () => {
     expect(bubbles[0].textContent).toBe('First message')
     expect(bubbles[1].textContent).toBe('Second message')
     expect(bubbles[2].textContent).toBe('Third message')
+  })
+})
+
+describe('ChatView – older-message pagination', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  // olderPage builds a newest-first server page of `count` messages whose
+  // newest id is `newestId` — the shape GET /messages?before= returns.
+  function olderPage(newestId: number, count: number) {
+    return Array.from({ length: count }, (_, i) => makeMessage({
+      id: newestId - i,
+      body: `Old ${newestId - i}`,
+      created_at: '2026-04-01T10:00:00Z',
+    }))
+  }
+
+  function beforeCalls(fetchMock: ReturnType<typeof vi.fn>): string[] {
+    return fetchMock.mock.calls
+      .map(c => String(c[0]))
+      .filter(u => u.includes('before='))
+  }
+
+  function bubbleTexts(): (string | null)[] {
+    return Array.from(screen.getByRole('log').querySelectorAll('[class*="rounded-2xl"]'))
+      .map(el => el.textContent)
+  }
+
+  it('fetches the page before the oldest rendered message and prepends it oldest-first', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([makeMessage({ id: 51, body: 'Newest message' })]))
+      .mockResolvedValueOnce(streamOk())
+      // A full page (50) leaves hasMore true, so no terminator yet.
+      .mockResolvedValueOnce(msgsOk(olderPage(50, 50)))
+    vi.stubGlobal('fetch', fetchMock)
+    renderChatView()
+    await waitFor(() => expect(screen.getByText('Newest message')).toBeInTheDocument())
+
+    fireEvent.scroll(screen.getByRole('log'))
+    await waitFor(() => expect(screen.getByText('Old 1')).toBeInTheDocument())
+
+    expect(beforeCalls(fetchMock)).toEqual([
+      '/api/familychat/conversations/1/messages?before=51&limit=50',
+    ])
+    const texts = bubbleTexts()
+    expect(texts[0]).toBe('Old 1')
+    expect(texts[49]).toBe('Old 50')
+    expect(texts[50]).toBe('Newest message')
+    expect(screen.queryByTestId('family-chat-history-start')).not.toBeInTheDocument()
+  })
+
+  it('does not duplicate a message the older page overlaps with the live list', async () => {
+    const initial = [
+      makeMessage({ id: 3, body: 'Third message' }),
+      makeMessage({ id: 2, body: 'Second message' }),
+    ]
+    // The page overlaps on id 2, which is already rendered.
+    const older = [
+      makeMessage({ id: 2, body: 'Second message' }),
+      makeMessage({ id: 1, body: 'First message' }),
+    ]
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk(initial))
+      .mockResolvedValueOnce(streamOk())
+      .mockResolvedValueOnce(msgsOk(older))
+    vi.stubGlobal('fetch', fetchMock)
+    renderChatView()
+    await waitFor(() => expect(screen.getByText('Second message')).toBeInTheDocument())
+
+    fireEvent.scroll(screen.getByRole('log'))
+    await waitFor(() => expect(screen.getByText('First message')).toBeInTheDocument())
+
+    expect(screen.getAllByText('Second message')).toHaveLength(1)
+    expect(bubbleTexts()).toEqual(['First message', 'Second message', 'Third message'])
+  })
+
+  it('renders the beginning-of-conversation terminator and stops requesting once history runs out', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(convOk())
+      .mockResolvedValueOnce(msgsOk([makeMessage({ id: 5, body: 'Only message' })]))
+      .mockResolvedValueOnce(streamOk())
+      .mockResolvedValueOnce(msgsOk([]))
+    vi.stubGlobal('fetch', fetchMock)
+    renderChatView()
+    await waitFor(() => expect(screen.getByText('Only message')).toBeInTheDocument())
+
+    fireEvent.scroll(screen.getByRole('log'))
+    await waitFor(() => {
+      expect(screen.getByText('This is the beginning of the conversation')).toBeInTheDocument()
+    })
+    expect(beforeCalls(fetchMock)).toHaveLength(1)
+
+    // Further upward scrolling must not re-request a history we know is empty.
+    fireEvent.scroll(screen.getByRole('log'))
+    fireEvent.scroll(screen.getByRole('log'))
+    await waitFor(() => expect(beforeCalls(fetchMock)).toHaveLength(1))
+  })
+
+  it('does not page backward while the initial load is still in flight', async () => {
+    const fetchMock = vi.fn(() => new Promise(() => {}))
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = renderChatView()
+    const log = container.querySelector('[role="log"]')!
+    fireEvent.scroll(log)
+    // Only the conversation + messages requests from the initial load.
+    expect(beforeCalls(fetchMock as unknown as ReturnType<typeof vi.fn>)).toHaveLength(0)
   })
 })
 

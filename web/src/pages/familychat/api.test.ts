@@ -7,6 +7,8 @@ import {
   editMessage,
   deleteMessage,
   uploadAttachment,
+  fetchOlderMessages,
+  OLDER_PAGE_SIZE,
   UploadError,
   type ReactionMap,
 } from './api'
@@ -129,6 +131,49 @@ describe('deleteMessage', () => {
   it('throws when the response is not ok', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }))
     await expect(deleteMessage(1, 1)).rejects.toThrow()
+  })
+})
+
+describe('fetchOlderMessages', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('GETs the messages endpoint with the before cursor and limit', async () => {
+    const messages = [{ id: 4 }, { id: 3 }]
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ messages }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const out = await fetchOlderMessages(7, 5)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe(`/api/familychat/conversations/7/messages?before=5&limit=${OLDER_PAGE_SIZE}`)
+    expect(init.credentials).toBe('include')
+    expect(out).toEqual(messages)
+  })
+
+  it('honors an explicit limit', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ messages: [] }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await fetchOlderMessages(1, 99, 10)
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      '/api/familychat/conversations/1/messages?before=99&limit=10',
+    )
+  })
+
+  it('returns an empty array when the response omits messages', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({}),
+    }))
+    await expect(fetchOlderMessages(1, 2)).resolves.toEqual([])
+  })
+
+  it('throws when the response is not ok', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 400 }))
+    await expect(fetchOlderMessages(1, 2)).rejects.toThrow()
   })
 })
 
