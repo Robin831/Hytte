@@ -1,0 +1,2 @@
+category: Changed
+- **Family chat message list split into presentational components** - The scrollable message log and the individual chat bubble moved out of `ChatView` into `MessageList` and `MessageItem`. Both are purely presentational — every mutation still comes from `useMessageActions` — so the chat behaves exactly as before; bubbles are now memoized, so an arriving message no longer re-renders the whole conversation. (Hytte-u5avd)
