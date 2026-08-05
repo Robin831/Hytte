@@ -1,0 +1,2 @@
+category: Fixed
+- **Settings page now shows a load-failure state instead of empty preferences** - When `GET /api/settings/preferences` failed (network error or any non-2xx response), the settings page silently rendered every section against an empty preference map, so hardcoded defaults looked like saved values and the next toggle wrote them back to the server. The page now shows an announced error panel with a Retry button in place of the sections, and a request-generation guard keeps a stale in-flight response from overwriting a newer retry. (Hytte-73bp7)
