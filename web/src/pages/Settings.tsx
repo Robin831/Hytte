@@ -81,9 +81,8 @@ function Settings() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [saving, setSaving] = useState(false)
-  // Guards against setting state after unmount, and against a stale in-flight
-  // load overwriting a newer retry's result.
-  const mountedRef = useRef(true)
+  // Every load claims a sequence number; unmount bumps it too, so a superseded
+  // retry and an unmounted component are the same single check.
   const loadSeq = useRef(0)
   const [saveToast, setSaveToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const saveToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -158,30 +157,31 @@ function Settings() {
     setLoading(true)
     try {
       const prefsRes = await fetch('/api/settings/preferences', { credentials: 'include' })
-      if (seq !== loadSeq.current || !mountedRef.current) return
+      if (seq !== loadSeq.current) return
       if (!prefsRes.ok) {
         console.error('Failed to load settings data: HTTP', prefsRes.status)
         setLoadError(true)
         return
       }
       const data = await prefsRes.json()
-      if (seq !== loadSeq.current || !mountedRef.current) return
+      if (seq !== loadSeq.current) return
       setPreferences(data.preferences || {})
     } catch (err) {
-      if (seq !== loadSeq.current || !mountedRef.current) return
+      if (seq !== loadSeq.current) return
       console.error('Failed to load settings data:', err)
       setLoadError(true)
     } finally {
-      if (seq === loadSeq.current && mountedRef.current) setLoading(false)
+      if (seq === loadSeq.current) setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    mountedRef.current = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; mountedRef/loadSeq prevent stale updates
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; loadSeq prevents stale updates
     void loadPreferences()
     return () => {
-      mountedRef.current = false
+      // Retires the in-flight load so its result can't land after unmount.
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- loadSeq is a plain counter, not a DOM ref; reading the latest value here is the point
+      loadSeq.current++
     }
   }, [loadPreferences])
 
@@ -215,8 +215,7 @@ function Settings() {
               <button
                 type="button"
                 onClick={() => void loadPreferences()}
-                disabled={loading}
-                className="mt-4 px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium"
+                className="mt-4 px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 text-white text-sm font-medium"
               >
                 {t('loadError.retry')}
               </button>

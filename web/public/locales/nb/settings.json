@@ -3,7 +3,7 @@
   "loading": "Laster innstillinger...",
   "loadError": {
     "title": "Kunne ikke laste innstillingene dine",
-    "body": "Vi fikk ikke kontakt med serveren, så innstillingene dine er ikke tilgjengelige. Ingenting er endret.",
+    "body": "Vi klarte ikke å laste innstillingene dine. Ingenting er endret.",
     "retry": "Prøv igjen"
   },
   "saveStatus": {

@@ -3,7 +3,7 @@
   "loading": "Loading settings...",
   "loadError": {
     "title": "Couldn't load your settings",
-    "body": "We couldn't reach the server, so your preferences aren't available. Nothing has been changed.",
+    "body": "We couldn't load your preferences. Nothing has been changed.",
     "retry": "Try again"
   },
   "saveStatus": {
