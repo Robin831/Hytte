@@ -1,4 +1,7 @@
 // @vitest-environment happy-dom
+// Card titles are target="_blank" links; without this happy-dom tries to
+// actually open example.test when a test clicks one.
+// @vitest-environment-options { "settings": { "navigation": { "disableChildPageNavigation": true, "disableMainFrameNavigation": true } } }
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import News from './News'
@@ -243,16 +246,26 @@ describe('News saved tab', () => {
     })
   })
 
+  // /api/news/saved returns score -1 (unknown), so a saved card only has a
+  // score to show once a vote pins it — 100 for 👍, matching the feed.
   it('shows the match score on saved cards when ranking is enabled', async () => {
     stubFetch({ rankingEnabled: true })
     await openSavedTab()
-    expect(within(card('Alpha')).getByText('82% match')).toBeInTheDocument()
+
+    expect(within(card('Alpha')).queryByText('100% match')).not.toBeInTheDocument()
+    fireEvent.click(within(card('Alpha')).getByTitle('More like this'))
+    await waitFor(() => expect(within(card('Alpha')).getByText('100% match')).toBeInTheDocument())
   })
 
   it('hides the match score on saved cards when ranking is disabled', async () => {
     stubFetch({ rankingEnabled: false })
     await openSavedTab()
-    expect(within(card('Alpha')).queryByText('82% match')).not.toBeInTheDocument()
+
+    fireEvent.click(within(card('Alpha')).getByTitle('More like this'))
+    await waitFor(() => {
+      expect(within(card('Alpha')).getByTitle('More like this')).toHaveAttribute('aria-pressed', 'true')
+    })
+    expect(within(card('Alpha')).queryByText('100% match')).not.toBeInTheDocument()
   })
 
   it('removes a row immediately when it is unsaved', async () => {

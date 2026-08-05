@@ -210,7 +210,6 @@ export default function News() {
         />
       ) : (
         <SavedTab
-          feed={articles}
           markRead={markRead}
           vote={vote}
           toggleSave={toggleSave}
@@ -274,22 +273,16 @@ function FeedBody({ loading, error, main, low, showLow, setShowLow, renderList, 
 }
 
 interface SavedTabProps {
-  feed: NewsArticle[]
   markRead: (id: string) => void
   vote: (a: NewsArticle, s: number) => void
   toggleSave: (a: NewsArticle) => void
   scored: boolean
 }
 
-function SavedTab({ feed, markRead, vote, toggleSave, scored }: SavedTabProps) {
+function SavedTab({ markRead, vote, toggleSave, scored }: SavedTabProps) {
   const { t } = useTranslation('news')
   const [items, setItems] = useState<NewsArticle[]>([])
   const [loading, setLoading] = useState(true)
-
-  // /api/news/saved only stores the bookmark itself — no score, read or vote
-  // state, and no source colour. Overlay the feed entry when we have one so a
-  // saved article looks and behaves exactly as it does on the Feed tab.
-  const feedById = useMemo(() => new Map(feed.map(a => [a.id, a])), [feed])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -321,10 +314,10 @@ function SavedTab({ feed, markRead, vote, toggleSave, scored }: SavedTabProps) {
   }
 
   const handleVote = (a: NewsArticle, signal: number) => {
+    // `a` comes from `items`, and the hook patches the feed off the same
+    // article, so both lists end up with identical vote state.
     vote(a, signal)
-    // `a` is the merged article below, so both lists patch off the same state.
-    const next = votePatch(a.feedback, signal)
-    setItems(prev => prev.map(x => (x.id === a.id ? { ...x, ...next } : x)))
+    setItems(prev => prev.map(x => (x.id === a.id ? { ...x, ...votePatch(a.feedback, signal) } : x)))
   }
 
   if (loading) {
@@ -338,21 +331,18 @@ function SavedTab({ feed, markRead, vote, toggleSave, scored }: SavedTabProps) {
 
   return (
     <div className="mx-auto max-w-3xl space-y-3">
-      {items.map(item => {
-        // This list only ever holds saved articles, so `saved` stays pinned on.
-        const a: NewsArticle = { ...item, ...feedById.get(item.id), saved: true }
-        return (
-          <NewsCard
-            key={a.id}
-            article={a}
-            variant="timeline"
-            scored={scored}
-            onOpen={handleOpen}
-            onVote={handleVote}
-            onToggleSave={handleUnsave}
-          />
-        )
-      })}
+      {items.map(item => (
+        // /api/news/saved already marks every row `saved`, so no override here.
+        <NewsCard
+          key={item.id}
+          article={item}
+          variant="timeline"
+          scored={scored}
+          onOpen={handleOpen}
+          onVote={handleVote}
+          onToggleSave={handleUnsave}
+        />
+      ))}
     </div>
   )
 }
