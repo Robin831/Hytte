@@ -4,7 +4,7 @@ import { RefreshCw, SlidersHorizontal, Rows3, Columns3, ChevronDown, Sparkles, C
 import { Skeleton } from '../components/ui/skeleton'
 import NewsCard from '../components/news/NewsCard'
 import NewsFilterDrawer from '../components/news/NewsFilterDrawer'
-import { useNews, type NewsArticle } from '../hooks/useNews'
+import { useNews, votePatch, type NewsArticle } from '../hooks/useNews'
 
 type Layout = 'timeline' | 'columns'
 type Tab = 'feed' | 'saved'
@@ -209,7 +209,13 @@ export default function News() {
           lowLabel={t('lowRelevance', { count: low.length })}
         />
       ) : (
-        <SavedTab markRead={markRead} vote={vote} toggleSave={toggleSave} scored={false} />
+        <SavedTab
+          feed={articles}
+          markRead={markRead}
+          vote={vote}
+          toggleSave={toggleSave}
+          scored={rankingEnabled}
+        />
       )}
 
       <NewsFilterDrawer
@@ -268,16 +274,22 @@ function FeedBody({ loading, error, main, low, showLow, setShowLow, renderList, 
 }
 
 interface SavedTabProps {
+  feed: NewsArticle[]
   markRead: (id: string) => void
   vote: (a: NewsArticle, s: number) => void
   toggleSave: (a: NewsArticle) => void
   scored: boolean
 }
 
-function SavedTab({ markRead, vote, toggleSave, scored }: SavedTabProps) {
+function SavedTab({ feed, markRead, vote, toggleSave, scored }: SavedTabProps) {
   const { t } = useTranslation('news')
   const [items, setItems] = useState<NewsArticle[]>([])
   const [loading, setLoading] = useState(true)
+
+  // /api/news/saved only stores the bookmark itself — no score, read or vote
+  // state, and no source colour. Overlay the feed entry when we have one so a
+  // saved article looks and behaves exactly as it does on the Feed tab.
+  const feedById = useMemo(() => new Map(feed.map(a => [a.id, a])), [feed])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -301,6 +313,20 @@ function SavedTab({ markRead, vote, toggleSave, scored }: SavedTabProps) {
     setItems(prev => prev.filter(x => x.id !== a.id))
   }
 
+  // The hook callbacks only patch the feed's own list, so mirror every action
+  // onto `items` as well — otherwise the buttons look dead on this tab.
+  const handleOpen = (id: string) => {
+    markRead(id)
+    setItems(prev => prev.map(x => (x.id === id ? { ...x, read: true } : x)))
+  }
+
+  const handleVote = (a: NewsArticle, signal: number) => {
+    vote(a, signal)
+    // `a` is the merged article below, so both lists patch off the same state.
+    const next = votePatch(a.feedback, signal)
+    setItems(prev => prev.map(x => (x.id === a.id ? { ...x, ...next } : x)))
+  }
+
   if (loading) {
     return (
       <div className="mx-auto max-w-3xl space-y-3">
@@ -312,17 +338,21 @@ function SavedTab({ markRead, vote, toggleSave, scored }: SavedTabProps) {
 
   return (
     <div className="mx-auto max-w-3xl space-y-3">
-      {items.map(a => (
-        <NewsCard
-          key={a.id}
-          article={{ ...a, saved: true }}
-          variant="timeline"
-          scored={scored}
-          onOpen={markRead}
-          onVote={vote}
-          onToggleSave={handleUnsave}
-        />
-      ))}
+      {items.map(item => {
+        // This list only ever holds saved articles, so `saved` stays pinned on.
+        const a: NewsArticle = { ...item, ...feedById.get(item.id), saved: true }
+        return (
+          <NewsCard
+            key={a.id}
+            article={a}
+            variant="timeline"
+            scored={scored}
+            onOpen={handleOpen}
+            onVote={handleVote}
+            onToggleSave={handleUnsave}
+          />
+        )
+      })}
     </div>
   )
 }
