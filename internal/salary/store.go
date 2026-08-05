@@ -383,8 +383,9 @@ func getHoursWorkedBoth(db *sql.DB, userID int64, month string) (float64, float6
 	type dayData struct {
 		lunch    bool
 		sessions []struct {
-			start, end string
-			isInternal bool
+			start, end      string
+			isInternal      bool
+			crossesMidnight bool
 		}
 		deductionMinutes int
 	}
@@ -392,7 +393,7 @@ func getHoursWorkedBoth(db *sql.DB, userID int64, month string) (float64, float6
 
 	// Sessions
 	sRows, err := db.Query(`
-		SELECT wd.id, wd.lunch, ws.start_time, ws.end_time, ws.is_internal
+		SELECT wd.id, wd.lunch, ws.start_time, ws.end_time, ws.is_internal, ws.crosses_midnight
 		FROM work_sessions ws
 		JOIN work_days wd ON wd.id = ws.day_id
 		WHERE wd.user_id = ? AND wd.date LIKE ?
@@ -405,8 +406,8 @@ func getHoursWorkedBoth(db *sql.DB, userID int64, month string) (float64, float6
 		var dayID int64
 		var lunch bool
 		var start, end string
-		var isInternal bool
-		if err := sRows.Scan(&dayID, &lunch, &start, &end, &isInternal); err != nil {
+		var isInternal, crossesMidnight bool
+		if err := sRows.Scan(&dayID, &lunch, &start, &end, &isInternal, &crossesMidnight); err != nil {
 			return 0, 0, err
 		}
 		d, ok := days[dayID]
@@ -415,9 +416,10 @@ func getHoursWorkedBoth(db *sql.DB, userID int64, month string) (float64, float6
 			days[dayID] = d
 		}
 		d.sessions = append(d.sessions, struct {
-			start, end string
-			isInternal bool
-		}{start, end, isInternal})
+			start, end      string
+			isInternal      bool
+			crossesMidnight bool
+		}{start, end, isInternal, crossesMidnight})
 	}
 	if err := sRows.Err(); err != nil {
 		return 0, 0, err
@@ -460,6 +462,11 @@ func getHoursWorkedBoth(db *sql.DB, userID int64, month string) (float64, float6
 			endMin, err := parseHHMMToMinutes(s.end)
 			if err != nil {
 				return 0, 0, fmt.Errorf("parse end time %q: %w", s.end, err)
+			}
+			if s.crossesMidnight {
+				// The end time belongs to the next calendar day, but the whole
+				// session is attributed to the day it started on.
+				endMin += 24 * 60
 			}
 			if endMin > startMin {
 				dur := endMin - startMin

@@ -13,13 +13,17 @@ type WorkDay struct {
 }
 
 // WorkSession represents a single time block within a work day.
+//
+// A session that runs past midnight (e.g. 22:00 → 02:00) is stored on its start
+// date with CrossesMidnight set; EndTime is then a time on the following day.
 type WorkSession struct {
-	ID         int64  `json:"id"`
-	DayID      int64  `json:"day_id"`
-	StartTime  string `json:"start_time"` // HH:MM (24h)
-	EndTime    string `json:"end_time"`   // HH:MM (24h)
-	SortOrder  int    `json:"sort_order"`
-	IsInternal bool   `json:"is_internal"` // true = internal company time (meetings/admin)
+	ID              int64  `json:"id"`
+	DayID           int64  `json:"day_id"`
+	StartTime       string `json:"start_time"` // HH:MM (24h)
+	EndTime         string `json:"end_time"`   // HH:MM (24h)
+	SortOrder       int    `json:"sort_order"`
+	IsInternal      bool   `json:"is_internal"`      // true = internal company time (meetings/admin)
+	CrossesMidnight bool   `json:"crosses_midnight"` // true = end_time is on the day after start_time
 }
 
 // WorkDeduction represents a named time deduction applied to a work day.

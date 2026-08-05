@@ -29,8 +29,42 @@ func ValidateHHMM(t string) error {
 	return err
 }
 
-// sessionMinutes returns the duration of a session in minutes. Returns 0 if
-// end is not after start (e.g. malformed entry).
+// ValidateSessionTimes checks that a session's start/end pair is consistent with
+// its crossesMidnight flag. Both times must already be valid HH:MM strings.
+//
+// Without the flag the end must be strictly after the start (the long-standing
+// rule). With the flag the end belongs to the next calendar day, so it must be
+// strictly before the start — that rules out sessions of 24h or more, which the
+// flag is not meant to express.
+func ValidateSessionTimes(startTime, endTime string, crossesMidnight bool) error {
+	start, err := parseHHMM(startTime)
+	if err != nil {
+		return err
+	}
+	end, err := parseHHMM(endTime)
+	if err != nil {
+		return err
+	}
+	if crossesMidnight {
+		if end >= start {
+			return fmt.Errorf("end_time must be before start_time when crosses_midnight is set")
+		}
+		return nil
+	}
+	if end <= start {
+		return fmt.Errorf("end_time must be after start_time")
+	}
+	return nil
+}
+
+// minutesPerDay is the number of minutes added to a session that runs past
+// midnight, since its end time belongs to the following calendar day.
+const minutesPerDay = 24 * 60
+
+// sessionMinutes returns the duration of a session in minutes. When the session
+// is flagged as crossing midnight the end time belongs to the next day, so a
+// full day is added before the subtraction. Returns 0 if end is not after start
+// (e.g. malformed entry).
 func sessionMinutes(s WorkSession) (int, error) {
 	start, err := parseHHMM(s.StartTime)
 	if err != nil {
@@ -39,6 +73,9 @@ func sessionMinutes(s WorkSession) (int, error) {
 	end, err := parseHHMM(s.EndTime)
 	if err != nil {
 		return 0, fmt.Errorf("end_time: %w", err)
+	}
+	if s.CrossesMidnight {
+		end += minutesPerDay
 	}
 	return max(end-start, 0), nil
 }

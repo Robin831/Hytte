@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { calculateDayWithLivePunch, type WorkSettings } from './workHoursUtils'
+import { calculateDayWithLivePunch, sessionMinutes, type WorkSettings } from './workHoursUtils'
 
 const defaultSettings: WorkSettings = {
   standard_day_minutes: 450,
@@ -94,7 +94,7 @@ describe('calculateDayWithLivePunch', () => {
       makeDate(16, 0),
       '14:00',
       [
-        { id: 1, day_id: 1, start_time: '08:00', end_time: '12:00', sort_order: 0, is_internal: false },
+        { id: 1, day_id: 1, start_time: '08:00', end_time: '12:00', sort_order: 0, is_internal: false, crosses_midnight: false },
       ],
       true,
       [],
@@ -139,7 +139,7 @@ describe('calculateDayWithLivePunch', () => {
       makeDate(16, 0),
       '14:00',
       [
-        { id: 1, day_id: 1, start_time: '12:00', end_time: '11:00', sort_order: 0, is_internal: false },
+        { id: 1, day_id: 1, start_time: '12:00', end_time: '11:00', sort_order: 0, is_internal: false, crosses_midnight: false },
       ],
       true,
       [],
@@ -161,5 +161,52 @@ describe('calculateDayWithLivePunch', () => {
       defaultSettings,
     )
     expect(result!.standardMinutes).toBe(450)
+  })
+})
+
+describe('sessionMinutes', () => {
+  const base = { id: 1, day_id: 1, sort_order: 0, is_internal: false }
+
+  it('measures an ordinary session', () => {
+    expect(sessionMinutes({ ...base, start_time: '08:00', end_time: '16:00', crosses_midnight: false })).toBe(480)
+  })
+
+  it('adds a full day when the session crosses midnight', () => {
+    expect(sessionMinutes({ ...base, start_time: '22:00', end_time: '02:00', crosses_midnight: true })).toBe(240)
+  })
+
+  it('handles a wrapped session that ends exactly at midnight', () => {
+    expect(sessionMinutes({ ...base, start_time: '23:30', end_time: '00:00', crosses_midnight: true })).toBe(30)
+  })
+
+  it('returns zero for a wrapped range without the flag', () => {
+    expect(sessionMinutes({ ...base, start_time: '22:00', end_time: '02:00', crosses_midnight: false })).toBe(0)
+  })
+
+  it('returns zero for a zero-length session', () => {
+    expect(sessionMinutes({ ...base, start_time: '09:00', end_time: '09:00', crosses_midnight: false })).toBe(0)
+  })
+
+  it('returns null for malformed times', () => {
+    expect(sessionMinutes({ ...base, start_time: 'nope', end_time: '16:00', crosses_midnight: false })).toBeNull()
+    expect(sessionMinutes({ ...base, start_time: '08:00', end_time: '25:00', crosses_midnight: false })).toBeNull()
+  })
+})
+
+describe('calculateDayWithLivePunch with wrapped sessions', () => {
+  it('counts a completed wrapped session once', () => {
+    const result = calculateDayWithLivePunch(
+      makeDate(16, 0),
+      '14:00',
+      [
+        { id: 1, day_id: 1, start_time: '22:00', end_time: '02:00', sort_order: 0, is_internal: false, crosses_midnight: true },
+      ],
+      false,
+      [],
+      defaultSettings,
+    )
+    // completed wrapped: 240min, current: 120min, gross=360
+    expect(result!.grossMinutes).toBe(360)
+    expect(result!.netMinutes).toBe(360)
   })
 })

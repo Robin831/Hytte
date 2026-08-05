@@ -945,12 +945,13 @@ func createSchema(db *sql.DB) error {
 	);
 
 	CREATE TABLE IF NOT EXISTS work_sessions (
-		id          INTEGER PRIMARY KEY,
-		day_id      INTEGER NOT NULL REFERENCES work_days(id) ON DELETE CASCADE,
-		start_time  TEXT NOT NULL,               -- HH:MM (24h)
-		end_time    TEXT NOT NULL,               -- HH:MM (24h)
-		sort_order  INTEGER NOT NULL DEFAULT 0,
-		is_internal INTEGER NOT NULL DEFAULT 0
+		id              INTEGER PRIMARY KEY,
+		day_id          INTEGER NOT NULL REFERENCES work_days(id) ON DELETE CASCADE,
+		start_time      TEXT NOT NULL,               -- HH:MM (24h)
+		end_time        TEXT NOT NULL,               -- HH:MM (24h)
+		sort_order      INTEGER NOT NULL DEFAULT 0,
+		is_internal     INTEGER NOT NULL DEFAULT 0,
+		crosses_midnight INTEGER NOT NULL DEFAULT 0  -- end_time falls on the day after start_time
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_work_sessions_day_id ON work_sessions(day_id);
@@ -2674,6 +2675,19 @@ func createSchema(db *sql.DB) error {
 	if hasWorkSessionsIsInternal == 0 {
 		if _, err := db.Exec(`ALTER TABLE work_sessions ADD COLUMN is_internal INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return fmt.Errorf("add work_sessions is_internal column: %w", err)
+		}
+	}
+
+	// Add crosses_midnight to work_sessions (Hytte-13jsf): marks a session whose
+	// end_time falls on the day after start_time (e.g. 22:00 → 02:00). The whole
+	// session is still attributed to the start date; the duration adds 24h.
+	var hasWorkSessionsCrossesMidnight int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('work_sessions') WHERE name = 'crosses_midnight'`).Scan(&hasWorkSessionsCrossesMidnight); err != nil {
+		return fmt.Errorf("check work_sessions crosses_midnight column: %w", err)
+	}
+	if hasWorkSessionsCrossesMidnight == 0 {
+		if _, err := db.Exec(`ALTER TABLE work_sessions ADD COLUMN crosses_midnight INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add work_sessions crosses_midnight column: %w", err)
 		}
 	}
 

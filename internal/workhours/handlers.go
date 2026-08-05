@@ -194,11 +194,12 @@ func SessionAddHandler(db *sql.DB) http.HandlerFunc {
 		user := auth.UserFromContext(r.Context())
 
 		var body struct {
-			DayID      int64  `json:"day_id"`
-			StartTime  string `json:"start_time"`
-			EndTime    string `json:"end_time"`
-			SortOrder  int    `json:"sort_order"`
-			IsInternal bool   `json:"is_internal"`
+			DayID           int64  `json:"day_id"`
+			StartTime       string `json:"start_time"`
+			EndTime         string `json:"end_time"`
+			SortOrder       int    `json:"sort_order"`
+			IsInternal      bool   `json:"is_internal"`
+			CrossesMidnight bool   `json:"crosses_midnight"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -212,14 +213,12 @@ func SessionAddHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid end_time: " + err.Error()})
 			return
 		}
-		startParsed, _ := time.Parse("15:04", body.StartTime)
-		endParsed, _ := time.Parse("15:04", body.EndTime)
-		if !endParsed.After(startParsed) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "end_time must be after start_time"})
+		if err := ValidateSessionTimes(body.StartTime, body.EndTime, body.CrossesMidnight); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 
-		session, err := AddSession(db, body.DayID, user.ID, body.StartTime, body.EndTime, body.SortOrder, body.IsInternal)
+		session, err := AddSession(db, body.DayID, user.ID, body.StartTime, body.EndTime, body.SortOrder, body.IsInternal, body.CrossesMidnight)
 		if err == sql.ErrNoRows {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "day not found"})
 			return
@@ -244,10 +243,11 @@ func SessionUpdateHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		var body struct {
-			StartTime  string `json:"start_time"`
-			EndTime    string `json:"end_time"`
-			SortOrder  int    `json:"sort_order"`
-			IsInternal bool   `json:"is_internal"`
+			StartTime       string `json:"start_time"`
+			EndTime         string `json:"end_time"`
+			SortOrder       int    `json:"sort_order"`
+			IsInternal      bool   `json:"is_internal"`
+			CrossesMidnight bool   `json:"crosses_midnight"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -261,14 +261,12 @@ func SessionUpdateHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid end_time: " + err.Error()})
 			return
 		}
-		startParsed, _ := time.Parse("15:04", body.StartTime)
-		endParsed, _ := time.Parse("15:04", body.EndTime)
-		if !endParsed.After(startParsed) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "end_time must be after start_time"})
+		if err := ValidateSessionTimes(body.StartTime, body.EndTime, body.CrossesMidnight); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 
-		if err := UpdateSession(db, sessionID, user.ID, body.StartTime, body.EndTime, body.SortOrder, body.IsInternal); err == sql.ErrNoRows {
+		if err := UpdateSession(db, sessionID, user.ID, body.StartTime, body.EndTime, body.SortOrder, body.IsInternal, body.CrossesMidnight); err == sql.ErrNoRows {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
 			return
 		} else if err != nil {
@@ -1118,7 +1116,8 @@ func PunchOutHandler(db *sql.DB) http.HandlerFunc {
 		user := auth.UserFromContext(r.Context())
 
 		var body struct {
-			EndTime string `json:"end_time"`
+			EndTime         string `json:"end_time"`
+			CrossesMidnight bool   `json:"crosses_midnight"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
@@ -1140,21 +1139,13 @@ func PunchOutHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		startParsed, err := time.Parse("15:04", open.StartTime)
-		if err != nil {
+		if err := ValidateHHMM(open.StartTime); err != nil {
 			log.Printf("workhours: punch out parse stored start_time %q: %v", open.StartTime, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stored start_time is invalid"})
 			return
 		}
-
-		endParsed, err := time.Parse("15:04", body.EndTime)
-		if err != nil {
-			log.Printf("workhours: punch out parse end_time %q: %v", body.EndTime, err)
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid end_time"})
-			return
-		}
-		if !endParsed.After(startParsed) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "end_time must be after start_time"})
+		if err := ValidateSessionTimes(open.StartTime, body.EndTime, body.CrossesMidnight); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 
@@ -1179,7 +1170,7 @@ func PunchOutHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		sortOrder := len(day.Sessions)
-		if _, err := AddSession(db, day.ID, user.ID, open.StartTime, body.EndTime, sortOrder, false); err != nil {
+		if _, err := AddSession(db, day.ID, user.ID, open.StartTime, body.EndTime, sortOrder, false, body.CrossesMidnight); err != nil {
 			log.Printf("workhours: punch out add session: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save session"})
 			return

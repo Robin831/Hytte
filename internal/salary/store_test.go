@@ -94,11 +94,12 @@ func setupTestDB(t *testing.T) *sql.DB {
 			PRIMARY KEY (user_id, key)
 		);
 		CREATE TABLE work_sessions (
-			id          INTEGER PRIMARY KEY,
-			day_id      INTEGER NOT NULL,
-			start_time  TEXT NOT NULL,
-			end_time    TEXT NOT NULL,
-			is_internal INTEGER NOT NULL DEFAULT 0
+			id               INTEGER PRIMARY KEY,
+			day_id           INTEGER NOT NULL,
+			start_time       TEXT NOT NULL,
+			end_time         TEXT NOT NULL,
+			is_internal      INTEGER NOT NULL DEFAULT 0,
+			crosses_midnight INTEGER NOT NULL DEFAULT 0
 		);
 		CREATE TABLE work_leave_days (
 			id         INTEGER PRIMARY KEY,
@@ -629,6 +630,57 @@ func TestGetInternalHoursWorked_OnlyExternal(t *testing.T) {
 	}
 	if hours != 0 {
 		t.Errorf("GetInternalHoursWorked = %v, want 0 (no internal sessions)", hours)
+	}
+}
+
+func TestGetHoursWorked_CrossesMidnight(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := db.Exec(`INSERT INTO work_days (id, user_id, date, lunch) VALUES (1, 1, '2026-03-01', 0)`); err != nil {
+		t.Fatalf("insert work_day: %v", err)
+	}
+	// 22:00 → 02:00 the next day = 240 min, counted once on the start date.
+	if _, err := db.Exec(`
+		INSERT INTO work_sessions (day_id, start_time, end_time, is_internal, crosses_midnight)
+		VALUES (1, '22:00', '02:00', 0, 1)
+	`); err != nil {
+		t.Fatalf("insert work_session: %v", err)
+	}
+
+	hours, err := GetHoursWorked(db, 1, "2026-03")
+	if err != nil {
+		t.Fatalf("GetHoursWorked: %v", err)
+	}
+	if hours != 4 {
+		t.Errorf("GetHoursWorked = %v, want 4", hours)
+	}
+}
+
+func TestGetInternalHoursWorked_CrossesMidnight(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := db.Exec(`INSERT INTO work_days (id, user_id, date, lunch) VALUES (1, 1, '2026-03-01', 0)`); err != nil {
+		t.Fatalf("insert work_day: %v", err)
+	}
+	// Two wrapped sessions of 240 min each — one billable, one internal.
+	// Gross 480 min → reported 480 min, split 50/50 → 8h total, 4h internal.
+	if _, err := db.Exec(`
+		INSERT INTO work_sessions (day_id, start_time, end_time, is_internal, crosses_midnight)
+		VALUES (1, '20:00', '00:00', 0, 1),
+		       (1, '22:00', '02:00', 1, 1)
+	`); err != nil {
+		t.Fatalf("insert work_sessions: %v", err)
+	}
+
+	total, internal, err := getHoursWorkedBoth(db, 1, "2026-03")
+	if err != nil {
+		t.Fatalf("getHoursWorkedBoth: %v", err)
+	}
+	if total != 8 {
+		t.Errorf("total hours = %v, want 8", total)
+	}
+	if internal != 4 {
+		t.Errorf("internal hours = %v, want 4", internal)
 	}
 }
 

@@ -252,3 +252,135 @@ func TestParseHHMM(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionMinutes_CrossesMidnight(t *testing.T) {
+	tests := []struct {
+		name    string
+		session WorkSession
+		want    int
+	}{
+		{
+			name:    "wrapped 22:00 to 02:00 is four hours",
+			session: WorkSession{StartTime: "22:00", EndTime: "02:00", CrossesMidnight: true},
+			want:    240,
+		},
+		{
+			name:    "wrapped session ending at midnight",
+			session: WorkSession{StartTime: "23:30", EndTime: "00:00", CrossesMidnight: true},
+			want:    30,
+		},
+		{
+			name:    "same times unwrapped still yields zero",
+			session: WorkSession{StartTime: "22:00", EndTime: "02:00"},
+			want:    0,
+		},
+		{
+			name:    "ordinary session is unaffected",
+			session: WorkSession{StartTime: "08:00", EndTime: "16:00"},
+			want:    480,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := sessionMinutes(tc.session)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("sessionMinutes: got %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCalculateDay_CrossesMidnightCountsOnStartDate(t *testing.T) {
+	settings := DefaultSettings()
+	day := WorkDay{
+		Date: "2026-03-27",
+		Sessions: []WorkSession{
+			{StartTime: "22:00", EndTime: "02:00", CrossesMidnight: true}, // 240 min
+		},
+	}
+
+	sum, err := CalculateDay(day, settings)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sum.Date != "2026-03-27" {
+		t.Errorf("date: got %q, want the punch-in date", sum.Date)
+	}
+	if sum.GrossMinutes != 240 {
+		t.Errorf("gross: got %d, want 240", sum.GrossMinutes)
+	}
+	if sum.NetMinutes != 240 {
+		t.Errorf("net: got %d, want 240", sum.NetMinutes)
+	}
+	// 240 is an exact multiple of the 30-minute rounding.
+	if sum.ReportedMinutes != 240 {
+		t.Errorf("reported: got %d, want 240", sum.ReportedMinutes)
+	}
+	if sum.RemainderMinutes != 0 {
+		t.Errorf("remainder: got %d, want 0", sum.RemainderMinutes)
+	}
+}
+
+func TestCalculateDay_MixedWrappedAndNormalSessions(t *testing.T) {
+	settings := DefaultSettings()
+	day := WorkDay{
+		Date:  "2026-03-27",
+		Lunch: true,
+		Sessions: []WorkSession{
+			{StartTime: "09:00", EndTime: "17:00"},                        // 480 min
+			{StartTime: "22:00", EndTime: "01:15", CrossesMidnight: true}, // 195 min
+		},
+	}
+
+	sum, err := CalculateDay(day, settings)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The wrapped minutes are counted exactly once, on the start date.
+	if sum.GrossMinutes != 675 {
+		t.Errorf("gross: got %d, want 675", sum.GrossMinutes)
+	}
+	if sum.NetMinutes != 645 {
+		t.Errorf("net: got %d, want 645", sum.NetMinutes)
+	}
+	if sum.ReportedMinutes != 630 {
+		t.Errorf("reported: got %d, want 630", sum.ReportedMinutes)
+	}
+	if sum.RemainderMinutes != 15 {
+		t.Errorf("remainder: got %d, want 15", sum.RemainderMinutes)
+	}
+}
+
+func TestValidateSessionTimes(t *testing.T) {
+	tests := []struct {
+		name            string
+		start, end      string
+		crossesMidnight bool
+		wantErr         bool
+	}{
+		{name: "normal session", start: "09:00", end: "17:00"},
+		{name: "normal session with end before start", start: "17:00", end: "09:00", wantErr: true},
+		{name: "normal session with equal times", start: "09:00", end: "09:00", wantErr: true},
+		{name: "wrapped session", start: "22:00", end: "02:00", crossesMidnight: true},
+		{name: "wrapped session with end after start", start: "09:00", end: "17:00", crossesMidnight: true, wantErr: true},
+		{name: "wrapped session with equal times would be 24h", start: "22:00", end: "22:00", crossesMidnight: true, wantErr: true},
+		{name: "invalid start", start: "nope", end: "17:00", wantErr: true},
+		{name: "invalid end", start: "09:00", end: "99:99", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateSessionTimes(tc.start, tc.end, tc.crossesMidnight)
+			if tc.wantErr && err == nil {
+				t.Error("expected an error, got none")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}

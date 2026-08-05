@@ -99,22 +99,27 @@ func DeleteDay(db *sql.DB, userID int64, date string) error {
 	return nil
 }
 
+// boolToInt converts a Go bool to the 0/1 INTEGER form SQLite stores.
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 // AddSession adds a new time session to an existing work day. The day must
-// belong to the given userID. isInternal marks company meetings/admin time.
-func AddSession(db *sql.DB, dayID, userID int64, startTime, endTime string, sortOrder int, isInternal bool) (*WorkSession, error) {
+// belong to the given userID. isInternal marks company meetings/admin time;
+// crossesMidnight marks a session whose endTime falls on the following day.
+func AddSession(db *sql.DB, dayID, userID int64, startTime, endTime string, sortOrder int, isInternal, crossesMidnight bool) (*WorkSession, error) {
 	// Verify ownership.
 	if err := verifyDayOwnership(db, dayID, userID); err != nil {
 		return nil, err
 	}
 
-	isInternalInt := 0
-	if isInternal {
-		isInternalInt = 1
-	}
 	res, err := db.Exec(`
-		INSERT INTO work_sessions (day_id, start_time, end_time, sort_order, is_internal)
-		VALUES (?, ?, ?, ?, ?)
-	`, dayID, startTime, endTime, sortOrder, isInternalInt)
+		INSERT INTO work_sessions (day_id, start_time, end_time, sort_order, is_internal, crosses_midnight)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, dayID, startTime, endTime, sortOrder, boolToInt(isInternal), boolToInt(crossesMidnight))
 	if err != nil {
 		return nil, fmt.Errorf("insert work_sessions: %w", err)
 	}
@@ -124,26 +129,24 @@ func AddSession(db *sql.DB, dayID, userID int64, startTime, endTime string, sort
 	}
 
 	return &WorkSession{
-		ID:         id,
-		DayID:      dayID,
-		StartTime:  startTime,
-		EndTime:    endTime,
-		SortOrder:  sortOrder,
-		IsInternal: isInternal,
+		ID:              id,
+		DayID:           dayID,
+		StartTime:       startTime,
+		EndTime:         endTime,
+		SortOrder:       sortOrder,
+		IsInternal:      isInternal,
+		CrossesMidnight: crossesMidnight,
 	}, nil
 }
 
 // UpdateSession modifies an existing session. The session must belong to a
-// day owned by the given userID. isInternal marks company meetings/admin time.
-func UpdateSession(db *sql.DB, sessionID, userID int64, startTime, endTime string, sortOrder int, isInternal bool) error {
-	isInternalInt := 0
-	if isInternal {
-		isInternalInt = 1
-	}
+// day owned by the given userID. isInternal marks company meetings/admin time;
+// crossesMidnight marks a session whose endTime falls on the following day.
+func UpdateSession(db *sql.DB, sessionID, userID int64, startTime, endTime string, sortOrder int, isInternal, crossesMidnight bool) error {
 	res, err := db.Exec(`
-		UPDATE work_sessions SET start_time = ?, end_time = ?, sort_order = ?, is_internal = ?
+		UPDATE work_sessions SET start_time = ?, end_time = ?, sort_order = ?, is_internal = ?, crosses_midnight = ?
 		WHERE id = ? AND day_id IN (SELECT id FROM work_days WHERE user_id = ?)
-	`, startTime, endTime, sortOrder, isInternalInt, sessionID, userID)
+	`, startTime, endTime, sortOrder, boolToInt(isInternal), boolToInt(crossesMidnight), sessionID, userID)
 	if err != nil {
 		return fmt.Errorf("update work_sessions: %w", err)
 	}
@@ -430,7 +433,7 @@ func ListDaysInRange(db *sql.DB, userID int64, fromDate, toDate string) ([]WorkD
 	// Batch-load sessions for all days.
 	sessionsByDay := make(map[int64][]WorkSession, len(dayIDs))
 	sRows, err := db.Query(fmt.Sprintf(`
-		SELECT id, day_id, start_time, end_time, sort_order, is_internal
+		SELECT id, day_id, start_time, end_time, sort_order, is_internal, crosses_midnight
 		FROM work_sessions
 		WHERE day_id IN (%s)
 		ORDER BY day_id, sort_order, id
@@ -441,11 +444,12 @@ func ListDaysInRange(db *sql.DB, userID int64, fromDate, toDate string) ([]WorkD
 	defer sRows.Close()
 	for sRows.Next() {
 		var s WorkSession
-		var isInternalInt int
-		if err := sRows.Scan(&s.ID, &s.DayID, &s.StartTime, &s.EndTime, &s.SortOrder, &isInternalInt); err != nil {
+		var isInternalInt, crossesMidnightInt int
+		if err := sRows.Scan(&s.ID, &s.DayID, &s.StartTime, &s.EndTime, &s.SortOrder, &isInternalInt, &crossesMidnightInt); err != nil {
 			return nil, err
 		}
 		s.IsInternal = isInternalInt != 0
+		s.CrossesMidnight = crossesMidnightInt != 0
 		sessionsByDay[s.DayID] = append(sessionsByDay[s.DayID], s)
 	}
 	if err := sRows.Err(); err != nil {
@@ -507,7 +511,7 @@ func ListDaysInRange(db *sql.DB, userID int64, fromDate, toDate string) ([]WorkD
 // getSessions returns all sessions for a work day, ordered by sort_order then id.
 func getSessions(db *sql.DB, dayID int64) ([]WorkSession, error) {
 	rows, err := db.Query(`
-		SELECT id, day_id, start_time, end_time, sort_order, is_internal
+		SELECT id, day_id, start_time, end_time, sort_order, is_internal, crosses_midnight
 		FROM work_sessions
 		WHERE day_id = ?
 		ORDER BY sort_order, id
@@ -520,11 +524,12 @@ func getSessions(db *sql.DB, dayID int64) ([]WorkSession, error) {
 	var sessions []WorkSession
 	for rows.Next() {
 		var s WorkSession
-		var isInternalInt int
-		if err := rows.Scan(&s.ID, &s.DayID, &s.StartTime, &s.EndTime, &s.SortOrder, &isInternalInt); err != nil {
+		var isInternalInt, crossesMidnightInt int
+		if err := rows.Scan(&s.ID, &s.DayID, &s.StartTime, &s.EndTime, &s.SortOrder, &isInternalInt, &crossesMidnightInt); err != nil {
 			return nil, err
 		}
 		s.IsInternal = isInternalInt != 0
+		s.CrossesMidnight = crossesMidnightInt != 0
 		sessions = append(sessions, s)
 	}
 	if err := rows.Err(); err != nil {

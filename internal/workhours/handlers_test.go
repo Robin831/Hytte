@@ -546,7 +546,7 @@ func TestFlexRedeemHandler_Success(t *testing.T) {
 		if err != nil {
 			t.Fatalf("upsert %s: %v", date, err)
 		}
-		if _, err := AddSession(db, day.ID, 1, "08:00", "15:45", 0, false); err != nil {
+		if _, err := AddSession(db, day.ID, 1, "08:00", "15:45", 0, false, false); err != nil {
 			t.Fatalf("add session %s: %v", date, err)
 		}
 	}
@@ -606,7 +606,7 @@ func TestFlexRedeemHandler_CannotRedeemTwice(t *testing.T) {
 		if err != nil {
 			t.Fatalf("upsert %s: %v", date, err)
 		}
-		if _, err := AddSession(db, day.ID, 1, "08:00", "15:45", 0, false); err != nil {
+		if _, err := AddSession(db, day.ID, 1, "08:00", "15:45", 0, false, false); err != nil {
 			t.Fatalf("add session %s: %v", date, err)
 		}
 	}
@@ -639,7 +639,7 @@ func TestSessionUpdateHandler_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-	session, err := AddSession(db, day.ID, 1, "09:00", "17:00", 0, false)
+	session, err := AddSession(db, day.ID, 1, "09:00", "17:00", 0, false, false)
 	if err != nil {
 		t.Fatalf("add session: %v", err)
 	}
@@ -667,7 +667,7 @@ func TestSessionUpdateHandler_EndNotAfterStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-	session, err := AddSession(db, day.ID, 1, "09:00", "17:00", 0, false)
+	session, err := AddSession(db, day.ID, 1, "09:00", "17:00", 0, false, false)
 	if err != nil {
 		t.Fatalf("add session: %v", err)
 	}
@@ -1377,5 +1377,163 @@ func TestPunchEditHandler_FutureTime(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for future start_time, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- crosses_midnight ---
+
+func TestPunchOutHandler_CrossesMidnight(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := CreateOpenSession(db, 1, "2026-03-30", "22:00"); err != nil {
+		t.Fatalf("CreateOpenSession: %v", err)
+	}
+	handler := PunchOutHandler(db)
+
+	body := jsonBody(t, map[string]any{"end_time": "02:00", "crosses_midnight": true})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/punch-out", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// The session lands on the punch-in date with the flag set and 240 gross minutes.
+	day, err := GetDay(db, 1, "2026-03-30")
+	if err != nil {
+		t.Fatalf("get day: %v", err)
+	}
+	if day == nil || len(day.Sessions) != 1 {
+		t.Fatalf("expected one session on the punch-in date, got %+v", day)
+	}
+	s := day.Sessions[0]
+	if s.StartTime != "22:00" || s.EndTime != "02:00" {
+		t.Errorf("session times: got %s-%s, want 22:00-02:00", s.StartTime, s.EndTime)
+	}
+	if !s.CrossesMidnight {
+		t.Error("crosses_midnight: got false, want true")
+	}
+
+	summary, err := CalculateDay(*day, DefaultSettings())
+	if err != nil {
+		t.Fatalf("calculate day: %v", err)
+	}
+	if summary.GrossMinutes != 240 {
+		t.Errorf("gross minutes: got %d, want 240", summary.GrossMinutes)
+	}
+}
+
+func TestPunchOutHandler_CrossesMidnightWithEndAfterStart(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := CreateOpenSession(db, 1, "2026-03-30", "08:00"); err != nil {
+		t.Fatalf("CreateOpenSession: %v", err)
+	}
+	handler := PunchOutHandler(db)
+
+	// The flag only makes sense when the end is before the start; anything else
+	// would silently record a session of 24h or more.
+	body := jsonBody(t, map[string]any{"end_time": "16:00", "crosses_midnight": true})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/punch-out", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSessionAddHandler_CrossesMidnight(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-10", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	handler := SessionAddHandler(db)
+	body := jsonBody(t, map[string]any{
+		"day_id":           day.ID,
+		"start_time":       "22:00",
+		"end_time":         "02:00",
+		"crosses_midnight": true,
+	})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/day/session", body), testUser)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var created WorkSession
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !created.CrossesMidnight {
+		t.Error("crosses_midnight in response: got false, want true")
+	}
+}
+
+func TestSessionAddHandler_CrossesMidnightRejectsEndAfterStart(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-10", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	handler := SessionAddHandler(db)
+	for _, endTime := range []string{"17:00", "09:00"} {
+		body := jsonBody(t, map[string]any{
+			"day_id":           day.ID,
+			"start_time":       "09:00",
+			"end_time":         endTime,
+			"crosses_midnight": true,
+		})
+		req := withUser(httptest.NewRequest("POST", "/api/workhours/day/session", body), testUser)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("end_time %q: expected 400, got %d: %s", endTime, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestSessionUpdateHandler_CrossesMidnight(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-10", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	session, err := AddSession(db, day.ID, 1, "09:00", "17:00", 0, false, false)
+	if err != nil {
+		t.Fatalf("add session: %v", err)
+	}
+
+	handler := SessionUpdateHandler(db)
+	body := jsonBody(t, map[string]any{
+		"start_time":       "22:00",
+		"end_time":         "02:00",
+		"sort_order":       0,
+		"crosses_midnight": true,
+	})
+	req := withUser(httptest.NewRequest("PUT", "/api/workhours/day/session/1", body), testUser)
+	req = withChiParam(req, "id", fmt.Sprintf("%d", session.ID))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	fetched, err := GetDay(db, 1, "2026-03-10")
+	if err != nil {
+		t.Fatalf("get day: %v", err)
+	}
+	if !fetched.Sessions[0].CrossesMidnight {
+		t.Error("crosses_midnight after update: got false, want true")
 	}
 }

@@ -5,7 +5,7 @@ import { formatDate } from '../../../utils/formatDate'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { Select, type SelectOption } from '../../../components/ui/select'
 import { TimePicker } from '../../../components/ui/time-picker'
-import { calculateDayWithLivePunch, type WorkSession, type WorkSettings } from '../../workHoursUtils'
+import { calculateDayWithLivePunch, sessionMinutes, type WorkSession, type WorkSettings } from '../../workHoursUtils'
 import type { DaySummary, FlexState, LeaveDay, LeaveType, WorkDay, WorkDeductionPreset } from '../types'
 import {
   buildNavHolidaySet,
@@ -52,6 +52,7 @@ export default function DayView({
   const [newStart, setNewStart] = useState('')
   const [newEnd, setNewEnd] = useState('')
   const [newIsInternal, setNewIsInternal] = useState(false)
+  const [newCrossesMidnight, setNewCrossesMidnight] = useState(false)
   const [newDeductionName, setNewDeductionName] = useState('')
   const [newDeductionMinutes, setNewDeductionMinutes] = useState('')
   const [punchStart, setPunchStart] = useState<string | null>(null)
@@ -225,8 +226,27 @@ export default function DayView({
     }
   }
 
+  // Keep the "ends next day" flag in step with the entered times: an end before
+  // the start can only be next-day, an end after it never is. The user can still
+  // override the suggestion with the checkbox.
+  const handleNewStartChange = (value: string) => {
+    setNewStart(value)
+    if (value && newEnd && value !== newEnd) setNewCrossesMidnight(newEnd < value)
+  }
+
+  const handleNewEndChange = (value: string) => {
+    setNewEnd(value)
+    if (newStart && value && value !== newStart) setNewCrossesMidnight(value < newStart)
+  }
+
   const handleAddSession = async () => {
     if (!newStart || !newEnd) return
+    // Mirror the server-side rule so a bad combination gets a clear message
+    // instead of a silent failure.
+    if (newCrossesMidnight ? newEnd >= newStart : newEnd <= newStart) {
+      alert(newCrossesMidnight ? t('workhours:crossesMidnightRangeError') : t('workhours:sessionRangeError'))
+      return
+    }
     setSaving(true)
     try {
       let day = dayData?.day ?? null
@@ -241,11 +261,13 @@ export default function DayView({
         end_time: newEnd,
         sort_order: sortOrder,
         is_internal: newIsInternal,
+        crosses_midnight: newCrossesMidnight,
       })
       if (ok) {
         setNewStart('')
         setNewEnd('')
         setNewIsInternal(false)
+        setNewCrossesMidnight(false)
         await loadDay(currentDate)
         loadFlex()
       }
@@ -275,6 +297,7 @@ export default function DayView({
         end_time: session.end_time,
         sort_order: session.sort_order,
         is_internal: !session.is_internal,
+        crosses_midnight: session.crosses_midnight,
       })
       if (!ok) {
         console.error('Failed to toggle internal flag')
@@ -416,13 +439,22 @@ export default function DayView({
     punchEditAbortRef.current?.abort()
     punchEditAbortRef.current = null
     const endTime = currentTimeHHMM()
+    // An end time at or before the start can only mean the session ran past
+    // midnight. Ask instead of dead-ending, so the shift isn't lost.
+    let crossesMidnight = false
     if (endTime <= punchStart) {
-      alert(t('workhours:punchMidnightError'))
-      return
+      if (endTime === punchStart) {
+        alert(t('workhours:punchZeroLengthError'))
+        return
+      }
+      if (!confirm(t('workhours:punchCrossesMidnightConfirm', { start: punchStart, end: endTime }))) {
+        return
+      }
+      crossesMidnight = true
     }
     setSaving(true)
     try {
-      const data = await api.punchOut({ end_time: endTime })
+      const data = await api.punchOut({ end_time: endTime, crosses_midnight: crossesMidnight })
       if (data) {
         setPunchStart(null)
         setNewStart('')
@@ -513,6 +545,7 @@ export default function DayView({
           end_time: session.end_time,
           sort_order: (d.sessions?.length ?? 0),
           is_internal: session.is_internal,
+          crosses_midnight: session.crosses_midnight,
         })
         if (!ok) {
           console.error('workhours: failed to copy session', session)
@@ -823,14 +856,20 @@ export default function DayView({
             {sessions.length > 0 && (
               <div className="space-y-2">
                 {sessions.map(s => {
-                  const [sh, sm] = s.start_time.split(':').map(Number)
-                  const [eh, em] = s.end_time.split(':').map(Number)
-                  const mins = eh * 60 + em - (sh * 60 + sm)
+                  const mins = sessionMinutes(s) ?? 0
                   return (
                     <div key={s.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${s.is_internal ? 'bg-purple-900/40 border-purple-700/40' : 'bg-gray-800 border-transparent'}`}>
                       <span className="text-white font-mono text-sm">{s.start_time}</span>
                       <span className="text-gray-500 text-xs">→</span>
                       <span className="text-white font-mono text-sm">{s.end_time}</span>
+                      {s.crosses_midnight && (
+                        <span
+                          className="rounded bg-blue-900/50 px-1 py-0.5 text-[0.65rem] font-medium text-blue-300"
+                          title={t('workhours:endsNextDayTitle')}
+                        >
+                          {t('workhours:nextDayMarker')}
+                        </span>
+                      )}
                       <span className="text-gray-400 text-xs ml-auto">{formatMins(mins)}</span>
                       <button
                         type="button"
@@ -867,15 +906,25 @@ export default function DayView({
             <div className="flex items-center gap-2 flex-wrap">
               <TimePicker
                 value={newStart}
-                onChange={setNewStart}
+                onChange={handleNewStartChange}
                 aria-label={t('workhours:startTime')}
               />
               <span className="text-gray-500 text-xs">→</span>
               <TimePicker
                 value={newEnd}
-                onChange={setNewEnd}
+                onChange={handleNewEndChange}
                 aria-label={t('workhours:endTime')}
               />
+              <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 select-none">
+                <input
+                  type="checkbox"
+                  checked={newCrossesMidnight}
+                  onChange={e => setNewCrossesMidnight(e.target.checked)}
+                  className="accent-blue-500"
+                  aria-label={t('workhours:endsNextDay')}
+                />
+                <span className={newCrossesMidnight ? 'text-blue-300' : ''}>{t('workhours:endsNextDay')}</span>
+              </label>
               <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 select-none">
                 <input
                   type="checkbox"

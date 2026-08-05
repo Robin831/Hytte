@@ -5,6 +5,8 @@ export interface WorkSession {
   end_time: string
   sort_order: number
   is_internal: boolean
+  /** true when end_time falls on the day after start_time (e.g. 22:00 → 02:00). */
+  crosses_midnight: boolean
 }
 
 export interface WorkDeduction {
@@ -30,6 +32,8 @@ export interface LiveEstimate {
   standardMinutes: number
 }
 
+const MINUTES_PER_DAY = 24 * 60
+
 function parseHHMM(t: string): number | null {
   const parts = t.split(':')
   if (parts.length !== 2) return null
@@ -38,6 +42,19 @@ function parseHHMM(t: string): number | null {
   if (!Number.isInteger(h) || !Number.isInteger(m)) return null
   if (h < 0 || h > 23 || m < 0 || m > 59) return null
   return h * 60 + m
+}
+
+/**
+ * Duration of a session in minutes, mirroring the server-side rule: a session
+ * flagged as crossing midnight ends on the following day, so a full day is
+ * added before subtracting. Returns null when either time is malformed.
+ */
+export function sessionMinutes(session: Pick<WorkSession, 'start_time' | 'end_time' | 'crosses_midnight'>): number | null {
+  const startMins = parseHHMM(session.start_time)
+  const endMins = parseHHMM(session.end_time)
+  if (startMins === null || endMins === null) return null
+  const end = session.crosses_midnight ? endMins + MINUTES_PER_DAY : endMins
+  return Math.max(end - startMins, 0)
 }
 
 export function calculateDayWithLivePunch(
@@ -55,11 +72,9 @@ export function calculateDayWithLivePunch(
 
   let gross = nowMins - startMins
   for (const s of sessions) {
-    const sMins = parseHHMM(s.start_time)
-    const eMins = parseHHMM(s.end_time)
-    if (sMins === null || eMins === null) return null
-    const sessionDuration = eMins - sMins
-    gross += Math.max(sessionDuration, 0)
+    const duration = sessionMinutes(s)
+    if (duration === null) return null
+    gross += duration
   }
 
   const lunchMin = lunch ? settings.lunch_minutes : 0

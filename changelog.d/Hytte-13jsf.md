@@ -1,0 +1,2 @@
+category: Added
+- **Work sessions can cross midnight** - Punching in at 22:00 and out at 02:00 no longer dead-ends: the punch-out asks whether the session ended the next day and saves it on the punch-in date with a "+1d" marker in the day, week and month views. Manual sessions can be marked "ends next day" too, and the wrapped minutes count once towards day/week/month totals, the flex pool and the internal-vs-billable split. (Hytte-13jsf)
