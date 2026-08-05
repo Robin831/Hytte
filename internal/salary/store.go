@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Robin831/Hytte/internal/workhours"
 )
 
 // nullInt64Ptr converts a sql.NullInt64 to *int64 (nil if not valid).
@@ -455,25 +457,16 @@ func getHoursWorkedBoth(db *sql.DB, userID int64, month string) (float64, float6
 		grossMin := 0
 		internalGrossMin := 0
 		for _, s := range d.sessions {
-			startMin, err := parseHHMMToMinutes(s.start)
+			// Shared with the work hours page: a session flagged as crossing
+			// midnight ends on the next calendar day but counts in full on the
+			// day it started on.
+			dur, err := workhours.SessionDurationMinutes(s.start, s.end, s.crossesMidnight)
 			if err != nil {
-				return 0, 0, fmt.Errorf("parse start time %q: %w", s.start, err)
+				return 0, 0, fmt.Errorf("parse session times %q-%q: %w", s.start, s.end, err)
 			}
-			endMin, err := parseHHMMToMinutes(s.end)
-			if err != nil {
-				return 0, 0, fmt.Errorf("parse end time %q: %w", s.end, err)
-			}
-			if s.crossesMidnight {
-				// The end time belongs to the next calendar day, but the whole
-				// session is attributed to the day it started on.
-				endMin += 24 * 60
-			}
-			if endMin > startMin {
-				dur := endMin - startMin
-				grossMin += dur
-				if s.isInternal {
-					internalGrossMin += dur
-				}
+			grossMin += dur
+			if s.isInternal {
+				internalGrossMin += dur
 			}
 		}
 
@@ -645,29 +638,6 @@ func GetOrSeedTrekktabellParams(db *sql.DB, userID, year int64) (TrekktabellPara
 		return TrekktabellParams{}, fmt.Errorf("failed to retrieve seeded trekktabell params")
 	}
 	return *saved, nil
-}
-
-// parseHHMMToMinutes parses a "HH:MM" string into total minutes since midnight.
-func parseHHMMToMinutes(t string) (int, error) {
-	parts := strings.SplitN(t, ":", 2)
-	if len(parts) != 2 {
-		return 0, fmt.Errorf("invalid time format %q", t)
-	}
-	h, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return 0, fmt.Errorf("invalid hour in %q", t)
-	}
-	if h < 0 || h > 23 {
-		return 0, fmt.Errorf("hour out of range in %q", t)
-	}
-	m, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return 0, fmt.Errorf("invalid minute in %q", t)
-	}
-	if m < 0 || m > 59 {
-		return 0, fmt.Errorf("minute out of range in %q", t)
-	}
-	return h*60 + m, nil
 }
 
 // LookupTrekktabellTax looks up the tax amount from the salary_trekktabell_data

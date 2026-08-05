@@ -294,6 +294,43 @@ func TestSessionMinutes_CrossesMidnight(t *testing.T) {
 	}
 }
 
+// SessionDurationMinutes is the shared entry point used by other packages (for
+// example salary) that roll up work hours, so it is tested directly.
+func TestSessionDurationMinutes(t *testing.T) {
+	tests := []struct {
+		name            string
+		start, end      string
+		crossesMidnight bool
+		want            int
+		wantErr         bool
+	}{
+		{name: "ordinary session", start: "08:00", end: "16:00", want: 480},
+		{name: "wrapped session", start: "22:00", end: "02:00", crossesMidnight: true, want: 240},
+		{name: "wrapped session ending at midnight", start: "23:30", end: "00:00", crossesMidnight: true, want: 30},
+		{name: "unflagged wrapped range counts as zero", start: "22:00", end: "02:00", want: 0},
+		{name: "invalid start time", start: "nope", end: "16:00", wantErr: true},
+		{name: "invalid end time", start: "08:00", end: "25:00", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := SessionDurationMinutes(tc.start, tc.end, tc.crossesMidnight)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("SessionDurationMinutes(%q, %q, %v): expected error", tc.start, tc.end, tc.crossesMidnight)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("SessionDurationMinutes: got %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestCalculateDay_CrossesMidnightCountsOnStartDate(t *testing.T) {
 	settings := DefaultSettings()
 	day := WorkDay{
