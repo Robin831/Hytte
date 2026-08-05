@@ -1,12 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   ChevronLeft,
   MessageSquare,
-  Download,
   X,
-  Smile,
-  MoreVertical,
   Phone,
   PhoneOff,
   PhoneIncoming,
@@ -25,8 +22,8 @@ import ConnectionStatus from '../../components/ConnectionStatus'
 import { useAuth } from '../../auth'
 import { useKeyboardInset } from '../../hooks/useKeyboardInset'
 import Composer from './Composer'
-import ReactionChips from './ReactionChips'
-import ReactionPicker from './ReactionPicker'
+import type { Lightbox } from './MessageItem'
+import MessageList, { type ScrollAnchor } from './MessageList'
 import {
   fetchOlderMessages,
   markConversationRead,
@@ -40,9 +37,6 @@ import {
   type ReadReceiptPayload,
 } from './useFamilyChatStream'
 import { useMessageActions } from './useMessageActions'
-import { formatRelative } from './utils'
-import VoiceBubble from './voice/VoiceBubble'
-import { readCachedWaveform, parseWaveformJSON, DEFAULT_BAR_COUNT, type Waveform } from './voice/waveform'
 import * as voicePlayer from './voice/voicePlayer'
 import { useVoiceCall, type CallKind } from './voice/useVoiceCall'
 import { supportedFilters, type FilterKind } from './voice/videoFilters'
@@ -74,15 +68,6 @@ const AT_BOTTOM_THRESHOLD_PX = 80
 // read marker for the newest one, instead of one POST per message.
 const MARK_READ_DEBOUNCE_MS = 300
 
-// parseVoiceMeta extracts a {bars, durationMs} pair from a meta_json blob.
-// Returns null when the field is absent, unparseable, or shaped wrong — the
-// caller falls back to a localStorage cache (and ultimately a flat waveform)
-// so a malformed meta_json never blocks playback.
-function parseVoiceMeta(meta: string | null | undefined): Waveform | null {
-  if (!meta) return null
-  return parseWaveformJSON(meta)
-}
-
 interface MemberInfo {
   label: string
   emoji: string
@@ -111,7 +96,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const { user, familyStatus } = useAuth()
 
   const [memberLookup, setMemberLookup] = useState<Map<number, MemberInfo>>(new Map())
-  const [lightbox, setLightbox] = useState<{ url: string; alt: string } | null>(null)
+  const [lightbox, setLightbox] = useState<Lightbox | null>(null)
   // pickerForMsgId is the id of the bubble whose reaction picker is open, or
   // null when nothing is open. We only show one picker at a time.
   const [pickerForMsgId, setPickerForMsgId] = useState<number | null>(null)
@@ -169,9 +154,9 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // duplicate pages start before the first render lands.
   const loadingOlderRef = useRef(false)
   // pendingScrollRestoreRef holds the scroll metrics captured immediately
-  // before a prepend. Its presence is also what tells the auto-scroll-to-bottom
-  // effect to stand down for that one commit.
-  const pendingScrollRestoreRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
+  // before a prepend. Its presence is also what tells MessageList's
+  // auto-scroll-to-bottom effect to stand down for that one commit.
+  const pendingScrollRestoreRef = useRef<ScrollAnchor | null>(null)
 
   // ── Read markers ───────────────────────────────────────────────────────────
   // refreshConversations makes the sibling ConversationList refetch, which is
@@ -294,7 +279,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     userId: user?.id,
   })
 
-  const messagesEndRef = useRef<HTMLDivElement>(null)
   // conversationIdRef shadows the current conversation so an in-flight
   // "load older" response can tell whether the user has since switched chats.
   const conversationIdRef = useRef(conversationId)
@@ -330,20 +314,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       void groupCallLeaveRef.current()
     }
   }, [conversationId])
-  // lastPointerTypeRef is set by onPointerDown so onContextMenu knows whether
-  // it was triggered by a touch long-press (open picker, suppress native menu)
-  // or a mouse right-click (leave native menu alone; picker is on hover button).
-  const lastPointerTypeRef = useRef<string>('mouse')
-  // pickerAnchorRef: element used by ReactionPicker for placement/positioning.
-  // Set to the hover button or the message bubble (long-press), whichever opened the picker.
-  const pickerAnchorRef = useRef<HTMLElement | null>(null)
-  // pickerGuardRef: the actual toggle button (hover Smile button only). The
-  // picker's outside-click handler ignores clicks on this element so the button
-  // can toggle the picker closed without the picker immediately re-closing on
-  // the same click. NOT set on long-press (no toggle button exists there), so
-  // tapping the bubble correctly closes the picker.
-  const pickerGuardRef = useRef<HTMLElement | null>(null)
-
   // Focus management + Escape handling for the delete confirmation modal,
   // matching the pattern used by ConfirmDialog.
   const confirmDeleteId = deleteTarget.msgId
@@ -429,34 +399,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   }, [user, familyStatus, t])
 
   const keyboardInset = useKeyboardInset()
-
-  // Auto-scroll to the bottom whenever the message list updates or the keyboard
-  // opens/closes (keyboardInset changes). useLayoutEffect avoids a visible jump
-  // between initial paint and the scroll snap.
-  useLayoutEffect(() => {
-    // A commit that prepended older history must not jump to the bottom — the
-    // restore effect below re-anchors the view on the message the user was
-    // already reading instead. messages.length changes on a prepend too, which
-    // is why this guard exists rather than a narrower dependency list.
-    if (pendingScrollRestoreRef.current) return
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ block: 'end' })
-    }
-  }, [messages.length, conversationId, keyboardInset])
-
-  // Restore the scroll anchor after older messages are prepended: the content
-  // above the viewport grew by (newScrollHeight - savedScrollHeight), so adding
-  // that delta to the saved scrollTop keeps the same message under the user's
-  // eyes. Runs after the auto-scroll effect above (declaration order) and
-  // clears the flag that effect reads.
-  useLayoutEffect(() => {
-    const pending = pendingScrollRestoreRef.current
-    if (!pending) return
-    pendingScrollRestoreRef.current = null
-    const el = messagesScrollRef.current
-    if (!el) return
-    el.scrollTop = el.scrollHeight - pending.scrollHeight + pending.scrollTop
-  }, [prependCounter])
 
   // loadOlderMessages fetches the page immediately preceding the oldest message
   // currently rendered and prepends it. Deduped by id so it can never collide
@@ -732,12 +674,15 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     }).catch(() => {})
   }, [conversationId])
 
-  const handlePickFromPicker = useCallback((msgId: number, emoji: string) => {
-    setPickerForMsgId(null)
-    const msg = messages.find(m => m.id === msgId)
-    const mine = !!msg?.reactions?.[emoji]?.me
-    void toggleReaction(msgId, emoji, mine)
-  }, [messages, toggleReaction])
+  const closePicker = useCallback(() => setPickerForMsgId(null), [])
+
+  // memberLabel resolves a user id to the friendly name shown on bubbles,
+  // member chips and call banners, falling back to "Member #id" for ids the
+  // current user can't name. Stable so the memoized bubbles only re-render when
+  // the lookup itself changes.
+  const memberLabel = useCallback((id: number) => (
+    memberLookup.get(id)?.label ?? t('chat.memberFallback', { id })
+  ), [memberLookup, t])
 
   const memberChips = useMemo(() => {
     if (!conversation) return []
@@ -760,8 +705,8 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const typingLabels = useMemo(() => {
     return Array.from(typingUsers.keys())
       .filter(id => id !== user?.id)
-      .map(id => memberLookup.get(id)?.label ?? t('chat.memberFallback', { id }))
-  }, [typingUsers, memberLookup, user?.id, t])
+      .map(id => memberLabel(id))
+  }, [typingUsers, memberLabel, user?.id])
 
   // seenByLabels names the members whose live read receipt covers our newest
   // message. Receipts are observed in-session only (the conversation API
@@ -782,11 +727,11 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       if (id === user?.id) continue
       const readAt = Date.parse(at)
       if (Number.isNaN(readAt) || readAt < sentAt) continue
-      labels.push(memberLookup.get(id)?.label ?? t('chat.memberFallback', { id }))
+      labels.push(memberLabel(id))
     }
     // Sorted so the list is stable regardless of receipt arrival order.
     return labels.sort((a, b) => a.localeCompare(b))
-  }, [peerReads, messages, memberLookup, user?.id, t])
+  }, [peerReads, messages, memberLabel, user?.id])
 
   // 1:1 calls use the single-peer voice-call hook (callPeerId is the other
   // member). 3+ member conversations use the group-call mesh instead, gated by
@@ -801,14 +746,13 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
 
   const peerLabel = useCallback((peerId: number | null) => {
     if (peerId === null) return t('chat.memberFallback', { id: 0 })
-    return memberLookup.get(peerId)?.label ?? t('chat.memberFallback', { id: peerId })
-  }, [memberLookup, t])
+    return memberLabel(peerId)
+  }, [memberLabel, t])
 
   // Label/emoji accessors for the group-call overlay tiles.
-  const groupMemberInfo = useCallback((id: number) => {
-    const info = memberLookup.get(id)
-    return { label: info?.label ?? t('chat.memberFallback', { id }), emoji: info?.emoji ?? '👤' }
-  }, [memberLookup, t])
+  const groupMemberInfo = useCallback((id: number) => (
+    { label: memberLabel(id), emoji: memberLookup.get(id)?.emoji ?? '👤' }
+  ), [memberLabel, memberLookup])
   const groupMemberLabel = useCallback((id: number) => groupMemberInfo(id).label, [groupMemberInfo])
   const selfEmoji = (user?.id !== undefined ? memberLookup.get(user.id)?.emoji : undefined) ?? '👤'
 
@@ -1026,356 +970,36 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         )}
       </header>
 
-      <div
-        ref={messagesScrollRef}
+      <MessageList
+        messages={messages}
+        loading={loading}
+        error={error}
+        loadingOlder={loadingOlder}
+        hasMoreOlder={hasMoreOlder}
+        scrollRef={messagesScrollRef}
         onScroll={handleMessagesScroll}
-        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-4 py-3 space-y-2"
-        role="log"
-        aria-live="polite"
-        aria-relevant="additions"
+        pendingScrollRestoreRef={pendingScrollRestoreRef}
+        prependCounter={prependCounter}
+        conversationId={conversationId}
+        keyboardInset={keyboardInset}
+        currentUserId={user?.id}
+        memberLabel={memberLabel}
+        rtf={rtf}
+        editDraft={editDraft}
+        pickerForMsgId={pickerForMsgId}
+        menuForMsgId={menuForMsgId}
+        onOpenLightbox={setLightbox}
+        onOpenPicker={setPickerForMsgId}
+        onClosePicker={closePicker}
+        onToggleReaction={toggleReaction}
+        onOpenMenu={setMenuForMsgId}
+        onBeginEdit={beginEdit}
+        onConfirmDelete={confirmDelete}
+        onEditTextChange={setEditText}
+        onSaveEdit={saveEdit}
+        onCancelEdit={cancelEdit}
+        onRetry={retryFailedMessage}
       >
-        {loading && (
-          <div className="space-y-3" role="status" aria-busy="true">
-            <span className="sr-only">{t('loading')}</span>
-            <Skeleton className="h-12 w-3/4" />
-            <Skeleton className="h-12 w-2/3 ml-auto" />
-            <Skeleton className="h-12 w-1/2" />
-          </div>
-        )}
-
-        {!loading && error && (
-          <div className="p-3 bg-red-900/40 border border-red-700 rounded-lg text-red-300 text-sm">
-            {error}
-          </div>
-        )}
-
-        {!loading && !error && messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 py-12">
-            <MessageSquare size={32} className="mb-2 text-gray-600" aria-hidden="true" />
-            <p className="text-sm">{t('chat.emptyMessages')}</p>
-          </div>
-        )}
-
-        {!loading && !error && messages.length > 0 && loadingOlder && (
-          <div
-            className="flex justify-center py-2 text-xs text-gray-500"
-            role="status"
-            aria-busy="true"
-            data-testid="family-chat-loading-older"
-          >
-            {t('chat.loadingOlder')}
-          </div>
-        )}
-
-        {!loading && !error && messages.length > 0 && !hasMoreOlder && !loadingOlder && (
-          <div
-            className="flex justify-center py-2 text-xs text-gray-500"
-            data-testid="family-chat-history-start"
-          >
-            {t('chat.beginningOfConversation')}
-          </div>
-        )}
-
-        {!loading && !error && messages.map(msg => {
-          const isOwn = user?.id === msg.sender_user_id
-          const isDeleted = !!msg.deleted_at
-          const isEditing = editDraft.msgId === msg.id
-          const senderInfo = memberLookup.get(msg.sender_user_id)
-          const senderLabel = senderInfo?.label ?? t('chat.memberFallback', { id: msg.sender_user_id })
-          const relative = formatRelative(msg.created_at, rtf, t('time.justNow'))
-          const attachmentUrl = !isDeleted && msg.attachment_path && msg.attachment_mime
-            ? `/api/familychat/conversations/${msg.conversation_id}/attachments/${msg.id}`
-            : ''
-          const mime = msg.attachment_mime ?? ''
-          const isImage = mime.startsWith('image/')
-          const isAudio = mime.startsWith('audio/')
-          // A voice note is an audio/webm attachment with an empty body —
-          // the recorder always ships these as standalone bubbles. The
-          // bubble renders a precomputed waveform if meta_json carries one;
-          // it falls back to a localStorage cache (written immediately
-          // after upload by the recorder) and finally to a flat waveform.
-          const isVoiceNote = !isDeleted && !!attachmentUrl
-            && (mime.startsWith('audio/webm') || mime.startsWith('audio/ogg'))
-            && !msg.body.trim()
-          const cachedWaveform = isVoiceNote
-            ? (parseVoiceMeta(msg.meta_json) ?? readCachedWaveform(msg.id))
-            : null
-          const voiceBars = cachedWaveform?.bars ?? new Array(DEFAULT_BAR_COUNT).fill(0)
-          const voiceDurationMs = cachedWaveform?.durationMs ?? 0
-          const pickerOpen = pickerForMsgId === msg.id
-          const menuOpen = menuForMsgId === msg.id
-          // Optimistic bubbles (still sending or failed) have no authoritative
-          // id yet, so reactions and edit/delete are suppressed until the row
-          // reconciles to the persisted message.
-          const isPending = msg.status === 'sending' || msg.status === 'failed'
-          const showActions = isOwn && !isDeleted && !isEditing && !isPending
-          const deletedByInfo = msg.deleted_by != null ? memberLookup.get(msg.deleted_by) : undefined
-          const deletedByLabel = msg.deleted_by != null && user?.id === msg.deleted_by
-            ? t('edit.tombstoneSelf')
-            : t('edit.tombstone', { name: deletedByInfo?.label ?? t('chat.memberFallback', { id: msg.deleted_by ?? 0 }) })
-          return (
-            <div
-              key={msg.client_id ?? msg.id}
-              className={`flex flex-col group ${isOwn ? 'items-end' : 'items-start'}`}
-              data-testid={`chat-bubble-${msg.id}`}
-            >
-              {!isOwn && !isDeleted && (
-                <span className="text-xs text-gray-400 mb-0.5 px-1">{senderLabel}</span>
-              )}
-              <div className={`relative max-w-[85%] sm:max-w-[70%]`}>
-                {isDeleted ? (
-                  <div
-                    className="px-3 py-2 rounded-2xl text-sm italic bg-gray-800/60 border border-gray-700 text-gray-400"
-                    data-testid={`chat-tombstone-${msg.id}`}
-                  >
-                    {deletedByLabel}
-                  </div>
-                ) : isEditing ? (
-                  <div className={`px-3 py-2 rounded-2xl text-sm break-words ${
-                    isOwn ? 'bg-blue-600/40 border border-blue-500' : 'bg-gray-800 border border-gray-700'
-                  }`}>
-                    <textarea
-                      value={editDraft.text}
-                      onChange={(e) => setEditText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                          e.preventDefault()
-                          cancelEdit()
-                        } else if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault()
-                          void saveEdit(msg.id)
-                        }
-                      }}
-                      aria-label={t('edit.edit')}
-                      data-testid={`chat-edit-input-${msg.id}`}
-                      className="w-full bg-gray-900 text-gray-100 border border-gray-700 rounded-lg px-2 py-1 text-sm focus:outline-none focus:border-blue-500"
-                      rows={3}
-                      autoFocus
-                    />
-                    {editDraft.error && (
-                      <div className="text-xs text-red-400 mt-1">{editDraft.error}</div>
-                    )}
-                    <div className="flex gap-2 mt-2 justify-end">
-                      <button
-                        type="button"
-                        onClick={cancelEdit}
-                        className="px-2 py-1 text-xs rounded-md bg-gray-700 text-gray-200 hover:bg-gray-600"
-                        data-testid={`chat-edit-cancel-${msg.id}`}
-                      >
-                        {t('edit.cancel')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { void saveEdit(msg.id) }}
-                        disabled={editDraft.saving || !editDraft.text.trim()}
-                        className="px-2 py-1 text-xs rounded-md bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        data-testid={`chat-edit-save-${msg.id}`}
-                      >
-                        {editDraft.saving ? t('edit.saving') : t('edit.save')}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    className={`px-3 py-2 rounded-2xl text-sm break-words ${
-                      isOwn
-                        ? 'bg-blue-600 text-white rounded-br-sm'
-                        : 'bg-gray-800 text-gray-100 rounded-bl-sm'
-                    } ${msg.status === 'sending' ? 'opacity-70' : ''}`}
-                    onPointerDown={(e) => { lastPointerTypeRef.current = e.pointerType }}
-                    onContextMenu={(e) => {
-                      // Only intercept touch long-press (suppress native menu, open
-                      // reaction picker for all messages). Mouse right-clicks keep
-                      // the native menu so users can copy text/images; the reaction
-                      // picker is reachable via the hover button (Smile icon) on
-                      // desktop. Edit/delete actions remain accessible via the
-                      // MoreVertical button for own messages.
-                      if (lastPointerTypeRef.current === 'touch') {
-                        e.preventDefault()
-                        // Use the bubble as the positioning anchor only.
-                        // pickerGuardRef is explicitly cleared here — there is
-                        // no toggle button for long-press, so clicks on the
-                        // bubble should correctly dismiss the picker. Clearing
-                        // prevents a stale guard ref from a prior hover-button
-                        // open from suppressing the outside-click close.
-                        pickerAnchorRef.current = e.currentTarget
-                        pickerGuardRef.current = null
-                        setPickerForMsgId(msg.id)
-                      }
-                    }}
-                  >
-                    {attachmentUrl && isImage && (
-                      <button
-                        type="button"
-                        onClick={() => setLightbox({ url: attachmentUrl, alt: t('chat.attachmentImageAlt') })}
-                        className="block cursor-zoom-in mb-1"
-                        aria-label={t('chat.attachmentImageAlt')}
-                      >
-                        <img
-                          src={attachmentUrl}
-                          alt={t('chat.attachmentImageAlt')}
-                          loading="lazy"
-                          className="rounded-lg max-h-60 max-w-full object-contain"
-                        />
-                      </button>
-                    )}
-                    {attachmentUrl && isVoiceNote && (
-                      <VoiceBubble
-                        messageId={msg.id}
-                        src={attachmentUrl}
-                        bars={voiceBars}
-                        durationMs={voiceDurationMs}
-                        isOwn={isOwn}
-                      />
-                    )}
-                    {attachmentUrl && isAudio && !isVoiceNote && (
-                      <audio
-                        controls
-                        src={attachmentUrl}
-                        className="block max-w-full mb-1"
-                        aria-label={t('chat.attachmentAudioAlt')}
-                      />
-                    )}
-                    {attachmentUrl && !isImage && !isAudio && (
-                      <a
-                        href={attachmentUrl}
-                        download
-                        className={`flex items-center gap-2 rounded-lg px-2 py-1.5 mb-1 text-xs ${
-                          isOwn ? 'bg-blue-700/60 hover:bg-blue-700/80' : 'bg-gray-700/70 hover:bg-gray-700'
-                        }`}
-                      >
-                        <Download size={14} aria-hidden="true" />
-                        <span className="truncate">{t('chat.attachmentFileLabel', { mime })}</span>
-                      </a>
-                    )}
-                    {msg.body && (
-                      <div className="whitespace-pre-wrap">{msg.body}</div>
-                    )}
-                  </div>
-                )}
-                {!isDeleted && !isEditing && !isPending && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      const willOpen = !pickerOpen
-                      if (willOpen) {
-                        pickerAnchorRef.current = e.currentTarget
-                        pickerGuardRef.current = e.currentTarget
-                      }
-                      setPickerForMsgId(willOpen ? msg.id : null)
-                    }}
-                    aria-label={t('reactions.pickerLabel')}
-                    className={`absolute -top-3 ${isOwn ? '-left-2' : '-right-2'} p-1 rounded-full bg-gray-800 border border-gray-700 text-gray-300 hover:text-white opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer`}
-                    data-testid={`reaction-trigger-${msg.id}`}
-                  >
-                    <Smile size={14} aria-hidden="true" />
-                  </button>
-                )}
-                {showActions && (
-                  <button
-                    type="button"
-                    onClick={() => setMenuForMsgId(menuOpen ? null : msg.id)}
-                    aria-label={t('edit.menuLabel')}
-                    aria-haspopup="menu"
-                    aria-expanded={menuOpen}
-                    className="absolute -top-3 -right-2 p-1 rounded-full bg-gray-800 border border-gray-700 text-gray-300 hover:text-white opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer"
-                    data-testid={`chat-actions-trigger-${msg.id}`}
-                  >
-                    <MoreVertical size={14} aria-hidden="true" />
-                  </button>
-                )}
-                {menuOpen && showActions && (
-                  <>
-                    {/* Click outside to dismiss — full-viewport transparent layer
-                        intercepts the next click and closes the menu without
-                        eating any actual UI interaction. */}
-                    <button
-                      type="button"
-                      aria-hidden="true"
-                      tabIndex={-1}
-                      onClick={() => setMenuForMsgId(null)}
-                      className="fixed inset-0 z-40 cursor-default"
-                    />
-                    <div
-                      role="menu"
-                      aria-label={t('edit.menuLabel')}
-                      data-testid={`chat-actions-menu-${msg.id}`}
-                      className="absolute z-50 -top-2 right-0 mt-6 min-w-[8rem] bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden"
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => { setMenuForMsgId(null); beginEdit(msg) }}
-                        className="w-full text-left px-3 py-2 text-sm text-gray-200 hover:bg-gray-700"
-                        data-testid={`chat-edit-action-${msg.id}`}
-                      >
-                        {t('edit.edit')}
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          setMenuForMsgId(null)
-                          confirmDelete(msg.id)
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm text-red-300 hover:bg-gray-700"
-                        data-testid={`chat-delete-action-${msg.id}`}
-                      >
-                        {t('edit.delete')}
-                      </button>
-                    </div>
-                  </>
-                )}
-                {pickerOpen && (
-                  <ReactionPicker
-                    onPick={(emoji) => handlePickFromPicker(msg.id, emoji)}
-                    onClose={() => setPickerForMsgId(null)}
-                    anchorRef={pickerAnchorRef}
-                    triggerRef={pickerGuardRef}
-                  />
-                )}
-              </div>
-              <ReactionChips
-                reactions={msg.reactions}
-                onToggle={(emoji, mine) => { void toggleReaction(msg.id, emoji, mine) }}
-              />
-              <div className="flex items-center gap-1 mt-0.5 px-1">
-                {msg.status === 'sending' && (
-                  <span
-                    className="text-[10px] text-gray-400 italic"
-                    role="status"
-                    data-testid={`chat-sending-${msg.id}`}
-                  >
-                    {t('composer.sending')}
-                  </span>
-                )}
-                {msg.status === 'failed' && (
-                  <button
-                    type="button"
-                    onClick={() => retryFailedMessage(msg)}
-                    className="text-[10px] text-red-400 hover:text-red-300 italic cursor-pointer"
-                    data-testid={`chat-failed-${msg.id}`}
-                  >
-                    {t('composer.failedRetry')}
-                  </button>
-                )}
-                {!isDeleted && msg.edited_at && (
-                  <span
-                    className="text-[10px] text-gray-500 italic"
-                    title={msg.edited_at}
-                    data-testid={`chat-edited-tag-${msg.id}`}
-                  >
-                    ({t('edit.editedTag')})
-                  </span>
-                )}
-                {relative && (
-                  <span className="text-[10px] text-gray-500">{relative}</span>
-                )}
-              </div>
-            </div>
-          )
-        })}
-
         {!loading && !error && missedCalls.map(entry => (
           <div
             key={`missed-call-${entry.callId}`}
@@ -1430,9 +1054,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
               : t('chat.typing.multiple', { count: typingLabels.length })}
           </div>
         )}
-
-        <div ref={messagesEndRef} />
-      </div>
+      </MessageList>
 
       <div className="border-t border-gray-800 bg-gray-950 shrink-0">
         {user && (
