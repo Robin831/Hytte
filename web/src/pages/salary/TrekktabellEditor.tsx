@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TrekktabellParams } from './types'
 import type { SalaryData } from './useSalaryData'
+import InlineRetry from './InlineRetry'
 
 interface TrekktabellEditorProps {
   salary: SalaryData
@@ -13,12 +14,18 @@ interface TrekktabellEditorProps {
  */
 export default function TrekktabellEditor({ salary }: TrekktabellEditorProps) {
   const { t } = useTranslation('salary')
-  const { trekktabell, saveTrekktabell, resetTrekktabellDefaults } = salary
+  const { trekktabell, trekktabellError, retryTrekktabell, saveTrekktabell, resetTrekktabellDefaults } = salary
 
   const [showEditor, setShowEditor] = useState(false)
   const [editorTrekktabell, setEditorTrekktabell] = useState<TrekktabellParams | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+
+  // A failed fetch is explained inline; only a genuinely absent (not yet loaded)
+  // trekktabell renders nothing.
+  if (trekktabellError) {
+    return <InlineRetry message={t('errors.failedToLoadTrekktabell')} onRetry={retryTrekktabell} />
+  }
 
   if (!trekktabell) return null
 

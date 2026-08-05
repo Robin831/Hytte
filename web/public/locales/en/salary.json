@@ -208,6 +208,14 @@
     "failedToImport": "Import failed",
     "failedToLoadAssignments": "Failed to load assignments",
     "failedToSaveAssignment": "Save failed",
-    "failedToFetchDefaults": "Failed to fetch defaults"
+    "failedToFetchDefaults": "Failed to fetch defaults",
+    "failedToLoadVacation": "Failed to load vacation data",
+    "failedToLoadTrekktabell": "Failed to load trekktabell parameters"
+  },
+  "actions": {
+    "retry": "Retry"
+  },
+  "a11y": {
+    "refreshing": "Updating month estimate…"
   }
 }

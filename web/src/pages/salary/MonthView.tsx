@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import { formatMonthLabel, formatHours, formatCompact } from './types'
 import { getTierProgress, getTierEarnings, isTierActive } from './tierMath'
 import type { SalaryData } from './useSalaryData'
 import VacationCard from './VacationCard'
+import InlineRetry from './InlineRetry'
 import TrekktabellEditor from './TrekktabellEditor'
 import AssignmentsList from './AssignmentsList'
 import WhatIfTierSlider from './WhatIfTierSlider'
@@ -24,7 +25,7 @@ interface MonthViewProps {
  */
 export default function MonthView({ salary, selectedMonth, currentMonthStr, locale, onChangeMonth }: MonthViewProps) {
   const { t } = useTranslation('salary')
-  const { estimate, vacation, formatCurrency, saveOverride } = salary
+  const { estimate, refreshing, vacation, vacationError, retryVacation, formatCurrency, saveOverride } = salary
 
   // Manual override form state (for past estimate months).
   const [showOverride, setShowOverride] = useState(false)
@@ -119,8 +120,13 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
 
   return (
     <>
-      {/* Hero card — month estimate with prev/next navigation */}
-      <div className="bg-gray-800 rounded-xl p-5 space-y-4">
+      {/* Hero card — month estimate with prev/next navigation. While a new month
+          is loading the card dims so the previous month's numbers are visibly
+          stale rather than passing for fresh ones. */}
+      <div
+        className={`bg-gray-800 rounded-xl p-5 space-y-4 transition-opacity ${refreshing ? 'opacity-60' : ''}`}
+        aria-busy={refreshing}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
             <button
@@ -142,6 +148,12 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
             >
               <ChevronRight size={16} />
             </button>
+            {refreshing && (
+              <span role="status" className="ml-1 flex items-center text-gray-400">
+                <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                <span className="sr-only">{t('a11y.refreshing')}</span>
+              </span>
+            )}
           </div>
           <span className={`text-xs px-2 py-0.5 rounded-full ${estimate.estimate.is_estimate ? 'bg-yellow-900/60 text-yellow-300' : 'bg-green-900/60 text-green-300'}`}>
             {estimate.estimate.is_estimate ? t('hero.estimate') : t('hero.actual')}
@@ -482,7 +494,9 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
       )}
 
       {/* Vacation tracker */}
-      {vacation && <VacationCard vacation={vacation} formatCurrency={formatCurrency} />}
+      {vacationError
+        ? <InlineRetry message={t('errors.failedToLoadVacation')} onRetry={retryVacation} />
+        : vacation && <VacationCard vacation={vacation} formatCurrency={formatCurrency} />}
 
       {/* Trekktabell parameters */}
       <TrekktabellEditor salary={salary} />
