@@ -3,13 +3,29 @@ package chat
 import (
 	"database/sql"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Robin831/Hytte/internal/db"
+	"github.com/Robin831/Hytte/internal/encryption"
 )
+
+// rawColumn reads a single string column straight from SQLite, bypassing the
+// store's decrypt path, so tests can assert what is actually stored at rest.
+func rawColumn(t *testing.T, d *sql.DB, query string, args ...any) string {
+	t.Helper()
+	var v string
+	if err := d.QueryRow(query, args...).Scan(&v); err != nil {
+		t.Fatalf("read raw column: %v", err)
+	}
+	return v
+}
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
+	t.Setenv("ENCRYPTION_KEY", "test-key-for-chat-tests")
+	encryption.ResetEncryptionKey()
+	t.Cleanup(func() { encryption.ResetEncryptionKey() })
 	d, err := db.Init(":memory:")
 	if err != nil {
 		t.Fatalf("init test db: %v", err)
@@ -426,5 +442,268 @@ func TestTruncateFrom_MessageFromAnotherConversation(t *testing.T) {
 	}
 	if len(aMsgs) != 1 || len(bMsgs) != 1 {
 		t.Fatalf("expected both conversations untouched, got a=%d b=%d", len(aMsgs), len(bMsgs))
+	}
+}
+
+func TestEncryptionAtRest(t *testing.T) {
+	d := setupTestDB(t)
+
+	const title = "Secret Title"
+	const content = "Secret message body"
+
+	c, err := CreateConversation(d, 1, title, "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	m, err := InsertMessage(d, c.ID, "user", content)
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	storedTitle := rawColumn(t, d, `SELECT title FROM chat_conversations WHERE id = ?`, c.ID)
+	if storedTitle == title {
+		t.Fatalf("title stored as plaintext: %q", storedTitle)
+	}
+	if !strings.HasPrefix(storedTitle, "enc:") {
+		t.Fatalf("expected ciphertext prefix on stored title, got %q", storedTitle)
+	}
+
+	storedContent := rawColumn(t, d, `SELECT content FROM chat_messages WHERE id = ?`, m.ID)
+	if storedContent == content {
+		t.Fatalf("content stored as plaintext: %q", storedContent)
+	}
+	if !strings.HasPrefix(storedContent, "enc:") {
+		t.Fatalf("expected ciphertext prefix on stored content, got %q", storedContent)
+	}
+
+	// Model, role, session_id and timestamps stay queryable plaintext.
+	storedModel := rawColumn(t, d, `SELECT model FROM chat_conversations WHERE id = ?`, c.ID)
+	if storedModel != "claude-sonnet-4-6" {
+		t.Fatalf("expected plaintext model, got %q", storedModel)
+	}
+	storedRole := rawColumn(t, d, `SELECT role FROM chat_messages WHERE id = ?`, m.ID)
+	if storedRole != "user" {
+		t.Fatalf("expected plaintext role, got %q", storedRole)
+	}
+}
+
+func TestEncryptionRoundTrip(t *testing.T) {
+	d := setupTestDB(t)
+
+	c, err := CreateConversation(d, 1, "Round Trip", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := InsertMessage(d, c.ID, "user", "Hello there"); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	if _, err := InsertMessage(d, c.ID, "assistant", "General Kenobi"); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	got, err := GetConversation(d, c.ID, 1)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Title != "Round Trip" {
+		t.Fatalf("expected decrypted title, got %q", got.Title)
+	}
+
+	convos, err := ListConversations(d, 1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(convos) != 1 || convos[0].Title != "Round Trip" {
+		t.Fatalf("expected decrypted title in list, got %+v", convos)
+	}
+
+	msgs, err := GetMessages(d, c.ID)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 2 || msgs[0].Content != "Hello there" || msgs[1].Content != "General Kenobi" {
+		t.Fatalf("expected decrypted message content, got %+v", msgs)
+	}
+
+	// Rename and UpdateConversation also round-trip.
+	renamed, err := RenameConversation(d, c.ID, 1, "Renamed")
+	if err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	if renamed.Title != "Renamed" {
+		t.Fatalf("expected 'Renamed', got %q", renamed.Title)
+	}
+	if stored := rawColumn(t, d, `SELECT title FROM chat_conversations WHERE id = ?`, c.ID); stored == "Renamed" {
+		t.Fatalf("rename stored plaintext title")
+	}
+
+	newTitle := "Updated"
+	updated, err := UpdateConversation(d, c.ID, 1, &newTitle, nil)
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if updated.Title != "Updated" {
+		t.Fatalf("expected 'Updated', got %q", updated.Title)
+	}
+	if stored := rawColumn(t, d, `SELECT title FROM chat_conversations WHERE id = ?`, c.ID); stored == "Updated" {
+		t.Fatalf("update stored plaintext title")
+	}
+}
+
+func TestEmptyTitleStaysEmpty(t *testing.T) {
+	d := setupTestDB(t)
+
+	c, err := CreateConversation(d, 1, "", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if c.Title != "" {
+		t.Fatalf("expected empty title from create, got %q", c.Title)
+	}
+	if stored := rawColumn(t, d, `SELECT title FROM chat_conversations WHERE id = ?`, c.ID); stored != "" {
+		t.Fatalf("expected empty title stored as empty, got %q", stored)
+	}
+	got, err := GetConversation(d, c.ID, 1)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Title != "" {
+		t.Fatalf("expected empty title on read, got %q", got.Title)
+	}
+}
+
+func TestLegacyPlaintextRowsStillRead(t *testing.T) {
+	d := setupTestDB(t)
+
+	// Simulate rows written before encryption was introduced: no ciphertext prefix.
+	res, err := d.Exec(
+		`INSERT INTO chat_conversations (user_id, title, model, created_at, updated_at)
+		 VALUES (1, 'Legacy Title', 'claude-sonnet-4-6', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+	)
+	if err != nil {
+		t.Fatalf("insert legacy conversation: %v", err)
+	}
+	convoID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
+	if _, err := d.Exec(
+		`INSERT INTO chat_messages (conversation_id, role, content, created_at)
+		 VALUES (?, 'user', 'Legacy content', '2026-01-01T00:00:00.000Z')`,
+		convoID,
+	); err != nil {
+		t.Fatalf("insert legacy message: %v", err)
+	}
+
+	got, err := GetConversation(d, convoID, 1)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Title != "Legacy Title" {
+		t.Fatalf("expected legacy title unchanged, got %q", got.Title)
+	}
+
+	convos, err := ListConversations(d, 1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(convos) != 1 || convos[0].Title != "Legacy Title" {
+		t.Fatalf("expected legacy title in list, got %+v", convos)
+	}
+
+	msgs, err := GetMessages(d, convoID)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 1 || msgs[0].Content != "Legacy content" {
+		t.Fatalf("expected legacy content unchanged, got %+v", msgs)
+	}
+
+	// A legacy row is re-encrypted the next time it is written.
+	if _, err := RenameConversation(d, convoID, 1, "Now Encrypted"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	stored := rawColumn(t, d, `SELECT title FROM chat_conversations WHERE id = ?`, convoID)
+	if !strings.HasPrefix(stored, "enc:") {
+		t.Fatalf("expected re-encrypted title, got %q", stored)
+	}
+}
+
+func TestCorruptCiphertextFallsBackToRawValue(t *testing.T) {
+	d := setupTestDB(t)
+
+	res, err := d.Exec(
+		`INSERT INTO chat_conversations (user_id, title, model, created_at, updated_at)
+		 VALUES (1, 'enc:not-valid-ciphertext', 'claude-sonnet-4-6', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+	)
+	if err != nil {
+		t.Fatalf("insert conversation: %v", err)
+	}
+	convoID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
+	if _, err := d.Exec(
+		`INSERT INTO chat_messages (conversation_id, role, content, created_at)
+		 VALUES (?, 'user', 'enc:also-garbage', '2026-01-01T00:00:00.000Z')`,
+		convoID,
+	); err != nil {
+		t.Fatalf("insert message: %v", err)
+	}
+
+	got, err := GetConversation(d, convoID, 1)
+	if err != nil {
+		t.Fatalf("get should not fail on corrupt ciphertext: %v", err)
+	}
+	if got.Title != "enc:not-valid-ciphertext" {
+		t.Fatalf("expected raw stored title, got %q", got.Title)
+	}
+
+	convos, err := ListConversations(d, 1)
+	if err != nil {
+		t.Fatalf("list should not fail on corrupt ciphertext: %v", err)
+	}
+	if len(convos) != 1 || convos[0].Title != "enc:not-valid-ciphertext" {
+		t.Fatalf("expected raw stored title in list, got %+v", convos)
+	}
+
+	msgs, err := GetMessages(d, convoID)
+	if err != nil {
+		t.Fatalf("get messages should not fail on corrupt ciphertext: %v", err)
+	}
+	if len(msgs) != 1 || msgs[0].Content != "enc:also-garbage" {
+		t.Fatalf("expected raw stored content, got %+v", msgs)
+	}
+}
+
+func TestTruncateFromReturnsDecryptedContent(t *testing.T) {
+	d := setupTestDB(t)
+
+	c, err := CreateConversation(d, 1, "Truncate", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	target, err := InsertMessage(d, c.ID, "user", "Regenerate me")
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	if _, err := InsertMessage(d, c.ID, "assistant", "Old reply"); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	deleted, err := TruncateFrom(d, c.ID, 1, target.ID)
+	if err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+	if deleted.Content != "Regenerate me" {
+		t.Fatalf("expected decrypted content, got %q", deleted.Content)
+	}
+
+	msgs, err := GetMessages(d, c.ID)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Fatalf("expected all messages deleted, got %d", len(msgs))
 	}
 }
