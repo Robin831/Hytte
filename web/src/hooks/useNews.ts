@@ -82,6 +82,20 @@ function readCache(): ArticlesResponse | null {
   return null
 }
 
+// VotePatch is the optimistic article state produced by a 👍/👎 click.
+export type VotePatch = Pick<NewsArticle, 'feedback' | 'score' | 'score_reason'>
+
+// votePatch computes the article fields a vote applies locally, so the article
+// reorders without waiting for the server: 👍 → top, 👎 → bottom, clearing →
+// back to the model score. Re-clicking the active signal clears the vote.
+// Shared by the feed and the Saved tab so both compute identical state.
+export function votePatch(currentFeedback: number, signal: number): VotePatch {
+  const next = currentFeedback === signal ? 0 : signal
+  if (next > 0) return { feedback: next, score: 100, score_reason: 'you liked this' }
+  if (next < 0) return { feedback: next, score: 0, score_reason: 'you hid this' }
+  return { feedback: next, score: -1, score_reason: '' }
+}
+
 export function useNews() {
   const { t } = useTranslation('news')
 
@@ -211,26 +225,20 @@ export function useNews() {
   }, [patch])
 
   const vote = useCallback((article: NewsArticle, signal: number) => {
-    const next = article.feedback === signal ? 0 : signal
-    // Apply the vote to this article's score immediately so it reorders without
-    // waiting for the server: 👍 → top, 👎 → bottom, clear → back to model score.
-    if (next > 0) {
-      scoresRef.current.set(article.id, { score: 100, reason: 'you liked this' })
-      patch(article.id, { feedback: next, score: 100, score_reason: 'you liked this' })
-    } else if (next < 0) {
-      scoresRef.current.set(article.id, { score: 0, reason: 'you hid this' })
-      patch(article.id, { feedback: next, score: 0, score_reason: 'you hid this' })
-    } else {
+    const next = votePatch(article.feedback, signal)
+    if (next.feedback === 0) {
       scoresRef.current.delete(article.id)
-      patch(article.id, { feedback: next, score: -1, score_reason: '' })
+    } else {
+      scoresRef.current.set(article.id, { score: next.score, reason: next.score_reason })
     }
+    patch(article.id, next)
     fetch('/api/news/feedback', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         article_id: article.id,
-        signal: next,
+        signal: next.feedback,
         title: article.title,
         summary: article.summary,
         source: article.source,

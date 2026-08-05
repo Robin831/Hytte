@@ -4,7 +4,7 @@ import { RefreshCw, SlidersHorizontal, Rows3, Columns3, ChevronDown, Sparkles, C
 import { Skeleton } from '../components/ui/skeleton'
 import NewsCard from '../components/news/NewsCard'
 import NewsFilterDrawer from '../components/news/NewsFilterDrawer'
-import { useNews, type NewsArticle } from '../hooks/useNews'
+import { useNews, votePatch, type NewsArticle } from '../hooks/useNews'
 
 type Layout = 'timeline' | 'columns'
 type Tab = 'feed' | 'saved'
@@ -209,7 +209,12 @@ export default function News() {
           lowLabel={t('lowRelevance', { count: low.length })}
         />
       ) : (
-        <SavedTab markRead={markRead} vote={vote} toggleSave={toggleSave} scored={false} />
+        <SavedTab
+          markRead={markRead}
+          vote={vote}
+          toggleSave={toggleSave}
+          scored={rankingEnabled}
+        />
       )}
 
       <NewsFilterDrawer
@@ -301,6 +306,20 @@ function SavedTab({ markRead, vote, toggleSave, scored }: SavedTabProps) {
     setItems(prev => prev.filter(x => x.id !== a.id))
   }
 
+  // The hook callbacks only patch the feed's own list, so mirror every action
+  // onto `items` as well — otherwise the buttons look dead on this tab.
+  const handleOpen = (id: string) => {
+    markRead(id)
+    setItems(prev => prev.map(x => (x.id === id ? { ...x, read: true } : x)))
+  }
+
+  const handleVote = (a: NewsArticle, signal: number) => {
+    // `a` comes from `items`, and the hook patches the feed off the same
+    // article, so both lists end up with identical vote state.
+    vote(a, signal)
+    setItems(prev => prev.map(x => (x.id === a.id ? { ...x, ...votePatch(a.feedback, signal) } : x)))
+  }
+
   if (loading) {
     return (
       <div className="mx-auto max-w-3xl space-y-3">
@@ -312,14 +331,15 @@ function SavedTab({ markRead, vote, toggleSave, scored }: SavedTabProps) {
 
   return (
     <div className="mx-auto max-w-3xl space-y-3">
-      {items.map(a => (
+      {items.map(item => (
+        // /api/news/saved already marks every row `saved`, so no override here.
         <NewsCard
-          key={a.id}
-          article={{ ...a, saved: true }}
+          key={item.id}
+          article={item}
           variant="timeline"
           scored={scored}
-          onOpen={markRead}
-          onVote={vote}
+          onOpen={handleOpen}
+          onVote={handleVote}
           onToggleSave={handleUnsave}
         />
       ))}
