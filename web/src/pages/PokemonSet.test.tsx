@@ -669,3 +669,26 @@ describe('PokemonSet – variant filter chip', () => {
     })
   })
 })
+
+describe('PokemonSet – card image fallback', () => {
+  it('renders the collector number when a card image fails to load', async () => {
+    const set = makeSet({ total_cards: 1 })
+    const cards = [makeCard({ id: 'sv1-1', name: 'Pikachu', collector_no: '001' })]
+    vi.stubGlobal('fetch', makeFetchMock({ set, cards }))
+
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    const tile = screen.getByTestId('card-tile-sv1-1')
+    const img = tile.querySelector('img')
+    expect(img).not.toBeNull()
+
+    fireEvent.error(img as HTMLImageElement)
+
+    // The broken <img> is replaced by the plain collector number, not left as
+    // a broken-image icon. (The tile's caption renders "#001" via mockT, so
+    // the bare "001" match is the fallback span.)
+    expect(tile.querySelector('img')).toBeNull()
+    expect(within(tile).getByText('001')).toBeInTheDocument()
+  })
+})

@@ -8,7 +8,8 @@ import AddCardPanel from '../components/pokemon/AddCardPanel'
 import CardScanner from '../components/pokemon/CardScanner'
 import PageScanner from '../components/pokemon/PageScanner'
 import CollectionValueCard from '../components/pokemon/CollectionValueCard'
-import { formatDate } from '../utils/formatDate'
+import PokemonImage from '../components/pokemon/PokemonImage'
+import { formatReleaseDate } from '../components/pokemon/format'
 
 // PokemonSetsLocationState carries the optional "open AddCardPanel pre-filled
 // with this query" hint that the /pokemon/scanned page passes through
@@ -49,27 +50,6 @@ function eraSlug(era: string): string {
     .replace(/^-+|-+$/g, '')
 }
 
-function formatReleaseDate(raw: string): string {
-  // pokemontcg.io releases dates as "YYYY/MM/DD". `new Date('YYYY-MM-DD')`
-  // parses as UTC midnight, which becomes the previous day in any negative-UTC
-  // timezone, so we construct the Date from local components instead. Fall
-  // back to the raw string when parsing fails so we never render
-  // "Invalid Date".
-  const m = raw.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/)
-  let d: Date
-  if (m) {
-    d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-  } else {
-    d = new Date(raw)
-  }
-  if (Number.isNaN(d.getTime())) return raw
-  try {
-    return formatDate(d, { dateStyle: 'medium' })
-  } catch {
-    return raw
-  }
-}
-
 function ownershipPercent(owned: number, total: number): number {
   if (total <= 0) return 0
   return Math.round((owned / total) * 100)
@@ -82,12 +62,6 @@ interface SetTileProps {
 
 function SetTile({ set, t }: SetTileProps) {
   const percent = ownershipPercent(set.owned_count, set.total_cards)
-  const [errored, setErrored] = useState(false)
-  const [prevUrl, setPrevUrl] = useState(set.logo_url)
-  if (set.logo_url !== prevUrl) {
-    setPrevUrl(set.logo_url)
-    setErrored(false)
-  }
   return (
     <Link
       to={`/pokemon/sets/${set.id}`}
@@ -96,17 +70,12 @@ function SetTile({ set, t }: SetTileProps) {
       data-testid={`set-tile-${set.id}`}
     >
       <div className="h-14 flex items-center justify-center">
-        {set.logo_url && !errored ? (
-          <img
-            src={set.logo_url}
-            alt=""
-            className="max-h-14 max-w-full object-contain"
-            loading="lazy"
-            onError={() => setErrored(true)}
-          />
-        ) : (
-          <span className="text-xs uppercase tracking-wide text-gray-500">{set.id}</span>
-        )}
+        <PokemonImage
+          src={set.logo_url}
+          alt=""
+          className="max-h-14 max-w-full object-contain"
+          fallback={<span className="text-xs uppercase tracking-wide text-gray-500">{set.id}</span>}
+        />
       </div>
       <div className="min-w-0">
         <p className="text-sm font-medium text-white truncate" title={set.name}>{set.name}</p>
