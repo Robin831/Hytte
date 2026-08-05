@@ -29,6 +29,9 @@
     "retry": "Prøv igjen"
   },
   "widgets": {
+    "greeting": {
+      "title": "Hilsen"
+    },
     "weather": {
       "title": "Vær",
       "loading": "Laster…",
@@ -142,5 +145,19 @@
         "url": "URL"
       }
     }
+  },
+  "layout": {
+    "edit": "Rediger oppsett",
+    "done": "Ferdig",
+    "reset": "Tilbakestill til standard",
+    "hint": "Dra et element, eller bruk pilene, for å endre rekkefølgen. Skjul dem du ikke trenger.",
+    "hiddenTitle": "Skjulte elementer",
+    "hiddenEmpty": "Ingen skjulte elementer.",
+    "hide": "Skjul {{widget}}",
+    "show": "Vis {{widget}}",
+    "showShort": "Vis",
+    "moveUp": "Flytt {{widget}} opp",
+    "moveDown": "Flytt {{widget}} ned",
+    "saveError": "Kunne ikke lagre oppsettet for dashbordet."
   }
 }

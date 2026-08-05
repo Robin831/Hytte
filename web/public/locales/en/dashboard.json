@@ -29,6 +29,9 @@
     "retry": "Retry"
   },
   "widgets": {
+    "greeting": {
+      "title": "Greeting"
+    },
     "weather": {
       "title": "Weather",
       "loading": "Loading…",
@@ -142,5 +145,19 @@
         "url": "URL"
       }
     }
+  },
+  "layout": {
+    "edit": "Edit layout",
+    "done": "Done",
+    "reset": "Reset to default",
+    "hint": "Drag a widget, or use the arrows, to reorder. Hide the ones you don't need.",
+    "hiddenTitle": "Hidden widgets",
+    "hiddenEmpty": "No hidden widgets.",
+    "hide": "Hide {{widget}}",
+    "show": "Show {{widget}}",
+    "showShort": "Show",
+    "moveUp": "Move {{widget}} up",
+    "moveDown": "Move {{widget}} down",
+    "saveError": "Could not save your dashboard layout."
   }
 }

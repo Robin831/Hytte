@@ -2088,3 +2088,152 @@ func TestSetPreferences_Transaction(t *testing.T) {
 		t.Errorf("after upsert: got %v", stored)
 	}
 }
+
+func TestPreferencesPutHandler_DashboardWidgets(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	layoutJSON := `{"order":["greeting","calendar","weather"],"hidden":["lactate"]}`
+	body := `{"preferences":{"dashboard_widgets":` + layoutJSON + `}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	stored := resp["preferences"]["dashboard_widgets"]
+	if stored == "" {
+		t.Fatal("expected dashboard_widgets to be stored")
+	}
+
+	var layout struct {
+		Order  []string `json:"order"`
+		Hidden []string `json:"hidden"`
+	}
+	if err := json.Unmarshal([]byte(stored), &layout); err != nil {
+		t.Fatalf("unmarshal stored layout: %v", err)
+	}
+	if len(layout.Order) != 3 || layout.Order[1] != "calendar" {
+		t.Errorf("unexpected order: %v", layout.Order)
+	}
+	if len(layout.Hidden) != 1 || layout.Hidden[0] != "lactate" {
+		t.Errorf("unexpected hidden: %v", layout.Hidden)
+	}
+
+	// A GET must round-trip the same value.
+	getHandler := RequireAuth(db)(PreferencesGetHandler(db))
+	getReq := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+	getReq.AddCookie(&http.Cookie{Name: "session", Value: token})
+	getRec := httptest.NewRecorder()
+	getHandler.ServeHTTP(getRec, getReq)
+
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on GET, got %d", getRec.Code)
+	}
+	var getResp map[string]map[string]string
+	if err := json.NewDecoder(getRec.Body).Decode(&getResp); err != nil {
+		t.Fatalf("decode GET: %v", err)
+	}
+	if getResp["preferences"]["dashboard_widgets"] != stored {
+		t.Errorf("GET round-trip mismatch: got %q, want %q", getResp["preferences"]["dashboard_widgets"], stored)
+	}
+}
+
+func TestPreferencesPutHandler_DashboardWidgetsEmptyArraysResetsLayout(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	body := `{"preferences":{"dashboard_widgets":{"order":[],"hidden":[]}}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPreferencesPutHandler_DashboardWidgetsRejectsInvalid(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	longID := `"` + strings.Repeat("a", 65) + `"`
+	tooMany := make([]string, 51)
+	for i := range tooMany {
+		tooMany[i] = `"w` + strconv.Itoa(i) + `"`
+	}
+
+	cases := []struct {
+		name  string
+		value string
+	}{
+		{"not an object", `["greeting"]`},
+		{"order is not an array", `{"order":"greeting","hidden":[]}`},
+		{"order contains a non-string", `{"order":[1,2],"hidden":[]}`},
+		{"unknown field", `{"order":[],"hidden":[],"columns":3}`},
+		{"bare string", `"greeting"`},
+		{"order too long", `{"order":[` + strings.Join(tooMany, ",") + `],"hidden":[]}`},
+		{"hidden too long", `{"order":[],"hidden":[` + strings.Join(tooMany, ",") + `]}`},
+		{"id too long", `{"order":[` + longID + `],"hidden":[]}`},
+		{"id has bad characters", `{"order":["Greeting!"],"hidden":[]}`},
+		{"hidden id has bad characters", `{"order":[],"hidden":["quick links"]}`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"preferences":{"dashboard_widgets":` + tc.value + `}}`
+			req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			req.AddCookie(&http.Cookie{Name: "session", Value: token})
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d; body: %s", rec.Code, rec.Body.String())
+			}
+			var errResp map[string]string
+			if err := json.NewDecoder(rec.Body).Decode(&errResp); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if errResp["error"] == "" {
+				t.Error("expected a JSON error message")
+			}
+		})
+	}
+
+	// Nothing may have been persisted by the rejected requests.
+	prefs, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if _, ok := prefs["dashboard_widgets"]; ok {
+		t.Error("expected dashboard_widgets not to be stored after rejections")
+	}
+}
