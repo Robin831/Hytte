@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { Dumbbell, Upload, TrendingUp, BarChart3, RefreshCw, X, Database } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
@@ -96,13 +96,39 @@ const sportIcons: Record<string, string> = {
 export default function Training() {
   const { user } = useAuth()
   const { t } = useTranslation(['training', 'common'])
-  const listCache = useTrainingListCache(user?.id)
+
+  // Filter state lives in the URL, so /training?sport=running&tag=long&q=intervals
+  // is bookmarkable, survives a reload, and comes back intact when the browser
+  // navigates back to it. These are request parameters, not a client-side
+  // narrowing of the loaded pages: changing any of them refetches page 1 from
+  // the backend so matches are drawn from the whole workout history.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const sportFilter = searchParams.get('sport') ?? ''
+  const query = searchParams.get('q') ?? ''
+  const selectedTags = useMemo(() => searchParams.getAll('tag'), [searchParams])
+
+  // Serialized filter params: the query string every workout-list request
+  // carries, and the per-filter suffix of the list snapshot key. Built from the
+  // individual values rather than taken from searchParams.toString() so the
+  // order is canonical however the params arrived, which keeps one filter
+  // combination on one cache key. Kept as a string so it can be a stable effect
+  // dependency despite selectedTags being a new array on each toggle.
+  const filterParams = useMemo(() => {
+    const params = new URLSearchParams()
+    if (sportFilter) params.set('sport', sportFilter)
+    for (const tag of selectedTags) params.append('tag', tag)
+    const q = query.trim()
+    if (q) params.set('q', q)
+    return params.toString()
+  }, [sportFilter, selectedTags, query])
+
+  const listCache = useTrainingListCache(user?.id, filterParams)
 
   // Snapshot of the list as it was when the user last left this page in this
-  // tab, read once before the first paint so a return from a workout detail
-  // renders the already-loaded pages immediately. A reload (F5) deliberately
-  // skips it: sessionStorage survives F5, but asking for the page again means
-  // asking for fresh data.
+  // tab under these filters, read once before the first paint so a return from a
+  // workout detail renders the already-loaded pages immediately. A reload (F5)
+  // deliberately skips it: sessionStorage survives F5, but asking for the page
+  // again means asking for fresh data.
   const [hydrated] = useState(() => {
     if (isReloadNavigation()) return null
     const snapshot = listCache.read()
@@ -139,20 +165,30 @@ export default function Training() {
   }, [workouts])
 
   // Armed while the restored list is still authoritative. The first page-1 load
-  // after a hydrated mount is a background refresh that merges into the restored
-  // pages; any filter change or explicit refresh disarms it, because those own
-  // the list outright and must replace it.
+  // after a hydrated mount — or after a filter change that restored that
+  // filter's snapshot — is a background refresh that merges into the restored
+  // pages; a filter change with nothing cached, or an explicit refresh, disarms
+  // it because those own the list outright and must replace it.
   const mergeArmedRef = useRef(hydrated !== null)
 
-  // Filter state. These are request parameters, not a client-side narrowing of
-  // the loaded pages: changing any of them refetches page 1 from the backend so
-  // matches are drawn from the whole workout history.
-  const [sportFilter, setSportFilter] = useState('')
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
-  // queryInput is what the user sees; query is its debounced counterpart and is
-  // the value that actually reaches the request.
-  const [queryInput, setQueryInput] = useState('')
-  const [query, setQuery] = useState('')
+  // The filter and refresh generation the last page-1 effect run started a load
+  // for, used to tell a filter change from a re-run for some other reason.
+  const requestedFilterRef = useRef(filterParams)
+  const requestedRefreshTickRef = useRef(0)
+  // The filter the rows currently on screen were loaded for. Guards the snapshot
+  // write, so the render between a filter change and its page 1 landing cannot
+  // store the previous filter's rows under the new key.
+  const loadedFilterRef = useRef(filterParams)
+
+  // queryInput is what the user sees; the URL's ?q is its debounced counterpart
+  // and is the value that actually reaches the request.
+  const [queryInput, setQueryInput] = useState(query)
+
+  // The last ?q this page wrote itself. The sync-back effect uses it to tell an
+  // outside change — Back/forward, a pasted link — which must overwrite the
+  // input, from the echo of our own debounced commit, which must not (it would
+  // eat a trailing space the user is still typing past).
+  const committedQueryRef = useRef(query)
 
   // Generation counter for page-1 loads (mount, filter change, refresh). Only
   // those bump it; "load more" captures the current value and drops its response
@@ -160,27 +196,60 @@ export default function Training() {
   // filter therefore can never overwrite — or append to — a newer one's results.
   const listRequestIdRef = useRef(0)
 
+  // setFilters rewrites the whole filter query string, omitting empty values so
+  // clearing every filter leaves a bare /training. Sport and tag changes push a
+  // history entry; the debounced search commits with replace, so one Back press
+  // leaves the page instead of stepping back through keystrokes.
+  const setFilters = useCallback(
+    (next: { sport?: string; tags?: string[]; q?: string }, opts?: { replace?: boolean }) => {
+      const params = new URLSearchParams()
+      const sport = next.sport ?? sportFilter
+      const tags = next.tags ?? selectedTags
+      const q = (next.q ?? query).trim()
+      if (sport) params.set('sport', sport)
+      for (const tag of tags) params.append('tag', tag)
+      if (q) params.set('q', q)
+      setSearchParams(params, { replace: opts?.replace ?? false })
+    },
+    [sportFilter, selectedTags, query, setSearchParams],
+  )
+
   useEffect(() => {
-    // Nothing to debounce while the committed query already matches the input,
-    // so mount (and the settle after each commit) schedules no timer at all —
+    // Nothing to debounce while the URL already carries what the box holds, so
+    // mount (and the settle after each commit) schedules no timer at all —
     // page 1 is fetched once, not once more 300 ms later.
-    if (queryInput === query) return
-    const timer = setTimeout(() => setQuery(queryInput), SEARCH_DEBOUNCE_MS)
+    const trimmed = queryInput.trim()
+    if (trimmed === query) return
+    const timer = setTimeout(() => {
+      committedQueryRef.current = trimmed
+      setFilters({ q: trimmed }, { replace: true })
+    }, SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [queryInput, query])
+  }, [queryInput, query, setFilters])
+
+  // Adopt a ?q that came from outside this page (Back/forward, a shared link)
+  // into the search box.
+  useEffect(() => {
+    if (query === committedQueryRef.current) return
+    committedQueryRef.current = query
+    setQueryInput(query)
+  }, [query])
+
+  const setSportFilter = useCallback((sport: string) => { setFilters({ sport }) }, [setFilters])
 
   const toggleTag = useCallback((tag: string) => {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
-    )
-  }, [])
+    setFilters({
+      tags: selectedTags.includes(tag)
+        ? selectedTags.filter((selected) => selected !== tag)
+        : [...selectedTags, tag],
+    })
+  }, [selectedTags, setFilters])
 
   const clearFilters = useCallback(() => {
-    setSportFilter('')
-    setSelectedTags([])
+    committedQueryRef.current = ''
     setQueryInput('')
-    setQuery('')
-  }, [])
+    setFilters({ sport: '', tags: [], q: '' })
+  }, [setFilters])
 
   const filtersActive = sportFilter !== '' || selectedTags.length > 0 || query.trim() !== ''
 
@@ -200,18 +269,6 @@ export default function Training() {
     return [...tags].sort((a, b) => a.localeCompare(b))
   }, [availableTags, selectedTags, workouts])
 
-  // Serialized filter params shared by every workout-list request. Kept as a
-  // string so it can be a stable effect dependency despite selectedTags being
-  // a new array on each toggle.
-  const filterParams = useMemo(() => {
-    const params = new URLSearchParams()
-    if (sportFilter) params.set('sport', sportFilter)
-    for (const tag of selectedTags) params.append('tag', tag)
-    const q = query.trim()
-    if (q) params.set('q', q)
-    return params.toString()
-  }, [sportFilter, selectedTags, query])
-
   const workoutsUrl = useCallback(
     (cursor: string | null) => {
       let url = `/api/training/workouts?limit=${PAGE_SIZE}`
@@ -230,26 +287,61 @@ export default function Training() {
     const requestId = ++listRequestIdRef.current
     let cancelled = false
     const isCurrent = () => !cancelled && requestId === listRequestIdRef.current
-    // Merge only while the restored list is untouched by a filter or a refresh.
-    // The check itself disarms: once a filter has been applied, later loads
-    // replace even after the filters are cleared again. A merge-armed load still
-    // replaces when the page comes back detached from the restored rows.
-    const merge = mergeArmedRef.current && filterParams === '' && refreshTick === 0
-    if (!merge) mergeArmedRef.current = false
+
+    const filterChanged = requestedFilterRef.current !== filterParams
+    requestedFilterRef.current = filterParams
+    const refreshed = refreshTick !== requestedRefreshTickRef.current
+    requestedRefreshTickRef.current = refreshTick
+
+    // Switching filters looks for the snapshot belonging to the filters being
+    // switched *to*, and page 1 folds into it exactly the way it folds into the
+    // rows a hydrated mount restored — so the pages and the cursor the user had
+    // under that filter come back rather than a bare page 1. The snapshot is
+    // applied when the response lands rather than up front, so the previous
+    // filter's rows are replaced once instead of flickering through a stale
+    // intermediate list.
+    const cached = filterChanged && !refreshed && !isReloadNavigation() ? listCache.read() : null
+    const restored = cached && cached.workouts.length > 0 ? cached : null
+    // Merge only while the list page 1 would fold into belongs to these exact
+    // filters: the restored snapshot above, or — when nothing about the request
+    // changed — the rows already on screen. A filter change with nothing cached,
+    // or an explicit refresh (which owns the list outright), replaces instead. A
+    // merge-armed load still replaces when the page comes back detached from the
+    // rows it would fold into.
+    const merge = restored !== null || (mergeArmedRef.current && !filterChanged && !refreshed)
+    mergeArmedRef.current = merge
     ;(async () => {
       // Drop the previous filter's cursor up front: it points into a different
       // result set, so "Load more" must not stay clickable with it while page 1
       // of the new filter is in flight. A background refresh keeps its cursor —
       // the restored pages it points past are still on screen.
-      if (!merge) setNextCursor(null)
+      if (restored !== null || !merge) setNextCursor(null)
+
+      // showRestored puts the snapshot on screen when the request for the newly
+      // selected filters does not come back. It is that filter's own last-seen
+      // list, which beats both an empty page and the previous filter's rows.
+      const showRestored = () => {
+        if (!restored) return
+        setWorkouts(restored.workouts)
+        setNextCursor(restored.nextCursor)
+        setHasAnyWorkouts(true)
+        loadedFilterRef.current = filterParams
+      }
+
       try {
         const res = await fetch(workoutsUrl(null), { credentials: 'include' })
         if (!isCurrent()) return
         if (!res.ok) {
-          // A failed background refresh leaves the restored list alone: it is
-          // the last thing the user actually saw, and dropping it would be a
-          // worse answer than showing it alongside the error.
-          if (!merge) setWorkouts([])
+          // A failed background refresh leaves the list on screen alone, and a
+          // failed switch falls back to that filter's snapshot: both are the
+          // last thing the user actually saw under these filters, and dropping
+          // them would be a worse answer than showing them with the error.
+          if (restored) {
+            showRestored()
+          } else if (!merge) {
+            setWorkouts([])
+            loadedFilterRef.current = filterParams
+          }
           setError(t('errors.failedToLoadWorkouts'))
           return
         }
@@ -257,8 +349,17 @@ export default function Training() {
         if (!isCurrent()) return
         const list: Workout[] = data.workouts || []
         const exhausted = (data.next_cursor ?? null) === null
-        if (merge && !firstPageDetached(workoutsRef.current, list, exhausted)) {
-          setWorkouts(prev => mergeFirstPage(prev, list, exhausted))
+        const base = restored ? restored.workouts : workoutsRef.current
+        loadedFilterRef.current = filterParams
+        if (merge && !firstPageDetached(base, list, exhausted)) {
+          if (restored) {
+            // The snapshot's cursor comes back with it: it points past the pages
+            // being restored, which is where "Load more" must continue from.
+            setWorkouts(mergeFirstPage(restored.workouts, list, exhausted))
+            setNextCursor(restored.nextCursor)
+          } else {
+            setWorkouts(prev => mergeFirstPage(prev, list, exhausted))
+          }
           setHasAnyWorkouts(list.length > 0 || filtersActive)
         } else {
           setWorkouts(list)
@@ -266,13 +367,16 @@ export default function Training() {
           setHasAnyWorkouts(list.length > 0 || filtersActive)
         }
       } catch {
-        if (isCurrent()) setError(t('errors.failedToLoadWorkouts'))
+        if (isCurrent()) {
+          showRestored()
+          setError(t('errors.failedToLoadWorkouts'))
+        }
       } finally {
         if (isCurrent()) setLoading(false)
       }
     })()
     return () => { cancelled = true }
-  }, [user, refreshTick, workoutsUrl, filterParams, filtersActive, t])
+  }, [user, refreshTick, workoutsUrl, filterParams, filtersActive, listCache, t])
 
   // Filter-independent page data: weekly summaries, the tag chip source, and
   // the new-workout baseline. The baseline comes from the cheap /latest
@@ -316,16 +420,14 @@ export default function Training() {
   }, [user, refreshTick, t])
 
   // Persist the loaded pages so leaving for a workout detail and coming back
-  // restores them. Only the unfiltered list is cached — filter state is not
-  // restored, so a snapshot taken under a filter would come back as a silently
-  // narrowed history. While a filter is active the snapshot is dropped instead,
-  // which just means the next mount does a normal fresh load.
+  // restores them. The snapshot is keyed by the active filters, which the URL
+  // now carries, so a filtered list comes back as the same filtered view rather
+  // than as a silently narrowed history. The loadedFilterRef guard covers the
+  // renders between a filter change and its page 1 landing, when `workouts`
+  // still holds the previous filter's rows.
   useEffect(() => {
     if (!user) return
-    if (filterParams !== '') {
-      listCache.clear()
-      return
-    }
+    if (loadedFilterRef.current !== filterParams) return
     if (loading || workouts.length === 0) return
     listCache.write({
       workouts,

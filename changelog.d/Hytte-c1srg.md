@@ -1,0 +1,3 @@
+category: Changed
+- **Training filters live in the URL** - Sport, tag and text filters are now query parameters, so `/training?sport=running&tag=long&q=intervals` is bookmarkable, survives a reload, and comes back when you navigate back to it. Typing in the search box replaces the history entry rather than pushing one, so a single Back press leaves the page instead of stepping through keystrokes. (Hytte-c1srg)
+- **Filtered workout lists restore their pages and scroll position** - The saved list snapshot is keyed by the active filters, so opening a workout from a filtered, scrolled list and pressing Back returns to exactly that view instead of resetting to page 1. Two filter combinations kept in one tab restore independently. (Hytte-c1srg)
