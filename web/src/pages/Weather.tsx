@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react'
-import type { TFunction } from 'i18next'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MapPin, RefreshCw } from 'lucide-react'
+import { CloudOff, MapPin, RefreshCw, X } from 'lucide-react'
 import { useAuth } from '../auth'
 import { Skeleton } from '../components/ui/skeleton'
 import LocationSearch from '../components/LocationSearch'
@@ -13,18 +12,13 @@ import DailyForecastList from '../components/weather/DailyForecastList'
 import { useWeatherLocation } from '../hooks/useWeatherLocation'
 import { useForecast } from '../hooks/useForecast'
 import { useSunTimes } from '../hooks/useSunTimes'
-import { buildDailyForecasts } from '../lib/weatherForecast'
-
-/** How often the "Updated X min ago" label is recomputed. */
-const TIME_AGO_TICK_MS = 30_000
-
-function formatTimeAgo(date: Date, t: TFunction<'weather'>): string {
-  const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
-  if (seconds < 60) return t('updated.justNow')
-  const minutes = Math.floor(seconds / 60)
-  if (minutes === 1) return t('updated.minuteAgo')
-  return t('updated.minutesAgo', { count: minutes })
-}
+import { useCurrentTime } from '../hooks/useCurrentTime'
+import {
+  buildDailyForecasts,
+  formatTimeAgo,
+  selectCurrentIndex,
+  selectUpcoming,
+} from '../lib/weatherForecast'
 
 export default function Weather() {
   const { t } = useTranslation('weather')
@@ -38,7 +32,7 @@ export default function Weather() {
     selectLocation,
   } = useWeatherLocation()
 
-  const { data: forecast, loading, errorMessage, lastUpdated, refresh } = useForecast(location, {
+  const { data: forecast, loading, error, errorMessage, lastUpdated, refresh } = useForecast(location, {
     persist: true,
     userId: user?.id,
     autoRefresh: true,
@@ -46,16 +40,32 @@ export default function Weather() {
   })
   const sun = useSunTimes(location, locationResolved)
 
-  // Tick periodically to keep the "Updated X min ago" text current.
-  const [, setTick] = useState(0)
-  useEffect(() => {
-    const timer = setInterval(() => setTick((v) => v + 1), TIME_AGO_TICK_MS)
-    return () => clearInterval(timer)
-  }, [])
-  const timeAgo = lastUpdated ? formatTimeAgo(lastUpdated, t) : ''
+  // A live clock keeps the "Updated X ago" text and the now-relative entry
+  // selection below current, so the page rolls over to the next hour on its own
+  // instead of waiting for a fetch to re-render it.
+  const now = useCurrentTime().getTime()
+
+  // Re-armed on every new failure so the chip returns after the user dismissed an
+  // earlier one, but stays hidden for the rest of the current failure. Compared
+  // against the previous render rather than reset from an effect, which would
+  // paint the dismissed chip once before removing it.
+  const [staleDismissed, setStaleDismissed] = useState(false)
+  const [dismissedForError, setDismissedForError] = useState(error)
+  if (dismissedForError !== error) {
+    setDismissedForError(error)
+    setStaleDismissed(false)
+  }
+
+  const timeAgo = lastUpdated ? formatTimeAgo(lastUpdated, t, now) : ''
 
   const timeseries = forecast?.properties?.timeseries ?? []
-  const current = timeseries[0]
+  // Index 0 is only "right now" for a freshly fetched forecast. A cached one can
+  // start hours or days back, so pick the entry nearest the clock instead. When
+  // the whole series has elapsed this still resolves to the last entry, keeping
+  // the card populated while the stale chip explains what it is showing.
+  const currentIndex = selectCurrentIndex(timeseries, now)
+  const current = currentIndex >= 0 ? timeseries[currentIndex] : undefined
+  const upcoming = selectUpcoming(timeseries, now)
   const dailyForecasts = timeseries.length > 0 ? buildDailyForecasts(timeseries, t('page.today')) : []
   const currentSymbol =
     current?.data.next_1_hours?.summary.symbol_code ||
@@ -125,6 +135,29 @@ export default function Weather() {
         </div>
       )}
 
+      {/*
+        A failed refresh with a forecast still on screen is exactly the case the
+        banner above skips. Say plainly that the numbers come from the cache
+        rather than letting an hours-old reading pass for the current conditions.
+      */}
+      {error && forecast && !staleDismissed && (
+        <div
+          role="status"
+          className="flex items-center gap-2 bg-amber-900/30 border border-amber-800 rounded-xl px-4 py-2 mb-4 text-sm text-amber-300"
+        >
+          <CloudOff size={16} className="shrink-0" />
+          <span className="flex-1">{t('stale.chip')}</span>
+          <button
+            type="button"
+            onClick={() => setStaleDismissed(true)}
+            aria-label={t('stale.dismiss')}
+            className="p-1 -mr-1 rounded text-amber-400 hover:text-amber-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {current && (
         <>
           <CurrentConditionsCard
@@ -136,9 +169,9 @@ export default function Weather() {
           />
 
           {/* Hourly trend chart (next 24 hours) */}
-          <HourlyChart timeseries={timeseries.slice(0, 24)} />
+          <HourlyChart timeseries={upcoming.slice(0, 24)} />
 
-          <HourlyStrip timeseries={timeseries} />
+          <HourlyStrip timeseries={upcoming} />
 
           <DailyForecastList days={dailyForecasts} />
 

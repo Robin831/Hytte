@@ -11,6 +11,7 @@
     "pressure": "Pressure",
     "nextHours": "Next {{count}} hours",
     "showNextHours": "Show next {{count}} hours",
+    "noUpcomingHours": "No upcoming hours in this forecast.",
     "sevenDayForecast": "7-day forecast",
     "today": "Today",
     "recentLocations": "Recent",
@@ -56,8 +57,16 @@
   },
   "updated": {
     "justNow": "Updated just now",
-    "minuteAgo": "Updated 1 min ago",
-    "minutesAgo": "Updated {{count}} min ago"
+    "minutes_one": "Updated {{count}} min ago",
+    "minutes_other": "Updated {{count}} min ago",
+    "hours_one": "Updated {{count}} hour ago",
+    "hours_other": "Updated {{count}} hours ago",
+    "days_one": "Updated {{count}} day ago",
+    "days_other": "Updated {{count}} days ago"
+  },
+  "stale": {
+    "chip": "Showing cached data — the forecast could not be refreshed",
+    "dismiss": "Dismiss the cached data notice"
   },
   "sun": {
     "sunrise": "Sunrise",

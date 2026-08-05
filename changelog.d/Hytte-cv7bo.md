@@ -1,0 +1,2 @@
+category: Fixed
+- **Weather page no longer passes hours-old cache off as current conditions** - The "right now" card now shows the forecast hour nearest the clock instead of the first cached entry, the hourly strip and 24-hour chart start at the current hour with elapsed hours dropped, "Updated X ago" counts in hours and days rather than reporting a day-old cache as "1440 min ago", and a dismissible "showing cached data" chip appears whenever a refresh fails while a cached forecast is still on screen. (Hytte-cv7bo)

@@ -11,6 +11,7 @@
     "pressure": "Lufttrykk",
     "nextHours": "Neste {{count}} timer",
     "showNextHours": "Vis neste {{count}} timer",
+    "noUpcomingHours": "Ingen kommende timer i dette varselet.",
     "sevenDayForecast": "7-dagers varsel",
     "today": "I dag",
     "recentLocations": "Siste",
@@ -56,8 +57,16 @@
   },
   "updated": {
     "justNow": "Oppdatert akkurat nå",
-    "minuteAgo": "Oppdatert for 1 min siden",
-    "minutesAgo": "Oppdatert for {{count}} min siden"
+    "minutes_one": "Oppdatert for {{count}} min siden",
+    "minutes_other": "Oppdatert for {{count}} min siden",
+    "hours_one": "Oppdatert for {{count}} time siden",
+    "hours_other": "Oppdatert for {{count}} timer siden",
+    "days_one": "Oppdatert for {{count}} dag siden",
+    "days_other": "Oppdatert for {{count}} dager siden"
+  },
+  "stale": {
+    "chip": "Viser bufrede data – varselet kunne ikke oppdateres",
+    "dismiss": "Lukk varselet om bufrede data"
   },
   "sun": {
     "sunrise": "Soloppgang",
