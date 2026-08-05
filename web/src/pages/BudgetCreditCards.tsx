@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, memo, type ChangeEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { ChevronLeft, ChevronRight, Upload, X, Link2, CreditCard, Plus, Trash2, Settings, History } from 'lucide-react'
 import { List, type RowComponentProps } from 'react-window'
 import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'

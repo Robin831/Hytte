@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import { Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../../auth'
 import { Skeleton } from '../../components/ui/skeleton'

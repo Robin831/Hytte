@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { AlertCircle, AlertTriangle, Bell, Settings2 } from 'lucide-react'
 import { formatDate } from '../../utils/formatDate'

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useId } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import {
   Gift, ArrowLeft, Check, X, CheckCircle, XCircle, Clock,

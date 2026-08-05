@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { LayoutDashboard } from 'lucide-react'
 import { useAuth } from '../auth'
 import { formatDate, formatTime } from '../utils/formatDate'

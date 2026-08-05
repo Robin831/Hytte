@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Component } from 'react'
 import type { ReactNode, ErrorInfo } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 import KioskClock from '../components/kiosk/KioskClock'
 import KioskBusDepartures from '../components/kiosk/KioskBusDepartures'
 import KioskWeather from '../components/kiosk/KioskWeather'

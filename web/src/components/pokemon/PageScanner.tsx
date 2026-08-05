@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { Flashlight, FlashlightOff, LayoutGrid, Loader2, X } from 'lucide-react'
 import { detectGrid, cropCellsToCanvases } from './rectangleDetector'

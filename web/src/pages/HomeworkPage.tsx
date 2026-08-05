@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { Plus, BookOpen, Loader2, Settings, MoreVertical, Pencil, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime as fmtTime } from '../utils/formatDate'

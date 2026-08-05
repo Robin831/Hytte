@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../auth'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { Skeleton } from '../components/ui/skeleton'
 
 interface UserFeatureSet {

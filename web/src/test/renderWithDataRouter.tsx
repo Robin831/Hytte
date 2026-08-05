@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react'
 import { render } from '@testing-library/react'
-import { createMemoryRouter, RouterProvider, type RouteObject } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider, type RouteObject } from 'react-router'
 
 interface Options {
   /** Path the element is mounted at, and the router's initial entry. */

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter } from 'react-router'
 import CardScanner from './CardScanner'
 import { detectCardRectangle, isWithinTolerance } from './rectangleDetector'
 import type { DetectedRectangle } from './rectangleDetector'

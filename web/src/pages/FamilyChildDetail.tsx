@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Star, Flame, Trophy, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'

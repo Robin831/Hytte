@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { ArrowLeft, TrendingUp, PieChart as PieChartIcon, BarChart2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatBudgetNumber, useBudgetResource } from './budget/hooks'

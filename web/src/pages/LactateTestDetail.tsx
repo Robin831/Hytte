@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router'
 import { useAuth } from '../auth'
 import {
   Activity, ArrowLeft, Pencil, Trash2, Save, X, Plus,

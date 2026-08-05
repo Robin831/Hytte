@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { useAuth } from '../auth'
 import { Activity, Plus, Calendar, ChevronRight, TrendingUp, ArrowUp, ArrowDown, Minus, Gauge } from 'lucide-react'
 import { useTranslation } from 'react-i18next'

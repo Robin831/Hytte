@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Hammer, Circle, Users, GitPullRequest, List, AlertTriangle, RefreshCw, RotateCcw, Settings, Layers } from 'lucide-react'
-import { NavLink } from 'react-router-dom'
+import { NavLink } from 'react-router'
 import { useAuth } from '../auth'
 import { useForgeStatus, useForgeWorkers } from '../hooks/useForgeStatus'
 import { useAllPRs } from '../hooks/useAllPRs'

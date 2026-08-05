@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { useAuth } from '../auth'
 import { Activity, ArrowLeft, Plus, Trash2, ChevronRight, ChevronLeft, Upload, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'

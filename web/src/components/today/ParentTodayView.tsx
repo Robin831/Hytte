@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { CheckCircle, CalendarDays, Bus } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { useAuth } from '../../auth'
 import ClockWeatherWidget from './ClockWeatherWidget'
 import NetatmoWidget from './NetatmoWidget'

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Save } from 'lucide-react'
-import { NavLink } from 'react-router-dom'
+import { NavLink } from 'react-router'
 import { CollapsibleSection } from '../components/CollapsibleSection'
 import { useToast } from '../hooks/useToast'
 import ToastList from '../components/ToastList'

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { Plus, Trash2, Pencil, X, Check, ChevronLeft, ToggleLeft, ToggleRight } from 'lucide-react'
 import { formatNumber } from '../utils/formatDate'
 

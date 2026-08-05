@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useSearchParams, Link } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router'
 import { ArrowLeft, GitCompareArrows, ListChecks, Sparkles, Loader2, RefreshCw, History, Trash2, ExternalLink } from 'lucide-react'
 import {
   ResponsiveContainer,

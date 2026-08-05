@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { ArrowLeft, Save, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { SkeletonBlock } from '../components/Skeleton'

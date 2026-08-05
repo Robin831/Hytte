@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo, startTransition } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { Trash2, Search, Loader2, Trophy, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react'
 import { formatDate } from '../utils/formatDate'
 import { useAuth } from '../auth'

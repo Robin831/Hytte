@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, Search, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useBlocker, type BlockerFunction } from 'react-router-dom'
+import { useBlocker, type BlockerFunction } from 'react-router'
 import { useUnloadWarning } from '../hooks/useUnloadWarning'
 import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'

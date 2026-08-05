@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { Target, ArrowLeft, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react'
 import '../stars.css'

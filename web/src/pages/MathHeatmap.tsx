@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, Target, Check, X } from 'lucide-react'
 import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'

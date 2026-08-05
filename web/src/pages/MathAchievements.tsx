@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import type { ParseKeys } from 'i18next'
 import { ArrowLeft, Award, CheckCircle2, Lock, Timer, Trophy, Zap } from 'lucide-react'

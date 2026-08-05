@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { CalendarDays, ChefHat, Link2, Loader2, Plus, Search, Star } from 'lucide-react'

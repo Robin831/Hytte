@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { Download, Loader2 } from 'lucide-react'
 import { useAuth } from '../../auth'
 import { formatDate } from '../../utils/formatDate'

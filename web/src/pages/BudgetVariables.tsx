@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { Plus, Trash2, ChevronLeft, ChevronRight, Check, X, Pencil, Copy, ChevronDown, ChevronUp, CreditCard } from 'lucide-react'
 import { formatDate, formatNumber } from '../utils/formatDate'
 
