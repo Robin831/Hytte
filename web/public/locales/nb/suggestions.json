@@ -12,7 +12,7 @@
     "rejecting": "Avviser…",
     "planIt": "Planlegg",
     "planning": "Planlegger…",
-    "planHint": "Planlegging kan ta opptil to minutter.",
+    "planHint": "Planer kjøres én om gangen — forslag i kø vises i planleggingskøen over. Hver plan kan ta opptil to minutter.",
     "feedbackLabel": "Tilbakemelding (valgfritt)",
     "feedbackPlaceholder": "Legg til kontekst for planleggeren…",
     "noPlanYet": "Ingen plan lagret ennå.",
@@ -156,5 +156,16 @@
       "claude": "av Claude",
       "user": "av deg"
     }
+  },
+  "queue": {
+    "title": "Planleggingskø",
+    "planningNow": "Planlegger: {{title}}",
+    "queuedCount": "I kø: {{count}}",
+    "remove": "Fjern {{title}} fra køen",
+    "failed": "{{title}} feilet: {{error}}",
+    "retry": "Prøv igjen",
+    "dismissFailed": "Fjern feilmelding for {{title}}",
+    "doneCount": "{{count}} planlagt denne økten",
+    "clear": "Skjul køoppsummering"
   }
 }

@@ -12,7 +12,7 @@
     "rejecting": "Rejecting…",
     "planIt": "Plan it",
     "planning": "Planning…",
-    "planHint": "Planning may take up to two minutes.",
+    "planHint": "Plans run one at a time — queued suggestions appear in the plan queue above. Each plan may take up to two minutes.",
     "feedbackLabel": "Feedback (optional)",
     "feedbackPlaceholder": "Add context for the planner…",
     "noPlanYet": "No plan saved yet.",
@@ -156,5 +156,16 @@
       "claude": "by Claude",
       "user": "by you"
     }
+  },
+  "queue": {
+    "title": "Plan queue",
+    "planningNow": "Planning: {{title}}",
+    "queuedCount": "In queue: {{count}}",
+    "remove": "Remove {{title}} from the queue",
+    "failed": "{{title}} failed: {{error}}",
+    "retry": "Retry",
+    "dismissFailed": "Dismiss failure for {{title}}",
+    "doneCount": "{{count}} planned this session",
+    "clear": "Hide plan queue summary"
   }
 }

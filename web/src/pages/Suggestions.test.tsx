@@ -4,6 +4,7 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router-dom'
 import Suggestions from './Suggestions'
 import { nextRunHintKey, sortSuggestions } from './suggestionsUtils'
+import { resetPlanQueueForTest } from './suggestionsPlanQueue'
 import enCommon from '../../public/locales/en/common.json'
 import enSuggestions from '../../public/locales/en/suggestions.json'
 import type { Suggestion } from '../components/suggestions/SuggestionCard'
@@ -12,6 +13,13 @@ vi.mock('react-markdown', () => ({
   default: ({ children }: { children: string }) => <span data-testid="markdown">{children}</span>,
 }))
 vi.mock('remark-gfm', () => ({ default: () => {} }))
+
+// RecentRunsPanel imports utils/formatDate, which pulls in the real i18n
+// instance; loading that kicks off an HTTP fetch for locale bundles that has
+// nowhere to go under happy-dom and surfaces as connection-error noise.
+vi.mock('../i18n', () => ({
+  default: { language: 'en' },
+}))
 
 type JsonValue = string | number | boolean | null | JsonObject | JsonValue[]
 interface JsonObject { [key: string]: JsonValue }
@@ -173,6 +181,10 @@ afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.clearAllMocks()
+  // The plan queue is a module-level singleton; a queued entry left behind by
+  // one test would silently hold its suggestion out of every later test's
+  // pending list.
+  resetPlanQueueForTest()
 })
 
 describe('Suggestions – data fetch', () => {
@@ -1030,7 +1042,7 @@ describe('Suggestions – plan action', () => {
     expect(screen.queryByTestId('suggestion-1-action-error')).not.toBeInTheDocument()
   })
 
-  it('plan it loading state: shows spinner, disables button, then re-enables', async () => {
+  it('plan it lifecycle: entry appears in the queue panel and clears on completion', async () => {
     const pendingSuggestion = makeSuggestion({ id: 1, title: 'Plan me' })
     const updatedSuggestion: Suggestion = {
       ...pendingSuggestion,
@@ -1059,107 +1071,40 @@ describe('Suggestions – plan action', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const { container } = renderPage()
+    renderPage()
 
     await expandPendingGroup()
     expect(screen.getByText('Plan me')).toBeInTheDocument()
 
     expandCard(1)
-    // Idle state — Plan it button is enabled and there's no spinner inside it.
-    const idleBtn = screen.getByRole('button', { name: /Plan it/ })
-    expect(idleBtn).not.toBeDisabled()
-    expect(idleBtn.querySelector('.animate-spin')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Plan it/ }))
 
-    fireEvent.click(idleBtn)
-
-    // In-flight: button now reads "Planning…", is disabled, and shows a spinner.
+    // Enqueueing is instant: the card leaves pending and the queue panel
+    // takes over while the request is in flight.
     await waitFor(() => {
-      const inFlightBtn = screen.getByRole('button', { name: /Planning…/ })
-      expect(inFlightBtn).toBeDisabled()
-      expect(inFlightBtn.querySelector('.animate-spin')).not.toBeNull()
+      expect(screen.getByTestId('plan-queue-current')).toHaveTextContent(
+        'Planning: Plan me',
+      )
     })
-    // The Reject button is also disabled while plan is in flight.
-    expect(screen.getByRole('button', { name: /^Reject$/ })).toBeDisabled()
+    expect(
+      screen.getByText('No pending suggestions yet — try Run now.'),
+    ).toBeInTheDocument()
 
-    // Resolve the request; the optimistic update kicks in and the card is removed.
     resolvePlan!({ ok: true, json: () => Promise.resolve(updatedSuggestion) })
 
+    // Completion clears the in-flight line, counts the success, and refetches.
     await waitFor(() => {
-      expect(
-        screen.getByText('No pending suggestions yet — try Run now.'),
-      ).toBeInTheDocument()
+      expect(screen.queryByTestId('plan-queue-current')).not.toBeInTheDocument()
     })
-    // Sanity check: no spinner is rendering in the page anymore for plan.
-    expect(container.querySelectorAll('.animate-spin').length).toBe(0)
+    expect(screen.getByTestId('plan-queue-done')).toHaveTextContent(
+      '1 planned this session',
+    )
+    await waitFor(() => {
+      expect(listCalls).toBeGreaterThanOrEqual(2)
+    })
+    expect(screen.getByRole('tab', { name: /Planned \(1\)/ })).toBeInTheDocument()
   })
 
-  it('plan it fails: surfaces actionable error from backend instead of generic message', async () => {
-    const pendingSuggestion = makeSuggestion({ id: 1, title: 'Plan me' })
-    const initial = { pending: [pendingSuggestion], planned: [], rejected: [] }
-
-    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-      if (url === '/api/suggestions/1/plan' && init?.method === 'POST') {
-        return Promise.resolve({
-          ok: false,
-          status: 400,
-          json: () => Promise.resolve({ error: 'Claude is not enabled' }),
-        })
-      }
-      if (url === '/api/suggestions') {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(initial) })
-      }
-      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    renderPage()
-
-    await expandPendingGroup()
-    expect(screen.getByText('Plan me')).toBeInTheDocument()
-
-    expandCard(1)
-    fireEvent.click(screen.getByRole('button', { name: /Plan it/ }))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('suggestion-1-action-error')).toBeInTheDocument()
-    })
-    expect(screen.getByTestId('suggestion-1-action-error')).toHaveTextContent('Claude is not enabled')
-    // Card must remain in the pending list
-    expect(screen.getByText('Plan me')).toBeInTheDocument()
-  })
-
-  it('plan it fails without error body: shows generic fallback message', async () => {
-    const pendingSuggestion = makeSuggestion({ id: 1, title: 'Plan me' })
-    const initial = { pending: [pendingSuggestion], planned: [], rejected: [] }
-
-    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
-      if (url === '/api/suggestions/1/plan' && init?.method === 'POST') {
-        return Promise.resolve({
-          ok: false,
-          status: 500,
-          json: () => Promise.reject(new Error('no body')),
-        })
-      }
-      if (url === '/api/suggestions') {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve(initial) })
-      }
-      return Promise.reject(new Error(`Unexpected fetch: ${url}`))
-    })
-    vi.stubGlobal('fetch', fetchMock)
-
-    renderPage()
-
-    await expandPendingGroup()
-    expect(screen.getByText('Plan me')).toBeInTheDocument()
-
-    expandCard(1)
-    fireEvent.click(screen.getByRole('button', { name: /Plan it/ }))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('suggestion-1-action-error')).toBeInTheDocument()
-    })
-    expect(screen.getByTestId('suggestion-1-action-error')).toHaveTextContent('Failed to plan suggestion')
-  })
 })
 
 describe('Suggestions – reject action', () => {
@@ -2122,5 +2067,203 @@ describe('Suggestions – Pages settings tab', () => {
     expect(
       await screen.findByText(/you can still write your own suggestions/i),
     ).toBeInTheDocument()
+  })
+})
+
+describe('Suggestions – plan queue', () => {
+  interface DeferredPlan {
+    id: string
+    resolve: (res: Partial<Response>) => void
+    reject: (err: Error) => void
+  }
+
+  let planRequests: DeferredPlan[] = []
+
+  // Routes the page's fetches: the list endpoint returns `list`, plan POSTs
+  // are parked in planRequests until the test settles them, and everything
+  // else (recent runs) gets an empty array.
+  function stubQueueFetch(list: { pending: Suggestion[]; planned: Suggestion[]; rejected: Suggestion[] }) {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      const href = String(url)
+      const planMatch = href.match(/\/api\/suggestions\/(\d+)\/plan$/)
+      if (planMatch) {
+        return new Promise<Response>((resolve, reject) => {
+          planRequests.push({
+            id: planMatch[1],
+            resolve: r => resolve(r as Response),
+            reject,
+          })
+        })
+      }
+      if (href.includes('/api/suggestions/runs')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(list) })
+    }))
+  }
+
+  async function clickPlanIt(id: number) {
+    expandCard(id)
+    const card = screen.getByTestId(`suggestion-card-${id}`)
+    fireEvent.click(within(card).getByRole('button', { name: 'Plan it' }))
+  }
+
+  beforeEach(() => {
+    planRequests = []
+  })
+
+  it('moves a planned suggestion out of pending and into the queue panel', async () => {
+    const list = {
+      pending: [
+        makeSuggestion({ id: 1, title: 'First idea' }),
+        makeSuggestion({ id: 2, title: 'Second idea' }),
+      ],
+      planned: [],
+      rejected: [],
+    }
+    stubQueueFetch(list)
+    renderPage()
+    await screen.findByRole('tab', { name: /Pending \(2\)/ })
+    await expandPendingGroup()
+
+    await clickPlanIt(1)
+
+    // Card leaves the pending list immediately and the tab count drops.
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Pending \(1\)/ })).toBeInTheDocument()
+    })
+    const panel = screen.getByTestId('plan-queue-panel')
+    expect(within(panel).getByTestId('plan-queue-current')).toHaveTextContent(
+      'Planning: First idea',
+    )
+    expect(screen.queryByText('First idea', { selector: 'h3 *' })).not.toBeInTheDocument()
+    expect(planRequests.map(r => r.id)).toEqual(['1'])
+  })
+
+  it('queues further clicks and runs them one by one', async () => {
+    const list = {
+      pending: [
+        makeSuggestion({ id: 1, title: 'First idea' }),
+        makeSuggestion({ id: 2, title: 'Second idea' }),
+        makeSuggestion({ id: 3, title: 'Third idea' }),
+      ],
+      planned: [],
+      rejected: [],
+    }
+    stubQueueFetch(list)
+    renderPage()
+    await screen.findByRole('tab', { name: /Pending \(3\)/ })
+    await expandPendingGroup()
+
+    await clickPlanIt(1)
+    await clickPlanIt(2)
+    await clickPlanIt(3)
+
+    // Exactly one plan request in flight; the others wait in the queue.
+    await waitFor(() => {
+      expect(screen.getByTestId('plan-queue-current')).toHaveTextContent(
+        'Planning: First idea',
+      )
+    })
+    expect(planRequests.map(r => r.id)).toEqual(['1'])
+    const queueList = screen.getByTestId('plan-queue-list')
+    expect(within(queueList).getByText('Second idea')).toBeInTheDocument()
+    expect(within(queueList).getByText('Third idea')).toBeInTheDocument()
+    expect(screen.getByText('In queue: 2')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Pending \(0\)/ })).toBeInTheDocument()
+
+    // First finishes → second starts, done counter appears.
+    planRequests[0].resolve({
+      ok: true,
+      json: () => Promise.resolve({ ...list.pending[0], status: 'planned', plan: 'P1' }),
+    })
+    await waitFor(() => {
+      expect(planRequests.map(r => r.id)).toEqual(['1', '2'])
+    })
+    expect(screen.getByTestId('plan-queue-current')).toHaveTextContent(
+      'Planning: Second idea',
+    )
+    expect(screen.getByTestId('plan-queue-done')).toHaveTextContent(
+      '1 planned this session',
+    )
+    expect(screen.getByText('In queue: 1')).toBeInTheDocument()
+  })
+
+  it('removing a queued entry returns its card to pending without planning it', async () => {
+    const list = {
+      pending: [
+        makeSuggestion({ id: 1, title: 'First idea' }),
+        makeSuggestion({ id: 2, title: 'Second idea' }),
+      ],
+      planned: [],
+      rejected: [],
+    }
+    stubQueueFetch(list)
+    renderPage()
+    await screen.findByRole('tab', { name: /Pending \(2\)/ })
+    await expandPendingGroup()
+
+    await clickPlanIt(1)
+    await clickPlanIt(2)
+    await waitFor(() => {
+      expect(screen.getByText('In queue: 1')).toBeInTheDocument()
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove Second idea from the queue' }),
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: /Pending \(1\)/ })).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('plan-queue-list')).not.toBeInTheDocument()
+
+    // Finishing the first never fires a request for the removed second.
+    planRequests[0].resolve({
+      ok: true,
+      json: () => Promise.resolve({ ...list.pending[0], status: 'planned' }),
+    })
+    await waitFor(() => {
+      expect(screen.queryByTestId('plan-queue-current')).not.toBeInTheDocument()
+    })
+    expect(planRequests.map(r => r.id)).toEqual(['1'])
+  })
+
+  it('shows a failed plan with its error and returns the card to pending', async () => {
+    const list = {
+      pending: [makeSuggestion({ id: 1, title: 'Fragile idea' })],
+      planned: [],
+      rejected: [],
+    }
+    stubQueueFetch(list)
+    renderPage()
+    await screen.findByRole('tab', { name: /Pending \(1\)/ })
+    await expandPendingGroup()
+
+    await clickPlanIt(1)
+    await waitFor(() => {
+      expect(planRequests).toHaveLength(1)
+    })
+
+    planRequests[0].resolve({
+      ok: false,
+      status: 504,
+      json: () => Promise.resolve({ error: 'Claude timed out generating the plan' }),
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('plan-queue-failed')).toHaveTextContent(
+        'Fragile idea failed: Claude timed out generating the plan',
+      )
+    })
+    // Still pending server-side, so the card comes back.
+    expect(screen.getByRole('tab', { name: /Pending \(1\)/ })).toBeInTheDocument()
+
+    // Retry re-enqueues it.
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => {
+      expect(planRequests.map(r => r.id)).toEqual(['1', '1'])
+    })
+    expect(screen.queryByTestId('plan-queue-failed')).not.toBeInTheDocument()
   })
 })

@@ -7,7 +7,8 @@ import type { Suggestion } from './SuggestionCard'
 
 export interface SuggestionActionsProps {
   suggestion: Suggestion
-  onPlanned?: (updated: Suggestion) => void
+  /** Called when the user submits "Plan it" — the parent enqueues the plan. */
+  onPlan?: (suggestion: Suggestion, feedback: string) => void
   onRejected?: () => void
   onBeadCreated?: (updated: Suggestion) => void
 }
@@ -42,9 +43,9 @@ const markdownComponents = {
   },
 }
 
-export function SuggestionActions({ suggestion, onPlanned, onRejected, onBeadCreated }: SuggestionActionsProps) {
+export function SuggestionActions({ suggestion, onPlan, onRejected, onBeadCreated }: SuggestionActionsProps) {
   if (suggestion.status === 'pending') {
-    return <PendingActions suggestion={suggestion} onPlanned={onPlanned} onRejected={onRejected} />
+    return <PendingActions suggestion={suggestion} onPlan={onPlan} onRejected={onRejected} />
   }
   if (suggestion.status === 'planned') {
     return <PlannedActions suggestion={suggestion} onBeadCreated={onBeadCreated} />
@@ -57,20 +58,19 @@ export function SuggestionActions({ suggestion, onPlanned, onRejected, onBeadCre
 
 function PendingActions({
   suggestion,
-  onPlanned,
+  onPlan,
   onRejected,
 }: SuggestionActionsProps) {
   const { t } = useTranslation('suggestions')
   const [feedback, setFeedback] = useState('')
-  const [submitting, setSubmitting] = useState<'plan' | 'reject' | null>(null)
+  const [rejecting, setRejecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isBusy = submitting !== null
   const feedbackId = `suggestion-feedback-${suggestion.id}`
 
   async function handleReject() {
-    if (isBusy) return
-    setSubmitting('reject')
+    if (rejecting) return
+    setRejecting(true)
     setError(null)
     try {
       const res = await fetch(`/api/suggestions/${suggestion.id}/reject`, {
@@ -84,41 +84,17 @@ function PendingActions({
     } catch (err) {
       setError(err instanceof Error ? err.message : t('errors.rejectFailed'))
     } finally {
-      setSubmitting(null)
+      setRejecting(false)
     }
   }
 
-  async function handlePlan(e: FormEvent) {
+  // Enqueueing is instant — the plan request itself runs in the page-level
+  // serial queue, and this card leaves the pending list immediately.
+  function handlePlan(e: FormEvent) {
     e.preventDefault()
-    if (isBusy) return
-    setSubmitting('plan')
-    setError(null)
-    try {
-      const trimmed = feedback.trim()
-      const res = await fetch(`/api/suggestions/${suggestion.id}/plan`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(trimmed ? { feedback: trimmed } : {}),
-      })
-      if (!res.ok) {
-        let msg = t('errors.planFailed')
-        try {
-          const body = await res.json() as { error?: string }
-          if (body?.error) msg = body.error
-        } catch {
-          // keep generic message if body parse fails
-        }
-        throw new Error(msg)
-      }
-      const updated = await res.json() as Suggestion
-      setFeedback('')
-      onPlanned?.(updated)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('errors.planFailed'))
-    } finally {
-      setSubmitting(null)
-    }
+    if (rejecting) return
+    onPlan?.(suggestion, feedback.trim())
+    setFeedback('')
   }
 
   return (
@@ -130,7 +106,7 @@ function PendingActions({
         id={feedbackId}
         value={feedback}
         onChange={e => setFeedback(e.target.value)}
-        disabled={isBusy}
+        disabled={rejecting}
         placeholder={t('actions.feedbackPlaceholder')}
         rows={3}
         className="w-full rounded-md border border-gray-700 bg-gray-900/60 px-3 py-2 text-sm text-gray-200 placeholder:text-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50"
@@ -148,31 +124,22 @@ function PendingActions({
       <div className="flex flex-wrap gap-2">
         <button
           type="submit"
-          disabled={isBusy}
+          disabled={rejecting}
           className="inline-flex items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/20 px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {submitting === 'plan' && (
-            <Loader2 size={14} className="animate-spin" aria-hidden={true} />
-          )}
-          <span>
-            {submitting === 'plan'
-              ? t('actions.planning')
-              : t('actions.planIt')}
-          </span>
+          <span>{t('actions.planIt')}</span>
         </button>
         <button
           type="button"
           onClick={handleReject}
-          disabled={isBusy}
+          disabled={rejecting}
           className="inline-flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {submitting === 'reject' && (
+          {rejecting && (
             <Loader2 size={14} className="animate-spin" aria-hidden={true} />
           )}
           <span>
-            {submitting === 'reject'
-              ? t('actions.rejecting')
-              : t('actions.reject')}
+            {rejecting ? t('actions.rejecting') : t('actions.reject')}
           </span>
         </button>
       </div>

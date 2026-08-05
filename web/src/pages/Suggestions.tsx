@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Lightbulb, Plus, Play, X, AlertTriangle, CheckCircle2, XCircle, MinusCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../components/ui/skeleton'
@@ -9,7 +9,9 @@ import { SuggestionActions } from '../components/suggestions/SuggestionActions'
 import { NewSuggestionForm } from '../components/suggestions/NewSuggestionForm'
 import { SettingsPanel } from '../components/suggestions/SettingsPanel'
 import { RecentRunsPanel } from '../components/suggestions/RecentRunsPanel'
+import { PlanQueuePanel } from '../components/suggestions/PlanQueuePanel'
 import { nextRunHintKey, formatRunTime, sortSuggestions, type SortMode } from './suggestionsUtils'
+import { enqueuePlan, getPlanQueueState, subscribePlanCompleted, subscribePlanQueue } from './suggestionsPlanQueue'
 
 type TabKey = 'pending' | 'planned' | 'created' | 'rejected' | 'pages'
 type GroupTabKey = Exclude<TabKey, 'pages'>
@@ -166,14 +168,38 @@ export default function Suggestions() {
     [groupOverrides],
   )
 
-  const handlePlanned = useCallback((updated: Suggestion) => {
-    setPending(prev => prev.filter(s => s.id !== updated.id))
-    setPlanned(prev => [updated, ...prev])
-    // Keep the card expanded after the user planned it so the rendered plan is
-    // immediately visible when they switch to the Planned tab.
-    setCardExpansion(updated.id, true)
-    refetch()
+  // Serial "Plan it" queue — lives in a module store so it keeps draining
+  // while the user navigates elsewhere in the app.
+  const planQueue = useSyncExternalStore(subscribePlanQueue, getPlanQueueState)
+
+  const handlePlan = useCallback((suggestion: Suggestion, feedback: string) => {
+    enqueuePlan(suggestion, feedback)
+  }, [])
+
+  // After each successful plan, refetch so the suggestion shows up under
+  // Planned, and keep its card expanded so the rendered plan is immediately
+  // visible when the user switches to that tab.
+  useEffect(() => {
+    return subscribePlanCompleted(updated => {
+      setCardExpansion(updated.id, true)
+      refetch()
+    })
   }, [refetch, setCardExpansion])
+
+  // Suggestions being planned or waiting in the queue leave the pending list
+  // immediately; the panel above the tabs is where they live until done.
+  // Failed ones fall back into pending (they are still pending server-side).
+  const heldIds = useMemo(() => {
+    const held = new Set<number>()
+    if (planQueue.active) held.add(planQueue.active.suggestion.id)
+    for (const entry of planQueue.queued) held.add(entry.suggestion.id)
+    return held
+  }, [planQueue.active, planQueue.queued])
+
+  const visiblePending = useMemo(
+    () => (heldIds.size === 0 ? pending : pending.filter(s => !heldIds.has(s.id))),
+    [pending, heldIds],
+  )
 
   const handleBeadCreated = useCallback((updated: Suggestion) => {
     setPlanned(prev => prev.filter(s => s.id !== updated.id))
@@ -223,12 +249,12 @@ export default function Suggestions() {
 
   const counts = useMemo(
     () => ({
-      pending: pending.length,
+      pending: visiblePending.length,
       planned: planned.length,
       created: beadCreated.length,
       rejected: rejected.length,
     }),
-    [pending, planned, rejected, beadCreated],
+    [visiblePending, planned, rejected, beadCreated],
   )
 
   async function handleRunNow() {
@@ -433,7 +459,7 @@ export default function Suggestions() {
           s.status === 'rejected' ? null : (
             <SuggestionActions
               suggestion={s}
-              onPlanned={handlePlanned}
+              onPlan={handlePlan}
               onRejected={refetch}
               onBeadCreated={handleBeadCreated}
             />
@@ -667,6 +693,8 @@ export default function Suggestions() {
             </div>
           )}
 
+          <PlanQueuePanel state={planQueue} />
+
           <RecentRunsPanel reloadSignal={recentRunsReloadSignal} />
         </header>
 
@@ -727,7 +755,7 @@ export default function Suggestions() {
                   {loadError}
                 </div>
               )}
-              <TabPanel value="pending">{renderPanel('pending', pending)}</TabPanel>
+              <TabPanel value="pending">{renderPanel('pending', visiblePending)}</TabPanel>
               <TabPanel value="planned">{renderPanel('planned', planned)}</TabPanel>
               <TabPanel value="created">{renderPanel('created', beadCreated)}</TabPanel>
               <TabPanel value="rejected">{renderPanel('rejected', rejected)}</TabPanel>
