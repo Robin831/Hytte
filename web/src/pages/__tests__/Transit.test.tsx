@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import Transit from '../Transit'
 
 // ── Translation mock ──────────────────────────────────────────────────────────
@@ -20,7 +20,8 @@ const TRANSLATIONS: Record<string, string> = {
   'transit:walkBadge': '{{minutes}} min',
   'transit:walkBadgeTitle': '{{minutes}} min walking time subtracted',
   'transit:leaveNow': 'Leave now',
-  'transit:missed': 'Missed',
+  'transit:departed_one': '{{count}} departed',
+  'transit:departed_other': '{{count}} departed',
   'transit:showSettings': 'Configure stops',
   'transit:hideSettings': 'Hide settings',
   'common:actions.refresh': 'Refresh',
@@ -28,7 +29,12 @@ const TRANSLATIONS: Record<string, string> = {
 
 // Module-level (stable) so the `t` in Transit's effect deps never changes identity.
 function translate(key: string, opts?: Record<string, unknown>): string {
-  const template = TRANSLATIONS[key] ?? key
+  // Mirror i18next's plural suffix resolution for keys passed a `count`.
+  const lookup =
+    opts?.count !== undefined && !(key in TRANSLATIONS)
+      ? key + (Number(opts.count) === 1 ? '_one' : '_other')
+      : key
+  const template = TRANSLATIONS[lookup] ?? key
   if (!opts) return template
   return template.replace(/\{\{(\w+)\}\}/g, (_, name: string) =>
     name in opts ? String(opts[name]) : `{{${name}}}`
@@ -90,11 +96,10 @@ function mockDepartures(stops: unknown[]) {
   })
 }
 
-/** The flex container wrapping a single departure. */
-function rowFor(text: string): HTMLElement {
-  const row = screen.getByText(text).closest('div.flex')
-  if (!row) throw new Error(`no departure row found for "${text}"`)
-  return row as HTMLElement
+function departureFetchCount(): number {
+  return fetchMock.mock.calls.filter(([url]) =>
+    String(url).startsWith('/api/transit/departures')
+  ).length
 }
 
 beforeEach(() => {
@@ -148,29 +153,21 @@ describe('Transit walking offset', () => {
     expect(delay.className).not.toMatch(/hidden/)
   })
 
-  it('shows "leave now" and dims the row when the offset exactly consumes the time', async () => {
-    mockDepartures([stopPayload(5, [departureIn(5)])])
+  it('shows "leave now" while the offset has all but consumed the time', async () => {
+    // 5.4 min out with a 5 min walk leaves ~24s, which rounds down to zero.
+    mockDepartures([stopPayload(5, [departureIn(5.4)])])
     render(<Transit />)
 
-    await screen.findByText('Leave now')
-    expect(rowFor('Leave now')).toHaveClass('opacity-40')
+    expect(await screen.findByText('Leave now')).toBeInTheDocument()
   })
 
-  it('shows "missed" instead of a negative number once the walk no longer fits', async () => {
+  it('drops a departure the walk no longer fits instead of showing a negative number', async () => {
     mockDepartures([stopPayload(10, [departureIn(3)])])
     render(<Transit />)
 
-    expect(await screen.findByText('Missed')).toBeInTheDocument()
+    expect(await screen.findByText('No upcoming departures')).toBeInTheDocument()
     expect(screen.queryByText(/-\d+\s*min/)).not.toBeInTheDocument()
-    expect(rowFor('Missed')).toHaveClass('opacity-40')
-  })
-
-  it('keeps catchable rows undimmed', async () => {
-    mockDepartures([stopPayload(5, [departureIn(12)])])
-    render(<Transit />)
-
-    await screen.findByText('7 min')
-    expect(rowFor('7 min')).not.toHaveClass('opacity-40')
+    expect(screen.queryByText('Sentrum')).not.toBeInTheDocument()
   })
 
   it('applies the offset on first load without fetching settings', async () => {
@@ -183,5 +180,120 @@ describe('Transit walking offset', () => {
         fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/transit/settings'))
       ).toBe(false)
     })
+  })
+})
+
+// ── Self-pruning list ─────────────────────────────────────────────────────────
+
+async function flushMicrotasks() {
+  for (let i = 0; i < 5; i++) {
+    await Promise.resolve()
+  }
+}
+
+/** Let the initial fetch resolve and render under fake timers. */
+async function renderAndSettle() {
+  render(<Transit />)
+  await act(async () => {
+    await flushMicrotasks()
+  })
+}
+
+async function advance(ms: number) {
+  await act(async () => {
+    vi.advanceTimersByTime(ms)
+    await flushMicrotasks()
+  })
+}
+
+describe('Transit departed-row pruning', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'],
+    })
+    vi.setSystemTime(new Date('2026-08-05T12:00:00Z'))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('removes a departure on the next tick once its leave time passes', async () => {
+    // 10m01s out with a 10 min walk: one second of slack left.
+    mockDepartures([
+      stopPayload(10, [
+        departureIn(10 + 1 / 60, { line: '3', destination: 'Sentrum' }),
+        departureIn(25, { line: '4', destination: 'Nord' }),
+      ]),
+    ])
+    await renderAndSettle()
+
+    expect(screen.getByText('Sentrum')).toBeInTheDocument()
+
+    // Two seconds later the leave time has passed — no poll involved.
+    await advance(2_000)
+
+    expect(screen.queryByText('Sentrum')).not.toBeInTheDocument()
+    expect(screen.getByText('Nord')).toBeInTheDocument()
+  })
+
+  it('keeps showing "0 min" without an offset until the departure itself passes', async () => {
+    mockDepartures([stopPayload(0, [departureIn(20 / 60)])])
+    await renderAndSettle()
+
+    expect(screen.getByText('0 min')).toBeInTheDocument()
+
+    // Still in the final minute — the row must stay put.
+    await advance(10_000)
+    expect(screen.getByText('0 min')).toBeInTheDocument()
+
+    // Past the departure timestamp — now it goes.
+    await advance(15_000)
+    expect(screen.queryByText('0 min')).not.toBeInTheDocument()
+  })
+
+  it('shows a departed count for the rows it pruned', async () => {
+    mockDepartures([
+      stopPayload(10, [
+        departureIn(3, { line: '1', destination: 'Gone A' }),
+        departureIn(4, { line: '2', destination: 'Gone B' }),
+        departureIn(25, { line: '4', destination: 'Nord' }),
+      ]),
+    ])
+    await renderAndSettle()
+
+    expect(screen.getByText('2 departed')).toBeInTheDocument()
+    expect(screen.getByText('Nord')).toBeInTheDocument()
+  })
+
+  it('falls back to the empty state when every departure is pruned', async () => {
+    mockDepartures([
+      stopPayload(10, [
+        departureIn(3, { line: '1', destination: 'Gone A' }),
+        departureIn(4, { line: '2', destination: 'Gone B' }),
+      ]),
+    ])
+    await renderAndSettle()
+
+    expect(screen.getByText('No upcoming departures')).toBeInTheDocument()
+    expect(screen.getByText('2 departed')).toBeInTheDocument()
+  })
+
+  it('fires at most one off-cycle refresh across a burst of ticks', async () => {
+    mockDepartures([
+      stopPayload(10, [
+        departureIn(3, { line: '1', destination: 'Gone A' }),
+        departureIn(25, { line: '4', destination: 'Nord' }),
+      ]),
+    ])
+    await renderAndSettle()
+
+    // Initial poll plus exactly one off-cycle refresh for the short list.
+    expect(departureFetchCount()).toBe(2)
+
+    // Five more ticks, all inside the 10s rate-limit window.
+    for (let i = 0; i < 5; i++) await advance(1_000)
+
+    expect(departureFetchCount()).toBe(2)
   })
 })
