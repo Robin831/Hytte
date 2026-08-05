@@ -21,6 +21,8 @@ const TRANSLATIONS: Record<string, string> = {
   'detail.filters.owned': 'Owned only',
   'detail.filters.missing': 'Missing only',
   'detail.empty': 'No cards match this filter.',
+  'detail.searchLabel': 'Search cards by name or collector number',
+  'detail.searchPlaceholder': 'Search cards',
   'detail.close': 'Close detail',
   'detail.variant': 'Variant',
   'detail.quantity': 'Quantity',
@@ -60,6 +62,8 @@ function mockT(key: string, opts?: Record<string, string | number> & { defaultVa
   if (key === 'set.completion.reverseHolo') return `${opts?.owned ?? 0} / ${opts?.total ?? 0} cards with reverse holo owned`
   if (key === 'set.completion.allVariants') return `${opts?.owned ?? 0} / ${opts?.total ?? 0} cards with every variant owned`
   if (key === 'set.completion.kind') return `${opts?.owned ?? 0} / ${opts?.total ?? 0} cards (this variant)`
+  if (key === 'detail.noMatches') return `No cards match "${opts?.query ?? ''}".`
+  if (key === 'detail.hitCount') return `${opts?.matches ?? 0} of ${opts?.total ?? 0} cards`
   if (key.startsWith('variantKind.')) return TRANSLATIONS[key] ?? opts?.defaultValue ?? key
   return TRANSLATIONS[key] ?? key
 }
@@ -667,6 +671,266 @@ describe('PokemonSet – variant filter chip', () => {
       expect(text).toMatch(/50/)
       expect(text).not.toMatch(/150/)
     })
+  })
+})
+
+describe('PokemonSet – card search', () => {
+  // Fixture spanning both match modes:
+  //  sv1-6   Charizard ex (#006) — normal + reverse, neither owned
+  //  sv1-4   Charmander   (#004) — normal missing, reverse owned
+  //  sv1-25  Pikachu      (#025) — normal + reverse, neither owned
+  //  sv1-133 Eevee        (#133) — normal only
+  function searchCards() {
+    return [
+      makeCard({
+        id: 'sv1-6',
+        name: 'Charizard ex',
+        collector_no: '006',
+        variants: [
+          makeVariant({ id: 61, kind: 'normal' }),
+          makeVariant({ id: 62, kind: 'reverse_holofoil' }),
+        ],
+      }),
+      makeCard({
+        id: 'sv1-4',
+        name: 'Charmander',
+        collector_no: '004',
+        variants: [
+          makeVariant({ id: 41, kind: 'normal' }),
+          makeVariant({ id: 42, kind: 'reverse_holofoil', owned: true, owned_id: 1, quantity: 1 }),
+        ],
+      }),
+      makeCard({
+        id: 'sv1-25',
+        name: 'Pikachu',
+        collector_no: '025',
+        variants: [
+          makeVariant({ id: 251, kind: 'normal' }),
+          makeVariant({ id: 252, kind: 'reverse_holofoil' }),
+        ],
+      }),
+      makeCard({
+        id: 'sv1-133',
+        name: 'Eevee',
+        collector_no: '133',
+        variants: [makeVariant({ id: 1331, kind: 'normal' })],
+      }),
+    ]
+  }
+
+  function stubSearchFetch() {
+    vi.stubGlobal('fetch', makeFetchMock({ set: makeSet({ total_cards: 4 }), cards: searchCards() }))
+  }
+
+  function typeQuery(value: string) {
+    fireEvent.change(screen.getByTestId('card-search'), { target: { value } })
+  }
+
+  function visibleTileIds(): string[] {
+    return screen
+      .getAllByRole('button')
+      .map(el => el.getAttribute('data-testid') ?? '')
+      .filter(id => id.startsWith('card-tile-'))
+  }
+
+  it('renders the search input once cards have loaded', async () => {
+    stubSearchFetch()
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    const input = screen.getByTestId('card-search')
+    expect(input).toHaveAttribute('type', 'search')
+    expect(input).toHaveAccessibleName('Search cards by name or collector number')
+    expect(input).toHaveClass('w-full')
+  })
+
+  it('does not render the search input while loading', () => {
+    // A fetch that never settles keeps the page in its skeleton state.
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})))
+    renderPage()
+
+    expect(screen.queryByTestId('card-search')).not.toBeInTheDocument()
+  })
+
+  it('does not render the search input when loading failed', async () => {
+    const fetchMock = makeFetchMock(
+      { set: makeSet(), cards: searchCards() },
+      url =>
+        url.endsWith('/cards')
+          ? ({ ok: false, status: 500, json: () => Promise.resolve({}) } as unknown as Response)
+          : null,
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await screen.findByRole('alert')
+
+    expect(screen.queryByTestId('card-search')).not.toBeInTheDocument()
+  })
+
+  it('filters the grid by case-insensitive name substring', async () => {
+    stubSearchFetch()
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    typeQuery('CHAR')
+
+    await waitFor(() => expect(screen.queryByText('Pikachu')).not.toBeInTheDocument())
+    expect(visibleTileIds()).toEqual(['card-tile-sv1-6', 'card-tile-sv1-4'])
+  })
+
+  it.each(['6', '006', '006/165'])('finds collector no 006 when searching %s', async q => {
+    stubSearchFetch()
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    typeQuery(q)
+
+    await waitFor(() => expect(visibleTileIds()).toEqual(['card-tile-sv1-6']))
+  })
+
+  it('mirrors the query to ?q= and preserves the variant param', async () => {
+    stubSearchFetch()
+    renderPageWithProbe()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    typeQuery('char')
+    await waitFor(() =>
+      expect(screen.getByTestId('location-probe')).toHaveAttribute('data-search', '?q=char'),
+    )
+
+    fireEvent.click(
+      within(screen.getByTestId('variant-filter')).getByRole('radio', { name: 'Reverse Holo' }),
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('location-probe')).toHaveAttribute(
+        'data-search',
+        '?q=char&variant=reverse_holofoil',
+      ),
+    )
+
+    // Clearing the box drops ?q= but leaves the variant chip untouched.
+    typeQuery('')
+    await waitFor(() =>
+      expect(screen.getByTestId('location-probe')).toHaveAttribute(
+        'data-search',
+        '?variant=reverse_holofoil',
+      ),
+    )
+  })
+
+  it('drops ?q= for a whitespace-only query', async () => {
+    stubSearchFetch()
+    renderPageWithProbe('/pokemon/sets/sv1?q=char')
+    await waitFor(() => expect(screen.getByText('Charmander')).toBeInTheDocument())
+
+    typeQuery('   ')
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location-probe')).toHaveAttribute('data-search', ''),
+    )
+    expect(screen.getByText('Pikachu')).toBeInTheDocument()
+  })
+
+  it('restores the query and the filtered grid from the URL', async () => {
+    stubSearchFetch()
+    renderPage('/pokemon/sets/sv1?q=char')
+    await waitFor(() => expect(screen.getByText('Charmander')).toBeInTheDocument())
+
+    expect(screen.getByTestId('card-search')).toHaveValue('char')
+    expect(visibleTileIds()).toEqual(['card-tile-sv1-6', 'card-tile-sv1-4'])
+  })
+
+  it('intersects with the missing + reverse holo filters', async () => {
+    stubSearchFetch()
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    fireEvent.click(
+      within(screen.getByTestId('variant-filter')).getByRole('radio', { name: 'Reverse Holo' }),
+    )
+    fireEvent.click(screen.getByRole('radio', { name: 'Missing only' }))
+
+    // Charmander owns its reverse, Eevee has none — so missing leaves
+    // Charizard ex and Pikachu; the query then narrows it to Charizard ex.
+    await waitFor(() =>
+      expect(visibleTileIds()).toEqual(['card-tile-sv1-6', 'card-tile-sv1-25']),
+    )
+
+    typeQuery('char')
+    await waitFor(() => expect(visibleTileIds()).toEqual(['card-tile-sv1-6']))
+  })
+
+  it('shows a hit count only while a query is active', async () => {
+    stubSearchFetch()
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    expect(screen.queryByTestId('card-search-count')).not.toBeInTheDocument()
+
+    typeQuery('char')
+    await waitFor(() =>
+      expect(screen.getByTestId('card-search-count')).toHaveTextContent('2 of 4 cards'),
+    )
+
+    // The denominator follows the active chip filter, not the whole set.
+    fireEvent.click(screen.getByRole('radio', { name: 'Owned only' }))
+    await waitFor(() =>
+      expect(screen.getByTestId('card-search-count')).toHaveTextContent('1 of 1 cards'),
+    )
+  })
+
+  it('shows the query-specific empty state instead of the generic one', async () => {
+    stubSearchFetch()
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    typeQuery('zzz')
+
+    await waitFor(() =>
+      expect(screen.getByTestId('card-search-empty')).toHaveTextContent('No cards match "zzz".'),
+    )
+    expect(screen.queryByText('No cards match this filter.')).not.toBeInTheDocument()
+  })
+
+  it('opens and navigates the lightbox within the filtered list', async () => {
+    stubSearchFetch()
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    typeQuery('char')
+    await waitFor(() => expect(visibleTileIds()).toEqual(['card-tile-sv1-6', 'card-tile-sv1-4']))
+
+    // Second tile of the filtered grid — the raw card list would have put
+    // Charmander at index 1 too, so step forward to prove we wrap inside the
+    // filtered list rather than falling through to Pikachu.
+    fireEvent.click(screen.getByTestId('card-tile-sv1-4'))
+    expect(await screen.findByRole('dialog', { name: 'Charmander' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('lightbox-next-zone'))
+    expect(await screen.findByRole('dialog', { name: 'Charizard ex' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('lightbox-close'))
+    await waitFor(() => expect(screen.queryByTestId('card-lightbox')).not.toBeInTheDocument())
+  })
+
+  it('leaves no stale lightbox index when the query is cleared', async () => {
+    stubSearchFetch()
+    renderPage('/pokemon/sets/sv1?q=eevee')
+    await waitFor(() => expect(visibleTileIds()).toEqual(['card-tile-sv1-133']))
+
+    fireEvent.click(screen.getByTestId('card-tile-sv1-133'))
+    expect(await screen.findByRole('dialog', { name: 'Eevee' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('lightbox-close'))
+    typeQuery('')
+
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+    expect(screen.queryByTestId('card-lightbox')).not.toBeInTheDocument()
+
+    // The full grid is back and clicking its first tile opens that card.
+    fireEvent.click(screen.getByTestId('card-tile-sv1-6'))
+    expect(await screen.findByRole('dialog', { name: 'Charizard ex' })).toBeInTheDocument()
   })
 })
 

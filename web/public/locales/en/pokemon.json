@@ -52,6 +52,10 @@
       "owned": "Owned only",
       "missing": "Missing only"
     },
+    "searchLabel": "Search cards by name or collector number",
+    "searchPlaceholder": "Search cards — e.g. \"charizard\" or \"006/165\"",
+    "noMatches": "No cards match \"{{query}}\".",
+    "hitCount": "{{matches}} of {{total}} cards",
     "empty": "No cards match this filter.",
     "close": "Close detail",
     "variant": "Variant",
