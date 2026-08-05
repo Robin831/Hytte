@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { parseDecimal } from '../../utils/parseDecimal'
+import DecimalField from './DecimalField'
+import { collectDecimalErrors, parseOptionalDecimal, parseRequiredDecimal } from './decimalDraft'
 import type { SalaryData } from './useSalaryData'
 
 interface ConfigEditorProps {
@@ -9,6 +10,13 @@ interface ConfigEditorProps {
   noConfigPastMonth: boolean
   onClose: () => void
 }
+
+type ConfigField =
+  | 'baseSalary'
+  | 'hourlyRate'
+  | 'internalHourlyRate'
+  | 'taxableBenefits'
+  | 'standardHours'
 
 /**
  * Salary config editor panel. Owns its own form state (seeded from the current
@@ -27,17 +35,35 @@ export default function ConfigEditor({ salary, noConfig, noConfigPastMonth, onCl
 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<ConfigField, string>>>({})
 
   const handleSave = async () => {
+    // Parse every field before touching the network. An unparseable value blocks
+    // the save with an inline message instead of silently landing in the config
+    // as 0 (or the 7.5 standard-hours default).
+    const drafts = {
+      baseSalary: parseRequiredDecimal(baseSalary),
+      hourlyRate: parseRequiredDecimal(hourlyRate),
+      internalHourlyRate: parseOptionalDecimal(internalHourlyRate),
+      taxableBenefits: parseOptionalDecimal(taxableBenefits),
+      standardHours: parseRequiredDecimal(standardHours),
+    }
+    const errors = collectDecimalErrors(drafts, {
+      required: t('validation.required'),
+      invalid: t('validation.invalidNumber'),
+    })
+    setFieldErrors(errors)
+    if (Object.keys(errors).length > 0) return
+
     setSaving(true)
     setSaveError(null)
     try {
       await saveConfig({
-        base_salary: parseDecimal(baseSalary) || 0,
-        hourly_rate: parseDecimal(hourlyRate) || 0,
-        internal_hourly_rate: parseDecimal(internalHourlyRate) || 0,
-        taxable_benefits: parseDecimal(taxableBenefits) || 0,
-        standard_hours: isNaN(parseDecimal(standardHours)) ? 7.5 : parseDecimal(standardHours),
+        base_salary: drafts.baseSalary.value,
+        hourly_rate: drafts.hourlyRate.value,
+        internal_hourly_rate: drafts.internalHourlyRate.value,
+        taxable_benefits: drafts.taxableBenefits.value,
+        standard_hours: drafts.standardHours.value,
         currency: currency || 'NOK',
       })
       onClose()
@@ -59,67 +85,46 @@ export default function ConfigEditor({ salary, noConfig, noConfigPastMonth, onCl
         </p>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label htmlFor="cfg-base-salary" className="block text-xs text-gray-400 mb-1">{t('config.baseSalary')}</label>
-          <input
-            id="cfg-base-salary"
-            type="number"
-            value={baseSalary}
-            onChange={e => setBaseSalary(e.target.value)}
-            className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-            placeholder="0"
-            min="0"
-          />
-        </div>
-        <div>
-          <label htmlFor="cfg-hourly-rate" className="block text-xs text-gray-400 mb-1">{t('config.hourlyRate')}</label>
-          <input
-            id="cfg-hourly-rate"
-            type="number"
-            value={hourlyRate}
-            onChange={e => setHourlyRate(e.target.value)}
-            className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-            placeholder="0"
-            min="0"
-          />
-        </div>
-        <div>
-          <label htmlFor="cfg-internal-rate" className="block text-xs text-gray-400 mb-1">{t('config.internalHourlyRate')}</label>
-          <input
-            id="cfg-internal-rate"
-            type="number"
-            value={internalHourlyRate}
-            onChange={e => setInternalHourlyRate(e.target.value)}
-            className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-            placeholder="0"
-            min="0"
-          />
-        </div>
-        <div>
-          <label htmlFor="cfg-taxable-benefits" className="block text-xs text-gray-400 mb-1">{t('config.taxableBenefits')}</label>
-          <input
-            id="cfg-taxable-benefits"
-            type="number"
-            value={taxableBenefits}
-            onChange={e => setTaxableBenefits(e.target.value)}
-            className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-            placeholder="0"
-            min="0"
-          />
-        </div>
-        <div>
-          <label htmlFor="cfg-standard-hours" className="block text-xs text-gray-400 mb-1">{t('config.standardHours')}</label>
-          <input
-            id="cfg-standard-hours"
-            type="number"
-            value={standardHours}
-            onChange={e => setStandardHours(e.target.value)}
-            className="w-full bg-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-            placeholder="7.5"
-            min="0"
-            step="0.5"
-          />
-        </div>
+        <DecimalField
+          id="cfg-base-salary"
+          label={t('config.baseSalary')}
+          value={baseSalary}
+          onChange={setBaseSalary}
+          placeholder="0"
+          error={fieldErrors.baseSalary}
+        />
+        <DecimalField
+          id="cfg-hourly-rate"
+          label={t('config.hourlyRate')}
+          value={hourlyRate}
+          onChange={setHourlyRate}
+          placeholder="0"
+          error={fieldErrors.hourlyRate}
+        />
+        <DecimalField
+          id="cfg-internal-rate"
+          label={t('config.internalHourlyRate')}
+          value={internalHourlyRate}
+          onChange={setInternalHourlyRate}
+          placeholder="0"
+          error={fieldErrors.internalHourlyRate}
+        />
+        <DecimalField
+          id="cfg-taxable-benefits"
+          label={t('config.taxableBenefits')}
+          value={taxableBenefits}
+          onChange={setTaxableBenefits}
+          placeholder="0"
+          error={fieldErrors.taxableBenefits}
+        />
+        <DecimalField
+          id="cfg-standard-hours"
+          label={t('config.standardHours')}
+          value={standardHours}
+          onChange={setStandardHours}
+          placeholder="7.5"
+          error={fieldErrors.standardHours}
+        />
         <div>
           <label htmlFor="cfg-currency" className="block text-xs text-gray-400 mb-1">{t('config.currency')}</label>
           <input
