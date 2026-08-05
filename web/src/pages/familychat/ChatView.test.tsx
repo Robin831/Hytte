@@ -35,6 +35,7 @@ const TRANSLATIONS: Record<string, string> = {
   'chat.emptyMessages': 'No messages yet. Say hello!',
   'chat.loadingOlder': 'Loading older messages…',
   'chat.beginningOfConversation': 'This is the beginning of the conversation',
+  'chat.seenBy': 'Seen by {{names}}',
   'chat.noSelectionTitle': 'Pick a conversation',
   'chat.noSelectionHint': 'Choose a chat from the list to start reading.',
   'composer.placeholder': 'Write a message…',
@@ -121,6 +122,16 @@ vi.mock('../../auth', () => ({
   useAuth: () => authState,
 }))
 
+// ── Family chat context mock ──────────────────────────────────────────────────
+// ChatView is rendered bare here (the real app wraps it in FamilyChatProvider),
+// so the context is mocked; refreshConversations doubles as the spy that proves
+// the conversation list was told to refetch after a read marker.
+const refreshConversations = vi.fn()
+
+vi.mock('./FamilyChatContext', () => ({
+  useFamilyChat: () => ({ refreshConversations, refreshSignal: 0 }),
+}))
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function makeConversation(overrides: Record<string, unknown> = {}) {
@@ -188,6 +199,19 @@ function streamWithController() {
       streamController?.close()
     },
   }
+}
+
+// withReadMarker answers the read-marker POST that ChatView fires shortly after
+// a conversation with messages loads. Tests built on an ordered
+// mockResolvedValueOnce queue need it: without it the marker would consume the
+// next queued response and shift every later call by one.
+function withReadMarker(queued: (url: string, init?: RequestInit) => unknown) {
+  return vi.fn((url: string, init?: RequestInit) => {
+    if ((init?.method ?? 'GET').toUpperCase() === 'POST' && String(url).endsWith('/read')) {
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ status: 'ok' }) })
+    }
+    return queued(url, init)
+  })
 }
 
 function renderChatView(conversationId: number | null = 1, onBack = vi.fn()) {
@@ -745,7 +769,7 @@ describe('ChatView – reconnect gap-fill', () => {
       .mockResolvedValueOnce({ ok: true, body: firstStream })
       .mockResolvedValueOnce(msgsOk([gapMsg2, gapMsg1]))  // API newest-first
       .mockResolvedValueOnce(streamOk())
-    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('fetch', withReadMarker(fetchMock))
 
     renderChatView()
     await waitFor(() => expect(screen.getByText('Before disconnect')).toBeInTheDocument())
@@ -833,7 +857,7 @@ describe('ChatView – reconnect gap-fill', () => {
       .mockResolvedValueOnce({ ok: true, body: firstStream })
       .mockResolvedValueOnce(msgsOk([gapMsg]))   // gap-fill on reconnect
       .mockResolvedValueOnce(streamOk())          // reconnect stream opens cleanly
-    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('fetch', withReadMarker(fetchMock))
 
     renderChatView()
     await waitFor(() => expect(screen.getByText('Before disconnect')).toBeInTheDocument())
@@ -1657,5 +1681,254 @@ describe('ChatView – call UI', () => {
       expect(screen.getByTestId('family-chat-incoming-overlay')).toBeInTheDocument()
     }, { timeout: 5000 })
     expect(screen.getByTestId('family-chat-incoming-kind-label').textContent).toBe('Incoming video call')
+  })
+})
+
+describe('ChatView – read markers', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+    setVisibility('visible')
+  })
+
+  // routedFetch dispatches on URL + method instead of a positional
+  // mockResolvedValueOnce queue: the read marker fires on its own schedule
+  // (debounced, and again on scroll / tab focus), so an ordered queue would be
+  // decided by timing rather than by what the test is asserting.
+  function routedFetch(opts: {
+    messages?: ReturnType<typeof makeMessage>[]
+    stream?: () => unknown
+    read?: () => Promise<unknown>
+  } = {}) {
+    return vi.fn((url: string, init?: RequestInit) => {
+      const u = String(url)
+      const method = (init?.method ?? 'GET').toUpperCase()
+      const convId = Number(u.match(/conversations\/(\d+)/)?.[1] ?? 1)
+      if (method === 'POST' && u.endsWith('/read')) {
+        return opts.read
+          ? opts.read()
+          : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ status: 'ok' }) })
+      }
+      if (u.includes('/stream')) return Promise.resolve(opts.stream ? opts.stream() : streamOk())
+      if (u.includes('/messages')) {
+        return Promise.resolve(msgsOk(convId === 1 ? (opts.messages ?? []) : []))
+      }
+      return Promise.resolve(convOk(makeConversation({ id: convId, member_ids: [1, 2] })))
+    })
+  }
+
+  function readCalls(fetchMock: ReturnType<typeof vi.fn>) {
+    return fetchMock.mock.calls.filter(c => String(c[0]).endsWith('/read'))
+  }
+
+  function readBodies(fetchMock: ReturnType<typeof vi.fn>) {
+    return readCalls(fetchMock).map(c => JSON.parse(String((c[1] as RequestInit).body)))
+  }
+
+  function setVisibility(state: 'visible' | 'hidden') {
+    Object.defineProperty(document, 'visibilityState', { value: state, configurable: true })
+  }
+
+  // Fake the scroll metrics of the message list: happy-dom reports 0 for all
+  // three, which reads as "at the bottom" (the sensible default for a list that
+  // fits the viewport).
+  function setScrollMetrics(scrollTop: number, scrollHeight: number, clientHeight: number) {
+    const el = screen.getByRole('log')
+    Object.defineProperty(el, 'scrollTop', { value: scrollTop, writable: true, configurable: true })
+    Object.defineProperty(el, 'scrollHeight', { value: scrollHeight, configurable: true })
+    Object.defineProperty(el, 'clientHeight', { value: clientHeight, configurable: true })
+    return el
+  }
+
+  // settle waits out the mark-read debounce (plus slack) so "nothing was
+  // posted" assertions test the absence of a request rather than its latency.
+  async function settle(ms = 500) {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, ms)) })
+  }
+
+  const incoming = makeMessage({
+    id: 5,
+    sender_user_id: 2,
+    body: 'Hi there',
+    created_at: '2026-05-01T10:00:00.000Z',
+  })
+
+  it('marks the conversation read on open and refreshes the conversation list', async () => {
+    const fetchMock = routedFetch({ messages: [incoming] })
+    vi.stubGlobal('fetch', fetchMock)
+    renderChatView()
+    await waitFor(() => screen.getByText('Hi there'))
+
+    await waitFor(() => expect(readCalls(fetchMock)).toHaveLength(1), { timeout: 3000 })
+    const [url, init] = readCalls(fetchMock)[0]
+    expect(url).toBe('/api/familychat/conversations/1/read')
+    expect((init as RequestInit).method).toBe('POST')
+    expect((init as RequestInit).credentials).toBe('include')
+    expect(readBodies(fetchMock)[0]).toEqual({ at: '2026-05-01T10:00:00.000Z' })
+    await waitFor(() => expect(refreshConversations).toHaveBeenCalled())
+  })
+
+  it('does not mark read while the tab is hidden, and catches up when it becomes visible', async () => {
+    setVisibility('hidden')
+    const fetchMock = routedFetch({ messages: [incoming] })
+    vi.stubGlobal('fetch', fetchMock)
+    renderChatView()
+    await waitFor(() => screen.getByText('Hi there'))
+
+    await settle()
+    expect(readCalls(fetchMock)).toHaveLength(0)
+    expect(refreshConversations).not.toHaveBeenCalled()
+
+    setVisibility('visible')
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'))
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(readCalls(fetchMock)).toHaveLength(1), { timeout: 3000 })
+  })
+
+  it('does not mark read while scrolled up in history, and marks read on scrolling back down', async () => {
+    const sse = streamWithController()
+    const fetchMock = routedFetch({ messages: [incoming], stream: () => sse.response })
+    vi.stubGlobal('fetch', fetchMock)
+    renderChatView()
+    await waitFor(() => screen.getByText('Hi there'))
+    await waitFor(() => expect(readCalls(fetchMock)).toHaveLength(1), { timeout: 3000 })
+
+    // Scroll up into history — well clear of the bottom, and clear of the
+    // load-older threshold at the top.
+    setScrollMetrics(200, 1000, 300)
+    await act(async () => {
+      sse.push('message_new', {
+        message: makeMessage({
+          id: 6,
+          sender_user_id: 2,
+          body: 'Newer message',
+          created_at: '2026-05-01T11:00:00.000Z',
+        }),
+      })
+      await Promise.resolve()
+    })
+    await waitFor(() => screen.getByText('Newer message'))
+
+    await settle()
+    expect(readCalls(fetchMock)).toHaveLength(1)
+
+    // Back at the bottom: the deferred marker goes out for the newest message.
+    const log = setScrollMetrics(700, 1000, 300)
+    fireEvent.scroll(log)
+    await waitFor(() => expect(readCalls(fetchMock)).toHaveLength(2), { timeout: 3000 })
+    expect(readBodies(fetchMock)[1]).toEqual({ at: '2026-05-01T11:00:00.000Z' })
+  })
+
+  it('deduplicates: a burst of messages produces a single marker for the newest id', async () => {
+    const sse = streamWithController()
+    const fetchMock = routedFetch({ messages: [incoming], stream: () => sse.response })
+    vi.stubGlobal('fetch', fetchMock)
+    const { rerender } = renderChatView()
+    await waitFor(() => screen.getByText('Hi there'))
+    await waitFor(() => expect(readCalls(fetchMock)).toHaveLength(1), { timeout: 3000 })
+
+    await act(async () => {
+      for (const [id, hour] of [[6, '11'], [7, '12'], [8, '13']] as const) {
+        sse.push('message_new', {
+          message: makeMessage({
+            id,
+            sender_user_id: 2,
+            body: `Burst ${id}`,
+            created_at: `2026-05-01T${hour}:00:00.000Z`,
+          }),
+        })
+      }
+      await Promise.resolve()
+    })
+    await waitFor(() => screen.getByText('Burst 8'))
+
+    await settle()
+    expect(readCalls(fetchMock)).toHaveLength(2)
+    expect(readBodies(fetchMock)[1]).toEqual({ at: '2026-05-01T13:00:00.000Z' })
+
+    // A re-render with no new messages must not re-post the same marker.
+    rerender(<ChatView conversationId={1} onBack={vi.fn()} />)
+    await settle()
+    expect(readCalls(fetchMock)).toHaveLength(2)
+  })
+
+  it('shows a peer read receipt as "Seen by" without posting a marker of its own', async () => {
+    const own = makeMessage({
+      id: 5,
+      sender_user_id: 1,
+      body: 'My message',
+      created_at: '2026-05-01T10:00:00.000Z',
+    })
+    const sse = streamWithController()
+    const fetchMock = routedFetch({ messages: [own], stream: () => sse.response })
+    vi.stubGlobal('fetch', fetchMock)
+    renderChatView()
+    await waitFor(() => screen.getByText('My message'))
+    await waitFor(() => expect(readCalls(fetchMock)).toHaveLength(1), { timeout: 3000 })
+
+    await act(async () => {
+      sse.push('read_receipt', {
+        conversation_id: 1,
+        user_id: 2,
+        at: '2026-05-01T10:05:00.000Z',
+      })
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('family-chat-seen-by').textContent).toBe('Seen by Member #2')
+    })
+    await settle()
+    expect(readCalls(fetchMock)).toHaveLength(1)
+  })
+
+  it('ignores our own read_receipt echo', async () => {
+    const own = makeMessage({
+      id: 5,
+      sender_user_id: 1,
+      body: 'My message',
+      created_at: '2026-05-01T10:00:00.000Z',
+    })
+    const sse = streamWithController()
+    const fetchMock = routedFetch({ messages: [own], stream: () => sse.response })
+    vi.stubGlobal('fetch', fetchMock)
+    renderChatView()
+    await waitFor(() => screen.getByText('My message'))
+    await waitFor(() => expect(readCalls(fetchMock)).toHaveLength(1), { timeout: 3000 })
+
+    await act(async () => {
+      sse.push('read_receipt', {
+        conversation_id: 1,
+        user_id: 1,
+        at: '2026-05-01T10:05:00.000Z',
+      })
+      await Promise.resolve()
+    })
+
+    await settle()
+    expect(screen.queryByTestId('family-chat-seen-by')).not.toBeInTheDocument()
+    expect(readCalls(fetchMock)).toHaveLength(1)
+  })
+
+  it('aborts an in-flight read marker when the conversation changes, without surfacing an error', async () => {
+    const fetchMock = routedFetch({
+      messages: [incoming],
+      // Never settles, so the request is still in flight at the switch.
+      read: () => new Promise(() => {}),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { rerender } = renderChatView()
+    await waitFor(() => screen.getByText('Hi there'))
+    await waitFor(() => expect(readCalls(fetchMock)).toHaveLength(1), { timeout: 3000 })
+
+    rerender(<ChatView conversationId={2} onBack={vi.fn()} />)
+    await waitFor(() => {
+      const signal = (readCalls(fetchMock)[0][1] as RequestInit).signal
+      expect(signal?.aborted).toBe(true)
+    })
+    expect(refreshConversations).not.toHaveBeenCalled()
+    expect(screen.queryByText('Failed to load messages')).not.toBeInTheDocument()
   })
 })

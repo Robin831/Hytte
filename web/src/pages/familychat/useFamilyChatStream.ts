@@ -92,6 +92,14 @@ interface MessageDeletedPayload {
   conversation_id?: number
 }
 
+// ReadReceiptPayload is the frame the server publishes after a member POSTs to
+// /read. `at` is the member's new last_read_at (RFC3339, UTC).
+export interface ReadReceiptPayload {
+  user_id: number
+  at: string
+  conversation_id?: number
+}
+
 // reconcileMessage merges an authoritative message into the list. When the
 // incoming message carries a client_id that matches a local optimistic bubble,
 // it replaces that bubble in place — preserving the client_id (so the React key
@@ -142,6 +150,10 @@ export interface UseFamilyChatStreamOptions {
   onSignal: (event: CallSignalEventName, payload: CallSignalPayload) => void | Promise<void>
   // onGroupSignal receives mesh call signalling frames (3+ member conversations).
   onGroupSignal: (event: GroupSignalEventName, payload: CallSignalPayload) => void | Promise<void>
+  // onReadReceipt fires for a *peer's* read marker. Our own echo (the hub fans
+  // the frame back to every subscriber, sender included) is filtered out here,
+  // so the caller can never feed its own POST back into another POST.
+  onReadReceipt?: (payload: ReadReceiptPayload) => void
   // onConversationOpen fires when a conversation's stream starts, so the caller
   // can clear per-conversation UI state it still owns.
   onConversationOpen?: () => void
@@ -206,6 +218,7 @@ export function useFamilyChatStream(options: UseFamilyChatStreamOptions): UseFam
   const conversationRef = useRef<Conversation | null>(null)
   const signalRef = useRef(options.onSignal)
   const groupSignalRef = useRef(options.onGroupSignal)
+  const readReceiptRef = useRef(options.onReadReceipt)
   const conversationOpenRef = useRef(options.onConversationOpen)
   const conversationCloseRef = useRef(options.onConversationClose)
   // callKindRef shadows the 1:1 hook's callKind — the hook resets it
@@ -218,6 +231,7 @@ export function useFamilyChatStream(options: UseFamilyChatStreamOptions): UseFam
   useEffect(() => {
     signalRef.current = options.onSignal
     groupSignalRef.current = options.onGroupSignal
+    readReceiptRef.current = options.onReadReceipt
     conversationOpenRef.current = options.onConversationOpen
     conversationCloseRef.current = options.onConversationClose
     callKindRef.current = callKind
@@ -427,6 +441,17 @@ export function useFamilyChatStream(options: UseFamilyChatStreamOptions): UseFam
         payload?.user_id !== undefined
       ) {
         recordTyping(payload.user_id as number)
+      } else if (
+        eventName === 'read_receipt' &&
+        payload?.user_id !== undefined &&
+        payload?.at !== undefined
+      ) {
+        const receipt = payload as unknown as ReadReceiptPayload
+        if (receipt.conversation_id !== undefined && receipt.conversation_id !== conversationId) return
+        // Our own marker echoes back to us; forwarding it would let the caller
+        // treat its own POST as new peer activity.
+        if (receipt.user_id === currentUserIdRef.current) return
+        readReceiptRef.current?.(receipt)
       } else if (
         eventName === 'call_join'
         || eventName === 'call_leave'

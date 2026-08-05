@@ -8,6 +8,7 @@ import {
   deleteMessage,
   uploadAttachment,
   fetchOlderMessages,
+  markConversationRead,
   OLDER_PAGE_SIZE,
   UploadError,
   type ReactionMap,
@@ -174,6 +175,43 @@ describe('fetchOlderMessages', () => {
   it('throws when the response is not ok', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 400 }))
     await expect(fetchOlderMessages(1, 2)).rejects.toThrow()
+  })
+})
+
+describe('markConversationRead', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('POSTs the read endpoint with the at timestamp', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    vi.stubGlobal('fetch', fetchMock)
+    await markConversationRead(7, { at: '2026-05-01T10:00:00Z' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/familychat/conversations/7/read')
+    expect(init.method).toBe('POST')
+    expect(init.credentials).toBe('include')
+    expect(JSON.parse(init.body)).toEqual({ at: '2026-05-01T10:00:00Z' })
+  })
+
+  it('omits at when no timestamp is given so the server stamps its own clock', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    vi.stubGlobal('fetch', fetchMock)
+    await markConversationRead(3)
+    const [, init] = fetchMock.mock.calls[0]
+    expect(JSON.parse(init.body)).toEqual({})
+  })
+
+  it('forwards an abort signal', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    vi.stubGlobal('fetch', fetchMock)
+    const controller = new AbortController()
+    await markConversationRead(1, { signal: controller.signal })
+    expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal)
+  })
+
+  it('throws when the response is not ok', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404 }))
+    await expect(markConversationRead(1)).rejects.toThrow()
   })
 })
 
