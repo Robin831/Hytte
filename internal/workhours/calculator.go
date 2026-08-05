@@ -29,18 +29,65 @@ func ValidateHHMM(t string) error {
 	return err
 }
 
-// sessionMinutes returns the duration of a session in minutes. Returns 0 if
+// ValidateSessionTimes checks that a session's start/end pair is consistent with
+// its crossesMidnight flag. Both times must already be valid HH:MM strings.
+//
+// Without the flag the end must be strictly after the start (the long-standing
+// rule). With the flag the end belongs to the next calendar day, so it must be
+// strictly before the start — that rules out sessions of 24h or more, which the
+// flag is not meant to express.
+func ValidateSessionTimes(startTime, endTime string, crossesMidnight bool) error {
+	start, err := parseHHMM(startTime)
+	if err != nil {
+		return err
+	}
+	end, err := parseHHMM(endTime)
+	if err != nil {
+		return err
+	}
+	if crossesMidnight {
+		if end >= start {
+			return fmt.Errorf("end_time must be before start_time when crosses_midnight is set")
+		}
+		return nil
+	}
+	if end <= start {
+		return fmt.Errorf("end_time must be after start_time")
+	}
+	return nil
+}
+
+// minutesPerDay is the number of minutes added to a session that runs past
+// midnight, since its end time belongs to the following calendar day.
+const minutesPerDay = 24 * 60
+
+// SessionDurationMinutes returns the duration in minutes of a session running
+// from startTime to endTime. When crossesMidnight is set the end time belongs to
+// the next calendar day, so a full day is added before the subtraction — the
+// whole duration still belongs to the day the session started on. Returns 0 if
 // end is not after start (e.g. malformed entry).
-func sessionMinutes(s WorkSession) (int, error) {
-	start, err := parseHHMM(s.StartTime)
+//
+// This is the single source of truth for session durations; other packages that
+// roll up work hours (for example salary) must go through it so the
+// crosses_midnight rule cannot drift between call sites.
+func SessionDurationMinutes(startTime, endTime string, crossesMidnight bool) (int, error) {
+	start, err := parseHHMM(startTime)
 	if err != nil {
 		return 0, fmt.Errorf("start_time: %w", err)
 	}
-	end, err := parseHHMM(s.EndTime)
+	end, err := parseHHMM(endTime)
 	if err != nil {
 		return 0, fmt.Errorf("end_time: %w", err)
 	}
+	if crossesMidnight {
+		end += minutesPerDay
+	}
 	return max(end-start, 0), nil
+}
+
+// sessionMinutes returns the duration of a session in minutes.
+func sessionMinutes(s WorkSession) (int, error) {
+	return SessionDurationMinutes(s.StartTime, s.EndTime, s.CrossesMidnight)
 }
 
 // CalculateDay computes gross/net/reported hours and remainder for a work day.

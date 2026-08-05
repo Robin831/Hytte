@@ -68,9 +68,14 @@ export default function MonthView({
 
   const summaryMap = new Map<string, DaySummary>()
   const leaveDayMap = new Map<string, LeaveDay>()
+  // Dates holding at least one session that ran past midnight into the next day.
+  const crossesMidnightDates = new Set<string>()
   if (data) {
     data.summaries.forEach(s => summaryMap.set(s.date, s))
     data.leave_days?.forEach(ld => leaveDayMap.set(ld.date, ld))
+    data.days?.forEach(d => {
+      if (d.sessions?.some(s => s.crosses_midnight)) crossesMidnightDates.add(d.date)
+    })
   }
 
   const monthLabel = formatDate(new Date(monthStr + '-01T12:00:00'), {
@@ -170,7 +175,11 @@ export default function MonthView({
                     const dayNum = parseInt(dateStr.split('-')[2])
                     const cellClass = dayCellClass(summary, isWeekend, isHoliday, leaveEntry?.leave_type)
                     const isDisabled = isWeekend
-                    const cellTitle = holidayLabel ?? (leaveEntry ? t(`workhours:leaveType_${leaveEntry.leave_type}`) : undefined)
+                    const endsNextDay = crossesMidnightDates.has(dateStr)
+                    const baseTitle = holidayLabel ?? (leaveEntry ? t(`workhours:leaveType_${leaveEntry.leave_type}`) : undefined)
+                    const cellTitle = endsNextDay
+                      ? [baseTitle, t('workhours:endsNextDayTitle')].filter(Boolean).join(' – ')
+                      : baseTitle
 
                     return (
                       <button
@@ -184,7 +193,14 @@ export default function MonthView({
                         } ${isToday ? 'ring-1 ring-blue-500' : ''}`}
                         aria-label={cellTitle ? `${dateStr} – ${cellTitle}` : dateStr}
                       >
-                        <span className="font-medium leading-none">{dayNum}</span>
+                        <span className="font-medium leading-none">
+                          {dayNum}
+                          {endsNextDay && (
+                            <span className="ml-0.5 align-super text-[0.5rem] font-medium text-blue-300">
+                              {t('workhours:nextDayMarker')}
+                            </span>
+                          )}
+                        </span>
                         {isHoliday ? (
                           <span className="text-[0.55rem] leading-tight mt-0.5 opacity-70 truncate max-w-full px-0.5 text-center">
                             {holidayLabel}

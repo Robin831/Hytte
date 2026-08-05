@@ -63,13 +63,20 @@ export function dateToMonthStr(date: string): string {
   return date.substring(0, 7)
 }
 
-// Returns session range (earliest start, latest end) for a day
-export function sessionRange(day: WorkDay | undefined): { start: string; end: string } | null {
+// Returns session range (earliest start, latest end) for a day. A session that
+// crosses midnight ends on the following day, so it always wins the "latest
+// end" comparison; endsNextDay flags that for the caller to mark.
+export function sessionRange(
+  day: WorkDay | undefined,
+): { start: string; end: string; endsNextDay: boolean } | null {
   if (!day || !day.sessions || day.sessions.length === 0) return null
   const sorted = [...day.sessions].sort((a, b) => a.start_time.localeCompare(b.start_time))
   const start = sorted[0].start_time
-  const end = sorted.reduce((mx, s) => (s.end_time > mx ? s.end_time : mx), sorted[0].end_time)
-  return { start, end }
+  const latest = sorted.reduce((mx, s) => {
+    if (s.crosses_midnight !== mx.crosses_midnight) return s.crosses_midnight ? s : mx
+    return s.end_time > mx.end_time ? s : mx
+  }, sorted[0])
+  return { start, end: latest.end_time, endsNextDay: latest.crosses_midnight }
 }
 
 // Returns the 5 Mon-Fri dates for the week starting at weekStart

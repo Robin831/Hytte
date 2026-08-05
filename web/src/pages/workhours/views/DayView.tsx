@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Building2, Calendar, ChevronLeft, ChevronRight, Clock, Copy, Plus, Trash2 } from 'lucide-react'
+import { Building2, Calendar, Check, ChevronLeft, ChevronRight, Clock, Copy, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { formatDate } from '../../../utils/formatDate'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { Select, type SelectOption } from '../../../components/ui/select'
 import { TimePicker } from '../../../components/ui/time-picker'
-import { calculateDayWithLivePunch, type WorkSession, type WorkSettings } from '../../workHoursUtils'
+import { calculateDayWithLivePunch, sessionMinutes, type WorkSession, type WorkSettings } from '../../workHoursUtils'
 import type { DaySummary, FlexState, LeaveDay, LeaveType, WorkDay, WorkDeductionPreset } from '../types'
 import {
   buildNavHolidaySet,
@@ -52,6 +52,13 @@ export default function DayView({
   const [newStart, setNewStart] = useState('')
   const [newEnd, setNewEnd] = useState('')
   const [newIsInternal, setNewIsInternal] = useState(false)
+  const [newCrossesMidnight, setNewCrossesMidnight] = useState(false)
+  // Session ids are per day, so the open editor is tagged with the day it was
+  // opened on and derived away on a day change instead of being reset in an effect.
+  const [editSession, setEditSession] = useState<{ date: string; id: number } | null>(null)
+  const [editStart, setEditStart] = useState('')
+  const [editEnd, setEditEnd] = useState('')
+  const [editCrossesMidnight, setEditCrossesMidnight] = useState(false)
   const [newDeductionName, setNewDeductionName] = useState('')
   const [newDeductionMinutes, setNewDeductionMinutes] = useState('')
   const [punchStart, setPunchStart] = useState<string | null>(null)
@@ -72,6 +79,11 @@ export default function DayView({
       return []
     }
   })
+
+  const editSessionId = editSession && editSession.date === currentDate ? editSession.id : null
+  const setEditSessionId = useCallback((id: number | null) => {
+    setEditSession(id === null ? null : { date: currentDate, id })
+  }, [currentDate])
 
   useEffect(() => {
     currentDateRef.current = currentDate
@@ -225,8 +237,35 @@ export default function DayView({
     }
   }
 
+  // Resolves the "ends next day" flag for the entered times. The flag is never
+  // set behind the user's back: an end before the start is only treated as
+  // next-day after an explicit confirmation (or after ticking the checkbox).
+  // Returns null when the combination is invalid and nothing should be saved.
+  const resolveCrossesMidnight = (start: string, end: string, checked: boolean): boolean | null => {
+    if (checked) {
+      // Mirror the server-side rule so a bad combination gets a clear message
+      // instead of a silent failure.
+      if (end >= start) {
+        alert(t('workhours:crossesMidnightRangeError'))
+        return null
+      }
+      return true
+    }
+    if (end === start) {
+      alert(t('workhours:sessionRangeError'))
+      return null
+    }
+    if (end < start) {
+      if (!confirm(t('workhours:sessionCrossesMidnightConfirm', { start, end }))) return null
+      return true
+    }
+    return false
+  }
+
   const handleAddSession = async () => {
     if (!newStart || !newEnd) return
+    const crossesMidnight = resolveCrossesMidnight(newStart, newEnd, newCrossesMidnight)
+    if (crossesMidnight === null) return
     setSaving(true)
     try {
       let day = dayData?.day ?? null
@@ -241,11 +280,13 @@ export default function DayView({
         end_time: newEnd,
         sort_order: sortOrder,
         is_internal: newIsInternal,
+        crosses_midnight: crossesMidnight,
       })
       if (ok) {
         setNewStart('')
         setNewEnd('')
         setNewIsInternal(false)
+        setNewCrossesMidnight(false)
         await loadDay(currentDate)
         loadFlex()
       }
@@ -267,6 +308,44 @@ export default function DayView({
     }
   }
 
+  const handleStartEditSession = (session: WorkSession) => {
+    setEditSessionId(session.id)
+    setEditStart(session.start_time)
+    setEditEnd(session.end_time)
+    setEditCrossesMidnight(session.crosses_midnight)
+  }
+
+  const handleCancelEditSession = () => {
+    setEditSessionId(null)
+  }
+
+  // Saves an edited session. Times and the "ends next day" flag are edited
+  // together, so a wrongly flagged session can be corrected without deleting it.
+  const handleSaveEditSession = async (session: WorkSession) => {
+    if (!editStart || !editEnd) return
+    const crossesMidnight = resolveCrossesMidnight(editStart, editEnd, editCrossesMidnight)
+    if (crossesMidnight === null) return
+    setSaving(true)
+    try {
+      const ok = await api.updateSession(session.id, {
+        start_time: editStart,
+        end_time: editEnd,
+        sort_order: session.sort_order,
+        is_internal: session.is_internal,
+        crosses_midnight: crossesMidnight,
+      })
+      if (!ok) {
+        alert(t('workhours:punchSaveError'))
+        return
+      }
+      setEditSessionId(null)
+      await loadDay(currentDate)
+      loadFlex()
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleToggleInternal = async (session: WorkSession) => {
     setSaving(true)
     try {
@@ -275,6 +354,7 @@ export default function DayView({
         end_time: session.end_time,
         sort_order: session.sort_order,
         is_internal: !session.is_internal,
+        crosses_midnight: session.crosses_midnight,
       })
       if (!ok) {
         console.error('Failed to toggle internal flag')
@@ -416,13 +496,22 @@ export default function DayView({
     punchEditAbortRef.current?.abort()
     punchEditAbortRef.current = null
     const endTime = currentTimeHHMM()
+    // An end time at or before the start can only mean the session ran past
+    // midnight. Ask instead of dead-ending, so the shift isn't lost.
+    let crossesMidnight = false
     if (endTime <= punchStart) {
-      alert(t('workhours:punchMidnightError'))
-      return
+      if (endTime === punchStart) {
+        alert(t('workhours:punchZeroLengthError'))
+        return
+      }
+      if (!confirm(t('workhours:punchCrossesMidnightConfirm', { start: punchStart, end: endTime }))) {
+        return
+      }
+      crossesMidnight = true
     }
     setSaving(true)
     try {
-      const data = await api.punchOut({ end_time: endTime })
+      const data = await api.punchOut({ end_time: endTime, crosses_midnight: crossesMidnight })
       if (data) {
         setPunchStart(null)
         setNewStart('')
@@ -513,6 +602,7 @@ export default function DayView({
           end_time: session.end_time,
           sort_order: (d.sessions?.length ?? 0),
           is_internal: session.is_internal,
+          crosses_midnight: session.crosses_midnight,
         })
         if (!ok) {
           console.error('workhours: failed to copy session', session)
@@ -823,15 +913,78 @@ export default function DayView({
             {sessions.length > 0 && (
               <div className="space-y-2">
                 {sessions.map(s => {
-                  const [sh, sm] = s.start_time.split(':').map(Number)
-                  const [eh, em] = s.end_time.split(':').map(Number)
-                  const mins = eh * 60 + em - (sh * 60 + sm)
+                  const mins = sessionMinutes(s) ?? 0
+                  if (editSessionId === s.id) {
+                    return (
+                      <div key={s.id} className="flex items-center gap-2 flex-wrap rounded-lg border border-blue-700/40 bg-gray-800 px-3 py-2">
+                        <TimePicker
+                          value={editStart}
+                          onChange={setEditStart}
+                          aria-label={t('workhours:startTime')}
+                        />
+                        <span className="text-gray-500 text-xs">→</span>
+                        <TimePicker
+                          value={editEnd}
+                          onChange={setEditEnd}
+                          aria-label={t('workhours:endTime')}
+                        />
+                        <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 select-none">
+                          <input
+                            type="checkbox"
+                            checked={editCrossesMidnight}
+                            onChange={e => setEditCrossesMidnight(e.target.checked)}
+                            className="accent-blue-500"
+                            aria-label={t('workhours:endsNextDay')}
+                          />
+                          <span className={editCrossesMidnight ? 'text-blue-300' : ''}>{t('workhours:endsNextDay')}</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveEditSession(s)}
+                          disabled={saving || !editStart || !editEnd}
+                          className="ml-auto text-green-400 hover:text-green-300 transition-colors disabled:opacity-40 cursor-pointer"
+                          aria-label={t('workhours:saveSession')}
+                          title={t('workhours:saveSession')}
+                        >
+                          <Check size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelEditSession}
+                          disabled={saving}
+                          className="text-gray-500 hover:text-white transition-colors disabled:opacity-40 cursor-pointer"
+                          aria-label={t('workhours:cancelEditSession')}
+                          title={t('workhours:cancelEditSession')}
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    )
+                  }
                   return (
                     <div key={s.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${s.is_internal ? 'bg-purple-900/40 border-purple-700/40' : 'bg-gray-800 border-transparent'}`}>
                       <span className="text-white font-mono text-sm">{s.start_time}</span>
                       <span className="text-gray-500 text-xs">→</span>
                       <span className="text-white font-mono text-sm">{s.end_time}</span>
+                      {s.crosses_midnight && (
+                        <span
+                          className="rounded bg-blue-900/50 px-1 py-0.5 text-[0.65rem] font-medium text-blue-300"
+                          title={t('workhours:endsNextDayTitle')}
+                        >
+                          {t('workhours:nextDayMarker')}
+                        </span>
+                      )}
                       <span className="text-gray-400 text-xs ml-auto">{formatMins(mins)}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditSession(s)}
+                        disabled={saving}
+                        className="text-gray-500 hover:text-blue-400 transition-colors disabled:opacity-40 cursor-pointer"
+                        aria-label={t('workhours:editSession')}
+                        title={t('workhours:editSession')}
+                      >
+                        <Pencil size={14} />
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleToggleInternal(s)}
@@ -876,6 +1029,16 @@ export default function DayView({
                 onChange={setNewEnd}
                 aria-label={t('workhours:endTime')}
               />
+              <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 select-none">
+                <input
+                  type="checkbox"
+                  checked={newCrossesMidnight}
+                  onChange={e => setNewCrossesMidnight(e.target.checked)}
+                  className="accent-blue-500"
+                  aria-label={t('workhours:endsNextDay')}
+                />
+                <span className={newCrossesMidnight ? 'text-blue-300' : ''}>{t('workhours:endsNextDay')}</span>
+              </label>
               <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 select-none">
                 <input
                   type="checkbox"

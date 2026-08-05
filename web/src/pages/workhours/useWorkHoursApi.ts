@@ -21,6 +21,7 @@ interface SessionInput {
   end_time: string
   sort_order: number
   is_internal: boolean
+  crosses_midnight: boolean
 }
 
 interface SessionUpdate {
@@ -28,6 +29,7 @@ interface SessionUpdate {
   end_time: string
   sort_order: number
   is_internal: boolean
+  crosses_midnight: boolean
 }
 
 interface DeductionInput {
@@ -72,7 +74,7 @@ export interface WorkHoursApi {
   // ── Punch clock ──
   getPunchSession(signal?: AbortSignal): Promise<PunchSession | null>
   punchIn(body: { date: string; start_time: string }): Promise<boolean>
-  punchOut(body: { end_time: string }): Promise<PunchOutResult | null>
+  punchOut(body: { end_time: string; crosses_midnight?: boolean }): Promise<PunchOutResult | null>
   cancelPunch(): Promise<boolean>
   editPunchStart(start_time: string, signal?: AbortSignal): Promise<boolean>
   // ── Flex ──

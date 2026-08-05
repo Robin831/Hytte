@@ -182,7 +182,21 @@ export default function WeekView({
                         {range ? range.start : <span className="text-gray-600">—</span>}
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono text-gray-300">
-                        {range ? range.end : <span className="text-gray-600">—</span>}
+                        {range ? (
+                          <>
+                            {range.end}
+                            {range.endsNextDay && (
+                              <span
+                                className="ml-1 rounded bg-blue-900/50 px-1 text-[0.65rem] font-medium text-blue-300"
+                                title={t('workhours:endsNextDayTitle')}
+                              >
+                                {t('workhours:nextDayMarker')}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-gray-600">—</span>
+                        )}
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono text-gray-300">
                         {summary ? formatMins(summary.net_minutes) : <span className="text-gray-600">—</span>}
