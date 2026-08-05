@@ -1,0 +1,2 @@
+category: Added
+- **Reorder and hide dashboard widgets** - The dashboard has an "Edit layout" mode where widgets can be dragged, moved with keyboard-accessible up/down buttons, and hidden or restored. The layout is stored server-side in a new `dashboard_widgets` preference, so it follows you across devices, and "Reset to default" puts everything back. Feature gating stays authoritative — a widget whose feature is off never renders, whatever the saved layout says. (Hytte-149r8)

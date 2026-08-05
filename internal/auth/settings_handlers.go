@@ -33,6 +33,49 @@ func ValidateCLIPath(path string) error {
 	return nil
 }
 
+// widgetIDRe matches a dashboard widget id as used by the frontend registry.
+var widgetIDRe = regexp.MustCompile(`^[a-z0-9_-]+$`)
+
+const (
+	maxDashboardWidgetIDs   = 50
+	maxDashboardWidgetIDLen = 64
+)
+
+// validateDashboardWidgets checks that the dashboard_widgets preference is a
+// JSON object of the form {"order": [...], "hidden": [...]} with a bounded
+// number of well-formed widget ids.
+func validateDashboardWidgets(raw string) error {
+	const shapeErr = `dashboard_widgets must be a JSON object with "order" and "hidden" arrays of widget ids`
+
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var layout struct {
+		Order  []string `json:"order"`
+		Hidden []string `json:"hidden"`
+	}
+	if err := dec.Decode(&layout); err != nil {
+		return fmt.Errorf("%s", shapeErr)
+	}
+
+	for _, field := range []struct {
+		name string
+		ids  []string
+	}{{"order", layout.Order}, {"hidden", layout.Hidden}} {
+		if len(field.ids) > maxDashboardWidgetIDs {
+			return fmt.Errorf("dashboard_widgets %s cannot exceed %d ids", field.name, maxDashboardWidgetIDs)
+		}
+		for _, id := range field.ids {
+			if len(id) > maxDashboardWidgetIDLen {
+				return fmt.Errorf("dashboard_widgets %s ids must not exceed %d characters", field.name, maxDashboardWidgetIDLen)
+			}
+			if !widgetIDRe.MatchString(id) {
+				return fmt.Errorf("dashboard_widgets %s ids may only contain lowercase letters, digits, hyphens and underscores", field.name)
+			}
+		}
+	}
+	return nil
+}
+
 // EventType describes a notification event type that can be filtered.
 type EventType struct {
 	Key         string `json:"key"`
@@ -144,6 +187,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 		jsonTypedPrefs := map[string]bool{
 			"quick_links":                true,
 			"notification_filter_events": true,
+			"dashboard_widgets":          true,
 		}
 
 		for k, raw := range rawBody.Preferences {
@@ -218,6 +262,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"pokemon_scan_daily_cap":          true,
 			"pokemon_scan_push_enabled":       true,
 			"pokemon_scan_auto_discard_hours": true,
+			"dashboard_widgets":               true,
 		}
 
 		// Integer range keys: HR/pace, work hours, budget preferences, and other numeric settings.
@@ -347,6 +392,16 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 						writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown event type: " + ek})
 						return
 					}
+				}
+			}
+			// Validate dashboard_widgets: a JSON object {order, hidden} of widget id
+			// arrays. Ids are not checked against a widget registry — the frontend
+			// ignores ids it does not know — but the shape and size are bounded so a
+			// malformed client cannot store junk in the preference.
+			if k == "dashboard_widgets" && v != "" {
+				if err := validateDashboardWidgets(v); err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+					return
 				}
 			}
 			// Validate work_hours_rounding: must be 15, 30, or 60 minutes.
