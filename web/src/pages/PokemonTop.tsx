@@ -40,8 +40,10 @@ function filterToQuery(filter: Filter): string {
   return 'any'
 }
 
-// 0 means "upstream price missing" rather than "this card is free" — see
-// components/pokemon/format.ts for the full reasoning.
+// formatEur treats 0 as "upstream price missing" rather than "this card is
+// free", same as the shared formatNok — see components/pokemon/format.ts for
+// the full reasoning. This copy stays local because it renders "—" while
+// CardLightbox's formatEur returns null to drop the secondary price line.
 function formatEur(amount: number | null | undefined): string {
   if (amount == null || amount === 0) return '—'
   return formatNumber(amount, {
