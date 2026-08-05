@@ -1,0 +1,2 @@
+category: Fixed
+- **Comparable unit prices on offers** - Derived unit prices are now normalised to one of three scales (kr/kg, kr/l or kr/stk) instead of using the raw unit symbol from the source data, so a 500 g item at 45 kr shows as 90,00/kg next to a 1 kg item at 89,00/kg. Grams, millilitres, centilitres and decilitres are converted to their base unit, and unrecognised symbols no longer produce a misleading number. Corrected values land on the next daily sync. (Hytte-848vs)

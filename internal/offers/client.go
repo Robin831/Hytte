@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -165,9 +166,37 @@ func fetchPage(ctx context.Context, fullURL string) ([]tjekOffer, error) {
 	return nil, lastErr
 }
 
+// unitConversions maps a lowercased, trimmed Tjek unit symbol to the base unit
+// we express prices in and the factor that converts a raw size into that base
+// unit. Sub-units are scaled up so a 500 g item and a 1 kg item are both priced
+// per kg and stay comparable side by side in the same list. Symbols outside
+// this table (including "pcs"/"stk") deliberately yield no unit price.
+var unitConversions = map[string]struct {
+	label  string
+	factor float64
+}{
+	"g":  {"kg", 1.0 / 1000},
+	"kg": {"kg", 1},
+	"ml": {"l", 1.0 / 1000},
+	"cl": {"l", 1.0 / 100},
+	"dl": {"l", 1.0 / 10},
+	"l":  {"l", 1},
+}
+
+// normaliseUnit resolves a raw Tjek unit symbol to a base unit label and the
+// multiplier converting the raw size into that base unit. ok is false for empty
+// or unrecognised symbols, which must not produce a misleading unit price.
+func normaliseUnit(symbol string) (label string, factor float64, ok bool) {
+	c, ok := unitConversions[strings.ToLower(strings.TrimSpace(symbol))]
+	if !ok {
+		return "", 0, false
+	}
+	return c.label, c.factor, true
+}
+
 // convertOffer maps a Tjek offer onto our storage model, deriving the unit
-// price (price per liter/kg when the quantity is known, else per piece for
-// multi-packs) and normalizing validity timestamps to dates.
+// price (price per kg or per liter when the quantity is known, else per piece
+// for multi-packs) and normalizing validity timestamps to dates.
 func convertOffer(t tjekOffer) Offer {
 	o := Offer{
 		ID:          t.ID,
@@ -195,11 +224,17 @@ func convertOffer(t tjekOffer) Offer {
 	if t.Quantity.Pieces.From != nil {
 		pieces = *t.Quantity.Pieces.From
 	}
-	switch {
-	case t.Quantity.Unit != nil && t.Quantity.Unit.Symbol != "" && size > 0 && (size != 1 || t.Quantity.Unit.Symbol != "pcs"):
-		o.UnitPrice = round2(o.Price / size)
-		o.UnitLabel = t.Quantity.Unit.Symbol
-	case pieces > 1:
+	if t.Quantity.Unit != nil && size > 0 && (size != 1 || t.Quantity.Unit.Symbol != "pcs") {
+		if label, factor, ok := normaliseUnit(t.Quantity.Unit.Symbol); ok {
+			if base := size * factor; base > 0 {
+				o.UnitPrice = round2(o.Price / base)
+				o.UnitLabel = label
+			}
+		}
+	}
+	// Unknown or missing units fall through to the per-piece price so
+	// multi-packs still get something comparable.
+	if o.UnitLabel == "" && pieces > 1 {
 		o.UnitPrice = round2(o.Price / pieces)
 		o.UnitLabel = "stk"
 	}
