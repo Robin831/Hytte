@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Pencil, Trash2, Ruler, Settings2, X, Baby, ShoppingBag } from 'lucide-react'
 import { useAuth } from '../auth'
+import { api, messageFor } from './wardrobeApi'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../components/ui/dialog'
 import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
 import { Select, type SelectOption } from '../components/ui/select'
@@ -97,14 +98,10 @@ function today(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-async function api(path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(`/api/wardrobe${path}`, {
-    credentials: 'include',
-    headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
-    ...init,
-  })
-  if (!res.ok) throw new Error(`${init?.method ?? 'GET'} ${path} failed`)
-  return res
+// FormError renders a validation message inside the form that produced it.
+function FormError({ message, className }: { message: string; className?: string }) {
+  if (!message) return null
+  return <p role="alert" className={`text-sm text-red-400${className ? ` ${className}` : ''}`}>{message}</p>
 }
 
 export default function WardrobePage() {
@@ -123,10 +120,23 @@ export default function WardrobePage() {
   const [error, setError] = useState('')
 
   const [kidDialog, setKidDialog] = useState<{ id?: number; name: string; birthdate: string; emoji: string } | null>(null)
+  const [kidError, setKidError] = useState('')
   const [itemDialog, setItemDialog] = useState<ItemForm | null>(null)
+  const [itemError, setItemError] = useState('')
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [confirm, setConfirm] = useState<{ message: string; action: () => void } | null>(null)
   const [saving, setSaving] = useState(false)
+
+  // Opening or closing a dialog clears whatever error the last attempt left behind.
+  const openKidDialog = (form: { id?: number; name: string; birthdate: string; emoji: string } | null) => {
+    setKidError('')
+    setKidDialog(form)
+  }
+
+  const openItemDialog = (form: ItemForm | null) => {
+    setItemError('')
+    setItemDialog(form)
+  }
 
   const selectedKid = kids.find(k => k.id === selectedKidId) ?? null
 
@@ -212,7 +222,7 @@ export default function WardrobePage() {
   const saveKid = async () => {
     if (!kidDialog || saving) return
     setSaving(true)
-    setError('')
+    setKidError('')
     try {
       const body = JSON.stringify({
         name: kidDialog.name.trim(),
@@ -226,10 +236,11 @@ export default function WardrobePage() {
         const data = await res.json()
         setSelectedKidId(data.kid.id as number)
       }
-      setKidDialog(null)
+      openKidDialog(null)
       await refreshAll()
-    } catch {
-      setError(t('errors.failedToSave'))
+    } catch (e) {
+      // Keep the dialog open with the entered values so they can be corrected.
+      setKidError(messageFor(e, t, 'errors.failedToSave'))
     } finally {
       setSaving(false)
     }
@@ -244,8 +255,8 @@ export default function WardrobePage() {
           await api(`/kids/${kid.id}`, { method: 'DELETE' })
           setSelectedKidId(null)
           await refreshAll()
-        } catch {
-          setError(t('errors.failedToDelete'))
+        } catch (e) {
+          setError(messageFor(e, t, 'errors.failedToDelete'))
         }
       },
     })
@@ -256,7 +267,7 @@ export default function WardrobePage() {
   const saveItem = async () => {
     if (!itemDialog || saving) return
     setSaving(true)
-    setError('')
+    setItemError('')
     try {
       const body = JSON.stringify({
         kid_id: itemDialog.kid_id,
@@ -275,10 +286,11 @@ export default function WardrobePage() {
       } else {
         await api('/items', { method: 'POST', body })
       }
-      setItemDialog(null)
+      openItemDialog(null)
       if (selectedKidId !== null) await refreshKidData(selectedKidId)
-    } catch {
-      setError(t('errors.failedToSave'))
+    } catch (e) {
+      // Keep the dialog open with the entered values so they can be corrected.
+      setItemError(messageFor(e, t, 'errors.failedToSave'))
     } finally {
       setSaving(false)
     }
@@ -292,8 +304,8 @@ export default function WardrobePage() {
         body: JSON.stringify({ ...item, status }),
       })
       if (selectedKidId !== null) await refreshKidData(selectedKidId)
-    } catch {
-      setError(t('errors.failedToSave'))
+    } catch (e) {
+      setError(messageFor(e, t, 'errors.failedToSave'))
     }
   }
 
@@ -305,8 +317,8 @@ export default function WardrobePage() {
         try {
           await api(`/items/${item.id}`, { method: 'DELETE' })
           if (selectedKidId !== null) await refreshKidData(selectedKidId)
-        } catch {
-          setError(t('errors.failedToDelete'))
+        } catch (e) {
+          setError(messageFor(e, t, 'errors.failedToDelete'))
         }
       },
     })
@@ -340,7 +352,7 @@ export default function WardrobePage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">{t('title')}</h1>
         <button
-          onClick={() => setKidDialog({ name: '', birthdate: '', emoji: '🧒' })}
+          onClick={() => openKidDialog({ name: '', birthdate: '', emoji: '🧒' })}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors"
         >
           <Plus size={16} />
@@ -390,7 +402,7 @@ export default function WardrobePage() {
               <KidStatsCard
                 kid={selectedKid}
                 dateFmt={dateFmt}
-                onEdit={() => setKidDialog({
+                onEdit={() => openKidDialog({
                   id: selectedKid.id,
                   name: selectedKid.name,
                   birthdate: selectedKid.birthdate,
@@ -417,8 +429,8 @@ export default function WardrobePage() {
                   <InventoryTab
                     items={items}
                     categories={categories}
-                    onAdd={() => selectedKidId !== null && setItemDialog(emptyItemForm(selectedKidId))}
-                    onEdit={item => setItemDialog({
+                    onAdd={() => selectedKidId !== null && openItemDialog(emptyItemForm(selectedKidId))}
+                    onEdit={item => openItemDialog({
                       id: item.id,
                       kid_id: item.kid_id,
                       category_id: String(item.category_id),
@@ -443,7 +455,6 @@ export default function WardrobePage() {
                     measurements={measurements}
                     dateFmt={dateFmt}
                     onChanged={refreshAll}
-                    onError={() => setError(t('errors.failedToSave'))}
                   />
                 </TabPanel>
 
@@ -457,11 +468,12 @@ export default function WardrobePage() {
       )}
 
       {/* Kid add/edit dialog */}
-      <Dialog open={kidDialog !== null} onClose={() => setKidDialog(null)} aria-labelledby="kid-dialog-title">
+      <Dialog open={kidDialog !== null} onClose={() => openKidDialog(null)} aria-labelledby="kid-dialog-title">
         {kidDialog && (
           <>
-            <DialogHeader id="kid-dialog-title" title={kidDialog.id ? t('editKid') : t('addKid')} onClose={() => setKidDialog(null)} />
+            <DialogHeader id="kid-dialog-title" title={kidDialog.id ? t('editKid') : t('addKid')} onClose={() => openKidDialog(null)} />
             <DialogBody className="space-y-4">
+              <FormError message={kidError} />
               <label className="block">
                 <span className="block text-sm text-gray-300 mb-1">{t('kidForm.name')}</span>
                 <input
@@ -494,7 +506,7 @@ export default function WardrobePage() {
               </div>
             </DialogBody>
             <DialogFooter>
-              <button onClick={() => setKidDialog(null)} className="px-4 py-2 text-sm text-gray-300 hover:text-white cursor-pointer">
+              <button onClick={() => openKidDialog(null)} className="px-4 py-2 text-sm text-gray-300 hover:text-white cursor-pointer">
                 {t('common:actions.cancel')}
               </button>
               <button
@@ -510,11 +522,12 @@ export default function WardrobePage() {
       </Dialog>
 
       {/* Item add/edit dialog */}
-      <Dialog open={itemDialog !== null} onClose={() => setItemDialog(null)} aria-labelledby="item-dialog-title" maxWidth="max-w-lg">
+      <Dialog open={itemDialog !== null} onClose={() => openItemDialog(null)} aria-labelledby="item-dialog-title" maxWidth="max-w-lg">
         {itemDialog && (
           <>
-            <DialogHeader id="item-dialog-title" title={itemDialog.id ? t('editItem') : t('addItem')} onClose={() => setItemDialog(null)} />
+            <DialogHeader id="item-dialog-title" title={itemDialog.id ? t('editItem') : t('addItem')} onClose={() => openItemDialog(null)} />
             <DialogBody className="space-y-4">
+              <FormError message={itemError} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label className="block">
                   <span className="block text-sm text-gray-300 mb-1">{t('itemForm.name')}</span>
@@ -583,7 +596,7 @@ export default function WardrobePage() {
               </label>
             </DialogBody>
             <DialogFooter>
-              <button onClick={() => setItemDialog(null)} className="px-4 py-2 text-sm text-gray-300 hover:text-white cursor-pointer">
+              <button onClick={() => openItemDialog(null)} className="px-4 py-2 text-sm text-gray-300 hover:text-white cursor-pointer">
                 {t('common:actions.cancel')}
               </button>
               <button
@@ -826,22 +839,23 @@ function ItemRow({ item, onEdit, onStatus, onDelete }: {
   )
 }
 
-function MeasurementsTab({ kid, measurements, dateFmt, onChanged, onError }: {
+function MeasurementsTab({ kid, measurements, dateFmt, onChanged }: {
   kid: Kid
   measurements: Measurement[]
   dateFmt: Intl.DateTimeFormat
   onChanged: () => Promise<void>
-  onError: () => void
 }) {
   const { t } = useTranslation(['wardrobe', 'common'])
   const [form, setForm] = useState({ date: today(), height: '', foot: '', weight: '', note: '' })
   const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState('')
 
   const canSave = form.date !== '' && (form.height !== '' || form.foot !== '' || form.weight !== '')
 
   const save = async () => {
     if (!canSave || saving) return
     setSaving(true)
+    setFormError('')
     try {
       await api(`/kids/${kid.id}/measurements`, {
         method: 'POST',
@@ -855,19 +869,21 @@ function MeasurementsTab({ kid, measurements, dateFmt, onChanged, onError }: {
       })
       setForm({ date: today(), height: '', foot: '', weight: '', note: '' })
       await onChanged()
-    } catch {
-      onError()
+    } catch (e) {
+      // Keep the typed values so the offending field can be corrected.
+      setFormError(messageFor(e, t, 'errors.failedToSave'))
     } finally {
       setSaving(false)
     }
   }
 
   const remove = async (id: number) => {
+    setFormError('')
     try {
       await api(`/measurements/${id}`, { method: 'DELETE' })
       await onChanged()
-    } catch {
-      onError()
+    } catch (e) {
+      setFormError(messageFor(e, t, 'errors.failedToDelete'))
     }
   }
 
@@ -900,6 +916,7 @@ function MeasurementsTab({ kid, measurements, dateFmt, onChanged, onError }: {
           </label>
         </div>
         <p className="text-xs text-gray-500 mt-2">{t('measurements.footHint')}</p>
+        <FormError message={formError} className="mt-2" />
         <div className="flex justify-end mt-3">
           <button onClick={save} disabled={!canSave || saving}
             className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg px-4 py-2 text-sm cursor-pointer transition-colors">
@@ -1014,23 +1031,19 @@ function CategoriesDialog({ open, onClose, categories, onChanged }: {
         }),
       })
       await onChanged()
-    } catch {
-      setRowError(t('errors.failedToSave'))
+    } catch (e) {
+      setRowError(messageFor(e, t, 'errors.failedToSave'))
     }
   }
 
   const removeCategory = async (cat: Category) => {
     setRowError('')
     try {
-      const res = await fetch(`/api/wardrobe/categories/${cat.id}`, { method: 'DELETE', credentials: 'include' })
-      if (res.status === 409) {
-        setRowError(t('categories.inUse'))
-        return
-      }
-      if (!res.ok) throw new Error('delete failed')
+      // A 409 "category has items" maps to categories.inUse via the shared mapper.
+      await api(`/categories/${cat.id}`, { method: 'DELETE' })
       await onChanged()
-    } catch {
-      setRowError(t('errors.failedToDelete'))
+    } catch (e) {
+      setRowError(messageFor(e, t, 'errors.failedToDelete'))
     }
   }
 
@@ -1050,8 +1063,8 @@ function CategoriesDialog({ open, onClose, categories, onChanged }: {
       })
       setNewCat({ name: '', icon: '', size_system: 'clothing', target: '0' })
       await onChanged()
-    } catch {
-      setRowError(t('errors.failedToSave'))
+    } catch (e) {
+      setRowError(messageFor(e, t, 'errors.failedToSave'))
     } finally {
       setBusy(false)
     }

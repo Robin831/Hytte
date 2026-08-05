@@ -115,6 +115,23 @@
   "errors": {
     "failedToLoad": "โหลดข้อมูลตู้เสื้อผ้าไม่สำเร็จ",
     "failedToSave": "บันทึกไม่สำเร็จ",
-    "failedToDelete": "ลบไม่สำเร็จ"
+    "failedToDelete": "ลบไม่สำเร็จ",
+    "server": {
+      "nameRequired": "ต้องระบุชื่อ",
+      "birthdateFormat": "วันเกิดต้องเป็นวันที่ที่ถูกต้อง (ปปปป-ดด-วว)",
+      "measuredAtFormat": "วันที่วัดต้องเป็นวันที่ที่ถูกต้อง (ปปปป-ดด-วว)",
+      "measurementOutOfRange": "ค่าที่วัดอยู่นอกช่วงที่กำหนด — ตรวจสอบส่วนสูง ความยาวเท้า และน้ำหนัก",
+      "measurementRequired": "กรอกค่าที่วัดอย่างน้อยหนึ่งรายการ",
+      "quantityMax": "จำนวนต้องไม่เกิน 99",
+      "invalidCondition": "เลือกสภาพที่ถูกต้อง",
+      "invalidStatus": "เลือกสถานะที่ถูกต้อง",
+      "invalidLocation": "เลือกสถานที่ที่ถูกต้อง",
+      "invalidSeason": "เลือกฤดูกาลที่ถูกต้อง",
+      "kidRequired": "เลือกเด็ก",
+      "kidNotFound": "ไม่พบเด็กคนนี้แล้ว",
+      "categoryNotFound": "ไม่พบหมวดหมู่นี้แล้ว",
+      "targetQtyRange": "เป้าต้องอยู่ระหว่าง 0 ถึง 99",
+      "invalidSizeSystem": "เลือกระบบไซซ์ที่ถูกต้อง"
+    }
   }
 }

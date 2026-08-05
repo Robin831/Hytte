@@ -115,6 +115,23 @@
   "errors": {
     "failedToLoad": "Failed to load wardrobe data",
     "failedToSave": "Failed to save",
-    "failedToDelete": "Failed to delete"
+    "failedToDelete": "Failed to delete",
+    "server": {
+      "nameRequired": "Name is required",
+      "birthdateFormat": "Birthdate must be a valid date (YYYY-MM-DD)",
+      "measuredAtFormat": "The measurement date must be a valid date (YYYY-MM-DD)",
+      "measurementOutOfRange": "The measurement is out of range — check height, foot length and weight",
+      "measurementRequired": "Enter at least one measurement",
+      "quantityMax": "Quantity can be at most 99",
+      "invalidCondition": "Choose a valid condition",
+      "invalidStatus": "Choose a valid status",
+      "invalidLocation": "Choose a valid location",
+      "invalidSeason": "Choose a valid season",
+      "kidRequired": "Choose a child",
+      "kidNotFound": "That child no longer exists",
+      "categoryNotFound": "That category no longer exists",
+      "targetQtyRange": "Target must be between 0 and 99",
+      "invalidSizeSystem": "Choose a valid sizing system"
+    }
   }
 }
