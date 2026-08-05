@@ -103,16 +103,41 @@ vi.mock('../hooks/useForecast', () => ({
 function entry(
   time: string,
   symbol?: string,
-  { temp = 10, wind = 2, precip = 0 }: { temp?: number; wind?: number; precip?: number } = {},
+  {
+    temp = 10,
+    wind = 2,
+    precip = 0,
+    rainChance,
+    gust,
+  }: {
+    temp?: number
+    wind?: number
+    precip?: number
+    rainChance?: number
+    gust?: number
+  } = {},
 ): TimeseriesEntry {
   return {
     time,
     data: {
       instant: {
-        details: { air_temperature: temp, wind_speed: wind, relative_humidity: 50 },
+        details: {
+          air_temperature: temp,
+          wind_speed: wind,
+          relative_humidity: 50,
+          ...(gust !== undefined ? { wind_speed_of_gust: gust } : {}),
+        },
       },
       ...(symbol
-        ? { next_1_hours: { summary: { symbol_code: symbol }, details: { precipitation_amount: precip } } }
+        ? {
+            next_1_hours: {
+              summary: { symbol_code: symbol },
+              details: {
+                precipitation_amount: precip,
+                ...(rainChance !== undefined ? { probability_of_precipitation: rainChance } : {}),
+              },
+            },
+          }
         : {}),
     },
   }
@@ -216,6 +241,55 @@ describe('buildDailyForecasts', () => {
     for (let i = 1; i < days.length; i++) {
       expect(days[i].date > days[i - 1].date).toBe(true)
     }
+  })
+
+  it('takes the highest rain chance of the day, grouped by local calendar date', () => {
+    const series = [
+      entry('2026-06-10T09:00:00', 'cloudy', { rainChance: 12 }),
+      entry('2026-06-10T15:00:00', 'rain', { rainChance: 74 }),
+      entry('2026-06-10T21:00:00', 'cloudy', { rainChance: 30 }),
+      // A different local day must not pull the previous day's maximum up.
+      entry('2026-06-11T12:00:00', 'rain', { rainChance: 95 }),
+    ]
+
+    const days = buildDailyForecasts(series, 'Today')
+
+    expect(days.map((d) => d.maxPrecipitationProbability)).toEqual([74, 95])
+  })
+
+  it('leaves the daily rain chance undefined when no hour carries one', () => {
+    const series = [
+      entry('2026-06-10T09:00:00', 'cloudy'),
+      entry('2026-06-10T15:00:00', 'rain', { precip: 1.2 }),
+    ]
+
+    const days = buildDailyForecasts(series, 'Today')
+
+    // Undefined, not 0 — "no data" and "certainly dry" are different claims.
+    expect(days[0].maxPrecipitationProbability).toBeUndefined()
+  })
+
+  it('ignores hours without a probability when taking the daily maximum', () => {
+    const series = [
+      entry('2026-06-10T09:00:00', 'cloudy'),
+      entry('2026-06-10T15:00:00', 'rain', { rainChance: 41 }),
+    ]
+
+    const days = buildDailyForecasts(series, 'Today')
+
+    expect(days[0].maxPrecipitationProbability).toBe(41)
+  })
+
+  it('reads the rain chance from the 6-hour window when the 1-hour one lacks it', () => {
+    const series = [entry('2026-06-10T12:00:00', 'rain')]
+    series[0].data.next_6_hours = {
+      summary: { symbol_code: 'rain' },
+      details: { precipitation_amount: 3, probability_of_precipitation: 66 },
+    }
+
+    const days = buildDailyForecasts(series, 'Today')
+
+    expect(days[0].maxPrecipitationProbability).toBe(66)
   })
 
   it('caps the result at the first 7 chronological days', () => {
@@ -382,6 +456,10 @@ function hourlyStrip(): HTMLElement {
   return sectionFor(tEn('page.nextHours', { count: 12 }), 'hourly strip')
 }
 
+function dailyList(): HTMLElement {
+  return sectionFor(tEn('page.sevenDayForecast'), '7-day forecast')
+}
+
 /** Same formatting HourlyStrip uses for its midnight separator. */
 function dateSeparatorLabel(iso: string): string {
   return formatDate(new Date(iso), { weekday: 'short', month: 'short', day: 'numeric' })
@@ -517,6 +595,63 @@ describe('Weather page', () => {
 
     expect(screen.getByText('Failed to fetch forecast')).toBeTruthy()
     expect(screen.queryByText(tEn('stale.chip'))).toBeNull()
+  })
+
+  it('shows the rain chance as a whole percentage in the strip and the 7-day rows', () => {
+    vi.setSystemTime(new Date('2026-06-10T14:20:00'))
+    setForecast([
+      entry('2026-06-10T14:00:00', 'rain', { temp: 14, precip: 0.4, rainChance: 61.4 }),
+      entry('2026-06-10T15:00:00', 'rain', { temp: 15, precip: 1.1, rainChance: 82.6 }),
+    ])
+
+    render(<Weather />)
+
+    const strip = within(hourlyStrip())
+    expect(strip.getByText('61%')).toBeTruthy()
+    expect(strip.getByText('83%')).toBeTruthy()
+    expect(strip.queryByText('61.4%')).toBeNull()
+
+    // The day's maximum, not the current hour's value.
+    expect(within(dailyList()).getByText('83%')).toBeTruthy()
+  })
+
+  it('renders no rain-chance element at all when MET omits the probability', () => {
+    vi.setSystemTime(new Date('2026-06-10T14:20:00'))
+    setForecast([
+      entry('2026-06-10T14:00:00', 'rain', { temp: 14, precip: 0.4 }),
+      entry('2026-06-10T15:00:00', 'rain', { temp: 15, precip: 1.1 }),
+    ])
+
+    render(<Weather />)
+
+    for (const scope of [hourlyStrip(), dailyList()]) {
+      expect(scope.textContent).not.toContain('%')
+      expect(scope.textContent).not.toContain('NaN')
+      expect(scope.textContent).not.toContain('undefined')
+    }
+  })
+
+  it('shows gusts only when they clear the steady wind by the threshold', () => {
+    vi.setSystemTime(new Date('2026-06-10T14:20:00'))
+
+    // 5.0 m/s over a 3.0 m/s wind is a 2.0 m/s margin — exactly at the threshold.
+    setForecast([entry('2026-06-10T14:00:00', 'cloudy', { temp: 14, wind: 3, gust: 5 })])
+    const { unmount } = render(<Weather />)
+    expect(within(currentCard()).getByText(tEn('page.gusts', { speed: 5 }))).toBeTruthy()
+    unmount()
+
+    // 4.9 m/s falls just short of it.
+    setForecast([entry('2026-06-10T14:00:00', 'cloudy', { temp: 14, wind: 3, gust: 4.9 })])
+    const second = render(<Weather />)
+    expect(within(currentCard()).queryByText(tEn('page.gusts', { speed: 4.9 }))).toBeNull()
+    expect(currentCard().textContent).not.toContain('Gusts')
+    second.unmount()
+
+    // No gust field at all (a compact-shaped payload) leaves the card unchanged.
+    setForecast([entry('2026-06-10T14:00:00', 'cloudy', { temp: 14, wind: 3 })])
+    render(<Weather />)
+    expect(currentCard().textContent).not.toContain('Gusts')
+    expect(currentCard().textContent).not.toContain('undefined')
   })
 
   it('shows no chip when a fresh forecast loaded successfully', () => {

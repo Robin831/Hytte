@@ -10,7 +10,9 @@ import (
 	"time"
 )
 
-// fakeMETResponse returns a minimal valid MET API compact forecast JSON.
+// fakeMETResponse returns a minimal valid MET API "complete" forecast JSON,
+// including the two fields the compact product omits: wind_speed_of_gust on the
+// instant details and probability_of_precipitation on the interval details.
 func fakeMETResponse() string {
 	return `{
 		"type": "Feature",
@@ -23,13 +25,14 @@ func fakeMETResponse() string {
 							"details": {
 								"air_temperature": 5.2,
 								"wind_speed": 3.1,
+								"wind_speed_of_gust": 9.4,
 								"relative_humidity": 72.0,
 								"air_pressure_at_sea_level": 1013.0
 							}
 						},
 						"next_1_hours": {
 							"summary": {"symbol_code": "cloudy"},
-							"details": {"precipitation_amount": 0.0}
+							"details": {"precipitation_amount": 0.0, "probability_of_precipitation": 18.3}
 						}
 					}
 				}
@@ -133,6 +136,97 @@ func TestForecastHandler_ValidLocation(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200 for Bergen, got %d", rec.Code)
+	}
+}
+
+func TestMETBaseURL_UsesCompleteProduct(t *testing.T) {
+	const want = "/weatherapi/locationforecast/2.0/complete"
+	if !strings.HasSuffix(metBaseURL, want) {
+		t.Errorf("metBaseURL = %q, want suffix %q", metBaseURL, want)
+	}
+	if got := NewService().baseURL; got != metBaseURL {
+		t.Errorf("NewService baseURL = %q, want %q", got, metBaseURL)
+	}
+}
+
+func TestForecastHandler_RequestsCompleteProductAndPassesNewFieldsThrough(t *testing.T) {
+	const upstreamPath = "/weatherapi/locationforecast/2.0/complete"
+
+	var gotPath string
+	mock := newMockMETServer(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(fakeMETResponse()))
+	})
+	defer mock.Close()
+
+	svc := newTestService(mock.URL + upstreamPath)
+	handler := svc.ForecastHandler()
+
+	req := httptest.NewRequest("GET", "/api/weather/forecast?location=Oslo", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (body %s)", rec.Code, rec.Body.String())
+	}
+	if gotPath != upstreamPath {
+		t.Errorf("upstream path = %q, want %q", gotPath, upstreamPath)
+	}
+
+	// The handler passes the MET body straight through, so the complete-only
+	// fields must survive the size cap and reach the client untouched.
+	var body struct {
+		Properties struct {
+			Timeseries []struct {
+				Data struct {
+					Instant struct {
+						Details struct {
+							WindSpeedOfGust *float64 `json:"wind_speed_of_gust"`
+						} `json:"details"`
+					} `json:"instant"`
+					Next1Hours struct {
+						Details struct {
+							ProbabilityOfPrecipitation *float64 `json:"probability_of_precipitation"`
+						} `json:"details"`
+					} `json:"next_1_hours"`
+				} `json:"data"`
+			} `json:"timeseries"`
+		} `json:"properties"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Properties.Timeseries) != 1 {
+		t.Fatalf("expected 1 timeseries entry, got %d", len(body.Properties.Timeseries))
+	}
+	entry := body.Properties.Timeseries[0]
+	if got := entry.Data.Instant.Details.WindSpeedOfGust; got == nil || *got != 9.4 {
+		t.Errorf("wind_speed_of_gust = %v, want 9.4", got)
+	}
+	if got := entry.Data.Next1Hours.Details.ProbabilityOfPrecipitation; got == nil || *got != 18.3 {
+		t.Errorf("probability_of_precipitation = %v, want 18.3", got)
+	}
+}
+
+func TestFetchForecast_CompleteSizedBodyFitsUnderCap(t *testing.T) {
+	// A real "complete" body for Oslo is ~90 KB. Pad well past that to confirm
+	// the 2 MB cap leaves ample headroom for longer forecast horizons.
+	padding := strings.Repeat("x", 512<<10)
+	mock := newMockMETServer(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"type":"Feature","padding":%q,"properties":{"timeseries":[]}}`, padding)
+	})
+	defer mock.Close()
+
+	svc := newTestService(mock.URL)
+	loc := NorwegianLocations["Oslo"]
+	body, err := svc.fetchForecast(loc, "oslo")
+	if err != nil {
+		t.Fatalf("fetchForecast: %v", err)
+	}
+	if len(body) < 512<<10 {
+		t.Errorf("body truncated: got %d bytes", len(body))
 	}
 }
 

@@ -17,7 +17,10 @@
     "recentLocations": "Recent",
     "allCities": "All cities",
     "attribution": "Weather data from",
-    "windFromDirectionAria": "Wind from {{degrees}}°"
+    "windFromDirectionAria": "Wind from {{degrees}}°",
+    "rainChanceValue": "{{percent}}%",
+    "rainChanceAria": "{{percent}}% chance of precipitation",
+    "gusts": "Gusts {{speed}} m/s"
   },
   "locationSearch": {
     "placeholder": "Search location…",
@@ -53,7 +56,9 @@
       "precip": "Precip",
       "symbol": "Conditions",
       "precipValue": "{{mm}} mm"
-    }
+    },
+    "tooltip": "{{hour}} · {{temp}}° · {{mm}} mm",
+    "tooltipWithRainChance": "{{hour}} · {{temp}}° · {{mm}} mm · {{percent}}% rain chance"
   },
   "updated": {
     "justNow": "Updated just now",

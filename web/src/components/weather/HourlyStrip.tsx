@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { TimeseriesEntry } from '../../lib/weatherForecast'
+import { getPrecipitationProbability, type TimeseriesEntry } from '../../lib/weatherForecast'
 import { getWeatherIcon } from '../../weatherUtils'
 import { formatDate, formatTime } from '../../utils/formatDate'
 
@@ -48,6 +48,9 @@ export default function HourlyStrip({ timeseries }: { timeseries: TimeseriesEntr
             'cloudy'
           // Show date separator when crossing midnight (hour 0) after the first entry
           const showDateSep = index > 0 && dt.getHours() === 0
+          // Undefined whenever MET omits the field (the compact product, or hours
+          // past the horizon it covers) — those entries render as they always did.
+          const rainChance = getPrecipitationProbability(entry)
           const dateLabel = formatDate(dt, { weekday: 'short', month: 'short', day: 'numeric' })
           return (
             <div key={entry.time} className="flex items-start gap-4">
@@ -69,6 +72,18 @@ export default function HourlyStrip({ timeseries }: { timeseries: TimeseriesEntr
                 {entry.data.next_1_hours?.details.precipitation_amount ? (
                   <span className="text-xs text-blue-400">
                     {entry.data.next_1_hours.details.precipitation_amount} mm
+                  </span>
+                ) : null}
+                {rainChance !== undefined ? (
+                  <span className="text-xs text-sky-300">
+                    {/* A bare "61%" is ambiguous next to the temperature, so screen
+                        readers get the spelled-out version instead. */}
+                    <span className="sr-only">
+                      {t('page.rainChanceAria', { percent: Math.round(rainChance) })}
+                    </span>
+                    <span aria-hidden="true">
+                      {t('page.rainChanceValue', { percent: Math.round(rainChance) })}
+                    </span>
                   </span>
                 ) : null}
               </div>

@@ -17,7 +17,10 @@
     "recentLocations": "ล่าสุด",
     "allCities": "ทุกเมือง",
     "attribution": "ข้อมูลสภาพอากาศจาก",
-    "windFromDirectionAria": "ลมจากทิศ {{degrees}}°"
+    "windFromDirectionAria": "ลมจากทิศ {{degrees}}°",
+    "rainChanceValue": "{{percent}}%",
+    "rainChanceAria": "โอกาสมีฝน {{percent}}%",
+    "gusts": "ลมกระโชก {{speed}} ม./วิ"
   },
   "locationSearch": {
     "placeholder": "ค้นหาสถานที่…",
@@ -53,7 +56,9 @@
       "precip": "ฝน",
       "symbol": "สภาพอากาศ",
       "precipValue": "{{mm}} มม."
-    }
+    },
+    "tooltip": "{{hour}} · {{temp}}° · {{mm}} มม.",
+    "tooltipWithRainChance": "{{hour}} · {{temp}}° · {{mm}} มม. · โอกาสฝนตก {{percent}}%"
   },
   "updated": {
     "justNow": "อัปเดตเมื่อกี้",

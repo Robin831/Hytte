@@ -10,6 +10,9 @@ vi.mock('react-i18next', () => ({
       if (key === 'chart.ariaChart')
         return `Temperature and precipitation for the next ${opts?.hours} hours, from ${opts?.min}° to ${opts?.max}°`
       if (key === 'chart.table.precipValue') return `${opts?.mm} mm`
+      if (key === 'chart.tooltip') return `${opts?.hour} · ${opts?.temp}° · ${opts?.mm} mm`
+      if (key === 'chart.tooltipWithRainChance')
+        return `${opts?.hour} · ${opts?.temp}° · ${opts?.mm} mm · ${opts?.percent}% rain chance`
       const leaf = key.split('.').pop()
       return leaf ?? key
     },
@@ -31,7 +34,13 @@ vi.mock('../utils/formatDate', () => ({
   },
 }))
 
-function makeEntry(hour: number, temp: number, precip = 0, symbol = 'clearsky_day'): TimeseriesEntry {
+function makeEntry(
+  hour: number,
+  temp: number,
+  precip = 0,
+  symbol = 'clearsky_day',
+  rainChance?: number,
+): TimeseriesEntry {
   return {
     time: `2026-06-29T${String(hour).padStart(2, '0')}:00:00Z`,
     data: {
@@ -44,10 +53,17 @@ function makeEntry(hour: number, temp: number, precip = 0, symbol = 'clearsky_da
       },
       next_1_hours: {
         summary: { symbol_code: symbol },
-        details: { precipitation_amount: precip },
+        details: {
+          precipitation_amount: precip,
+          ...(rainChance !== undefined ? { probability_of_precipitation: rainChance } : {}),
+        },
       },
     },
   }
+}
+
+function tooltipTexts(): string[] {
+  return Array.from(document.querySelectorAll('svg title')).map((el) => el.textContent ?? '')
 }
 
 describe('HourlyChart', () => {
@@ -113,6 +129,41 @@ describe('HourlyChart', () => {
     )
     expect(tableIcon).toBeTruthy()
     expect(tableIcon?.getAttribute('data-alt')).toBe('clearsky day')
+  })
+
+  it('puts the rain chance in the tooltip for the matching hour', () => {
+    const entries = [
+      makeEntry(10, 15, 0.4, 'rain', 61.4),
+      makeEntry(11, 18, 0, 'clearsky_day', 4),
+    ]
+    render(<HourlyChart timeseries={entries} />)
+
+    expect(tooltipTexts()).toEqual([
+      '10 · 15° · 0.4 mm · 61% rain chance',
+      '11 · 18° · 0 mm · 4% rain chance',
+    ])
+  })
+
+  it('falls back to the plain tooltip when the hour has no rain chance', () => {
+    const entries = [makeEntry(10, 15, 0.4, 'rain'), makeEntry(11, 18, 0, 'clearsky_day', 30)]
+    render(<HourlyChart timeseries={entries} />)
+
+    const texts = tooltipTexts()
+    expect(texts[0]).toBe('10 · 15° · 0.4 mm')
+    expect(texts[0]).not.toContain('undefined')
+    expect(texts[0]).not.toContain('NaN')
+    expect(texts[1]).toBe('11 · 18° · 0 mm · 30% rain chance')
+  })
+
+  it('reads the rain chance from the 6-hour window when the 1-hour one has none', () => {
+    const entry = makeEntry(10, 15, 0.4, 'rain')
+    entry.data.next_6_hours = {
+      summary: { symbol_code: 'rain' },
+      details: { precipitation_amount: 2, probability_of_precipitation: 77 },
+    }
+    render(<HourlyChart timeseries={[entry]} />)
+
+    expect(tooltipTexts()[0]).toBe('10 · 15° · 0.4 mm · 77% rain chance')
   })
 
   it('handles single data point gracefully', () => {
