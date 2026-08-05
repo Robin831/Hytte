@@ -178,6 +178,7 @@ function Settings() {
 
   useEffect(() => {
     mountedRef.current = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; mountedRef/loadSeq prevent stale updates
     void loadPreferences()
     return () => {
       mountedRef.current = false
