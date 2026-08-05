@@ -33,6 +33,8 @@ import {
   applyReactionEvent,
   editMessage,
   deleteMessage,
+  fetchOlderMessages,
+  OLDER_PAGE_SIZE,
 } from './api'
 import {
   useFamilyChatStream,
@@ -57,6 +59,12 @@ interface ChatViewProps {
 // ChatMessage is defined alongside the stream that produces it; re-exported
 // here because the composer and bubble components import it from this module.
 export type { ChatMessage }
+
+// OLDER_SCROLL_THRESHOLD_PX is how close to the top of the message list the
+// user has to scroll before the previous page starts loading. Wide enough that
+// the page usually lands before the user hits the very top, small enough that
+// it doesn't fire on an idle list that merely isn't scrolled to the bottom.
+const OLDER_SCROLL_THRESHOLD_PX = 150
 
 // parseVoiceMeta extracts a {bars, durationMs} pair from a meta_json blob.
 // Returns null when the field is absent, unparseable, or shaped wrong — the
@@ -145,6 +153,26 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const [pipPosition, setPipPosition] = useState<{ x: number; y: number } | null>(null)
   const pipDragRef = useRef<{ offsetX: number; offsetY: number; pointerId: number } | null>(null)
 
+  // ── Older-history pagination ───────────────────────────────────────────────
+  // loadingOlder is true while a backward page is in flight; hasMoreOlder stays
+  // true until a page comes back short (or empty), which is the server's way of
+  // saying "that was the start of the conversation". Neither is cached across
+  // conversation switches — both reset in onConversationOpen below.
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [hasMoreOlder, setHasMoreOlder] = useState(true)
+  // prependCounter ticks once per prepended page so the scroll-anchor restore
+  // below runs exactly when older messages land, and never on a normal append.
+  const [prependCounter, setPrependCounter] = useState(0)
+  const messagesScrollRef = useRef<HTMLDivElement>(null)
+  // loadingOlderRef mirrors loadingOlder synchronously: scroll events fire far
+  // faster than React commits, so the state flag alone would let several
+  // duplicate pages start before the first render lands.
+  const loadingOlderRef = useRef(false)
+  // pendingScrollRestoreRef holds the scroll metrics captured immediately
+  // before a prepend. Its presence is also what tells the auto-scroll-to-bottom
+  // effect to stand down for that one commit.
+  const pendingScrollRestoreRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
+
   // Voice-call state machine. skipSignalSubscription is set so the hook
   // doesn't open its own SSE stream — useFamilyChatStream below already owns
   // one for messages and reactions, and forwards call_* frames into
@@ -187,6 +215,13 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     onConversationOpen: () => {
       setEndedCallSummary(null)
       lastTypingSentRef.current = 0
+      // Older-history paging is per-conversation: nothing is cached across a
+      // switch, so every conversation starts out assuming there is more to
+      // load and discovers otherwise on the first upward scroll.
+      setLoadingOlder(false)
+      setHasMoreOlder(true)
+      loadingOlderRef.current = false
+      pendingScrollRestoreRef.current = null
     },
     onConversationClose: () => {
       // Stop any voice-note playback owned by this conversation. Switching
@@ -198,6 +233,12 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   })
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  // conversationIdRef shadows the current conversation so an in-flight
+  // "load older" response can tell whether the user has since switched chats.
+  const conversationIdRef = useRef(conversationId)
+  useEffect(() => {
+    conversationIdRef.current = conversationId
+  })
   // voiceCallEndRef lets the conversationId-change cleanup end any active call
   // on the old conversation without re-subscribing on every voice-call state change.
   const voiceCallEndRef = useRef(voiceCall.endCall)
@@ -330,10 +371,84 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // opens/closes (keyboardInset changes). useLayoutEffect avoids a visible jump
   // between initial paint and the scroll snap.
   useLayoutEffect(() => {
+    // A commit that prepended older history must not jump to the bottom — the
+    // restore effect below re-anchors the view on the message the user was
+    // already reading instead. messages.length changes on a prepend too, which
+    // is why this guard exists rather than a narrower dependency list.
+    if (pendingScrollRestoreRef.current) return
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ block: 'end' })
     }
   }, [messages.length, conversationId, keyboardInset])
+
+  // Restore the scroll anchor after older messages are prepended: the content
+  // above the viewport grew by (newScrollHeight - savedScrollHeight), so adding
+  // that delta to the saved scrollTop keeps the same message under the user's
+  // eyes. Runs after the auto-scroll effect above (declaration order) and
+  // clears the flag that effect reads.
+  useLayoutEffect(() => {
+    const pending = pendingScrollRestoreRef.current
+    if (!pending) return
+    pendingScrollRestoreRef.current = null
+    const el = messagesScrollRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight - pending.scrollHeight + pending.scrollTop
+  }, [prependCounter])
+
+  // loadOlderMessages fetches the page immediately preceding the oldest message
+  // currently rendered and prepends it. Deduped by id so it can never collide
+  // with a message the live stream (or a gap-fill) already delivered, and a
+  // short page flips hasMoreOlder off so the terminator renders and no further
+  // requests are made.
+  const loadOlderMessages = useCallback(async () => {
+    if (conversationId === null) return
+    if (loadingOlderRef.current || !hasMoreOlder) return
+    const oldest = messages[0]
+    // An optimistic bubble carries no server id yet, so it can't anchor a
+    // backward page. It is always appended at the end, so this only skips the
+    // degenerate case where the list holds nothing else.
+    if (!oldest || oldest.status) return
+
+    loadingOlderRef.current = true
+    setLoadingOlder(true)
+    try {
+      const page = await fetchOlderMessages(conversationId, oldest.id, OLDER_PAGE_SIZE)
+      // The user may have switched conversations while this was in flight;
+      // the reset in onConversationOpen already ran, so applying now would
+      // leak the previous chat's history into the new one.
+      if (conversationIdRef.current !== conversationId) return
+      // A short page means the server had nothing more to give.
+      if (page.length < OLDER_PAGE_SIZE) setHasMoreOlder(false)
+      if (page.length === 0) return
+      // The API returns newest-first; the list renders oldest-first.
+      const older = page.slice().reverse()
+      const el = messagesScrollRef.current
+      if (el) {
+        pendingScrollRestoreRef.current = { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop }
+      }
+      setMessages(prev => {
+        const known = new Set(prev.map(m => m.id))
+        const fresh = older.filter(m => !known.has(m.id))
+        if (fresh.length === 0) return prev
+        return [...fresh, ...prev]
+      })
+      setPrependCounter(c => c + 1)
+    } catch {
+      // Non-fatal: hasMoreOlder is left alone so scrolling up again retries.
+    } finally {
+      loadingOlderRef.current = false
+      setLoadingOlder(false)
+    }
+  }, [conversationId, hasMoreOlder, messages, setMessages])
+
+  // Near-top scroll is the only trigger for backward paging: no observer, no
+  // timer, and nothing fires while a page is already in flight or once the
+  // start of the conversation has been reached.
+  const handleMessagesScroll = useCallback(() => {
+    const el = messagesScrollRef.current
+    if (!el || el.scrollTop > OLDER_SCROLL_THRESHOLD_PX) return
+    void loadOlderMessages()
+  }, [loadOlderMessages])
 
   // Lightbox: ESC closes; scroll on body locked while open.
   useEffect(() => {
@@ -899,6 +1014,8 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       </header>
 
       <div
+        ref={messagesScrollRef}
+        onScroll={handleMessagesScroll}
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-4 py-3 space-y-2"
         role="log"
         aria-live="polite"
@@ -923,6 +1040,26 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
           <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 py-12">
             <MessageSquare size={32} className="mb-2 text-gray-600" aria-hidden="true" />
             <p className="text-sm">{t('chat.emptyMessages')}</p>
+          </div>
+        )}
+
+        {!loading && !error && messages.length > 0 && loadingOlder && (
+          <div
+            className="flex justify-center py-2 text-xs text-gray-500"
+            role="status"
+            aria-busy="true"
+            data-testid="family-chat-loading-older"
+          >
+            {t('chat.loadingOlder')}
+          </div>
+        )}
+
+        {!loading && !error && messages.length > 0 && !hasMoreOlder && !loadingOlder && (
+          <div
+            className="flex justify-center py-2 text-xs text-gray-500"
+            data-testid="family-chat-history-start"
+          >
+            {t('chat.beginningOfConversation')}
           </div>
         )}
 

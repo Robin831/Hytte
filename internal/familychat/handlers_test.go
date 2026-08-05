@@ -781,6 +781,120 @@ func TestListMessagesHandler_PaginationWithSince(t *testing.T) {
 	}
 }
 
+func TestListMessagesHandler_PaginationWithBefore(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+
+	const total = 7
+	for i := 1; i <= total; i++ {
+		if _, err := CreateMessage(db, convID, 1, fmt.Sprintf("msg %d", i), "", ""); err != nil {
+			t.Fatalf("seed message %d: %v", i, err)
+		}
+	}
+
+	idStr := strconv.FormatInt(convID, 10)
+	listBefore := func(before int64, limit int) []Message {
+		t.Helper()
+		url := fmt.Sprintf("/api/familychat/conversations/%s/messages?before=%d&limit=%d", idStr, before, limit)
+		req := withUser(httptest.NewRequest("GET", url, nil), 1)
+		req = withChiParam(req, "id", idStr)
+		rec := httptest.NewRecorder()
+		ListMessagesHandler(db).ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("before=%d: expected 200, got %d: %s", before, rec.Code, rec.Body.String())
+		}
+		var body struct {
+			Messages []Message `json:"messages"`
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+			t.Fatalf("decode before=%d: %v", before, err)
+		}
+		return body.Messages
+	}
+
+	// Page back from the newest message: ids 4, 3, 2 (5 itself is excluded).
+	page := listBefore(5, 3)
+	if len(page) != 3 {
+		t.Fatalf("before=5 len = %d, want 3", len(page))
+	}
+	for i, want := range []int64{4, 3, 2} {
+		if page[i].ID != want {
+			t.Errorf("before=5[%d] = %d, want %d", i, page[i].ID, want)
+		}
+	}
+	if page[0].Body != "msg 4" {
+		t.Errorf("before=5[0] body = %q, want %q", page[0].Body, "msg 4")
+	}
+
+	// A short page means the caller has reached the start of history.
+	page = listBefore(2, 10)
+	if len(page) != 1 || page[0].ID != 1 {
+		t.Fatalf("before=2 = %+v, want just id 1", page)
+	}
+
+	// Nothing precedes the oldest message.
+	page = listBefore(1, 10)
+	if len(page) != 0 {
+		t.Errorf("before=1 len = %d, want 0", len(page))
+	}
+}
+
+func TestListMessagesHandler_InvalidBefore(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	convID := seedConversation(t, db, 1, "Family")
+	idStr := strconv.FormatInt(convID, 10)
+
+	for _, q := range []string{"before=abc", "before=-1", "before=3&since=1"} {
+		url := "/api/familychat/conversations/" + idStr + "/messages?" + q
+		req := withUser(httptest.NewRequest("GET", url, nil), 1)
+		req = withChiParam(req, "id", idStr)
+		rec := httptest.NewRecorder()
+		ListMessagesHandler(db).ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: expected 400, got %d", q, rec.Code)
+			continue
+		}
+		var body struct {
+			Error string `json:"error"`
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+			t.Errorf("%s: decode: %v", q, err)
+			continue
+		}
+		if body.Error == "" {
+			t.Errorf("%s: expected an error message in the body", q)
+		}
+	}
+}
+
+// TestListMessagesHandler_BeforeNonMember pins that the membership check still
+// runs for a backward page — a non-member gets the same "conversation does not
+// exist" 404 the rest of the endpoints return (existence is never leaked).
+func TestListMessagesHandler_BeforeNonMember(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+	makeUser(t, db, 3, "carol@example.com")
+	convID := seedConversation(t, db, 1, "Family", 2)
+	if _, err := CreateMessage(db, convID, 1, "hi", "", ""); err != nil {
+		t.Fatalf("seed message: %v", err)
+	}
+
+	idStr := strconv.FormatInt(convID, 10)
+	req := withUser(httptest.NewRequest("GET", "/api/familychat/conversations/"+idStr+"/messages?before=99", nil), 3)
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	ListMessagesHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
 func TestMarkReadHandler(t *testing.T) {
 	db := setupTestDB(t)
 	makeUser(t, db, 1, "alice@example.com")
@@ -1344,7 +1458,7 @@ func TestEditMessageHandler_NonAuthor404(t *testing.T) {
 	}
 
 	// The body must be unchanged.
-	msgs, err := ListMessages(db, convID, 1, 0, 10)
+	msgs, err := ListMessages(db, convID, 1, ListMessagesOpts{Limit: 10})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -1439,7 +1553,7 @@ func TestDeleteMessageHandler_AuthorSoftDeletePreservesRow(t *testing.T) {
 	}
 
 	// ListMessages still returns the tombstone with cleared body.
-	msgs, err := ListMessages(db, convID, 1, 0, 10)
+	msgs, err := ListMessages(db, convID, 1, ListMessagesOpts{Limit: 10})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}

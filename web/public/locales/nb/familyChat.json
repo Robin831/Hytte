@@ -24,6 +24,8 @@
     "memberFallback": "Medlem #{{id}}",
     "you": "Deg",
     "emptyMessages": "Ingen meldinger ennå. Si hei!",
+    "loadingOlder": "Laster eldre meldinger…",
+    "beginningOfConversation": "Dette er starten på samtalen",
     "noSelectionTitle": "Velg en samtale",
     "noSelectionHint": "Velg en chat fra listen for å begynne å lese.",
     "attachmentImageAlt": "Vedlagt bilde",

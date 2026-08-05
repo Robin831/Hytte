@@ -2,6 +2,10 @@
 // the reactions feature for now; if other pages start hitting the API
 // directly we can grow this into a fuller wrapper.
 
+// Type-only import: erased at compile time, so this does not create a runtime
+// import cycle with useFamilyChatStream (which imports helpers from here).
+import type { ChatMessage } from './useFamilyChatStream'
+
 export interface ReactionBucket {
   count: number
   users: number[]
@@ -138,6 +142,29 @@ export async function deleteMessage(convID: number, msgID: number): Promise<void
     },
   )
   if (!res.ok) throw new Error(`delete message failed: ${res.status}`)
+}
+
+// OLDER_PAGE_SIZE is how many messages one "load older" page requests. It
+// matches the server's default page size, so a shorter response is an
+// unambiguous signal that the caller has reached the start of the history.
+export const OLDER_PAGE_SIZE = 50
+
+// fetchOlderMessages loads the page of messages immediately preceding beforeId
+// (strictly older, newest-first — the same shape as the initial load). Throws
+// on any non-success response so the caller can leave its "more history"
+// assumption untouched and retry on the next upward scroll.
+export async function fetchOlderMessages(
+  convID: number,
+  beforeId: number,
+  limit: number = OLDER_PAGE_SIZE,
+): Promise<ChatMessage[]> {
+  const res = await fetch(
+    `/api/familychat/conversations/${convID}/messages?before=${beforeId}&limit=${limit}`,
+    { credentials: 'include' },
+  )
+  if (!res.ok) throw new Error(`load older messages failed: ${res.status}`)
+  const data = await res.json()
+  return data.messages ?? []
 }
 
 // applyReactionEvent returns a new reaction map reflecting an add/remove SSE

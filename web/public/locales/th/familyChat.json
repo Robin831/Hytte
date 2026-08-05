@@ -24,6 +24,8 @@
     "memberFallback": "สมาชิก #{{id}}",
     "you": "คุณ",
     "emptyMessages": "ยังไม่มีข้อความ ลองทักทายกันสิ!",
+    "loadingOlder": "กำลังโหลดข้อความเก่า…",
+    "beginningOfConversation": "นี่คือจุดเริ่มต้นของการสนทนา",
     "noSelectionTitle": "เลือกการสนทนา",
     "noSelectionHint": "เลือกแชตจากรายการเพื่อเริ่มอ่าน",
     "attachmentImageAlt": "รูปภาพแนบ",

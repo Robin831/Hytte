@@ -299,10 +299,26 @@ func DeleteConversation(db *sql.DB, convID, userID int64) error {
 	return nil
 }
 
-// ListMessages returns up to limit messages from convID, newest-first.
-// If since > 0, only messages with id > since are returned (still newest-first)
-// — this lets the client poll for new messages incrementally.
-func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message, error) {
+// ListMessagesOpts bounds a ListMessages query. Both cursors are exclusive and
+// may be combined (an id range), though the handler currently rejects that
+// combination so each client request walks history in exactly one direction.
+type ListMessagesOpts struct {
+	// Since, when > 0, restricts the result to messages with id > Since —
+	// the forward (catch-up) cursor used by delta polling and gap-fill.
+	Since int64
+	// Before, when > 0, restricts the result to messages with id < Before —
+	// the backward cursor used by "load older messages" pagination.
+	Before int64
+	// Limit caps the page size. Values <= 0 fall back to 50; anything above
+	// 500 is clamped to 500.
+	Limit int
+}
+
+// ListMessages returns up to opts.Limit messages from convID, newest-first,
+// bounded by the optional Since / Before cursors. Newest-first ordering holds
+// for every combination, so a backward page (Before) arrives in the same shape
+// as the initial load and the client only has to reverse it for display.
+func ListMessages(db *sql.DB, convID, userID int64, opts ListMessagesOpts) ([]Message, error) {
 	ok, err := IsMember(db, convID, userID)
 	if err != nil {
 		return nil, err
@@ -311,36 +327,34 @@ func ListMessages(db *sql.DB, convID, userID, since int64, limit int) ([]Message
 		return nil, ErrForbidden
 	}
 
+	limit := opts.Limit
 	if limit <= 0 {
-		limit = 50
+		limit = defaultMsgLimit
 	}
-	if limit > 500 {
-		limit = 500
+	if limit > maxMsgLimit {
+		limit = maxMsgLimit
 	}
 
-	var (
-		rows     *sql.Rows
-		queryErr error
-	)
-	if since > 0 {
-		rows, queryErr = db.Query(
-			messageSelectColumns+`
-			 FROM family_chat_messages
-			 WHERE conversation_id = ? AND id > ?
-			 ORDER BY id DESC
-			 LIMIT ?`,
-			convID, since, limit,
-		)
-	} else {
-		rows, queryErr = db.Query(
-			messageSelectColumns+`
-			 FROM family_chat_messages
-			 WHERE conversation_id = ?
-			 ORDER BY id DESC
-			 LIMIT ?`,
-			convID, limit,
-		)
+	conds := []string{"conversation_id = ?"}
+	args := []any{convID}
+	if opts.Since > 0 {
+		conds = append(conds, "id > ?")
+		args = append(args, opts.Since)
 	}
+	if opts.Before > 0 {
+		conds = append(conds, "id < ?")
+		args = append(args, opts.Before)
+	}
+	args = append(args, limit)
+
+	rows, queryErr := db.Query(
+		messageSelectColumns+`
+		 FROM family_chat_messages
+		 WHERE `+strings.Join(conds, " AND ")+`
+		 ORDER BY id DESC
+		 LIMIT ?`,
+		args...,
+	)
 	if queryErr != nil {
 		return nil, queryErr
 	}

@@ -1,0 +1,2 @@
+category: Added
+- **Scroll back through family chat history** - Scrolling a conversation near the top now loads the previous page of messages and keeps the message you were reading in place, so older history is reachable instead of being capped at the most recent 50 messages. A "beginning of the conversation" marker appears once the oldest message has been loaded. Backed by a new `before=<id>` cursor on `GET /api/familychat/conversations/{id}/messages`. (Hytte-cl1sg)

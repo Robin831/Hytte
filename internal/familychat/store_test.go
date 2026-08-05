@@ -3,6 +3,7 @@ package familychat
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -176,7 +177,7 @@ func TestStoreListMessages_SinceAndLimit(t *testing.T) {
 	}
 
 	// Default order is newest-first. limit=2 returns the 2 most recently inserted.
-	msgs, err := ListMessages(db, c.ID, 1, 0, 2)
+	msgs, err := ListMessages(db, c.ID, 1, ListMessagesOpts{Limit: 2})
 	if err != nil {
 		t.Fatalf("list limit=2: %v", err)
 	}
@@ -188,12 +189,116 @@ func TestStoreListMessages_SinceAndLimit(t *testing.T) {
 	}
 
 	// since=ids[1] returns ids > ids[1], newest-first: ids[4], ids[3], ids[2].
-	msgs, err = ListMessages(db, c.ID, 1, ids[1], 10)
+	msgs, err = ListMessages(db, c.ID, 1, ListMessagesOpts{Since: ids[1], Limit: 10})
 	if err != nil {
 		t.Fatalf("list since: %v", err)
 	}
 	if len(msgs) != 3 {
 		t.Fatalf("since returned %d messages, want 3", len(msgs))
+	}
+}
+
+func TestStoreListMessages_BeforePaging(t *testing.T) {
+	db := setupTestDB(t)
+	makeUser(t, db, 1, "alice@example.com")
+	makeUser(t, db, 2, "bob@example.com")
+
+	c, err := CreateConversation(db, 1, "", []int64{2})
+	if err != nil {
+		t.Fatalf("create conv: %v", err)
+	}
+
+	// Seed enough messages that the default page size is exceeded, so the
+	// clamping assertions below are meaningful.
+	const total = 120
+	ids := make([]int64, 0, total)
+	for i := 0; i < total; i++ {
+		msg, err := CreateMessage(db, c.ID, 1, fmt.Sprintf("msg %d", i), "", "")
+		if err != nil {
+			t.Fatalf("create msg %d: %v", i, err)
+		}
+		ids = append(ids, msg.ID)
+	}
+
+	// before is strictly exclusive: the cursor message itself is never echoed
+	// back, and the page walks backward newest-first.
+	msgs, err := ListMessages(db, c.ID, 1, ListMessagesOpts{Before: ids[10], Limit: 3})
+	if err != nil {
+		t.Fatalf("list before: %v", err)
+	}
+	if len(msgs) != 3 {
+		t.Fatalf("before returned %d messages, want 3", len(msgs))
+	}
+	for i, want := range []int64{ids[9], ids[8], ids[7]} {
+		if msgs[i].ID != want {
+			t.Errorf("before[%d] = %d, want %d", i, msgs[i].ID, want)
+		}
+	}
+
+	// Walking backward from the newest message covers the whole history
+	// without gaps or repeats.
+	seen := map[int64]bool{}
+	cursor := ids[total-1] + 1
+	for {
+		page, err := ListMessages(db, c.ID, 1, ListMessagesOpts{Before: cursor, Limit: 25})
+		if err != nil {
+			t.Fatalf("walk before=%d: %v", cursor, err)
+		}
+		if len(page) == 0 {
+			break
+		}
+		for _, m := range page {
+			if seen[m.ID] {
+				t.Fatalf("message %d returned twice while walking backward", m.ID)
+			}
+			seen[m.ID] = true
+		}
+		cursor = page[len(page)-1].ID
+	}
+	if len(seen) != total {
+		t.Errorf("backward walk covered %d messages, want %d", len(seen), total)
+	}
+
+	// Limit <= 0 falls back to the 50-message default.
+	msgs, err = ListMessages(db, c.ID, 1, ListMessagesOpts{Before: ids[total-1], Limit: 0})
+	if err != nil {
+		t.Fatalf("list before default limit: %v", err)
+	}
+	if len(msgs) != defaultMsgLimit {
+		t.Errorf("default limit returned %d messages, want %d", len(msgs), defaultMsgLimit)
+	}
+
+	// A limit above the cap is clamped rather than rejected at this layer.
+	msgs, err = ListMessages(db, c.ID, 1, ListMessagesOpts{Before: ids[total-1], Limit: maxMsgLimit + 1000})
+	if err != nil {
+		t.Fatalf("list before clamped limit: %v", err)
+	}
+	if len(msgs) != total-1 {
+		t.Errorf("clamped limit returned %d messages, want %d", len(msgs), total-1)
+	}
+
+	// The oldest message has nothing before it.
+	msgs, err = ListMessages(db, c.ID, 1, ListMessagesOpts{Before: ids[0], Limit: 10})
+	if err != nil {
+		t.Fatalf("list before oldest: %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("before oldest returned %d messages, want 0", len(msgs))
+	}
+
+	// Since + before together bound an open id range (the handler rejects the
+	// combination, but the store contract stays predictable).
+	msgs, err = ListMessages(db, c.ID, 1, ListMessagesOpts{Since: ids[0], Before: ids[4], Limit: 10})
+	if err != nil {
+		t.Fatalf("list since+before: %v", err)
+	}
+	if len(msgs) != 3 {
+		t.Fatalf("since+before returned %d messages, want 3", len(msgs))
+	}
+	for i, want := range []int64{ids[3], ids[2], ids[1]} {
+		if msgs[i].ID != want {
+			t.Errorf("since+before[%d] = %d, want %d", i, msgs[i].ID, want)
+		}
 	}
 }
 
@@ -208,7 +313,7 @@ func TestStoreListMessages_NonMember(t *testing.T) {
 		t.Fatalf("create conv: %v", err)
 	}
 
-	_, err = ListMessages(db, c.ID, 3, 0, 100)
+	_, err = ListMessages(db, c.ID, 3, ListMessagesOpts{Limit: 100})
 	if !errors.Is(err, ErrForbidden) {
 		t.Errorf("expected ErrForbidden, got %v", err)
 	}
