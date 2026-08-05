@@ -7,11 +7,15 @@ import type { RecentLocation } from './recentLocations'
  * Starts with the localStorage/Oslo fallback, then asynchronously fetches the
  * user's saved `weather_location` preference from the server and resolves it to
  * coordinates via `/api/weather/locations`.
+ *
+ * Pass `enabled: false` to skip the server lookup entirely — used by callers that
+ * already have a location but must still call this hook unconditionally.
  */
-export function usePreferredLocation(): RecentLocation {
+export function usePreferredLocation(enabled = true): RecentLocation {
   const [location, setLocation] = useState<RecentLocation>(resolveLocation)
 
   useEffect(() => {
+    if (!enabled) return
     let cancelled = false
 
     async function fetchServerLocation() {
@@ -55,7 +59,7 @@ export function usePreferredLocation(): RecentLocation {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [enabled])
 
   return location
 }
