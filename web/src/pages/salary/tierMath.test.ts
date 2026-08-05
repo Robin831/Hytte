@@ -112,10 +112,12 @@ describe('projectFromExtraHours', () => {
   it('applies the higher rate after crossing a tier boundary', () => {
     const p = projectFromExtraHours({ ...base, extraHours: 100 })
     expect(p.revenue).toBe(250_000)
-    // 50k left in the 20% tier + 50k in the 40% tier.
-    expect(p.commission).toBeCloseTo(10_000 + 20_000)
-    expect(p.gross).toBeCloseTo(80_000 + 20_000)
-    expect(p.net).toBeCloseTo(50_000 + 12_000)
+    // The 100k of extra revenue adds 50k left in the 20% tier (10k) plus 50k in
+    // the 40% tier (20k) — a 30k delta on top of the 10k baseline commission.
+    expect(p.commission).toBeCloseTo(10_000 + 30_000)
+    expect(p.gross).toBeCloseTo(80_000 + 30_000)
+    // 30k gross delta at the 0.6 marginal net ratio (120 net per 200 gross).
+    expect(p.net).toBeCloseTo(50_000 + 18_000)
   })
 
   it('stays below the first floor without earning commission', () => {
