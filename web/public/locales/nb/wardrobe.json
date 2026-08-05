@@ -115,6 +115,23 @@
   "errors": {
     "failedToLoad": "Kunne ikke laste garderobedata",
     "failedToSave": "Kunne ikke lagre",
-    "failedToDelete": "Kunne ikke slette"
+    "failedToDelete": "Kunne ikke slette",
+    "server": {
+      "nameRequired": "Navn er påkrevd",
+      "birthdateFormat": "Fødselsdato må være en gyldig dato (ÅÅÅÅ-MM-DD)",
+      "measuredAtFormat": "Måledatoen må være en gyldig dato (ÅÅÅÅ-MM-DD)",
+      "measurementOutOfRange": "Målingen er utenfor gyldig område – sjekk høyde, fotlengde og vekt",
+      "measurementRequired": "Fyll inn minst én måling",
+      "quantityMax": "Antall kan være høyst 99",
+      "invalidCondition": "Velg en gyldig tilstand",
+      "invalidStatus": "Velg en gyldig status",
+      "invalidLocation": "Velg et gyldig sted",
+      "invalidSeason": "Velg en gyldig sesong",
+      "kidRequired": "Velg et barn",
+      "kidNotFound": "Barnet finnes ikke lenger",
+      "categoryNotFound": "Kategorien finnes ikke lenger",
+      "targetQtyRange": "Målet må være mellom 0 og 99",
+      "invalidSizeSystem": "Velg et gyldig størrelsessystem"
+    }
   }
 }
