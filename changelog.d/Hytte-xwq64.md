@@ -1,0 +1,2 @@
+category: Changed
+- **Dependency updates 05.08.2026** - Go: google.golang.org/api v0.292.0, modernc.org/sqlite v1.56.0. npm: eslint 10.8.0, vite 8.2.0, react 19.2.8, react-router-dom 7.18.2, recharts 3.10.1, tailwindcss 4.3.3, typescript-eslint 8.66.0 and the rest of the minor batch, plus the @testing-library/jest-dom 7.0.0 major (suite passes unchanged). TypeScript stays at 6.0.3 — typescript-eslint still caps its peer range below 6.1. (Hytte-xwq64)
