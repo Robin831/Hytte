@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { AlertTriangle } from 'lucide-react'
 import { useAuth } from '../auth'
 import { CollapsibleSection } from '../components/CollapsibleSection'
 import { useDebouncedPreferences } from '../hooks/useDebouncedPreferences'
@@ -78,7 +79,11 @@ function Settings() {
   const isChild = isKidsPlan && familyStatus?.is_child === true
   const [preferences, setPreferences] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Every load claims a sequence number; unmount bumps it too, so a superseded
+  // retry and an unmounted component are the same single check.
+  const loadSeq = useRef(0)
   const [saveToast, setSaveToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const saveToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -143,25 +148,42 @@ function Settings() {
     await savePreferences({ [key]: value }, toast)
   }
 
-  useEffect(() => {
-    let cancelled = false
-    async function loadData() {
-      try {
-        const prefsRes = await fetch('/api/settings/preferences', { credentials: 'include' })
-        if (cancelled) return
-        if (prefsRes.ok) {
-          const data = await prefsRes.json()
-          setPreferences(data.preferences || {})
-        }
-      } catch (err) {
-        console.error('Failed to load settings data:', err)
-      } finally {
-        if (!cancelled) setLoading(false)
+  // Loads the preference map. A non-OK response or a thrown fetch surfaces a
+  // visible error panel instead of rendering the sections against an empty map
+  // (which would show hardcoded defaults as if they were saved values).
+  const loadPreferences = useCallback(async () => {
+    const seq = ++loadSeq.current
+    setLoadError(false)
+    setLoading(true)
+    try {
+      const prefsRes = await fetch('/api/settings/preferences', { credentials: 'include' })
+      if (seq !== loadSeq.current) return
+      if (!prefsRes.ok) {
+        console.error('Failed to load settings data: HTTP', prefsRes.status)
+        setLoadError(true)
+        return
       }
+      const data = await prefsRes.json()
+      if (seq !== loadSeq.current) return
+      setPreferences(data.preferences || {})
+    } catch (err) {
+      if (seq !== loadSeq.current) return
+      console.error('Failed to load settings data:', err)
+      setLoadError(true)
+    } finally {
+      if (seq === loadSeq.current) setLoading(false)
     }
-    loadData()
-    return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async data fetch; loadSeq prevents stale updates
+    void loadPreferences()
+    return () => {
+      // Retires the in-flight load so its result can't land after unmount.
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- loadSeq is a plain counter, not a DOM ref; reading the latest value here is the point
+      loadSeq.current++
+    }
+  }, [loadPreferences])
 
   if (!user) return null
   if (loading) {
@@ -171,6 +193,35 @@ function Settings() {
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-32 w-full" />
+      </main>
+    )
+  }
+
+  // The preferences never loaded — render a retry panel instead of the sections
+  // so no control is editable against unknown state.
+  if (loadError) {
+    return (
+      <main className="max-w-2xl mx-auto px-4 py-8 min-h-screen">
+        <h1 className="text-2xl font-bold mb-8">{t('title')}</h1>
+        <div
+          role="alert"
+          className="rounded-lg border border-red-800 bg-red-950/40 p-4 sm:p-6 text-red-100"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={20} className="mt-0.5 shrink-0 text-red-400" aria-hidden="true" />
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold">{t('loadError.title')}</h2>
+              <p className="mt-1 text-sm text-red-200/90">{t('loadError.body')}</p>
+              <button
+                type="button"
+                onClick={() => void loadPreferences()}
+                className="mt-4 px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 text-white text-sm font-medium"
+              >
+                {t('loadError.retry')}
+              </button>
+            </div>
+          </div>
+        </div>
       </main>
     )
   }

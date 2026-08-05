@@ -1,6 +1,11 @@
 {
   "title": "Innstillinger",
   "loading": "Laster innstillinger...",
+  "loadError": {
+    "title": "Kunne ikke laste innstillingene dine",
+    "body": "Vi klarte ikke å laste innstillingene dine. Ingenting er endret.",
+    "retry": "Prøv igjen"
+  },
   "saveStatus": {
     "saving": "Lagrer…",
     "saved": "Lagret",

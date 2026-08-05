@@ -1,6 +1,11 @@
 {
   "title": "Settings",
   "loading": "Loading settings...",
+  "loadError": {
+    "title": "Couldn't load your settings",
+    "body": "We couldn't load your preferences. Nothing has been changed.",
+    "retry": "Try again"
+  },
   "saveStatus": {
     "saving": "Saving…",
     "saved": "Saved",
