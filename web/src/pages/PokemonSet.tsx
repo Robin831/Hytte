@@ -197,15 +197,18 @@ function normaliseCollectorNo(value: string): string {
 
 // cardMatchesQuery is the free-text predicate behind the in-set search box: a
 // card matches when the trimmed, lowercased query is a substring of its name,
-// or when it matches the collector number exactly or as a prefix once both
-// sides are normalised. An empty query matches every card.
+// or when the normalised collector numbers are equal. The number comparison is
+// deliberately exact rather than a prefix — normalisation already makes "6",
+// "006" and "006/165" all find card #6, whereas a prefix match would drag in
+// #60–#69 for "6" and most of the set for "1". An empty query matches every
+// card.
 function cardMatchesQuery(card: Card, rawQuery: string): boolean {
   const needle = rawQuery.trim().toLowerCase()
   if (!needle) return true
   if (card.name.toLowerCase().includes(needle)) return true
   const queryNo = normaliseCollectorNo(rawQuery)
   if (!queryNo) return false
-  return normaliseCollectorNo(card.collector_no ?? '').startsWith(queryNo)
+  return normaliseCollectorNo(card.collector_no ?? '') === queryNo
 }
 
 // hasMultiVariantCard returns true when at least one card in the set carries

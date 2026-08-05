@@ -789,6 +789,25 @@ describe('PokemonSet – card search', () => {
     await waitFor(() => expect(visibleTileIds()).toEqual(['card-tile-sv1-6']))
   })
 
+  it('matches collector numbers exactly, not by prefix', async () => {
+    stubSearchFetch()
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    // "13" is a prefix of #133 but not the number itself — a prefix match would
+    // make every short numeric query drag in a swathe of the set.
+    typeQuery('13')
+
+    await waitFor(() =>
+      expect(screen.getByTestId('card-search-empty')).toHaveTextContent('No cards match "13".'),
+    )
+    expect(screen.queryByTestId('card-tile-sv1-133')).not.toBeInTheDocument()
+
+    // The full number still finds it.
+    typeQuery('133')
+    await waitFor(() => expect(visibleTileIds()).toEqual(['card-tile-sv1-133']))
+  })
+
   it('mirrors the query to ?q= and preserves the variant param', async () => {
     stubSearchFetch()
     renderPageWithProbe()
