@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { formatMonthLabel, formatHours, formatCompact } from './types'
-import type { CommissionTier } from './types'
+import { getTierProgress, getTierEarnings, isTierActive } from './tierMath'
 import type { SalaryData } from './useSalaryData'
 import VacationCard from './VacationCard'
 import TrekktabellEditor from './TrekktabellEditor'
 import AssignmentsList from './AssignmentsList'
+import WhatIfTierSlider from './WhatIfTierSlider'
 
 interface MonthViewProps {
   salary: SalaryData
@@ -15,24 +16,6 @@ interface MonthViewProps {
   locale: string
   onChangeMonth: (delta: number) => void
 }
-
-// Calculate how far into a tier the current billable revenue is.
-const getTierProgress = (tier: CommissionTier, billableRevenue: number): number => {
-  if (billableRevenue <= tier.floor) return 0
-  if (tier.ceiling === 0) return 100 // Unbounded — always full once reached
-  const filled = Math.min(billableRevenue, tier.ceiling) - tier.floor
-  const total = tier.ceiling - tier.floor
-  return Math.min((filled / total) * 100, 100)
-}
-
-const getTierEarnings = (tier: CommissionTier, billableRevenue: number): number => {
-  if (billableRevenue <= tier.floor) return 0
-  const high = tier.ceiling === 0 ? billableRevenue : Math.min(billableRevenue, tier.ceiling)
-  return (high - tier.floor) * tier.rate
-}
-
-const isTierActive = (tier: CommissionTier, billableRevenue: number): boolean =>
-  billableRevenue > tier.floor && (tier.ceiling === 0 || billableRevenue <= tier.ceiling)
 
 /**
  * Month tab: hero estimate card with prev/next navigation, manual override form,
@@ -128,6 +111,11 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
   }
 
   if (!estimate) return null
+
+  // Tiers and revenue the commission bars are drawn from — also the baseline the
+  // what-if slider projects from, so position 0 reproduces the bars exactly.
+  const tierBarTiers = estimate.adjusted_commission_tiers ?? estimate.commission_tiers ?? []
+  const tierBarRevenue = estimate.billable_revenue + estimate.internal_revenue
 
   return (
     <>
@@ -400,8 +388,8 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
             </div>
           </div>
           <div className="space-y-3">
-            {(estimate.adjusted_commission_tiers ?? estimate.commission_tiers ?? []).map((tier, idx) => {
-              const totalRevenue = estimate.billable_revenue + estimate.internal_revenue
+            {tierBarTiers.map((tier, idx) => {
+              const totalRevenue = tierBarRevenue
               const progress = getTierProgress(tier, totalRevenue)
               const earnings = getTierEarnings(tier, totalRevenue)
               const active = isTierActive(tier, totalRevenue)
@@ -449,6 +437,20 @@ export default function MonthView({ salary, selectedMonth, currentMonthStr, loca
               )
             })}
           </div>
+
+          {/* What-if: extra billable hours, projected client-side */}
+          {tierBarTiers.length > 0 && estimate.config.hourly_rate > 0 && (
+            <WhatIfTierSlider
+              key={estimate.month}
+              tiers={tierBarTiers}
+              baselineRevenue={tierBarRevenue}
+              hourlyRate={estimate.config.hourly_rate}
+              currentGross={estimate.estimate.gross}
+              currentNet={estimate.estimate.net}
+              extraHourNet={estimate.extra_hour_net}
+              formatCurrency={formatCurrency}
+            />
+          )}
         </div>
       )}
 
