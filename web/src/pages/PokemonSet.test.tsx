@@ -217,10 +217,18 @@ function renderPage(initialPath = '/pokemon/sets/sv1') {
 
 // LocationProbe exposes the current router location to assertions by writing
 // `?...` into a hidden DOM node. We use it to verify the variant filter
-// round-trips through the URL.
+// round-trips through the URL, and that the `#card-…` deep-link hash is
+// cleared once consumed.
 function LocationProbe() {
   const loc = useLocation()
-  return <div data-testid="location-probe" data-pathname={loc.pathname} data-search={loc.search} />
+  return (
+    <div
+      data-testid="location-probe"
+      data-pathname={loc.pathname}
+      data-search={loc.search}
+      data-hash={loc.hash}
+    />
+  )
 }
 
 function renderPageWithProbe(initialPath = '/pokemon/sets/sv1') {
@@ -950,6 +958,108 @@ describe('PokemonSet – card search', () => {
     // The full grid is back and clicking its first tile opens that card.
     fireEvent.click(screen.getByTestId('card-tile-sv1-6'))
     expect(await screen.findByRole('dialog', { name: 'Charizard ex' })).toBeInTheDocument()
+  })
+})
+
+describe('PokemonSet – #card- deep link', () => {
+  // The Top view navigates to `/pokemon/sets/<id>#card-<collector_no>`; the
+  // set page has to resolve that to a tile, scroll to it and open the lightbox.
+  // happy-dom has no layout engine, so we swap scrollIntoView for a recorder
+  // that also captures the element it was called on.
+  let scrolled: Element[]
+  let originalScrollIntoView: (() => void) | undefined
+
+  beforeEach(() => {
+    scrolled = []
+    const proto = Element.prototype as unknown as { scrollIntoView?: () => void }
+    originalScrollIntoView = proto.scrollIntoView
+    proto.scrollIntoView = function (this: Element) {
+      scrolled.push(this)
+    }
+
+    const set = makeSet({ total_cards: 3 })
+    const cards = [
+      makeCard({ id: 'sv1-1', name: 'Pikachu', collector_no: '001' }),
+      makeCard({
+        id: 'sv1-2',
+        name: 'Eevee',
+        collector_no: '002',
+        variants: [
+          makeVariant({ id: 2, kind: 'normal' }),
+          makeVariant({ id: 3, kind: 'reverse_holofoil' }),
+        ],
+      }),
+      makeCard({ id: 'sv1-3', name: 'Snorlax', collector_no: 'SV1/003' }),
+    ]
+    vi.stubGlobal('fetch', makeFetchMock({ set, cards }))
+  })
+
+  afterEach(() => {
+    const proto = Element.prototype as unknown as { scrollIntoView?: () => void }
+    if (originalScrollIntoView) proto.scrollIntoView = originalScrollIntoView
+    else delete proto.scrollIntoView
+  })
+
+  it('opens the lightbox on the matching card and scrolls its tile into view', async () => {
+    renderPage('/pokemon/sets/sv1#card-002')
+
+    expect(await screen.findByRole('dialog', { name: 'Eevee' })).toBeInTheDocument()
+    expect(scrolled).toEqual([screen.getByTestId('card-tile-sv1-2')])
+  })
+
+  it('decodes a percent-encoded collector number and matches case-insensitively', async () => {
+    renderPage('/pokemon/sets/sv1#card-sv1%2F003')
+
+    expect(await screen.findByRole('dialog', { name: 'Snorlax' })).toBeInTheDocument()
+  })
+
+  it('is a silent no-op when the collector number is not in the set', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    renderPage('/pokemon/sets/sv1#card-999')
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    expect(screen.queryByTestId('card-lightbox')).not.toBeInTheDocument()
+    expect(scrolled).toHaveLength(0)
+    expect(warn).not.toHaveBeenCalled()
+    expect(error).not.toHaveBeenCalled()
+
+    warn.mockRestore()
+    error.mockRestore()
+  })
+
+  it('clears the hash after consuming it while preserving ?variant=', async () => {
+    renderPageWithProbe('/pokemon/sets/sv1?variant=reverse_holofoil#card-002')
+
+    expect(await screen.findByRole('dialog', { name: 'Eevee' })).toBeInTheDocument()
+
+    const probe = screen.getByTestId('location-probe')
+    await waitFor(() => expect(probe).toHaveAttribute('data-hash', ''))
+    expect(probe).toHaveAttribute('data-search', '?variant=reverse_holofoil')
+    expect(probe).toHaveAttribute('data-pathname', '/pokemon/sets/sv1')
+  })
+
+  it('does not reopen the lightbox when the filter changes after consumption', async () => {
+    renderPage('/pokemon/sets/sv1#card-002')
+
+    expect(await screen.findByRole('dialog', { name: 'Eevee' })).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('lightbox-close'))
+    await waitFor(() => expect(screen.queryByTestId('card-lightbox')).not.toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Missing only' }))
+
+    await waitFor(() => expect(screen.getByText('Eevee')).toBeInTheDocument())
+    expect(screen.queryByTestId('card-lightbox')).not.toBeInTheDocument()
+  })
+
+  it('leaves a hash-less URL untouched', async () => {
+    renderPageWithProbe('/pokemon/sets/sv1')
+    await waitFor(() => expect(screen.getByText('Pikachu')).toBeInTheDocument())
+
+    expect(screen.queryByTestId('card-lightbox')).not.toBeInTheDocument()
+    expect(scrolled).toHaveLength(0)
+    expect(screen.getByTestId('location-probe')).toHaveAttribute('data-search', '')
   })
 })
 

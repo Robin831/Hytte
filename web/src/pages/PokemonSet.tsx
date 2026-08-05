@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { ArrowLeft, Check, Minus } from 'lucide-react'
@@ -304,6 +304,9 @@ function CardTile({ card, filter, onClick, t }: TileProps) {
     <button
       type="button"
       onClick={onClick}
+      // The DOM id is the scroll anchor for `#card-<collector_no>` deep links
+      // coming from the Top view; `data-testid` stays for the test suite.
+      id={`card-tile-${card.id}`}
       data-testid={`card-tile-${card.id}`}
       aria-label={t('tile.openCard', { name: card.name, number: card.collector_no })}
       data-ownership={!applicable ? 'na' : owned ? 'owned' : partial ? 'partial' : 'missing'}
@@ -561,12 +564,37 @@ function GridSkeleton() {
   )
 }
 
+const CARD_HASH_PREFIX = '#card-'
+
+// normalizeCollectorNo makes collector numbers comparable across the slightly
+// different spellings the two views use ('001' vs ' 001 ', 'SWSH01' vs
+// 'swsh01').
+function normalizeCollectorNo(value: string | null | undefined): string {
+  return String(value ?? '').trim().toLowerCase()
+}
+
+// parseCardHash turns `#card-<collector_no>` into the collector number the Top
+// view encoded. Returns null for an empty hash, a hash we don't own, or a
+// malformed percent-escape — all of which are silent no-ops.
+function parseCardHash(hash: string): string | null {
+  if (!hash.startsWith(CARD_HASH_PREFIX)) return null
+  const raw = hash.slice(CARD_HASH_PREFIX.length)
+  if (!raw) return null
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return null
+  }
+}
+
 export default function PokemonSetPage() {
   const { t } = useTranslation('pokemon')
   const { id } = useParams<{ id: string }>()
   const setId = id ?? ''
   const { toasts, showToast } = useToast()
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
+  const navigate = useNavigate()
 
   const [set, setSet] = useState<PokemonSet | null>(null)
   const [cards, setCards] = useState<Card[]>([])
@@ -576,6 +604,7 @@ export default function PokemonSetPage() {
   const [lightboxStartIndex, setLightboxStartIndex] = useState<number | null>(null)
   const [savingCardId, setSavingCardId] = useState<string | null>(null)
   const [attempt, setAttempt] = useState(0)
+  const consumedHashRef = useRef<string | null>(null)
   const cardsRef = useRef<Card[]>([])
   useLayoutEffect(() => { cardsRef.current = cards })
   const filterButtonRefs = useRef<Array<HTMLButtonElement | null>>([])
@@ -776,6 +805,37 @@ export default function PokemonSetPage() {
     lightboxStartIndex != null && visibleCards.length > 0
       ? Math.min(lightboxStartIndex, visibleCards.length - 1)
       : null
+
+  // The Top view links here as `/pokemon/sets/<id>#card-<collector_no>`.
+  // Consume that fragment once the cards have loaded: scroll the matching tile
+  // into view, open the lightbox on it, then strip the hash so a reload lands
+  // on the plain grid. A collector number that isn't in the set (or a hash we
+  // don't recognise) is a silent no-op. The ref guard keeps this to one run per
+  // hash value so filtering or searching afterwards doesn't reopen the card.
+  const { hash, pathname, search } = location
+  useEffect(() => {
+    if (loading) return
+    if (!hash || consumedHashRef.current === hash) return
+    const target = parseCardHash(hash)
+    if (target === null) return
+    consumedHashRef.current = hash
+
+    const wanted = normalizeCollectorNo(target)
+    const index = visibleCards.findIndex(c => normalizeCollectorNo(c.collector_no) === wanted)
+    if (index >= 0) {
+      const el = document.getElementById(`card-tile-${visibleCards[index].id}`)
+      if (el && typeof el.scrollIntoView === 'function') {
+        const reduceMotion =
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        el.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' })
+      }
+      setLightboxStartIndex(index)
+    }
+
+    // Drop the fragment while keeping ?variant= / ?q= intact.
+    navigate({ pathname, search }, { replace: true })
+  }, [hash, pathname, search, loading, visibleCards, navigate])
 
   const updateCardVariants = useCallback(
     (cardId: string, mutate: (variants: Variant[]) => Variant[]) => {
