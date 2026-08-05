@@ -32,13 +32,16 @@ function compareWorkouts(a: Workout, b: Workout): number {
   return b.id - a.id
 }
 
-// mergeFirstPage folds a freshly fetched page 1 into an already-loaded list
-// instead of replacing it, which is what lets a restored list keep the older
-// pages the user paged in. Matching ids are replaced (edits), workouts the page
-// introduces are inserted in order (uploads), and cached workouts that fall
-// inside the window the page covers but are absent from it are dropped
-// (deletes). Cached workouts older than the window are left alone: page 1 says
-// nothing about them.
+// mergeFirstPage folds a freshly fetched page 1 into a previously loaded list
+// instead of replacing it, which is what lets a restored list — or a list the
+// new-workouts banner refreshes — keep the older pages the user paged in.
+// Matching ids are replaced (edits), workouts the page introduces are inserted
+// in order (uploads), and loaded workouts that fall inside the window the page
+// covers but are absent from it are dropped (deletes). Loaded workouts older
+// than the window are left alone: page 1 says nothing about them.
+//
+// Only call this when firstPageDetached() is false — a detached page cannot be
+// folded into the list without leaving an unreachable gap.
 function mergeFirstPage(prev: Workout[], page: Workout[], pageExhausted: boolean): Workout[] {
   const byId = new Map(page.map(w => [w.id, w]))
   const oldest = page.length > 0 ? page[page.length - 1] : null
@@ -57,6 +60,25 @@ function mergeFirstPage(prev: Workout[], page: Workout[], pageExhausted: boolean
   // Sorting rather than prepending: a backdated .fit import (or an edit that
   // moved a workout's start time) belongs in the middle of the list, not on top.
   return [...added, ...merged].sort(compareWorkouts)
+}
+
+// firstPageDetached reports whether a freshly fetched page 1 has come loose from
+// the list on screen. It has when the page shares no workout with the loaded
+// rows and has more behind it: every loaded row then sits below the page's
+// window, and the rows in between were never fetched. Folding in that case would
+// leave a hole no "Load more" can fill — the kept cursor points past the loaded
+// pages, so the gap is unreachable until a reload. Bulk-importing more than a
+// page of workouts is what gets you there. An empty list counts as detached for
+// the same reason it needs the response's cursor: there is nothing to fold into.
+// Callers replace the list with the page and adopt its cursor.
+function firstPageDetached(prev: Workout[], page: Workout[], pageExhausted: boolean): boolean {
+  if (prev.length === 0) return true
+  // Page 1 is the whole result set, so there is nothing behind it to miss.
+  if (pageExhausted) return false
+  // Nothing came back; the page says nothing about the loaded rows.
+  if (page.length === 0) return false
+  const ids = new Set(page.map(w => w.id))
+  return !prev.some(w => ids.has(w.id))
 }
 
 const sportIcons: Record<string, string> = {
@@ -105,6 +127,16 @@ export default function Training() {
   const [availableTags, setAvailableTags] = useState<string[]>([])
   const latestWorkoutIdRef = useRef<number | null>(hydrated?.latestWorkoutId ?? null)
   const hasNewWorkoutsRef = useRef(false)
+
+  // Mirror of `workouts` for the async callbacks. They decide what to do with a
+  // response after an await, by which point a `workouts` captured when the
+  // callback was created can be several renders old; the ref always holds the
+  // list as last committed. Everything that mutates the list goes through
+  // setWorkouts, so the mirror cannot drift.
+  const workoutsRef = useRef(workouts)
+  useEffect(() => {
+    workoutsRef.current = workouts
+  }, [workouts])
 
   // Armed while the restored list is still authoritative. The first page-1 load
   // after a hydrated mount is a background refresh that merges into the restored
@@ -200,7 +232,8 @@ export default function Training() {
     const isCurrent = () => !cancelled && requestId === listRequestIdRef.current
     // Merge only while the restored list is untouched by a filter or a refresh.
     // The check itself disarms: once a filter has been applied, later loads
-    // replace even after the filters are cleared again.
+    // replace even after the filters are cleared again. A merge-armed load still
+    // replaces when the page comes back detached from the restored rows.
     const merge = mergeArmedRef.current && filterParams === '' && refreshTick === 0
     if (!merge) mergeArmedRef.current = false
     ;(async () => {
@@ -223,8 +256,9 @@ export default function Training() {
         const data = await res.json()
         if (!isCurrent()) return
         const list: Workout[] = data.workouts || []
-        if (merge) {
-          setWorkouts(prev => mergeFirstPage(prev, list, (data.next_cursor ?? null) === null))
+        const exhausted = (data.next_cursor ?? null) === null
+        if (merge && !firstPageDetached(workoutsRef.current, list, exhausted)) {
+          setWorkouts(prev => mergeFirstPage(prev, list, exhausted))
           setHasAnyWorkouts(list.length > 0 || filtersActive)
         } else {
           setWorkouts(list)
@@ -382,10 +416,12 @@ export default function Training() {
   // honest: mergeFirstPage inserts by started_at DESC (id DESC as the tiebreak),
   // so a backdated .fit import lands where it belongs instead of on top, replaces
   // rows the page carries an edited version of, and drops rows the page window
-  // no longer contains (deletes). The cursor is only taken from the response when
-  // the list was empty — with older pages on screen the existing cursor still
-  // points past them. The fetch carries the active filters, so only matching new
-  // workouts are pulled in.
+  // no longer contains (deletes). The cursor is left alone while the page still
+  // connects to the loaded rows: the existing cursor already points past them,
+  // and page 1's would make "Load more" re-serve what is shown. A detached page
+  // (empty list, or a bulk import bigger than a page) replaces the list and
+  // brings its cursor along — see firstPageDetached. The fetch carries the active
+  // filters, so only matching new workouts are pulled in.
   const handleLoadNew = useCallback(async () => {
     // Same generation guard as handleLoadMore: a filter change that lands while
     // this fetch is in flight owns the list, so the merge is dropped rather
@@ -417,12 +453,13 @@ export default function Training() {
           )
         }
         if (isCurrent()) {
-          const wasEmpty = workouts.length === 0
-          setWorkouts(prev => mergeFirstPage(prev, list, (wData.next_cursor ?? null) === null))
-          // Only adopt the response's cursor when there was nothing loaded: once
-          // older pages are on screen the cursor already points past them, and
-          // page 1's cursor would make "Load more" re-serve what is shown.
-          if (wasEmpty) setNextCursor(wData.next_cursor ?? null)
+          const exhausted = (wData.next_cursor ?? null) === null
+          if (firstPageDetached(workoutsRef.current, list, exhausted)) {
+            setWorkouts(list)
+            setNextCursor(wData.next_cursor ?? null)
+          } else {
+            setWorkouts(prev => mergeFirstPage(prev, list, exhausted))
+          }
         }
       }
       if (sRes.ok) {
@@ -433,7 +470,7 @@ export default function Training() {
       // Transient failure — banner stays visible so the user can retry. The SSE
       // reconcile on the next reconnect will re-flag if needed.
     }
-  }, [workouts, workoutsUrl])
+  }, [workoutsUrl])
 
   useEffect(() => {
     if (!user) return

@@ -684,6 +684,35 @@ describe('Training list cache', () => {
     expect(screen.getByText('History 49')).toBeInTheDocument()
   })
 
+  it('replaces the restored list when the refreshed page 1 is detached from it', async () => {
+    // More workouts imported while away than a page holds: page 1 of the refresh
+    // reaches back to none of the restored rows, so the rows in between were
+    // never fetched. Folding would hide them behind the restored cursor, which
+    // points past the restored pages — the page wins and brings its own cursor.
+    const imported: Workout[] = []
+    for (let i = 0; i < 30; i++) {
+      imported.push(makeWorkout({
+        id: 2000 - i,
+        title: `Import ${i}`,
+        sport: 'running',
+        started_at: new Date(Date.UTC(2026, 5, 1) - i * 86_400_000).toISOString(),
+      }))
+    }
+    vi.stubGlobal('fetch', mockFetch([...imported, ...HISTORY], []))
+
+    primeCache()
+    renderTraining()
+
+    expect(await screen.findByText('Import 0')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('History 0')).not.toBeInTheDocument()
+    })
+    // Nothing is stranded: the restored rows are reachable again by paging on.
+    fireEvent.click(screen.getByRole('button', { name: /load more/i }))
+    expect(await screen.findByText('Import 29')).toBeInTheDocument()
+    expect(screen.getByText('History 0')).toBeInTheDocument()
+  })
+
   it('does a normal fresh load when the snapshot is older than the TTL', async () => {
     primeCache({ savedAt: Date.now() - TRAINING_LIST_CACHE_TTL_MS - 1000 })
     const { container } = renderTraining()
@@ -788,56 +817,6 @@ describe('Training new-workouts banner', () => {
     vi.unstubAllGlobals()
   })
 
-  it('shows banner when SSE fires and loads new workouts on click', async () => {
-    const base = mockFetch(WORKOUTS)
-    let onWorkoutNew: ((e: MessageEvent) => void) | null = null
-
-    // Don't auto-fire onopen — let the filter-independent effect set the
-    // baseline latestWorkoutIdRef first so the SSE event triggers the banner
-    // via a genuine id > seen comparison.
-    vi.stubGlobal('EventSource', class {
-      onopen: (() => void) | null = null
-      addEventListener(event: string, handler: (e: MessageEvent) => void) {
-        if (event === 'workout_new') onWorkoutNew = handler
-      }
-      close() {}
-    })
-    vi.stubGlobal('fetch', base)
-
-    renderTraining()
-    await screen.findByText('Morning Run')
-
-    // Simulate a new workout arriving.
-    const newWorkout = makeWorkout({
-      id: 99,
-      title: 'New Upload',
-      sport: 'running',
-      started_at: '2026-12-01T08:00:00Z',
-    })
-    const allWorkouts = [newWorkout, ...WORKOUTS]
-    vi.stubGlobal('fetch', mockFetch(allWorkouts))
-
-    // Fire the SSE event with a higher id than the initial baseline (4).
-    await act(async () => {
-      onWorkoutNew?.(new MessageEvent('workout_new', {
-        data: JSON.stringify({ latest_id: 99 }),
-      }))
-    })
-
-    // Banner should appear.
-    const banner = await screen.findByText(/New workouts available/)
-    expect(banner).toBeInTheDocument()
-
-    // Click the banner to load new workouts.
-    fireEvent.click(banner)
-
-    expect(await screen.findByText('New Upload')).toBeInTheDocument()
-    // Banner should be dismissed.
-    await waitFor(() => {
-      expect(screen.queryByText(/New workouts available/)).not.toBeInTheDocument()
-    })
-  })
-
   // A short history in the order the list endpoint serves it: started_at DESC.
   const BANNER_WORKOUTS: Workout[] = [
     makeWorkout({ id: 10, title: 'Recent Run', sport: 'running', started_at: '2026-03-03T08:00:00Z' }),
@@ -900,6 +879,26 @@ describe('Training new-workouts banner', () => {
     })
     return { banner, fire }
   }
+
+  it('shows banner when SSE fires and loads new workouts on click', async () => {
+    const newWorkout = makeWorkout({
+      id: 99,
+      title: 'New Upload',
+      sport: 'running',
+      started_at: '2026-12-01T08:00:00Z',
+    })
+    // Baseline latest id is 4, so 99 trips the banner.
+    const { banner } = await raiseBanner(WORKOUTS, [newWorkout, ...WORKOUTS], 99)
+    expect(banner).toBeInTheDocument()
+
+    fireEvent.click(banner)
+
+    expect(await screen.findByText('New Upload')).toBeInTheDocument()
+    // Banner should be dismissed.
+    await waitFor(() => {
+      expect(screen.queryByText(/New workouts available/)).not.toBeInTheDocument()
+    })
+  })
 
   it('inserts a backdated import in its chronological slot, not at the top', async () => {
     const backdated = makeWorkout({
@@ -998,7 +997,7 @@ describe('Training new-workouts banner', () => {
     // non-null next_cursor.
     fireEvent.click(screen.getByRole('button', { name: /load more/i }))
     expect(await screen.findByText('Deep 29')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /load more/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument()
 
     fireEvent.click(banner)
 
@@ -1010,11 +1009,41 @@ describe('Training new-workouts banner', () => {
     expect(renderedWorkoutIds()).toHaveLength(BANNER_HISTORY.length + 1)
     // The cursor is untouched: "Load more" must not come back for pages that are
     // already on screen.
-    expect(screen.queryByRole('button', { name: /load more/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument()
 
     // The baseline advanced, so the same id does not re-raise the banner.
     await fire(900)
     expect(screen.queryByText(/New workouts available/)).not.toBeInTheDocument()
+  })
+
+  it('replaces the list when a bulk import leaves page 1 detached from it', async () => {
+    // A bulk import bigger than a page: the refreshed page 1 shares nothing with
+    // the rows on screen, so the workouts between them were never fetched. The
+    // kept cursor points past the loaded pages, so folding would strand the
+    // in-between rows — page 1 replaces the list and brings its own cursor.
+    const imported: Workout[] = []
+    for (let i = 0; i < 30; i++) {
+      imported.push(makeWorkout({
+        id: 900 - i,
+        title: `Imported ${i}`,
+        sport: 'running',
+        started_at: new Date(Date.UTC(2026, 5, 1) - i * 86_400_000).toISOString(),
+      }))
+    }
+    const { banner } = await raiseBanner(BANNER_HISTORY, [...imported, ...BANNER_HISTORY], 900)
+
+    fireEvent.click(banner)
+
+    expect(await screen.findByText('Imported 0')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('Deep 0')).not.toBeInTheDocument()
+    })
+    expect(renderedWorkoutIds()).toHaveLength(25)
+    // Nothing is stranded: the rest of the import and the old rows are reachable
+    // by paging on from the adopted cursor.
+    fireEvent.click(screen.getByRole('button', { name: /load more/i }))
+    expect(await screen.findByText('Imported 29')).toBeInTheDocument()
+    expect(screen.getByText('Deep 0')).toBeInTheDocument()
   })
 
   it('takes the cursor from the response when the list was empty', async () => {
