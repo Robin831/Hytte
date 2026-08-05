@@ -208,6 +208,14 @@
     "failedToImport": "การนำเข้าล้มเหลว",
     "failedToLoadAssignments": "โหลดการกำหนดไม่สำเร็จ",
     "failedToSaveAssignment": "การบันทึกล้มเหลว",
-    "failedToFetchDefaults": "ดึงค่าเริ่มต้นไม่สำเร็จ"
+    "failedToFetchDefaults": "ดึงค่าเริ่มต้นไม่สำเร็จ",
+    "failedToLoadVacation": "โหลดข้อมูลวันลาพักร้อนไม่สำเร็จ",
+    "failedToLoadTrekktabell": "โหลดพารามิเตอร์ trekktabell ไม่สำเร็จ"
+  },
+  "actions": {
+    "retry": "ลองอีกครั้ง"
+  },
+  "a11y": {
+    "refreshing": "กำลังอัปเดตค่าประมาณของเดือน…"
   }
 }

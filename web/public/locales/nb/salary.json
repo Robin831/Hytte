@@ -208,6 +208,14 @@
     "failedToImport": "Importering mislyktes",
     "failedToLoadAssignments": "Klarte ikke å laste tilknytninger",
     "failedToSaveAssignment": "Lagring mislyktes",
-    "failedToFetchDefaults": "Klarte ikke å hente standardverdier"
+    "failedToFetchDefaults": "Klarte ikke å hente standardverdier",
+    "failedToLoadVacation": "Klarte ikke å laste feriedata",
+    "failedToLoadTrekktabell": "Klarte ikke å laste trekktabellparametere"
+  },
+  "actions": {
+    "retry": "Prøv igjen"
+  },
+  "a11y": {
+    "refreshing": "Oppdaterer månedsestimatet…"
   }
 }

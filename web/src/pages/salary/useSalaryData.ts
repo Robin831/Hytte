@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type {
   EstimateResponse,
@@ -42,10 +42,20 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
 
   const monthYear = Number.parseInt(selectedMonth.split('-')[0] ?? '', 10) || selectedYear
 
-  // Month estimate
+  // Month estimate. `initialLoading` covers only the very first fetch (the page
+  // has nothing to show yet); every later fetch — month navigation or a manual
+  // refresh — reports through `refreshing` so the previous estimate stays on
+  // screen instead of the page blanking out.
   const [estimate, setEstimate] = useState<EstimateResponse | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  // True once a month estimate has been fetched successfully at least once, so
+  // a failed refetch can be surfaced inline rather than as a full-page error.
+  const [loadedOnce, setLoadedOnce] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Tracks whether any estimate fetch has settled, so a StrictMode double-invoke
+  // or rapid month clicks can never flip `initialLoading` back on.
+  const estimateSettledRef = useRef(false)
   // Force a refetch of the current month's estimate after assignment / import changes.
   const [estimateRefreshToken, setEstimateRefreshToken] = useState(0)
 
@@ -56,9 +66,13 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
 
   // Vacation
   const [vacation, setVacation] = useState<VacationResponse | null>(null)
+  const [vacationError, setVacationError] = useState<string | null>(null)
+  const [vacationRefreshToken, setVacationRefreshToken] = useState(0)
 
   // Trekktabell params
   const [trekktabell, setTrekktabell] = useState<TrekktabellParams | null>(null)
+  const [trekktabellError, setTrekktabellError] = useState<string | null>(null)
+  const [trekktabellRefreshToken, setTrekktabellRefreshToken] = useState(0)
 
   // Trekktabell assignments (per-month table number selection). Shared because
   // both the initial fetch and the mutations write the same error state.
@@ -81,10 +95,11 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
 
   useEffect(() => {
     let cancelled = false
+    // Deliberately keep the previous estimate: month navigation swaps the numbers
+    // in place instead of unmounting the whole page while the request is out.
     /* eslint-disable react-hooks/set-state-in-effect -- reset before fetch */
-    setLoading(true)
     setError(null)
-    setEstimate(null)
+    if (estimateSettledRef.current) setRefreshing(true)
     /* eslint-enable react-hooks/set-state-in-effect */
 
     fetch(`/api/salary/estimate/month?month=${selectedMonth}`, { credentials: 'include' })
@@ -94,25 +109,41 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
         return res.json() as Promise<EstimateResponse>
       })
       .then(data => {
+        // A cancelled request belongs to a month the user has already navigated
+        // away from — dropping it here keeps out-of-order responses off screen.
         if (cancelled) return
         setEstimate(data)
+        setLoadedOnce(true)
       })
       .catch(err => {
         if (!cancelled) setError(err.message)
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (cancelled) return
+        estimateSettledRef.current = true
+        setInitialLoading(false)
+        setRefreshing(false)
       })
 
     return () => { cancelled = true }
   }, [selectedMonth, estimateRefreshToken])
 
-  // Load vacation data when estimate is available (has config).
+  // Both the vacation and trekktabell payloads are per-year, so they are keyed on
+  // the year plus "do we have a config at all" — not on the `estimate` object
+  // identity, which changes on every month fetch and would refetch needlessly.
+  const hasConfig = estimate !== null
+
+  const retryVacation = useCallback(() => setVacationRefreshToken(tok => tok + 1), [])
+  const retryTrekktabell = useCallback(() => setTrekktabellRefreshToken(tok => tok + 1), [])
+
+  // Load vacation data when a config is available.
   // Use monthYear so vacation data always matches the selected month's year,
   // not the independently-selectable year tab year.
   useEffect(() => {
-    if (!estimate) return
+    if (!hasConfig) return
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stale error before fetch
+    setVacationError(null)
 
     fetch(`/api/salary/vacation?year=${monthYear}`, { credentials: 'include' })
       .then(async res => {
@@ -120,15 +151,20 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
         return res.json() as Promise<VacationResponse>
       })
       .then(data => { if (!cancelled) setVacation(data) })
-      .catch(err => { if (!cancelled) console.error('Failed to load vacation data:', err) })
+      .catch(err => {
+        if (cancelled) return
+        setVacationError(err instanceof Error ? err.message : String(err))
+      })
 
     return () => { cancelled = true }
-  }, [estimate, monthYear])
+  }, [hasConfig, monthYear, vacationRefreshToken])
 
-  // Load trekktabell params when estimate is available.
+  // Load trekktabell params when a config is available.
   useEffect(() => {
-    if (!estimate) return
+    if (!hasConfig) return
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stale error before fetch
+    setTrekktabellError(null)
 
     fetch(`/api/salary/trekktabell?year=${monthYear}`, { credentials: 'include' })
       .then(async res => {
@@ -136,10 +172,13 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
         return res.json() as Promise<TrekktabellParams>
       })
       .then(data => { if (!cancelled) setTrekktabell(data) })
-      .catch(err => { if (!cancelled) console.error('Failed to load trekktabell:', err) })
+      .catch(err => {
+        if (cancelled) return
+        setTrekktabellError(err instanceof Error ? err.message : String(err))
+      })
 
     return () => { cancelled = true }
-  }, [estimate, monthYear])
+  }, [hasConfig, monthYear, trekktabellRefreshToken])
 
   useEffect(() => {
     if (activeTab !== 'year') return
@@ -396,13 +435,19 @@ export function useSalaryData(selectedMonth: string, selectedYear: number, activ
 
   return {
     estimate,
-    loading,
+    initialLoading,
+    refreshing,
+    loadedOnce,
     error,
     yearData,
     yearLoading,
     yearError,
     vacation,
+    vacationError,
+    retryVacation,
     trekktabell,
+    trekktabellError,
+    retryTrekktabell,
     assignments,
     assignmentsLoading,
     assignmentsError,

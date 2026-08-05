@@ -1,0 +1,3 @@
+category: Changed
+- **Salary month navigation no longer blanks the page** - Stepping between months keeps the heading, tabs, config panel and cards on screen; the previous month's numbers stay visible (dimmed, with a spinner and an accessible label) until the new estimate arrives. The full-page loader and error are now reserved for the very first load, so a failed refetch keeps the last good estimate and reports the error inline. (Hytte-s0lhf)
+- **Failing vacation and trekktabell fetches are visible** - Both areas now show a localized error with a Retry button instead of silently rendering an empty box. (Hytte-s0lhf)

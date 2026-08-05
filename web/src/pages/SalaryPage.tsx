@@ -38,17 +38,20 @@ export default function SalaryPage() {
   }
 
   const salary = useSalaryData(selectedMonth, selectedYear, activeTab)
-  const { estimate, loading, error } = salary
+  const { estimate, initialLoading, loadedOnce, error } = salary
 
-  if (loading) {
+  // The full-page loader and error are reserved for the very first load, when
+  // there is nothing on screen yet. Once a month estimate has arrived, a failed
+  // month change keeps the last good numbers and reports the error inline.
+  if (initialLoading) {
     return (
-      <div className="p-6 text-gray-400">{t('title')}…</div>
+      <div className="p-6 text-gray-400" role="status" aria-busy="true">{t('title')}…</div>
     )
   }
 
-  if (error) {
+  if (error && !loadedOnce) {
     return (
-      <div className="p-6 text-red-400">{t('errors.failedToLoad')}: {error}</div>
+      <div className="p-6 text-red-400" role="alert">{t('errors.failedToLoad')}: {error}</div>
     )
   }
 
@@ -70,6 +73,13 @@ export default function SalaryPage() {
           </button>
         )}
       </div>
+
+      {/* A refetch that failed after a successful first load — the page stays put */}
+      {error && loadedOnce && (
+        <div className="text-sm text-red-400" role="alert">
+          {t('errors.failedToLoad')}: {error}
+        </div>
+      )}
 
       {/* Config panel */}
       {(showConfig || noConfig || noConfigPastMonth) && (
