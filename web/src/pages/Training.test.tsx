@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import Training from './Training'
 import type { Workout } from '../types/training'
 import {
@@ -210,12 +210,38 @@ function lastListRequest() {
   return new URL(all[all.length - 1], 'http://localhost')
 }
 
-function renderTraining() {
+// The filters live in the URL now, so the tests need to see where the router
+// actually is — and to be able to press Back.
+function LocationProbe() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  return (
+    <>
+      <span data-testid="location">{location.pathname + location.search}</span>
+      <button type="button" data-testid="history-back" onClick={() => navigate(-1)}>
+        history back
+      </button>
+    </>
+  )
+}
+
+function renderTraining(entries: string | string[] = '/training') {
+  const initialEntries = Array.isArray(entries) ? entries : [entries]
   return render(
-    <MemoryRouter initialEntries={['/training']}>
+    <MemoryRouter initialEntries={initialEntries}>
       <Training />
+      <LocationProbe />
     </MemoryRouter>,
   )
+}
+
+function currentLocation(): string {
+  return screen.getByTestId('location').textContent ?? ''
+}
+
+function currentParams(): URLSearchParams {
+  const [, search = ''] = currentLocation().split('?')
+  return new URLSearchParams(search)
 }
 
 function stubEventSource() {
@@ -410,6 +436,162 @@ describe('Training filter bar', () => {
   })
 })
 
+describe('Training filters in the URL', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    window.sessionStorage.clear()
+    requests = []
+    stubEventSource()
+    vi.stubGlobal('fetch', mockFetch(WORKOUTS))
+  })
+
+  afterAll(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('hydrates the filter bar and the first request from the query string', async () => {
+    renderTraining('/training?sport=running&tag=easy&q=morning')
+
+    expect(await screen.findByText('Morning Run')).toBeInTheDocument()
+    expect((screen.getByLabelText('Filter by sport') as HTMLSelectElement).value).toBe('running')
+    expect(screen.getByRole('button', { name: 'easy' })).toHaveAttribute('aria-pressed', 'true')
+    expect((screen.getByPlaceholderText(/search by title/i) as HTMLInputElement).value).toBe('morning')
+
+    const req = lastListRequest()
+    expect(req.searchParams.get('sport')).toBe('running')
+    expect(req.searchParams.getAll('tag')).toEqual(['easy'])
+    expect(req.searchParams.get('q')).toBe('morning')
+    expect(screen.queryByText('Easy Spin')).not.toBeInTheDocument()
+    expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
+  })
+
+  it('does not refetch because the search box was seeded from the URL', async () => {
+    renderTraining('/training?q=morning')
+    await screen.findByText('Morning Run')
+
+    await new Promise(resolve => setTimeout(resolve, SEARCH_DEBOUNCE_MS + 100))
+    expect(listRequests().length).toBe(1)
+    expect(currentParams().get('q')).toBe('morning')
+  })
+
+  it('pushes the sport filter into the URL, so Back undoes it', async () => {
+    renderTraining()
+    await screen.findByText('Morning Run')
+    expect(currentLocation()).toBe('/training')
+
+    fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'cycling' } })
+    expect(currentParams().get('sport')).toBe('cycling')
+    expect(await screen.findByText('Easy Spin')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('history-back'))
+    await waitFor(() => {
+      expect(currentLocation()).toBe('/training')
+    })
+    expect((screen.getByLabelText('Filter by sport') as HTMLSelectElement).value).toBe('')
+    expect(await screen.findByText('Morning Run')).toBeInTheDocument()
+  })
+
+  it('writes tag selections to the URL and removes them when toggled off', async () => {
+    renderTraining()
+    await screen.findByText('Morning Run')
+
+    fireEvent.click(screen.getByRole('button', { name: 'easy' }))
+    expect(currentParams().getAll('tag')).toEqual(['easy'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'ai:recovery' }))
+    expect(currentParams().getAll('tag')).toEqual(['easy', 'ai:recovery'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'easy' }))
+    expect(currentParams().getAll('tag')).toEqual(['ai:recovery'])
+  })
+
+  it('leaves a bare /training when every filter is cleared', async () => {
+    renderTraining('/training?sport=running&tag=easy&q=morning')
+    await screen.findByText('Morning Run')
+
+    const clearBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Clear filters'))
+    expect(clearBtn).toBeTruthy()
+    fireEvent.click(clearBtn!)
+
+    await waitFor(() => {
+      expect(currentLocation()).toBe('/training')
+    })
+    expect((screen.getByPlaceholderText(/search by title/i) as HTMLInputElement).value).toBe('')
+    for (const w of WORKOUTS) {
+      expect(await screen.findByText(w.title)).toBeInTheDocument()
+    }
+  })
+
+  it('commits typing to the URL only after the debounce', async () => {
+    renderTraining()
+    await screen.findByText('Morning Run')
+
+    const input = screen.getByPlaceholderText(/search by title/i)
+    fireEvent.change(input, { target: { value: 'p' } })
+    fireEvent.change(input, { target: { value: 'po' } })
+    fireEvent.change(input, { target: { value: 'pool' } })
+    // Still inside the debounce window — no keystroke has reached the URL.
+    expect(currentLocation()).toBe('/training')
+
+    await waitFor(() => {
+      expect(currentParams().get('q')).toBe('pool')
+    })
+  })
+
+  it('replaces the history entry for the debounced search, so one Back leaves the page', async () => {
+    renderTraining(['/training/9', '/training'])
+    await screen.findByText('Morning Run')
+
+    fireEvent.change(screen.getByPlaceholderText(/search by title/i), { target: { value: 'pool' } })
+    await waitFor(() => {
+      expect(currentParams().get('q')).toBe('pool')
+    })
+    expect(await screen.findByText('Pool Laps')).toBeInTheDocument()
+
+    // One press leaves for wherever the user came from rather than stepping
+    // back through "poo", "po", "p".
+    fireEvent.click(screen.getByTestId('history-back'))
+    await waitFor(() => {
+      expect(currentLocation()).toBe('/training/9')
+    })
+  })
+
+  it('syncs the search box back when the URL changes from outside', async () => {
+    renderTraining()
+    await screen.findByText('Morning Run')
+
+    fireEvent.change(screen.getByPlaceholderText(/search by title/i), { target: { value: 'pool' } })
+    await waitFor(() => {
+      expect(currentParams().get('q')).toBe('pool')
+    })
+    fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'swimming' } })
+    await waitFor(() => {
+      expect(currentParams().get('sport')).toBe('swimming')
+    })
+
+    fireEvent.click(screen.getByTestId('history-back'))
+    await waitFor(() => {
+      expect(currentParams().get('sport')).toBeNull()
+    })
+    expect(currentParams().get('q')).toBe('pool')
+    expect((screen.getByPlaceholderText(/search by title/i) as HTMLInputElement).value).toBe('pool')
+  })
+
+  it('hydrates a tag chip as pressed and refetches when it is toggled off', async () => {
+    renderTraining('/training?tag=easy')
+    await screen.findByText('Morning Run')
+
+    expect(screen.getByRole('button', { name: 'easy' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'easy' }))
+    await waitFor(() => {
+      expect(currentLocation()).toBe('/training')
+    })
+    expect(await screen.findByText('Hill Intervals')).toBeInTheDocument()
+  })
+})
+
 describe('Training filtered pagination', () => {
   // 30 runs and 30 rides, interleaved: a filtered page can only be assembled by
   // the backend, and paging must walk matches rather than raw history.
@@ -582,10 +764,11 @@ describe('Training list cache', () => {
   const CACHED = HISTORY.slice(0, 50)
   const CACHED_CURSOR = String(CACHED[CACHED.length - 1].id)
 
-  function primeCache(overrides: Record<string, unknown> = {}, userId = '1') {
-    window.sessionStorage.setItem(trainingListCacheKey(userId), JSON.stringify({
+  function primeCache(overrides: Record<string, unknown> = {}, userId = '1', filterKey = '') {
+    window.sessionStorage.setItem(trainingListCacheKey(userId, filterKey), JSON.stringify({
       version: TRAINING_LIST_CACHE_VERSION,
       userId,
+      filterKey,
       savedAt: Date.now(),
       workouts: CACHED,
       nextCursor: CACHED_CURSOR,
@@ -774,18 +957,118 @@ describe('Training list cache', () => {
     expect(snapshot!.scrollY).toBe(512)
   })
 
-  it('drops the snapshot while a filter is active, since filters are not restored', async () => {
+  it('restores a filtered list from the snapshot for that filter', () => {
+    primeCache({}, '1', 'sport=running')
+    const { container } = renderTraining('/training?sport=running')
+
+    // No await: the restored rows must be there before any request resolves.
+    expect(screen.getByText('History 0')).toBeInTheDocument()
+    expect(screen.getByText('History 49')).toBeInTheDocument()
+    expect(container.querySelector('.animate-pulse')).toBeNull()
+  })
+
+  it('restores the scroll offset of a filtered list', () => {
+    primeCache({ scrollY: 640 }, '1', 'sport=running')
+    renderTraining('/training?sport=running')
+
+    expect(scrollToSpy).toHaveBeenCalledWith({ top: 640, behavior: 'auto' })
+  })
+
+  it('never restores the unfiltered snapshot into a filtered view', async () => {
     primeCache()
-    renderTraining()
+    renderTraining('/training?sport=running')
+
+    // Only page 1 of the filtered request — the unfiltered snapshot's deeper
+    // pages belong to a different key and must not leak in.
+    expect(await screen.findByText('History 0')).toBeInTheDocument()
+    expect(screen.queryByText('History 49')).not.toBeInTheDocument()
+  })
+
+  it('does a fresh load after a reload navigation even under a filter', async () => {
+    vi.spyOn(performance, 'getEntriesByType').mockReturnValue([
+      { type: 'reload' } as unknown as PerformanceEntry,
+    ])
+    primeCache({}, '1', 'sport=running')
+    renderTraining('/training?sport=running')
 
     expect(await screen.findByText('History 0')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'cycling' } })
-
-    await waitFor(() => {
-      expect(readTrainingListCache('1')).toBeNull()
-    })
-    // A filtered load replaces the restored list rather than merging into it.
     expect(screen.queryByText('History 49')).not.toBeInTheDocument()
+  })
+
+  it('persists a filtered list under its own key, leaving the unfiltered one alone', async () => {
+    const { unmount } = renderTraining('/training?sport=running')
+    await screen.findByText('History 0')
+
+    fireEvent.click(await screen.findByRole('button', { name: /load more/i }))
+    expect(await screen.findByText('History 30')).toBeInTheDocument()
+
+    Object.defineProperty(window, 'scrollY', { value: 256, configurable: true })
+    unmount()
+
+    const snapshot = readTrainingListCache('1', 'sport=running')
+    expect(snapshot).not.toBeNull()
+    expect(snapshot!.workouts.length).toBe(50)
+    expect(snapshot!.scrollY).toBe(256)
+    // The unfiltered list was never loaded in this tab, so it has no snapshot.
+    expect(readTrainingListCache('1')).toBeNull()
+  })
+
+  it('restores the previous filter\'s pages when the user switches back to it', async () => {
+    renderTraining()
+    await screen.findByText('History 0')
+
+    // Two pages of the unfiltered list are loaded and snapshotted.
+    fireEvent.click(await screen.findByRole('button', { name: /load more/i }))
+    expect(await screen.findByText('History 30')).toBeInTheDocument()
+
+    // Narrow to a query with its own, much shorter result set.
+    fireEvent.change(screen.getByPlaceholderText(/search by title/i), {
+      target: { value: 'History 5' },
+    })
+    await waitFor(() => {
+      expect(lastListRequest().searchParams.get('q')).toBe('History 5')
+    })
+    await waitFor(() => {
+      expect(screen.queryByText('History 30')).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('History 55')).toBeInTheDocument()
+
+    // Clearing goes back to the unfiltered snapshot, pages and all.
+    const clearBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Clear filters'))
+    expect(clearBtn).toBeTruthy()
+    fireEvent.click(clearBtn!)
+
+    expect(await screen.findByText('History 30')).toBeInTheDocument()
+    expect(screen.getByText('History 49')).toBeInTheDocument()
+    // Each filter kept its own entry.
+    expect(readTrainingListCache('1', 'q=History+5')).not.toBeNull()
+    expect(readTrainingListCache('1')!.workouts.length).toBe(50)
+
+    // The snapshot's cursor came back too, so paging on continues past the
+    // restored pages instead of re-serving them.
+    fireEvent.click(screen.getByRole('button', { name: /load more/i }))
+    expect(await screen.findByText('History 59')).toBeInTheDocument()
+    expect(screen.getByText('History 49')).toBeInTheDocument()
+  })
+
+  it('does not write the previous filter\'s rows under the new filter key', async () => {
+    renderTraining()
+    await screen.findByText('History 0')
+    fireEvent.click(await screen.findByRole('button', { name: /load more/i }))
+    expect(await screen.findByText('History 30')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText(/search by title/i), {
+      target: { value: 'History 5' },
+    })
+    await waitFor(() => {
+      expect(screen.queryByText('History 30')).not.toBeInTheDocument()
+    })
+
+    // 11 titles contain "History 5" (5 and 50..59) — the filtered snapshot must
+    // hold those, not the 50 rows that were on screen when the filter changed.
+    const filtered = readTrainingListCache('1', 'q=History+5')
+    expect(filtered).not.toBeNull()
+    expect(filtered!.workouts.length).toBe(11)
   })
 
   it('falls back to a fresh load when sessionStorage throws', async () => {
