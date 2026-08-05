@@ -28,6 +28,10 @@
     "message": "ไม่สามารถโหลดวิดเจ็ตนี้ได้",
     "retry": "ลองอีกครั้ง"
   },
+  "widgetLoading": {
+    "title": "กำลังโหลดวิดเจ็ต…",
+    "titleWithLabel": "กำลังโหลด {{label}}…"
+  },
   "widgets": {
     "greeting": {
       "title": "คำทักทาย"

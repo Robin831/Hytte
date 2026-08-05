@@ -28,6 +28,10 @@
     "message": "This widget failed to load.",
     "retry": "Retry"
   },
+  "widgetLoading": {
+    "title": "Loading widget…",
+    "titleWithLabel": "Loading {{label}}…"
+  },
   "widgets": {
     "greeting": {
       "title": "Greeting"

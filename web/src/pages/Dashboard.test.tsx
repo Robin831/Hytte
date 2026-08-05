@@ -2,6 +2,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import Dashboard from './Dashboard'
+import { WIDGET_REGISTRY } from '../components/widgets/registry'
+import enDashboard from '../../public/locales/en/dashboard.json'
+import nbDashboard from '../../public/locales/nb/dashboard.json'
+import thDashboard from '../../public/locales/th/dashboard.json'
 
 // ── Translation mock ──────────────────────────────────────────────────────────
 // Widget titles resolve to their registry key segment ("weather", "quickLinks",
@@ -302,5 +306,53 @@ describe('Dashboard – edit mode', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     expect(screen.queryByText('Hidden widgets')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Edit layout' })).toBeInTheDocument()
+  })
+})
+
+describe('Dashboard – code-split widgets', () => {
+  const REACT_LAZY = Symbol.for('react.lazy')
+
+  const isLazyComponent = (component: unknown) =>
+    typeof component === 'object' &&
+    component !== null &&
+    (component as { $$typeof?: symbol }).$$typeof === REACT_LAZY
+
+  it('flags exactly the lazy components with lazy: true', () => {
+    // The dashboard only wraps `lazy` entries in Suspense, so a React.lazy
+    // component without the flag would suspend the whole page.
+    for (const def of WIDGET_REGISTRY) {
+      expect(isLazyComponent(def.component), `${def.id} lazy flag`).toBe(Boolean(def.lazy))
+    }
+  })
+
+  it('code-splits the below-the-fold widgets', () => {
+    const lazyIds = WIDGET_REGISTRY.filter((def) => def.lazy).map((def) => def.id)
+
+    expect(lazyIds).toEqual(['netatmo', 'infra', 'github'])
+  })
+
+  it('renders a code-split widget once its chunk resolves', async () => {
+    authState.features = { infra: true }
+    await renderDashboard()
+
+    await waitFor(() => expect(renderedOrder()).toContain('infra'))
+    expect(renderedOrder()).toContain('github')
+  })
+})
+
+describe('Dashboard – widget titles', () => {
+  const LOCALES: Array<[string, unknown]> = [
+    ['en', enDashboard],
+    ['nb', nbDashboard],
+    ['th', thDashboard],
+  ]
+
+  it.each(LOCALES)('has a %s translation for every widget title key', (locale, messages) => {
+    for (const def of WIDGET_REGISTRY) {
+      const value = def.titleKey.split('.').reduce<unknown>((node, part) => {
+        return node && typeof node === 'object' ? (node as Record<string, unknown>)[part] : undefined
+      }, messages)
+      expect(value, `${locale}: missing ${def.titleKey}`).toBeTypeOf('string')
+    }
   })
 })

@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react'
+import { lazy, type ComponentType } from 'react'
 import type { ParseKeys } from 'i18next'
 import GreetingWidget from './GreetingWidget'
 import WeatherWidget from './WeatherWidget'
@@ -8,10 +8,17 @@ import QuickLinksWidget from './QuickLinksWidget'
 import FitnessWidget from './FitnessWidget'
 import LactateSummaryWidget from './LactateSummaryWidget'
 import ActivityFeedWidget from './ActivityFeedWidget'
-import InfraStatusWidget from './InfraStatusWidget'
-import GitHubStatusWidget from './GitHubStatusWidget'
-import NetatmoWidget from './NetatmoWidget'
 import CalendarWidget from './CalendarWidget'
+
+// Below-the-fold widgets that fetch on mount are code-split so they do not sit
+// in the initial dashboard chunk. Every lazy entry must set `lazy: true` so the
+// dashboard renders it inside a Suspense boundary.
+const InfraStatusWidget = lazy(() => import('./InfraStatusWidget'))
+const GitHubStatusWidget = lazy(() => import('./GitHubStatusWidget'))
+const NetatmoWidget = lazy(() => import('./NetatmoWidget'))
+
+/** Feature key shared by the server-status and GitHub Actions widgets. */
+const INFRA = 'infra'
 
 export interface WidgetDef {
   /** Stable id persisted in the dashboard_widgets preference. */
@@ -25,6 +32,8 @@ export interface WidgetDef {
   colSpanClass?: string
   /** Widgets the user cannot hide (the greeting header). */
   alwaysVisible?: boolean
+  /** True when `component` is a React.lazy wrapper and needs a Suspense boundary. */
+  lazy?: boolean
 }
 
 /**
@@ -43,12 +52,12 @@ export const WIDGET_REGISTRY: WidgetDef[] = [
   { id: 'weather', component: WeatherWidget, titleKey: 'widgets.weather.title' },
   { id: 'daylight', component: DaylightWidget, titleKey: 'widgets.daylight.title' },
   { id: 'calendar', component: CalendarWidget, titleKey: 'widgets.calendar.title', feature: 'calendar' },
-  { id: 'netatmo', component: NetatmoWidget, titleKey: 'widgets.netatmo.title', feature: 'netatmo' },
+  { id: 'netatmo', component: NetatmoWidget, titleKey: 'widgets.netatmo.title', feature: 'netatmo', lazy: true },
   { id: 'training', component: FitnessWidget, titleKey: 'widgets.training.title', feature: 'training' },
   { id: 'lactate', component: LactateSummaryWidget, titleKey: 'widgets.lactate.title', feature: 'lactate' },
   { id: 'activity', component: ActivityFeedWidget, titleKey: 'widgets.activity.title' },
-  { id: 'infra', component: InfraStatusWidget, titleKey: 'widgets.infra.title', feature: 'infra' },
-  { id: 'github', component: GitHubStatusWidget, titleKey: 'widgets.github.title', feature: 'infra' },
+  { id: 'infra', component: InfraStatusWidget, titleKey: 'widgets.infra.title', feature: INFRA, lazy: true },
+  { id: 'github', component: GitHubStatusWidget, titleKey: 'widgets.github.title', feature: INFRA, lazy: true },
   { id: 'norwegian_word', component: NorwegianFunWidget, titleKey: 'widgets.norwegianWord.title' },
   { id: 'quick_links', component: QuickLinksWidget, titleKey: 'widgets.quickLinks.title' },
 ]

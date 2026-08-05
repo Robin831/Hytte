@@ -28,6 +28,10 @@
     "message": "Denne modulen kunne ikke lastes.",
     "retry": "Prøv igjen"
   },
+  "widgetLoading": {
+    "title": "Laster modul…",
+    "titleWithLabel": "Laster {{label}}…"
+  },
   "widgets": {
     "greeting": {
       "title": "Hilsen"
