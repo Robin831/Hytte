@@ -12,8 +12,10 @@ function validThreshold(test: LactateTest | undefined): PrimaryThreshold | null 
   return pt && pt.valid ? pt : null
 }
 
-// DeltaBadge renders a signed change with up/down/flat styling.
-function DeltaBadge({ value, unit, decimals }: { value: number; unit: string; decimals: number }) {
+// DeltaBadge renders a signed change with up/down/flat styling. `neutral` drops
+// the green/red colouring for metrics where a rise is not inherently better or
+// worse (threshold heart rate), keeping only the arrow and the signed value.
+function DeltaBadge({ value, unit, decimals, neutral = false }: { value: number; unit: string; decimals: number; neutral?: boolean }) {
   const { t } = useTranslation(['lactate'])
   const rounded = Number(value.toFixed(decimals))
   const magnitude = formatNumber(Math.abs(rounded), {
@@ -25,11 +27,11 @@ function DeltaBadge({ value, unit, decimals }: { value: number; unit: string; de
   let sign = ''
   if (rounded > 0) {
     Icon = ArrowUp
-    color = 'text-green-400'
+    if (!neutral) color = 'text-green-400'
     sign = '+'
   } else if (rounded < 0) {
     Icon = ArrowDown
-    color = 'text-red-400'
+    if (!neutral) color = 'text-red-400'
     sign = '−' // minus sign
   }
   return (
@@ -110,9 +112,12 @@ export default function LactateTests() {
         </div>
       )}
 
-      {!isLoading && tests.length >= 2 && (() => {
+      {!isLoading && tests.length >= 1 && (() => {
+        // A single test still has a threshold worth showing — only the deltas
+        // need a second test to compare against.
+        const hasComparison = tests.length >= 2
         const latest = validThreshold(tests[0])
-        const previous = validThreshold(tests[1])
+        const previous = hasComparison ? validThreshold(tests[1]) : null
         return (
           <div className="bg-gray-800 border border-gray-700 rounded-xl p-4 mb-6">
             <div className="flex items-center gap-2 mb-3">
@@ -135,7 +140,7 @@ export default function LactateTests() {
             {latest && previous ? (
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm">
                 <DeltaBadge value={latest.speed_kmh - previous.speed_kmh} unit={t('units.kmh')} decimals={1} />
-                <DeltaBadge value={latest.heart_rate_bpm - previous.heart_rate_bpm} unit={t('units.bpm')} decimals={0} />
+                <DeltaBadge value={latest.heart_rate_bpm - previous.heart_rate_bpm} unit={t('units.bpm')} decimals={0} neutral />
                 <span className="text-xs text-gray-500">{t('summary.vsPrevious')}</span>
               </div>
             ) : (
