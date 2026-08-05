@@ -830,6 +830,7 @@ export default function PokemonSetPage() {
           window.matchMedia('(prefers-reduced-motion: reduce)').matches
         el.scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' })
       }
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- opening the lightbox is a one-shot response to the incoming hash, guarded by consumedHashRef so it runs once per hash value
       setLightboxStartIndex(index)
     }
 
