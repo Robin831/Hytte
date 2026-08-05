@@ -1,0 +1,2 @@
+category: Added
+- **The new lactate test wizard now autosaves a draft** - Protocol settings and stage rows are stored locally as you type, so a reload, an accidental back navigation or a backgrounded phone no longer loses values typed at the treadmill. Returning to the wizard offers a "Continue draft?" banner; the draft is cleared when the test is saved or explicitly discarded, and leaving with entered data now asks for confirmation. (Hytte-9g1gk)
