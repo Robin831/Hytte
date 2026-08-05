@@ -26,6 +26,7 @@
     "emptyMessages": "No messages yet. Say hello!",
     "loadingOlder": "Loading older messages…",
     "beginningOfConversation": "This is the beginning of the conversation",
+    "seenBy": "Seen by {{names}}",
     "noSelectionTitle": "Pick a conversation",
     "noSelectionHint": "Choose a chat from the list to start reading.",
     "attachmentImageAlt": "Attached image",

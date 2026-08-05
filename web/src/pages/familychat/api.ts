@@ -144,6 +144,29 @@ export async function deleteMessage(convID: number, msgID: number): Promise<void
   if (!res.ok) throw new Error(`delete message failed: ${res.status}`)
 }
 
+// markConversationRead POSTs the read marker for a conversation, moving the
+// caller's own last_read_at forward so the unread badge drops to zero. `at` is
+// the timestamp of the newest message the user has actually seen; omitting it
+// lets the server stamp its own clock. Throws on any non-success response —
+// the chat view swallows the failure, since a missed read marker only means the
+// badge lingers until the next attempt.
+export async function markConversationRead(
+  convID: number,
+  opts: { at?: string; signal?: AbortSignal } = {},
+): Promise<void> {
+  const res = await fetch(
+    `/api/familychat/conversations/${convID}/read`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(opts.at ? { at: opts.at } : {}),
+      signal: opts.signal,
+    },
+  )
+  if (!res.ok) throw new Error(`mark read failed: ${res.status}`)
+}
+
 // OLDER_PAGE_SIZE is how many messages one "load older" page requests. It
 // matches the server's default page size, so a shorter response is an
 // unambiguous signal that the caller has reached the start of the history.
