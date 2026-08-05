@@ -3,6 +3,8 @@
   "loading": "Loading departures...",
   "error": "Failed to load departures",
   "noDepartures": "No upcoming departures",
+  "stopError": "Couldn't load departures for this stop",
+  "retryStop": "Try again",
   "realtime": "Real-time",
   "scheduled": "Scheduled",
   "min": "min",

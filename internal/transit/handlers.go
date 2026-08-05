@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/Robin831/Hytte/internal/auth"
 )
 
@@ -22,7 +24,20 @@ const (
 	maxRouteLen       = 50
 	maxWalkMinutes    = 120
 	maxSettingsBodySz = 64 << 10 // 64 KB
+
+	// maxConcurrentStopFetches bounds how many Entur requests are in flight at
+	// once, so a 50-stop config doesn't fan out into 50 simultaneous calls.
+	maxConcurrentStopFetches = 4
+
+	// defaultPerStopTimeout is the deadline each stop fetch gets. It matches the
+	// budget the serial implementation shared across every stop, but is now
+	// applied per stop so one unresponsive stop can't starve the rest.
+	defaultPerStopTimeout = 8 * time.Second
 )
+
+// perStopTimeout is the deadline applied to each individual stop fetch.
+// It is a variable so tests can shorten it.
+var perStopTimeout = defaultPerStopTimeout
 
 // DeparturesHandler returns real-time departures for the requested stop IDs.
 // Query params: stops — comma-separated list of NSR stop IDs.
@@ -60,55 +75,88 @@ func DeparturesHandler(db *sql.DB, svc *Service) http.HandlerFunc {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
-		defer cancel()
+		// Fan the per-stop fetches out so total latency tracks the slowest stop
+		// instead of the sum of all of them. Results are written into a pre-sized
+		// slice by index, so the response order still matches the configured stop
+		// order regardless of which fetch finishes first.
+		result := make([]StopDepartures, len(stops))
 
-		result := make([]StopDepartures, 0, len(stops))
-		for _, stop := range stops {
-			// When route filters are active, fetch more departures so that after
-			// filtering there are still enough entries to plan ahead. Without
-			// this, all 10 slots could be consumed by other lines, leaving the
-			// user with only 1-2 departures for their chosen routes.
-			count := numberOfDepartures
-			if len(stop.Routes) > 0 {
-				count = filteredDepartureCount
-			}
-			stopName, departures, err := svc.FetchDepartures(ctx, stop.ID, count)
-			if err != nil {
-				// Return a stop entry with no departures rather than failing the whole request.
-				// When stop.Name is empty (e.g. ad-hoc ID from query param), fall back to the
-				// stop ID so clients always have a displayable label.
-				name := stop.Name
-				if name == "" {
-					name = stop.ID
-				}
-				result = append(result, StopDepartures{
-					StopID:      stop.ID,
-					StopName:    name,
-					WalkMinutes: stop.WalkMinutes,
-					Departures:  []Departure{},
-				})
-				continue
-			}
-
-			// Use the cached name if the API returned none (already cached entry).
-			name := stopName
-			if name == "" {
-				name = stop.Name
-			}
-
-			// Filter by configured routes when the stop has a route whitelist.
-			filtered := filterDepartures(departures, stop.Routes)
-
-			result = append(result, StopDepartures{
-				StopID:      stop.ID,
-				StopName:    name,
-				WalkMinutes: stop.WalkMinutes,
-				Departures:  filtered,
+		// A plain errgroup (not WithContext): one stop's failure must not cancel
+		// its siblings, so the closures never return an error and instead fold
+		// the failure into the stop entry itself.
+		var g errgroup.Group
+		g.SetLimit(maxConcurrentStopFetches)
+		for i, stop := range stops {
+			g.Go(func() error {
+				result[i] = fetchStopDepartures(r.Context(), svc, stop)
+				return nil
 			})
 		}
+		_ = g.Wait()
 
 		writeJSON(w, http.StatusOK, map[string]any{"stops": result})
+	}
+}
+
+// fetchStopDepartures resolves departures for a single stop under its own
+// deadline. It never fails: a stop the upstream can't serve degrades to an
+// empty, error-flagged entry so the remaining stops still render.
+func fetchStopDepartures(ctx context.Context, svc *Service, stop FavoriteStop) StopDepartures {
+	// When route filters are active, fetch more departures so that after
+	// filtering there are still enough entries to plan ahead. Without this, all
+	// 10 slots could be consumed by other lines, leaving the user with only 1-2
+	// departures for their chosen routes.
+	count := numberOfDepartures
+	if len(stop.Routes) > 0 {
+		count = filteredDepartureCount
+	}
+
+	// Each stop gets its own timeout, so a single hanging stop burns only its
+	// own budget rather than the whole request's.
+	stopCtx, cancel := context.WithTimeout(ctx, perStopTimeout)
+	defer cancel()
+
+	stopName, departures, err := svc.FetchDepartures(stopCtx, stop.ID, count)
+	if err != nil {
+		// Return a stop entry with no departures rather than failing the whole
+		// request, flagged so the client can say so instead of rendering it as
+		// "no departures". When stop.Name is empty (e.g. ad-hoc ID from a query
+		// param), fall back to the stop ID so clients always have a displayable
+		// label.
+		name := stop.Name
+		if name == "" {
+			name = stop.ID
+		}
+		return StopDepartures{
+			StopID:      stop.ID,
+			StopName:    name,
+			WalkMinutes: stop.WalkMinutes,
+			Departures:  []Departure{},
+			Error:       true,
+		}
+	}
+
+	// Use the cached name if the API returned none (already cached entry).
+	name := stopName
+	if name == "" {
+		name = stop.Name
+	}
+	if name == "" {
+		name = stop.ID
+	}
+
+	// Filter by configured routes when the stop has a route whitelist.
+	filtered := filterDepartures(departures, stop.Routes)
+	if filtered == nil {
+		// Never emit `null` — the client iterates this list unconditionally.
+		filtered = []Departure{}
+	}
+
+	return StopDepartures{
+		StopID:      stop.ID,
+		StopName:    name,
+		WalkMinutes: stop.WalkMinutes,
+		Departures:  filtered,
 	}
 }
 

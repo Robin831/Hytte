@@ -218,6 +218,269 @@ func TestDeparturesHandler_UpstreamError_ReturnsEmptyDepartures(t *testing.T) {
 	if body.Stops[0].StopName != "NSR:StopPlace:42175" {
 		t.Errorf("expected stop name to fall back to stop ID, got %q", body.Stops[0].StopName)
 	}
+	// The failure must be visible to the client, not indistinguishable from a
+	// stop that genuinely has no departures.
+	if !body.Stops[0].Error {
+		t.Error("expected error flag set on upstream failure")
+	}
+}
+
+// --- concurrent fan-out ---
+
+// seedFavoriteStops stores stops in the test user's preferences so the handler
+// loads them as configured favorites.
+func seedFavoriteStops(t *testing.T, db *sql.DB, stops []FavoriteStop) {
+	t.Helper()
+	blob, err := json.Marshal(stops)
+	if err != nil {
+		t.Fatalf("marshal stops: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`,
+		transitStopsPreferenceKey, string(blob),
+	); err != nil {
+		t.Fatalf("insert preference: %v", err)
+	}
+}
+
+func TestDeparturesHandler_FetchesStopsConcurrently(t *testing.T) {
+	const (
+		stopCount = 6
+		stopDelay = 200 * time.Millisecond
+	)
+
+	behavior := make(map[string]http.HandlerFunc, stopCount)
+	stops := make([]FavoriteStop, 0, stopCount)
+	for i := range stopCount {
+		id := fmt.Sprintf("NSR:StopPlace:%d", i)
+		behavior[id] = departuresAfter(stopDelay)
+		stops = append(stops, FavoriteStop{ID: id, Name: fmt.Sprintf("Stop %d", i)})
+	}
+
+	enturServer := enturStub(t, behavior)
+	defer enturServer.Close()
+
+	db := setupTestDB(t)
+	seedFavoriteStops(t, db, stops)
+
+	handler := DeparturesHandler(db, newTestService(enturServer.URL, "http://unused"))
+
+	req := httptest.NewRequest("GET", "/api/transit/departures", nil)
+	req = withTestUser(req, 1)
+	rec := httptest.NewRecorder()
+
+	start := time.Now()
+	handler.ServeHTTP(rec, req)
+	elapsed := time.Since(start)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// With concurrency bounded at maxConcurrentStopFetches, 6 stops run in two
+	// waves (~400ms), not serially (~1200ms). The bound is generous so a loaded
+	// CI machine doesn't turn this into a flake.
+	serial := stopCount * stopDelay
+	if elapsed >= serial-stopDelay {
+		t.Errorf("expected concurrent fan-out, took %v (serial would be ~%v)", elapsed, serial)
+	}
+
+	var body struct {
+		Stops []StopDepartures `json:"stops"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Stops) != stopCount {
+		t.Fatalf("expected %d stops, got %d", stopCount, len(body.Stops))
+	}
+	for i, stop := range body.Stops {
+		if stop.Error {
+			t.Errorf("stop %d unexpectedly flagged as errored", i)
+		}
+		if len(stop.Departures) != 1 {
+			t.Errorf("stop %d: expected 1 departure, got %d", i, len(stop.Departures))
+		}
+	}
+}
+
+func TestDeparturesHandler_PerStopTimeoutIsolatesSlowStop(t *testing.T) {
+	setPerStopTimeout(t, 200*time.Millisecond)
+
+	const (
+		healthyA = "NSR:StopPlace:healthy-a"
+		hanging  = "NSR:StopPlace:hanging"
+		healthyB = "NSR:StopPlace:healthy-b"
+	)
+
+	enturServer := enturStub(t, map[string]http.HandlerFunc{
+		healthyA: departuresAfter(0),
+		// Well past the per-stop deadline.
+		hanging:  departuresAfter(5 * time.Second),
+		healthyB: departuresAfter(0),
+	})
+	defer enturServer.Close()
+
+	db := setupTestDB(t)
+	seedFavoriteStops(t, db, []FavoriteStop{
+		{ID: healthyA, Name: "Healthy A"},
+		{ID: hanging, Name: "Hanging Stop", WalkMinutes: 7},
+		{ID: healthyB, Name: "Healthy B"},
+	})
+
+	handler := DeparturesHandler(db, newTestService(enturServer.URL, "http://unused"))
+
+	req := httptest.NewRequest("GET", "/api/transit/departures", nil)
+	req = withTestUser(req, 1)
+	rec := httptest.NewRecorder()
+
+	start := time.Now()
+	handler.ServeHTTP(rec, req)
+	elapsed := time.Since(start)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// The hanging stop must give up at its own deadline instead of blocking the
+	// response until its upstream finally answers.
+	if elapsed >= 2*time.Second {
+		t.Errorf("hanging stop starved the request: took %v", elapsed)
+	}
+
+	var body struct {
+		Stops []StopDepartures `json:"stops"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Stops) != 3 {
+		t.Fatalf("expected 3 stops, got %d", len(body.Stops))
+	}
+
+	for _, i := range []int{0, 2} {
+		if body.Stops[i].Error {
+			t.Errorf("stop %q should not be flagged as errored", body.Stops[i].StopID)
+		}
+		if len(body.Stops[i].Departures) != 1 {
+			t.Errorf("stop %q: expected 1 real departure, got %d", body.Stops[i].StopID, len(body.Stops[i].Departures))
+		}
+	}
+
+	failed := body.Stops[1]
+	if failed.StopID != hanging {
+		t.Fatalf("expected stop %q at index 1, got %q", hanging, failed.StopID)
+	}
+	if !failed.Error {
+		t.Error("expected timed-out stop to be flagged with error")
+	}
+	if failed.StopName != "Hanging Stop" {
+		t.Errorf("expected a displayable stop name, got %q", failed.StopName)
+	}
+	if failed.WalkMinutes != 7 {
+		t.Errorf("expected walk_minutes 7 on failed stop, got %d", failed.WalkMinutes)
+	}
+	if failed.Departures == nil {
+		t.Error("expected an empty departures array on failed stop, got null")
+	}
+	if len(failed.Departures) != 0 {
+		t.Errorf("expected 0 departures on failed stop, got %d", len(failed.Departures))
+	}
+}
+
+func TestDeparturesHandler_PreservesConfiguredStopOrder(t *testing.T) {
+	// Latencies deliberately run fastest-last so completion order is the exact
+	// reverse of the configured order.
+	configured := []struct {
+		id    string
+		delay time.Duration
+	}{
+		{"NSR:StopPlace:first", 240 * time.Millisecond},
+		{"NSR:StopPlace:second", 160 * time.Millisecond},
+		{"NSR:StopPlace:third", 80 * time.Millisecond},
+		{"NSR:StopPlace:fourth", 0},
+	}
+
+	behavior := make(map[string]http.HandlerFunc, len(configured))
+	stops := make([]FavoriteStop, 0, len(configured))
+	for _, c := range configured {
+		behavior[c.id] = departuresAfter(c.delay)
+		stops = append(stops, FavoriteStop{ID: c.id, Name: c.id})
+	}
+
+	enturServer := enturStub(t, behavior)
+	defer enturServer.Close()
+
+	db := setupTestDB(t)
+	seedFavoriteStops(t, db, stops)
+
+	handler := DeparturesHandler(db, newTestService(enturServer.URL, "http://unused"))
+
+	req := httptest.NewRequest("GET", "/api/transit/departures", nil)
+	req = withTestUser(req, 1)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Stops []StopDepartures `json:"stops"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Stops) != len(configured) {
+		t.Fatalf("expected %d stops, got %d", len(configured), len(body.Stops))
+	}
+	for i, c := range configured {
+		if body.Stops[i].StopID != c.id {
+			t.Errorf("position %d: expected stop %q, got %q", i, c.id, body.Stops[i].StopID)
+		}
+	}
+}
+
+func TestDeparturesHandler_EmptyStopIsNotFlaggedAsError(t *testing.T) {
+	const stopID = "NSR:StopPlace:quiet"
+
+	enturServer := enturStub(t, map[string]http.HandlerFunc{stopID: emptyDepartures()})
+	defer enturServer.Close()
+
+	db := setupTestDB(t)
+	seedFavoriteStops(t, db, []FavoriteStop{{ID: stopID, Name: "Quiet Stop"}})
+
+	handler := DeparturesHandler(db, newTestService(enturServer.URL, "http://unused"))
+
+	req := httptest.NewRequest("GET", "/api/transit/departures", nil)
+	req = withTestUser(req, 1)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Inspect the raw JSON: the flag must be absent, not merely false, so the
+	// client's `error?: boolean` check reads as "healthy".
+	var raw struct {
+		Stops []map[string]any `json:"stops"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&raw); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(raw.Stops) != 1 {
+		t.Fatalf("expected 1 stop, got %d", len(raw.Stops))
+	}
+	if _, present := raw.Stops[0]["error"]; present {
+		t.Errorf("expected no error flag for a genuinely empty stop, got %v", raw.Stops[0]["error"])
+	}
+	departures, ok := raw.Stops[0]["departures"].([]any)
+	if !ok {
+		t.Fatalf("expected departures to be an array, got %T", raw.Stops[0]["departures"])
+	}
+	if len(departures) != 0 {
+		t.Errorf("expected 0 departures, got %d", len(departures))
+	}
 }
 
 func TestDeparturesHandler_StaleCache_ServedOnUpstreamFailure(t *testing.T) {

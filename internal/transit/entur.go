@@ -33,6 +33,10 @@ type departureCache struct {
 }
 
 // Service holds the Entur API client and its in-memory cache.
+// It is safe for concurrent use: client is an *http.Client (itself safe for
+// concurrent use), graphqlURL/geocoderURL are set once at construction and only
+// read afterwards, and every access to cache goes through mu. DeparturesHandler
+// relies on this to fetch several stops in parallel.
 type Service struct {
 	client      *http.Client
 	graphqlURL  string
