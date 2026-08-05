@@ -159,7 +159,14 @@ describe('useWeatherLocation', () => {
     const gate = deferred()
     const fetchSpy = routeFetch({
       locations: LOCATIONS,
-      prefs: { preferences: { weather_location: 'Bergen' } },
+      prefs: {
+        preferences: {
+          weather_location: 'Bergen',
+          // Server recents that predate the selection — they must not replace the
+          // local list, which is what gets pushed back.
+          recent_locations: JSON.stringify([BERGEN, OSLO]),
+        },
+      },
       prefsGate: gate.promise,
     })
 
@@ -177,6 +184,34 @@ describe('useWeatherLocation', () => {
     // The late-arriving sync pushes the user's choice back to the server.
     const put = fetchSpy.mock.calls.find(([, init]) => init?.method === 'PUT')
     expect(put).toBeDefined()
+    const body = JSON.parse(String(put![1]!.body)) as {
+      preferences: { weather_location: string; recent_locations: string }
+    }
+    expect(body.preferences.weather_location).toBe('Trondheim')
+    // Display and the PUT body must agree, and both must contain the selection.
+    const pushedRecents = JSON.parse(body.preferences.recent_locations) as typeof LOCATIONS
+    expect(pushedRecents).toEqual(result.current.recents)
+    expect(pushedRecents[0]).toEqual(TRONDHEIM)
+    expect(result.current.recents).toContainEqual(TRONDHEIM)
+  })
+
+  it('adopts the server recents when no selection races the preferences load', async () => {
+    mockAuth = { user: { id: 7 }, loading: false }
+    routeFetch({
+      locations: LOCATIONS,
+      prefs: {
+        preferences: {
+          weather_location: 'Bergen',
+          recent_locations: JSON.stringify([BERGEN, TRONDHEIM]),
+        },
+      },
+    })
+
+    const { result } = renderHook(() => useWeatherLocation())
+    await waitFor(() => expect(result.current.locationResolved).toBe(true))
+
+    expect(result.current.location).toEqual(BERGEN)
+    expect(result.current.recents).toEqual([BERGEN, TRONDHEIM])
   })
 
   it('falls back safely when the stored location is invalid', async () => {
