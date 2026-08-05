@@ -18,6 +18,15 @@ export function formatRelative(iso: string, rtf: Intl.RelativeTimeFormat, justNo
   return rtf.format(Math.round(diffSec / (86400 * 365)), 'year')
 }
 
+// formatCallDuration renders whole seconds as m:ss, for the in-call timer and
+// the post-call summary banner. Negative input floors to "0:00".
+export function formatCallDuration(totalSec: number): string {
+  const safe = Math.max(0, Math.floor(totalSec))
+  const minutes = Math.floor(safe / 60)
+  const seconds = safe % 60
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`
+}
+
 // formatFileSize renders a byte count as a human-readable string using decimal
 // (SI) units: 1 KB = 1000 B, 1 MB = 1 000 000 B. One decimal is shown for
 // values below 10 (e.g. "9.5 MB"). Used by attachment chips and download links.

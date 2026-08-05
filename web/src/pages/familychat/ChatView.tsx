@@ -1,47 +1,27 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  ChevronLeft,
-  MessageSquare,
-  X,
-  Phone,
-  PhoneOff,
-  PhoneIncoming,
-  PhoneMissed,
-  Mic,
-  MicOff,
-  Volume2,
-  VolumeX,
-  Video,
-  VideoOff,
-  SwitchCamera,
-  Sparkles,
-} from 'lucide-react'
-import { Skeleton } from '../../components/ui/skeleton'
-import ConnectionStatus from '../../components/ConnectionStatus'
+import { MessageSquare, X, PhoneIncoming, PhoneMissed } from 'lucide-react'
 import { useAuth } from '../../auth'
 import { useKeyboardInset } from '../../hooks/useKeyboardInset'
+import CallOverlay from './CallOverlay'
+import ChatHeader from './ChatHeader'
 import Composer from './Composer'
+import GroupCallOverlay from './GroupCallOverlay'
 import type { Lightbox } from './MessageItem'
-import MessageList, { type ScrollAnchor } from './MessageList'
-import {
-  fetchOlderMessages,
-  markConversationRead,
-  OLDER_PAGE_SIZE,
-} from './api'
+import MessageList from './MessageList'
 import { useFamilyChat } from './FamilyChatContext'
 import {
   useFamilyChatStream,
   type ChatMessage,
   type MissedCallEntry,
-  type ReadReceiptPayload,
 } from './useFamilyChatStream'
+import { useChatMembers } from './useChatMembers'
 import { useMessageActions } from './useMessageActions'
+import { useOlderHistory } from './useOlderHistory'
+import { useReadMarkers } from './useReadMarkers'
 import * as voicePlayer from './voice/voicePlayer'
 import { useVoiceCall, type CallKind } from './voice/useVoiceCall'
-import { supportedFilters, type FilterKind } from './voice/videoFilters'
 import { useGroupCall } from './voice/useGroupCall'
-import GroupCallOverlay from './GroupCallOverlay'
 
 interface ChatViewProps {
   conversationId: number | null
@@ -52,50 +32,15 @@ interface ChatViewProps {
 // here because the composer and bubble components import it from this module.
 export type { ChatMessage }
 
-// OLDER_SCROLL_THRESHOLD_PX is how close to the top of the message list the
-// user has to scroll before the previous page starts loading. Wide enough that
-// the page usually lands before the user hits the very top, small enough that
-// it doesn't fire on an idle list that merely isn't scrolled to the bottom.
-const OLDER_SCROLL_THRESHOLD_PX = 150
-
-// AT_BOTTOM_THRESHOLD_PX is how far from the very bottom of the message list
-// still counts as "the user is looking at the newest message". A few dozen
-// pixels of slack keeps a half-scrolled-by-a-hair list from being treated as
-// reading history.
-const AT_BOTTOM_THRESHOLD_PX = 80
-
-// MARK_READ_DEBOUNCE_MS collapses a burst of arriving messages into a single
-// read marker for the newest one, instead of one POST per message.
-const MARK_READ_DEBOUNCE_MS = 300
-
-interface MemberInfo {
-  label: string
-  emoji: string
-}
-
-interface FamilyChild {
-  child_id: number
-  nickname: string
-  avatar_emoji: string
-}
-
-interface SiblingInfo {
-  child_id: number
-  nickname: string
-  avatar_emoji: string
-}
-
-interface ParentInfo {
-  user_id: number
-  name: string
-  picture: string
-}
-
+// ChatView composes one conversation out of four hooks — the SSE stream, the
+// message mutations, and the two call state machines — and the presentational
+// pieces below them: the header, the message log, the composer, the dialogs and
+// the call overlays. Everything with its own lifecycle (read markers, backward
+// pagination, member name resolution) lives in a hook beside this file.
 export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const { t, i18n } = useTranslation('familyChat')
   const { user, familyStatus } = useAuth()
 
-  const [memberLookup, setMemberLookup] = useState<Map<number, MemberInfo>>(new Map())
   const [lightbox, setLightbox] = useState<Lightbox | null>(null)
   // pickerForMsgId is the id of the bubble whose reaction picker is open, or
   // null when nothing is open. We only show one picker at a time.
@@ -111,79 +56,11 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   // lastTypingSentRef throttles outbound typing POSTs to at most one per ~3s
   // while the local user is composing.
   const lastTypingSentRef = useRef(0)
-  // endedCallSummary is shown briefly after a call wraps up. Tracks the final
-  // duration in seconds so the banner can render "Call ended — m:ss".
-  const [endedCallSummary, setEndedCallSummary] = useState<{ durationSec: number } | null>(null)
-  // callElapsedSec is the running second-counter used by the active-call
-  // overlay. It rounds to whole seconds so the UI updates once per tick.
-  const [callElapsedSec, setCallElapsedSec] = useState(0)
-  const callStartedAtRef = useRef<number | null>(null)
-  const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
-  // Video sinks for video calls: remote is the big pane, local is the PiP on
-  // mobile and a separate side-by-side pane on desktop. Both local elements
-  // bind to the same MediaStream so the layout can switch via CSS without
-  // re-acquiring the camera.
-  const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
-  const localVideoRef = useRef<HTMLVideoElement | null>(null)
-  const localVideoDesktopRef = useRef<HTMLVideoElement | null>(null)
-  // speakerOn controls the remote audio volume: true = full volume (1.0),
-  // false = muted (0) so "Speaker off" means no audio is heard.
-  const [speakerOn, setSpeakerOn] = useState(true)
-  const [filterPickerOpen, setFilterPickerOpen] = useState(false)
-  // pipPosition holds the {x, y} offset for the draggable local-preview
-  // window. Initialised to null so the PiP renders in its default top-right
-  // corner via Tailwind classes; once the user drags it switches to inline
-  // style overrides. Reset to null at the end of each call so the next call
-  // always starts from the default corner (see effect below).
-  const [pipPosition, setPipPosition] = useState<{ x: number; y: number } | null>(null)
-  const pipDragRef = useRef<{ offsetX: number; offsetY: number; pointerId: number } | null>(null)
-
-  // ── Older-history pagination ───────────────────────────────────────────────
-  // loadingOlder is true while a backward page is in flight; hasMoreOlder stays
-  // true until a page comes back short (or empty), which is the server's way of
-  // saying "that was the start of the conversation". Neither is cached across
-  // conversation switches — both reset in onConversationOpen below.
-  const [loadingOlder, setLoadingOlder] = useState(false)
-  const [hasMoreOlder, setHasMoreOlder] = useState(true)
-  // prependCounter ticks once per prepended page so the scroll-anchor restore
-  // below runs exactly when older messages land, and never on a normal append.
-  const [prependCounter, setPrependCounter] = useState(0)
   const messagesScrollRef = useRef<HTMLDivElement>(null)
-  // loadingOlderRef mirrors loadingOlder synchronously: scroll events fire far
-  // faster than React commits, so the state flag alone would let several
-  // duplicate pages start before the first render lands.
-  const loadingOlderRef = useRef(false)
-  // pendingScrollRestoreRef holds the scroll metrics captured immediately
-  // before a prepend. Its presence is also what tells MessageList's
-  // auto-scroll-to-bottom effect to stand down for that one commit.
-  const pendingScrollRestoreRef = useRef<ScrollAnchor | null>(null)
 
-  // ── Read markers ───────────────────────────────────────────────────────────
   // refreshConversations makes the sibling ConversationList refetch, which is
   // what actually clears the unread badge after the server accepts our marker.
   const { refreshConversations } = useFamilyChat()
-  // peerReads maps a member's user id to the timestamp of their most recent
-  // read receipt. Live-only: the conversation API exposes no per-member
-  // last_read_at, so this starts empty on every load and fills in as peers read.
-  const [peerReads, setPeerReads] = useState<Map<number, string>>(new Map())
-  // lastAckedIdRef is the newest message id we have already told the server we
-  // read, so re-renders and repeat effect runs don't re-POST. Reset per
-  // conversation (see onConversationOpen and the cleanup effect below).
-  const lastAckedIdRef = useRef(0)
-  // readAbortRef / readTimerRef own the in-flight read request and the pending
-  // debounce for the current conversation; both are torn down on a switch.
-  const readAbortRef = useRef<AbortController | null>(null)
-  const readTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // handleReadReceipt records a peer's read marker. The stream already drops
-  // our own echo, so anything arriving here belongs to another member.
-  const handleReadReceipt = useCallback((payload: ReadReceiptPayload) => {
-    setPeerReads(prev => {
-      const next = new Map(prev)
-      next.set(payload.user_id, payload.at)
-      return next
-    })
-  }, [])
 
   // Voice-call state machine. skipSignalSubscription is set so the hook
   // doesn't open its own SSE stream — useFamilyChatStream below already owns
@@ -224,34 +101,22 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     callKind: voiceCall.callKind,
     onSignal: voiceCall.handleSignalEvent,
     onGroupSignal: groupCall.handleSignalEvent,
-    onReadReceipt: handleReadReceipt,
+    // The stream keeps these callbacks in refs it refreshes every render, so
+    // referencing the hooks declared below is safe: nothing here runs until
+    // after the render that initialises them.
+    onReadReceipt: payload => readMarkers.handleReadReceipt(payload),
     onConversationOpen: () => {
-      setEndedCallSummary(null)
       lastTypingSentRef.current = 0
-      // Read state is per-conversation: drop the acknowledged watermark, any
-      // pending/in-flight marker, and the peers' live receipts.
-      lastAckedIdRef.current = 0
-      if (readTimerRef.current !== null) {
-        clearTimeout(readTimerRef.current)
-        readTimerRef.current = null
-      }
-      readAbortRef.current?.abort()
-      readAbortRef.current = null
-      setPeerReads(new Map())
-      // Older-history paging is per-conversation: nothing is cached across a
-      // switch, so every conversation starts out assuming there is more to
-      // load and discovers otherwise on the first upward scroll.
-      setLoadingOlder(false)
-      setHasMoreOlder(true)
-      loadingOlderRef.current = false
-      pendingScrollRestoreRef.current = null
+      // Read state and backward paging are both per-conversation: nothing is
+      // cached across a switch, so every conversation starts from scratch.
+      readMarkers.resetForConversation()
+      olderHistory.resetForConversation()
     },
     onConversationClose: () => {
       // Stop any voice-note playback owned by this conversation. Switching
       // chats or unmounting must not leave a bubble in the prior conversation
       // continuing to play in the background.
       voicePlayer.stopAll()
-      setEndedCallSummary(null)
     },
   })
 
@@ -279,33 +144,40 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     userId: user?.id,
   })
 
-  // conversationIdRef shadows the current conversation so an in-flight
-  // "load older" response can tell whether the user has since switched chats.
-  const conversationIdRef = useRef(conversationId)
-  useEffect(() => {
-    conversationIdRef.current = conversationId
+  // Friendly names + avatar emoji for everyone the current user can name.
+  const { memberLabel, memberInfo, peerLabel, memberChips, selfEmoji } = useChatMembers({
+    user,
+    familyStatus,
+    memberIds: conversation?.member_ids,
   })
-  // voiceCallEndRef lets the conversationId-change cleanup end any active call
-  // on the old conversation without re-subscribing on every voice-call state change.
+
+  // Backward pagination and read markers both hang off the same scroll
+  // container, so the scroll handler below drives them together.
+  const olderHistory = useOlderHistory({
+    conversationId,
+    messages,
+    setMessages,
+    scrollRef: messagesScrollRef,
+  })
+  const readMarkers = useReadMarkers({
+    conversationId,
+    messages,
+    userId: user?.id,
+    memberLabel,
+    refreshConversations,
+    scrollRef: messagesScrollRef,
+  })
+  // voiceCallEndRef / groupCallLeaveRef let the conversationId-change cleanup
+  // tear down any active call on the old conversation without re-subscribing on
+  // every call-state change.
   const voiceCallEndRef = useRef(voiceCall.endCall)
   useEffect(() => {
     voiceCallEndRef.current = voiceCall.endCall
   })
-  // groupCallLeaveRef lets the conversationId-change cleanup leave any active
-  // group call on the old conversation.
   const groupCallLeaveRef = useRef(groupCall.leaveCall)
   useEffect(() => {
     groupCallLeaveRef.current = groupCall.leaveCall
   })
-  // Derive the effective PiP position: passthrough while a call is live,
-  // null otherwise. pipPosition is reset to null when a new call is initiated
-  // (in handleStartCall / handleAcceptCall) so each call starts from the
-  // default top-right corner regardless of where the previous call's PiP was
-  // dragged. Placed here (after voiceCall) so that voiceCall.state is in scope.
-  const activePipPosition =
-    voiceCall.state === 'active' || voiceCall.state === 'outgoing-ringing'
-      ? pipPosition
-      : null
   // Tear down any active call when switching conversations so the mic and
   // RTCPeerConnection don't remain active against the old conversation.
   useEffect(() => {
@@ -314,6 +186,7 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       void groupCallLeaveRef.current()
     }
   }, [conversationId])
+
   // Focus management + Escape handling for the delete confirmation modal,
   // matching the pattern used by ConfirmDialog.
   const confirmDeleteId = deleteTarget.msgId
@@ -340,222 +213,14 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
     [i18n.language],
   )
 
-  // Build a label/emoji lookup for every user the current user can name,
-  // so member chips and sender labels render with friendly names. The
-  // current user is always included from auth context.
-  useEffect(() => {
-    if (!user) return
-    const controller = new AbortController()
-    ;(async () => {
-      const lookup = new Map<number, MemberInfo>()
-      lookup.set(user.id, { label: user.name || user.email || `#${user.id}`, emoji: '👤' })
-      try {
-        if (familyStatus?.is_parent) {
-          const res = await fetch('/api/family/children', {
-            credentials: 'include',
-            signal: controller.signal,
-          })
-          if (res.ok) {
-            const data = await res.json()
-            const kids: FamilyChild[] = data.children ?? []
-            for (const k of kids) {
-              lookup.set(k.child_id, {
-                label: k.nickname || `#${k.child_id}`,
-                emoji: k.avatar_emoji || '⭐',
-              })
-            }
-          }
-        }
-        if (familyStatus?.is_child) {
-          const res = await fetch('/api/family/my-family', {
-            credentials: 'include',
-            signal: controller.signal,
-          })
-          if (res.ok) {
-            const data = await res.json()
-            const parent: ParentInfo | undefined = data.parent
-            if (parent?.user_id) {
-              lookup.set(parent.user_id, {
-                label: parent.name || t('newModal.parent'),
-                emoji: '👤',
-              })
-            }
-            const siblings: SiblingInfo[] = data.siblings ?? []
-            for (const s of siblings) {
-              lookup.set(s.child_id, {
-                label: s.nickname || `#${s.child_id}`,
-                emoji: s.avatar_emoji || '⭐',
-              })
-            }
-          }
-        }
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return
-        // Non-fatal: chips fall back to "Member #id" if the lookup is empty.
-      }
-      if (!controller.signal.aborted) setMemberLookup(lookup)
-    })()
-    return () => { controller.abort() }
-  }, [user, familyStatus, t])
-
   const keyboardInset = useKeyboardInset()
 
-  // loadOlderMessages fetches the page immediately preceding the oldest message
-  // currently rendered and prepends it. Deduped by id so it can never collide
-  // with a message the live stream (or a gap-fill) already delivered, and a
-  // short page flips hasMoreOlder off so the terminator renders and no further
-  // requests are made.
-  const loadOlderMessages = useCallback(async () => {
-    if (conversationId === null) return
-    if (loadingOlderRef.current || !hasMoreOlder) return
-    const oldest = messages[0]
-    // An optimistic bubble carries no server id yet, so it can't anchor a
-    // backward page. It is always appended at the end, so this only skips the
-    // degenerate case where the list holds nothing else.
-    if (!oldest || oldest.status) return
-
-    loadingOlderRef.current = true
-    setLoadingOlder(true)
-    try {
-      const page = await fetchOlderMessages(conversationId, oldest.id, OLDER_PAGE_SIZE)
-      // The user may have switched conversations while this was in flight;
-      // the reset in onConversationOpen already ran, so applying now would
-      // leak the previous chat's history into the new one.
-      if (conversationIdRef.current !== conversationId) return
-      // A short page means the server had nothing more to give.
-      if (page.length < OLDER_PAGE_SIZE) setHasMoreOlder(false)
-      if (page.length === 0) return
-      // The API returns newest-first; the list renders oldest-first.
-      const older = page.slice().reverse()
-      const el = messagesScrollRef.current
-      if (el) {
-        pendingScrollRestoreRef.current = { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop }
-      }
-      setMessages(prev => {
-        const known = new Set(prev.map(m => m.id))
-        const fresh = older.filter(m => !known.has(m.id))
-        if (fresh.length === 0) return prev
-        return [...fresh, ...prev]
-      })
-      setPrependCounter(c => c + 1)
-    } catch {
-      // Non-fatal: hasMoreOlder is left alone so scrolling up again retries.
-    } finally {
-      loadingOlderRef.current = false
-      setLoadingOlder(false)
-    }
-  }, [conversationId, hasMoreOlder, messages, setMessages])
-
-  // newestServerMessage is the last message carrying an authoritative id. An
-  // optimistic bubble has no server id yet, so it can never anchor a read
-  // marker; it reconciles a moment later and this picks it up then.
-  const newestServerMessage = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (!messages[i].status) return messages[i]
-    }
-    return null
-  }, [messages])
-
-  // isAtBottom reports whether the message list is scrolled at (or within a
-  // hair of) the newest message. A list that has never been scrolled — or one
-  // shorter than the viewport — counts as at the bottom.
-  const isAtBottom = useCallback(() => {
-    const el = messagesScrollRef.current
-    if (!el) return true
-    return el.scrollHeight - el.scrollTop - el.clientHeight <= AT_BOTTOM_THRESHOLD_PX
-  }, [])
-
-  // postReadMarker sends the marker for `newestId` and refreshes the sibling
-  // conversation list so the unread badge drops. Deduplicated against the last
-  // acknowledged id, and best-effort: a failed or aborted request never shows an
-  // error and never disturbs the stream.
-  const postReadMarker = useCallback((newestId: number, at: string) => {
-    if (conversationId === null) return
-    if (newestId <= 0 || newestId <= lastAckedIdRef.current) return
-    // Claim the watermark before the request so a burst of renders can't queue
-    // several POSTs for the same id while the first is still in flight.
-    lastAckedIdRef.current = newestId
-    readAbortRef.current?.abort()
-    const controller = new AbortController()
-    readAbortRef.current = controller
-    markConversationRead(conversationId, { at, signal: controller.signal })
-      .then(() => {
-        if (controller.signal.aborted) return
-        refreshConversations()
-      })
-      .catch((err: unknown) => {
-        // An abort means we switched conversations (or superseded this marker
-        // with a newer one) — the watermark is reset by whoever aborted, so
-        // leave it alone. A genuine failure rolls it back so the next arriving
-        // message, scroll or tab focus retries.
-        if (err instanceof Error && err.name === 'AbortError') return
-        if (lastAckedIdRef.current === newestId) lastAckedIdRef.current = 0
-      })
-      .finally(() => {
-        if (readAbortRef.current === controller) readAbortRef.current = null
-      })
-  }, [conversationId, refreshConversations])
-
-  // maybeMarkRead marks the conversation read only when the user can actually
-  // see the newest message: the tab is visible and the list is at the bottom.
-  // Hidden tabs and scrolled-up history readers keep their unread badge until
-  // they come back, which is what the visibility/scroll listeners below are for.
-  const maybeMarkRead = useCallback(() => {
-    if (conversationId === null || !newestServerMessage) return
-    if (newestServerMessage.id <= lastAckedIdRef.current) return
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-    if (!isAtBottom()) return
-    const { id, created_at } = newestServerMessage
-    if (readTimerRef.current !== null) clearTimeout(readTimerRef.current)
-    readTimerRef.current = setTimeout(() => {
-      readTimerRef.current = null
-      postReadMarker(id, created_at)
-    }, MARK_READ_DEBOUNCE_MS)
-  }, [conversationId, newestServerMessage, isAtBottom, postReadMarker])
-
-  // Mark read on open and whenever a newer message lands (the callback's
-  // identity changes with newestServerMessage, so this is exactly once per new
-  // newest message).
-  useEffect(() => {
-    maybeMarkRead()
-  }, [maybeMarkRead])
-
-  // Returning to the tab is the other moment a deferred marker can be sent.
-  // The ref keeps the listener registration independent of message arrivals.
-  const maybeMarkReadRef = useRef(maybeMarkRead)
-  useEffect(() => { maybeMarkReadRef.current = maybeMarkRead })
-  useEffect(() => {
-    if (typeof document === 'undefined') return
-    const onVisibility = () => { maybeMarkReadRef.current() }
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [])
-
-  // Drop any pending/in-flight marker when the conversation changes or the view
-  // unmounts, so a late response can't refresh the list for a chat the user has
-  // already left.
-  useEffect(() => {
-    return () => {
-      if (readTimerRef.current !== null) {
-        clearTimeout(readTimerRef.current)
-        readTimerRef.current = null
-      }
-      readAbortRef.current?.abort()
-      readAbortRef.current = null
-      lastAckedIdRef.current = 0
-    }
-  }, [conversationId])
-
   // Scroll drives both directions of paging state: near the top loads the
-  // previous page, back at the bottom acknowledges the newest message. Nothing
-  // fires while a page is already in flight or once the start of the
-  // conversation has been reached.
-  const handleMessagesScroll = useCallback(() => {
-    maybeMarkRead()
-    const el = messagesScrollRef.current
-    if (!el || el.scrollTop > OLDER_SCROLL_THRESHOLD_PX) return
-    void loadOlderMessages()
-  }, [loadOlderMessages, maybeMarkRead])
+  // previous page, back at the bottom acknowledges the newest message.
+  const handleMessagesScroll = () => {
+    readMarkers.maybeMarkRead()
+    olderHistory.handleScroll()
+  }
 
   // Lightbox: ESC closes; scroll on body locked while open.
   useEffect(() => {
@@ -569,96 +234,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       document.body.style.overflow = prev
     }
   }, [lightbox])
-
-  // Wire the remote audio stream into the hidden <audio> element so the
-  // browser actually plays the peer's voice. The peer connection only opens
-  // the data path; the page is responsible for piping it into an audio sink.
-  // For video calls the same MediaStream is also bound to the remote <video>
-  // element below; the <audio> tag is still required for voice calls (no
-  // <video> mounts) and as a redundant audio sink while the video pane loads.
-  useEffect(() => {
-    const el = remoteAudioRef.current
-    if (!el) return
-    if (voiceCall.remoteStream) {
-      el.srcObject = voiceCall.remoteStream
-      el.volume = speakerOn ? 1 : 0
-      void el.play().catch(() => {
-        // Autoplay rejection — the accept-button click already counts as a
-        // user gesture in every supported browser, but a stricter policy
-        // would surface here. Nothing actionable from this layer.
-      })
-    } else {
-      el.srcObject = null
-    }
-  }, [voiceCall.remoteStream, speakerOn])
-
-  // Wire the remote video stream into the big remote <video> pane when the
-  // pane is mounted (i.e. during an active video call). We also push the
-  // stream into the local PiP <video> from voiceCall.localStream. Both are
-  // muted=true at the element level — the audio sink above plays the sound.
-  useEffect(() => {
-    const el = remoteVideoRef.current
-    if (!el) return
-    el.srcObject = voiceCall.remoteStream ?? null
-    if (voiceCall.remoteStream) {
-      void el.play().catch(() => { /* autoplay policy — acceptable to ignore */ })
-    }
-  }, [voiceCall.remoteStream, voiceCall.state])
-
-  useEffect(() => {
-    const el = localVideoRef.current
-    if (!el) return
-    el.srcObject = voiceCall.localStream ?? null
-    if (voiceCall.localStream) {
-      void el.play().catch(() => { /* same as above */ })
-    }
-  }, [voiceCall.localStream, voiceCall.state])
-
-  useEffect(() => {
-    const el = localVideoDesktopRef.current
-    if (!el) return
-    el.srcObject = voiceCall.localStream ?? null
-    if (voiceCall.localStream) {
-      void el.play().catch(() => { /* autoplay policy — acceptable to ignore */ })
-    }
-  }, [voiceCall.localStream, voiceCall.state])
-
-  // Drive the elapsed-time counter while a call is active. Reset on every
-  // state transition so the timer always reads from the moment we entered
-  // 'active', not from the moment startCall was first invoked.
-  useEffect(() => {
-    if (voiceCall.state !== 'active') {
-      // Capture the final elapsed seconds when the call leaves the active
-      // state so the "Call ended — m:ss" banner can show the right total.
-      if (callStartedAtRef.current !== null) {
-        const total = Math.floor((Date.now() - callStartedAtRef.current) / 1000)
-        callStartedAtRef.current = null
-        if (voiceCall.state === 'ended') {
-          setEndedCallSummary({ durationSec: total })
-        }
-      }
-      setCallElapsedSec(0)
-      return
-    }
-    callStartedAtRef.current = Date.now()
-    setCallElapsedSec(0)
-    const interval = setInterval(() => {
-      if (callStartedAtRef.current === null) return
-      setCallElapsedSec(Math.floor((Date.now() - callStartedAtRef.current) / 1000))
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [voiceCall.state])
-
-  // Auto-dismiss the "Call ended" banner after a short hold so it doesn't sit
-  // on screen indefinitely. Five seconds is long enough to read the duration
-  // and short enough not to feel sticky.
-  useEffect(() => {
-    if (!endedCallSummary) return
-    const timer = setTimeout(() => setEndedCallSummary(null), 5000)
-    return () => clearTimeout(timer)
-  }, [endedCallSummary])
-
-  const effectiveFilterPickerOpen = filterPickerOpen && voiceCall.state === 'active'
 
   // notifyTyping fires from the composer on each keystroke; it throttles the
   // outbound signal to at most one POST per ~3s so a fast typist doesn't flood
@@ -676,30 +251,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
 
   const closePicker = useCallback(() => setPickerForMsgId(null), [])
 
-  // memberLabel resolves a user id to the friendly name shown on bubbles,
-  // member chips and call banners, falling back to "Member #id" for ids the
-  // current user can't name. Stable so the memoized bubbles only re-render when
-  // the lookup itself changes.
-  const memberLabel = useCallback((id: number) => (
-    memberLookup.get(id)?.label ?? t('chat.memberFallback', { id })
-  ), [memberLookup, t])
-
-  const memberChips = useMemo(() => {
-    if (!conversation) return []
-    return conversation.member_ids.map(id => {
-      const info = memberLookup.get(id)
-      const isSelf = user?.id === id
-      return {
-        id,
-        label: isSelf
-          ? t('chat.you')
-          : info?.label ?? t('chat.memberFallback', { id }),
-        emoji: info?.emoji ?? '👤',
-        isSelf,
-      }
-    })
-  }, [conversation, memberLookup, t, user?.id])
-
   // Resolve the friendly labels for everyone currently typing, excluding the
   // local user (defensive — recordTyping already skips own-id signals).
   const typingLabels = useMemo(() => {
@@ -707,31 +258,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
       .filter(id => id !== user?.id)
       .map(id => memberLabel(id))
   }, [typingUsers, memberLabel, user?.id])
-
-  // seenByLabels names the members whose live read receipt covers our newest
-  // message. Receipts are observed in-session only (the conversation API
-  // carries no per-member last_read_at), so this stays empty after a reload
-  // until a peer reads something new.
-  const seenByLabels = useMemo(() => {
-    if (peerReads.size === 0) return []
-    let lastOwn: ChatMessage | null = null
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i]
-      if (m.sender_user_id === user?.id && !m.status) { lastOwn = m; break }
-    }
-    if (!lastOwn) return []
-    const sentAt = Date.parse(lastOwn.created_at)
-    if (Number.isNaN(sentAt)) return []
-    const labels: string[] = []
-    for (const [id, at] of peerReads) {
-      if (id === user?.id) continue
-      const readAt = Date.parse(at)
-      if (Number.isNaN(readAt) || readAt < sentAt) continue
-      labels.push(memberLabel(id))
-    }
-    // Sorted so the list is stable regardless of receipt arrival order.
-    return labels.sort((a, b) => a.localeCompare(b))
-  }, [peerReads, messages, memberLabel, user?.id])
 
   // 1:1 calls use the single-peer voice-call hook (callPeerId is the other
   // member). 3+ member conversations use the group-call mesh instead, gated by
@@ -744,48 +270,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const canCall = callPeerId !== null
   const canGroupCall = (conversation?.member_ids.length ?? 0) >= 3
 
-  const peerLabel = useCallback((peerId: number | null) => {
-    if (peerId === null) return t('chat.memberFallback', { id: 0 })
-    return memberLabel(peerId)
-  }, [memberLabel, t])
-
-  // Label/emoji accessors for the group-call overlay tiles.
-  const groupMemberInfo = useCallback((id: number) => (
-    { label: memberLabel(id), emoji: memberLookup.get(id)?.emoji ?? '👤' }
-  ), [memberLabel, memberLookup])
-  const groupMemberLabel = useCallback((id: number) => groupMemberInfo(id).label, [groupMemberInfo])
-  const selfEmoji = (user?.id !== undefined ? memberLookup.get(user.id)?.emoji : undefined) ?? '👤'
-
-  // Start a group call from the header buttons. A second press while already in
-  // a call is a no-op (the hook guards re-entry).
-  const handleStartGroupCall = useCallback((kind: CallKind = 'voice') => {
-    if (!canGroupCall) return
-    void groupCall.startCall(kind)
-  }, [canGroupCall, groupCall])
-
-  const incomingCallerLabel = peerLabel(voiceCall.remoteUserId)
-  const activeCallPeerLabel = peerLabel(voiceCall.remoteUserId ?? callPeerId)
-
-  const formatCallDuration = useCallback((totalSec: number): string => {
-    const safe = Math.max(0, Math.floor(totalSec))
-    const minutes = Math.floor(safe / 60)
-    const seconds = safe % 60
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`
-  }, [])
-
-  // Video effects the current browser can actually run, in display order. When
-  // the device can't run any effect (no canvas pipeline) this is just ['none']
-  // and the effects button stays hidden. Computed once — capability is static.
-  const availableVideoFilters = useMemo<FilterKind[]>(() => supportedFilters(), [])
-  const canFilterVideo = availableVideoFilters.length > 1
-
-  // selectVideoFilter applies a chosen effect and closes the popover. setFilter
-  // itself is a no-op for unsupported effects, but we only render supported ones.
-  const selectVideoFilter = useCallback((kind: FilterKind) => {
-    setFilterPickerOpen(false)
-    void voiceCall.setFilter(kind)
-  }, [voiceCall])
-
   // startOrIgnoreCall fires the outgoing-call flow only when we're idle. A
   // second press while already ringing is a no-op so a double-tap can't kick
   // off two parallel sessions. Kind is plumbed through so the same handler
@@ -793,12 +277,15 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const handleStartCall = useCallback((kind: CallKind = 'voice') => {
     if (!canCall) return
     if (voiceCall.state !== 'idle' && voiceCall.state !== 'ended') return
-    // Reset PiP to the default top-right corner so each new call starts fresh
-    // regardless of where the user dragged it during the previous call.
-    setPipPosition(null)
-    setFilterPickerOpen(false)
     void voiceCall.startCall(kind)
   }, [canCall, voiceCall])
+
+  // Start a group call from the header buttons. A second press while already in
+  // a call is a no-op (the hook guards re-entry).
+  const handleStartGroupCall = useCallback((kind: CallKind = 'voice') => {
+    if (!canGroupCall) return
+    void groupCall.startCall(kind)
+  }, [canGroupCall, groupCall])
 
   const handleCallBack = useCallback((entry: MissedCallEntry) => {
     // Dismiss the row first so a successful call doesn't leave an obsolete
@@ -812,54 +299,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
   const dismissMissedCall = useCallback((callId: string) => {
     setMissedCalls(prev => prev.filter(m => m.callId !== callId))
   }, [setMissedCalls])
-
-  // handleAcceptCall resets the PiP position before accepting so the local
-  // preview always starts from the default top-right corner for incoming calls,
-  // matching the behaviour of outgoing calls (handleStartCall above).
-  const handleAcceptCall = useCallback(() => {
-    setPipPosition(null)
-    setFilterPickerOpen(false)
-    void voiceCall.acceptCall()
-  }, [voiceCall])
-
-  // PiP drag handlers. Use Pointer Events so touch + mouse share one code
-  // path; setPointerCapture keeps the move/up events targeted even if the
-  // pointer briefly leaves the small PiP element while dragging.
-  const handlePipPointerDown = useCallback((e: PointerEvent<HTMLDivElement>) => {
-    // Only initiate drag for primary button / single touch.
-    if (e.button !== 0 && e.pointerType === 'mouse') return
-    const target = e.currentTarget
-    const rect = target.getBoundingClientRect()
-    pipDragRef.current = {
-      offsetX: e.clientX - rect.left,
-      offsetY: e.clientY - rect.top,
-      pointerId: e.pointerId,
-    }
-    try { target.setPointerCapture(e.pointerId) } catch { /* fine */ }
-    e.preventDefault()
-  }, [])
-
-  const handlePipPointerMove = useCallback((e: PointerEvent<HTMLDivElement>) => {
-    const drag = pipDragRef.current
-    if (!drag || drag.pointerId !== e.pointerId) return
-    const target = e.currentTarget
-    const rect = target.getBoundingClientRect()
-    // Clamp to viewport so the PiP can't be dragged off-screen.
-    const viewW = typeof window !== 'undefined' ? window.innerWidth : rect.width
-    const viewH = typeof window !== 'undefined' ? window.innerHeight : rect.height
-    const rawX = e.clientX - drag.offsetX
-    const rawY = e.clientY - drag.offsetY
-    const clampedX = Math.max(8, Math.min(viewW - rect.width - 8, rawX))
-    const clampedY = Math.max(8, Math.min(viewH - rect.height - 8, rawY))
-    setPipPosition({ x: clampedX, y: clampedY })
-  }, [])
-
-  const handlePipPointerUp = useCallback((e: PointerEvent<HTMLDivElement>) => {
-    const drag = pipDragRef.current
-    if (!drag || drag.pointerId !== e.pointerId) return
-    pipDragRef.current = null
-    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* fine */ }
-  }, [])
 
   if (conversationId === null) {
     return (
@@ -876,110 +315,31 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
 
   return (
     <div className="flex flex-col h-full min-h-0" data-testid="family-chat-view">
-      <header className="flex items-center gap-2 px-3 sm:px-4 py-3 border-b border-gray-800 bg-gray-950 shrink-0">
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label={t('chat.back')}
-          className="md:hidden p-1.5 -ml-1 text-gray-300 hover:text-white rounded-md cursor-pointer"
-        >
-          <ChevronLeft size={20} aria-hidden="true" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-base sm:text-lg font-semibold text-white truncate">
-            {loading && !conversation ? (
-              <Skeleton className="h-5 w-40" />
-            ) : (
-              conversation?.name || t('unnamedConversation')
-            )}
-          </h2>
-          {memberChips.length > 0 && (
-            <ul
-              className="flex flex-wrap gap-1.5 mt-1.5"
-              aria-label={t('chat.membersLabel')}
-              role="list"
-            >
-              {memberChips.map(chip => (
-                <li
-                  key={chip.id}
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border ${
-                    chip.isSelf
-                      ? 'bg-blue-500/15 border-blue-500/40 text-blue-200'
-                      : 'bg-gray-800 border-gray-700 text-gray-300'
-                  }`}
-                >
-                  <span aria-hidden="true">{chip.emoji}</span>
-                  <span className="truncate max-w-[10rem]">{chip.label}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <ConnectionStatus state={connStatus} emphasizeLabel={connStatus === 'live' && justReconnected} />
-        {canCall && (
-          <>
-            <button
-              type="button"
-              onClick={() => handleStartCall('voice')}
-              disabled={voiceCall.state !== 'idle' && voiceCall.state !== 'ended'}
-              aria-label={t('call.start')}
-              title={t('call.start')}
-              className="shrink-0 p-2 rounded-full text-green-300 hover:text-green-200 hover:bg-green-500/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              data-testid="family-chat-call-button"
-            >
-              <Phone size={20} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleStartCall('video')}
-              disabled={voiceCall.state !== 'idle' && voiceCall.state !== 'ended'}
-              aria-label={t('call.startVideo')}
-              title={t('call.startVideo')}
-              className="shrink-0 p-2 rounded-full text-blue-300 hover:text-blue-200 hover:bg-blue-500/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              data-testid="family-chat-video-call-button"
-            >
-              <Video size={20} aria-hidden="true" />
-            </button>
-          </>
-        )}
-        {canGroupCall && (
-          <>
-            <button
-              type="button"
-              onClick={() => handleStartGroupCall('voice')}
-              disabled={groupCall.state === 'active'}
-              aria-label={t('call.group.start')}
-              title={t('call.group.start')}
-              className="shrink-0 p-2 rounded-full text-green-300 hover:text-green-200 hover:bg-green-500/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              data-testid="family-chat-group-call-button"
-            >
-              <Phone size={20} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleStartGroupCall('video')}
-              disabled={groupCall.state === 'active'}
-              aria-label={t('call.group.startVideo')}
-              title={t('call.group.startVideo')}
-              className="shrink-0 p-2 rounded-full text-blue-300 hover:text-blue-200 hover:bg-blue-500/15 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              data-testid="family-chat-group-video-call-button"
-            >
-              <Video size={20} aria-hidden="true" />
-            </button>
-          </>
-        )}
-      </header>
+      <ChatHeader
+        title={conversation ? conversation.name : null}
+        loading={loading}
+        memberChips={memberChips}
+        connStatus={connStatus}
+        justReconnected={justReconnected}
+        onBack={onBack}
+        canCall={canCall}
+        canGroupCall={canGroupCall}
+        callBusy={voiceCall.state !== 'idle' && voiceCall.state !== 'ended'}
+        groupCallActive={groupCall.state === 'active'}
+        onStartCall={handleStartCall}
+        onStartGroupCall={handleStartGroupCall}
+      />
 
       <MessageList
         messages={messages}
         loading={loading}
         error={error}
-        loadingOlder={loadingOlder}
-        hasMoreOlder={hasMoreOlder}
+        loadingOlder={olderHistory.loadingOlder}
+        hasMoreOlder={olderHistory.hasMoreOlder}
         scrollRef={messagesScrollRef}
         onScroll={handleMessagesScroll}
-        pendingScrollRestoreRef={pendingScrollRestoreRef}
-        prependCounter={prependCounter}
+        pendingScrollRestoreRef={olderHistory.pendingScrollRestoreRef}
+        prependCounter={olderHistory.prependCounter}
         conversationId={conversationId}
         keyboardInset={keyboardInset}
         currentUserId={user?.id}
@@ -1033,12 +393,12 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
           </div>
         ))}
 
-        {seenByLabels.length > 0 && (
+        {readMarkers.seenByLabels.length > 0 && (
           <div
             className="flex justify-end px-1 text-[11px] text-gray-500"
             data-testid="family-chat-seen-by"
           >
-            {t('chat.seenBy', { names: seenByLabels.join(', ') })}
+            {t('chat.seenBy', { names: readMarkers.seenByLabels.join(', ') })}
           </div>
         )}
 
@@ -1130,11 +490,6 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
         </div>
       )}
 
-      {/* Hidden audio sink for the remote peer's stream. Kept outside the
-          conditional overlays so the element survives state transitions and
-          srcObject assignment isn't fighting React re-renders. */}
-      <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
-
       {/* Group-call (3+ member) mesh UI. The incoming banner lets an idle
           member join an in-progress group call; the overlay is the active
           in-call grid. */}
@@ -1173,453 +528,17 @@ export default function ChatView({ conversationId, onBack }: ChatViewProps) {
 
       <GroupCallOverlay
         call={groupCall}
-        memberLabel={groupMemberLabel}
-        memberInfo={groupMemberInfo}
+        memberLabel={memberLabel}
+        memberInfo={memberInfo}
         selfEmoji={selfEmoji}
       />
 
-      {voiceCall.state === 'incoming-ringing' && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="family-chat-incoming-call-title"
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 text-white p-6"
-          data-testid="family-chat-incoming-overlay"
-        >
-          <div className="flex flex-col items-center text-center max-w-sm">
-            <div className="mb-6 p-5 rounded-full bg-green-500/20 animate-pulse">
-              {voiceCall.callKind === 'video'
-                ? <Video size={48} aria-hidden="true" className="text-blue-300" />
-                : <PhoneIncoming size={48} aria-hidden="true" className="text-green-300" />}
-            </div>
-            <p
-              className="text-sm uppercase tracking-wide text-gray-400"
-              data-testid="family-chat-incoming-kind-label"
-            >
-              {voiceCall.callKind === 'video'
-                ? t('call.incomingVideoLabel')
-                : t('call.incomingLabel')}
-            </p>
-            <h2
-              id="family-chat-incoming-call-title"
-              className="mt-2 text-2xl font-semibold"
-            >
-              {incomingCallerLabel}
-            </h2>
-            <div className="mt-8 flex items-center justify-center gap-6">
-              <button
-                type="button"
-                onClick={() => { void voiceCall.rejectCall() }}
-                aria-label={t('call.decline')}
-                className="flex flex-col items-center gap-1 text-red-300 hover:text-red-200 cursor-pointer"
-                data-testid="family-chat-call-decline"
-              >
-                <span className="p-4 rounded-full bg-red-600 text-white hover:bg-red-500">
-                  <PhoneOff size={28} aria-hidden="true" />
-                </span>
-                <span className="text-xs">{t('call.decline')}</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleAcceptCall}
-                aria-label={t('call.accept')}
-                className="flex flex-col items-center gap-1 text-green-300 hover:text-green-200 cursor-pointer"
-                data-testid="family-chat-call-accept"
-              >
-                <span className="p-4 rounded-full bg-green-600 text-white hover:bg-green-500">
-                  <Phone size={28} aria-hidden="true" />
-                </span>
-                <span className="text-xs">{t('call.accept')}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {(voiceCall.state === 'outgoing-ringing' || voiceCall.state === 'active') && voiceCall.callKind === 'voice' && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="family-chat-active-call-title"
-          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 text-white p-6"
-          data-testid="family-chat-active-overlay"
-        >
-          <div className="flex flex-col items-center text-center max-w-sm w-full">
-            <div className="mb-6 p-5 rounded-full bg-green-500/20">
-              <Phone size={48} aria-hidden="true" className="text-green-300" />
-            </div>
-            <h2
-              id="family-chat-active-call-title"
-              className="text-2xl font-semibold"
-            >
-              {activeCallPeerLabel}
-            </h2>
-            <p
-              className="mt-2 text-sm text-gray-300"
-              data-testid="family-chat-call-status"
-            >
-              {voiceCall.state === 'outgoing-ringing'
-                ? t('call.ringing')
-                : formatCallDuration(callElapsedSec)}
-            </p>
-            {voiceCall.error && (
-              <p className="mt-2 text-xs text-red-400">{voiceCall.error}</p>
-            )}
-            <div className="mt-8 flex items-center justify-center gap-4">
-              <button
-                type="button"
-                onClick={() => voiceCall.setMuted(!voiceCall.muted)}
-                aria-label={voiceCall.muted ? t('call.unmute') : t('call.mute')}
-                aria-pressed={voiceCall.muted}
-                disabled={voiceCall.state !== 'active'}
-                className={`flex flex-col items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                  voiceCall.muted ? 'text-amber-300' : 'text-gray-200'
-                }`}
-                data-testid="family-chat-call-mute"
-              >
-                <span className={`p-3 rounded-full ${
-                  voiceCall.muted ? 'bg-amber-500/20' : 'bg-gray-700'
-                }`}>
-                  {voiceCall.muted
-                    ? <MicOff size={24} aria-hidden="true" />
-                    : <Mic size={24} aria-hidden="true" />}
-                </span>
-                <span className="text-xs">
-                  {voiceCall.muted ? t('call.unmute') : t('call.mute')}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => { void voiceCall.endCall() }}
-                aria-label={t('call.hangup')}
-                className="flex flex-col items-center gap-1 text-white cursor-pointer"
-                data-testid="family-chat-call-hangup"
-              >
-                <span className="p-4 rounded-full bg-red-600 hover:bg-red-500">
-                  <PhoneOff size={28} aria-hidden="true" />
-                </span>
-                <span className="text-xs">{t('call.hangup')}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSpeakerOn(prev => !prev)}
-                aria-label={speakerOn ? t('call.speakerOff') : t('call.speakerOn')}
-                aria-pressed={speakerOn}
-                disabled={voiceCall.state !== 'active'}
-                className={`flex flex-col items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                  speakerOn ? 'text-blue-300' : 'text-gray-200'
-                }`}
-                data-testid="family-chat-call-speaker"
-              >
-                <span className={`p-3 rounded-full ${
-                  speakerOn ? 'bg-blue-500/20' : 'bg-gray-700'
-                }`}>
-                  {speakerOn
-                    ? <Volume2 size={24} aria-hidden="true" />
-                    : <VolumeX size={24} aria-hidden="true" />}
-                </span>
-                <span className="text-xs">
-                  {speakerOn ? t('call.speakerOff') : t('call.speakerOn')}
-                </span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {(voiceCall.state === 'outgoing-ringing' || voiceCall.state === 'active') && voiceCall.callKind === 'video' && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="family-chat-active-video-call-title"
-          className="fixed inset-0 z-50 flex flex-col bg-black text-white"
-          data-testid="family-chat-active-video-overlay"
-        >
-          {/* Video panes: full-screen remote with draggable PiP on mobile;
-              side-by-side remote + local panes on desktop (md:flex-row). */}
-          <div className="relative flex-1 min-h-0 flex flex-col md:flex-row">
-            <div className="relative flex-1 min-h-0 bg-gray-950">
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                muted
-                aria-label={t('call.remoteVideo')}
-                className="absolute inset-0 w-full h-full object-cover"
-                data-testid="family-chat-call-remote-video"
-              />
-              {/* Shown when the remote peer disables their camera. Sits above
-                  the frozen video frame so the viewer has a clear indicator. */}
-              {!voiceCall.remoteCameraEnabled && (
-                <div
-                  className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950/80 text-gray-300"
-                  data-testid="family-chat-call-remote-camera-off"
-                >
-                  <VideoOff size={32} aria-hidden="true" />
-                  <span className="mt-2 text-sm">{t('call.remoteCameraOff')}</span>
-                </div>
-              )}
-              {/* Translucent header with peer label + status. */}
-              <div className="absolute top-0 inset-x-0 p-3 sm:p-4 flex items-start gap-3 bg-gradient-to-b from-black/60 to-transparent">
-                <div className="flex-1 min-w-0">
-                  <h2
-                    id="family-chat-active-video-call-title"
-                    className="text-base sm:text-lg font-semibold truncate"
-                  >
-                    {activeCallPeerLabel}
-                  </h2>
-                  <p
-                    className="text-xs text-gray-300"
-                    data-testid="family-chat-call-status"
-                  >
-                    {voiceCall.state === 'outgoing-ringing'
-                      ? t('call.ringing')
-                      : formatCallDuration(callElapsedSec)}
-                  </p>
-                </div>
-              </div>
-
-              {/* Mobile PiP local preview. Hidden on md+ where the local pane
-                  below takes over. Defaults to top-right; switches to inline
-                  style once dragged. */}
-              {voiceCall.localStream && (
-                <div
-                  data-testid="family-chat-call-local-pip"
-                  onPointerDown={handlePipPointerDown}
-                  onPointerMove={handlePipPointerMove}
-                  onPointerUp={handlePipPointerUp}
-                  onPointerCancel={handlePipPointerUp}
-                  className={`md:hidden absolute touch-none cursor-move w-28 h-40 sm:w-36 sm:h-48 rounded-lg overflow-hidden border border-gray-700 bg-gray-900 shadow-lg ${
-                    activePipPosition === null ? 'top-4 right-4' : ''
-                  }`}
-                  style={activePipPosition === null ? undefined : { top: activePipPosition.y, left: activePipPosition.x }}
-                >
-                  <video
-                    ref={localVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    aria-label={t('call.localPreview')}
-                    className="w-full h-full object-cover scale-x-[-1]"
-                    data-testid="family-chat-call-local-video"
-                  />
-                  {!voiceCall.cameraEnabled && (
-                    <div
-                      className="absolute inset-0 flex items-center justify-center bg-gray-900/80 text-xs text-gray-300"
-                      data-testid="family-chat-call-local-camera-off"
-                    >
-                      <VideoOff size={18} aria-hidden="true" />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {voiceCall.error && (
-                <div className="absolute bottom-24 left-4 right-4 sm:left-auto sm:right-4 sm:max-w-sm">
-                  <p className="text-xs text-red-300 bg-red-900/40 border border-red-700 rounded-md px-2 py-1">
-                    {voiceCall.error}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Desktop-only local pane — sits side-by-side with the remote on
-                md+ screens, where the mobile PiP is hidden. */}
-            {voiceCall.localStream && (
-              <div
-                data-testid="family-chat-call-local-pane"
-                className="hidden md:block relative flex-1 min-h-0 bg-gray-900 border-l border-gray-800"
-              >
-                <video
-                  ref={localVideoDesktopRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  aria-label={t('call.localPreview')}
-                  className="absolute inset-0 w-full h-full object-cover scale-x-[-1]"
-                  data-testid="family-chat-call-local-video-desktop"
-                />
-                {!voiceCall.cameraEnabled && (
-                  <div
-                    className="absolute inset-0 flex items-center justify-center bg-gray-900/80 text-sm text-gray-300"
-                    data-testid="family-chat-call-local-camera-off-desktop"
-                  >
-                    <VideoOff size={24} aria-hidden="true" />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Bottom control bar — full width on mobile, sits across the bottom
-              on desktop too (matches the spec). */}
-          <div className="shrink-0 bg-gray-950 border-t border-gray-800 px-4 py-3 flex items-center justify-center gap-3 sm:gap-5">
-            <button
-              type="button"
-              onClick={() => voiceCall.setMuted(!voiceCall.muted)}
-              aria-label={voiceCall.muted ? t('call.unmute') : t('call.mute')}
-              aria-pressed={voiceCall.muted}
-              disabled={voiceCall.state !== 'active'}
-              className={`flex flex-col items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                voiceCall.muted ? 'text-amber-300' : 'text-gray-200'
-              }`}
-              data-testid="family-chat-call-mute"
-            >
-              <span className={`p-3 rounded-full ${
-                voiceCall.muted ? 'bg-amber-500/20' : 'bg-gray-700'
-              }`}>
-                {voiceCall.muted
-                  ? <MicOff size={24} aria-hidden="true" />
-                  : <Mic size={24} aria-hidden="true" />}
-              </span>
-              <span className="text-xs hidden sm:inline">
-                {voiceCall.muted ? t('call.unmute') : t('call.mute')}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => { void voiceCall.setCameraEnabled(!voiceCall.cameraEnabled) }}
-              aria-label={voiceCall.cameraEnabled ? t('call.cameraOff') : t('call.cameraOn')}
-              aria-pressed={!voiceCall.cameraEnabled}
-              disabled={voiceCall.state !== 'active'}
-              className={`flex flex-col items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                voiceCall.cameraEnabled ? 'text-gray-200' : 'text-amber-300'
-              }`}
-              data-testid="family-chat-call-camera"
-            >
-              <span className={`p-3 rounded-full ${
-                voiceCall.cameraEnabled ? 'bg-gray-700' : 'bg-amber-500/20'
-              }`}>
-                {voiceCall.cameraEnabled
-                  ? <Video size={24} aria-hidden="true" />
-                  : <VideoOff size={24} aria-hidden="true" />}
-              </span>
-              <span className="text-xs hidden sm:inline">
-                {voiceCall.cameraEnabled ? t('call.cameraOff') : t('call.cameraOn')}
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => { void voiceCall.switchCamera() }}
-              aria-label={t('call.switchCamera')}
-              disabled={voiceCall.state !== 'active' || !voiceCall.cameraEnabled}
-              className="flex flex-col items-center gap-1 cursor-pointer text-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
-              data-testid="family-chat-call-switch-camera"
-            >
-              <span className="p-3 rounded-full bg-gray-700">
-                <SwitchCamera size={24} aria-hidden="true" />
-              </span>
-              <span className="text-xs hidden sm:inline">
-                {t('call.switchCamera')}
-              </span>
-            </button>
-            {canFilterVideo && (
-              <div className="relative flex flex-col items-center">
-                {/* Effects popover — opens above the control bar. */}
-                {effectiveFilterPickerOpen && (
-                  <div
-                    role="menu"
-                    aria-label={t('call.filters.title')}
-                    className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-44 rounded-xl bg-gray-800 border border-gray-700 shadow-xl p-1.5 flex flex-col gap-0.5"
-                    data-testid="family-chat-call-filter-menu"
-                  >
-                    <p role="presentation" className="px-2 py-1 text-[11px] uppercase tracking-wide text-gray-400">
-                      {t('call.filters.title')}
-                    </p>
-                    {availableVideoFilters.map(kind => {
-                      const active = voiceCall.filter === kind
-                      return (
-                        <button
-                          key={kind}
-                          type="button"
-                          role="menuitemradio"
-                          aria-checked={active}
-                          onClick={() => selectVideoFilter(kind)}
-                          className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer text-left ${
-                            active
-                              ? 'bg-blue-500/20 text-blue-200'
-                              : 'text-gray-200 hover:bg-gray-700'
-                          }`}
-                          data-testid={`family-chat-call-filter-${kind}`}
-                        >
-                          <span>{t(`call.filters.${kind}`)}</span>
-                          {active && <span aria-hidden="true">✓</span>}
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setFilterPickerOpen(prev => !prev)}
-                  aria-label={t('call.filters.button')}
-                  aria-haspopup="menu"
-                  aria-expanded={effectiveFilterPickerOpen}
-                  disabled={voiceCall.state !== 'active'}
-                  className={`flex flex-col items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                    voiceCall.filter !== 'none' ? 'text-blue-300' : 'text-gray-200'
-                  }`}
-                  data-testid="family-chat-call-filter"
-                >
-                  <span className={`p-3 rounded-full ${
-                    voiceCall.filter !== 'none' ? 'bg-blue-500/20' : 'bg-gray-700'
-                  }`}>
-                    <Sparkles size={24} aria-hidden="true" />
-                  </span>
-                  <span className="text-xs hidden sm:inline">
-                    {t('call.filters.button')}
-                  </span>
-                </button>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => { void voiceCall.endCall() }}
-              aria-label={t('call.hangup')}
-              className="flex flex-col items-center gap-1 text-white cursor-pointer"
-              data-testid="family-chat-call-hangup"
-            >
-              <span className="p-4 rounded-full bg-red-600 hover:bg-red-500">
-                <PhoneOff size={28} aria-hidden="true" />
-              </span>
-              <span className="text-xs hidden sm:inline">{t('call.hangup')}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setSpeakerOn(prev => !prev)}
-              aria-label={speakerOn ? t('call.speakerOff') : t('call.speakerOn')}
-              aria-pressed={speakerOn}
-              disabled={voiceCall.state !== 'active'}
-              className={`flex flex-col items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                speakerOn ? 'text-blue-300' : 'text-gray-200'
-              }`}
-              data-testid="family-chat-call-speaker"
-            >
-              <span className={`p-3 rounded-full ${
-                speakerOn ? 'bg-blue-500/20' : 'bg-gray-700'
-              }`}>
-                {speakerOn
-                  ? <Volume2 size={24} aria-hidden="true" />
-                  : <VolumeX size={24} aria-hidden="true" />}
-              </span>
-              <span className="text-xs hidden sm:inline">
-                {speakerOn ? t('call.speakerOff') : t('call.speakerOn')}
-              </span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {endedCallSummary && voiceCall.state !== 'active' && voiceCall.state !== 'outgoing-ringing' && voiceCall.state !== 'incoming-ringing' && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-3 py-1.5 rounded-full bg-gray-800/95 border border-gray-700 text-gray-100 text-xs shadow-lg"
-          data-testid="family-chat-call-ended"
-        >
-          {t('call.ended', { duration: formatCallDuration(endedCallSummary.durationSec) })}
-        </div>
-      )}
+      <CallOverlay
+        call={voiceCall}
+        conversationId={conversationId}
+        peerLabel={peerLabel}
+        fallbackPeerId={callPeerId}
+      />
     </div>
   )
 }

@@ -1,0 +1,2 @@
+category: Changed
+- **Family Chat view split into composable pieces** - The 1:1 call surfaces (incoming prompt, voice and video overlays, draggable local preview, effects picker and control bar) moved into a dedicated CallOverlay component, and the header, member name lookup, read markers and backward history paging moved out of ChatView into their own component and hooks. Behaviour is unchanged; the chat view is now roughly a third of its previous size and each piece is covered by its own tests. (Hytte-eyysh)
