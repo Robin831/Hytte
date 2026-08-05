@@ -1,10 +1,11 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronUp, Eye, EyeOff, GripVertical } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useToast } from '../hooks/useToast'
 import ToastList from '../components/ToastList'
 import WidgetBoundary from '../components/WidgetBoundary'
+import WidgetSkeleton from '../components/WidgetSkeleton'
 import DashboardEditBar from '../components/widgets/DashboardEditBar'
 import {
   EMPTY_LAYOUT,
@@ -144,9 +145,19 @@ function Dashboard() {
   const renderWidget = (def: WidgetDef, index: number) => {
     const Component = def.component
     const label = t(def.titleKey)
+    // The boundary stays outside Suspense so a lazy chunk that fails to load
+    // degrades to the existing error tile instead of blanking the page. On the
+    // happy path WidgetBoundary renders a bare Fragment, so the skeleton is the
+    // grid cell itself — not a card nested inside another card.
     const boundary = (
       <WidgetBoundary label={label} className={def.colSpanClass}>
-        <Component />
+        {def.lazy ? (
+          <Suspense fallback={<WidgetSkeleton label={label} className={def.colSpanClass} />}>
+            <Component />
+          </Suspense>
+        ) : (
+          <Component />
+        )}
       </WidgetBoundary>
     )
 
