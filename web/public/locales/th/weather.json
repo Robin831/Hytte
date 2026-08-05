@@ -11,6 +11,7 @@
     "pressure": "ความกดอากาศ",
     "nextHours": "{{count}} ชั่วโมงถัดไป",
     "showNextHours": "แสดง {{count}} ชั่วโมงถัดไป",
+    "noUpcomingHours": "ไม่มีชั่วโมงถัดไปในพยากรณ์นี้",
     "sevenDayForecast": "พยากรณ์ 7 วัน",
     "today": "วันนี้",
     "recentLocations": "ล่าสุด",
@@ -56,8 +57,16 @@
   },
   "updated": {
     "justNow": "อัปเดตเมื่อกี้",
-    "minuteAgo": "อัปเดต 1 นาทีที่แล้ว",
-    "minutesAgo": "อัปเดต {{count}} นาทีที่แล้ว"
+    "minutes_one": "อัปเดต {{count}} นาทีที่แล้ว",
+    "minutes_other": "อัปเดต {{count}} นาทีที่แล้ว",
+    "hours_one": "อัปเดต {{count}} ชั่วโมงที่แล้ว",
+    "hours_other": "อัปเดต {{count}} ชั่วโมงที่แล้ว",
+    "days_one": "อัปเดต {{count}} วันที่แล้ว",
+    "days_other": "อัปเดต {{count}} วันที่แล้ว"
+  },
+  "stale": {
+    "chip": "กำลังแสดงข้อมูลที่แคชไว้ — ไม่สามารถรีเฟรชพยากรณ์ได้",
+    "dismiss": "ปิดการแจ้งเตือนข้อมูลที่แคชไว้"
   },
   "sun": {
     "sunrise": "พระอาทิตย์ขึ้น",

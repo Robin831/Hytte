@@ -35,6 +35,9 @@ export default function HourlyStrip({ timeseries }: { timeseries: TimeseriesEntr
           ))}
         </div>
       </div>
+      {timeseries.length === 0 && (
+        <p className="text-sm text-gray-400">{t('page.noUpcomingHours')}</p>
+      )}
       <div className="flex gap-4 overflow-x-auto pb-2">
         {timeseries.slice(0, hourlyRange).map((entry, index) => {
           const dt = new Date(entry.time)
