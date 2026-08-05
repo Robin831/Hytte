@@ -1,9 +1,11 @@
 package chat
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -12,6 +14,43 @@ import (
 // timeFormat is a fixed-width UTC timestamp with millisecond precision,
 // ensuring correct lexicographic ordering and consistent string widths.
 const timeFormat = "2006-01-02T15:04:05.000Z07:00"
+
+// decryptLogInterval is the minimum spacing between decrypt-failure warnings.
+const decryptLogInterval = time.Minute
+
+// decryptFailures rate-limits the decrypt-failure warning. Decryption runs per
+// row, so a single corrupt conversation would otherwise emit one log line for
+// every row of every list request — enough to drown the journal. We log the
+// first failure immediately and then at most one line per decryptLogInterval,
+// reporting how many failures were suppressed in between so the volume stays
+// visible.
+var decryptFailures struct {
+	mu         sync.Mutex
+	lastLogged time.Time
+	suppressed int
+}
+
+// logDecryptFailure emits a rate-limited warning for a failed decrypt.
+func logDecryptFailure(err error) {
+	decryptFailures.mu.Lock()
+	defer decryptFailures.mu.Unlock()
+
+	now := time.Now()
+	if !decryptFailures.lastLogged.IsZero() && now.Sub(decryptFailures.lastLogged) < decryptLogInterval {
+		decryptFailures.suppressed++
+		return
+	}
+	suppressed := decryptFailures.suppressed
+	decryptFailures.suppressed = 0
+	decryptFailures.lastLogged = now
+
+	if suppressed > 0 {
+		log.Printf("chat: decrypt failed, returning raw stored value: %v (%d further failures suppressed in the last %s)",
+			err, suppressed, decryptLogInterval)
+		return
+	}
+	log.Printf("chat: decrypt failed, returning raw stored value: %v", err)
+}
 
 // decryptOrRaw decrypts a stored conversation title or message body, falling
 // back to the raw column value if decryption fails. Legacy rows written before
@@ -23,7 +62,7 @@ const timeFormat = "2006-01-02T15:04:05.000Z07:00"
 func decryptOrRaw(value string) string {
 	plain, err := encryption.DecryptField(value)
 	if err != nil {
-		log.Printf("chat: decrypt failed, returning raw stored value: %v", err)
+		logDecryptFailure(err)
 		return value
 	}
 	return plain
@@ -106,8 +145,14 @@ func CreateConversation(db *sql.DB, userID int64, title, model string) (*Convers
 
 // GetConversation returns a single conversation owned by the given user.
 func GetConversation(db *sql.DB, id, userID int64) (*Conversation, error) {
+	return GetConversationContext(context.Background(), db, id, userID)
+}
+
+// GetConversationContext is GetConversation with a caller-controlled deadline,
+// for callers running outside a request goroutine (see autoTitle).
+func GetConversationContext(ctx context.Context, db *sql.DB, id, userID int64) (*Conversation, error) {
 	var c Conversation
-	err := db.QueryRow(
+	err := db.QueryRowContext(ctx,
 		`SELECT id, user_id, title, model, session_id, created_at, updated_at
 		 FROM chat_conversations
 		 WHERE id = ? AND user_id = ?`,

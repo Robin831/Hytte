@@ -1,14 +1,28 @@
 package chat
 
 import (
+	"bytes"
 	"database/sql"
+	"log"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/db"
 	"github.com/Robin831/Hytte/internal/encryption"
 )
+
+// TestMain pins the encryption key for the whole test binary. The key lives in
+// a process-global singleton inside internal/encryption, so deriving it once
+// here keeps individual tests from repeatedly mutating shared state that every
+// other test in this package (and any goroutine they leave running) reads.
+func TestMain(m *testing.M) {
+	os.Setenv("ENCRYPTION_KEY", "test-key-for-chat-tests")
+	encryption.ResetEncryptionKey()
+	os.Exit(m.Run())
+}
 
 // rawColumn reads a single string column straight from SQLite, bypassing the
 // store's decrypt path, so tests can assert what is actually stored at rest.
@@ -23,9 +37,6 @@ func rawColumn(t *testing.T, d *sql.DB, query string, args ...any) string {
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	t.Setenv("ENCRYPTION_KEY", "test-key-for-chat-tests")
-	encryption.ResetEncryptionKey()
-	t.Cleanup(func() { encryption.ResetEncryptionKey() })
 	d, err := db.Init(":memory:")
 	if err != nil {
 		t.Fatalf("init test db: %v", err)
@@ -673,6 +684,59 @@ func TestCorruptCiphertextFallsBackToRawValue(t *testing.T) {
 	}
 	if len(msgs) != 1 || msgs[0].Content != "enc:also-garbage" {
 		t.Fatalf("expected raw stored content, got %+v", msgs)
+	}
+}
+
+func TestDecryptFailureLoggingIsRateLimited(t *testing.T) {
+	d := setupTestDB(t)
+
+	// A conversation whose title and every message are undecryptable, so a
+	// single list + read pass decrypts many failing rows.
+	res, err := d.Exec(
+		`INSERT INTO chat_conversations (user_id, title, model, created_at, updated_at)
+		 VALUES (1, 'enc:not-valid-ciphertext', 'claude-sonnet-4-6', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+	)
+	if err != nil {
+		t.Fatalf("insert conversation: %v", err)
+	}
+	convoID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
+	for i := 0; i < 20; i++ {
+		if _, err := d.Exec(
+			`INSERT INTO chat_messages (conversation_id, role, content, created_at)
+			 VALUES (?, 'user', 'enc:also-garbage', ?)`,
+			convoID, "2026-01-01T00:00:0"+strconv.Itoa(i%10)+".000Z",
+		); err != nil {
+			t.Fatalf("insert message: %v", err)
+		}
+	}
+
+	// Reset the limiter so this test sees a clean window, and restore the
+	// default log destination afterwards.
+	decryptFailures.mu.Lock()
+	decryptFailures.lastLogged = time.Time{}
+	decryptFailures.suppressed = 0
+	decryptFailures.mu.Unlock()
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	for i := 0; i < 5; i++ {
+		if _, err := ListConversations(d, 1); err != nil {
+			t.Fatalf("list: %v", err)
+		}
+		if _, err := GetMessages(d, convoID); err != nil {
+			t.Fatalf("get messages: %v", err)
+		}
+	}
+
+	// 5 * (1 title + 20 messages) = 105 decrypt failures, but the limiter
+	// allows only the first one inside a decryptLogInterval window.
+	if n := strings.Count(buf.String(), "chat: decrypt failed"); n != 1 {
+		t.Fatalf("expected 1 rate-limited log line, got %d:\n%s", n, buf.String())
 	}
 }
 
