@@ -1,91 +1,22 @@
-import { useState, useEffect, useLayoutEffect, useReducer, useCallback, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
+import { MapPin, RefreshCw } from 'lucide-react'
 import { useAuth } from '../auth'
 import { Skeleton } from '../components/ui/skeleton'
-import {
-  type RecentLocation,
-  isValidRecentLocation,
-  loadRecentLocations,
-  saveRecentLocations,
-  addRecentLocation,
-  parseRecentLocationsPreference,
-  buildDefaultLocations,
-} from '../recentLocations'
 import LocationSearch from '../components/LocationSearch'
 import UseMyLocationButton from '../components/UseMyLocationButton'
 import HourlyChart from '../components/HourlyChart'
-import { readForecastCache, writeForecastCache } from '../lib/weatherCache'
-import { buildDailyForecasts, type TimeseriesEntry } from '../lib/weatherForecast'
-import { getWeatherIcon, getWeatherDescription } from '../weatherUtils'
-import { formatDate, formatTime } from '../utils/formatDate'
-import {
-  ArrowUp,
-  Droplets,
-  Wind,
-  MapPin,
-  Thermometer,
-  RefreshCw,
-  Sunrise,
-  Sunset,
-} from 'lucide-react'
+import CurrentConditionsCard from '../components/weather/CurrentConditionsCard'
+import HourlyStrip from '../components/weather/HourlyStrip'
+import DailyForecastList from '../components/weather/DailyForecastList'
+import { useWeatherLocation } from '../hooks/useWeatherLocation'
+import { useForecast } from '../hooks/useForecast'
+import { useSunTimes } from '../hooks/useSunTimes'
+import { buildDailyForecasts } from '../lib/weatherForecast'
 
-
-
-interface ForecastResponse {
-  properties: {
-    timeseries: TimeseriesEntry[]
-  }
-}
-
-interface SunResponse {
-  sunrise?: string
-  sunset?: string
-  daylightSeconds: number
-  polarDay: boolean
-  polarNight: boolean
-}
-
-/** Split a daylight duration in seconds into whole hours and minutes. */
-function splitDaylight(seconds: number): { hours: number; minutes: number } {
-  const totalMinutes = Math.max(0, Math.round(seconds / 60))
-  return { hours: Math.floor(totalMinutes / 60), minutes: totalMinutes % 60 }
-}
-
-
-type FetchState = { loading: boolean; error: string | null; forecast: ForecastResponse | null; lastUpdated: Date | null }
-type FetchAction =
-  | { type: 'start' }
-  | { type: 'success'; data: ForecastResponse }
-  | { type: 'error'; message: string }
-  // Seed displayed data from a cached response (stale-while-revalidate).
-  | { type: 'seed'; data: ForecastResponse; lastUpdated: Date }
-  // Clear displayed data so skeletons show (location with no cached forecast).
-  | { type: 'reset' }
-
-function fetchReducer(state: FetchState, action: FetchAction): FetchState {
-  switch (action.type) {
-    case 'start': return { ...state, loading: true, error: null }
-    case 'success': return { loading: false, error: null, forecast: action.data, lastUpdated: new Date() }
-    case 'error': return { loading: false, error: action.message, forecast: state.forecast, lastUpdated: state.lastUpdated }
-    case 'seed': return { loading: true, error: null, forecast: action.data, lastUpdated: action.lastUpdated }
-    case 'reset': return { loading: true, error: null, forecast: null, lastUpdated: null }
-    default: return state
-  }
-}
-
-/** Build the initial fetch state, seeding from the per-location cache when available. */
-function initFetchState({ loc, userId }: { loc: RecentLocation | null; userId?: number }): FetchState {
-  if (loc) {
-    const cached = readForecastCache<ForecastResponse>(loc.lat, loc.lon, userId)
-    if (cached) {
-      return { loading: true, error: null, forecast: cached.response, lastUpdated: new Date(cached.lastUpdated) }
-    }
-  }
-  return { loading: true, error: null, forecast: null, lastUpdated: null }
-}
-
-const AUTO_REFRESH_MS = 10 * 60 * 1000 // 10 minutes
+/** How often the "Updated X min ago" label is recomputed. */
+const TIME_AGO_TICK_MS = 30_000
 
 function formatTimeAgo(date: Date, t: TFunction<'weather'>): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
@@ -95,458 +26,41 @@ function formatTimeAgo(date: Date, t: TFunction<'weather'>): string {
   return t('updated.minutesAgo', { count: minutes })
 }
 
-/**
- * Calculate feels-like temperature.
- * Uses wind chill when temp ≤ 10°C and wind ≥ 1.3 m/s (Environment Canada formula),
- * or heat index when temp ≥ 27°C and humidity ≥ 40% (Rothfusz regression).
- * Returns null when actual temperature already represents perceived comfort.
- */
-function calculateFeelsLike(temp: number, windSpeed: number, humidity: number): number | null {
-  if (temp <= 10 && windSpeed >= 1.3) {
-    const v = windSpeed * 3.6 // m/s to km/h
-    const wc = 13.12 + 0.6215 * temp - 11.37 * Math.pow(v, 0.16) + 0.3965 * temp * Math.pow(v, 0.16)
-    const rounded = Math.round(wc)
-    return rounded !== Math.round(temp) ? rounded : null
-  }
-  if (temp >= 27 && humidity >= 40) {
-    // Rothfusz regression (Fahrenheit), then convert back
-    const tf = temp * 9 / 5 + 32
-    const hi =
-      -42.379 + 2.04901523 * tf + 10.14333127 * humidity
-      - 0.22475541 * tf * humidity - 0.00683783 * tf * tf
-      - 0.05481717 * humidity * humidity + 0.00122874 * tf * tf * humidity
-      + 0.00085282 * tf * humidity * humidity - 0.00000199 * tf * tf * humidity * humidity
-    const rounded = Math.round((hi - 32) * 5 / 9)
-    return rounded !== Math.round(temp) ? rounded : null
-  }
-  return null
-}
-
-/**
- * Wind direction arrow rotation in degrees (CSS clockwise).
- * wind_from_direction = 180 (from south) → arrow points north (0°).
- */
-function windArrowRotation(windFromDirection: number): number {
-  return (windFromDirection + 180) % 360
-}
-
-/** Resolve a location name, checking recents first then the fetched known locations. */
-function resolveLocation(
-  name: string,
-  recents: RecentLocation[],
-  knownLocations?: RecentLocation[],
-): RecentLocation | undefined {
-  const fromRecents = recents.find((l) => l.name === name)
-  if (fromRecents) return fromRecents
-  return knownLocations?.find((l) => l.name === name)
-}
-
-function getInitialState(): { location: RecentLocation | null; recents: RecentLocation[] } {
-  const recents = loadRecentLocations()
-  if (!recents) {
-    // First visit — no localStorage data. Coordinates will come from the API.
-    return { location: null, recents: [] }
-  }
-  // Try to restore the last selected location from localStorage.
-  try {
-    const stored = localStorage.getItem('weather_location')
-    if (stored) {
-      // Prefer full-JSON storage with lat+lon matching (avoids duplicate-name collisions)
-      try {
-        const parsed = JSON.parse(stored) as unknown
-        if (isValidRecentLocation(parsed)) {
-          const loc = parsed as RecentLocation
-          const found = recents.find((l) => l.lat === loc.lat && l.lon === loc.lon) ?? loc
-          return { location: found, recents }
-        }
-      } catch {
-        // Not JSON — fall through to legacy name matching
-      }
-      const loc = resolveLocation(stored, recents)
-      if (loc) return { location: loc, recents }
-    }
-  } catch {
-    // localStorage may be unavailable.
-  }
-  return { location: recents[0] ?? null, recents }
-}
-
-/** Build the forecast API URL for a location, always using lat/lon. */
-function forecastUrl(loc: RecentLocation): string {
-  return `/api/weather/forecast?lat=${loc.lat}&lon=${loc.lon}&location=${encodeURIComponent(loc.name)}`
-}
-
-
-type HourlyRange = 12 | 24 | 48
-
 export default function Weather() {
   const { t } = useTranslation('weather')
-  const { user, loading: authLoading } = useAuth()
-  const [initialState] = useState(getInitialState)
-  const [selectedLocation, setSelectedLocation] = useState<RecentLocation | null>(initialState.location)
-  const [hourlyRange, setHourlyRange] = useState<HourlyRange>(12)
-  const [recentLocations, setRecentLocations] = useState<RecentLocation[]>(initialState.recents)
-  const [knownLocations, setKnownLocations] = useState<RecentLocation[]>([])
-  const [locationsLoaded, setLocationsLoaded] = useState(false)
-  const [prefsFetched, setPrefsFetched] = useState(false)
-  const [pendingPreferenceName, setPendingPreferenceName] = useState<string | null>(null)
-  const locationResolved =
-    selectedLocation !== null && !authLoading && (!user || prefsFetched) && (recentLocations.length > 0 || locationsLoaded)
-  const [refreshKey, setRefreshKey] = useState(0)
-  const [intervalResetKey, setIntervalResetKey] = useState(0)
-  const userHasSelected = useRef(false)
-  const selectedLocationRef = useRef(selectedLocation)
-  const recentLocationsRef = useRef(recentLocations)
-  const knownLocationsRef = useRef(knownLocations)
-  useEffect(() => {
-    selectedLocationRef.current = selectedLocation
-  }, [selectedLocation])
-  useEffect(() => {
-    recentLocationsRef.current = recentLocations
-  }, [recentLocations])
-  useEffect(() => {
-    knownLocationsRef.current = knownLocations
-  }, [knownLocations])
+  const { user } = useAuth()
+  const {
+    location,
+    displayRecents,
+    otherCities,
+    locationResolved,
+    selectByName,
+    selectLocation,
+  } = useWeatherLocation()
 
-  // Persist recent locations to localStorage — only for unauthenticated users after auth settles.
-  // Authenticated users store recents server-side only to prevent cross-account leakage.
-  useEffect(() => {
-    if (authLoading || user) return
-    saveRecentLocations(recentLocations)
-  }, [recentLocations, user, authLoading])
+  const { data: forecast, loading, errorMessage, lastUpdated, refresh } = useForecast(location, {
+    persist: true,
+    userId: user?.id,
+    autoRefresh: true,
+    enabled: locationResolved,
+  })
+  const sun = useSunTimes(location, locationResolved)
 
-  // Fetch available locations from the backend (single source of truth for coordinates).
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/weather/locations')
-      .then((r) => {
-        if (!r.ok) throw new Error('Failed to fetch locations')
-        return r.json()
-      })
-      .then((data) => {
-        if (cancelled) return
-        const locs = (data.locations ?? []) as RecentLocation[]
-        locs.sort((a, b) => a.name.localeCompare(b.name))
-        setKnownLocations(locs)
-        // Reconcile recent locations with canonical coordinates from API.
-        const locMap = new Map(locs.map((l) => [l.name, l]))
-        setRecentLocations((prev) => {
-          if (prev.length === 0) {
-            // First visit — build defaults from API data (no hardcoded coordinates).
-            return buildDefaultLocations(locs)
-          }
-          // Reconcile stored locations with canonical coordinates from the API.
-          return prev.map((r) => locMap.get(r.name) ?? r)
-        })
-        // Set initial selected location if not yet set (first visit).
-        setSelectedLocation((prev) => {
-          if (prev !== null) return prev
-          const defaults = buildDefaultLocations(locs)
-          return defaults[0] ?? locs[0] ?? null
-        })
-      })
-      .catch((err) => {
-        // Best-effort: dropdown will still show recent locations from localStorage.
-        console.warn('Failed to fetch locations:', err)
-      })
-      .finally(() => {
-        if (!cancelled) setLocationsLoaded(true)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-  // Seed the reducer from the per-location cache so a revisit renders real numbers
-  // on first paint (no skeleton flash) while a fresh forecast loads in the background.
-  const [{ forecast, loading, error, lastUpdated }, dispatch] = useReducer(
-    fetchReducer,
-    { loc: initialState.location, userId: user?.id },
-    initFetchState,
-  )
-  const [sunEntry, setSunEntry] = useState<{ data: SunResponse; locationKey: string } | null>(null)
-  const currentLocKey = selectedLocation ? `${selectedLocation.lat},${selectedLocation.lon}` : null
-  const sun = sunEntry && sunEntry.locationKey === currentLocKey ? sunEntry.data : null
+  // Tick periodically to keep the "Updated X min ago" text current.
   const [, setTick] = useState(0)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  // Load user's preferred location and recents once auth settles.
   useEffect(() => {
-    if (authLoading) return
-
-    if (!user) return
-
-    let cancelled = false
-    fetch('/api/settings/preferences', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (cancelled) return
-
-        // Sync recent locations from backend.
-        const serverRecentsRaw = data?.preferences?.recent_locations
-        if (serverRecentsRaw) {
-          const serverRecents = parseRecentLocationsPreference(serverRecentsRaw)
-          if (serverRecents && serverRecents.length > 0) {
-            setRecentLocations(serverRecents)
-            // Do NOT write to localStorage here — authenticated users store recents server-side only.
-          }
-        }
-
-        if (userHasSelected.current) {
-          // User interacted before prefs loaded; persist their choice server-side.
-          const currentRecents = recentLocationsRef.current
-          fetch('/api/settings/preferences', {
-            method: 'PUT',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              preferences: {
-                weather_location: selectedLocationRef.current?.name ?? '',
-                recent_locations: JSON.stringify(currentRecents),
-              },
-            }),
-          }).catch((err: unknown) => {
-            console.warn('Failed to push user selection to server:', err)
-          })
-          return
-        }
-
-        const savedName = data?.preferences?.weather_location || data?.preferences?.home_location
-        if (savedName) {
-          // Resolve from server recents first, then known cities from API.
-          const serverRecents = serverRecentsRaw
-            ? parseRecentLocationsPreference(serverRecentsRaw)
-            : null
-          const loc = resolveLocation(
-            savedName,
-            serverRecents ?? recentLocationsRef.current,
-            knownLocationsRef.current,
-          )
-          if (loc) {
-            setSelectedLocation(loc)
-          } else {
-            // Known locations may not be loaded yet; store the name and retry when they arrive.
-            setPendingPreferenceName(savedName)
-          }
-        }
-      })
-      .catch((err: unknown) => {
-        // Preference load is best-effort; localStorage values are used as fallback.
-        console.warn('Failed to fetch preferences:', err)
-      })
-      .finally(() => {
-        if (!cancelled) setPrefsFetched(true)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [user, authLoading])
-
-  // Retry resolving the pending preference name once knownLocations becomes available.
-  useEffect(() => {
-    if (!pendingPreferenceName || !locationsLoaded || userHasSelected.current) return
-    const loc = resolveLocation(pendingPreferenceName, recentLocationsRef.current, knownLocations)
-    if (loc) {
-      setSelectedLocation(loc)
-      setPendingPreferenceName(null)
-    }
-  }, [pendingPreferenceName, locationsLoaded, knownLocations])
-
-  const triggerRefresh = useCallback(() => {
-    setRefreshKey((k) => k + 1)
-    setIntervalResetKey((k) => k + 1)
-  }, [])
-
-  // Persist location and recents whenever they change.
-  const saveState = useCallback(
-    (loc: RecentLocation, updatedRecents: RecentLocation[]) => {
-      if (!user) {
-        try {
-          localStorage.setItem('weather_location', JSON.stringify(loc))
-        } catch {
-          // localStorage may be unavailable.
-        }
-        saveRecentLocations(updatedRecents)
-      }
-      if (user) {
-        fetch('/api/settings/preferences', {
-          method: 'PUT',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            preferences: {
-              weather_location: loc.name,
-              recent_locations: JSON.stringify(updatedRecents),
-            },
-          }),
-        }).catch((err: unknown) => {
-          // Best-effort save; localStorage is used as local fallback.
-          console.warn('Failed to save preferences:', err)
-        })
-      }
-    },
-    [user],
-  )
-
-  // Handles selection from the quick-access dropdown (named cities only).
-  const handleLocationChange = useCallback(
-    (cityName: string) => {
-      userHasSelected.current = true
-      const loc = resolveLocation(cityName, recentLocationsRef.current, knownLocationsRef.current)
-      if (!loc) return
-      setSelectedLocation(loc)
-      const updatedRecents = addRecentLocation(recentLocationsRef.current, loc)
-      setRecentLocations(updatedRecents)
-      saveState(loc, updatedRecents)
-    },
-    [saveState],
-  )
-
-  // Handles selection from the free-text location search (geocoding results).
-  const handleSearchSelect = useCallback(
-    (result: { name: string; country: string; lat: number; lon: number }) => {
-      userHasSelected.current = true
-      const loc: RecentLocation = { name: result.name, lat: result.lat, lon: result.lon }
-      setSelectedLocation(loc)
-      const updatedRecents = addRecentLocation(recentLocationsRef.current, loc)
-      setRecentLocations(updatedRecents)
-      saveState(loc, updatedRecents)
-    },
-    [saveState],
-  )
-
-  // Re-seed displayed data when the active location changes: show the location's
-  // cached forecast instantly, or clear to skeletons when it was never viewed.
-  // useLayoutEffect runs synchronously before paint, preventing a brief flash of
-  // the previous location's forecast under the newly selected location name.
-  useLayoutEffect(() => {
-    if (!selectedLocation) return
-    const cached = readForecastCache<ForecastResponse>(selectedLocation.lat, selectedLocation.lon, user?.id)
-    if (cached) {
-      dispatch({ type: 'seed', data: cached.response, lastUpdated: new Date(cached.lastUpdated) })
-    } else {
-      dispatch({ type: 'reset' })
-    }
-    // Key on coordinates + user so reconciling the location object (same lat/lon,
-    // new reference) does not spuriously clear freshly fetched data, and switching
-    // accounts reads from the correct user-scoped cache.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLocation?.lat, selectedLocation?.lon, user?.id])
-
-  // Fetch forecast once we know the correct location.
-  useEffect(() => {
-    if (!locationResolved || !selectedLocation) return
-
-    let cancelled = false
-    dispatch({ type: 'start' })
-
-    fetch(forecastUrl(selectedLocation))
-      .then((r) => {
-        if (!r.ok) throw new Error('Failed to fetch forecast')
-        return r.json()
-      })
-      .then((data) => {
-        if (cancelled) return
-        dispatch({ type: 'success', data })
-        // Persist/refresh this location's cache so future revisits render instantly.
-        writeForecastCache(selectedLocation.lat, selectedLocation.lon, data, user?.id)
-      })
-      .catch((err) => {
-        if (!cancelled) dispatch({ type: 'error', message: err.message })
-      })
-
-    return () => {
-      cancelled = true
-    }
-    // user?.id is read only for cache-key scoping, not to trigger a re-fetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLocation, locationResolved, refreshKey])
-
-  // Fetch sunrise/sunset/daylight for the selected location. Computed locally on
-  // the backend and cached per day, so this is cheap and updates when the
-  // location changes.
-  useEffect(() => {
-    if (!locationResolved || !selectedLocation) return
-
-    let cancelled = false
-    const locKey = `${selectedLocation.lat},${selectedLocation.lon}`
-
-    fetch(`/api/weather/sun?lat=${selectedLocation.lat}&lon=${selectedLocation.lon}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!cancelled) {
-          setSunEntry(data ? { data: data as SunResponse, locationKey: locKey } : null)
-        }
-      })
-      .catch((err) => {
-        console.warn('Failed to fetch sun data:', err)
-        if (!cancelled) setSunEntry(null)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [selectedLocation, locationResolved, refreshKey])
-
-  // Auto-refresh every 10 minutes, pausing when the tab is hidden.
-  useEffect(() => {
-    function startInterval() {
-      stopInterval()
-      intervalRef.current = setInterval(triggerRefresh, AUTO_REFRESH_MS)
-    }
-
-    function stopInterval() {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
-    }
-
-    function handleVisibilityChange() {
-      if (document.hidden) {
-        stopInterval()
-      } else {
-        triggerRefresh()
-        startInterval()
-      }
-    }
-
-    // Don't start the interval if the tab is already hidden on mount.
-    if (!document.hidden) {
-      startInterval()
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      stopInterval()
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [triggerRefresh, intervalResetKey, selectedLocation])
-
-  // Tick every 30 seconds to keep the "Updated X min ago" text current.
-  useEffect(() => {
-    const timer = setInterval(() => setTick(t => t + 1), 30_000)
+    const timer = setInterval(() => setTick((v) => v + 1), TIME_AGO_TICK_MS)
     return () => clearInterval(timer)
   }, [])
   const timeAgo = lastUpdated ? formatTimeAgo(lastUpdated, t) : ''
 
   const timeseries = forecast?.properties?.timeseries ?? []
-  const current = timeseries[0] as TimeseriesEntry | undefined
+  const current = timeseries[0]
   const dailyForecasts = timeseries.length > 0 ? buildDailyForecasts(timeseries, t('page.today')) : []
-
   const currentSymbol =
     current?.data.next_1_hours?.summary.symbol_code ||
     current?.data.next_6_hours?.summary.symbol_code ||
     'cloudy'
-
-  // Build dropdown options: recent locations, then remaining known cities not in recents.
-  // Always include selectedLocation to prevent empty/mismatched dropdown during loading.
-  const displayRecents =
-    selectedLocation && !recentLocations.some((l) => l.name === selectedLocation.name)
-      ? [selectedLocation, ...recentLocations]
-      : recentLocations
-  const recentNames = new Set(displayRecents.map((l) => l.name))
-  const otherCities = knownLocations.filter((l) => !recentNames.has(l.name))
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-8 min-h-screen">
@@ -554,11 +68,11 @@ export default function Weather() {
         <h1 className="text-2xl font-bold">{t('page.title')}</h1>
         <div className="flex items-center gap-2 flex-wrap">
           <MapPin size={16} className="text-gray-400" />
-          <LocationSearch onSelect={handleSearchSelect} />
-          <UseMyLocationButton onSelect={handleSearchSelect} />
+          <LocationSearch onSelect={selectLocation} />
+          <UseMyLocationButton onSelect={selectLocation} />
           <select
-            value={selectedLocation?.name ?? ''}
-            onChange={(e) => handleLocationChange(e.target.value)}
+            value={location?.name ?? ''}
+            onChange={(e) => selectByName(e.target.value)}
             className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             aria-label={t('page.selectLocation')}
           >
@@ -582,7 +96,7 @@ export default function Weather() {
             )}
           </select>
           <button
-            onClick={triggerRefresh}
+            onClick={refresh}
             disabled={loading}
             className="p-2 rounded-lg bg-gray-700 border border-gray-600 text-gray-300 hover:text-white hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             aria-label={t('page.refreshForecast')}
@@ -600,223 +114,33 @@ export default function Weather() {
         </div>
       )}
 
-      {error && !forecast && (
+      {/*
+        Only surface the error when there is nothing to show. A failed background
+        refresh (interval tick, tab re-show, manual refresh) leaves the previous
+        forecast on screen untouched rather than replacing it with a banner.
+      */}
+      {errorMessage && !forecast && (
         <div className="bg-red-900/30 border border-red-800 rounded-xl p-4 mb-6">
-          <p className="text-red-400 text-sm">{error}</p>
+          <p className="text-red-400 text-sm">{errorMessage}</p>
         </div>
       )}
 
       {current && (
         <>
-          {/* Current Conditions */}
-          <section className="bg-gray-800 rounded-xl p-6 mb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-400 mb-1">{t('page.rightNowIn', { location: selectedLocation?.name })}</p>
-                <div className="flex items-end gap-3">
-                  <span className="text-5xl font-bold">
-                    {Math.round(current.data.instant.details.air_temperature)}°
-                  </span>
-                  {(() => {
-                    const feelsLike = calculateFeelsLike(
-                      current.data.instant.details.air_temperature,
-                      current.data.instant.details.wind_speed,
-                      current.data.instant.details.relative_humidity,
-                    )
-                    return feelsLike !== null ? (
-                      <span className="text-sm text-gray-400 mb-2">
-                        {t('page.feelsLike', { temp: feelsLike })}
-                      </span>
-                    ) : null
-                  })()}
-                  <span className="text-lg text-gray-300 mb-1">
-                    {getWeatherDescription(currentSymbol, t)}
-                  </span>
-                </div>
-                {sun && (
-                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-300">
-                    {sun.polarDay ? (
-                      <span className="flex items-center gap-1.5">
-                        <Sunrise size={16} className="text-amber-400 shrink-0" />
-                        {t('sun.polarDay')}
-                      </span>
-                    ) : sun.polarNight ? (
-                      <span className="flex items-center gap-1.5">
-                        <Sunset size={16} className="text-indigo-400 shrink-0" />
-                        {t('sun.polarNight')}
-                      </span>
-                    ) : sun.sunrise && sun.sunset ? (
-                      <>
-                        <span
-                          className="flex items-center gap-1.5"
-                          aria-label={`${t('sun.sunrise')} ${formatTime(sun.sunrise, { hour: '2-digit', minute: '2-digit' })}`}
-                        >
-                          <Sunrise size={16} className="text-amber-400 shrink-0" />
-                          {formatTime(sun.sunrise, { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                        <span
-                          className="flex items-center gap-1.5"
-                          aria-label={`${t('sun.sunset')} ${formatTime(sun.sunset, { hour: '2-digit', minute: '2-digit' })}`}
-                        >
-                          <Sunset size={16} className="text-orange-400 shrink-0" />
-                          {formatTime(sun.sunset, { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                        <span className="text-gray-400">
-                          {t('sun.daylight', splitDaylight(sun.daylightSeconds))}
-                        </span>
-                      </>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-              <div className="text-blue-400">
-                {getWeatherIcon(currentSymbol, 56)}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4 mt-6 pt-4 border-t border-gray-700">
-              <div className="flex items-center gap-2">
-                <Wind size={16} className="text-gray-400" />
-                <div>
-                  <p className="text-xs text-gray-400">{t('page.wind')}</p>
-                  <p className="text-sm font-medium flex items-center gap-1">
-                    {current.data.instant.details.wind_speed} m/s
-                    {current.data.instant.details.wind_from_direction !== undefined && (
-                      <ArrowUp
-                        size={14}
-                        className="text-gray-400 shrink-0"
-                        style={{ transform: `rotate(${windArrowRotation(current.data.instant.details.wind_from_direction)}deg)` }}
-                        aria-label={t('page.windFromDirectionAria', { degrees: Math.round(current.data.instant.details.wind_from_direction) })}
-                      />
-                    )}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Droplets size={16} className="text-gray-400" />
-                <div>
-                  <p className="text-xs text-gray-400">{t('page.humidity')}</p>
-                  <p className="text-sm font-medium">
-                    {Math.round(current.data.instant.details.relative_humidity)}%
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Thermometer size={16} className="text-gray-400" />
-                <div>
-                  <p className="text-xs text-gray-400">{t('page.pressure')}</p>
-                  <p className="text-sm font-medium">
-                    {current.data.instant.details.air_pressure_at_sea_level
-                      ? `${Math.round(current.data.instant.details.air_pressure_at_sea_level)} hPa`
-                      : '—'}
-                  </p>
-                </div>
-              </div>
-            </div>
-            {timeAgo && (
-              <p className="text-xs text-gray-500 mt-4">{timeAgo}</p>
-            )}
-          </section>
+          <CurrentConditionsCard
+            current={current}
+            symbolCode={currentSymbol}
+            locationName={location?.name}
+            sun={sun}
+            timeAgo={timeAgo}
+          />
 
           {/* Hourly trend chart (next 24 hours) */}
           <HourlyChart timeseries={timeseries.slice(0, 24)} />
 
-          {/* Hourly Preview */}
-          <section className="bg-gray-800 rounded-xl p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">{t('page.nextHours', { count: hourlyRange })}</h2>
-              <div className="flex rounded-lg overflow-hidden border border-gray-600 text-xs">
-                {([12, 24, 48] as HourlyRange[]).map((range) => (
-                  <button
-                    key={range}
-                    onClick={() => setHourlyRange(range)}
-                    className={`px-3 py-1 transition-colors ${
-                      hourlyRange === range
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
-                    aria-label={t('page.showNextHours', { count: range })}
-                    aria-pressed={hourlyRange === range}
-                  >
-                    {range}h
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex gap-4 overflow-x-auto pb-2">
-              {timeseries.slice(0, hourlyRange).map((entry, index) => {
-                const dt = new Date(entry.time)
-                const hour = formatTime(dt, {
-                  hour: 'numeric',
-                  hour12: false,
-                })
-                const sym =
-                  entry.data.next_1_hours?.summary.symbol_code ||
-                  entry.data.next_6_hours?.summary.symbol_code ||
-                  'cloudy'
-                // Show date separator when crossing midnight (hour 0) after the first entry
-                const showDateSep = index > 0 && dt.getHours() === 0
-                const dateLabel = formatDate(dt, { weekday: 'short', month: 'short', day: 'numeric' })
-                return (
-                  <div key={entry.time} className="flex items-start gap-4">
-                    {showDateSep && (
-                      <div className="flex flex-col items-center self-stretch">
-                        <div className="w-px bg-gray-600 flex-1" />
-                        <span className="text-xs text-gray-400 whitespace-nowrap rotate-0 py-1 px-1 bg-gray-700 rounded text-center leading-tight">
-                          {dateLabel}
-                        </span>
-                        <div className="w-px bg-gray-600 flex-1" />
-                      </div>
-                    )}
-                    <div className="flex flex-col items-center gap-1 min-w-[3.5rem]">
-                      <span className="text-xs text-gray-400">{hour}</span>
-                      <span className="text-blue-400">{getWeatherIcon(sym, 20)}</span>
-                      <span className="text-sm font-medium">
-                        {Math.round(entry.data.instant.details.air_temperature)}°
-                      </span>
-                      {entry.data.next_1_hours?.details.precipitation_amount ? (
-                        <span className="text-xs text-blue-400">
-                          {entry.data.next_1_hours.details.precipitation_amount} mm
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
+          <HourlyStrip timeseries={timeseries} />
 
-          {/* 7-Day Forecast */}
-          <section className="bg-gray-800 rounded-xl p-6">
-            <h2 className="text-lg font-semibold mb-4">{t('page.sevenDayForecast')}</h2>
-            <div className="space-y-3">
-              {dailyForecasts.map((day) => (
-                <div
-                  key={day.date}
-                  className="flex items-center justify-between bg-gray-700/50 rounded-lg px-4 py-3"
-                >
-                  <div className="flex items-center gap-3 w-24">
-                    <span className="text-sm font-medium">{day.dayName}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-blue-400">
-                    {getWeatherIcon(day.symbolCode, 20)}
-                  </div>
-                  <div className="flex items-center gap-1 w-16 justify-end">
-                    <Droplets size={12} className="text-blue-400" />
-                    <span className="text-xs text-gray-400">{day.precipitation} mm</span>
-                  </div>
-                  <div className="flex items-center gap-1 w-16 justify-end">
-                    <Wind size={12} className="text-gray-400" />
-                    <span className="text-xs text-gray-400">{day.windSpeed} m/s</span>
-                  </div>
-                  <div className="flex items-center gap-2 w-20 justify-end">
-                    <span className="text-sm text-gray-400">{day.tempMin}°</span>
-                    <span className="text-sm font-medium">{day.tempMax}°</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+          <DailyForecastList days={dailyForecasts} />
 
           {/* Attribution */}
           <p className="text-xs text-gray-500 mt-4 text-center">

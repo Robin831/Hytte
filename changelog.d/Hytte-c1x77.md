@@ -1,0 +1,2 @@
+category: Changed
+- **Weather page split into hooks and components** - The location resolution and persistence state machine, the forecast fetch/auto-refresh loop and the sun-times fetch now live in `useWeatherLocation`, `useForecast` and `useSunTimes`, with the page reduced to layout. Behaviour is unchanged; the auth-timing logic is now unit-tested and reusable by the dashboard widgets. (Hytte-c1x77)
