@@ -46,6 +46,16 @@
   "new": {
     "title": "Record Test",
     "importFromWorkout": "Import from Workout",
+    "draft": {
+      "bannerTitle": "Continue draft?",
+      "bannerBody": "An unfinished test from an earlier visit was found on this device.",
+      "continue": "Continue draft",
+      "discard": "Discard draft",
+      "dismiss": "Hide this message",
+      "unsavedTitle": "Leave without saving?",
+      "unsavedConfirm": "This test has not been saved yet. The draft is kept on this device so you can continue it later.",
+      "leave": "Leave"
+    },
     "workoutPicker": {
       "title": "Select Workout to Import From",
       "searchPlaceholder": "Search workouts...",

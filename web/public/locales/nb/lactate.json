@@ -46,6 +46,16 @@
   "new": {
     "title": "Registrer test",
     "importFromWorkout": "Importer fra økt",
+    "draft": {
+      "bannerTitle": "Fortsette utkastet?",
+      "bannerBody": "Vi fant en uferdig test fra et tidligere besøk på denne enheten.",
+      "continue": "Fortsett utkastet",
+      "discard": "Forkast utkastet",
+      "dismiss": "Skjul denne meldingen",
+      "unsavedTitle": "Forlate uten å lagre?",
+      "unsavedConfirm": "Denne testen er ikke lagret ennå. Utkastet beholdes på denne enheten slik at du kan fortsette senere.",
+      "leave": "Forlat"
+    },
     "workoutPicker": {
       "title": "Velg økt å importere fra",
       "searchPlaceholder": "Søk i økter...",

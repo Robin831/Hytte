@@ -1,12 +1,15 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router'
 import { useAuth } from '../auth'
-import { Activity, ArrowLeft, Plus, Trash2, ChevronRight, ChevronLeft, Upload, Search } from 'lucide-react'
+import { Activity, ArrowLeft, Plus, Trash2, ChevronRight, ChevronLeft, Upload, Search, History, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatDate } from '../utils/formatDate'
 import type { Workout } from '../types/training'
 import LactateImportDialog from '../components/LactateImportDialog'
+import ConfirmDialog from '../components/ConfirmDialog'
 import { Skeleton } from '../components/ui/skeleton'
+import { useWizardDraft } from '../hooks/useWizardDraft'
+import { useUnloadWarning } from '../hooks/useUnloadWarning'
 
 interface StageInput {
   id: number
@@ -48,6 +51,60 @@ function makeEmptyStage(stageNumber: number, startSpeed: number, increment: numb
   }
 }
 
+const DEFAULT_STAGE_COUNT = 5
+
+type ProtocolInput = typeof defaultProtocol
+
+/**
+ * What the wizard persists between visits. Import-mode state (workout list,
+ * search text, selected workout) is deliberately left out — it is fetched
+ * fresh and holds nothing the user typed.
+ */
+interface LactateWizardDraft {
+  mode: Mode
+  step: WizardStep
+  protocol: ProtocolInput
+  stages: StageInput[]
+}
+
+const DRAFT_NAME = 'lactate-new-test'
+
+function isStageInput(value: unknown): value is StageInput {
+  const s = value as StageInput
+  return !!s && typeof s === 'object'
+    && typeof s.speed_kmh === 'string'
+    && typeof s.lactate_mmol === 'string'
+    && typeof s.heart_rate_bpm === 'string'
+    && typeof s.rpe === 'string'
+    && typeof s.notes === 'string'
+}
+
+function isLactateWizardDraft(value: unknown): value is LactateWizardDraft {
+  const d = value as LactateWizardDraft
+  if (!d || typeof d !== 'object') return false
+  // Only manual-mode drafts are ever written, so anything else is stale.
+  if (d.mode !== 'manual') return false
+  if (d.step !== 'protocol' && d.step !== 'stages' && d.step !== 'review') return false
+  if (!d.protocol || typeof d.protocol !== 'object') return false
+  const protocol = d.protocol as Record<string, unknown>
+  if (!Object.keys(defaultProtocol).every((k) => typeof protocol[k] === 'string')) return false
+  if (d.protocol.protocol_type !== 'standard' && d.protocol.protocol_type !== 'custom') return false
+  return Array.isArray(d.stages) && d.stages.length > 0 && d.stages.every(isStageInput)
+}
+
+// Stage ids only exist to key the table rows. A restored draft gets fresh ones
+// so they cannot collide with stages added after the restore.
+function reindexStages(stages: StageInput[]): StageInput[] {
+  return stages.map((s) => ({ ...s, id: ++_stageIdCounter }))
+}
+
+function stageHasData(s: StageInput): boolean {
+  return s.lactate_mmol.trim() !== ''
+    || s.heart_rate_bpm.trim() !== ''
+    || s.rpe.trim() !== ''
+    || s.notes.trim() !== ''
+}
+
 const sportIcons: Record<string, string> = {
   running: '🏃',
   cycling: '🚴',
@@ -69,7 +126,7 @@ export default function LactateNewTest() {
   const [protocol, setProtocol] = useState(defaultProtocol)
   const [stages, setStages] = useState<StageInput[]>(() => {
     const initial: StageInput[] = []
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 1; i <= DEFAULT_STAGE_COUNT; i++) {
       initial.push(makeEmptyStage(i, 11.5, 0.5))
     }
     return initial
@@ -77,6 +134,35 @@ export default function LactateNewTest() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
+
+  // Draft autosave. The wizard always starts empty — a stored draft is only
+  // ever restored through the banner, never silently.
+  const {
+    loaded: loadedDraft,
+    save: saveDraft,
+    clear: clearDraft,
+    flush: flushDraft,
+  } = useWizardDraft<LactateWizardDraft>(DRAFT_NAME, { validate: isLactateWizardDraft })
+  const [draftAvailable, setDraftAvailable] = useState(() => loadedDraft !== null)
+  const [confirmLeave, setConfirmLeave] = useState(false)
+
+  const hasEnteredData = useMemo(() => stages.some(stageHasData), [stages])
+
+  // Nothing worth keeping while the wizard still looks exactly as it opened.
+  const isPristine = useMemo(() => (
+    step === 'protocol'
+    && stages.length === DEFAULT_STAGE_COUNT
+    && !hasEnteredData
+    && (Object.keys(defaultProtocol) as (keyof ProtocolInput)[])
+      .every((k) => protocol[k] === defaultProtocol[k])
+  ), [step, stages, hasEnteredData, protocol])
+
+  useUnloadWarning(hasEnteredData)
+
+  useEffect(() => {
+    if (mode === 'import' || isPristine) return
+    saveDraft({ mode, step, protocol, stages })
+  }, [mode, step, protocol, stages, isPristine, saveDraft])
 
   // Import mode state
   const [workouts, setWorkouts] = useState<Workout[]>([])
@@ -128,6 +214,39 @@ export default function LactateNewTest() {
     setMode('manual')
     setWorkoutsError('')
     setWorkoutSearch('')
+  }
+
+  const handleContinueDraft = () => {
+    if (!loadedDraft) return
+    setMode(loadedDraft.mode)
+    setStep(loadedDraft.step)
+    setProtocol(loadedDraft.protocol)
+    setStages(reindexStages(loadedDraft.stages))
+    setError('')
+    setDraftAvailable(false)
+  }
+
+  const handleDiscardDraft = () => {
+    clearDraft()
+    setDraftAvailable(false)
+  }
+
+  // Dismissing only hides the banner — the draft stays put for the next visit.
+  const handleDismissDraft = () => setDraftAvailable(false)
+
+  const leaveWizard = () => {
+    setConfirmLeave(false)
+    // The draft is kept on purpose so the test can be recovered later.
+    flushDraft()
+    navigate('/lactate')
+  }
+
+  const handleBack = () => {
+    if (hasEnteredData) {
+      setConfirmLeave(true)
+      return
+    }
+    leaveWizard()
   }
 
   const filteredWorkouts = workouts.filter((w) => {
@@ -258,6 +377,7 @@ export default function LactateNewTest() {
       }
 
       const data = await res.json()
+      clearDraft()
       navigate(`/lactate/${data.test.id}`)
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
@@ -271,7 +391,7 @@ export default function LactateNewTest() {
     <div className="max-w-3xl mx-auto p-4 md:p-6">
       <div className="flex items-center gap-3 mb-6">
         <button
-          onClick={() => navigate('/lactate')}
+          onClick={handleBack}
           className="text-gray-400 hover:text-white transition-colors cursor-pointer"
           aria-label={t('backToTests')}
         >
@@ -280,6 +400,38 @@ export default function LactateNewTest() {
         <Activity size={24} className="text-blue-400" />
         <h1 className="text-2xl font-bold">{t('new.title')}</h1>
       </div>
+
+      {/* Recovery banner for a draft left behind by an earlier visit */}
+      {draftAvailable && mode === 'manual' && (
+        <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-6 flex items-start gap-3">
+          <History size={18} className="text-blue-400 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-white">{t('new.draft.bannerTitle')}</p>
+            <p className="text-sm text-gray-400 mt-1">{t('new.draft.bannerBody')}</p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button
+                onClick={handleContinueDraft}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium transition-colors cursor-pointer"
+              >
+                {t('new.draft.continue')}
+              </button>
+              <button
+                onClick={handleDiscardDraft}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors cursor-pointer"
+              >
+                {t('new.draft.discard')}
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={handleDismissDraft}
+            aria-label={t('new.draft.dismiss')}
+            className="text-gray-500 hover:text-white transition-colors cursor-pointer shrink-0"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {/* Import mode: Workout picker */}
       {mode === 'import' && (
@@ -711,6 +863,15 @@ export default function LactateNewTest() {
           onSuccess={(testId) => navigate(`/lactate/${testId}`)}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmLeave}
+        title={t('new.draft.unsavedTitle')}
+        message={t('new.draft.unsavedConfirm')}
+        confirmLabel={t('new.draft.leave')}
+        onConfirm={leaveWizard}
+        onCancel={() => setConfirmLeave(false)}
+      />
     </div>
   )
 }
