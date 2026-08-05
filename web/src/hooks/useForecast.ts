@@ -107,6 +107,34 @@ function forecastUrl(location: RecentLocation): string {
 }
 
 /**
+ * Request a forecast, reusing any request already in flight for the same location.
+ *
+ * The guard is shared by every caller regardless of `persist`, so a page and a
+ * widget mounted on the same location issue one request between them. The request
+ * is deliberately not tied to any single caller's lifetime — cancelling a consumer
+ * must not abort a request other consumers are still awaiting.
+ */
+function fetchForecast(location: RecentLocation, key: string): Promise<ForecastResponse> {
+  const shared = inflight.get(key)
+  if (shared) return shared
+
+  const promise = fetch(forecastUrl(location), { credentials: 'include' }).then((r) => {
+    if (!r.ok) throw new Error('Failed to fetch forecast')
+    return r.json() as Promise<ForecastResponse>
+  })
+  inflight.set(key, promise)
+
+  // Clear only our own entry: refresh() may already have replaced it with a newer
+  // request, and deleting that one would defeat the guard for its consumers.
+  const clear = () => {
+    if (inflight.get(key) === promise) inflight.delete(key)
+  }
+  promise.then(clear, clear)
+
+  return promise
+}
+
+/**
  * Fetch the forecast for a location.
  *
  * Called with no arguments it resolves the location from {@link usePreferredLocation}
@@ -128,20 +156,12 @@ export function useForecast(
 
   const [refreshKey, setRefreshKey] = useState(0)
   const [state, dispatch] = useReducer(reducer, { location: active, persist, userId }, initState)
-  const mountedRef = useRef(true)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const lat = active?.lat
   const lon = active?.lon
   const name = active?.name
   const key = active ? cacheKey(active.lat, active.lon, active.name) : null
-
-  useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-    }
-  }, [])
 
   const stopInterval = useCallback(() => {
     if (timerRef.current !== null) {
@@ -160,15 +180,23 @@ export function useForecast(
   }, [stopInterval])
 
   const refresh = useCallback(() => {
-    if (!persist && key) {
+    if (key) {
+      // Drop the in-memory entry and any shared in-flight request so the fetch
+      // effect issues a genuinely fresh request instead of replaying the previous
+      // one. Both maps are cleared whether or not this caller persists, since a
+      // persisted caller can be sharing an in-flight request with a widget.
+      // The localStorage copy is intentionally kept: it only seeds first paint
+      // and is overwritten as soon as the new response lands.
       cache.delete(key)
       inflight.delete(key)
     }
+    // Bumping the key re-runs the fetch effect below for every caller, persisted
+    // or not — the effect never short-circuits on the persisted cache.
     setRefreshKey((k) => k + 1)
     // Restart the countdown so a manual refresh gets a full interval rather than
     // whatever remained of the previous one.
     if (timerRef.current !== null) startInterval()
-  }, [persist, key, startInterval])
+  }, [key, startInterval])
 
   useEffect(() => {
     refreshRef.current = refresh
@@ -191,6 +219,9 @@ export function useForecast(
   useEffect(() => {
     if (!enabled || key === null || lat === undefined || lon === undefined || name === undefined) return
 
+    // Only the in-memory cache can satisfy a request outright. The persisted cache
+    // is a first-paint seed, never a substitute for revalidating, so a persisted
+    // caller always reaches the network here — including on refresh().
     if (!persist) {
       const cached = cache.get(key)
       if (cached) {
@@ -199,36 +230,26 @@ export function useForecast(
       }
     }
 
-    const controller = new AbortController()
+    let cancelled = false
     dispatch({ type: 'start' })
 
-    let promise = persist ? undefined : inflight.get(key)
-    if (!promise) {
-      promise = fetch(forecastUrl({ lat, lon, name }), {
-        signal: controller.signal,
-        credentials: 'include',
-      }).then((r) => {
-        if (!r.ok) throw new Error('Failed to fetch forecast')
-        return r.json() as Promise<ForecastResponse>
-      })
-      if (!persist) inflight.set(key, promise)
-    }
-
-    promise
+    fetchForecast({ lat, lon, name }, key)
       .then((data) => {
+        const at = new Date()
+        // Cache regardless of who is still listening — the response is already paid for.
         if (persist) {
           writeForecastCache(lat, lon, data, userId)
         } else {
-          cache.set(key, { data, at: new Date() })
-          inflight.delete(key)
+          cache.set(key, { data, at })
         }
-        if (!controller.signal.aborted && mountedRef.current) {
-          dispatch({ type: 'done', data, at: new Date() })
+        if (!cancelled) {
+          dispatch({ type: 'done', data, at })
         }
       })
       .catch((err: unknown) => {
-        if (!persist) inflight.delete(key)
-        if (!controller.signal.aborted && mountedRef.current) {
+        // Keeps whatever data is already on screen: a failed background refresh
+        // must not blank out a forecast the user is looking at.
+        if (!cancelled) {
           dispatch({
             type: 'error',
             message: err instanceof Error ? err.message : 'Failed to fetch forecast',
@@ -236,7 +257,9 @@ export function useForecast(
         }
       })
 
-    return () => controller.abort()
+    return () => {
+      cancelled = true
+    }
   }, [enabled, persist, userId, key, lat, lon, name, refreshKey])
 
   // Auto-refresh on a fixed cadence, pausing while the tab is hidden and

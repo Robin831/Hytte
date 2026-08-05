@@ -202,6 +202,78 @@ describe('useForecast with an explicit location', () => {
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
   })
 
+  it('deduplicates a persisted and an in-memory caller on the same location', async () => {
+    let resolveFetch!: (v: Response) => void
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockReturnValue(
+      new Promise((r) => { resolveFetch = r }),
+    )
+
+    const { result: page } = renderHook(() => useForecast(BERGEN, { persist: true }))
+    const { result: widget } = renderHook(() => useForecast(BERGEN))
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+    resolveFetch({ ok: true, json: () => Promise.resolve(fakeForecast) } as Response)
+
+    await waitFor(() => expect(page.current.loading).toBe(false))
+    await waitFor(() => expect(widget.current.loading).toBe(false))
+    expect(page.current.data).toEqual(fakeForecast)
+    expect(widget.current.data).toEqual(fakeForecast)
+  })
+
+  it('unmounting one caller does not fail a shared request', async () => {
+    let resolveFetch!: (v: Response) => void
+    vi.spyOn(globalThis, 'fetch').mockReturnValue(
+      new Promise((r) => { resolveFetch = r }),
+    )
+
+    const first = renderHook(() => useForecast(BERGEN, { persist: true }))
+    const { result: second } = renderHook(() => useForecast(BERGEN))
+    first.unmount()
+
+    resolveFetch({ ok: true, json: () => Promise.resolve(fakeForecast) } as Response)
+
+    await waitFor(() => expect(second.current.loading).toBe(false))
+    expect(second.current.data).toEqual(fakeForecast)
+    expect(second.current.error).toBe(false)
+  })
+
+  it('refetches over the network on refresh() when persisting', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(fakeForecast),
+    } as Response)
+
+    const { result } = renderHook(() => useForecast(BERGEN, { persist: true }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+    // The persisted cache written by the first fetch must not satisfy the refresh.
+    act(() => result.current.refresh())
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.data).toEqual(fakeForecast)
+  })
+
+  it('keeps the displayed forecast when a background refresh fails', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(fakeForecast),
+    } as Response)
+
+    const { result } = renderHook(() => useForecast(BERGEN, { persist: true }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    const firstLoad = result.current.lastUpdated
+
+    fetchSpy.mockRejectedValue(new Error('network'))
+    act(() => result.current.refresh())
+
+    await waitFor(() => expect(result.current.error).toBe(true))
+    // Non-blocking: the previous forecast and its timestamp stay on screen.
+    expect(result.current.data).toEqual(fakeForecast)
+    expect(result.current.lastUpdated).toEqual(firstLoad)
+    expect(result.current.loading).toBe(false)
+  })
+
   it('seeds from the persisted cache and revalidates', async () => {
     localStorage.setItem(
       'weather:forecastCache:anon',

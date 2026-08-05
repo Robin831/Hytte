@@ -114,6 +114,11 @@ export default function Weather() {
         </div>
       )}
 
+      {/*
+        Only surface the error when there is nothing to show. A failed background
+        refresh (interval tick, tab re-show, manual refresh) leaves the previous
+        forecast on screen untouched rather than replacing it with a banner.
+      */}
       {errorMessage && !forecast && (
         <div className="bg-red-900/30 border border-red-800 rounded-xl p-4 mb-6">
           <p className="text-red-400 text-sm">{errorMessage}</p>
