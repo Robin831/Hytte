@@ -550,7 +550,6 @@ describe('StridePage – workout context panel on evaluation', () => {
         Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response)
       if (url.includes('/api/stride/plans/current')) return make({ plan })
       if (url.includes('/api/stride/plans?limit=2')) return make({ plans: [plan] })
-      if (url.includes('/api/stride/plans?limit=1')) return make({ total: 1 })
       if (url.includes('/api/stride/evaluations')) return make({ evaluations: [evaluation] })
       if (url.includes('/api/training/workouts')) {
         return make({ workouts: [{ id: 42, started_at: '2099-01-13T08:00:00Z' }] })
@@ -643,7 +642,6 @@ describe('StridePage – plan highlight on update', () => {
         Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response)
       if (url.includes('/api/stride/plans/current')) return make({ plan })
       if (url.includes('/api/stride/plans?limit=2')) return make({ plans: [plan] })
-      if (url.includes('/api/stride/plans?limit=1')) return make({ total: 1 })
       if (url.includes('/api/stride/evaluations')) return make({ evaluations: [] })
       if (url.includes('/api/training/workouts')) return make({ workouts: [] })
       if (url.includes('/api/stride/races')) return make({ races: [] })
@@ -1152,7 +1150,6 @@ describe('StridePage – week details modal', () => {
       if (url.includes('/api/stride/plans/current')) {
         return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) } as Response)
       }
-      if (url.includes('/api/stride/plans?limit=1')) return make({ total: 0 })
       if (url.match(/\/api\/stride\/evaluations\?plan_id=101/)) return make({ evaluations: [mondayEval] })
       if (url.includes('/api/stride/evaluations')) return make({ evaluations: [] })
       if (url.includes('/api/training/workouts')) return make({ workouts: [] })
@@ -1257,5 +1254,127 @@ describe('StridePage – week details modal', () => {
     await waitFor(() => {
       expect(screen.queryByText('Week details')).not.toBeInTheDocument()
     })
+  })
+})
+
+describe('StridePage – Generate button target week', () => {
+  const CURRENT_WEEK_PLAN = {
+    id: 1,
+    user_id: 1,
+    week_start: '2099-01-13',
+    week_end: '2099-01-19',
+    phase: 'Base',
+    model: 'test',
+    created_at: '2099-01-13T00:00:00Z',
+    plan: [{ date: '2099-01-13', rest_day: true } as DayPlan],
+  }
+
+  const NEXT_WEEK_PLAN = {
+    ...CURRENT_WEEK_PLAN,
+    id: 2,
+    week_start: '2099-01-20',
+    week_end: '2099-01-26',
+    plan: [{ date: '2099-01-20', rest_day: true } as DayPlan],
+  }
+
+  // `existingPlan` null → /plans/current answers 404 (the empty state).
+  // `generatedPlan` is what POST /plans/generate returns.
+  function makeFetch(existingPlan: unknown, generatedPlan: unknown) {
+    return vi.fn((url: string) => {
+      const make = (data: unknown) =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response)
+      if (url.includes('/api/stride/plans/generate')) return make({ plan: generatedPlan })
+      if (url.includes('/api/stride/plans/current')) {
+        if (!existingPlan) {
+          return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) } as Response)
+        }
+        return make({ plan: existingPlan })
+      }
+      if (url.includes('/api/stride/plans?limit=2')) {
+        return make({ plans: existingPlan ? [existingPlan] : [] })
+      }
+      if (url.includes('/api/stride/history')) {
+        return make({ weeks: [], months: [], limit: 12, offset: 0, has_more: false })
+      }
+      if (url.includes('/api/stride/evaluations')) return make({ evaluations: [] })
+      if (url.includes('/api/training/workouts')) return make({ workouts: [] })
+      if (url.includes('/api/stride/races')) return make({ races: [] })
+      if (url.includes('/api/stride/notes')) return make({ notes: [] })
+      return make({})
+    })
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('labels the button "Generate this week" and posts week=current when no plan is shown', async () => {
+    const fetchMock = makeFetch(null, CURRENT_WEEK_PLAN)
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('No plan for this week.')).toBeInTheDocument()
+    })
+
+    const button = screen.getByRole('button', { name: 'Generate this week' })
+    expect(button).not.toBeDisabled()
+
+    await act(async () => {
+      fireEvent.click(button)
+    })
+
+    const generateCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes('/api/stride/plans/generate'),
+    )
+    expect(generateCall).toBeDefined()
+    expect(String(generateCall![0])).toContain('week=current')
+
+    // The returned plan replaces the empty state on the same render — no reload.
+    await waitFor(() => {
+      expect(screen.getByText('Rest')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('No plan for this week.')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Generate next week' })).toBeInTheDocument()
+  })
+
+  it('labels the button "Generate next week" and posts week=next when a plan is shown', async () => {
+    const fetchMock = makeFetch(CURRENT_WEEK_PLAN, NEXT_WEEK_PLAN)
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Rest')).toBeInTheDocument()
+    })
+
+    const button = screen.getByRole('button', { name: 'Generate next week' })
+    const callsBefore = fetchMock.mock.calls.length
+
+    await act(async () => {
+      fireEvent.click(button)
+    })
+
+    const generateCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes('/api/stride/plans/generate'),
+    )
+    expect(generateCall).toBeDefined()
+    expect(String(generateCall![0])).toContain('week=next')
+
+    // The outgoing plan becomes the previous one, so its evaluations are
+    // fetched again alongside the new plan's.
+    await waitFor(() => {
+      const after = fetchMock.mock.calls.slice(callsBefore).map(([url]) => String(url))
+      expect(after.some(url => url.includes('/api/stride/evaluations?plan_id=1'))).toBe(true)
+      expect(after.some(url => url.includes('/api/stride/evaluations?plan_id=2'))).toBe(true)
+    })
+  })
+
+  it('disables the button while the current plan is still loading', () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    renderPage()
+    // The mode is unresolved until /plans/current answers, so the button stays
+    // disabled rather than acting on a not-yet-loaded plan.
+    expect(screen.getByRole('button', { name: 'Generate this week' })).toBeDisabled()
   })
 })

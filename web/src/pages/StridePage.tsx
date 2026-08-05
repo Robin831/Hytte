@@ -549,7 +549,6 @@ export default function StridePage() {
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [previousPlanId, setPreviousPlanId] = useState<number | null>(null)
   const [chatPlanId, setChatPlanId] = useState<number | null>(null)
-  const [hasAnyPlan, setHasAnyPlan] = useState(false)
   const [completedDates, setCompletedDates] = useState<Set<string>>(new Set())
   const [workoutIdToDate, setWorkoutIdToDate] = useState<Map<number, string>>(new Map())
   const [evaluations, setEvaluations] = useState<StrideEvaluationRecord[]>([])
@@ -634,20 +633,6 @@ export default function StridePage() {
       if (!signal?.aborted) {
         setNotesLoading(false)
       }
-    }
-  }, [])
-
-  const loadHasAnyPlan = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const res = await fetch('/api/stride/plans?limit=1', { credentials: 'include', signal })
-      if (!res.ok) return
-      const data = await res.json()
-      if (!signal?.aborted) {
-        setHasAnyPlan((data.total ?? 0) > 0)
-      }
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return
-      console.error('Failed to check plan existence', error)
     }
   }, [])
 
@@ -760,10 +745,9 @@ export default function StridePage() {
     loadRaces(controller.signal)
     loadNotes(controller.signal)
     loadCurrentPlan(controller.signal)
-    loadHasAnyPlan(controller.signal)
     loadWorkouts(controller.signal)
     return () => { controller.abort() }
-  }, [loadRaces, loadNotes, loadCurrentPlan, loadHasAnyPlan, loadWorkouts])
+  }, [loadRaces, loadNotes, loadCurrentPlan, loadWorkouts])
 
   const planId = currentPlan?.id
 
@@ -853,12 +837,18 @@ export default function StridePage() {
     }
   }
 
+  // Which week the Generate button targets. Derived from what the page is
+  // actually showing: no plan on screen means this week is missing (the Monday
+  // 02:00 job failed, or the user is returning mid-week), so generate the
+  // current week; a plan on screen means the next one is what's wanted.
+  // The button label reads from the same value so the two can never disagree.
+  const generateWeekMode: 'current' | 'next' = currentPlan === null ? 'current' : 'next'
+
   async function handleGeneratePlan() {
     setGenerateError('')
     setGenerating(true)
     try {
-      const weekMode = hasAnyPlan ? 'next' : 'current'
-      const res = await fetch(`/api/stride/plans/generate?week=${weekMode}`, {
+      const res = await fetch(`/api/stride/plans/generate?week=${generateWeekMode}`, {
         method: 'POST',
         credentials: 'include',
       })
@@ -1119,11 +1109,13 @@ export default function StridePage() {
           <button
             type="button"
             onClick={handleGeneratePlan}
-            disabled={generating}
+            disabled={generating || planLoading}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white rounded-lg transition-colors"
           >
             <RefreshCw size={14} className={generating ? 'animate-spin' : ''} />
-            {generating ? t('plan.generating') : t('plan.generate')}
+            {generating
+              ? t('plan.generating')
+              : t(generateWeekMode === 'current' ? 'plan.generateThisWeek' : 'plan.generateNextWeek')}
           </button>
         </div>
 
