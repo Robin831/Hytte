@@ -2,7 +2,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import WardrobePage, { ApiError, api, messageFor } from './WardrobePage'
+import WardrobePage from './WardrobePage'
+import { ApiError, api, messageFor } from './wardrobeApi'
 
 // ── Translation mock ──────────────────────────────────────────────────────────
 // mockT must be a stable reference — WardrobePage's load effects have `t` as a
