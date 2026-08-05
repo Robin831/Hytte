@@ -837,4 +837,243 @@ describe('Training new-workouts banner', () => {
       expect(screen.queryByText(/New workouts available/)).not.toBeInTheDocument()
     })
   })
+
+  // A short history in the order the list endpoint serves it: started_at DESC.
+  const BANNER_WORKOUTS: Workout[] = [
+    makeWorkout({ id: 10, title: 'Recent Run', sport: 'running', started_at: '2026-03-03T08:00:00Z' }),
+    makeWorkout({ id: 9, title: 'Older Ride', sport: 'cycling', started_at: '2026-03-02T08:00:00Z' }),
+    makeWorkout({ id: 8, title: 'Oldest Swim', sport: 'swimming', started_at: '2026-03-01T08:00:00Z' }),
+  ]
+
+  // A history deep enough that page 1 (25) does not cover it, newest first.
+  const BANNER_HISTORY: Workout[] = []
+  for (let i = 0; i < 30; i++) {
+    BANNER_HISTORY.push(makeWorkout({
+      id: 500 - i,
+      title: `Deep ${i}`,
+      sport: 'running',
+      started_at: new Date(Date.UTC(2026, 1, 1) - i * 86_400_000).toISOString(),
+    }))
+  }
+
+  // The ids of the rendered workout rows, top to bottom. Each row is a link to
+  // /training/<id>, so the hrefs are the rendered order.
+  function renderedWorkoutIds(): number[] {
+    return screen.getAllByRole('link')
+      .map(a => a.getAttribute('href') ?? '')
+      .filter(href => /^\/training\/\d+$/.test(href))
+      .map(href => Number(href.slice('/training/'.length)))
+  }
+
+  // Renders with `initial` loaded, swaps the backend over to `updated`, fires the
+  // SSE event that raises the banner and returns the banner button.
+  async function raiseBanner(initial: Workout[], updated: Workout[], latestId: number) {
+    let onWorkoutNew: ((e: MessageEvent) => void) | null = null
+    // No auto-open: the filter-independent effect sets the baseline
+    // latestWorkoutIdRef first, so the event trips the banner via a genuine
+    // id > seen comparison.
+    vi.stubGlobal('EventSource', class {
+      onopen: (() => void) | null = null
+      addEventListener(event: string, handler: (e: MessageEvent) => void) {
+        if (event === 'workout_new') onWorkoutNew = handler
+      }
+      close() {}
+    })
+    vi.stubGlobal('fetch', mockFetch(initial))
+    renderTraining()
+    // Wait for the mount load to land before swapping the backend — otherwise a
+    // late response could overwrite what the banner click loads.
+    if (initial.length > 0) await screen.findByText(initial[0].title)
+    else await screen.findByText('No workouts yet')
+
+    vi.stubGlobal('fetch', mockFetch(updated))
+    await act(async () => {
+      onWorkoutNew?.(new MessageEvent('workout_new', {
+        data: JSON.stringify({ latest_id: latestId }),
+      }))
+    })
+    const banner = await screen.findByText(/New workouts available/)
+    const fire = (id: number) => act(async () => {
+      onWorkoutNew?.(new MessageEvent('workout_new', {
+        data: JSON.stringify({ latest_id: id }),
+      }))
+    })
+    return { banner, fire }
+  }
+
+  it('inserts a backdated import in its chronological slot, not at the top', async () => {
+    const backdated = makeWorkout({
+      id: 99,
+      title: 'Backdated Import',
+      sport: 'running',
+      // Between "Older Ride" and "Oldest Swim" — a .fit imported long after the
+      // activity happened.
+      started_at: '2026-03-01T20:00:00Z',
+    })
+    const updated = [BANNER_WORKOUTS[0], BANNER_WORKOUTS[1], backdated, BANNER_WORKOUTS[2]]
+
+    const { banner } = await raiseBanner(BANNER_WORKOUTS, updated, 99)
+    fireEvent.click(banner)
+
+    expect(await screen.findByText('Backdated Import')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(renderedWorkoutIds()).toEqual([10, 9, 99, 8])
+    })
+  })
+
+  it('breaks started_at ties by id DESC', async () => {
+    const sameDay = makeWorkout({
+      id: 99,
+      title: 'Same Second',
+      sport: 'running',
+      started_at: BANNER_WORKOUTS[1].started_at,
+    })
+    const updated = [BANNER_WORKOUTS[0], sameDay, BANNER_WORKOUTS[1], BANNER_WORKOUTS[2]]
+
+    const { banner } = await raiseBanner(BANNER_WORKOUTS, updated, 99)
+    fireEvent.click(banner)
+
+    expect(await screen.findByText('Same Second')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(renderedWorkoutIds()).toEqual([10, 99, 9, 8])
+    })
+  })
+
+  it('replaces an edited workout in place instead of duplicating it', async () => {
+    const upload = makeWorkout({
+      id: 99,
+      title: 'New Upload',
+      sport: 'running',
+      started_at: '2026-03-04T08:00:00Z',
+    })
+    const updated = [
+      upload,
+      BANNER_WORKOUTS[0],
+      { ...BANNER_WORKOUTS[1], title: 'Older Ride renamed' },
+      BANNER_WORKOUTS[2],
+    ]
+
+    const { banner } = await raiseBanner(BANNER_WORKOUTS, updated, 99)
+    fireEvent.click(banner)
+
+    expect(await screen.findByText('Older Ride renamed')).toBeInTheDocument()
+    expect(screen.queryByText('Older Ride')).not.toBeInTheDocument()
+    expect(renderedWorkoutIds().filter(id => id === 9)).toHaveLength(1)
+    expect(renderedWorkoutIds()).toEqual([99, 10, 9, 8])
+  })
+
+  it('drops a workout deleted elsewhere when page 1 is the whole result set', async () => {
+    const upload = makeWorkout({
+      id: 99,
+      title: 'New Upload',
+      sport: 'running',
+      started_at: '2026-03-04T08:00:00Z',
+    })
+    // "Older Ride" was deleted while the page was open, and page 1 covers
+    // everything (next_cursor null), so its absence is authoritative.
+    const updated = [upload, BANNER_WORKOUTS[0], BANNER_WORKOUTS[2]]
+
+    const { banner } = await raiseBanner(BANNER_WORKOUTS, updated, 99)
+    fireEvent.click(banner)
+
+    expect(await screen.findByText('New Upload')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('Older Ride')).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('Oldest Swim')).toBeInTheDocument()
+  })
+
+  it('leaves workouts older than the page-1 window alone and keeps the cursor', async () => {
+    const upload = makeWorkout({
+      id: 900,
+      title: 'New Upload',
+      sport: 'running',
+      started_at: '2026-03-01T08:00:00Z',
+    })
+    const { banner, fire } = await raiseBanner(BANNER_HISTORY, [upload, ...BANNER_HISTORY], 900)
+
+    // Page in the rest of the history first, so rows below the page-1 window are
+    // on screen when the banner is clicked. That also exhausts the cursor, which
+    // is what makes an unwanted cursor refresh visible: page 1 comes back with a
+    // non-null next_cursor.
+    fireEvent.click(screen.getByRole('button', { name: /load more/i }))
+    expect(await screen.findByText('Deep 29')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /load more/i })).toBeNull()
+
+    fireEvent.click(banner)
+
+    expect(await screen.findByText('New Upload')).toBeInTheDocument()
+    // Deep 24..29 fall outside the refreshed page-1 window — page 1 says nothing
+    // about them, so they stay.
+    expect(screen.getByText('Deep 24')).toBeInTheDocument()
+    expect(screen.getByText('Deep 29')).toBeInTheDocument()
+    expect(renderedWorkoutIds()).toHaveLength(BANNER_HISTORY.length + 1)
+    // The cursor is untouched: "Load more" must not come back for pages that are
+    // already on screen.
+    expect(screen.queryByRole('button', { name: /load more/i })).toBeNull()
+
+    // The baseline advanced, so the same id does not re-raise the banner.
+    await fire(900)
+    expect(screen.queryByText(/New workouts available/)).not.toBeInTheDocument()
+  })
+
+  it('takes the cursor from the response when the list was empty', async () => {
+    const { banner } = await raiseBanner([], BANNER_HISTORY, 500)
+    const before = requests.length
+    fireEvent.click(banner)
+
+    expect(await screen.findByText('Deep 0')).toBeInTheDocument()
+    expect(screen.getByText('Deep 24')).toBeInTheDocument()
+    // 30 workouts, 25 per page: the response carries a cursor, so paging on is
+    // reachable without a full reload.
+    const loadMore = await screen.findByRole('button', { name: /load more/i })
+    fireEvent.click(loadMore)
+    expect(await screen.findByText('Deep 29')).toBeInTheDocument()
+
+    // Summaries and tags refresh alongside the list.
+    const after = requests.slice(before)
+    expect(after.some(u => u.startsWith('/api/training/summary'))).toBe(true)
+    expect(after.some(u => u.startsWith('/api/training/tags'))).toBe(true)
+  })
+
+  it('discards the fetched list when a filter change supersedes the fetch', async () => {
+    const upload = makeWorkout({
+      id: 99,
+      title: 'New Upload',
+      sport: 'running',
+      started_at: '2026-03-04T08:00:00Z',
+    })
+    const updated = [upload, ...BANNER_WORKOUTS]
+    const { banner } = await raiseBanner(BANNER_WORKOUTS, updated, 99)
+
+    // Hold the banner's page-1 response open so a filter change can land first.
+    const base = mockFetch(updated)
+    let release: (() => void) | null = null
+    let gateArmed = true
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+      const path = new URL(url, 'http://localhost').pathname
+      if (path === '/api/training/workouts' && gateArmed) {
+        gateArmed = false
+        return new Promise(resolve => { release = () => resolve(base(url)) })
+      }
+      return base(url)
+    }))
+
+    fireEvent.click(banner)
+    fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'cycling' } })
+    // The running workouts disappearing is how the test knows the filtered load
+    // landed while the banner's page 1 was still in flight.
+    await waitFor(() => {
+      expect(screen.queryByText('Recent Run')).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('Older Ride')).toBeInTheDocument()
+
+    await act(async () => { release?.() })
+
+    // The superseded response must not push running workouts into the cycling
+    // result set.
+    expect(screen.queryByText('New Upload')).not.toBeInTheDocument()
+    expect(screen.queryByText('Recent Run')).not.toBeInTheDocument()
+    expect(screen.getByText('Older Ride')).toBeInTheDocument()
+  })
 })

@@ -376,14 +376,19 @@ export default function Training() {
     }
   }, [nextCursor, loadingMore, workoutsUrl, t])
 
-  // handleLoadNew fetches the first page after an upload is flagged and prepends
-  // only the workouts not already loaded, preserving the older pages the user
-  // has already paged in (and the current cursor). New uploads always carry the
-  // newest started_at, so prepending keeps the DESC ordering. The fetch carries
-  // the active filters, so only matching new workouts are pulled in.
+  // handleLoadNew fetches the first page after an upload is flagged and folds it
+  // into the list with mergeFirstPage, preserving the older pages the user has
+  // already paged in. Folding rather than prepending is what keeps the ordering
+  // honest: mergeFirstPage inserts by started_at DESC (id DESC as the tiebreak),
+  // so a backdated .fit import lands where it belongs instead of on top, replaces
+  // rows the page carries an edited version of, and drops rows the page window
+  // no longer contains (deletes). The cursor is only taken from the response when
+  // the list was empty — with older pages on screen the existing cursor still
+  // points past them. The fetch carries the active filters, so only matching new
+  // workouts are pulled in.
   const handleLoadNew = useCallback(async () => {
     // Same generation guard as handleLoadMore: a filter change that lands while
-    // this fetch is in flight owns the list, so the prepend is dropped rather
+    // this fetch is in flight owns the list, so the merge is dropped rather
     // than mixing the previous filter's workouts into the new result set.
     const requestId = listRequestIdRef.current
     const isCurrent = () => requestId === listRequestIdRef.current
@@ -412,15 +417,12 @@ export default function Training() {
           )
         }
         if (isCurrent()) {
-          if (workouts.length === 0) {
-            setWorkouts(list)
-            setNextCursor(wData.next_cursor ?? null)
-          } else {
-            setWorkouts(prev => {
-              const existing = new Set(prev.map(w => w.id))
-              return [...list.filter(w => !existing.has(w.id)), ...prev]
-            })
-          }
+          const wasEmpty = workouts.length === 0
+          setWorkouts(prev => mergeFirstPage(prev, list, (wData.next_cursor ?? null) === null))
+          // Only adopt the response's cursor when there was nothing loaded: once
+          // older pages are on screen the cursor already points past them, and
+          // page 1's cursor would make "Load more" re-serve what is shown.
+          if (wasEmpty) setNextCursor(wData.next_cursor ?? null)
         }
       }
       if (sRes.ok) {
