@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bus, RefreshCw, Settings, Search, Plus, Trash2, Circle, GripVertical, Footprints } from 'lucide-react'
+import { Bus, RefreshCw, Settings, Search, Plus, Trash2, Circle, GripVertical, Footprints, AlertTriangle } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
 
 interface Departure {
@@ -18,6 +18,12 @@ interface StopDepartures {
   /** Walking offset for this stop, mirrored from the saved settings blob. */
   walk_minutes?: number
   departures: Departure[]
+  /**
+   * Set when this stop's fetch failed upstream (error or timeout). Absent for
+   * healthy stops — including ones that genuinely have no departures right now,
+   * which must keep rendering the neutral empty state.
+   */
+  error?: boolean
 }
 
 interface FavoriteStop {
@@ -92,6 +98,10 @@ export default function Transit() {
 
   const [stops, setStops] = useState<StopDepartures[]>([])
   const [loading, setLoading] = useState(true)
+  // True while any departures fetch is in flight, including silent refreshes.
+  // Drives the per-stop retry affordance without clearing the rows already on
+  // screen, so healthy stops stay visible while a failing one is retried.
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
@@ -169,6 +179,7 @@ export default function Transit() {
 
     const fetchDepartures = async () => {
       if (isInitialLoad.current) setLoading(true)
+      setRefreshing(true)
       try {
         const res = await fetch('/api/transit/departures', { credentials: 'include', signal: controller.signal })
         if (!res.ok) throw new Error(await res.text())
@@ -182,6 +193,7 @@ export default function Transit() {
       } finally {
         if (!controller.signal.aborted) {
           setLoading(false)
+          setRefreshing(false)
           isInitialLoad.current = false
         }
       }
@@ -602,7 +614,24 @@ export default function Transit() {
               <h2 className="text-sm font-semibold text-white">{stop.stop_name}</h2>
             </div>
 
-            {visible.length === 0 ? (
+            {/* A failed stop is checked before the empty state: both arrive with
+                zero departures, but "we couldn't reach Entur" must never read as
+                "no bus tonight". */}
+            {stop.error ? (
+              <div className="flex flex-wrap items-center gap-2 px-4 py-3 bg-amber-900/20">
+                <AlertTriangle size={16} className="text-amber-400 shrink-0" aria-hidden="true" />
+                <p className="flex-1 min-w-0 text-sm text-amber-300">{t('transit:stopError')}</p>
+                <button
+                  type="button"
+                  onClick={() => { setRefreshKey(k => k + 1) }}
+                  disabled={refreshing}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-800/50 hover:bg-amber-700/60 disabled:opacity-50 text-amber-100 text-xs font-medium transition-colors cursor-pointer shrink-0"
+                >
+                  <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} aria-hidden="true" />
+                  {t('transit:retryStop')}
+                </button>
+              </div>
+            ) : visible.length === 0 ? (
               <p className="px-4 py-3 text-sm text-gray-400">{t('transit:noDepartures')}</p>
             ) : (
               <div className="divide-y divide-gray-700/50">

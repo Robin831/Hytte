@@ -3,6 +3,8 @@
   "loading": "Laster avganger...",
   "error": "Kunne ikke laste avganger",
   "noDepartures": "Ingen kommende avganger",
+  "stopError": "Kunne ikke hente avganger for denne holdeplassen",
+  "retryStop": "Prøv igjen",
   "realtime": "Sanntid",
   "scheduled": "Rutetid",
   "min": "min",

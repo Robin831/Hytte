@@ -1,0 +1,3 @@
+category: Changed
+- **Departures load all stops in parallel** - The transit page now fetches every configured stop concurrently (bounded to 4 in-flight Entur requests) with a per-stop timeout, so the page loads in roughly the time of the slowest stop instead of the sum of all of them, and one slow stop no longer starves the rest. (Hytte-z4rbv)
+- **Failing stops say so instead of looking empty** - A stop whose departures could not be fetched now renders a distinct amber warning with a retry button, rather than the neutral "No upcoming departures" message that a stop with genuinely no service shows. (Hytte-z4rbv)

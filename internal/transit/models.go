@@ -16,11 +16,16 @@ type Departure struct {
 // WalkMinutes mirrors the stop's configured walking offset so the departures
 // payload alone is enough to render "time to leave" — the client only loads
 // /api/transit/settings when the settings panel is open.
+// Error marks a stop whose fetch failed (upstream error or per-stop timeout) so
+// the client can tell "we couldn't reach Entur" apart from "no departures
+// tonight" — both otherwise arrive as an empty Departures list. It is omitted
+// from the payload for healthy stops.
 type StopDepartures struct {
 	StopID      string      `json:"stop_id"`
 	StopName    string      `json:"stop_name"`
 	WalkMinutes int         `json:"walk_minutes"`
 	Departures  []Departure `json:"departures"`
+	Error       bool        `json:"error,omitempty"`
 }
 
 // FavoriteStop is a user-configured stop with optional route filtering.
