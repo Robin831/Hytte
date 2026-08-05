@@ -181,6 +181,36 @@ function availableVariantKinds(cards: Card[]): string[] {
   })
 }
 
+// normaliseCollectorNo reduces a printed collector number — or whatever the
+// user typed into the search box — to a comparable core: the part before any
+// "/total" suffix, with whitespace and leading zeros stripped. That makes "6",
+// "006" and "006/165" all normalise to "6". The `(?=.)` lookahead keeps a lone
+// "0" from collapsing to the empty string.
+function normaliseCollectorNo(value: string): string {
+  return value
+    .trim()
+    .split('/')[0]
+    .replace(/\s+/g, '')
+    .replace(/^0+(?=.)/, '')
+    .toLowerCase()
+}
+
+// cardMatchesQuery is the free-text predicate behind the in-set search box: a
+// card matches when the trimmed, lowercased query is a substring of its name,
+// or when the normalised collector numbers are equal. The number comparison is
+// deliberately exact rather than a prefix — normalisation already makes "6",
+// "006" and "006/165" all find card #6, whereas a prefix match would drag in
+// #60–#69 for "6" and most of the set for "1". An empty query matches every
+// card.
+function cardMatchesQuery(card: Card, rawQuery: string): boolean {
+  const needle = rawQuery.trim().toLowerCase()
+  if (!needle) return true
+  if (card.name.toLowerCase().includes(needle)) return true
+  const queryNo = normaliseCollectorNo(rawQuery)
+  if (!queryNo) return false
+  return normaliseCollectorNo(card.collector_no ?? '') === queryNo
+}
+
 // hasMultiVariantCard returns true when at least one card in the set carries
 // more than one variant — used to decide whether the "All variants" chip
 // would be meaningfully different from "Any" (it would not, if every card has
@@ -644,6 +674,40 @@ export default function PokemonSetPage() {
     [setSearchParams],
   )
 
+  // The free-text search box mirrors its value to ?q=<value>, sharing the
+  // `variant` chip's mechanism (clone the current params, replace: true) so the
+  // two compose, no history entry is pushed per keystroke, and reload/Back/
+  // shared links restore the query. Filtering is client-side over the already
+  // fetched `cards`.
+  const query = searchParams.get('q') ?? ''
+  const trimmedQuery = query.trim()
+
+  const handleQueryChange = useCallback(
+    (value: string) => {
+      setSearchParams(
+        prev => {
+          const params = new URLSearchParams(prev)
+          if (value.trim()) {
+            params.set('q', value)
+          } else {
+            params.delete('q')
+          }
+          return params
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
+
+  // The lightbox indexes into `visibleCards`, so a query change would otherwise
+  // leave it pointing at a different card. Close it whenever the query moves.
+  const [prevQuery, setPrevQuery] = useState(query)
+  if (query !== prevQuery) {
+    setPrevQuery(query)
+    if (lightboxStartIndex != null) setLightboxStartIndex(null)
+  }
+
   const handleVariantFilterKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
       const move = (next: number) => {
@@ -681,7 +745,11 @@ export default function PokemonSetPage() {
   // itself rather than the active filter.
   const totalCards = set?.total_cards ?? cards.length
 
-  const visibleCards = useMemo(() => {
+  // Ownership + variant filtering first; the search box then narrows that list
+  // further, so the three controls intersect rather than override each other.
+  // `chipFilteredCards.length` is the denominator of the hit count ("matches /
+  // total in the current filter").
+  const chipFilteredCards = useMemo(() => {
     if (filter === 'owned') {
       return cards.filter(c => {
         const o = computeCardOwnership(c, variantFilter)
@@ -696,6 +764,11 @@ export default function PokemonSetPage() {
     }
     return cards
   }, [cards, filter, variantFilter])
+
+  const visibleCards = useMemo(
+    () => chipFilteredCards.filter(c => cardMatchesQuery(c, query)),
+    [chipFilteredCards, query],
+  )
 
   // Clamp the lightbox start index to the visible list length during render so
   // we never pass a stale out-of-range pointer to CardLightbox.
@@ -862,6 +935,36 @@ export default function PokemonSetPage() {
             </div>
           </dl>
 
+          {!loading && !error && (
+            <div>
+              <label htmlFor="card-search" className="sr-only">
+                {t('detail.searchLabel')}
+              </label>
+              <input
+                id="card-search"
+                type="search"
+                value={query}
+                onChange={e => handleQueryChange(e.target.value)}
+                placeholder={t('detail.searchPlaceholder')}
+                aria-label={t('detail.searchLabel')}
+                data-testid="card-search"
+                className="w-full px-3 py-2 text-sm bg-gray-800/60 border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+              />
+              {trimmedQuery && (
+                <p
+                  className="mt-1 text-xs text-gray-400"
+                  data-testid="card-search-count"
+                  aria-live="polite"
+                >
+                  {t('detail.hitCount', {
+                    matches: visibleCards.length,
+                    total: chipFilteredCards.length,
+                  })}
+                </p>
+              )}
+            </div>
+          )}
+
           {variantFilters.length > 1 && (
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -950,7 +1053,13 @@ export default function PokemonSetPage() {
         {!loading && !error && (
           <>
             {visibleCards.length === 0 ? (
-              <p className="text-sm text-gray-400">{t('detail.empty')}</p>
+              trimmedQuery ? (
+                <p className="text-sm text-gray-400" data-testid="card-search-empty">
+                  {t('detail.noMatches', { query: trimmedQuery })}
+                </p>
+              ) : (
+                <p className="text-sm text-gray-400">{t('detail.empty')}</p>
+              )
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                 {visibleCards.map((card, i) => (

@@ -52,6 +52,10 @@
       "owned": "Kun eide",
       "missing": "Kun manglende"
     },
+    "searchLabel": "Søk i kort etter navn eller kortnummer",
+    "searchPlaceholder": "Søk i kort — f.eks. «charizard» eller «006/165»",
+    "noMatches": "Ingen kort samsvarer med «{{query}}».",
+    "hitCount": "{{matches}} av {{total}} kort",
     "empty": "Ingen kort matcher dette filteret.",
     "close": "Lukk detaljer",
     "variant": "Variant",
