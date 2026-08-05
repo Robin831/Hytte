@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, ChevronUp, Search } from 'lucide-react'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
-import { formatNumber } from '../../utils/formatDate'
+import { formatNok } from './format'
 
 const SEARCH_DEBOUNCE_MS = 250
 const SEARCH_LIMIT = 20
@@ -55,18 +55,6 @@ interface ScanDetailModalProps {
   busy: boolean
   onClose: () => void
   onResolve: (body: ScanDetailResolveBody) => void | Promise<void>
-}
-
-// 0 means "upstream price missing" rather than "this card is free" — see
-// CardLightbox.formatNok for the full reasoning.
-function formatNok(amount: number | null | undefined): string {
-  if (amount == null || amount === 0) return '—'
-  return formatNumber(amount, {
-    style: 'currency',
-    currency: 'NOK',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })
 }
 
 function confidencePercent(confidence: number | null | undefined): number | null {

@@ -4,7 +4,7 @@ import { Camera, LayoutGrid, Plus, Search, X } from 'lucide-react'
 import { Dialog } from '../ui/dialog'
 import ToastList from '../ToastList'
 import { useToast } from '../../hooks/useToast'
-import { formatNumber } from '../../utils/formatDate'
+import { formatNok } from './format'
 import CardScanner from './CardScanner'
 import PageScanner from './PageScanner'
 import CardLightbox from './CardLightbox'
@@ -35,18 +35,6 @@ interface Card {
 
 const DEBOUNCE_MS = 200
 const SEARCH_LIMIT = 20
-
-// 0 means "upstream price missing" rather than "this card is free" — see
-// CardLightbox.formatNok for the full reasoning.
-function formatNok(amount: number | null | undefined): string {
-  if (amount == null || amount === 0) return '—'
-  return formatNumber(amount, {
-    style: 'currency',
-    currency: 'NOK',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })
-}
 
 interface AddCardPanelProps {
   onAdded?: () => void

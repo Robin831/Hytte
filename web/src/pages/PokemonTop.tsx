@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { ArrowLeft, Check, Trophy } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
+import PokemonImage from '../components/pokemon/PokemonImage'
+import { formatNok } from '../components/pokemon/format'
 import { formatNumber } from '../utils/formatDate'
 
 interface Variant {
@@ -38,18 +40,10 @@ function filterToQuery(filter: Filter): string {
   return 'any'
 }
 
-// 0 means "upstream price missing" rather than "this card is free" — see
-// CardLightbox.formatNok for the full reasoning.
-function formatNok(amount: number | null | undefined): string {
-  if (amount == null || amount === 0) return '—'
-  return formatNumber(amount, {
-    style: 'currency',
-    currency: 'NOK',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })
-}
-
+// formatEur treats 0 as "upstream price missing" rather than "this card is
+// free", same as the shared formatNok — see components/pokemon/format.ts for
+// the full reasoning. This copy stays local because it renders "—" while
+// CardLightbox's formatEur returns null to drop the secondary price line.
 function formatEur(amount: number | null | undefined): string {
   if (amount == null || amount === 0) return '—'
   return formatNumber(amount, {
@@ -122,12 +116,6 @@ function TopCardTile({ card, rank, onClick, t }: TileProps) {
   const variantLabel = card.top_variant_kind
     ? t(`variantKind.${card.top_variant_kind}`, { defaultValue: card.top_variant_kind })
     : ''
-  const [errored, setErrored] = useState(false)
-  const [prevUrl, setPrevUrl] = useState(card.image_small_url)
-  if (card.image_small_url !== prevUrl) {
-    setPrevUrl(card.image_small_url)
-    setErrored(false)
-  }
   return (
     <button
       type="button"
@@ -141,17 +129,12 @@ function TopCardTile({ card, rank, onClick, t }: TileProps) {
         }`}
     >
       <div className="relative aspect-[5/7] flex items-center justify-center bg-gray-900/40 rounded overflow-hidden">
-        {card.image_small_url && !errored ? (
-          <img
-            src={card.image_small_url}
-            alt=""
-            loading="lazy"
-            className="max-h-full max-w-full object-contain"
-            onError={() => setErrored(true)}
-          />
-        ) : (
-          <span className="text-xs text-gray-500">{card.collector_no}</span>
-        )}
+        <PokemonImage
+          src={card.image_small_url}
+          alt=""
+          className="max-h-full max-w-full object-contain"
+          fallback={<span className="text-xs text-gray-500">{card.collector_no}</span>}
+        />
         <span
           aria-hidden="true"
           className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-xs font-semibold text-amber-300"

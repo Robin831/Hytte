@@ -7,8 +7,9 @@ import { Skeleton } from '../components/ui/skeleton'
 import ToastList from '../components/ToastList'
 import AddCardPanel from '../components/pokemon/AddCardPanel'
 import CardLightbox from '../components/pokemon/CardLightbox'
+import PokemonImage from '../components/pokemon/PokemonImage'
+import { formatNok, formatReleaseDate } from '../components/pokemon/format'
 import { useToast } from '../hooks/useToast'
-import { formatDate, formatNumber } from '../utils/formatDate'
 
 interface Variant {
   id: number
@@ -228,37 +229,6 @@ function variantCompletionLabelKey(filter: VariantFilter): string {
   return 'set.completion.kind'
 }
 
-// parseReleaseDate accepts the "YYYY/MM/DD" or "YYYY-MM-DD" formats returned
-// by pokemontcg.io and renders a localized date. Falls back to the raw string
-// when parsing fails so we never render "Invalid Date".
-function formatReleaseDate(raw: string): string {
-  const m = raw.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/)
-  let d: Date
-  if (m) {
-    d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-  } else {
-    d = new Date(raw)
-  }
-  if (Number.isNaN(d.getTime())) return raw
-  try {
-    return formatDate(d, { dateStyle: 'medium' })
-  } catch {
-    return raw
-  }
-}
-
-// 0 means "upstream price missing" rather than "this card is free" — see
-// CardLightbox.formatNok for the full reasoning.
-function formatNok(amount: number | null | undefined): string {
-  if (amount == null || amount === 0) return '—'
-  return formatNumber(amount, {
-    style: 'currency',
-    currency: 'NOK',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })
-}
-
 // defaultVariant returns the variant we display on a card tile. The backend
 // orders variants by kind, so "normal" precedes "reverse_holofoil"; we treat
 // the first variant as the canonical one. When a per-kind filter is active
@@ -310,16 +280,12 @@ function CardTile({ card, filter, onClick, t }: TileProps) {
       className={`flex flex-col gap-2 p-2 rounded-lg border bg-gray-800/40 transition-colors text-left cursor-pointer ${tileClass}`}
     >
       <div className="relative aspect-[5/7] flex items-center justify-center bg-gray-900/40 rounded overflow-hidden">
-        {card.image_small_url ? (
-          <img
-            src={card.image_small_url}
-            alt=""
-            loading="lazy"
-            className="max-h-full max-w-full object-contain"
-          />
-        ) : (
-          <span className="text-xs text-gray-500">{card.collector_no}</span>
-        )}
+        <PokemonImage
+          src={card.image_small_url}
+          alt=""
+          className="max-h-full max-w-full object-contain"
+          fallback={<span className="text-xs text-gray-500">{card.collector_no}</span>}
+        />
         {applicable && owned && (
           <span
             aria-hidden="true"
