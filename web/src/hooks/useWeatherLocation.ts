@@ -130,12 +130,18 @@ function locationReducer(state: LocationState, action: LocationAction): Location
       // Recents captured before the server sync — they carry a selection the user
       // may have made while the preferences request was still in flight.
       const priorRecents = state.recents
-      const recents = serverRecents && serverRecents.length > 0 ? serverRecents : priorRecents
+      // A selection that raced the load makes the local list authoritative: it is
+      // the one pushed back to the server below, so displaying anything else would
+      // leave the dropdown and the server disagreeing for a round trip.
+      const selectionRaced = state.userHasSelected && state.selected !== null
+      const recents =
+        !selectionRaced && serverRecents && serverRecents.length > 0 ? serverRecents : priorRecents
 
       if (state.userHasSelected) {
-        // User interacted before prefs loaded; push their choice server-side.
+        // User interacted before prefs loaded; push their choice server-side using
+        // the same list that is now on display.
         return state.selected
-          ? { ...state, recents, pendingSave: { location: state.selected, recents: priorRecents } }
+          ? { ...state, recents, pendingSave: { location: state.selected, recents } }
           : { ...state, recents }
       }
       if (!savedName) return { ...state, recents }
