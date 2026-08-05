@@ -46,6 +46,13 @@ function windArrowRotation(windFromDirection: number): number {
   return (windFromDirection + 180) % 360
 }
 
+/**
+ * Gusts are only worth a line of their own once they are meaningfully stronger
+ * than the steady wind — below this margin (m/s) they say nothing the wind speed
+ * did not already say.
+ */
+const GUST_THRESHOLD_MS = 2
+
 interface CurrentConditionsCardProps {
   current: TimeseriesEntry
   /** Symbol code for the current hour, already resolved with a fallback. */
@@ -70,6 +77,8 @@ export default function CurrentConditionsCard({
     details.wind_speed,
     details.relative_humidity,
   )
+  const gust = details.wind_speed_of_gust
+  const showGust = gust !== undefined && gust - details.wind_speed >= GUST_THRESHOLD_MS
 
   return (
     <section className="bg-gray-800 rounded-xl p-6 mb-6">
@@ -142,6 +151,9 @@ export default function CurrentConditionsCard({
                 />
               )}
             </p>
+            {showGust && (
+              <p className="text-xs text-amber-300">{t('page.gusts', { speed: gust })}</p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">

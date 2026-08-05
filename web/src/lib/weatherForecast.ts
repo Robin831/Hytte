@@ -11,20 +11,43 @@ export interface TimeseriesEntry {
         relative_humidity: number
         air_pressure_at_sea_level?: number
         wind_from_direction?: number
+        /** Only present on the MET "complete" product. */
+        wind_speed_of_gust?: number
       }
     }
     next_1_hours?: {
       summary: { symbol_code: string }
-      details: { precipitation_amount: number }
+      details: {
+        precipitation_amount: number
+        /** Percentage 0–100. Only present on the MET "complete" product. */
+        probability_of_precipitation?: number
+      }
     }
     next_6_hours?: {
       summary: { symbol_code: string }
-      details: { precipitation_amount: number }
+      details: {
+        precipitation_amount: number
+        /** Percentage 0–100. Only present on the MET "complete" product. */
+        probability_of_precipitation?: number
+      }
     }
     next_12_hours?: {
       summary: { symbol_code: string }
     }
   }
+}
+
+/**
+ * Rain chance for an hour as a 0–100 percentage, preferring the 1-hour window and
+ * falling back to the 6-hour one for entries beyond MET's hourly horizon. Returns
+ * `undefined` when neither window carries the field — a forecast without it must
+ * render exactly as it did before, not as "0%".
+ */
+export function getPrecipitationProbability(entry: TimeseriesEntry): number | undefined {
+  return (
+    entry.data.next_1_hours?.details?.probability_of_precipitation ??
+    entry.data.next_6_hours?.details?.probability_of_precipitation
+  )
 }
 
 /**
@@ -106,6 +129,11 @@ export interface DayForecast {
   tempMax: number
   precipitation: number
   windSpeed: number
+  /**
+   * Highest rain chance across the day's hours, as a 0–100 percentage. Left
+   * `undefined` when no hour in the day carries a probability.
+   */
+  maxPrecipitationProbability?: number
 }
 
 interface DaySymbolEntry {
@@ -143,6 +171,7 @@ export function buildDailyForecasts(timeseries: TimeseriesEntry[], todayLabel: s
     temps: number[]
     winds: number[]
     precip: number
+    maxProbability?: number
     symbolEntries: DaySymbolEntry[]
     date: Date
   }>()
@@ -171,6 +200,12 @@ export function buildDailyForecasts(timeseries: TimeseriesEntry[], todayLabel: s
       entry.data.next_6_hours?.details.precipitation_amount ??
       0
     day.precip += precip
+
+    const probability = getPrecipitationProbability(entry)
+    if (probability !== undefined) {
+      day.maxProbability =
+        day.maxProbability === undefined ? probability : Math.max(day.maxProbability, probability)
+    }
   }
 
   const today = localDateKey(new Date())
@@ -191,6 +226,7 @@ export function buildDailyForecasts(timeseries: TimeseriesEntry[], todayLabel: s
       tempMax: Math.round(Math.max(...data.temps)),
       precipitation: Math.round(data.precip * 10) / 10,
       windSpeed: Math.round(data.winds.reduce((a, b) => a + b, 0) / data.winds.length * 10) / 10,
+      maxPrecipitationProbability: data.maxProbability,
     }
   })
 }

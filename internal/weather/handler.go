@@ -43,10 +43,14 @@ var NorwegianLocations = map[string]Location{
 }
 
 const (
-	metBaseURL         = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
-	metUserAgent       = "Hytte/1.0 github.com/Robin831/Hytte"
-	cacheDuration      = 30 * time.Minute
-	maxResponseSize    = 2 << 20   // 2 MB
+	// The "complete" product carries probability_of_precipitation and
+	// wind_speed_of_gust, which "compact" omits. A real complete body is ~90 KB
+	// uncompressed (86 hours for Oslo), so it stays far inside maxResponseSize.
+	metBaseURL      = "https://api.met.no/weatherapi/locationforecast/2.0/complete"
+	metUserAgent    = "Hytte/1.0 github.com/Robin831/Hytte"
+	cacheDuration   = 30 * time.Minute
+	maxResponseSize = 2 << 20 // 2 MB
+
 	maxNominatimSize   = 512 << 10 // 512 KB — more than enough for 5 results
 	maxSunCacheEntries = 1000
 )

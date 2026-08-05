@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown } from 'lucide-react'
-import type { TimeseriesEntry } from '../lib/weatherForecast'
+import { getPrecipitationProbability, type TimeseriesEntry } from '../lib/weatherForecast'
 import { getWeatherIcon, getWeatherDescription } from '../weatherUtils'
 import { formatTime } from '../utils/formatDate'
 
@@ -9,6 +9,8 @@ interface HourPoint {
   time: string
   temp: number
   precip: number
+  /** 0–100, or undefined when MET omits the probability for this hour. */
+  rainChance?: number
   symbol: string
 }
 
@@ -17,6 +19,7 @@ function toHourPoints(timeseries: TimeseriesEntry[]): HourPoint[] {
     time: entry.time,
     temp: entry.data.instant.details.air_temperature,
     precip: entry.data.next_1_hours?.details?.precipitation_amount ?? 0,
+    rainChance: getPrecipitationProbability(entry),
     symbol:
       entry.data.next_1_hours?.summary.symbol_code ||
       entry.data.next_6_hours?.summary.symbol_code ||
@@ -60,6 +63,22 @@ export default function HourlyChart({ timeseries }: { timeseries: TimeseriesEntr
   const linePoints = points
     .map((p, i) => `${xAt(i).toFixed(1)},${yAtTemp(p.temp).toFixed(1)}`)
     .join(' ')
+
+  /**
+   * Tooltip text for one hour. The rain-chance variant is a separate key rather
+   * than an appended fragment so translators control the whole sentence, and it
+   * is only used when MET actually supplied a probability.
+   */
+  const tooltipFor = (p: HourPoint) => {
+    const base = {
+      hour: formatTime(p.time, { hour: '2-digit', minute: '2-digit' }),
+      temp: Math.round(p.temp),
+      mm: p.precip,
+    }
+    return p.rainChance === undefined
+      ? t('chart.tooltip', base)
+      : t('chart.tooltipWithRainChance', { ...base, percent: Math.round(p.rainChance) })
+  }
 
   const chartLabel = t('chart.ariaChart', {
     hours: points.length,
@@ -175,6 +194,27 @@ export default function HourlyChart({ timeseries }: { timeseries: TimeseriesEntr
               >
                 {formatTime(p.time, { hour: 'numeric', hour12: false })}
               </text>
+            )
+          })}
+
+          {/*
+            Transparent per-hour hover targets, drawn last so they sit on top. The
+            temperature dots are only 2.5px across, far too small to hover; these
+            columns carry the <title> that the browser renders as the tooltip.
+          */}
+          {points.map((p, i) => {
+            const hitW = points.length > 1 ? stepX : plotW
+            return (
+              <rect
+                key={`hit-${p.time}`}
+                x={Math.max(0, xAt(i) - hitW / 2).toFixed(1)}
+                y={0}
+                width={hitW.toFixed(1)}
+                height={VIEW_H}
+                fill="transparent"
+              >
+                <title>{tooltipFor(p)}</title>
+              </rect>
             )
           })}
         </svg>

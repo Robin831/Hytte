@@ -17,7 +17,10 @@
     "recentLocations": "Siste",
     "allCities": "Alle byer",
     "attribution": "Værdata fra",
-    "windFromDirectionAria": "Vind fra {{degrees}}°"
+    "windFromDirectionAria": "Vind fra {{degrees}}°",
+    "rainChanceValue": "{{percent}} %",
+    "rainChanceAria": "{{percent}} % sjanse for nedbør",
+    "gusts": "Kast {{speed}} m/s"
   },
   "locationSearch": {
     "placeholder": "Søk etter sted…",
@@ -53,7 +56,9 @@
       "precip": "Nedbør",
       "symbol": "Forhold",
       "precipValue": "{{mm}} mm"
-    }
+    },
+    "tooltip": "{{hour}} · {{temp}}° · {{mm}} mm",
+    "tooltipWithRainChance": "{{hour}} · {{temp}}° · {{mm}} mm · {{percent}} % nedbørsjanse"
   },
   "updated": {
     "justNow": "Oppdatert akkurat nå",

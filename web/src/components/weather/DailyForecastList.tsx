@@ -22,9 +22,29 @@ export default function DailyForecastList({ days }: { days: DayForecast[] }) {
             <div className="flex items-center gap-2 text-blue-400">
               {getWeatherIcon(day.symbolCode, 20)}
             </div>
-            <div className="flex items-center gap-1 w-16 justify-end">
-              <Droplets size={12} className="text-blue-400" />
-              <span className="text-xs text-gray-400">{day.precipitation} mm</span>
+            {/*
+              Rain chance stacks under the amount instead of taking its own column,
+              so the row still fits a 375px screen.
+            */}
+            <div className="flex flex-col items-end w-16">
+              <span className="flex items-center gap-1">
+                <Droplets size={12} className="text-blue-400" />
+                <span className="text-xs text-gray-400">{day.precipitation} mm</span>
+              </span>
+              {day.maxPrecipitationProbability !== undefined && (
+                <span className="text-xs text-sky-300">
+                  <span className="sr-only">
+                    {t('page.rainChanceAria', {
+                      percent: Math.round(day.maxPrecipitationProbability),
+                    })}
+                  </span>
+                  <span aria-hidden="true">
+                    {t('page.rainChanceValue', {
+                      percent: Math.round(day.maxPrecipitationProbability),
+                    })}
+                  </span>
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1 w-16 justify-end">
               <Wind size={12} className="text-gray-400" />
