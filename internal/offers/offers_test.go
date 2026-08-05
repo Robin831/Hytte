@@ -278,3 +278,98 @@ func TestWatchlistCRUD(t *testing.T) {
 		t.Errorf("watchlist has %d entries after delete, want 0", len(list))
 	}
 }
+
+// quantityOffer builds a tjekOffer with just the pricing and quantity fields
+// convertOffer derives the unit price from. A nil symbol means the payload had
+// no unit object at all.
+func quantityOffer(price float64, symbol *string, size, pieces float64) tjekOffer {
+	var t tjekOffer
+	t.Pricing.Price = price
+	if symbol != nil {
+		t.Quantity.Unit = &struct {
+			Symbol string `json:"symbol"`
+		}{Symbol: *symbol}
+	}
+	if size > 0 {
+		t.Quantity.Size.From = &size
+	}
+	if pieces > 0 {
+		t.Quantity.Pieces.From = &pieces
+	}
+	return t
+}
+
+func TestConvertOfferUnitPriceNormalisation(t *testing.T) {
+	sym := func(s string) *string { return &s }
+
+	tests := []struct {
+		name      string
+		price     float64
+		symbol    *string
+		size      float64
+		pieces    float64
+		wantPrice float64
+		wantLabel string
+	}{
+		{"grams scale to kg", 45, sym("g"), 500, 0, 90, "kg"},
+		{"kg passes through", 89, sym("kg"), 1, 0, 89, "kg"},
+		{"multi-kg divides", 60, sym("kg"), 2.5, 0, 24, "kg"},
+		{"millilitres scale to litre", 20, sym("ml"), 500, 0, 40, "l"},
+		{"centilitres scale to litre", 15, sym("cl"), 33, 0, 45.45, "l"},
+		{"decilitres scale to litre", 30, sym("dl"), 5, 0, 60, "l"},
+		{"litres pass through", 36.4, sym("l"), 1.75, 0, 20.8, "l"},
+		{"symbol matching ignores case and whitespace", 45, sym(" G "), 500, 0, 90, "kg"},
+		{"upper-case kg", 89, sym(" KG "), 1, 0, 89, "kg"},
+		{"unknown symbol falls back to pieces", 79.9, sym("bundt"), 3, 24, 3.33, "stk"},
+		{"empty symbol falls back to pieces", 79.9, sym(""), 3, 24, 3.33, "stk"},
+		{"missing unit falls back to pieces", 79.9, nil, 0, 24, 3.33, "stk"},
+		{"unknown symbol without pieces yields nothing", 79.9, sym("bundt"), 3, 0, 0, ""},
+		{"stk symbol without pieces yields nothing", 79.9, sym("stk"), 3, 0, 0, ""},
+		{"single piece yields nothing", 12, sym("pcs"), 1, 1, 0, ""},
+		{"pcs multipack uses pieces", 79.9, sym("pcs"), 24, 24, 3.33, "stk"},
+		{"zero size with single piece yields nothing", 12, sym("kg"), 0, 1, 0, ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := convertOffer(quantityOffer(tc.price, tc.symbol, tc.size, tc.pieces))
+			if diff := got.UnitPrice - tc.wantPrice; diff > 0.001 || diff < -0.001 {
+				t.Errorf("UnitPrice = %v, want %v", got.UnitPrice, tc.wantPrice)
+			}
+			if got.UnitLabel != tc.wantLabel {
+				t.Errorf("UnitLabel = %q, want %q", got.UnitLabel, tc.wantLabel)
+			}
+		})
+	}
+}
+
+func TestNormaliseUnit(t *testing.T) {
+	for _, tc := range []struct {
+		symbol     string
+		wantLabel  string
+		wantFactor float64
+		wantOK     bool
+	}{
+		{"g", "kg", 0.001, true},
+		{"kg", "kg", 1, true},
+		{"ml", "l", 0.001, true},
+		{"cl", "l", 0.01, true},
+		{"dl", "l", 0.1, true},
+		{"l", "l", 1, true},
+		{"  Dl\t", "l", 0.1, true},
+		{"stk", "", 0, false},
+		{"pcs", "", 0, false},
+		{"", "", 0, false},
+		{"bundt", "", 0, false},
+	} {
+		label, factor, ok := normaliseUnit(tc.symbol)
+		if ok != tc.wantOK || label != tc.wantLabel {
+			t.Errorf("normaliseUnit(%q) = %q, %v, %v; want %q, %v, %v",
+				tc.symbol, label, factor, ok, tc.wantLabel, tc.wantFactor, tc.wantOK)
+			continue
+		}
+		if diff := factor - tc.wantFactor; diff > 1e-9 || diff < -1e-9 {
+			t.Errorf("normaliseUnit(%q) factor = %v, want %v", tc.symbol, factor, tc.wantFactor)
+		}
+	}
+}
