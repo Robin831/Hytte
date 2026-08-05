@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { Lightbulb, Plus, Play, X, AlertTriangle, CheckCircle2, XCircle, MinusCircle } from 'lucide-react'
+import { Lightbulb, Loader2, Plus, Play, X, AlertTriangle, CheckCircle2, XCircle, MinusCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '../components/ui/skeleton'
 import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
@@ -207,6 +207,56 @@ export default function Suggestions() {
     setCardExpansion(updated.id, true)
     refetch()
   }, [refetch, setCardExpansion])
+
+  // Bulk "Create beads for all" on the Planned tab. Runs strictly one bd
+  // create at a time — they all write to the same Dolt working set — and is
+  // gated behind an inline confirm since every created bead carries the
+  // forgeReady label and gets auto-dispatched.
+  const [bulkBead, setBulkBead] = useState<{ done: number; total: number } | null>(null)
+  const [bulkConfirm, setBulkConfirm] = useState(false)
+  const [bulkFailures, setBulkFailures] = useState<
+    { id: number; title: string; error: string }[]
+  >([])
+
+  async function handleCreateAllBeads() {
+    if (bulkBead) return
+    setBulkConfirm(false)
+    const targets = [...planned]
+    if (targets.length === 0) return
+    setBulkBead({ done: 0, total: targets.length })
+    setBulkFailures([])
+    for (const s of targets) {
+      try {
+        const res = await fetch(`/api/suggestions/${s.id}/bead`, {
+          method: 'POST',
+          credentials: 'include',
+        })
+        if (!res.ok) {
+          let msg = ''
+          try {
+            const body = (await res.json()) as { error?: string }
+            if (body?.error) msg = body.error
+          } catch {
+            // keep the generic fallback
+          }
+          throw new Error(msg || `HTTP ${res.status}`)
+        }
+        const updated = (await res.json()) as Suggestion
+        handleBeadCreated(updated)
+      } catch (err) {
+        setBulkFailures(prev => [
+          ...prev,
+          {
+            id: s.id,
+            title: s.title,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        ])
+      }
+      setBulkBead(prev => (prev ? { ...prev, done: prev.done + 1 } : prev))
+    }
+    setBulkBead(null)
+  }
 
   const failedToLoadMsg = t('errors.failedToLoad')
 
@@ -462,6 +512,7 @@ export default function Suggestions() {
               onPlan={handlePlan}
               onRejected={refetch}
               onBeadCreated={handleBeadCreated}
+              beadDisabled={bulkBead !== null}
             />
           )
         }
@@ -756,7 +807,81 @@ export default function Suggestions() {
                 </div>
               )}
               <TabPanel value="pending">{renderPanel('pending', visiblePending)}</TabPanel>
-              <TabPanel value="planned">{renderPanel('planned', planned)}</TabPanel>
+              <TabPanel value="planned">
+                {planned.length > 0 && (
+                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                    {bulkBead ? (
+                      <span
+                        data-testid="bulk-bead-progress"
+                        className="inline-flex items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/15 px-3 py-1.5 text-xs font-medium text-blue-200"
+                      >
+                        <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+                        {t('bulkBead.progress', {
+                          done: bulkBead.done,
+                          total: bulkBead.total,
+                        })}
+                      </span>
+                    ) : bulkConfirm ? (
+                      <>
+                        <span className="text-sm text-gray-300">
+                          {t('bulkBead.confirm', { count: planned.length })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCreateAllBeads}
+                          data-testid="bulk-bead-confirm"
+                          className="inline-flex items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/20 px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-blue-500/30"
+                        >
+                          {t('bulkBead.yes')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBulkConfirm(false)}
+                          className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-300 hover:border-gray-600 hover:text-white"
+                        >
+                          {t('bulkBead.cancel')}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setBulkConfirm(true)}
+                        data-testid="bulk-bead-button"
+                        className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-200 hover:border-gray-600 hover:text-white"
+                      >
+                        {t('bulkBead.button', { count: planned.length })}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {bulkFailures.length > 0 && (
+                  <div
+                    role="alert"
+                    data-testid="bulk-bead-failures"
+                    className="mb-4 space-y-1 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium">{t('bulkBead.failuresTitle')}</p>
+                      <button
+                        type="button"
+                        onClick={() => setBulkFailures([])}
+                        aria-label={t('bulkBead.dismissFailures')}
+                        className="text-red-300/70 hover:text-red-200"
+                      >
+                        <X size={14} aria-hidden="true" />
+                      </button>
+                    </div>
+                    <ul className="space-y-0.5">
+                      {bulkFailures.map(f => (
+                        <li key={f.id} className="break-words">
+                          {t('bulkBead.failed', { title: f.title, error: f.error })}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {renderPanel('planned', planned)}
+              </TabPanel>
               <TabPanel value="created">{renderPanel('created', beadCreated)}</TabPanel>
               <TabPanel value="rejected">{renderPanel('rejected', rejected)}</TabPanel>
               <TabPanel value="pages">

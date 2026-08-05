@@ -167,5 +167,15 @@
     "dismissFailed": "ปิดข้อผิดพลาดของ {{title}}",
     "doneCount": "วางแผนแล้ว {{count}} รายการในเซสชันนี้",
     "clear": "ซ่อนสรุปคิว"
+  },
+  "bulkBead": {
+    "button": "สร้าง beads ทั้งหมด ({{count}})",
+    "confirm": "สร้าง {{count}} beads? จะติดป้าย forgeReady และเริ่มทำงานโดยอัตโนมัติ",
+    "yes": "ใช่ สร้างทั้งหมด",
+    "cancel": "ยกเลิก",
+    "progress": "กำลังสร้าง beads… {{done}}/{{total}}",
+    "failuresTitle": "บาง beads ล้มเหลว",
+    "failed": "{{title}}: {{error}}",
+    "dismissFailures": "ปิดข้อผิดพลาด bead"
   }
 }

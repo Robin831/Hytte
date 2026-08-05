@@ -11,6 +11,8 @@ export interface SuggestionActionsProps {
   onPlan?: (suggestion: Suggestion, feedback: string) => void
   onRejected?: () => void
   onBeadCreated?: (updated: Suggestion) => void
+  /** Disables the per-card Create bead button (e.g. while a bulk run owns the endpoint). */
+  beadDisabled?: boolean
 }
 
 const SAFE_URL_PROTOCOLS = ['http:', 'https:', 'mailto:', 'tel:'] as const
@@ -43,12 +45,12 @@ const markdownComponents = {
   },
 }
 
-export function SuggestionActions({ suggestion, onPlan, onRejected, onBeadCreated }: SuggestionActionsProps) {
+export function SuggestionActions({ suggestion, onPlan, onRejected, onBeadCreated, beadDisabled }: SuggestionActionsProps) {
   if (suggestion.status === 'pending') {
     return <PendingActions suggestion={suggestion} onPlan={onPlan} onRejected={onRejected} />
   }
   if (suggestion.status === 'planned') {
-    return <PlannedActions suggestion={suggestion} onBeadCreated={onBeadCreated} />
+    return <PlannedActions suggestion={suggestion} onBeadCreated={onBeadCreated} disabled={beadDisabled} />
   }
   if (suggestion.status === 'bead_created') {
     return <BeadCreatedActions suggestion={suggestion} />
@@ -150,9 +152,11 @@ function PendingActions({
 function PlannedActions({
   suggestion,
   onBeadCreated,
+  disabled = false,
 }: {
   suggestion: Suggestion
   onBeadCreated?: (updated: Suggestion) => void
+  disabled?: boolean
 }) {
   const { t } = useTranslation('suggestions')
   const plan = suggestion.plan ?? ''
@@ -160,7 +164,7 @@ function PlannedActions({
   const [error, setError] = useState<string | null>(null)
 
   async function handleCreateBead() {
-    if (submitting) return
+    if (submitting || disabled) return
     setSubmitting(true)
     setError(null)
     try {
@@ -217,7 +221,7 @@ function PlannedActions({
         <button
           type="button"
           onClick={handleCreateBead}
-          disabled={submitting}
+          disabled={submitting || disabled}
           className="inline-flex items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/20 px-3 py-1.5 text-xs font-medium text-blue-300 hover:bg-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting && (

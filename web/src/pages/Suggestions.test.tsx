@@ -2267,3 +2267,145 @@ describe('Suggestions – plan queue', () => {
     expect(screen.queryByTestId('plan-queue-failed')).not.toBeInTheDocument()
   })
 })
+
+describe('Suggestions – bulk bead creation', () => {
+  function plannedSuggestion(id: number, title: string): Suggestion {
+    return makeSuggestion({ id, title, status: 'planned', plan: `Plan for ${id}` })
+  }
+
+  it('creates beads for all planned suggestions strictly one at a time', async () => {
+    const p1 = plannedSuggestion(1, 'First planned')
+    const p2 = plannedSuggestion(2, 'Second planned')
+    const u1: Suggestion = { ...p1, status: 'bead_created', bead_id: 'Hytte-aaaa' }
+    const u2: Suggestion = { ...p2, status: 'bead_created', bead_id: 'Hytte-bbbb' }
+    // Mutable so the test can advance the server's view before resolving each
+    // bead — the page refetches after every success and a static list would
+    // clobber the optimistic move.
+    let list = { pending: [] as Suggestion[], planned: [p1, p2], rejected: [] as Suggestion[], bead_created: [] as Suggestion[] }
+
+    let resolveBead: ((v: { ok: boolean; json: () => Promise<unknown> }) => void) | null = null
+    const beadCalls: string[] = []
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      const beadMatch = String(url).match(/\/api\/suggestions\/(\d+)\/bead$/)
+      if (beadMatch && init?.method === 'POST') {
+        beadCalls.push(beadMatch[1])
+        return new Promise<{ ok: boolean; json: () => Promise<unknown> }>(resolve => {
+          resolveBead = resolve
+        })
+      }
+      if (String(url).includes('/api/suggestions/runs')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(list) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await screen.findByRole('tab', { name: /Planned \(2\)/ })
+    fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
+
+    // Two-step confirm: the button alone fires nothing.
+    fireEvent.click(await screen.findByTestId('bulk-bead-button'))
+    expect(beadCalls).toEqual([])
+    fireEvent.click(screen.getByTestId('bulk-bead-confirm'))
+
+    // Only the first bead request is in flight; progress shows 0/2.
+    await waitFor(() => {
+      expect(beadCalls).toEqual(['1'])
+    })
+    expect(screen.getByTestId('bulk-bead-progress')).toHaveTextContent(
+      'Creating beads… 0/2',
+    )
+
+    list = { pending: [], planned: [p2], rejected: [], bead_created: [u1] }
+    resolveBead!({ ok: true, json: () => Promise.resolve(u1) })
+    await waitFor(() => {
+      expect(beadCalls).toEqual(['1', '2'])
+    })
+
+    list = { pending: [], planned: [], rejected: [], bead_created: [u1, u2] }
+    resolveBead!({ ok: true, json: () => Promise.resolve(u2) })
+    await waitFor(() => {
+      expect(screen.queryByTestId('bulk-bead-progress')).not.toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('bulk-bead-failures')).not.toBeInTheDocument()
+    // Both moved out of Planned optimistically.
+    expect(screen.getByRole('tab', { name: /Created \(2\)/ })).toBeInTheDocument()
+  })
+
+  it('collects per-item failures and keeps going', async () => {
+    const p1 = plannedSuggestion(1, 'Fails')
+    const p2 = plannedSuggestion(2, 'Succeeds')
+    const u2: Suggestion = { ...p2, status: 'bead_created', bead_id: 'Hytte-cccc' }
+    const initial = { pending: [], planned: [p1, p2], rejected: [] }
+    // After the run, the server would report p1 still planned and p2 created.
+    const afterRun = { pending: [], planned: [p1], rejected: [], bead_created: [u2] }
+
+    let listCalls = 0
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      const beadMatch = String(url).match(/\/api\/suggestions\/(\d+)\/bead$/)
+      if (beadMatch && init?.method === 'POST') {
+        if (beadMatch[1] === '1') {
+          return Promise.resolve({
+            ok: false,
+            status: 500,
+            json: () => Promise.resolve({ error: 'bd create failed: dolt locked' }),
+          })
+        }
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(u2) })
+      }
+      if (String(url).includes('/api/suggestions/runs')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      }
+      listCalls += 1
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(listCalls === 1 ? initial : afterRun),
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await screen.findByRole('tab', { name: /Planned \(2\)/ })
+    fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
+
+    fireEvent.click(await screen.findByTestId('bulk-bead-button'))
+    fireEvent.click(screen.getByTestId('bulk-bead-confirm'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('bulk-bead-failures')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('bulk-bead-failures')).toHaveTextContent(
+      'Fails: bd create failed: dolt locked',
+    )
+    // The failed one stays planned; the successful one moved to Created.
+    expect(screen.getByRole('tab', { name: /Planned \(1\)/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /Created \(1\)/ })).toBeInTheDocument()
+  })
+
+  it('cancelling the confirm fires nothing', async () => {
+    const initial = { pending: [], planned: [plannedSuggestion(1, 'Keep me')], rejected: [] }
+    const fetchMock = vi.fn((url: string) => {
+      if (String(url).includes('/bead')) {
+        throw new Error('bead endpoint must not be called')
+      }
+      if (String(url).includes('/api/suggestions/runs')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(initial) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderPage()
+    await screen.findByRole('tab', { name: /Planned \(1\)/ })
+    fireEvent.click(screen.getByRole('tab', { name: /Planned/ }))
+
+    fireEvent.click(await screen.findByTestId('bulk-bead-button'))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.getByTestId('bulk-bead-button')).toBeInTheDocument()
+    expect(
+      fetchMock.mock.calls.filter(c => String(c[0]).includes('/bead')),
+    ).toHaveLength(0)
+  })
+})

@@ -167,5 +167,15 @@
     "dismissFailed": "Dismiss failure for {{title}}",
     "doneCount": "{{count}} planned this session",
     "clear": "Hide plan queue summary"
+  },
+  "bulkBead": {
+    "button": "Create beads for all ({{count}})",
+    "confirm": "Create {{count}} beads? They are labeled forgeReady and dispatch automatically.",
+    "yes": "Yes, create all",
+    "cancel": "Cancel",
+    "progress": "Creating beads… {{done}}/{{total}}",
+    "failuresTitle": "Some beads failed",
+    "failed": "{{title}}: {{error}}",
+    "dismissFailures": "Dismiss bead failures"
   }
 }

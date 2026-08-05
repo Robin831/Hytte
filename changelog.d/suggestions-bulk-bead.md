@@ -1,0 +1,2 @@
+category: Added
+- **Create beads for all on the Planned tab** - A bulk button turns every planned suggestion into a bead in one go, behind an inline confirm (the beads are labeled forgeReady and dispatch automatically). Beads are created strictly one at a time with progress shown; per-suggestion failures are listed with the server error and the rest keep going. Individual Create bead buttons are disabled while the bulk run is active.

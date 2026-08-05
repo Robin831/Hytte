@@ -167,5 +167,15 @@
     "dismissFailed": "Fjern feilmelding for {{title}}",
     "doneCount": "{{count}} planlagt denne økten",
     "clear": "Skjul køoppsummering"
+  },
+  "bulkBead": {
+    "button": "Opprett beads for alle ({{count}})",
+    "confirm": "Opprette {{count}} beads? De merkes forgeReady og settes i gang automatisk.",
+    "yes": "Ja, opprett alle",
+    "cancel": "Avbryt",
+    "progress": "Oppretter beads… {{done}}/{{total}}",
+    "failuresTitle": "Noen beads feilet",
+    "failed": "{{title}}: {{error}}",
+    "dismissFailures": "Fjern bead-feilmeldinger"
   }
 }
