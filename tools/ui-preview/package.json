@@ -1,0 +1,9 @@
+{
+  "name": "hytte-ui-preview",
+  "private": true,
+  "type": "module",
+  "description": "Screenshot/measure tooling for the Hytte UI — see README.md",
+  "dependencies": {
+    "playwright": "^1.62.1"
+  }
+}
