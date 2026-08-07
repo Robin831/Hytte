@@ -27244,3 +27244,805 @@ rules:
       paths:
         - '**/*.md'
         - '**/*.tsx'
+    - id: check-fetch-http-status-on-teardown
+      category: error-handling
+      pattern: >-
+        A fetch/HTTP call whose errors are swallowed (empty catch or no status check), especially in leave/cleanup/teardown paths that also mutate local state
+      check: >-
+        Verify the response status is checked (response.ok / non-2xx handled) and failures are surfaced or retried — so local UI teardown does not diverge from server state, leaving stale participants, banners, or unfired follow-up events
+      source: copilot:PR#878
+      added: "2026-06-29"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: media-toggle-without-tests
+      category: testing
+      pattern: >-
+        New hook or module adds non-trivial media/stream control logic (e.g. camera/mic toggles, replaceTrack across peer connections, sender replacement) but the accompanying test suite does not exercise these behaviors
+      check: >-
+        Verify that tests cover the new media toggle behaviors — track replacement across all peer connections, remote tile muting, and sender replacement failure paths — so regressions are caught
+      source: copilot:PR#878
+      added: "2026-06-29"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: prettier-ignore-adjacency
+      category: style
+      pattern: >-
+        A `// prettier-ignore` directive precedes a manually-formatted export (e.g. a board/matrix/table literal), but another comment sits between the directive and the export, or the explanatory header comment is duplicated.
+      check: >-
+        Verify `// prettier-ignore` is placed on the line immediately above the export it protects with no intervening comments, and that any descriptive header comment appears only once.
+      source: copilot:PR#879
+      added: "2026-06-29"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: img-empty-alt-hidden-text
+      category: accessibility
+      pattern: >-
+        An image/icon rendered with empty alt (aria-hidden) where its accompanying descriptive text is visually hidden on some breakpoints (e.g. hidden sm:block)
+      check: >-
+        Verify the meaning conveyed by the icon remains available to screen readers at all breakpoints — give the icon a descriptive alt or add an sr-only text equivalent when the visible label is hidden on mobile
+      source: copilot:PR#881
+      added: "2026-06-29"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: consistent-temp-unit-formatting
+      category: ui
+      pattern: >-
+        JSX or table cells rendering temperature/measurement values with a hardcoded unit string (e.g. "°C", "°F", units appended in literal text)
+      check: >-
+        Verify the unit formatting matches the existing pattern used elsewhere (e.g. the Weather page uses just "°"), and that the unit is not hardcoded in UI text but pulled from i18n/a shared formatter for consistency
+      source: copilot:PR#881
+      added: "2026-06-29"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: test-new-ui-components
+      category: testing
+      pattern: >-
+        A new React component with non-trivial UI behavior (interactive toggles, aria attributes, conditional rendering, edge-case data handling) is added without an accompanying test file
+      check: >-
+        Verify the new component has a focused Vitest/@testing-library test covering its interactive behavior and edge cases (e.g. toggle state, aria-expanded, conditional rendering, short/empty data), consistent with the codebase's existing component test coverage
+      source: copilot:PR#881
+      added: "2026-06-29"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: gate-optimistic-ui-on-real-user-id
+      category: ui
+      pattern: >-
+        Optimistic UI elements (e.g. chat bubbles, list items) are stamped with a user/owner id that falls back to a default placeholder like `user?.id ?? 0` while auth or other async state is still loading.
+      check: >-
+        Verify that components rendering optimistic items are gated on the real user being available, so optimistic entries are always stamped with a genuine sender/owner id and never render on the wrong side or visibly jump after reconciliation.
+      source: copilot:PR#882
+      added: "2026-06-29"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: test-extract-call-before-asserting
+      category: testing
+      pattern: >-
+        A test reaches into a mock/spy call with a non-null assertion and deeply nested property access (e.g. parsing a request body from a captured fetch/POST call) without first capturing the call and asserting it exists
+      check: >-
+        Verify the test grabs the relevant mock call into a local variable and asserts it exists before parsing/indexing into it, so a changed call shape fails with a clear assertion rather than a TypeError
+      source: copilot:PR#884
+      added: "2026-06-29"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: ref-advance-after-failed-side-effect
+      category: error-handling
+      pattern: >-
+        A tracking ref/variable is updated to the intended target value immediately after calling a side-effecting operation that can throw (e.g. sender.replaceTrack()), without guarding on its success
+      check: >-
+        Verify the ref is only advanced after the operation succeeds — move the assignment after an awaited/try-caught call or into the success path, so a thrown/rejected operation leaves the ref at its old value and future sync/retry logic still detects the mismatch
+      source: copilot:PR#885
+      added: "2026-06-29"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: ref-update-after-fallible-op
+      category: error-handling
+      pattern: >-
+        A tracking ref/state variable is set to a target value in the same code path as a fallible operation (e.g. replaceTrack, async I/O), particularly in fallback branches
+      check: >-
+        Verify the ref is only updated after the operation succeeds — if the operation throws or fails, the ref should remain unchanged so later sync/retry logic re-attempts instead of assuming the update already happened
+      source: copilot:PR#885
+      added: "2026-06-29"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: untested-stream-pipeline-rewiring
+      category: testing
+      pattern: >-
+        Changes to WebRTC/media stream wiring — building a processing pipeline, calling replaceTrack() on a sender, or swapping the local/preview stream — without accompanying test coverage
+      check: >-
+        Verify an integration test exercises the new track-routing behavior: that replaceTrack swaps the correct sender track and the recomposed local stream preserves existing tracks (e.g. processed video track plus existing audio tracks)
+      source: copilot:PR#885
+      added: "2026-06-29"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: aria-menu-only-menuitems
+      category: ui
+      pattern: >-
+        An element with role="menu" (e.g. a popover/dropdown) containing non-menuitem children such as a header <p>, label, or other static text
+      check: >-
+        Verify the menu contains only menuitem-role elements; static headers/labels must be marked presentational (role="presentation"/role="none" or wrapped in a presentational element) so screen readers don't announce invalid menu structure
+      source: copilot:PR#885
+      added: "2026-06-29"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: video-call-state-guard-non-video
+      category: error-handling
+      pattern: >-
+        A state setter (e.g. setFilter) on a call/media object whose API contract documents it as a no-op or fixed value for a particular mode (e.g. 'none' for voice-only calls)
+      check: >-
+        Verify the setter actually enforces the documented contract by guarding on the current mode — it should early-return or skip updating the ref/state when the call is not in the mode the setting applies to, rather than mutating state unconditionally
+      source: copilot:PR#885
+      added: "2026-06-29"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: reset-transient-state-on-lifecycle-end
+      category: ui
+      pattern: >-
+        Component holds transient UI state (open menus, pickers, toggles) that is only conditionally gated at render-time but not reset when the owning session/call/context ends
+      check: >-
+        Verify the underlying state is explicitly reset when the lifecycle that justified it ends (e.g. call ends, modal closes), not just hidden via a derived/gated render value, so it doesn't leak into the next session
+      source: copilot:PR#885
+      added: "2026-06-29"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: raf-loop-eager-start
+      category: performance
+      pattern: >-
+        A factory/constructor that schedules a requestAnimationFrame draw loop immediately on creation, before any input source/track is set, while a setSource()/start() method also kicks off the loop.
+      check: >-
+        Verify the RAF draw loop is not started eagerly at creation when there is no source yet (it would burn per-frame CPU while idle with video.readyState<2). Confirm the loop is only started once a source is set, and the redundant eager start is removed.
+      source: copilot:PR#885
+      added: "2026-06-29"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: redundant-scroll-effect
+      category: performance
+      pattern: >-
+        Adding a new useLayoutEffect/useEffect that performs scrollIntoView (or other layout/scroll work) when an existing effect already does the same scroll
+      check: >-
+        Verify the scroll logic is consolidated into a single effect with all relevant dependencies (e.g. keyboardInset/keyboardOnset) in its dependency array, rather than duplicating scrollIntoView across multiple effects causing redundant layout work and double scroll on mount
+      source: copilot:PR#886
+      added: "2026-06-30"
+      paths:
+        - '**/*.html'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: ssr-window-guard-matches-doc
+      category: error-handling
+      pattern: >-
+        A hook or function documented to support SSR/non-browser environments (claims to return a fallback when window is undefined) that unconditionally accesses browser globals like window, document, or window.visualViewport in its effect/body
+      check: >-
+        Verify the implementation actually guards browser-global access with a `typeof window === 'undefined'` (or equivalent) check so behavior matches the documented SSR/non-browser fallback and avoids crashes in non-browser runtimes and tests
+      source: copilot:PR#886
+      added: "2026-06-30"
+      paths:
+        - '**/*.html'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: untested-viewport-hook
+      category: testing
+      pattern: >-
+        A new or modified React hook contains non-trivial logic (viewport/geometry math, clamping, jitter/debounce suppression, event listener registration) but ships without a Vitest unit test, in a repo that already has a hook test suite under web/src/hooks
+      check: >-
+        Verify the hook has an accompanying *.test.ts(x) Vitest suite that covers its core math/edge-case logic and asserts that event listeners are removed on unmount, matching the testing conventions of existing hook tests (e.g. useTabFetch.test.ts, useChatStream.test.ts)
+      source: copilot:PR#886
+      added: "2026-06-30"
+      paths:
+        - '**/*.html'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: no-duplicate-viewport-keyboard-logic
+      category: ui
+      pattern: >-
+        A new hook or component implements VisualViewport-based keyboard inset/offset logic (or other viewport/resize handling) that already exists elsewhere in the codebase
+      check: >-
+        Verify the new keyboard/viewport offset logic reuses the existing shared hook (e.g. useKeyboardInset) instead of duplicating it; flag parallel implementations that risk drift in jitter thresholds, cleanup, or thresholds and suggest consolidating into one shared implementation
+      source: copilot:PR#886
+      added: "2026-06-30"
+      paths:
+        - '**/*.html'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: tab-state-comment-accuracy
+      category: ui
+      pattern: >-
+        Comments or documentation describing UI state (e.g. view mode, sort order, filters) as being scoped 'per tab' or per-item, while the underlying state is a single shared useState hook
+      check: >-
+        Verify that comments describing the scope of UI state match the actual implementation — shared useState means the state is global across tabs/items, not per-tab; either fix the comment or scope the state per-tab to match the documented behavior
+      source: copilot:PR#887
+      added: "2026-06-30"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: sort-tie-breaker-determinism
+      category: other
+      pattern: >-
+        Sorting a list by a single field (e.g. size) where multiple items can share the same value, leaving same-valued items in arbitrary/API-returned order
+      check: >-
+        Verify the comparator includes a deterministic tie-breaker (e.g. generated_at newest-first, then id) so items with equal primary sort keys have a stable, reproducible order
+      source: copilot:PR#887
+      added: "2026-06-30"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: derive-union-type-from-source
+      category: style
+      pattern: >-
+        A TypeScript union type literal (e.g. 'date' | 'size') is declared manually when an identical union already exists on a related function parameter, helper, or value
+      check: >-
+        Verify the duplicated union type is derived from its single source of truth (e.g. via Parameters<>, typeof, or a shared exported type) so the control and its consumer stay in sync and avoid drift when modes are added or renamed
+      source: copilot:PR#887
+      added: "2026-06-30"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: i18n-namespace-matches-spec
+      category: other
+      pattern: >-
+        New i18n translation keys (labels/aria strings) added to a feature-specific namespace file (e.g. salary.json) or a namespace differing from what the PR description/acceptance criteria specify
+      check: >-
+        Verify new translation keys are placed in the namespace file the PR spec requires (e.g. common.json vs a feature namespace), that t(...) calls reference the matching namespace, and that keys are added to all languages (en, nb, th); if implementation intentionally differs, ensure the PR description/acceptance criteria are updated to match.
+      source: copilot:PR#889
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: reset-error-flag-on-prop-change
+      category: error-handling
+      pattern: >-
+        A component tracks a load/render failure in local state (e.g. `errored`/`hasError`) to show a fallback, and the component is reused across refetches because it's keyed by a stable id (`card.id`, `set.id`)
+      check: >-
+        Verify the error flag is reset when the relevant prop changes (via a kethe reset effect or `useEffect` on the prop) so a successful reload can recover instead of sticking permanently in fallback mode
+      source: copilot:PR#892
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: async-state-empty-initial-render
+      category: ui
+      pattern: >-
+        Component initializes async-loaded data (e.g. sessions) as an empty array/default and renders it immediately, with the fetch populating it in a useEffect
+      check: >-
+        Verify a loading state gates the initial render so the empty-state UI isn't shown before the first fetch completes, matching prior loading-skeleton behavior
+      source: copilot:PR#891
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: track-async-fetch-loaded-flag
+      category: concurrency
+      pattern: >-
+        A React component fetches data in useEffect and renders an empty-state based on the result array, but only tracks the data (not whether the fetch has completed).
+      check: >-
+        Verify the component tracks a 'loaded' (or loading) flag set in a finally block and guarded by the effect's cancellation flag, so the empty-state is suppressed until the async fetch actually completes rather than flashing during the initial load.
+      source: copilot:PR#891
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: defer-empty-state-until-loaded
+      category: ui
+      pattern: >-
+        Component renders an empty-state or "no data" message based on an array/list being empty while data is still being fetched asynchronously
+      check: >-
+        Verify the empty-state message is gated on an initial-fetch-completed flag (e.g. loading is false) so it doesn't flash before the async data arrives
+      source: copilot:PR#891
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: no-suppress-exhaustive-deps-in-effects
+      category: concurrency
+      pattern: >-
+        A useEffect (often debounced autosave) that reads state/props/functions but suppresses react-hooks/exhaustive-deps with an eslint-disable and omits some of those values from its dependency array
+      check: >-
+        Verify the effect lists every value it reads (state, props, callbacks) in its dependency array and does not use eslint-disable to hide missing deps; omitted deps risk stale reads/comparisons
+      source: copilot:PR#891
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: reuse-existing-load-callback
+      category: error-handling
+      pattern: >-
+        A new useEffect (or handler) implements data-loading/fetching logic that duplicates an existing callback function (e.g. loadHetznerToken) already present in the component
+      check: >-
+        Verify the code reuses the existing callback instead of reimplementing the load logic, so error handling, AbortSignal support, and behavior stay consistent across both code paths
+      source: copilot:PR#891
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: status-region-accessible-name-and-reduced-motion
+      category: ui
+      pattern: >-
+        A live region (role="status"/aria-live) or status indicator whose visible text label is hidden on small screens (e.g. Tailwind `hidden`) and/or that relies on `title` for its accessible name, or that uses a continuous animation like pulsing
+      check: >-
+        Verify the status region always has a reliable accessible name that stays in the accessibility tree when the visible label is hidden (use `sr-only` instead of `hidden`, or `aria-label`/`aria-labelledby` rather than `title`), and that any pulsing/looping animation is disabled or reduced under `prefers-reduced-motion`
+      source: copilot:PR#888
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: state-reset-ignores-current-condition
+      category: ui
+      pattern: >-
+        An effect or handler unconditionally resets a status/state variable to a default (e.g. 'connecting'/'loading') at its start, without checking existing environmental conditions like navigator.onLine
+      check: >-
+        Verify that state resets account for current conditions (e.g. offline status) so that the correct indicator shows immediately, rather than being masked by a transient default state that renders nothing
+      source: copilot:PR#888
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: clear-timers-on-offline
+      category: error-handling
+      pattern: >-
+        A reconnect/retry backoff timer is scheduled (setTimeout) for an SSE/WebSocket/network connection, and an offline event handler exists
+      check: >-
+        Verify the offline handler clears any pending reconnect backoff timer so no wasted reconnect attempts fire while the browser is offline
+      source: copilot:PR#888
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: reconnect-in-flight-guard
+      category: concurrency
+      pattern: >-
+        A reconnect/retry handler (e.g. an 'online' event, backoff timer, or visibility change) calls a connect function whose only re-entrancy guard is a state flag that is set late — after an await such as fetch — rather than at the start of the attempt.
+      check: >-
+        Verify the connect path guards against a connection attempt that is already in-flight (a pending/awaiting connect, not just an established one), so concurrent triggers cannot open duplicate streams and cause duplicated events or state races. Confirm the guard flag is set synchronously before the first await and cleared reliably.
+      source: copilot:PR#888
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: test-new-connection-states
+      category: testing
+      pattern: >-
+        A PR adds a new connection/UI state (e.g. offline/online) with a new test id or indicator, but adds no tests exercising the state transitions and event-driven behavior.
+      check: >-
+        Verify tests cover the new state's transitions (e.g. going offline shows the indicator; going online cancels backoff and retries), not just the static rendering.
+      source: copilot:PR#888
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: offline-event-sets-offline-state
+      category: ui
+      pattern: >-
+        A browser 'offline' event handler updating connection/connectivity state for a status indicator, especially before a stream or socket has opened
+      check: >-
+        Verify the offline handler unconditionally sets state to 'offline' (not leaving it as 'connecting' or another transient value), so the indicator reflects the authoritative offline event immediately regardless of prior connection state
+      source: copilot:PR#888
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: test-realistic-scan-status-filter
+      category: testing
+      pattern: >-
+        Tests seeding scan/poll results with a status value that the component's status filter (e.g. statusForFilter) would never request, so the mocked data cannot occur in real usage
+      check: >-
+        Verify test fixtures use statuses consistent with the filter the component actually queries; model in-flight work through valid means (e.g. a binder page block whose children return regardless of status, or the correct pending filter) so polling assertions reflect real behavior and don't mask regressions
+      source: copilot:PR#895
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: test-fixture-matches-endpoint-filter
+      category: testing
+      pattern: >-
+        A test seeds mock/fixture data with a status or field value to simulate in-flight or filtered work being returned by a list endpoint
+      check: >-
+        Verify the seeded status/value is actually one the endpoint's filter can return (e.g. matches the status filter like matched,no_match,failed); if not, the test simulates a state the real endpoint never produces — instead nest the value under a block/parent the filter does return (e.g. a needsReview page with a queued child)
+      source: copilot:PR#895
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: test-data-matches-server-shape
+      category: testing
+      pattern: >-
+        Test fixtures place an item under a status/category bucket it can't actually appear in (e.g. a queued item inside a needsReview list)
+      check: >-
+        Verify mock/test data mirrors a real possible server response — items are nested under the correct status block rather than placed in a filter group that would never contain them
+      source: copilot:PR#895
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: test-fixtures-match-api-contract
+      category: testing
+      pattern: >-
+        Test fixtures populate a state bucket with a child whose status can't actually occur in that bucket (e.g. a `queued` item inside a `needsReview` list) to arm a listener/interval/effect
+      check: >-
+        Verify test fixtures reflect the real API contract — use a status that genuinely appears in that bucket so the behavior under test is triggered for a realistic reason, not an impossible state
+      source: copilot:PR#895
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: test-inflight-work-via-page-children
+      category: testing
+      pattern: >-
+        Tests that model in-flight/pending scan work by returning standalone queued or processing items in a list request that only fetches settled statuses (e.g. matched, no_match, failed)
+      check: >-
+        Verify in-flight work is modeled through a page block's queued/processing child (children are returned regardless of status) rather than a standalone queued item the list request would never return, and that the child transitions to a settled status on a later poll so hasInFlightWork flips false and the polling interval tears down
+      source: copilot:PR#895
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: optional-locale-intl-format
+      category: style
+      pattern: >-
+        A utility function that wraps an Intl formatter (RelativeTimeFormat, DateTimeFormat, NumberFormat, etc.) declares a required `locale: string` parameter
+      check: >-
+        Verify the locale parameter is optional (or accepts undefined) so callers can defer to the browser/user default via `new Intl.XFormat(undefined, ...)`, matching the codebase's locale-sensitive formatting pattern instead of forcing every call site to hardcode a locale
+      source: copilot:PR#893
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: duplicate-helper-definition
+      category: other
+      pattern: >-
+        A refactor that extracts or consolidates a helper function (e.g. formatRelativeTime) and claims via acceptance criteria that exactly one definition exists in the codebase
+      check: >-
+        Grep the whole codebase for the helper's name to confirm no other definition already exists elsewhere; if a duplicate remains, either reconcile it (rename/move/consolidate) or correct the acceptance-criteria wording
+      source: copilot:PR#893
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: empty-string-number-coercion
+      category: error-handling
+      pattern: >-
+        Parsing numeric input with Number()/unary + where the source string may be empty (e.g. Number(str), +str) replacing parseFloat/parseInt
+      check: >-
+        Verify empty input is handled distinctly from a real 0 — Number('') returns 0 (not NaN like parseFloat('')), so callers relying on NaN checks for fallbacks or to detect blank fields will break; guard for empty string before coercing
+      source: copilot:PR#890
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: falsy-zero-default-override
+      category: error-handling
+      pattern: >-
+        Using `||` to apply a default fallback for a parsed numeric value (e.g. `parseDecimal(x) || 7.5`)
+      check: >-
+        Verify that a legitimate 0 is not clobbered by the fallback; use a NaN check (or explicit undefined/null check) instead of `||` so explicit zero values are preserved
+      source: copilot:PR#890
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: effect-deps-unstable-fn
+      category: concurrency
+      pattern: >-
+        A useEffect (or other hook with a dependency array) references a function or value that is recreated on every render, but that function is omitted from the dependency array — while react-hooks/exhaustive-deps is enabled in the file.
+      check: >-
+        Verify that any function/value referenced inside the effect is either included in the dependency array (and memoized with useCallback/useMemo to keep it stable), inlined into the effect, or otherwise handled so exhaustive-deps won't flag a lint error.
+      source: copilot:PR#890
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: parse-numeric-field-once
+      category: performance
+      pattern: >-
+        Building a numeric payload where each field is parsed (parseFloat/parseInt/Number) separately for a NaN validity check and again to produce the value
+      check: >-
+        Verify each numeric field is parsed a single time into a variable, then reused for both the NaN/validity check and the final value/fallback, rather than parsed twice
+      source: copilot:PR#890
+      added: "2026-07-01"
+      paths:
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: consistent-url-param-history
+      category: ui
+      pattern: >-
+        A component syncs UI state (search query, filters, toggles) to URL params via navigate/router, and uses navigate with { replace: true } conditionally for some updates while pushing history for others.
+      check: >-
+        Verify that history-push vs. replace behavior is consistent across all URL-param updates in the component, matches the existing pattern for sibling params, and that using replace does not silently break the Back button's ability to restore prior state (e.g. previous query values).
+      source: copilot:PR#897
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.tsx'
+    - id: guard-async-setstate-after-unmount
+      category: concurrency
+      pattern: >-
+        A custom hook (or component) runs async work — debounced saves, fetches, timers — that calls React state setters or caller callbacks in a resolved promise/timeout
+      check: >-
+        Verify an isMounted ref (or AbortController) is set false in a useEffect cleanup and checked before any post-await state update or callback, so in-flight async work can't setState or fire side effects after unmount
+      source: copilot:PR#896
+      added: "2026-07-01"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: guard-async-callbacks-after-unmount
+      category: concurrency
+      pattern: >-
+        An async handler (fetch/promise) runs state-updating callbacks — onSaved, setState, status setters, toasts — in its .then/await continuation after the awaited call resolves
+      check: >-
+        Verify post-resolution callbacks are guarded by a mounted ref (or equivalent) so they become no-ops if the component unmounts mid-request
+      source: copilot:PR#896
+      added: "2026-07-01"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: unused-destructured-var
+      category: style
+      pattern: >-
+        A value destructured from a hook or object (e.g. const { queuePreference } = ...) that is never referenced afterward
+      check: >-
+        Verify every destructured binding is actually used; with noUnusedLocals and @typescript-eslint/no-unused-vars set to error, any unused local fails lint/build — either wire it in or remove it
+      source: copilot:PR#896
+      added: "2026-07-01"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: debounce-not-immediate-save
+      category: performance
+      pattern: >-
+        A save/persistence helper is meant to debounce or batch rapid edits, but text/number input handlers call an immediate-write method (e.g. saveNow) on every change instead of a debounced queue method
+      check: >-
+        Verify that high-frequency inputs (text/number fields) route through the debounced/queued path and only low-frequency events (toggles, selects, blur, unmount) trigger immediate flushes, so quick successive edits collapse into a single network request
+      source: copilot:PR#896
+      added: "2026-07-01"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: async-save-status-overwrites-pending-edits
+      category: concurrency
+      pattern: >-
+        A debounced/async save resolves and unconditionally marks state as 'saved' and/or writes the server response back into local state
+      check: >-
+        Verify that edits queued while the request was in-flight are not clobbered: pending keys should be merged over the server response, and only fields/sections with no pending changes at response time should transition to 'saved' — those with pending edits must stay in the 'saving' state
+      source: copilot:PR#896
+      added: "2026-07-01"
+      paths:
+        - '**/*.go'
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: guard-async-state-after-unmount
+      category: concurrency
+      pattern: >-
+        A fetch or async call in a React hook/component updates state in its `.then`/`await` continuation, while sibling fetches in the same hook guard with a `cancelled`/`isMounted` flag cleaned up in the effect's return
+      check: >-
+        Verify every async state update is guarded by the same cancellation flag (checked before calling setState) so navigating away mid-request cannot set state after unmount
+      source: copilot:PR#894
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: i18n-error-fallbacks
+      category: ui
+      pattern: >-
+        Catch blocks or error handlers that fall back to a hardcoded English string (e.g. "Save failed", "Delete failed", "Import failed", "Reset failed") when an error has no message
+      check: >-
+        Verify user-facing error fallbacks go through react-i18next via t() with keys defined in all locale files (en, nb, th), rather than hardcoded English literals
+      source: copilot:PR#894
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: division-by-zero-progress-bar
+      category: error-handling
+      pattern: >-
+        Computing a percentage or ratio for UI rendering (e.g. progress bar width) by dividing by a value that comes from API data, such as an allowance, total, or count
+      check: >-
+        Verify the denominator is guarded against 0, missing, or invalid values so the calculation cannot produce Infinity, NaN, or negative percentages that break rendering
+      source: copilot:PR#894
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: close-panel-after-successful-save
+      category: error-handling
+      pattern: >-
+        A save function returns a success/failure boolean based on a post-save refetch/reload, and UI dismissal (closing a panel/modal) is gated on that boolean—especially when no alternative exit (Cancel) is available.
+      check: >-
+        Verify that a successful primary write (e.g., PUT/POST) closes the UI and reports success regardless of whether a secondary reload/refetch fails; a transient refetch failure should trigger a background refresh, not trap the user or mask a saved write.
+      source: copilot:PR#894
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: refactor-preserve-ui-parity
+      category: ui
+      pattern: >-
+        A refactor or component split that claims 'no user-visible behavior change' but reworks the rendered output of a card/page (e.g. showing only accrued value instead of the prior projected payout with a progress bar and aria attributes)
+      check: >-
+        Verify the refactored UI keeps full parity with the prior version — all displayed fields, projections, progress bars, and accessibility attributes are preserved unless a behavior change is explicitly intended and documented
+      source: copilot:PR#894
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: doc-comment-matches-return-type
+      category: style
+      pattern: >-
+        A doc comment on a function or hook describes a return value (e.g. "Returns true...") that contradicts the function's actual signature (e.g. Promise<void>)
+      check: >-
+        Verify the doc comment accurately reflects what the function actually returns; stale or aspirational return-value descriptions must be corrected to match the real behavior
+      source: copilot:PR#894
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: no-setstate-during-render-sync
+      category: ui
+      pattern: >-
+        A React component calls a state setter during render (not inside an event handler or effect) to keep one state/prop value synced with another
+      check: >-
+        Verify derived-state syncing is done inside a useEffect (or computed during render without a setter), not by calling setState in the render body; confirm useEffect is imported when introduced
+      source: copilot:PR#894
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: no-render-time-state-updates
+      category: concurrency
+      pattern: >-
+        A React component calls a state setter during render (e.g. to reset/sync derived state) instead of inside an effect, often to react to a changed prop like selectedMonth
+      check: >-
+        Verify that state updates reacting to prop/dependency changes are moved into a useEffect (with the correct dependency array) rather than executed during render, to avoid React render-time setState warnings
+      source: copilot:PR#894
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: memoize-callback-for-effect-deps
+      category: performance
+      pattern: >-
+        A function defined in a component is referenced by reset/side-effect logic that may be (or is) moved into a useEffect and listed in its dependency array
+      check: >-
+        Verify the function is wrapped in useCallback (with correct deps) so it has a stable identity and can be safely included in the effect's dependency list without causing the effect to re-run on every render
+      source: copilot:PR#894
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: comma-decimal-number-parsing
+      category: other
+      pattern: >-
+        Parsing user-entered numeric input with parseFloat/parseInt/Number in a form field (e.g. salary, weight, quantity)
+      check: >-
+        Verify the input is parsed with the shared parseDecimal helper (or otherwise accepts Norwegian comma decimals like "7,5"), not raw parseFloat which truncates comma-separated decimals to the integer part.
+      source: copilot:PR#894
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: salary-parsefloat-comma-decimal
+      category: error-handling
+      pattern: >-
+        Parsing user-entered numeric form fields (especially salary/currency config) with parseFloat or Number
+      check: >-
+        Verify comma-decimal input is handled by using parseDecimal (with a NaN fallback) instead of parseFloat, so Norwegian comma decimals aren't silently truncated or saved as wrong values
+      source: copilot:PR#894
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
+    - id: year-scoped-fetch-uses-wrong-active-tab-selector
+      category: concurrency
+      pattern: >-
+        A data-fetching hook derives year-scoped requests from a shared state variable (e.g. selectedYear) that can be mutated independently by a different tab/control than the one currently active
+      check: >-
+        Verify that when a tab is active, its fetches derive scope from the selector tied to that tab (e.g. the year implied by selectedMonth for the Month tab) rather than a sibling selector that another tab can change independently, so switching tabs never fetches data for a stale/wrong scope
+      source: copilot:PR#894
+      added: "2026-07-01"
+      paths:
+        - '**/*.json'
+        - '**/*.md'
+        - '**/*.ts'
+        - '**/*.tsx'
