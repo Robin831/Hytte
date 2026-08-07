@@ -16,8 +16,10 @@ type Tab = 'finder' | 'board'
 
 const LEGACY_TAB_KEY = 'wordfeud-tab'
 
+// Board is the default tab — it's the daily-driver view (live games + solver);
+// the word finder is the occasional lookup tool.
 function parseTab(value: string | null): Tab {
-  return value === 'board' ? 'board' : 'finder'
+  return value === 'finder' ? 'finder' : 'board'
 }
 
 export default function WordfeudPage() {
@@ -34,7 +36,7 @@ export default function WordfeudPage() {
 
     if (searchParams.get('tab')) return
 
-    const tab: Tab = legacy === 'board' || legacy === 'mygames' || legacy === 'games' ? 'board' : 'finder'
+    const tab: Tab = legacy === 'finder' ? 'finder' : 'board'
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('tab', tab)
