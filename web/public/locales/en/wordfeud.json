@@ -54,7 +54,8 @@
     "opponentRack": "Opponent's likely rack",
     "opponentRackHint": "Bag has ≤7 tiles — these tiles must be in your opponent's rack.",
     "blank": "blank",
-    "loadFromGame": "Load from game"
+    "loadFromGame": "Load from game",
+    "quickSwitch": "Quick game switch"
   },
   "games": {
     "tab": "Games"

@@ -1,0 +1,2 @@
+category: Changed
+- **Wordfeud board layout rework** - On wide screens the page is now three columns — game list and tile tracker in a left rail, board center, rack/solver/results right — so picking a game, reading the board and browsing moves needs no scrolling. On phones: a quick-switch strip of your-turn games sits under the score bar, tapping a suggested move scrolls the board back into view so the preview is visible, and the physical-keyboard instructions are hidden on touch screens.

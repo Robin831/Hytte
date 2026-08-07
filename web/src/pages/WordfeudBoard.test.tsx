@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, act, cleanup } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act, cleanup, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import WordfeudBoard from './WordfeudBoard'
 
@@ -16,6 +16,7 @@ const TRANSLATIONS: Record<string, string> = {
   'board.tilesInPlay': 'Using {{used}} of {{total}} tiles',
   'board.includeAllTiles': 'Use all tiles',
   'board.tilesInBag': '{{count}} of {{total}} tiles in bag',
+  'board.quickSwitch': 'Quick game switch',
   'solver.solve': 'Find moves',
 }
 
@@ -64,7 +65,12 @@ function mockFetch() {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ moves: [], elapsed_ms: 1 }),
+        json: async () => ({
+          moves: [
+            { word: 'ORD', row: 7, col: 7, direction: 'horizontal', score: 12, tiles_used: 3, vowels_used: 1 },
+          ],
+          elapsed_ms: 1,
+        }),
       } as unknown as Response
     }
     throw new Error(`unexpected fetch: ${href}`)
@@ -228,5 +234,109 @@ describe('WordfeudBoard rack tile exclusion', () => {
     // An excluded tile is still physically on your rack, so it must not go back
     // into the bag — that would corrupt the bag-empty opponent deduction.
     expect(screen.getByText(/tiles in bag/).textContent).toBe(before)
+  })
+})
+
+describe('WordfeudBoard layout behaviors', () => {
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  function gamesFetch() {
+    return vi.fn(async (url: string, opts?: RequestInit) => {
+      const href = String(url)
+      if (href.match(/\/api\/wordfeud\/games\/\d+$/)) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            game: {
+              id: 42,
+              board: Array.from({ length: 15 }, () => Array.from({ length: 15 }, () => null)),
+              rack: [{ letter: 'A', value: 1 }],
+              players: [
+                { username: 'me', id: 1, score: 10 },
+                { username: 'kari', id: 2, score: 20 },
+              ],
+              is_my_turn: true,
+              is_running: true,
+              bag_count: 50,
+            },
+          }),
+        } as unknown as Response
+      }
+      if (href.includes('/api/wordfeud/games')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            games: [
+              { id: 42, my_username: 'me', opponent: 'kari', scores: [10, 20], is_my_turn: true },
+              { id: 43, my_username: 'me', opponent: 'ola', scores: [5, 5], is_my_turn: false },
+            ],
+            finished_games: [],
+          }),
+        } as unknown as Response
+      }
+      if (href.includes('/api/wordfeud/solve')) {
+        solveRacks.push(JSON.parse(String(opts?.body)).rack)
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            moves: [
+              { word: 'ORD', row: 7, col: 7, direction: 'horizontal', score: 12, tiles_used: 3, vowels_used: 1 },
+            ],
+            elapsed_ms: 1,
+          }),
+        } as unknown as Response
+      }
+      throw new Error(`unexpected fetch: ${href}`)
+    })
+  }
+
+  it('shows quick-switch chips only for your-turn games and loads on tap', async () => {
+    vi.stubGlobal('fetch', gamesFetch())
+    renderBoard()
+
+    // Chip for the your-turn opponent appears; the not-your-turn one does not.
+    const group = await screen.findByRole('group', { name: 'Quick game switch' })
+    const chip = within(group).getByRole('button', { name: 'kari' })
+    expect(within(group).queryByRole('button', { name: 'ola' })).toBeNull()
+
+    await act(async () => {
+      fireEvent.click(chip)
+    })
+
+    // The game detail was fetched and its rack landed in the input.
+    await waitFor(() => {
+      expect((screen.getByLabelText('Your rack') as HTMLInputElement).value).toBe('A')
+    })
+  })
+
+  it('scrolls the board into view when a move is selected on a narrow screen', async () => {
+    vi.stubGlobal('fetch', mockFetch())
+    const scrolls: unknown[] = []
+    Element.prototype.scrollIntoView = function (...args: unknown[]) {
+      scrolls.push(args)
+    }
+    vi.stubGlobal('matchMedia', (q: string) => ({ matches: true, media: q }))
+
+    renderBoard()
+    await typeRack('ORD')
+    await clickSolve()
+
+    const move = await screen.findByRole('button', { name: /ORD/ })
+    await act(async () => {
+      fireEvent.click(move)
+    })
+    expect(scrolls.length).toBe(1)
+
+    // Deselecting does not scroll again.
+    await act(async () => {
+      fireEvent.click(move)
+    })
+    expect(scrolls.length).toBe(1)
   })
 })

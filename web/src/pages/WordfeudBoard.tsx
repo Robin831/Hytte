@@ -148,6 +148,9 @@ export default function WordfeudBoard() {
   const [activeGame, setActiveGame] = useState<GameState | null>(null)
   const [autoSolvePending, setAutoSolvePending] = useState(false)
   const gamesControllerRef = useRef<AbortController | null>(null)
+  // For scrolling the board back into view when a move is picked on stacked
+  // (mobile) layouts, where the results list sits far below the board.
+  const boardColRef = useRef<HTMLDivElement | null>(null)
 
   // Fetch games list
   const fetchGames = useCallback(async (signal?: AbortSignal) => {
@@ -601,11 +604,18 @@ export default function WordfeudBoard() {
     : 'grid-cols-[1fr_auto_auto_auto]'
 
   return (
-    <div className="flex flex-col gap-6">
+    // Stacked on mobile; board+solver pair side by side from lg; on xl the
+    // game list + tile tracker move into a left rail so pick-game → board →
+    // moves is one glance with nothing below the fold.
+    <div className="flex flex-col gap-6 xl:grid xl:grid-cols-[280px_minmax(0,1fr)] xl:items-start">
       {/* Board and solver side by side so move hover previews stay in view */}
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Board */}
-        <div className="shrink-0">
+      <div className="flex flex-col lg:flex-row gap-6 xl:col-start-2 xl:row-start-1">
+        {/* Board. The column is pinned to the grid's rendered width at lg+
+            (15 cells x sm:w-8(32px) + 14 x 1px gap + 2px border = 496px) so
+            text rows (scores, hints) wrap to the board instead of inflating
+            the column and squeezing the solver out of the viewport. Keep in
+            sync with the cell size classes on the grid buttons below. */}
+        <div ref={boardColRef} className="lg:w-[496px] lg:shrink-0 scroll-mt-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-medium text-gray-400">{t('board.title')}</h3>
             <button
@@ -641,6 +651,31 @@ export default function WordfeudBoard() {
               <span className={`ml-auto text-sm font-medium ${activeGame.is_my_turn ? 'text-green-400' : 'text-gray-400'}`}>
                 {activeGame.is_my_turn ? t('yourTurn') : t('theirTurn')}
               </span>
+            </div>
+          )}
+          {/* Mobile quick switcher: your-turn games as chips, so changing game
+              doesn't require scrolling to the list at the bottom */}
+          {games.some(g => g.is_my_turn) && (
+            <div
+              className="flex gap-1.5 overflow-x-auto pb-1 mb-3 lg:hidden"
+              role="group"
+              aria-label={t('board.quickSwitch')}
+            >
+              {games.filter(g => g.is_my_turn).map(game => (
+                <button
+                  key={game.id}
+                  type="button"
+                  onClick={() => setSelectedGameId(game.id)}
+                  disabled={loadingGame}
+                  className={`shrink-0 rounded-full px-3 py-1 text-xs transition-colors cursor-pointer disabled:opacity-50 ${
+                    selectedGameId === game.id
+                      ? 'bg-blue-900/60 border border-blue-700 text-blue-200'
+                      : 'bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  {game.opponent}
+                </button>
+              ))}
             </div>
           )}
           <div
@@ -751,7 +786,8 @@ export default function WordfeudBoard() {
               {t(direction === 'horizontal' ? 'board.directionHorizontal' : 'board.directionVertical')}
             </span>
           </div>
-          <p className="text-xs text-gray-500 mt-2">{t('board.hint')}</p>
+          {/* Physical-keyboard instructions — pointless on touch screens */}
+          <p className="hidden md:block text-xs text-gray-500 mt-2">{t('board.hint')}</p>
         </div>
 
         {/* Rack + top moves beside the board */}
@@ -907,7 +943,15 @@ export default function WordfeudBoard() {
                       <button
                         key={`${move.word}-${move.row}-${move.col}-${move.direction}-${i}`}
                         type="button"
-                        onClick={() => setSelectedMoveIdx(selectedMoveIdx === i ? null : i)}
+                        onClick={() => {
+                          const next = selectedMoveIdx === i ? null : i
+                          setSelectedMoveIdx(next)
+                          // On stacked layouts the board is far above the
+                          // results — bring the highlighted preview into view.
+                          if (next !== null && window.matchMedia('(max-width: 1023px)').matches) {
+                            boardColRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                          }
+                        }}
                         onMouseEnter={() => setHoveredMoveIdx(i)}
                         onMouseLeave={() => setHoveredMoveIdx(null)}
                         onPointerEnter={() => setHoveredMoveIdx(i)}
@@ -953,8 +997,8 @@ export default function WordfeudBoard() {
         </div>
       </div>
 
-      {/* Below the board: game list + tile tracker */}
-      <div className="min-w-0 space-y-6">
+      {/* Game list + tile tracker: below the board when stacked, left rail on xl */}
+      <div className="min-w-0 space-y-6 xl:col-start-1 xl:row-start-1">
         {/* Game list */}
         {gamesAvailable && (games.length > 0 || finishedGames.length > 0) && (() => {
           const yourTurnGames = [...games].filter(g => g.is_my_turn).sort((a, b) => a.opponent.localeCompare(b.opponent))
@@ -1160,7 +1204,8 @@ export default function WordfeudBoard() {
               {t('board.opponentRackHint')}
             </p>
           )}
-          <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-1.5">
+          {/* xl caps at 5 columns: the tracker lives in a ~280px rail there */}
+          <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 xl:grid-cols-5 gap-1.5">
             {remainingTiles.filter(t => t.remaining > 0).map(({ letter, remaining }) => (
               <div
                 key={letter}

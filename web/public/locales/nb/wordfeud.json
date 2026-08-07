@@ -54,7 +54,8 @@
     "opponentRack": "Motstanderens sannsynlige brikker",
     "opponentRackHint": "Posen har ≤7 brikker — disse brikkene må være hos motstanderen.",
     "blank": "blanko",
-    "loadFromGame": "Last fra spill"
+    "loadFromGame": "Last fra spill",
+    "quickSwitch": "Hurtig spillbytte"
   },
   "games": {
     "tab": "Spill"
