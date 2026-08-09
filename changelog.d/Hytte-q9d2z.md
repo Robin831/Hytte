@@ -1,0 +1,2 @@
+category: Fixed
+- **PWA installs as a real Android app** - The web manifest only offered an SVG icon, so Chrome on Android could not mint a WebAPK and "Add to Home screen" produced a legacy shortcut — which shows a persistent "Tap to copy the web address for this app" notification on every launch. Added proper PNG icons (192/512, any + maskable, rendered from the existing SVG), `id`/`scope` fields, and an apple-touch-icon; the kiosk manifest got the same icon set. Reinstalling the app from Chrome now yields a notification-free WebAPK. (Hytte-q9d2z)
