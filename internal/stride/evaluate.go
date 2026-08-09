@@ -973,11 +973,18 @@ func buildEvalPrompt(
 	// accelerometer, which tracks cadence more than belt speed, so its error is
 	// not a fixed percentage that can be corrected away. The chest-strap HR is
 	// still reliable. Tell the coach to trust the runner's reported speeds over
-	// the watch's pace when this callout fires, and hand it the athlete's own
-	// persisted calibration rather than letting it derive one.
+	// the watch's pace when this callout fires, hand it the athlete's own
+	// persisted calibration rather than letting it derive one, and stop it
+	// scoring an indoor continuous run non-compliant purely for sitting a few
+	// bpm over an outdoor-derived zone cap. Kept textually parallel to
+	// workoutFormatGuidance in generate.go — edit both together.
 	if workout.IsIndoor && (strings.EqualFold(workout.SubSport, "treadmill") || strings.Contains(strings.ToLower(workout.SubSport), "treadmill") || strings.Contains(strings.ToLower(workout.SubSport), "indoor")) {
 		sb.WriteString("## Treadmill Note\n")
-		sb.WriteString("This workout is on a treadmill. The watch estimates pace/distance from foot-pod or wrist accelerometer; that estimate is driven largely by cadence rather than belt speed, so its error is NOT a fixed percentage and cannot be corrected with one. Treat the watch's indoor pace and distance as unusable rather than as numbers to adjust, and do not state or derive a watch under-read percentage. The belt speed (and the runner's reported speeds in the post-workout self-report) is the source of truth for pace. Heart rate from a chest strap remains reliable; trust HR + cadence + lap structure to assess intensity, not the watch's pace number. Note that the same effort costs more HR indoors, so an outdoor HR ceiling does not transfer unchanged — judge the session by HR drift and the shape of the HR curve.\n\n")
+		sb.WriteString("This workout is on a treadmill. The watch estimates pace/distance from foot-pod or wrist accelerometer; that estimate is driven largely by cadence rather than belt speed, so its error is NOT a fixed percentage and cannot be corrected with one. Treat the watch's indoor pace and distance as unusable rather than as numbers to adjust, and do not state or derive a watch under-read percentage. The belt speed (and the runner's reported speeds in the post-workout self-report) is the source of truth for pace. Heart rate from a chest strap remains reliable; trust HR + cadence + lap structure to assess intensity, not the watch's pace number.\n\n")
+		sb.WriteString("Indoor heart rate runs higher than outdoors for the same mechanical work: no self-generated airflow means heat accumulates, plasma and stroke volume fall, and HR climbs. Consequences for scoring this workout:\n")
+		sb.WriteString("- An outdoor-derived zone ceiling does NOT transfer indoors for continuous/steady runs. Do NOT mark a continuous indoor run non-compliant, and do NOT raise \"hr_too_high\", solely because average HR sat a few bpm (roughly 3-8) above an outdoor zone cap. Judge compliance by cardiac drift across the run, the absolute max HR ceiling, and the runner's own breathing/effort report.\n")
+		sb.WriteString("- Interval sessions are the exception: a work-rep HR ceiling still applies indoors unchanged, and exceeding it is scoreable as non-compliant.\n")
+		sb.WriteString("- Read the shape of the HR curve, not just the average. A step up over the first ~10-15 minutes followed by a plateau is thermal load equilibrating — acceptable; the fix is cooling, not a slower belt. A continuous rise that never levels off means the effort was genuinely too hard. Use this shape as the tiebreaker whenever indoor HR sits above the outdoor zone ceiling.\n\n")
 		sb.WriteString(renderTreadmillCalibration(treadmillCalibration))
 	}
 
