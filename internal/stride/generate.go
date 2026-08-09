@@ -174,6 +174,35 @@ func currentWeek() (weekStart, weekEnd string) {
 	return monday.Format(dateFmt), sunday.Format(dateFmt)
 }
 
+// decryptCustomPrompt decrypts a raw stride_custom_prompt preference value.
+// The preference is stored encrypted at rest, so callers must never use the raw
+// value. A decrypt failure is logged and degrades to an empty string so plan
+// generation and chat both keep working without the custom instructions rather
+// than failing outright.
+func decryptCustomPrompt(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	dec, err := encryption.DecryptField(raw)
+	if err != nil {
+		log.Printf("stride: failed to decrypt stride_custom_prompt, skipping: %v", err)
+		return ""
+	}
+	return dec
+}
+
+// loadCustomPrompt reads the athlete's stride_custom_prompt preference and
+// returns it decrypted. Any failure (preference lookup or decrypt) is logged and
+// yields an empty string.
+func loadCustomPrompt(db *sql.DB, userID int64) string {
+	prefs, err := auth.GetPreferences(db, userID)
+	if err != nil {
+		log.Printf("stride: load preferences for user %d: %v", userID, err)
+		return ""
+	}
+	return decryptCustomPrompt(prefs["stride_custom_prompt"])
+}
+
 // GeneratePlan generates a weekly training plan for the given user using Claude AI.
 // It queries training context from the DB, builds a prompt with Marius Bakken
 // threshold-dominant model instructions, calls Claude, and stores the result in
@@ -241,15 +270,7 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 
 	// Read optional custom prompt appended to the plan generation request.
 	// Decrypt it because the preference is stored encrypted at rest.
-	customPrompt := prefs["stride_custom_prompt"]
-	if customPrompt != "" {
-		if dec, err := encryption.DecryptField(customPrompt); err != nil {
-			log.Printf("stride: failed to decrypt stride_custom_prompt, skipping: %v", err)
-			customPrompt = ""
-		} else {
-			customPrompt = dec
-		}
-	}
+	customPrompt := decryptCustomPrompt(prefs["stride_custom_prompt"])
 
 	// Athlete-measured treadmill calibration, persisted across weeks so the coach
 	// never has to re-derive belt-speed and indoor-HR offsets — and so it cannot

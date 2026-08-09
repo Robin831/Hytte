@@ -1,10 +1,12 @@
 package stride
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/Robin831/Hytte/internal/encryption"
 	"github.com/Robin831/Hytte/internal/training"
 )
 
@@ -132,7 +134,7 @@ Current phase: Threshold development`,
 
 func TestBuildChatSystemPrompt_ContainsCurrentPlan(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "", "")
 
 	// Should contain plan dates and session details
 	for _, want := range []string{
@@ -151,7 +153,7 @@ func TestBuildChatSystemPrompt_ContainsCurrentPlan(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsWorkoutFormatGuidance(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "", "")
 
 	// Chat edits must follow the same treadmill-friendly dual-unit format as
 	// initial generation.
@@ -168,7 +170,7 @@ func TestBuildChatSystemPrompt_ContainsWorkoutFormatGuidance(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsTreadmillSpeedCaveat(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "", "")
 
 	// Editing a session over chat must not reintroduce the bug where an
 	// outdoor km/h figure is handed over as a treadmill belt setting.
@@ -190,7 +192,7 @@ func TestBuildChatSystemPrompt_ContainsTreadmillCalibration(t *testing.T) {
 	const calibration = "Belt sits ~3% below outdoor km/h at matched HR."
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
 
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, calibration)
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, calibration, "")
 	if !strings.Contains(result, treadmillCalibrationHeading) {
 		t.Errorf("chat prompt should contain %q when a calibration is set", treadmillCalibrationHeading)
 	}
@@ -198,7 +200,7 @@ func TestBuildChatSystemPrompt_ContainsTreadmillCalibration(t *testing.T) {
 		t.Error("chat prompt should carry the calibration text verbatim")
 	}
 
-	without := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
+	without := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "", "")
 	if strings.Contains(without, treadmillCalibrationHeading) {
 		t.Error("chat prompt should omit the calibration section when none is set")
 	}
@@ -206,7 +208,7 @@ func TestBuildChatSystemPrompt_ContainsTreadmillCalibration(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsProfile(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "", "")
 
 	for _, want := range []string{
 		"Threshold HR: 166",
@@ -223,7 +225,7 @@ func TestBuildChatSystemPrompt_ContainsProfile(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsEvaluations(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "", "")
 
 	for _, want := range []string{
 		"Completed Sessions This Week",
@@ -240,7 +242,7 @@ func TestBuildChatSystemPrompt_ContainsEvaluations(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsRaces(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "", "")
 
 	for _, want := range []string{
 		"Upcoming Races",
@@ -259,7 +261,7 @@ func TestBuildChatSystemPrompt_ContainsRaces(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsModificationInstructions(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "", "")
 
 	for _, want := range []string{
 		"When modifying the plan, output the FULL updated 7-day plan",
@@ -276,7 +278,7 @@ func TestBuildChatSystemPrompt_ContainsModificationInstructions(t *testing.T) {
 
 func TestBuildChatSystemPrompt_OmitsMariusBakkenFullInstructions(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "", "")
 
 	// These are distinctive phrases from the full mariusBakkenInstructions constant
 	// that should NOT appear in the chat prompt.
@@ -295,7 +297,7 @@ func TestBuildChatSystemPrompt_OmitsMariusBakkenFullInstructions(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsTrainingLoad(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "", "")
 
 	for _, want := range []string{
 		"Training Load",
@@ -311,7 +313,7 @@ func TestBuildChatSystemPrompt_ContainsTrainingLoad(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsNotes(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "", "")
 
 	for _, want := range []string{
 		"Athlete Notes",
@@ -326,7 +328,7 @@ func TestBuildChatSystemPrompt_ContainsNotes(t *testing.T) {
 
 func TestBuildChatSystemPrompt_NilACR(t *testing.T) {
 	profile, plan, evals, races, _, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, nil, acute, chronic, notes, "")
+	result := BuildChatSystemPrompt(profile, plan, evals, races, nil, acute, chronic, notes, "", "")
 
 	if strings.Contains(result, "ACR") {
 		t.Error("prompt should not contain ACR when acr is nil")
@@ -345,7 +347,7 @@ func TestBuildChatSystemPrompt_EmptyOptionalSections(t *testing.T) {
 		Plan:      json.RawMessage(`[]`),
 	}
 
-	result := BuildChatSystemPrompt(profile, plan, nil, nil, nil, 0, 0, nil, "")
+	result := BuildChatSystemPrompt(profile, plan, nil, nil, nil, 0, 0, nil, "", "")
 
 	// Should NOT contain optional section headers when data is empty
 	if strings.Contains(result, "Completed Sessions This Week") {
@@ -363,5 +365,126 @@ func TestBuildChatSystemPrompt_EmptyOptionalSections(t *testing.T) {
 	}
 	if !strings.Contains(result, "Training Load") {
 		t.Error("prompt should always contain the training load section")
+	}
+}
+
+// The athlete's custom prompt shapes plan generation, so the chat coach must see
+// the same durable context in a clearly-labelled, precedence-setting section.
+func TestBuildChatSystemPrompt_ContainsCustomPrompt(t *testing.T) {
+	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
+	custom := "Treadmill belt reads 3% slow. Never prescribe doubles."
+
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "", custom)
+
+	if !strings.Contains(result, custom) {
+		t.Errorf("prompt should contain the custom prompt text %q, but it does not", custom)
+	}
+	if !strings.Contains(result, "Athlete's Standing Coaching Instructions") {
+		t.Error("prompt should label the custom prompt with its own section header")
+	}
+	if !strings.Contains(result, "OVERRIDE your generic coaching defaults") {
+		t.Error("custom prompt section should state that it overrides generic defaults")
+	}
+}
+
+func TestBuildChatSystemPrompt_OmitsCustomPromptSectionWhenEmpty(t *testing.T) {
+	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
+
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "", "")
+
+	if strings.Contains(result, "Athlete's Standing Coaching Instructions") {
+		t.Error("prompt should not contain the custom prompt header when no custom prompt is set")
+	}
+	// The rest of the prompt must be unaffected.
+	if !strings.Contains(result, "Current Weekly Plan") {
+		t.Error("prompt should still contain the current plan section")
+	}
+}
+
+func TestLoadCustomPrompt_DecryptsStoredPreference(t *testing.T) {
+	db := setupTestDB(t)
+
+	want := "Long run always on Sunday. Knee flares up on back-to-back hard days."
+	enc, err := encryption.EncryptField(want)
+	if err != nil {
+		t.Fatalf("encrypt custom prompt: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'stride_custom_prompt', ?)`, enc,
+	); err != nil {
+		t.Fatalf("insert preference: %v", err)
+	}
+
+	if got := loadCustomPrompt(db, 1); got != want {
+		t.Errorf("loadCustomPrompt = %q, want %q", got, want)
+	}
+}
+
+func TestLoadCustomPrompt_AbsentPreference(t *testing.T) {
+	db := setupTestDB(t)
+
+	if got := loadCustomPrompt(db, 1); got != "" {
+		t.Errorf("loadCustomPrompt = %q, want empty string when no preference is set", got)
+	}
+}
+
+// A corrupt or key-rotated ciphertext must degrade to no custom instructions
+// rather than propagating an error and failing the chat turn.
+func TestLoadCustomPrompt_DecryptFailureDegradesToEmpty(t *testing.T) {
+	db := setupTestDB(t)
+
+	enc, err := encryption.EncryptField("Secret coaching preferences")
+	if err != nil {
+		t.Fatalf("encrypt custom prompt: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'stride_custom_prompt', ?)`, enc,
+	); err != nil {
+		t.Fatalf("insert preference: %v", err)
+	}
+
+	// Switch to a different encryption key so decryption fails.
+	encryption.ResetEncryptionKey()
+	t.Setenv("ENCRYPTION_KEY", "different-key-causes-decrypt-fail")
+	encryption.ResetEncryptionKey()
+	t.Cleanup(func() { encryption.ResetEncryptionKey() })
+
+	if got := loadCustomPrompt(db, 1); got != "" {
+		t.Errorf("loadCustomPrompt = %q, want empty string when decryption fails", got)
+	}
+}
+
+// End-to-end: the chat handler's context builder must surface the decrypted
+// custom prompt in the system prompt it hands to Claude.
+func TestBuildChatContext_IncludesCustomPrompt(t *testing.T) {
+	db := setupTestDB(t)
+
+	custom := "Prefers morning sessions; avoid hills on Tuesdays."
+	enc, err := encryption.EncryptField(custom)
+	if err != nil {
+		t.Fatalf("encrypt custom prompt: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'stride_custom_prompt', ?)`, enc,
+	); err != nil {
+		t.Fatalf("insert preference: %v", err)
+	}
+
+	plan := Plan{
+		ID:        1,
+		UserID:    1,
+		WeekStart: "2026-04-13",
+		WeekEnd:   "2026-04-19",
+		Phase:     "base",
+		Plan:      json.RawMessage(`[]`),
+	}
+
+	result := buildChatContext(context.Background(), db, 1, plan)
+
+	if !strings.Contains(result, custom) {
+		t.Errorf("chat context should contain the custom prompt %q, but it does not", custom)
+	}
+	if !strings.Contains(result, "Athlete's Standing Coaching Instructions") {
+		t.Error("chat context should contain the custom prompt section header")
 	}
 }
