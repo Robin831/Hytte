@@ -1299,3 +1299,24 @@ func TestBuildGeneratePrompt_NoTreadmillCalibrationSectionWhenUnset(t *testing.T
 		t.Error("prompt should not contain the calibration heading when no calibration is set")
 	}
 }
+
+// An outdoor-derived Zone 1 ceiling is too strict indoors, where the same work
+// costs more HR — enforcing it drives the belt down to a non-training speed.
+// Interval work-rep ceilings still apply, and the HR-curve shape is the
+// diagnostic that separates heat load from an effort that is genuinely too hard.
+func TestMariusBakkenInstructions_IndoorHRCapGuidance(t *testing.T) {
+	if strings.Contains(mariusBakkenInstructions, "governs in both") {
+		t.Error("generation instructions must not claim the outdoor HR cap governs indoors as well")
+	}
+	for _, want := range []string{
+		"do NOT transfer indoors for continuous runs",
+		"3-8 bpm above the outdoor zone ceiling",
+		"Interval sessions are the exception",
+		"then plateaus is thermal load equilibrating",
+		"continuous rise that never levels off",
+	} {
+		if !strings.Contains(mariusBakkenInstructions, want) {
+			t.Errorf("generation instructions should contain indoor HR guidance %q, but they do not", want)
+		}
+	}
+}

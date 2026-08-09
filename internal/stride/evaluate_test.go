@@ -261,6 +261,25 @@ func TestBuildEvalPrompt_TreadmillCallout(t *testing.T) {
 	if !strings.Contains(prompt, "watch estimates pace") {
 		t.Error("expected callout to warn about watch pace inaccuracy on treadmill")
 	}
+	// The error is cadence-driven and varies by speed — quoting a percentage
+	// invites the coach to state a fabricated figure.
+	if strings.Contains(prompt, "5-15%") {
+		t.Error("treadmill callout must not quote a fixed watch under-read percentage")
+	}
+	// An outdoor-derived zone cap is too strict indoors, so a few bpm over it
+	// must not by itself score the run non-compliant. Interval work-rep
+	// ceilings still apply, and the HR-curve shape is the tiebreaker.
+	for _, want := range []string{
+		"does NOT transfer indoors for continuous/steady runs",
+		"roughly 3-8",
+		"Interval sessions are the exception",
+		"thermal load equilibrating",
+		"continuous rise that never levels off",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("treadmill callout should contain indoor HR scoring guidance %q, but it does not", want)
+		}
+	}
 }
 
 // The treadmill callout must not hand the coach a fixed under-read percentage
