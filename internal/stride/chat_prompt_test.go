@@ -2,9 +2,7 @@ package stride
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -405,7 +403,6 @@ func TestBuildChatSystemPrompt_OmitsCustomPromptSectionWhenEmpty(t *testing.T) {
 
 func TestLoadCustomPrompt_DecryptsStoredPreference(t *testing.T) {
 	db := setupTestDB(t)
-	insertPromptTestUser(t, db, 1)
 
 	want := "Long run always on Sunday. Knee flares up on back-to-back hard days."
 	enc, err := encryption.EncryptField(want)
@@ -425,7 +422,6 @@ func TestLoadCustomPrompt_DecryptsStoredPreference(t *testing.T) {
 
 func TestLoadCustomPrompt_AbsentPreference(t *testing.T) {
 	db := setupTestDB(t)
-	insertPromptTestUser(t, db, 1)
 
 	if got := loadCustomPrompt(db, 1); got != "" {
 		t.Errorf("loadCustomPrompt = %q, want empty string when no preference is set", got)
@@ -436,7 +432,6 @@ func TestLoadCustomPrompt_AbsentPreference(t *testing.T) {
 // rather than propagating an error and failing the chat turn.
 func TestLoadCustomPrompt_DecryptFailureDegradesToEmpty(t *testing.T) {
 	db := setupTestDB(t)
-	insertPromptTestUser(t, db, 1)
 
 	enc, err := encryption.EncryptField("Secret coaching preferences")
 	if err != nil {
@@ -463,7 +458,6 @@ func TestLoadCustomPrompt_DecryptFailureDegradesToEmpty(t *testing.T) {
 // custom prompt in the system prompt it hands to Claude.
 func TestBuildChatContext_IncludesCustomPrompt(t *testing.T) {
 	db := setupTestDB(t)
-	insertPromptTestUser(t, db, 1)
 
 	custom := "Prefers morning sessions; avoid hills on Tuesdays."
 	enc, err := encryption.EncryptField(custom)
@@ -492,17 +486,5 @@ func TestBuildChatContext_IncludesCustomPrompt(t *testing.T) {
 	}
 	if !strings.Contains(result, "Athlete's Standing Coaching Instructions") {
 		t.Error("chat context should contain the custom prompt section header")
-	}
-}
-
-// insertPromptTestUser inserts a minimal user row so user_preferences rows
-// satisfy the foreign key.
-func insertPromptTestUser(t *testing.T, db *sql.DB, id int64) {
-	t.Helper()
-	if _, err := db.Exec(
-		`INSERT INTO users (id, email, name, google_id) VALUES (?, ?, ?, ?)`,
-		id, fmt.Sprintf("athlete%d@example.com", id), "Athlete", fmt.Sprintf("g%d", id),
-	); err != nil {
-		t.Fatalf("insert user: %v", err)
 	}
 }
