@@ -1,0 +1,2 @@
+category: Fixed
+- **Stride coach chat now respects your custom prompt** - The `stride_custom_prompt` training preference already shaped generated plans, but was invisible to the coach chat, so it could re-derive or contradict that context in conversation. Chat now loads and decrypts the same preference and renders it as a clearly-labelled section that overrides generic coaching defaults. (Hytte-dxs7s)

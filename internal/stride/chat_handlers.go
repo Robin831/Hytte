@@ -463,7 +463,12 @@ func buildChatContext(ctx context.Context, db *sql.DB, userID int64, plan Plan) 
 
 	calibration := loadTreadmillCalibration(db, userID)
 
-	return BuildChatSystemPrompt(profile, plan, evaluations, races, acr, acute, chronic, notes, calibration)
+	// The athlete's custom prompt shapes plan generation, so the chat coach needs
+	// it too. Failures are logged inside the helper and degrade to no custom
+	// instructions rather than failing the chat turn.
+	customPrompt := loadCustomPrompt(db, userID)
+
+	return BuildChatSystemPrompt(profile, plan, evaluations, races, acr, acute, chronic, notes, calibration, customPrompt)
 }
 
 // streamChatClaude runs the Claude CLI with stream-json output and sends text
