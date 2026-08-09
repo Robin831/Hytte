@@ -209,10 +209,11 @@ func seedUser(t *testing.T, db *sql.DB, userID int64, suffix string) {
 	}
 
 	if _, err := db.Exec(
-		`INSERT INTO user_preferences (user_id, key, value) VALUES (?, 'theme', ?), (?, 'claude_cli_path', ?), (?, 'stride_custom_prompt', ?)`,
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (?, 'theme', ?), (?, 'claude_cli_path', ?), (?, 'stride_custom_prompt', ?), (?, 'stride_treadmill_calibration', ?)`,
 		userID, "dark-"+suffix,
 		userID, enc(t, "/usr/local/bin/claude-"+suffix),
 		userID, enc(t, "Custom prompt "+suffix),
+		userID, enc(t, "Belt sits ~3% below outdoor km/h "+suffix),
 	); err != nil {
 		t.Fatalf("insert preferences: %v", err)
 	}
@@ -379,6 +380,9 @@ func TestExportHandler_DecryptsFieldsAndRedactsSecrets(t *testing.T) {
 	}
 	if prefs["stride_custom_prompt"] != "Custom prompt one" {
 		t.Errorf("expected decrypted stride_custom_prompt, got %q", prefs["stride_custom_prompt"])
+	}
+	if prefs["stride_treadmill_calibration"] != "Belt sits ~3% below outdoor km/h one" {
+		t.Errorf("expected decrypted stride_treadmill_calibration, got %q", prefs["stride_treadmill_calibration"])
 	}
 	if v, ok := prefs["claude_cli_path"]; !ok || v != "" {
 		t.Errorf("expected claude_cli_path value to be redacted, got %q (present=%v)", v, ok)

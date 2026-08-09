@@ -1260,8 +1260,22 @@ func TestBuildGeneratePrompt_IncludesTreadmillCalibration(t *testing.T) {
 	}
 	// The generic instructions must point at the section so the model knows
 	// which numbers win.
-	if !strings.Contains(prompt, `"Treadmill Calibration (athlete-measured)" section`) {
+	if !strings.Contains(prompt, `"`+treadmillCalibrationTitle+`" section`) {
 		t.Error("instructions should reference the calibration section as authoritative")
+	}
+}
+
+// The static treadmill instructions name the calibration section so the model
+// knows which numbers override the generic defaults. That reference and the
+// rendered heading must stay in lockstep — if a reword desynchronised them the
+// override mechanism would silently stop working.
+func TestWorkoutFormatGuidance_ReferencesRenderedCalibrationHeading(t *testing.T) {
+	if !strings.Contains(workoutFormatGuidance, `"`+treadmillCalibrationTitle+`" section`) {
+		t.Errorf("workoutFormatGuidance should name the %q section", treadmillCalibrationTitle)
+	}
+	section := renderTreadmillCalibration("Belt sits ~3% below outdoor km/h at matched HR.")
+	if !strings.Contains(section, treadmillCalibrationTitle) {
+		t.Errorf("rendered calibration heading %q should contain the title the instructions reference", treadmillCalibrationHeading)
 	}
 }
 

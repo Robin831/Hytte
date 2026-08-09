@@ -1916,6 +1916,56 @@ func TestPreferencesPutHandler_StrideTreadmillCalibrationEncryptedRoundtrip(t *t
 	}
 }
 
+// TestPreferencesGetHandler_DropsUndecryptableStridePrefs pins the drop-on-corrupt
+// contract centralised in decryptStridePrefs: a stored value that carries the
+// enc: prefix but cannot be decrypted is omitted from the response entirely
+// rather than handed back to the client as raw ciphertext.
+func TestPreferencesGetHandler_DropsUndecryptableStridePrefs(t *testing.T) {
+	database := setupTestDB(t)
+	userID := createTestUser(t, database)
+	token, _, err := CreateSession(database, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	const corrupt = "enc:not-valid-base64-ciphertext"
+	for _, key := range encryptedStridePrefs {
+		if err := SetPreference(database, userID, key, corrupt); err != nil {
+			t.Fatalf("SetPreference(%s): %v", key, err)
+		}
+	}
+	// A plain preference alongside them must still come back untouched.
+	if err := SetPreference(database, userID, "theme", "dark"); err != nil {
+		t.Fatalf("SetPreference(theme): %v", err)
+	}
+
+	handler := RequireAuth(database)(PreferencesGetHandler(database))
+	req := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	prefs := body["preferences"]
+	for _, key := range encryptedStridePrefs {
+		if v, ok := prefs[key]; ok {
+			t.Errorf("%s should be omitted when it fails to decrypt, got %q", key, v)
+		}
+	}
+	if strings.Contains(rec.Body.String(), corrupt) {
+		t.Error("undecryptable ciphertext leaked into the response body")
+	}
+	if prefs["theme"] != "dark" {
+		t.Errorf("expected theme=dark to survive, got %q", prefs["theme"])
+	}
+}
+
 // TestPreferencesPutHandler_RegnemesterMutedRoundtrip verifies that the
 // regnemester_muted preference is accepted by PUT and returned by GET,
 // covering both "true" and "false" values.

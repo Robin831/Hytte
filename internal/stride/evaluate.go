@@ -97,10 +97,13 @@ func RunUserEvaluation(ctx context.Context, db *sql.DB, httpClient *http.Client,
 	}
 
 	profile := training.BuildUserTrainingProfile(db, userID)
+	// Loaded once for the whole batch, like profile: it is per-user, not
+	// per-workout, and each load is a preferences read plus a decrypt.
+	calibration := loadTreadmillCalibration(db, userID)
 	evaluated := 0
 	for _, workout := range workouts {
 		evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
-		if err := evaluateSingleWorkout(evalCtx, db, httpClient, userID, workout, claudeCfg, profile, nil); err != nil {
+		if err := evaluateSingleWorkout(evalCtx, db, httpClient, userID, workout, claudeCfg, profile, nil, calibration); err != nil {
 			log.Printf("stride eval: workout %d for user %d: %v", workout.ID, userID, err)
 		} else {
 			evaluated++
@@ -590,6 +593,8 @@ func queryUnevaluatedWorkouts(ctx context.Context, db *sql.DB, userID int64, sin
 // Per-workout context (feel notes + structured speed plan) is fetched and folded
 // into the notes slice so Claude sees the user's reported execution alongside
 // any free-text notes.
+// treadmillCalibration is the athlete's persisted belt/HR calibration, loaded
+// once per user by the caller rather than per workout.
 func evaluateSingleWorkout(
 	ctx context.Context,
 	db *sql.DB,
@@ -599,6 +604,7 @@ func evaluateSingleWorkout(
 	cfg *training.ClaudeConfig,
 	profile training.UserTrainingProfile,
 	notes []Note,
+	treadmillCalibration string,
 ) error {
 	workoutDate := extractDate(workout.StartedAt)
 	if workoutDate == "" {
@@ -620,7 +626,7 @@ func evaluateSingleWorkout(
 
 	notesForEval := appendWorkoutContextNote(db, workout, workoutDate, notes)
 
-	eval, err := EvaluateWorkout(ctx, cfg, workout, matchedSession, planForEval, profile, notesForEval, loadTreadmillCalibration(db, userID))
+	eval, err := EvaluateWorkout(ctx, cfg, workout, matchedSession, planForEval, profile, notesForEval, treadmillCalibration)
 	if err != nil {
 		return fmt.Errorf("evaluate workout: %w", err)
 	}

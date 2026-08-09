@@ -18,9 +18,14 @@ import (
 // stride_custom_prompt.
 const treadmillCalibrationPref = "stride_treadmill_calibration"
 
-// treadmillCalibrationHeading is the prompt section header. Prompt text refers to
-// it by name so the model knows which section overrides the generic defaults.
-const treadmillCalibrationHeading = "## Treadmill Calibration (athlete-measured)"
+// treadmillCalibrationTitle is the prompt section's name. Static instruction text
+// elsewhere in the prompt refers to the section by this name so the model knows
+// which section overrides the generic defaults — build that reference from this
+// const rather than hand-copying it, so a reword can't silently break the match.
+const treadmillCalibrationTitle = "Treadmill Calibration (athlete-measured)"
+
+// treadmillCalibrationHeading is the rendered prompt section header.
+const treadmillCalibrationHeading = "## " + treadmillCalibrationTitle
 
 // treadmillCalibrationFromPrefs pulls the calibration out of an already-loaded
 // preferences map and decrypts it. An unprefixed value is legacy plaintext and
