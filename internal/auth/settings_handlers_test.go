@@ -1849,6 +1849,123 @@ func TestPreferencesPutHandler_StrideCustomPromptEncryptedRoundtrip(t *testing.T
 	}
 }
 
+// TestPreferencesPutHandler_StrideTreadmillCalibrationEncryptedRoundtrip verifies
+// that stride_treadmill_calibration is accepted, stored encrypted, and returned as
+// plaintext by both PUT and GET — the same contract as stride_custom_prompt.
+func TestPreferencesPutHandler_StrideTreadmillCalibrationEncryptedRoundtrip(t *testing.T) {
+	database := setupTestDB(t)
+	userID := createTestUser(t, database)
+	token, _, err := CreateSession(database, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	const calibration = "Belt sits ~3% below outdoor km/h at matched HR."
+
+	putHandler := RequireAuth(database)(PreferencesPutHandler(database))
+	body := `{"preferences":{"stride_treadmill_calibration":"` + calibration + `"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	putHandler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var putResp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&putResp); err != nil {
+		t.Fatalf("decode PUT response: %v", err)
+	}
+	if putResp["preferences"]["stride_treadmill_calibration"] != calibration {
+		t.Errorf("PUT response: expected decrypted %q, got %q", calibration, putResp["preferences"]["stride_treadmill_calibration"])
+	}
+
+	rawPrefs, err := GetPreferences(database, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	rawVal := rawPrefs["stride_treadmill_calibration"]
+	if !strings.HasPrefix(rawVal, "enc:") {
+		t.Errorf("DB value should be encrypted (enc: prefix), got %q", rawVal)
+	}
+	decrypted, err := encryption.DecryptField(rawVal)
+	if err != nil {
+		t.Fatalf("DecryptField: %v", err)
+	}
+	if decrypted != calibration {
+		t.Errorf("decrypted value: expected %q, got %q", calibration, decrypted)
+	}
+
+	getHandler := RequireAuth(database)(PreferencesGetHandler(database))
+	req2 := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+	req2.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec2 := httptest.NewRecorder()
+	getHandler.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("GET expected 200, got %d", rec2.Code)
+	}
+	var getResp map[string]map[string]string
+	if err := json.NewDecoder(rec2.Body).Decode(&getResp); err != nil {
+		t.Fatalf("decode GET response: %v", err)
+	}
+	if getResp["preferences"]["stride_treadmill_calibration"] != calibration {
+		t.Errorf("GET response: expected decrypted %q, got %q", calibration, getResp["preferences"]["stride_treadmill_calibration"])
+	}
+}
+
+// TestPreferencesGetHandler_DropsUndecryptableStridePrefs pins the drop-on-corrupt
+// contract centralised in decryptStridePrefs: a stored value that carries the
+// enc: prefix but cannot be decrypted is omitted from the response entirely
+// rather than handed back to the client as raw ciphertext.
+func TestPreferencesGetHandler_DropsUndecryptableStridePrefs(t *testing.T) {
+	database := setupTestDB(t)
+	userID := createTestUser(t, database)
+	token, _, err := CreateSession(database, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	const corrupt = "enc:not-valid-base64-ciphertext"
+	for _, key := range encryptedStridePrefs {
+		if err := SetPreference(database, userID, key, corrupt); err != nil {
+			t.Fatalf("SetPreference(%s): %v", key, err)
+		}
+	}
+	// A plain preference alongside them must still come back untouched.
+	if err := SetPreference(database, userID, "theme", "dark"); err != nil {
+		t.Fatalf("SetPreference(theme): %v", err)
+	}
+
+	handler := RequireAuth(database)(PreferencesGetHandler(database))
+	req := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	prefs := body["preferences"]
+	for _, key := range encryptedStridePrefs {
+		if v, ok := prefs[key]; ok {
+			t.Errorf("%s should be omitted when it fails to decrypt, got %q", key, v)
+		}
+	}
+	if strings.Contains(rec.Body.String(), corrupt) {
+		t.Error("undecryptable ciphertext leaked into the response body")
+	}
+	if prefs["theme"] != "dark" {
+		t.Errorf("expected theme=dark to survive, got %q", prefs["theme"])
+	}
+}
+
 // TestPreferencesPutHandler_RegnemesterMutedRoundtrip verifies that the
 // regnemester_muted preference is accepted by PUT and returned by GET,
 // covering both "true" and "false" values.

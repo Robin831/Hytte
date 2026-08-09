@@ -10,8 +10,9 @@ import (
 
 // BuildChatSystemPrompt assembles the system prompt that gives Claude coaching
 // context for a real-time Stride chat conversation. It includes the current
-// plan, athlete profile, evaluations, races, training load, and active notes
-// — but NOT the full Marius Bakken generation instructions.
+// plan, athlete profile, evaluations, races, training load, active notes, and
+// the athlete's persisted treadmill calibration — but NOT the full Marius Bakken
+// generation instructions.
 func BuildChatSystemPrompt(
 	profile training.UserTrainingProfile,
 	plan Plan,
@@ -20,6 +21,7 @@ func BuildChatSystemPrompt(
 	acr *float64,
 	acute, chronic float64,
 	notes []Note,
+	treadmillCalibration string,
 ) string {
 	var b strings.Builder
 
@@ -72,6 +74,14 @@ Only output plan JSON when you are actually making a change — not when just di
 		b.WriteString("\n## Athlete Profile\n\n")
 		b.WriteString(profile.Block)
 		b.WriteString("\n")
+	}
+
+	// 3b. Persisted treadmill calibration. Chat edits represcribe belt speeds, so
+	// the athlete's own measurements must be here too — otherwise the coach
+	// re-derives them mid-conversation and contradicts the generated plan.
+	if section := renderTreadmillCalibration(treadmillCalibration); section != "" {
+		b.WriteString("\n")
+		b.WriteString(section)
 	}
 
 	// 4. This week's evaluations

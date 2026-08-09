@@ -33,6 +33,29 @@ func ValidateCLIPath(path string) error {
 	return nil
 }
 
+// encryptedStridePrefs lists the free-text Stride preference keys that hold
+// user-generated coaching text and are therefore encrypted at rest. They are
+// encrypted on write and decrypted on read in both the GET and PUT handlers.
+var encryptedStridePrefs = []string{"stride_custom_prompt", "stride_treadmill_calibration"}
+
+// decryptStridePrefs decrypts the encrypted Stride prefs in place. A key that
+// fails to decrypt is dropped from the map rather than returned as ciphertext.
+func decryptStridePrefs(prefs map[string]string) {
+	for _, key := range encryptedStridePrefs {
+		raw, ok := prefs[key]
+		if !ok || raw == "" {
+			continue
+		}
+		decrypted, err := encryption.DecryptField(raw)
+		if err != nil {
+			log.Printf("Warning: failed to decrypt %s, omitting from response: %v", key, err)
+			delete(prefs, key)
+			continue
+		}
+		prefs[key] = decrypted
+	}
+}
+
 // widgetIDRe matches a dashboard widget id as used by the frontend registry.
 var widgetIDRe = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
@@ -138,16 +161,8 @@ func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 				prefs["claude_cli_path"] = decrypted
 			}
 		}
-		// Decrypt stride_custom_prompt (user-generated text, encrypted at rest).
-		if raw, ok := prefs["stride_custom_prompt"]; ok && raw != "" {
-			decrypted, err := encryption.DecryptField(raw)
-			if err != nil {
-				log.Printf("Warning: failed to decrypt stride_custom_prompt, omitting from response: %v", err)
-				delete(prefs, "stride_custom_prompt")
-			} else {
-				prefs["stride_custom_prompt"] = decrypted
-			}
-		}
+		// Decrypt the stride free-text prefs (user-generated text, encrypted at rest).
+		decryptStridePrefs(prefs)
 		// Mask Wordfeud credentials so the UI knows they exist without exposing them.
 		for _, key := range []string{"wordfeud_session_token", "wordfeud_email", "wordfeud_password"} {
 			if raw, ok := prefs[key]; ok && raw != "" {
@@ -257,6 +272,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"income_day":                      true,
 			"partner_income_day":              true,
 			"stride_custom_prompt":            true,
+			"stride_treadmill_calibration":    true,
 			"calendar_visible_ids":            true,
 			"regnemester_muted":               true,
 			"pokemon_scan_daily_cap":          true,
@@ -498,8 +514,8 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 
-		// Encrypt claude_cli_path and stride_custom_prompt before persisting.
-		for _, key := range []string{"claude_cli_path", "stride_custom_prompt"} {
+		// Encrypt claude_cli_path and the free-text stride prefs before persisting.
+		for _, key := range append([]string{"claude_cli_path"}, encryptedStridePrefs...) {
 			if val, ok := toWrite[key]; ok && val != "" {
 				enc, err := encryption.EncryptField(val)
 				if err != nil {
@@ -540,16 +556,8 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 				prefs["claude_cli_path"] = decrypted
 			}
 		}
-		// Decrypt stride_custom_prompt in PUT response (mirrors GET handler).
-		if raw, ok := prefs["stride_custom_prompt"]; ok && raw != "" {
-			decrypted, decErr := encryption.DecryptField(raw)
-			if decErr != nil {
-				log.Printf("Warning: failed to decrypt stride_custom_prompt in PUT response: %v", decErr)
-				delete(prefs, "stride_custom_prompt")
-			} else {
-				prefs["stride_custom_prompt"] = decrypted
-			}
-		}
+		// Decrypt the stride free-text prefs in PUT response (mirrors GET handler).
+		decryptStridePrefs(prefs)
 		// Mask Wordfeud credentials in PUT response (mirrors GET handler).
 		for _, key := range []string{"wordfeud_session_token", "wordfeud_email", "wordfeud_password"} {
 			if raw, ok := prefs[key]; ok && raw != "" {

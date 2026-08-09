@@ -45,14 +45,14 @@ Round time equivalents to the nearest half-minute and km/h to one decimal. Conti
 
 ### Treadmill speeds are NOT the same number as outdoor speeds
 The km/h figure derived from an outdoor pace target is NOT a belt setting. Never present it as one. Two independent effects make the belt number lower:
-1. **Measurement.** Indoors there is no GPS, so the watch estimates distance from wrist or foot-pod accelerometry and typically under-reads the belt by 5-15%. A watch-reported indoor pace is not comparable to an outdoor one, and an interval prescribed as "1000m" indoors is measured by a sensor that does not agree with the belt.
+1. **Measurement.** Indoors there is no GPS, so the watch estimates distance from wrist or foot-pod accelerometry. That estimate is driven largely by cadence rather than by belt speed, so its error is NOT a fixed percentage — for the same runner it can be near-zero at one belt speed and very large at another, because cadence barely changes while the belt does. Treat indoor watch pace and distance as unusable rather than as a number to be corrected: never quote a watch under-read percentage, never derive one from the data in this prompt, and never convert a watch-reported indoor pace into a belt speed. An interval prescribed as "1000m" indoors is measured by a sensor that does not agree with the belt.
 2. **Physiology.** A treadmill removes the self-generated airflow that evaporates sweat outdoors, so heat accumulates, plasma and stroke volume fall, and HR climbs for the same mechanical work. The same effort therefore costs more HR indoors, and HR drift over a session is markedly higher.
 
 Consequences for how you write sessions:
 - Prescribe treadmill intervals by TIME and BELT SPEED, never by watch distance. Write "4x5min at belt 12.0-12.2 km/h", not "4x1000m at 12.5 km/h".
 - When a session may be run either indoors or out, give the two prescriptions SEPARATELY and label them — an outdoor pace/distance target, and a distinct belt-speed/time target. Do not present one number as serving both.
-- As a starting estimate, a matched-HR belt speed is roughly 3-5% below the outdoor km/h figure. Prefer the athlete's own matched-HR history over this default whenever indoor and outdoor sessions at known HR are available.
-- The HR cap governs in both settings. State explicitly that on a treadmill the athlete should judge the session by HR and belt speed and ignore the watch's pace and distance readouts.
+- If a "` + treadmillCalibrationTitle + `" section appears later in this prompt, its numbers are authoritative: use them verbatim and do not adjust, recompute, or second-guess them. Only when no such section is present may you fall back to the rough default that a matched-HR belt speed sits a few percent below the outdoor km/h figure — and you must label that as an unverified starting estimate, never as this athlete's measured offset.
+- The HR cap governs in both settings, but never copy an outdoor cap indoors unchanged: the same effort costs more HR on a belt, so an easy run that sits comfortably under an outdoor Zone 1 ceiling can be impossible to hold indoors. Use the athlete's calibrated indoor HR offset when one is given; otherwise judge indoor sessions by HR drift and the shape of the HR curve (a step up over the first ~15 min then a flat plateau is heat equilibration, not overreaching) rather than by the outdoor ceiling alone. State explicitly that on a treadmill the athlete should judge the session by HR and belt speed and ignore the watch's pace and distance readouts.
 - Recommend a fan directed at the torso for any indoor threshold or long session, and a chest strap rather than wrist HR — indoors HR is the only reliable signal, so it must not also be noisy.`
 
 // mariusBakkenInstructions contains the Marius Bakken threshold-dominant model
@@ -251,6 +251,11 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 		}
 	}
 
+	// Athlete-measured treadmill calibration, persisted across weeks so the coach
+	// never has to re-derive belt-speed and indoor-HR offsets — and so it cannot
+	// invent a figure the athlete's own data contradicts.
+	treadmillCalibration := treadmillCalibrationFromPrefs(prefs)
+
 	// User training constraints.
 	availableDays := prefs["stride_available_days"]          // e.g. "5" or comma-separated list
 	weeklyDistanceCap := prefs["stride_weekly_distance_cap"] // km, e.g. "70"
@@ -306,6 +311,7 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 		prevPlanJSON, prevPlanModel, prevPlanCreatedAt,
 		evaluations,
 		availableDays, weeklyDistanceCap,
+		treadmillCalibration,
 		customPrompt,
 	)
 
@@ -695,6 +701,7 @@ func buildGeneratePrompt(
 	prevPlanJSON, prevPlanModel, prevPlanCreatedAt string,
 	evaluations []EvaluationRow,
 	availableDays, weeklyDistanceCap string,
+	treadmillCalibration string,
 	customPrompt string,
 ) string {
 	var sb strings.Builder
@@ -723,6 +730,10 @@ func buildGeneratePrompt(
 		sb.WriteString(profileBlock)
 		sb.WriteString("\n")
 	}
+
+	// Athlete-measured treadmill calibration. Overrides the generic belt-speed
+	// and indoor-HR defaults in the instructions above.
+	sb.WriteString(renderTreadmillCalibration(treadmillCalibration))
 
 	// ACR / training load status.
 	sb.WriteString("## Current Training Load (ACR)\n")

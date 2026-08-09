@@ -483,6 +483,7 @@ func TestBuildGeneratePrompt_RaceHistorySection(t *testing.T) {
 		nil,
 		"", "",
 		"",
+		"",
 	)
 
 	if !strings.Contains(prompt, "## Race History") {
@@ -512,6 +513,7 @@ func TestBuildGeneratePrompt_NoRaceHistoryWhenEmpty(t *testing.T) {
 		"", "", "",
 		nil,
 		"", "",
+		"",
 		"",
 	)
 
@@ -1009,6 +1011,7 @@ func TestBuildGeneratePrompt_EvaluationsSection(t *testing.T) {
 		evals,
 		"", "",
 		"",
+		"",
 	)
 
 	if !strings.Contains(prompt, "## Recent Workout Evaluations (last 14 days)") {
@@ -1053,6 +1056,7 @@ func TestBuildGeneratePrompt_NoEvaluationsSectionWhenEmpty(t *testing.T) {
 		"", "", "",
 		nil,
 		"", "",
+		"",
 		"",
 	)
 
@@ -1193,12 +1197,105 @@ func TestMariusBakkenInstructions_ContainsTreadmillSpeedCaveat(t *testing.T) {
 	// otherwise sessions get prescribed treadmill speeds that are too fast.
 	for _, want := range []string{
 		"Treadmill speeds are NOT the same number as outdoor speeds",
-		"under-reads the belt by 5-15%",
 		"TIME and BELT SPEED",
 		"give the two prescriptions SEPARATELY",
 	} {
 		if !strings.Contains(mariusBakkenInstructions, want) {
 			t.Errorf("generation instructions should contain treadmill speed caveat %q, but they do not", want)
 		}
+	}
+}
+
+// The instructions must not hand the coach a fixed watch under-read percentage.
+// A concrete figure invites it to restate one as fact — that is how the Aug 2026
+// plan came to assert a "19-20% watch under-read" the athlete's data contradicts.
+// Indoor watch pace tracks cadence, so no single percentage is correct.
+func TestMariusBakkenInstructions_NoFixedWatchUnderReadPercentage(t *testing.T) {
+	for _, forbidden := range []string{
+		"under-reads the belt by 5-15%",
+		"off by 5-15%",
+	} {
+		if strings.Contains(mariusBakkenInstructions, forbidden) {
+			t.Errorf("generation instructions must not state a fixed watch under-read percentage, but contain %q", forbidden)
+		}
+	}
+
+	for _, want := range []string{
+		"error is NOT a fixed percentage",
+		"never quote a watch under-read percentage",
+	} {
+		if !strings.Contains(mariusBakkenInstructions, want) {
+			t.Errorf("generation instructions should contain %q, but they do not", want)
+		}
+	}
+}
+
+// A persisted calibration must reach the generation prompt and be marked as
+// authoritative, so the coach reuses the athlete's measured numbers instead of
+// re-deriving different ones every week.
+func TestBuildGeneratePrompt_IncludesTreadmillCalibration(t *testing.T) {
+	const calibration = "Belt runs ~3% below the outdoor km/h figure at matched HR."
+
+	prompt := buildGeneratePrompt(
+		"2026-08-03", "2026-08-09",
+		"", nil, nil,
+		nil,
+		nil, 0, 0,
+		nil,
+		"", "", "",
+		nil,
+		"", "",
+		calibration,
+		"",
+	)
+
+	if !strings.Contains(prompt, treadmillCalibrationHeading) {
+		t.Errorf("prompt should contain %q when a calibration is set", treadmillCalibrationHeading)
+	}
+	if !strings.Contains(prompt, calibration) {
+		t.Error("prompt should contain the athlete's calibration text verbatim")
+	}
+	if !strings.Contains(prompt, "do NOT re-derive or recompute them") {
+		t.Error("calibration section should mark the athlete's numbers as authoritative")
+	}
+	// The generic instructions must point at the section so the model knows
+	// which numbers win.
+	if !strings.Contains(prompt, `"`+treadmillCalibrationTitle+`" section`) {
+		t.Error("instructions should reference the calibration section as authoritative")
+	}
+}
+
+// The static treadmill instructions name the calibration section so the model
+// knows which numbers override the generic defaults. That reference and the
+// rendered heading must stay in lockstep — if a reword desynchronised them the
+// override mechanism would silently stop working.
+func TestWorkoutFormatGuidance_ReferencesRenderedCalibrationHeading(t *testing.T) {
+	if !strings.Contains(workoutFormatGuidance, `"`+treadmillCalibrationTitle+`" section`) {
+		t.Errorf("workoutFormatGuidance should name the %q section", treadmillCalibrationTitle)
+	}
+	section := renderTreadmillCalibration("Belt sits ~3% below outdoor km/h at matched HR.")
+	if !strings.Contains(section, treadmillCalibrationTitle) {
+		t.Errorf("rendered calibration heading %q should contain the title the instructions reference", treadmillCalibrationHeading)
+	}
+}
+
+// With no calibration set the section must be omitted entirely rather than
+// rendered as an empty heading the coach could fill in itself.
+func TestBuildGeneratePrompt_NoTreadmillCalibrationSectionWhenUnset(t *testing.T) {
+	prompt := buildGeneratePrompt(
+		"2026-08-03", "2026-08-09",
+		"", nil, nil,
+		nil,
+		nil, 0, 0,
+		nil,
+		"", "", "",
+		nil,
+		"", "",
+		"",
+		"",
+	)
+
+	if strings.Contains(prompt, treadmillCalibrationHeading) {
+		t.Error("prompt should not contain the calibration heading when no calibration is set")
 	}
 }

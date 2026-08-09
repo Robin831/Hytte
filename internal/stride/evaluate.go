@@ -51,6 +51,8 @@ type Evaluation struct {
 // plan is used for weekly context; an empty Plan (ID == 0) is acceptable.
 // profile carries the athlete's HR zones and training context.
 // notes are unconsumed user notes providing context about sickness, fatigue, etc.
+// treadmillCalibration is the athlete's persisted belt/HR calibration; it is only
+// rendered for indoor workouts and may be empty.
 func EvaluateWorkout(
 	ctx context.Context,
 	cfg *training.ClaudeConfig,
@@ -59,8 +61,9 @@ func EvaluateWorkout(
 	plan Plan,
 	profile training.UserTrainingProfile,
 	notes []Note,
+	treadmillCalibration string,
 ) (*Evaluation, error) {
-	prompt := buildEvalPrompt(workout, matchedSession, plan, profile, notes)
+	prompt := buildEvalPrompt(workout, matchedSession, plan, profile, notes, treadmillCalibration)
 
 	response, err := runPromptFunc(ctx, cfg, prompt)
 	if err != nil {
@@ -94,10 +97,13 @@ func RunUserEvaluation(ctx context.Context, db *sql.DB, httpClient *http.Client,
 	}
 
 	profile := training.BuildUserTrainingProfile(db, userID)
+	// Loaded once for the whole batch, like profile: it is per-user, not
+	// per-workout, and each load is a preferences read plus a decrypt.
+	calibration := loadTreadmillCalibration(db, userID)
 	evaluated := 0
 	for _, workout := range workouts {
 		evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
-		if err := evaluateSingleWorkout(evalCtx, db, httpClient, userID, workout, claudeCfg, profile, nil); err != nil {
+		if err := evaluateSingleWorkout(evalCtx, db, httpClient, userID, workout, claudeCfg, profile, nil, calibration); err != nil {
 			log.Printf("stride eval: workout %d for user %d: %v", workout.ID, userID, err)
 		} else {
 			evaluated++
@@ -277,6 +283,7 @@ func ReEvaluateDate(ctx context.Context, db *sql.DB, httpClient *http.Client, us
 	// fails we return without touching the existing rows, so the prior coach
 	// output for this date stays intact.
 	profile := training.BuildUserTrainingProfile(db, userID)
+	calibration := loadTreadmillCalibration(db, userID)
 	sessions := extractPlannedSessions(*plan)
 	var newRecords []reEvalRecord
 	for _, workout := range workouts {
@@ -286,7 +293,7 @@ func ReEvaluateDate(ctx context.Context, db *sql.DB, httpClient *http.Client, us
 		// the runner's own account of the session (Hytte-sevc).
 		workoutNotes := appendWorkoutContextNote(db, workout, date, notes)
 		evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
-		eval, err := EvaluateWorkout(evalCtx, claudeCfg, workout, matchedSession, *plan, profile, workoutNotes)
+		eval, err := EvaluateWorkout(evalCtx, claudeCfg, workout, matchedSession, *plan, profile, workoutNotes, calibration)
 		cancel()
 		if err != nil {
 			return 0, fmt.Errorf("evaluate workout %d: %w", workout.ID, err)
@@ -586,6 +593,8 @@ func queryUnevaluatedWorkouts(ctx context.Context, db *sql.DB, userID int64, sin
 // Per-workout context (feel notes + structured speed plan) is fetched and folded
 // into the notes slice so Claude sees the user's reported execution alongside
 // any free-text notes.
+// treadmillCalibration is the athlete's persisted belt/HR calibration, loaded
+// once per user by the caller rather than per workout.
 func evaluateSingleWorkout(
 	ctx context.Context,
 	db *sql.DB,
@@ -595,6 +604,7 @@ func evaluateSingleWorkout(
 	cfg *training.ClaudeConfig,
 	profile training.UserTrainingProfile,
 	notes []Note,
+	treadmillCalibration string,
 ) error {
 	workoutDate := extractDate(workout.StartedAt)
 	if workoutDate == "" {
@@ -616,7 +626,7 @@ func evaluateSingleWorkout(
 
 	notesForEval := appendWorkoutContextNote(db, workout, workoutDate, notes)
 
-	eval, err := EvaluateWorkout(ctx, cfg, workout, matchedSession, planForEval, profile, notesForEval)
+	eval, err := EvaluateWorkout(ctx, cfg, workout, matchedSession, planForEval, profile, notesForEval, treadmillCalibration)
 	if err != nil {
 		return fmt.Errorf("evaluate workout: %w", err)
 	}
@@ -860,6 +870,7 @@ func buildEvalPrompt(
 	plan Plan,
 	profile training.UserTrainingProfile,
 	notes []Note,
+	treadmillCalibration string,
 ) string {
 	var sb strings.Builder
 
@@ -959,12 +970,15 @@ func buildEvalPrompt(
 	}
 
 	// Treadmill workouts: the watch derives pace from foot-pod / wrist
-	// accelerometer and is commonly off by 5-15% versus the belt speed. The
-	// chest-strap HR is still reliable. Tell the coach to trust the runner's
-	// reported speeds over the watch's pace when this callout fires.
+	// accelerometer, which tracks cadence more than belt speed, so its error is
+	// not a fixed percentage that can be corrected away. The chest-strap HR is
+	// still reliable. Tell the coach to trust the runner's reported speeds over
+	// the watch's pace when this callout fires, and hand it the athlete's own
+	// persisted calibration rather than letting it derive one.
 	if workout.IsIndoor && (strings.EqualFold(workout.SubSport, "treadmill") || strings.Contains(strings.ToLower(workout.SubSport), "treadmill") || strings.Contains(strings.ToLower(workout.SubSport), "indoor")) {
 		sb.WriteString("## Treadmill Note\n")
-		sb.WriteString("This workout is on a treadmill. The watch estimates pace/distance from foot-pod or wrist accelerometer and is often off by 5-15% versus the belt speed. The belt (and the runner's reported speeds in the post-workout self-report) is the source of truth for pace. Heart rate from a chest strap remains reliable; trust HR + cadence + lap structure to assess intensity, not the watch's pace number.\n\n")
+		sb.WriteString("This workout is on a treadmill. The watch estimates pace/distance from foot-pod or wrist accelerometer; that estimate is driven largely by cadence rather than belt speed, so its error is NOT a fixed percentage and cannot be corrected with one. Treat the watch's indoor pace and distance as unusable rather than as numbers to adjust, and do not state or derive a watch under-read percentage. The belt speed (and the runner's reported speeds in the post-workout self-report) is the source of truth for pace. Heart rate from a chest strap remains reliable; trust HR + cadence + lap structure to assess intensity, not the watch's pace number. Note that the same effort costs more HR indoors, so an outdoor HR ceiling does not transfer unchanged — judge the session by HR drift and the shape of the HR curve.\n\n")
+		sb.WriteString(renderTreadmillCalibration(treadmillCalibration))
 	}
 
 	if plan.ID > 0 {

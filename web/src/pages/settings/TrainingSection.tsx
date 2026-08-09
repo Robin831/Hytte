@@ -62,6 +62,9 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences,
   const [easyPaceMinDraft, setEasyPaceMinDraft] = useState<string>(secToMMSS(preferences.easy_pace_min || ''))
   const [easyPaceMaxDraft, setEasyPaceMaxDraft] = useState<string>(secToMMSS(preferences.easy_pace_max || ''))
   const [strideCustomPromptDraft, setStrideCustomPromptDraft] = useState(preferences.stride_custom_prompt || '')
+  const [strideTreadmillCalibrationDraft, setStrideTreadmillCalibrationDraft] = useState(
+    preferences.stride_treadmill_calibration || ''
+  )
   const [goalRaceNameDraft, setGoalRaceNameDraft] = useState<string>(preferences.goal_race_name || '')
   const [goalRaceDateDraft, setGoalRaceDateDraft] = useState<string>(preferences.goal_race_date || '')
   const [goalRaceDistanceDraft, setGoalRaceDistanceDraft] = useState<string>(preferences.goal_race_distance || '')
@@ -487,6 +490,28 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences,
               }}
               onBlur={() => flushPreferences()}
               placeholder={t('training.strideCustomPromptPlaceholder')}
+              disabled={saving}
+              className="mt-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+            />
+          </div>
+
+          {/* Treadmill calibration — persisted so the coach reuses the athlete's
+              own measured belt/HR offsets instead of re-deriving them each week. */}
+          <div className="mt-4">
+            <label htmlFor="stride-treadmill-calibration">
+              <p className="font-medium">{t('training.strideTreadmillCalibration')}</p>
+              <p className="text-sm text-gray-400">{t('training.strideTreadmillCalibrationDescription')}</p>
+            </label>
+            <textarea
+              id="stride-treadmill-calibration"
+              rows={4}
+              value={strideTreadmillCalibrationDraft}
+              onChange={(e) => {
+                setStrideTreadmillCalibrationDraft(e.target.value)
+                queuePreference('stride_treadmill_calibration', e.target.value)
+              }}
+              onBlur={() => flushPreferences()}
+              placeholder={t('training.strideTreadmillCalibrationPlaceholder')}
               disabled={saving}
               className="mt-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
             />

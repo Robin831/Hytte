@@ -461,7 +461,9 @@ func buildChatContext(ctx context.Context, db *sql.DB, userID int64, plan Plan) 
 		log.Printf("stride chat: list notes: %v", err)
 	}
 
-	return BuildChatSystemPrompt(profile, plan, evaluations, races, acr, acute, chronic, notes)
+	calibration := loadTreadmillCalibration(db, userID)
+
+	return BuildChatSystemPrompt(profile, plan, evaluations, races, acr, acute, chronic, notes, calibration)
 }
 
 // streamChatClaude runs the Claude CLI with stream-json output and sends text
