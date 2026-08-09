@@ -108,7 +108,7 @@ func TestBuildEvalPrompt_NoSession(t *testing.T) {
 		AvgHeartRate:    145,
 		Title:           "Morning Run",
 	}
-	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil, "")
 	if !strings.Contains(prompt, "bonus/unplanned") {
 		t.Error("expected prompt to mention bonus/unplanned when no session")
 	}
@@ -141,7 +141,7 @@ func TestBuildEvalPrompt_WithSession(t *testing.T) {
 		WeekEnd:   "2026-04-13",
 		Plan:      json.RawMessage(`[]`),
 	}
-	prompt := buildEvalPrompt(workout, session, plan, training.UserTrainingProfile{}, nil)
+	prompt := buildEvalPrompt(workout, session, plan, training.UserTrainingProfile{}, nil, "")
 	if !strings.Contains(prompt, "4x10min threshold") {
 		t.Error("expected prompt to include session main set")
 	}
@@ -156,7 +156,7 @@ func TestBuildEvalPrompt_OmitsEmptyTitle(t *testing.T) {
 		StartedAt: "2026-04-06T07:00:00Z",
 		Title:     "",
 	}
-	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil, "")
 	if strings.Contains(prompt, "Title:") {
 		t.Error("prompt should not include Title line when title is empty")
 	}
@@ -171,7 +171,7 @@ func TestBuildEvalPrompt_WithNotes(t *testing.T) {
 		{ID: 1, TargetDate: "2026-04-05", Content: "Felt sick with a cold"},
 		{ID: 2, TargetDate: "2026-04-06", Content: "Still recovering, took it easy"},
 	}
-	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, notes)
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, notes, "")
 	if !strings.Contains(prompt, "User Notes") {
 		t.Error("expected prompt to contain User Notes section header")
 	}
@@ -191,7 +191,7 @@ func TestBuildEvalPrompt_WithoutNotes(t *testing.T) {
 		Sport:     "running",
 		StartedAt: "2026-04-06T07:00:00Z",
 	}
-	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil, "")
 	if strings.Contains(prompt, "User Notes") {
 		t.Error("prompt should not contain User Notes section when no notes provided")
 	}
@@ -216,7 +216,7 @@ func TestBuildEvalPrompt_IncludesLapsSection(t *testing.T) {
 			{LapNumber: 3, DurationSeconds: 90, DistanceMeters: 295, AvgHeartRate: 138, MaxHeartRate: 154, AvgPaceSecPerKm: 305, AvgCadence: 97},
 		},
 	}
-	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil, "")
 	if !strings.Contains(prompt, "## Laps") {
 		t.Error("expected prompt to include a Laps section")
 	}
@@ -239,7 +239,7 @@ func TestBuildEvalPrompt_OmitsLapsBelowThreshold(t *testing.T) {
 			{LapNumber: 2, DurationSeconds: 600, DistanceMeters: 1300, AvgHeartRate: 135},
 		},
 	}
-	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil, "")
 	if strings.Contains(prompt, "## Laps") {
 		t.Error("prompt should not include Laps section when fewer than 3 laps recorded")
 	}
@@ -254,12 +254,63 @@ func TestBuildEvalPrompt_TreadmillCallout(t *testing.T) {
 		IsIndoor:  true,
 		StartedAt: "2026-05-19T03:36:00Z",
 	}
-	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil, "")
 	if !strings.Contains(prompt, "## Treadmill Note") {
 		t.Error("expected treadmill callout for indoor + treadmill sub_sport")
 	}
 	if !strings.Contains(prompt, "watch estimates pace") {
 		t.Error("expected callout to warn about watch pace inaccuracy on treadmill")
+	}
+}
+
+// The treadmill callout must not hand the coach a fixed under-read percentage
+// to restate — indoor watch pace tracks cadence, so no single figure is right.
+func TestBuildEvalPrompt_TreadmillCalloutHasNoFixedPercentage(t *testing.T) {
+	workout := training.Workout{
+		Sport:     "running",
+		SubSport:  "treadmill",
+		IsIndoor:  true,
+		StartedAt: "2026-08-09T06:00:00Z",
+	}
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil, "")
+
+	if strings.Contains(prompt, "off by 5-15%") {
+		t.Error("treadmill callout must not state a fixed watch under-read percentage")
+	}
+	for _, want := range []string{
+		"NOT a fixed percentage",
+		"do not state or derive a watch under-read percentage",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("treadmill callout should contain %q, but does not", want)
+		}
+	}
+}
+
+// A persisted calibration rides along with the treadmill callout so the nightly
+// evaluation judges the belt speed against the athlete's own measured offsets.
+func TestBuildEvalPrompt_TreadmillCalibration(t *testing.T) {
+	const calibration = "Belt sits ~3% below outdoor km/h at matched HR."
+	workout := training.Workout{
+		Sport:     "running",
+		SubSport:  "treadmill",
+		IsIndoor:  true,
+		StartedAt: "2026-08-09T06:00:00Z",
+	}
+
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil, calibration)
+	if !strings.Contains(prompt, treadmillCalibrationHeading) {
+		t.Errorf("indoor eval prompt should contain %q", treadmillCalibrationHeading)
+	}
+	if !strings.Contains(prompt, calibration) {
+		t.Error("indoor eval prompt should carry the calibration text verbatim")
+	}
+
+	// Outdoor workouts have no belt, so the calibration is noise there.
+	outdoor := training.Workout{Sport: "running", StartedAt: "2026-08-09T06:00:00Z"}
+	outdoorPrompt := buildEvalPrompt(outdoor, nil, Plan{}, training.UserTrainingProfile{}, nil, calibration)
+	if strings.Contains(outdoorPrompt, treadmillCalibrationHeading) {
+		t.Error("outdoor eval prompt should not contain the treadmill calibration section")
 	}
 }
 
@@ -270,7 +321,7 @@ func TestBuildEvalPrompt_NoTreadmillCalloutOutdoor(t *testing.T) {
 		Sport:     "running",
 		StartedAt: "2026-04-06T07:00:00Z",
 	}
-	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, nil, "")
 	if strings.Contains(prompt, "Treadmill Note") {
 		t.Error("outdoor workout should not get the treadmill callout")
 	}
@@ -288,7 +339,7 @@ func TestBuildEvalPrompt_SplitsSelfReportFromFreeText(t *testing.T) {
 		{TargetDate: "2026-05-18", Content: "Slept poorly"},
 		{TargetDate: "2026-05-19", Content: "Runner's post-workout report — Feel notes: 6 x 4min increasing speed from 13.3 to 13.8 | Context: surface=Treadmill, run_type=interval, hr_source=chest"},
 	}
-	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, notes)
+	prompt := buildEvalPrompt(workout, nil, Plan{}, training.UserTrainingProfile{}, notes, "")
 	if !strings.Contains(prompt, "## Runner's Post-Workout Self-Report") {
 		t.Error("expected self-report section header")
 	}
@@ -522,7 +573,7 @@ func TestEvaluateWorkout_Success(t *testing.T) {
 	cfg := &training.ClaudeConfig{Enabled: true, Model: "claude-test"}
 	workout := training.Workout{Sport: "running", StartedAt: "2026-04-06T07:00:00Z"}
 
-	eval, err := EvaluateWorkout(context.Background(), cfg, workout, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	eval, err := EvaluateWorkout(context.Background(), cfg, workout, nil, Plan{}, training.UserTrainingProfile{}, nil, "")
 	if err != nil {
 		t.Fatalf("EvaluateWorkout: %v", err)
 	}
@@ -539,7 +590,7 @@ func TestEvaluateWorkout_PromptError(t *testing.T) {
 	t.Cleanup(func() { runPromptFunc = origFn })
 
 	cfg := &training.ClaudeConfig{Enabled: true}
-	_, err := EvaluateWorkout(context.Background(), cfg, training.Workout{}, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	_, err := EvaluateWorkout(context.Background(), cfg, training.Workout{}, nil, Plan{}, training.UserTrainingProfile{}, nil, "")
 	if err == nil {
 		t.Error("expected error from failed prompt, got nil")
 	}
@@ -553,7 +604,7 @@ func TestEvaluateWorkout_InvalidJSON(t *testing.T) {
 	t.Cleanup(func() { runPromptFunc = origFn })
 
 	cfg := &training.ClaudeConfig{Enabled: true}
-	_, err := EvaluateWorkout(context.Background(), cfg, training.Workout{}, nil, Plan{}, training.UserTrainingProfile{}, nil)
+	_, err := EvaluateWorkout(context.Background(), cfg, training.Workout{}, nil, Plan{}, training.UserTrainingProfile{}, nil, "")
 	if err == nil {
 		t.Error("expected error for invalid JSON response, got nil")
 	}

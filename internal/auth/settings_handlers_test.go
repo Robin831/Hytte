@@ -1849,6 +1849,73 @@ func TestPreferencesPutHandler_StrideCustomPromptEncryptedRoundtrip(t *testing.T
 	}
 }
 
+// TestPreferencesPutHandler_StrideTreadmillCalibrationEncryptedRoundtrip verifies
+// that stride_treadmill_calibration is accepted, stored encrypted, and returned as
+// plaintext by both PUT and GET — the same contract as stride_custom_prompt.
+func TestPreferencesPutHandler_StrideTreadmillCalibrationEncryptedRoundtrip(t *testing.T) {
+	database := setupTestDB(t)
+	userID := createTestUser(t, database)
+	token, _, err := CreateSession(database, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	const calibration = "Belt sits ~3% below outdoor km/h at matched HR."
+
+	putHandler := RequireAuth(database)(PreferencesPutHandler(database))
+	body := `{"preferences":{"stride_treadmill_calibration":"` + calibration + `"}}`
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	putHandler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	var putResp map[string]map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&putResp); err != nil {
+		t.Fatalf("decode PUT response: %v", err)
+	}
+	if putResp["preferences"]["stride_treadmill_calibration"] != calibration {
+		t.Errorf("PUT response: expected decrypted %q, got %q", calibration, putResp["preferences"]["stride_treadmill_calibration"])
+	}
+
+	rawPrefs, err := GetPreferences(database, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	rawVal := rawPrefs["stride_treadmill_calibration"]
+	if !strings.HasPrefix(rawVal, "enc:") {
+		t.Errorf("DB value should be encrypted (enc: prefix), got %q", rawVal)
+	}
+	decrypted, err := encryption.DecryptField(rawVal)
+	if err != nil {
+		t.Fatalf("DecryptField: %v", err)
+	}
+	if decrypted != calibration {
+		t.Errorf("decrypted value: expected %q, got %q", calibration, decrypted)
+	}
+
+	getHandler := RequireAuth(database)(PreferencesGetHandler(database))
+	req2 := httptest.NewRequest("GET", "/api/settings/preferences", nil)
+	req2.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec2 := httptest.NewRecorder()
+	getHandler.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("GET expected 200, got %d", rec2.Code)
+	}
+	var getResp map[string]map[string]string
+	if err := json.NewDecoder(rec2.Body).Decode(&getResp); err != nil {
+		t.Fatalf("decode GET response: %v", err)
+	}
+	if getResp["preferences"]["stride_treadmill_calibration"] != calibration {
+		t.Errorf("GET response: expected decrypted %q, got %q", calibration, getResp["preferences"]["stride_treadmill_calibration"])
+	}
+}
+
 // TestPreferencesPutHandler_RegnemesterMutedRoundtrip verifies that the
 // regnemester_muted preference is accepted by PUT and returned by GET,
 // covering both "true" and "false" values.

@@ -41,7 +41,8 @@ var redactedPreferenceKeys = map[string]bool{
 // encryptedPreferenceKeys lists preference keys stored encrypted at rest that
 // should be exported as plaintext.
 var encryptedPreferenceKeys = map[string]bool{
-	"stride_custom_prompt": true,
+	"stride_custom_prompt":         true,
+	"stride_treadmill_calibration": true,
 }
 
 // domain is one exported section of the archive: a JSON key plus the function

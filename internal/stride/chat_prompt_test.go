@@ -132,7 +132,7 @@ Current phase: Threshold development`,
 
 func TestBuildChatSystemPrompt_ContainsCurrentPlan(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes)
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
 
 	// Should contain plan dates and session details
 	for _, want := range []string{
@@ -151,7 +151,7 @@ func TestBuildChatSystemPrompt_ContainsCurrentPlan(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsWorkoutFormatGuidance(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes)
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
 
 	// Chat edits must follow the same treadmill-friendly dual-unit format as
 	// initial generation.
@@ -168,7 +168,7 @@ func TestBuildChatSystemPrompt_ContainsWorkoutFormatGuidance(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsTreadmillSpeedCaveat(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes)
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
 
 	// Editing a session over chat must not reintroduce the bug where an
 	// outdoor km/h figure is handed over as a treadmill belt setting.
@@ -183,9 +183,30 @@ func TestBuildChatSystemPrompt_ContainsTreadmillSpeedCaveat(t *testing.T) {
 	}
 }
 
+// Chat can represcribe belt speeds, so the persisted calibration must reach the
+// chat prompt too — otherwise the coach re-derives it mid-conversation and
+// contradicts the numbers it used when generating the plan.
+func TestBuildChatSystemPrompt_ContainsTreadmillCalibration(t *testing.T) {
+	const calibration = "Belt sits ~3% below outdoor km/h at matched HR."
+	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
+
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, calibration)
+	if !strings.Contains(result, treadmillCalibrationHeading) {
+		t.Errorf("chat prompt should contain %q when a calibration is set", treadmillCalibrationHeading)
+	}
+	if !strings.Contains(result, calibration) {
+		t.Error("chat prompt should carry the calibration text verbatim")
+	}
+
+	without := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
+	if strings.Contains(without, treadmillCalibrationHeading) {
+		t.Error("chat prompt should omit the calibration section when none is set")
+	}
+}
+
 func TestBuildChatSystemPrompt_ContainsProfile(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes)
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
 
 	for _, want := range []string{
 		"Threshold HR: 166",
@@ -202,7 +223,7 @@ func TestBuildChatSystemPrompt_ContainsProfile(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsEvaluations(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes)
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
 
 	for _, want := range []string{
 		"Completed Sessions This Week",
@@ -219,7 +240,7 @@ func TestBuildChatSystemPrompt_ContainsEvaluations(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsRaces(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes)
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
 
 	for _, want := range []string{
 		"Upcoming Races",
@@ -238,7 +259,7 @@ func TestBuildChatSystemPrompt_ContainsRaces(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsModificationInstructions(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes)
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
 
 	for _, want := range []string{
 		"When modifying the plan, output the FULL updated 7-day plan",
@@ -255,7 +276,7 @@ func TestBuildChatSystemPrompt_ContainsModificationInstructions(t *testing.T) {
 
 func TestBuildChatSystemPrompt_OmitsMariusBakkenFullInstructions(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes)
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
 
 	// These are distinctive phrases from the full mariusBakkenInstructions constant
 	// that should NOT appear in the chat prompt.
@@ -274,7 +295,7 @@ func TestBuildChatSystemPrompt_OmitsMariusBakkenFullInstructions(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsTrainingLoad(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes)
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
 
 	for _, want := range []string{
 		"Training Load",
@@ -290,7 +311,7 @@ func TestBuildChatSystemPrompt_ContainsTrainingLoad(t *testing.T) {
 
 func TestBuildChatSystemPrompt_ContainsNotes(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes)
+	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "")
 
 	for _, want := range []string{
 		"Athlete Notes",
@@ -305,7 +326,7 @@ func TestBuildChatSystemPrompt_ContainsNotes(t *testing.T) {
 
 func TestBuildChatSystemPrompt_NilACR(t *testing.T) {
 	profile, plan, evals, races, _, acute, chronic, notes := buildTestPromptInputs()
-	result := BuildChatSystemPrompt(profile, plan, evals, races, nil, acute, chronic, notes)
+	result := BuildChatSystemPrompt(profile, plan, evals, races, nil, acute, chronic, notes, "")
 
 	if strings.Contains(result, "ACR") {
 		t.Error("prompt should not contain ACR when acr is nil")
@@ -324,7 +345,7 @@ func TestBuildChatSystemPrompt_EmptyOptionalSections(t *testing.T) {
 		Plan:      json.RawMessage(`[]`),
 	}
 
-	result := BuildChatSystemPrompt(profile, plan, nil, nil, nil, 0, 0, nil)
+	result := BuildChatSystemPrompt(profile, plan, nil, nil, nil, 0, 0, nil, "")
 
 	// Should NOT contain optional section headers when data is empty
 	if strings.Contains(result, "Completed Sessions This Week") {

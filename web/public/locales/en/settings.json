@@ -82,7 +82,10 @@
     "disableAutoAnalyze": "Disable auto-analyze",
     "strideCustomPrompt": "Custom Stride Prompt",
     "strideCustomPromptDescription": "Persistent instructions appended to all Stride plan generations. Unlike per-plan Coach Notes, these apply to every generation.",
-    "strideCustomPromptPlaceholder": "e.g. I prefer morning runs. Keep long runs under 2 hours."
+    "strideCustomPromptPlaceholder": "e.g. I prefer morning runs. Keep long runs under 2 hours.",
+    "strideTreadmillCalibration": "Treadmill Calibration",
+    "strideTreadmillCalibrationDescription": "Your own measured treadmill numbers — belt speed versus outdoor pace at matched heart rate, and how much higher your indoor heart rate runs. Stride treats these as authoritative instead of estimating them again for every plan.",
+    "strideTreadmillCalibrationPlaceholder": "e.g. Belt runs ~3% below the outdoor km/h figure at matched HR. Watch indoor pace is cadence-driven and unusable — never convert it. Indoor HR sits 5-8 bpm above outdoor for the same effort."
   },
   "goalRace": {
     "heading": "Goal Race",
