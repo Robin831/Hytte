@@ -302,7 +302,9 @@
         "high": "high",
         "medium": "medium",
         "low": "low"
-      }
+      },
+      "refresh": "Refresh prediction now",
+      "refreshFailed": "Refresh failed — the coach may be unavailable."
     },
     "needMoreWorkouts": "Need at least 2 workouts tagged \"{{tag}}\" to show trends.",
     "emptyTitle": "No trend data yet",

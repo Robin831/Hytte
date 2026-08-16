@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
+import { RefreshCw, Sparkles, TrendingDown, TrendingUp } from 'lucide-react'
 import type { RacePrediction, RacePredictions } from '../../types/training'
 import { formatDate } from '../../utils/formatDate'
 
@@ -34,8 +35,37 @@ const CONFIDENCE_CLASSES: Record<string, string> = {
 // RacePredictionsCard renders the stored weekly prediction snapshot: per-
 // distance times with confidence and the change since the previous snapshot,
 // plus the coach's rationale for how the estimate was set.
-export default function RacePredictionsCard({ data }: RacePredictionsCardProps) {
+export default function RacePredictionsCard({ data: dataProp }: RacePredictionsCardProps) {
   const { t } = useTranslation('training')
+  // A manual refresh replaces the parent-supplied snapshot locally; the next
+  // full page load serves the same stored row from the API anyway.
+  const [live, setLive] = useState<RacePredictions | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState(false)
+  const data = live ?? dataProp
+
+  const refresh = async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    setRefreshError(false)
+    try {
+      const res = await fetch('/api/training/predictions/refresh', {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        setRefreshError(true)
+        return
+      }
+      // Re-GET for the full payload (the refresh response has no `previous`).
+      const getRes = await fetch('/api/training/predictions', { credentials: 'include' })
+      if (getRes.ok) setLive(await getRes.json())
+    } catch {
+      setRefreshError(true)
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   return (
     <div className="bg-gray-800 rounded-xl p-5 mb-6">
@@ -43,13 +73,28 @@ export default function RacePredictionsCard({ data }: RacePredictionsCardProps) 
         <h2 className="text-sm font-semibold text-gray-400">
           {t('trends.racePredictions.title')}
         </h2>
-        {data.method === 'ai' && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-medium text-purple-300">
-            <Sparkles size={10} aria-hidden />
-            {t('trends.racePredictions.methodAi')}
-          </span>
-        )}
+        <span className="flex items-center gap-2">
+          {data.method === 'ai' && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-medium text-purple-300">
+              <Sparkles size={10} aria-hidden />
+              {t('trends.racePredictions.methodAi')}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={refreshing}
+            title={t('trends.racePredictions.refresh')}
+            aria-label={t('trends.racePredictions.refresh')}
+            className="rounded-md p-1 text-gray-500 hover:text-gray-300 hover:bg-gray-700 disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} aria-hidden />
+          </button>
+        </span>
       </div>
+      {refreshError && (
+        <p className="text-xs text-red-400 mb-1">{t('trends.racePredictions.refreshFailed')}</p>
+      )}
       {data.as_of && (
         <p className="text-xs text-gray-500 mb-3">
           {t('trends.racePredictions.asOf', {

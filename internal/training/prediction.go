@@ -39,6 +39,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/encryption"
 )
 
@@ -54,10 +55,47 @@ const predictionEnvelopePct = 0.10
 // model's to weigh.
 const predictionFactsMonths = 12
 
+// baselineRecencyDays bounds the deterministic anchor: only efforts from the
+// last 12 weeks may set the baseline, even though the facts window reaches 12
+// months. Without this the fastest effort won regardless of age and an April
+// interval block outweighed everything the athlete did in August. When no
+// effort exists inside the window, the best older one is used and the whole
+// snapshot is degraded to low confidence.
+const baselineRecencyDays = 84
+
 // minSustainedEffortSeconds is the shortest lap window that counts as a
 // sustained effort anchor. 20 minutes is the classic threshold-effort floor;
 // anything shorter says little about race fitness at 10K and up.
 const minSustainedEffortSeconds = 1200
+
+// maxLapPaceSpread is the max relative spread (fastest vs slowest lap pace)
+// inside a window before it is rejected as a mixed reps+recovery block. A
+// window of 6-min reps with float jogs averages to a fictional "sustained"
+// pace that is neither the work pace nor anything the athlete ran; a genuine
+// tempo's laps sit well inside 12% of each other.
+const maxLapPaceSpread = 0.12
+
+// spreadMinLapSeconds excludes micro-laps (button presses, transitions) from
+// the spread check — their pace is noise — while still counting their time
+// and distance in the window totals.
+const spreadMinLapSeconds = 45
+
+// Work-lap clustering bounds for interval sessions: a work rep is a lap of
+// 2-15 minutes whose pace sits within workLapPaceBand of the session's
+// fastest such lap. Recovery jogs fall far outside the band.
+const (
+	workLapMinSeconds = 120
+	workLapMaxSeconds = 900
+	workLapPaceBand   = 0.08
+	// minIntervalWorkSeconds is the cumulative work time an interval session
+	// needs before its work pace counts as threshold evidence.
+	minIntervalWorkSeconds = 900
+)
+
+// intervalWorkPacePenaltySecPerKm converts an interval work pace into a
+// threshold-pace estimate: reps with recoveries are slightly faster than what
+// the same athlete could hold continuously for an hour.
+const intervalWorkPacePenaltySecPerKm = 6
 
 // StoredPrediction is one distance's predicted time inside a snapshot.
 type StoredPrediction struct {
@@ -93,16 +131,42 @@ type sustainedEffort struct {
 	AvgHeartRate    int
 }
 
+// intervalEffort is the work-lap cluster of one interval session: the reps'
+// time-weighted pace and HR with the recovery jogs excluded — the honest
+// reading of a session a naive lap window would smear into a fictional
+// "sustained" pace.
+type intervalEffort struct {
+	WorkoutID        int64
+	Date             string
+	Reps             int
+	TotalWorkSeconds float64
+	WorkPaceSecPerKm float64
+	AvgHeartRate     int
+}
+
+// longestRun is the longest recent outdoor run — the durability signal for
+// half-marathon and marathon confidence.
+type longestRun struct {
+	Date            string
+	DurationSeconds float64
+	DistanceMeters  float64
+}
+
 // predictionFacts is everything the estimate is based on.
 type predictionFacts struct {
-	BestEfforts  []sustainedEffort // best sustained efforts, fastest first (max 5)
-	VO2maxLatest float64
-	VO2maxTrend  []VO2maxEstimate // most recent first (max 12)
-	WeeklyLoads  []WeeklyLoad     // most recent first (max 12)
-	ACR          *float64
-	RaceResults  []raceResultFact
-	GoalRace     string // free-text description from preferences, may be empty
-	AsOf         time.Time
+	BestEfforts     []sustainedEffort // best clean sustained efforts, fastest first (max 5)
+	IntervalEfforts []intervalEffort  // best recent interval work paces, fastest first (max 3)
+	LongestRecent   *longestRun       // longest outdoor run in the recency window
+	ThresholdHR     int               // athlete profile, 0 when unset
+	MaxHR           int
+	ThresholdPace   int // profile threshold pace in sec/km, 0 when unset
+	VO2maxLatest    float64
+	VO2maxTrend     []VO2maxEstimate // most recent first (max 12)
+	WeeklyLoads     []WeeklyLoad     // most recent first (max 12)
+	ACR             *float64
+	RaceResults     []raceResultFact
+	GoalRace        string // free-text description from preferences, may be empty
+	AsOf            time.Time
 }
 
 // raceResultFact is a completed race from stride_races.
@@ -125,13 +189,14 @@ var raceDistances = []struct {
 }
 
 // bestSustainedEfforts extracts, per outdoor running workout of the last
-// predictionFactsMonths, the fastest contiguous lap window of at least
-// minSustainedEffortSeconds, and returns the overall best ones (fastest pace
-// first, at most limit). Workouts with a net descent are excluded — a fast
-// downhill run is not evidence of flat race fitness. Whole-workout averages
-// are never used: the lap window is what distinguishes a 25-minute sustained
-// effort inside an interval session from a jog with a fast finish.
-func bestSustainedEfforts(db *sql.DB, userID int64, limit int) ([]sustainedEffort, error) {
+// predictionFactsMonths, the fastest CLEAN contiguous lap window of at least
+// minSustainedEffortSeconds (see bestWindow's spread rejection) plus the
+// session's interval work-lap cluster (see extractIntervalEffort), and returns
+// the overall best of each (fastest pace first; efforts capped at limit,
+// intervals at 3). Workouts with a net descent are excluded — a fast downhill
+// run is not evidence of flat race fitness. Whole-workout averages are never
+// used.
+func bestSustainedEfforts(db *sql.DB, userID int64, limit int) ([]sustainedEffort, []intervalEffort, error) {
 	since := time.Now().UTC().AddDate(0, -predictionFactsMonths, 0).Format(time.RFC3339)
 	rows, err := db.Query(`
 		SELECT w.id, w.started_at,
@@ -147,12 +212,13 @@ func bestSustainedEfforts(db *sql.DB, userID int64, limit int) ([]sustainedEffor
 		userID, since,
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer rows.Close()
 
 	var (
 		efforts   []sustainedEffort
+		intervals []intervalEffort
 		currentID int64
 		startedAt string
 		laps      []predictionLap
@@ -164,6 +230,9 @@ func bestSustainedEfforts(db *sql.DB, userID int64, limit int) ([]sustainedEffor
 		if e := bestWindow(laps, currentID, startedAt); e != nil {
 			efforts = append(efforts, *e)
 		}
+		if ie := extractIntervalEffort(laps, currentID, startedAt); ie != nil {
+			intervals = append(intervals, *ie)
+		}
 		laps = laps[:0]
 	}
 	for rows.Next() {
@@ -174,7 +243,7 @@ func bestSustainedEfforts(db *sql.DB, userID int64, limit int) ([]sustainedEffor
 			l     predictionLap
 		)
 		if err := rows.Scan(&wid, &start, &n, &l.durS, &l.distM, &l.hr); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if wid != currentID {
 			flush()
@@ -184,14 +253,18 @@ func bestSustainedEfforts(db *sql.DB, userID int64, limit int) ([]sustainedEffor
 	}
 	flush()
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	sort.Slice(efforts, func(i, j int) bool { return efforts[i].PaceSecPerKm < efforts[j].PaceSecPerKm })
 	if len(efforts) > limit {
 		efforts = efforts[:limit]
 	}
-	return efforts, nil
+	sort.Slice(intervals, func(i, j int) bool { return intervals[i].WorkPaceSecPerKm < intervals[j].WorkPaceSecPerKm })
+	if len(intervals) > 3 {
+		intervals = intervals[:3]
+	}
+	return efforts, intervals, nil
 }
 
 // predictionLap is the per-lap slice element bestWindow scans over.
@@ -201,13 +274,18 @@ type predictionLap struct {
 	hr    int
 }
 
-// bestWindow finds the fastest contiguous lap window of at least
-// minSustainedEffortSeconds in one workout's laps. Returns nil when no window
-// qualifies or the resulting pace is implausible (GPS junk).
+// bestWindow finds the fastest CLEAN contiguous lap window of at least
+// minSustainedEffortSeconds in one workout's laps. A window whose lap paces
+// spread more than maxLapPaceSpread is a reps+recovery block, not a sustained
+// effort — averaging the float jogs in produced a fictional pace nobody ran —
+// so mixed windows are rejected outright (interval sessions contribute via
+// extractIntervalEffort instead). Returns nil when no window qualifies or the
+// resulting pace is implausible (GPS junk).
 func bestWindow(laps []predictionLap, workoutID int64, startedAt string) *sustainedEffort {
 	var best *sustainedEffort
 	for i := 0; i < len(laps); i++ {
 		var durS, distM, hrSum, hrN float64
+		minPace, maxPace := math.MaxFloat64, 0.0
 		for j := i; j < len(laps); j++ {
 			durS += laps[j].durS
 			distM += laps[j].distM
@@ -215,8 +293,23 @@ func bestWindow(laps []predictionLap, workoutID int64, startedAt string) *sustai
 				hrSum += float64(laps[j].hr)
 				hrN++
 			}
+			// Track the spread over real laps only; micro-laps are noise.
+			if laps[j].durS >= spreadMinLapSeconds && laps[j].distM > 0 {
+				p := laps[j].durS / (laps[j].distM / 1000.0)
+				if p < minPace {
+					minPace = p
+				}
+				if p > maxPace {
+					maxPace = p
+				}
+			}
 			if durS < minSustainedEffortSeconds || distM <= 0 {
 				continue
+			}
+			// Mixed window: extending further only widens the spread, so the
+			// whole j-loop from this point is reps+recovery. Move on.
+			if minPace < math.MaxFloat64 && maxPace/minPace-1 > maxLapPaceSpread {
+				break
 			}
 			pace := durS / (distM / 1000.0)
 			// Discard implausible paces: faster than 2:30/km is GPS junk,
@@ -243,16 +336,97 @@ func bestWindow(laps []predictionLap, workoutID int64, startedAt string) *sustai
 	return best
 }
 
+// extractIntervalEffort clusters one workout's work laps: laps of 2-15 min
+// whose pace sits within workLapPaceBand of the session's fastest such lap.
+// When the cluster carries at least minIntervalWorkSeconds of cumulative work
+// it is returned as the session's honest quality reading — work pace and HR
+// with the recovery jogs excluded.
+func extractIntervalEffort(laps []predictionLap, workoutID int64, startedAt string) *intervalEffort {
+	fastest := math.MaxFloat64
+	for _, l := range laps {
+		if l.durS < workLapMinSeconds || l.durS > workLapMaxSeconds || l.distM <= 0 {
+			continue
+		}
+		p := l.durS / (l.distM / 1000.0)
+		if p >= 150 && p < fastest {
+			fastest = p
+		}
+	}
+	if fastest == math.MaxFloat64 {
+		return nil
+	}
+	var durS, distM, hrSum, hrN float64
+	reps := 0
+	for _, l := range laps {
+		if l.durS < workLapMinSeconds || l.durS > workLapMaxSeconds || l.distM <= 0 {
+			continue
+		}
+		p := l.durS / (l.distM / 1000.0)
+		if p > fastest*(1+workLapPaceBand) {
+			continue
+		}
+		reps++
+		durS += l.durS
+		distM += l.distM
+		if l.hr > 0 {
+			hrSum += float64(l.hr) * l.durS
+			hrN += l.durS
+		}
+	}
+	if reps < 3 || durS < minIntervalWorkSeconds || distM <= 0 {
+		return nil
+	}
+	hr := 0
+	if hrN > 0 {
+		hr = int(math.Round(hrSum / hrN))
+	}
+	return &intervalEffort{
+		WorkoutID:        workoutID,
+		Date:             startedAt,
+		Reps:             reps,
+		TotalWorkSeconds: durS,
+		WorkPaceSecPerKm: durS / (distM / 1000.0),
+		AvgHeartRate:     hr,
+	}
+}
+
 // buildPredictionFacts gathers everything the estimate is based on. Partial
 // data is fine — each section that is empty simply says so in the prompt.
 func buildPredictionFacts(db *sql.DB, userID int64) (*predictionFacts, error) {
 	facts := &predictionFacts{AsOf: time.Now().UTC()}
 
-	efforts, err := bestSustainedEfforts(db, userID, 5)
+	efforts, intervals, err := bestSustainedEfforts(db, userID, 5)
 	if err != nil {
 		return nil, fmt.Errorf("best efforts: %w", err)
 	}
 	facts.BestEfforts = efforts
+	facts.IntervalEfforts = intervals
+
+	// Athlete profile anchors: threshold/max HR put every effort's HR in
+	// context (an anchor at HR 159 against threshold 163 is sub-maximal, and
+	// both the model and the confidence logic must know that).
+	if prefs, err := auth.GetPreferences(db, userID); err == nil {
+		facts.ThresholdHR = parseIntPref(prefs, "threshold_hr")
+		facts.MaxHR = parseIntPref(prefs, "max_hr")
+		facts.ThresholdPace = parseIntPref(prefs, "threshold_pace")
+	}
+
+	// Durability: the longest outdoor run inside the recency window. A
+	// half-marathon prediction against a 60-minute longest run is a
+	// speed-only extrapolation, and the confidence must say so.
+	recentSince := facts.AsOf.AddDate(0, 0, -baselineRecencyDays).Format(time.RFC3339)
+	var lr longestRun
+	err = db.QueryRow(`
+		SELECT started_at, duration_seconds, distance_meters
+		FROM workouts
+		WHERE user_id = ? AND sport = 'running' AND COALESCE(is_indoor, 0) = 0
+		  AND started_at >= ? AND duration_seconds > 0
+		ORDER BY duration_seconds DESC LIMIT 1`,
+		userID, recentSince,
+	).Scan(&lr.Date, &lr.DurationSeconds, &lr.DistanceMeters)
+	if err == nil {
+		facts.LongestRecent = &lr
+	}
 
 	if latest, err := GetLatestVO2max(db, userID); err == nil && latest != nil {
 		facts.VO2maxLatest = latest.VO2max
@@ -336,21 +510,82 @@ func loadGoalRacePrefs(db *sql.DB, userID int64) string {
 	return strings.Join(parts, ", ")
 }
 
-// baselinePredictions computes the deterministic Riegel envelope centre: the
-// best sustained lap-window effort extrapolated per distance. Returns nil when
-// no anchor exists.
-func baselinePredictions(facts *predictionFacts) map[string]float64 {
-	if len(facts.BestEfforts) == 0 {
+// baselineAnchor is what set the deterministic baseline: a threshold-pace
+// estimate plus the provenance the confidence logic and the rationale need.
+type baselineAnchor struct {
+	ThresholdPaceSecPerKm float64
+	Description           string
+	Stale                 bool // no evidence inside baselineRecencyDays
+	WorkDerived           bool // derived from interval work laps
+}
+
+// deriveBaselineAnchor turns the facts into a threshold-pace estimate,
+// preferring evidence from the last baselineRecencyDays: the best clean
+// sustained effort's pace, or the best interval work pace plus a small
+// penalty (reps with recoveries run slightly faster than a continuous hour).
+// Only when the recency window is empty does older evidence anchor the
+// baseline, and then the snapshot is flagged stale (low confidence). Returns
+// nil when there is no usable effort at all.
+func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
+	cutoff := facts.AsOf.AddDate(0, 0, -baselineRecencyDays).Format("2006-01-02")
+	pick := func(recentOnly bool) *baselineAnchor {
+		var best *baselineAnchor
+		consider := func(pace float64, desc string, work bool, date string) {
+			if len(date) >= 10 && recentOnly && date[:10] < cutoff {
+				return
+			}
+			if pace <= 0 {
+				return
+			}
+			if best == nil || pace < best.ThresholdPaceSecPerKm {
+				best = &baselineAnchor{ThresholdPaceSecPerKm: pace, Description: desc, WorkDerived: work}
+			}
+		}
+		for _, e := range facts.BestEfforts {
+			date := e.Date
+			if len(date) >= 10 {
+				date = date[:10]
+			}
+			consider(e.PaceSecPerKm,
+				fmt.Sprintf("%.1f km sustained in %s on %s (%s/km)", e.DistanceMeters/1000, formatRaceTime(int(e.DurationSeconds)), date, formatPacePerKm(e.PaceSecPerKm)),
+				false, e.Date)
+		}
+		for _, ie := range facts.IntervalEfforts {
+			date := ie.Date
+			if len(date) >= 10 {
+				date = date[:10]
+			}
+			consider(ie.WorkPaceSecPerKm+intervalWorkPacePenaltySecPerKm,
+				fmt.Sprintf("%d work reps totalling %s on %s (work pace %s/km, +%ds/km continuous adjustment)", ie.Reps, formatRaceTime(int(ie.TotalWorkSeconds)), date, formatPacePerKm(ie.WorkPaceSecPerKm), intervalWorkPacePenaltySecPerKm),
+				true, ie.Date)
+		}
+		return best
+	}
+	if a := pick(true); a != nil {
+		return a
+	}
+	if a := pick(false); a != nil {
+		a.Stale = true
+		a.Description += " (older than the 12-week recency window)"
+		return a
+	}
+	return nil
+}
+
+// baselinePredictions computes the deterministic Riegel envelope centre from
+// the anchor's threshold pace, treated as a 60-minute race effort — the
+// textbook threshold definition. Anchoring on a synthesized one-hour effort
+// keeps the Riegel extrapolation ratio small (~1.6x to the half marathon)
+// instead of stretching a 20-minute window 4-5x, which is where the exponent
+// stops being trustworthy.
+func baselinePredictions(anchor *baselineAnchor) map[string]float64 {
+	if anchor == nil {
 		return nil
 	}
-	anchor := facts.BestEfforts[0]
+	refDistM := 3600.0 / anchor.ThresholdPaceSecPerKm * 1000.0
 	base := map[string]float64{}
 	for _, rd := range raceDistances {
-		base[rd.Name] = riegelPredict(
-			anchor.DurationSeconds,
-			anchor.DistanceMeters,
-			rd.M,
-		)
+		base[rd.Name] = riegelPredict(3600.0, refDistM, rd.M)
 	}
 	return base
 }
@@ -361,7 +596,23 @@ func formatFacts(facts *predictionFacts) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "As of %s\n\n", facts.AsOf.Format("2006-01-02"))
 
-	b.WriteString("Best sustained efforts (contiguous lap windows >= 20 min, outdoor running, net-descent excluded):\n")
+	if facts.ThresholdHR > 0 || facts.MaxHR > 0 || facts.ThresholdPace > 0 {
+		b.WriteString("Athlete profile: ")
+		parts := []string{}
+		if facts.ThresholdHR > 0 {
+			parts = append(parts, fmt.Sprintf("threshold HR %d", facts.ThresholdHR))
+		}
+		if facts.MaxHR > 0 {
+			parts = append(parts, fmt.Sprintf("max HR %d", facts.MaxHR))
+		}
+		if facts.ThresholdPace > 0 {
+			parts = append(parts, fmt.Sprintf("profile threshold pace %s/km (self-reported, may be optimistic)", formatPacePerKm(float64(facts.ThresholdPace))))
+		}
+		b.WriteString(strings.Join(parts, ", "))
+		b.WriteString("\n\n")
+	}
+
+	b.WriteString("Best clean sustained efforts (contiguous lap windows >= 20 min with even lap paces, outdoor running, net-descent excluded):\n")
 	if len(facts.BestEfforts) == 0 {
 		b.WriteString("- none found in the window\n")
 	}
@@ -375,6 +626,31 @@ func formatFacts(facts *predictionFacts) string {
 			fmt.Fprintf(&b, ", avg HR %d", e.AvgHeartRate)
 		}
 		b.WriteString(")\n")
+	}
+
+	if len(facts.IntervalEfforts) > 0 {
+		b.WriteString("\nInterval sessions, work laps only (recovery jogs excluded):\n")
+		for _, ie := range facts.IntervalEfforts {
+			date := ie.Date
+			if len(date) >= 10 {
+				date = date[:10]
+			}
+			fmt.Fprintf(&b, "- %s: %d reps, %s total work at %s/km", date, ie.Reps, formatRaceTime(int(ie.TotalWorkSeconds)), formatPacePerKm(ie.WorkPaceSecPerKm))
+			if ie.AvgHeartRate > 0 {
+				fmt.Fprintf(&b, " (avg work HR %d)", ie.AvgHeartRate)
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	if facts.LongestRecent != nil {
+		date := facts.LongestRecent.Date
+		if len(date) >= 10 {
+			date = date[:10]
+		}
+		fmt.Fprintf(&b, "\nLongest run in the last %d days: %s / %.1f km on %s\n",
+			baselineRecencyDays, formatRaceTime(int(facts.LongestRecent.DurationSeconds)),
+			facts.LongestRecent.DistanceMeters/1000, date)
 	}
 
 	if facts.VO2maxLatest > 0 {
@@ -418,12 +694,13 @@ func formatFacts(facts *predictionFacts) string {
 // buildPredictionPrompt asks the model for honest per-distance predictions
 // grounded in the facts, with the deterministic baseline named so the model
 // knows the envelope it works within.
-func buildPredictionPrompt(facts *predictionFacts, baseline map[string]float64) string {
+func buildPredictionPrompt(facts *predictionFacts, anchor *baselineAnchor, baseline map[string]float64) string {
 	var b strings.Builder
 	b.WriteString("You are a running coach producing an honest race-time prediction for your athlete, based on facts over time — not a single workout, and not wishful thinking.\n\n")
 	b.WriteString("## Athlete data\n\n")
 	b.WriteString(formatFacts(facts))
-	b.WriteString("\n## Baseline (deterministic Riegel from the best sustained effort)\n\n")
+	b.WriteString("\n## Baseline (deterministic)\n\n")
+	fmt.Fprintf(&b, "Threshold pace estimated at %s/km from: %s.\nRiegel from that pace treated as a 60-minute effort:\n", formatPacePerKm(anchor.ThresholdPaceSecPerKm), anchor.Description)
 	for _, rd := range raceDistances {
 		if t, ok := baseline[rd.Name]; ok {
 			fmt.Fprintf(&b, "- %s: %s\n", rd.Name, formatRaceTime(int(math.Round(t))))
@@ -432,12 +709,19 @@ func buildPredictionPrompt(facts *predictionFacts, baseline map[string]float64) 
 	b.WriteString(`
 ## Task
 
-Weigh the whole picture: whether fitness (VO2max trend, recent efforts) is improving or declining, whether training load supports the longer distances (a runner without long-run volume should get a conservative marathon estimate), and how past race results compare to formula expectations (this athlete's personal Riegel deviation). Predictions must be achievable on current fitness on a flat course in good conditions — honest, neither optimistic nor sandbagged. Stay within roughly 10% of the baseline; deviate only where the facts argue for it, and say why in the rationale.
+Weigh the whole picture. Rules that matter:
+- Recency beats magnitude: evidence from the last 12 weeks outweighs anything older, however fast the older effort was.
+- Read HR against the profile: an effort at HR well below threshold HR was sub-maximal — the athlete has more than that pace suggests, but without a recent maximal effort or race you cannot verify how much. Never report "high" confidence for any distance unless the window contains a race result or a near-maximal effort (HR at/above threshold sustained).
+- Durability gates the long distances: compare the longest recent run to the race duration. A half-marathon or marathon far beyond anything recently run gets a conservative time and at most "low"/"medium" confidence, whatever the speed evidence says.
+- Use past race results as calibration: how this athlete actually raced versus what the formula said.
+- Training load: an elevated ACR (>1.5) is a risk note for the rationale, not a fitness gain.
+
+Predictions must be achievable on current fitness on a flat course in good conditions — honest, neither optimistic nor sandbagged. Stay within roughly 10% of the baseline; deviate only where the facts argue for it, and say why in the rationale.
 
 Respond with ONLY a JSON object:
 {"predictions": [{"distance": "5K", "time_seconds": 1234, "confidence": "high"}, {"distance": "10K", ...}, {"distance": "Half Marathon", ...}, {"distance": "Marathon", ...}], "rationale": "2-4 sentences on what drives the estimate and its confidence"}
 
-- confidence is "high", "medium" or "low" per distance (e.g. marathon confidence is low when there is no long-run history).
+- confidence is "high", "medium" or "low" per distance.
 - rationale is plain prose for the athlete.
 `)
 	return b.String()
@@ -486,6 +770,29 @@ func parsePredictionResponse(response string) (map[string]int, map[string]string
 	return times, conf, strings.TrimSpace(parsed.Rationale), nil
 }
 
+// formulaConfidences grades the deterministic path's honesty per distance.
+// The formula never claims "high": that grade requires a race result or a
+// near-maximal effort, which only the AI pass verifies against the facts. A
+// stale or work-lap-derived anchor drops everything to low, and the long
+// distances drop to low when the longest recent run does not support them.
+func formulaConfidences(facts *predictionFacts, anchor *baselineAnchor) map[string]string {
+	conf := map[string]string{}
+	base := "medium"
+	if anchor == nil || anchor.Stale {
+		base = "low"
+	}
+	for _, rd := range raceDistances {
+		conf[rd.Name] = base
+	}
+	conf["Marathon"] = "low"
+	// Durability gate: a half prediction needs a recent run at least ~75 min
+	// long to be more than a speed extrapolation.
+	if facts.LongestRecent == nil || facts.LongestRecent.DurationSeconds < 4500 {
+		conf["Half Marathon"] = "low"
+	}
+	return conf
+}
+
 // clampToEnvelope bounds an AI time to ±predictionEnvelopePct of the baseline.
 func clampToEnvelope(aiSeconds int, baselineSeconds float64) int {
 	lo := baselineSeconds * (1 - predictionEnvelopePct)
@@ -510,21 +817,27 @@ func RefreshRacePrediction(ctx context.Context, db *sql.DB, userID int64, cfg *C
 	if err != nil {
 		return nil, err
 	}
-	baseline := baselinePredictions(facts)
+	anchor := deriveBaselineAnchor(facts)
+	baseline := baselinePredictions(anchor)
 	if baseline == nil {
 		return nil, nil // nothing to anchor a prediction on
 	}
 
 	method := "formula"
-	rationale := ""
 	times := map[string]int{}
-	conf := map[string]string{}
+	conf := formulaConfidences(facts, anchor)
 	for _, rd := range raceDistances {
 		times[rd.Name] = int(math.Round(baseline[rd.Name]))
 	}
+	// The formula path explains itself too — a bare number with an empty
+	// rationale reads as authoritative when it is only the envelope centre.
+	rationale := fmt.Sprintf(
+		"Formula baseline: threshold pace ~%s/km estimated from %s, extrapolated as a 60-minute effort. No AI weighting of trend, load or race calibration has been applied to this snapshot.",
+		formatPacePerKm(anchor.ThresholdPaceSecPerKm), anchor.Description,
+	)
 
 	if cfg != nil && cfg.Enabled {
-		prompt := buildPredictionPrompt(facts, baseline)
+		prompt := buildPredictionPrompt(facts, anchor, baseline)
 		if response, aiErr := RunPrompt(ctx, cfg, prompt); aiErr == nil {
 			if aiTimes, aiConf, aiRationale, perr := parsePredictionResponse(response); perr == nil {
 				for _, rd := range raceDistances {

@@ -302,7 +302,9 @@
         "high": "høy",
         "medium": "middels",
         "low": "lav"
-      }
+      },
+      "refresh": "Oppdater prognosen nå",
+      "refreshFailed": "Oppdatering feilet — treneren kan være utilgjengelig."
     },
     "needMoreWorkouts": "Trenger minst 2 økter tagget \"{{tag}}\" for å vise trender.",
     "emptyTitle": "Ingen trenddata ennå",
