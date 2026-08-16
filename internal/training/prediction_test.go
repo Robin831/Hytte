@@ -253,3 +253,69 @@ func TestIndoorWorkHRFloor(t *testing.T) {
 		t.Errorf("no anchor = %d, want 0 (report nothing rather than guess)", got)
 	}
 }
+
+// TestRegressionAug4OutdoorSession pins the predictor against the athlete's
+// real 2026-08-04 outdoor session — the most trustworthy input in the system:
+// 4x6min at 12.25-12.59 km/h (286-294 s/km) at HR 157/158/158/162 vs
+// threshold HR 163, with a slow warmup and 1-min recovery jogs. The half
+// baseline from this must land in the coach-reviewed 1:42-1:48 band, and the
+// envelope must make anything at or under 1:40 impossible by construction —
+// every predictor bug so far shipped while the generic tests passed, so this
+// test is built from the actual lap rows.
+func TestRegressionAug4OutdoorSession(t *testing.T) {
+	// (durS, paceSecPerKm) pairs: warmup, 4 work reps with 60s jogs between,
+	// cooldown. Jogs are under the 120s work-lap floor; the warmup pace sits
+	// far outside the 8% band of the fastest rep.
+	laps := []predictionLap{
+		{durS: 900, distM: 900 / 360.0 * 1000, hr: 135}, // 15min warmup ~6:00/km
+		{durS: 360, distM: 360 / 294.0 * 1000, hr: 157}, // rep 1: 4:54/km
+		{durS: 60, distM: 60 / 400.0 * 1000, hr: 150},   // jog
+		{durS: 360, distM: 360 / 292.0 * 1000, hr: 158}, // rep 2
+		{durS: 60, distM: 60 / 400.0 * 1000, hr: 151},   // jog
+		{durS: 360, distM: 360 / 290.0 * 1000, hr: 158}, // rep 3
+		{durS: 60, distM: 60 / 400.0 * 1000, hr: 152},   // jog
+		{durS: 360, distM: 360 / 286.0 * 1000, hr: 162}, // rep 4: 4:46/km
+		{durS: 600, distM: 600 / 380.0 * 1000, hr: 140}, // cooldown
+	}
+	date := time.Now().UTC().AddDate(0, 0, -12).Format(time.RFC3339)
+
+	// The sustained-window path must reject this session (mixed paces)...
+	if e := bestWindow(laps, 94, date); e != nil {
+		t.Fatalf("interval session must not produce a sustained window, got %+v", e)
+	}
+	// ...and the work-lap cluster must read only the reps.
+	ie := extractIntervalEffort(laps, 94, date)
+	if ie == nil {
+		t.Fatal("expected the 4x6min work cluster")
+	}
+	if ie.Reps != 4 || ie.WorkPaceSecPerKm < 286 || ie.WorkPaceSecPerKm > 294 {
+		t.Fatalf("work cluster wrong: %+v", ie)
+	}
+
+	facts := &predictionFacts{
+		AsOf:            time.Now().UTC(),
+		IntervalEfforts: []intervalEffort{*ie},
+		ThresholdHR:     163,
+		MaxHR:           186,
+	}
+	anchor := deriveBaselineAnchor(facts)
+	if anchor == nil || anchor.Stale {
+		t.Fatalf("expected a fresh anchor, got %+v", anchor)
+	}
+	base := baselinePredictions(anchor)
+	hm := base["Half Marathon"]
+	// Coach-reviewed band for this data: ~1:42-1:48.
+	if hm < 6120 || hm > 6480 {
+		t.Errorf("HM baseline %s outside the 1:42-1:48 band", formatRaceTime(int(hm)))
+	}
+
+	// The asymmetric envelope makes sub-1:40 impossible by construction:
+	// even a maximally optimistic AI output is clamped to baseline - 3%.
+	clamped := clampToEnvelope(5940 /* 1:39:00 */, hm)
+	if float64(clamped) < hm*(1-predictionEnvelopeFastPct)-1 {
+		t.Errorf("clamp floor violated: %d vs baseline %d", clamped, int(hm))
+	}
+	if clamped <= 6000 {
+		t.Errorf("1:40 or faster must be unreachable, clamp gave %s", formatRaceTime(clamped))
+	}
+}

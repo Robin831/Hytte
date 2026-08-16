@@ -43,11 +43,18 @@ import (
 	"github.com/Robin831/Hytte/internal/encryption"
 )
 
-// predictionEnvelopePct bounds how far the AI's prediction may deviate from
-// the deterministic Riegel baseline per distance. Wide enough for the model to
-// meaningfully weigh trend/load/race-calibration, tight enough that the
-// prediction always stays anchored to a measured effort.
-const predictionEnvelopePct = 0.10
+// The envelope bounds how far the AI's prediction may deviate from the
+// deterministic Riegel baseline per distance — and it is deliberately
+// ASYMMETRIC. Every failure mode observed so far has been optimism (an input
+// overstating the athlete's speed), never pessimism, and a symmetric ±10%
+// band around a 1:47 baseline would legally permit 1:36 — a number nothing in
+// the data supports. Faster than baseline therefore gets a tight 3% (the
+// model may nudge for verified freshness/trend), while slower keeps the full
+// 10% so durability and load caution have room to add time.
+const (
+	predictionEnvelopeFastPct = 0.03
+	predictionEnvelopeSlowPct = 0.10
+)
 
 // predictionFactsMonths is how far back the facts window reaches. A year of
 // efforts and races captures a full season without letting stale fitness
@@ -962,7 +969,7 @@ Weigh the whole picture. Rules that matter:
 - Use past race results as calibration: how this athlete actually raced versus what the formula said.
 - Training load: an elevated ACR (>1.5) is a risk note for the rationale, not a fitness gain.
 
-Predictions must be achievable on current fitness on a flat course in good conditions — honest, neither optimistic nor sandbagged. Stay within roughly 10% of the baseline; deviate only where the facts argue for it, and say why in the rationale.
+Predictions must be achievable on current fitness on a flat course in good conditions — honest, neither optimistic nor sandbagged. You may go at most ~3% FASTER than the baseline (and only where verified facts argue for it) but up to ~10% slower where durability or load caution demands; anything outside those bounds is clamped. Say what drove any deviation in the rationale.
 
 Respond with ONLY a JSON object:
 {"predictions": [{"distance": "5K", "time_seconds": 1234, "confidence": "high"}, {"distance": "10K", ...}, {"distance": "Half Marathon", ...}, {"distance": "Marathon", ...}], "rationale": "2-4 sentences on what drives the estimate and its confidence"}
@@ -1039,10 +1046,12 @@ func formulaConfidences(facts *predictionFacts, anchor *baselineAnchor) map[stri
 	return conf
 }
 
-// clampToEnvelope bounds an AI time to ±predictionEnvelopePct of the baseline.
+// clampToEnvelope bounds an AI time to the asymmetric envelope around the
+// baseline: at most predictionEnvelopeFastPct faster, at most
+// predictionEnvelopeSlowPct slower.
 func clampToEnvelope(aiSeconds int, baselineSeconds float64) int {
-	lo := baselineSeconds * (1 - predictionEnvelopePct)
-	hi := baselineSeconds * (1 + predictionEnvelopePct)
+	lo := baselineSeconds * (1 - predictionEnvelopeFastPct)
+	hi := baselineSeconds * (1 + predictionEnvelopeSlowPct)
 	t := float64(aiSeconds)
 	if t < lo {
 		t = lo

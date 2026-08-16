@@ -67,6 +67,7 @@ export default function WorkoutLibrary() {
   }, [t])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial data fetch; reload's setState calls all happen after the await resolves
     void reload()
   }, [reload])
 
