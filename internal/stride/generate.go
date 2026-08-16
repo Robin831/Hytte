@@ -323,6 +323,15 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 	// Build the user training profile block.
 	profileBlock := training.BuildUserProfileBlock(db, userID)
 
+	// Latest race-prediction snapshot: the weekly cron refreshes it right
+	// before calling GeneratePlan, so the coach paces sessions off this week's
+	// honest fitness estimate instead of flying blind. Non-fatal when absent.
+	racePrediction, err := training.GetLatestRacePrediction(db, userID)
+	if err != nil {
+		log.Printf("stride: load race prediction for user %d: %v", userID, err)
+		racePrediction = nil
+	}
+
 	// Assemble the full prompt.
 	prompt := buildGeneratePrompt(
 		weekStart, weekEnd,
@@ -336,6 +345,7 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 		availableDays, weeklyDistanceCap,
 		treadmillCalibration,
 		customPrompt,
+		racePrediction,
 	)
 
 	// Call Claude.
@@ -726,6 +736,7 @@ func buildGeneratePrompt(
 	availableDays, weeklyDistanceCap string,
 	treadmillCalibration string,
 	customPrompt string,
+	racePrediction *training.StoredRacePrediction,
 ) string {
 	var sb strings.Builder
 
@@ -757,6 +768,29 @@ func buildGeneratePrompt(
 	// Athlete-measured treadmill calibration. Overrides the generic belt-speed
 	// and indoor-HR defaults in the instructions above.
 	sb.WriteString(renderTreadmillCalibration(treadmillCalibration))
+
+	// Current fitness estimate: the weekly race-prediction snapshot, refreshed
+	// just before this plan generates. Gives the coach an honest anchor for
+	// session paces (threshold ≈ current half-marathon race pace) instead of
+	// guessing from raw workout history.
+	if racePrediction != nil && len(racePrediction.Predictions) > 0 {
+		asOf := racePrediction.CreatedAt
+		if len(asOf) >= 10 {
+			asOf = asOf[:10]
+		}
+		fmt.Fprintf(&sb, "## Current Fitness Estimate (race predictions, as of %s)\n", asOf)
+		for _, p := range racePrediction.Predictions {
+			fmt.Fprintf(&sb, "- %s: %s (%s/km", p.Distance, p.PredictedTime, p.PacePerKm)
+			if p.Confidence != "" {
+				fmt.Fprintf(&sb, ", confidence %s", p.Confidence)
+			}
+			sb.WriteString(")\n")
+		}
+		if racePrediction.Rationale != "" {
+			fmt.Fprintf(&sb, "\nPrediction rationale: %s\n", racePrediction.Rationale)
+		}
+		sb.WriteString("\n")
+	}
 
 	// ACR / training load status.
 	sb.WriteString("## Current Training Load (ACR)\n")

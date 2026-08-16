@@ -1041,42 +1041,84 @@ func ACRTrendHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // GetRacePredictionsHandler handles GET /api/training/predictions.
-// It locates the user's best threshold/tempo running workout from the last
-// 3 months and uses the Riegel formula to predict 5K/10K/HM/marathon times.
+// It serves the latest stored prediction snapshot (AI-set weekly before the
+// Stride plan generates, or formula-derived), plus the previous snapshot so
+// the client can render deltas. A user with no snapshot yet gets a formula
+// one computed and persisted on the spot — no AI call on a GET.
 func GetRacePredictionsHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
-		workout, err := FindBestThresholdWorkout(db, user.ID)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to query workouts"})
+		hist, err := GetRacePredictionHistory(db, user.ID, 2)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load predictions"})
+			return
+		}
+		if len(hist) == 0 {
+			// First visit: seed a deterministic snapshot so the card has
+			// something honest to show before the first weekly AI refresh.
+			seeded, err := RefreshRacePrediction(r.Context(), db, user.ID, nil)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to compute predictions"})
+				return
+			}
+			if seeded == nil {
+				writeJSON(w, http.StatusOK, map[string]any{
+					"predictions": nil,
+					"message":     "No sustained running efforts found to base a prediction on",
+				})
+				return
+			}
+			hist = []StoredRacePrediction{*seeded}
+		}
+
+		resp := map[string]any{
+			"as_of":       hist[0].CreatedAt,
+			"method":      hist[0].Method,
+			"rationale":   hist[0].Rationale,
+			"predictions": hist[0].Predictions,
+		}
+		if len(hist) > 1 {
+			resp["previous"] = hist[1].Predictions
+			resp["previous_as_of"] = hist[1].CreatedAt
+		}
+		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+// RefreshRacePredictionsHandler handles POST /api/training/predictions/refresh:
+// an on-demand AI (or formula, when Claude is off) prediction snapshot outside
+// the weekly cadence. Synchronous — the caller is looking at the card and
+// wants the new number.
+func RefreshRacePredictionsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		cfg, err := LoadClaudeConfig(db, user.ID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load AI config"})
 			return
 		}
 
-		if workout == nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+		defer cancel()
+		stored, err := RefreshRacePrediction(ctx, db, user.ID, cfg)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to refresh predictions"})
+			return
+		}
+		if stored == nil {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"predictions": nil,
-				"message":     "No suitable reference workout found in the last 3 months",
+				"message":     "No sustained running efforts found to base a prediction on",
 			})
 			return
 		}
-
-		// Optionally incorporate latest VO2max for the VDOT path in future.
-		var vo2max float64
-		if latest, err := GetLatestVO2max(db, user.ID); err == nil && latest != nil {
-			vo2max = latest.VO2max
-		}
-
-		preds := PredictRaceTimes(vo2max, workout.AvgPaceSecPerKm)
-		if preds == nil {
-			writeJSON(w, http.StatusOK, map[string]any{
-				"predictions": nil,
-				"message":     "Reference workout has no pace data",
-			})
-			return
-		}
-
-		preds.RefWorkoutID = &workout.ID
-		writeJSON(w, http.StatusOK, preds)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"as_of":       stored.CreatedAt,
+			"method":      stored.Method,
+			"rationale":   stored.Rationale,
+			"predictions": stored.Predictions,
+		})
 	}
 }

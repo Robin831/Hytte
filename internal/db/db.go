@@ -1375,6 +1375,24 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_stride_races_user_date ON stride_races(user_id, date);
 
+	-- race_predictions stores one AI/formula prediction snapshot per refresh
+	-- (weekly cron before the Stride plan, or a manual refresh). Snapshots are
+	-- append-only so the prediction has a trend instead of a single mutable
+	-- number that jumps when a workout ages out of a window. predictions_json,
+	-- rationale and inputs_json are AES-encrypted (AI-authored prose + derived
+	-- training data); method and created_at stay queryable.
+	CREATE TABLE IF NOT EXISTS race_predictions (
+		id               INTEGER PRIMARY KEY,
+		user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		created_at       TEXT NOT NULL,
+		method           TEXT NOT NULL DEFAULT '',
+		predictions_json TEXT NOT NULL,
+		rationale        TEXT NOT NULL DEFAULT '',
+		inputs_json      TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_race_predictions_user_created ON race_predictions(user_id, created_at);
+
 	CREATE TABLE IF NOT EXISTS stride_plans (
 		id          INTEGER PRIMARY KEY,
 		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -225,6 +225,9 @@ func TestGetRacePredictionsHandler_NoWorkouts(t *testing.T) {
 	}
 }
 
+// TestGetRacePredictionsHandler_WithWorkout: a first GET with usable lap data
+// seeds a deterministic ("formula") snapshot from the best sustained lap
+// window and persists it, so the second GET serves the stored row.
 func TestGetRacePredictionsHandler_WithWorkout(t *testing.T) {
 	db := setupTestDB(t)
 
@@ -239,6 +242,14 @@ func TestGetRacePredictionsHandler_WithWorkout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert workout: %v", err)
 	}
+	// Three 10-minute laps at ~4:10/km — a 30-minute sustained window.
+	for lap := 1; lap <= 3; lap++ {
+		if _, err := db.Exec(`
+			INSERT INTO workout_laps (workout_id, lap_number, duration_seconds, distance_meters, avg_heart_rate, avg_pace_sec_per_km)
+			VALUES (1, ?, 600, 2400, 165, 250)`, lap); err != nil {
+			t.Fatalf("insert lap %d: %v", lap, err)
+		}
+	}
 
 	req := withUser(httptest.NewRequest(http.MethodGet, "/api/training/predictions", nil), 1)
 	rec := httptest.NewRecorder()
@@ -247,17 +258,34 @@ func TestGetRacePredictionsHandler_WithWorkout(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	var resp RacePredictions
+	var resp struct {
+		AsOf        string             `json:"as_of"`
+		Method      string             `json:"method"`
+		Predictions []StoredPrediction `json:"predictions"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if len(resp.Predictions) != 4 {
-		t.Errorf("expected 4 predictions, got %d", len(resp.Predictions))
+		t.Fatalf("expected 4 predictions, got %d", len(resp.Predictions))
 	}
-	if resp.Method != "threshold_pace" {
-		t.Errorf("expected method threshold_pace, got %s", resp.Method)
+	if resp.Method != "formula" {
+		t.Errorf("expected seeded method formula, got %s", resp.Method)
 	}
-	if resp.RefWorkoutID == nil || *resp.RefWorkoutID != 1 {
-		t.Errorf("expected RefWorkoutID=1, got %v", resp.RefWorkoutID)
+	// The 30-min/7.2 km anchor Riegel-extrapolates to a plausible 5K faster
+	// than the anchor pace times 5 km and a marathon slower than it.
+	for _, p := range resp.Predictions {
+		if p.TimeSeconds <= 0 {
+			t.Errorf("prediction %s has no time", p.Distance)
+		}
+	}
+
+	// The seed persisted: the snapshot is now the stored latest.
+	stored, err := GetLatestRacePrediction(db, 1)
+	if err != nil || stored == nil {
+		t.Fatalf("expected persisted snapshot, got %v (err %v)", stored, err)
+	}
+	if stored.Method != "formula" || len(stored.Predictions) != 4 {
+		t.Errorf("stored snapshot mismatch: %+v", stored)
 	}
 }

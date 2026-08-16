@@ -300,9 +300,10 @@ func main() {
 		}
 	}()
 
-	// Schedule weekly Stride plan generation on Sundays at 18:00 Europe/Oslo.
-	// Generates a training plan for each user with stride_enabled=true and sends
-	// a push notification confirming the plan is ready.
+	// Schedule weekly Stride plan generation (stride.NextStrideRun — Mondays
+	// 02:00 Europe/Oslo). For each user with stride_enabled=true: refresh the
+	// race-prediction snapshot, generate the plan (which reads it), and send a
+	// push notification confirming the plan is ready.
 	go func() {
 		oslo, err := time.LoadLocation("Europe/Oslo")
 		if err != nil {
@@ -339,6 +340,20 @@ func main() {
 
 				strideHTTPClient := &http.Client{Timeout: 120 * time.Second}
 				for _, userID := range userIDs {
+					// Refresh the race prediction snapshot BEFORE the plan
+					// generates, so the coach prompt sees this week's honest
+					// fitness estimate. Best-effort: a failed refresh leaves
+					// last week's snapshot in place and never blocks the plan.
+					predCtx, predCancel := context.WithTimeout(notifCtx, 3*time.Minute)
+					if cfg, cfgErr := training.LoadClaudeConfig(database, userID); cfgErr == nil {
+						if _, predErr := training.RefreshRacePrediction(predCtx, database, userID, cfg); predErr != nil {
+							log.Printf("stride: refresh race prediction for user %d: %v", userID, predErr)
+						}
+					} else {
+						log.Printf("stride: load claude config for prediction refresh, user %d: %v", userID, cfgErr)
+					}
+					predCancel()
+
 					planCtx, planCancel := context.WithTimeout(notifCtx, 90*time.Second)
 					if err := stride.GeneratePlan(planCtx, database, userID, "next"); err != nil {
 						log.Printf("stride: generate plan for user %d: %v", userID, err)

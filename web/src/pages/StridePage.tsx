@@ -6,6 +6,8 @@ import { formatDistance, formatDuration } from '../utils/training'
 import type { StrideEvaluationRecord, StridePlan, WeekSummary } from '../types/stride'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { TrainingBlockTimeline } from '../components/stride/TrainingBlockTimeline'
+import RacePredictionsCard from '../components/training/RacePredictionsCard'
+import type { RacePredictions } from '../types/training'
 import StrideChatDrawer from '../components/stride/StrideChatDrawer'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../components/ui/dialog'
 import { DayCard } from '../components/stride/DayCard'
@@ -542,6 +544,7 @@ export default function StridePage() {
   const { t: tTraining } = useTranslation('training')
 
   const [races, setRaces] = useState<Race[]>([])
+  const [racePredictions, setRacePredictions] = useState<RacePredictions | null>(null)
   const [notes, setNotes] = useState<Note[]>([])
   const [consumedNotes, setConsumedNotes] = useState<Note[]>([])
   const [currentPlan, setCurrentPlan] = useState<StridePlan | null>(null)
@@ -748,6 +751,23 @@ export default function StridePage() {
     loadWorkouts(controller.signal)
     return () => { controller.abort() }
   }, [loadRaces, loadNotes, loadCurrentPlan, loadWorkouts])
+
+  // Current fitness estimate — the stored weekly race-prediction snapshot the
+  // plan generator also reads. Non-fatal when unavailable; the card hides.
+  useEffect(() => {
+    const controller = new AbortController()
+    ;(async () => {
+      try {
+        const res = await fetch('/api/training/predictions', { credentials: 'include', signal: controller.signal })
+        if (!res.ok) return
+        const data: RacePredictions = await res.json()
+        if (!controller.signal.aborted) setRacePredictions(data)
+      } catch {
+        // Card simply does not render.
+      }
+    })()
+    return () => controller.abort()
+  }, [])
 
   const planId = currentPlan?.id
 
@@ -1120,6 +1140,12 @@ export default function StridePage() {
 
       {/* Training Block Timeline */}
       <TrainingBlockTimeline races={races} loading={racesLoading} />
+
+      {/* Current fitness estimate — the same weekly snapshot the coach reads
+          when generating the plan, so athlete and coach see one number. */}
+      {racePredictions?.predictions && racePredictions.predictions.length > 0 && (
+        <RacePredictionsCard data={racePredictions} />
+      )}
 
       {/* Weekly Plan */}
       <section>

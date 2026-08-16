@@ -243,16 +243,23 @@ export interface VO2maxResponse {
 export interface RacePrediction {
   distance: string
   distance_m: number
+  time_seconds?: number
   predicted_time: string
   pace_per_km: string
+  confidence?: string
 }
 
+// RacePredictions is the stored weekly snapshot served by
+// GET /api/training/predictions: AI-set (method "ai") within a deterministic
+// Riegel envelope, or formula-derived when Claude is off. `previous` carries
+// the prior snapshot so the card can render deltas.
 export interface RacePredictions {
-  ref_distance: string
-  ref_time: string
-  ref_workout_id?: number
-  method: string
+  as_of?: string
+  method?: string
+  rationale?: string
   predictions: RacePrediction[] | null
+  previous?: RacePrediction[]
+  previous_as_of?: string
   message?: string
 }
 

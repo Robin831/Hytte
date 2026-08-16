@@ -501,6 +501,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				// Claude AI analysis endpoints — additionally gated by "claude_ai" feature.
 				r.Group(func(r chi.Router) {
 					r.Use(auth.RequireFeature(db, "claude_ai"))
+					r.Post("/training/predictions/refresh", training.RefreshRacePredictionsHandler(db))
 					r.Post("/training/workouts/{id}/analyze", training.AnalyzeHandler(db))
 					r.Get("/training/workouts/{id}/analysis", training.GetAnalysisHandler(db))
 					r.Delete("/training/workouts/{id}/analysis", training.DeleteAnalysisHandler(db))

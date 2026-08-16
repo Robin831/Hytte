@@ -317,8 +317,21 @@ func BuildHistoricalContext(db *sql.DB, userID int64, workout *Workout) string {
 		log.Printf("BuildHistoricalContext: failed to load type distribution for user %d: %v", userID, distErr)
 	}
 
+	// Prefer the stored prediction snapshot (AI-set weekly, fact-based) over
+	// the legacy on-the-fly Riegel from a single workout; the legacy path
+	// remains only as a fallback for users with no snapshot yet.
 	var preds *RacePredictions
-	if thresholdWorkout, twErr := FindBestThresholdWorkout(db, userID); twErr == nil && thresholdWorkout != nil {
+	if stored, sErr := GetLatestRacePrediction(db, userID); sErr == nil && stored != nil && len(stored.Predictions) > 0 {
+		preds = &RacePredictions{RefDistance: "current fitness estimate", Method: stored.Method}
+		for _, p := range stored.Predictions {
+			preds.Predictions = append(preds.Predictions, RacePrediction{
+				Distance:      p.Distance,
+				DistanceM:     p.DistanceM,
+				PredictedTime: p.PredictedTime,
+				PacePerKm:     p.PacePerKm,
+			})
+		}
+	} else if thresholdWorkout, twErr := FindBestThresholdWorkout(db, userID); twErr == nil && thresholdWorkout != nil {
 		preds = PredictRaceTimes(0, thresholdWorkout.AvgPaceSecPerKm)
 	}
 

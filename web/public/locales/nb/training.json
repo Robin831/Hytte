@@ -289,13 +289,20 @@
     },
     "racePredictions": {
       "title": "Løpstidsprediksjoner",
-      "basis": "Basert på økt #{{id}} (referansetid: {{time}})",
-      "formula": "Beregnet med Riegel-formelen (T2 = T1 × (D2/D1)^1.06). Prediksjoner er estimater.",
       "noData": "Ingen løpstidsprediksjoner tilgjengelig",
       "noDataHint": "Last opp terskel- eller tempoøkter fra de siste 3 månedene for å få prediksjoner",
       "distance": "Distanse",
       "time": "Tid",
-      "pace": "Tempo"
+      "pace": "Tempo",
+      "asOf": "Per {{date}}",
+      "methodAi": "AI-satt",
+      "change": "Endring",
+      "confidenceLabel": "Sikkerhet",
+      "confidence": {
+        "high": "høy",
+        "medium": "middels",
+        "low": "lav"
+      }
     },
     "needMoreWorkouts": "Trenger minst 2 økter tagget \"{{tag}}\" for å vise trender.",
     "emptyTitle": "Ingen trenddata ennå",
