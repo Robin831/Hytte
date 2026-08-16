@@ -163,3 +163,93 @@ func TestIntervalThresholdAdjustment(t *testing.T) {
 		}
 	}
 }
+
+// indoorLaps builds indoor laps from (durS, distM, hr) triples. Distances are
+// the watch's real cadence-derived values, deliberately kept so these tests
+// prove the indoor path ignores them.
+func indoorLaps(triples ...float64) []predictionLap {
+	laps := make([]predictionLap, 0, len(triples)/3)
+	for i := 0; i+2 < len(triples); i += 3 {
+		laps = append(laps, predictionLap{durS: triples[i], distM: triples[i+1], hr: int(triples[i+2])})
+	}
+	return laps
+}
+
+// TestExtractIndoorIntervalEffortKeepsSessionPaceClusteringDiscarded pins the
+// exact regression: workout 100 (2026-08-14, 3x10min at belt 11.8-12.0 with
+// 2min jogs). Pace-keyed clustering threw this session away entirely because
+// the belt-9.8 WARMUP read 314 s/km while the threshold reps read 340-350 —
+// indoor pace ordering is inverted, so the 8% band anchored on the warmup and
+// excluded lap 2 by 0.6 s/km, leaving 2 laps and failing the rep floor.
+func TestExtractIndoorIntervalEffortKeepsSessionPaceClusteringDiscarded(t *testing.T) {
+	laps := indoorLaps(
+		899.1, 2861.15, 140, // warmup — FASTEST by watch pace (314 s/km)
+		600.0, 1762.37, 158, // rep 1 (340 s/km — "slower" than the warmup)
+		120.0, 346.72, 149, // jog
+		600.0, 1711.96, 160, // rep 2
+		120.0, 346.71, 152, // jog
+		600.0, 1726.36, 163, // rep 3
+		120.0, 340.54, 153, // jog — on the HR floor, excluded by duration
+		542.06, 1624.19, 143, // cooldown
+	)
+	got := extractIndoorIntervalEffort(laps, 100, "2026-08-14T10:30:27Z", indoorWorkHRFloor(163, 186))
+	if got == nil {
+		t.Fatal("threshold session discarded; this is the bug")
+	}
+	if got.Reps != 3 {
+		t.Errorf("Reps = %d, want 3 (warmup, jogs and cooldown must not count)", got.Reps)
+	}
+	if got.TotalWorkSeconds != 1800 {
+		t.Errorf("TotalWorkSeconds = %v, want 1800", got.TotalWorkSeconds)
+	}
+	if got.AvgHeartRate != 160 {
+		t.Errorf("AvgHeartRate = %d, want 160 (158/160/163)", got.AvgHeartRate)
+	}
+	if got.WorkPaceSecPerKm != 0 {
+		t.Errorf("WorkPaceSecPerKm = %v, want 0: indoor pace must never be reported", got.WorkPaceSecPerKm)
+	}
+}
+
+// TestExtractIndoorIntervalEffortRejectsEasyRuns pins the other half of the
+// inversion: easy treadmill runs auto-lap every 1 km, so their paces are
+// naturally even and pace clustering reported them as interval work — an easy
+// run became "8 work reps, 45:01, HR 140" and an easy+strides run became
+// "5 work reps, 28:40, HR 132". HR keying rejects both.
+func TestExtractIndoorIntervalEffortRejectsEasyRuns(t *testing.T) {
+	floor := indoorWorkHRFloor(163, 186)
+
+	easy := indoorLaps( // workout 99, 2026-08-12
+		340.68, 1000, 125, 325.33, 1000, 138, 340.67, 1000, 138, 335.66, 1000, 140,
+		341.0, 1000, 142, 340.74, 1000, 144, 338.93, 1000, 144, 338.33, 1000, 146,
+	)
+	if got := extractIndoorIntervalEffort(easy, 99, "2026-08-12T17:46:13Z", floor); got != nil {
+		t.Errorf("easy treadmill run reported as interval work: %+v", got)
+	}
+
+	strides := indoorLaps( // workout 101, 2026-08-15
+		369.04, 1000, 118, 342.66, 1000, 129, 356.52, 1000, 131,
+		360.26, 1000, 135, 380.26, 1000, 133, 291.96, 820, 149,
+	)
+	if got := extractIndoorIntervalEffort(strides, 101, "2026-08-15T11:27:11Z", floor); got != nil {
+		t.Errorf("easy+strides run reported as interval work: %+v", got)
+	}
+
+	long := indoorLaps( // workout 102, 2026-08-16 progression long run
+		4200.5, 11600.47, 141, 719.09, 2003.85, 151, 183.22, 505.4, 143,
+	)
+	if got := extractIndoorIntervalEffort(long, 102, "2026-08-16T06:58:06Z", floor); got != nil {
+		t.Errorf("long run reported as interval work: %+v", got)
+	}
+}
+
+func TestIndoorWorkHRFloor(t *testing.T) {
+	if got := indoorWorkHRFloor(163, 186); got != 153 {
+		t.Errorf("threshold path = %d, want 153", got)
+	}
+	if got := indoorWorkHRFloor(0, 186); got != 164 {
+		t.Errorf("maxHR fallback = %d, want 164", got)
+	}
+	if got := indoorWorkHRFloor(0, 0); got != 0 {
+		t.Errorf("no anchor = %d, want 0 (report nothing rather than guess)", got)
+	}
+}

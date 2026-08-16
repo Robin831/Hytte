@@ -92,6 +92,51 @@ const (
 	minIntervalWorkSeconds = 900
 )
 
+// Indoor work-lap selection. Indoors the watch's pace field tracks CADENCE,
+// not belt speed, so clustering laps by pace does not merely blur work and
+// recovery — it inverts them. Measured on this athlete 2026-08-14: the warmup
+// at belt 9.8 km/h read 314 s/km while the 11.8-12.0 km/h threshold reps read
+// 340-350 s/km, so a pace-keyed cluster anchored on the warmup and threw the
+// reps out, discarding the session entirely — while two easy treadmill runs
+// (whose 1 km auto-laps are naturally even) were reported as interval work.
+// HR is the only trustworthy indoor signal, so indoor work laps are selected
+// by HR against the athlete's own threshold and never by pace.
+const (
+	// indoorWorkHRMargin is how far below threshold HR an indoor lap may sit
+	// and still count as work. Sub-threshold reps are deliberately run a few
+	// bpm under; recovery jogs and easy runs sit far further down.
+	indoorWorkHRMargin = 10
+	// indoorWorkHRFallbackFraction derives the same floor from max HR when the
+	// athlete has no threshold HR set.
+	indoorWorkHRFallbackFraction = 0.88
+	// indoorWorkLapMaxSeconds is the longest lap still treated as a rep
+	// indoors. Treadmill sessions routinely use 10-15 min blocks, which the
+	// outdoor 15 min cap would drop.
+	indoorWorkLapMaxSeconds = 1500
+	// indoorMinWorkLapSeconds keeps a recovery jog out of the cluster when HR
+	// lag leaves it sitting on the floor: the jog after a threshold rep can
+	// still read 153 while the rep read 158-163. Reps are minutes long, jogs
+	// are not, so duration separates them where HR alone cannot.
+	indoorMinWorkLapSeconds = 180
+	// indoorMinReps is the rep floor indoors. Two 15-min blocks at threshold
+	// HR is real quality work even though it is only two laps.
+	indoorMinReps = 2
+)
+
+// indoorWorkHRFloor is the lap-HR threshold above which an indoor lap counts
+// as work. Returns 0 when the athlete has neither threshold nor max HR set —
+// without an HR anchor there is no trustworthy indoor signal at all, and a
+// guess would be worse than reporting nothing.
+func indoorWorkHRFloor(thresholdHR, maxHR int) int {
+	if thresholdHR > 0 {
+		return thresholdHR - indoorWorkHRMargin
+	}
+	if maxHR > 0 {
+		return int(math.Round(float64(maxHR) * indoorWorkHRFallbackFraction))
+	}
+	return 0
+}
+
 // intervalThresholdAdjustment converts an interval work pace into a
 // threshold-pace estimate, gated on the HR the work actually cost. A flat
 // +6 s/km "reps are faster than continuous" penalty applied blind to HR
@@ -166,12 +211,15 @@ type intervalEffort struct {
 	AvgHeartRate     int
 }
 
-// longestRun is the longest recent outdoor run — the durability signal for
-// half-marathon and marathon confidence.
+// longestRun is the longest recent run — the durability signal for
+// half-marathon and marathon confidence. Indoor runs count: duration is real
+// time on feet wherever it was run. Indoor DISTANCE is not real, hence the
+// flag — see formatFacts, which suppresses it.
 type longestRun struct {
 	Date            string
 	DurationSeconds float64
 	DistanceMeters  float64
+	Indoor          bool
 }
 
 // predictionFacts is everything the estimate is based on.
@@ -417,12 +465,51 @@ func extractIntervalEffort(laps []predictionLap, workoutID int64, startedAt stri
 	}
 }
 
+// extractIndoorIntervalEffort clusters one INDOOR session's work laps by HR.
+// A work lap is a lap of 2-25 min whose average HR reaches hrFloor. Distance
+// is deliberately never consulted and the returned WorkPaceSecPerKm is always
+// zero: indoors both are cadence artifacts, so this effort can only ever
+// report what a treadmill cannot fake — rep count, work time, and HR.
+func extractIndoorIntervalEffort(laps []predictionLap, workoutID int64, startedAt string, hrFloor int) *intervalEffort {
+	if hrFloor <= 0 {
+		return nil
+	}
+	var durS, hrSum, hrN float64
+	reps := 0
+	for _, l := range laps {
+		if l.durS < indoorMinWorkLapSeconds || l.durS > indoorWorkLapMaxSeconds {
+			continue
+		}
+		if l.hr < hrFloor {
+			continue
+		}
+		reps++
+		durS += l.durS
+		hrSum += float64(l.hr) * l.durS
+		hrN += l.durS
+	}
+	if reps < indoorMinReps || durS < minIntervalWorkSeconds || hrN <= 0 {
+		return nil
+	}
+	return &intervalEffort{
+		WorkoutID:        workoutID,
+		Date:             startedAt,
+		Reps:             reps,
+		TotalWorkSeconds: durS,
+		WorkPaceSecPerKm: 0, // never valid indoors
+		AvgHeartRate:     int(math.Round(hrSum / hrN)),
+	}
+}
+
 // indoorIntervalEfforts extracts work-lap clusters from recent INDOOR running
-// workouts. The clustering keys on lap pace, which indoors is a cadence
-// artifact — but within one session the artifact is consistent enough to
-// separate work reps from recovery jogs, and what we report onward is only
-// what the treadmill cannot fake: rep count, cumulative work time, and HR.
-func indoorIntervalEfforts(db *sql.DB, userID int64) ([]intervalEffort, error) {
+// workouts, keyed on HR rather than pace (see indoorWorkHRFloor). What we
+// report onward is only what the treadmill cannot fake: rep count, cumulative
+// work time, and HR.
+func indoorIntervalEfforts(db *sql.DB, userID int64, thresholdHR, maxHR int) ([]intervalEffort, error) {
+	hrFloor := indoorWorkHRFloor(thresholdHR, maxHR)
+	if hrFloor <= 0 {
+		return nil, nil
+	}
 	since := time.Now().UTC().AddDate(0, 0, -baselineRecencyDays).Format(time.RFC3339)
 	rows, err := db.Query(`
 		SELECT w.id, w.started_at,
@@ -451,7 +538,7 @@ func indoorIntervalEfforts(db *sql.DB, userID int64) ([]intervalEffort, error) {
 		if currentID == 0 || len(laps) == 0 {
 			return
 		}
-		if ie := extractIntervalEffort(laps, currentID, startedAt); ie != nil {
+		if ie := extractIndoorIntervalEffort(laps, currentID, startedAt, hrFloor); ie != nil {
 			out = append(out, *ie)
 		}
 		laps = laps[:0]
@@ -532,13 +619,13 @@ func buildPredictionFacts(db *sql.DB, userID int64) (*predictionFacts, error) {
 	recentSince := facts.AsOf.AddDate(0, 0, -baselineRecencyDays).Format(time.RFC3339)
 	var lr longestRun
 	err = db.QueryRow(`
-		SELECT started_at, duration_seconds, distance_meters
+		SELECT started_at, duration_seconds, distance_meters, COALESCE(is_indoor, 0)
 		FROM workouts
 		WHERE user_id = ? AND sport = 'running'
 		  AND started_at >= ? AND duration_seconds > 0
 		ORDER BY duration_seconds DESC LIMIT 1`,
 		userID, recentSince,
-	).Scan(&lr.Date, &lr.DurationSeconds, &lr.DistanceMeters)
+	).Scan(&lr.Date, &lr.DurationSeconds, &lr.DistanceMeters, &lr.Indoor)
 	if err == nil {
 		facts.LongestRecent = &lr
 	}
@@ -547,7 +634,7 @@ func buildPredictionFacts(db *sql.DB, userID int64) (*predictionFacts, error) {
 	// a treadmill, so they never anchor the deterministic baseline — but with
 	// the athlete's measured calibration they are real evidence the model can
 	// cross-check (belt speed × offset from the calibration's own numbers).
-	facts.IndoorIntervals, err = indoorIntervalEfforts(db, userID)
+	facts.IndoorIntervals, err = indoorIntervalEfforts(db, userID, facts.ThresholdHR, facts.MaxHR)
 	if err != nil {
 		log.Printf("race prediction: indoor intervals for user %d: %v", userID, err)
 	}
@@ -799,9 +886,17 @@ func formatFacts(facts *predictionFacts) string {
 		if len(date) >= 10 {
 			date = date[:10]
 		}
-		fmt.Fprintf(&b, "\nLongest run in the last %d days: %s / %.1f km on %s\n",
-			baselineRecencyDays, formatRaceTime(int(facts.LongestRecent.DurationSeconds)),
-			facts.LongestRecent.DistanceMeters/1000, date)
+		if facts.LongestRecent.Indoor {
+			// Duration only: a treadmill's distance is derived from the same
+			// cadence artifact as its pace, so quoting it here would smuggle
+			// back in the exact number the indoor rules elsewhere discard.
+			fmt.Fprintf(&b, "\nLongest run in the last %d days: %s on %s (treadmill — time on feet is real, distance is not measured and is omitted)\n",
+				baselineRecencyDays, formatRaceTime(int(facts.LongestRecent.DurationSeconds)), date)
+		} else {
+			fmt.Fprintf(&b, "\nLongest run in the last %d days: %s / %.1f km on %s\n",
+				baselineRecencyDays, formatRaceTime(int(facts.LongestRecent.DurationSeconds)),
+				facts.LongestRecent.DistanceMeters/1000, date)
+		}
 	}
 
 	if facts.VO2maxLatest > 0 {
