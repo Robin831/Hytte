@@ -791,6 +791,25 @@ export default function StridePage() {
     }
   }
 
+  // Live refresh: an evaluation lands from a background Claude call minutes
+  // after a workout context is saved, so without a push the new row only
+  // appeared on a manual page refresh. The training SSE stream announces every
+  // stored evaluation; any stride_eval_ready for this user refetches the
+  // week's evaluations (cheap, and the event volume is a handful per day).
+  // The ref keeps the subscription stable across renders while always calling
+  // the latest refreshEvaluations closure.
+  const refreshEvaluationsRef = useRef(refreshEvaluations)
+  useEffect(() => {
+    refreshEvaluationsRef.current = refreshEvaluations
+  })
+  useEffect(() => {
+    const es = new EventSource('/api/training/events', { withCredentials: true })
+    es.addEventListener('stride_eval_ready', () => {
+      void refreshEvaluationsRef.current()
+    })
+    return () => es.close()
+  }, [])
+
   async function handleRerunDay(date: string) {
     setRerunError('')
     setRerunningDate(date)

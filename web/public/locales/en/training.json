@@ -366,7 +366,8 @@
       "injury_risk": "Injury risk",
       "pacing_issue": "Pacing issue"
     },
-    "coachQuestions": "Coach's questions"
+    "coachQuestions": "Coach's questions",
+    "evaluating": "The coach is evaluating this workout…"
   },
   "speedPlan": {
     "kinds": {

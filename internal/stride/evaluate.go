@@ -400,6 +400,11 @@ func ReEvaluateDate(ctx context.Context, db *sql.DB, httpClient *http.Client, us
 	}
 	committed = true
 
+	// Announce the swapped-in evaluations so open pages showing this date
+	// refetch instead of waiting for a manual refresh. After commit only: a
+	// ready signal for rows that never landed would refetch into the old state.
+	training.DefaultHub().Publish(userID, training.Event{Type: training.EventStrideEvalReady, Date: date})
+
 	// Push notifications fire only after commit, so a flag-laden evaluation that
 	// failed to persist does not page the user.
 	for _, rec := range newRecords {
@@ -710,6 +715,10 @@ func storeEvaluation(ctx context.Context, db *sql.DB, userID, workoutID, planID 
 			log.Printf("stride eval: seed question thread for workout %d: %v", workoutID, err)
 		}
 	}
+
+	// Announce the stored evaluation so an open detail or Stride page showing
+	// this workout refetches instead of waiting for a manual refresh.
+	training.DefaultHub().Publish(userID, training.Event{Type: training.EventStrideEvalReady, WorkoutID: workoutID, Date: eval.Date})
 	return nil
 }
 

@@ -366,7 +366,8 @@
       "injury_risk": "ความเสี่ยงบาดเจ็บ",
       "pacing_issue": "ปัญหาเพส"
     },
-    "coachQuestions": "คำถามจากโค้ช"
+    "coachQuestions": "คำถามจากโค้ช",
+    "evaluating": "โค้ชกำลังประเมินการออกกำลังกายนี้…"
   },
   "speedPlan": {
     "kinds": {

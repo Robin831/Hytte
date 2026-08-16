@@ -10,14 +10,34 @@ import (
 // reconcile against its own last-seen id. The event deliberately carries no
 // workout payload — clients fetch /api/training/workouts/latest (or the full
 // list) when they need details.
+//
+// WorkoutID and Date ride along on the stride evaluation events so a detail
+// page or the Stride plan view can tell whether the signal concerns what it is
+// showing. Date is the evaluated UTC day (2006-01-02): an evaluation covers a
+// date, which may span several workouts (or none, for a rest-day eval), so the
+// date is the reliable match key and WorkoutID is a best-effort extra.
 type Event struct {
-	Type     string `json:"-"`
-	LatestID int64  `json:"latest_id"`
+	Type      string `json:"-"`
+	LatestID  int64  `json:"latest_id"`
+	WorkoutID int64  `json:"workout_id,omitempty"`
+	Date      string `json:"date,omitempty"`
 }
 
-// EventWorkoutNew is the only event type currently published. Kept as a
-// constant so callers cannot typo the name silently.
-const EventWorkoutNew = "workout_new"
+// Event types published into the hub. Kept as constants so callers cannot typo
+// the names silently.
+const (
+	// EventWorkoutNew — a workout row was imported/committed.
+	EventWorkoutNew = "workout_new"
+	// EventStrideEvalStarted — a Stride evaluation was scheduled for a date.
+	// Published at schedule time (before the Claude call, which can queue
+	// behind the semaphore for minutes) so the UI can show an "evaluating"
+	// indicator immediately.
+	EventStrideEvalStarted = "stride_eval_started"
+	// EventStrideEvalReady — a Stride evaluation row was stored. Clients
+	// showing that date refetch their evaluations. Without this the row just
+	// appears in the DB and the page had to be manually refreshed.
+	EventStrideEvalReady = "stride_eval_ready"
+)
 
 // Subscriber is a single SSE client subscription. The channel is buffered so a
 // publisher can fan out without blocking on a slow consumer; if the buffer

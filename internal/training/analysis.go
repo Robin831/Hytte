@@ -71,12 +71,15 @@ func RunClaudeAnalysis(ctx context.Context, db *sql.DB, workoutID, userID int64)
 		return fmt.Errorf("claude prompt: %w", err)
 	}
 
-	analysisTag, analysisSummary, analysisType, analysisTitle, confidenceScore, confidenceNote := parseClaudeResponse(response)
+	_, analysisSummary, analysisType, analysisTitle, confidenceScore, confidenceNote := parseClaudeResponse(response)
 
+	// Only the closed ai:type:* enum is persisted as a tag. The free-form
+	// structure tag ("6x6min (r1m)", "10k easy", …) minted a near-unique tag
+	// per workout — duplicating the auto: structure tag from the FIT laps —
+	// which is what made the distinct-tag vocabulary grow without bound.
+	// Everything downstream (race prediction, coach type distribution, race
+	// detection) keys on ai:type:* only.
 	var aiTags []string
-	if analysisTag != "" {
-		aiTags = append(aiTags, "ai:"+analysisTag)
-	}
 	if analysisType != "" {
 		aiTags = append(aiTags, "ai:type:"+analysisType)
 	}

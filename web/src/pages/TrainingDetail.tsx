@@ -76,6 +76,7 @@ export default function TrainingDetail() {
   const [racePredictions, setRacePredictions] = useState<RacePredictions | null>(null)
   const [showLactateImport, setShowLactateImport] = useState(false)
   const [strideEval, setStrideEval] = useState<StrideEvaluationRecord | null>(null)
+  const [strideEvalPending, setStrideEvalPending] = useState(false)
   const reloadStrideEval = useCallback(async () => {
     try {
       const res = await fetch(`/api/stride/evaluations?workout_id=${id}`, { credentials: 'include' })
@@ -342,6 +343,42 @@ export default function TrainingDetail() {
       pollRef.current = null
     }
   }, [workout?.analysis_status, refreshWorkoutAndAnalysis])
+
+  // Live stride-evaluation updates. The coach evaluation is a background
+  // Claude call that lands minutes after the context is saved — unlike the
+  // analysis there is no status column to poll, so the row used to appear
+  // only on a manual refresh. The training SSE stream announces the schedule
+  // (stride_eval_started) and the stored result (stride_eval_ready); events
+  // are matched on the workout id or its evaluated UTC date, since a stride
+  // evaluation covers a date rather than a single workout.
+  const workoutStartedAt = workout?.started_at
+  useEffect(() => {
+    if (!user || !id) return
+    const workoutDate = workoutStartedAt
+      ? new Date(workoutStartedAt).toISOString().slice(0, 10)
+      : null
+    const matches = (e: MessageEvent): boolean => {
+      try {
+        const data = JSON.parse(e.data)
+        if (typeof data.workout_id === 'number' && data.workout_id > 0 && String(data.workout_id) === id) {
+          return true
+        }
+        return typeof data.date === 'string' && data.date !== '' && data.date === workoutDate
+      } catch {
+        return false
+      }
+    }
+    const es = new EventSource('/api/training/events', { withCredentials: true })
+    es.addEventListener('stride_eval_started', (e: MessageEvent) => {
+      if (matches(e)) setStrideEvalPending(true)
+    })
+    es.addEventListener('stride_eval_ready', (e: MessageEvent) => {
+      if (!matches(e)) return
+      setStrideEvalPending(false)
+      void reloadStrideEval()
+    })
+    return () => es.close()
+  }, [user, id, workoutStartedAt, reloadStrideEval])
 
   const runAnalysis = async (deleteFirst: boolean) => {
     if (!workout) return
@@ -791,7 +828,15 @@ export default function TrainingDetail() {
         <RacePredictionsCard data={racePredictions} />
       )}
 
-      {/* Stride evaluation */}
+      {/* Stride evaluation. The pending strip shows while the coach's
+          background evaluation runs, so the card's later appearance (via the
+          stride_eval_ready SSE event) reads as arrival, not a glitch. */}
+      {strideEvalPending && (
+        <div className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-xl p-4 text-sm text-gray-400">
+          <Loader2 size={16} className="animate-spin text-orange-400" />
+          {t('strideEval.evaluating')}
+        </div>
+      )}
       {strideEval && (
         <StrideEvalCard evaluation={strideEval} onEvalRevised={reloadStrideEval} />
       )}

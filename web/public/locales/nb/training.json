@@ -366,7 +366,8 @@
       "injury_risk": "Skaderisiko",
       "pacing_issue": "Tempoproblemer"
     },
-    "coachQuestions": "Trenerens spørsmål"
+    "coachQuestions": "Trenerens spørsmål",
+    "evaluating": "Treneren evaluerer denne økten…"
   },
   "speedPlan": {
     "kinds": {

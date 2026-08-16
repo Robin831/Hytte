@@ -1,36 +1,27 @@
 import { Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import TagBadge from './TagBadge'
 
 interface WorkoutFilterBarProps {
-  // Every tag the user has across their whole history, sorted. Supplied by the
-  // page from /api/training/tags so the chips are not limited to loaded pages.
-  availableTags: string[]
   // The sport keys to offer in the dropdown (the sportIcons keys from the page).
   sports: string[]
   sport: string
   setSport: (s: string) => void
-  selectedTags: string[]
-  toggleTag: (t: string) => void
   query: string
   setQuery: (q: string) => void
   onClear: () => void
 }
 
 export default function WorkoutFilterBar({
-  availableTags,
   sports,
   sport,
   setSport,
-  selectedTags,
-  toggleTag,
   query,
   setQuery,
   onClear,
 }: WorkoutFilterBarProps) {
   const { t } = useTranslation('training')
 
-  const hasActiveFilters = sport !== '' || selectedTags.length > 0 || query.trim() !== ''
+  const hasActiveFilters = sport !== '' || query.trim() !== ''
 
   return (
     <div className="mb-4 space-y-3 bg-gray-800/50 border border-gray-700 rounded-xl p-3 sm:p-4">
@@ -86,31 +77,6 @@ export default function WorkoutFilterBar({
           </button>
         )}
       </div>
-
-      {/* Tag chips */}
-      {availableTags.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {availableTags.map((tag) => {
-            const selected = selectedTags.includes(tag)
-            return (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => toggleTag(tag)}
-                aria-pressed={selected}
-                aria-label={tag}
-                className={`rounded-full transition-shadow ${
-                  selected
-                    ? 'ring-2 ring-orange-400'
-                    : 'hover:ring-2 hover:ring-gray-500'
-                }`}
-              >
-                <TagBadge tag={tag} />
-              </button>
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }

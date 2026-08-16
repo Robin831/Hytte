@@ -1,12 +1,11 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { Dumbbell, Upload, TrendingUp, BarChart3, RefreshCw, X, Database } from 'lucide-react'
+import { Dumbbell, Upload, TrendingUp, BarChart3, RefreshCw, X, Database, Zap } from 'lucide-react'
 import { useAuth } from '../auth'
 import { useTranslation } from 'react-i18next'
 import { formatDate, formatTime } from '../utils/formatDate'
 import { formatDistance, formatDuration, formatPace } from '../utils/training'
 import type { Workout, WeeklySummary } from '../types/training'
-import TagBadge from '../components/TagBadge'
 import WorkoutFilterBar from '../components/WorkoutFilterBar'
 import { useTrainingListCache, isReloadNavigation } from '../hooks/useTrainingListCache'
 
@@ -94,10 +93,10 @@ const sportIcons: Record<string, string> = {
 }
 
 export default function Training() {
-  const { user } = useAuth()
+  const { user, hasFeature } = useAuth()
   const { t } = useTranslation(['training', 'common'])
 
-  // Filter state lives in the URL, so /training?sport=running&tag=long&q=intervals
+  // Filter state lives in the URL, so /training?sport=running&q=intervals
   // is bookmarkable, survives a reload, and comes back intact when the browser
   // navigates back to it. These are request parameters, not a client-side
   // narrowing of the loaded pages: changing any of them refetches page 1 from
@@ -105,22 +104,19 @@ export default function Training() {
   const [searchParams, setSearchParams] = useSearchParams()
   const sportFilter = searchParams.get('sport') ?? ''
   const query = searchParams.get('q') ?? ''
-  const selectedTags = useMemo(() => searchParams.getAll('tag'), [searchParams])
 
   // Serialized filter params: the query string every workout-list request
   // carries, and the per-filter suffix of the list snapshot key. Built from the
   // individual values rather than taken from searchParams.toString() so the
   // order is canonical however the params arrived, which keeps one filter
-  // combination on one cache key. Kept as a string so it can be a stable effect
-  // dependency despite selectedTags being a new array on each toggle.
+  // combination on one cache key.
   const filterParams = useMemo(() => {
     const params = new URLSearchParams()
     if (sportFilter) params.set('sport', sportFilter)
-    for (const tag of selectedTags) params.append('tag', tag)
     const q = query.trim()
     if (q) params.set('q', q)
     return params.toString()
-  }, [sportFilter, selectedTags, query])
+  }, [sportFilter, query])
 
   const listCache = useTrainingListCache(user?.id, filterParams)
 
@@ -150,7 +146,6 @@ export default function Training() {
   const [backfilling, setBackfilling] = useState(false)
   const [backfillResult, setBackfillResult] = useState<string | null>(null)
   const [hasAnyWorkouts, setHasAnyWorkouts] = useState(hydrated !== null)
-  const [availableTags, setAvailableTags] = useState<string[]>([])
   const latestWorkoutIdRef = useRef<number | null>(hydrated?.latestWorkoutId ?? null)
   const hasNewWorkoutsRef = useRef(false)
 
@@ -197,21 +192,19 @@ export default function Training() {
   const listRequestIdRef = useRef(0)
 
   // setFilters rewrites the whole filter query string, omitting empty values so
-  // clearing every filter leaves a bare /training. Sport and tag changes push a
+  // clearing every filter leaves a bare /training. Sport changes push a
   // history entry; the debounced search commits with replace, so one Back press
   // leaves the page instead of stepping back through keystrokes.
   const setFilters = useCallback(
-    (next: { sport?: string; tags?: string[]; q?: string }, opts?: { replace?: boolean }) => {
+    (next: { sport?: string; q?: string }, opts?: { replace?: boolean }) => {
       const params = new URLSearchParams()
       const sport = next.sport ?? sportFilter
-      const tags = next.tags ?? selectedTags
       const q = (next.q ?? query).trim()
       if (sport) params.set('sport', sport)
-      for (const tag of tags) params.append('tag', tag)
       if (q) params.set('q', q)
       setSearchParams(params, { replace: opts?.replace ?? false })
     },
-    [sportFilter, selectedTags, query, setSearchParams],
+    [sportFilter, query, setSearchParams],
   )
 
   useEffect(() => {
@@ -237,37 +230,13 @@ export default function Training() {
 
   const setSportFilter = useCallback((sport: string) => { setFilters({ sport }) }, [setFilters])
 
-  const toggleTag = useCallback((tag: string) => {
-    setFilters({
-      tags: selectedTags.includes(tag)
-        ? selectedTags.filter((selected) => selected !== tag)
-        : [...selectedTags, tag],
-    })
-  }, [selectedTags, setFilters])
-
   const clearFilters = useCallback(() => {
     committedQueryRef.current = ''
     setQueryInput('')
-    setFilters({ sport: '', tags: [], q: '' })
+    setFilters({ sport: '', q: '' })
   }, [setFilters])
 
-  const filtersActive = sportFilter !== '' || selectedTags.length > 0 || query.trim() !== ''
-
-  // Chip source for the filter bar: every tag /api/training/tags reports for the
-  // user (the whole history, not just the loaded pages), unioned with the tags
-  // the loaded workouts carry and whatever is currently selected. The endpoint is
-  // the authority; the union keeps a tag that was edited onto a workout after the
-  // chip list was fetched — an edit on the detail page, an ai: tag from a
-  // background analysis — selectable without waiting for a full refresh, and
-  // keeps an active tag filter de-selectable even if it has since disappeared
-  // from the server's list.
-  const filterTags = useMemo(() => {
-    const tags = new Set([...availableTags, ...selectedTags])
-    for (const w of workouts) {
-      for (const tag of w.tags ?? []) tags.add(tag)
-    }
-    return [...tags].sort((a, b) => a.localeCompare(b))
-  }, [availableTags, selectedTags, workouts])
+  const filtersActive = sportFilter !== '' || query.trim() !== ''
 
   const workoutsUrl = useCallback(
     (cursor: string | null) => {
@@ -378,20 +347,19 @@ export default function Training() {
     return () => { cancelled = true }
   }, [user, refreshTick, workoutsUrl, filterParams, filtersActive, listCache, t])
 
-  // Filter-independent page data: weekly summaries, the tag chip source, and
-  // the new-workout baseline. The baseline comes from the cheap /latest
-  // endpoint rather than the page's max id: an older-dated .fit import can
-  // carry a higher id than anything on page one, so seeding the ref from the
-  // page would falsely trip the banner.
+  // Filter-independent page data: weekly summaries and the new-workout
+  // baseline. The baseline comes from the cheap /latest endpoint rather than
+  // the page's max id: an older-dated .fit import can carry a higher id than
+  // anything on page one, so seeding the ref from the page would falsely trip
+  // the banner.
   useEffect(() => {
     if (!user) return
     let cancelled = false
     ;(async () => {
       try {
-        const [sRes, lRes, tRes] = await Promise.all([
+        const [sRes, lRes] = await Promise.all([
           fetch('/api/training/summary', { credentials: 'include' }),
           fetch('/api/training/workouts/latest', { credentials: 'include' }),
-          fetch('/api/training/tags', { credentials: 'include' }),
         ])
         if (cancelled) return
         if (lRes.ok) {
@@ -401,10 +369,6 @@ export default function Training() {
             latestWorkoutIdRef.current = latestId > 0 ? latestId : null
             if (latestId > 0) setHasAnyWorkouts(true)
           }
-        }
-        if (tRes.ok) {
-          const tData = await tRes.json()
-          if (!cancelled) setAvailableTags(tData.tags || [])
         }
         if (sRes.ok) {
           const sData = await sRes.json()
@@ -531,15 +495,10 @@ export default function Training() {
     const requestId = listRequestIdRef.current
     const isCurrent = () => requestId === listRequestIdRef.current
     try {
-      const [wRes, sRes, tRes] = await Promise.all([
+      const [wRes, sRes] = await Promise.all([
         fetch(workoutsUrl(null), { credentials: 'include' }),
         fetch('/api/training/summary', { credentials: 'include' }),
-        fetch('/api/training/tags', { credentials: 'include' }),
       ])
-      if (tRes.ok) {
-        const tData = await tRes.json()
-        setAvailableTags(tData.tags || [])
-      }
       if (wRes.ok) {
         const wData = await wRes.json()
         const list: Workout[] = wData.workouts || []
@@ -734,6 +693,16 @@ export default function Training() {
           <h1 className="text-2xl font-bold truncate">{t('title')}</h1>
         </div>
         <div className="flex gap-2 flex-shrink-0">
+          {hasFeature('stride') && (
+            <Link
+              to="/training/stride"
+              className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-colors"
+              aria-label={t('common:nav.stride')}
+            >
+              <Zap size={16} />
+              <span className="hidden sm:inline">{t('common:nav.stride')}</span>
+            </Link>
+          )}
           {hasAnyWorkouts && (
             <>
               <Link
@@ -754,16 +723,6 @@ export default function Training() {
               </Link>
             </>
           )}
-          <button
-            type="button"
-            onClick={handleBackfill}
-            disabled={backfilling}
-            className="flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm transition-colors"
-            aria-label={backfilling ? t('backfill.running') : t('backfill.button')}
-          >
-            <Database size={16} />
-            <span className="hidden sm:inline">{backfilling ? t('backfill.running') : t('backfill.button')}</span>
-          </button>
         </div>
       </div>
 
@@ -811,9 +770,12 @@ export default function Training() {
         </div>
       )}
 
-      {/* Upload zone */}
+      {/* Upload row. A slim drop target instead of the old full-width p-8
+          panel: uploads are occasional, and the workouts are what the page is
+          for. Backfill (a maintenance action) lives here with the other
+          data-management control rather than in the primary header. */}
       <div
-        className={`mb-6 border-2 border-dashed rounded-xl p-8 text-center transition-colors ${
+        className={`mb-6 flex flex-wrap items-center gap-3 border border-dashed rounded-xl px-4 py-3 transition-colors ${
           dragActive
             ? 'border-orange-400 bg-orange-400/5'
             : 'border-gray-700 hover:border-gray-600'
@@ -822,12 +784,12 @@ export default function Training() {
         onDragLeave={() => setDragActive(false)}
         onDrop={handleDrop}
       >
-        <Upload size={32} className="mx-auto mb-3 text-gray-500" />
-        <p className="text-gray-400 mb-2">
+        <Upload size={18} className="text-gray-500 flex-shrink-0" />
+        <p className="text-sm text-gray-400 flex-1 min-w-[10rem]">
           {uploading ? t('upload.uploading') : t('upload.dragDrop')}
         </p>
-        <label className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 rounded-lg text-sm font-medium cursor-pointer transition-colors">
-          <Upload size={16} />
+        <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 rounded-lg text-sm font-medium cursor-pointer transition-colors">
+          <Upload size={14} />
           {t('upload.browseFiles')}
           <input
             type="file"
@@ -838,6 +800,17 @@ export default function Training() {
             disabled={uploading}
           />
         </label>
+        <button
+          type="button"
+          onClick={handleBackfill}
+          disabled={backfilling}
+          className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm text-gray-300 transition-colors"
+          title={t('backfill.button')}
+          aria-label={backfilling ? t('backfill.running') : t('backfill.button')}
+        >
+          <Database size={14} />
+          <span className="hidden sm:inline">{backfilling ? t('backfill.running') : t('backfill.button')}</span>
+        </button>
       </div>
 
       {/* Weekly summary cards */}
@@ -871,12 +844,9 @@ export default function Training() {
         <div className="space-y-2">
           <h2 className="text-lg font-semibold mb-3">{t('workouts.title')}</h2>
           <WorkoutFilterBar
-            availableTags={filterTags}
             sports={Object.keys(sportIcons)}
             sport={sportFilter}
             setSport={setSportFilter}
-            selectedTags={selectedTags}
-            toggleTag={toggleTag}
             query={queryInput}
             setQuery={setQueryInput}
             onClear={clearFilters}
@@ -917,23 +887,7 @@ export default function Training() {
                   {sportIcons[w.sport] || sportIcons.other}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <p className="font-medium truncate">{w.title}</p>
-                    {w.tags && w.tags.length > 0 && (
-                      <div className="flex gap-1 flex-shrink-0 overflow-hidden max-w-[80px] sm:max-w-none">
-                        {w.tags.slice(0, 2).map((tag) => (
-                          <TagBadge key={tag} tag={tag} />
-                        ))}
-                        {w.tags.length > 2 && (
-                          <span className="hidden sm:inline-flex items-center">
-                            {w.tags.slice(2).map((tag) => (
-                              <TagBadge key={tag} tag={tag} />
-                            ))}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                  <p className="font-medium truncate">{w.title}</p>
                   <p className="text-sm text-gray-400">
                     {dateStr} · {timeStr}
                   </p>

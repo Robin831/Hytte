@@ -90,6 +90,12 @@ func scheduleStrideEvalAfterContextSave(db *sql.DB, userID, workoutID int64) {
 	// near midnight would target the wrong UTC window and miss the workout.
 	date := parsed.UTC().Format("2006-01-02")
 
+	// Announce the evaluation before the goroutine spawns: the Claude call can
+	// queue behind the semaphore for minutes, and the whole point is that the
+	// page shows "coach is evaluating" the moment the context is saved. The
+	// matching stride_eval_ready is published where the row is stored.
+	DefaultHub().Publish(userID, Event{Type: EventStrideEvalStarted, WorkoutID: workoutID, Date: date})
+
 	go func() {
 		claudeSemaphore <- struct{}{} // blocks until capacity is available
 		defer func() { <-claudeSemaphore }()
