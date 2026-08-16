@@ -47,15 +47,17 @@ import (
 
 // The envelope bounds how far the AI's prediction may deviate from the
 // deterministic Riegel baseline per distance — and it is deliberately
-// ASYMMETRIC. Every failure mode observed so far has been optimism (an input
-// overstating the athlete's speed), never pessimism, and a symmetric ±10%
-// band around a 1:47 baseline would legally permit 1:36 — a number nothing in
-// the data supports. Faster than baseline therefore gets a tight 3% (the
-// model may nudge for verified freshness/trend), while slower keeps the full
-// 10% so durability and load caution have room to add time.
+// ASYMMETRIC. The historic failure mode was optimism (inputs overstating the
+// athlete's speed), so faster than baseline gets a tight 3%. The slow side
+// then produced the opposite overshoot: told it could go "up to ~10% slower",
+// the model treated the bound as a target and stacked every caution into it
+// (a 1:44 baseline shipped as 1:54). The slow bound is therefore 6% — enough
+// for a genuine durability gap to add real time, small enough that a
+// maxed-out adjustment still lands near the honest number — and the prompt
+// no longer advertises the figure as an allowance.
 const (
 	predictionEnvelopeFastPct = 0.03
-	predictionEnvelopeSlowPct = 0.10
+	predictionEnvelopeSlowPct = 0.06
 )
 
 // predictionFactsMonths is how far back the facts window reaches. A year of
@@ -629,7 +631,102 @@ var (
 	treadmillFactorRe    = regexp.MustCompile(`(?i)(?:[x×]\s*|factor\s*[:=]?\s*)([01]\.\d{1,3})`)
 	treadmillFactorPctRe = regexp.MustCompile(`([0-9]{1,2}(?:\.[0-9])?)\s*%`)
 	beltSpeedRe          = regexp.MustCompile(`(?i)belt\s+([0-9]{1,2}(?:[.,][0-9])?)(?:\s*[-–]\s*([0-9]{1,2}(?:[.,][0-9])?))?\s*km/h`)
+	// treadmillSinceRe: any ISO date in the calibration text marks when the
+	// CURRENT belt became valid (a belt/plate swap changes the speed scale, so
+	// speeds recorded before it must not be converted).
+	treadmillSinceRe = regexp.MustCompile(`\d{4}-\d{2}-\d{2}`)
+	// noteSpeedTokenRe finds candidate belt speeds in free-text notes: a
+	// number in plausible belt range, optionally suffixed kmph/km/h. Tokens
+	// glued to an 'x' on either side ("25 x 45x15") are rep structure, not
+	// speeds, and are excluded by the guards around the match.
+	noteSpeedTokenRe = regexp.MustCompile(`(?i)([0-9]{1,2}(?:[.,][0-9])?)\s*(?:km/?h|kmph)?`)
 )
+
+// treadmillBeltValidSince extracts the "current belt valid since" date from
+// the calibration text, or "" when none is recorded.
+func treadmillBeltValidSince(calibration string) string {
+	return treadmillSinceRe.FindString(calibration)
+}
+
+// feelNotesBeltWorkSpeed parses the athlete's free-text workout notes for the
+// belt speeds the work was run at — formats like "4x6 @ 12 - 12 - 12 - 11.8"
+// (four 6-min reps, per-rep speeds) or "12.4-12.5-12.6-12.6". Only called for
+// sessions that already carry an HR-selected work cluster, so the notes are
+// describing quality work. Guards:
+//   - numbers glued to an 'x' ("25 x 45x15") are rep structure, not speeds;
+//   - only values in the plausible belt range (6-18 km/h) count;
+//   - the work speed is the mean of values within 1.0 km/h of the fastest
+//     mentioned, so a warmup speed listed alongside ("9.8 … 12.0") does not
+//     drag the average down. Under-inclusion is fine — a missed session stays
+//     HR-only evidence, which is the conservative direction.
+func feelNotesBeltWorkSpeed(notes string) float64 {
+	if strings.TrimSpace(notes) == "" {
+		return 0
+	}
+	var speeds []float64
+	for _, m := range noteSpeedTokenRe.FindAllStringSubmatchIndex(notes, -1) {
+		start, end := m[2], m[3]
+		// Exclude rep-structure tokens: an 'x' hugging the number on either
+		// side ("4x6", "45x15").
+		if isRepStructureToken(notes, start, end) {
+			continue
+		}
+		// Exclude duration tokens: a unit glued to the number that is not
+		// km/h ("11min warmup", "45s") is time, not speed.
+		if end < len(notes) {
+			rest := strings.ToLower(notes[end:])
+			if len(rest) > 0 && rest[0] >= 'a' && rest[0] <= 'z' && !strings.HasPrefix(rest, "km") && !strings.HasPrefix(rest, "k/") {
+				continue
+			}
+		}
+		v, err := strconv.ParseFloat(strings.ReplaceAll(notes[start:end], ",", "."), 64)
+		if err != nil || v < 6 || v > 18 {
+			continue
+		}
+		speeds = append(speeds, v)
+	}
+	if len(speeds) == 0 {
+		return 0
+	}
+	maxV := speeds[0]
+	for _, v := range speeds {
+		if v > maxV {
+			maxV = v
+		}
+	}
+	var sum float64
+	n := 0
+	for _, v := range speeds {
+		if v >= maxV-1.0 {
+			sum += v
+			n++
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return sum / float64(n)
+}
+
+// isRepStructureToken reports whether the number at [start,end) in s is part
+// of an NxM rep pattern rather than a speed.
+func isRepStructureToken(s string, start, end int) bool {
+	before := start - 1
+	for before >= 0 && s[before] == ' ' {
+		before--
+	}
+	if before >= 0 && (s[before] == 'x' || s[before] == 'X') {
+		return true
+	}
+	after := end
+	for after < len(s) && s[after] == ' ' {
+		after++
+	}
+	if after < len(s) && (s[after] == 'x' || s[after] == 'X') {
+		return true
+	}
+	return false
+}
 
 // treadmillSpeedFactor extracts the belt-to-outdoor speed factor from the
 // athlete-measured calibration text ("x1.03", "factor 1.03", "3%"). Defaults
@@ -737,15 +834,30 @@ func plannedSessionBeltSpeed(db *sql.DB, userID int64, date string) float64 {
 // convertIndoorEfforts attaches an outdoor-equivalent work pace to indoor
 // efforts whose belt speed the athlete recorded: structured speed plan first,
 // planned session second, otherwise the effort stays HR-only.
-func convertIndoorEfforts(db *sql.DB, userID int64, efforts []intervalEffort, factor float64) {
+func convertIndoorEfforts(db *sql.DB, userID int64, efforts []intervalEffort, factor float64, beltValidSince string) {
 	for i := range efforts {
 		ie := &efforts[i]
+		if len(ie.Date) < 10 {
+			continue
+		}
+		date := ie.Date[:10]
+		// Belt/plate swaps change the speed scale: speeds recorded before the
+		// calibration's valid-since date belong to the old belt and must not
+		// be converted (the session stays HR-only evidence).
+		if beltValidSince != "" && date < beltValidSince {
+			continue
+		}
 		belt := 0.0
 		if ctx, err := GetWorkoutContext(db, ie.WorkoutID); err == nil && ctx != nil {
 			belt = indoorBeltWorkSpeed(ctx.SpeedPlan)
+			if belt == 0 {
+				// The athlete's own note ("4x6 @ 12 - 12 - 12 - 11.8") is the
+				// recorded actual, ranked above the prescription.
+				belt = feelNotesBeltWorkSpeed(ctx.FeelNotes)
+			}
 		}
-		if belt == 0 && len(ie.Date) >= 10 {
-			belt = plannedSessionBeltSpeed(db, userID, ie.Date[:10])
+		if belt == 0 {
+			belt = plannedSessionBeltSpeed(db, userID, date)
 		}
 		if belt <= 0 {
 			continue
@@ -810,7 +922,8 @@ func buildPredictionFacts(db *sql.DB, userID int64) (*predictionFacts, error) {
 	// difference between an n=1 estimate and one grounded in the bulk of the
 	// actual training.
 	facts.TreadmillFactor = treadmillSpeedFactor(facts.TreadmillCalibration)
-	convertIndoorEfforts(db, userID, facts.IndoorIntervals, facts.TreadmillFactor)
+	convertIndoorEfforts(db, userID, facts.IndoorIntervals, facts.TreadmillFactor,
+		treadmillBeltValidSince(facts.TreadmillCalibration))
 
 	if latest, err := GetLatestVO2max(db, userID); err == nil && latest != nil {
 		facts.VO2maxLatest = latest.VO2max
@@ -1158,7 +1271,7 @@ Weigh the whole picture. Rules that matter:
 - Use past race results as calibration: how this athlete actually raced versus what the formula said.
 - Training load: an elevated ACR (>1.5) is a risk note for the rationale, not a fitness gain.
 
-Predictions must be achievable on current fitness on a flat course in good conditions — honest, neither optimistic nor sandbagged. You may go at most ~3% FASTER than the baseline (and only where verified facts argue for it) but up to ~10% slower where durability or load caution demands; anything outside those bounds is clamped. Say what drove any deviation in the rationale.
+Predictions must be achievable on current fitness on a flat course in good conditions — honest, neither optimistic nor sandbagged. The baseline already represents current fitness on the measured evidence: treat it as the answer unless specific facts move it, and keep adjustments to a few percent. Do NOT stack multiple cautions into one large slow-side adjustment — durability gaps, thin evidence and load risk should primarily LOWER CONFIDENCE and be named in the rationale, not inflate the time; reserve a larger slow-side adjustment for one severe, concrete gap (for example a longest recent run under half the race duration). A long treadmill run counts fully for durability — time on feet is real regardless of the belt's fake distance. Deviations outside a hard envelope are clamped either way. Say what drove any deviation in the rationale.
 
 Respond with ONLY a JSON object:
 {"predictions": [{"distance": "5K", "time_seconds": 1234, "confidence": "high"}, {"distance": "10K", ...}, {"distance": "Half Marathon", ...}, {"distance": "Marathon", ...}], "rationale": "2-4 sentences on what drives the estimate and its confidence"}

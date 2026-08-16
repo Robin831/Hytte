@@ -1,9 +1,12 @@
 package training
 
 import (
+	"database/sql"
 	"math"
 	"testing"
 	"time"
+
+	"github.com/Robin831/Hytte/internal/encryption"
 )
 
 // lapsFor builds predictionLap slices tersely: pairs of (durS, paceSecPerKm),
@@ -402,4 +405,90 @@ func TestIndoorBeltWorkSpeed(t *testing.T) {
 	if indoorBeltWorkSpeed([]SpeedSegment{{Kind: "warmup", SpeedKmph: 10, DurationSec: 600}}) != 0 {
 		t.Error("plan without interval segments must yield 0")
 	}
+}
+
+// TestFeelNotesBeltWorkSpeed pins the free-text belt-speed parsing against
+// the athlete's real note formats — including the "25 x 45x15" trap where
+// rep-structure numbers must not read as speeds.
+func TestFeelNotesBeltWorkSpeed(t *testing.T) {
+	cases := []struct {
+		notes string
+		want  float64 // 0 = no speed extracted
+	}{
+		{"4x6 @ 12 - 12 - 12 - 11.8", (12 + 12 + 12 + 11.8) / 4},
+		{"12.4-12.5-12.6-12.6", (12.4 + 12.5 + 12.6 + 12.6) / 4},
+		{"speed 13.3 13.4 13.5 13.3 for the intervals", (13.3 + 13.4 + 13.5 + 13.3) / 4},
+		{"flat 10.3 speed", 10.3},
+		{"30m@10kmph", 10},
+		// Warmup speed listed alongside work: only values within 1 km/h of
+		// the max count, so 9.8 must not drag the average down.
+		{"warmup 9.8 then 12.0 12.0 11.8", (12.0 + 12.0 + 11.8) / 3},
+		// Rep structure is not speed: 25, 45 and 15 must all be ignored
+		// (45 out of range, 25/15 glued to 'x'), leaving 11.1.
+		{"25 x 45x15\n11min warmiup, starting at 11.1kmph and increasing 0.1 each interval", 11.1},
+		{"", 0},
+		{"felt great, easy legs", 0},
+	}
+	for _, c := range cases {
+		got := feelNotesBeltWorkSpeed(c.notes)
+		if math.Abs(got-c.want) > 0.01 {
+			t.Errorf("feelNotes(%q) = %v, want %v", c.notes, got, c.want)
+		}
+	}
+}
+
+// TestTreadmillBeltValidSinceCutoff pins the belt-swap gate: efforts dated
+// before the calibration's valid-since date must never convert.
+func TestTreadmillBeltValidSinceCutoff(t *testing.T) {
+	if got := treadmillBeltValidSince("Belt swapped 2026-05-29; factor 1.03"); got != "2026-05-29" {
+		t.Fatalf("valid-since parse: %q", got)
+	}
+	if got := treadmillBeltValidSince("factor 1.03 only"); got != "" {
+		t.Fatalf("expected no date, got %q", got)
+	}
+
+	db := setupPredictionContextDB(t)
+	efforts := []intervalEffort{
+		{WorkoutID: 901, Date: "2026-05-20T10:00:00Z", Reps: 4, TotalWorkSeconds: 1440, AvgHeartRate: 160},
+		{WorkoutID: 902, Date: "2026-08-12T10:00:00Z", Reps: 5, TotalWorkSeconds: 1800, AvgHeartRate: 159},
+	}
+	convertIndoorEfforts(db, 1, efforts, 1.03, "2026-05-29")
+	if efforts[0].Converted {
+		t.Error("pre-swap effort must not convert")
+	}
+	if !efforts[1].Converted {
+		t.Fatal("post-swap effort with a feel-note speed must convert")
+	}
+	want := 3600.0 / (11.95 * 1.03)
+	if math.Abs(efforts[1].WorkPaceSecPerKm-want) > 0.5 {
+		t.Errorf("converted pace %.1f, want ~%.1f", efforts[1].WorkPaceSecPerKm, want)
+	}
+}
+
+// setupPredictionContextDB builds a minimal DB with workout_context rows
+// carrying feel-note belt speeds for both test workouts.
+func setupPredictionContextDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db := setupTestDB(t)
+	for _, w := range []struct {
+		id    int64
+		notes string
+	}{
+		{901, "4x6 @ 13.3 - 13.4 - 13.5 - 13.3"}, // old belt speeds
+		{902, "4x6 @ 12 - 12 - 12 - 11.8"},
+	} {
+		enc, err := encryption.EncryptField(w.notes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO workouts (id, user_id, sport, duration_seconds, distance_meters, started_at, title, fit_file_hash)
+			VALUES (?, 1, 'running', 3600, 10000, '2026-08-01T10:00:00Z', 'w', 'h'||?)`, w.id, w.id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO workout_context (workout_id, surface, run_type, hr_source, feel_notes, speed_plan, completed_at)
+			VALUES (?, 'treadmill', 'intervals', 'strap', ?, '', '2026-08-01T11:00:00Z')`, w.id, enc); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return db
 }
