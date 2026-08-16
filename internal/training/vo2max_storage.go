@@ -24,17 +24,26 @@ func SaveVO2maxEstimate(db *sql.DB, est *VO2maxEstimate) error {
 	return row.Scan(&est.ID)
 }
 
+// vo2maxValidEstimateSQL excludes velocity-based (daniels) estimates computed
+// from indoor workouts: treadmill watch distance is a cadence artifact, so
+// those rows are noise. Estimates stored before EstimateVO2max learned to skip
+// them are filtered here rather than deleted, and the HR-ratio method stays
+// valid indoors (it uses no velocity).
+const vo2maxValidEstimateSQL = `
+	SELECT v.id, v.user_id, v.workout_id, v.vo2max, v.method, v.estimated_at
+	FROM vo2max_estimates v
+	JOIN workouts w ON w.id = v.workout_id
+	WHERE v.user_id = ?
+	  AND NOT (v.method = 'daniels' AND COALESCE(w.is_indoor, 0) = 1)`
+
 // GetVO2maxHistory returns up to n VO2max estimates for a user ordered by
 // estimated_at ascending (oldest first). It fetches the most recent n rows
 // so the result always reflects recent performance, not the oldest records.
 func GetVO2maxHistory(db *sql.DB, userID int64, n int) ([]VO2maxEstimate, error) {
 	rows, err := db.Query(`
 		SELECT id, user_id, workout_id, vo2max, method, estimated_at
-		FROM (
-			SELECT id, user_id, workout_id, vo2max, method, estimated_at
-			FROM vo2max_estimates
-			WHERE user_id = ?
-			ORDER BY estimated_at DESC
+		FROM (`+vo2maxValidEstimateSQL+`
+			ORDER BY v.estimated_at DESC
 			LIMIT ?
 		) ORDER BY estimated_at ASC`,
 		userID, n,
@@ -60,10 +69,8 @@ func GetVO2maxHistory(db *sql.DB, userID int64, n int) ([]VO2maxEstimate, error)
 func GetLatestVO2max(db *sql.DB, userID int64) (*VO2maxEstimate, error) {
 	var e VO2maxEstimate
 	err := db.QueryRow(`
-		SELECT id, user_id, workout_id, vo2max, method, estimated_at
-		FROM vo2max_estimates
-		WHERE user_id = ?
-		ORDER BY estimated_at DESC
+		`+vo2maxValidEstimateSQL+`
+		ORDER BY v.estimated_at DESC
 		LIMIT 1`,
 		userID,
 	).Scan(&e.ID, &e.UserID, &e.WorkoutID, &e.VO2max, &e.Method, &e.EstimatedAt)

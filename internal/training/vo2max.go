@@ -48,8 +48,13 @@ func EstimateVO2max(w *Workout, restingHR *int) (*VO2maxEstimate, error) {
 		maxHR = defaultMaxHR
 	}
 
-	// Primary: Daniels/Gilbert velocity-based estimation.
-	if w.DistanceMeters > 0 && w.DurationSeconds > 0 && w.AvgHeartRate > 0 {
+	// Primary: Daniels/Gilbert velocity-based estimation. Never for indoor
+	// workouts: the velocity comes from watch distance, which a treadmill
+	// reports from wrist/foot-pod cadence rather than the belt — a belt
+	// under-read makes the pace look slower and drags the VO2max estimate
+	// (and every trend built on it) down. Indoor workouts may only use the
+	// HR-ratio fallback below, which needs no velocity.
+	if !w.IsIndoor && w.DistanceMeters > 0 && w.DurationSeconds > 0 && w.AvgHeartRate > 0 {
 		if est := danielsEstimate(w, maxHR, restingHR); est != nil {
 			return est, nil
 		}

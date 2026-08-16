@@ -92,10 +92,32 @@ const (
 	minIntervalWorkSeconds = 900
 )
 
-// intervalWorkPacePenaltySecPerKm converts an interval work pace into a
-// threshold-pace estimate: reps with recoveries are slightly faster than what
-// the same athlete could hold continuously for an hour.
-const intervalWorkPacePenaltySecPerKm = 6
+// intervalThresholdAdjustment converts an interval work pace into a
+// threshold-pace estimate, gated on the HR the work actually cost. A flat
+// +6 s/km "reps are faster than continuous" penalty applied blind to HR
+// double-counted the conservatism: an athlete running reps AT or just under
+// threshold HR (because that is what the plan prescribed) was already at
+// threshold effort, and reps run clearly BELOW threshold HR understate the
+// pace — the correction runs the other way. Unknown HR keeps the conservative
+// default.
+func intervalThresholdAdjustment(workHR, thresholdHR int) float64 {
+	if workHR <= 0 || thresholdHR <= 0 {
+		return 6 // no HR context — conservative default
+	}
+	gap := thresholdHR - workHR
+	switch {
+	case gap <= 0:
+		// At/above threshold HR: genuinely harder than a continuous hour.
+		return 6
+	case gap <= 3:
+		// Right under threshold: the work pace is ~threshold pace as-is.
+		return 0
+	default:
+		// Clearly sub-threshold: the athlete had more; threshold pace is a
+		// little faster than the reps were run.
+		return -3
+	}
+}
 
 // StoredPrediction is one distance's predicted time inside a snapshot.
 type StoredPrediction struct {
@@ -155,18 +177,23 @@ type longestRun struct {
 // predictionFacts is everything the estimate is based on.
 type predictionFacts struct {
 	BestEfforts     []sustainedEffort // best clean sustained efforts, fastest first (max 5)
-	IntervalEfforts []intervalEffort  // best recent interval work paces, fastest first (max 3)
-	LongestRecent   *longestRun       // longest outdoor run in the recency window
-	ThresholdHR     int               // athlete profile, 0 when unset
-	MaxHR           int
-	ThresholdPace   int // profile threshold pace in sec/km, 0 when unset
-	VO2maxLatest    float64
-	VO2maxTrend     []VO2maxEstimate // most recent first (max 12)
-	WeeklyLoads     []WeeklyLoad     // most recent first (max 12)
-	ACR             *float64
-	RaceResults     []raceResultFact
-	GoalRace        string // free-text description from preferences, may be empty
-	AsOf            time.Time
+	IntervalEfforts []intervalEffort  // best recent outdoor interval work paces, fastest first (max 3)
+	// IndoorIntervals are recent treadmill quality sessions — HR and duration
+	// are trustworthy, watch pace is not, so they inform the AI (alongside
+	// the calibration) but never the deterministic anchor.
+	IndoorIntervals      []intervalEffort
+	TreadmillCalibration string      // athlete-measured, verbatim from prefs
+	LongestRecent        *longestRun // longest run in the recency window (indoor included — duration is real)
+	ThresholdHR          int         // athlete profile, 0 when unset
+	MaxHR                int
+	ThresholdPace        int // profile threshold pace in sec/km, 0 when unset
+	VO2maxLatest         float64
+	VO2maxTrend          []VO2maxEstimate // most recent first (max 12)
+	WeeklyLoads          []WeeklyLoad     // most recent first (max 12)
+	ACR                  *float64
+	RaceResults          []raceResultFact
+	GoalRace             string // free-text description from preferences, may be empty
+	AsOf                 time.Time
 }
 
 // raceResultFact is a completed race from stride_races.
@@ -390,6 +417,92 @@ func extractIntervalEffort(laps []predictionLap, workoutID int64, startedAt stri
 	}
 }
 
+// indoorIntervalEfforts extracts work-lap clusters from recent INDOOR running
+// workouts. The clustering keys on lap pace, which indoors is a cadence
+// artifact — but within one session the artifact is consistent enough to
+// separate work reps from recovery jogs, and what we report onward is only
+// what the treadmill cannot fake: rep count, cumulative work time, and HR.
+func indoorIntervalEfforts(db *sql.DB, userID int64) ([]intervalEffort, error) {
+	since := time.Now().UTC().AddDate(0, 0, -baselineRecencyDays).Format(time.RFC3339)
+	rows, err := db.Query(`
+		SELECT w.id, w.started_at,
+		       l.lap_number, l.duration_seconds, l.distance_meters, l.avg_heart_rate
+		FROM workouts w
+		JOIN workout_laps l ON l.workout_id = w.id
+		WHERE w.user_id = ?
+		  AND w.sport = 'running'
+		  AND COALESCE(w.is_indoor, 0) = 1
+		  AND w.started_at >= ?
+		ORDER BY w.id, l.lap_number`,
+		userID, since,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var (
+		out       []intervalEffort
+		currentID int64
+		startedAt string
+		laps      []predictionLap
+	)
+	flush := func() {
+		if currentID == 0 || len(laps) == 0 {
+			return
+		}
+		if ie := extractIntervalEffort(laps, currentID, startedAt); ie != nil {
+			out = append(out, *ie)
+		}
+		laps = laps[:0]
+	}
+	for rows.Next() {
+		var (
+			wid   int64
+			start string
+			n     int
+			l     predictionLap
+		)
+		if err := rows.Scan(&wid, &start, &n, &l.durS, &l.distM, &l.hr); err != nil {
+			return nil, err
+		}
+		if wid != currentID {
+			flush()
+			currentID, startedAt = wid, start
+		}
+		laps = append(laps, l)
+	}
+	flush()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Newest first; cap at 4 so a treadmill-heavy block doesn't flood the prompt.
+	sort.Slice(out, func(i, j int) bool { return out[i].Date > out[j].Date })
+	if len(out) > 4 {
+		out = out[:4]
+	}
+	return out, nil
+}
+
+// loadTreadmillCalibrationText reads the athlete's measured treadmill
+// calibration (same encrypted preference the Stride plan/eval prompts use).
+// Empty when unset or undecryptable.
+func loadTreadmillCalibrationText(db *sql.DB, userID int64) string {
+	prefs, err := auth.GetPreferences(db, userID)
+	if err != nil {
+		return ""
+	}
+	raw := prefs["stride_treadmill_calibration"]
+	if raw == "" {
+		return ""
+	}
+	dec, err := encryption.DecryptField(raw)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(dec)
+}
+
 // buildPredictionFacts gathers everything the estimate is based on. Partial
 // data is fine — each section that is empty simply says so in the prompt.
 func buildPredictionFacts(db *sql.DB, userID int64) (*predictionFacts, error) {
@@ -411,15 +524,17 @@ func buildPredictionFacts(db *sql.DB, userID int64) (*predictionFacts, error) {
 		facts.ThresholdPace = parseIntPref(prefs, "threshold_pace")
 	}
 
-	// Durability: the longest outdoor run inside the recency window. A
-	// half-marathon prediction against a 60-minute longest run is a
-	// speed-only extrapolation, and the confidence must say so.
+	// Durability: the longest run inside the recency window — indoor runs
+	// INCLUDED. A treadmill's watch pace is a cadence artifact, but its
+	// duration is real time on feet, which is what durability is; excluding
+	// indoor here made an 85-minute treadmill Sunday run invisible and pinned
+	// half-marathon confidence to low for no reason.
 	recentSince := facts.AsOf.AddDate(0, 0, -baselineRecencyDays).Format(time.RFC3339)
 	var lr longestRun
 	err = db.QueryRow(`
 		SELECT started_at, duration_seconds, distance_meters
 		FROM workouts
-		WHERE user_id = ? AND sport = 'running' AND COALESCE(is_indoor, 0) = 0
+		WHERE user_id = ? AND sport = 'running'
 		  AND started_at >= ? AND duration_seconds > 0
 		ORDER BY duration_seconds DESC LIMIT 1`,
 		userID, recentSince,
@@ -427,6 +542,16 @@ func buildPredictionFacts(db *sql.DB, userID int64) (*predictionFacts, error) {
 	if err == nil {
 		facts.LongestRecent = &lr
 	}
+
+	// Indoor quality sessions, HR and duration only: watch pace is invalid on
+	// a treadmill, so they never anchor the deterministic baseline — but with
+	// the athlete's measured calibration they are real evidence the model can
+	// cross-check (belt speed × offset from the calibration's own numbers).
+	facts.IndoorIntervals, err = indoorIntervalEfforts(db, userID)
+	if err != nil {
+		log.Printf("race prediction: indoor intervals for user %d: %v", userID, err)
+	}
+	facts.TreadmillCalibration = loadTreadmillCalibrationText(db, userID)
 
 	if latest, err := GetLatestVO2max(db, userID); err == nil && latest != nil {
 		facts.VO2maxLatest = latest.VO2max
@@ -555,8 +680,13 @@ func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 			if len(date) >= 10 {
 				date = date[:10]
 			}
-			consider(ie.WorkPaceSecPerKm+intervalWorkPacePenaltySecPerKm,
-				fmt.Sprintf("%d work reps totalling %s on %s (work pace %s/km, +%ds/km continuous adjustment)", ie.Reps, formatRaceTime(int(ie.TotalWorkSeconds)), date, formatPacePerKm(ie.WorkPaceSecPerKm), intervalWorkPacePenaltySecPerKm),
+			adj := intervalThresholdAdjustment(ie.AvgHeartRate, facts.ThresholdHR)
+			hrNote := "no HR context"
+			if ie.AvgHeartRate > 0 && facts.ThresholdHR > 0 {
+				hrNote = fmt.Sprintf("work HR %d vs threshold %d", ie.AvgHeartRate, facts.ThresholdHR)
+			}
+			consider(ie.WorkPaceSecPerKm+adj,
+				fmt.Sprintf("%d work reps totalling %s on %s (work pace %s/km, %s, %+.0fs/km continuous adjustment)", ie.Reps, formatRaceTime(int(ie.TotalWorkSeconds)), date, formatPacePerKm(ie.WorkPaceSecPerKm), hrNote, adj),
 				true, ie.Date)
 		}
 		return best
@@ -629,7 +759,7 @@ func formatFacts(facts *predictionFacts) string {
 	}
 
 	if len(facts.IntervalEfforts) > 0 {
-		b.WriteString("\nInterval sessions, work laps only (recovery jogs excluded):\n")
+		b.WriteString("\nOutdoor interval sessions, work laps only (recovery jogs excluded):\n")
 		for _, ie := range facts.IntervalEfforts {
 			date := ie.Date
 			if len(date) >= 10 {
@@ -641,6 +771,27 @@ func formatFacts(facts *predictionFacts) string {
 			}
 			b.WriteString("\n")
 		}
+	}
+
+	if len(facts.IndoorIntervals) > 0 {
+		b.WriteString("\nIndoor (treadmill) quality sessions — watch pace is a cadence artifact and is NOT shown; HR and durations are reliable:\n")
+		for _, ie := range facts.IndoorIntervals {
+			date := ie.Date
+			if len(date) >= 10 {
+				date = date[:10]
+			}
+			fmt.Fprintf(&b, "- %s: %d work reps, %s total work", date, ie.Reps, formatRaceTime(int(ie.TotalWorkSeconds)))
+			if ie.AvgHeartRate > 0 {
+				fmt.Fprintf(&b, " (avg work HR %d)", ie.AvgHeartRate)
+			}
+			b.WriteString("\n")
+		}
+	}
+
+	if facts.TreadmillCalibration != "" {
+		b.WriteString("\nTreadmill calibration (athlete-measured, authoritative — use these numbers verbatim, e.g. belt speed × the stated offset gives the outdoor-equivalent pace for indoor sessions):\n")
+		b.WriteString(facts.TreadmillCalibration)
+		b.WriteString("\n")
 	}
 
 	if facts.LongestRecent != nil {

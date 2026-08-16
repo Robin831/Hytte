@@ -2,6 +2,8 @@ package stride
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -118,5 +120,48 @@ func TestValidateLibraryWorkout(t *testing.T) {
 		if !c.ok && msg == "" {
 			t.Errorf("%s: expected validation error", c.name)
 		}
+	}
+}
+
+// TestHistoryReplayBlock pins the fresh-session replay: recent messages are
+// rendered, the current turn's message is excluded, and when older messages
+// fall outside the bounds the block SAYS so — the silent-truncation failure
+// mode (coach confidently wrong about what was said) must be impossible.
+func TestHistoryReplayBlock(t *testing.T) {
+	db := setupTestDB(t)
+	// A plan to hang messages on.
+	if _, err := db.Exec(`INSERT INTO stride_plans (id, user_id, week_start, week_end, phase, plan_json, model, created_at)
+		VALUES (5, 1, '2026-08-17', '2026-08-23', '', '[]', 'm', '2026-08-16T00:00:00Z')`); err != nil {
+		t.Fatalf("insert plan: %v", err)
+	}
+	var lastID int64
+	for i := 0; i < chatReplayMaxMessages+4; i++ {
+		role := "user"
+		if i%2 == 1 {
+			role = "assistant"
+		}
+		m, err := AddChatMessage(db, ChatMessage{PlanID: 5, UserID: 1, Role: role, Content: fmt.Sprintf("message number %d", i)})
+		if err != nil {
+			t.Fatalf("add message %d: %v", i, err)
+		}
+		lastID = m.ID
+	}
+
+	block := historyReplayBlock(db, 5, 1, lastID)
+	if block == "" {
+		t.Fatal("expected a replay block")
+	}
+	if strings.Contains(block, fmt.Sprintf("message number %d", chatReplayMaxMessages+3)) {
+		t.Error("the excluded current message must not be replayed")
+	}
+	if !strings.Contains(block, fmt.Sprintf("message number %d", chatReplayMaxMessages+2)) {
+		t.Error("the most recent prior message must be replayed")
+	}
+	// 15 prior messages, 12 replayed → 3 hidden, and the block must say so.
+	if !strings.Contains(block, "3 earlier message(s)") {
+		t.Errorf("hidden-message disclosure missing:\n%s", block[:200])
+	}
+	if !strings.Contains(block, "CANNOT see") {
+		t.Error("partial-view warning missing")
 	}
 }

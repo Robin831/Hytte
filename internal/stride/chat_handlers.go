@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,8 +24,12 @@ import (
 )
 
 // chatStreamTimeout bounds a single Claude CLI streaming attempt. It is
-// generous because plan-editing turns can stream a full week of workout JSON.
-const chatStreamTimeout = 300 * time.Second
+// generous because plan-editing turns can stream a full week of workout JSON,
+// and --resume replays the whole native session before the first token.
+// Raising it is a stopgap only — the real bound is the native-session size
+// trigger below, since replay cost grows every turn and will eventually blow
+// any fixed ceiling.
+const chatStreamTimeout = 420 * time.Second
 
 // chatHeartbeatInterval is how often an SSE keepalive comment is sent while
 // waiting on Claude, to stop idle connections from being dropped. Overridable
@@ -42,6 +48,109 @@ var (
 	chatResetMessageThreshold = 20
 	chatResetByteThreshold    = 64 * 1024
 )
+
+// chatResetNativeSessionBytes is the auto-reset trigger measured on the REAL
+// native session file, not on stored message bytes. The stored-content
+// estimate misses tool calls, tool results and reasoning, which live only in
+// the native session — a thread estimated at ~35 KB was observed to carry a
+// 452 KB session, so --resume replayed 13x the estimate every turn and blew
+// the stream timeout while the estimate-based reset never fired.
+var chatResetNativeSessionBytes = int64(300 * 1024)
+
+// nativeChatSessionBytes returns the on-disk size of the Claude CLI's native
+// session file for sessionID, or 0 when it cannot be found — the Claude CLI
+// stores sessions under ~/.claude/projects/<encoded-cwd>/<sessionID>.jsonl,
+// with the working directory encoded by replacing path separators and dots
+// with dashes. Best-effort: a 0 simply leaves the stored-bytes estimate as
+// the only trigger.
+func nativeChatSessionBytes(sessionID string) int64 {
+	if sessionID == "" {
+		return 0
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return 0
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return 0
+	}
+	encoded := strings.NewReplacer("/", "-", ".", "-", "_", "-").Replace(cwd)
+	info, err := os.Stat(filepath.Join(home, ".claude", "projects", encoded, sessionID+".jsonl"))
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+// Bounds for the history replay injected when a turn starts a fresh native
+// session: enough for the coach to keep the thread, small enough to not
+// recreate the very replay cost the reset exists to cut.
+const (
+	chatReplayMaxMessages = 12
+	chatReplayMaxBytes    = 16 * 1024
+	chatReplayMaxPerMsg   = 1500
+)
+
+// historyReplayBlock renders the stored conversation into a system-prompt
+// section for a fresh native session. Without this, a reset (auto, manual, or
+// a failed --resume) silently started the coach bare: the athlete's UI showed
+// an unbroken thread while the coach saw one message — and a coach with a
+// silently truncated view doesn't get vague, it gets confidently wrong about
+// what was said. The block replays the most recent messages within bounds and
+// explicitly tells the model when older messages exist that it cannot see.
+// excludeMsgID drops the current turn's just-stored user message (it arrives
+// as the prompt itself).
+func historyReplayBlock(db *sql.DB, planID, userID, excludeMsgID int64) string {
+	msgs, err := ListChatMessages(db, planID, userID)
+	if err != nil {
+		log.Printf("stride chat: load history for replay plan %d: %v", planID, err)
+		return ""
+	}
+	filtered := msgs[:0]
+	for _, m := range msgs {
+		if m.ID != excludeMsgID {
+			filtered = append(filtered, m)
+		}
+	}
+	if len(filtered) == 0 {
+		return ""
+	}
+	// Walk from the end within both bounds.
+	start := len(filtered)
+	total := 0
+	for start > 0 && len(filtered)-start < chatReplayMaxMessages {
+		c := filtered[start-1].Content
+		if len(c) > chatReplayMaxPerMsg {
+			c = c[:chatReplayMaxPerMsg]
+		}
+		if total+len(c) > chatReplayMaxBytes {
+			break
+		}
+		total += len(c)
+		start--
+	}
+	hidden := start
+
+	var b strings.Builder
+	b.WriteString("\n\n## Conversation so far (replayed after a session reset)\n")
+	if hidden > 0 {
+		fmt.Fprintf(&b, "%d earlier message(s) in this conversation exist that you CANNOT see. Do not assert what was or was not said earlier — if it matters, say you cannot see that part and ask.\n", hidden)
+	}
+	b.WriteString("\n")
+	for _, m := range filtered[start:] {
+		role := "Athlete"
+		if m.Role == "assistant" {
+			role = "Coach"
+		}
+		c := m.Content
+		if len(c) > chatReplayMaxPerMsg {
+			c = c[:chatReplayMaxPerMsg] + "…"
+		}
+		fmt.Fprintf(&b, "%s: %s\n\n", role, strings.ReplaceAll(c, "```", "'''"))
+	}
+	return b.String()
+}
 
 // execCommand creates an exec.Cmd. Extracted for test substitution.
 var execCommand = execCommandImpl
@@ -225,11 +334,17 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 			msgCount, totalBytes, estErr := EstimateChatContext(db, planID, user.ID)
 			if estErr != nil {
 				log.Printf("stride chat: estimate context plan %d: %v", planID, estErr)
-			} else if msgCount >= chatResetMessageThreshold || totalBytes >= chatResetByteThreshold {
+			}
+			// The stored-bytes estimate misses tool calls/results and
+			// reasoning, which only live in the native session — measure the
+			// real file too, since that is what --resume actually replays.
+			nativeBytes := nativeChatSessionBytes(sessionID)
+			if (estErr == nil && (msgCount >= chatResetMessageThreshold || totalBytes >= chatResetByteThreshold)) ||
+				nativeBytes >= chatResetNativeSessionBytes {
 				if rErr := ResetChatSession(db, planID, user.ID); rErr != nil {
 					log.Printf("stride chat: auto-reset session plan %d: %v", planID, rErr)
 				} else {
-					log.Printf("stride chat: auto-reset session plan %d (msgs=%d, bytes=%d)", planID, msgCount, totalBytes)
+					log.Printf("stride chat: auto-reset session plan %d (msgs=%d, bytes=%d, native=%d)", planID, msgCount, totalBytes, nativeBytes)
 					sessionID = ""
 					autoReset = true
 				}
@@ -284,21 +399,46 @@ func StrideChatSendHandler(db *sql.DB) http.HandlerFunc {
 		// request context).
 		systemPrompt := buildChatContext(r.Context(), db, user.ID, *plan)
 
-		// Each Claude attempt runs under its own fresh deadline so a retry isn't
-		// starved by time the first attempt already consumed.
-		streamAttempt := func(resumeID string) (string, string, error) {
-			attemptCtx, cancel := context.WithTimeout(r.Context(), chatStreamTimeout)
-			defer cancel()
-			return streamChatClaude(attemptCtx, cfg, systemPrompt, body.Content, resumeID, w, flusher)
+		var currentMsgID int64
+		if userMsg != nil {
+			currentMsgID = userMsg.ID
 		}
 
-		fullResponse, newSessionID, err := streamAttempt(sessionID)
+		// A turn that starts a fresh native session (first turn, manual reset,
+		// auto reset) replays the recent stored conversation into the system
+		// prompt — the native session has no history, and without the replay
+		// the coach silently loses everything the athlete still sees on
+		// screen.
+		if sessionID == "" {
+			systemPrompt += historyReplayBlock(db, planID, user.ID, currentMsgID)
+		}
+
+		// Each Claude attempt runs under its own fresh deadline so a retry isn't
+		// starved by time the first attempt already consumed.
+		streamAttempt := func(resumeID, sysPrompt string) (string, string, error) {
+			attemptCtx, cancel := context.WithTimeout(r.Context(), chatStreamTimeout)
+			defer cancel()
+			return streamChatClaude(attemptCtx, cfg, sysPrompt, body.Content, resumeID, w, flusher)
+		}
+
+		fullResponse, newSessionID, err := streamAttempt(sessionID, systemPrompt)
 		if err != nil && sessionID != "" {
-			// Session may have expired — retry without session (fresh deadline).
-			log.Printf("stride chat: session resume failed, retrying fresh: %v", err)
+			// The resume failed (expired session, or the replay blew the
+			// deadline). The fresh attempt must NOT start bare: the athlete's
+			// UI keeps showing the whole thread while the coach would see one
+			// message — and a coach with a silently truncated view asserts,
+			// confidently, that earlier messages never happened. Reset the
+			// accounting floor, surface the discontinuity to the client as a
+			// context reset (not just a retry blip), and rebuild the fresh
+			// session from the stored history.
+			log.Printf("stride chat: session resume failed, retrying fresh with history replay: %v", err)
+			if rErr := ResetChatSession(db, planID, user.ID); rErr != nil {
+				log.Printf("stride chat: reset after resume failure plan %d: %v", planID, rErr)
+			}
 			fmt.Fprintf(w, "event: retry\ndata: {\"reason\":\"session expired, retrying\"}\n\n")
+			fmt.Fprintf(w, "event: context_reset\ndata: {\"reason\":\"session_expired\"}\n\n")
 			flusher.Flush()
-			fullResponse, newSessionID, err = streamAttempt("")
+			fullResponse, newSessionID, err = streamAttempt("", systemPrompt+historyReplayBlock(db, planID, user.ID, currentMsgID))
 		}
 
 		if err != nil {

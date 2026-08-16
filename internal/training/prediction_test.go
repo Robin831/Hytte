@@ -140,3 +140,26 @@ func TestFormulaConfidencesNeverHigh(t *testing.T) {
 		t.Errorf("stale anchor must drop everything to low, got %s", conf["5K"])
 	}
 }
+
+// TestIntervalThresholdAdjustment pins the HR gate: reps at/above threshold
+// HR earn the continuous-effort penalty, reps right under it are threshold
+// pace as-is, clearly sub-threshold reps correct the other way, and missing
+// HR context keeps the conservative default.
+func TestIntervalThresholdAdjustment(t *testing.T) {
+	cases := []struct {
+		workHR, thresholdHR int
+		want                float64
+	}{
+		{165, 163, 6},  // above threshold
+		{163, 163, 6},  // at threshold
+		{161, 163, 0},  // just under
+		{158, 163, -3}, // clearly under — athlete had more
+		{0, 163, 6},    // no work HR
+		{158, 0, 6},    // no threshold HR
+	}
+	for _, c := range cases {
+		if got := intervalThresholdAdjustment(c.workHR, c.thresholdHR); got != c.want {
+			t.Errorf("adjustment(%d,%d) = %v, want %v", c.workHR, c.thresholdHR, got, c.want)
+		}
+	}
+}
