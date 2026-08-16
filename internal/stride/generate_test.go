@@ -485,6 +485,7 @@ func TestBuildGeneratePrompt_RaceHistorySection(t *testing.T) {
 		"",
 		"",
 		nil,
+		nil,
 	)
 
 	if !strings.Contains(prompt, "## Race History") {
@@ -516,6 +517,7 @@ func TestBuildGeneratePrompt_NoRaceHistoryWhenEmpty(t *testing.T) {
 		"", "",
 		"",
 		"",
+		nil,
 		nil,
 	)
 
@@ -1015,6 +1017,7 @@ func TestBuildGeneratePrompt_EvaluationsSection(t *testing.T) {
 		"",
 		"",
 		nil,
+		nil,
 	)
 
 	if !strings.Contains(prompt, "## Recent Workout Evaluations (last 14 days)") {
@@ -1061,6 +1064,7 @@ func TestBuildGeneratePrompt_NoEvaluationsSectionWhenEmpty(t *testing.T) {
 		"", "",
 		"",
 		"",
+		nil,
 		nil,
 	)
 
@@ -1252,6 +1256,7 @@ func TestBuildGeneratePrompt_IncludesTreadmillCalibration(t *testing.T) {
 		calibration,
 		"",
 		nil,
+		nil,
 	)
 
 	if !strings.Contains(prompt, treadmillCalibrationHeading) {
@@ -1298,6 +1303,7 @@ func TestBuildGeneratePrompt_NoTreadmillCalibrationSectionWhenUnset(t *testing.T
 		"", "",
 		"",
 		"",
+		nil,
 		nil,
 	)
 

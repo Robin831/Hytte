@@ -27,7 +27,8 @@ const dayPlanSchemaFields = `Each day object:
   - "cooldown": string — cooldown description (empty string if none)
   - "strides": string — strides description (empty string if none)
   - "target_hr_cap": integer — max HR for this session in bpm (0 if not applicable)
-  - "description": string — 1-2 sentence summary of the session purpose`
+  - "description": string — 1-2 sentence summary of the session purpose
+  - "library_id": integer — the id of the Workout Library entry this session is based on; omit (or 0) for sessions not taken from the library`
 
 // workoutFormatGuidance instructs the model to express interval/rep sessions in
 // both distance and time, and target pace in both min/km and km/h, so sessions
@@ -155,6 +156,10 @@ type Session struct {
 	Strides     string `json:"strides"`
 	TargetHRCap int    `json:"target_hr_cap"`
 	Description string `json:"description"`
+	// LibraryID names the workout-library entry this session was taken from,
+	// when the coach used one. It is what makes library usage counts exact
+	// instead of inferred from text matching.
+	LibraryID int64 `json:"library_id,omitempty"`
 }
 
 // runPromptFunc is the function used to call Claude. Override in tests.
@@ -332,6 +337,19 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 		racePrediction = nil
 	}
 
+	// The workout library: curated sessions (with usage recency and ratings)
+	// the coach rotates through instead of free-generating the same intervals
+	// every week. Seeded with the 6x6min reference on first use so the weekly
+	// benchmark exists even before the user curates anything.
+	if err := SeedReferenceWorkout(ctx, db, userID); err != nil {
+		log.Printf("stride: seed reference workout for user %d: %v", userID, err)
+	}
+	libraryWorkouts, err := ListLibraryWorkouts(ctx, db, userID, false)
+	if err != nil {
+		log.Printf("stride: load workout library for user %d: %v", userID, err)
+		libraryWorkouts = nil
+	}
+
 	// Assemble the full prompt.
 	prompt := buildGeneratePrompt(
 		weekStart, weekEnd,
@@ -346,6 +364,7 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 		treadmillCalibration,
 		customPrompt,
 		racePrediction,
+		libraryWorkouts,
 	)
 
 	// Call Claude.
@@ -415,6 +434,20 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit plan tx: %w", err)
+	}
+
+	// Record which library workouts the plan drew on — after commit, so a
+	// failed plan never inflates usage. Best-effort telemetry; a re-generate
+	// of the same week counts again, which slightly overstates usage but
+	// never understates recency (last_used_at is the plan's week).
+	var usedIDs []int64
+	for _, day := range plan {
+		if day.Session != nil && day.Session.LibraryID > 0 {
+			usedIDs = append(usedIDs, day.Session.LibraryID)
+		}
+	}
+	if len(usedIDs) > 0 {
+		RecordLibraryUsage(ctx, db, userID, usedIDs, weekStart)
 	}
 
 	return nil
@@ -737,6 +770,7 @@ func buildGeneratePrompt(
 	treadmillCalibration string,
 	customPrompt string,
 	racePrediction *training.StoredRacePrediction,
+	libraryWorkouts []LibraryWorkout,
 ) string {
 	var sb strings.Builder
 
@@ -790,6 +824,46 @@ func buildGeneratePrompt(
 			fmt.Fprintf(&sb, "\nPrediction rationale: %s\n", racePrediction.Rationale)
 		}
 		sb.WriteString("\n")
+	}
+
+	// The workout library, with the rotation rules. This is what breaks the
+	// "same intervals every week" loop: the reference session is the one fixed
+	// weekly benchmark, everything else must vary.
+	if len(libraryWorkouts) > 0 {
+		sb.WriteString("## Workout Library\n")
+		sb.WriteString("Curated sessions to draw quality days from. For each: id, name, type, suitable blocks, athlete rating (0=unrated..5), times used, last used week.\n\n")
+		for _, lw := range libraryWorkouts {
+			marker := ""
+			if lw.IsReference {
+				marker = " [WEEKLY REFERENCE]"
+			}
+			blocks := strings.Join(lw.Blocks, ",")
+			if blocks == "" {
+				blocks = "any"
+			}
+			lastUsed := lw.LastUsedAt
+			if lastUsed == "" {
+				lastUsed = "never"
+			}
+			fmt.Fprintf(&sb, "- id=%d%s %q (%s; blocks: %s; rating %d; used %dx; last %s)\n",
+				lw.ID, marker, lw.Name, lw.WorkoutType, blocks, lw.Rating, lw.TimesUsed, lastUsed)
+			fmt.Fprintf(&sb, "  warmup: %s | main set: %s | cooldown: %s", lw.Warmup, lw.MainSet, lw.Cooldown)
+			if lw.Strides != "" {
+				fmt.Fprintf(&sb, " | strides: %s", lw.Strides)
+			}
+			if lw.TargetHRCap != "" {
+				fmt.Fprintf(&sb, " | HR cap: %s", lw.TargetHRCap)
+			}
+			sb.WriteString("\n")
+		}
+		sb.WriteString(`
+Library rules:
+- The [WEEKLY REFERENCE] session MUST appear exactly once this week, with its structure unchanged (adjust target paces to current fitness only). It is the fixed benchmark the athlete tracks week over week.
+- Draw the other quality sessions (threshold/hard/long-run variants) from the library when a suitable entry exists for the current training block — and VARY them: do not schedule a library workout whose "last" week is within the past 3 weeks, unless nothing else fits the block. Prefer higher-rated and less-recently-used entries.
+- When a session is taken from the library, set its "library_id" to the entry's id and keep the structure; you may tune paces/HR targets to current fitness.
+- Easy runs and sessions with no suitable library entry are composed freely as usual (library_id omitted).
+
+`)
 	}
 
 	// ACR / training load status.

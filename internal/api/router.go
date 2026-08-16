@@ -540,6 +540,11 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/stride/evaluate", stride.TriggerEvaluationHandler(db))
 				r.Post("/stride/days/{date}/reevaluate", stride.ReEvaluateDayHandler(db))
 				r.Get("/stride/history", stride.PlanHistoryHandler(db))
+				r.Get("/stride/workouts", stride.ListWorkoutsHandler(db))
+				r.Post("/stride/workouts", stride.CreateWorkoutHandler(db))
+				r.Put("/stride/workouts/{id}", stride.UpdateWorkoutHandler(db))
+				r.Delete("/stride/workouts/{id}", stride.DeleteWorkoutHandler(db))
+				r.Post("/stride/workouts/generate", stride.GenerateWorkoutHandler(db))
 			})
 
 			// Claude CLI test — gated by "claude_ai" feature.

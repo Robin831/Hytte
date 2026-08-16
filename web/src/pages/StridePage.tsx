@@ -6,6 +6,7 @@ import { formatDistance, formatDuration } from '../utils/training'
 import type { StrideEvaluationRecord, StridePlan, WeekSummary } from '../types/stride'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { TrainingBlockTimeline } from '../components/stride/TrainingBlockTimeline'
+import WorkoutLibrary from '../components/stride/WorkoutLibrary'
 import RacePredictionsCard from '../components/training/RacePredictionsCard'
 import type { RacePredictions } from '../types/training'
 import StrideChatDrawer from '../components/stride/StrideChatDrawer'
@@ -1248,6 +1249,9 @@ export default function StridePage() {
           </div>
         )}
       </section>
+
+      {/* Workout library — the sessions the weekly coach rotates through */}
+      <WorkoutLibrary />
 
       {/* Race Calendar */}
       <section>

@@ -1375,6 +1375,43 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_stride_races_user_date ON stride_races(user_id, date);
 
+	-- stride_workouts is the user's workout library: reusable session
+	-- definitions the Stride coach draws from when generating weekly plans,
+	-- created manually or through the AI workout chat. Structure/prose fields
+	-- (name, warmup, main_set, cooldown, strides, target_hr_cap, description)
+	-- are AES-encrypted; type/source/rating/usage stay queryable. is_reference
+	-- pins the one weekly benchmark session the coach must always include.
+	CREATE TABLE IF NOT EXISTS stride_workouts (
+		id            INTEGER PRIMARY KEY,
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name          TEXT NOT NULL,
+		workout_type  TEXT NOT NULL DEFAULT '',
+		warmup        TEXT NOT NULL DEFAULT '',
+		main_set      TEXT NOT NULL DEFAULT '',
+		cooldown      TEXT NOT NULL DEFAULT '',
+		strides       TEXT NOT NULL DEFAULT '',
+		target_hr_cap TEXT NOT NULL DEFAULT '',
+		description   TEXT NOT NULL DEFAULT '',
+		source        TEXT NOT NULL DEFAULT 'manual',
+		rating        INTEGER NOT NULL DEFAULT 0,
+		times_used    INTEGER NOT NULL DEFAULT 0,
+		last_used_at  TEXT,
+		is_reference  INTEGER NOT NULL DEFAULT 0,
+		archived      INTEGER NOT NULL DEFAULT 0,
+		created_at    TEXT NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_stride_workouts_user ON stride_workouts(user_id, archived);
+
+	-- stride_workout_blocks maps a library workout to the training blocks it
+	-- suits (base/build/peak/taper) — many-to-many, since one session can fit
+	-- several blocks.
+	CREATE TABLE IF NOT EXISTS stride_workout_blocks (
+		workout_id INTEGER NOT NULL REFERENCES stride_workouts(id) ON DELETE CASCADE,
+		block      TEXT NOT NULL,
+		UNIQUE(workout_id, block)
+	);
+
 	-- race_predictions stores one AI/formula prediction snapshot per refresh
 	-- (weekly cron before the Stride plan, or a manual refresh). Snapshots are
 	-- append-only so the prediction has a trend instead of a single mutable

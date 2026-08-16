@@ -196,5 +196,50 @@
       "failedToLoad": "Failed to load the conversation",
       "failedToSend": "The coach could not reply — try again"
     }
+  },
+  "library": {
+    "title": "Workout library",
+    "designWithAi": "Design with AI",
+    "loadError": "Failed to load the workout library.",
+    "reference": "Reference",
+    "referenceHint": "The fixed weekly benchmark session — included in every plan",
+    "makeReference": "Pin as weekly reference",
+    "archive": "Archive workout",
+    "expand": "Show details",
+    "collapse": "Hide details",
+    "usedCount_one": "used {{count}} time",
+    "usedCount_other": "used {{count}} times",
+    "lastUsed": "last week of {{week}}",
+    "rate": "Rate {{n}} stars",
+    "types": {
+      "threshold": "threshold",
+      "hard": "hard",
+      "easy": "easy",
+      "long_run": "long run",
+      "strides": "strides"
+    },
+    "blocks": {
+      "base": "base",
+      "build": "build",
+      "peak": "peak",
+      "taper": "taper"
+    },
+    "fields": {
+      "warmup": "Warmup",
+      "mainSet": "Main set",
+      "cooldown": "Cooldown",
+      "strides": "Strides",
+      "hrCap": "HR cap"
+    },
+    "chat": {
+      "title": "Design a workout",
+      "intro": "Describe the session you want — e.g. \"a hilly threshold session for the build block\" — and iterate on the draft until it fits. Saved workouts join the library the coach plans from.",
+      "placeholder": "Describe the workout…",
+      "send": "Send",
+      "thinking": "The coach is thinking…",
+      "save": "Save to library",
+      "error": "The coach did not answer. Try again.",
+      "saveError": "Failed to save the workout."
+    }
   }
 }

@@ -196,5 +196,50 @@
       "failedToLoad": "Kunne ikke laste samtalen",
       "failedToSend": "Treneren kunne ikke svare — prøv igjen"
     }
+  },
+  "library": {
+    "title": "Øktbibliotek",
+    "designWithAi": "Design med AI",
+    "loadError": "Kunne ikke laste øktbiblioteket.",
+    "reference": "Referanse",
+    "referenceHint": "Den faste ukentlige referanseøkten — med i hver plan",
+    "makeReference": "Fest som ukentlig referanse",
+    "archive": "Arkiver økt",
+    "expand": "Vis detaljer",
+    "collapse": "Skjul detaljer",
+    "usedCount_one": "brukt {{count}} gang",
+    "usedCount_other": "brukt {{count}} ganger",
+    "lastUsed": "sist uke {{week}}",
+    "rate": "Gi {{n}} stjerner",
+    "types": {
+      "threshold": "terskel",
+      "hard": "hard",
+      "easy": "rolig",
+      "long_run": "langtur",
+      "strides": "stigningsløp"
+    },
+    "blocks": {
+      "base": "grunntrening",
+      "build": "oppbygging",
+      "peak": "topping",
+      "taper": "nedtrapping"
+    },
+    "fields": {
+      "warmup": "Oppvarming",
+      "mainSet": "Hoveddel",
+      "cooldown": "Nedjogg",
+      "strides": "Stigningsløp",
+      "hrCap": "Pulstak"
+    },
+    "chat": {
+      "title": "Design en økt",
+      "intro": "Beskriv økten du vil ha — f.eks. «en kupert terskeløkt for oppbyggingsblokken» — og juster utkastet til det passer. Lagrede økter havner i biblioteket treneren planlegger fra.",
+      "placeholder": "Beskriv økten…",
+      "send": "Send",
+      "thinking": "Treneren tenker…",
+      "save": "Lagre i biblioteket",
+      "error": "Treneren svarte ikke. Prøv igjen.",
+      "saveError": "Kunne ikke lagre økten."
+    }
   }
 }

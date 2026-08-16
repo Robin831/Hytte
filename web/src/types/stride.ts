@@ -62,3 +62,25 @@ export interface WeekSummary {
   // /api/stride/history for all pages; kept optional for type safety.
   total_distance_meters?: number
 }
+
+// StrideWorkout is one workout-library entry: a reusable session definition
+// the weekly plan generator draws from (GET/POST/PUT /api/stride/workouts).
+export interface StrideWorkout {
+  id: number
+  name: string
+  workout_type: string
+  warmup: string
+  main_set: string
+  cooldown: string
+  strides: string
+  target_hr_cap: string
+  description: string
+  source: string // 'manual' | 'ai'
+  rating: number // 0 = unrated, 1..5
+  times_used: number
+  last_used_at?: string
+  is_reference: boolean
+  archived: boolean
+  blocks: string[]
+  created_at: string
+}
