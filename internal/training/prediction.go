@@ -35,7 +35,9 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -216,6 +218,11 @@ type intervalEffort struct {
 	TotalWorkSeconds float64
 	WorkPaceSecPerKm float64
 	AvgHeartRate     int
+	// Converted marks an indoor effort whose pace was derived from the
+	// athlete-recorded belt speed × the measured calibration factor — never
+	// from the watch. BeltKmh is the recorded work belt speed it came from.
+	Converted bool
+	BeltKmh   float64
 }
 
 // longestRun is the longest recent run — the durability signal for
@@ -238,6 +245,7 @@ type predictionFacts struct {
 	// the calibration) but never the deterministic anchor.
 	IndoorIntervals      []intervalEffort
 	TreadmillCalibration string      // athlete-measured, verbatim from prefs
+	TreadmillFactor      float64     // belt→outdoor speed factor derived from it (1.0 default)
 	LongestRecent        *longestRun // longest run in the recency window (indoor included — duration is real)
 	ThresholdHR          int         // athlete profile, 0 when unset
 	MaxHR                int
@@ -597,6 +605,157 @@ func loadTreadmillCalibrationText(db *sql.DB, userID int64) string {
 	return strings.TrimSpace(dec)
 }
 
+// --- indoor belt-speed conversion -----------------------------------------
+//
+// A mostly-indoor athlete leaves the predictor almost blind if only outdoor
+// efforts count. The watch's indoor pace stays banned (cadence artifact), but
+// the athlete RECORDS the actual belt speed: first choice is the structured
+// speed plan captured with the workout (kind "interval" segments carry
+// speed_kmph and duration), second choice is the planned Stride session for
+// that day (the athlete follows prescriptions precisely, and the plan text
+// carries "belt 11.8-12.0 km/h" per the format rules). Free-text feel notes
+// are deliberately NOT parsed: their formats vary wildly and one session even
+// records a belt/plate swap that changed the speed scale — exactly the kind
+// of overstated-speed input that has caused every predictor bug so far. No
+// recorded belt speed means the session stays HR-only evidence.
+
+// treadmillFactorBounds sanity-bound the calibration factor.
+const (
+	treadmillFactorMin = 0.90
+	treadmillFactorMax = 1.15
+)
+
+var (
+	treadmillFactorRe    = regexp.MustCompile(`(?i)(?:[x×]\s*|factor\s*[:=]?\s*)([01]\.\d{1,3})`)
+	treadmillFactorPctRe = regexp.MustCompile(`([0-9]{1,2}(?:\.[0-9])?)\s*%`)
+	beltSpeedRe          = regexp.MustCompile(`(?i)belt\s+([0-9]{1,2}(?:[.,][0-9])?)(?:\s*[-–]\s*([0-9]{1,2}(?:[.,][0-9])?))?\s*km/h`)
+)
+
+// treadmillSpeedFactor extracts the belt-to-outdoor speed factor from the
+// athlete-measured calibration text ("x1.03", "factor 1.03", "3%"). Defaults
+// to 1.0 — belt speed at face value, which for a calibrated-slow belt is the
+// conservative direction.
+func treadmillSpeedFactor(calibration string) float64 {
+	if m := treadmillFactorRe.FindStringSubmatch(calibration); m != nil {
+		if f, err := strconv.ParseFloat(m[1], 64); err == nil && f >= treadmillFactorMin && f <= treadmillFactorMax {
+			return f
+		}
+	}
+	if m := treadmillFactorPctRe.FindStringSubmatch(calibration); m != nil {
+		if p, err := strconv.ParseFloat(m[1], 64); err == nil {
+			f := 1 + p/100
+			if f >= treadmillFactorMin && f <= treadmillFactorMax {
+				return f
+			}
+		}
+	}
+	return 1.0
+}
+
+// indoorBeltWorkSpeed returns the time-weighted average belt speed of the
+// structured speed plan's interval segments, or 0 when the plan records none.
+func indoorBeltWorkSpeed(plan []SpeedSegment) float64 {
+	var speedDur, dur float64
+	for _, seg := range plan {
+		if seg.Kind != "interval" || seg.SpeedKmph < 6 || seg.SpeedKmph > 18 || seg.DurationSec <= 0 {
+			continue
+		}
+		reps := seg.Repeats
+		if reps < 1 {
+			reps = 1
+		}
+		d := float64(seg.DurationSec * reps)
+		speedDur += seg.SpeedKmph * d
+		dur += d
+	}
+	if dur == 0 {
+		return 0
+	}
+	return speedDur / dur
+}
+
+// plannedSessionBeltSpeed reads the day's planned Stride session and extracts
+// the prescribed belt speed(s) from its text ("belt 11.8-12.0 km/h"). Used as
+// the fallback when the workout carries no structured speed plan — the
+// athlete follows prescriptions precisely, so the prescription is honest
+// evidence of what the belt was set to. Returns 0 when no plan, no session,
+// or no belt figure is found. The plan JSON is parsed with a local minimal
+// shape because the stride package imports this one.
+func plannedSessionBeltSpeed(db *sql.DB, userID int64, date string) float64 {
+	var planJSON string
+	err := db.QueryRow(`
+		SELECT plan_json FROM stride_plans
+		WHERE user_id = ? AND week_start <= ? AND week_end >= ?
+		ORDER BY week_start DESC LIMIT 1`,
+		userID, date, date,
+	).Scan(&planJSON)
+	if err != nil {
+		return 0
+	}
+	var days []struct {
+		Date    string `json:"date"`
+		Session *struct {
+			Warmup  string `json:"warmup"`
+			MainSet string `json:"main_set"`
+		} `json:"session"`
+	}
+	if json.Unmarshal([]byte(planJSON), &days) != nil {
+		return 0
+	}
+	for _, d := range days {
+		if d.Date != date || d.Session == nil {
+			continue
+		}
+		var speeds []float64
+		for _, m := range beltSpeedRe.FindAllStringSubmatch(d.Session.MainSet, -1) {
+			lo, err := strconv.ParseFloat(strings.ReplaceAll(m[1], ",", "."), 64)
+			if err != nil {
+				continue
+			}
+			v := lo
+			if m[2] != "" {
+				if hi, err := strconv.ParseFloat(strings.ReplaceAll(m[2], ",", "."), 64); err == nil {
+					v = (lo + hi) / 2
+				}
+			}
+			if v >= 6 && v <= 18 {
+				speeds = append(speeds, v)
+			}
+		}
+		if len(speeds) == 0 {
+			return 0
+		}
+		sum := 0.0
+		for _, s := range speeds {
+			sum += s
+		}
+		return sum / float64(len(speeds))
+	}
+	return 0
+}
+
+// convertIndoorEfforts attaches an outdoor-equivalent work pace to indoor
+// efforts whose belt speed the athlete recorded: structured speed plan first,
+// planned session second, otherwise the effort stays HR-only.
+func convertIndoorEfforts(db *sql.DB, userID int64, efforts []intervalEffort, factor float64) {
+	for i := range efforts {
+		ie := &efforts[i]
+		belt := 0.0
+		if ctx, err := GetWorkoutContext(db, ie.WorkoutID); err == nil && ctx != nil {
+			belt = indoorBeltWorkSpeed(ctx.SpeedPlan)
+		}
+		if belt == 0 && len(ie.Date) >= 10 {
+			belt = plannedSessionBeltSpeed(db, userID, ie.Date[:10])
+		}
+		if belt <= 0 {
+			continue
+		}
+		ie.BeltKmh = belt
+		ie.WorkPaceSecPerKm = 3600.0 / (belt * factor)
+		ie.Converted = true
+	}
+}
+
 // buildPredictionFacts gathers everything the estimate is based on. Partial
 // data is fine — each section that is empty simply says so in the prompt.
 func buildPredictionFacts(db *sql.DB, userID int64) (*predictionFacts, error) {
@@ -646,6 +805,12 @@ func buildPredictionFacts(db *sql.DB, userID int64) (*predictionFacts, error) {
 		log.Printf("race prediction: indoor intervals for user %d: %v", userID, err)
 	}
 	facts.TreadmillCalibration = loadTreadmillCalibrationText(db, userID)
+	// Convert indoor efforts whose belt speed the athlete recorded into
+	// outdoor-equivalent paces — for a mostly-indoor athlete this is the
+	// difference between an n=1 estimate and one grounded in the bulk of the
+	// actual training.
+	facts.TreadmillFactor = treadmillSpeedFactor(facts.TreadmillCalibration)
+	convertIndoorEfforts(db, userID, facts.IndoorIntervals, facts.TreadmillFactor)
 
 	if latest, err := GetLatestVO2max(db, userID); err == nil && latest != nil {
 		facts.VO2maxLatest = latest.VO2max
@@ -783,6 +948,27 @@ func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 				fmt.Sprintf("%d work reps totalling %s on %s (work pace %s/km, %s, %+.0fs/km continuous adjustment)", ie.Reps, formatRaceTime(int(ie.TotalWorkSeconds)), date, formatPacePerKm(ie.WorkPaceSecPerKm), hrNote, adj),
 				true, ie.Date)
 		}
+		// Indoor efforts join the anchor pool only when converted from a
+		// RECORDED belt speed (never watch pace) — for a mostly-indoor
+		// athlete this is most of the honest evidence there is.
+		for _, ie := range facts.IndoorIntervals {
+			if !ie.Converted || ie.WorkPaceSecPerKm <= 0 {
+				continue
+			}
+			date := ie.Date
+			if len(date) >= 10 {
+				date = date[:10]
+			}
+			adj := intervalThresholdAdjustment(ie.AvgHeartRate, facts.ThresholdHR)
+			hrNote := "no HR context"
+			if ie.AvgHeartRate > 0 && facts.ThresholdHR > 0 {
+				hrNote = fmt.Sprintf("work HR %d vs threshold %d", ie.AvgHeartRate, facts.ThresholdHR)
+			}
+			consider(ie.WorkPaceSecPerKm+adj,
+				fmt.Sprintf("%d indoor work reps totalling %s on %s (belt %.1f km/h x %.2f = %s/km outdoor-equivalent, %s, %+.0fs/km continuous adjustment)",
+					ie.Reps, formatRaceTime(int(ie.TotalWorkSeconds)), date, ie.BeltKmh, facts.TreadmillFactor, formatPacePerKm(ie.WorkPaceSecPerKm), hrNote, adj),
+				true, ie.Date)
+		}
 		return best
 	}
 	if a := pick(true); a != nil {
@@ -868,13 +1054,16 @@ func formatFacts(facts *predictionFacts) string {
 	}
 
 	if len(facts.IndoorIntervals) > 0 {
-		b.WriteString("\nIndoor (treadmill) quality sessions — watch pace is a cadence artifact and is NOT shown; HR and durations are reliable:\n")
+		b.WriteString("\nIndoor (treadmill) quality sessions — watch pace is a cadence artifact and never shown; where the athlete recorded the belt speed, the outdoor-equivalent pace below is belt speed x the measured calibration factor:\n")
 		for _, ie := range facts.IndoorIntervals {
 			date := ie.Date
 			if len(date) >= 10 {
 				date = date[:10]
 			}
 			fmt.Fprintf(&b, "- %s: %d work reps, %s total work", date, ie.Reps, formatRaceTime(int(ie.TotalWorkSeconds)))
+			if ie.Converted {
+				fmt.Fprintf(&b, " at belt %.1f km/h (~%s/km outdoor-equivalent)", ie.BeltKmh, formatPacePerKm(ie.WorkPaceSecPerKm))
+			}
 			if ie.AvgHeartRate > 0 {
 				fmt.Fprintf(&b, " (avg work HR %d)", ie.AvgHeartRate)
 			}

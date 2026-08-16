@@ -1,6 +1,7 @@
 package training
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -317,5 +318,88 @@ func TestRegressionAug4OutdoorSession(t *testing.T) {
 	}
 	if clamped <= 6000 {
 		t.Errorf("1:40 or faster must be unreachable, clamp gave %s", formatRaceTime(clamped))
+	}
+}
+
+// TestTreadmillSpeedFactor pins the calibration-factor parsing and its
+// conservative 1.0 default.
+func TestTreadmillSpeedFactor(t *testing.T) {
+	cases := []struct {
+		text string
+		want float64
+	}{
+		{"belt runs slow: x1.03 vs outdoor", 1.03},
+		{"measured factor 1.05 on the new belt", 1.05},
+		{"belt reads about 3% slow", 1.03},
+		{"", 1.0},
+		{"no numbers here", 1.0},
+		{"x1.90 nonsense out of bounds", 1.0},
+	}
+	for _, c := range cases {
+		if got := treadmillSpeedFactor(c.text); math.Abs(got-c.want) > 0.001 {
+			t.Errorf("factor(%q) = %v, want %v", c.text, got, c.want)
+		}
+	}
+}
+
+// TestIndoorBeltConversionAnchorsBaseline mirrors the athlete's real W98
+// session (5x6min at belt 12.0, work HR ~159 vs threshold 163) with a
+// measured 1.03 factor: the converted effort must anchor the baseline and put
+// the half in the coach-reviewed band — this is what makes a mostly-indoor
+// athlete's predictor see more than one workout.
+func TestIndoorBeltConversionAnchorsBaseline(t *testing.T) {
+	recent := time.Now().UTC().AddDate(0, 0, -4).Format(time.RFC3339)
+	facts := &predictionFacts{
+		AsOf:        time.Now().UTC(),
+		ThresholdHR: 163,
+		MaxHR:       186,
+		IndoorIntervals: []intervalEffort{{
+			WorkoutID: 98, Date: recent, Reps: 5, TotalWorkSeconds: 1800, AvgHeartRate: 159,
+		}},
+		TreadmillFactor: 1.03,
+	}
+	// Simulate convertIndoorEfforts having found belt 12.0 via the speed plan.
+	facts.IndoorIntervals[0].BeltKmh = 12.0
+	facts.IndoorIntervals[0].WorkPaceSecPerKm = 3600.0 / (12.0 * 1.03)
+	facts.IndoorIntervals[0].Converted = true
+
+	anchor := deriveBaselineAnchor(facts)
+	if anchor == nil || anchor.Stale {
+		t.Fatalf("converted indoor effort must anchor, got %+v", anchor)
+	}
+	// 3600/12.36 = 291.3 s/km, HR gap 4 → -3 → ~288.3 s/km.
+	if anchor.ThresholdPaceSecPerKm < 286 || anchor.ThresholdPaceSecPerKm > 291 {
+		t.Errorf("anchor pace %.1f outside expected 286-291", anchor.ThresholdPaceSecPerKm)
+	}
+	hm := baselinePredictions(anchor)["Half Marathon"]
+	// Coach-reviewed band ~1:43-1:46 for this evidence.
+	if hm < 6180 || hm > 6420 {
+		t.Errorf("HM baseline %s outside 1:43-1:47 band", formatRaceTime(int(hm)))
+	}
+
+	// An UNCONVERTED indoor effort (no recorded belt speed) must never anchor.
+	facts.IndoorIntervals[0].Converted = false
+	facts.IndoorIntervals[0].WorkPaceSecPerKm = 200 // poisoned watch pace
+	if a := deriveBaselineAnchor(facts); a != nil {
+		t.Errorf("unconverted indoor effort must not anchor, got %+v", a)
+	}
+}
+
+// TestIndoorBeltWorkSpeed pins the structured speed-plan reading: interval
+// segments only, time-weighted, repeats expanded.
+func TestIndoorBeltWorkSpeed(t *testing.T) {
+	plan := []SpeedSegment{
+		{Kind: "warmup", SpeedKmph: 9.8, DurationSec: 900},
+		{Kind: "interval", SpeedKmph: 11.8, DurationSec: 600, Repeats: 2},
+		{Kind: "pause", SpeedKmph: 5.0, DurationSec: 60},
+		{Kind: "interval", SpeedKmph: 12.0, DurationSec: 600, Repeats: 1},
+	}
+	got := indoorBeltWorkSpeed(plan)
+	want := (11.8*1200 + 12.0*600) / 1800
+	if math.Abs(got-want) > 0.001 {
+		t.Errorf("belt speed %v, want %v (warmup and pause must not count)", got, want)
+	}
+	if indoorBeltWorkSpeed([]SpeedSegment{{Kind: "warmup", SpeedKmph: 10, DurationSec: 600}}) != 0 {
+		t.Error("plan without interval segments must yield 0")
 	}
 }
