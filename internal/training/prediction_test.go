@@ -3,6 +3,7 @@ package training
 import (
 	"database/sql"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -764,4 +765,74 @@ func setupPredictionContextDB(t *testing.T) *sql.DB {
 		}
 	}
 	return db
+}
+
+// vo2maxEstimatesFrom builds a chronological run of estimates, one per day from
+// 2026-06-01, for the summary tests.
+func vo2maxEstimatesFrom(vals ...float64) []VO2maxEstimate {
+	out := make([]VO2maxEstimate, 0, len(vals))
+	day := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+	for i, v := range vals {
+		out = append(out, VO2maxEstimate{
+			VO2max:      v,
+			EstimatedAt: day.AddDate(0, 0, i).Format(time.RFC3339),
+		})
+	}
+	return out
+}
+
+// TestFormatVO2maxSummaryReportsMedianNotTrend pins the fix: a scattered run of
+// per-workout estimates must never reach the model as a "history" sequence it
+// can read a slope out of, nor let the latest single value stand alone.
+func TestFormatVO2maxSummaryReportsMedianNotTrend(t *testing.T) {
+	// The real-world run from the bug report, chronological (42.8 is latest).
+	out := formatVO2maxSummary(
+		vo2maxEstimatesFrom(42.8, 37.2, 56.2, 43.1, 38.9, 49.1, 43.3), 43.3)
+
+	for _, want := range []string{
+		"n=7 over 2026-06-01 to 2026-06-07",
+		"median 43.1",
+		"spread 37.2-56.2",
+		"19.0-unit spread is estimator noise",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("summary missing %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"newest first", "history", "(latest)"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("summary must not mention %q:\n%s", unwanted, out)
+		}
+	}
+	// The raw sequence must be gone: no comma-joined value list.
+	if strings.Contains(out, "43.3, 49.1") || strings.Contains(out, "42.8, 37.2") {
+		t.Errorf("raw estimate sequence still printed:\n%s", out)
+	}
+}
+
+// TestFormatVO2maxSummaryTrustsTightCluster keeps the summary useful when the
+// estimator actually agrees with itself — that is signal, not noise.
+func TestFormatVO2maxSummaryTrustsTightCluster(t *testing.T) {
+	out := formatVO2maxSummary(vo2maxEstimatesFrom(48.6, 49.2, 48.9, 49.4, 49.0), 49.0)
+	if !strings.Contains(out, "median 49.0") {
+		t.Errorf("want median 49.0:\n%s", out)
+	}
+	if !strings.Contains(out, "cluster tightly") {
+		t.Errorf("a 0.8-unit spread must not be called noise:\n%s", out)
+	}
+}
+
+// TestFormatVO2maxSummaryEdgeCases covers no data and the history-query-failed
+// fallback where only a latest value survives.
+func TestFormatVO2maxSummaryEdgeCases(t *testing.T) {
+	if got := formatVO2maxSummary(nil, 0); got != "" {
+		t.Errorf("no data must render nothing, got %q", got)
+	}
+	if got := formatVO2maxSummary(nil, 44.2); !strings.Contains(got, "single per-workout estimate of 44.2") {
+		t.Errorf("latest-only fallback: %q", got)
+	}
+	single := formatVO2maxSummary(vo2maxEstimatesFrom(44.2), 44.2)
+	if !strings.Contains(single, "n=1 on 2026-06-01") || !strings.Contains(single, "weak evidence") {
+		t.Errorf("single estimate: %q", single)
+	}
 }

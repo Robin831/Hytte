@@ -14,7 +14,8 @@ package training
 //   - best sustained efforts extracted from lap data (contiguous lap windows,
 //     outdoor running only, net-descent runs excluded) rather than
 //     whole-workout averages;
-//   - the VO2max estimate history and its recent trend;
+//   - the per-workout VO2max estimates, summarised as a median and spread
+//     rather than a sequence, because their scatter is estimator noise;
 //   - twelve weeks of training load plus the acute:chronic ratio;
 //   - actual race results, which calibrate how this athlete deviates from the
 //     Riegel exponent.
@@ -284,12 +285,15 @@ type predictionFacts struct {
 	MaxHR                int
 	ThresholdPace        int // profile threshold pace in sec/km, 0 when unset
 	VO2maxLatest         float64
-	VO2maxTrend          []VO2maxEstimate // most recent first (max 12)
-	WeeklyLoads          []WeeklyLoad     // most recent first (max 12)
-	ACR                  *float64
-	RaceResults          []raceResultFact
-	GoalRace             string // free-text description from preferences, may be empty
-	AsOf                 time.Time
+	// VO2maxEstimates is chronological, oldest first (max 12) — the order
+	// GetVO2maxHistory returns. It is deliberately not called a "trend":
+	// see formatVO2maxSummary for why the raw sequence is not printed.
+	VO2maxEstimates []VO2maxEstimate
+	WeeklyLoads     []WeeklyLoad // most recent first (max 12)
+	ACR             *float64
+	RaceResults     []raceResultFact
+	GoalRace        string // free-text description from preferences, may be empty
+	AsOf            time.Time
 }
 
 // raceResultFact is a completed race from stride_races.
@@ -1006,7 +1010,7 @@ func buildPredictionFacts(db *sql.DB, userID int64) (*predictionFacts, error) {
 		facts.VO2maxLatest = latest.VO2max
 	}
 	if hist, err := GetVO2maxHistory(db, userID, 12); err == nil {
-		facts.VO2maxTrend = hist
+		facts.VO2maxEstimates = hist
 	}
 	if loads, err := GetWeeklyLoads(db, userID, 12); err == nil {
 		facts.WeeklyLoads = loads
@@ -1190,6 +1194,91 @@ func baselinePredictions(anchor *baselineAnchor) map[string]float64 {
 	return base
 }
 
+// vo2maxNoisySpread is the min-to-max spread (mL/kg/min) above which a run of
+// per-workout VO2max estimates is scatter rather than signal. Genuine aerobic
+// change over a training block is a couple of units; a wider range is the
+// estimator reacting to terrain, heat, HR artefacts and pacing.
+const vo2maxNoisySpread = 3.0
+
+// formatVO2maxSummary reduces the per-workout VO2max estimates to a median plus
+// an explicit spread.
+//
+// The raw sequence used to be printed as "VO2max history (newest first)", which
+// was wrong twice over: the slice is chronological (oldest first), and a run
+// like 37-56 is estimator noise, not a trend — labelling it one invited the
+// model to read a slope that is not there. Printing the latest value on its own
+// line was worse still, since a single low estimate tugged the prediction away
+// from the measured sustained-effort evidence. The median with its spread lets
+// the model see how much to discount the number.
+//
+// Returns "" when there is nothing to report.
+func formatVO2maxSummary(estimates []VO2maxEstimate, latest float64) string {
+	kept := make([]VO2maxEstimate, 0, len(estimates))
+	vals := make([]float64, 0, len(estimates))
+	for _, e := range estimates {
+		if e.VO2max > 0 {
+			kept = append(kept, e)
+			vals = append(vals, e.VO2max)
+		}
+	}
+	if len(vals) == 0 {
+		if latest <= 0 {
+			return ""
+		}
+		// History unavailable (query failed) but a latest estimate exists.
+		return fmt.Sprintf("\nVO2max: a single per-workout estimate of %.1f. One HR/pace-derived estimate is weak evidence — a sanity check only, never a reason to move away from the measured sustained efforts above.\n", latest)
+	}
+
+	sorted := append([]float64(nil), vals...)
+	sort.Float64s(sorted)
+	median := sorted[len(sorted)/2]
+	if len(sorted)%2 == 0 {
+		median = (sorted[len(sorted)/2-1] + sorted[len(sorted)/2]) / 2
+	}
+	lo, hi := sorted[0], sorted[len(sorted)-1]
+	spread := hi - lo
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "\nVO2max (per-workout estimates, n=%d%s): median %.1f, spread %.1f-%.1f\n",
+		len(vals), vo2maxDateSpan(kept), median, lo, hi)
+	switch {
+	case len(vals) == 1:
+		b.WriteString("A single HR/pace-derived estimate is weak evidence — a sanity check only, never a reason to move away from the measured sustained efforts above.\n")
+	case spread >= vo2maxNoisySpread:
+		fmt.Fprintf(&b, "The %.1f-unit spread is estimator noise (terrain, heat, HR artefacts, pacing), not fitness change: there is no trend to read in these estimates, and no single one of them — including the most recent — carries more weight than the median. Treat the median as a weak cross-check on the sustained-effort evidence above; where they disagree, the measured efforts win.\n", spread)
+	default:
+		fmt.Fprintf(&b, "The estimates cluster tightly (%.1f-unit spread), so the median is a reasonable cross-check — still weaker evidence than the measured sustained efforts above.\n", spread)
+	}
+	return b.String()
+}
+
+// vo2maxDateSpan renders " over 2026-05-20 to 2026-08-14" for the estimates'
+// date range, or "" when the dates are unusable. Timestamps are RFC3339, so
+// they order lexically; the slice is normally already chronological, but the
+// min/max scan keeps the output right if it ever is not.
+func vo2maxDateSpan(estimates []VO2maxEstimate) string {
+	first, last := "", ""
+	for _, e := range estimates {
+		if len(e.EstimatedAt) < 10 {
+			continue
+		}
+		d := e.EstimatedAt[:10]
+		if first == "" || d < first {
+			first = d
+		}
+		if last == "" || d > last {
+			last = d
+		}
+	}
+	if first == "" {
+		return ""
+	}
+	if first == last {
+		return " on " + first
+	}
+	return " over " + first + " to " + last
+}
+
 // formatFacts renders the facts block shared by the AI prompt and the stored
 // inputs summary.
 func formatFacts(facts *predictionFacts) string {
@@ -1285,18 +1374,7 @@ func formatFacts(facts *predictionFacts) string {
 		}
 	}
 
-	if facts.VO2maxLatest > 0 {
-		fmt.Fprintf(&b, "\nVO2max estimate: %.1f (latest)\n", facts.VO2maxLatest)
-		if len(facts.VO2maxTrend) > 1 {
-			b.WriteString("VO2max history (newest first): ")
-			vals := make([]string, 0, len(facts.VO2maxTrend))
-			for _, v := range facts.VO2maxTrend {
-				vals = append(vals, fmt.Sprintf("%.1f", v.VO2max))
-			}
-			b.WriteString(strings.Join(vals, ", "))
-			b.WriteString("\n")
-		}
-	}
+	b.WriteString(formatVO2maxSummary(facts.VO2maxEstimates, facts.VO2maxLatest))
 
 	if len(facts.WeeklyLoads) > 0 {
 		b.WriteString("\nWeekly training load (newest first, total load / workouts):\n")
