@@ -67,14 +67,9 @@ vi.mock('react-i18next', () => {
   }
 })
 
-vi.mock('lucide-react', () => ({
-  ChevronLeft: () => null,
-  ChevronRight: () => null,
-  Loader2: () => null,
-  RefreshCw: () => null,
-  Trash2: () => null,
-  Upload: () => null,
-}))
+// Mock lucide-react to avoid loading the full icon library (~30 MB) in tests.
+// See src/test/lucideStub.tsx.
+vi.mock('lucide-react', async () => (await import('../../test/lucideStub')).lucideStub)
 
 vi.mock('../../auth', () => ({
   useAuth: () => ({ user: { id: 1, is_admin: false } }),

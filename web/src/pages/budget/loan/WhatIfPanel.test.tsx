@@ -8,12 +8,8 @@ import { EMPTY_WHAT_IF, lumpSumNeedsDate, whatIfQuery } from './types'
 import enBudget from '../../../../public/locales/en/budget.json'
 
 // Mock lucide-react to avoid loading the full icon library (~30 MB) in tests.
-vi.mock('lucide-react', () => ({
-  AlertTriangle: () => null,
-  ChevronDown: () => null,
-  ChevronUp: () => null,
-  RotateCcw: () => null,
-}))
+// See src/test/lucideStub.tsx.
+vi.mock('lucide-react', async () => (await import('../../../test/lucideStub')).lucideStub)
 
 type JsonValue = string | number | boolean | null | JsonObject | JsonValue[]
 interface JsonObject { [key: string]: JsonValue }

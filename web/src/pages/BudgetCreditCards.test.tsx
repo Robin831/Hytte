@@ -71,18 +71,8 @@ vi.mock('react-i18next', () => {
 })
 
 // Mock lucide-react to avoid loading the full icon library (~30 MB) in tests.
-vi.mock('lucide-react', () => ({
-  ChevronLeft: () => null,
-  ChevronRight: () => null,
-  Upload: () => null,
-  X: () => null,
-  Link2: () => null,
-  CreditCard: () => null,
-  Plus: () => null,
-  Trash2: () => null,
-  Settings: () => null,
-  History: () => null,
-}))
+// See src/test/lucideStub.tsx.
+vi.mock('lucide-react', async () => (await import('../test/lucideStub')).lucideStub)
 
 // Mock formatDate/formatNumber to avoid loading the i18n HTTP backend in tests.
 vi.mock('../utils/formatDate', () => ({

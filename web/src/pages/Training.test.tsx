@@ -83,18 +83,9 @@ vi.mock('../auth', () => {
   return { useAuth: () => auth }
 })
 
-// Every icon renders as an inert stub. A Proxy instead of a hand-written list so
-// that a new icon anywhere in the page's component graph doesn't break the suite.
-vi.mock('lucide-react', () => new Proxy({} as Record<string, unknown>, {
-  get: (_target, prop) => {
-    if (prop === '__esModule') return true
-    // `then` must stay undefined or the module object looks like a thenable and
-    // vitest's `await mock.resolve()` never settles.
-    if (prop === 'then' || typeof prop === 'symbol') return undefined
-    return () => null
-  },
-  has: () => true,
-}))
+// Every icon renders as an inert stub, so a new icon anywhere in the page's
+// component graph doesn't break the suite. See src/test/lucideStub.tsx.
+vi.mock('lucide-react', async () => (await import('../test/lucideStub')).lucideStub)
 
 vi.mock('../utils/formatDate', () => ({
   formatDate: () => 'Jan 1, 2026',

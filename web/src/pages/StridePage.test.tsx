@@ -100,18 +100,9 @@ vi.mock('react-syntax-highlighter', () => ({
 }))
 vi.mock('react-syntax-highlighter/dist/esm/styles/prism', () => ({ vscDarkPlus: {} }))
 
-// Every icon renders as an inert stub. A Proxy instead of a hand-written list so
-// that a new icon anywhere in the page's component graph doesn't break the suite.
-vi.mock('lucide-react', () => new Proxy({} as Record<string, unknown>, {
-  get: (_target, prop) => {
-    if (prop === '__esModule') return true
-    // `then` must stay undefined or the module object looks like a thenable and
-    // vitest's `await mock.resolve()` never settles.
-    if (prop === 'then' || typeof prop === 'symbol') return undefined
-    return () => null
-  },
-  has: () => true,
-}))
+// Every icon renders as an inert stub, shared with the other page suites so the
+// stub's special-casing lives in one place. See src/test/lucideStub.tsx.
+vi.mock('lucide-react', async () => (await import('../test/lucideStub')).lucideStub)
 
 vi.mock('../utils/formatDate', () => ({
   formatDate: (date: Date | string, options?: Intl.DateTimeFormatOptions) => {

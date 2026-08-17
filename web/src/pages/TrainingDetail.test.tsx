@@ -124,18 +124,9 @@ vi.mock('../components/TagBadge', () => ({
   default: ({ tag }: { tag: string }) => <span>{tag}</span>,
 }))
 
-vi.mock('lucide-react', () => {
-  const Stub = () => null
-  return {
-    ArrowLeft: Stub, Trash2: Stub, Save: Stub, GitCompareArrows: Stub,
-    Sparkles: Stub, RefreshCw: Stub, Loader2: Stub, TrendingUp: Stub,
-    TrendingDown: Stub, ArrowRight: Stub, Minus: Stub, AlertTriangle: Stub,
-    CheckCircle2: Stub, Info: Stub, FlaskConical: Stub, XCircle: Stub,
-    Zap: Stub, Trophy: Stub,
-    // Used by EvalThread, which renders inside the stride evaluation card.
-    MessageCircle: Stub, Send: Stub, HelpCircle: Stub,
-  }
-})
+// Every icon renders as an inert stub, so a new icon anywhere in the page's
+// component graph doesn't break the suite. See src/test/lucideStub.tsx.
+vi.mock('lucide-react', async () => (await import('../test/lucideStub')).lucideStub)
 
 vi.mock('../utils/formatDate', () => ({
   formatDate: (date: Date | string) => String(date),
