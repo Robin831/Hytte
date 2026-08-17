@@ -62,6 +62,173 @@ func TestBestWindowAcceptsCleanTempo(t *testing.T) {
 	}
 }
 
+// stripHR returns a copy of laps with every HR zeroed — the shape of a workout
+// recorded without a strap.
+func stripHR(laps []predictionLap) []predictionLap {
+	out := make([]predictionLap, len(laps))
+	copy(out, laps)
+	for i := range out {
+		out[i].hr = 0
+	}
+	return out
+}
+
+// Real lap rows, pasted from the athlete's DB. These are the sessions the
+// warmup-domination gates were designed against, so the tests below are a
+// before/after diff on production data rather than on invented numbers.
+var (
+	// workout 94, 2026-08-04: 15:01 warmup then 4x6min at 4:46-4:54/km with
+	// 2min jogs, cooldown. The bug: laps 1+2 spread only 10.8%, so the warmup
+	// and the first rep were reported as one "4.1 km in 21:00 at 5:08/km".
+	lapsAug4Intervals = lapRows(
+		900.94, 2839.48, 144, // warmup, 5:17/km
+		360.0, 1259.36, 158, // rep 1, 4:46/km
+		120.0, 308.25, 141, // jog
+		360.0, 1245.0, 158, // rep 2
+		120.0, 318.29, 149, // jog
+		360.0, 1225.48, 157, // rep 3
+		120.0, 287.54, 142, // jog
+		360.0, 1255.17, 162, // rep 4
+		120.0, 350.0, 153, // jog
+		518.11, 1521.06, 149, // cooldown
+	)
+	// workout 30, 2026-04-12: easy run, HR drifts 136 -> 157 end to end.
+	lapsApr12Easy = lapRows(
+		331.36, 1000, 136, 329.33, 1000, 141, 339.0, 1000, 137, 350.87, 1000, 142,
+		354.46, 1000, 141, 373.67, 1000, 148, 370.27, 1000, 149, 398.8, 1000, 157,
+		345.26, 1000, 140, 254.14, 687.35, 140,
+	)
+	// workout 58, 2026-05-16: easy run, HR 121 -> 151, and the opening km
+	// alone steps +15 bpm at unchanged pace as the body warms up.
+	lapsMay16Easy = lapRows(
+		341.64, 1000, 121, 336.91, 1000, 136, 324.33, 1000, 132, 354.76, 1000, 141,
+		356.91, 1000, 137, 348.67, 1000, 137, 387.5, 1000, 143, 320.64, 1000, 151,
+		144.6, 412.5, 142,
+	)
+	// workout 88, 2026-07-23: long easy run whose opening km steps +19 bpm
+	// (124 -> 143) while the pace gets SLOWER — the clearest proof that an HR
+	// step on its own says nothing about effort.
+	lapsJul23Long = lapRows(
+		329.66, 1000, 124, 335.0, 1000, 143, 341.09, 1000, 140, 354.86, 1000, 143,
+		406.0, 1000, 151, 355.94, 1000, 151, 354.58, 1000, 146, 368.0, 1000, 146,
+		439.2, 1000, 146, 316.33, 1000, 160, 516.27, 810.46, 157,
+	)
+)
+
+// TestBestWindowRejectsWarmupDominatedWindow pins the bug: the 12% pace-spread
+// gate catches reps+recovery but not warmup+rep, because it compares the two
+// extreme laps and ignores how long each one lasted. On the real 2026-08-04
+// session the warmup owned 71% of the winning window's clock and the headline
+// fact understated the athlete at 5:08/km.
+func TestBestWindowRejectsWarmupDominatedWindow(t *testing.T) {
+	date := "2026-08-04T08:43:13Z"
+
+	// The exact two-lap window the live trace picked, in isolation: 21:00 of
+	// which 15:01 is warmup. It passes the spread gate (10.8%) and must still
+	// be rejected.
+	if e := bestWindow(lapsAug4Intervals[:2], 94, date); e != nil {
+		t.Errorf("warmup+rep must not be reported as one sustained effort, got %.1f km in %s at %s/km",
+			e.DistanceMeters/1000, formatRaceTime(int(e.DurationSeconds)), formatPacePerKm(e.PaceSecPerKm))
+	}
+
+	// And the full session yields no sustained window at all: every longer
+	// window spans a recovery jog.
+	if e := bestWindow(lapsAug4Intervals, 94, date); e != nil {
+		t.Errorf("interval session must not produce a sustained window, got %+v", e)
+	}
+
+	// The session's honest reading — and the anchor — is unmoved: it was
+	// always work-derived, never the smeared window.
+	ie := extractIntervalEffort(lapsAug4Intervals, 94, date)
+	if ie == nil {
+		t.Fatal("expected the 4x6min work cluster")
+	}
+	facts := &predictionFacts{
+		AsOf: time.Now().UTC(),
+		IntervalEfforts: []intervalEffort{{
+			WorkoutID: 94, Date: time.Now().UTC().AddDate(0, 0, -12).Format(time.RFC3339),
+			Reps: ie.Reps, TotalWorkSeconds: ie.TotalWorkSeconds,
+			WorkPaceSecPerKm: ie.WorkPaceSecPerKm, AvgHeartRate: ie.AvgHeartRate,
+		}},
+		ThresholdHR: 163,
+		MaxHR:       186,
+	}
+	anchor := deriveBaselineAnchor(facts)
+	if anchor == nil || !anchor.WorkDerived {
+		t.Fatalf("anchor must still come from the work laps, got %+v", anchor)
+	}
+	// 4x6min at ~4:49/km work pace, HR 158.75 vs threshold 163 → -3 s/km.
+	if anchor.ThresholdPaceSecPerKm < 282 || anchor.ThresholdPaceSecPerKm > 290 {
+		t.Errorf("anchor pace %.1f moved; the fix must only change the reported effort",
+			anchor.ThresholdPaceSecPerKm)
+	}
+}
+
+// TestBestWindowKeepsEasyRunsWithHRDrift is the guard the bead demanded: the
+// warmup gates must not be an HR gate in disguise. Easy runs drift 20-30 bpm
+// end to end and step 15-19 bpm across their opening kilometres at unchanged
+// pace, so any range gate — and any bare HR-step gate — deletes them. Each
+// window here is the one production reported before the fix.
+func TestBestWindowKeepsEasyRunsWithHRDrift(t *testing.T) {
+	cases := []struct {
+		name          string
+		laps          []predictionLap
+		wantPace      float64 // s/km, as reported before the fix
+		wantDurationS float64
+	}{
+		{"2026-04-12 easy (HR 136-157)", lapsApr12Easy, 337.6, 1350.56},
+		{"2026-05-16 easy (HR 121-151, +15 bpm opening step)", lapsMay16Easy, 339.4, 1357.64},
+		{"2026-07-23 long (HR 124-160, +19 bpm opening step)", lapsJul23Long, 340.2, 1360.61},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := bestWindow(c.laps, 1, "2026-01-01T00:00:00Z")
+			if e == nil {
+				t.Fatal("honest easy-run window deleted by the warmup gates")
+			}
+			if math.Abs(e.PaceSecPerKm-c.wantPace) > 0.5 {
+				t.Errorf("pace = %.1f s/km, want %.1f (unchanged by the fix)", e.PaceSecPerKm, c.wantPace)
+			}
+			if math.Abs(e.DurationSeconds-c.wantDurationS) > 0.5 {
+				t.Errorf("duration = %.2f s, want %.2f (unchanged by the fix)", e.DurationSeconds, c.wantDurationS)
+			}
+
+			// Same run without a strap: the drift gate is HR-free, so the
+			// window must survive identically.
+			if noHR := bestWindow(stripHR(c.laps), 1, "2026-01-01T00:00:00Z"); noHR == nil {
+				t.Error("HR-less workout became unselectable")
+			} else if math.Abs(noHR.PaceSecPerKm-e.PaceSecPerKm) > 0.01 {
+				t.Errorf("HR-less pace %.1f differs from %.1f", noHR.PaceSecPerKm, e.PaceSecPerKm)
+			}
+		})
+	}
+}
+
+// TestBestWindowRejectsBalancedEffortStep covers the case the duration-weighted
+// gate cannot see: a warmup and a rep of EQUAL length. The window average then
+// sits close enough to the fastest lap to clear maxWindowPaceDrift, and only
+// the simultaneous pace-and-HR step gives the gear change away.
+func TestBestWindowRejectsBalancedEffortStep(t *testing.T) {
+	// 10:00 at 5:17/km HR 144, then 10:00 at 4:46/km HR 158. Spread 10.8%
+	// (inside the 12% gate), window pace 5:01/km — 5.1% off the fastest lap,
+	// inside the drift gate.
+	stepped := lapRows(
+		600.0, 600.0/317.0*1000, 144,
+		600.0, 600.0/286.0*1000, 158,
+	)
+	if e := bestWindow(stepped, 1, "2026-08-04T08:43:13Z"); e != nil {
+		t.Errorf("a 14 bpm step onto a 10.8%% faster pace is two efforts, got %+v", e)
+	}
+
+	// Change gear on pace alone with no HR recorded and there is nothing left
+	// to distinguish it from an honest progression run — that window stands,
+	// by design. Documented here so the behaviour is deliberate, not a gap
+	// someone "fixes" with a range gate.
+	if e := bestWindow(stripHR(stepped), 1, "2026-08-04T08:43:13Z"); e == nil {
+		t.Error("HR-less balanced window must still be selectable")
+	}
+}
+
 // TestDeriveBaselineAnchorPrefersRecency pins the second coach finding: a
 // faster effort from four months ago must not outrank current evidence.
 func TestDeriveBaselineAnchorPrefersRecency(t *testing.T) {
@@ -168,10 +335,11 @@ func TestIntervalThresholdAdjustment(t *testing.T) {
 	}
 }
 
-// indoorLaps builds indoor laps from (durS, distM, hr) triples. Distances are
-// the watch's real cadence-derived values, deliberately kept so these tests
-// prove the indoor path ignores them.
-func indoorLaps(triples ...float64) []predictionLap {
+// lapRows builds laps from (durS, distM, hr) triples — the shape the lap rows
+// come out of the DB in, so real sessions can be pasted straight into a test.
+// For indoor sessions the distances are the watch's cadence-derived values,
+// deliberately kept so those tests prove the indoor path ignores them.
+func lapRows(triples ...float64) []predictionLap {
 	laps := make([]predictionLap, 0, len(triples)/3)
 	for i := 0; i+2 < len(triples); i += 3 {
 		laps = append(laps, predictionLap{durS: triples[i], distM: triples[i+1], hr: int(triples[i+2])})
@@ -186,7 +354,7 @@ func indoorLaps(triples ...float64) []predictionLap {
 // indoor pace ordering is inverted, so the 8% band anchored on the warmup and
 // excluded lap 2 by 0.6 s/km, leaving 2 laps and failing the rep floor.
 func TestExtractIndoorIntervalEffortKeepsSessionPaceClusteringDiscarded(t *testing.T) {
-	laps := indoorLaps(
+	laps := lapRows(
 		899.1, 2861.15, 140, // warmup — FASTEST by watch pace (314 s/km)
 		600.0, 1762.37, 158, // rep 1 (340 s/km — "slower" than the warmup)
 		120.0, 346.72, 149, // jog
@@ -222,7 +390,7 @@ func TestExtractIndoorIntervalEffortKeepsSessionPaceClusteringDiscarded(t *testi
 func TestExtractIndoorIntervalEffortRejectsEasyRuns(t *testing.T) {
 	floor := indoorWorkHRFloor(163, 186)
 
-	easy := indoorLaps( // workout 99, 2026-08-12
+	easy := lapRows( // workout 99, 2026-08-12
 		340.68, 1000, 125, 325.33, 1000, 138, 340.67, 1000, 138, 335.66, 1000, 140,
 		341.0, 1000, 142, 340.74, 1000, 144, 338.93, 1000, 144, 338.33, 1000, 146,
 	)
@@ -230,7 +398,7 @@ func TestExtractIndoorIntervalEffortRejectsEasyRuns(t *testing.T) {
 		t.Errorf("easy treadmill run reported as interval work: %+v", got)
 	}
 
-	strides := indoorLaps( // workout 101, 2026-08-15
+	strides := lapRows( // workout 101, 2026-08-15
 		369.04, 1000, 118, 342.66, 1000, 129, 356.52, 1000, 131,
 		360.26, 1000, 135, 380.26, 1000, 133, 291.96, 820, 149,
 	)
@@ -238,7 +406,7 @@ func TestExtractIndoorIntervalEffortRejectsEasyRuns(t *testing.T) {
 		t.Errorf("easy+strides run reported as interval work: %+v", got)
 	}
 
-	long := indoorLaps( // workout 102, 2026-08-16 progression long run
+	long := lapRows( // workout 102, 2026-08-16 progression long run
 		4200.5, 11600.47, 141, 719.09, 2003.85, 151, 183.22, 505.4, 143,
 	)
 	if got := extractIndoorIntervalEffort(long, 102, "2026-08-16T06:58:06Z", floor); got != nil {
