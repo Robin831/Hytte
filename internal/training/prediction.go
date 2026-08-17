@@ -91,6 +91,37 @@ const maxLapPaceSpread = 0.12
 // and distance in the window totals.
 const spreadMinLapSeconds = 45
 
+// maxWindowPaceDrift bounds how far a window's reported pace may sit behind
+// its own fastest real lap. maxLapPaceSpread compares the two extreme laps and
+// ignores how long each one lasted, so a long warmup joined to a single rep
+// slips through: on 2026-08-04 (workout 94) a 15:01 warmup at 5:17/km followed
+// by a 6:00 rep at 4:46/km spreads only 10.8% and was reported as "4.1 km in
+// 21:00 at 5:08/km" — a pace nobody ran, mostly warmup by the clock.
+// Comparing the window pace against its fastest lap IS duration-weighted: a
+// time-balanced window sitting on the 12% spread limit lands about 6% off its
+// fastest lap, so this gate only bites when the slow laps own most of the
+// clock. Every genuine continuous effort in the athlete's history sits at
+// 2.5-4.7%, the workout 94 blend at 7.6%.
+const maxWindowPaceDrift = 0.06
+
+// An effort step is a lap-to-lap transition that gets BOTH materially faster
+// and materially higher-HR at once: the athlete changed gear, so the laps on
+// either side are two efforts, not one sustained one.
+//
+// Neither half of that test works alone, which is why the gate is a STEP
+// between adjacent laps and never a RANGE over the window:
+//   - An HR range gate is hopeless. Honest easy runs drift 136->157
+//     (2026-04-12) and 121->151 (2026-05-16) end to end, so any range tight
+//     enough to catch workout 94's 144->158 warmup-to-rep jump deletes them.
+//   - A bare HR step gate fails too. HR ramps from rest over the opening
+//     kilometres at unchanged pace: +15 bpm on 2026-05-16, +19 bpm on
+//     2026-07-23. Requiring the pace to step down at the same time is what
+//     separates a new effort level from a body still warming up.
+const (
+	effortStepHRBpm    = 8
+	effortStepPaceFrac = 0.05
+)
+
 // Work-lap clustering bounds for interval sessions: a work rep is a lap of
 // 2-15 minutes whose pace sits within workLapPaceBand of the session's
 // fastest such lap. Recovery jogs fall far outside the band.
@@ -281,8 +312,8 @@ var raceDistances = []struct {
 }
 
 // bestSustainedEfforts extracts, per outdoor running workout of the last
-// predictionFactsMonths, the fastest CLEAN contiguous lap window of at least
-// minSustainedEffortSeconds (see bestWindow's spread rejection) plus the
+// predictionFactsMonths, the fastest contiguous lap window of at least
+// minSustainedEffortSeconds run as one effort (see bestWindow) plus the
 // session's interval work-lap cluster (see extractIntervalEffort), and returns
 // the overall best of each (fastest pace first; efforts capped at limit,
 // intervals at 3). Workouts with a net descent are excluded — a fast downhill
@@ -366,18 +397,41 @@ type predictionLap struct {
 	hr    int
 }
 
-// bestWindow finds the fastest CLEAN contiguous lap window of at least
-// minSustainedEffortSeconds in one workout's laps. A window whose lap paces
-// spread more than maxLapPaceSpread is a reps+recovery block, not a sustained
-// effort — averaging the float jogs in produced a fictional pace nobody ran —
-// so mixed windows are rejected outright (interval sessions contribute via
-// extractIntervalEffort instead). Returns nil when no window qualifies or the
-// resulting pace is implausible (GPS junk).
+// bestWindow finds the fastest contiguous lap window of at least
+// minSustainedEffortSeconds in one workout's laps that the athlete actually
+// ran as ONE effort.
+//
+// "One effort" is the whole definition, and it is deliberately stricter than
+// "narrow average pace". The window must be homogeneous: every lap at the same
+// gear, no single lap owning the clock, no step change in effort part-way
+// through. What comes back is therefore the fastest steady stretch of that
+// session — on an easy run that is an easy pace, and the facts block says so;
+// the list is evidence of what was run, not a claim that any of it was
+// maximal. Three gates enforce it:
+//
+//   - maxLapPaceSpread rejects reps+recovery. Averaging the float jogs in
+//     produced a fictional pace nobody ran (interval sessions contribute
+//     honestly via extractIntervalEffort instead).
+//   - maxWindowPaceDrift rejects windows a long slow lap dominates by time —
+//     warmup+rep, which the spread gate cannot see because it ignores lap
+//     duration. This one needs no HR, so it still works on HR-less workouts.
+//   - the effort-step gate rejects a window containing a simultaneous
+//     pace-and-HR jump, i.e. the athlete changing gear mid-window.
+//
+// Returns nil when no window qualifies or the resulting pace is implausible
+// (GPS junk).
 func bestWindow(laps []predictionLap, workoutID int64, startedAt string) *sustainedEffort {
 	var best *sustainedEffort
 	for i := 0; i < len(laps); i++ {
 		var durS, distM, hrSum, hrN float64
 		minPace, maxPace := math.MaxFloat64, 0.0
+		// prevPace/prevHR are the previous REAL lap in this window that recorded
+		// HR, carried so the effort-step test skips over micro-laps (and over
+		// HR-dropout laps) rather than tripping on their noise or going blind
+		// after them. effortStep latches: once a gear change is inside the
+		// window, every longer window from this i contains it too.
+		prevPace, prevHR := 0.0, 0
+		effortStep := false
 		for j := i; j < len(laps); j++ {
 			durS += laps[j].durS
 			distM += laps[j].distM
@@ -394,6 +448,18 @@ func bestWindow(laps []predictionLap, workoutID int64, startedAt string) *sustai
 				if p > maxPace {
 					maxPace = p
 				}
+				if prevPace > 0 && prevHR > 0 && laps[j].hr > 0 &&
+					laps[j].hr-prevHR >= effortStepHRBpm &&
+					prevPace/p-1 >= effortStepPaceFrac {
+					effortStep = true
+				}
+				// Carry the baseline only across laps that actually recorded
+				// HR: one dropout lap must not blind the step test for the
+				// next real lap. Pace and HR move together so both halves of
+				// the comparison always come from the same lap.
+				if laps[j].hr > 0 {
+					prevPace, prevHR = p, laps[j].hr
+				}
 			}
 			if durS < minSustainedEffortSeconds || distM <= 0 {
 				continue
@@ -403,7 +469,18 @@ func bestWindow(laps []predictionLap, workoutID int64, startedAt string) *sustai
 			if minPace < math.MaxFloat64 && maxPace/minPace-1 > maxLapPaceSpread {
 				break
 			}
+			// Two efforts stitched together, and extending keeps the step
+			// inside the window — nothing further from this start qualifies.
+			if effortStep {
+				break
+			}
 			pace := durS / (distM / 1000.0)
+			// Warmup-dominated: the reported pace is a blend the fastest lap
+			// disowns. A longer window may still qualify (extending can add
+			// laps at the fast end), so keep scanning rather than breaking.
+			if minPace < math.MaxFloat64 && pace/minPace-1 > maxWindowPaceDrift {
+				continue
+			}
 			// Discard implausible paces: faster than 2:30/km is GPS junk,
 			// slower than 8:00/km is not an effort anchor.
 			if pace < 150 || pace > 480 {
@@ -1135,7 +1212,7 @@ func formatFacts(facts *predictionFacts) string {
 		b.WriteString("\n\n")
 	}
 
-	b.WriteString("Best clean sustained efforts (contiguous lap windows >= 20 min with even lap paces, outdoor running, net-descent excluded):\n")
+	b.WriteString("Best clean sustained efforts (per workout, the fastest contiguous lap window >= 20 min run at ONE steady effort — outdoor running, net-descent excluded). These are what was actually run, not maximal efforts: an easy run's window is an easy pace, so read the HR before treating any of them as fitness ceilings:\n")
 	if len(facts.BestEfforts) == 0 {
 		b.WriteString("- none found in the window\n")
 	}

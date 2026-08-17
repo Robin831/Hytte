@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router'
 import TrainingDetail from './TrainingDetail'
+import { stubEventSource, type EventSourceStub } from '../test/stubEventSource'
 
 // ── Translation mock ──────────────────────────────────────────────────────────
 // Uses an async factory so enTraining is loaded inside the mock (avoids hoisting issues).
@@ -131,6 +132,8 @@ vi.mock('lucide-react', () => {
     TrendingDown: Stub, ArrowRight: Stub, Minus: Stub, AlertTriangle: Stub,
     CheckCircle2: Stub, Info: Stub, FlaskConical: Stub, XCircle: Stub,
     Zap: Stub, Trophy: Stub,
+    // Used by EvalThread, which renders inside the stride evaluation card.
+    MessageCircle: Stub, Send: Stub, HelpCircle: Stub,
   }
 })
 
@@ -178,6 +181,8 @@ const SAVED_CONTEXT = {
 
 interface FetchOverrides {
   context?: { ok: boolean; status?: number; data?: unknown }
+  /** Read per call, so a test can change what lands between two refetches. */
+  evaluations?: () => unknown[]
 }
 
 function makeFetchMock(overrides: FetchOverrides = {}) {
@@ -198,7 +203,9 @@ function makeFetchMock(overrides: FetchOverrides = {}) {
     }
     if (url.endsWith('/zones')) return ok({ zones: [] })
     if (url.endsWith('/similar')) return ok({ similar: [] })
-    if (url.includes('/api/stride/evaluations')) return ok({ evaluations: [] })
+    if (url.includes('/api/stride/evaluations')) {
+      return ok({ evaluations: overrides.evaluations?.() ?? [] })
+    }
     if (url.endsWith('/context')) {
       const ctx = overrides.context
       if (!ctx) return notFound()
@@ -233,6 +240,9 @@ describe('TrainingDetail – workout context flow', () => {
   beforeEach(() => {
     modalCallbacks.lastOnClose = null
     authState.user = { id: 1, email: 'a@b.c', name: 'Tester', is_admin: true, features: {} }
+    // The page subscribes to the training SSE hub for stride_eval_started/ready;
+    // without a stubbed EventSource every render throws on mount.
+    stubEventSource()
   })
 
   afterEach(() => {
@@ -367,5 +377,109 @@ describe('TrainingDetail – workout context flow', () => {
         screen.queryByText('AI summary pending — provide workout context'),
       ).toBeNull()
     })
+  })
+})
+
+// The coach evaluation lands from a background Claude call with no status column
+// to poll, so the SSE hub is the only thing that puts it on screen. These tests
+// drive the stream directly: the stub keeps its listeners, so the pending strip,
+// the event matching (id or date) and the refetch are exercised rather than
+// merely stubbed away.
+describe('TrainingDetail – stride evaluation over SSE', () => {
+  const PENDING_STRIP = 'The coach is evaluating this workout…'
+
+  // The evaluation the coach stores for workout 42; absent until a test says so.
+  const READY_EVAL = {
+    id: 7,
+    user_id: 1,
+    plan_id: 3,
+    workout_id: BASE_WORKOUT.id,
+    eval: {
+      planned_type: 'easy',
+      actual_type: 'easy',
+      compliance: 'compliant',
+      notes: 'Held the HR cap the whole way',
+      flags: [],
+      adjustments: '',
+    },
+    created_at: '2026-04-09T20:00:00Z',
+  }
+
+  let sse: EventSourceStub
+  let stored: unknown[]
+
+  beforeEach(async () => {
+    authState.user = { id: 1, email: 'a@b.c', name: 'Tester', is_admin: true, features: {} }
+    stored = []
+    sse = stubEventSource()
+    vi.stubGlobal('fetch', makeFetchMock({
+      context: { ok: true, data: { context: SAVED_CONTEXT } },
+      evaluations: () => stored,
+    }))
+    renderPage()
+    // The date-matching branch needs the loaded workout's started_at, so wait
+    // for the page body before dispatching anything.
+    await waitFor(() => expect(screen.getByText('Morning Run')).toBeInTheDocument())
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('subscribes to the training stream and shows the pending strip on a matching workout id', async () => {
+    expect(sse.urls()).toContain('/api/training/events')
+    expect(screen.queryByText(PENDING_STRIP)).toBeNull()
+
+    act(() => sse.dispatch('stride_eval_started', { workout_id: BASE_WORKOUT.id }))
+
+    expect(await screen.findByText(PENDING_STRIP)).toBeInTheDocument()
+  })
+
+  it('matches on the evaluated date when the event carries no workout id', async () => {
+    // A stride evaluation covers a date, so an event for 2026-04-09 belongs to
+    // this workout even with workout_id unset.
+    act(() => sse.dispatch('stride_eval_started', { workout_id: 0, date: '2026-04-09' }))
+
+    expect(await screen.findByText(PENDING_STRIP)).toBeInTheDocument()
+  })
+
+  it('ignores events for another workout, another date, or a malformed payload', async () => {
+    act(() => {
+      sse.dispatch('stride_eval_started', { workout_id: 999 })
+      sse.dispatch('stride_eval_started', { date: '2026-04-10' })
+      sse.dispatch('stride_eval_started', { date: '' })
+      sse.dispatch('stride_eval_started', 'not json{')
+    })
+
+    await waitFor(() => expect(screen.getByText('Morning Run')).toBeInTheDocument())
+    expect(screen.queryByText(PENDING_STRIP)).toBeNull()
+  })
+
+  it('clears the pending strip and loads the stored evaluation on stride_eval_ready', async () => {
+    act(() => sse.dispatch('stride_eval_started', { workout_id: BASE_WORKOUT.id }))
+    expect(await screen.findByText(PENDING_STRIP)).toBeInTheDocument()
+
+    // The coach's result is now stored, and the ready event triggers the refetch.
+    stored = [READY_EVAL]
+    act(() => sse.dispatch('stride_eval_ready', { workout_id: BASE_WORKOUT.id }))
+
+    expect(await screen.findByText('Held the HR cap the whole way')).toBeInTheDocument()
+    expect(screen.getByText('Stride says')).toBeInTheDocument()
+    expect(screen.queryByText(PENDING_STRIP)).toBeNull()
+  })
+
+  it('does not refetch for a stride_eval_ready belonging to another workout', async () => {
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+    const evalCalls = () =>
+      fetchMock.mock.calls.filter(([url]) => String(url).includes('/api/stride/evaluations')).length
+    const before = evalCalls()
+
+    stored = [READY_EVAL]
+    act(() => sse.dispatch('stride_eval_ready', { workout_id: 999 }))
+
+    await waitFor(() => expect(screen.getByText('Morning Run')).toBeInTheDocument())
+    expect(evalCalls()).toBe(before)
+    expect(screen.queryByText('Stride says')).toBeNull()
   })
 })

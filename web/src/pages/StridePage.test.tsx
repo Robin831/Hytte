@@ -6,6 +6,7 @@ import StridePage from './StridePage'
 import { parseTargetTime } from './strideUtils'
 import enStride from '../../public/locales/en/stride.json'
 import type { DayPlan } from '../types/stride'
+import { stubEventSource, type EventSourceStub } from '../test/stubEventSource'
 
 // ── StrideChatDrawer mock ─────────────────────────────────────────────────────
 
@@ -99,29 +100,14 @@ vi.mock('react-syntax-highlighter', () => ({
 }))
 vi.mock('react-syntax-highlighter/dist/esm/styles/prism', () => ({ vscDarkPlus: {} }))
 
-vi.mock('lucide-react', () => ({
-  Trash2: () => null,
-  Plus: () => null,
-  Trophy: () => null,
-  Zap: () => null,
-  ChevronDown: () => null,
-  ChevronUp: () => null,
-  ChevronRight: () => null,
-  RefreshCw: () => null,
-  CheckCircle2: () => null,
-  Circle: () => null,
-  AlertTriangle: () => null,
-  XCircle: () => null,
-  History: () => null,
-  Pencil: () => null,
-  Flag: () => null,
-  MessageCircle: () => null,
-  Send: () => null,
-  Loader2: () => null,
-  Bot: () => null,
-  User: () => null,
-  X: () => null,
-}))
+// Every icon renders as nothing. Enumerating them by hand meant that adding one
+// icon anywhere under StridePage — a component several levels down, not this
+// page — failed the whole file with "No X export is defined on the mock", so the
+// mock answers for any name instead.
+vi.mock('lucide-react', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>()
+  return Object.fromEntries(Object.keys(actual).map((name) => [name, () => null]))
+})
 
 vi.mock('../utils/formatDate', () => ({
   formatDate: (date: Date | string, options?: Intl.DateTimeFormatOptions) => {
@@ -134,6 +120,16 @@ vi.mock('../utils/formatDate', () => ({
   },
   formatNumber: (n: number, options?: Intl.NumberFormatOptions) => n.toLocaleString('en', options),
 }))
+
+// The page subscribes to the training SSE hub so a finished stride evaluation
+// lands without a manual refresh. Neither jsdom nor happy-dom has EventSource,
+// so every render would throw on mount without a stub. Each describe unstubs its
+// globals after every test, hence the file-level beforeEach rather than a
+// one-time setup. `sse` drives the stream in the live-refresh describe below.
+let sse: EventSourceStub
+beforeEach(() => {
+  sse = stubEventSource()
+})
 
 // ── Test data ─────────────────────────────────────────────────────────────────
 
@@ -1376,5 +1372,104 @@ describe('StridePage – Generate button target week', () => {
     // The mode is unresolved until /plans/current answers, so the button stays
     // disabled rather than acting on a not-yet-loaded plan.
     expect(screen.getByRole('button', { name: 'Generate this week' })).toBeDisabled()
+  })
+})
+
+// The coach's evaluation is stored by a background Claude call minutes after the
+// workout context is saved, so without the SSE push the new row only appeared on
+// a manual refresh. The stub keeps its listeners, so this drives the real event.
+describe('StridePage – live evaluation refresh over SSE', () => {
+  const PLAN_DAY: DayPlan = {
+    date: '2099-01-13',
+    rest_day: false,
+    session: {
+      description: 'Easy run',
+      warmup: '',
+      main_set: '30 min easy',
+      cooldown: '',
+      strides: '',
+      target_hr_cap: 150,
+    },
+  }
+  const PLAN = {
+    id: 1,
+    user_id: 1,
+    week_start: '2099-01-13',
+    week_end: '2099-01-19',
+    phase: 'Base',
+    model: 'test',
+    created_at: '2099-01-13T00:00:00Z',
+    plan: [PLAN_DAY],
+  }
+
+  // Evaluation for workout 42, which the workouts response dates to the plan day.
+  const EVALUATION = {
+    id: 1,
+    user_id: 1,
+    plan_id: 1,
+    workout_id: 42,
+    eval: {
+      planned_type: 'easy',
+      actual_type: 'easy',
+      compliance: 'compliant',
+      notes: 'Held the cap, good control',
+      flags: [],
+      adjustments: '',
+    },
+    created_at: '2099-01-13T20:00:00Z',
+  }
+
+  let stored: unknown[]
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    // Nothing stored yet: the page loads with the plan but no coach feedback.
+    stored = []
+    fetchMock = vi.fn((url: string) => {
+      const make = (data: unknown) =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response)
+      if (url.includes('/api/stride/plans/current')) return make({ plan: PLAN })
+      if (url.includes('/api/stride/plans?limit=2')) return make({ plans: [PLAN] })
+      if (url.includes('/api/stride/evaluations')) return make({ evaluations: stored })
+      if (url.includes('/api/training/workouts')) {
+        return make({ workouts: [{ id: 42, started_at: '2099-01-13T08:00:00Z' }] })
+      }
+      if (url.includes('/api/stride/races')) return make({ races: [] })
+      if (url.includes('/api/stride/notes')) return make({ notes: [] })
+      return make({})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('refetches the week evaluations when a stride_eval_ready event arrives', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('30 min easy')).toBeInTheDocument())
+    expect(screen.queryByText('Held the cap, good control')).toBeNull()
+
+    const evalCalls = () =>
+      fetchMock.mock.calls.filter(([url]) => String(url).includes('/api/stride/evaluations')).length
+    const before = evalCalls()
+
+    // The coach has now stored the evaluation; the push must pull it in.
+    stored = [EVALUATION]
+    act(() => sse.dispatch('stride_eval_ready', { workout_id: 42 }))
+
+    expect(await screen.findByText('Held the cap, good control')).toBeInTheDocument()
+    expect(evalCalls()).toBeGreaterThan(before)
+  })
+
+  it('closes the stream on unmount so a stale page keeps no subscription', async () => {
+    const { unmount } = renderPage()
+    await waitFor(() => expect(screen.getByText('30 min easy')).toBeInTheDocument())
+    expect(sse.openCount()).toBeGreaterThan(0)
+
+    unmount()
+
+    expect(sse.openCount()).toBe(0)
   })
 })
