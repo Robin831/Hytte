@@ -131,6 +131,16 @@ func TestBestWindowRejectsWarmupDominatedWindow(t *testing.T) {
 			e.DistanceMeters/1000, formatRaceTime(int(e.DurationSeconds)), formatPacePerKm(e.PaceSecPerKm))
 	}
 
+	// Same window with no strap. The effort-step gate needs HR on both laps,
+	// so here only the duration-weighted drift gate is left — and it must
+	// still reject (the warmup owns 71% of the clock either way). Without
+	// this the with-HR assertion above passes on the step gate alone and a
+	// drift gate that quietly grew an HR dependency would go unnoticed.
+	if e := bestWindow(stripHR(lapsAug4Intervals[:2]), 94, date); e != nil {
+		t.Errorf("warmup+rep must be rejected without HR too (drift gate is HR-free), got %.1f km at %s/km",
+			e.DistanceMeters/1000, formatPacePerKm(e.PaceSecPerKm))
+	}
+
 	// And the full session yields no sustained window at all: every longer
 	// window spans a recovery jog.
 	if e := bestWindow(lapsAug4Intervals, 94, date); e != nil {
@@ -226,6 +236,101 @@ func TestBestWindowRejectsBalancedEffortStep(t *testing.T) {
 	// someone "fixes" with a range gate.
 	if e := bestWindow(stripHR(stepped), 1, "2026-08-04T08:43:13Z"); e == nil {
 		t.Error("HR-less balanced window must still be selectable")
+	}
+}
+
+// TestBestWindowSeesStepAcrossHRDropout pins that the step baseline survives a
+// lap the strap dropped out on. Carrying prevPace/prevHR unconditionally used to
+// zero prevHR there, so the very next lap failed its prevHR > 0 guard and a gear
+// change straight after a dropout went undetected.
+func TestBestWindowSeesStepAcrossHRDropout(t *testing.T) {
+	// 10:00 warmup at 5:17/km HR 144, a 2:00 lap at the same pace with no HR
+	// sample, then 10:00 at 4:46/km HR 158. Spread is 10.8% and the window pace
+	// lands 5.6% off the fastest lap, so both other gates pass — only the step
+	// test, comparing the rep against the warmup across the dropout, rejects it.
+	laps := lapRows(
+		600.0, 600.0/317.0*1000, 144,
+		120.0, 120.0/317.0*1000, 0,
+		600.0, 600.0/286.0*1000, 158,
+	)
+	if e := bestWindow(laps, 1, "2026-06-04T10:00:00Z"); e != nil {
+		t.Errorf("a gear change after an HR-dropout lap is still two efforts, got %+v", e)
+	}
+}
+
+// TestBestWindowRecoversFromDriftAtLongerWindow pins why the drift gate uses
+// continue and not break, unlike the other two gates in the same loop: drift is
+// duration-weighted, so extending a window can ADD fast laps and pull the
+// average back toward its fastest lap. Break here would silently drop valid
+// efforts, and a "consistency" cleanup would look harmless without this test.
+func TestBestWindowRecoversFromDriftAtLongerWindow(t *testing.T) {
+	// 15:00 at 5:30/km then 2 x 5:00 at 5:00/km, HR stepping only 7 bpm (under
+	// the 8 bpm gate, so the effort-step gate stays out of it).
+	//   slow+fast1 = 20:00, pace 5:22/km — 7.3% off the 5:00 lap, drift rejects.
+	//   slow+fast2 = 25:00, pace 5:17/km — 5.8% off, drift accepts.
+	laps := lapRows(
+		900.0, 900.0/330.0*1000, 150,
+		300.0, 1000, 157,
+		300.0, 1000, 157,
+	)
+	e := bestWindow(laps, 1, "2026-06-01T10:00:00Z")
+	if e == nil {
+		t.Fatal("the 25-min window comes back under the drift gate and must be selected")
+	}
+	if math.Abs(e.DurationSeconds-1500) > 0.5 {
+		t.Errorf("duration = %.1f s, want the longer 1500 s window", e.DurationSeconds)
+	}
+	if math.Abs(e.PaceSecPerKm-317.3) > 1 {
+		t.Errorf("pace = %.1f s/km, want ~317.3", e.PaceSecPerKm)
+	}
+}
+
+// TestBestWindowAcceptsTempoAfterGearStep pins the effort-step latch's scope:
+// it is per window START, so a gear change early in the session must not poison
+// windows that begin after it. That is the everyday warmup-then-tempo shape,
+// where the window worth reporting is the tempo itself.
+func TestBestWindowAcceptsTempoAfterGearStep(t *testing.T) {
+	// 10:00 warmup at 5:30/km HR 140, then 4 x 5:50 at 5:00/km HR 155. The
+	// step (+15 bpm onto a 10% faster pace) kills every window starting at the
+	// warmup; the 23:20 tempo starting at lap 1 is clean.
+	laps := lapRows(
+		600.0, 600.0/330.0*1000, 140,
+		350.0, 350.0/300.0*1000, 155,
+		350.0, 350.0/300.0*1000, 155,
+		350.0, 350.0/300.0*1000, 155,
+		350.0, 350.0/300.0*1000, 155,
+	)
+	e := bestWindow(laps, 1, "2026-06-02T10:00:00Z")
+	if e == nil {
+		t.Fatal("the steady tempo after the gear step must still be selectable")
+	}
+	if math.Abs(e.DurationSeconds-1400) > 0.5 {
+		t.Errorf("duration = %.1f s, want the 1400 s tempo window (start at lap 1)", e.DurationSeconds)
+	}
+	if math.Abs(e.PaceSecPerKm-300) > 0.5 {
+		t.Errorf("pace = %.1f s/km, want the tempo's 300 (not a warmup blend)", e.PaceSecPerKm)
+	}
+}
+
+// TestBestWindowStepBaselineSkipsMicroLaps pins the documented micro-lap
+// skipping: a stray button press is excluded from the spread, and it must be
+// excluded from the effort-step baseline too, or its junk pace/HR fakes a gear
+// change against the next real lap.
+func TestBestWindowStepBaselineSkipsMicroLaps(t *testing.T) {
+	// Two 11:00 laps of identical effort (5:00/km, HR 150) with a 10 s junk lap
+	// between them reading 6:40/km at HR 138 — against that neighbour the next
+	// real lap looks like +12 bpm onto a 33% faster pace.
+	laps := lapRows(
+		660.0, 660.0/300.0*1000, 150,
+		10.0, 25.0, 138,
+		660.0, 660.0/300.0*1000, 150,
+	)
+	e := bestWindow(laps, 1, "2026-06-03T10:00:00Z")
+	if e == nil {
+		t.Fatal("a 10 s junk lap must not read as a gear change between two identical laps")
+	}
+	if math.Abs(e.DurationSeconds-1330) > 0.5 {
+		t.Errorf("duration = %.1f s, want the full 1330 s window", e.DurationSeconds)
 	}
 }
 

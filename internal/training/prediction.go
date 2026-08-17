@@ -425,9 +425,10 @@ func bestWindow(laps []predictionLap, workoutID int64, startedAt string) *sustai
 	for i := 0; i < len(laps); i++ {
 		var durS, distM, hrSum, hrN float64
 		minPace, maxPace := math.MaxFloat64, 0.0
-		// prevPace/prevHR are the previous REAL lap in this window, carried so
-		// the effort-step test skips over micro-laps rather than tripping on
-		// their noise. effortStep latches: once a gear change is inside the
+		// prevPace/prevHR are the previous REAL lap in this window that recorded
+		// HR, carried so the effort-step test skips over micro-laps (and over
+		// HR-dropout laps) rather than tripping on their noise or going blind
+		// after them. effortStep latches: once a gear change is inside the
 		// window, every longer window from this i contains it too.
 		prevPace, prevHR := 0.0, 0
 		effortStep := false
@@ -452,7 +453,13 @@ func bestWindow(laps []predictionLap, workoutID int64, startedAt string) *sustai
 					prevPace/p-1 >= effortStepPaceFrac {
 					effortStep = true
 				}
-				prevPace, prevHR = p, laps[j].hr
+				// Carry the baseline only across laps that actually recorded
+				// HR: one dropout lap must not blind the step test for the
+				// next real lap. Pace and HR move together so both halves of
+				// the comparison always come from the same lap.
+				if laps[j].hr > 0 {
+					prevPace, prevHR = p, laps[j].hr
+				}
 			}
 			if durS < minSustainedEffortSeconds || distM <= 0 {
 				continue

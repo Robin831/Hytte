@@ -403,7 +403,6 @@ describe('Training filter bar', () => {
       expect(await screen.findByText(w.title)).toBeInTheDocument()
     }
   })
-
 })
 
 describe('Training filters in the URL', () => {
