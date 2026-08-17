@@ -100,14 +100,9 @@ vi.mock('react-syntax-highlighter', () => ({
 }))
 vi.mock('react-syntax-highlighter/dist/esm/styles/prism', () => ({ vscDarkPlus: {} }))
 
-// Every icon renders as nothing. Enumerating them by hand meant that adding one
-// icon anywhere under StridePage — a component several levels down, not this
-// page — failed the whole file with "No X export is defined on the mock", so the
-// mock answers for any name instead.
-vi.mock('lucide-react', async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>()
-  return Object.fromEntries(Object.keys(actual).map((name) => [name, () => null]))
-})
+// Every icon renders as an inert stub, shared with the other page suites so the
+// stub's special-casing lives in one place. See src/test/lucideStub.tsx.
+vi.mock('lucide-react', async () => (await import('../test/lucideStub')).lucideStub)
 
 vi.mock('../utils/formatDate', () => ({
   formatDate: (date: Date | string, options?: Intl.DateTimeFormatOptions) => {

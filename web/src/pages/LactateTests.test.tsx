@@ -48,20 +48,9 @@ vi.mock('../utils/formatDate', () => ({
   formatNumber: (n: number, opts?: Intl.NumberFormatOptions) => n.toFixed(opts?.minimumFractionDigits ?? 0),
 }))
 
-vi.mock('lucide-react', () => {
-  const stub = (name: string) => () => <span data-testid={`icon-${name}`} />
-  return {
-    Activity: stub('activity'),
-    Plus: stub('plus'),
-    Calendar: stub('calendar'),
-    ChevronRight: stub('chevron-right'),
-    TrendingUp: stub('trending-up'),
-    ArrowUp: stub('arrow-up'),
-    ArrowDown: stub('arrow-down'),
-    Minus: stub('minus'),
-    Gauge: stub('gauge'),
-  }
-})
+// Every icon renders as `<span data-testid="icon-kebab-name" />`; the assertions
+// below query those testids. See src/test/lucideStub.tsx.
+vi.mock('lucide-react', async () => (await import('../test/lucideStub')).lucideStub)
 
 function makeTest(id: number, threshold?: PrimaryThreshold | null): LactateTest {
   return {
