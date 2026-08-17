@@ -83,17 +83,18 @@ vi.mock('../auth', () => {
   return { useAuth: () => auth }
 })
 
-vi.mock('../components/TagBadge', () => ({
-  default: ({ tag }: { tag: string }) => <span data-testid={`tag-${tag}`}>{tag}</span>,
+// Every icon renders as an inert stub. A Proxy instead of a hand-written list so
+// that a new icon anywhere in the page's component graph doesn't break the suite.
+vi.mock('lucide-react', () => new Proxy({} as Record<string, unknown>, {
+  get: (_target, prop) => {
+    if (prop === '__esModule') return true
+    // `then` must stay undefined or the module object looks like a thenable and
+    // vitest's `await mock.resolve()` never settles.
+    if (prop === 'then' || typeof prop === 'symbol') return undefined
+    return () => null
+  },
+  has: () => true,
 }))
-
-vi.mock('lucide-react', () => {
-  const Stub = () => null
-  return {
-    Dumbbell: Stub, Upload: Stub, TrendingUp: Stub, BarChart3: Stub,
-    RefreshCw: Stub, X: Stub, Database: Stub, Search: Stub, Sparkles: Stub,
-  }
-})
 
 vi.mock('../utils/formatDate', () => ({
   formatDate: () => 'Jan 1, 2026',
@@ -133,11 +134,6 @@ const WORKOUTS: Workout[] = [
   makeWorkout({ id: 4, title: 'Pool Laps', sport: 'swimming', tags: [] }),
 ]
 
-// Tags the "server" reports for the user. Deliberately includes a tag that no
-// loaded workout carries, so the chips can be shown to come from the endpoint
-// rather than from the loaded pages.
-const ALL_TAGS = ['ai:recovery', 'auto:intervals', 'easy', 'hard', 'deep-history']
-
 // Must match SEARCH_DEBOUNCE_MS in Training.tsx.
 const SEARCH_DEBOUNCE_MS = 300
 
@@ -151,8 +147,10 @@ function jsonResponse(body: unknown) {
 // mockFetch stands in for the backend and applies the same filter semantics the
 // server does (sport/tag/text AND-combined, tags requiring every selected tag)
 // plus keyset paging over the *matches*, so the tests exercise the real
-// request-driven flow rather than any client-side narrowing.
-function mockFetch(workouts: Workout[], tags: string[] = ALL_TAGS) {
+// request-driven flow rather than any client-side narrowing. The list UI no
+// longer offers tag chips, but tag narrowing stays modelled here so the
+// assertions that no `tag` param is sent would actually change the result set.
+function mockFetch(workouts: Workout[]) {
   return vi.fn().mockImplementation((url: string) => {
     requests.push(url)
     const parsed = new URL(url, 'http://localhost')
@@ -163,9 +161,6 @@ function mockFetch(workouts: Workout[], tags: string[] = ALL_TAGS) {
       return jsonResponse({
         latest_id: workouts.length > 0 ? Math.max(...workouts.map(w => w.id)) : 0,
       })
-    }
-    if (path === '/api/training/tags') {
-      return jsonResponse({ tags })
     }
     if (path === '/api/training/workouts') {
       const sport = params.get('sport') ?? ''
@@ -296,7 +291,7 @@ describe('Training filter bar', () => {
     // The chip cloud grew linearly with history (every workout minted its own
     // auto:/ai: structure tag) and pushed the workouts below the fold, so the
     // bar no longer filters on tags and the page no longer fetches the list.
-    for (const tag of ALL_TAGS) {
+    for (const tag of ['ai:recovery', 'auto:intervals', 'easy', 'hard', 'deep-history']) {
       expect(screen.queryByRole('button', { name: tag })).not.toBeInTheDocument()
     }
     expect(requests.some(u => u.startsWith('/api/training/tags'))).toBe(false)
@@ -557,7 +552,7 @@ describe('Training filtered pagination', () => {
     window.sessionStorage.clear()
     requests = []
     stubEventSource()
-    vi.stubGlobal('fetch', mockFetch(MANY, ['easy']))
+    vi.stubGlobal('fetch', mockFetch(MANY))
   })
 
   afterAll(() => {
@@ -592,7 +587,7 @@ describe('Training filtered pagination', () => {
   })
 
   it('drops an in-flight "load more" when the filters change underneath it', async () => {
-    const base = mockFetch(MANY, ['easy'])
+    const base = mockFetch(MANY)
     let release!: () => void
     const gate = new Promise<void>(resolve => { release = resolve })
     let cursorFetches = 0
@@ -638,7 +633,7 @@ describe('Training zero-workout user', () => {
     window.sessionStorage.clear()
     requests = []
     stubEventSource()
-    vi.stubGlobal('fetch', mockFetch([], []))
+    vi.stubGlobal('fetch', mockFetch([]))
   })
 
   afterAll(() => {
@@ -742,7 +737,7 @@ describe('Training list cache', () => {
       configurable: true,
       writable: true,
     })
-    vi.stubGlobal('fetch', mockFetch(HISTORY, []))
+    vi.stubGlobal('fetch', mockFetch(HISTORY))
   })
 
   afterAll(() => {
@@ -763,7 +758,7 @@ describe('Training list cache', () => {
     // The refreshed page 1 carries an edited title, which is how the test knows
     // the background refresh has landed.
     const edited = HISTORY.map(w => w.id === HISTORY[0].id ? { ...w, title: 'History 0 renamed' } : w)
-    vi.stubGlobal('fetch', mockFetch(edited, []))
+    vi.stubGlobal('fetch', mockFetch(edited))
 
     primeCache()
     renderTraining()
@@ -789,7 +784,7 @@ describe('Training list cache', () => {
       sport: 'running',
       started_at: '2026-06-01T08:00:00Z',
     })
-    vi.stubGlobal('fetch', mockFetch([uploaded, ...HISTORY], []))
+    vi.stubGlobal('fetch', mockFetch([uploaded, ...HISTORY]))
 
     primeCache()
     renderTraining()
@@ -802,7 +797,7 @@ describe('Training list cache', () => {
   })
 
   it('drops a workout deleted while away', async () => {
-    vi.stubGlobal('fetch', mockFetch(HISTORY.filter(w => w.title !== 'History 5'), []))
+    vi.stubGlobal('fetch', mockFetch(HISTORY.filter(w => w.title !== 'History 5')))
 
     primeCache()
     renderTraining()
@@ -830,7 +825,7 @@ describe('Training list cache', () => {
         started_at: new Date(Date.UTC(2026, 5, 1) - i * 86_400_000).toISOString(),
       }))
     }
-    vi.stubGlobal('fetch', mockFetch([...imported, ...HISTORY], []))
+    vi.stubGlobal('fetch', mockFetch([...imported, ...HISTORY]))
 
     primeCache()
     renderTraining()

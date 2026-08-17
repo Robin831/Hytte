@@ -100,14 +100,18 @@ vi.mock('react-syntax-highlighter', () => ({
 }))
 vi.mock('react-syntax-highlighter/dist/esm/styles/prism', () => ({ vscDarkPlus: {} }))
 
-// Every icon renders as nothing. Enumerating them by hand meant that adding one
-// icon anywhere under StridePage — a component several levels down, not this
-// page — failed the whole file with "No X export is defined on the mock", so the
-// mock answers for any name instead.
-vi.mock('lucide-react', async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>()
-  return Object.fromEntries(Object.keys(actual).map((name) => [name, () => null]))
-})
+// Every icon renders as an inert stub. A Proxy instead of a hand-written list so
+// that a new icon anywhere in the page's component graph doesn't break the suite.
+vi.mock('lucide-react', () => new Proxy({} as Record<string, unknown>, {
+  get: (_target, prop) => {
+    if (prop === '__esModule') return true
+    // `then` must stay undefined or the module object looks like a thenable and
+    // vitest's `await mock.resolve()` never settles.
+    if (prop === 'then' || typeof prop === 'symbol') return undefined
+    return () => null
+  },
+  has: () => true,
+}))
 
 vi.mock('../utils/formatDate', () => ({
   formatDate: (date: Date | string, options?: Intl.DateTimeFormatOptions) => {
