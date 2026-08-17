@@ -229,10 +229,23 @@ function renderPage() {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+// The page subscribes to the training SSE hub for stride_eval_started/ready.
+// jsdom has no EventSource, so without a stub every render throws on mount.
+function stubEventSource() {
+  vi.stubGlobal('EventSource', class {
+    onopen: (() => void) | null = null
+    onerror: (() => void) | null = null
+    addEventListener() {}
+    removeEventListener() {}
+    close() {}
+  })
+}
+
 describe('TrainingDetail – workout context flow', () => {
   beforeEach(() => {
     modalCallbacks.lastOnClose = null
     authState.user = { id: 1, email: 'a@b.c', name: 'Tester', is_admin: true, features: {} }
+    stubEventSource()
   })
 
   afterEach(() => {

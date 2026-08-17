@@ -289,14 +289,17 @@ describe('Training filter bar', () => {
     expect(listRequests().length).toBe(1)
   })
 
-  it('lists every tag the user has, not only tags on loaded workouts', async () => {
+  it('offers no tag chips: the filter bar is sport and text only', async () => {
     renderTraining()
     await screen.findByText('Morning Run')
 
-    // "deep-history" is on no loaded workout — it can only come from the
-    // /api/training/tags endpoint.
-    expect(await screen.findByRole('button', { name: 'deep-history' })).toBeInTheDocument()
-    expect(requests.some(u => u.startsWith('/api/training/tags'))).toBe(true)
+    // The chip cloud grew linearly with history (every workout minted its own
+    // auto:/ai: structure tag) and pushed the workouts below the fold, so the
+    // bar no longer filters on tags and the page no longer fetches the list.
+    for (const tag of ALL_TAGS) {
+      expect(screen.queryByRole('button', { name: tag })).not.toBeInTheDocument()
+    }
+    expect(requests.some(u => u.startsWith('/api/training/tags'))).toBe(false)
   })
 
   it('requests the backend with sport= and resets to page 1 when a sport is picked', async () => {
@@ -316,25 +319,6 @@ describe('Training filter bar', () => {
     expect(screen.queryByText('Morning Run')).not.toBeInTheDocument()
     expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
     expect(screen.queryByText('Pool Laps')).not.toBeInTheDocument()
-  })
-
-  it('sends one tag param per selected tag and combines them with AND', async () => {
-    renderTraining()
-    await screen.findByText('Morning Run')
-
-    fireEvent.click(screen.getByRole('button', { name: 'easy' }))
-    await waitFor(() => {
-      expect(lastListRequest().searchParams.getAll('tag')).toEqual(['easy'])
-    })
-    expect(await screen.findByText('Easy Spin')).toBeInTheDocument()
-    expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'ai:recovery' }))
-    await waitFor(() => {
-      expect(lastListRequest().searchParams.getAll('tag')).toEqual(['easy', 'ai:recovery'])
-    })
-    expect(await screen.findByText('Morning Run')).toBeInTheDocument()
-    expect(screen.queryByText('Easy Spin')).not.toBeInTheDocument()
   })
 
   it('debounces typing into a single q= request', async () => {
@@ -358,18 +342,16 @@ describe('Training filter bar', () => {
     expect(screen.queryByText('Morning Run')).not.toBeInTheDocument()
   })
 
-  it('combines sport + tag + query filters with AND in one request', async () => {
+  it('combines sport + query filters with AND in one request', async () => {
     renderTraining()
     await screen.findByText('Morning Run')
 
     fireEvent.change(screen.getByLabelText('Filter by sport'), { target: { value: 'running' } })
-    fireEvent.click(screen.getByRole('button', { name: 'easy' }))
     fireEvent.change(screen.getByPlaceholderText(/search by title/i), { target: { value: 'morning' } })
 
     await waitFor(() => {
       const req = lastListRequest()
       expect(req.searchParams.get('sport')).toBe('running')
-      expect(req.searchParams.getAll('tag')).toEqual(['easy'])
       expect(req.searchParams.get('q')).toBe('morning')
     })
 
@@ -422,18 +404,6 @@ describe('Training filter bar', () => {
     }
   })
 
-  it('deselects a tag when clicked again', async () => {
-    renderTraining()
-    await screen.findByText('Morning Run')
-
-    fireEvent.click(screen.getByRole('button', { name: 'easy' }))
-    await waitFor(() => {
-      expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: 'easy' }))
-    expect(await screen.findByText('Hill Intervals')).toBeInTheDocument()
-  })
 })
 
 describe('Training filters in the URL', () => {
@@ -450,16 +420,14 @@ describe('Training filters in the URL', () => {
   })
 
   it('hydrates the filter bar and the first request from the query string', async () => {
-    renderTraining('/training?sport=running&tag=easy&q=morning')
+    renderTraining('/training?sport=running&q=morning')
 
     expect(await screen.findByText('Morning Run')).toBeInTheDocument()
     expect((screen.getByLabelText('Filter by sport') as HTMLSelectElement).value).toBe('running')
-    expect(screen.getByRole('button', { name: 'easy' })).toHaveAttribute('aria-pressed', 'true')
     expect((screen.getByPlaceholderText(/search by title/i) as HTMLInputElement).value).toBe('morning')
 
     const req = lastListRequest()
     expect(req.searchParams.get('sport')).toBe('running')
-    expect(req.searchParams.getAll('tag')).toEqual(['easy'])
     expect(req.searchParams.get('q')).toBe('morning')
     expect(screen.queryByText('Easy Spin')).not.toBeInTheDocument()
     expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
@@ -491,22 +459,8 @@ describe('Training filters in the URL', () => {
     expect(await screen.findByText('Morning Run')).toBeInTheDocument()
   })
 
-  it('writes tag selections to the URL and removes them when toggled off', async () => {
-    renderTraining()
-    await screen.findByText('Morning Run')
-
-    fireEvent.click(screen.getByRole('button', { name: 'easy' }))
-    expect(currentParams().getAll('tag')).toEqual(['easy'])
-
-    fireEvent.click(screen.getByRole('button', { name: 'ai:recovery' }))
-    expect(currentParams().getAll('tag')).toEqual(['easy', 'ai:recovery'])
-
-    fireEvent.click(screen.getByRole('button', { name: 'easy' }))
-    expect(currentParams().getAll('tag')).toEqual(['ai:recovery'])
-  })
-
   it('leaves a bare /training when every filter is cleared', async () => {
-    renderTraining('/training?sport=running&tag=easy&q=morning')
+    renderTraining('/training?sport=running&q=morning')
     await screen.findByText('Morning Run')
 
     const clearBtn = screen.getAllByRole('button').find(b => b.textContent?.includes('Clear filters'))
@@ -577,17 +531,13 @@ describe('Training filters in the URL', () => {
     expect((screen.getByPlaceholderText(/search by title/i) as HTMLInputElement).value).toBe('pool')
   })
 
-  it('hydrates a tag chip as pressed and refetches when it is toggled off', async () => {
+  it('ignores a stale tag= param left in a bookmarked URL', async () => {
+    // Bookmarks and history entries from before the chips were dropped still
+    // carry tag=; the page must not narrow the request by it.
     renderTraining('/training?tag=easy')
     await screen.findByText('Morning Run')
 
-    expect(screen.getByRole('button', { name: 'easy' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.queryByText('Hill Intervals')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'easy' }))
-    await waitFor(() => {
-      expect(currentLocation()).toBe('/training')
-    })
+    expect(lastListRequest().searchParams.getAll('tag')).toEqual([])
     expect(await screen.findByText('Hill Intervals')).toBeInTheDocument()
   })
 })
@@ -1342,10 +1292,9 @@ describe('Training new-workouts banner', () => {
     fireEvent.click(loadMore)
     expect(await screen.findByText('Deep 29')).toBeInTheDocument()
 
-    // Summaries and tags refresh alongside the list.
+    // Summaries refresh alongside the list.
     const after = requests.slice(before)
     expect(after.some(u => u.startsWith('/api/training/summary'))).toBe(true)
-    expect(after.some(u => u.startsWith('/api/training/tags'))).toBe(true)
   })
 
   it('discards the fetched list when a filter change supersedes the fetch', async () => {

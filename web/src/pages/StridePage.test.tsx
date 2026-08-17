@@ -99,29 +99,14 @@ vi.mock('react-syntax-highlighter', () => ({
 }))
 vi.mock('react-syntax-highlighter/dist/esm/styles/prism', () => ({ vscDarkPlus: {} }))
 
-vi.mock('lucide-react', () => ({
-  Trash2: () => null,
-  Plus: () => null,
-  Trophy: () => null,
-  Zap: () => null,
-  ChevronDown: () => null,
-  ChevronUp: () => null,
-  ChevronRight: () => null,
-  RefreshCw: () => null,
-  CheckCircle2: () => null,
-  Circle: () => null,
-  AlertTriangle: () => null,
-  XCircle: () => null,
-  History: () => null,
-  Pencil: () => null,
-  Flag: () => null,
-  MessageCircle: () => null,
-  Send: () => null,
-  Loader2: () => null,
-  Bot: () => null,
-  User: () => null,
-  X: () => null,
-}))
+// Every icon renders as nothing. Enumerating them by hand meant that adding one
+// icon anywhere under StridePage — a component several levels down, not this
+// page — failed the whole file with "No X export is defined on the mock", so the
+// mock answers for any name instead.
+vi.mock('lucide-react', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>()
+  return Object.fromEntries(Object.keys(actual).map((name) => [name, () => null]))
+})
 
 vi.mock('../utils/formatDate', () => ({
   formatDate: (date: Date | string, options?: Intl.DateTimeFormatOptions) => {
@@ -134,6 +119,20 @@ vi.mock('../utils/formatDate', () => ({
   },
   formatNumber: (n: number, options?: Intl.NumberFormatOptions) => n.toLocaleString('en', options),
 }))
+
+// The page subscribes to the training SSE hub so a finished stride evaluation
+// lands without a manual refresh. jsdom has no EventSource, so every render
+// would throw on mount without a stub. Each describe unstubs its globals after
+// every test, hence the file-level beforeEach rather than a one-time setup.
+beforeEach(() => {
+  vi.stubGlobal('EventSource', class {
+    onopen: (() => void) | null = null
+    onerror: (() => void) | null = null
+    addEventListener() {}
+    removeEventListener() {}
+    close() {}
+  })
+})
 
 // ── Test data ─────────────────────────────────────────────────────────────────
 
