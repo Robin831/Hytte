@@ -785,14 +785,16 @@ func vo2maxEstimatesFrom(vals ...float64) []VO2maxEstimate {
 // per-workout estimates must never reach the model as a "history" sequence it
 // can read a slope out of, nor let the latest single value stand alone.
 func TestFormatVO2maxSummaryReportsMedianNotTrend(t *testing.T) {
-	// The real-world run from the bug report, chronological (42.8 is latest).
+	// The real-world run from the bug report, in chronological order: the bug
+	// report printed it newest-first, so the values are reversed here and 43.3
+	// — the last argument, and so the newest date — is the latest estimate.
 	out := formatVO2maxSummary(
 		vo2maxEstimatesFrom(42.8, 37.2, 56.2, 43.1, 38.9, 49.1, 43.3), 43.3)
 
 	for _, want := range []string{
 		"n=7 over 2026-06-01 to 2026-06-07",
 		"median 43.1",
-		"spread 37.2-56.2",
+		"range 37.2-56.2",
 		"19.0-unit spread is estimator noise",
 	} {
 		if !strings.Contains(out, want) {
@@ -819,6 +821,40 @@ func TestFormatVO2maxSummaryTrustsTightCluster(t *testing.T) {
 	}
 	if !strings.Contains(out, "cluster tightly") {
 		t.Errorf("a 0.8-unit spread must not be called noise:\n%s", out)
+	}
+}
+
+// TestFormatVO2maxSummaryEvenCountMedian pins the even-length median: with no
+// middle element the two central values must be averaged. History length is
+// whatever GetVO2maxHistory returns, so even counts are as common as odd.
+func TestFormatVO2maxSummaryEvenCountMedian(t *testing.T) {
+	out := formatVO2maxSummary(vo2maxEstimatesFrom(40, 42, 44, 46), 46)
+	for _, want := range []string{"n=4", "median 43.0", "range 40.0-46.0"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("summary missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestFormatVO2maxSummarySkipsNonPositive covers the zero-value filtering: a
+// missing estimate stored as 0 must not drag the median down or widen the
+// range, and a history that is entirely nonpositive must fall through to the
+// single-estimate fallback rather than reporting an empty run.
+func TestFormatVO2maxSummarySkipsNonPositive(t *testing.T) {
+	out := formatVO2maxSummary(vo2maxEstimatesFrom(0, 48.6, 49.2, 48.9), 48.9)
+	for _, want := range []string{
+		"n=3 over 2026-06-02 to 2026-06-04",
+		"median 48.9",
+		"range 48.6-49.2",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("zero estimate not excluded, missing %q:\n%s", want, out)
+		}
+	}
+
+	allZero := formatVO2maxSummary(vo2maxEstimatesFrom(0), 44.2)
+	if !strings.Contains(allZero, "single per-workout estimate of 44.2") {
+		t.Errorf("all-nonpositive history must use the latest-only fallback: %q", allZero)
 	}
 }
 

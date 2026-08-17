@@ -1200,6 +1200,11 @@ func baselinePredictions(anchor *baselineAnchor) map[string]float64 {
 // estimator reacting to terrain, heat, HR artefacts and pacing.
 const vo2maxNoisySpread = 3.0
 
+// vo2maxSingleEstimateCaveat is the wording used wherever the summary rests on
+// one estimate — both the history-unavailable fallback and the n=1 case. Kept
+// in one place so the two branches cannot drift apart.
+const vo2maxSingleEstimateCaveat = "A single HR/pace-derived estimate is weak evidence — a sanity check only, never a reason to move away from the measured sustained efforts above."
+
 // formatVO2maxSummary reduces the per-workout VO2max estimates to a median plus
 // an explicit spread.
 //
@@ -1226,7 +1231,7 @@ func formatVO2maxSummary(estimates []VO2maxEstimate, latest float64) string {
 			return ""
 		}
 		// History unavailable (query failed) but a latest estimate exists.
-		return fmt.Sprintf("\nVO2max: a single per-workout estimate of %.1f. One HR/pace-derived estimate is weak evidence — a sanity check only, never a reason to move away from the measured sustained efforts above.\n", latest)
+		return fmt.Sprintf("\nVO2max: a single per-workout estimate of %.1f. %s\n", latest, vo2maxSingleEstimateCaveat)
 	}
 
 	sorted := append([]float64(nil), vals...)
@@ -1239,11 +1244,13 @@ func formatVO2maxSummary(estimates []VO2maxEstimate, latest float64) string {
 	spread := hi - lo
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "\nVO2max (per-workout estimates, n=%d%s): median %.1f, spread %.1f-%.1f\n",
+	// "range" for the min-to-max endpoints, "spread" for the scalar hi-lo below:
+	// one word per quantity, so the model is not asked to disambiguate them.
+	fmt.Fprintf(&b, "\nVO2max (per-workout estimates, n=%d%s): median %.1f, range %.1f-%.1f\n",
 		len(vals), vo2maxDateSpan(kept), median, lo, hi)
 	switch {
 	case len(vals) == 1:
-		b.WriteString("A single HR/pace-derived estimate is weak evidence — a sanity check only, never a reason to move away from the measured sustained efforts above.\n")
+		b.WriteString(vo2maxSingleEstimateCaveat + "\n")
 	case spread >= vo2maxNoisySpread:
 		fmt.Fprintf(&b, "The %.1f-unit spread is estimator noise (terrain, heat, HR artefacts, pacing), not fitness change: there is no trend to read in these estimates, and no single one of them — including the most recent — carries more weight than the median. Treat the median as a weak cross-check on the sustained-effort evidence above; where they disagree, the measured efforts win.\n", spread)
 	default:
