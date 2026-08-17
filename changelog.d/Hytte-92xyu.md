@@ -1,0 +1,2 @@
+category: Changed
+- **Package updates** - Bumped Go modules (golang.org/x/net, google.golang.org/api, github.com/muktihari/fit) and npm packages (lucide-react, vite, eslint, typescript-eslint, globals, happy-dom, terser, @types/node, @vitejs/plugin-legacy, @testing-library/jest-dom, eslint-plugin-react-refresh) to their latest patch/minor releases. The TypeScript 7 major upgrade is still held back because typescript-eslint requires `typescript <6.1.0`. (Hytte-92xyu)
