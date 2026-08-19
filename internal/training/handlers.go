@@ -99,10 +99,27 @@ func scheduleStrideEvalAfterContextSave(db *sql.DB, userID, workoutID int64) {
 	go func() {
 		claudeSemaphore <- struct{}{} // blocks until capacity is available
 		defer func() { <-claudeSemaphore }()
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		// The outer deadline must comfortably cover two evaluation attempts,
+		// each bounded per Claude call inside the hook — it is a safety net
+		// against a hung hook, not the working timeout.
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 		defer cancel()
-		if _, err := hook(ctx, db, strideEvalHTTPClient, userID, date); err != nil {
+		_, err := hook(ctx, db, strideEvalHTTPClient, userID, date)
+		if err != nil && ctx.Err() == nil {
+			// One retry: the evaluation Claude call occasionally blows its
+			// per-call timeout on API latency spikes while an immediate rerun
+			// finishes in well under a minute (2026-08-18, workout 103). The
+			// hook builds all rows in memory before storing anything, so a
+			// failed attempt leaves nothing behind and a retry is safe.
+			log.Printf("stride trigger: re-evaluate user %d date %s (will retry once): %v", userID, date, err)
+			_, err = hook(ctx, db, strideEvalHTTPClient, userID, date)
+		}
+		if err != nil {
 			log.Printf("stride trigger: re-evaluate user %d date %s: %v", userID, date, err)
+			// Tell clients the evaluation is over without a result — otherwise
+			// the "coach is evaluating" indicator from EventStrideEvalStarted
+			// spins forever waiting for a ready event that never comes.
+			DefaultHub().Publish(userID, Event{Type: EventStrideEvalFailed, WorkoutID: workoutID, Date: date})
 		}
 	}()
 }

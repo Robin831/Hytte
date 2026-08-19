@@ -563,7 +563,8 @@ func TestPutWorkoutContext_StrideHookFailure_StillReturns200(t *testing.T) {
 
 	hookCalled := make(chan struct{}, 1)
 	var wg sync.WaitGroup
-	wg.Add(1)
+	// A failing hook is retried once, so it runs exactly twice.
+	wg.Add(2)
 	setStrideEvalHook(t, func(_ context.Context, _ *sql.DB, _ *http.Client, _ int64, _ string) (int, error) {
 		defer wg.Done()
 		select {
@@ -590,4 +591,110 @@ func TestPutWorkoutContext_StrideHookFailure_StillReturns200(t *testing.T) {
 		t.Fatal("timeout: stride hook never fired")
 	}
 	wg.Wait()
+}
+
+// TestScheduleStrideEvalAfterContextSave_RetriesThenPublishesFailed verifies
+// the failure contract added after the 2026-08-18 incident (workout 103): a
+// hook that keeps failing is retried exactly once, and when both attempts
+// error a stride_eval_failed event is published so clients can stop showing
+// the "evaluating" indicator that stride_eval_started switched on.
+func TestScheduleStrideEvalAfterContextSave_RetriesThenPublishesFailed(t *testing.T) {
+	database := setupTestDB(t)
+	workoutID := createWorkoutForUser(t, database, 1, "stride-retry-fail-hash")
+	if err := auth.SetPreference(database, 1, "stride_enabled", "true"); err != nil {
+		t.Fatalf("set stride_enabled: %v", err)
+	}
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set claude_enabled: %v", err)
+	}
+
+	sub := DefaultHub().Subscribe(1)
+	defer DefaultHub().Unsubscribe(1, sub)
+
+	var mu sync.Mutex
+	calls := 0
+	setStrideEvalHook(t, func(_ context.Context, _ *sql.DB, _ *http.Client, _ int64, _ string) (int, error) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		return 0, errors.New("simulated claude timeout")
+	})
+
+	scheduleStrideEvalAfterContextSave(database, 1, workoutID)
+
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case evt := <-sub.Events():
+			if evt.Type != EventStrideEvalFailed {
+				continue
+			}
+			if evt.WorkoutID != workoutID {
+				t.Errorf("failed event workout_id: got %d, want %d", evt.WorkoutID, workoutID)
+			}
+			mu.Lock()
+			got := calls
+			mu.Unlock()
+			if got != 2 {
+				t.Errorf("hook calls before failed event: got %d, want 2 (one retry)", got)
+			}
+			return
+		case <-deadline:
+			t.Fatal("timeout: no stride_eval_failed event within 3s")
+		}
+	}
+}
+
+// TestScheduleStrideEvalAfterContextSave_RetrySucceeds_NoFailedEvent verifies
+// a hook that fails once and then succeeds produces no stride_eval_failed
+// event — the retry is invisible to clients apart from the extra latency.
+func TestScheduleStrideEvalAfterContextSave_RetrySucceeds_NoFailedEvent(t *testing.T) {
+	database := setupTestDB(t)
+	workoutID := createWorkoutForUser(t, database, 1, "stride-retry-ok-hash")
+	if err := auth.SetPreference(database, 1, "stride_enabled", "true"); err != nil {
+		t.Fatalf("set stride_enabled: %v", err)
+	}
+	if err := auth.SetPreference(database, 1, "claude_enabled", "true"); err != nil {
+		t.Fatalf("set claude_enabled: %v", err)
+	}
+
+	sub := DefaultHub().Subscribe(1)
+	defer DefaultHub().Unsubscribe(1, sub)
+
+	var mu sync.Mutex
+	calls := 0
+	secondCall := make(chan struct{})
+	setStrideEvalHook(t, func(_ context.Context, _ *sql.DB, _ *http.Client, _ int64, _ string) (int, error) {
+		mu.Lock()
+		calls++
+		n := calls
+		mu.Unlock()
+		if n == 1 {
+			return 0, errors.New("simulated transient failure")
+		}
+		close(secondCall)
+		return 1, nil
+	})
+
+	scheduleStrideEvalAfterContextSave(database, 1, workoutID)
+
+	select {
+	case <-secondCall:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout: retry never happened")
+	}
+
+	// Give the goroutine a moment to (wrongly) publish, then assert only the
+	// started event is in the subscription.
+	time.Sleep(100 * time.Millisecond)
+	for {
+		select {
+		case evt := <-sub.Events():
+			if evt.Type == EventStrideEvalFailed {
+				t.Fatal("unexpected stride_eval_failed after successful retry")
+			}
+		default:
+			return
+		}
+	}
 }

@@ -376,7 +376,9 @@
       "pacing_issue": "Pacing issue"
     },
     "coachQuestions": "Coach's questions",
-    "evaluating": "The coach is evaluating this workout…"
+    "evaluating": "The coach is evaluating this workout…",
+    "failed": "The coach evaluation did not finish. It can be retried.",
+    "retry": "Retry"
   },
   "speedPlan": {
     "kinds": {

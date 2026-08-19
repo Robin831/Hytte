@@ -378,6 +378,7 @@ describe('TrainingDetail – workout context flow', () => {
 // merely stubbed away.
 describe('TrainingDetail – stride evaluation over SSE', () => {
   const PENDING_STRIP = 'The coach is evaluating this workout…'
+  const FAILED_STRIP = 'The coach evaluation did not finish. It can be retried.'
 
   // The evaluation the coach stores for workout 42; absent until a test says so.
   const READY_EVAL = {
@@ -472,5 +473,35 @@ describe('TrainingDetail – stride evaluation over SSE', () => {
     await waitFor(() => expect(screen.getByText('Morning Run')).toBeInTheDocument())
     expect(evalCalls()).toBe(before)
     expect(screen.queryByText('Stride says')).toBeNull()
+  })
+
+  it('swaps the pending strip for the failure notice on stride_eval_failed', async () => {
+    // A failed run publishes no ready event; without the failed event the
+    // pending strip would spin forever (the 2026-08-18 workout 103 incident).
+    act(() => sse.dispatch('stride_eval_started', { workout_id: BASE_WORKOUT.id }))
+    expect(await screen.findByText(PENDING_STRIP)).toBeInTheDocument()
+
+    act(() => sse.dispatch('stride_eval_failed', { workout_id: BASE_WORKOUT.id }))
+
+    expect(await screen.findByText(FAILED_STRIP)).toBeInTheDocument()
+    expect(screen.queryByText(PENDING_STRIP)).toBeNull()
+  })
+
+  it('retries via the day reevaluate endpoint and shows the stored evaluation', async () => {
+    act(() => sse.dispatch('stride_eval_failed', { workout_id: BASE_WORKOUT.id }))
+    expect(await screen.findByText(FAILED_STRIP)).toBeInTheDocument()
+
+    stored = [READY_EVAL]
+    fireEvent.click(screen.getByText('Retry'))
+
+    expect(await screen.findByText('Held the HR cap the whole way')).toBeInTheDocument()
+    expect(screen.queryByText(FAILED_STRIP)).toBeNull()
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>
+    const retried = fetchMock.mock.calls.some(
+      ([url, init]) =>
+        String(url).includes('/api/stride/days/2026-04-09/reevaluate') &&
+        (init as RequestInit | undefined)?.method === 'POST',
+    )
+    expect(retried).toBe(true)
   })
 })

@@ -46,6 +46,13 @@ type Evaluation struct {
 	Questions   []string `json:"questions,omitempty"` // up to 2 clarifying questions for the runner (Hytte-sevc)
 }
 
+// evalClaudeTimeout bounds a single coach-evaluation Claude call. The same
+// call that finishes in ~25s on a good run has been observed running past the
+// previous 90s bound under API latency spikes (2026-08-18, workout 103), and
+// on expiry exec.CommandContext SIGKILLs the CLI mid-flight. 300s matches
+// what the eval chat path already tolerates per attempt.
+const evalClaudeTimeout = 300 * time.Second
+
 // EvaluateWorkout calls Claude to assess how well a completed workout matched its planned session.
 // matchedSession may be nil for bonus (unplanned) workouts or when no plan exists.
 // plan is used for weekly context; an empty Plan (ID == 0) is acceptable.
@@ -102,7 +109,7 @@ func RunUserEvaluation(ctx context.Context, db *sql.DB, httpClient *http.Client,
 	calibration := loadTreadmillCalibration(db, userID)
 	evaluated := 0
 	for _, workout := range workouts {
-		evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+		evalCtx, cancel := context.WithTimeout(ctx, evalClaudeTimeout)
 		if err := evaluateSingleWorkout(evalCtx, db, httpClient, userID, workout, claudeCfg, profile, nil, calibration); err != nil {
 			log.Printf("stride eval: workout %d for user %d: %v", workout.ID, userID, err)
 		} else {
@@ -292,7 +299,7 @@ func ReEvaluateDate(ctx context.Context, db *sql.DB, httpClient *http.Client, us
 		// evaluation path does — without it, a manual re-run silently loses
 		// the runner's own account of the session (Hytte-sevc).
 		workoutNotes := appendWorkoutContextNote(db, workout, date, notes)
-		evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+		evalCtx, cancel := context.WithTimeout(ctx, evalClaudeTimeout)
 		eval, err := EvaluateWorkout(evalCtx, claudeCfg, workout, matchedSession, *plan, profile, workoutNotes, calibration)
 		cancel()
 		if err != nil {
@@ -303,7 +310,7 @@ func ReEvaluateDate(ctx context.Context, db *sql.DB, httpClient *http.Client, us
 	}
 
 	if len(workouts) == 0 {
-		evalCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+		evalCtx, cancel := context.WithTimeout(ctx, evalClaudeTimeout)
 		eval, err := buildDateEval(evalCtx, claudeCfg, *plan, date, notes)
 		cancel()
 		if err != nil {
@@ -736,7 +743,7 @@ func evaluateDateWithNotes(
 ) (*Evaluation, error) {
 	prompt := buildNoteEvalPrompt(plan, date, session, notes, isRestDay)
 
-	evalCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	evalCtx, cancel := context.WithTimeout(ctx, evalClaudeTimeout)
 	defer cancel()
 
 	response, err := runPromptFunc(evalCtx, cfg, prompt)

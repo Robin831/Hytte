@@ -376,7 +376,9 @@
       "pacing_issue": "Tempoproblemer"
     },
     "coachQuestions": "Trenerens spørsmål",
-    "evaluating": "Treneren evaluerer denne økten…"
+    "evaluating": "Treneren evaluerer denne økten…",
+    "failed": "Trenerevalueringen ble ikke fullført. Du kan prøve på nytt.",
+    "retry": "Prøv igjen"
   },
   "speedPlan": {
     "kinds": {

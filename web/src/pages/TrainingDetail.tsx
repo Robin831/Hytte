@@ -77,6 +77,7 @@ export default function TrainingDetail() {
   const [showLactateImport, setShowLactateImport] = useState(false)
   const [strideEval, setStrideEval] = useState<StrideEvaluationRecord | null>(null)
   const [strideEvalPending, setStrideEvalPending] = useState(false)
+  const [strideEvalFailed, setStrideEvalFailed] = useState(false)
   const reloadStrideEval = useCallback(async () => {
     try {
       const res = await fetch(`/api/stride/evaluations?workout_id=${id}`, { credentials: 'include' })
@@ -370,15 +371,51 @@ export default function TrainingDetail() {
     }
     const es = new EventSource('/api/training/events', { withCredentials: true })
     es.addEventListener('stride_eval_started', (e: MessageEvent) => {
-      if (matches(e)) setStrideEvalPending(true)
+      if (!matches(e)) return
+      setStrideEvalPending(true)
+      setStrideEvalFailed(false)
     })
     es.addEventListener('stride_eval_ready', (e: MessageEvent) => {
       if (!matches(e)) return
       setStrideEvalPending(false)
+      setStrideEvalFailed(false)
       void reloadStrideEval()
+    })
+    // A failed run publishes no ready event; without this listener the
+    // pending strip would spin forever (the exact 2026-08-18 failure mode).
+    es.addEventListener('stride_eval_failed', (e: MessageEvent) => {
+      if (!matches(e)) return
+      setStrideEvalPending(false)
+      setStrideEvalFailed(true)
     })
     return () => es.close()
   }, [user, id, workoutStartedAt, reloadStrideEval])
+
+  // Manual retry after a failed background coach evaluation. Reuses the same
+  // synchronous endpoint as the Stride page's per-day rerun; a success also
+  // publishes stride_eval_ready, but the direct reload keeps the card
+  // appearance immediate rather than SSE-dependent.
+  const retryStrideEval = async () => {
+    if (!workout) return
+    const date = new Date(workout.started_at).toISOString().slice(0, 10)
+    setStrideEvalFailed(false)
+    setStrideEvalPending(true)
+    try {
+      const res = await fetch(`/api/stride/days/${date}/reevaluate`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      setStrideEvalPending(false)
+      if (res.ok) {
+        void reloadStrideEval()
+      } else {
+        setStrideEvalFailed(true)
+      }
+    } catch {
+      setStrideEvalPending(false)
+      setStrideEvalFailed(true)
+    }
+  }
 
   const runAnalysis = async (deleteFirst: boolean) => {
     if (!workout) return
@@ -835,6 +872,21 @@ export default function TrainingDetail() {
         <div className="flex items-center gap-2 bg-gray-800 border border-gray-700 rounded-xl p-4 text-sm text-gray-400">
           <Loader2 size={16} className="animate-spin text-orange-400" />
           {t('strideEval.evaluating')}
+        </div>
+      )}
+      {strideEvalFailed && !strideEvalPending && (
+        <div className="flex items-center justify-between gap-3 bg-gray-800 border border-red-800/60 rounded-xl p-4 text-sm text-gray-400">
+          <span className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-red-400" />
+            {t('strideEval.failed')}
+          </span>
+          <button
+            onClick={() => void retryStrideEval()}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-gray-200 shrink-0"
+          >
+            <RefreshCw size={14} />
+            {t('strideEval.retry')}
+          </button>
         </div>
       )}
       {strideEval && (

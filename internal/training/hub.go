@@ -37,6 +37,11 @@ const (
 	// showing that date refetch their evaluations. Without this the row just
 	// appears in the DB and the page had to be manually refreshed.
 	EventStrideEvalReady = "stride_eval_ready"
+	// EventStrideEvalFailed — a scheduled Stride evaluation gave up (all
+	// attempts errored). Without it a failed run leaves clients showing the
+	// "evaluating" indicator from EventStrideEvalStarted forever, since no
+	// ready event ever arrives.
+	EventStrideEvalFailed = "stride_eval_failed"
 )
 
 // Subscriber is a single SSE client subscription. The channel is buffered so a

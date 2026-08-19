@@ -1,0 +1,2 @@
+category: Fixed
+- **Stride coach evaluation no longer dies silently on a slow Claude call** - The background evaluation after a workout-context save was hard-killed at a 90s per-call timeout (the same call finishes in ~25s on rerun), and with no failure signal the workout page showed "coach is evaluating" forever. The per-call timeout is now 300s (matching the eval chat path), the trigger retries once before giving up, a new `stride_eval_failed` SSE event ends the pending state, and the workout detail page shows a failure notice with a Retry button. (Hytte-x47ua)
