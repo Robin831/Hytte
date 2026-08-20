@@ -27253,9 +27253,6 @@ rules:
       source: copilot:PR#878
       added: "2026-06-29"
       paths:
-        - '**/*.go'
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: media-toggle-without-tests
@@ -27267,9 +27264,6 @@ rules:
       source: copilot:PR#878
       added: "2026-06-29"
       paths:
-        - '**/*.go'
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: prettier-ignore-adjacency
@@ -27281,7 +27275,6 @@ rules:
       source: copilot:PR#879
       added: "2026-06-29"
       paths:
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: img-empty-alt-hidden-text
@@ -27293,8 +27286,7 @@ rules:
       source: copilot:PR#881
       added: "2026-06-29"
       paths:
-        - '**/*.json'
-        - '**/*.md'
+        - '**/*.ts'
         - '**/*.tsx'
     - id: consistent-temp-unit-formatting
       category: ui
@@ -27305,8 +27297,7 @@ rules:
       source: copilot:PR#881
       added: "2026-06-29"
       paths:
-        - '**/*.json'
-        - '**/*.md'
+        - '**/*.ts'
         - '**/*.tsx'
     - id: test-new-ui-components
       category: testing
@@ -27317,8 +27308,7 @@ rules:
       source: copilot:PR#881
       added: "2026-06-29"
       paths:
-        - '**/*.json'
-        - '**/*.md'
+        - '**/*.ts'
         - '**/*.tsx'
     - id: gate-optimistic-ui-on-real-user-id
       category: ui
@@ -27329,9 +27319,7 @@ rules:
       source: copilot:PR#882
       added: "2026-06-29"
       paths:
-        - '**/*.go'
-        - '**/*.json'
-        - '**/*.md'
+        - '**/*.ts'
         - '**/*.tsx'
     - id: test-extract-call-before-asserting
       category: testing
@@ -27342,32 +27330,17 @@ rules:
       source: copilot:PR#884
       added: "2026-06-29"
       paths:
-        - '**/*.md'
+        - '**/*.ts'
         - '**/*.tsx'
     - id: ref-advance-after-failed-side-effect
       category: error-handling
       pattern: >-
-        A tracking ref/variable is updated to the intended target value immediately after calling a side-effecting operation that can throw (e.g. sender.replaceTrack()), without guarding on its success
+        A tracking ref/state variable is updated to the intended target value in the same code path as a fallible side effect (e.g. sender.replaceTrack(), async I/O), including fallback branches, without guarding on its success
       check: >-
-        Verify the ref is only advanced after the operation succeeds — move the assignment after an awaited/try-caught call or into the success path, so a thrown/rejected operation leaves the ref at its old value and future sync/retry logic still detects the mismatch
+        Verify the ref is only advanced after the operation succeeds — move the assignment after an awaited/try-caught call or into the success path, so a thrown/rejected operation leaves the ref at its old value and later sync/retry logic still detects the mismatch and re-attempts
       source: copilot:PR#885
       added: "2026-06-29"
       paths:
-        - '**/*.json'
-        - '**/*.md'
-        - '**/*.ts'
-        - '**/*.tsx'
-    - id: ref-update-after-fallible-op
-      category: error-handling
-      pattern: >-
-        A tracking ref/state variable is set to a target value in the same code path as a fallible operation (e.g. replaceTrack, async I/O), particularly in fallback branches
-      check: >-
-        Verify the ref is only updated after the operation succeeds — if the operation throws or fails, the ref should remain unchanged so later sync/retry logic re-attempts instead of assuming the update already happened
-      source: copilot:PR#885
-      added: "2026-06-29"
-      paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: untested-stream-pipeline-rewiring
@@ -27379,8 +27352,6 @@ rules:
       source: copilot:PR#885
       added: "2026-06-29"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: aria-menu-only-menuitems
@@ -27392,8 +27363,6 @@ rules:
       source: copilot:PR#885
       added: "2026-06-29"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: video-call-state-guard-non-video
@@ -27405,8 +27374,6 @@ rules:
       source: copilot:PR#885
       added: "2026-06-29"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: reset-transient-state-on-lifecycle-end
@@ -27418,8 +27385,6 @@ rules:
       source: copilot:PR#885
       added: "2026-06-29"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: raf-loop-eager-start
@@ -27431,8 +27396,6 @@ rules:
       source: copilot:PR#885
       added: "2026-06-29"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: redundant-scroll-effect
@@ -27444,8 +27407,6 @@ rules:
       source: copilot:PR#886
       added: "2026-06-30"
       paths:
-        - '**/*.html'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: ssr-window-guard-matches-doc
@@ -27457,8 +27418,6 @@ rules:
       source: copilot:PR#886
       added: "2026-06-30"
       paths:
-        - '**/*.html'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: untested-viewport-hook
@@ -27470,8 +27429,6 @@ rules:
       source: copilot:PR#886
       added: "2026-06-30"
       paths:
-        - '**/*.html'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: no-duplicate-viewport-keyboard-logic
@@ -27483,8 +27440,6 @@ rules:
       source: copilot:PR#886
       added: "2026-06-30"
       paths:
-        - '**/*.html'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: tab-state-comment-accuracy
@@ -27496,8 +27451,6 @@ rules:
       source: copilot:PR#887
       added: "2026-06-30"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: sort-tie-breaker-determinism
@@ -27509,8 +27462,6 @@ rules:
       source: copilot:PR#887
       added: "2026-06-30"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: derive-union-type-from-source
@@ -27522,8 +27473,6 @@ rules:
       source: copilot:PR#887
       added: "2026-06-30"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: i18n-namespace-matches-spec
@@ -27536,53 +27485,28 @@ rules:
       added: "2026-07-01"
       paths:
         - '**/*.json'
-        - '**/*.md'
+        - '**/*.ts'
         - '**/*.tsx'
     - id: reset-error-flag-on-prop-change
       category: error-handling
       pattern: >-
         A component tracks a load/render failure in local state (e.g. `errored`/`hasError`) to show a fallback, and the component is reused across refetches because it's keyed by a stable id (`card.id`, `set.id`)
       check: >-
-        Verify the error flag is reset when the relevant prop changes (via a kethe reset effect or `useEffect` on the prop) so a successful reload can recover instead of sticking permanently in fallback mode
+        Verify the error flag is reset when the relevant prop changes (via a key-based reset or `useEffect` on the prop) so a successful reload can recover instead of sticking permanently in fallback mode
       source: copilot:PR#892
       added: "2026-07-01"
       paths:
-        - '**/*.md'
-        - '**/*.tsx'
-    - id: async-state-empty-initial-render
-      category: ui
-      pattern: >-
-        Component initializes async-loaded data (e.g. sessions) as an empty array/default and renders it immediately, with the fetch populating it in a useEffect
-      check: >-
-        Verify a loading state gates the initial render so the empty-state UI isn't shown before the first fetch completes, matching prior loading-skeleton behavior
-      source: copilot:PR#891
-      added: "2026-07-01"
-      paths:
-        - '**/*.md'
-        - '**/*.ts'
-        - '**/*.tsx'
-    - id: track-async-fetch-loaded-flag
-      category: concurrency
-      pattern: >-
-        A React component fetches data in useEffect and renders an empty-state based on the result array, but only tracks the data (not whether the fetch has completed).
-      check: >-
-        Verify the component tracks a 'loaded' (or loading) flag set in a finally block and guarded by the effect's cancellation flag, so the empty-state is suppressed until the async fetch actually completes rather than flashing during the initial load.
-      source: copilot:PR#891
-      added: "2026-07-01"
-      paths:
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: defer-empty-state-until-loaded
       category: ui
       pattern: >-
-        Component renders an empty-state or "no data" message based on an array/list being empty while data is still being fetched asynchronously
+        A component renders an empty-state or "no data" message from an array/default value that an async fetch populates in useEffect, tracking only the data and not whether the fetch has completed
       check: >-
-        Verify the empty-state message is gated on an initial-fetch-completed flag (e.g. loading is false) so it doesn't flash before the async data arrives
+        Verify the empty-state is gated on an initial-fetch-completed flag (a loading/loaded state set in a finally block and guarded by the effect's cancellation flag) so the empty-state doesn't flash before the async data arrives, matching prior loading-skeleton behavior
       source: copilot:PR#891
       added: "2026-07-01"
       paths:
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: no-suppress-exhaustive-deps-in-effects
@@ -27594,7 +27518,6 @@ rules:
       source: copilot:PR#891
       added: "2026-07-01"
       paths:
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: reuse-existing-load-callback
@@ -27606,7 +27529,6 @@ rules:
       source: copilot:PR#891
       added: "2026-07-01"
       paths:
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: status-region-accessible-name-and-reduced-motion
@@ -27618,8 +27540,7 @@ rules:
       source: copilot:PR#888
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
+        - '**/*.ts'
         - '**/*.tsx'
     - id: state-reset-ignores-current-condition
       category: ui
@@ -27630,8 +27551,7 @@ rules:
       source: copilot:PR#888
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
+        - '**/*.ts'
         - '**/*.tsx'
     - id: clear-timers-on-offline
       category: error-handling
@@ -27642,8 +27562,7 @@ rules:
       source: copilot:PR#888
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
+        - '**/*.ts'
         - '**/*.tsx'
     - id: reconnect-in-flight-guard
       category: concurrency
@@ -27654,8 +27573,7 @@ rules:
       source: copilot:PR#888
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
+        - '**/*.ts'
         - '**/*.tsx'
     - id: test-new-connection-states
       category: testing
@@ -27666,8 +27584,7 @@ rules:
       source: copilot:PR#888
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
+        - '**/*.ts'
         - '**/*.tsx'
     - id: offline-event-sets-offline-state
       category: ui
@@ -27678,52 +27595,18 @@ rules:
       source: copilot:PR#888
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
-        - '**/*.tsx'
-    - id: test-realistic-scan-status-filter
-      category: testing
-      pattern: >-
-        Tests seeding scan/poll results with a status value that the component's status filter (e.g. statusForFilter) would never request, so the mocked data cannot occur in real usage
-      check: >-
-        Verify test fixtures use statuses consistent with the filter the component actually queries; model in-flight work through valid means (e.g. a binder page block whose children return regardless of status, or the correct pending filter) so polling assertions reflect real behavior and don't mask regressions
-      source: copilot:PR#895
-      added: "2026-07-01"
-      paths:
-        - '**/*.md'
+        - '**/*.ts'
         - '**/*.tsx'
     - id: test-fixture-matches-endpoint-filter
       category: testing
       pattern: >-
-        A test seeds mock/fixture data with a status or field value to simulate in-flight or filtered work being returned by a list endpoint
+        Test fixtures seed an item with a status/field value the endpoint's own filter would never return, or nest it under a status bucket it cannot appear in (e.g. a queued item inside a needsReview list), to simulate in-flight or filtered work
       check: >-
-        Verify the seeded status/value is actually one the endpoint's filter can return (e.g. matches the status filter like matched,no_match,failed); if not, the test simulates a state the real endpoint never produces — instead nest the value under a block/parent the filter does return (e.g. a needsReview page with a queued child)
+        Verify mock/test data mirrors a real possible server response — the seeded status is one the endpoint's filter actually returns (e.g. matched, no_match, failed) and items sit under the correct block/parent — otherwise the behavior under test is armed from an impossible state and real regressions stay hidden
       source: copilot:PR#895
       added: "2026-07-01"
       paths:
-        - '**/*.md'
-        - '**/*.tsx'
-    - id: test-data-matches-server-shape
-      category: testing
-      pattern: >-
-        Test fixtures place an item under a status/category bucket it can't actually appear in (e.g. a queued item inside a needsReview list)
-      check: >-
-        Verify mock/test data mirrors a real possible server response — items are nested under the correct status block rather than placed in a filter group that would never contain them
-      source: copilot:PR#895
-      added: "2026-07-01"
-      paths:
-        - '**/*.md'
-        - '**/*.tsx'
-    - id: test-fixtures-match-api-contract
-      category: testing
-      pattern: >-
-        Test fixtures populate a state bucket with a child whose status can't actually occur in that bucket (e.g. a `queued` item inside a `needsReview` list) to arm a listener/interval/effect
-      check: >-
-        Verify test fixtures reflect the real API contract — use a status that genuinely appears in that bucket so the behavior under test is triggered for a realistic reason, not an impossible state
-      source: copilot:PR#895
-      added: "2026-07-01"
-      paths:
-        - '**/*.md'
+        - '**/*.ts'
         - '**/*.tsx'
     - id: test-inflight-work-via-page-children
       category: testing
@@ -27734,7 +27617,7 @@ rules:
       source: copilot:PR#895
       added: "2026-07-01"
       paths:
-        - '**/*.md'
+        - '**/*.ts'
         - '**/*.tsx'
     - id: optional-locale-intl-format
       category: style
@@ -27745,7 +27628,6 @@ rules:
       source: copilot:PR#893
       added: "2026-07-01"
       paths:
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: duplicate-helper-definition
@@ -27757,7 +27639,6 @@ rules:
       source: copilot:PR#893
       added: "2026-07-01"
       paths:
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: empty-string-number-coercion
@@ -27769,7 +27650,6 @@ rules:
       source: copilot:PR#890
       added: "2026-07-01"
       paths:
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: falsy-zero-default-override
@@ -27781,7 +27661,6 @@ rules:
       source: copilot:PR#890
       added: "2026-07-01"
       paths:
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: effect-deps-unstable-fn
@@ -27793,7 +27672,6 @@ rules:
       source: copilot:PR#890
       added: "2026-07-01"
       paths:
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: parse-numeric-field-once
@@ -27805,7 +27683,6 @@ rules:
       source: copilot:PR#890
       added: "2026-07-01"
       paths:
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: consistent-url-param-history
@@ -27817,35 +27694,6 @@ rules:
       source: copilot:PR#897
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
-        - '**/*.tsx'
-    - id: guard-async-setstate-after-unmount
-      category: concurrency
-      pattern: >-
-        A custom hook (or component) runs async work — debounced saves, fetches, timers — that calls React state setters or caller callbacks in a resolved promise/timeout
-      check: >-
-        Verify an isMounted ref (or AbortController) is set false in a useEffect cleanup and checked before any post-await state update or callback, so in-flight async work can't setState or fire side effects after unmount
-      source: copilot:PR#896
-      added: "2026-07-01"
-      paths:
-        - '**/*.go'
-        - '**/*.json'
-        - '**/*.md'
-        - '**/*.ts'
-        - '**/*.tsx'
-    - id: guard-async-callbacks-after-unmount
-      category: concurrency
-      pattern: >-
-        An async handler (fetch/promise) runs state-updating callbacks — onSaved, setState, status setters, toasts — in its .then/await continuation after the awaited call resolves
-      check: >-
-        Verify post-resolution callbacks are guarded by a mounted ref (or equivalent) so they become no-ops if the component unmounts mid-request
-      source: copilot:PR#896
-      added: "2026-07-01"
-      paths:
-        - '**/*.go'
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: unused-destructured-var
@@ -27857,9 +27705,6 @@ rules:
       source: copilot:PR#896
       added: "2026-07-01"
       paths:
-        - '**/*.go'
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: debounce-not-immediate-save
@@ -27871,9 +27716,6 @@ rules:
       source: copilot:PR#896
       added: "2026-07-01"
       paths:
-        - '**/*.go'
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: async-save-status-overwrites-pending-edits
@@ -27885,22 +27727,17 @@ rules:
       source: copilot:PR#896
       added: "2026-07-01"
       paths:
-        - '**/*.go'
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: guard-async-state-after-unmount
       category: concurrency
       pattern: >-
-        A fetch or async call in a React hook/component updates state in its `.then`/`await` continuation, while sibling fetches in the same hook guard with a `cancelled`/`isMounted` flag cleaned up in the effect's return
+        A React component or custom hook updates state or invokes caller callbacks (onSaved, status setters, toasts) in the `.then`/`await` continuation of async work — fetches, debounced saves, timers — while sibling paths in the same hook guard with a `cancelled`/`isMounted` flag
       check: >-
-        Verify every async state update is guarded by the same cancellation flag (checked before calling setState) so navigating away mid-request cannot set state after unmount
-      source: copilot:PR#894
+        Verify every post-await state update or callback is guarded by the same cancellation flag (an isMounted ref or AbortController cleared in the effect's cleanup) so navigating away mid-request cannot set state or fire side effects after unmount
+      source: ['copilot:PR#894', 'copilot:PR#896']
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: i18n-error-fallbacks
@@ -27913,7 +27750,6 @@ rules:
       added: "2026-07-01"
       paths:
         - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: division-by-zero-progress-bar
@@ -27925,8 +27761,6 @@ rules:
       source: copilot:PR#894
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: close-panel-after-successful-save
@@ -27938,8 +27772,6 @@ rules:
       source: copilot:PR#894
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: refactor-preserve-ui-parity
@@ -27951,8 +27783,6 @@ rules:
       source: copilot:PR#894
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: doc-comment-matches-return-type
@@ -27964,34 +27794,17 @@ rules:
       source: copilot:PR#894
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
-        - '**/*.ts'
-        - '**/*.tsx'
-    - id: no-setstate-during-render-sync
-      category: ui
-      pattern: >-
-        A React component calls a state setter during render (not inside an event handler or effect) to keep one state/prop value synced with another
-      check: >-
-        Verify derived-state syncing is done inside a useEffect (or computed during render without a setter), not by calling setState in the render body; confirm useEffect is imported when introduced
-      source: copilot:PR#894
-      added: "2026-07-01"
-      paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: no-render-time-state-updates
       category: concurrency
       pattern: >-
-        A React component calls a state setter during render (e.g. to reset/sync derived state) instead of inside an effect, often to react to a changed prop like selectedMonth
+        A React component calls a state setter during render (not inside an event handler or effect) to sync or reset derived state when a prop such as selectedMonth changes
       check: >-
-        Verify that state updates reacting to prop/dependency changes are moved into a useEffect (with the correct dependency array) rather than executed during render, to avoid React render-time setState warnings
+        Verify derived-state syncing happens inside a useEffect with the correct dependency array (or is computed during render without a setter) rather than in the render body, and that useEffect is imported when introduced — render-time setState triggers React warnings and extra render passes
       source: copilot:PR#894
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: memoize-callback-for-effect-deps
@@ -28003,34 +27816,17 @@ rules:
       source: copilot:PR#894
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: comma-decimal-number-parsing
-      category: other
-      pattern: >-
-        Parsing user-entered numeric input with parseFloat/parseInt/Number in a form field (e.g. salary, weight, quantity)
-      check: >-
-        Verify the input is parsed with the shared parseDecimal helper (or otherwise accepts Norwegian comma decimals like "7,5"), not raw parseFloat which truncates comma-separated decimals to the integer part.
-      source: copilot:PR#894
-      added: "2026-07-01"
-      paths:
-        - '**/*.json'
-        - '**/*.md'
-        - '**/*.ts'
-        - '**/*.tsx'
-    - id: salary-parsefloat-comma-decimal
       category: error-handling
       pattern: >-
-        Parsing user-entered numeric form fields (especially salary/currency config) with parseFloat or Number
+        Parsing user-entered numeric form input (salary/currency config, weight, quantity) with parseFloat, parseInt or Number
       check: >-
-        Verify comma-decimal input is handled by using parseDecimal (with a NaN fallback) instead of parseFloat, so Norwegian comma decimals aren't silently truncated or saved as wrong values
+        Verify the input goes through the shared parseDecimal helper (with a NaN fallback) rather than raw parseFloat, so Norwegian comma decimals like "7,5" aren't silently truncated to the integer part or saved as wrong values
       source: copilot:PR#894
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
     - id: year-scoped-fetch-uses-wrong-active-tab-selector
@@ -28042,7 +27838,5 @@ rules:
       source: copilot:PR#894
       added: "2026-07-01"
       paths:
-        - '**/*.json'
-        - '**/*.md'
         - '**/*.ts'
         - '**/*.tsx'
