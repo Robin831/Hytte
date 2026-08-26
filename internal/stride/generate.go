@@ -178,6 +178,60 @@ var runPromptFunc = func(ctx context.Context, cfg *training.ClaudeConfig, prompt
 	return training.RunPrompt(ctx, cfg, prompt)
 }
 
+// strideDefaultModel is the model Stride's planning calls fall back to when the
+// athlete has not chosen one. Both the weekly generator and GenerateMacroPlan
+// read it, so the block is never planned on a cheaper model than its weeks.
+const strideDefaultModel = "claude-opus-4-6"
+
+// applyStrideModelDefault pins cfg to strideDefaultModel when the athlete has
+// not chosen a model of their own.
+//
+// It keys off the raw claude_model preference rather than cfg.Model on purpose:
+// training.LoadClaudeConfig has already substituted its own package-wide
+// default ("claude-sonnet-4-6") by the time the config reaches a caller, so an
+// `if cfg.Model == ""` check here can never fire and Stride would silently plan
+// on the cheaper model instead of the one this constant names.
+func applyStrideModelDefault(prefs map[string]string, cfg *training.ClaudeConfig) {
+	if strings.TrimSpace(prefs["claude_model"]) == "" {
+		cfg.Model = strideDefaultModel
+	}
+}
+
+// stripCodeFence unwraps a markdown code fence a model wrapped its JSON answer
+// in. Both planning contracts say "no code fences", but a model that adds them
+// anyway is answering correctly in the wrong wrapper and is not worth a retry.
+//
+// The closing fence is only dropped when the last line actually is one. A
+// truncated answer opens a fence and then runs out mid-JSON, and dropping its
+// last line unconditionally would throw away real content — typically the
+// closing brace — turning a recoverable answer into "unexpected end of JSON
+// input". A single-line answer (```json {...}```) has no line to drop, so the
+// fence markers are trimmed off the ends instead.
+func stripCodeFence(response string) string {
+	trimmed := strings.TrimSpace(response)
+	if !strings.HasPrefix(trimmed, "```") {
+		return trimmed
+	}
+
+	lines := strings.Split(trimmed, "\n")
+	if len(lines) == 1 {
+		one := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(trimmed, "```"), "```"))
+		// On one line the opening fence's language tag ("json") sits in front
+		// of the payload rather than on a line of its own, so skip to where the
+		// JSON actually starts. A tagless fence already starts there.
+		if i := strings.IndexAny(one, "{["); i > 0 {
+			one = one[i:]
+		}
+		return strings.TrimSpace(one)
+	}
+
+	body := lines[1:]
+	if n := len(body); n > 0 && strings.HasPrefix(strings.TrimSpace(body[n-1]), "```") {
+		body = body[:n-1]
+	}
+	return strings.TrimSpace(strings.Join(body, "\n"))
+}
+
 // currentWeek returns the ISO date strings for the current week's Monday (week_start)
 // and the following Sunday (week_end). If today is Monday, returns today.
 func currentWeek() (weekStart, weekEnd string) {
@@ -248,10 +302,8 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 		return training.ErrClaudeNotEnabled
 	}
 
-	// Override model to claude-opus if unset or if user explicitly chose opus.
-	if claudeCfg.Model == "" {
-		claudeCfg.Model = "claude-opus-4-6"
-	}
+	// Override the model to strideDefaultModel unless the athlete picked one.
+	applyStrideModelDefault(prefs, claudeCfg)
 
 	// Determine the week to plan.
 	var weekStart, weekEnd string
@@ -996,15 +1048,9 @@ Library rules:
 // response into a validated []DayPlan slice. weekStart and weekEnd are used to
 // verify the response covers exactly the requested 7-day window with no duplicates.
 func parsePlanResponse(response, weekStart, weekEnd string) ([]DayPlan, error) {
-	response = strings.TrimSpace(response)
-
-	// Strip markdown code fences if present.
-	if strings.HasPrefix(response, "```") {
-		lines := strings.Split(response, "\n")
-		if len(lines) >= 3 {
-			response = strings.Join(lines[1:len(lines)-1], "\n")
-		}
-	}
+	// Strip markdown code fences if present, the same way the macro plan
+	// response is unwrapped — one heuristic, one place to fix it.
+	response = stripCodeFence(response)
 
 	var plan []DayPlan
 	if err := json.Unmarshal([]byte(response), &plan); err != nil {

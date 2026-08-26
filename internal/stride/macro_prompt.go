@@ -208,28 +208,33 @@ const macroInstructions = bakkenPhilosophy + "\n\n" +
 // degrades to a short "none recorded" line so a first block can still be built.
 //
 // The non-Monday rejection is a backstop, not the place to handle a computed
-// date: there is no production caller yet (GenerateMacroPlan lands separately),
-// and every entry point that will compute a start — the Monday cron, the
-// extension path deriving a start from a previous block's EndWeek, the
-// manual/API path — must pass it through NormaliseMacroStartWeek first, which
-// snaps any date to its containing Monday.
-func buildMacroInputs(ctx context.Context, db *sql.DB, userID int64, startWeek string, mode MacroMode) (string, error) {
+// date: every entry point that computes a start — GenerateMacroPlan itself, the
+// Monday cron, the extension path deriving a start from a previous block's
+// EndWeek, the manual/API path — passes it through NormaliseMacroStartWeek
+// first, which snaps any date to its containing Monday.
+//
+// The race calendar the prompt was rendered from is returned alongside it so
+// the caller validates the answer against exactly the races the coach saw. Read
+// twice — once here, once in the caller — the two reads could drift across the
+// minutes the Claude call takes, and a plan would be rejected for a race
+// mismatch it could not have known about.
+func buildMacroInputs(ctx context.Context, db *sql.DB, userID int64, startWeek string, mode MacroMode) (string, []Race, error) {
 	if !mode.valid() {
-		return "", fmt.Errorf("invalid macro mode %q", mode)
+		return "", nil, fmt.Errorf("invalid macro mode %q", mode)
 	}
 	// A block start that is not a Monday would silently mismatch every key in
 	// the history table (summaries and plans are keyed by Monday), so it is a
 	// hard error here rather than a table of dashes in the prompt.
 	start, err := parseMondayWeek(startWeek)
 	if err != nil {
-		return "", fmt.Errorf("parse start week: %w", err)
+		return "", nil, fmt.Errorf("parse start week: %w", err)
 	}
-	endWeek := start.AddDate(0, 0, 7*(MacroBlockWeeks-1)).Format(dateLayout)
+	endWeek := macroEndWeek(start)
 	raceHorizon := start.AddDate(0, 0, 7*(MacroBlockWeeks-1+macroRaceLookaheadWeeks)).Format(dateLayout)
 
 	prefs, err := auth.GetPreferences(db, userID)
 	if err != nil {
-		return "", fmt.Errorf("load preferences: %w", err)
+		return "", nil, fmt.Errorf("load preferences: %w", err)
 	}
 
 	var sb strings.Builder
@@ -260,14 +265,14 @@ func buildMacroInputs(ctx context.Context, db *sql.DB, userID int64, startWeek s
 	// Race calendar through the horizon plus a lookahead.
 	races, err := ListRaces(db, userID)
 	if err != nil {
-		return "", fmt.Errorf("list races: %w", err)
+		return "", nil, fmt.Errorf("list races: %w", err)
 	}
 	sb.WriteString(renderMacroUpcomingRaces(races, startWeek, raceHorizon))
 
 	// Completed races — the honest record of what the athlete has actually run.
 	results, err := listRaceResults(ctx, db, userID)
 	if err != nil {
-		return "", fmt.Errorf("list race results: %w", err)
+		return "", nil, fmt.Errorf("list race results: %w", err)
 	}
 	sb.WriteString(renderMacroRaceResults(results))
 
@@ -277,7 +282,7 @@ func buildMacroInputs(ctx context.Context, db *sql.DB, userID int64, startWeek s
 	// 26 weeks of history: volume merged with plan adherence and intensity mix.
 	history, err := buildMacroHistoryTable(db, userID, start)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	sb.WriteString(history)
 
@@ -304,7 +309,7 @@ func buildMacroInputs(ctx context.Context, db *sql.DB, userID int64, startWeek s
 		sb.WriteString("\n\n")
 	}
 
-	return sb.String(), nil
+	return sb.String(), races, nil
 }
 
 // dateLayout is the YYYY-MM-DD layout every week_start in Stride uses.
@@ -328,6 +333,15 @@ func parseMondayWeek(date string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("week %q is a %s, not a Monday", date, t.Weekday())
 	}
 	return t, nil
+}
+
+// macroEndWeek returns the Monday of a block's final week: the block covers
+// MacroBlockWeeks weeks inclusive of its start, so the end is MacroBlockWeeks-1
+// weeks on. It is the single definition of the horizon — macro_prompt.go states
+// it to the coach, GenerateMacroPlan writes it into stride_macro_plans.end_week
+// — so the two cannot disagree about which weeks the block covers.
+func macroEndWeek(start time.Time) string {
+	return start.AddDate(0, 0, 7*(MacroBlockWeeks-1)).Format(dateLayout)
 }
 
 // NormaliseMacroStartWeek snaps any YYYY-MM-DD date to the Monday of the week

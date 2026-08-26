@@ -540,6 +540,92 @@ func TestFailedRegenerateLeavesThePreviousBlockActive(t *testing.T) {
 
 // PreviousPlanID is a write, so it is scoped like every other one: a caller
 // cannot retire somebody else's block by naming it as the one being replaced.
+// Two active blocks must never cover the same week: whichever one the weekly
+// generator picked up, the other's prescription for that week would be ignored
+// silently. The partial unique index only catches an identical start_week, so
+// the overlap check inside the transaction is what covers a block that starts
+// mid-horizon — including one written by a concurrent generation after the
+// caller resolved PreviousPlanID.
+func TestCreateMacroPlanRejectsOverlappingActiveBlock(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	first, firstWeeks := sampleMacroPlan(1)
+	if err := CreateMacroPlan(ctx, db, first, firstWeeks, "Initial"); err != nil {
+		t.Fatalf("CreateMacroPlan: %v", err)
+	}
+
+	// Starts a week into the active block's horizon, so the unique index does
+	// not fire and nothing names the block it would be shadowing.
+	overlapping, overlappingWeeks := sampleMacroPlan(1)
+	overlapping.StartWeek = mondayAfter(testBlockStart, 1)
+	overlapping.EndWeek = mondayAfter(testBlockStart, 26)
+	for i := range overlappingWeeks {
+		overlappingWeeks[i].WeekStart = mondayAfter(overlapping.StartWeek, i)
+	}
+	err := CreateMacroPlan(ctx, db, overlapping, overlappingWeeks, "Overlapping")
+	if !errors.Is(err, ErrOverlappingMacroPlan) {
+		t.Fatalf("error = %v, want ErrOverlappingMacroPlan", err)
+	}
+	if overlapping.ID != 0 {
+		t.Error("a rejected block must not be assigned an id")
+	}
+
+	// The rejected write left nothing behind, and the first block is untouched.
+	var plans int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_macro_plans WHERE user_id = 1`).Scan(&plans); err != nil {
+		t.Fatalf("count plans: %v", err)
+	}
+	if plans != 1 {
+		t.Errorf("plans = %d, want 1", plans)
+	}
+	active, err := GetActiveMacroPlan(ctx, db, 1, testBlockStart)
+	if err != nil {
+		t.Fatalf("GetActiveMacroPlan: %v", err)
+	}
+	if active == nil || active.ID != first.ID {
+		t.Fatalf("active plan = %+v, want the first block", active)
+	}
+
+	// Naming the block it replaces retires it in the same transaction, so the
+	// same write now has nothing to overlap with.
+	replacement, replacementWeeks := sampleMacroPlan(1)
+	replacement.StartWeek = overlapping.StartWeek
+	replacement.EndWeek = overlapping.EndWeek
+	replacement.PreviousPlanID = &first.ID
+	for i := range replacementWeeks {
+		replacementWeeks[i].WeekStart = mondayAfter(replacement.StartWeek, i)
+	}
+	if err := CreateMacroPlan(ctx, db, replacement, replacementWeeks, "Replacement"); err != nil {
+		t.Fatalf("CreateMacroPlan(replacement): %v", err)
+	}
+
+	// A block that starts after the active one ends is an extension, not an
+	// overlap, and is accepted without naming a previous plan.
+	appended, appendedWeeks := sampleMacroPlan(1)
+	appended.StartWeek = mondayAfter(replacement.EndWeek, 1)
+	appended.EndWeek = mondayAfter(appended.StartWeek, 25)
+	for i := range appendedWeeks {
+		appendedWeeks[i].WeekStart = mondayAfter(appended.StartWeek, i)
+	}
+	if err := CreateMacroPlan(ctx, db, appended, appendedWeeks, "Appended"); err != nil {
+		t.Fatalf("CreateMacroPlan(appended): %v", err)
+	}
+}
+
+// macroEndWeek is the one definition of a block's horizon: the prompt states it
+// to the coach and the store writes it into end_week, so a block always covers
+// exactly the weeks the coach was asked to fill.
+func TestMacroEndWeekMatchesTheBlockLength(t *testing.T) {
+	start, err := parseMondayWeek(testBlockStart)
+	if err != nil {
+		t.Fatalf("parse start: %v", err)
+	}
+	if got, want := macroEndWeek(start), mondayAfter(testBlockStart, MacroBlockWeeks-1); got != want {
+		t.Errorf("macroEndWeek(%s) = %s, want %s", testBlockStart, got, want)
+	}
+}
+
 func TestCreateMacroPlanRejectsForeignPreviousPlan(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()
