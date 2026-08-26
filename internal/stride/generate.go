@@ -58,10 +58,10 @@ Consequences for how you write sessions:
 - State explicitly that on a treadmill the athlete should judge the session by HR and belt speed and ignore the watch's pace and distance readouts.
 - Recommend a fan directed at the torso for any indoor threshold or long session, and a chest strap rather than wrist HR — indoors HR is the only reliable signal, so it must not also be noisy.`
 
-// bakkenPhilosophy contains the Marius Bakken threshold-dominant coaching model:
-// philosophy, HR rules, session templates and load management. It is independent
-// of any particular plan horizon, so both the weekly prompt and future
-// longer-horizon prompts can reuse it.
+// bakkenPhilosophy holds the Marius Bakken threshold-dominant coaching model:
+// core philosophy, HR rules, session templates, strides and load management. It
+// carries no output contract of its own; weeklyInstructions pairs it with
+// weeklyOutputFormat.
 const bakkenPhilosophy = `You are an expert running coach applying the Marius Bakken threshold-dominant training model, adapted for recreational runners doing 3-5 sessions per week.
 
 ## Marius Bakken Training Model (Recreational Adaptation)
@@ -131,9 +131,9 @@ const bakkenPhilosophy = `You are an expert running coach applying the Marius Ba
 
 ` + workoutFormatGuidance
 
-// weeklyOutputFormat describes the JSON contract for a 7-day plan. It is
-// appended to bakkenPhilosophy by buildGeneratePrompt; the two joined by a blank
-// line reproduce the original single constant byte for byte.
+// weeklyOutputFormat describes the JSON contract for a 7-day plan: the day
+// object schema and an example array. weeklyInstructions appends it to
+// bakkenPhilosophy after a blank line.
 const weeklyOutputFormat = `## Output Format
 Return ONLY a JSON array of day objects for the requested week. No markdown, no explanation, no code fences.
 
@@ -145,6 +145,14 @@ Example output structure:
   {"date":"2026-04-07","rest_day":true}
 ]
 `
+
+// weeklyInstructions is the instruction block the weekly generation prompt opens
+// with: the coaching philosophy followed by the 7-day output contract, separated
+// by a blank line. Callers should use this rather than concatenating the two
+// constants themselves, so the separator lives in one place.
+func weeklyInstructions() string {
+	return bakkenPhilosophy + "\n\n" + weeklyOutputFormat
+}
 
 // DayPlan represents a single day in a generated weekly training plan.
 type DayPlan struct {
@@ -779,9 +787,7 @@ func buildGeneratePrompt(
 ) string {
 	var sb strings.Builder
 
-	sb.WriteString(bakkenPhilosophy)
-	sb.WriteString("\n\n")
-	sb.WriteString(weeklyOutputFormat)
+	sb.WriteString(weeklyInstructions())
 	sb.WriteString("\n\n")
 
 	// Target week.
