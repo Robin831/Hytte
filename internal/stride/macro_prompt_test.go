@@ -150,8 +150,8 @@ func seedMacroInputFixtures(t *testing.T, db *sql.DB, userID int64, startWeek st
 	}
 	// listRaceResults only counts races with a linked workout.
 	if _, err := db.Exec(`
-		INSERT INTO workouts (user_id, sport, started_at, duration_seconds, distance_meters, avg_heart_rate, race_id)
-		VALUES (?, 'running', ?, 5220, 21097.5, 172, ?)`,
+		INSERT INTO workouts (user_id, sport, started_at, duration_seconds, distance_meters, avg_heart_rate, race_id, fit_file_hash)
+		VALUES (?, 'running', ?, 5220, 21097.5, 172, ?, 'macro-race')`,
 		userID, start.AddDate(0, 0, -7*30).Format(time.RFC3339), pastRace.ID,
 	); err != nil {
 		t.Fatalf("insert race workout: %v", err)
@@ -161,10 +161,13 @@ func seedMacroInputFixtures(t *testing.T, db *sql.DB, userID int64, startWeek st
 	for _, weeksBack := range []int{2, 3} {
 		monday := start.AddDate(0, 0, -7*weeksBack)
 		for day := 0; day < 3; day++ {
+			// fit_file_hash is UNIQUE per user and defaults to '', so every
+			// seeded workout needs its own value.
 			if _, err := db.Exec(`
-				INSERT INTO workouts (user_id, sport, started_at, duration_seconds, distance_meters, avg_heart_rate, training_load)
-				VALUES (?, 'running', ?, 3600, 12000, 145, 90)`,
+				INSERT INTO workouts (user_id, sport, started_at, duration_seconds, distance_meters, avg_heart_rate, training_load, fit_file_hash)
+				VALUES (?, 'running', ?, 3600, 12000, 145, 90, ?)`,
 				userID, monday.AddDate(0, 0, day).Format(time.RFC3339),
+				fmt.Sprintf("macro-w%d-d%d", weeksBack, day),
 			); err != nil {
 				t.Fatalf("insert workout: %v", err)
 			}

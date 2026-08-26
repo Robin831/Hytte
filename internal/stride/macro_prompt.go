@@ -339,7 +339,7 @@ func renderMacroUpcomingRaces(races []Race, from, through string) string {
 			continue
 		}
 		count++
-		fmt.Fprintf(&sb, "- id=%d %q on %s — %.1f km, priority %s", r.ID, r.Name, r.Date, r.DistanceM/1000)
+		fmt.Fprintf(&sb, "- id=%d %q on %s — %.1f km, priority %s", r.ID, r.Name, r.Date, r.DistanceM/1000, r.Priority)
 		if r.TargetTime != nil {
 			fmt.Fprintf(&sb, ", target %s", formatRaceTime(*r.TargetTime))
 			if r.DistanceM > 0 {
