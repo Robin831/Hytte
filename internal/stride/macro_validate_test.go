@@ -269,6 +269,64 @@ func TestValidateMacroPlan(t *testing.T) {
 			want:    []string{"falls outside the 26-week block"},
 		},
 		{
+			name: "mesocycle starts before the block",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				// The Monday one week before the block start.
+				plan.Mesocycles[0].StartWeek = "2025-12-29"
+			},
+			wantErr: true,
+			want:    []string{"falls outside the 26-week block"},
+		},
+		{
+			name: "mesocycle name is empty",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				plan.Mesocycles[0].Name = ""
+			},
+			wantErr: true,
+			want:    []string{"mesocycle 1: name is empty"},
+		},
+		{
+			name: "two mesocycles share a name",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				plan.Mesocycles[2].Name = plan.Mesocycles[0].Name
+			},
+			wantErr: true,
+			want:    []string{`mesocycle "Base 1": name is used by more than one mesocycle`},
+		},
+		{
+			name: "unknown mesocycle phase",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				plan.Mesocycles[1].Phase = "sharpen"
+			},
+			wantErr: true,
+			want:    []string{`mesocycle "Base 2": phase "sharpen" is not one of`},
+		},
+		{
+			name: "mesocycle spans no weeks",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				plan.Mesocycles[3].Weeks = 0
+			},
+			wantErr: true,
+			want:    []string{`mesocycle "Build 2": weeks is 0; a mesocycle must span at least one week`},
+		},
+		{
+			name: "mesocycle start_week is not a date",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				plan.Mesocycles[2].StartWeek = "mid-March"
+			},
+			wantErr: true,
+			want:    []string{`mesocycle "Build 1": start_week "mid-March" is not a YYYY-MM-DD date`},
+		},
+		{
+			name: "mesocycle start_week is not a block Monday",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				// One day after the Monday this mesocycle should start on.
+				plan.Mesocycles[2].StartWeek = "2026-03-03"
+			},
+			wantErr: true,
+			want:    []string{`mesocycle "Build 1": start_week 2026-03-03 is not aligned to the block's Mondays`},
+		},
+		{
 			name: "no mesocycles at all",
 			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
 				plan.Mesocycles = nil

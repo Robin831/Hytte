@@ -49,13 +49,17 @@ type MacroValidationContext struct {
 }
 
 // ValidateMacroPlan checks a coach response against the contract it was given
-// and returns every violation at once, as one human-readable error.
+// and reports the violations it finds as one human-readable error.
 //
 // The output is fed back to the model on a retry, so the message names the
 // offending week and the expected value rather than just the rule: a caller
 // can hand the error text straight back as "you returned this, fix it". That
-// is also why the checks accumulate instead of returning on the first
+// is also why the per-week checks accumulate instead of returning on the first
 // problem — a retry that fixes one rule and trips the next wastes a round.
+// Two inputs do end the pass early, because nothing after them could be
+// checked without reporting noise: a nil plan, and a block start week that is
+// not a parseable Monday. Otherwise every rule below runs, so a plan that
+// comes back clean has been checked against all of them.
 //
 // What it does not check: that race_id and library_id point at rows the user
 // owns. Those are foreign keys, verified against the database by
@@ -146,7 +150,8 @@ func validateMacroCalendar(p *macroProblems, weeks []MacroWeekResponse, start ti
 }
 
 // validateMacroWeekFields checks the per-week enums, the mesocycle reference
-// and the weekly distance cap.
+// and the weekly volume: not negative, and not over the athlete's cap when one
+// is configured.
 func validateMacroWeekFields(p *macroProblems, plan *MacroPlanResponse, in MacroValidationContext) {
 	names := make(map[string]bool, len(plan.Mesocycles))
 	known := make([]string, 0, len(plan.Mesocycles))

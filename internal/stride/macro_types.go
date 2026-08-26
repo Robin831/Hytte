@@ -2,10 +2,14 @@ package stride
 
 import "strings"
 
-// The types in this file mirror the JSON contract in macroOutputContract
-// (macro_prompt.go) field for field: same keys, same order, same nullability.
-// The contract is the single source of truth for the shape — change the two
-// together, and never rename a json tag here without renaming the key there.
+// The types in this file decode the JSON contract in macroOutputContract
+// (macro_prompt.go): every key the contract documents has a field here with
+// the matching json tag and nullability. The contract is the single source of
+// truth for the shape — change the two together, and never rename a json tag
+// here without renaming the key there. Field order and any field the contract
+// does not mention (Mesocycle.RaceID, which only the store sets) are not part
+// of that correspondence; TestMacroPlanResponseMirrorsOutputContract checks
+// the keys, not the order.
 //
 // They are deliberately separate from the persisted MacroPlan / MacroWeek in
 // macro.go. The coach never authors ids, ownership, status or timestamps, so
