@@ -206,6 +206,13 @@ const macroInstructions = bakkenPhilosophy + "\n\n" +
 // return an error. Optional context that a new athlete simply has none of (race
 // predictions, ACR, VO2max, lactate, the workout library, the previous block)
 // degrades to a short "none recorded" line so a first block can still be built.
+//
+// The non-Monday rejection is a backstop, not the place to handle a computed
+// date: there is no production caller yet (GenerateMacroPlan lands separately),
+// and every entry point that will compute a start — the Monday cron, the
+// extension path deriving a start from a previous block's EndWeek, the
+// manual/API path — must pass it through NormaliseMacroStartWeek first, which
+// snaps any date to its containing Monday.
 func buildMacroInputs(ctx context.Context, db *sql.DB, userID int64, startWeek string, mode MacroMode) (string, error) {
 	if !mode.valid() {
 		return "", fmt.Errorf("invalid macro mode %q", mode)
@@ -323,16 +330,45 @@ func parseMondayWeek(date string) (time.Time, error) {
 	return t, nil
 }
 
+// NormaliseMacroStartWeek snaps any YYYY-MM-DD date to the Monday of the week
+// containing it. It is the single entry point every caller that *computes* a
+// block start must route through, because buildMacroInputs rejects a non-Monday
+// start outright rather than emitting a table of dashes:
+//
+//   - the Monday cron already runs on a Monday, but takes its date from the
+//     scheduler's clock and time zone;
+//   - the extension path derives the next start as a previous block's EndWeek
+//     plus 7 days, and nothing in macro_store validates that EndWeek is a
+//     Monday — a Sunday EndWeek yields a Sunday start;
+//   - a manual/API start week is whatever date the UI sent.
+//
+// Snapping is the right call for all three: a date inside week N means week N,
+// never "fail the generation". The error is reserved for a date that is not a
+// date at all.
+func NormaliseMacroStartWeek(date string) (string, error) {
+	t, err := parseWeekDate(date)
+	if err != nil {
+		return "", fmt.Errorf("parse week %q: %w", date, err)
+	}
+	// Weekday(): Sunday=0..Saturday=6, so Monday is (weekday+6)%7 days back —
+	// 0 for Monday itself, 6 for Sunday.
+	daysBack := (int(t.Weekday()) + 6) % 7
+	return t.AddDate(0, 0, -daysBack).Format(dateLayout), nil
+}
+
 // stripGoalRaceSection removes the "Goal Race:" block that
 // BuildUserProfileBlock appends from the legacy goal_race_* preferences. Stride
 // macro planning derives its goal from stride_races and the block's own goal
 // object, so those preferences must not leak into the prompt and contradict it.
 //
 // Only the goal-race section itself is dropped, not everything after it: the
-// section is the "Goal Race:" header line plus the indented/bulleted lines
-// under it, and any later top-level line (threshold pace, zones, a section
-// added later) is kept. BuildUserProfileBlock happens to emit the goal race
-// last today, but nothing in this package enforces that.
+// section is the "Goal Race:" header line plus the bullets the goal race
+// itself emits (goalRaceBullets). The first line that is not one of those ends
+// the section, so a profile that emitted the goal race before the rest of its
+// bullets — "- Threshold Pace: 4:28/km", "- Training Zones (custom):" and the
+// indented zone lines under it — keeps every one of them.
+// BuildUserProfileBlock happens to emit the goal race last today, but nothing
+// in this package enforces that.
 func stripGoalRaceSection(block string) string {
 	// Match on the line prefix rather than the whole "Goal Race:\n" header so a
 	// block that renders the goal inline on the same line is stripped too.
@@ -343,7 +379,7 @@ func stripGoalRaceSection(block string) string {
 		switch {
 		case strings.HasPrefix(line, "Goal Race:"):
 			inGoalRace = true
-		case inGoalRace && isProfileSectionBody(line):
+		case inGoalRace && isGoalRaceBullet(line):
 			// Still inside the goal-race section — drop this line too.
 		default:
 			inGoalRace = false
@@ -359,15 +395,30 @@ func stripGoalRaceSection(block string) string {
 	return block + "\n"
 }
 
-// isProfileSectionBody reports whether a profile line belongs to the section
-// above it rather than starting a new one. BuildUserProfileBlock writes section
-// bodies as "- key: value" bullets and indented continuation lines, and section
-// headers flush left, so anything indented or bulleted is body.
-func isProfileSectionBody(line string) bool {
-	return strings.HasPrefix(line, "-") ||
-		strings.HasPrefix(line, " ") ||
-		strings.HasPrefix(line, "\t") ||
-		strings.TrimSpace(line) == ""
+// goalRaceBullets is the complete bullet vocabulary
+// training.buildUserProfileFromPrefs emits under "Goal Race:". Matching this
+// exact set — rather than "any bullet" — is what stops the strip from
+// swallowing the profile's other top-level bullets, which use the same "- key:
+// value" shape. TestStripGoalRaceSectionMatchesProducerVocabulary pins the set
+// against the producer, so a new goal-race field fails a test rather than
+// leaking into the prompt.
+var goalRaceBullets = []string{
+	"- Event:",
+	"- Date:",
+	"- Distance:",
+	"- Target Time:",
+}
+
+// isGoalRaceBullet reports whether a line is one of the goal race's own
+// bullets. Anything else — another top-level bullet, a blank line, a new
+// section header — ends the goal-race section.
+func isGoalRaceBullet(line string) bool {
+	for _, prefix := range goalRaceBullets {
+		if strings.HasPrefix(line, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // renderMacroRacePrediction renders the latest stored race-prediction snapshot.
@@ -490,9 +541,11 @@ type macroHistoryRow struct {
 	avgHR        float64
 	hrWeight     int
 	hasVolume    bool
+	planID       int64
 	planned      int
 	completed    int
 	hasPlan      bool
+	hasEvals     bool
 	easyMin      int
 	thresholdMin int
 	hardMin      int
@@ -513,6 +566,8 @@ func buildMacroHistoryTable(db *sql.DB, userID int64, start time.Time) (string, 
 		return "", fmt.Errorf("load weekly summaries: %w", err)
 	}
 
+	// order runs oldest week first (i counts down from macroHistoryWeeks to 1),
+	// which is the order the table renders in.
 	rows := make(map[string]*macroHistoryRow, macroHistoryWeeks)
 	order := make([]string, 0, macroHistoryWeeks)
 	for i := macroHistoryWeeks; i >= 1; i-- {
@@ -520,7 +575,11 @@ func buildMacroHistoryTable(db *sql.DB, userID int64, start time.Time) (string, 
 		order = append(order, week)
 		rows[week] = &macroHistoryRow{weekStart: week}
 	}
-	windowStart := order[0]
+	// The plan loader has to page back to the OLDEST week of the window, so the
+	// bound is computed from start rather than read off order — an oldest-first
+	// order makes that order[0], but that is a property of the loop above, not
+	// something the loader should depend on.
+	windowStart := start.AddDate(0, 0, -7*macroHistoryWeeks).Format(dateLayout)
 
 	weeks, err := loadMacroPlanWeeks(db, userID, windowStart)
 	if err != nil {
@@ -544,11 +603,13 @@ func buildMacroHistoryTable(db *sql.DB, userID int64, start time.Time) (string, 
 		}
 	}
 	for _, w := range weeks {
-		// GetPlanHistory returns one row per stored plan, newest first, and a
-		// regenerated week can leave two plans sharing a week_start. Keep the
-		// first (most recent) row rather than summing, which would double the
-		// planned-session count for that week.
-		if r, ok := rows[w.WeekStart]; ok && !r.hasPlan {
+		// One plan per week, guaranteed by stride_plans' UNIQUE(user_id,
+		// week_start): a regenerated week upserts the existing row rather than
+		// adding a second one (generate.go's ON CONFLICT DO UPDATE), so this
+		// assigns rather than merging or deduplicating.
+		// TestStridePlansAreUniquePerUserWeek pins that invariant.
+		if r, ok := rows[w.WeekStart]; ok {
+			r.planID = w.PlanID
 			r.planned = w.SessionsPlanned
 			r.completed = w.SessionsCompleted
 			r.hasPlan = true
@@ -558,11 +619,29 @@ func buildMacroHistoryTable(db *sql.DB, userID int64, start time.Time) (string, 
 		}
 	}
 
+	// Which of those plans were evaluated at all. SessionsCompleted counts only
+	// evaluations that matched a prescription, so it cannot distinguish "never
+	// evaluated" from "evaluated, matched nothing" on its own.
+	planIDs := make([]int64, 0, len(rows))
+	for _, r := range rows {
+		if r.hasPlan {
+			planIDs = append(planIDs, r.planID)
+		}
+	}
+	evaluated, err := plansWithEvaluations(db, userID, planIDs)
+	if err != nil {
+		return "", err
+	}
+	for _, r := range rows {
+		r.hasEvals = r.hasPlan && evaluated[r.planID]
+	}
+
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "## Training History (last %d weeks)\n", macroHistoryWeeks)
 	sb.WriteString("km/Hours/Sessions are logged volume across ALL sports, not running only — treat them as an upper bound on running volume.\n")
 	sb.WriteString("Planned/Evaluated counts sessions from that week's Stride plan: Planned is what the plan prescribed, Evaluated is how many of those the coach's session evaluations matched to a logged workout.\n")
-	sb.WriteString("Evaluated is NOT adherence. `?` means that week's plan was never evaluated, so nothing can be said about adherence — read the Sessions column for what the athlete actually trained, and never read `?` or a low count as skipped training.\n")
+	sb.WriteString("`?` means that week's plan was never evaluated at all, so nothing can be said about adherence — read the Sessions column for what the athlete actually trained, and never read `?` as skipped training.\n")
+	sb.WriteString("A number IS a real signal: the plan was evaluated, and that many prescriptions were matched. A `0` next to logged sessions means the athlete trained but matched none of the plan — prescription drift, not missing data.\n")
 	sb.WriteString("Easy/Thr/Hard are minutes in the matching HR zones.\n\n")
 	sb.WriteString("| Week | km (all sports) | Hours (all sports) | Sessions (all sports) | Avg HR | Planned/Evaluated | Easy/Thr/Hard min |\n")
 	sb.WriteString("|------|-----------------|--------------------|-----------------------|--------|-------------------|-------------------|\n")
@@ -578,13 +657,15 @@ func buildMacroHistoryTable(db *sql.DB, userID int64, start time.Time) (string, 
 		}
 		adherence := "--"
 		if r.hasPlan {
-			// SessionsCompleted counts stride_evaluations, not workouts: a week
-			// whose plan was never evaluated reads as zero completed even
-			// though the log shows the athlete trained. Rendering that as "0"
-			// tells the coach the athlete skipped everything, so a zero next to
-			// logged sessions is rendered as "unknown" instead.
+			// SessionsCompleted counts only evaluations that matched a
+			// prescription, so a plain "0" is ambiguous: either the plan was
+			// never evaluated, or it was evaluated and the athlete matched
+			// nothing. Only the first is unknown, and it is decided by whether
+			// any evaluation rows exist for the plan — not by the all-sports
+			// volume column, which would hide the second case (chronic
+			// prescription drift) exactly when the coach most needs to see it.
 			done := fmt.Sprintf("%d", r.completed)
-			if r.completed == 0 && r.workouts > 0 {
+			if !r.hasEvals {
 				done = "?"
 			}
 			adherence = fmt.Sprintf("%d/%s", r.planned, done)
@@ -614,14 +695,32 @@ const (
 // GetPlanHistory pages by rows — one per stored stride plan, newest first —
 // not by calendar week, and it pages back from today rather than from the
 // block start. A single call with a guessed row count therefore drops the
-// oldest weeks of the window whenever the athlete has more plan rows than
-// weeks (a regenerated week) or the block starts in the future. Paging until a
-// row older than the window appears is what makes the window explicit.
+// oldest weeks of the window whenever plan rows newer than the window sit in
+// front of it — a manual regeneration whose start week is in the past, or a
+// block starting in the future. Paging until a row older than the window
+// appears is what makes the window explicit.
+//
+// windowStart is the OLDEST week of the window (start - macroHistoryWeeks), not
+// the block start: bounding on the newest week would stop after one page.
 func loadMacroPlanWeeks(db *sql.DB, userID int64, windowStart string) ([]WeekSummary, error) {
+	return collectMacroPlanWeeks(func(limit, offset int) ([]WeekSummary, bool, error) {
+		weeks, _, hasMore, err := GetPlanHistory(db, userID, limit, offset)
+		return weeks, hasMore, err
+	}, windowStart, userID)
+}
+
+// macroPlanPager reads one page of plan history. It exists so the paging loop
+// below can be driven without a database — the loop's exits (a short page,
+// hasMore=false, the window bound, the page cap) are otherwise reachable only
+// through GetPlanHistory's own 156-week depth cap.
+type macroPlanPager func(limit, offset int) ([]WeekSummary, bool, error)
+
+// collectMacroPlanWeeks is loadMacroPlanWeeks's paging loop over any pager.
+func collectMacroPlanWeeks(page macroPlanPager, windowStart string, userID int64) ([]WeekSummary, error) {
 	var out []WeekSummary
 	offset := 0
-	for page := 0; page < macroPlanHistoryMaxPages; page++ {
-		weeks, _, hasMore, err := GetPlanHistory(db, userID, macroPlanHistoryPage, offset)
+	for p := 0; p < macroPlanHistoryMaxPages; p++ {
+		weeks, hasMore, err := page(macroPlanHistoryPage, offset)
 		if err != nil {
 			return nil, fmt.Errorf("load plan history: %w", err)
 		}
@@ -636,6 +735,42 @@ func loadMacroPlanWeeks(db *sql.DB, userID int64, windowStart string) ([]WeekSum
 	}
 	log.Printf("stride: macro history stopped paging plan history for user %d after %d pages", userID, macroPlanHistoryMaxPages)
 	return out, nil
+}
+
+// plansWithEvaluations returns the subset of planIDs that have at least one
+// stride_evaluations row, whatever its compliance.
+//
+// This is the difference between "the plan was never evaluated" and "the plan
+// was evaluated and the athlete matched none of it": WeekSummary.
+// SessionsCompleted counts only compliant/partial evaluations of a prescribed
+// session, so both cases arrive as zero.
+func plansWithEvaluations(db *sql.DB, userID int64, planIDs []int64) (map[int64]bool, error) {
+	out := make(map[int64]bool, len(planIDs))
+	if len(planIDs) == 0 {
+		return out, nil
+	}
+	args := make([]any, 0, len(planIDs)+1)
+	args = append(args, userID)
+	placeholders := make([]string, len(planIDs))
+	for i, id := range planIDs {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	rows, err := db.Query(
+		`SELECT DISTINCT plan_id FROM stride_evaluations WHERE user_id = ? AND plan_id IN (`+
+			strings.Join(placeholders, ",")+`)`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query evaluated plans: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan evaluated plan id: %w", err)
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }
 
 // renderMacroTrainingLoad renders the acute:chronic ratio and the classified

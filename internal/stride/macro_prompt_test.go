@@ -499,18 +499,31 @@ func TestStripGoalRaceSection(t *testing.T) {
 	}{
 		{"empty", "", ""},
 		{"header only", "User Profile:\nGoal Race: 2026-05-01\n", ""},
-		{"keeps body", "User Profile:\n- Max HR: 190 bpm\nGoal Race:\n- 2026-05-01\n", "User Profile:\n- Max HR: 190 bpm\n"},
+		{
+			"keeps body",
+			"User Profile:\n- Max HR: 190 bpm\nGoal Race:\n- Date: 2026-05-01\n",
+			"User Profile:\n- Max HR: 190 bpm\n",
+		},
 		// The goal race is trailing today, but nothing in the training package
-		// promises that. Anything after it must survive the strip.
+		// promises that. Anything after it must survive the strip — including
+		// the plain top-level bullets BuildUserProfileBlock actually emits,
+		// which share the goal race's "- key: value" shape.
 		{
 			"goal race in the middle",
-			"User Profile:\n- Max HR: 190 bpm\nGoal Race:\n- Event: Oslo\n- Date: 2026-05-01\nThreshold:\n- Threshold Pace: 4:28/km\n",
-			"User Profile:\n- Max HR: 190 bpm\nThreshold:\n- Threshold Pace: 4:28/km\n",
+			"User Profile:\n- Max HR: 190 bpm\nGoal Race:\n- Event: Oslo\n- Date: 2026-05-01\n- Threshold Pace: 4:28/km\n- Training Zones (custom):\n  Zone 1 (Recovery): 100-138 bpm\n",
+			"User Profile:\n- Max HR: 190 bpm\n- Threshold Pace: 4:28/km\n- Training Zones (custom):\n  Zone 1 (Recovery): 100-138 bpm\n",
 		},
 		{
 			"inline goal race in the middle",
-			"User Profile:\n- Max HR: 190 bpm\nGoal Race: 2026-05-01\nThreshold:\n- Threshold Pace: 4:28/km\n",
-			"User Profile:\n- Max HR: 190 bpm\nThreshold:\n- Threshold Pace: 4:28/km\n",
+			"User Profile:\n- Max HR: 190 bpm\nGoal Race: 2026-05-01\n- Threshold Pace: 4:28/km\n",
+			"User Profile:\n- Max HR: 190 bpm\n- Threshold Pace: 4:28/km\n",
+		},
+		// A blank separator after the goal race must end the section too, not
+		// carry it across the gap.
+		{
+			"blank line ends the section",
+			"User Profile:\n- Max HR: 190 bpm\nGoal Race:\n- Event: Oslo\n\n- Threshold Pace: 4:28/km\n",
+			"User Profile:\n- Max HR: 190 bpm\n\n- Threshold Pace: 4:28/km\n",
 		},
 		{
 			"no goal race",
@@ -524,6 +537,71 @@ func TestStripGoalRaceSection(t *testing.T) {
 				t.Errorf("stripGoalRaceSection(%q) = %q, want %q", tc.block, got, tc.want)
 			}
 		})
+	}
+}
+
+// The strip recognises the goal race by its own bullet vocabulary, so that
+// vocabulary has to match what training.BuildUserProfileBlock actually emits —
+// hand-written fixtures cannot pin that. A goal-race field added upstream and
+// not added to goalRaceBullets would leak into the prompt and contradict the
+// block's own goal, which is the whole reason this strip exists.
+func TestStripGoalRaceSectionMatchesProducerVocabulary(t *testing.T) {
+	db := setupTestDB(t)
+	setPref(t, db, 1, "goal_race_name", "Oslo Half")
+	setPref(t, db, 1, "goal_race_date", "2027-05-01")
+	setPref(t, db, 1, "goal_race_distance", "21.1")
+	setPref(t, db, 1, "goal_race_target_time", "1:27:00")
+
+	block := training.BuildUserProfileBlock(db, 1)
+	if !strings.Contains(block, "Goal Race:") {
+		t.Fatalf("producer emitted no goal race to strip:\n%s", block)
+	}
+	// Goal race only: every line of the block is either the profile header or a
+	// goal-race line, so a complete vocabulary leaves nothing behind.
+	if got := stripGoalRaceSection(block); got != "" {
+		t.Errorf("goal-race lines survived the strip — goalRaceBullets is missing a key the producer emits\nblock:\n%s\nkept:\n%s", block, got)
+	}
+}
+
+// The producer emits the goal race last today. Nothing enforces that, so the
+// strip is tested against the producer's real output with the goal race moved
+// to the front: every remaining line — top-level "- key: value" bullets and the
+// indented zone lines — must survive.
+func TestStripGoalRaceSectionKeepsProducerBulletsAfterGoalRace(t *testing.T) {
+	db := setupTestDB(t)
+	setPref(t, db, 1, "max_hr", "190")
+	setPref(t, db, 1, "threshold_hr", "166")
+	setPref(t, db, 1, "threshold_pace", "268")
+	setPref(t, db, 1, "goal_race_name", "Oslo Half")
+	setPref(t, db, 1, "goal_race_date", "2027-05-01")
+	setPref(t, db, 1, "goal_race_target_time", "1:27:00")
+
+	block := training.BuildUserProfileBlock(db, 1)
+	idx := strings.Index(block, "Goal Race:")
+	if idx < 0 {
+		t.Fatalf("producer emitted no goal race:\n%s", block)
+	}
+	// Rebuild the producer's own output with the goal race directly under the
+	// "User Profile:" header instead of at the end.
+	header := "User Profile:\n"
+	body := strings.TrimPrefix(block[:idx], header)
+	moved := header + block[idx:] + body
+
+	got := stripGoalRaceSection(moved)
+	for _, want := range []string{
+		"- Max HR: 190 bpm",
+		"- Threshold Pace: 4:28/km",
+		"- Training Zones (Olympiatoppen, estimated from max HR):",
+		"  Zone 1 (I1 - Recovery): 0-114 bpm",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("strip swallowed %q when the goal race came first\ninput:\n%s\nkept:\n%s", want, moved, got)
+		}
+	}
+	for _, unwanted := range []string{"Goal Race:", "Oslo Half", "1:27:00", "2027-05-01"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("goal-race line %q survived the strip\nkept:\n%s", unwanted, got)
+		}
 	}
 }
 
@@ -697,9 +775,29 @@ func TestMacroHistoryMergesDuplicateWeekStarts(t *testing.T) {
 	}
 }
 
-// SessionsCompleted counts stride_evaluations, not logged workouts. A week
-// whose plan was never evaluated must not be reported to the coach as zero
-// sessions completed while the volume columns show the athlete trained.
+// seedEvaluation inserts one stride evaluation for a plan, encrypting eval_json
+// the way the production writer does.
+func seedEvaluation(t *testing.T, db *sql.DB, userID, planID int64, workoutID *int64, plannedType, compliance string) {
+	t.Helper()
+	evalJSON, err := encryption.EncryptField(fmt.Sprintf(
+		`{"planned_type":%q,"actual_type":"easy","compliance":%q}`, plannedType, compliance))
+	if err != nil {
+		t.Fatalf("encrypt eval: %v", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO stride_evaluations (user_id, plan_id, workout_id, eval_json, created_at)
+		VALUES (?, ?, ?, ?, ?)`,
+		userID, planID, workoutID, evalJSON, time.Now().UTC().Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("insert evaluation: %v", err)
+	}
+}
+
+// The Evaluated column has two different zeros: a plan nobody evaluated, and a
+// plan that was evaluated and matched nothing. Only the first is unknown. The
+// second — an athlete who trains every week but replaces every prescription —
+// is the strongest signal a 26-week block gets, so it must render as a real 0
+// and never be collapsed into "?".
 func TestMacroHistoryAdherenceDistinguishesUnevaluatedFromMissed(t *testing.T) {
 	db := setupTestDB(t)
 	start, err := parseMondayWeek("2026-08-31")
@@ -717,21 +815,20 @@ func TestMacroHistoryAdherenceDistinguishesUnevaluatedFromMissed(t *testing.T) {
 	weekB := start.AddDate(0, 0, -7*4)
 	planB := seedStridePlan(t, db, 1, weekB, 2)
 	workoutB := seedWorkout(t, db, 1, weekB.Format(dateLayout), 150, "adh-b1")
-	evalJSON, err := encryption.EncryptField(`{"planned_type":"threshold","actual_type":"threshold","compliance":"compliant"}`)
-	if err != nil {
-		t.Fatalf("encrypt eval: %v", err)
-	}
-	if _, err := db.Exec(`
-		INSERT INTO stride_evaluations (user_id, plan_id, workout_id, eval_json, created_at)
-		VALUES (?, ?, ?, ?, ?)`,
-		1, planB, workoutB, evalJSON, time.Now().UTC().Format(time.RFC3339),
-	); err != nil {
-		t.Fatalf("insert evaluation: %v", err)
-	}
+	seedEvaluation(t, db, 1, planB, &workoutB, "threshold", "compliant")
 
-	// Week C: plan, no workouts at all — a genuine 0.
+	// Week C: plan, no workouts, no evaluations — nothing was ever assessed.
 	weekC := start.AddDate(0, 0, -7*5)
 	seedStridePlan(t, db, 1, weekC, 2)
+
+	// Week D: plan + workouts, both sessions evaluated as non-compliant. The
+	// week IS known: the athlete trained and matched none of the plan.
+	weekD := start.AddDate(0, 0, -7*6)
+	planD := seedStridePlan(t, db, 1, weekD, 2)
+	workoutD1 := seedWorkout(t, db, 1, weekD.Format(dateLayout), 140, "adh-d1")
+	workoutD2 := seedWorkout(t, db, 1, weekD.AddDate(0, 0, 2).Format(dateLayout), 140, "adh-d2")
+	seedEvaluation(t, db, 1, planD, &workoutD1, "threshold", "non_compliant")
+	seedEvaluation(t, db, 1, planD, &workoutD2, "threshold", "non_compliant")
 
 	table, err := buildMacroHistoryTable(db, 1, start)
 	if err != nil {
@@ -743,15 +840,50 @@ func TestMacroHistoryAdherenceDistinguishesUnevaluatedFromMissed(t *testing.T) {
 	if got := historyRow(t, table, weekB.Format(dateLayout)); !strings.Contains(got, "| 2/1 |") {
 		t.Errorf("evaluated week should read 2/1, got: %s", got)
 	}
-	if got := historyRow(t, table, weekC.Format(dateLayout)); !strings.Contains(got, "| 2/0 |") {
-		t.Errorf("week with a plan and no workouts should read 2/0, got: %s", got)
+	if got := historyRow(t, table, weekC.Format(dateLayout)); !strings.Contains(got, "| 2/? |") {
+		t.Errorf("week whose plan has no evaluations at all should read 2/?, got: %s", got)
+	}
+	if got := historyRow(t, table, weekD.Format(dateLayout)); !strings.Contains(got, "| 2/0 |") {
+		t.Errorf("evaluated week that matched nothing must read 2/0, not 2/? — total prescription drift is a known week, got: %s", got)
 	}
 	// The legend has to explain the column, or the coach reads it as adherence.
-	for _, want := range []string{"Planned/Evaluated", "never evaluated"} {
+	for _, want := range []string{"Planned/Evaluated", "never evaluated", "matched none of the plan"} {
 		if !strings.Contains(table, want) {
 			t.Errorf("history legend is missing %q", want)
 		}
 	}
+}
+
+// The history merge assigns one plan row per week instead of deduplicating,
+// which is only correct because stride_plans is unique on (user_id,
+// week_start) — a regenerated week upserts in place. If that constraint were
+// ever dropped, a regenerated week would arrive as two rows and the merge would
+// quote whichever one the query happened to return last.
+func TestStridePlansAreUniquePerUserWeek(t *testing.T) {
+	db := setupTestDB(t)
+	monday, err := parseMondayWeek("2026-08-17")
+	if err != nil {
+		t.Fatalf("parse monday: %v", err)
+	}
+	seedStridePlan(t, db, 1, monday, 3)
+
+	_, err = db.Exec(`
+		INSERT INTO stride_plans (user_id, week_start, week_end, plan_json, created_at)
+		VALUES (?, ?, ?, '[]', ?)`,
+		1, monday.Format(dateLayout), monday.AddDate(0, 0, 6).Format(dateLayout),
+		time.Now().UTC().Format(time.RFC3339),
+	)
+	if err == nil {
+		t.Fatal("a second plan for the same user and week was accepted — the macro history merge assumes one plan per week")
+	}
+
+	// A different user may hold the same week.
+	if _, err := db.Exec(
+		"INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g2')",
+	); err != nil {
+		t.Fatalf("insert second user: %v", err)
+	}
+	seedStridePlan(t, db, 2, monday, 3)
 }
 
 // GetPlanHistory pages back from today by rows, not from the block start by
@@ -786,8 +918,193 @@ func TestMacroHistoryPlanWindowReachesOldestWeek(t *testing.T) {
 		t.Fatalf("buildMacroHistoryTable: %v", err)
 	}
 	oldest := start.AddDate(0, 0, -7*macroHistoryWeeks).Format(dateLayout)
-	if got := historyRow(t, table, oldest); !strings.Contains(got, "| 3/0 |") {
+	// 3 planned, never evaluated: the plan columns are only populated at all if
+	// the loader paged back this far.
+	if got := historyRow(t, table, oldest); !strings.Contains(got, "| 3/? |") {
 		t.Errorf("oldest window week lost its plan columns — the page did not reach it\nrow: %s", got)
+	}
+}
+
+// fakePlanPager serves plan-history pages from a fixed newest-first list of
+// week starts, recording every call. It exists because GetPlanHistory's own
+// 156-week depth cap makes the loop's page cap unreachable through the
+// database, and because the window bound must be pinned independently of how
+// many rows a real athlete happens to have.
+type fakePlanPager struct {
+	weeks    []string // newest first
+	calls    [][2]int // {limit, offset} per call
+	infinite bool     // never stop advertising more pages
+}
+
+func (f *fakePlanPager) page(limit, offset int) ([]WeekSummary, bool, error) {
+	f.calls = append(f.calls, [2]int{limit, offset})
+	if f.infinite {
+		out := make([]WeekSummary, limit)
+		for i := range out {
+			// Always newer than any window bound a caller will pass.
+			out[i] = WeekSummary{WeekStart: "2099-01-04", PlanID: int64(offset + i + 1)}
+		}
+		return out, true, nil
+	}
+	if offset >= len(f.weeks) {
+		return nil, false, nil
+	}
+	end := offset + limit
+	if end > len(f.weeks) {
+		end = len(f.weeks)
+	}
+	out := make([]WeekSummary, 0, end-offset)
+	for i := offset; i < end; i++ {
+		out = append(out, WeekSummary{WeekStart: f.weeks[i], PlanID: int64(i + 1)})
+	}
+	return out, end < len(f.weeks), nil
+}
+
+// weeksBack returns n week starts counting back from a Monday, newest first.
+func weeksBack(monday time.Time, n int) []string {
+	out := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, monday.AddDate(0, 0, -7*i).Format(dateLayout))
+	}
+	return out
+}
+
+// The bound is the OLDEST week of the window. Bounding on the newest week (the
+// block start minus one) would be satisfied by the last row of the very first
+// page and the loop would stop there, silently dropping every older week.
+func TestCollectMacroPlanWeeksPagesToOldestWeek(t *testing.T) {
+	monday, err := parseMondayWeek("2026-08-31")
+	if err != nil {
+		t.Fatalf("parse monday: %v", err)
+	}
+	// 60 plan rows, one per week back from last week: more than two pages.
+	pager := &fakePlanPager{weeks: weeksBack(monday.AddDate(0, 0, -7), 60)}
+	windowStart := monday.AddDate(0, 0, -7*macroHistoryWeeks).Format(dateLayout)
+
+	got, err := collectMacroPlanWeeks(pager.page, windowStart, 1)
+	if err != nil {
+		t.Fatalf("collectMacroPlanWeeks: %v", err)
+	}
+	if len(pager.calls) < 2 {
+		t.Fatalf("stopped after %d page(s) — the loop bound on the newest week, not the oldest", len(pager.calls))
+	}
+	var reached bool
+	for _, w := range got {
+		if w.WeekStart == windowStart {
+			reached = true
+		}
+	}
+	if !reached {
+		t.Errorf("paging never reached the window's oldest week %s (got %d rows)", windowStart, len(got))
+	}
+	// It must also stop once it has: pages are 26 rows, so week 26 of the
+	// window lands on page 2 and page 3 must never be requested.
+	if len(pager.calls) != 2 {
+		t.Errorf("expected exactly 2 pages, got %d: %v", len(pager.calls), pager.calls)
+	}
+	if pager.calls[1] != [2]int{macroPlanHistoryPage, macroPlanHistoryPage} {
+		t.Errorf("second page did not advance by the page size: %v", pager.calls[1])
+	}
+}
+
+// hasMore=false is the end of the athlete's history (or GetPlanHistory's own
+// depth cap). The loop must return on it rather than asking for a page past
+// the end.
+func TestCollectMacroPlanWeeksStopsWhenNoMorePages(t *testing.T) {
+	monday, err := parseMondayWeek("2026-08-31")
+	if err != nil {
+		t.Fatalf("parse monday: %v", err)
+	}
+	// Fewer rows than the window is deep, all inside it: the bound is never
+	// crossed, so only hasMore can end the loop.
+	pager := &fakePlanPager{weeks: weeksBack(monday.AddDate(0, 0, -7), 5)}
+	windowStart := monday.AddDate(0, 0, -7*macroHistoryWeeks).Format(dateLayout)
+
+	got, err := collectMacroPlanWeeks(pager.page, windowStart, 1)
+	if err != nil {
+		t.Fatalf("collectMacroPlanWeeks: %v", err)
+	}
+	if len(got) != 5 {
+		t.Errorf("got %d weeks, want all 5", len(got))
+	}
+	if len(pager.calls) != 1 {
+		t.Errorf("queried %d pages for a single short page: %v", len(pager.calls), pager.calls)
+	}
+}
+
+// A pager that keeps advertising more pages of in-window rows must not spin:
+// the loop stops at macroPlanHistoryMaxPages and truncates. GetPlanHistory's
+// depth cap makes this unreachable in production today, which is exactly why
+// nothing else would notice if the cap regressed.
+func TestCollectMacroPlanWeeksStopsAtPageCap(t *testing.T) {
+	pager := &fakePlanPager{infinite: true}
+
+	got, err := collectMacroPlanWeeks(pager.page, "2026-01-05", 1)
+	if err != nil {
+		t.Fatalf("collectMacroPlanWeeks: %v", err)
+	}
+	if len(pager.calls) != macroPlanHistoryMaxPages {
+		t.Errorf("made %d page calls, want the cap of %d", len(pager.calls), macroPlanHistoryMaxPages)
+	}
+	if want := macroPlanHistoryPage * macroPlanHistoryMaxPages; len(got) != want {
+		t.Errorf("got %d rows, want %d", len(got), want)
+	}
+}
+
+// Every caller that computes a block start — the Monday cron, the extension
+// path, a manual start from the UI — routes through NormaliseMacroStartWeek,
+// because buildMacroInputs rejects a non-Monday outright.
+func TestNormaliseMacroStartWeek(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"2026-08-31", "2026-08-31"}, // Monday: unchanged
+		{"2026-09-01", "2026-08-31"}, // Tuesday
+		{"2026-09-06", "2026-08-31"}, // Sunday snaps back, not forward
+		{"2026-09-05", "2026-08-31"}, // Saturday
+	}
+	for _, tc := range cases {
+		got, err := NormaliseMacroStartWeek(tc.in)
+		if err != nil {
+			t.Fatalf("NormaliseMacroStartWeek(%q): %v", tc.in, err)
+		}
+		if got != tc.want {
+			t.Errorf("NormaliseMacroStartWeek(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+	if _, err := NormaliseMacroStartWeek("not-a-date"); err == nil {
+		t.Error("a date that is not a date must still be an error")
+	}
+}
+
+// The extension path derives its start from a previous block's EndWeek plus 7
+// days, and macro_store never validates that EndWeek is a Monday. Normalising
+// first is what keeps a stored Sunday EndWeek from failing generation.
+func TestNormaliseMacroStartWeekCoversExtensionDerivedStart(t *testing.T) {
+	ctx := context.Background()
+	db := setupTestDB(t)
+
+	// A previous block whose stored end week is a Sunday.
+	prevEndWeek := "2026-08-30"
+	normalised, err := NormaliseMacroStartWeek(prevEndWeek)
+	if err != nil {
+		t.Fatalf("normalise end week: %v", err)
+	}
+	end, err := parseMondayWeek(normalised)
+	if err != nil {
+		t.Fatalf("normalised end week is not a Monday: %v", err)
+	}
+	startWeek := end.AddDate(0, 0, 7).Format(dateLayout)
+
+	if _, err := buildMacroInputs(ctx, db, 1, startWeek, MacroModeExtension); err != nil {
+		t.Fatalf("extension-derived start %s was rejected: %v", startWeek, err)
+	}
+	// Without the normalisation the derived start is the Sunday plus 7 days,
+	// which buildMacroInputs rejects — that is the failure this guards.
+	raw, err := parseWeekDate(prevEndWeek)
+	if err != nil {
+		t.Fatalf("parse raw end week: %v", err)
+	}
+	if _, err := buildMacroInputs(ctx, db, 1, raw.AddDate(0, 0, 7).Format(dateLayout), MacroModeExtension); err == nil {
+		t.Error("a non-Monday derived start must be rejected, so callers cannot skip NormaliseMacroStartWeek")
 	}
 }
 
@@ -908,12 +1225,33 @@ func TestMacroRacePredictionRendersSnapshot(t *testing.T) {
 
 	preds := `[{"distance":"Half Marathon","distance_m":21097.5,"time_seconds":5220,"predicted_time":"1:27:00","pace_per_km":"4:07","confidence":"medium"},
 	           {"distance":"10K","distance_m":10000,"time_seconds":2400,"predicted_time":"40:00","pace_per_km":"4:00"}]`
+	rationale := "Threshold pace from the 2026-08-01 lactate test."
+	// predictions_json and rationale are encrypted at rest. Seeding plaintext
+	// would still render, via the legacy-plaintext fallback in decryptOrRaw, and
+	// the section would never be exercised against a real row.
+	encPreds, err := encryption.EncryptField(preds)
+	if err != nil {
+		t.Fatalf("encrypt predictions: %v", err)
+	}
+	encRationale, err := encryption.EncryptField(rationale)
+	if err != nil {
+		t.Fatalf("encrypt rationale: %v", err)
+	}
 	if _, err := db.Exec(`
 		INSERT INTO race_predictions (user_id, created_at, method, predictions_json, rationale)
 		VALUES (?, ?, 'ai', ?, ?)`,
-		1, "2026-08-20T06:15:00Z", preds, "Threshold pace from the 2026-08-01 lactate test.",
+		1, "2026-08-20T06:15:00Z", encPreds, encRationale,
 	); err != nil {
 		t.Fatalf("insert prediction: %v", err)
+	}
+	// Guard the guard: if the columns ever stopped being ciphertext, the
+	// assertions below would pass without any decryption happening.
+	var stored string
+	if err := db.QueryRow("SELECT predictions_json FROM race_predictions WHERE user_id = 1").Scan(&stored); err != nil {
+		t.Fatalf("read back prediction: %v", err)
+	}
+	if strings.Contains(stored, "Half Marathon") {
+		t.Fatal("predictions_json was stored as plaintext — the test would not catch a decrypt regression")
 	}
 
 	section := renderMacroRacePrediction(db, 1)
