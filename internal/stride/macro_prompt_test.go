@@ -643,8 +643,8 @@ func TestMacroModeMatchesGeneratedBy(t *testing.T) {
 		}
 		// The store must accept the mode verbatim as generated_by.
 		plan := &MacroPlan{UserID: 1, StartWeek: testBlockStart, EndWeek: testBlockStart, GeneratedBy: string(tc.mode)}
-		if err := validateMacroPlan(plan); err != nil {
-			t.Errorf("validateMacroPlan rejected generated_by %q: %v", tc.mode, err)
+		if err := validateMacroPlanRow(plan); err != nil {
+			t.Errorf("validateMacroPlanRow rejected generated_by %q: %v", tc.mode, err)
 		}
 	}
 	if MacroMode("initial").valid() {

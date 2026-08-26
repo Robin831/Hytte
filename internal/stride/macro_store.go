@@ -73,9 +73,9 @@ func decryptJSON(stored string, out any, field string) error {
 	return nil
 }
 
-// validateMacroPlan checks the enum columns that the UI and the weekly
+// validateMacroPlanRow checks the enum columns that the UI and the weekly
 // generator branch on. Free-text and AI-authored fields are not validated.
-func validateMacroPlan(p *MacroPlan) error {
+func validateMacroPlanRow(p *MacroPlan) error {
 	if p == nil {
 		return errors.New("macro plan must not be nil")
 	}
@@ -101,13 +101,13 @@ func validateMacroPlan(p *MacroPlan) error {
 	return nil
 }
 
-// validateMacroWeek checks the queryable enum columns of a macro week. Empty
+// validateMacroWeekRow checks the queryable enum columns of a macro week. Empty
 // means "use the column default" for LoadLevel (normal) and Status (planned),
-// matching how validateMacroPlan treats Status and GeneratedBy; CreateMacroPlan
+// matching how validateMacroPlanRow treats Status and GeneratedBy; CreateMacroPlan
 // fills both in. Phase is the one enum with no default — it is the contract the
 // weekly generator branches on and the column has no meaningful default of its
 // own — so an empty phase stays an error.
-func validateMacroWeek(w *MacroWeek) error {
+func validateMacroWeekRow(w *MacroWeek) error {
 	if w.WeekStart == "" {
 		return errors.New("macro week week_start must be set")
 	}
@@ -258,14 +258,14 @@ func verifyMacroReferences(ctx context.Context, tx *sql.Tx, plan *MacroPlan, wee
 // name a plan owned by plan.UserID, otherwise the write fails with
 // ErrMacroPlanNotFound.
 func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []MacroWeek, initialGoalReason string) error {
-	if err := validateMacroPlan(plan); err != nil {
+	if err := validateMacroPlanRow(plan); err != nil {
 		return err
 	}
 	if len(weeks) == 0 {
 		return errors.New("macro plan must have at least one week")
 	}
 	for i := range weeks {
-		if err := validateMacroWeek(&weeks[i]); err != nil {
+		if err := validateMacroWeekRow(&weeks[i]); err != nil {
 			return fmt.Errorf("week %d: %w", i, err)
 		}
 	}
