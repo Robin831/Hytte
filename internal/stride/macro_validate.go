@@ -24,11 +24,11 @@ const macroFloatEpsilon = 1e-9
 // through, per macroHalfMarathonRule.
 const macroTaperMinDistanceM = 21000
 
-// macroSharpeningDistancesM are the nominal distances the standing
+// macroShortRaceDistancesM are the nominal distances the standing
 // half-marathon rule runs as B/C sharpening races inside HM training: 5 km and
 // 10 km. The tolerance covers real race listings that measure a little long or
 // short (a 5.1 km parkrun-style course is still a 5k).
-var macroSharpeningDistancesM = []float64{5000, 10000}
+var macroShortRaceDistancesM = []float64{5000, 10000}
 
 const macroRaceDistanceTolerance = 0.10
 
@@ -61,9 +61,19 @@ type MacroValidationContext struct {
 // not a parseable Monday. Otherwise every rule below runs, so a plan that
 // comes back clean has been checked against all of them.
 //
+// One caveat to that: a plan whose Weeks slice is the wrong length is only
+// partially checked. The count itself is reported, but the calendar, field,
+// ramp and race rules can only walk the weeks that were returned, and
+// mesocycle coverage is measured against MacroBlockWeeks rather than the
+// returned list — so weeks that are missing are unchecked, and a plan with
+// only the count problem may well have more once it comes back the right
+// length.
+//
 // What it does not check: that race_id and library_id point at rows the user
 // owns. Those are foreign keys, verified against the database by
-// verifyMacroReferences at persist time, not against this context.
+// verifyMacroReferences at persist time, not against this context. The
+// alignment of a week's race_id with the race that falls in that week is
+// checked here, by validateMacroRaceShape.
 func ValidateMacroPlan(plan *MacroPlanResponse, in MacroValidationContext) error {
 	p := &macroProblems{}
 	if plan == nil {
@@ -209,7 +219,11 @@ func validateMacroMesocycles(p *macroProblems, mesocycles []Mesocycle, start tim
 		case seen[m.Name]:
 			p.addf("%s: name is used by more than one mesocycle; names must be unique", label)
 		}
-		seen[m.Name] = true
+		// An empty name is not a name, so a second unnamed mesocycle is
+		// reported as empty too rather than as a duplicate.
+		if m.Name != "" {
+			seen[m.Name] = true
+		}
 
 		if !isMacroPhase(m.Phase) {
 			p.addf("%s: phase %q is not one of %s", label, m.Phase, joinQuoted(macroPhaseValues))
@@ -257,13 +271,16 @@ func validateMacroMesocycles(p *macroProblems, mesocycles []Mesocycle, start tim
 	}
 }
 
-// validateMacroRamp enforces the +10% week-over-week volume ceiling. The week
-// directly after a deload is exempt: it is meant to return to the pre-deload
-// level, which is a jump of far more than 10% by design.
+// validateMacroRamp enforces the +10% week-over-week volume ceiling. Two
+// weeks are exempt. The week directly after a deload is meant to return to the
+// pre-deload level, which is a jump of far more than 10% by design. The week
+// after a 0 km week has no ramp to measure at all: +10% of nothing is nothing,
+// so any running whatsoever would be a violation and no value the model could
+// return — short of another 0 km week — would satisfy the rule.
 func validateMacroRamp(p *macroProblems, weeks []MacroWeekResponse) {
 	for i := 1; i < len(weeks); i++ {
 		prev, cur := weeks[i-1], weeks[i]
-		if prev.LoadLevel == LoadLevelDeload {
+		if prev.LoadLevel == LoadLevelDeload || prev.TargetKm <= 0 {
 			continue
 		}
 		limit := prev.TargetKm * macroRampLimit
@@ -279,23 +296,41 @@ func validateMacroRamp(p *macroProblems, weeks []MacroWeekResponse) {
 //   - an A-priority half marathon or longer owns its week (phase "race") and
 //     the two weeks before it (phase "taper");
 //   - a 5 km or 10 km race is trained through, so no week is tapered on its
-//     behalf.
+//     behalf;
+//   - the week a race falls in is the week that names it in race_id, and no
+//     other week does.
 //
-// The two rules meet when a short race sits inside a real taper — a 10 km
-// tune-up two weeks before the goal half marathon is normal training, not a
-// taper for the 10 km. Weeks already claimed by an A race's taper are
-// therefore resolved first and skipped by the short-race check.
+// The first two rules meet when a short race sits inside a real taper — a
+// 10 km tune-up two weeks before the goal half marathon is normal training,
+// not a taper for the 10 km. Weeks claimed by an A race's taper are therefore
+// resolved first and skipped by the short-race check. That claim covers an A
+// race up to two weeks past the end of the block as well: buildMacroInputs
+// deliberately shows races past the end week, and macroPeriodisation says the
+// block should not finish flat when one sits just beyond it, so the closing
+// weeks may legitimately taper for a race the block does not contain.
 func validateMacroRaceShape(p *macroProblems, weeks []MacroWeekResponse, dates []time.Time, races []Race) {
 	claimed := make(map[int]bool)
+	aRaceWeeks := make(map[int]bool)
 	for _, r := range races {
-		if !macroRaceCounts(r) || r.Priority != "A" || r.DistanceM < macroTaperMinDistanceM {
+		if !isMacroTaperRace(r) {
 			continue
 		}
-		if idx := macroWeekIndexForDate(dates, r.Date); idx >= 0 {
-			for back := 0; back <= 2; back++ {
-				if idx-back >= 0 {
-					claimed[idx-back] = true
-				}
+		// Inside the block the containing week is authoritative, exactly as
+		// the rule below reads it; only a race the block does not contain
+		// falls back to the Monday grid.
+		idx := macroWeekIndexForDate(dates, r.Date)
+		if idx >= 0 {
+			aRaceWeeks[idx] = true
+		} else {
+			off, ok := macroWeekOffsetForDate(dates, r.Date)
+			if !ok {
+				continue
+			}
+			idx = off
+		}
+		for back := 0; back <= 2; back++ {
+			if j := idx - back; j >= 0 && j < len(weeks) {
+				claimed[j] = true
 			}
 		}
 	}
@@ -306,13 +341,14 @@ func validateMacroRaceShape(p *macroProblems, weeks []MacroWeekResponse, dates [
 		}
 		// A race outside the horizon (the prompt shows a few weeks past the
 		// end week as context) has no week to shape, so there is nothing here
-		// to be wrong about.
+		// to be wrong about beyond the taper it may claim above.
 		idx := macroWeekIndexForDate(dates, r.Date)
 		if idx < 0 {
 			continue
 		}
+		validateMacroRaceWeekID(p, weeks, idx, r)
 		switch {
-		case r.Priority == "A" && r.DistanceM >= macroTaperMinDistanceM:
+		case isMacroTaperRace(r):
 			if weeks[idx].Phase != MacroPhaseRace {
 				p.addf("%s: phase is %q, expected %q — it contains A-priority race %d on %s (%.1f km)",
 					macroWeekLabel(idx, weeks[idx]), weeks[idx].Phase, MacroPhaseRace, r.ID, r.Date, r.DistanceM/1000)
@@ -325,12 +361,19 @@ func validateMacroRaceShape(p *macroProblems, weeks []MacroWeekResponse, dates [
 				if j < 0 {
 					continue
 				}
+				// A week that holds another A race is its own race week and
+				// cannot also be a taper week. Demanding both of two A races
+				// within two weeks of each other would make the plan
+				// unsatisfiable, so the nearer race's week wins.
+				if aRaceWeeks[j] {
+					continue
+				}
 				if weeks[j].Phase != MacroPhaseTaper {
 					p.addf("%s: phase is %q, expected %q — it is one of the two weeks before A-priority race %d on %s",
 						macroWeekLabel(j, weeks[j]), weeks[j].Phase, MacroPhaseTaper, r.ID, r.Date)
 				}
 			}
-		case isMacroSharpeningRace(r):
+		case isMacroShortRace(r):
 			for back := 0; back <= 2; back++ {
 				j := idx - back
 				if j < 0 || claimed[j] {
@@ -345,6 +388,43 @@ func validateMacroRaceShape(p *macroProblems, weeks []MacroWeekResponse, dates [
 	}
 }
 
+// validateMacroRaceWeekID checks that the week race r falls in is the week
+// that names it — the contract's "id of the race this week contains, null
+// otherwise". The weekly generator branches on a macro week's race_id when it
+// materialises the week, so an id pinned to the wrong week would race-taper a
+// base week downstream; verifyMacroReferences only checks that the id belongs
+// to the user, never where it sits.
+func validateMacroRaceWeekID(p *macroProblems, weeks []MacroWeekResponse, idx int, r Race) {
+	if got := weeks[idx].RaceID; got == nil || *got != r.ID {
+		p.addf("%s: race_id is %s, expected %d — the week contains race %d on %s",
+			macroWeekLabel(idx, weeks[idx]), formatMacroRaceID(got), r.ID, r.ID, r.Date)
+	}
+	for j, w := range weeks {
+		if j == idx || w.RaceID == nil || *w.RaceID != r.ID {
+			continue
+		}
+		p.addf("%s: race_id is %d, but race %d is on %s, which is week %d",
+			macroWeekLabel(j, w), r.ID, r.ID, r.Date, idx+1)
+	}
+}
+
+// formatMacroRaceID renders a week's race_id the way the contract writes it,
+// so the error text quotes back what the model actually returned.
+func formatMacroRaceID(id *int64) string {
+	if id == nil {
+		return "null"
+	}
+	return strconv.FormatInt(*id, 10)
+}
+
+// isMacroTaperRace reports whether r is the kind of race that may define the
+// block's peak and taper: still to be run, A-priority, and a half marathon or
+// longer. Both the claim map and the rule it feeds ask through here so the two
+// cannot drift apart.
+func isMacroTaperRace(r Race) bool {
+	return macroRaceCounts(r) && r.Priority == "A" && r.DistanceM >= macroTaperMinDistanceM
+}
+
 // macroRaceCounts reports whether a calendar entry is still a race to plan
 // for. A race with a result has already been run, matching what
 // renderMacroUpcomingRaces showed the coach.
@@ -352,14 +432,40 @@ func macroRaceCounts(r Race) bool {
 	return r.ResultTime == nil
 }
 
-// isMacroSharpeningRace reports whether r is a 5 km or 10 km race.
-func isMacroSharpeningRace(r Race) bool {
-	for _, nominal := range macroSharpeningDistancesM {
+// isMacroShortRace reports whether r is a 5 km or 10 km race. It asks about
+// the distance only: priority and whether the race falls inside the block are
+// the caller's business.
+func isMacroShortRace(r Race) bool {
+	for _, nominal := range macroShortRaceDistancesM {
 		if math.Abs(r.DistanceM-nominal) <= nominal*macroRaceDistanceTolerance {
 			return true
 		}
 	}
 	return false
+}
+
+// macroWeekOffsetForDate places date on the block's Monday grid and returns
+// its 0-based week offset, which may be negative or past the last week — that
+// is the point, since a race just outside the horizon still shapes the weeks
+// inside it. It reports false when the date is unusable or no week start
+// parsed to anchor the grid.
+func macroWeekOffsetForDate(dates []time.Time, date string) (int, bool) {
+	d, err := parseWeekDate(date)
+	if err != nil {
+		return 0, false
+	}
+	for i, weekStart := range dates {
+		if weekStart.IsZero() {
+			continue
+		}
+		days := int(d.Sub(weekStart).Hours() / 24)
+		off := days / 7
+		if days < 0 && days%7 != 0 {
+			off-- // truncation rounds towards zero; weeks floor.
+		}
+		return i + off, true
+	}
+	return 0, false
 }
 
 // macroWeekIndexForDate returns the index of the week whose 7-day span

@@ -9,6 +9,22 @@ import (
 // macroTestStartWeek is a Monday, as every block start must be.
 const macroTestStartWeek = "2026-01-05"
 
+// macroTestWeekDate returns the date dayOffset days into 0-based block week i.
+// i may run past the end of the block: races a few weeks beyond the horizon
+// are part of what the coach is shown, so they are part of what is tested.
+func macroTestWeekDate(i, dayOffset int) string {
+	start, err := parseWeekDate(macroTestStartWeek)
+	if err != nil {
+		panic(err) // A constant fixture date that stops parsing is a bug here.
+	}
+	return start.AddDate(0, 0, 7*i+dayOffset).Format(dateLayout)
+}
+
+// macroTestWeekStart is the Monday of 0-based block week i, and
+// macroTestRaceDay the Saturday of that week.
+func macroTestWeekStart(i int) string { return macroTestWeekDate(i, 0) }
+func macroTestRaceDay(i int) string   { return macroTestWeekDate(i, 5) }
+
 // macroTestWeeklyCap is the athlete's weekly distance cap for the fixture. The
 // curve below peaks exactly on it, so the cap rule is exercised at its edge by
 // the valid case as well as by the rejection case.
@@ -64,13 +80,10 @@ func macroTestWeekLoad(i int, phase string) string {
 func validMacroPlan(t *testing.T) (*MacroPlanResponse, MacroValidationContext) {
 	t.Helper()
 
-	start, err := parseMondayWeek(macroTestStartWeek)
-	if err != nil {
+	if _, err := parseMondayWeek(macroTestStartWeek); err != nil {
 		t.Fatalf("parse fixture start week: %v", err)
 	}
-	weekStart := func(i int) string { return start.AddDate(0, 0, 7*i).Format(dateLayout) }
-	// Saturday of the given week.
-	raceDay := func(i int) string { return start.AddDate(0, 0, 7*i+5).Format(dateLayout) }
+	weekStart, raceDay := macroTestWeekStart, macroTestRaceDay
 
 	if len(macroTestWeekKm) != MacroBlockWeeks {
 		t.Fatalf("fixture has %d weekly volumes, want %d", len(macroTestWeekKm), MacroBlockWeeks)
@@ -386,6 +399,7 @@ func TestValidateMacroPlan(t *testing.T) {
 				// Move the 10k into the second-to-last week, which tapers for
 				// the half marathon, not for the 10k.
 				in.Races[1].Date = plan.Weeks[MacroBlockWeeks-2].WeekStart
+				plan.Weeks[17].RaceID = nil
 				plan.Weeks[MacroBlockWeeks-2].RaceID = &in.Races[1].ID
 			},
 		},
@@ -412,6 +426,86 @@ func TestValidateMacroPlan(t *testing.T) {
 			},
 			wantErr: true,
 			want:    []string{"weekly volume cannot be negative"},
+		},
+		{
+			// A 0 km week is legal — nothing in the contract forbids a
+			// full-rest week — so the next week cannot be held to +10% of
+			// nothing, which no positive volume could ever satisfy.
+			name: "week after a zero km week is exempt from the ramp ceiling",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				plan.Weeks[0].TargetKm = 0
+			},
+		},
+		{
+			name: "A race in the first week of the block needs no taper weeks",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				// There is no room for a taper before week 1, so only the
+				// race week itself is checked.
+				in.Races[0].Date = macroTestRaceDay(0)
+				plan.Weeks[0].Phase = MacroPhaseRace
+				plan.Weeks[0].RaceID = &in.Races[0].ID
+				plan.Weeks[MacroBlockWeeks-1].Phase = MacroPhaseTaper
+				plan.Weeks[MacroBlockWeeks-1].RaceID = nil
+			},
+		},
+		{
+			name: "A race in the second week tapers only the week that exists",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				in.Races[0].Date = macroTestRaceDay(1)
+				plan.Weeks[0].Phase = MacroPhaseTaper
+				plan.Weeks[1].Phase = MacroPhaseRace
+				plan.Weeks[1].RaceID = &in.Races[0].ID
+				plan.Weeks[MacroBlockWeeks-1].Phase = MacroPhaseTaper
+				plan.Weeks[MacroBlockWeeks-1].RaceID = nil
+			},
+		},
+		{
+			name: "second A race two weeks before the goal race",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				// The earlier A half owns week 24 as its own race week, so
+				// that week is not also required to taper for the goal race —
+				// demanding both would make the plan unsatisfiable.
+				in.Races = append(in.Races, Race{
+					ID: 3, Name: "Sharpener Half", Date: macroTestRaceDay(23),
+					DistanceM: 21097.5, Priority: "A",
+				})
+				plan.Weeks[21].Phase = MacroPhaseTaper
+				plan.Weeks[22].Phase = MacroPhaseTaper
+				plan.Weeks[23].Phase = MacroPhaseRace
+				plan.Weeks[23].RaceID = &in.Races[len(in.Races)-1].ID
+			},
+		},
+		{
+			name: "closing weeks taper for an A race just past the horizon",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				// The goal half moves one week past the block's end — still
+				// shown to the coach — and a 10 km tune-up takes the final
+				// block week. The last two weeks taper for the half, not for
+				// the 10 km, so they must not be flagged.
+				in.Races[0].Date = macroTestRaceDay(MacroBlockWeeks)
+				in.Races[1].Date = macroTestRaceDay(MacroBlockWeeks - 1)
+				plan.Weeks[17].RaceID = nil
+				plan.Weeks[23].Phase = MacroPhasePeak
+				plan.Weeks[MacroBlockWeeks-1].Phase = MacroPhaseTaper
+				plan.Weeks[MacroBlockWeeks-1].RaceID = &in.Races[1].ID
+			},
+		},
+		{
+			name: "race week does not name the race it contains",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				plan.Weeks[MacroBlockWeeks-1].RaceID = nil
+			},
+			wantErr: true,
+			want:    []string{"week 26 (2026-06-29): race_id is null, expected 1"},
+		},
+		{
+			name: "race id is pinned on a week the race is not in",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				id := in.Races[0].ID
+				plan.Weeks[11].RaceID = &id
+			},
+			wantErr: true,
+			want:    []string{"week 12 (2026-03-23): race_id is 1, but race 1 is on 2026-07-04, which is week 26"},
 		},
 	}
 

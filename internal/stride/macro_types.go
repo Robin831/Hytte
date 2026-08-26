@@ -1,6 +1,9 @@
 package stride
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // The types in this file decode the JSON contract in macroOutputContract
 // (macro_prompt.go): every key the contract documents has a field here with
@@ -65,23 +68,14 @@ var (
 
 // isMacroPhase reports whether phase is one of the allowed macro phases.
 func isMacroPhase(phase string) bool {
-	return containsString(macroPhaseValues, phase)
+	return slices.Contains(macroPhaseValues, phase)
 }
 
 // isMacroLoadLevel reports whether load is one of the allowed macro week load
 // levels. Unlike the store's column check, an empty value is not accepted: the
 // coach must state the load of every week it plans.
 func isMacroLoadLevel(load string) bool {
-	return containsString(macroLoadLevelValues, load)
-}
-
-func containsString(values []string, want string) bool {
-	for _, v := range values {
-		if v == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(macroLoadLevelValues, load)
 }
 
 // joinQuoted renders an enum as `"base", "build", ...` for an error message.
