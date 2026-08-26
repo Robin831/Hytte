@@ -1223,13 +1223,13 @@ func TestBuildGeneratePromptContainsBothHalves(t *testing.T) {
 	if !strings.Contains(prompt, weeklyOutputFormat) {
 		t.Error("generation prompt should contain the 7-day output format")
 	}
-	if !strings.Contains(prompt, weeklyInstructions()) {
+	if !strings.Contains(prompt, weeklyInstructions) {
 		t.Error("generation prompt should embed the two halves contiguously, separated by a blank line")
 	}
 }
 
 func TestMariusBakkenInstructions_ContainsTreadmillSpeedCaveat(t *testing.T) {
-	instructions := weeklyInstructions()
+	instructions := weeklyInstructions
 
 	// The generation prompt derives a km/h figure from an outdoor pace target.
 	// It must also carry the caveat that this figure is not a belt setting,
@@ -1250,7 +1250,7 @@ func TestMariusBakkenInstructions_ContainsTreadmillSpeedCaveat(t *testing.T) {
 // plan came to assert a "19-20% watch under-read" the athlete's data contradicts.
 // Indoor watch pace tracks cadence, so no single percentage is correct.
 func TestMariusBakkenInstructions_NoFixedWatchUnderReadPercentage(t *testing.T) {
-	instructions := weeklyInstructions()
+	instructions := weeklyInstructions
 
 	for _, forbidden := range []string{
 		"under-reads the belt by 5-15%",
@@ -1350,7 +1350,7 @@ func TestBuildGeneratePrompt_NoTreadmillCalibrationSectionWhenUnset(t *testing.T
 // Interval work-rep ceilings still apply, and the HR-curve shape is the
 // diagnostic that separates heat load from an effort that is genuinely too hard.
 func TestMariusBakkenInstructions_IndoorHRCapGuidance(t *testing.T) {
-	instructions := weeklyInstructions()
+	instructions := weeklyInstructions
 
 	if strings.Contains(instructions, "governs in both") {
 		t.Error("generation instructions must not claim the outdoor HR cap governs indoors as well")

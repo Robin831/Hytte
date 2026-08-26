@@ -150,9 +150,7 @@ Example output structure:
 // with: the coaching philosophy followed by the 7-day output contract, separated
 // by a blank line. Callers should use this rather than concatenating the two
 // constants themselves, so the separator lives in one place.
-func weeklyInstructions() string {
-	return bakkenPhilosophy + "\n\n" + weeklyOutputFormat
-}
+const weeklyInstructions = bakkenPhilosophy + "\n\n" + weeklyOutputFormat
 
 // DayPlan represents a single day in a generated weekly training plan.
 type DayPlan struct {
@@ -787,7 +785,7 @@ func buildGeneratePrompt(
 ) string {
 	var sb strings.Builder
 
-	sb.WriteString(weeklyInstructions())
+	sb.WriteString(weeklyInstructions)
 	sb.WriteString("\n\n")
 
 	// Target week.
