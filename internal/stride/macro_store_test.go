@@ -653,6 +653,51 @@ func TestGoalRevisionsAppendOnly(t *testing.T) {
 	}
 }
 
+func TestAddGoalRevisionRejectsForeignPlan(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	plan, weeks := sampleMacroPlan(1)
+	if err := CreateMacroPlan(ctx, db, plan, weeks, "Initial block goal"); err != nil {
+		t.Fatalf("CreateMacroPlan: %v", err)
+	}
+
+	// User 2 tries to append to user 1's goal history.
+	foreign := &GoalRevision{
+		MacroPlanID: plan.ID,
+		UserID:      2,
+		WeekStart:   mondayAfter(testBlockStart, 4),
+		Goal:        plan.Goal,
+		Reason:      "Injected by another user.",
+		Source:      GoalRevisionSourceManual,
+	}
+	if err := AddGoalRevision(ctx, db, foreign); !errors.Is(err, ErrMacroPlanNotFound) {
+		t.Fatalf("cross-user AddGoalRevision = %v, want ErrMacroPlanNotFound", err)
+	}
+	if foreign.ID != 0 {
+		t.Fatalf("rejected revision got an ID (%d) — a row was written", foreign.ID)
+	}
+
+	// A revision for a plan that does not exist at all is rejected the same way.
+	if err := AddGoalRevision(ctx, db, &GoalRevision{
+		MacroPlanID: 999999,
+		UserID:      1,
+		WeekStart:   testBlockStart,
+		Source:      GoalRevisionSourceWeekly,
+	}); !errors.Is(err, ErrMacroPlanNotFound) {
+		t.Fatalf("missing-plan AddGoalRevision = %v, want ErrMacroPlanNotFound", err)
+	}
+
+	// Nothing landed: only the initial revision from CreateMacroPlan remains.
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_goal_revisions`).Scan(&n); err != nil {
+		t.Fatalf("count revisions: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("goal revision count = %d, want 1", n)
+	}
+}
+
 func TestGoalRevisionReasonEncryptedAtRest(t *testing.T) {
 	db := setupTestDB(t)
 	ctx := context.Background()

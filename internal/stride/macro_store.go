@@ -475,8 +475,9 @@ func SetMacroPlanStale(ctx context.Context, db *sql.DB, planID, userID int64, re
 }
 
 // AddGoalRevision appends a goal revision to a macro plan's history. The table
-// is append-only — existing revisions are never rewritten. On success rev.ID
-// and rev.CreatedAt are filled in.
+// is append-only — existing revisions are never rewritten. The plan must belong
+// to rev.UserID; otherwise nothing is written and ErrMacroPlanNotFound is
+// returned. On success rev.ID and rev.CreatedAt are filled in.
 func AddGoalRevision(ctx context.Context, db *sql.DB, rev *GoalRevision) error {
 	if rev == nil {
 		return errors.New("goal revision must not be nil")
@@ -498,14 +499,26 @@ func AddGoalRevision(ctx context.Context, db *sql.DB, rev *GoalRevision) error {
 	if err != nil {
 		return fmt.Errorf("encrypt goal revision reason: %w", err)
 	}
+	// The SELECT ... WHERE EXISTS scopes the write to a macro plan the caller
+	// actually owns: a revision for someone else's plan inserts zero rows and
+	// comes back as ErrMacroPlanNotFound instead of silently landing in their
+	// goal history.
 	res, err := db.ExecContext(ctx, `
 		INSERT INTO stride_goal_revisions
 			(macro_plan_id, user_id, week_start, goal_json, reason, source, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		SELECT ?, ?, ?, ?, ?, ?, ?
+		WHERE EXISTS (SELECT 1 FROM stride_macro_plans WHERE id = ? AND user_id = ?)
 	`, rev.MacroPlanID, rev.UserID, rev.WeekStart, goalJSON, encReason, rev.Source,
-		rev.CreatedAt.UTC().Format(time.RFC3339))
+		rev.CreatedAt.UTC().Format(time.RFC3339), rev.MacroPlanID, rev.UserID)
 	if err != nil {
 		return fmt.Errorf("insert goal revision: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrMacroPlanNotFound
 	}
 	if rev.ID, err = res.LastInsertId(); err != nil {
 		return fmt.Errorf("goal revision id: %w", err)
