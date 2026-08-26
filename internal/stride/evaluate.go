@@ -675,7 +675,7 @@ func evaluateSingleWorkout(
 // Returns nil, nil when no matching plan exists.
 func getPlanContainingDate(ctx context.Context, db *sql.DB, userID int64, date string) (*Plan, error) {
 	row := db.QueryRowContext(ctx, `
-		SELECT id, user_id, week_start, week_end, phase, plan_json, model, created_at
+		SELECT `+planColumns+`
 		FROM stride_plans
 		WHERE user_id = ? AND week_start <= ? AND week_end >= ?
 		ORDER BY week_start DESC
