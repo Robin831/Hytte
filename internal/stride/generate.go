@@ -178,6 +178,11 @@ var runPromptFunc = func(ctx context.Context, cfg *training.ClaudeConfig, prompt
 	return training.RunPrompt(ctx, cfg, prompt)
 }
 
+// strideDefaultModel is the model Stride's planning calls fall back to when the
+// athlete has not chosen one. Both the weekly generator and GenerateMacroPlan
+// read it, so the block is never planned on a cheaper model than its weeks.
+const strideDefaultModel = "claude-opus-4-6"
+
 // currentWeek returns the ISO date strings for the current week's Monday (week_start)
 // and the following Sunday (week_end). If today is Monday, returns today.
 func currentWeek() (weekStart, weekEnd string) {
@@ -250,7 +255,7 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 
 	// Override model to claude-opus if unset or if user explicitly chose opus.
 	if claudeCfg.Model == "" {
-		claudeCfg.Model = "claude-opus-4-6"
+		claudeCfg.Model = strideDefaultModel
 	}
 
 	// Determine the week to plan.
