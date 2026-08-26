@@ -297,8 +297,8 @@ func validateMacroRamp(p *macroProblems, weeks []MacroWeekResponse) {
 //     the two weeks before it (phase "taper");
 //   - a 5 km or 10 km race is trained through, so no week is tapered on its
 //     behalf;
-//   - the week a race falls in is the week that names it in race_id, and no
-//     other week does.
+//   - every week's race_id names one of the races that week contains, and no
+//     week names a race the block does not contain.
 //
 // The first two rules meet when a short race sits inside a real taper — a
 // 10 km tune-up two weeks before the goal half marathon is normal training,
@@ -346,7 +346,6 @@ func validateMacroRaceShape(p *macroProblems, weeks []MacroWeekResponse, dates [
 		if idx < 0 {
 			continue
 		}
-		validateMacroRaceWeekID(p, weeks, idx, r)
 		switch {
 		case isMacroTaperRace(r):
 			if weeks[idx].Phase != MacroPhaseRace {
@@ -386,26 +385,115 @@ func validateMacroRaceShape(p *macroProblems, weeks []MacroWeekResponse, dates [
 			}
 		}
 	}
+
+	validateMacroRaceWeekIDs(p, weeks, dates, races)
 }
 
-// validateMacroRaceWeekID checks that the week race r falls in is the week
-// that names it — the contract's "id of the race this week contains, null
-// otherwise". The weekly generator branches on a macro week's race_id when it
-// materialises the week, so an id pinned to the wrong week would race-taper a
-// base week downstream; verifyMacroReferences only checks that the id belongs
+// validateMacroRaceWeekIDs checks that every week's race_id names a race that
+// week actually contains — the contract's "id of the race this week contains,
+// null otherwise". The weekly generator branches on a macro week's race_id when
+// it materialises the week, so an id pinned to the wrong week would race-taper
+// a base week downstream; verifyMacroReferences only checks that the id belongs
 // to the user, never where it sits.
-func validateMacroRaceWeekID(p *macroProblems, weeks []MacroWeekResponse, idx int, r Race) {
-	if got := weeks[idx].RaceID; got == nil || *got != r.ID {
-		p.addf("%s: race_id is %s, expected %d — the week contains race %d on %s",
-			macroWeekLabel(idx, weeks[idx]), formatMacroRaceID(got), r.ID, r.ID, r.Date)
-	}
-	for j, w := range weeks {
-		if j == idx || w.RaceID == nil || *w.RaceID != r.ID {
+//
+// A week can hold more than one race — a Saturday parkrun and a Sunday 10 km
+// share a Monday-to-Sunday span — while race_id is a single value, so any one
+// of the races the week contains satisfies it. Demanding a specific one would
+// make such a calendar unplannable: whichever id the model returned, the other
+// race would report a mismatch no retry could clear.
+//
+// The reverse direction is checked too, and it is the one nothing else covers:
+// buildMacroInputs deliberately lists races a few weeks past the end week, and
+// the contract lets race_id be any id from that section, so an id for a race
+// the block does not contain — past the horizon, or already run — is a legal
+// value the model can pin to any week.
+func validateMacroRaceWeekIDs(p *macroProblems, weeks []MacroWeekResponse, dates []time.Time, races []Race) {
+	// The races the block actually contains, indexed both ways: by the week
+	// that holds them, and by id so a week naming a stranger can be told where
+	// that race really sits.
+	weekRaces := make(map[int][]Race)
+	placed := make(map[int64]macroRacePlacement)
+	for _, r := range races {
+		if !macroRaceCounts(r) {
 			continue
 		}
-		p.addf("%s: race_id is %d, but race %d is on %s, which is week %d",
-			macroWeekLabel(j, w), r.ID, r.ID, r.Date, idx+1)
+		idx := macroWeekIndexForDate(dates, r.Date)
+		if idx < 0 {
+			continue
+		}
+		weekRaces[idx] = append(weekRaces[idx], r)
+		placed[r.ID] = macroRacePlacement{race: r, week: idx}
 	}
+
+	// Weeks whose id is wrong are reported once, by whichever of the two scans
+	// below reaches them first, so a week that both misses its own race and
+	// names a stranger does not produce two lines saying the same thing.
+	flagged := make(map[int]bool)
+	for i, w := range weeks {
+		contained := weekRaces[i]
+		if len(contained) == 0 {
+			continue
+		}
+		if w.RaceID != nil {
+			if pl, ok := placed[*w.RaceID]; ok && pl.week == i {
+				continue
+			}
+		}
+		flagged[i] = true
+		p.addf("%s: race_id is %s, expected %s — the week contains %s",
+			macroWeekLabel(i, w), formatMacroRaceID(w.RaceID),
+			macroRaceIDChoices(contained), macroRaceList(contained))
+	}
+
+	for i, w := range weeks {
+		if w.RaceID == nil || flagged[i] {
+			continue
+		}
+		pl, ok := placed[*w.RaceID]
+		if !ok {
+			p.addf("%s: race_id is %d, but no week of this block contains race %d — race_id names the race the week contains, and a race past the block's horizon or already run is in none of them",
+				macroWeekLabel(i, w), *w.RaceID, *w.RaceID)
+			continue
+		}
+		if pl.week != i {
+			p.addf("%s: race_id is %d, but race %d is on %s, which is week %d",
+				macroWeekLabel(i, w), *w.RaceID, *w.RaceID, pl.race.Date, pl.week+1)
+		}
+	}
+}
+
+// macroRacePlacement is a race the block contains together with the 0-based
+// index of the week that holds it.
+type macroRacePlacement struct {
+	race Race
+	week int
+}
+
+// macroRaceIDChoices renders the ids a week's race_id may take, so a week with
+// two races is told both are acceptable rather than being pointed at one.
+func macroRaceIDChoices(races []Race) string {
+	ids := make([]string, 0, len(races))
+	for _, r := range races {
+		ids = append(ids, strconv.FormatInt(r.ID, 10))
+	}
+	if len(ids) < 2 {
+		return strings.Join(ids, "")
+	}
+	return strings.Join(ids[:len(ids)-1], ", ") + " or " + ids[len(ids)-1]
+}
+
+// macroRaceList names the races a week contains, with their dates, so the
+// model can see which weekend the ids belong to.
+func macroRaceList(races []Race) string {
+	parts := make([]string, 0, len(races))
+	for _, r := range races {
+		parts = append(parts, fmt.Sprintf("%d on %s", r.ID, r.Date))
+	}
+	noun := "race"
+	if len(parts) > 1 {
+		noun = "races"
+	}
+	return noun + " " + strings.Join(parts, " and ")
 }
 
 // formatMacroRaceID renders a week's race_id the way the contract writes it,

@@ -409,6 +409,9 @@ func TestValidateMacroPlan(t *testing.T) {
 				result := 4900
 				in.Races[0].ResultTime = &result
 				plan.Weeks[MacroBlockWeeks-1].Phase = MacroPhasePeak
+				// A race with a result is not in the Upcoming Races section,
+				// so no week may name it either.
+				plan.Weeks[MacroBlockWeeks-1].RaceID = nil
 			},
 		},
 		{
@@ -506,6 +509,66 @@ func TestValidateMacroPlan(t *testing.T) {
 			},
 			wantErr: true,
 			want:    []string{"week 12 (2026-03-23): race_id is 1, but race 1 is on 2026-07-04, which is week 26"},
+		},
+		{
+			// race_id is a single value, so a week holding two races can only
+			// name one of them. Either answer has to be accepted, or the
+			// calendar becomes unplannable.
+			name: "two races in one week are satisfied by either id",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				in.Races = append(in.Races, Race{
+					ID: 7, Name: "Sunday 5K", Date: macroTestWeekDate(17, 6),
+					DistanceM: 5000, Priority: "C",
+				})
+			},
+		},
+		{
+			name: "two races in one week are satisfied by the other id too",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				in.Races = append(in.Races, Race{
+					ID: 7, Name: "Sunday 5K", Date: macroTestWeekDate(17, 6),
+					DistanceM: 5000, Priority: "C",
+				})
+				plan.Weeks[17].RaceID = &in.Races[len(in.Races)-1].ID
+			},
+		},
+		{
+			name: "week names none of the races it contains",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				in.Races = append(in.Races, Race{
+					ID: 7, Name: "Sunday 5K", Date: macroTestWeekDate(17, 6),
+					DistanceM: 5000, Priority: "C",
+				})
+				plan.Weeks[17].RaceID = nil
+			},
+			wantErr: true,
+			want: []string{
+				"week 18 (2026-05-04): race_id is null, expected 2 or 7 — the week contains races 2 on 2026-05-09 and 7 on 2026-05-10",
+			},
+		},
+		{
+			// The prompt lists races a few weeks past the end week, so their
+			// ids are legal values the model can pin to any week — but no week
+			// of the block contains them.
+			name: "week names a race past the block's horizon",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				in.Races[0].Date = macroTestRaceDay(MacroBlockWeeks)
+				plan.Weeks[23].Phase = MacroPhasePeak
+				plan.Weeks[MacroBlockWeeks-1].Phase = MacroPhaseTaper
+				plan.Weeks[MacroBlockWeeks-1].RaceID = nil
+				plan.Weeks[5].RaceID = &in.Races[0].ID
+			},
+			wantErr: true,
+			want:    []string{"week 6 (2026-02-09): race_id is 1, but no week of this block contains race 1"},
+		},
+		{
+			name: "week names a race that has already been run",
+			mutate: func(plan *MacroPlanResponse, in *MacroValidationContext) {
+				result := 2400
+				in.Races[1].ResultTime = &result
+			},
+			wantErr: true,
+			want:    []string{"week 18 (2026-05-04): race_id is 2, but no week of this block contains race 2"},
 		},
 	}
 
