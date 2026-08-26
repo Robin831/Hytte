@@ -687,19 +687,37 @@ type Plan struct {
 	Phase     string          `json:"phase"`
 	Plan      json.RawMessage `json:"plan"` // decoded from plan_json column
 	Model     string          `json:"model"`
-	CreatedAt string          `json:"created_at"`
+	// MacroWeekID links the week back to the stride_macro_weeks row it
+	// materialises, or nil for plans generated without a macro plan.
+	MacroWeekID *int64 `json:"macro_week_id"`
+	// AdjustmentSummary is the coach's prose on how this week deviates from
+	// the macro week's target. Encrypted at rest.
+	AdjustmentSummary string `json:"adjustment_summary"`
+	CreatedAt         string `json:"created_at"`
 }
 
-// scanPlan reads a plan row from a sql.Scanner (row or rows.Next).
+// planColumns is the shared SELECT list for stride_plans rows fed to scanPlan.
+// Kept in one place so the column order cannot drift from the scan order.
+const planColumns = `id, user_id, week_start, week_end, phase, plan_json, model,
+		macro_week_id, adjustment_summary, created_at`
+
+// scanPlan reads a plan row from a sql.Scanner (row or rows.Next). The row must
+// have been selected with planColumns.
 func scanPlan(scanner interface {
 	Scan(...any) error
 }) (Plan, error) {
 	var p Plan
 	var planJSON string
-	if err := scanner.Scan(&p.ID, &p.UserID, &p.WeekStart, &p.WeekEnd, &p.Phase, &planJSON, &p.Model, &p.CreatedAt); err != nil {
+	var adjustmentSummary string
+	if err := scanner.Scan(&p.ID, &p.UserID, &p.WeekStart, &p.WeekEnd, &p.Phase, &planJSON, &p.Model, &p.MacroWeekID, &adjustmentSummary, &p.CreatedAt); err != nil {
 		return Plan{}, err
 	}
 	p.Plan = json.RawMessage(planJSON)
+	summary, err := encryption.DecryptField(adjustmentSummary)
+	if err != nil {
+		return Plan{}, fmt.Errorf("decrypt plan adjustment_summary: %w", err)
+	}
+	p.AdjustmentSummary = summary
 	return p, nil
 }
 
@@ -712,7 +730,7 @@ func ListPlans(db *sql.DB, userID int64, limit, offset int) ([]Plan, int, error)
 	}
 
 	rows, err := db.Query(`
-		SELECT id, user_id, week_start, week_end, phase, plan_json, model, created_at
+		SELECT `+planColumns+`
 		FROM stride_plans
 		WHERE user_id = ?
 		ORDER BY week_start DESC
@@ -743,7 +761,7 @@ func ListPlans(db *sql.DB, userID int64, limit, offset int) ([]Plan, int, error)
 // GetPlanByID returns a single plan by ID, scoped to the given user.
 func GetPlanByID(db *sql.DB, id, userID int64) (*Plan, error) {
 	row := db.QueryRow(`
-		SELECT id, user_id, week_start, week_end, phase, plan_json, model, created_at
+		SELECT `+planColumns+`
 		FROM stride_plans
 		WHERE id = ? AND user_id = ?
 	`, id, userID)
@@ -757,7 +775,7 @@ func GetPlanByID(db *sql.DB, id, userID int64) (*Plan, error) {
 // GetCurrentPlan returns the plan whose week contains today's date, or nil if none.
 func GetCurrentPlan(db *sql.DB, userID int64, today string) (*Plan, error) {
 	row := db.QueryRow(`
-		SELECT id, user_id, week_start, week_end, phase, plan_json, model, created_at
+		SELECT `+planColumns+`
 		FROM stride_plans
 		WHERE user_id = ? AND week_start <= ? AND week_end >= ?
 		ORDER BY week_start DESC
@@ -1306,7 +1324,7 @@ func computeWeeksDistanceMeters(db *sql.DB, userID int64, weeks []weekRange) (ma
 // getPlanByWeekStart returns the plan for a specific week_start, scoped to the user.
 func getPlanByWeekStart(db *sql.DB, userID int64, weekStart string) (*Plan, error) {
 	row := db.QueryRow(`
-		SELECT id, user_id, week_start, week_end, phase, plan_json, model, created_at
+		SELECT `+planColumns+`
 		FROM stride_plans
 		WHERE user_id = ? AND week_start = ?
 	`, userID, weekStart)

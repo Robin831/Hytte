@@ -1508,6 +1508,83 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_stride_eval_messages_workout ON stride_eval_messages(user_id, workout_id);
 	CREATE INDEX IF NOT EXISTS idx_stride_eval_messages_date ON stride_eval_messages(user_id, plan_id, eval_date);
 
+	-- Stride macro plan (Hytte-ifjr2): the long-horizon (26-week) training
+	-- block that the weekly 7-day stride_plans pipeline materialises from.
+	-- One row per generated block; superseded blocks are kept for history.
+	-- goal_json, periodisation_json, prompt and response are AI-authored and
+	-- AES-encrypted; the dates, status and provenance columns stay queryable.
+	CREATE TABLE IF NOT EXISTS stride_macro_plans (
+		id                 INTEGER PRIMARY KEY,
+		user_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		start_week         TEXT NOT NULL,
+		end_week           TEXT NOT NULL,
+		status             TEXT NOT NULL DEFAULT 'active',
+		stale_reason       TEXT NOT NULL DEFAULT '',
+		goal_json          TEXT NOT NULL DEFAULT '',
+		periodisation_json TEXT NOT NULL DEFAULT '',
+		prompt             TEXT NOT NULL DEFAULT '',
+		response           TEXT NOT NULL DEFAULT '',
+		model              TEXT NOT NULL DEFAULT '',
+		generated_by       TEXT NOT NULL DEFAULT 'scheduled',
+		previous_plan_id   INTEGER REFERENCES stride_macro_plans(id) ON DELETE SET NULL,
+		created_at         TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_stride_macro_plans_user_status ON stride_macro_plans(user_id, status);
+
+	-- Only one *active* block may start on a given Monday. The uniqueness is a
+	-- partial index rather than a table-level UNIQUE(user_id, start_week) so
+	-- Regenerate works: demoting the current block to 'superseded' frees its
+	-- Monday slot for the replacement, and the superseded rows (plus their goal
+	-- history) stay put instead of having to be deleted to make room. That
+	-- demotion happens inside CreateMacroPlan's own transaction (see
+	-- previous_plan_id), so the handover is atomic — a failed regenerate never
+	-- leaves a user with no active block.
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_stride_macro_plans_active_start
+		ON stride_macro_plans(user_id, start_week) WHERE status = 'active';
+
+	-- stride_macro_weeks holds one row per week of a macro plan: the phase,
+	-- load level and volume targets the weekly generator turns into an actual
+	-- 7-day plan. key_sessions_json and intent are AI-authored prose/blobs and
+	-- encrypted; phase/load_level/status/targets stay queryable so the UI can
+	-- render the block timeline without decrypting every row.
+	CREATE TABLE IF NOT EXISTS stride_macro_weeks (
+		id                INTEGER PRIMARY KEY,
+		macro_plan_id     INTEGER NOT NULL REFERENCES stride_macro_plans(id) ON DELETE CASCADE,
+		user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		week_start        TEXT NOT NULL,
+		seq               INTEGER NOT NULL DEFAULT 0,
+		phase             TEXT NOT NULL DEFAULT '',
+		mesocycle         TEXT NOT NULL DEFAULT '',
+		load_level        TEXT NOT NULL DEFAULT 'normal',
+		target_km         REAL NOT NULL DEFAULT 0,
+		target_sessions   INTEGER NOT NULL DEFAULT 0,
+		race_id           INTEGER REFERENCES stride_races(id) ON DELETE SET NULL,
+		key_sessions_json TEXT NOT NULL DEFAULT '',
+		intent            TEXT NOT NULL DEFAULT '',
+		status            TEXT NOT NULL DEFAULT 'planned',
+		UNIQUE(macro_plan_id, week_start)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_stride_macro_weeks_user_week ON stride_macro_weeks(user_id, week_start);
+
+	-- stride_goal_revisions is an append-only log of the macro plan's goal.
+	-- The weekly job auto-applies drift within +/-3% and records why; larger
+	-- changes are proposed and only land here once accepted. Never updated in
+	-- place — the history is what makes the goal "adjustable weekly" auditable.
+	CREATE TABLE IF NOT EXISTS stride_goal_revisions (
+		id            INTEGER PRIMARY KEY,
+		macro_plan_id INTEGER NOT NULL REFERENCES stride_macro_plans(id) ON DELETE CASCADE,
+		user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		week_start    TEXT NOT NULL,
+		goal_json     TEXT NOT NULL DEFAULT '',
+		reason        TEXT NOT NULL DEFAULT '',
+		source        TEXT NOT NULL DEFAULT 'weekly',
+		created_at    TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_stride_goal_revisions_plan ON stride_goal_revisions(macro_plan_id, created_at);
+
 	-- Vault: encrypted personal file storage (Hytte-r43)
 	CREATE TABLE IF NOT EXISTS vault_files (
 		id           INTEGER PRIMARY KEY,
@@ -2901,6 +2978,33 @@ func createSchema(db *sql.DB) error {
 	if hasStrideChatMsgFloor == 0 {
 		if _, err := db.Exec(`ALTER TABLE stride_plans ADD COLUMN chat_session_msg_floor INTEGER NOT NULL DEFAULT 0`); err != nil {
 			return fmt.Errorf("add stride_plans chat_session_msg_floor column: %w", err)
+		}
+	}
+
+	// Add macro_week_id column to stride_plans table (Hytte-ifjr2.1).
+	// Links a generated 7-day plan back to the macro plan week it materialises.
+	// ON DELETE SET NULL so regenerating a macro block leaves the weekly plans
+	// intact, just unlinked.
+	var hasStrideMacroWeekID int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stride_plans') WHERE name = 'macro_week_id'`).Scan(&hasStrideMacroWeekID); err != nil {
+		return fmt.Errorf("check stride_plans macro_week_id column: %w", err)
+	}
+	if hasStrideMacroWeekID == 0 {
+		if _, err := db.Exec(`ALTER TABLE stride_plans ADD COLUMN macro_week_id INTEGER REFERENCES stride_macro_weeks(id) ON DELETE SET NULL`); err != nil {
+			return fmt.Errorf("add stride_plans macro_week_id column: %w", err)
+		}
+	}
+
+	// Add adjustment_summary column to stride_plans table (Hytte-ifjr2.1).
+	// AI-authored coach prose explaining how the week deviates from the macro
+	// week's target — encrypted at rest like the other Stride prose columns.
+	var hasStrideAdjustmentSummary int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stride_plans') WHERE name = 'adjustment_summary'`).Scan(&hasStrideAdjustmentSummary); err != nil {
+		return fmt.Errorf("check stride_plans adjustment_summary column: %w", err)
+	}
+	if hasStrideAdjustmentSummary == 0 {
+		if _, err := db.Exec(`ALTER TABLE stride_plans ADD COLUMN adjustment_summary TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add stride_plans adjustment_summary column: %w", err)
 		}
 	}
 

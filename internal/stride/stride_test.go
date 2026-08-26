@@ -60,6 +60,8 @@ func setupTestDB(t *testing.T) *sql.DB {
 			model           TEXT NOT NULL DEFAULT '',
 			chat_session_id TEXT NOT NULL DEFAULT '',
 			chat_session_msg_floor INTEGER NOT NULL DEFAULT 0,
+			macro_week_id   INTEGER REFERENCES stride_macro_weeks(id) ON DELETE SET NULL,
+			adjustment_summary TEXT NOT NULL DEFAULT '',
 			created_at      TEXT NOT NULL DEFAULT '',
 			UNIQUE(user_id, week_start),
 			UNIQUE(user_id, id)
@@ -170,6 +172,51 @@ func setupTestDB(t *testing.T) *sql.DB {
 			workout_id INTEGER NOT NULL REFERENCES stride_workouts(id) ON DELETE CASCADE,
 			block      TEXT NOT NULL,
 			UNIQUE(workout_id, block)
+		);
+		CREATE TABLE stride_macro_plans (
+			id                 INTEGER PRIMARY KEY,
+			user_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			start_week         TEXT NOT NULL,
+			end_week           TEXT NOT NULL,
+			status             TEXT NOT NULL DEFAULT 'active',
+			stale_reason       TEXT NOT NULL DEFAULT '',
+			goal_json          TEXT NOT NULL DEFAULT '',
+			periodisation_json TEXT NOT NULL DEFAULT '',
+			prompt             TEXT NOT NULL DEFAULT '',
+			response           TEXT NOT NULL DEFAULT '',
+			model              TEXT NOT NULL DEFAULT '',
+			generated_by       TEXT NOT NULL DEFAULT 'scheduled',
+			previous_plan_id   INTEGER REFERENCES stride_macro_plans(id) ON DELETE SET NULL,
+			created_at         TEXT NOT NULL DEFAULT ''
+		);
+		CREATE UNIQUE INDEX idx_stride_macro_plans_active_start
+			ON stride_macro_plans(user_id, start_week) WHERE status = 'active';
+		CREATE TABLE stride_macro_weeks (
+			id                INTEGER PRIMARY KEY,
+			macro_plan_id     INTEGER NOT NULL REFERENCES stride_macro_plans(id) ON DELETE CASCADE,
+			user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			week_start        TEXT NOT NULL,
+			seq               INTEGER NOT NULL DEFAULT 0,
+			phase             TEXT NOT NULL DEFAULT '',
+			mesocycle         TEXT NOT NULL DEFAULT '',
+			load_level        TEXT NOT NULL DEFAULT 'normal',
+			target_km         REAL NOT NULL DEFAULT 0,
+			target_sessions   INTEGER NOT NULL DEFAULT 0,
+			race_id           INTEGER REFERENCES stride_races(id) ON DELETE SET NULL,
+			key_sessions_json TEXT NOT NULL DEFAULT '',
+			intent            TEXT NOT NULL DEFAULT '',
+			status            TEXT NOT NULL DEFAULT 'planned',
+			UNIQUE(macro_plan_id, week_start)
+		);
+		CREATE TABLE stride_goal_revisions (
+			id            INTEGER PRIMARY KEY,
+			macro_plan_id INTEGER NOT NULL REFERENCES stride_macro_plans(id) ON DELETE CASCADE,
+			user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			week_start    TEXT NOT NULL,
+			goal_json     TEXT NOT NULL DEFAULT '',
+			reason        TEXT NOT NULL DEFAULT '',
+			source        TEXT NOT NULL DEFAULT 'weekly',
+			created_at    TEXT NOT NULL DEFAULT ''
 		);
 	`)
 	if err != nil {
