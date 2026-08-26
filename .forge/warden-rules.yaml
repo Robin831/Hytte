@@ -27840,3 +27840,33 @@ rules:
       paths:
         - '**/*.ts'
         - '**/*.tsx'
+    - id: dedupe-overlapping-warden-rules
+      category: style
+      pattern: >-
+        A new rule added to a review-rules file (e.g. .forge/warden-rules.yaml) whose root cause and checks overlap substantially with an existing rule in the same file
+      check: >-
+        Before adding a rule, scan existing rules for one describing the same root issue; if the pattern and checks overlap heavily, merge the wording into a single canonical rule and remove the other instead of keeping both, to avoid duplicate/near-duplicate review findings
+      source: copilot:PR#859
+      added: "2026-08-20"
+      paths:
+        - '**/*.yaml'
+    - id: pr-description-matches-diff-counts
+      category: other
+      pattern: >-
+        PR description or commit message states a specific count or scope of changes (e.g. "N new rules", "N files migrated", "N paths backfilled"), especially for generated or batch updates
+      check: >-
+        Verify the stated numbers match what the diff actually adds or changes (count the new entries, e.g. by `added:` date or new keys); if they differ, either the PR is missing content or the description must be corrected to reflect the real change
+      source: copilot:PR#859
+      added: "2026-08-20"
+      paths:
+        - '**/*.yaml'
+    - id: rule-description-typos
+      category: style
+      pattern: >-
+        Adding or editing human-readable guidance text such as rule descriptions in .forge/warden-rules.yaml, checklist entries, doc comments, or other prose meant to instruct reviewers or developers
+      check: >-
+        Proofread the text for typos, garbled words, or mangled phrases (e.g. 'a kethe reset effect') that obscure the meaning; ensure each sentence reads cleanly and unambiguously so the guidance can be understood without guessing at intent.
+      source: copilot:PR#859
+      added: "2026-08-20"
+      paths:
+        - '**/*.yaml'
