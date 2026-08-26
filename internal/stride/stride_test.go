@@ -208,6 +208,49 @@ func setupTestDB(t *testing.T) *sql.DB {
 			status            TEXT NOT NULL DEFAULT 'planned',
 			UNIQUE(macro_plan_id, week_start)
 		);
+		CREATE TABLE lactate_tests (
+			id                  INTEGER PRIMARY KEY,
+			user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			workout_id          INTEGER REFERENCES workouts(id) ON DELETE SET NULL,
+			date                TEXT NOT NULL DEFAULT '',
+			comment             TEXT NOT NULL DEFAULT '',
+			protocol_type       TEXT NOT NULL DEFAULT 'standard',
+			warmup_duration_min INTEGER NOT NULL DEFAULT 10,
+			stage_duration_min  INTEGER NOT NULL DEFAULT 5,
+			start_speed_kmh     REAL NOT NULL DEFAULT 11.5,
+			speed_increment_kmh REAL NOT NULL DEFAULT 0.5,
+			created_at          TEXT NOT NULL DEFAULT '',
+			updated_at          TEXT NOT NULL DEFAULT ''
+		);
+		CREATE TABLE lactate_test_stages (
+			id             INTEGER PRIMARY KEY,
+			test_id        INTEGER NOT NULL REFERENCES lactate_tests(id) ON DELETE CASCADE,
+			stage_number   INTEGER NOT NULL,
+			speed_kmh      REAL NOT NULL,
+			lactate_mmol   REAL NOT NULL,
+			heart_rate_bpm INTEGER NOT NULL DEFAULT 0,
+			rpe            INTEGER,
+			notes          TEXT NOT NULL DEFAULT '',
+			UNIQUE(test_id, stage_number)
+		);
+		CREATE TABLE vo2max_estimates (
+			id           INTEGER PRIMARY KEY,
+			user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			workout_id   INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+			vo2max       REAL NOT NULL,
+			method       TEXT NOT NULL DEFAULT '',
+			estimated_at TEXT NOT NULL DEFAULT '',
+			UNIQUE(user_id, workout_id)
+		);
+		CREATE TABLE race_predictions (
+			id               INTEGER PRIMARY KEY,
+			user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			created_at       TEXT NOT NULL,
+			method           TEXT NOT NULL DEFAULT '',
+			predictions_json TEXT NOT NULL,
+			rationale        TEXT NOT NULL DEFAULT '',
+			inputs_json      TEXT NOT NULL DEFAULT ''
+		);
 		CREATE TABLE stride_goal_revisions (
 			id            INTEGER PRIMARY KEY,
 			macro_plan_id INTEGER NOT NULL REFERENCES stride_macro_plans(id) ON DELETE CASCADE,

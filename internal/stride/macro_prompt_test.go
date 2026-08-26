@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
+	"github.com/Robin831/Hytte/internal/training"
 )
 
 // macroPriorityRuleVerbatim is the half-marathon priority rule exactly as the
@@ -42,7 +44,7 @@ func setPref(t *testing.T, db *sql.DB, userID int64, key, value string) {
 }
 
 func TestMacroSystemPromptSections(t *testing.T) {
-	prompt := macroSystemPrompt()
+	prompt := macroInstructions
 
 	if !strings.Contains(prompt, bakkenPhilosophy) {
 		t.Error("macro system prompt does not embed bakkenPhilosophy")
@@ -91,7 +93,7 @@ func TestMacroSystemPromptPriorityRuleVerbatim(t *testing.T) {
 	if !strings.Contains(macroHalfMarathonRule, macroPriorityRuleVerbatim) {
 		t.Errorf("macroHalfMarathonRule does not contain the rule verbatim.\ngot:\n%s", macroHalfMarathonRule)
 	}
-	if !strings.Contains(macroSystemPrompt(), macroPriorityRuleVerbatim) {
+	if !strings.Contains(macroInstructions, macroPriorityRuleVerbatim) {
 		t.Error("assembled macro system prompt does not contain the priority rule verbatim")
 	}
 }
@@ -201,7 +203,7 @@ func TestBuildMacroInputsSections(t *testing.T) {
 	startWeek, _ := upcomingWeek()
 	seedMacroInputFixtures(t, db, 1, startWeek)
 
-	inputs, err := buildMacroInputs(ctx, db, 1, startWeek, MacroModeInitial)
+	inputs, err := buildMacroInputs(ctx, db, 1, startWeek, MacroModeScheduled)
 	if err != nil {
 		t.Fatalf("buildMacroInputs: %v", err)
 	}
@@ -237,7 +239,7 @@ func TestBuildMacroInputsSections(t *testing.T) {
 	if !strings.Contains(inputs, endWeek) {
 		t.Errorf("inputs do not state the block end week %q", endWeek)
 	}
-	if !strings.Contains(inputs, "Mode: initial") {
+	if !strings.Contains(inputs, "Mode: scheduled") {
 		t.Error("inputs do not state the generation mode")
 	}
 
@@ -249,7 +251,7 @@ func TestBuildMacroInputsSections(t *testing.T) {
 		}
 	}
 	// Two of them carry a plan, so planned-vs-completed merged in.
-	if !strings.Contains(inputs, "| 2/0 |") {
+	if !strings.Contains(inputs, "| 2/? |") {
 		t.Error("history table does not carry planned/completed session counts")
 	}
 
@@ -338,7 +340,7 @@ func TestBuildMacroInputsExtensionMode(t *testing.T) {
 	}
 
 	// Initial mode must not carry any of it.
-	initial, err := buildMacroInputs(ctx, db, 1, nextStart, MacroModeInitial)
+	initial, err := buildMacroInputs(ctx, db, 1, nextStart, MacroModeScheduled)
 	if err != nil {
 		t.Fatalf("buildMacroInputs(initial): %v", err)
 	}
@@ -369,7 +371,7 @@ func TestBuildMacroInputsEmptyAthlete(t *testing.T) {
 
 	// An athlete with no data at all still yields a usable input block: every
 	// optional source degrades to a "none recorded" line rather than erroring.
-	inputs, err := buildMacroInputs(context.Background(), db, 1, startWeek, MacroModeInitial)
+	inputs, err := buildMacroInputs(context.Background(), db, 1, startWeek, MacroModeScheduled)
 	if err != nil {
 		t.Fatalf("buildMacroInputs: %v", err)
 	}
@@ -394,7 +396,7 @@ func TestBuildMacroInputsEmptyAthlete(t *testing.T) {
 
 func TestBuildMacroInputsInvalidStartWeek(t *testing.T) {
 	db := setupTestDB(t)
-	if _, err := buildMacroInputs(context.Background(), db, 1, "not-a-date", MacroModeInitial); err == nil {
+	if _, err := buildMacroInputs(context.Background(), db, 1, "not-a-date", MacroModeScheduled); err == nil {
 		t.Fatal("expected an error for an unparseable start week")
 	}
 }
@@ -404,7 +406,7 @@ func TestMacroPromptSizeBudget(t *testing.T) {
 	startWeek, _ := upcomingWeek()
 	seedMacroInputFixtures(t, db, 1, startWeek)
 
-	inputs, err := buildMacroInputs(context.Background(), db, 1, startWeek, MacroModeInitial)
+	inputs, err := buildMacroInputs(context.Background(), db, 1, startWeek, MacroModeScheduled)
 	if err != nil {
 		t.Fatalf("buildMacroInputs: %v", err)
 	}
@@ -415,7 +417,7 @@ func TestMacroPromptSizeBudget(t *testing.T) {
 	if got := approxTokens(inputs); got > 9000 {
 		t.Errorf("macro inputs ≈%d tokens, over the 9000 ceiling", got)
 	}
-	full := macroSystemPrompt() + "\n\n" + inputs
+	full := macroInstructions + "\n\n" + inputs
 	if got := approxTokens(full); got > 14000 {
 		t.Errorf("full macro prompt ≈%d tokens, over the 14000 ceiling", got)
 	}
@@ -498,6 +500,23 @@ func TestStripGoalRaceSection(t *testing.T) {
 		{"empty", "", ""},
 		{"header only", "User Profile:\nGoal Race: 2026-05-01\n", ""},
 		{"keeps body", "User Profile:\n- Max HR: 190 bpm\nGoal Race:\n- 2026-05-01\n", "User Profile:\n- Max HR: 190 bpm\n"},
+		// The goal race is trailing today, but nothing in the training package
+		// promises that. Anything after it must survive the strip.
+		{
+			"goal race in the middle",
+			"User Profile:\n- Max HR: 190 bpm\nGoal Race:\n- Event: Oslo\n- Date: 2026-05-01\nThreshold:\n- Threshold Pace: 4:28/km\n",
+			"User Profile:\n- Max HR: 190 bpm\nThreshold:\n- Threshold Pace: 4:28/km\n",
+		},
+		{
+			"inline goal race in the middle",
+			"User Profile:\n- Max HR: 190 bpm\nGoal Race: 2026-05-01\nThreshold:\n- Threshold Pace: 4:28/km\n",
+			"User Profile:\n- Max HR: 190 bpm\nThreshold:\n- Threshold Pace: 4:28/km\n",
+		},
+		{
+			"no goal race",
+			"User Profile:\n- Max HR: 190 bpm\n- Threshold HR: 166 bpm\n",
+			"User Profile:\n- Max HR: 190 bpm\n- Threshold HR: 166 bpm\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -508,22 +527,539 @@ func TestStripGoalRaceSection(t *testing.T) {
 	}
 }
 
-func TestWeeksAhead(t *testing.T) {
-	now := time.Now().UTC()
-	cases := []struct {
-		name  string
-		start time.Time
-		want  int
-	}{
-		{"past", now.AddDate(0, 0, -30), 0},
-		{"today", now, 0},
-		{"twenty days out", now.AddDate(0, 0, 20), 3},
+// macroBlockWeeksStr is hand-maintained because a const expression cannot call
+// strconv. Nothing else notices when it drifts from MacroBlockWeeks: the prompt
+// would keep asking for "exactly 26 objects" while the validator expected a
+// different count, and every generation would fail validation.
+func TestMacroBlockWeeksStrMatchesConstant(t *testing.T) {
+	if macroBlockWeeksStr != strconv.Itoa(MacroBlockWeeks) {
+		t.Fatalf("macroBlockWeeksStr = %q but MacroBlockWeeks = %d — update both", macroBlockWeeksStr, MacroBlockWeeks)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := weeksAhead(tc.start); got != tc.want {
-				t.Errorf("weeksAhead(%s) = %d, want %d", tc.start.Format(dateLayout), got, tc.want)
+	if macroHistoryWeeks != MacroBlockWeeks {
+		t.Errorf("macroHistoryWeeks = %d, want it to track MacroBlockWeeks (%d)", macroHistoryWeeks, MacroBlockWeeks)
+	}
+	if !strings.Contains(macroOutputContract, "exactly "+strconv.Itoa(MacroBlockWeeks)+" objects") {
+		t.Error("output contract does not pin the block to MacroBlockWeeks weeks")
+	}
+}
+
+// MacroMode must stay one-to-one with the generated_by vocabulary the store
+// validates, so a mode can be persisted as string(mode) with no mapping.
+func TestMacroModeMatchesGeneratedBy(t *testing.T) {
+	for _, tc := range []struct {
+		mode        MacroMode
+		generatedBy string
+	}{
+		{MacroModeScheduled, MacroGeneratedByScheduled},
+		{MacroModeExtension, MacroGeneratedByExtension},
+		{MacroModeManual, MacroGeneratedByManual},
+	} {
+		if string(tc.mode) != tc.generatedBy {
+			t.Errorf("mode %q does not match generated_by %q", tc.mode, tc.generatedBy)
+		}
+		if !tc.mode.valid() {
+			t.Errorf("mode %q reports itself invalid", tc.mode)
+		}
+		if tc.mode.describe() == "" {
+			t.Errorf("mode %q has no prompt description", tc.mode)
+		}
+		// The store must accept the mode verbatim as generated_by.
+		plan := &MacroPlan{UserID: 1, StartWeek: testBlockStart, EndWeek: testBlockStart, GeneratedBy: string(tc.mode)}
+		if err := validateMacroPlan(plan); err != nil {
+			t.Errorf("validateMacroPlan rejected generated_by %q: %v", tc.mode, err)
+		}
+	}
+	if MacroMode("initial").valid() {
+		t.Error("\"initial\" is not a generated_by value and must not be a valid mode")
+	}
+}
+
+func TestBuildMacroInputsRejectsUnknownMode(t *testing.T) {
+	db := setupTestDB(t)
+	startWeek, _ := upcomingWeek()
+	if _, err := buildMacroInputs(context.Background(), db, 1, startWeek, MacroMode("initial")); err == nil {
+		t.Fatal("expected an error for a mode outside the generated_by vocabulary")
+	}
+}
+
+// A start week that is not a Monday matches no summary and no plan key, so the
+// whole history table would render as dashes. That must be an error, not a
+// silently empty table the coach reads as "this athlete has not trained".
+func TestBuildMacroInputsRejectsNonMondayStartWeek(t *testing.T) {
+	db := setupTestDB(t)
+	// 2026-09-02 is a Wednesday.
+	_, err := buildMacroInputs(context.Background(), db, 1, "2026-09-02", MacroModeScheduled)
+	if err == nil {
+		t.Fatal("expected an error for a start week that is not a Monday")
+	}
+	if !strings.Contains(err.Error(), "Monday") {
+		t.Errorf("error should name the Monday requirement, got %v", err)
+	}
+
+	wednesday, perr := parseWeekDate("2026-09-02")
+	if perr != nil {
+		t.Fatalf("parse: %v", perr)
+	}
+	if _, err := buildMacroHistoryTable(db, 1, wednesday); err == nil {
+		t.Fatal("buildMacroHistoryTable should reject a non-Monday window start")
+	}
+}
+
+// seedMondayWorkout inserts one running workout on the given date. hash keeps
+// the per-user UNIQUE(fit_file_hash) constraint satisfied.
+func seedWorkout(t *testing.T, db *sql.DB, userID int64, date string, hr int, hash string) int64 {
+	t.Helper()
+	res, err := db.Exec(`
+		INSERT INTO workouts (user_id, sport, started_at, duration_seconds, distance_meters, avg_heart_rate, training_load, fit_file_hash)
+		VALUES (?, 'running', ?, 3600, 10000, ?, 90, ?)`,
+		userID, date+"T10:00:00Z", hr, hash,
+	)
+	if err != nil {
+		t.Fatalf("insert workout %s: %v", date, err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("workout id: %v", err)
+	}
+	return id
+}
+
+// seedStridePlan inserts a plan for the week starting at monday with n
+// non-rest sessions.
+func seedStridePlan(t *testing.T, db *sql.DB, userID int64, monday time.Time, sessions int) int64 {
+	t.Helper()
+	days := make([]string, 0, sessions)
+	for i := 0; i < sessions; i++ {
+		days = append(days, `{"date":"`+monday.AddDate(0, 0, i).Format(dateLayout)+`","rest_day":false,"session":{"main_set":"easy"}}`)
+	}
+	res, err := db.Exec(`
+		INSERT INTO stride_plans (user_id, week_start, week_end, plan_json, created_at)
+		VALUES (?, ?, ?, ?, ?)`,
+		userID, monday.Format(dateLayout), monday.AddDate(0, 0, 6).Format(dateLayout),
+		"["+strings.Join(days, ",")+"]", time.Now().UTC().Format(time.RFC3339),
+	)
+	if err != nil {
+		t.Fatalf("insert plan for %s: %v", monday.Format(dateLayout), err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("plan id: %v", err)
+	}
+	return id
+}
+
+// historyRow returns the rendered history row for a week, without the trailing
+// newline, so a test can assert on the whole row rather than a substring that
+// might match another column.
+func historyRow(t *testing.T, table, week string) string {
+	t.Helper()
+	for _, line := range strings.Split(table, "\n") {
+		if strings.HasPrefix(line, "| "+week+" |") {
+			return line
+		}
+	}
+	t.Fatalf("history table has no row for week %s\n%s", week, table)
+	return ""
+}
+
+// training.WeeklySummaries groups by strftime('%Y-%W') but derives week_start
+// as the Monday, so a week straddling New Year comes back as two rows sharing
+// one week_start. The merge in buildMacroHistoryTable has to accumulate them:
+// assigning would drop half the week's volume and report the last row's HR as
+// the week's average.
+func TestMacroHistoryMergesDuplicateWeekStarts(t *testing.T) {
+	db := setupTestDB(t)
+
+	// 2026-12-28 is a Monday. '%Y-%W' puts 2026-12-28/29 in 2026-52 and
+	// 2027-01-01 in 2027-00, but both derive week_start 2026-12-28.
+	seedWorkout(t, db, 1, "2026-12-28", 140, "ny-1")
+	seedWorkout(t, db, 1, "2026-12-29", 140, "ny-2")
+	seedWorkout(t, db, 1, "2027-01-01", 170, "ny-3")
+
+	start, err := parseMondayWeek("2027-01-18")
+	if err != nil {
+		t.Fatalf("parse start: %v", err)
+	}
+	table, err := buildMacroHistoryTable(db, 1, start)
+	if err != nil {
+		t.Fatalf("buildMacroHistoryTable: %v", err)
+	}
+
+	row := historyRow(t, table, "2026-12-28")
+	// 3 x 10 km, 3 x 1 h, and a workout-count-weighted HR of (140+140+170)/3.
+	for _, want := range []string{"| 30.0 |", "| 3.0 |", "| 3 |", "| 150 |"} {
+		if !strings.Contains(row, want) {
+			t.Errorf("merged New Year row missing %q\nrow: %s", want, row)
+		}
+	}
+	if strings.Contains(row, "| 170 |") {
+		t.Errorf("avg HR is the last summary row's value, not the weighted mean\nrow: %s", row)
+	}
+}
+
+// SessionsCompleted counts stride_evaluations, not logged workouts. A week
+// whose plan was never evaluated must not be reported to the coach as zero
+// sessions completed while the volume columns show the athlete trained.
+func TestMacroHistoryAdherenceDistinguishesUnevaluatedFromMissed(t *testing.T) {
+	db := setupTestDB(t)
+	start, err := parseMondayWeek("2026-08-31")
+	if err != nil {
+		t.Fatalf("parse start: %v", err)
+	}
+
+	// Week A: plan + workouts, never evaluated.
+	weekA := start.AddDate(0, 0, -7*3)
+	seedStridePlan(t, db, 1, weekA, 2)
+	seedWorkout(t, db, 1, weekA.Format(dateLayout), 145, "adh-a1")
+	seedWorkout(t, db, 1, weekA.AddDate(0, 0, 2).Format(dateLayout), 145, "adh-a2")
+
+	// Week B: plan + workouts, one session evaluated as compliant.
+	weekB := start.AddDate(0, 0, -7*4)
+	planB := seedStridePlan(t, db, 1, weekB, 2)
+	workoutB := seedWorkout(t, db, 1, weekB.Format(dateLayout), 150, "adh-b1")
+	evalJSON, err := encryption.EncryptField(`{"planned_type":"threshold","actual_type":"threshold","compliance":"compliant"}`)
+	if err != nil {
+		t.Fatalf("encrypt eval: %v", err)
+	}
+	if _, err := db.Exec(`
+		INSERT INTO stride_evaluations (user_id, plan_id, workout_id, eval_json, created_at)
+		VALUES (?, ?, ?, ?, ?)`,
+		1, planB, workoutB, evalJSON, time.Now().UTC().Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("insert evaluation: %v", err)
+	}
+
+	// Week C: plan, no workouts at all — a genuine 0.
+	weekC := start.AddDate(0, 0, -7*5)
+	seedStridePlan(t, db, 1, weekC, 2)
+
+	table, err := buildMacroHistoryTable(db, 1, start)
+	if err != nil {
+		t.Fatalf("buildMacroHistoryTable: %v", err)
+	}
+	if got := historyRow(t, table, weekA.Format(dateLayout)); !strings.Contains(got, "| 2/? |") {
+		t.Errorf("unevaluated week should read 2/?, got: %s", got)
+	}
+	if got := historyRow(t, table, weekB.Format(dateLayout)); !strings.Contains(got, "| 2/1 |") {
+		t.Errorf("evaluated week should read 2/1, got: %s", got)
+	}
+	if got := historyRow(t, table, weekC.Format(dateLayout)); !strings.Contains(got, "| 2/0 |") {
+		t.Errorf("week with a plan and no workouts should read 2/0, got: %s", got)
+	}
+	// The legend has to explain the column, or the coach reads it as adherence.
+	for _, want := range []string{"Planned/Evaluated", "never evaluated"} {
+		if !strings.Contains(table, want) {
+			t.Errorf("history legend is missing %q", want)
+		}
+	}
+}
+
+// GetPlanHistory pages back from today by rows, not from the block start by
+// weeks. A manual regeneration whose start week is in the past has plan rows
+// newer than the window sitting in front of it, so the window's oldest weeks
+// only survive if the loader pages until it reaches them.
+func TestMacroHistoryPlanWindowReachesOldestWeek(t *testing.T) {
+	db := setupTestDB(t)
+
+	// A block start ten weeks in the past, with a plan for every week from the
+	// window's oldest week up to last week: 26 window weeks plus 10 newer ones.
+	thisMonday := time.Now().UTC()
+	thisMonday = thisMonday.AddDate(0, 0, -(int(thisMonday.Weekday()+6) % 7))
+	start := thisMonday.AddDate(0, 0, -7*10)
+	for i := 1; i <= macroHistoryWeeks+10; i++ {
+		monday := start.AddDate(0, 0, -7*i)
+		if monday.After(thisMonday.AddDate(0, 0, -7)) {
+			continue
+		}
+		seedStridePlan(t, db, 1, monday, 3)
+	}
+	for i := 1; i <= 10; i++ {
+		monday := start.AddDate(0, 0, 7*i)
+		if !monday.Before(thisMonday) {
+			continue
+		}
+		seedStridePlan(t, db, 1, monday, 3)
+	}
+
+	table, err := buildMacroHistoryTable(db, 1, start)
+	if err != nil {
+		t.Fatalf("buildMacroHistoryTable: %v", err)
+	}
+	oldest := start.AddDate(0, 0, -7*macroHistoryWeeks).Format(dateLayout)
+	if got := historyRow(t, table, oldest); !strings.Contains(got, "| 3/0 |") {
+		t.Errorf("oldest window week lost its plan columns — the page did not reach it\nrow: %s", got)
+	}
+}
+
+// The VO2max section keeps the last estimate of each of the six most recent
+// months, oldest first. Every part of that depends on GetVO2maxHistory's
+// ascending order, which nothing else in this package pins.
+func TestMacroVO2maxTrendMonthlyReduction(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Eight months, two estimates each: the second of each month is the one
+	// that must be shown.
+	months := []string{"2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08"}
+	for i, m := range months {
+		for j, day := range []string{"05", "20"} {
+			wID := seedWorkout(t, db, 1, m+"-"+day, 150, fmt.Sprintf("vo2-%d-%d", i, j))
+			if err := training.SaveVO2maxEstimate(db, &training.VO2maxEstimate{
+				UserID:      1,
+				WorkoutID:   wID,
+				VO2max:      50 + float64(i) + float64(j)/2,
+				Method:      "hr_ratio",
+				EstimatedAt: m + "-" + day + "T10:00:00Z",
+			}); err != nil {
+				t.Fatalf("save vo2max: %v", err)
 			}
-		})
+		}
+	}
+
+	section := renderMacroVO2maxTrend(db, 1)
+	for _, dropped := range []string{"2026-01", "2026-02"} {
+		if strings.Contains(section, dropped) {
+			t.Errorf("VO2max trend kept month %s — only the six newest belong\n%s", dropped, section)
+		}
+	}
+	var lines []string
+	for _, line := range strings.Split(section, "\n") {
+		if strings.HasPrefix(line, "- 20") {
+			lines = append(lines, line)
+		}
+	}
+	want := []string{
+		"- 2026-03: 52.5", "- 2026-04: 53.5", "- 2026-05: 54.5",
+		"- 2026-06: 55.5", "- 2026-07: 56.5", "- 2026-08: 57.5",
+	}
+	if len(lines) != len(want) {
+		t.Fatalf("VO2max trend has %d months, want %d\n%s", len(lines), len(want), section)
+	}
+	for i, w := range want {
+		if lines[i] != w {
+			t.Errorf("VO2max line %d = %q, want %q (oldest first, month's last value)", i, lines[i], w)
+		}
+	}
+}
+
+// seedLactateTest inserts a test with the given stages (speed, lactate, HR).
+func seedLactateTest(t *testing.T, db *sql.DB, userID int64, date string, stages [][3]float64) {
+	t.Helper()
+	res, err := db.Exec(`
+		INSERT INTO lactate_tests (user_id, date, comment, protocol_type, created_at, updated_at)
+		VALUES (?, ?, '', 'standard', ?, ?)`,
+		userID, date, date, date,
+	)
+	if err != nil {
+		t.Fatalf("insert lactate test %s: %v", date, err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("lactate id: %v", err)
+	}
+	for i, s := range stages {
+		if _, err := db.Exec(`
+			INSERT INTO lactate_test_stages (test_id, stage_number, speed_kmh, lactate_mmol, heart_rate_bpm, notes)
+			VALUES (?, ?, ?, ?, ?, '')`,
+			id, i+1, s[0], s[1], int(s[2]),
+		); err != nil {
+			t.Fatalf("insert stage: %v", err)
+		}
+	}
+}
+
+// The lactate section is the block's threshold anchor: it must show the three
+// NEWEST tests (lactate.List is date DESC), convert km/h to min/km, and survive
+// a test whose threshold could not be derived.
+func TestMacroLactateTestsRendersNewestThree(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Newest first once ordered: 2026-08-01 .. 2026-05-01.
+	seedLactateTest(t, db, 1, "2026-08-01", [][3]float64{{12, 2.0, 150}, {13, 4.0, 165}})
+	seedLactateTest(t, db, 1, "2026-07-01", [][3]float64{{12, 2.0, 148}, {14, 4.0, 168}})
+	// No stage reaches 4 mmol and there are too few stages for the curve
+	// methods, so no threshold can be derived.
+	seedLactateTest(t, db, 1, "2026-06-01", [][3]float64{{10, 1.0, 130}, {11, 1.5, 138}})
+	seedLactateTest(t, db, 1, "2026-05-01", [][3]float64{{12, 2.0, 145}, {13, 4.0, 160}})
+
+	section := renderMacroLactateTests(db, 1)
+	if strings.Contains(section, "2026-05-01") {
+		t.Errorf("the fourth-newest test must be dropped\n%s", section)
+	}
+	// 13.0 km/h -> 3600/13 = 276.9 s/km -> 4:37/km.
+	if !strings.Contains(section, "- 2026-08-01: threshold 13.0 km/h (4:37/km), HR 165 bpm") {
+		t.Errorf("newest test line is wrong\n%s", section)
+	}
+	// 14.0 km/h -> 257.1 s/km -> 4:17/km.
+	if !strings.Contains(section, "- 2026-07-01: threshold 14.0 km/h (4:17/km), HR 168 bpm") {
+		t.Errorf("second test line is wrong\n%s", section)
+	}
+	if !strings.Contains(section, "- 2026-06-01: no valid threshold derived") {
+		t.Errorf("a test without a derivable threshold must say so, not crash or be skipped\n%s", section)
+	}
+	if strings.Index(section, "2026-08-01") > strings.Index(section, "2026-07-01") {
+		t.Error("lactate tests are not newest-first")
+	}
+}
+
+// The prediction snapshot is what a target HM time is judged against when the
+// block has no A-race. Only its empty path was covered.
+func TestMacroRacePredictionRendersSnapshot(t *testing.T) {
+	db := setupTestDB(t)
+
+	preds := `[{"distance":"Half Marathon","distance_m":21097.5,"time_seconds":5220,"predicted_time":"1:27:00","pace_per_km":"4:07","confidence":"medium"},
+	           {"distance":"10K","distance_m":10000,"time_seconds":2400,"predicted_time":"40:00","pace_per_km":"4:00"}]`
+	if _, err := db.Exec(`
+		INSERT INTO race_predictions (user_id, created_at, method, predictions_json, rationale)
+		VALUES (?, ?, 'ai', ?, ?)`,
+		1, "2026-08-20T06:15:00Z", preds, "Threshold pace from the 2026-08-01 lactate test.",
+	); err != nil {
+		t.Fatalf("insert prediction: %v", err)
+	}
+
+	section := renderMacroRacePrediction(db, 1)
+	if !strings.Contains(section, "Race predictions as of 2026-08-20:") {
+		t.Errorf("prediction date is not truncated to YYYY-MM-DD\n%s", section)
+	}
+	if !strings.Contains(section, "- Half Marathon: 1:27:00 (4:07/km, confidence medium)") {
+		t.Errorf("half-marathon prediction line is wrong\n%s", section)
+	}
+	if !strings.Contains(section, "- 10K: 40:00 (4:00/km)") {
+		t.Errorf("a prediction without a confidence must still render\n%s", section)
+	}
+	if !strings.Contains(section, "Prediction rationale: Threshold pace from the 2026-08-01 lactate test.") {
+		t.Errorf("prediction rationale is missing\n%s", section)
+	}
+}
+
+// An athlete who lets a block lapse and regenerates weeks later has no plan
+// covering the week before the new start, so the fallback query is what keeps
+// the extension from restarting from base. It must pick the most recent ACTIVE
+// block belonging to THIS user.
+func TestLoadPreviousMacroPlanFallsBackToMostRecentActiveBlock(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	newer, newerWeeks := sampleMacroPlan(1)
+	newer.Goal.Statement = "NEWER-BLOCK-MARKER"
+	if err := CreateMacroPlan(ctx, db, newer, newerWeeks, "initial goal"); err != nil {
+		t.Fatalf("create newer block: %v", err)
+	}
+
+	older, olderWeeks := sampleMacroPlan(1)
+	older.StartWeek = mondayAfter(testBlockStart, -MacroBlockWeeks)
+	older.EndWeek = mondayAfter(testBlockStart, -1)
+	older.Goal.Statement = "OLDER-BLOCK-MARKER"
+	for i := range olderWeeks {
+		olderWeeks[i].WeekStart = mondayAfter(older.StartWeek, i)
+	}
+	if err := CreateMacroPlan(ctx, db, older, olderWeeks, "initial goal"); err != nil {
+		t.Fatalf("create older block: %v", err)
+	}
+
+	// A superseded block that ends later than either of the two above: status
+	// must exclude it even though start_week DESC would pick it first.
+	superseded, supersededWeeks := sampleMacroPlan(1)
+	superseded.StartWeek = mondayAfter(testBlockStart, MacroBlockWeeks)
+	superseded.EndWeek = mondayAfter(testBlockStart, 2*MacroBlockWeeks-1)
+	superseded.Status = MacroPlanStatusSuperseded
+	superseded.Goal.Statement = "SUPERSEDED-BLOCK-MARKER"
+	for i := range supersededWeeks {
+		supersededWeeks[i].WeekStart = mondayAfter(superseded.StartWeek, i)
+	}
+	if err := CreateMacroPlan(ctx, db, superseded, supersededWeeks, "initial goal"); err != nil {
+		t.Fatalf("create superseded block: %v", err)
+	}
+
+	// Another athlete's active block, newer than anything above.
+	if _, err := db.Exec("INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g456')"); err != nil {
+		t.Fatalf("insert second user: %v", err)
+	}
+	foreign, foreignWeeks := sampleMacroPlan(2)
+	foreign.StartWeek = mondayAfter(testBlockStart, MacroBlockWeeks)
+	foreign.EndWeek = mondayAfter(testBlockStart, 2*MacroBlockWeeks-1)
+	foreign.Goal.Statement = "FOREIGN-BLOCK-MARKER"
+	for i := range foreignWeeks {
+		foreignWeeks[i].UserID = 2
+		foreignWeeks[i].WeekStart = mondayAfter(foreign.StartWeek, i)
+	}
+	if err := CreateMacroPlan(ctx, db, foreign, foreignWeeks, "initial goal"); err != nil {
+		t.Fatalf("create foreign block: %v", err)
+	}
+
+	// Start six weeks after the newer block ended: nothing covers the week
+	// before it, so only the fallback query can find anything.
+	lapsedStart := mondayAfter(testBlockStart, MacroBlockWeeks+6)
+	prev, err := loadPreviousMacroPlan(ctx, db, 1, lapsedStart)
+	if err != nil {
+		t.Fatalf("loadPreviousMacroPlan: %v", err)
+	}
+	if prev == nil {
+		t.Fatal("fallback did not find the lapsed block — an extension would restart from base")
+	}
+	if prev.StartWeek != testBlockStart {
+		t.Errorf("fallback picked the block starting %s, want the most recent active one (%s)", prev.StartWeek, testBlockStart)
+	}
+
+	startTime, err := parseMondayWeek(lapsedStart)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	section := renderMacroPreviousBlock(ctx, db, 1, startTime)
+	if !strings.Contains(section, "NEWER-BLOCK-MARKER") {
+		t.Errorf("previous-block section does not name the most recent active block\n%s", section)
+	}
+	for _, unwanted := range []string{"OLDER-BLOCK-MARKER", "SUPERSEDED-BLOCK-MARKER", "FOREIGN-BLOCK-MARKER"} {
+		if strings.Contains(section, unwanted) {
+			t.Errorf("previous-block section embedded %s", unwanted)
+		}
+	}
+}
+
+// Library names and macro goal/periodisation text are encrypted at rest and
+// decrypted by their loaders. If a loader ever stops decrypting, the prompt
+// would embed ciphertext and the coach would plan against garbage — silently,
+// since nothing else validates the text.
+func TestMacroLibraryAndPreviousBlockAreDecrypted(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	if err := SeedReferenceWorkout(ctx, db, 1); err != nil {
+		t.Fatalf("seed reference workout: %v", err)
+	}
+	plan, weeks := sampleMacroPlan(1)
+	if err := CreateMacroPlan(ctx, db, plan, weeks, "initial goal"); err != nil {
+		t.Fatalf("create macro plan: %v", err)
+	}
+
+	// The columns really are ciphertext — otherwise the assertions below would
+	// pass even with no decryption anywhere.
+	var storedName, storedGoal string
+	if err := db.QueryRow("SELECT name FROM stride_workouts WHERE user_id = 1").Scan(&storedName); err != nil {
+		t.Fatalf("read stored name: %v", err)
+	}
+	if err := db.QueryRow("SELECT goal_json FROM stride_macro_plans WHERE user_id = 1").Scan(&storedGoal); err != nil {
+		t.Fatalf("read stored goal: %v", err)
+	}
+	if strings.Contains(storedName, "threshold") {
+		t.Fatal("library name is stored in plaintext — fix the store, not this test")
+	}
+	if strings.Contains(storedGoal, "half marathon") {
+		t.Fatal("macro goal is stored in plaintext — fix the store, not this test")
+	}
+
+	library := renderMacroWorkoutLibrary(ctx, db, 1)
+	if !strings.Contains(library, "6x6min threshold (reference)") {
+		t.Errorf("library section does not carry the decrypted workout name\n%s", library)
+	}
+	start, err := parseMondayWeek(mondayAfter(testBlockStart, MacroBlockWeeks))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	previous := renderMacroPreviousBlock(ctx, db, 1, start)
+	if !strings.Contains(previous, "Run 1:24:00 for the half marathon") {
+		t.Errorf("previous-block section does not carry the decrypted goal\n%s", previous)
+	}
+	if !strings.Contains(previous, "threshold density") {
+		t.Errorf("previous-block section does not carry the decrypted periodisation\n%s", previous)
 	}
 }

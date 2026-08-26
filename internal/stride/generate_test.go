@@ -494,8 +494,13 @@ func TestBuildGeneratePrompt_RaceHistorySection(t *testing.T) {
 	if !strings.Contains(prompt, "Spring 10K") {
 		t.Error("prompt missing race name 'Spring 10K'")
 	}
-	if !strings.Contains(prompt, "40m00s") {
+	// formatRaceTime is shared with the macro prompt: h:mm:ss, or m:ss under
+	// an hour. Both prompts must quote the same race the same way.
+	if !strings.Contains(prompt, "40:00") {
 		t.Error("prompt missing formatted time for 10K race")
+	}
+	if !strings.Contains(prompt, "19:45") {
+		t.Error("prompt missing formatted time for the 5K race")
 	}
 	if !strings.Contains(prompt, "4:00/km") {
 		t.Error("prompt missing pace for 10K race")
