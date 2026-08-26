@@ -276,10 +276,17 @@ func parseWeekDate(date string) (time.Time, error) {
 // macro planning derives its goal from stride_races and the block's own goal
 // object, so those preferences must not leak into the prompt and contradict it.
 func stripGoalRaceSection(block string) string {
-	if idx := strings.Index(block, "Goal Race:\n"); idx >= 0 {
-		block = block[:idx]
+	// Cut at the "Goal Race:" header line. Match on the line prefix rather than
+	// the whole "Goal Race:\n" header so a block that renders the goal inline on
+	// the same line is stripped too.
+	lines := strings.Split(block, "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(line, "Goal Race:") {
+			lines = lines[:i]
+			break
+		}
 	}
-	block = strings.TrimRight(block, "\n")
+	block = strings.TrimRight(strings.Join(lines, "\n"), "\n")
 	// An athlete with only goal_race_* preferences and no HR/zone data leaves
 	// nothing but the header behind — treat that as no profile at all.
 	if block == "" || block == "User Profile:" {
