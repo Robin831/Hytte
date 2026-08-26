@@ -55,12 +55,15 @@ var ErrNoPreviousMacroPlan = errors.New("no previous macro block to extend")
 // goal, periodisation and closing weeks go into the prompt so the new block
 // picks up where the old one ends instead of restarting from base — and fails
 // with ErrNoPreviousMacroPlan when there is nothing to continue. Scheduled and
-// manual mode replace whatever active block already covers the start week, if
-// any. In every mode the plan the new block follows is recorded as
-// PreviousPlanID, which is what retires it in the same transaction that
-// inserts the new one. That transaction re-checks the athlete's active blocks
-// itself, so a second generation racing this one is rejected with
-// ErrOverlappingMacroPlan rather than leaving two active blocks behind.
+// manual mode regenerate over whatever the athlete has, replacing the active
+// block covering the start week if there is one. In every mode the plan the new
+// block follows is recorded as PreviousPlanID, and every active block the new
+// 26-week horizon overlaps is retired in the same transaction that inserts it —
+// including one that starts after the new block does, which a scheduled
+// extension leaves behind and which is nobody's lineage parent. That
+// transaction re-checks the athlete's active blocks itself, so a second
+// generation racing this one is rejected with ErrOverlappingMacroPlan rather
+// than leaving two active blocks behind.
 //
 // On success the returned plan carries its assigned ID, created_at and weeks.
 func GenerateMacroPlan(ctx context.Context, db *sql.DB, userID int64, startWeek string, mode MacroMode) (*MacroPlan, error) {
@@ -99,11 +102,13 @@ func GenerateMacroPlan(ctx context.Context, db *sql.DB, userID int64, startWeek 
 	// jobs, so it must not silently run on a cheaper model than the week.
 	applyStrideModelDefault(prefs, claudeCfg)
 
+	endWeek := macroEndWeek(startDate)
+
 	// Resolved before the Claude call so an extension with nothing to continue
 	// fails in milliseconds instead of after a 26-week generation. It is only
-	// the *lineage* that is decided here — CreateMacroPlan re-checks which
-	// blocks are actually active when it writes.
-	previous, err := macroPreviousPlan(ctx, db, userID, start, mode)
+	// what the new block *replaces* that is decided here — CreateMacroPlan
+	// re-checks which blocks are actually active when it writes.
+	lineage, err := macroBlockLineage(ctx, db, userID, start, endWeek, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -139,51 +144,75 @@ func GenerateMacroPlan(ctx context.Context, db *sql.DB, userID int64, startWeek 
 	}
 
 	plan := &MacroPlan{
-		UserID:        userID,
-		StartWeek:     start,
-		EndWeek:       macroEndWeek(startDate),
-		Status:        MacroPlanStatusActive,
-		Goal:          parsed.Goal,
-		Periodisation: parsed.Mesocycles,
-		Prompt:        prompt,
-		Response:      response,
-		Model:         claudeCfg.Model,
-		GeneratedBy:   string(mode),
-	}
-	if previous != nil {
-		plan.PreviousPlanID = &previous.ID
+		UserID:         userID,
+		StartWeek:      start,
+		EndWeek:        endWeek,
+		Status:         MacroPlanStatusActive,
+		Goal:           parsed.Goal,
+		Periodisation:  parsed.Mesocycles,
+		Prompt:         prompt,
+		Response:       response,
+		Model:          claudeCfg.Model,
+		GeneratedBy:    string(mode),
+		PreviousPlanID: lineage.previousPlanID,
 	}
 
 	reason := fmt.Sprintf("Initial goal for the %d-week block starting %s (%s).",
 		MacroBlockWeeks, start, mode)
-	if err := CreateMacroPlan(ctx, db, plan, macroWeeksFromResponse(parsed.Weeks), reason); err != nil {
+	if err := CreateMacroPlanReplacing(ctx, db, plan, macroWeeksFromResponse(parsed.Weeks), reason,
+		lineage.supersede); err != nil {
 		return nil, fmt.Errorf("persist macro plan: %w", err)
 	}
 	return plan, nil
 }
 
-// macroPreviousPlan returns the block the new one follows, or nil when there is
-// none. What counts as "the previous block" depends on the mode: an extension
-// continues the block whose horizon is running out, while a scheduled or manual
-// block replaces whatever active block already covers the start week. Both end
-// up in PreviousPlanID, which retires that block as part of CreateMacroPlan's
-// transaction.
-func macroPreviousPlan(ctx context.Context, db *sql.DB, userID int64, startWeek string, mode MacroMode) (*MacroPlan, error) {
+// macroLineage is what a new block displaces: previousPlanID is the block it
+// descends from (nil for a first block), and supersede lists every active block
+// that must be retired for the athlete to be left with one plan per week —
+// previousPlanID included.
+type macroLineage struct {
+	previousPlanID *int64
+	supersede      []int64
+}
+
+// macroBlockLineage decides what the new block replaces. Whatever the mode, the
+// blocks that must be retired are all the active ones overlapping the new
+// horizon [startWeek, endWeek] — the same window CreateMacroPlan's overlap
+// check spans, so a block it would reject is always one this resolved and
+// demoted. Resolving over a narrower window (say, only the block covering
+// startWeek) leaves a block that starts later inside the horizon unnamable, and
+// every generation then burns its Claude call only to fail the check.
+//
+// Which of them is the *lineage parent* still depends on the mode: an extension
+// continues the block whose horizon is running out — usually one that ends
+// before the new block starts and so does not overlap it at all — while a
+// scheduled or manual block descends from the active block covering its start
+// week, which is the earliest of the overlapping ones.
+func macroBlockLineage(ctx context.Context, db *sql.DB, userID int64, startWeek, endWeek string, mode MacroMode) (macroLineage, error) {
+	spans, err := listActiveMacroPlanSpans(ctx, db, userID, startWeek, endWeek)
+	if err != nil {
+		return macroLineage{}, fmt.Errorf("load overlapping macro plans: %w", err)
+	}
+	lineage := macroLineage{supersede: make([]int64, 0, len(spans))}
+	for _, span := range spans {
+		lineage.supersede = append(lineage.supersede, span.ID)
+	}
+
 	if mode == MacroModeExtension {
 		prev, err := loadPreviousMacroPlan(ctx, db, userID, startWeek)
 		if err != nil {
-			return nil, fmt.Errorf("load previous macro plan: %w", err)
+			return macroLineage{}, fmt.Errorf("load previous macro plan: %w", err)
 		}
 		if prev == nil {
-			return nil, ErrNoPreviousMacroPlan
+			return macroLineage{}, ErrNoPreviousMacroPlan
 		}
-		return prev, nil
+		lineage.previousPlanID = &prev.ID
+		return lineage, nil
 	}
-	plan, err := GetActiveMacroPlan(ctx, db, userID, startWeek)
-	if err != nil {
-		return nil, fmt.Errorf("load active macro plan: %w", err)
+	if len(spans) > 0 {
+		lineage.previousPlanID = &spans[0].ID
 	}
-	return plan, nil
+	return lineage, nil
 }
 
 // parseMacroPlanResponse decodes the coach's answer into the response types.

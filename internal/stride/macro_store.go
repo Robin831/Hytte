@@ -27,10 +27,12 @@ var ErrMacroWeekNotFound = errors.New("macro week not found")
 var ErrForeignReference = errors.New("macro plan references a row the user does not own")
 
 // ErrOverlappingMacroPlan is returned when a new block would leave the athlete
-// with two active blocks covering the same week — the block it was meant to
-// replace was not named in PreviousPlanID, or was retired by a concurrent
-// generation and a different one took its place. The caller should re-resolve
-// the active block and try again rather than retrying blindly.
+// with two active blocks covering the same week: some active block overlaps the
+// new horizon and was not among the ones the write was told to retire. Callers
+// resolve that set from the whole horizon before the Claude call, so in
+// practice this only fires when a concurrent generation committed a block
+// while the call was in flight. Re-resolving the athlete's active blocks and
+// generating again clears it; repeating the same write blindly does not.
 var ErrOverlappingMacroPlan = errors.New("another active macro plan already covers these weeks")
 
 // macroPlanColumns is the shared SELECT list for stride_macro_plans, kept in
@@ -271,7 +273,29 @@ func verifyMacroReferences(ctx context.Context, tx *sql.Tx, plan *MacroPlan, wee
 // [StartWeek, EndWeek] once the demotion has been applied, the write is
 // rejected with ErrOverlappingMacroPlan: the alternative is an athlete left
 // with two active blocks prescribing different things for the same week.
+//
+// A new horizon can overlap more than one active block — PreviousPlanID names
+// only the one the block descends from, so use CreateMacroPlanReplacing to
+// retire the rest in the same commit.
 func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []MacroWeek, initialGoalReason string) error {
+	return CreateMacroPlanReplacing(ctx, db, plan, weeks, initialGoalReason, nil)
+}
+
+// CreateMacroPlanReplacing is CreateMacroPlan for a block that retires more
+// than its own lineage parent. supersedePlanIDs lists every *other* active
+// block the new horizon overlaps; each is demoted in the same transaction as
+// the insert, before the overlap check runs, and each must belong to
+// plan.UserID or the whole write fails with ErrMacroPlanNotFound. Naming
+// PreviousPlanID again in the list is harmless — the demotion is idempotent.
+//
+// The list exists because PreviousPlanID is a single lineage pointer while the
+// overlap check spans the whole 26-week horizon. An athlete can hold an active
+// block that starts *after* the new block does but still inside its horizon —
+// an extension scheduled ahead of time does exactly that — and such a block is
+// not the new one's parent yet must still be retired for the athlete to be left
+// with one plan per week. Without it that block could never be replaced: every
+// generation would pay its Claude call and then fail the overlap check.
+func CreateMacroPlanReplacing(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []MacroWeek, initialGoalReason string, supersedePlanIDs []int64) error {
 	if err := validateMacroPlanRow(plan); err != nil {
 		return err
 	}
@@ -326,11 +350,11 @@ func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []M
 		return err
 	}
 
-	// Demote the block this one replaces before inserting, both to free its
+	// Demote the blocks this one replaces before inserting, both to free their
 	// Monday slot in idx_stride_macro_plans_active_start and so the handover is
 	// all-or-nothing with the rest of the write.
-	if plan.PreviousPlanID != nil {
-		if err := supersedeMacroPlanTx(ctx, tx, *plan.PreviousPlanID, plan.UserID); err != nil {
+	for _, id := range supersedeIDs(plan.PreviousPlanID, supersedePlanIDs) {
+		if err := supersedeMacroPlanTx(ctx, tx, id, plan.UserID); err != nil {
 			return err
 		}
 	}
@@ -601,35 +625,94 @@ func supersedeMacroPlanTx(ctx context.Context, q execer, planID, userID int64) e
 	return nil
 }
 
+// supersedeIDs is the ordered, duplicate-free list of blocks a create retires:
+// the new block's lineage parent first, then every other active block the
+// caller resolved as overlapping the new horizon. Repeating the parent in that
+// list is allowed and collapses here rather than costing a second UPDATE.
+func supersedeIDs(previousPlanID *int64, others []int64) []int64 {
+	ids := make([]int64, 0, len(others)+1)
+	seen := make(map[int64]struct{}, len(others)+1)
+	add := func(id int64) {
+		if _, dup := seen[id]; dup {
+			return
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	if previousPlanID != nil {
+		add(*previousPlanID)
+	}
+	for _, id := range others {
+		add(id)
+	}
+	return ids
+}
+
+// macroPlanSpan is one block's horizon and nothing else — enough to decide what
+// a new block overlaps and has to retire, without decrypting the AI-authored
+// blobs a full scanMacroPlan would.
+type macroPlanSpan struct {
+	ID        int64
+	StartWeek string
+	EndWeek   string
+}
+
+// querier is the subset of *sql.DB and *sql.Tx the span lookup needs, so the
+// same statement serves a caller resolving what to replace and the re-check
+// inside CreateMacroPlan's transaction.
+type querier interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// listActiveMacroPlanSpans returns the user's active blocks whose horizon
+// overlaps [startWeek, endWeek], earliest first. Two horizons overlap when each
+// starts on or before the other ends — both ends are inclusive, matching
+// GetActiveMacroPlan's lookup.
+//
+// This is deliberately the same query verifyNoOverlappingActivePlan rejects on.
+// Resolving what to replace through a narrower window than the write checks is
+// what made a block starting mid-horizon impossible to replace: it could never
+// be named, so it was never demoted, and every generation failed the check.
+func listActiveMacroPlanSpans(ctx context.Context, q querier, userID int64, startWeek, endWeek string) ([]macroPlanSpan, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT id, start_week, end_week
+		FROM stride_macro_plans
+		WHERE user_id = ? AND status = ? AND start_week <= ? AND end_week >= ?
+		ORDER BY start_week ASC, id ASC
+	`, userID, MacroPlanStatusActive, endWeek, startWeek)
+	if err != nil {
+		return nil, fmt.Errorf("query overlapping macro plans: %w", err)
+	}
+	defer rows.Close()
+
+	spans := []macroPlanSpan{}
+	for rows.Next() {
+		var span macroPlanSpan
+		if err := rows.Scan(&span.ID, &span.StartWeek, &span.EndWeek); err != nil {
+			return nil, fmt.Errorf("scan overlapping macro plan: %w", err)
+		}
+		spans = append(spans, span)
+	}
+	return spans, rows.Err()
+}
+
 // verifyNoOverlappingActivePlan fails when the user still has an active block
-// whose horizon overlaps the one being inserted. Two blocks overlap when each
-// starts on or before the other ends — the horizons are inclusive at both ends,
-// matching GetActiveMacroPlan's lookup.
+// whose horizon overlaps the one being inserted.
 //
 // The partial unique index only covers an identical start_week, so it catches a
 // double Regenerate but not a block that starts mid-horizon; and it fires as a
 // constraint error rather than something a handler can explain. Checking here
-// covers both, inside the same transaction that did the demotion.
+// covers both, inside the same transaction that did the demotions.
 func verifyNoOverlappingActivePlan(ctx context.Context, tx *sql.Tx, plan *MacroPlan) error {
-	var (
-		id        int64
-		startWeek string
-		endWeek   string
-	)
-	err := tx.QueryRowContext(ctx, `
-		SELECT id, start_week, end_week
-		FROM stride_macro_plans
-		WHERE user_id = ? AND status = ? AND start_week <= ? AND end_week >= ?
-		ORDER BY start_week ASC
-		LIMIT 1
-	`, plan.UserID, MacroPlanStatusActive, plan.EndWeek, plan.StartWeek).Scan(&id, &startWeek, &endWeek)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
+	spans, err := listActiveMacroPlanSpans(ctx, tx, plan.UserID, plan.StartWeek, plan.EndWeek)
 	if err != nil {
 		return fmt.Errorf("check overlapping macro plans: %w", err)
 	}
-	return fmt.Errorf("%w: plan %d covers %s to %s", ErrOverlappingMacroPlan, id, startWeek, endWeek)
+	if len(spans) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w: plan %d covers %s to %s",
+		ErrOverlappingMacroPlan, spans[0].ID, spans[0].StartWeek, spans[0].EndWeek)
 }
 
 // SupersedeMacroPlan marks a macro plan as superseded, retiring a block without

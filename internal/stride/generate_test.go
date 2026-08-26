@@ -150,6 +150,70 @@ func TestGeneratePlan_StoresPlan(t *testing.T) {
 	}
 }
 
+// The model a week is planned on is the athlete's when they have chosen one,
+// and strideDefaultModel when they have not — the weekly path's half of what
+// TestGenerateMacroPlanModelSelection pins for blocks. The fallback cannot be
+// written as `if cfg.Model == ""`: training.LoadClaudeConfig substitutes its
+// own, cheaper package default first, so that branch would never fire and every
+// week would quietly be planned on the cheaper model.
+func TestGeneratePlan_ModelDefault(t *testing.T) {
+	tests := []struct {
+		name string
+		pref string
+		want string
+	}{
+		{"no model chosen falls back to the Stride default", "", strideDefaultModel},
+		// Whitespace is what a preference typed into a text field and cleared
+		// again looks like; it means "no choice", not a model named " ".
+		{"a whitespace-only choice is no choice", "   ", strideDefaultModel},
+		{"the athlete's choice is respected", "claude-opus-4-5", "claude-opus-4-5"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := extendedTestDB(t)
+			prefs := []struct{ k, v string }{
+				{"stride_enabled", "true"},
+				{"claude_enabled", "true"},
+				{"claude_model", tt.pref},
+			}
+			for _, p := range prefs {
+				if _, err := db.Exec("INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)", p.k, p.v); err != nil {
+					t.Fatalf("set pref %s: %v", p.k, err)
+				}
+			}
+
+			weekStart, _ := upcomingWeek()
+			mockResponse, err := json.Marshal(buildMinimalPlan(weekStart))
+			if err != nil {
+				t.Fatalf("marshal mock plan: %v", err)
+			}
+
+			var usedModel string
+			origFn := runPromptFunc
+			runPromptFunc = func(_ context.Context, cfg *training.ClaudeConfig, _ string) (string, error) {
+				usedModel = cfg.Model
+				return string(mockResponse), nil
+			}
+			t.Cleanup(func() { runPromptFunc = origFn })
+
+			if err := GeneratePlan(context.Background(), db, 1, "next"); err != nil {
+				t.Fatalf("GeneratePlan: %v", err)
+			}
+
+			if usedModel != tt.want {
+				t.Errorf("week generated on model %q, want %q", usedModel, tt.want)
+			}
+			var storedModel string
+			if err := db.QueryRow("SELECT model FROM stride_plans WHERE user_id = 1").Scan(&storedModel); err != nil {
+				t.Fatalf("query plan model: %v", err)
+			}
+			if storedModel != tt.want {
+				t.Errorf("persisted model = %q, want %q", storedModel, tt.want)
+			}
+		})
+	}
+}
+
 func TestGeneratePlan_StoresPlan_Current(t *testing.T) {
 	db := extendedTestDB(t)
 

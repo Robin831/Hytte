@@ -868,6 +868,105 @@ func TestGenerateMacroPlanManualModeReplacesActiveBlock(t *testing.T) {
 	}
 }
 
+// An active block that starts *after* the new one but inside its 26-week
+// horizon is nobody's lineage parent — resolving only the block covering the
+// start week would never name it, so it would never be demoted and the overlap
+// check would reject every generation after the (up to 300s) Claude call. It is
+// a reachable shape, not just a race: a scheduled extension starts at the
+// running block's EndWeek+1w and retires that block on the way in, leaving the
+// athlete's only active block starting in the future.
+func TestGenerateMacroPlanReplacesBlockStartingInsideTheHorizon(t *testing.T) {
+	ctx := context.Background()
+	db, fixture, _ := setupMacroGeneration(t, macroTestStartWeek)
+
+	aheadStart := mondayAfter(macroTestStartWeek, 4)
+	ahead, aheadWeeks := rivalMacroBlock(t, 1, aheadStart)
+	if err := CreateMacroPlan(ctx, db, ahead, aheadWeeks, "Scheduled ahead"); err != nil {
+		t.Fatalf("create the block starting inside the horizon: %v", err)
+	}
+
+	stubMacroPrompt(t, macroFixtureJSON(t, fixture))
+
+	plan, err := GenerateMacroPlan(ctx, db, 1, macroTestStartWeek, MacroModeManual)
+	if err != nil {
+		t.Fatalf("GenerateMacroPlan: %v", err)
+	}
+	if plan.PreviousPlanID == nil || *plan.PreviousPlanID != ahead.ID {
+		t.Errorf("previous_plan_id = %v, want the block it replaced (%d)", plan.PreviousPlanID, ahead.ID)
+	}
+
+	retired, err := GetMacroPlanByID(ctx, db, ahead.ID, 1)
+	if err != nil {
+		t.Fatalf("GetMacroPlanByID: %v", err)
+	}
+	if retired.Status != MacroPlanStatusSuperseded {
+		t.Errorf("replaced block status = %q, want superseded", retired.Status)
+	}
+
+	// The new block is the athlete's only plan for both its own start week and
+	// the week the retired block used to start.
+	for _, week := range []string{macroTestStartWeek, aheadStart} {
+		active, err := GetActiveMacroPlan(ctx, db, 1, week)
+		if err != nil {
+			t.Fatalf("GetActiveMacroPlan(%s): %v", week, err)
+		}
+		if active == nil || active.ID != plan.ID {
+			t.Fatalf("active plan for %s = %+v, want the generated one (%d)", week, active, plan.ID)
+		}
+	}
+}
+
+// A horizon can overlap more than one active block — an athlete with a block
+// running now and another already planned for after it has two. Every one of
+// them is retired by the write, not just the lineage parent, otherwise the
+// leftover trips the overlap check the block was meant to resolve.
+func TestGenerateMacroPlanRetiresEveryOverlappingBlock(t *testing.T) {
+	ctx := context.Background()
+	start := mondayAfter(macroTestStartWeek, 10)
+	db, fixture, _ := setupMacroGeneration(t, start)
+
+	// Two active blocks laid end to end: the first covers the new block's
+	// opening weeks, the second its closing ones.
+	running, runningWeeks := rivalMacroBlock(t, 1, macroTestStartWeek)
+	if err := CreateMacroPlan(ctx, db, running, runningWeeks, "Running block"); err != nil {
+		t.Fatalf("create the running block: %v", err)
+	}
+	next, nextWeeks := rivalMacroBlock(t, 1, mondayAfter(macroTestStartWeek, MacroBlockWeeks))
+	if err := CreateMacroPlan(ctx, db, next, nextWeeks, "Block after it"); err != nil {
+		t.Fatalf("create the block after it: %v", err)
+	}
+
+	stubMacroPrompt(t, macroFixtureJSON(t, fixture))
+
+	plan, err := GenerateMacroPlan(ctx, db, 1, start, MacroModeManual)
+	if err != nil {
+		t.Fatalf("GenerateMacroPlan: %v", err)
+	}
+	// The lineage parent is the block the new one starts inside.
+	if plan.PreviousPlanID == nil || *plan.PreviousPlanID != running.ID {
+		t.Errorf("previous_plan_id = %v, want the running block (%d)", plan.PreviousPlanID, running.ID)
+	}
+
+	for _, replaced := range []*MacroPlan{running, next} {
+		retired, err := GetMacroPlanByID(ctx, db, replaced.ID, 1)
+		if err != nil {
+			t.Fatalf("GetMacroPlanByID(%d): %v", replaced.ID, err)
+		}
+		if retired.Status != MacroPlanStatusSuperseded {
+			t.Errorf("block %d (%s) status = %q, want superseded", replaced.ID, replaced.StartWeek, retired.Status)
+		}
+	}
+
+	var active int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_macro_plans WHERE user_id = 1 AND status = ?`,
+		MacroPlanStatusActive).Scan(&active); err != nil {
+		t.Fatalf("count active plans: %v", err)
+	}
+	if active != 1 {
+		t.Errorf("active plans = %d, want only the generated one", active)
+	}
+}
+
 func TestParseWeeklyDistanceCap(t *testing.T) {
 	tests := []struct {
 		raw  string
