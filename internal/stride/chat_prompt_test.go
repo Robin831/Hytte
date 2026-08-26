@@ -280,7 +280,7 @@ func TestBuildChatSystemPrompt_OmitsMariusBakkenFullInstructions(t *testing.T) {
 	profile, plan, evals, races, acr, acute, chronic, notes := buildTestPromptInputs()
 	result := BuildChatSystemPrompt(profile, plan, evals, races, acr, acute, chronic, notes, "", "")
 
-	// These are distinctive phrases from the full mariusBakkenInstructions constant
+	// These are distinctive phrases from the full Marius Bakken generation instructions
 	// that should NOT appear in the chat prompt.
 	forbidden := []string{
 		"This is NOT 80/20 polarized training",

@@ -1,0 +1,2 @@
+category: Changed
+- **Split the Stride coaching prompt constant** - The Marius Bakken instructions are now two constants, `bakkenPhilosophy` (reusable coaching model, HR rules, session templates, load management) and `weeklyOutputFormat` (the 7-day JSON contract), joined by a `weeklyInstructions()` helper when building the generation prompt. The assembled prompt is byte-identical to before, so plan generation is unchanged; this prepares the philosophy half for reuse by a longer-horizon macro prompt. (Hytte-ifjr2.2)

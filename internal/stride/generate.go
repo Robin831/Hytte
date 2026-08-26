@@ -58,9 +58,11 @@ Consequences for how you write sessions:
 - State explicitly that on a treadmill the athlete should judge the session by HR and belt speed and ignore the watch's pace and distance readouts.
 - Recommend a fan directed at the torso for any indoor threshold or long session, and a chest strap rather than wrist HR — indoors HR is the only reliable signal, so it must not also be noisy.`
 
-// mariusBakkenInstructions contains the Marius Bakken threshold-dominant model
-// coaching instructions injected verbatim into every plan generation prompt.
-const mariusBakkenInstructions = `You are an expert running coach applying the Marius Bakken threshold-dominant training model, adapted for recreational runners doing 3-5 sessions per week.
+// bakkenPhilosophy holds the Marius Bakken threshold-dominant coaching model:
+// core philosophy, HR rules, session templates, strides and load management. It
+// carries no output contract of its own; weeklyInstructions pairs it with
+// weeklyOutputFormat.
+const bakkenPhilosophy = `You are an expert running coach applying the Marius Bakken threshold-dominant training model, adapted for recreational runners doing 3-5 sessions per week.
 
 ## Marius Bakken Training Model (Recreational Adaptation)
 
@@ -127,9 +129,12 @@ const mariusBakkenInstructions = `You are an expert running coach applying the M
 - Taper: final 2 weeks reduce volume by 40-50%, maintain some intensity
 - B/C-races: no taper, treat as quality training session
 
-` + workoutFormatGuidance + `
+` + workoutFormatGuidance
 
-## Output Format
+// weeklyOutputFormat describes the JSON contract for a 7-day plan: the day
+// object schema and an example array. weeklyInstructions appends it to
+// bakkenPhilosophy after a blank line.
+const weeklyOutputFormat = `## Output Format
 Return ONLY a JSON array of day objects for the requested week. No markdown, no explanation, no code fences.
 
 ` + dayPlanSchemaFields + `
@@ -140,6 +145,12 @@ Example output structure:
   {"date":"2026-04-07","rest_day":true}
 ]
 `
+
+// weeklyInstructions is the instruction block the weekly generation prompt opens
+// with: the coaching philosophy followed by the 7-day output contract, separated
+// by a blank line. Callers should use this rather than concatenating the two
+// constants themselves, so the separator lives in one place.
+const weeklyInstructions = bakkenPhilosophy + "\n\n" + weeklyOutputFormat
 
 // DayPlan represents a single day in a generated weekly training plan.
 type DayPlan struct {
@@ -774,7 +785,7 @@ func buildGeneratePrompt(
 ) string {
 	var sb strings.Builder
 
-	sb.WriteString(mariusBakkenInstructions)
+	sb.WriteString(weeklyInstructions)
 	sb.WriteString("\n\n")
 
 	// Target week.

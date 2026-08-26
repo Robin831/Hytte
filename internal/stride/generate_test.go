@@ -1199,7 +1199,38 @@ func TestGeneratePlan_PromptIncludesRecentEvaluations(t *testing.T) {
 	}
 }
 
+// Both halves of the instruction block must reach the prompt, and they must stay
+// contiguous — the output contract reads as a continuation of the coaching rules.
+func TestBuildGeneratePromptContainsBothHalves(t *testing.T) {
+	prompt := buildGeneratePrompt(
+		"2026-08-03", "2026-08-09",
+		"", nil, nil,
+		nil,
+		nil, 0, 0,
+		nil,
+		"", "", "",
+		nil,
+		"", "",
+		"",
+		"",
+		nil,
+		nil,
+	)
+
+	if !strings.Contains(prompt, bakkenPhilosophy) {
+		t.Error("generation prompt should contain the Bakken coaching philosophy")
+	}
+	if !strings.Contains(prompt, weeklyOutputFormat) {
+		t.Error("generation prompt should contain the 7-day output format")
+	}
+	if !strings.Contains(prompt, weeklyInstructions) {
+		t.Error("generation prompt should embed the two halves contiguously, separated by a blank line")
+	}
+}
+
 func TestMariusBakkenInstructions_ContainsTreadmillSpeedCaveat(t *testing.T) {
+	instructions := weeklyInstructions
+
 	// The generation prompt derives a km/h figure from an outdoor pace target.
 	// It must also carry the caveat that this figure is not a belt setting,
 	// otherwise sessions get prescribed treadmill speeds that are too fast.
@@ -1208,7 +1239,7 @@ func TestMariusBakkenInstructions_ContainsTreadmillSpeedCaveat(t *testing.T) {
 		"TIME and BELT SPEED",
 		"give the two prescriptions SEPARATELY",
 	} {
-		if !strings.Contains(mariusBakkenInstructions, want) {
+		if !strings.Contains(instructions, want) {
 			t.Errorf("generation instructions should contain treadmill speed caveat %q, but they do not", want)
 		}
 	}
@@ -1219,11 +1250,13 @@ func TestMariusBakkenInstructions_ContainsTreadmillSpeedCaveat(t *testing.T) {
 // plan came to assert a "19-20% watch under-read" the athlete's data contradicts.
 // Indoor watch pace tracks cadence, so no single percentage is correct.
 func TestMariusBakkenInstructions_NoFixedWatchUnderReadPercentage(t *testing.T) {
+	instructions := weeklyInstructions
+
 	for _, forbidden := range []string{
 		"under-reads the belt by 5-15%",
 		"off by 5-15%",
 	} {
-		if strings.Contains(mariusBakkenInstructions, forbidden) {
+		if strings.Contains(instructions, forbidden) {
 			t.Errorf("generation instructions must not state a fixed watch under-read percentage, but contain %q", forbidden)
 		}
 	}
@@ -1232,7 +1265,7 @@ func TestMariusBakkenInstructions_NoFixedWatchUnderReadPercentage(t *testing.T) 
 		"error is NOT a fixed percentage",
 		"never quote a watch under-read percentage",
 	} {
-		if !strings.Contains(mariusBakkenInstructions, want) {
+		if !strings.Contains(instructions, want) {
 			t.Errorf("generation instructions should contain %q, but they do not", want)
 		}
 	}
@@ -1317,7 +1350,9 @@ func TestBuildGeneratePrompt_NoTreadmillCalibrationSectionWhenUnset(t *testing.T
 // Interval work-rep ceilings still apply, and the HR-curve shape is the
 // diagnostic that separates heat load from an effort that is genuinely too hard.
 func TestMariusBakkenInstructions_IndoorHRCapGuidance(t *testing.T) {
-	if strings.Contains(mariusBakkenInstructions, "governs in both") {
+	instructions := weeklyInstructions
+
+	if strings.Contains(instructions, "governs in both") {
 		t.Error("generation instructions must not claim the outdoor HR cap governs indoors as well")
 	}
 	for _, want := range []string{
@@ -1327,7 +1362,7 @@ func TestMariusBakkenInstructions_IndoorHRCapGuidance(t *testing.T) {
 		"then plateaus is thermal load equilibrating",
 		"continuous rise that never levels off",
 	} {
-		if !strings.Contains(mariusBakkenInstructions, want) {
+		if !strings.Contains(instructions, want) {
 			t.Errorf("generation instructions should contain indoor HR guidance %q, but they do not", want)
 		}
 	}
