@@ -58,9 +58,11 @@ Consequences for how you write sessions:
 - State explicitly that on a treadmill the athlete should judge the session by HR and belt speed and ignore the watch's pace and distance readouts.
 - Recommend a fan directed at the torso for any indoor threshold or long session, and a chest strap rather than wrist HR — indoors HR is the only reliable signal, so it must not also be noisy.`
 
-// mariusBakkenInstructions contains the Marius Bakken threshold-dominant model
-// coaching instructions injected verbatim into every plan generation prompt.
-const mariusBakkenInstructions = `You are an expert running coach applying the Marius Bakken threshold-dominant training model, adapted for recreational runners doing 3-5 sessions per week.
+// bakkenPhilosophy contains the Marius Bakken threshold-dominant coaching model:
+// philosophy, HR rules, session templates and load management. It is independent
+// of any particular plan horizon, so both the weekly prompt and future
+// longer-horizon prompts can reuse it.
+const bakkenPhilosophy = `You are an expert running coach applying the Marius Bakken threshold-dominant training model, adapted for recreational runners doing 3-5 sessions per week.
 
 ## Marius Bakken Training Model (Recreational Adaptation)
 
@@ -127,9 +129,12 @@ const mariusBakkenInstructions = `You are an expert running coach applying the M
 - Taper: final 2 weeks reduce volume by 40-50%, maintain some intensity
 - B/C-races: no taper, treat as quality training session
 
-` + workoutFormatGuidance + `
+` + workoutFormatGuidance
 
-## Output Format
+// weeklyOutputFormat describes the JSON contract for a 7-day plan. It is
+// appended to bakkenPhilosophy by buildGeneratePrompt; the two joined by a blank
+// line reproduce the original single constant byte for byte.
+const weeklyOutputFormat = `## Output Format
 Return ONLY a JSON array of day objects for the requested week. No markdown, no explanation, no code fences.
 
 ` + dayPlanSchemaFields + `
@@ -774,7 +779,9 @@ func buildGeneratePrompt(
 ) string {
 	var sb strings.Builder
 
-	sb.WriteString(mariusBakkenInstructions)
+	sb.WriteString(bakkenPhilosophy)
+	sb.WriteString("\n\n")
+	sb.WriteString(weeklyOutputFormat)
 	sb.WriteString("\n\n")
 
 	// Target week.

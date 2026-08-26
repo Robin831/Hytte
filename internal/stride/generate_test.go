@@ -1208,7 +1208,7 @@ func TestMariusBakkenInstructions_ContainsTreadmillSpeedCaveat(t *testing.T) {
 		"TIME and BELT SPEED",
 		"give the two prescriptions SEPARATELY",
 	} {
-		if !strings.Contains(mariusBakkenInstructions, want) {
+		if !strings.Contains(bakkenPhilosophy, want) {
 			t.Errorf("generation instructions should contain treadmill speed caveat %q, but they do not", want)
 		}
 	}
@@ -1223,7 +1223,7 @@ func TestMariusBakkenInstructions_NoFixedWatchUnderReadPercentage(t *testing.T) 
 		"under-reads the belt by 5-15%",
 		"off by 5-15%",
 	} {
-		if strings.Contains(mariusBakkenInstructions, forbidden) {
+		if strings.Contains(bakkenPhilosophy, forbidden) {
 			t.Errorf("generation instructions must not state a fixed watch under-read percentage, but contain %q", forbidden)
 		}
 	}
@@ -1232,7 +1232,7 @@ func TestMariusBakkenInstructions_NoFixedWatchUnderReadPercentage(t *testing.T) 
 		"error is NOT a fixed percentage",
 		"never quote a watch under-read percentage",
 	} {
-		if !strings.Contains(mariusBakkenInstructions, want) {
+		if !strings.Contains(bakkenPhilosophy, want) {
 			t.Errorf("generation instructions should contain %q, but they do not", want)
 		}
 	}
@@ -1317,7 +1317,7 @@ func TestBuildGeneratePrompt_NoTreadmillCalibrationSectionWhenUnset(t *testing.T
 // Interval work-rep ceilings still apply, and the HR-curve shape is the
 // diagnostic that separates heat load from an effort that is genuinely too hard.
 func TestMariusBakkenInstructions_IndoorHRCapGuidance(t *testing.T) {
-	if strings.Contains(mariusBakkenInstructions, "governs in both") {
+	if strings.Contains(bakkenPhilosophy, "governs in both") {
 		t.Error("generation instructions must not claim the outdoor HR cap governs indoors as well")
 	}
 	for _, want := range []string{
@@ -1327,7 +1327,7 @@ func TestMariusBakkenInstructions_IndoorHRCapGuidance(t *testing.T) {
 		"then plateaus is thermal load equilibrating",
 		"continuous rise that never levels off",
 	} {
-		if !strings.Contains(mariusBakkenInstructions, want) {
+		if !strings.Contains(bakkenPhilosophy, want) {
 			t.Errorf("generation instructions should contain indoor HR guidance %q, but they do not", want)
 		}
 	}
