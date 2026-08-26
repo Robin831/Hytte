@@ -20,8 +20,9 @@ var ErrMacroPlanNotFound = errors.New("macro plan not found")
 // row that does not exist or does not belong to the requesting user.
 var ErrMacroWeekNotFound = errors.New("macro week not found")
 
-// ErrForeignReference is returned when a macro plan points at a stride_races or
-// stride_workouts row owned by somebody else (or one that does not exist).
+// ErrForeignReference is returned when a macro plan or one of its goal
+// revisions points at a stride_races or stride_workouts row owned by somebody
+// else (or one that does not exist).
 // Handlers should surface it as a 400, not a 500.
 var ErrForeignReference = errors.New("macro plan references a row the user does not own")
 
@@ -162,6 +163,24 @@ func ValidateStaleReason(reason string) error {
 	}
 }
 
+// normaliseTimestamp parses a caller-supplied created_at and re-renders it as
+// UTC RFC3339. The created_at columns are sorted with ORDER BY on a TEXT
+// column, which is only chronological when every stored value shares one
+// offset and one precision — so "2026-08-26T15:00:00+02:00" has to become
+// "2026-08-26T13:00:00Z" on the way in, and a value that is not a timestamp at
+// all is rejected at write time rather than blowing up on some later read.
+// An empty value means "now".
+func normaliseTimestamp(value, field string) (string, error) {
+	if value == "" {
+		return time.Now().UTC().Format(time.RFC3339), nil
+	}
+	t, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return "", fmt.Errorf("invalid %s %q: must be an RFC3339 timestamp", field, value)
+	}
+	return t.UTC().Format(time.RFC3339), nil
+}
+
 // collectIDs appends the non-nil ids to set.
 func collectIDs(set map[int64]struct{}, ids ...*int64) {
 	for _, id := range ids {
@@ -230,9 +249,14 @@ func verifyMacroReferences(ctx context.Context, tx *sql.Tx, plan *MacroPlan, wee
 // Every race and library-workout id the block references must belong to
 // plan.UserID, otherwise the whole write fails with ErrForeignReference.
 //
-// Only one *active* plan may start on a given Monday. Regenerating a block
-// therefore means SupersedeMacroPlan on the current one first; the superseded
-// row and its goal history stay put.
+// Only one *active* plan may start on a given Monday, so a Regenerate has to
+// demote the block it replaces. That demotion is part of this transaction: set
+// plan.PreviousPlanID and the old block is superseded in the same commit that
+// inserts the new one, so a failed create (a foreign reference, a duplicate
+// week, an encryption error, a crash) can never leave the user with zero active
+// blocks. The superseded row and its goal history stay put. PreviousPlanID must
+// name a plan owned by plan.UserID, otherwise the write fails with
+// ErrMacroPlanNotFound.
 func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []MacroWeek, initialGoalReason string) error {
 	if err := validateMacroPlan(plan); err != nil {
 		return err
@@ -252,8 +276,9 @@ func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []M
 	if plan.GeneratedBy == "" {
 		plan.GeneratedBy = MacroGeneratedByScheduled
 	}
-	if plan.CreatedAt == "" {
-		plan.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	createdAt, err := normaliseTimestamp(plan.CreatedAt, "macro plan created_at")
+	if err != nil {
+		return err
 	}
 
 	goalJSON, err := encryptJSON(plan.Goal, "goal_json")
@@ -287,6 +312,15 @@ func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []M
 		return err
 	}
 
+	// Demote the block this one replaces before inserting, both to free its
+	// Monday slot in idx_stride_macro_plans_active_start and so the handover is
+	// all-or-nothing with the rest of the write.
+	if plan.PreviousPlanID != nil {
+		if err := supersedeMacroPlanTx(ctx, tx, *plan.PreviousPlanID, plan.UserID); err != nil {
+			return err
+		}
+	}
+
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO stride_macro_plans
 			(user_id, start_week, end_week, status, stale_reason, goal_json,
@@ -295,7 +329,7 @@ func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []M
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, plan.UserID, plan.StartWeek, plan.EndWeek, plan.Status, plan.StaleReason,
 		goalJSON, periodisationJSON, encPrompt, encResponse, plan.Model,
-		plan.GeneratedBy, plan.PreviousPlanID, plan.CreatedAt)
+		plan.GeneratedBy, plan.PreviousPlanID, createdAt)
 	if err != nil {
 		return fmt.Errorf("insert macro plan: %w", err)
 	}
@@ -342,7 +376,7 @@ func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []M
 		INSERT INTO stride_goal_revisions
 			(macro_plan_id, user_id, week_start, goal_json, reason, source, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, planID, plan.UserID, plan.StartWeek, goalJSON, encReason, GoalRevisionSourceInitial, plan.CreatedAt); err != nil {
+	`, planID, plan.UserID, plan.StartWeek, goalJSON, encReason, GoalRevisionSourceInitial, createdAt); err != nil {
 		return fmt.Errorf("insert initial goal revision: %w", err)
 	}
 
@@ -352,6 +386,7 @@ func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []M
 
 	plan.ID = planID
 	plan.Weeks = inserted
+	plan.CreatedAt = createdAt
 	return nil
 }
 
@@ -521,11 +556,16 @@ func MarkMacroWeekStatus(ctx context.Context, db *sql.DB, id, userID int64, stat
 	return nil
 }
 
-// SupersedeMacroPlan marks a macro plan as superseded, so a newly generated
-// block takes over as the active one. Idempotent: superseding an already
-// superseded plan is not an error.
-func SupersedeMacroPlan(ctx context.Context, db *sql.DB, planID, userID int64) error {
-	res, err := db.ExecContext(ctx, `
+// execer is the subset of *sql.DB and *sql.Tx the write helpers need, so the
+// same statement can run standalone or inside CreateMacroPlan's transaction.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// supersedeMacroPlanTx demotes a plan to 'superseded' via q, scoped to the
+// owning user. Idempotent: an already superseded plan still matches the WHERE.
+func supersedeMacroPlanTx(ctx context.Context, q execer, planID, userID int64) error {
+	res, err := q.ExecContext(ctx, `
 		UPDATE stride_macro_plans SET status = ? WHERE id = ? AND user_id = ?
 	`, MacroPlanStatusSuperseded, planID, userID)
 	if err != nil {
@@ -539,6 +579,19 @@ func SupersedeMacroPlan(ctx context.Context, db *sql.DB, planID, userID int64) e
 		return ErrMacroPlanNotFound
 	}
 	return nil
+}
+
+// SupersedeMacroPlan marks a macro plan as superseded, retiring a block without
+// putting anything in its place. Idempotent: superseding an already superseded
+// plan is not an error.
+//
+// This is *not* the Regenerate path — replacing a block means one
+// CreateMacroPlan call with PreviousPlanID set, which does the demotion in the
+// same transaction as the insert. Calling this first and creating afterwards
+// leaves a window (and, if the create fails, a permanent state) where the user
+// has no active block at all.
+func SupersedeMacroPlan(ctx context.Context, db *sql.DB, planID, userID int64) error {
+	return supersedeMacroPlanTx(ctx, db, planID, userID)
 }
 
 // SetMacroPlanStale records why a plan no longer matches reality (for example
@@ -569,6 +622,11 @@ func SetMacroPlanStale(ctx context.Context, db *sql.DB, planID, userID int64, re
 // is append-only — existing revisions are never rewritten. The plan must belong
 // to rev.UserID; otherwise nothing is written and ErrMacroPlanNotFound is
 // returned. On success rev.ID and rev.CreatedAt are filled in.
+//
+// The revised goal goes through the same reference check CreateMacroPlan
+// applies, so "a block can never pin another user's race" holds for every write
+// to the goal, not just the first: an AnchorRaceID the user does not own fails
+// with ErrForeignReference and nothing is inserted.
 func AddGoalRevision(ctx context.Context, db *sql.DB, rev *GoalRevision) error {
 	if rev == nil {
 		return errors.New("goal revision must not be nil")
@@ -579,8 +637,9 @@ func AddGoalRevision(ctx context.Context, db *sql.DB, rev *GoalRevision) error {
 	if rev.WeekStart == "" {
 		return errors.New("goal revision week_start must be set")
 	}
-	if rev.CreatedAt == "" {
-		rev.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	createdAt, err := normaliseTimestamp(rev.CreatedAt, "goal revision created_at")
+	if err != nil {
+		return err
 	}
 	goalJSON, err := encryptJSON(rev.Goal, "goal_json")
 	if err != nil {
@@ -590,30 +649,54 @@ func AddGoalRevision(ctx context.Context, db *sql.DB, rev *GoalRevision) error {
 	if err != nil {
 		return fmt.Errorf("encrypt goal revision reason: %w", err)
 	}
-	// The SELECT ... WHERE EXISTS scopes the write to a macro plan the caller
-	// actually owns: a revision for someone else's plan inserts zero rows and
-	// comes back as ErrMacroPlanNotFound instead of silently landing in their
-	// goal history.
-	res, err := db.ExecContext(ctx, `
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin goal revision tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Plan ownership is checked before the goal's ids so a revision aimed at
+	// somebody else's plan still reports ErrMacroPlanNotFound rather than
+	// leaking which races that plan happens to reference.
+	var one int
+	err = tx.QueryRowContext(ctx, `
+		SELECT 1 FROM stride_macro_plans WHERE id = ? AND user_id = ?
+	`, rev.MacroPlanID, rev.UserID).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrMacroPlanNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("check macro plan ownership: %w", err)
+	}
+
+	// The anchor race id rides along inside the encrypted goal blob, where the
+	// DB can check nothing — this is the only thing stopping a revision from
+	// pinning a race the user does not own.
+	races := map[int64]struct{}{}
+	collectIDs(races, rev.Goal.AnchorRaceID)
+	if err := verifyOwnership(ctx, tx, "stride_races", rev.UserID, races); err != nil {
+		return err
+	}
+
+	res, err := tx.ExecContext(ctx, `
 		INSERT INTO stride_goal_revisions
 			(macro_plan_id, user_id, week_start, goal_json, reason, source, created_at)
-		SELECT ?, ?, ?, ?, ?, ?, ?
-		WHERE EXISTS (SELECT 1 FROM stride_macro_plans WHERE id = ? AND user_id = ?)
-	`, rev.MacroPlanID, rev.UserID, rev.WeekStart, goalJSON, encReason, rev.Source,
-		rev.CreatedAt, rev.MacroPlanID, rev.UserID)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, rev.MacroPlanID, rev.UserID, rev.WeekStart, goalJSON, encReason, rev.Source, createdAt)
 	if err != nil {
 		return fmt.Errorf("insert goal revision: %w", err)
 	}
-	n, err := res.RowsAffected()
+	id, err := res.LastInsertId()
 	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrMacroPlanNotFound
-	}
-	if rev.ID, err = res.LastInsertId(); err != nil {
 		return fmt.Errorf("goal revision id: %w", err)
 	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit goal revision tx: %w", err)
+	}
+
+	rev.ID = id
+	rev.CreatedAt = createdAt
 	return nil
 }
 

@@ -399,7 +399,8 @@ func TestCreateMacroPlanUniqueConstraints(t *testing.T) {
 }
 
 // A Regenerate replaces the block covering the current week, so the new block
-// starts on the same Monday as the one it replaces. Superseding the old one
+// starts on the same Monday as the one it replaces. Setting PreviousPlanID
+// demotes the old block in the same transaction that inserts the new one, which
 // frees the slot; its rows and goal history survive.
 func TestRegenerateReplacesBlockOnTheSameMonday(t *testing.T) {
 	db := setupTestDB(t)
@@ -411,9 +412,6 @@ func TestRegenerateReplacesBlockOnTheSameMonday(t *testing.T) {
 	}
 	if err := SetMacroPlanStale(ctx, db, first.ID, 1, MacroStaleRacesChanged); err != nil {
 		t.Fatalf("SetMacroPlanStale: %v", err)
-	}
-	if err := SupersedeMacroPlan(ctx, db, first.ID, 1); err != nil {
-		t.Fatalf("SupersedeMacroPlan: %v", err)
 	}
 
 	regenerated, regeneratedWeeks := sampleMacroPlan(1)
@@ -452,38 +450,162 @@ func TestRegenerateReplacesBlockOnTheSameMonday(t *testing.T) {
 	}
 
 	// Two superseded blocks may share a Monday — history is not deduplicated.
-	if err := SupersedeMacroPlan(ctx, db, regenerated.ID, 1); err != nil {
-		t.Fatalf("SupersedeMacroPlan regenerated: %v", err)
-	}
 	third, thirdWeeks := sampleMacroPlan(1)
+	third.PreviousPlanID = &regenerated.ID
 	if err := CreateMacroPlan(ctx, db, third, thirdWeeks, "Regenerated again"); err != nil {
 		t.Fatalf("second regenerate: %v", err)
 	}
+	var superseded int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_macro_plans WHERE user_id = 1 AND start_week = ? AND status = ?`,
+		testBlockStart, MacroPlanStatusSuperseded).Scan(&superseded); err != nil {
+		t.Fatalf("count superseded: %v", err)
+	}
+	if superseded != 2 {
+		t.Fatalf("superseded blocks on %s = %d, want 2", testBlockStart, superseded)
+	}
 }
+
+// A regenerate that fails must not demote the block it was replacing: the two
+// writes are one transaction, so the user is never left with zero active
+// blocks and no way back.
+func TestFailedRegenerateLeavesThePreviousBlockActive(t *testing.T) {
+	ctx := context.Background()
+
+	// Each case makes CreateMacroPlan fail *after* the point where a
+	// supersede-then-create protocol would already have demoted the old block.
+	cases := []struct {
+		name   string
+		mutate func(*MacroPlan, []MacroWeek)
+	}{
+		{"foreign race reference", func(p *MacroPlan, w []MacroWeek) {
+			foreign := int64(20)
+			p.Goal.AnchorRaceID = &foreign
+		}},
+		{"duplicate week Monday", func(p *MacroPlan, w []MacroWeek) {
+			w[1].WeekStart = w[0].WeekStart
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupTestDB(t)
+			if _, err := db.Exec("INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g2')"); err != nil {
+				t.Fatalf("insert second user: %v", err)
+			}
+			if _, err := db.Exec(`INSERT INTO stride_races (id, user_id, name, date, distance_m, priority, created_at)
+				VALUES (20, 2, 'Someone else''s HM', '2027-02-01', 21097.5, 'A', '2026-08-01T00:00:00Z')`); err != nil {
+				t.Fatalf("insert race: %v", err)
+			}
+
+			first, firstWeeks := sampleMacroPlan(1)
+			if err := CreateMacroPlan(ctx, db, first, firstWeeks, "Initial"); err != nil {
+				t.Fatalf("CreateMacroPlan: %v", err)
+			}
+
+			doomed, doomedWeeks := sampleMacroPlan(1)
+			doomed.GeneratedBy = MacroGeneratedByManual
+			doomed.PreviousPlanID = &first.ID
+			tc.mutate(doomed, doomedWeeks)
+			if err := CreateMacroPlan(ctx, db, doomed, doomedWeeks, "Regenerated"); err == nil {
+				t.Fatal("expected the regenerate to fail")
+			}
+
+			got, err := GetActiveMacroPlan(ctx, db, 1, testBlockStart)
+			if err != nil {
+				t.Fatalf("GetActiveMacroPlan: %v", err)
+			}
+			if got == nil {
+				t.Fatal("a failed regenerate left the user with no active block")
+			}
+			if got.ID != first.ID || got.Status != MacroPlanStatusActive {
+				t.Fatalf("active block = %+v, want the original %d still active", got, first.ID)
+			}
+			// The weekly generator still sees its macro context.
+			week, err := GetMacroWeek(ctx, db, 1, testBlockStart)
+			if err != nil {
+				t.Fatalf("GetMacroWeek: %v", err)
+			}
+			if week == nil || week.MacroPlanID != first.ID {
+				t.Fatalf("macro week = %+v, want one from plan %d", week, first.ID)
+			}
+			var plans int
+			if err := db.QueryRow("SELECT COUNT(*) FROM stride_macro_plans").Scan(&plans); err != nil {
+				t.Fatalf("count plans: %v", err)
+			}
+			if plans != 1 {
+				t.Fatalf("plan count = %d, want 1 — the failed block left rows behind", plans)
+			}
+		})
+	}
+}
+
+// PreviousPlanID is a write, so it is scoped like every other one: a caller
+// cannot retire somebody else's block by naming it as the one being replaced.
+func TestCreateMacroPlanRejectsForeignPreviousPlan(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	if _, err := db.Exec("INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g2')"); err != nil {
+		t.Fatalf("insert second user: %v", err)
+	}
+	victim, victimWeeks := sampleMacroPlan(2)
+	if err := CreateMacroPlan(ctx, db, victim, victimWeeks, "Initial"); err != nil {
+		t.Fatalf("CreateMacroPlan for user 2: %v", err)
+	}
+
+	attacker, attackerWeeks := sampleMacroPlan(1)
+	attacker.PreviousPlanID = &victim.ID
+	if err := CreateMacroPlan(ctx, db, attacker, attackerWeeks, "Regenerated"); !errors.Is(err, ErrMacroPlanNotFound) {
+		t.Fatalf("CreateMacroPlan with a foreign previous_plan_id = %v, want ErrMacroPlanNotFound", err)
+	}
+
+	got, err := GetActiveMacroPlan(ctx, db, 2, testBlockStart)
+	if err != nil {
+		t.Fatalf("GetActiveMacroPlan: %v", err)
+	}
+	if got == nil || got.ID != victim.ID {
+		t.Fatalf("user 2's block = %+v, want %d still active", got, victim.ID)
+	}
+
+	// A previous_plan_id that does not exist at all fails the same way.
+	missing := int64(999999)
+	orphan, orphanWeeks := sampleMacroPlan(1)
+	orphan.PreviousPlanID = &missing
+	if err := CreateMacroPlan(ctx, db, orphan, orphanWeeks, "Regenerated"); !errors.Is(err, ErrMacroPlanNotFound) {
+		t.Fatalf("CreateMacroPlan with a missing previous_plan_id = %v, want ErrMacroPlanNotFound", err)
+	}
+}
+
+// seedForeignReferenceFixtures gives user 1 race 10 / library workout 30 and
+// user 2 race 20 / library workout 40, so a test can point a block at a row it
+// does not own.
+func seedForeignReferenceFixtures(t *testing.T) *sql.DB {
+	t.Helper()
+	db := setupTestDB(t)
+	if _, err := db.Exec("INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g2')"); err != nil {
+		t.Fatalf("insert second user: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO stride_races (id, user_id, name, date, distance_m, priority, created_at)
+		VALUES (10, 1, 'Oslo HM', '2027-02-01', 21097.5, 'A', '2026-08-01T00:00:00Z'),
+		       (20, 2, 'Someone else''s HM', '2027-02-01', 21097.5, 'A', '2026-08-01T00:00:00Z')`); err != nil {
+		t.Fatalf("insert races: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO stride_workouts (id, user_id, name, created_at)
+		VALUES (30, 1, 'Threshold 3x3km', '2026-08-01T00:00:00Z'),
+		       (40, 2, 'Someone else''s session', '2026-08-01T00:00:00Z')`); err != nil {
+		t.Fatalf("insert library workouts: %v", err)
+	}
+	return db
+}
+
+// idPtr is the pointer form the optional FK fields (AnchorRaceID, RaceID,
+// LibraryID) take.
+func idPtr(v int64) *int64 { return &v }
 
 func TestCreateMacroPlanRejectsForeignReferences(t *testing.T) {
 	ctx := context.Background()
 
-	seed := func(t *testing.T) *sql.DB {
-		t.Helper()
-		db := setupTestDB(t)
-		if _, err := db.Exec("INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g2')"); err != nil {
-			t.Fatalf("insert second user: %v", err)
-		}
-		if _, err := db.Exec(`INSERT INTO stride_races (id, user_id, name, date, distance_m, priority, created_at)
-			VALUES (10, 1, 'Oslo HM', '2027-02-01', 21097.5, 'A', '2026-08-01T00:00:00Z'),
-			       (20, 2, 'Someone else''s HM', '2027-02-01', 21097.5, 'A', '2026-08-01T00:00:00Z')`); err != nil {
-			t.Fatalf("insert races: %v", err)
-		}
-		if _, err := db.Exec(`INSERT INTO stride_workouts (id, user_id, name, created_at)
-			VALUES (30, 1, 'Threshold 3x3km', '2026-08-01T00:00:00Z'),
-			       (40, 2, 'Someone else''s session', '2026-08-01T00:00:00Z')`); err != nil {
-			t.Fatalf("insert library workouts: %v", err)
-		}
-		return db
-	}
-
-	id := func(v int64) *int64 { return &v }
+	seed := seedForeignReferenceFixtures
+	id := idPtr
 
 	tests := []struct {
 		name    string
@@ -648,11 +770,9 @@ func TestMacroPlanExtensionChain(t *testing.T) {
 	if err := CreateMacroPlan(ctx, db, first, firstWeeks, "Initial"); err != nil {
 		t.Fatalf("CreateMacroPlan: %v", err)
 	}
-	if err := SupersedeMacroPlan(ctx, db, first.ID, 1); err != nil {
-		t.Fatalf("SupersedeMacroPlan: %v", err)
-	}
 
-	// A new 26-week block is appended, never a rolling top-up.
+	// A new 26-week block is appended, never a rolling top-up. PreviousPlanID
+	// retires the block it follows as part of the same write.
 	next, nextWeeks := sampleMacroPlan(1)
 	next.StartWeek = mondayAfter(testBlockStart, 26)
 	next.EndWeek = mondayAfter(testBlockStart, 51)
@@ -677,6 +797,14 @@ func TestMacroPlanExtensionChain(t *testing.T) {
 	}
 	if got.GeneratedBy != MacroGeneratedByExtension {
 		t.Fatalf("generated_by = %q, want extension", got.GeneratedBy)
+	}
+
+	retired, err := GetMacroPlanByID(ctx, db, first.ID, 1)
+	if err != nil {
+		t.Fatalf("GetMacroPlanByID: %v", err)
+	}
+	if retired.Status != MacroPlanStatusSuperseded {
+		t.Fatalf("previous block status = %q, want superseded", retired.Status)
 	}
 }
 
@@ -821,10 +949,8 @@ func TestGoalRevisionsAppendOnly(t *testing.T) {
 		if r.Goal.TargetHMTimeS != wantTargets[i] {
 			t.Fatalf("revision %d target = %d, want %d", i, r.Goal.TargetHMTimeS, wantTargets[i])
 		}
-		if i > 0 && r.CreatedAt < revs[i-1].CreatedAt {
-			t.Fatalf("revisions are not in chronological order at %d", i)
-		}
 	}
+	assertChronological(t, revs)
 	// The original revision is untouched by later appends.
 	if revs[0].Reason != "Initial block goal" || revs[0].Goal.Statement != "Run 1:24:00 for the half marathon" {
 		t.Fatalf("initial revision was mutated: %+v", revs[0])
@@ -880,6 +1006,179 @@ func TestAddGoalRevisionRejectsForeignPlan(t *testing.T) {
 	}
 	if n != 1 {
 		t.Fatalf("goal revision count = %d, want 1", n)
+	}
+}
+
+// The "a block can never pin another user's race" invariant has to survive
+// every write to the goal, not just the block's first one — AddGoalRevision is
+// the path the weekly and manual goal-drift flows use.
+func TestAddGoalRevisionRejectsForeignReferences(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		anchor  *int64
+		wantErr error
+	}{
+		{"no anchor race", nil, nil},
+		{"own anchor race", idPtr(10), nil},
+		{"anchor race owned by another user", idPtr(20), ErrForeignReference},
+		{"anchor race that does not exist", idPtr(999999), ErrForeignReference},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			db := seedForeignReferenceFixtures(t)
+			plan, weeks := sampleMacroPlan(1)
+			if err := CreateMacroPlan(ctx, db, plan, weeks, "Initial"); err != nil {
+				t.Fatalf("CreateMacroPlan: %v", err)
+			}
+
+			goal := plan.Goal
+			goal.AnchorRaceID = tc.anchor
+			rev := &GoalRevision{
+				MacroPlanID: plan.ID,
+				UserID:      1,
+				WeekStart:   mondayAfter(testBlockStart, 4),
+				Goal:        goal,
+				Reason:      "Goal drifted with the race calendar.",
+				Source:      GoalRevisionSourceWeekly,
+			}
+			err := AddGoalRevision(ctx, db, rev)
+
+			var revisions int
+			if qerr := db.QueryRow(`SELECT COUNT(*) FROM stride_goal_revisions WHERE macro_plan_id = ?`, plan.ID).Scan(&revisions); qerr != nil {
+				t.Fatalf("count revisions: %v", qerr)
+			}
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("AddGoalRevision = %v, want %v", err, tc.wantErr)
+				}
+				if rev.ID != 0 {
+					t.Fatalf("rejected revision got an ID (%d) — a row was written", rev.ID)
+				}
+				if revisions != 1 {
+					t.Fatalf("revision count = %d, want 1 (just the initial one)", revisions)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("AddGoalRevision: %v", err)
+			}
+			if revisions != 2 {
+				t.Fatalf("revision count = %d, want 2", revisions)
+			}
+			revs, err := ListGoalRevisions(ctx, db, plan.ID, 1)
+			if err != nil {
+				t.Fatalf("ListGoalRevisions: %v", err)
+			}
+			got := revs[1].Goal.AnchorRaceID
+			if (got == nil) != (tc.anchor == nil) || (got != nil && *got != *tc.anchor) {
+				t.Fatalf("stored anchor_race_id = %v, want %v", got, tc.anchor)
+			}
+		})
+	}
+}
+
+// created_at is a TEXT column sorted with ORDER BY, so every write normalises
+// to UTC RFC3339: a same-instant value written with a +02:00 offset must sort
+// by the instant it names, not by its leading digits.
+func TestCreatedAtNormalisedToUTC(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	plan, weeks := sampleMacroPlan(1)
+	plan.CreatedAt = "2026-08-26T16:37:00+02:00" // 14:37Z
+	if err := CreateMacroPlan(ctx, db, plan, weeks, "Initial block goal"); err != nil {
+		t.Fatalf("CreateMacroPlan: %v", err)
+	}
+	if plan.CreatedAt != "2026-08-26T14:37:00Z" {
+		t.Fatalf("plan.CreatedAt = %q, want the UTC rendering", plan.CreatedAt)
+	}
+	stored, err := GetMacroPlanByID(ctx, db, plan.ID, 1)
+	if err != nil {
+		t.Fatalf("GetMacroPlanByID: %v", err)
+	}
+	if stored.CreatedAt != "2026-08-26T14:37:00Z" {
+		t.Fatalf("stored created_at = %q, want the UTC rendering", stored.CreatedAt)
+	}
+
+	// 15:00+02:00 is 13:00Z — one hour *before* the initial revision. Stored
+	// verbatim it would sort last; normalised it sorts first.
+	earlier := &GoalRevision{
+		MacroPlanID: plan.ID,
+		UserID:      1,
+		WeekStart:   mondayAfter(testBlockStart, 4),
+		Goal:        plan.Goal,
+		Reason:      "chronologically earlier",
+		Source:      GoalRevisionSourceWeekly,
+		CreatedAt:   "2026-08-26T15:00:00+02:00",
+	}
+	if err := AddGoalRevision(ctx, db, earlier); err != nil {
+		t.Fatalf("AddGoalRevision: %v", err)
+	}
+	if earlier.CreatedAt != "2026-08-26T13:00:00Z" {
+		t.Fatalf("revision CreatedAt = %q, want the UTC rendering", earlier.CreatedAt)
+	}
+
+	revs, err := ListGoalRevisions(ctx, db, plan.ID, 1)
+	if err != nil {
+		t.Fatalf("ListGoalRevisions: %v", err)
+	}
+	if len(revs) != 2 {
+		t.Fatalf("expected 2 revisions, got %d", len(revs))
+	}
+	if revs[0].Reason != "chronologically earlier" {
+		t.Fatalf("revisions out of chronological order: %q then %q (%s, %s)",
+			revs[0].Reason, revs[1].Reason, revs[0].CreatedAt, revs[1].CreatedAt)
+	}
+	assertChronological(t, revs)
+}
+
+// A created_at that is not a timestamp is rejected at write time rather than
+// round-tripping out of the store unflagged.
+func TestCreatedAtRejectsMalformedTimestamps(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	for _, bad := range []string{"not a timestamp", "2026-08-26", "2026-08-26 14:37:00"} {
+		plan, weeks := sampleMacroPlan(1)
+		plan.CreatedAt = bad
+		if err := CreateMacroPlan(ctx, db, plan, weeks, "Initial"); err == nil {
+			t.Fatalf("CreateMacroPlan with created_at %q = nil, want an error", bad)
+		}
+	}
+	var plans int
+	if err := db.QueryRow("SELECT COUNT(*) FROM stride_macro_plans").Scan(&plans); err != nil {
+		t.Fatalf("count plans: %v", err)
+	}
+	if plans != 0 {
+		t.Fatalf("rejected plans still wrote %d rows", plans)
+	}
+
+	plan, weeks := sampleMacroPlan(1)
+	if err := CreateMacroPlan(ctx, db, plan, weeks, "Initial"); err != nil {
+		t.Fatalf("CreateMacroPlan: %v", err)
+	}
+	rev := &GoalRevision{
+		MacroPlanID: plan.ID,
+		UserID:      1,
+		WeekStart:   mondayAfter(testBlockStart, 4),
+		Goal:        plan.Goal,
+		Source:      GoalRevisionSourceWeekly,
+		CreatedAt:   "not a timestamp",
+	}
+	if err := AddGoalRevision(ctx, db, rev); err == nil {
+		t.Fatal("AddGoalRevision with a malformed created_at = nil, want an error")
+	}
+	if rev.ID != 0 {
+		t.Fatalf("rejected revision got an ID (%d) — a row was written", rev.ID)
+	}
+	var revisions int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_goal_revisions`).Scan(&revisions); err != nil {
+		t.Fatalf("count revisions: %v", err)
+	}
+	if revisions != 1 {
+		t.Fatalf("revision count = %d, want 1 (just the initial one)", revisions)
 	}
 }
 
@@ -994,5 +1293,28 @@ func TestPlanCarriesMacroColumns(t *testing.T) {
 	}
 	if unlinked == nil || unlinked.MacroWeekID != nil || unlinked.AdjustmentSummary != "" {
 		t.Fatalf("unlinked plan = %+v", unlinked)
+	}
+}
+
+// assertChronological parses each revision's created_at and checks the list is
+// ordered by instant. Comparing the raw strings would only re-assert the SQL
+// ORDER BY against itself and could never fail.
+func assertChronological(t *testing.T, revs []GoalRevision) {
+	t.Helper()
+	for i, r := range revs {
+		at, err := time.Parse(time.RFC3339, r.CreatedAt)
+		if err != nil {
+			t.Fatalf("revision %d has an unparseable created_at %q: %v", i, r.CreatedAt, err)
+		}
+		if i == 0 {
+			continue
+		}
+		prev, err := time.Parse(time.RFC3339, revs[i-1].CreatedAt)
+		if err != nil {
+			t.Fatalf("revision %d has an unparseable created_at %q: %v", i-1, revs[i-1].CreatedAt, err)
+		}
+		if at.Before(prev) {
+			t.Fatalf("revisions are not in chronological order at %d: %s before %s", i, r.CreatedAt, revs[i-1].CreatedAt)
+		}
 	}
 }

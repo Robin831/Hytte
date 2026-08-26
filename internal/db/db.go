@@ -1534,9 +1534,12 @@ func createSchema(db *sql.DB) error {
 
 	-- Only one *active* block may start on a given Monday. The uniqueness is a
 	-- partial index rather than a table-level UNIQUE(user_id, start_week) so
-	-- Regenerate works: superseding the current block frees its Monday slot for
-	-- the replacement, and the superseded rows (plus their goal history) stay
-	-- put instead of having to be deleted to make room.
+	-- Regenerate works: demoting the current block to 'superseded' frees its
+	-- Monday slot for the replacement, and the superseded rows (plus their goal
+	-- history) stay put instead of having to be deleted to make room. That
+	-- demotion happens inside CreateMacroPlan's own transaction (see
+	-- previous_plan_id), so the handover is atomic — a failed regenerate never
+	-- leaves a user with no active block.
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_stride_macro_plans_active_start
 		ON stride_macro_plans(user_id, start_week) WHERE status = 'active';
 
