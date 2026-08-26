@@ -494,14 +494,67 @@ func TestBuildGeneratePrompt_RaceHistorySection(t *testing.T) {
 	if !strings.Contains(prompt, "Spring 10K") {
 		t.Error("prompt missing race name 'Spring 10K'")
 	}
-	if !strings.Contains(prompt, "40m00s") {
+	// formatRaceTime is shared with the macro prompt: h:mm:ss, or m:ss under
+	// an hour. Both prompts must quote the same race the same way.
+	if !strings.Contains(prompt, "40:00") {
 		t.Error("prompt missing formatted time for 10K race")
+	}
+	if !strings.Contains(prompt, "19:45") {
+		t.Error("prompt missing formatted time for the 5K race")
 	}
 	if !strings.Contains(prompt, "4:00/km") {
 		t.Error("prompt missing pace for 10K race")
 	}
 	if !strings.Contains(prompt, "Park Run") {
 		t.Error("prompt missing race name 'Park Run'")
+	}
+}
+
+// The weekly prompt's race lines moved from inline formatting to
+// formatRaceTime/formatPaceSecPerKm so both prompts quote a race identically.
+// That claim is only worth anything if the exact rendered lines are pinned —
+// including both of formatRaceTime's branches, sub-hour (m:ss) and over-hour
+// (h:mm:ss), which the old inline code spelled differently.
+func TestBuildGeneratePrompt_RaceLinesUseSharedFormatting(t *testing.T) {
+	subHour := 2400  // 40:00 over 10 km → 4:00/km
+	overHour := 5220 // 1:27:00 over 21.0975 km → 4:07/km
+	races := []Race{
+		{Name: "Autumn 10K", Date: "2026-10-04", DistanceM: 10000, TargetTime: &subHour, Priority: "B"},
+		{Name: "Oslo Half", Date: "2026-11-01", DistanceM: 21097.5, TargetTime: &overHour, Priority: "A"},
+		{Name: "Club 5K", Date: "2026-09-20", DistanceM: 5000, Priority: "C"},
+	}
+	history := []RaceResult{
+		{Name: "Spring Half", Date: "2026-03-15", DistanceM: 21097.5, TimeSecs: 5400, Priority: "A"},
+	}
+
+	prompt := buildGeneratePrompt(
+		"2026-09-07", "2026-09-13",
+		"", races, nil,
+		history,
+		nil, 0, 0,
+		nil,
+		"", "", "",
+		nil,
+		"", "",
+		"",
+		"",
+		nil,
+		nil,
+	)
+
+	for _, want := range []string{
+		// Sub-hour target: m:ss, never 40m00s.
+		"- Autumn 10K on 2026-10-04 (10.0 km, priority B, target: 40:00, target pace: 4:00/km)\n",
+		// Over-hour target: h:mm:ss.
+		"- Oslo Half on 2026-11-01 (21.1 km, priority A, target: 1:27:00, target pace: 4:07/km)\n",
+		// No target time: neither fragment is emitted.
+		"- Club 5K on 2026-09-20 (5.0 km, priority C)\n",
+		// Race history, over an hour, with its pace.
+		"- Spring Half on 2026-03-15 (21.1 km, 1:30:00, pace 4:16/km, priority A)\n",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("weekly prompt is missing the line %q\n%s", want, prompt)
+		}
 	}
 }
 

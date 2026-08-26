@@ -919,21 +919,15 @@ Library rules:
 	if len(races) > 0 {
 		sb.WriteString("## Upcoming Races\n")
 		for _, r := range races {
+			// formatRaceTime/formatPaceSecPerKm are shared with the macro
+			// prompt so both prompts quote the same race in the same form.
 			paceInfo := ""
 			if r.TargetTime != nil && r.DistanceM > 0 {
-				paceSecPerKm := float64(*r.TargetTime) / (r.DistanceM / 1000)
-				paceMin := int(paceSecPerKm) / 60
-				paceSec := int(paceSecPerKm) % 60
-				paceInfo = fmt.Sprintf(", target pace: %d:%02d/km", paceMin, paceSec)
+				paceInfo = fmt.Sprintf(", target pace: %s/km", formatPaceSecPerKm(float64(*r.TargetTime)/(r.DistanceM/1000)))
 			}
 			targetStr := ""
 			if r.TargetTime != nil {
-				h, m, s := secondsToHMS(*r.TargetTime)
-				if h > 0 {
-					targetStr = fmt.Sprintf(", target: %dh%02dm%02ds", h, m, s)
-				} else {
-					targetStr = fmt.Sprintf(", target: %dm%02ds", m, s)
-				}
+				targetStr = fmt.Sprintf(", target: %s", formatRaceTime(*r.TargetTime))
 			}
 			fmt.Fprintf(&sb, "- %s on %s (%.1f km, priority %s%s%s)\n",
 				r.Name, r.Date, r.DistanceM/1000, r.Priority, targetStr, paceInfo)
@@ -948,18 +942,9 @@ Library rules:
 	if len(raceHistory) > 0 {
 		sb.WriteString("## Race History\n")
 		for _, r := range raceHistory {
-			h, m, s := secondsToHMS(r.TimeSecs)
-			var timeStr string
-			if h > 0 {
-				timeStr = fmt.Sprintf("%dh%02dm%02ds", h, m, s)
-			} else {
-				timeStr = fmt.Sprintf("%dm%02ds", m, s)
-			}
-			paceSecPerKm := float64(r.TimeSecs) / (r.DistanceM / 1000)
-			paceMin := int(paceSecPerKm) / 60
-			paceSec := int(paceSecPerKm) % 60
-			fmt.Fprintf(&sb, "- %s on %s (%.1f km, %s, pace %d:%02d/km, priority %s)\n",
-				r.Name, r.Date, r.DistanceM/1000, timeStr, paceMin, paceSec, r.Priority)
+			pace := formatPaceSecPerKm(float64(r.TimeSecs) / (r.DistanceM / 1000))
+			fmt.Fprintf(&sb, "- %s on %s (%.1f km, %s, pace %s/km, priority %s)\n",
+				r.Name, r.Date, r.DistanceM/1000, formatRaceTime(r.TimeSecs), pace, r.Priority)
 		}
 		sb.WriteString("\n")
 	}
