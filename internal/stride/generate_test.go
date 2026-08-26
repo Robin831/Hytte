@@ -285,6 +285,37 @@ func TestParsePlanResponse_StripsCodeFences(t *testing.T) {
 	}
 }
 
+// stripCodeFence is shared by the weekly and macro response parsers, so its
+// blind spots are worth pinning directly rather than only through a plan.
+func TestStripCodeFence(t *testing.T) {
+	tests := []struct {
+		name     string
+		response string
+		want     string
+	}{
+		{"unfenced", `{"a":1}`, `{"a":1}`},
+		{"unfenced with whitespace", "\n  {\"a\":1}  \n", `{"a":1}`},
+		{"tagged fence", "```json\n{\"a\":1}\n```", `{"a":1}`},
+		{"bare fence", "```\n{\"a\":1}\n```", `{"a":1}`},
+		{"multi-line body", "```json\n{\n  \"a\": 1\n}\n```", "{\n  \"a\": 1\n}"},
+		// Truncated output: the fence opened and the answer ran out before it
+		// closed. The last line is content — dropping it would throw away the
+		// closing brace and turn this into "unexpected end of JSON input".
+		{"no closing fence", "```json\n{\n  \"a\": 1\n}", "{\n  \"a\": 1\n}"},
+		{"two lines, no closing fence", "```json\n{\"a\":1}", `{"a":1}`},
+		{"single line", "```json {\"a\":1}```", `{"a":1}`},
+		{"single line, no tag", "```{\"a\":1}```", `{"a":1}`},
+		{"single line array", "```json [1,2]```", `[1,2]`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := stripCodeFence(tt.response); got != tt.want {
+				t.Errorf("stripCodeFence(%q) = %q, want %q", tt.response, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParsePlanResponse_InvalidJSON(t *testing.T) {
 	weekStart, weekEnd := upcomingWeek()
 	_, err := parsePlanResponse("not json at all", weekStart, weekEnd)

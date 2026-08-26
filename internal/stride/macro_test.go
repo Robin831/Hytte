@@ -97,6 +97,18 @@ func macroFixtureJSON(t *testing.T, plan *MacroPlanResponse) string {
 	return string(raw)
 }
 
+// macroFixtureJSONIndented renders a fixture plan across many lines, the way a
+// model that pretty-prints its answer would. Fence handling is line-based, so a
+// one-line answer would not exercise it.
+func macroFixtureJSONIndented(t *testing.T, plan *MacroPlanResponse) string {
+	t.Helper()
+	raw, err := json.MarshalIndent(plan, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal fixture plan: %v", err)
+	}
+	return string(raw)
+}
+
 // setupMacroGeneration builds a database with the fixture block's calendar in
 // place, ready for a GenerateMacroPlan call starting at startWeek.
 func setupMacroGeneration(t *testing.T, startWeek string) (*sql.DB, *MacroPlanResponse, MacroValidationContext) {
@@ -136,11 +148,7 @@ func TestGenerateMacroPlanPersistsValidPlan(t *testing.T) {
 
 	prompt := stubMacroPrompt(t, macroFixtureJSON(t, fixture))
 
-	startDate, err := parseMondayWeek(start)
-	if err != nil {
-		t.Fatalf("parse start: %v", err)
-	}
-	plan, err := GenerateMacroPlan(ctx, db, 1, startDate, MacroModeScheduled)
+	plan, err := GenerateMacroPlan(ctx, db, 1, start, MacroModeScheduled)
 	if err != nil {
 		t.Fatalf("GenerateMacroPlan: %v", err)
 	}
@@ -361,11 +369,7 @@ func TestGenerateMacroPlanRejectsInvalidPlans(t *testing.T) {
 			tt.mutate(fixture)
 			stubMacroPrompt(t, macroFixtureJSON(t, fixture))
 
-			startDate, err := parseMondayWeek(macroTestStartWeek)
-			if err != nil {
-				t.Fatalf("parse start: %v", err)
-			}
-			plan, err := GenerateMacroPlan(ctx, db, 1, startDate, MacroModeScheduled)
+			plan, err := GenerateMacroPlan(ctx, db, 1, macroTestStartWeek, MacroModeScheduled)
 			if err == nil {
 				t.Fatal("expected the invalid plan to be rejected")
 			}
@@ -401,11 +405,7 @@ func TestGenerateMacroPlanExtensionModeSeedsFromPreviousBlock(t *testing.T) {
 	seedMacroFixtureRaces(t, db, 1, in.Races)
 	prompt := stubMacroPrompt(t, macroFixtureJSON(t, fixture))
 
-	startDate, err := parseMondayWeek(start)
-	if err != nil {
-		t.Fatalf("parse start: %v", err)
-	}
-	plan, err := GenerateMacroPlan(ctx, db, 1, startDate, MacroModeExtension)
+	plan, err := GenerateMacroPlan(ctx, db, 1, start, MacroModeExtension)
 	if err != nil {
 		t.Fatalf("GenerateMacroPlan(extension): %v", err)
 	}
@@ -464,11 +464,7 @@ func TestGenerateMacroPlanExtensionWithoutPreviousBlock(t *testing.T) {
 	}
 	t.Cleanup(func() { runPromptFunc = orig })
 
-	startDate, err := parseMondayWeek(macroTestStartWeek)
-	if err != nil {
-		t.Fatalf("parse start: %v", err)
-	}
-	if _, err := GenerateMacroPlan(context.Background(), db, 1, startDate, MacroModeExtension); !errors.Is(err, ErrNoPreviousMacroPlan) {
+	if _, err := GenerateMacroPlan(context.Background(), db, 1, macroTestStartWeek, MacroModeExtension); !errors.Is(err, ErrNoPreviousMacroPlan) {
 		t.Fatalf("error = %v, want ErrNoPreviousMacroPlan", err)
 	}
 	if called {
@@ -504,11 +500,7 @@ func TestGenerateMacroPlanNoRaceBlock(t *testing.T) {
 
 	stubMacroPrompt(t, macroFixtureJSON(t, fixture))
 
-	startDate, err := parseMondayWeek(macroTestStartWeek)
-	if err != nil {
-		t.Fatalf("parse start: %v", err)
-	}
-	plan, err := GenerateMacroPlan(ctx, db, 1, startDate, MacroModeManual)
+	plan, err := GenerateMacroPlan(ctx, db, 1, macroTestStartWeek, MacroModeManual)
 	if err != nil {
 		t.Fatalf("GenerateMacroPlan: %v", err)
 	}
@@ -556,7 +548,7 @@ func TestGenerateMacroPlanRejectsUnknownMode(t *testing.T) {
 	db := setupTestDB(t)
 	enableMacroGeneration(t, db, 1)
 
-	_, err := GenerateMacroPlan(context.Background(), db, 1, time.Now().UTC(), MacroMode("initial"))
+	_, err := GenerateMacroPlan(context.Background(), db, 1, time.Now().UTC().Format(dateLayout), MacroMode("initial"))
 	if err == nil || !strings.Contains(err.Error(), `invalid macro mode "initial"`) {
 		t.Fatalf("error = %v, want an invalid-mode error", err)
 	}
@@ -573,7 +565,7 @@ func TestGenerateMacroPlanSnapsStartWeekToMonday(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse start: %v", err)
 	}
-	plan, err := GenerateMacroPlan(ctx, db, 1, monday.AddDate(0, 0, 3), MacroModeScheduled)
+	plan, err := GenerateMacroPlan(ctx, db, 1, monday.AddDate(0, 0, 3).Format(dateLayout), MacroModeScheduled)
 	if err != nil {
 		t.Fatalf("GenerateMacroPlan: %v", err)
 	}
@@ -600,11 +592,7 @@ func TestGenerateMacroPlanMalformedResponse(t *testing.T) {
 			db, _, _ := setupMacroGeneration(t, macroTestStartWeek)
 			stubMacroPrompt(t, tt.response)
 
-			startDate, err := parseMondayWeek(macroTestStartWeek)
-			if err != nil {
-				t.Fatalf("parse start: %v", err)
-			}
-			if _, err := GenerateMacroPlan(context.Background(), db, 1, startDate, MacroModeScheduled); err == nil {
+			if _, err := GenerateMacroPlan(context.Background(), db, 1, macroTestStartWeek, MacroModeScheduled); err == nil {
 				t.Fatal("expected a parse error")
 			} else if !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("error = %q, want it to mention %q", err, tt.want)
@@ -617,34 +605,216 @@ func TestGenerateMacroPlanMalformedResponse(t *testing.T) {
 }
 
 // A fenced answer is off-contract but not wrong, so it is unwrapped rather than
-// rejected — the same tolerance parsePlanResponse gives the weekly plan.
+// rejected — the same tolerance parsePlanResponse gives the weekly plan. The
+// half-fenced forms matter as much as the well-formed one: an answer that opens
+// a fence and is cut off before closing it still ends in real JSON, and
+// dropping its last line would discard the closing brace.
 func TestGenerateMacroPlanStripsCodeFences(t *testing.T) {
-	db, fixture, _ := setupMacroGeneration(t, macroTestStartWeek)
-	stubMacroPrompt(t, "```json\n"+macroFixtureJSON(t, fixture)+"\n```")
-
-	startDate, err := parseMondayWeek(macroTestStartWeek)
-	if err != nil {
-		t.Fatalf("parse start: %v", err)
+	tests := []struct {
+		name      string
+		wrap      func(body string) string
+		multiline bool
+	}{
+		{name: "tagged fence", wrap: func(b string) string { return "```json\n" + b + "\n```" }, multiline: true},
+		{name: "bare fence", wrap: func(b string) string { return "```\n" + b + "\n```" }, multiline: true},
+		// A truncated answer: the fence opens, the JSON runs to the end and no
+		// closing fence ever arrives. Its last line is content, not a fence.
+		{name: "opening fence only", wrap: func(b string) string { return "```json\n" + b }, multiline: true},
+		{name: "single line", wrap: func(b string) string { return "```json " + b + "```" }},
+		{name: "trailing whitespace", wrap: func(b string) string { return "\n```json\n" + b + "\n```\n\n" }, multiline: true},
 	}
-	plan, err := GenerateMacroPlan(context.Background(), db, 1, startDate, MacroModeScheduled)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, fixture, _ := setupMacroGeneration(t, macroTestStartWeek)
+			body := macroFixtureJSON(t, fixture)
+			if tt.multiline {
+				body = macroFixtureJSONIndented(t, fixture)
+			}
+			stubMacroPrompt(t, tt.wrap(body))
+
+			plan, err := GenerateMacroPlan(context.Background(), db, 1, macroTestStartWeek, MacroModeScheduled)
+			if err != nil {
+				t.Fatalf("GenerateMacroPlan: %v", err)
+			}
+			if len(plan.Weeks) != MacroBlockWeeks {
+				t.Fatalf("plan has %d weeks, want %d", len(plan.Weeks), MacroBlockWeeks)
+			}
+		})
+	}
+}
+
+// The model Stride plans a block on is the athlete's when they have chosen one,
+// and strideDefaultModel when they have not. The fallback cannot be written as
+// `if cfg.Model == ""`: training.LoadClaudeConfig substitutes its own,
+// cheaper package default first, so the branch would never fire.
+func TestGenerateMacroPlanModelSelection(t *testing.T) {
+	tests := []struct {
+		name string
+		pref string
+		want string
+	}{
+		{"no model chosen falls back to the Stride default", "", strideDefaultModel},
+		{"the athlete's choice is respected", "claude-sonnet-4-6", "claude-sonnet-4-6"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, fixture, _ := setupMacroGeneration(t, macroTestStartWeek)
+			// setupMacroGeneration pins a model; this test is about what
+			// happens without one, so clear it first.
+			setPref(t, db, 1, "claude_model", tt.pref)
+
+			var usedModel string
+			orig := runPromptFunc
+			runPromptFunc = func(_ context.Context, cfg *training.ClaudeConfig, _ string) (string, error) {
+				usedModel = cfg.Model
+				return macroFixtureJSON(t, fixture), nil
+			}
+			t.Cleanup(func() { runPromptFunc = orig })
+
+			plan, err := GenerateMacroPlan(context.Background(), db, 1, macroTestStartWeek, MacroModeScheduled)
+			if err != nil {
+				t.Fatalf("GenerateMacroPlan: %v", err)
+			}
+			if usedModel != tt.want {
+				t.Errorf("block generated on model %q, want %q", usedModel, tt.want)
+			}
+			if plan.Model != tt.want {
+				t.Errorf("persisted model = %q, want %q", plan.Model, tt.want)
+			}
+		})
+	}
+}
+
+// The prompt carries the athlete's history, race calendar and goal, and the
+// response carries the block built from them — the same class of data CLAUDE.md
+// requires the analysis feature to encrypt. CreateMacroPlan encrypts both; this
+// pins that a generated block never lands in SQLite as plaintext.
+func TestGenerateMacroPlanStoresPromptAndResponseEncrypted(t *testing.T) {
+	ctx := context.Background()
+	db, fixture, _ := setupMacroGeneration(t, macroTestStartWeek)
+	prompt := stubMacroPrompt(t, macroFixtureJSON(t, fixture))
+
+	plan, err := GenerateMacroPlan(ctx, db, 1, macroTestStartWeek, MacroModeScheduled)
 	if err != nil {
 		t.Fatalf("GenerateMacroPlan: %v", err)
 	}
-	if len(plan.Weeks) != MacroBlockWeeks {
-		t.Fatalf("plan has %d weeks, want %d", len(plan.Weeks), MacroBlockWeeks)
+
+	var storedPrompt, storedResponse, storedGoal string
+	if err := db.QueryRow(`SELECT prompt, response, goal_json FROM stride_macro_plans WHERE id = ?`, plan.ID).
+		Scan(&storedPrompt, &storedResponse, &storedGoal); err != nil {
+		t.Fatalf("read raw plan row: %v", err)
+	}
+	for name, raw := range map[string]string{
+		"prompt":    storedPrompt,
+		"response":  storedResponse,
+		"goal_json": storedGoal,
+	} {
+		if raw == "" {
+			t.Errorf("%s is empty", name)
+		}
+		if strings.Contains(raw, "Planning Request") || strings.Contains(raw, "target_hm_time_s") ||
+			strings.Contains(raw, fixture.Goal.Statement) {
+			t.Errorf("%s stored as plaintext: %q", name, raw)
+		}
+	}
+
+	// And it decrypts back to exactly what the model was shown and answered.
+	stored, err := GetMacroPlanByID(ctx, db, plan.ID, 1)
+	if err != nil {
+		t.Fatalf("GetMacroPlanByID: %v", err)
+	}
+	if stored.Prompt != *prompt {
+		t.Error("decrypted prompt does not match the prompt the model was given")
+	}
+	if stored.Response != macroFixtureJSON(t, fixture) {
+		t.Error("decrypted response does not match the model's answer")
+	}
+}
+
+// rivalMacroBlock builds an unsaved 26-week block starting at start, standing
+// in for a block a second generation commits while the first is still waiting
+// on Claude.
+func rivalMacroBlock(t *testing.T, userID int64, start string) (*MacroPlan, []MacroWeek) {
+	t.Helper()
+	from, err := parseWeekDate(testBlockStart)
+	if err != nil {
+		t.Fatalf("parse fixture start: %v", err)
+	}
+	to, err := parseWeekDate(start)
+	if err != nil {
+		t.Fatalf("parse rival start: %v", err)
+	}
+	shift := func(date string) string {
+		d, err := parseWeekDate(date)
+		if err != nil {
+			t.Fatalf("parse fixture date %q: %v", date, err)
+		}
+		return d.Add(to.Sub(from)).Format(dateLayout)
+	}
+
+	plan, weeks := sampleMacroPlan(userID)
+	plan.StartWeek = shift(plan.StartWeek)
+	plan.EndWeek = shift(plan.EndWeek)
+	for i := range plan.Periodisation {
+		plan.Periodisation[i].StartWeek = shift(plan.Periodisation[i].StartWeek)
+	}
+	for i := range weeks {
+		weeks[i].WeekStart = shift(weeks[i].WeekStart)
+	}
+	return plan, weeks
+}
+
+// The block a generation follows is resolved before a Claude call that can take
+// five minutes, so by the time the answer comes back another generation may
+// have replaced it. Persisting anyway would leave the athlete with two active
+// blocks prescribing different things for the same weeks — CreateMacroPlan
+// re-checks inside its own transaction and rejects the late writer instead.
+func TestGenerateMacroPlanRejectsBlockOvertakenByAConcurrentGeneration(t *testing.T) {
+	ctx := context.Background()
+	db, fixture, _ := setupMacroGeneration(t, macroTestStartWeek)
+
+	// The rival starts a week later, so it overlaps this block's horizon
+	// without colliding on the (user_id, start_week) unique index — the index
+	// alone would not catch it.
+	rivalStart := mondayAfter(macroTestStartWeek, 1)
+	orig := runPromptFunc
+	runPromptFunc = func(context.Context, *training.ClaudeConfig, string) (string, error) {
+		rival, rivalWeeks := rivalMacroBlock(t, 1, rivalStart)
+		if err := CreateMacroPlan(ctx, db, rival, rivalWeeks, "Racing block"); err != nil {
+			t.Fatalf("create racing block: %v", err)
+		}
+		return macroFixtureJSON(t, fixture), nil
+	}
+	t.Cleanup(func() { runPromptFunc = orig })
+
+	plan, err := GenerateMacroPlan(ctx, db, 1, macroTestStartWeek, MacroModeScheduled)
+	if !errors.Is(err, ErrOverlappingMacroPlan) {
+		t.Fatalf("error = %v, want ErrOverlappingMacroPlan", err)
+	}
+	if plan != nil {
+		t.Error("a rejected plan must not be returned")
+	}
+
+	// The rival is the one active block, and the losing generation left no
+	// half-written rows behind.
+	active, err := GetActiveMacroPlan(ctx, db, 1, rivalStart)
+	if err != nil {
+		t.Fatalf("GetActiveMacroPlan: %v", err)
+	}
+	if active == nil || active.StartWeek != rivalStart {
+		t.Fatalf("active plan = %+v, want the block that won the race", active)
+	}
+	plans, weeks, revisions := countMacroRows(t, db, 1)
+	if plans != 1 || weeks != MacroBlockWeeks || revisions != 1 {
+		t.Errorf("rows after the rejected write: %d plans, %d weeks, %d revisions", plans, weeks, revisions)
 	}
 }
 
 func TestGenerateMacroPlanRequiresStrideAndClaude(t *testing.T) {
-	startDate, err := parseMondayWeek(macroTestStartWeek)
-	if err != nil {
-		t.Fatalf("parse start: %v", err)
-	}
-
 	t.Run("stride disabled", func(t *testing.T) {
 		db := setupTestDB(t)
 		setPref(t, db, 1, "claude_enabled", "true")
-		if _, err := GenerateMacroPlan(context.Background(), db, 1, startDate, MacroModeScheduled); !errors.Is(err, ErrStrideNotEnabled) {
+		if _, err := GenerateMacroPlan(context.Background(), db, 1, macroTestStartWeek, MacroModeScheduled); !errors.Is(err, ErrStrideNotEnabled) {
 			t.Fatalf("error = %v, want ErrStrideNotEnabled", err)
 		}
 	})
@@ -652,7 +822,7 @@ func TestGenerateMacroPlanRequiresStrideAndClaude(t *testing.T) {
 	t.Run("claude disabled", func(t *testing.T) {
 		db := setupTestDB(t)
 		setPref(t, db, 1, "stride_enabled", "true")
-		if _, err := GenerateMacroPlan(context.Background(), db, 1, startDate, MacroModeScheduled); !errors.Is(err, training.ErrClaudeNotEnabled) {
+		if _, err := GenerateMacroPlan(context.Background(), db, 1, macroTestStartWeek, MacroModeScheduled); !errors.Is(err, training.ErrClaudeNotEnabled) {
 			t.Fatalf("error = %v, want ErrClaudeNotEnabled", err)
 		}
 	})
@@ -665,16 +835,12 @@ func TestGenerateMacroPlanManualModeReplacesActiveBlock(t *testing.T) {
 	db, fixture, _ := setupMacroGeneration(t, macroTestStartWeek)
 	stubMacroPrompt(t, macroFixtureJSON(t, fixture))
 
-	startDate, err := parseMondayWeek(macroTestStartWeek)
-	if err != nil {
-		t.Fatalf("parse start: %v", err)
-	}
-	first, err := GenerateMacroPlan(ctx, db, 1, startDate, MacroModeScheduled)
+	first, err := GenerateMacroPlan(ctx, db, 1, macroTestStartWeek, MacroModeScheduled)
 	if err != nil {
 		t.Fatalf("first GenerateMacroPlan: %v", err)
 	}
 
-	second, err := GenerateMacroPlan(ctx, db, 1, startDate, MacroModeManual)
+	second, err := GenerateMacroPlan(ctx, db, 1, macroTestStartWeek, MacroModeManual)
 	if err != nil {
 		t.Fatalf("regenerate: %v", err)
 	}

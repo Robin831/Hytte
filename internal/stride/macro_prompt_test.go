@@ -203,7 +203,7 @@ func TestBuildMacroInputsSections(t *testing.T) {
 	startWeek, _ := upcomingWeek()
 	seedMacroInputFixtures(t, db, 1, startWeek)
 
-	inputs, err := buildMacroInputs(ctx, db, 1, startWeek, MacroModeScheduled)
+	inputs, _, err := buildMacroInputs(ctx, db, 1, startWeek, MacroModeScheduled)
 	if err != nil {
 		t.Fatalf("buildMacroInputs: %v", err)
 	}
@@ -305,7 +305,7 @@ func TestBuildMacroInputsExtensionMode(t *testing.T) {
 	// The next block starts the week after the stored block ends.
 	nextStart := mondayAfter(testBlockStart, MacroBlockWeeks)
 
-	extension, err := buildMacroInputs(ctx, db, 1, nextStart, MacroModeExtension)
+	extension, _, err := buildMacroInputs(ctx, db, 1, nextStart, MacroModeExtension)
 	if err != nil {
 		t.Fatalf("buildMacroInputs(extension): %v", err)
 	}
@@ -340,7 +340,7 @@ func TestBuildMacroInputsExtensionMode(t *testing.T) {
 	}
 
 	// Initial mode must not carry any of it.
-	initial, err := buildMacroInputs(ctx, db, 1, nextStart, MacroModeScheduled)
+	initial, _, err := buildMacroInputs(ctx, db, 1, nextStart, MacroModeScheduled)
 	if err != nil {
 		t.Fatalf("buildMacroInputs(initial): %v", err)
 	}
@@ -356,7 +356,7 @@ func TestBuildMacroInputsExtensionModeWithoutPreviousBlock(t *testing.T) {
 	db := setupTestDB(t)
 	startWeek, _ := upcomingWeek()
 
-	inputs, err := buildMacroInputs(context.Background(), db, 1, startWeek, MacroModeExtension)
+	inputs, _, err := buildMacroInputs(context.Background(), db, 1, startWeek, MacroModeExtension)
 	if err != nil {
 		t.Fatalf("buildMacroInputs: %v", err)
 	}
@@ -371,7 +371,7 @@ func TestBuildMacroInputsEmptyAthlete(t *testing.T) {
 
 	// An athlete with no data at all still yields a usable input block: every
 	// optional source degrades to a "none recorded" line rather than erroring.
-	inputs, err := buildMacroInputs(context.Background(), db, 1, startWeek, MacroModeScheduled)
+	inputs, _, err := buildMacroInputs(context.Background(), db, 1, startWeek, MacroModeScheduled)
 	if err != nil {
 		t.Fatalf("buildMacroInputs: %v", err)
 	}
@@ -396,7 +396,7 @@ func TestBuildMacroInputsEmptyAthlete(t *testing.T) {
 
 func TestBuildMacroInputsInvalidStartWeek(t *testing.T) {
 	db := setupTestDB(t)
-	if _, err := buildMacroInputs(context.Background(), db, 1, "not-a-date", MacroModeScheduled); err == nil {
+	if _, _, err := buildMacroInputs(context.Background(), db, 1, "not-a-date", MacroModeScheduled); err == nil {
 		t.Fatal("expected an error for an unparseable start week")
 	}
 }
@@ -406,7 +406,7 @@ func TestMacroPromptSizeBudget(t *testing.T) {
 	startWeek, _ := upcomingWeek()
 	seedMacroInputFixtures(t, db, 1, startWeek)
 
-	inputs, err := buildMacroInputs(context.Background(), db, 1, startWeek, MacroModeScheduled)
+	inputs, _, err := buildMacroInputs(context.Background(), db, 1, startWeek, MacroModeScheduled)
 	if err != nil {
 		t.Fatalf("buildMacroInputs: %v", err)
 	}
@@ -655,7 +655,7 @@ func TestMacroModeMatchesGeneratedBy(t *testing.T) {
 func TestBuildMacroInputsRejectsUnknownMode(t *testing.T) {
 	db := setupTestDB(t)
 	startWeek, _ := upcomingWeek()
-	if _, err := buildMacroInputs(context.Background(), db, 1, startWeek, MacroMode("initial")); err == nil {
+	if _, _, err := buildMacroInputs(context.Background(), db, 1, startWeek, MacroMode("initial")); err == nil {
 		t.Fatal("expected an error for a mode outside the generated_by vocabulary")
 	}
 }
@@ -666,7 +666,7 @@ func TestBuildMacroInputsRejectsUnknownMode(t *testing.T) {
 func TestBuildMacroInputsRejectsNonMondayStartWeek(t *testing.T) {
 	db := setupTestDB(t)
 	// 2026-09-02 is a Wednesday.
-	_, err := buildMacroInputs(context.Background(), db, 1, "2026-09-02", MacroModeScheduled)
+	_, _, err := buildMacroInputs(context.Background(), db, 1, "2026-09-02", MacroModeScheduled)
 	if err == nil {
 		t.Fatal("expected an error for a start week that is not a Monday")
 	}
@@ -1094,7 +1094,7 @@ func TestNormaliseMacroStartWeekCoversExtensionDerivedStart(t *testing.T) {
 	}
 	startWeek := end.AddDate(0, 0, 7).Format(dateLayout)
 
-	if _, err := buildMacroInputs(ctx, db, 1, startWeek, MacroModeExtension); err != nil {
+	if _, _, err := buildMacroInputs(ctx, db, 1, startWeek, MacroModeExtension); err != nil {
 		t.Fatalf("extension-derived start %s was rejected: %v", startWeek, err)
 	}
 	// Without the normalisation the derived start is the Sunday plus 7 days,
@@ -1103,7 +1103,7 @@ func TestNormaliseMacroStartWeekCoversExtensionDerivedStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse raw end week: %v", err)
 	}
-	if _, err := buildMacroInputs(ctx, db, 1, raw.AddDate(0, 0, 7).Format(dateLayout), MacroModeExtension); err == nil {
+	if _, _, err := buildMacroInputs(ctx, db, 1, raw.AddDate(0, 0, 7).Format(dateLayout), MacroModeExtension); err == nil {
 		t.Error("a non-Monday derived start must be rejected, so callers cannot skip NormaliseMacroStartWeek")
 	}
 }
