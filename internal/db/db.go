@@ -1527,11 +1527,18 @@ func createSchema(db *sql.DB) error {
 		model              TEXT NOT NULL DEFAULT '',
 		generated_by       TEXT NOT NULL DEFAULT 'scheduled',
 		previous_plan_id   INTEGER REFERENCES stride_macro_plans(id) ON DELETE SET NULL,
-		created_at         TEXT NOT NULL DEFAULT '',
-		UNIQUE(user_id, start_week)
+		created_at         TEXT NOT NULL DEFAULT ''
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_stride_macro_plans_user_status ON stride_macro_plans(user_id, status);
+
+	-- Only one *active* block may start on a given Monday. The uniqueness is a
+	-- partial index rather than a table-level UNIQUE(user_id, start_week) so
+	-- Regenerate works: superseding the current block frees its Monday slot for
+	-- the replacement, and the superseded rows (plus their goal history) stay
+	-- put instead of having to be deleted to make room.
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_stride_macro_plans_active_start
+		ON stride_macro_plans(user_id, start_week) WHERE status = 'active';
 
 	-- stride_macro_weeks holds one row per week of a macro plan: the phase,
 	-- load level and volume targets the weekly generator turns into an actual

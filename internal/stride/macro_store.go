@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -18,6 +19,11 @@ var ErrMacroPlanNotFound = errors.New("macro plan not found")
 // ErrMacroWeekNotFound is returned when a macro week lookup or update targets a
 // row that does not exist or does not belong to the requesting user.
 var ErrMacroWeekNotFound = errors.New("macro week not found")
+
+// ErrForeignReference is returned when a macro plan points at a stride_races or
+// stride_workouts row owned by somebody else (or one that does not exist).
+// Handlers should surface it as a 400, not a 500.
+var ErrForeignReference = errors.New("macro plan references a row the user does not own")
 
 // macroPlanColumns is the shared SELECT list for stride_macro_plans, kept in
 // one place so it cannot drift from scanMacroPlan's argument order.
@@ -94,7 +100,12 @@ func validateMacroPlan(p *MacroPlan) error {
 	return nil
 }
 
-// validateMacroWeek checks the queryable enum columns of a macro week.
+// validateMacroWeek checks the queryable enum columns of a macro week. Empty
+// means "use the column default" for LoadLevel (normal) and Status (planned),
+// matching how validateMacroPlan treats Status and GeneratedBy; CreateMacroPlan
+// fills both in. Phase is the one enum with no default — it is the contract the
+// weekly generator branches on and the column has no meaningful default of its
+// own — so an empty phase stays an error.
 func validateMacroWeek(w *MacroWeek) error {
 	if w.WeekStart == "" {
 		return errors.New("macro week week_start must be set")
@@ -105,7 +116,7 @@ func validateMacroWeek(w *MacroWeek) error {
 		return fmt.Errorf("invalid macro week phase %q", w.Phase)
 	}
 	switch w.LoadLevel {
-	case LoadLevelDeload, LoadLevelNormal, LoadLevelBuild, LoadLevelPeak, LoadLevelTaper:
+	case "", LoadLevelDeload, LoadLevelNormal, LoadLevelBuild, LoadLevelPeak, LoadLevelTaper:
 	default:
 		return fmt.Errorf("invalid macro week load_level %q", w.LoadLevel)
 	}
@@ -139,11 +150,89 @@ func ValidateGoalRevisionSource(source string) error {
 	}
 }
 
+// ValidateStaleReason returns nil when reason is a known stale reason. An empty
+// reason is allowed and means "not stale" — SetMacroPlanStale uses it to clear
+// the flag.
+func ValidateStaleReason(reason string) error {
+	switch reason {
+	case "", MacroStaleRacesChanged:
+		return nil
+	default:
+		return fmt.Errorf("invalid macro plan stale_reason %q: must be empty or %s", reason, MacroStaleRacesChanged)
+	}
+}
+
+// collectIDs appends the non-nil ids to set.
+func collectIDs(set map[int64]struct{}, ids ...*int64) {
+	for _, id := range ids {
+		if id != nil {
+			set[*id] = struct{}{}
+		}
+	}
+}
+
+// verifyOwnership fails with ErrForeignReference unless every id in set names a
+// row of table owned by userID. table is always a package-level literal, never
+// caller input.
+func verifyOwnership(ctx context.Context, tx *sql.Tx, table string, userID int64, set map[int64]struct{}) error {
+	ids := make([]int64, 0, len(set))
+	for id := range set {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	for _, id := range ids {
+		var one int
+		err := tx.QueryRowContext(ctx, `SELECT 1 FROM `+table+` WHERE id = ? AND user_id = ?`, id, userID).Scan(&one)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: %s %d", ErrForeignReference, table, id)
+		}
+		if err != nil {
+			return fmt.Errorf("check %s ownership: %w", table, err)
+		}
+	}
+	return nil
+}
+
+// verifyMacroReferences checks every row id a macro plan points at — the weeks'
+// race_id, the goal's anchor race, the periodisation's per-mesocycle race, and
+// the key sessions' library workout. The FK columns are plain (id) references,
+// and the goal/key-session ids ride along inside encrypted blobs where the DB
+// cannot check anything at all, so this is the only thing stopping a caller
+// from pinning another user's race or library workout into a block.
+func verifyMacroReferences(ctx context.Context, tx *sql.Tx, plan *MacroPlan, weeks []MacroWeek) error {
+	races := map[int64]struct{}{}
+	library := map[int64]struct{}{}
+
+	collectIDs(races, plan.Goal.AnchorRaceID)
+	for i := range plan.Periodisation {
+		collectIDs(races, plan.Periodisation[i].RaceID)
+	}
+	for i := range weeks {
+		collectIDs(races, weeks[i].RaceID)
+		for _, ks := range weeks[i].KeySessions {
+			collectIDs(library, ks.LibraryID)
+		}
+	}
+
+	if err := verifyOwnership(ctx, tx, "stride_races", plan.UserID, races); err != nil {
+		return err
+	}
+	return verifyOwnership(ctx, tx, "stride_workouts", plan.UserID, library)
+}
+
 // CreateMacroPlan writes a macro plan, all of its weeks, and the block's
 // initial goal revision in a single transaction — a partially written block
 // (a plan row with no weeks, or weeks with no goal history) is never visible.
-// On success plan.ID, plan.CreatedAt, plan.Weeks and each week's ID are filled
-// in from the inserted rows.
+// On success plan.ID, plan.CreatedAt and plan.Weeks (each with its inserted ID)
+// are filled in; the weeks slice the caller passed in is left untouched.
+//
+// Every race and library-workout id the block references must belong to
+// plan.UserID, otherwise the whole write fails with ErrForeignReference.
+//
+// Only one *active* plan may start on a given Monday. Regenerating a block
+// therefore means SupersedeMacroPlan on the current one first; the superseded
+// row and its goal history stay put.
 func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []MacroWeek, initialGoalReason string) error {
 	if err := validateMacroPlan(plan); err != nil {
 		return err
@@ -163,10 +252,9 @@ func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []M
 	if plan.GeneratedBy == "" {
 		plan.GeneratedBy = MacroGeneratedByScheduled
 	}
-	if plan.CreatedAt.IsZero() {
-		plan.CreatedAt = time.Now().UTC()
+	if plan.CreatedAt == "" {
+		plan.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
-	createdAt := plan.CreatedAt.UTC().Format(time.RFC3339)
 
 	goalJSON, err := encryptJSON(plan.Goal, "goal_json")
 	if err != nil {
@@ -195,6 +283,10 @@ func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []M
 	}
 	defer tx.Rollback()
 
+	if err := verifyMacroReferences(ctx, tx, plan, weeks); err != nil {
+		return err
+	}
+
 	res, err := tx.ExecContext(ctx, `
 		INSERT INTO stride_macro_plans
 			(user_id, start_week, end_week, status, stale_reason, goal_json,
@@ -203,7 +295,7 @@ func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []M
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, plan.UserID, plan.StartWeek, plan.EndWeek, plan.Status, plan.StaleReason,
 		goalJSON, periodisationJSON, encPrompt, encResponse, plan.Model,
-		plan.GeneratedBy, plan.PreviousPlanID, createdAt)
+		plan.GeneratedBy, plan.PreviousPlanID, plan.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("insert macro plan: %w", err)
 	}
@@ -218,6 +310,9 @@ func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []M
 		w.UserID = plan.UserID
 		if w.Status == "" {
 			w.Status = MacroWeekStatusPlanned
+		}
+		if w.LoadLevel == "" {
+			w.LoadLevel = LoadLevelNormal
 		}
 		keySessions, err := encryptJSON(w.KeySessions, "key_sessions_json")
 		if err != nil {
@@ -247,7 +342,7 @@ func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []M
 		INSERT INTO stride_goal_revisions
 			(macro_plan_id, user_id, week_start, goal_json, reason, source, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, planID, plan.UserID, plan.StartWeek, goalJSON, encReason, GoalRevisionSourceInitial, createdAt); err != nil {
+	`, planID, plan.UserID, plan.StartWeek, goalJSON, encReason, GoalRevisionSourceInitial, plan.CreatedAt); err != nil {
 		return fmt.Errorf("insert initial goal revision: %w", err)
 	}
 
@@ -264,10 +359,10 @@ func CreateMacroPlan(ctx context.Context, db *sql.DB, plan *MacroPlan, weeks []M
 // decrypting the AI-authored blobs.
 func scanMacroPlan(scanner interface{ Scan(...any) error }) (MacroPlan, error) {
 	var p MacroPlan
-	var goalJSON, periodisationJSON, prompt, response, createdAt string
+	var goalJSON, periodisationJSON, prompt, response string
 	if err := scanner.Scan(&p.ID, &p.UserID, &p.StartWeek, &p.EndWeek, &p.Status, &p.StaleReason,
 		&goalJSON, &periodisationJSON, &prompt, &response, &p.Model, &p.GeneratedBy,
-		&p.PreviousPlanID, &createdAt); err != nil {
+		&p.PreviousPlanID, &p.CreatedAt); err != nil {
 		return MacroPlan{}, err
 	}
 	if err := decryptJSON(goalJSON, &p.Goal, "goal_json"); err != nil {
@@ -282,13 +377,6 @@ func scanMacroPlan(scanner interface{ Scan(...any) error }) (MacroPlan, error) {
 	}
 	if p.Response, err = encryption.DecryptField(response); err != nil {
 		return MacroPlan{}, fmt.Errorf("decrypt macro plan response: %w", err)
-	}
-	if createdAt != "" {
-		t, err := time.Parse(time.RFC3339, createdAt)
-		if err != nil {
-			return MacroPlan{}, fmt.Errorf("parse macro plan created_at: %w", err)
-		}
-		p.CreatedAt = t
 	}
 	return p, nil
 }
@@ -458,6 +546,9 @@ func SupersedeMacroPlan(ctx context.Context, db *sql.DB, planID, userID int64) e
 // The plan stays active — nothing is auto-regenerated. Passing an empty reason
 // clears the flag.
 func SetMacroPlanStale(ctx context.Context, db *sql.DB, planID, userID int64, reason string) error {
+	if err := ValidateStaleReason(reason); err != nil {
+		return err
+	}
 	res, err := db.ExecContext(ctx, `
 		UPDATE stride_macro_plans SET stale_reason = ? WHERE id = ? AND user_id = ?
 	`, reason, planID, userID)
@@ -488,8 +579,8 @@ func AddGoalRevision(ctx context.Context, db *sql.DB, rev *GoalRevision) error {
 	if rev.WeekStart == "" {
 		return errors.New("goal revision week_start must be set")
 	}
-	if rev.CreatedAt.IsZero() {
-		rev.CreatedAt = time.Now().UTC()
+	if rev.CreatedAt == "" {
+		rev.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
 	goalJSON, err := encryptJSON(rev.Goal, "goal_json")
 	if err != nil {
@@ -509,7 +600,7 @@ func AddGoalRevision(ctx context.Context, db *sql.DB, rev *GoalRevision) error {
 		SELECT ?, ?, ?, ?, ?, ?, ?
 		WHERE EXISTS (SELECT 1 FROM stride_macro_plans WHERE id = ? AND user_id = ?)
 	`, rev.MacroPlanID, rev.UserID, rev.WeekStart, goalJSON, encReason, rev.Source,
-		rev.CreatedAt.UTC().Format(time.RFC3339), rev.MacroPlanID, rev.UserID)
+		rev.CreatedAt, rev.MacroPlanID, rev.UserID)
 	if err != nil {
 		return fmt.Errorf("insert goal revision: %w", err)
 	}
@@ -543,9 +634,9 @@ func ListGoalRevisions(ctx context.Context, db *sql.DB, macroPlanID, userID int6
 	revs := []GoalRevision{}
 	for rows.Next() {
 		var r GoalRevision
-		var goalJSON, reason, createdAt string
+		var goalJSON, reason string
 		if err := rows.Scan(&r.ID, &r.MacroPlanID, &r.UserID, &r.WeekStart, &goalJSON, &reason,
-			&r.Source, &createdAt); err != nil {
+			&r.Source, &r.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan goal revision: %w", err)
 		}
 		if err := decryptJSON(goalJSON, &r.Goal, "goal_json"); err != nil {
@@ -553,13 +644,6 @@ func ListGoalRevisions(ctx context.Context, db *sql.DB, macroPlanID, userID int6
 		}
 		if r.Reason, err = encryption.DecryptField(reason); err != nil {
 			return nil, fmt.Errorf("decrypt goal revision reason: %w", err)
-		}
-		if createdAt != "" {
-			t, perr := time.Parse(time.RFC3339, createdAt)
-			if perr != nil {
-				return nil, fmt.Errorf("parse goal revision created_at: %w", perr)
-			}
-			r.CreatedAt = t
 		}
 		revs = append(revs, r)
 	}

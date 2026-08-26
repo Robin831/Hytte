@@ -125,8 +125,11 @@ func TestCreateMacroPlanRoundTrip(t *testing.T) {
 	if got.PreviousPlanID != nil {
 		t.Fatalf("previous_plan_id = %v, want nil", *got.PreviousPlanID)
 	}
-	if got.CreatedAt.IsZero() {
+	if got.CreatedAt == "" {
 		t.Fatal("expected created_at to be set")
+	}
+	if _, err := time.Parse(time.RFC3339, got.CreatedAt); err != nil {
+		t.Fatalf("created_at %q is not RFC3339: %v", got.CreatedAt, err)
 	}
 
 	// Encrypted blobs survive marshal -> encrypt -> decrypt -> unmarshal.
@@ -378,10 +381,10 @@ func TestCreateMacroPlanUniqueConstraints(t *testing.T) {
 		t.Fatalf("CreateMacroPlan: %v", err)
 	}
 
-	// UNIQUE(user_id, start_week).
+	// Only one active block per (user_id, start_week).
 	dup, dupWeeks := sampleMacroPlan(1)
 	if err := CreateMacroPlan(ctx, db, dup, dupWeeks, "Initial"); err == nil {
-		t.Fatal("expected a UNIQUE(user_id, start_week) violation")
+		t.Fatal("expected a second active block on the same Monday to be rejected")
 	}
 
 	// UNIQUE(macro_plan_id, week_start): two weeks with the same Monday.
@@ -392,6 +395,182 @@ func TestCreateMacroPlanUniqueConstraints(t *testing.T) {
 	clashWeeks[1].WeekStart = clashWeeks[0].WeekStart
 	if err := CreateMacroPlan(ctx, db, clash, clashWeeks, "Initial"); err == nil {
 		t.Fatal("expected a UNIQUE(macro_plan_id, week_start) violation")
+	}
+}
+
+// A Regenerate replaces the block covering the current week, so the new block
+// starts on the same Monday as the one it replaces. Superseding the old one
+// frees the slot; its rows and goal history survive.
+func TestRegenerateReplacesBlockOnTheSameMonday(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	first, firstWeeks := sampleMacroPlan(1)
+	if err := CreateMacroPlan(ctx, db, first, firstWeeks, "Initial"); err != nil {
+		t.Fatalf("CreateMacroPlan: %v", err)
+	}
+	if err := SetMacroPlanStale(ctx, db, first.ID, 1, MacroStaleRacesChanged); err != nil {
+		t.Fatalf("SetMacroPlanStale: %v", err)
+	}
+	if err := SupersedeMacroPlan(ctx, db, first.ID, 1); err != nil {
+		t.Fatalf("SupersedeMacroPlan: %v", err)
+	}
+
+	regenerated, regeneratedWeeks := sampleMacroPlan(1)
+	regenerated.GeneratedBy = MacroGeneratedByManual
+	regenerated.PreviousPlanID = &first.ID
+	regenerated.Goal.Statement = "Run 1:23:00 for the half marathon"
+	if err := CreateMacroPlan(ctx, db, regenerated, regeneratedWeeks, "Regenerated after the race calendar changed"); err != nil {
+		t.Fatalf("regenerate on the same start_week: %v", err)
+	}
+
+	got, err := GetActiveMacroPlan(ctx, db, 1, testBlockStart)
+	if err != nil {
+		t.Fatalf("GetActiveMacroPlan: %v", err)
+	}
+	if got == nil || got.ID != regenerated.ID {
+		t.Fatalf("expected the regenerated block to be active, got %+v", got)
+	}
+	if got.StaleReason != "" || got.GeneratedBy != MacroGeneratedByManual {
+		t.Fatalf("stale_reason = %q, generated_by = %q", got.StaleReason, got.GeneratedBy)
+	}
+
+	// The superseded block keeps its rows and its goal history.
+	old, err := GetMacroPlanByID(ctx, db, first.ID, 1)
+	if err != nil {
+		t.Fatalf("GetMacroPlanByID: %v", err)
+	}
+	if old.Status != MacroPlanStatusSuperseded || len(old.Weeks) != 26 {
+		t.Fatalf("superseded block = status %q with %d weeks", old.Status, len(old.Weeks))
+	}
+	revs, err := ListGoalRevisions(ctx, db, first.ID, 1)
+	if err != nil {
+		t.Fatalf("ListGoalRevisions: %v", err)
+	}
+	if len(revs) != 1 || revs[0].Goal.Statement != "Run 1:24:00 for the half marathon" {
+		t.Fatalf("superseded goal history = %+v", revs)
+	}
+
+	// Two superseded blocks may share a Monday — history is not deduplicated.
+	if err := SupersedeMacroPlan(ctx, db, regenerated.ID, 1); err != nil {
+		t.Fatalf("SupersedeMacroPlan regenerated: %v", err)
+	}
+	third, thirdWeeks := sampleMacroPlan(1)
+	if err := CreateMacroPlan(ctx, db, third, thirdWeeks, "Regenerated again"); err != nil {
+		t.Fatalf("second regenerate: %v", err)
+	}
+}
+
+func TestCreateMacroPlanRejectsForeignReferences(t *testing.T) {
+	ctx := context.Background()
+
+	seed := func(t *testing.T) *sql.DB {
+		t.Helper()
+		db := setupTestDB(t)
+		if _, err := db.Exec("INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g2')"); err != nil {
+			t.Fatalf("insert second user: %v", err)
+		}
+		if _, err := db.Exec(`INSERT INTO stride_races (id, user_id, name, date, distance_m, priority, created_at)
+			VALUES (10, 1, 'Oslo HM', '2027-02-01', 21097.5, 'A', '2026-08-01T00:00:00Z'),
+			       (20, 2, 'Someone else''s HM', '2027-02-01', 21097.5, 'A', '2026-08-01T00:00:00Z')`); err != nil {
+			t.Fatalf("insert races: %v", err)
+		}
+		if _, err := db.Exec(`INSERT INTO stride_workouts (id, user_id, name, created_at)
+			VALUES (30, 1, 'Threshold 3x3km', '2026-08-01T00:00:00Z'),
+			       (40, 2, 'Someone else''s session', '2026-08-01T00:00:00Z')`); err != nil {
+			t.Fatalf("insert library workouts: %v", err)
+		}
+		return db
+	}
+
+	id := func(v int64) *int64 { return &v }
+
+	tests := []struct {
+		name    string
+		mutate  func(*MacroPlan, []MacroWeek)
+		wantErr bool
+	}{
+		{"own race and library workout", func(p *MacroPlan, w []MacroWeek) {
+			p.Goal.AnchorRaceID = id(10)
+			p.Periodisation[3].RaceID = id(10)
+			w[25].RaceID = id(10)
+			w[0].KeySessions[0].LibraryID = id(30)
+		}, false},
+		{"week race_id owned by another user", func(p *MacroPlan, w []MacroWeek) {
+			w[25].RaceID = id(20)
+		}, true},
+		{"anchor race owned by another user", func(p *MacroPlan, w []MacroWeek) {
+			p.Goal.AnchorRaceID = id(20)
+		}, true},
+		{"mesocycle race owned by another user", func(p *MacroPlan, w []MacroWeek) {
+			p.Periodisation[3].RaceID = id(20)
+		}, true},
+		{"key session library workout owned by another user", func(p *MacroPlan, w []MacroWeek) {
+			w[0].KeySessions[0].LibraryID = id(40)
+		}, true},
+		{"race that does not exist", func(p *MacroPlan, w []MacroWeek) {
+			w[25].RaceID = id(999999)
+		}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			db := seed(t)
+			plan, weeks := sampleMacroPlan(1)
+			tc.mutate(plan, weeks)
+
+			err := CreateMacroPlan(ctx, db, plan, weeks, "Initial")
+			if tc.wantErr {
+				if !errors.Is(err, ErrForeignReference) {
+					t.Fatalf("CreateMacroPlan = %v, want ErrForeignReference", err)
+				}
+				var plans int
+				if qerr := db.QueryRow("SELECT COUNT(*) FROM stride_macro_plans").Scan(&plans); qerr != nil {
+					t.Fatalf("count plans: %v", qerr)
+				}
+				if plans != 0 {
+					t.Fatalf("rejected block still wrote %d plan rows", plans)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("CreateMacroPlan: %v", err)
+			}
+		})
+	}
+}
+
+func TestCreateMacroPlanDefaultsLoadLevel(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	plan, weeks := sampleMacroPlan(1)
+	weeks[0].LoadLevel = "" // empty means "use the column default", like Status
+	weeks[0].Status = ""
+	if err := CreateMacroPlan(ctx, db, plan, weeks, "Initial"); err != nil {
+		t.Fatalf("CreateMacroPlan: %v", err)
+	}
+	if plan.Weeks[0].LoadLevel != LoadLevelNormal || plan.Weeks[0].Status != MacroWeekStatusPlanned {
+		t.Fatalf("week defaults = %q/%q", plan.Weeks[0].LoadLevel, plan.Weeks[0].Status)
+	}
+
+	got, err := GetMacroWeek(ctx, db, 1, testBlockStart)
+	if err != nil {
+		t.Fatalf("GetMacroWeek: %v", err)
+	}
+	if got.LoadLevel != LoadLevelNormal || got.Status != MacroWeekStatusPlanned {
+		t.Fatalf("stored defaults = %q/%q", got.LoadLevel, got.Status)
+	}
+}
+
+func TestValidateStaleReason(t *testing.T) {
+	if err := ValidateStaleReason(""); err != nil {
+		t.Fatalf("empty reason (clears the flag) = %v, want nil", err)
+	}
+	if err := ValidateStaleReason(MacroStaleRacesChanged); err != nil {
+		t.Fatalf("races_changed = %v, want nil", err)
+	}
+	if err := ValidateStaleReason("races-changed"); err == nil {
+		t.Fatal("expected a typo'd stale reason to be rejected")
 	}
 }
 
@@ -568,6 +747,9 @@ func TestSetMacroPlanStale(t *testing.T) {
 		t.Fatalf("stale_reason = %q, want empty", got.StaleReason)
 	}
 
+	if err := SetMacroPlanStale(ctx, db, plan.ID, 1, "races-changed"); err == nil {
+		t.Fatal("expected an unknown stale reason to be rejected")
+	}
 	if err := SetMacroPlanStale(ctx, db, plan.ID, 2, MacroStaleRacesChanged); !errors.Is(err, ErrMacroPlanNotFound) {
 		t.Fatalf("cross-user stale = %v, want ErrMacroPlanNotFound", err)
 	}
@@ -585,7 +767,10 @@ func TestGoalRevisionsAppendOnly(t *testing.T) {
 		t.Fatalf("CreateMacroPlan: %v", err)
 	}
 
-	base := plan.CreatedAt
+	base, err := time.Parse(time.RFC3339, plan.CreatedAt)
+	if err != nil {
+		t.Fatalf("parse plan created_at: %v", err)
+	}
 	drift := plan.Goal
 	drift.TargetHMTimeS = 4980 // within the +/-3% auto-apply band
 	drift.Statement = "Run 1:23:00 for the half marathon"
@@ -596,7 +781,7 @@ func TestGoalRevisionsAppendOnly(t *testing.T) {
 		Goal:        drift,
 		Reason:      "Prediction model improved by 1.2%, inside the auto-apply band.",
 		Source:      GoalRevisionSourceWeekly,
-		CreatedAt:   base.Add(time.Hour),
+		CreatedAt:   base.Add(time.Hour).Format(time.RFC3339),
 	}
 	if err := AddGoalRevision(ctx, db, second); err != nil {
 		t.Fatalf("AddGoalRevision: %v", err)
@@ -614,7 +799,7 @@ func TestGoalRevisionsAppendOnly(t *testing.T) {
 		Goal:        manual,
 		Reason:      "Robin accepted the proposed goal change.",
 		Source:      GoalRevisionSourceManual,
-		CreatedAt:   base.Add(2 * time.Hour),
+		CreatedAt:   base.Add(2 * time.Hour).Format(time.RFC3339),
 	}
 	if err := AddGoalRevision(ctx, db, third); err != nil {
 		t.Fatalf("AddGoalRevision manual: %v", err)
@@ -636,7 +821,7 @@ func TestGoalRevisionsAppendOnly(t *testing.T) {
 		if r.Goal.TargetHMTimeS != wantTargets[i] {
 			t.Fatalf("revision %d target = %d, want %d", i, r.Goal.TargetHMTimeS, wantTargets[i])
 		}
-		if i > 0 && r.CreatedAt.Before(revs[i-1].CreatedAt) {
+		if i > 0 && r.CreatedAt < revs[i-1].CreatedAt {
 			t.Fatalf("revisions are not in chronological order at %d", i)
 		}
 	}

@@ -1,7 +1,5 @@
 package stride
 
-import "time"
-
 // Macro plan phases. A macro week's phase drives what the weekly generator is
 // allowed to prescribe for that week.
 const (
@@ -115,7 +113,7 @@ type MacroPlan struct {
 	Model          string      `json:"model"`
 	GeneratedBy    string      `json:"generated_by"` // scheduled | manual | extension
 	PreviousPlanID *int64      `json:"previous_plan_id"`
-	CreatedAt      time.Time   `json:"created_at"`
+	CreatedAt      string      `json:"created_at"`      // RFC3339, as stored
 	Weeks          []MacroWeek `json:"weeks,omitempty"` // populated by GetActiveMacroPlan
 }
 
@@ -144,8 +142,8 @@ type GoalRevision struct {
 	MacroPlanID int64     `json:"macro_plan_id"`
 	UserID      int64     `json:"user_id"`
 	WeekStart   string    `json:"week_start"`
-	Goal        MacroGoal `json:"goal"`   // encrypted at rest (goal_json)
-	Reason      string    `json:"reason"` // encrypted at rest
-	Source      string    `json:"source"` // initial | weekly | manual
-	CreatedAt   time.Time `json:"created_at"`
+	Goal        MacroGoal `json:"goal"`       // encrypted at rest (goal_json)
+	Reason      string    `json:"reason"`     // encrypted at rest
+	Source      string    `json:"source"`     // initial | weekly | manual
+	CreatedAt   string    `json:"created_at"` // RFC3339, as stored
 }

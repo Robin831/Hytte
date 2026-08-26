@@ -187,9 +187,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 			model              TEXT NOT NULL DEFAULT '',
 			generated_by       TEXT NOT NULL DEFAULT 'scheduled',
 			previous_plan_id   INTEGER REFERENCES stride_macro_plans(id) ON DELETE SET NULL,
-			created_at         TEXT NOT NULL DEFAULT '',
-			UNIQUE(user_id, start_week)
+			created_at         TEXT NOT NULL DEFAULT ''
 		);
+		CREATE UNIQUE INDEX idx_stride_macro_plans_active_start
+			ON stride_macro_plans(user_id, start_week) WHERE status = 'active';
 		CREATE TABLE stride_macro_weeks (
 			id                INTEGER PRIMARY KEY,
 			macro_plan_id     INTEGER NOT NULL REFERENCES stride_macro_plans(id) ON DELETE CASCADE,
