@@ -3,6 +3,7 @@ package stride
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -62,6 +63,7 @@ func TestMacroSystemPromptSections(t *testing.T) {
 		"60-70%",
 		"base -> build -> peak -> taper",
 		"no more than +10%",
+		"one hard session every 1-2 weeks",
 		"2-week taper",
 	} {
 		if !strings.Contains(prompt, rule) {
@@ -72,9 +74,9 @@ func TestMacroSystemPromptSections(t *testing.T) {
 	// The JSON contract sub-task 2 mirrors in its response types.
 	for _, field := range []string{
 		`"goal"`, `"mesocycles"`, `"weeks"`,
-		"primary_focus", "target_hm_time", "anchor_race_id",
-		"start_week", "week_start", "load", "target_km", "key_sessions",
-		"library_id", "race_id",
+		"primary_focus", "target_hm_time_s", "anchor_race_id",
+		"start_week", "week_start", "load_level", "target_km", "key_sessions",
+		"target_sessions", "library_id", "race_id",
 	} {
 		if !strings.Contains(prompt, field) {
 			t.Errorf("output contract is missing field %q", field)
@@ -457,5 +459,71 @@ func TestMacroHistoryWeekOrdering(t *testing.T) {
 	}
 	if !strings.Contains(table, fmt.Sprintf("last %d weeks", macroHistoryWeeks)) {
 		t.Error("history table heading does not state the window")
+	}
+}
+
+// The extension prompt embeds the persisted MacroGoal as JSON right next to the
+// output contract. If the contract asked for different key names the model
+// would echo the ones it just saw, and the validator would read a zero target —
+// so every persisted key must be the key the contract asks for.
+func TestMacroOutputContractMatchesPersistedJSONTags(t *testing.T) {
+	goal, err := json.Marshal(MacroGoal{})
+	if err != nil {
+		t.Fatalf("marshal goal: %v", err)
+	}
+	week, err := json.Marshal(MacroWeek{})
+	if err != nil {
+		t.Fatalf("marshal week: %v", err)
+	}
+	for _, key := range []string{
+		"primary_focus", "target_hm_time_s", "anchor_race_id", "benchmark",
+		"week_start", "phase", "mesocycle", "load_level", "target_km",
+		"target_sessions", "key_sessions", "race_id",
+	} {
+		if !strings.Contains(string(goal), `"`+key+`"`) && !strings.Contains(string(week), `"`+key+`"`) {
+			t.Fatalf("test key %q is not a persisted JSON tag — fix the test", key)
+		}
+		if !strings.Contains(macroOutputContract, `"`+key+`"`) {
+			t.Errorf("output contract does not use the persisted key %q", key)
+		}
+	}
+}
+
+func TestStripGoalRaceSection(t *testing.T) {
+	cases := []struct {
+		name  string
+		block string
+		want  string
+	}{
+		{"empty", "", ""},
+		{"header only", "User Profile:\nGoal Race: 2026-05-01\n", ""},
+		{"keeps body", "User Profile:\n- Max HR: 190 bpm\nGoal Race:\n- 2026-05-01\n", "User Profile:\n- Max HR: 190 bpm\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := stripGoalRaceSection(tc.block); got != tc.want {
+				t.Errorf("stripGoalRaceSection(%q) = %q, want %q", tc.block, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWeeksAhead(t *testing.T) {
+	now := time.Now().UTC()
+	cases := []struct {
+		name  string
+		start time.Time
+		want  int
+	}{
+		{"past", now.AddDate(0, 0, -30), 0},
+		{"today", now, 0},
+		{"twenty days out", now.AddDate(0, 0, 20), 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := weeksAhead(tc.start); got != tc.want {
+				t.Errorf("weeksAhead(%s) = %d, want %d", tc.start.Format(dateLayout), got, tc.want)
+			}
+		})
 	}
 }

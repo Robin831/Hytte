@@ -67,7 +67,7 @@ You are planning a ` + macroBlockWeeksStr + `-week training block, not a single 
 
 ### Load rules
 - Weekly volume increases by no more than +10% over the previous week. The only exception is the week directly after a deload, which may return to the pre-deload level.
-- At most ONE hard (above-threshold) session per week, and in most weeks per 1-2 weeks — never two hard sessions in the same week.
+- At most ONE hard (above-threshold) session per week, and in most weeks none — aim for one hard session every 1-2 weeks. Never two hard sessions in the same week.
 - Threshold work is the steady backbone across every phase; it is the volume of threshold work that changes between phases, not whether it is present.
 - Never plan a week above the athlete's weekly distance cap, and never plan more sessions than the athlete's available training days.
 
@@ -94,7 +94,7 @@ Return ONLY a single JSON object. No markdown, no explanation, no code fences.
   "goal": {
     "primary_focus": string — short label for what the block develops, e.g. "half-marathon development"
     "statement": string — one sentence stating what the athlete is training for
-    "target_hm_time": integer — target half-marathon time in SECONDS
+    "target_hm_time_s": integer — target half-marathon time in SECONDS
     "benchmark": string — the race or session that tests the goal at the end of the block
     "anchor_race_id": integer or null — id of the A-priority race the block is built around; null when the block has no A-race
     "rationale": string — 2-3 sentences justifying the target from the data given
@@ -114,9 +114,9 @@ Return ONLY a single JSON object. No markdown, no explanation, no code fences.
       "seq": integer — 1-based position in the block, 1..` + macroBlockWeeksStr + `
       "phase": string — one of "base", "build", "peak", "taper", "race", "recovery"
       "mesocycle": string — the "name" of the mesocycle this week belongs to
-      "load": string — one of "deload", "normal", "build", "peak", "taper"
+      "load_level": string — one of "deload", "normal", "build", "peak", "taper"
       "target_km": number — planned running distance for the week, in km
-      "sessions": integer — planned number of sessions in the week
+      "target_sessions": integer — planned number of sessions in the week
       "key_sessions": [
         {
           "type": string — e.g. "threshold", "long_run", "hard", "easy", "race"
@@ -280,7 +280,9 @@ func stripGoalRaceSection(block string) string {
 		block = block[:idx]
 	}
 	block = strings.TrimRight(block, "\n")
-	if block == "" {
+	// An athlete with only goal_race_* preferences and no HR/zone data leaves
+	// nothing but the header behind — treat that as no profile at all.
+	if block == "" || block == "User Profile:" {
 		return ""
 	}
 	return block + "\n"
@@ -395,6 +397,17 @@ func renderMacroConstraints(prefs map[string]string) string {
 	return sb.String()
 }
 
+// weeksAhead returns how far start lies in the future, in weeks rounded up with
+// a week of slack, or 0 when start is today or in the past. It is only used to
+// widen a query page, so erring high is free.
+func weeksAhead(start time.Time) int {
+	gap := start.Sub(time.Now().UTC())
+	if gap <= 0 {
+		return 0
+	}
+	return int(gap/(7*24*time.Hour)) + 1
+}
+
 // macroHistoryRow is one week of the training-history table: measured volume
 // from the workout log merged with plan adherence and intensity split from the
 // stride plan that covered the same week.
@@ -404,6 +417,7 @@ type macroHistoryRow struct {
 	seconds      int
 	workouts     int
 	avgHR        float64
+	hrWeight     int
 	hasVolume    bool
 	planned      int
 	completed    int
@@ -424,7 +438,11 @@ func buildMacroHistoryTable(db *sql.DB, userID int64, start time.Time) (string, 
 	if err != nil {
 		return "", fmt.Errorf("load weekly summaries: %w", err)
 	}
-	weeks, _, _, err := GetPlanHistory(db, userID, macroHistoryWeeks, 0)
+	// GetPlanHistory pages back from today, but the window we render is the
+	// macroHistoryWeeks weeks before start. When start is in the future (the
+	// normal case in extension mode) the oldest weeks of the window fall off
+	// the page unless the limit covers the gap as well.
+	weeks, _, _, err := GetPlanHistory(db, userID, macroHistoryWeeks+weeksAhead(start), 0)
 	if err != nil {
 		return "", fmt.Errorf("load plan history: %w", err)
 	}
@@ -438,11 +456,18 @@ func buildMacroHistoryTable(db *sql.DB, userID int64, start time.Time) (string, 
 	}
 
 	for _, s := range summaries {
+		// WeeklySummaries groups by ISO-ish year-week but derives week_start as
+		// the Monday, so a week straddling New Year yields two rows sharing one
+		// week_start. Accumulate rather than assign, or the second row would
+		// silently drop the first one's volume.
 		if r, ok := rows[s.WeekStart]; ok {
-			r.km = s.TotalDistance / 1000
-			r.seconds = s.TotalDuration
-			r.workouts = s.WorkoutCount
-			r.avgHR = s.AvgHeartRate
+			r.km += s.TotalDistance / 1000
+			r.seconds += s.TotalDuration
+			r.workouts += s.WorkoutCount
+			if s.AvgHeartRate > 0 && s.WorkoutCount > 0 {
+				r.avgHR = (r.avgHR*float64(r.hrWeight) + s.AvgHeartRate*float64(s.WorkoutCount)) / float64(r.hrWeight+s.WorkoutCount)
+				r.hrWeight += s.WorkoutCount
+			}
 			r.hasVolume = true
 		}
 	}
@@ -459,9 +484,10 @@ func buildMacroHistoryTable(db *sql.DB, userID int64, start time.Time) (string, 
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "## Training History (last %d weeks)\n", macroHistoryWeeks)
+	sb.WriteString("km/Hours/Sessions are logged volume across ALL sports, not running only — treat them as an upper bound on running volume.\n")
 	sb.WriteString("Planned/Done counts sessions from that week's Stride plan; easy/threshold/hard are minutes in the matching HR zones.\n\n")
-	sb.WriteString("| Week | km | Hours | Sessions | Avg HR | Planned/Done | Easy/Thr/Hard min |\n")
-	sb.WriteString("|------|-----|-------|----------|--------|--------------|-------------------|\n")
+	sb.WriteString("| Week | km (all sports) | Hours (all sports) | Sessions (all sports) | Avg HR | Planned/Done | Easy/Thr/Hard min |\n")
+	sb.WriteString("|------|-----------------|--------------------|-----------------------|--------|--------------|-------------------|\n")
 	for _, week := range order {
 		r := rows[week]
 		if !r.hasVolume && !r.hasPlan {
