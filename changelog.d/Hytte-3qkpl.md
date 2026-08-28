@@ -1,0 +1,3 @@
+category: Changed
+- **Regenerate no longer stacks up plan generations** - Asking Stride to regenerate a plan while a generation for the same athlete is already running now returns a conflict straight away instead of waiting behind it, so one athlete can never spend two Claude calls on the same week. (Hytte-3qkpl)
+- **Groundwork for the automatic weekly run** - Stride can now perform a full Monday run in one call: refresh the race prediction, top up the 26-week macro horizon (a fresh block when there is none, an extension block when fewer than 8 weeks remain), generate the coming week's plan and send the push. The Monday cron still only generates the weekly plan — wiring it to this run is a separate change. (Hytte-3qkpl)

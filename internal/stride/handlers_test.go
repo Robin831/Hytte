@@ -1031,6 +1031,23 @@ func TestGeneratePlanHandler_CurrentWeek(t *testing.T) {
 	}
 }
 
+// A generation already running for this athlete (the weekly run holds the same
+// lock) must be answered immediately rather than queued behind a multi-minute
+// Claude call the client will never wait for.
+func TestGeneratePlanHandler_GenerationInFlight(t *testing.T) {
+	db := extendedTestDB(t)
+	release := LockUser(1)
+	defer release()
+
+	req := withUser(httptest.NewRequest("POST", "/api/stride/plans/generate", nil), 1)
+	rec := httptest.NewRecorder()
+	GeneratePlanHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestGeneratePlanHandler_InvalidWeek(t *testing.T) {
 	db := extendedTestDB(t)
 
