@@ -76,8 +76,9 @@ func userMutex(userID int64) *sync.Mutex {
 }
 
 // generateMacroPlanFunc is the seam tests replace so the scheduling decisions
-// in EnsureMacroPlan can be exercised without a Claude call. Production always
-// runs GenerateMacroPlan.
+// in EnsureMacroPlan — and the hand-triggered generations in
+// GenerateMacroPlanHandler / ExtendMacroPlanHandler — can be exercised without a
+// Claude call. Production always runs GenerateMacroPlan.
 var generateMacroPlanFunc = GenerateMacroPlan
 
 // weeksRemaining returns how many whole weeks separate from and endWeek. A
