@@ -338,7 +338,16 @@ func main() {
 				}
 				rows.Close()
 
+				processed := 0
 				for _, userID := range userIDs {
+					// Stop the batch on shutdown. RunWeekly notifies the athlete
+					// when a run fails, so calling it with an already-cancelled
+					// context would push a spurious "generation failed" to every
+					// remaining user instead of simply leaving them unprocessed.
+					if notifCtx.Err() != nil {
+						log.Printf("stride: shutdown during weekly run, %d of %d users processed", processed, len(userIDs))
+						return
+					}
 					// notifCtx is passed straight through: RunWeekly bounds each
 					// of its own Claude calls (300s for the plan, and the macro
 					// step applies its own), so an outer per-user deadline here
@@ -349,6 +358,7 @@ func main() {
 					if err := stride.RunWeekly(notifCtx, database, userID); err != nil {
 						log.Printf("stride: weekly run for user %d: %v", userID, err)
 					}
+					processed++
 				}
 				log.Printf("stride: weekly plan generation complete (%d users)", len(userIDs))
 			}
