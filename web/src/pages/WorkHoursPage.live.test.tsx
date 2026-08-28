@@ -142,9 +142,15 @@ describe('WorkHoursPage live punch estimate UI', () => {
     const { unmount } = renderPage()
     await waitFor(() => expect(screen.getByText('If punched out now')).toBeInTheDocument())
 
-    // Verify the component registered a 60-second tick interval
-    const tickCalls = intervalSpy.mock.calls.filter(([, ms]) => ms === 60_000)
-    expect(tickCalls.length).toBeGreaterThan(0)
+    // Verify the component registered a 60-second tick interval. The
+    // registration happens in a passive effect, which React flushes in a
+    // MessageChannel task; RTL's waitFor only drains a single setTimeout(0)
+    // before returning, so on a loaded machine the effect can still be
+    // pending here. Poll for it rather than reading the spy once.
+    await waitFor(() => {
+      const tickCalls = intervalSpy.mock.calls.filter(([, ms]) => ms === 60_000)
+      expect(tickCalls.length).toBeGreaterThan(0)
+    })
     unmount()
     intervalSpy.mockRestore()
   })
