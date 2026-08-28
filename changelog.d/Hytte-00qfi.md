@@ -1,0 +1,2 @@
+category: Changed
+- **Weekly Stride cron now runs the shared weekly pipeline** - The Monday 02:00 Europe/Oslo job delegates each athlete's run to `stride.RunWeekly` instead of inlining its own steps, so the scheduled run gets the macro-plan horizon check, per-user locking and the failure notifications that the manual trigger already had. One athlete's failed run still never aborts the batch, and a server shutdown mid-batch stops the loop instead of pushing a "generation failed" notification to every remaining athlete. (Hytte-00qfi)
