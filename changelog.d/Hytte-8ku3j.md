@@ -1,0 +1,2 @@
+category: Changed
+- **Package updates** - Bumped Go modules (google.golang.org/api, modernc.org/sqlite, github.com/go-chi/chi/v5) and npm packages (lucide-react, i18next, react-i18next, vite, vitest, eslint, typescript-eslint, eslint-plugin-react-refresh, happy-dom, terser, @types/node, @types/react-dom, @testing-library/react, @vitejs/plugin-react) to their latest patch/minor releases. The TypeScript 7 major upgrade is still held back because typescript-eslint 8.68.0 requires `typescript <6.1.0`. (Hytte-8ku3j)
