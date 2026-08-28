@@ -643,25 +643,110 @@ func TestRunWeeklyBothStepsFailPushesMacroFailure(t *testing.T) {
 	}
 }
 
+// The reachable configuration state, straight through the real code: the cron
+// selects on stride_enabled alone, so an athlete with Stride on and Claude off
+// runs every Monday. Both the macro step and the plan step answer
+// ErrClaudeNotEnabled before any Claude call, and the run must stay silent —
+// "open Stride to retry" would send them after a generation that cannot succeed
+// until they change a setting, every Monday, forever.
+func TestRunWeeklyClaudeDisabledPushesNothing(t *testing.T) {
+	db := extendedTestDB(t)
+	if _, err := db.Exec("INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'stride_enabled', 'true')"); err != nil {
+		t.Fatalf("enable Stride: %v", err)
+	}
+	seams := stubWeeklyRunSeams(t, nil)
+
+	// No macro stub and no mocked plan response: both steps must bail on the
+	// disabled config before they reach Claude.
+	origPrompt := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		t.Error("Claude was called for an athlete with claude_enabled off")
+		return "", errors.New("unexpected Claude call")
+	}
+	t.Cleanup(func() { runPromptFunc = origPrompt })
+
+	if err := RunWeekly(context.Background(), db, 1); err != nil {
+		t.Fatalf("RunWeekly = %v, want nil: a disabled integration is not a failed run", err)
+	}
+
+	if len(seams.pushes) != 0 {
+		t.Errorf("notifications = %+v, want none", seams.pushes)
+	}
+}
+
 // The extension decision must not hinge on both operands being exact UTC
-// midnights. Truncating the difference used to drop a whole week for any skew —
-// an hour short of eight weeks read as seven and bought an extension block a
-// Monday early; an hour long skipped the extension for a week.
-func TestWeeksRemainingRoundsSkewedOperands(t *testing.T) {
+// midnights. Neither operand can carry sub-day skew today — parseWeekDate and
+// parseMondayWeek both parse a YYYY-MM-DD string in UTC — so this pins the
+// property, not a reachable input: a caller that ever hands weeksRemaining a
+// local-time or DST-shifted midnight must not lose a whole week to truncation.
+func TestWeeksRemainingIgnoresSubDaySkew(t *testing.T) {
 	from := mustMonday(t, "2026-08-31")
 	end := mustMonday(t, mondayAfter("2026-08-31", MacroExtensionLeadWeeks))
 
 	for name, skew := range map[string]time.Duration{
-		"an hour short":     -time.Hour,
-		"an hour long":      time.Hour,
-		"a DST day short":   -23 * time.Hour,
-		"a DST day long":    25 * time.Hour,
-		"non-UTC midnights": -2 * time.Hour,
+		"an hour short":       -time.Hour,
+		"an hour long":        time.Hour,
+		"a non-UTC midnight":  -2 * time.Hour,
+		"most of a day short": -11 * time.Hour,
+		"most of a day long":  11 * time.Hour,
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got := weeksRemaining(from, end.Add(skew)); got != MacroExtensionLeadWeeks {
 				t.Errorf("weeksRemaining with %s skew = %d, want %d", name, got, MacroExtensionLeadWeeks)
 			}
 		})
+	}
+}
+
+// The skew production *can* produce: nothing validates that a stored end_week is
+// a Monday, so a block can end mid-week. Those trailing days are a partially
+// planned final week, not a whole remaining one, so they are floored away —
+// including past the 3-to-4-day mark, where rounding to the nearest week would
+// flip the count up and defer the extension by a Monday.
+func TestWeeksRemainingFloorsNonMondayEndWeek(t *testing.T) {
+	from := mustMonday(t, "2026-08-31")
+	end := mustMonday(t, mondayAfter("2026-08-31", MacroExtensionLeadWeeks))
+
+	for days := 1; days <= 6; days++ {
+		t.Run(fmt.Sprintf("end week +%dd", days), func(t *testing.T) {
+			if got := weeksRemaining(from, end.AddDate(0, 0, days)); got != MacroExtensionLeadWeeks {
+				t.Errorf("weeksRemaining with a +%dd end week = %d, want %d", days, got, MacroExtensionLeadWeeks)
+			}
+		})
+	}
+}
+
+// The same day-level skew at the level that spends money: a block whose stored
+// end_week is four days past the Monday still has MacroExtensionLeadWeeks weeks
+// remaining, so the extension is generated on this Monday rather than deferred
+// to the next one. The extension starts on the Monday after the block's final
+// week, not four days into it.
+func TestEnsureMacroPlanExtendsBlockWithNonMondayEndWeek(t *testing.T) {
+	db := setupTestDB(t)
+	calls := stubMacroGenerate(t, nil)
+
+	const nextMonday = "2026-08-31"
+	// A block ending exactly MacroExtensionLeadWeeks weeks out sits on the
+	// boundary; the four extra days are the anomaly under test.
+	id := insertMacroPlanSpan(t, db, 1, nextMonday, MacroExtensionLeadWeeks+1, MacroPlanStatusActive)
+	lastMonday := mondayAfter(nextMonday, MacroExtensionLeadWeeks)
+	midWeekEnd := mustMonday(t, lastMonday).AddDate(0, 0, 4).Format(dateLayout)
+	if _, err := db.Exec("UPDATE stride_macro_plans SET end_week = ? WHERE id = ?", midWeekEnd, id); err != nil {
+		t.Fatalf("set mid-week end_week: %v", err)
+	}
+
+	if err := EnsureMacroPlan(context.Background(), db, 1, mustMonday(t, nextMonday)); err != nil {
+		t.Fatalf("EnsureMacroPlan: %v", err)
+	}
+
+	if len(*calls) != 1 {
+		t.Fatalf("generate calls = %d, want 1 — the extension is due this Monday", len(*calls))
+	}
+	got := (*calls)[0]
+	if want := mondayAfter(nextMonday, MacroExtensionLeadWeeks+1); got.startWeek != want {
+		t.Errorf("extension start week = %q, want %q", got.startWeek, want)
+	}
+	if got.mode != MacroModeExtension {
+		t.Errorf("mode = %q, want %q", got.mode, MacroModeExtension)
 	}
 }

@@ -183,10 +183,12 @@ var (
 // is non-reentrant and taken here, at the entry point: nothing RunWeekly calls
 // may take it again (see LockUser).
 //
-// Only the weekly plan is allowed to fail the run. A failed prediction refresh
-// leaves last week's snapshot in place, and a failed macro step leaves the
-// existing block alone — that one is surfaced to the athlete through the push
-// body instead, because it is the step that needs a human to press Regenerate.
+// Only a genuinely failed weekly plan is allowed to fail the run. A failed
+// prediction refresh leaves last week's snapshot in place, and a failed macro
+// step leaves the existing block alone — that one is surfaced to the athlete
+// through the push body instead, because it is the step that needs a human to
+// press Regenerate. A run that finds Stride or Claude switched off neither
+// pushes nor fails: see configDisabled.
 // Nothing here retries: with MacroExtensionLeadWeeks weeks of runway, the next
 // Monday is a cheaper retry than a loop inside this one.
 func RunWeekly(ctx context.Context, db *sql.DB, userID int64) error {
@@ -207,8 +209,8 @@ func RunWeekly(ctx context.Context, db *sql.DB, userID int64) error {
 	// so the coach prompt sees this week's honest fitness estimate. Both arms are
 	// best-effort and leave last week's snapshot in place: a config that will not
 	// load means there is no Claude to refresh against, so the refresh is skipped
-	// rather than attempted, and the plan step reports that same condition when
-	// it hits it.
+	// rather than attempted, and steps 2 and 3 read that same condition through
+	// configDisabled when they hit it.
 	predCtx, predCancel := context.WithTimeout(ctx, weeklyPredictionTimeout)
 	if cfg, cfgErr := training.LoadClaudeConfig(db, userID); cfgErr != nil {
 		log.Printf("stride: load Claude config for prediction refresh, user %d: %v", userID, cfgErr)
@@ -218,15 +220,12 @@ func RunWeekly(ctx context.Context, db *sql.DB, userID int64) error {
 	predCancel()
 
 	// Step 2 — the long-horizon block. GenerateMacroPlan is transactional, so a
-	// failure here leaves the athlete's existing block untouched.
+	// failure here leaves the athlete's existing block untouched. A disabled
+	// Stride or Claude is a configuration state, not a failed generation.
 	macroFailed := false
 	if err := EnsureMacroPlan(ctx, db, userID, nextMonday); err != nil {
 		log.Printf("stride: ensure macro plan for user %d week %s: %v", userID, weekStart, err)
-		// "Open Stride and retry" is only honest advice when retrying could
-		// work. A disabled Stride or a disabled Claude integration is a
-		// configuration state, not a failed generation: the athlete pressing
-		// Regenerate would hit the same wall, so it is logged and left alone.
-		macroFailed = !errors.Is(err, ErrStrideNotEnabled) && !errors.Is(err, training.ErrClaudeNotEnabled)
+		macroFailed = !configDisabled(err)
 	}
 
 	// Step 3 — the 7-day plan. Still the legacy whole-week generator; this
@@ -239,8 +238,14 @@ func RunWeekly(ctx context.Context, db *sql.DB, userID int64) error {
 	if planErr != nil {
 		log.Printf("stride: generate plan for user %d: %v", userID, planErr)
 	}
+	// The same reading as step 2: GeneratePlan hands back
+	// training.ErrClaudeNotEnabled verbatim when claude_enabled is not true, and
+	// the cron picks the athlete up on stride_enabled alone — so this is the
+	// reachable combination, every Monday, until they change a setting. It is
+	// not a failed generation and must not be reported as one.
+	planFailed := planErr != nil && !configDisabled(planErr)
 
-	// Step 4 — exactly one notification per run, covering all four outcomes.
+	// Step 4 — at most one notification per run, covering every outcome.
 	// Every failure the athlete can act on says so: a silent run would have them
 	// open Stride on Monday to a stale week with no explanation. The macro
 	// failure owns the message when both steps failed, because a missing
@@ -251,8 +256,14 @@ func RunWeekly(ctx context.Context, db *sql.DB, userID int64) error {
 		body, tag = macroFailedPlanReadyBody, macroFailedTag
 	case macroFailed:
 		body, tag = macroFailedBody, macroFailedTag
-	case planErr != nil:
+	case planFailed:
 		body, tag = weeklyPlanFailedBody, weeklyPlanTag
+	case planErr != nil:
+		// The one silent run. Nothing generated, so "your plan is ready" would
+		// be a lie, and nothing the athlete can do inside Stride would change
+		// the outcome, so "open Stride to retry" would be advice that cannot
+		// work. The log line above is the whole story.
+		return nil
 	}
 	if err := sendPushFunc(db, userID, push.Notification{
 		Title: "Stride",
@@ -262,10 +273,19 @@ func RunWeekly(ctx context.Context, db *sql.DB, userID int64) error {
 		log.Printf("stride: push %q notification for user %d: %v", tag, userID, err)
 	}
 
-	if planErr != nil {
+	if planFailed {
 		return fmt.Errorf("generate weekly plan: %w", planErr)
 	}
 	return nil
+}
+
+// configDisabled reports whether err is a configuration state rather than a
+// failed generation: the athlete has Stride or the Claude integration switched
+// off. "Open Stride and retry" is only honest advice when retrying could work,
+// and pressing Regenerate would hit the same wall, so callers log these and
+// stay quiet instead of pushing or failing the run.
+func configDisabled(err error) bool {
+	return errors.Is(err, ErrStrideNotEnabled) || errors.Is(err, training.ErrClaudeNotEnabled)
 }
 
 // scanNote scans a note row into a Note struct, handling nullable consumed_at/consumed_by

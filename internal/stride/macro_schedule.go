@@ -84,14 +84,21 @@ var generateMacroPlanFunc = GenerateMacroPlan
 // block whose last week *is* from has zero weeks remaining; a block that
 // already ended returns a negative number.
 //
-// The difference is rounded to the nearest week rather than truncated, so the
-// answer does not depend on both arguments being exact UTC midnights. Truncation
-// would silently lose a whole week the moment either side carried a non-UTC
-// location, a DST offset or a non-Monday stored end_week — a gap of eight weeks
-// minus an hour would read as seven and generate an extension block a Claude
-// call early, and an hour the other way would skip the extension entirely.
+// Sub-day skew is rounded away before the division, so the answer does not
+// depend on both arguments being exact UTC midnights. Both operands come from
+// parseWeekDate/parseMondayWeek and so are UTC midnights today; the rounding
+// is there so a caller that ever hands this a local-time or DST-shifted
+// midnight does not silently lose a whole week to truncation.
+//
+// Whole days are then floored rather than rounded, because day-level skew *is*
+// reachable: nothing in macro_store validates that a stored end_week is a
+// Monday (see NormaliseMacroStartWeek), and a block ending mid-week has that
+// final week partially planned, not wholly remaining. Rounding four days up
+// would overstate the horizon and skip the extension for a Monday; flooring
+// understates it, which at worst buys the extension block one Monday early.
 func weeksRemaining(from, endWeek time.Time) int {
-	return int(math.Round(endWeek.Sub(from).Hours() / (7 * 24)))
+	days := math.Round(endWeek.Sub(from).Hours() / 24)
+	return int(math.Floor(days / 7))
 }
 
 // EnsureMacroPlan makes sure the athlete has a macro block covering nextMonday
