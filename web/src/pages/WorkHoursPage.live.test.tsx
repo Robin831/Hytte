@@ -140,13 +140,20 @@ describe('WorkHoursPage live punch estimate UI', () => {
       '/api/workhours/punch-session': { session: { start_time: '08:00', date: '2026-04-17' } },
     }))
     const { unmount } = renderPage()
-    await waitFor(() => expect(screen.getByText('If punched out now')).toBeInTheDocument())
+    try {
+      await waitFor(() => expect(screen.getByText('If punched out now')).toBeInTheDocument())
 
-    // Verify the component registered a 60-second tick interval
-    const tickCalls = intervalSpy.mock.calls.filter(([, ms]) => ms === 60_000)
-    expect(tickCalls.length).toBeGreaterThan(0)
-    unmount()
-    intervalSpy.mockRestore()
+      // The interval is registered in a passive effect that may not have
+      // flushed when the first waitFor resolves, so poll for it rather than
+      // reading the spy once.
+      await waitFor(() => {
+        const tickCalls = intervalSpy.mock.calls.filter(([, ms]) => ms === 60_000)
+        expect(tickCalls.length).toBeGreaterThan(0)
+      })
+    } finally {
+      unmount()
+      intervalSpy.mockRestore()
+    }
   })
 })
 
