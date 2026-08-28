@@ -38,10 +38,31 @@ var userLocks sync.Map // userID int64 -> *sync.Mutex
 // It is exported because the cron and the HTTP handlers have to take the *same*
 // lock — a guard only the cron respects is no guard at all.
 func LockUser(userID int64) func() {
-	v, _ := userLocks.LoadOrStore(userID, &sync.Mutex{})
-	mu := v.(*sync.Mutex)
+	mu := userMutex(userID)
 	mu.Lock()
 	return mu.Unlock
+}
+
+// TryLockUser takes the athlete's lock only if it is free, returning the
+// release function and true, or nil and false when a generation for that
+// athlete is already in flight.
+//
+// Request-driven callers use this instead of LockUser. A cron run holds the
+// lock for minutes — GenerateMacroPlan alone budgets 300s — and sync.Mutex.Lock
+// cannot observe r.Context(), so a blocking handler would park a goroutine long
+// after the client hung up and then answer nobody. Failing fast lets the caller
+// answer 409 and let the athlete retry.
+func TryLockUser(userID int64) (func(), bool) {
+	mu := userMutex(userID)
+	if !mu.TryLock() {
+		return nil, false
+	}
+	return mu.Unlock, true
+}
+
+func userMutex(userID int64) *sync.Mutex {
+	v, _ := userLocks.LoadOrStore(userID, &sync.Mutex{})
+	return v.(*sync.Mutex)
 }
 
 // generateMacroPlanFunc is the seam tests replace so the scheduling decisions
@@ -93,6 +114,12 @@ func EnsureMacroPlan(ctx context.Context, db *sql.DB, userID int64, nextMonday t
 		return fmt.Errorf("load active macro plan: %w", err)
 	}
 	if active == nil {
+		// Nothing covers the week the athlete is about to train, so a full
+		// block starts here. If an active block happens to start *later* — a
+		// horizon gap, only reachable if a block was retired mid-flight — the
+		// new one runs through it and GenerateMacroPlan retires that future
+		// block. That is the wanted outcome: a plan the athlete can follow
+		// from Monday beats an untouched block that starts weeks from now.
 		return generateMacroBlock(ctx, db, userID, start, MacroModeScheduled)
 	}
 

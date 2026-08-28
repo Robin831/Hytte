@@ -160,8 +160,8 @@ var (
 // generate the coming week's plan, and tell the athlete about it.
 //
 // The whole run holds the athlete's LockUser lock, so a manual trigger from the
-// HTTP endpoints can never interleave with the cron and spend two Claude calls
-// on the same week.
+// HTTP endpoints can never interleave with it and spend two Claude calls on the
+// same week — that trigger sees the lock held and answers 409 instead.
 //
 // Only the weekly plan is allowed to fail the run. A failed prediction refresh
 // leaves last week's snapshot in place, and a failed macro step leaves the
@@ -196,7 +196,11 @@ func RunWeekly(ctx context.Context, db *sql.DB, userID int64) error {
 	macroFailed := false
 	if err := EnsureMacroPlan(ctx, db, userID, nextMonday); err != nil {
 		log.Printf("stride: ensure macro plan for user %d week %s: %v", userID, weekStart, err)
-		macroFailed = true
+		// "Open Stride and retry" is only honest advice when retrying could
+		// work. A disabled Stride or a disabled Claude integration is a
+		// configuration state, not a failed generation: the athlete pressing
+		// Regenerate would hit the same wall, so it is logged and left alone.
+		macroFailed = !errors.Is(err, ErrStrideNotEnabled) && !errors.Is(err, training.ErrClaudeNotEnabled)
 	}
 
 	// Step 3 — the 7-day plan. Still the legacy whole-week generator; this

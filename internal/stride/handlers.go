@@ -730,11 +730,17 @@ func GeneratePlanHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Same lock the weekly cron run takes: two generations for one athlete
-		// spend two Claude calls and race on which answer ends up stored, so a
-		// manual Regenerate waits for a run already in flight rather than
-		// running beside it.
-		defer LockUser(user.ID)()
+		// Same lock the weekly run takes: two generations for one athlete spend
+		// two Claude calls and race on which answer ends up stored. The
+		// non-blocking form, because the holder can be a multi-minute run and
+		// this goroutine would otherwise stay parked long after the client gave
+		// up — the athlete gets a 409 and can press Regenerate again.
+		release, ok := TryLockUser(user.ID)
+		if !ok {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "a plan generation is already running — try again in a moment"})
+			return
+		}
+		defer release()
 
 		if err := GeneratePlan(r.Context(), db, user.ID, weekMode); err != nil {
 			if errors.Is(err, training.ErrClaudeNotEnabled) {

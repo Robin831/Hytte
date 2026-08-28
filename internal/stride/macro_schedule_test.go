@@ -419,3 +419,57 @@ func TestRunWeeklyWeeklyFailureReturnsErrorAndSendsNoPush(t *testing.T) {
 		t.Errorf("notifications = %+v, want none when the week could not be planned", *sent)
 	}
 }
+
+// A request-driven caller must not park behind a multi-minute run: TryLockUser
+// reports the lock as taken instead of waiting for it, and hands it over once
+// the holder is done.
+func TestTryLockUserFailsWhileHeldAndSucceedsAfter(t *testing.T) {
+	release := LockUser(9004)
+
+	if _, ok := TryLockUser(9004); ok {
+		t.Fatal("TryLockUser succeeded while the lock was held")
+	}
+	if other, ok := TryLockUser(9005); !ok {
+		t.Error("TryLockUser blocked on an unrelated user")
+	} else {
+		other()
+	}
+
+	release()
+
+	got, ok := TryLockUser(9004)
+	if !ok {
+		t.Fatal("TryLockUser failed after the lock was released")
+	}
+	got()
+}
+
+// A macro step that fails because the athlete never enabled Stride or Claude is
+// a configuration state, not a generation failure — pushing "open Stride and
+// retry" would send them after something they cannot fix from there.
+func TestRunWeeklyNotEnabledMacroErrorSkipsFailurePush(t *testing.T) {
+	for name, macroErr := range map[string]error{
+		"stride not enabled": ErrStrideNotEnabled,
+		"claude not enabled": training.ErrClaudeNotEnabled,
+	} {
+		t.Run(name, func(t *testing.T) {
+			db := extendedTestDB(t)
+			enableStride(t, db, 1)
+			weekStart, _ := upcomingWeek()
+			mockClaude(t, weekStart)
+			stubMacroGenerate(t, macroErr)
+			sent := stubWeeklyRunSeams(t)
+
+			if err := RunWeekly(context.Background(), db, 1); err != nil {
+				t.Fatalf("RunWeekly: %v", err)
+			}
+
+			if len(*sent) != 1 {
+				t.Fatalf("notifications = %d, want 1 (%+v)", len(*sent), *sent)
+			}
+			if (*sent)[0].Body != weeklyPlanReadyBody {
+				t.Errorf("push body = %q, want the ordinary %q", (*sent)[0].Body, weeklyPlanReadyBody)
+			}
+		})
+	}
+}
