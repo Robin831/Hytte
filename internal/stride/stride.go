@@ -88,13 +88,11 @@ func ValidateNoteScope(scope string) error {
 	}
 }
 
-// NextStrideRun returns the next time the weekly Stride cron should fire
-// (Mondays at 02:00 in the given location) — the one Stride schedule that is
-// left, since the nightly evaluation cron was removed in Hytte-tdgd and
-// evaluations are now driven by workout ingestion instead. The hour is kept at
-// 02:00 so the run lands after Sunday's late uploads have been evaluated
-// against the outgoing plan. If now is Monday before 02:00, that same day is
-// returned; otherwise the following Monday.
+// NextStrideRun returns the next time the weekly Stride cron should fire:
+// Mondays at 02:00 in the given location. The hour is 02:00 so the run lands
+// after Sunday's late uploads have been ingested and evaluated against the
+// outgoing plan. If now is Monday before 02:00, that same day is returned;
+// otherwise the following Monday.
 func NextStrideRun(now time.Time, loc *time.Location) time.Time {
 	if loc == nil {
 		loc = time.UTC
@@ -112,7 +110,7 @@ func NextStrideRun(now time.Time, loc *time.Location) time.Time {
 	return time.Date(now.Year(), now.Month(), now.Day()+daysUntilMonday, 2, 0, 0, 0, loc)
 }
 
-// Timeouts for the two Claude-backed steps of a weekly run that bound
+// Timeouts for the two Claude-backed steps of a weekly run that do not bound
 // themselves. The macro step is not listed: GenerateMacroPlan applies its own
 // macroClaudeTimeout (300s), and wrapping a shorter one around it here would
 // kill a block generation that was still inside its own budget.
@@ -120,16 +118,36 @@ const (
 	// weeklyPredictionTimeout bounds the race-prediction refresh. It is
 	// advisory input to the plan, so a slow refresh must not eat the run.
 	weeklyPredictionTimeout = 3 * time.Minute
-	// weeklyPlanTimeout bounds the 7-day plan generation.
-	weeklyPlanTimeout = 90 * time.Second
+	// weeklyPlanTimeout bounds the 7-day plan generation. GeneratePlan applies
+	// no deadline of its own — it hands the context straight to the Claude
+	// call — so this value *is* that call's budget, and it matches the budget
+	// every other Claude call in the package gets (evalClaudeTimeout,
+	// macroClaudeTimeout). Anything shorter would cancel a generation that was
+	// merely slow, on a path that by design never retries.
+	weeklyPlanTimeout = 300 * time.Second
 )
 
-// Push bodies for the weekly run. The macro failure text is deliberately an
-// instruction rather than an apology: nothing retries automatically, so the
-// athlete opening Stride is what actually fixes it.
+// Push bodies for the weekly run — one per outcome, because every run ends in
+// exactly one notification. The failure texts are deliberately instructions
+// rather than apologies: nothing retries automatically, so the athlete opening
+// Stride is what actually fixes it.
 const (
 	weeklyPlanReadyBody = "Stride has your plan for next week"
-	macroFailedBody     = "Stride could not build your long-term plan — open Stride to retry"
+	// weeklyPlanFailedBody covers the likeliest bad run: the horizon is fine
+	// but next week is not planned. Silence here would leave the athlete
+	// opening Stride on Monday to last week's plan with no explanation.
+	weeklyPlanFailedBody = "Stride could not build next week's plan — open Stride to retry"
+	macroFailedBody      = "Stride could not build your long-term plan — open Stride to retry"
+	// macroFailedPlanReadyBody is the mixed run. The macro failure is still the
+	// thing to act on, but saying only that would imply the week was lost too.
+	macroFailedPlanReadyBody = "Next week's plan is ready, but Stride could not build your long-term plan — open Stride to retry"
+)
+
+// Push tags for the weekly run. Distinct tags so a macro failure never
+// collapses onto the ordinary weekly-plan notification on the athlete's device.
+const (
+	weeklyPlanTag  = "stride-weekly-plan"
+	macroFailedTag = "stride-macro-failed"
 )
 
 // weeklyRunHTTPClient is the client the weekly push notifications go out on.
@@ -161,7 +179,9 @@ var (
 //
 // The whole run holds the athlete's LockUser lock, so a manual trigger from the
 // HTTP endpoints can never interleave with it and spend two Claude calls on the
-// same week — that trigger sees the lock held and answers 409 instead.
+// same week — that trigger sees the lock held and answers 409 instead. The lock
+// is non-reentrant and taken here, at the entry point: nothing RunWeekly calls
+// may take it again (see LockUser).
 //
 // Only the weekly plan is allowed to fail the run. A failed prediction refresh
 // leaves last week's snapshot in place, and a failed macro step leaves the
@@ -170,11 +190,13 @@ var (
 // Nothing here retries: with MacroExtensionLeadWeeks weeks of runway, the next
 // Monday is a cheaper retry than a loop inside this one.
 func RunWeekly(ctx context.Context, db *sql.DB, userID int64) error {
-	defer LockUser(userID)()
+	release := LockUser(userID)
+	defer release()
 
 	// The macro horizon has to be ensured for the same week the plan step
 	// materialises, so both derive from upcomingWeek rather than from separate
-	// clock reads.
+	// clock reads. The week end upcomingWeek also returns is the plan step's own
+	// business; nothing here needs it.
 	weekStart, _ := upcomingWeek()
 	nextMonday, err := parseMondayWeek(weekStart)
 	if err != nil {
@@ -182,7 +204,11 @@ func RunWeekly(ctx context.Context, db *sql.DB, userID int64) error {
 	}
 
 	// Step 1 — refresh the race-prediction snapshot before the plan generates,
-	// so the coach prompt sees this week's honest fitness estimate.
+	// so the coach prompt sees this week's honest fitness estimate. Both arms are
+	// best-effort and leave last week's snapshot in place: a config that will not
+	// load means there is no Claude to refresh against, so the refresh is skipped
+	// rather than attempted, and the plan step reports that same condition when
+	// it hits it.
 	predCtx, predCancel := context.WithTimeout(ctx, weeklyPredictionTimeout)
 	if cfg, cfgErr := training.LoadClaudeConfig(db, userID); cfgErr != nil {
 		log.Printf("stride: load Claude config for prediction refresh, user %d: %v", userID, cfgErr)
@@ -214,25 +240,26 @@ func RunWeekly(ctx context.Context, db *sql.DB, userID int64) error {
 		log.Printf("stride: generate plan for user %d: %v", userID, planErr)
 	}
 
-	// Step 4 — one notification per run. The macro failure wins when both
-	// happened: a missing long-term plan is the thing the athlete has to act on.
+	// Step 4 — exactly one notification per run, covering all four outcomes.
+	// Every failure the athlete can act on says so: a silent run would have them
+	// open Stride on Monday to a stale week with no explanation. The macro
+	// failure owns the message when both steps failed, because a missing
+	// long-term plan is the thing they have to press Regenerate for.
+	body, tag := weeklyPlanReadyBody, weeklyPlanTag
 	switch {
+	case macroFailed && planErr == nil:
+		body, tag = macroFailedPlanReadyBody, macroFailedTag
 	case macroFailed:
-		if err := sendPushFunc(db, userID, push.Notification{
-			Title: "Stride",
-			Body:  macroFailedBody,
-			Tag:   "stride-macro-failed",
-		}); err != nil {
-			log.Printf("stride: push macro failure notification for user %d: %v", userID, err)
-		}
-	case planErr == nil:
-		if err := sendPushFunc(db, userID, push.Notification{
-			Title: "Stride",
-			Body:  weeklyPlanReadyBody,
-			Tag:   "stride-weekly-plan",
-		}); err != nil {
-			log.Printf("stride: push weekly plan notification for user %d: %v", userID, err)
-		}
+		body, tag = macroFailedBody, macroFailedTag
+	case planErr != nil:
+		body, tag = weeklyPlanFailedBody, weeklyPlanTag
+	}
+	if err := sendPushFunc(db, userID, push.Notification{
+		Title: "Stride",
+		Body:  body,
+		Tag:   tag,
+	}); err != nil {
+		log.Printf("stride: push %q notification for user %d: %v", tag, userID, err)
 	}
 
 	if planErr != nil {

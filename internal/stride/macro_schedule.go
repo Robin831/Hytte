@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"sync"
 	"time"
 )
@@ -23,20 +24,28 @@ const MacroExtensionLeadWeeks = 8
 // for one athlete means two bills for one plan and a race on which of the two
 // answers wins.
 //
-// Entries are never deleted. A *sync.Mutex is 8 bytes and the key space is the
-// user table, so the map cannot grow unboundedly; deleting on unlock would
-// reintroduce the load/lock race the map exists to prevent (a second caller can
-// load the mutex an instant before the first deletes it, and the two then lock
-// different mutexes).
+// Entries are never deleted: the map is bounded by the number of distinct user
+// IDs this process ever serves (including users deleted since), which is small
+// in practice. Deleting on unlock would reintroduce the load/lock race the map
+// exists to prevent — a second caller can load the mutex an instant before the
+// first deletes it, and the two then lock different mutexes.
 var userLocks sync.Map // userID int64 -> *sync.Mutex
 
 // LockUser blocks until it holds the athlete's lock and returns the function
 // that releases it. Callers use it as:
 //
-//	defer LockUser(userID)()
+//	release := LockUser(userID)
+//	defer release()
 //
 // It is exported because the cron and the HTTP handlers have to take the *same*
 // lock — a guard only the cron respects is no guard at all.
+//
+// The lock is a plain, NON-REENTRANT sync.Mutex, and it belongs to the
+// top-level entry points only: RunWeekly and the handlers that trigger the same
+// work by hand. Nothing they call — GeneratePlan, EnsureMacroPlan,
+// GenerateMacroPlan or any helper below them — may take it, because RunWeekly
+// holds it for the whole run and a second acquisition underneath would
+// self-deadlock (or, via TryLockUser, make the run 409 itself).
 func LockUser(userID int64) func() {
 	mu := userMutex(userID)
 	mu.Lock()
@@ -45,7 +54,8 @@ func LockUser(userID int64) func() {
 
 // TryLockUser takes the athlete's lock only if it is free, returning the
 // release function and true, or nil and false when a generation for that
-// athlete is already in flight.
+// athlete is already in flight. Like LockUser it is an entry-point-only guard
+// on a non-reentrant mutex; see LockUser.
 //
 // Request-driven callers use this instead of LockUser. A cron run holds the
 // lock for minutes — GenerateMacroPlan alone budgets 300s — and sync.Mutex.Lock
@@ -70,11 +80,18 @@ func userMutex(userID int64) *sync.Mutex {
 // runs GenerateMacroPlan.
 var generateMacroPlanFunc = GenerateMacroPlan
 
-// weeksRemaining returns how many whole weeks separate from and endWeek, both
-// of which must be UTC-midnight Mondays. A block whose last week *is* from has
-// zero weeks remaining; a block that already ended returns a negative number.
+// weeksRemaining returns how many whole weeks separate from and endWeek. A
+// block whose last week *is* from has zero weeks remaining; a block that
+// already ended returns a negative number.
+//
+// The difference is rounded to the nearest week rather than truncated, so the
+// answer does not depend on both arguments being exact UTC midnights. Truncation
+// would silently lose a whole week the moment either side carried a non-UTC
+// location, a DST offset or a non-Monday stored end_week — a gap of eight weeks
+// minus an hour would read as seven and generate an extension block a Claude
+// call early, and an hour the other way would skip the extension entirely.
 func weeksRemaining(from, endWeek time.Time) int {
-	return int(endWeek.Sub(from) / (7 * 24 * time.Hour))
+	return int(math.Round(endWeek.Sub(from).Hours() / (7 * 24)))
 }
 
 // EnsureMacroPlan makes sure the athlete has a macro block covering nextMonday
