@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -20,7 +19,6 @@ import (
 	"github.com/Robin831/Hytte/internal/familychat"
 	"github.com/Robin831/Hytte/internal/offers"
 	"github.com/Robin831/Hytte/internal/pokemon"
-	"github.com/Robin831/Hytte/internal/push"
 	"github.com/Robin831/Hytte/internal/stars"
 	"github.com/Robin831/Hytte/internal/stride"
 	"github.com/Robin831/Hytte/internal/suggestions"
@@ -301,9 +299,11 @@ func main() {
 	}()
 
 	// Schedule weekly Stride plan generation (stride.NextStrideRun — Mondays
-	// 02:00 Europe/Oslo). For each user with stride_enabled=true: refresh the
-	// race-prediction snapshot, generate the plan (which reads it), and send a
-	// push notification confirming the plan is ready.
+	// 02:00 Europe/Oslo). This goroutine owns only the schedule and the set of
+	// enabled athletes; everything one athlete's run does — prediction refresh,
+	// macro horizon, weekly plan, per-user locking and the notification — lives
+	// in stride.RunWeekly, so the manual HTTP trigger and this cron cannot
+	// diverge.
 	go func() {
 		oslo, err := time.LoadLocation("Europe/Oslo")
 		if err != nil {
@@ -338,42 +338,16 @@ func main() {
 				}
 				rows.Close()
 
-				strideHTTPClient := &http.Client{Timeout: 120 * time.Second}
 				for _, userID := range userIDs {
-					// Refresh the race prediction snapshot BEFORE the plan
-					// generates, so the coach prompt sees this week's honest
-					// fitness estimate. Best-effort: a failed refresh leaves
-					// last week's snapshot in place and never blocks the plan.
-					predCtx, predCancel := context.WithTimeout(notifCtx, 3*time.Minute)
-					if cfg, cfgErr := training.LoadClaudeConfig(database, userID); cfgErr == nil {
-						if _, predErr := training.RefreshRacePrediction(predCtx, database, userID, cfg); predErr != nil {
-							log.Printf("stride: refresh race prediction for user %d: %v", userID, predErr)
-						}
-					} else {
-						log.Printf("stride: load claude config for prediction refresh, user %d: %v", userID, cfgErr)
-					}
-					predCancel()
-
-					planCtx, planCancel := context.WithTimeout(notifCtx, 90*time.Second)
-					if err := stride.GeneratePlan(planCtx, database, userID, "next"); err != nil {
-						log.Printf("stride: generate plan for user %d: %v", userID, err)
-						planCancel()
-						continue
-					}
-					planCancel()
-
-					notif := push.Notification{
-						Title: "Stride",
-						Body:  "Stride has your plan for next week",
-						Tag:   "stride-weekly-plan",
-					}
-					payload, err := json.Marshal(notif)
-					if err != nil {
-						log.Printf("stride: marshal notification for user %d: %v", userID, err)
-						continue
-					}
-					if _, err := push.SendToUser(database, strideHTTPClient, userID, payload); err != nil {
-						log.Printf("stride: push notification for user %d: %v", userID, err)
+					// notifCtx is passed straight through: RunWeekly bounds each
+					// of its own Claude calls (300s for the plan, and the macro
+					// step applies its own), so an outer per-user deadline here
+					// could only cut a step short inside its own budget.
+					// RunWeekly already logs every step it fails; the error is
+					// per-user and deliberately not propagated, so one athlete's
+					// failed run never aborts the batch.
+					if err := stride.RunWeekly(notifCtx, database, userID); err != nil {
+						log.Printf("stride: weekly run for user %d: %v", userID, err)
 					}
 				}
 				log.Printf("stride: weekly plan generation complete (%d users)", len(userIDs))
