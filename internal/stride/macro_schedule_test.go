@@ -3,8 +3,10 @@ package stride
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -748,5 +750,281 @@ func TestEnsureMacroPlanExtendsBlockWithNonMondayEndWeek(t *testing.T) {
 	}
 	if got.mode != MacroModeExtension {
 		t.Errorf("mode = %q, want %q", got.mode, MacroModeExtension)
+	}
+}
+
+// The scheduling tests above stub the generation seam, so they pin the
+// *decision* — whether a block is generated and where it starts — without a
+// Claude call. The tests below run the real generator with only the Claude seam
+// replaced, because the columns the schedule is judged on downstream
+// (generated_by, previous_plan_id, the horizon the block actually spans) are
+// written inside GenerateMacroPlan and are invisible to a stubbed seam.
+
+// A first block covers exactly the MacroBlockWeeks weeks from the Monday the
+// plan step is about to materialise, descends from nothing, and is recorded as
+// scheduled rather than as an extension.
+func TestEnsureMacroPlanInitialBlockPersistsFullHorizon(t *testing.T) {
+	ctx := context.Background()
+	const nextMonday = macroTestStartWeek
+	db, fixture, _ := setupMacroGeneration(t, nextMonday)
+	stubMacroPrompt(t, macroFixtureJSON(t, fixture))
+
+	if err := EnsureMacroPlan(ctx, db, 1, mustMonday(t, nextMonday)); err != nil {
+		t.Fatalf("EnsureMacroPlan: %v", err)
+	}
+
+	plans, weeks, revisions := countMacroRows(t, db, 1)
+	if plans != 1 || weeks != MacroBlockWeeks || revisions != 1 {
+		t.Fatalf("wrote %d plans, %d weeks, %d revisions; want 1, %d, 1", plans, weeks, revisions, MacroBlockWeeks)
+	}
+
+	stored, err := GetActiveMacroPlan(ctx, db, 1, nextMonday)
+	if err != nil {
+		t.Fatalf("GetActiveMacroPlan: %v", err)
+	}
+	if stored == nil {
+		t.Fatal("no active block covers the coming Monday")
+	}
+	if stored.StartWeek != nextMonday {
+		t.Errorf("start_week = %q, want %q", stored.StartWeek, nextMonday)
+	}
+	if want := mondayAfter(nextMonday, MacroBlockWeeks-1); stored.EndWeek != want {
+		t.Errorf("end_week = %q, want %q — the block's last week, %d weeks long", stored.EndWeek, want, MacroBlockWeeks)
+	}
+	if stored.GeneratedBy != MacroGeneratedByScheduled {
+		t.Errorf("generated_by = %q, want %q", stored.GeneratedBy, MacroGeneratedByScheduled)
+	}
+	if stored.PreviousPlanID != nil {
+		t.Errorf("previous_plan_id = %d, want NULL — a first block continues nothing", *stored.PreviousPlanID)
+	}
+}
+
+// The lead-boundary extension, all the way to the rows: the new block starts the
+// Monday after the old one's last week, names the block it continues, is
+// recorded as an extension, and retires its parent in the same write.
+func TestEnsureMacroPlanExtensionPersistsLineage(t *testing.T) {
+	ctx := context.Background()
+	db := setupTestDB(t)
+	enableMacroGeneration(t, db, 1)
+
+	previous, previousWeeks := sampleMacroPlan(1)
+	if err := CreateMacroPlan(ctx, db, previous, previousWeeks, "Initial"); err != nil {
+		t.Fatalf("create previous block: %v", err)
+	}
+
+	extensionStart := mondayAfter(previous.EndWeek, 1)
+	fixture, in := validMacroPlan(t)
+	rebaseMacroPlanFixture(t, fixture, &in, extensionStart)
+	seedMacroFixtureRaces(t, db, 1, in.Races)
+	stubMacroPrompt(t, macroFixtureJSON(t, fixture))
+
+	// Exactly MacroExtensionLeadWeeks weeks of the old block are left, which is
+	// inside the window rather than past it.
+	nextMonday := mondayAfter(previous.EndWeek, -MacroExtensionLeadWeeks)
+	if err := EnsureMacroPlan(ctx, db, 1, mustMonday(t, nextMonday)); err != nil {
+		t.Fatalf("EnsureMacroPlan: %v", err)
+	}
+
+	extension, err := GetActiveMacroPlan(ctx, db, 1, extensionStart)
+	if err != nil {
+		t.Fatalf("GetActiveMacroPlan(%s): %v", extensionStart, err)
+	}
+	if extension == nil {
+		t.Fatalf("no active block covers %s — the extension was not generated", extensionStart)
+	}
+	if extension.StartWeek != extensionStart {
+		t.Errorf("start_week = %q, want %q (the Monday after the old block's last week)", extension.StartWeek, extensionStart)
+	}
+	if want := mondayAfter(extensionStart, MacroBlockWeeks-1); extension.EndWeek != want {
+		t.Errorf("end_week = %q, want %q", extension.EndWeek, want)
+	}
+	if extension.GeneratedBy != MacroGeneratedByExtension {
+		t.Errorf("generated_by = %q, want %q", extension.GeneratedBy, MacroGeneratedByExtension)
+	}
+	if extension.PreviousPlanID == nil || *extension.PreviousPlanID != previous.ID {
+		t.Errorf("previous_plan_id = %v, want %d — the block it continues", extension.PreviousPlanID, previous.ID)
+	}
+
+	// One plan per week: the block that was running out is retired by the same
+	// write that inserted its successor.
+	retired, err := GetMacroPlanByID(ctx, db, previous.ID, 1)
+	if err != nil {
+		t.Fatalf("GetMacroPlanByID: %v", err)
+	}
+	if retired.Status != MacroPlanStatusSuperseded {
+		t.Errorf("previous block status = %q, want %q", retired.Status, MacroPlanStatusSuperseded)
+	}
+}
+
+// A generation that fails must cost the athlete nothing: no half-written block,
+// no orphaned weeks, no goal revision, and — the part that matters most — the
+// block they are currently training to is still the active one. GenerateMacroPlan
+// writes the plan, its weeks and its initial goal revision in one transaction;
+// this pins the boundary EnsureMacroPlan is answerable for, for a failure before
+// the write and for one after the Claude call has already been paid for.
+func TestEnsureMacroPlanFailedGenerationLeavesBlockUntouched(t *testing.T) {
+	claudeFailed := errors.New("claude exploded")
+
+	for name, respond := range map[string]func(string) (string, error){
+		"claude fails":      func(string) (string, error) { return "", claudeFailed },
+		"answer is garbage": func(string) (string, error) { return "not a macro plan", nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			db := setupTestDB(t)
+			enableMacroGeneration(t, db, 1)
+
+			previous, previousWeeks := sampleMacroPlan(1)
+			if err := CreateMacroPlan(ctx, db, previous, previousWeeks, "Initial"); err != nil {
+				t.Fatalf("create previous block: %v", err)
+			}
+			plansBefore, weeksBefore, revisionsBefore := countMacroRows(t, db, 1)
+
+			orig := runPromptFunc
+			runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, prompt string) (string, error) {
+				return respond(prompt)
+			}
+			t.Cleanup(func() { runPromptFunc = orig })
+
+			nextMonday := mondayAfter(previous.EndWeek, -MacroExtensionLeadWeeks)
+			if err := EnsureMacroPlan(ctx, db, 1, mustMonday(t, nextMonday)); err == nil {
+				t.Fatal("EnsureMacroPlan = nil, want the generation failure surfaced to the caller")
+			}
+
+			plans, weeks, revisions := countMacroRows(t, db, 1)
+			if plans != plansBefore || weeks != weeksBefore || revisions != revisionsBefore {
+				t.Errorf("rows after the failure = %d plans, %d weeks, %d revisions; want the pre-call %d, %d, %d",
+					plans, weeks, revisions, plansBefore, weeksBefore, revisionsBefore)
+			}
+
+			// The block the athlete is training to must not have been retired
+			// in favour of a successor that never got written.
+			still, err := GetMacroPlanByID(ctx, db, previous.ID, 1)
+			if err != nil {
+				t.Fatalf("GetMacroPlanByID: %v", err)
+			}
+			if still.Status != MacroPlanStatusActive {
+				t.Errorf("previous block status = %q, want %q — a failed extension must not retire it",
+					still.Status, MacroPlanStatusActive)
+			}
+		})
+	}
+}
+
+// The whole Monday run with a real block generator behind a Claude that only
+// fails the macro call: the failed block leaves nothing behind, the week is
+// still planned by the legacy weekly generator, the run still succeeds, and the
+// athlete gets the one notification that says both things.
+func TestRunWeeklyMacroFailureLeavesNoRowsAndStillPlansWeek(t *testing.T) {
+	db := extendedTestDB(t)
+	enableStride(t, db, 1)
+	weekStart, _ := upcomingWeek()
+	seams := stubWeeklyRunSeams(t, nil)
+
+	weeklyPlan, err := json.Marshal(buildMinimalPlan(weekStart))
+	if err != nil {
+		t.Fatalf("marshal weekly plan: %v", err)
+	}
+	// One Claude seam serves both steps, so the macro prompt is told apart by
+	// the instruction block only it carries.
+	macroFailed := errors.New("claude exploded on the block")
+	orig := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, prompt string) (string, error) {
+		if strings.Contains(prompt, macroInstructions) {
+			return "", macroFailed
+		}
+		return string(weeklyPlan), nil
+	}
+	t.Cleanup(func() { runPromptFunc = orig })
+
+	if err := RunWeekly(context.Background(), db, 1); err != nil {
+		t.Fatalf("RunWeekly should survive a macro failure, got: %v", err)
+	}
+
+	if plans, weeks, revisions := countMacroRows(t, db, 1); plans+weeks+revisions != 0 {
+		t.Errorf("failed block wrote rows: %d plans, %d weeks, %d revisions", plans, weeks, revisions)
+	}
+
+	var planCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM stride_plans WHERE user_id = 1 AND week_start = ?", weekStart).Scan(&planCount); err != nil {
+		t.Fatalf("count plans: %v", err)
+	}
+	if planCount != 1 {
+		t.Errorf("stored plans for %s = %d, want 1 — the legacy weekly step runs regardless", weekStart, planCount)
+	}
+
+	got := seams.onlyPush(t)
+	if got.Body != macroFailedPlanReadyBody || got.Tag != macroFailedTag {
+		t.Errorf("push = %q/%q, want %q/%q", got.Body, got.Tag, macroFailedPlanReadyBody, macroFailedTag)
+	}
+}
+
+// Two triggers landing on one athlete at once — the Monday cron and a manual
+// regenerate, say — must cost one Claude call, not two. EnsureMacroPlan does not
+// take the lock itself (it is non-reentrant and belongs to the entry points, see
+// LockUser), so this exercises it the way the entry points do: lock, ensure,
+// release. The check-before-call only saves the second Claude call if the first
+// call's block is already visible when the second one looks, and serialising the
+// pair is what makes that true.
+func TestEnsureMacroPlanUnderUserLockGeneratesOneBlock(t *testing.T) {
+	const userID int64 = 1
+	const nextMonday = "2026-08-31"
+	db := setupTestDB(t)
+
+	var mu sync.Mutex
+	calls := 0
+	orig := generateMacroPlanFunc
+	generateMacroPlanFunc = func(_ context.Context, _ *sql.DB, uid int64, startWeek string, mode MacroMode) (*MacroPlan, error) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		// Stand in for the multi-minute Claude call, so the two callers really
+		// do overlap in time when nothing holds them apart.
+		time.Sleep(20 * time.Millisecond)
+		if _, err := db.Exec(`
+			INSERT INTO stride_macro_plans (user_id, start_week, end_week, status, model, generated_by, created_at)
+			VALUES (?, ?, ?, ?, 'claude-opus-5', ?, '2026-01-01T00:00:00Z')`,
+			uid, startWeek, mondayAfter(startWeek, MacroBlockWeeks-1), MacroPlanStatusActive, string(mode),
+		); err != nil {
+			return nil, err
+		}
+		return &MacroPlan{UserID: uid, StartWeek: startWeek, GeneratedBy: string(mode)}, nil
+	}
+	t.Cleanup(func() { generateMacroPlanFunc = orig })
+
+	// Resolved on the test goroutine: mustMonday fails the test with t.Fatalf,
+	// which is only legal from the goroutine running the test.
+	monday := mustMonday(t, nextMonday)
+
+	errs := make([]error, 2)
+	var wg sync.WaitGroup
+	for i := range errs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer LockUser(userID)()
+			errs[i] = EnsureMacroPlan(context.Background(), db, userID, monday)
+		}()
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("EnsureMacroPlan call %d: %v", i, err)
+		}
+	}
+	mu.Lock()
+	got := calls
+	mu.Unlock()
+	if got != 1 {
+		t.Errorf("generate calls = %d, want 1 — the second caller must find the first one's block", got)
+	}
+
+	var plans int
+	if err := db.QueryRow("SELECT COUNT(*) FROM stride_macro_plans WHERE user_id = ?", userID).Scan(&plans); err != nil {
+		t.Fatalf("count macro plans: %v", err)
+	}
+	if plans != 1 {
+		t.Errorf("macro plan rows = %d, want 1", plans)
 	}
 }
