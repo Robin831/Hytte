@@ -42,6 +42,12 @@ export interface StridePlan {
   phase: string
   plan: DayPlan[]
   model: string
+  // Set when the week was materialised from a macro block week
+  // (stride_macro_weeks.id); null for plans generated without a macro plan.
+  macro_week_id?: number | null
+  // The coach's prose on how this week deviates from its macro week target.
+  // Empty (or absent, on a legacy plan) when there is nothing to say.
+  adjustment_summary?: string
   created_at: string
 }
 
@@ -83,4 +89,98 @@ export interface StrideWorkout {
   archived: boolean
   blocks: string[]
   created_at: string
+}
+
+// ── Macro plan (long-term block) ─────────────────────────────────────────────
+// Mirrors the Go types in internal/stride/macro.go. GET /api/stride/macro/current
+// answers with MacroPlanView; a user with no active block gets a 404, which the
+// page treats as "no macro plan" rather than an error.
+
+// MacroGoal is the block's objective. Improving half-marathon performance is
+// always the main priority, so target_hm_time_s is set even for a block with no
+// half marathon on the calendar.
+export interface MacroGoal {
+  primary_focus: string
+  statement: string
+  target_hm_time_s: number
+  benchmark: string
+  rationale: string
+  // The A-priority race the block is built around, or null for a development
+  // block with no explicit end test.
+  anchor_race_id: number | null
+}
+
+// Mesocycle is one named segment of the block's periodisation.
+export interface MacroMesocycle {
+  name: string
+  phase: string
+  start_week: string
+  weeks: number
+  focus: string
+  race_id: number | null
+}
+
+// KeySession is one session a macro week must contain, optionally pinned to a
+// workout-library entry.
+export interface MacroKeySession {
+  type: string
+  focus: string
+  library_id: number | null
+}
+
+// MacroWeek is one week of the block — the contract the weekly generator has to
+// honour when it materialises that week into a 7-day plan.
+export interface MacroWeek {
+  id: number
+  macro_plan_id: number
+  user_id: number
+  week_start: string
+  seq: number
+  phase: string
+  mesocycle: string
+  load_level: string
+  target_km: number
+  target_sessions: number
+  race_id: number | null
+  key_sessions: MacroKeySession[] | null
+  intent: string
+  status: string
+}
+
+export interface MacroPlan {
+  id: number
+  user_id: number
+  start_week: string
+  end_week: string
+  status: string
+  // '' when fresh, e.g. 'races_changed' when the race calendar moved under it.
+  stale_reason: string
+  goal: MacroGoal
+  periodisation: MacroMesocycle[]
+  model: string
+  generated_by: string
+  previous_plan_id: number | null
+  created_at: string
+}
+
+// GoalRevision is one append-only entry in a block's goal history.
+export interface GoalRevision {
+  id: number
+  macro_plan_id: number
+  user_id: number
+  week_start: string
+  goal: MacroGoal
+  reason: string
+  source: string
+  created_at: string
+}
+
+// MacroPlanView is the payload every macro endpoint answers with: the block,
+// its week rows, and the goal history behind it. The weeks live at the top
+// level, not nested inside plan.
+export interface MacroPlanView {
+  plan: MacroPlan
+  weeks: MacroWeek[]
+  current_goal_revision: GoalRevision | null
+  revisions: GoalRevision[]
 }

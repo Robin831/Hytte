@@ -1,0 +1,2 @@
+category: Added
+- **Long-term plan on Stride** - The training block timeline now draws its mesocycles and weekly phases from the macro plan when there is one, falling back to the A-race heuristic otherwise. A new "Long-term plan" section shows the goal card (statement, target half-marathon time, benchmark, rationale and goal revision history) with the mesocycle strip and the current week highlighted, the weekly header shows the week's phase and adjustment summary, and the generate button reads "Adjust next week" while a macro block is active. (Hytte-ifjr2.7)

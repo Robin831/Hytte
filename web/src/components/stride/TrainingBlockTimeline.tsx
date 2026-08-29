@@ -2,6 +2,9 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trophy, Flag } from 'lucide-react'
 import { formatDate } from '../../utils/formatDate'
+import type { MacroPlanView, MacroWeek } from '../../types/stride'
+import { MS_PER_WEEK, groupWeekRuns, macroWeekForDate, mondayKeyOf, mondayToDate, sortMacroWeeks } from './macroPlan'
+import type { MacroWeekRun } from './macroPlan'
 
 interface Race {
   id: number
@@ -14,19 +17,35 @@ interface Race {
 interface TrainingBlockTimelineProps {
   races: Race[]
   loading?: boolean
+  // The active macro block, when the athlete has one. Its per-week phases and
+  // mesocycles drive the timeline; without it the A-race heuristic below is
+  // what draws the phases.
+  macroPlan?: MacroPlanView | null
 }
 
-type Phase = 'base' | 'build' | 'peak' | 'taper'
+// The six phases a macro week can carry. The A-race fallback only ever produces
+// the first four.
+type Phase = 'base' | 'build' | 'peak' | 'taper' | 'race' | 'recovery'
+
+interface PhaseStyle {
+  bg: string
+  text: string
+  border: string
+}
 
 interface PhaseBlock {
-  phase: Phase
+  // Unique within the timeline: a macro block can revisit a phase (base →
+  // build → recovery → build), so the phase name alone is not a stable key.
+  key: string
+  phase: string
+  label: string
   startDate: Date
   endDate: Date
   widthPct: number
   offsetPct: number
 }
 
-const PHASE_STYLES: Record<Phase, { bg: string; text: string; border: string }> = {
+const PHASE_STYLES: Record<Phase, PhaseStyle> = {
   base: {
     bg: 'bg-blue-500/25',
     text: 'text-blue-300',
@@ -47,6 +66,28 @@ const PHASE_STYLES: Record<Phase, { bg: string; text: string; border: string }> 
     text: 'text-red-300',
     border: 'border-red-500/40',
   },
+  race: {
+    bg: 'bg-yellow-500/25',
+    text: 'text-yellow-300',
+    border: 'border-yellow-500/40',
+  },
+  recovery: {
+    bg: 'bg-purple-500/25',
+    text: 'text-purple-300',
+    border: 'border-purple-500/40',
+  },
+}
+
+const UNKNOWN_PHASE_STYLE: PhaseStyle = {
+  bg: 'bg-gray-500/25',
+  text: 'text-gray-300',
+  border: 'border-gray-500/40',
+}
+
+// A macro week's phase comes from the server, so an unrecognised value renders
+// in neutral grey rather than crashing on a missing palette entry.
+function phaseStyle(phase: string): PhaseStyle {
+  return PHASE_STYLES[phase as Phase] ?? UNKNOWN_PHASE_STYLE
 }
 
 // Standard phase durations in weeks (working backwards from race day)
@@ -54,18 +95,93 @@ const TAPER_WEEKS = 2
 const PEAK_WEEKS = 4
 const BUILD_WEEKS = 6
 
-const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000
+interface MacroTimeline {
+  phases: PhaseBlock[]
+  mesocycles: PhaseBlock[]
+  currentPct: number
+  currentPhase: string
+  currentWeek: MacroWeek | null
+  // Offset/width of the current week within the block, for the highlight box.
+  currentWeekOffsetPct: number
+  currentWeekWidthPct: number
+  weeksLeft: number
+  endDate: Date
+  hasAnchorRace: boolean
+  goalStatement: string
+}
 
-export function TrainingBlockTimeline({ races, loading }: TrainingBlockTimelineProps) {
+// Builds the timeline from the macro block's week rows: per-week phases grouped
+// into phase segments, the same weeks grouped again by mesocycle, and the
+// position of the week the athlete is training now.
+function buildMacroTimeline(view: MacroPlanView | null, today: Date): MacroTimeline | null {
+  if (!view || view.weeks.length === 0) return null
+
+  const weeks = sortMacroWeeks(view.weeks)
+  const startDate = mondayToDate(weeks[0].week_start)
+  const endDate = new Date(mondayToDate(weeks[weeks.length - 1].week_start).getTime() + MS_PER_WEEK)
+  const totalMs = endDate.getTime() - startDate.getTime()
+  if (totalMs <= 0) return null
+
+  const toBlock = (run: MacroWeekRun, phase: string, label: string): PhaseBlock => {
+    const blockStart = mondayToDate(run.startWeek.week_start)
+    const blockEnd = new Date(blockStart.getTime() + run.weeks * MS_PER_WEEK)
+    return {
+      key: `${label}-${run.startWeek.week_start}`,
+      phase,
+      label,
+      startDate: blockStart,
+      endDate: blockEnd,
+      offsetPct: ((blockStart.getTime() - startDate.getTime()) / totalMs) * 100,
+      widthPct: ((blockEnd.getTime() - blockStart.getTime()) / totalMs) * 100,
+    }
+  }
+
+  const phases = groupWeekRuns(weeks, w => w.phase).map(run => toBlock(run, run.value, run.value))
+  const mesocycles = groupWeekRuns(weeks, w => w.mesocycle)
+    .filter(run => run.value !== '')
+    .map(run => toBlock(run, run.startWeek.phase, run.value))
+
+  const todayMs = today.getTime()
+  const currentWeek = macroWeekForDate(weeks, today)
+
+  const currentPct = Math.max(0, Math.min(100, ((todayMs - startDate.getTime()) / totalMs) * 100))
+  const currentWeekOffsetPct = currentWeek
+    ? ((mondayToDate(currentWeek.week_start).getTime() - startDate.getTime()) / totalMs) * 100
+    : 0
+  const currentWeekWidthPct = (MS_PER_WEEK / totalMs) * 100
+
+  // Weeks still ahead, counting the one in progress. Before the block starts
+  // that is all of them; after it ends, none.
+  const thisMonday = mondayKeyOf(today)
+  const weeksLeft = weeks.filter(w => w.week_start >= thisMonday).length
+
+  return {
+    phases,
+    mesocycles,
+    currentPct,
+    currentPhase: currentWeek?.phase ?? weeks[0].phase,
+    currentWeek,
+    currentWeekOffsetPct,
+    currentWeekWidthPct,
+    weeksLeft,
+    endDate,
+    hasAnchorRace: view.plan.goal.anchor_race_id != null || weeks.some(w => w.race_id != null),
+    goalStatement: view.plan.goal.statement,
+  }
+}
+
+export function TrainingBlockTimeline({ races, loading, macroPlan }: TrainingBlockTimelineProps) {
   const { t } = useTranslation('stride')
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const y = today.getFullYear()
-  const m = String(today.getMonth() + 1).padStart(2, '0')
-  const d = String(today.getDate()).padStart(2, '0')
-  const todayStr = `${y}-${m}-${d}`
+  // Date-granular so the memos below do not recompute on every render.
+  const todayStr = useMemo(() => {
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = String(now.getMonth() + 1).padStart(2, '0')
+    const d = String(now.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }, [])
+  const today = useMemo(() => new Date(`${todayStr}T00:00:00`), [todayStr])
 
   // Nearest upcoming A-priority race that hasn't been completed
   const goalRace = useMemo(() => {
@@ -73,6 +189,8 @@ export function TrainingBlockTimeline({ races, loading }: TrainingBlockTimelineP
       .filter(r => r.priority === 'A' && r.date >= todayStr && r.result_time == null)
       .sort((a, b) => a.date.localeCompare(b.date))[0] ?? null
   }, [races, todayStr])
+
+  const macro = useMemo(() => buildMacroTimeline(macroPlan ?? null, today), [macroPlan, today])
 
   const timeline = useMemo(() => {
     if (!goalRace) return null
@@ -106,7 +224,9 @@ export function TrainingBlockTimeline({ races, loading }: TrainingBlockTimelineP
     const totalMs = raceDate.getTime() - timelineStart.getTime()
 
     const makeBlock = (phase: Phase, start: Date, end: Date): PhaseBlock => ({
+      key: phase,
       phase,
+      label: phase,
       startDate: start,
       endDate: end,
       offsetPct: (start.getTime() - timelineStart.getTime()) / totalMs * 100,
@@ -134,6 +254,148 @@ export function TrainingBlockTimeline({ races, loading }: TrainingBlockTimelineP
   }, [goalRace, today])
 
   if (loading) return null
+
+  // Macro block present — the coach's own periodisation wins over the heuristic.
+  if (macro) {
+    const currentStyles = phaseStyle(macro.currentPhase)
+    return (
+      <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 space-y-3">
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
+            {t('timeline.title')}
+          </h3>
+          <div className="flex items-center gap-2">
+            <span
+              className={`text-xs font-medium px-2 py-0.5 rounded-full border ${currentStyles.bg} ${currentStyles.text} ${currentStyles.border}`}
+            >
+              {t(`timeline.phases.${macro.currentPhase}`, { defaultValue: macro.currentPhase })}
+            </span>
+            <span className="text-base font-bold text-yellow-400">
+              {/* An A-race still counts down to race day; a development block
+                  counts down the weeks left in the horizon instead. */}
+              {timeline
+                ? t('timeline.weeksToGoal', { count: timeline.weeksToRace })
+                : t('timeline.weeksLeft', { count: macro.weeksLeft })}
+            </span>
+          </div>
+        </div>
+
+        {/* Goal statement, or the goal race when the block is built around one */}
+        {(goalRace || macro.goalStatement) && (
+          <div className="flex items-center gap-1.5 text-xs text-gray-400 min-w-0">
+            <Trophy size={12} className="text-yellow-400 flex-shrink-0" />
+            {goalRace ? (
+              <>
+                <span className="font-medium text-gray-300 truncate">{goalRace.name}</span>
+                <span className="flex-shrink-0 text-gray-600">·</span>
+                <span className="flex-shrink-0">
+                  {formatDate(`${goalRace.date}T00:00:00`, { month: 'short', day: 'numeric', year: 'numeric' })}
+                </span>
+              </>
+            ) : (
+              <span className="font-medium text-gray-300 truncate">{macro.goalStatement}</span>
+            )}
+          </div>
+        )}
+
+        {/* Timeline visualization */}
+        <div className="space-y-1" role="img" aria-label={t('timeline.macroAriaLabel')}>
+          {/* Mesocycle names above the track */}
+          {macro.mesocycles.length > 0 && (
+            <div className="relative h-5">
+              {macro.mesocycles.map(block => {
+                if (block.widthPct < 10) return null
+                return (
+                  <div
+                    key={block.key}
+                    className="absolute top-0 flex items-center overflow-hidden border-l border-gray-600/60 pl-1"
+                    style={{ left: `${block.offsetPct}%`, width: `${block.widthPct}%` }}
+                  >
+                    <span className="text-xs font-medium text-gray-300 truncate">{block.label}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Timeline track — one coloured segment per run of same-phase weeks */}
+          <div className="relative h-8 rounded-lg overflow-hidden bg-gray-700/40">
+            {macro.phases.map((block, i) => (
+              <div
+                key={block.key}
+                className={`absolute top-0 h-full flex items-center justify-center overflow-hidden ${phaseStyle(block.phase).bg} ${i < macro.phases.length - 1 ? 'border-r border-gray-600/50' : ''}`}
+                style={{ left: `${block.offsetPct}%`, width: `${block.widthPct}%` }}
+              >
+                {block.widthPct >= 10 && (
+                  <span className={`text-xs font-medium ${phaseStyle(block.phase).text} truncate px-1`}>
+                    {t(`timeline.phases.${block.phase}`, { defaultValue: block.phase })}
+                  </span>
+                )}
+              </div>
+            ))}
+
+            {/* Current week outline */}
+            {macro.currentWeek && (
+              <div
+                data-testid="timeline-current-week"
+                title={t('timeline.currentWeek')}
+                className="absolute top-0 h-full border border-yellow-400/70 rounded-sm z-10 pointer-events-none"
+                style={{ left: `${macro.currentWeekOffsetPct}%`, width: `${macro.currentWeekWidthPct}%` }}
+              />
+            )}
+
+            {/* Today marker — yellow vertical line */}
+            {macro.currentPct > 0 && macro.currentPct < 99 && (
+              <div
+                className="absolute top-0 h-full w-px bg-yellow-400 z-20"
+                style={{ left: `${macro.currentPct}%` }}
+              />
+            )}
+
+            {/* Race flag at the right end when the block ends on a race */}
+            {macro.hasAnchorRace && (
+              <div className="absolute right-1 top-0 h-full flex items-center z-20 pointer-events-none">
+                <Flag size={14} className="text-yellow-400" />
+              </div>
+            )}
+          </div>
+
+          {/* Date labels below the track */}
+          <div className="relative h-5">
+            {macro.currentPct >= 3 && macro.currentPct <= 90 && (
+              <span
+                className="absolute text-xs text-yellow-400/80 -translate-x-1/2 whitespace-nowrap"
+                style={{ left: `${macro.currentPct}%` }}
+              >
+                {t('timeline.today')}
+              </span>
+            )}
+
+            {/* Phase transition dates (hidden on mobile, shown on sm+) */}
+            {macro.phases.map((block, i) => {
+              if (i === 0) return null // skip first — would overlap with left edge
+              const tooCloseToToday = Math.abs(block.offsetPct - macro.currentPct) < 12
+              if (tooCloseToToday) return null
+              return (
+                <span
+                  key={block.key}
+                  className="absolute text-xs text-gray-500 -translate-x-1/2 whitespace-nowrap hidden sm:block"
+                  style={{ left: `${block.offsetPct}%` }}
+                >
+                  {formatDate(block.startDate, { month: 'short', day: 'numeric' })}
+                </span>
+              )
+            })}
+
+            <span className="absolute text-xs text-gray-500 whitespace-nowrap" style={{ right: 0 }}>
+              {formatDate(macro.endDate, { month: 'short', day: 'numeric' })}
+            </span>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (!goalRace || !timeline) {
     return (
@@ -195,11 +457,11 @@ export function TrainingBlockTimeline({ races, loading }: TrainingBlockTimelineP
             if (block.widthPct < 8) return null
             return (
               <div
-                key={block.phase}
+                key={block.key}
                 className="absolute top-0 flex items-center justify-center overflow-hidden"
                 style={{ left: `${block.offsetPct}%`, width: `${block.widthPct}%` }}
               >
-                <span className={`text-xs font-medium ${PHASE_STYLES[block.phase].text} truncate px-1`}>
+                <span className={`text-xs font-medium ${phaseStyle(block.phase).text} truncate px-1`}>
                   {t(`timeline.phases.${block.phase}`, { defaultValue: block.phase })}
                 </span>
               </div>
@@ -212,8 +474,8 @@ export function TrainingBlockTimeline({ races, loading }: TrainingBlockTimelineP
           {/* Phase colour blocks */}
           {phases.map((block, i) => (
             <div
-              key={block.phase}
-              className={`absolute top-0 h-full ${PHASE_STYLES[block.phase].bg} ${i < phases.length - 1 ? 'border-r border-gray-600/50' : ''}`}
+              key={block.key}
+              className={`absolute top-0 h-full ${phaseStyle(block.phase).bg} ${i < phases.length - 1 ? 'border-r border-gray-600/50' : ''}`}
               style={{ left: `${block.offsetPct}%`, width: `${block.widthPct}%` }}
             />
           ))}
@@ -252,7 +514,7 @@ export function TrainingBlockTimeline({ races, loading }: TrainingBlockTimelineP
             if (tooCloseToToday) return null
             return (
               <span
-                key={block.phase}
+                key={block.key}
                 className="absolute text-xs text-gray-500 -translate-x-1/2 whitespace-nowrap hidden sm:block"
                 style={{ left: `${block.offsetPct}%` }}
               >
