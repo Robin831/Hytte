@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
@@ -692,5 +694,160 @@ func TestSaveWeeklyPlanInToleranceGoalUpdateWithoutMacroPlanID(t *testing.T) {
 	}
 	if n := countGoalRevisions(t, db); n != 0 {
 		t.Fatalf("goal revisions = %d, want none — there is no block to record one against", n)
+	}
+}
+
+// An empty body is its own failure, distinct from a shape slip: there is
+// nothing to route on, so it must be named rather than fall through to
+// body[0] (which would panic) or to an unmarshal error about "unexpected end
+// of JSON input". A fence around nothing is still nothing.
+func TestParseAdjustEnvelopeRejectsEmptyBodies(t *testing.T) {
+	for name, response := range map[string]string{
+		"empty":          "",
+		"whitespace":     "   \n\t ",
+		"fenced empty":   "```json\n```",
+		"fenced blank":   "```\n   \n```",
+		"one-line fence": "``` ```",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseAdjustEnvelope(response, envelopeTestWeekStart, envelopeTestWeekEnd)
+			if err == nil {
+				t.Fatal("parseAdjustEnvelope = nil error, want a failure")
+			}
+			if err.Error() != "empty plan response" {
+				t.Errorf("error = %q, want %q", err, "empty plan response")
+			}
+			// parsePlanEnvelope guards the same way, for the same reason.
+			if _, err := parsePlanEnvelope(response, envelopeTestWeekStart, envelopeTestWeekEnd); err == nil ||
+				err.Error() != "empty plan response" {
+				t.Errorf("parsePlanEnvelope error = %v, want %q", err, "empty plan response")
+			}
+		})
+	}
+}
+
+// A model that prefaces a perfectly good array with prose is a shape slip, not
+// something to salvage: the leading text means the body is not JSON at all, so
+// it is rejected by name. This pins the behaviour change away from the old
+// try-envelope-then-array fallback, which reported "cannot unmarshal object
+// into []DayPlan" for anything that was not an array.
+func TestParsePlanEnvelopeRejectsProsePrefixedBody(t *testing.T) {
+	for name, response := range map[string]string{
+		"prose before an array":    "Sure! Here is your plan: " + cannedWeekJSON(t),
+		"prose before an envelope": "Here you go:\n{\"week\":" + cannedWeekJSON(t) + `,"adjustment":{"deviates":false,"summary":""}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parsePlanEnvelope(response, envelopeTestWeekStart, envelopeTestWeekEnd)
+			if err == nil {
+				t.Fatal("parsePlanEnvelope = nil error, want a failure")
+			}
+			for _, want := range []string{"envelope object", "bare day array", "starts with"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not contain %q", err, want)
+				}
+			}
+			if _, err := parseAdjustEnvelope(response, envelopeTestWeekStart, envelopeTestWeekEnd); err == nil {
+				t.Error("parseAdjustEnvelope = nil error, want a failure")
+			}
+		})
+	}
+}
+
+// truncateForError quotes enough of a bad response to recognise it and no more.
+// It slices runes, not bytes: the responses it quotes are AI prose that can
+// carry accented characters and emoji, and a byte slice would cut one in half
+// and put a replacement character in the log.
+func TestTruncateForError(t *testing.T) {
+	const max = 40
+
+	tests := map[string]struct {
+		body string
+		want string
+	}{
+		"short body kept whole": {
+			body: "Sure!",
+			want: "Sure!",
+		},
+		"exactly the limit kept whole": {
+			body: strings.Repeat("a", max),
+			want: strings.Repeat("a", max),
+		},
+		"one over the limit is truncated": {
+			body: strings.Repeat("a", max+1),
+			want: strings.Repeat("a", max) + "...",
+		},
+		"multibyte body kept whole under the limit": {
+			body: strings.Repeat("æ", max),
+			want: strings.Repeat("æ", max),
+		},
+		"multibyte body cut on a rune boundary": {
+			body: strings.Repeat("æ", max+10),
+			want: strings.Repeat("æ", max) + "...",
+		},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := truncateForError(tc.body)
+			if got != tc.want {
+				t.Fatalf("truncateForError(%d runes) = %q, want %q", len([]rune(tc.body)), got, tc.want)
+			}
+			if !utf8.ValidString(got) {
+				t.Errorf("truncateForError produced invalid UTF-8: %q", got)
+			}
+		})
+	}
+}
+
+// The wire key is the contract between adjustOutputContract (what the model is
+// told to emit) and GoalUpdate's json tag (what the parser binds). If the two
+// ever drift, a proposal decodes as zero and evaluateGoalUpdate discards it as
+// "not a positive time" — a silent loss with no unmarshal error to notice. This
+// pins both ends and the fact that the pre-rename key no longer binds.
+func TestGoalUpdateWireKeyIsTargetHMTimeS(t *testing.T) {
+	const wireKey = "target_hm_time_s"
+
+	field, ok := reflect.TypeOf(GoalUpdate{}).FieldByName("TargetHMTimeS")
+	if !ok {
+		t.Fatal("GoalUpdate has no TargetHMTimeS field")
+	}
+	if tag := field.Tag.Get("json"); tag != wireKey {
+		t.Errorf("GoalUpdate.TargetHMTimeS json tag = %q, want %q", tag, wireKey)
+	}
+	// The prompt must ask for exactly the key the parser reads.
+	if !strings.Contains(adjustOutputContract, `"`+wireKey+`"`) {
+		t.Errorf("adjustOutputContract does not document %q", wireKey)
+	}
+
+	// The current key lands on the field...
+	response := `{"week":` + cannedWeekJSON(t) + `,"adjustment":{"deviates":true,` +
+		`"summary":"the prediction moved out",` +
+		`"goal_update":{"` + wireKey + `":5100,"reason":"race prediction improved"}}}`
+	env, err := parseAdjustEnvelope(response, envelopeTestWeekStart, envelopeTestWeekEnd)
+	if err != nil {
+		t.Fatalf("parseAdjustEnvelope: %v", err)
+	}
+	if env.Adjustment.GoalUpdate == nil {
+		t.Fatal("goal_update = nil, want the proposal")
+	}
+	if env.Adjustment.GoalUpdate.TargetHMTimeS != 5100 {
+		t.Fatalf("%s = %d, want 5100", wireKey, env.Adjustment.GoalUpdate.TargetHMTimeS)
+	}
+
+	// ...and the pre-rename key does not, which is what makes a future rename
+	// of either side fail here instead of in production.
+	legacy := strings.Replace(response, `"`+wireKey+`":5100`, `"target_hm_time":5100`, 1)
+	legacyEnv, err := parseAdjustEnvelope(legacy, envelopeTestWeekStart, envelopeTestWeekEnd)
+	if err != nil {
+		t.Fatalf("parseAdjustEnvelope with the old key: %v", err)
+	}
+	if legacyEnv.Adjustment.GoalUpdate == nil {
+		t.Fatal("goal_update = nil, want the object with an unbound target")
+	}
+	if got := legacyEnv.Adjustment.GoalUpdate.TargetHMTimeS; got != 0 {
+		t.Errorf("old key target_hm_time bound to %d, want it ignored", got)
+	}
+	// And such a proposal is discarded rather than applied as a zero target.
+	if d := evaluateGoalUpdate(5040, legacyEnv.Adjustment.GoalUpdate); d.Accepted {
+		t.Error("a goal update with an unbound target was accepted")
 	}
 }

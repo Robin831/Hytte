@@ -1404,3 +1404,74 @@ func assertChronological(t *testing.T, revs []GoalRevision) {
 		}
 	}
 }
+
+// AddGoalRevision does its own nil check but leaves source and week_start to
+// insertGoalRevisionTx, which now runs after BeginTx and the ownership and
+// foreign-reference lookups. That late failure must still reach the caller, and
+// the tx it fails inside must roll back leaving nothing behind — including on
+// rev itself: id and created_at are assigned only after Commit, so a caller
+// whose write failed is never left holding an id for a row that does not exist.
+func TestAddGoalRevisionInvalidRevisionWritesNothing(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	plan, weeks := sampleMacroPlan(1)
+	if err := CreateMacroPlan(ctx, db, plan, weeks, "Initial block goal"); err != nil {
+		t.Fatalf("CreateMacroPlan: %v", err)
+	}
+	before := countGoalRevisions(t, db)
+
+	tests := map[string]*GoalRevision{
+		"unknown source": {
+			MacroPlanID: plan.ID,
+			UserID:      1,
+			WeekStart:   mondayAfter(testBlockStart, 2),
+			Goal:        plan.Goal,
+			Reason:      "Prediction moved.",
+			Source:      "guess",
+		},
+		"empty week_start": {
+			MacroPlanID: plan.ID,
+			UserID:      1,
+			Goal:        plan.Goal,
+			Reason:      "Prediction moved.",
+			Source:      GoalRevisionSourceWeekly,
+		},
+	}
+	for name, rev := range tests {
+		t.Run(name, func(t *testing.T) {
+			if err := AddGoalRevision(ctx, db, rev); err == nil {
+				t.Fatal("AddGoalRevision = nil error, want the validation failure")
+			}
+			if rev.ID != 0 {
+				t.Errorf("rev.ID = %d, want 0 — no row exists to hold that id", rev.ID)
+			}
+			if rev.CreatedAt != "" {
+				t.Errorf("rev.CreatedAt = %q, want it left unset", rev.CreatedAt)
+			}
+			if got := countGoalRevisions(t, db); got != before {
+				t.Errorf("goal revisions = %d, want %d — the tx must roll back", got, before)
+			}
+		})
+	}
+
+	// The success half of the same assignment: id and created_at appear only
+	// once the row is committed.
+	good := &GoalRevision{
+		MacroPlanID: plan.ID,
+		UserID:      1,
+		WeekStart:   mondayAfter(testBlockStart, 2),
+		Goal:        plan.Goal,
+		Reason:      "Prediction moved 1%, inside the auto-apply band.",
+		Source:      GoalRevisionSourceWeekly,
+	}
+	if err := AddGoalRevision(ctx, db, good); err != nil {
+		t.Fatalf("AddGoalRevision: %v", err)
+	}
+	if good.ID == 0 || good.CreatedAt == "" {
+		t.Fatalf("committed revision = id %d created_at %q, want both filled in", good.ID, good.CreatedAt)
+	}
+	if got := countGoalRevisions(t, db); got != before+1 {
+		t.Errorf("goal revisions = %d, want %d", got, before+1)
+	}
+}

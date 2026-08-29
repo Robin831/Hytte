@@ -117,6 +117,12 @@ func truncateForError(body string) string {
 // the week with deviates=false, an empty summary and no goal_update — silently
 // losing the coach's stated rationale and telling next week's prompt the week
 // was spec-conforming. A hard error re-runs the prompt instead.
+//
+// It has no production caller yet, by design: this is the reader half of the
+// AdjustWeek path, landing with buildAdjustPrompt (adjust_prompt.go), which is
+// likewise unwired. Hytte-a628o adds the entrypoint that runs the prompt and
+// feeds its response through here — it must call this, not parsePlanEnvelope,
+// or the bare-array refusal above is not enforced anywhere.
 func parseAdjustEnvelope(response, weekStart, weekEnd string) (PlanEnvelope, error) {
 	body := strings.TrimSpace(stripCodeFence(response))
 	if body == "" {
