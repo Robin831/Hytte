@@ -1,6 +1,7 @@
 package stride
 
-// Parsing and persistence for one materialised training week.
+// The AdjustWeek entrypoint, and the parsing and persistence for one
+// materialised training week.
 //
 // The AdjustWeek prompt (adjust_prompt.go) answers with an envelope: the week
 // itself plus what the coach did to it and what it wants to propose beyond its
@@ -22,6 +23,97 @@ import (
 
 	"github.com/Robin831/Hytte/internal/encryption"
 )
+
+// adjustWeekFunc is the seam tests replace so the routing decisions of the two
+// callers — which week RunWeekly and GeneratePlanHandler each ask for — can be
+// asserted without a Claude call. Production always runs AdjustWeek.
+//
+// Package-level and mutable, the same shape as runPromptFunc, so a test that
+// swaps it mutates state shared with every other test in the package: the ones
+// that do must not call t.Parallel(). If a third seam of this shape is ever
+// needed, gather them into a config value passed into the callers instead of
+// widening that race surface again.
+var adjustWeekFunc = AdjustWeek
+
+// AdjustWeek materialises the training week starting at weekStart (a Monday):
+// it adjusts the athlete's macro block's plan for that week against what has
+// actually happened since, and stores the result as that week's stride plan.
+//
+// It is the single entrypoint for weekly plan generation. The Monday run
+// (RunWeekly) and the manual trigger (GeneratePlanHandler) both come through
+// here, so the two can never disagree about which prompt an athlete's week was
+// built from.
+//
+// When no active macro block covers weekStart it falls back to the legacy
+// whole-week generator so the athlete still gets a week. That is a routing
+// decision, not an error path: macro generation may have failed on Monday, or
+// Stride may have been enabled only moments ago, and a week the athlete can
+// train is worth more than a block-aware one they do not get. Every other
+// failure — a macro lookup that broke, a model error, an unreadable answer, a
+// failed write — is returned rather than swallowed, because falling back there
+// would hide a real fault behind a silently worse plan.
+//
+// Like the legacy generator it sets no deadline of its own: the caller's
+// context is the whole budget for the Claude call, which is why RunWeekly wraps
+// weeklyPlanTimeout around it.
+//
+// Returns nil without writing anything when the athlete has not enabled Stride.
+func AdjustWeek(ctx context.Context, db *sql.DB, userID int64, weekStart string) error {
+	// A non-Monday week start matches no macro week, no stride_plans row and no
+	// weekly summary, so it would degrade into a silently block-less plan for a
+	// week nothing else in Stride recognises. Reject it here instead.
+	if _, err := parseMondayWeek(weekStart); err != nil {
+		return fmt.Errorf("adjust week: %w", err)
+	}
+	weekEnd := shiftDays(weekStart, 6)
+
+	prefs, claudeCfg, enabled, err := resolveStrideConfig(db, userID)
+	if err != nil || !enabled {
+		return err
+	}
+
+	built, err := buildAdjustPrompt(ctx, db, userID, weekStart, weekEnd)
+	if errors.Is(err, ErrNoMacroWeek) {
+		log.Printf("stride: user %d week %s: no macro week to adjust — planning the week from scratch", userID, weekStart)
+		return generatePlanLegacy(ctx, db, userID, prefs, claudeCfg, weekStart, weekEnd)
+	}
+	if err != nil {
+		return fmt.Errorf("build adjust prompt: %w", err)
+	}
+
+	response, err := runPromptFunc(ctx, claudeCfg, built.Prompt)
+	if err != nil {
+		return fmt.Errorf("Claude prompt: %w", err)
+	}
+
+	// parseAdjustEnvelope, not parsePlanEnvelope: this prompt asked for the
+	// {week, adjustment} envelope, so a bare day array is a shape slip and must
+	// fail rather than be written as "the coach changed nothing".
+	env, err := parseAdjustEnvelope(response, weekStart, weekEnd)
+	if err != nil {
+		return fmt.Errorf("parse adjust response: %w", err)
+	}
+
+	// The macro week is what the plan row links back to and what flips to
+	// 'materialised' in the same transaction as the write.
+	macroWeekID := built.MacroWeek.ID
+	return saveWeeklyPlan(ctx, db, weeklyPlanWrite{
+		UserID:    userID,
+		WeekStart: weekStart,
+		WeekEnd:   weekEnd,
+		// Denormalised from the macro week, never from the coach's answer: the
+		// phase is fixed by the block and the prompt says so.
+		Phase:       built.MacroWeek.Phase,
+		Envelope:    env,
+		Prompt:      built.Prompt,
+		Response:    response,
+		Model:       claudeCfg.Model,
+		Notes:       built.Notes,
+		MacroWeekID: &macroWeekID,
+		MacroPlanID: built.MacroPlan.ID,
+		CurrentGoal: built.CurrentGoal,
+	})
+}
 
 // GoalUpdate is the coach's proposed change to the block's target half-marathon
 // time. The _s suffix on the wire key is deliberate and matches
@@ -118,11 +210,9 @@ func truncateForError(body string) string {
 // losing the coach's stated rationale and telling next week's prompt the week
 // was spec-conforming. A hard error re-runs the prompt instead.
 //
-// It has no production caller yet, by design: this is the reader half of the
-// AdjustWeek path, landing with buildAdjustPrompt (adjust_prompt.go), which is
-// likewise unwired. Hytte-a628o adds the entrypoint that runs the prompt and
-// feeds its response through here — it must call this, not parsePlanEnvelope,
-// or the bare-array refusal above is not enforced anywhere.
+// AdjustWeek is its only caller, and must stay so: routing the adjust
+// response through parsePlanEnvelope instead would leave the bare-array
+// refusal above enforced nowhere.
 func parseAdjustEnvelope(response, weekStart, weekEnd string) (PlanEnvelope, error) {
 	body := strings.TrimSpace(stripCodeFence(response))
 	if body == "" {

@@ -42,7 +42,7 @@ var userLocks sync.Map // userID int64 -> *sync.Mutex
 //
 // The lock is a plain, NON-REENTRANT sync.Mutex, and it belongs to the
 // top-level entry points only: RunWeekly and the handlers that trigger the same
-// work by hand. Nothing they call — GeneratePlan, EnsureMacroPlan,
+// work by hand. Nothing they call — AdjustWeek, EnsureMacroPlan,
 // GenerateMacroPlan or any helper below them — may take it, because RunWeekly
 // holds it for the whole run and a second acquisition underneath would
 // self-deadlock (or, via TryLockUser, make the run 409 itself).

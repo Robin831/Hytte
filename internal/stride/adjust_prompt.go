@@ -130,6 +130,10 @@ type adjustPromptContext struct {
 	MacroPlan *MacroPlan
 	MacroWeek MacroWeek
 	Notes     []Note
+	// CurrentGoal is the block's goal in the revision the prompt showed the
+	// coach. saveWeeklyPlan clamps a proposed goal_update against it, so it has
+	// to be the same number the model was asked to revise.
+	CurrentGoal MacroGoal
 }
 
 // buildAdjustPrompt assembles the full AdjustWeek prompt for the week starting
@@ -166,7 +170,8 @@ func buildAdjustPrompt(ctx context.Context, db *sql.DB, userID int64, weekStart,
 
 	// The plan's intent: the block goal, where this week sits in it, and the
 	// spec this week is contracted to deliver.
-	sb.WriteString(buildMacroBlock(ctx, db, userID, block, target))
+	goal, revisionLabel := currentBlockGoal(ctx, db, userID, block)
+	sb.WriteString(buildMacroBlock(block, target, goal, revisionLabel))
 
 	// The trajectory, in summary: one row per elapsed week of the block.
 	sb.WriteString(buildBlockProgressTable(ctx, db, userID, block, weekStart))
@@ -248,10 +253,11 @@ func buildAdjustPrompt(ctx context.Context, db *sql.DB, userID int64, weekStart,
 	sb.WriteString("Return the adjusted week now as the JSON object described above. Output ONLY that object, no other text.\n")
 
 	return &adjustPromptContext{
-		Prompt:    sb.String(),
-		MacroPlan: block,
-		MacroWeek: target,
-		Notes:     notes,
+		Prompt:      sb.String(),
+		MacroPlan:   block,
+		MacroWeek:   target,
+		Notes:       notes,
+		CurrentGoal: goal,
 	}, nil
 }
 
@@ -324,16 +330,41 @@ func libraryBlockPhrase(phase string) string {
 	return fmt.Sprintf("the current training block, which for this week is %q — an entry is suitable when its listed blocks include %s, or when it lists none (blocks: any)", block, block)
 }
 
+// currentBlockGoal returns the block's goal in whichever revision is current,
+// together with a label naming that revision for the prompt.
+//
+// A block always has its initial revision, so a missing history is a read
+// failure rather than a new athlete — fall back to the block's own goal rather
+// than dropping it.
+//
+// AdjustWeek reads the goal through here too, so the target the +/-3% clamp
+// measures a proposal against is exactly the target the prompt showed the
+// coach. Deriving it twice is how a proposal comes to be judged against a
+// number the model never saw.
+func currentBlockGoal(ctx context.Context, db *sql.DB, userID int64, block *MacroPlan) (goal MacroGoal, revisionLabel string) {
+	goal, revisionLabel = block.Goal, "initial"
+	revisions, err := ListGoalRevisions(ctx, db, block.ID, userID)
+	if err != nil {
+		log.Printf("stride: load goal revisions for macro plan %d: %v", block.ID, err)
+		return goal, revisionLabel
+	}
+	if n := len(revisions); n > 0 {
+		latest := revisions[n-1]
+		return latest.Goal, fmt.Sprintf("revision %d, set %s, source %s", n, latest.WeekStart, latest.Source)
+	}
+	return goal, revisionLabel
+}
+
 // buildMacroBlock renders the block this week belongs to: the goal in its
 // current revision, where the week sits in the periodisation, the week's own
 // spec, and the weeks either side of it for continuity.
 //
-// It takes the already-loaded block and its already-resolved target week rather
-// than looking either up again, because buildBlockProgressTable and
-// buildFitnessSignals need the same block; reading it once means all three
-// sections describe the same plan even if a regeneration lands while the prompt
-// is being built.
-func buildMacroBlock(ctx context.Context, db *sql.DB, userID int64, block *MacroPlan, target MacroWeek) string {
+// It takes the already-loaded block, its already-resolved target week and its
+// already-resolved goal rather than looking any of them up again, because
+// buildBlockProgressTable, buildFitnessSignals and the goal clamp in AdjustWeek
+// need the same values; reading them once means every one of them describes the
+// same plan even if a regeneration lands while the prompt is being built.
+func buildMacroBlock(block *MacroPlan, target MacroWeek, goal MacroGoal, revisionLabel string) string {
 	weekStart := target.WeekStart
 
 	var sb strings.Builder
@@ -345,19 +376,6 @@ func buildMacroBlock(ctx context.Context, db *sql.DB, userID int64, block *Macro
 	}
 	sb.WriteString("\n")
 
-	// The goal, in whichever revision is current. A block always has its
-	// initial revision, so a missing history is a read failure, not a new
-	// athlete — fall back to the block's own goal rather than dropping it.
-	goal := block.Goal
-	revisionLabel := "initial"
-	revisions, err := ListGoalRevisions(ctx, db, block.ID, userID)
-	if err != nil {
-		log.Printf("stride: load goal revisions for macro plan %d: %v", block.ID, err)
-	} else if n := len(revisions); n > 0 {
-		latest := revisions[n-1]
-		goal = latest.Goal
-		revisionLabel = fmt.Sprintf("revision %d, set %s, source %s", n, latest.WeekStart, latest.Source)
-	}
 	fmt.Fprintf(&sb, "### Block Goal (%s)\n", revisionLabel)
 	if goal.PrimaryFocus != "" {
 		fmt.Fprintf(&sb, "- Focus: %s\n", goal.PrimaryFocus)
