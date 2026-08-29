@@ -38,6 +38,7 @@
     "result": "Resultat",
     "target": "Mål",
     "delete": "Slett løp",
+    "edit": "Rediger {{name}}",
     "form": {
       "name": "Løpsnavn",
       "namePlaceholder": "Bergen City Marathon",
@@ -50,14 +51,18 @@
       "priorityC": "C — Prøveløp",
       "notes": "Notater (valgfritt)",
       "notesPlaceholder": "Eventuelle notater om dette løpet",
+      "createTitle": "Nytt løp",
+      "editTitle": "Rediger løp",
       "save": "Legg til løp",
+      "update": "Lagre endringer",
       "saving": "Lagrer...",
       "cancel": "Avbryt",
       "error": {
         "create": "Kunne ikke opprette løp",
         "delete": "Kunne ikke slette løp",
         "invalidDistance": "Distanse må være et positivt tall",
-        "invalidTargetTime": "Skriv inn måltid som H:MM:SS (f.eks. 3:30:00)"
+        "invalidTargetTime": "Skriv inn måltid som H:MM:SS (f.eks. 3:30:00)",
+        "update": "Kunne ikke oppdatere løp"
       }
     }
   },
