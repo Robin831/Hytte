@@ -38,6 +38,7 @@
     "result": "Result",
     "target": "Target",
     "delete": "Delete race",
+    "edit": "Edit {{name}}",
     "form": {
       "name": "Race name",
       "namePlaceholder": "Bergen City Marathon",
@@ -50,14 +51,18 @@
       "priorityC": "C — Tune-up",
       "notes": "Notes (optional)",
       "notesPlaceholder": "Any notes about this race",
+      "createTitle": "New race",
+      "editTitle": "Edit race",
       "save": "Add race",
+      "update": "Save changes",
       "saving": "Saving...",
       "cancel": "Cancel",
       "error": {
         "create": "Failed to create race",
         "delete": "Failed to delete race",
         "invalidDistance": "Distance must be a positive number",
-        "invalidTargetTime": "Enter target time as H:MM:SS (e.g. 3:30:00)"
+        "invalidTargetTime": "Enter target time as H:MM:SS (e.g. 3:30:00)",
+        "update": "Failed to update race"
       }
     }
   },

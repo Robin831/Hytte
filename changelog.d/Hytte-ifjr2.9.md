@@ -1,0 +1,3 @@
+category: Added
+- **Edit races from the Stride race calendar** - The race form now doubles as an edit form: an edit button on each upcoming or past race loads it into the form, and saving sends an update instead of creating a duplicate. A recorded result time is carried across the edit untouched. (Hytte-ifjr2.9)
+- **Race changes mark the active macro block stale** - Creating, editing or deleting a race whose date falls inside an active macro block's horizon flags that block with `races_changed`, which the UI surfaces as a banner with a Regenerate button. Editing a race into or out of a horizon flags both blocks involved. Nothing is ever regenerated automatically. (Hytte-ifjr2.9)

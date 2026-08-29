@@ -16,3 +16,16 @@ export function parseTargetTime(s: string): number | null {
   if (!Number.isSafeInteger(totalSeconds)) return null
   return totalSeconds
 }
+
+// Renders seconds back as the strict "H:MM:SS" string parseTargetTime accepts,
+// so loading a stored target time into the race form and saving it unchanged is
+// a round trip rather than a silent reformat. Negative or non-finite input
+// yields an empty string — the form treats that as "no target time".
+export function formatTargetTime(seconds: number | null): string {
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return ''
+  const total = Math.round(seconds)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const secs = total % 60
+  return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+}

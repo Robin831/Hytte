@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import StridePage from './StridePage'
-import { parseTargetTime } from './strideUtils'
+import { formatTargetTime, parseTargetTime } from './strideUtils'
 import enStride from '../../public/locales/en/stride.json'
 import type { DayPlan } from '../types/stride'
 import { stubEventSource, type EventSourceStub } from '../test/stubEventSource'
@@ -467,6 +467,136 @@ describe('StridePage – race form', () => {
         url.includes('/api/stride/races') && init?.method === 'POST',
     )
     expect(postCalls).toHaveLength(0)
+  })
+})
+
+describe('formatTargetTime', () => {
+  it('returns an empty string for a race with no target time', () => {
+    expect(formatTargetTime(null)).toBe('')
+  })
+
+  it('pads minutes and seconds to two digits', () => {
+    expect(formatTargetTime(3665)).toBe('1:01:05')
+  })
+
+  it('round-trips through parseTargetTime', () => {
+    expect(parseTargetTime(formatTargetTime(10800))).toBe(10800)
+  })
+
+  it('rejects negative input rather than rendering a broken clock', () => {
+    expect(formatTargetTime(-1)).toBe('')
+  })
+})
+
+describe('StridePage – race edit', () => {
+  // A race with a recorded result, to prove the edit form carries result_time
+  // across even though it never shows it.
+  const EDITABLE_RACE = { ...RACE, name: 'Sandnes Half', result_time: 4500 }
+
+  function makeEditFetchMock(putOk = true) {
+    return vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/stride/races/') && init?.method === 'PUT') {
+        return Promise.resolve({
+          ok: putOk,
+          json: () => Promise.resolve(putOk ? { race: EDITABLE_RACE } : { error: 'Failed to update race' }),
+        } as Response)
+      }
+      if (url.includes('/api/stride/races')) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ races: [EDITABLE_RACE] }) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ notes: [] }) } as Response)
+    })
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('prefills the form from the race being edited', async () => {
+    vi.stubGlobal('fetch', makeEditFetchMock())
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getAllByText('Sandnes Half').length).toBeGreaterThan(0)
+    })
+
+    fireEvent.click(screen.getAllByLabelText('Edit Sandnes Half')[0])
+
+    expect(screen.getByText('Edit race')).toBeInTheDocument()
+    expect(screen.getByLabelText('Race name')).toHaveValue('Sandnes Half')
+    expect(screen.getByLabelText('Date')).toHaveValue('2099-06-15')
+    expect(screen.getByLabelText('Distance (km)')).toHaveValue(42.195)
+    expect(screen.getByLabelText('Target time (optional)')).toHaveValue('3:00:00')
+    expect(screen.getByLabelText('Priority')).toHaveValue('A')
+  })
+
+  it('PUTs the edited fields and preserves the recorded result time', async () => {
+    const fetchMock = makeEditFetchMock()
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getAllByText('Sandnes Half').length).toBeGreaterThan(0)
+    })
+
+    fireEvent.click(screen.getAllByLabelText('Edit Sandnes Half')[0])
+    fireEvent.change(screen.getByLabelText('Race name'), { target: { value: 'Sandnes Halvmaraton' } })
+
+    const form = screen.getByLabelText('Race name').closest('form')!
+    await act(async () => {
+      fireEvent.submit(form)
+    })
+
+    const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')
+    expect(put).toBeDefined()
+    expect(put![0]).toBe(`/api/stride/races/${EDITABLE_RACE.id}`)
+    expect(JSON.parse(put![1]!.body as string)).toMatchObject({
+      name: 'Sandnes Halvmaraton',
+      date: '2099-06-15',
+      distance_m: 42195,
+      target_time: 10800,
+      priority: 'A',
+      result_time: 4500,
+    })
+    // The form closes on success, which is also what proves the edit committed.
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Race name')).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows the update error and keeps the form open when the PUT fails', async () => {
+    vi.stubGlobal('fetch', makeEditFetchMock(false))
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getAllByText('Sandnes Half').length).toBeGreaterThan(0)
+    })
+
+    fireEvent.click(screen.getAllByLabelText('Edit Sandnes Half')[0])
+    const form = screen.getByLabelText('Race name').closest('form')!
+    await act(async () => {
+      fireEvent.submit(form)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to update race')).toBeInTheDocument()
+    })
+    expect(screen.getByLabelText('Race name')).toBeInTheDocument()
+  })
+
+  it('drops edit mode when the form is cancelled, so Add Race starts empty', async () => {
+    vi.stubGlobal('fetch', makeEditFetchMock())
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getAllByText('Sandnes Half').length).toBeGreaterThan(0)
+    })
+
+    fireEvent.click(screen.getAllByLabelText('Edit Sandnes Half')[0])
+    expect(screen.getByLabelText('Race name')).toHaveValue('Sandnes Half')
+
+    fireEvent.click(screen.getByText('Cancel'))
+    fireEvent.click(screen.getByText('Add Race'))
+
+    expect(screen.getByText('New race')).toBeInTheDocument()
+    expect(screen.getByLabelText('Race name')).toHaveValue('')
   })
 })
 

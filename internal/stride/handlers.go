@@ -348,6 +348,8 @@ func CreateRaceHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		noteRaceCalendarChanged(r.Context(), db, user.ID, race.Date)
+
 		writeJSON(w, http.StatusCreated, map[string]any{"race": race})
 	}
 }
@@ -411,6 +413,18 @@ func UpdateRaceHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// The row as it stands is read before the write so the block covering
+		// its *old* date can be marked stale too: a race moved out of a horizon
+		// invalidates the block it left just as much as the one it landed in.
+		// A read failure is not fatal — the update still happens, and only the
+		// old date's block is missed.
+		var previousDate string
+		if previous, err := GetRaceByID(db, id, user.ID); err == nil {
+			previousDate = previous.Date
+		} else if err != sql.ErrNoRows {
+			log.Printf("stride: read race %d before update: %v", id, err)
+		}
+
 		race, err := UpdateRace(db, id, user.ID, body.Name, body.Date, body.DistanceM, body.TargetTime, body.Priority, body.Notes, body.ResultTime)
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -421,6 +435,8 @@ func UpdateRaceHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update race"})
 			return
 		}
+
+		noteRaceCalendarChanged(r.Context(), db, user.ID, previousDate, race.Date)
 
 		writeJSON(w, http.StatusOK, map[string]any{"race": race})
 	}
@@ -437,6 +453,15 @@ func DeleteRaceHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// The date has to be read before the row goes away — after the delete
+		// there is nothing left to tell which block the race sat in.
+		var deletedDate string
+		if deleted, err := GetRaceByID(db, id, user.ID); err == nil {
+			deletedDate = deleted.Date
+		} else if err != sql.ErrNoRows {
+			log.Printf("stride: read race %d before delete: %v", id, err)
+		}
+
 		if err := DeleteRace(db, id, user.ID); err != nil {
 			if err == sql.ErrNoRows {
 				writeJSON(w, http.StatusNotFound, map[string]string{"error": "race not found"})
@@ -446,6 +471,8 @@ func DeleteRaceHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete race"})
 			return
 		}
+
+		noteRaceCalendarChanged(r.Context(), db, user.ID, deletedDate)
 
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}

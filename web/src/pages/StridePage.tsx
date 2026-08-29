@@ -13,7 +13,7 @@ import StrideChatDrawer from '../components/stride/StrideChatDrawer'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../components/ui/dialog'
 import { DayCard } from '../components/stride/DayCard'
 import { WeekDetailsModal } from '../components/stride/WeekDetailsModal'
-import { parseTargetTime } from './strideUtils'
+import { formatTargetTime, parseTargetTime } from './strideUtils'
 
 interface Race {
   id: number
@@ -566,8 +566,12 @@ export default function StridePage() {
   const [rerunError, setRerunError] = useState('')
   const rerunAbortRef = useRef<AbortController | null>(null)
 
-  // Race form state
+  // Race form state. The one form serves both create and edit: editingRace
+  // holds the row being edited (null while creating), and is also what carries
+  // result_time across an edit — the form does not expose it, and PUT
+  // /api/stride/races/{id} replaces every column it is sent.
   const [showRaceForm, setShowRaceForm] = useState(false)
+  const [editingRace, setEditingRace] = useState<Race | null>(null)
   const [raceName, setRaceName] = useState('')
   const [raceDate, setRaceDate] = useState('')
   const [raceDistanceKm, setRaceDistanceKm] = useState('')
@@ -917,8 +921,47 @@ export default function StridePage() {
     }
   }
 
-  async function handleCreateRace(e: React.FormEvent) {
+  function resetRaceForm() {
+    setEditingRace(null)
+    setRaceName('')
+    setRaceDate('')
+    setRaceDistanceKm('')
+    setRaceTargetTime('')
+    setRacePriority('B')
+    setRaceNotes('')
+    setRaceError('')
+  }
+
+  // Loads a race into the shared form and switches it to edit mode. The
+  // distance is stored in metres but entered in kilometres, and the target time
+  // is stored in seconds but entered as H:MM:SS, so both are converted here and
+  // back again on submit.
+  function startEditRace(race: Race) {
+    setEditingRace(race)
+    setRaceName(race.name)
+    setRaceDate(race.date)
+    setRaceDistanceKm(String(race.distance_m / 1000))
+    setRaceTargetTime(formatTargetTime(race.target_time))
+    setRacePriority(race.priority)
+    setRaceNotes(race.notes)
+    setRaceError('')
+    setShowRaceForm(true)
+  }
+
+  function toggleRaceForm() {
+    if (showRaceForm) {
+      setShowRaceForm(false)
+      resetRaceForm()
+      return
+    }
+    resetRaceForm()
+    setShowRaceForm(true)
+  }
+
+  async function handleSubmitRace(e: React.FormEvent) {
     e.preventDefault()
+    const editing = editingRace
+    const failureKey = editing ? 'races.form.error.update' : 'races.form.error.create'
     setRaceError('')
     setRaceSubmitting(true)
     try {
@@ -941,10 +984,13 @@ export default function StridePage() {
         target_time: targetTime,
         priority: racePriority,
         notes: raceNotes,
+        // Only sent on an edit: the update endpoint writes every column, so
+        // omitting the recorded result would wipe it.
+        ...(editing ? { result_time: editing.result_time } : {}),
       }
 
-      const res = await fetch('/api/stride/races', {
-        method: 'POST',
+      const res = await fetch(editing ? `/api/stride/races/${editing.id}` : '/api/stride/races', {
+        method: editing ? 'PUT' : 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -952,20 +998,15 @@ export default function StridePage() {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        setRaceError(data.error ?? t('races.form.error.create'))
+        setRaceError(data.error ?? t(failureKey))
         return
       }
 
-      setRaceName('')
-      setRaceDate('')
-      setRaceDistanceKm('')
-      setRaceTargetTime('')
-      setRacePriority('B')
-      setRaceNotes('')
       setShowRaceForm(false)
+      resetRaceForm()
       await loadRaces()
     } catch {
-      setRaceError(t('races.form.error.create'))
+      setRaceError(t(failureKey))
     } finally {
       setRaceSubmitting(false)
     }
@@ -983,6 +1024,12 @@ export default function StridePage() {
         return
       }
       setRaces(prev => prev.filter(r => r.id !== id))
+      // Deleting the race the form is editing would leave it pointing at a row
+      // that no longer exists, so the form goes with it.
+      if (editingRace?.id === id) {
+        setShowRaceForm(false)
+        resetRaceForm()
+      }
     } catch {
       setRaceError(t('races.form.error.delete'))
     }
@@ -1262,7 +1309,7 @@ export default function StridePage() {
           </h2>
           <button
             type="button"
-            onClick={() => setShowRaceForm(v => !v)}
+            onClick={toggleRaceForm}
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
           >
             <Plus size={14} />
@@ -1270,9 +1317,12 @@ export default function StridePage() {
           </button>
         </div>
 
-        {/* Race form */}
+        {/* Race form — create when editingRace is null, edit otherwise */}
         {showRaceForm && (
-          <form onSubmit={handleCreateRace} className="mb-4 p-4 bg-gray-800 rounded-xl border border-gray-700 space-y-3">
+          <form onSubmit={handleSubmitRace} className="mb-4 p-4 bg-gray-800 rounded-xl border border-gray-700 space-y-3">
+            <p className="text-sm font-medium text-white">
+              {editingRace ? t('races.form.editTitle') : t('races.form.createTitle')}
+            </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label htmlFor="race-name" className="block text-xs text-gray-400 mb-1">{t('races.form.name')}</label>
@@ -1354,11 +1404,15 @@ export default function StridePage() {
                 disabled={raceSubmitting}
                 className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
               >
-                {raceSubmitting ? t('races.form.saving') : t('races.form.save')}
+                {raceSubmitting
+                  ? t('races.form.saving')
+                  : editingRace
+                    ? t('races.form.update')
+                    : t('races.form.save')}
               </button>
               <button
                 type="button"
-                onClick={() => { setShowRaceForm(false); setRaceError('') }}
+                onClick={() => { setShowRaceForm(false); resetRaceForm() }}
                 className="px-4 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
               >
                 {t('races.form.cancel')}
@@ -1390,6 +1444,14 @@ export default function StridePage() {
                       {weeks > 0 && ` · ${t('races.weeksAway', { count: weeks })}`}
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => startEditRace(race)}
+                    className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-blue-400 transition-all"
+                    aria-label={t('races.edit', { name: race.name })}
+                  >
+                    <Pencil size={14} />
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleDeleteRace(race.id)}
@@ -1425,6 +1487,15 @@ export default function StridePage() {
                       </p>
                     </div>
                     <button
+                      type="button"
+                      onClick={() => startEditRace(race)}
+                      className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-blue-400 transition-all"
+                      aria-label={t('races.edit', { name: race.name })}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => handleDeleteRace(race.id)}
                       className="sm:opacity-0 sm:group-hover:opacity-100 p-1.5 text-gray-500 hover:text-red-400 transition-all"
                       aria-label={t('races.delete')}
