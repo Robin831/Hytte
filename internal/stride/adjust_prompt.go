@@ -166,18 +166,10 @@ func buildAdjustPrompt(ctx context.Context, db *sql.DB, userID int64, weekStart,
 
 	// The plan's intent: the block goal, where this week sits in it, and the
 	// spec this week is contracted to deliver.
-	macroBlock, err := buildMacroBlock(ctx, db, userID, block, weekStart)
-	if err != nil {
-		return nil, err
-	}
-	sb.WriteString(macroBlock)
+	sb.WriteString(buildMacroBlock(ctx, db, userID, block, target))
 
 	// The trajectory, in summary: one row per elapsed week of the block.
-	progress, err := buildBlockProgressTable(ctx, db, userID, block, weekStart)
-	if err != nil {
-		return nil, err
-	}
-	sb.WriteString(progress)
+	sb.WriteString(buildBlockProgressTable(ctx, db, userID, block, weekStart))
 
 	// Where the athlete's fitness and load actually are right now.
 	sb.WriteString(buildFitnessSignals(db, userID, block, time.Now().UTC()))
@@ -336,15 +328,13 @@ func libraryBlockPhrase(phase string) string {
 // current revision, where the week sits in the periodisation, the week's own
 // spec, and the weeks either side of it for continuity.
 //
-// It takes the already-loaded block rather than loading its own copy because
-// buildBlockProgressTable and buildFitnessSignals need the same one; reading it
-// once means all three sections describe the same plan even if a regeneration
-// lands while the prompt is being built.
-func buildMacroBlock(ctx context.Context, db *sql.DB, userID int64, block *MacroPlan, weekStart string) (string, error) {
-	target, ok := macroWeekAt(block, weekStart)
-	if !ok {
-		return "", ErrNoMacroWeek
-	}
+// It takes the already-loaded block and its already-resolved target week rather
+// than looking either up again, because buildBlockProgressTable and
+// buildFitnessSignals need the same block; reading it once means all three
+// sections describe the same plan even if a regeneration lands while the prompt
+// is being built.
+func buildMacroBlock(ctx context.Context, db *sql.DB, userID int64, block *MacroPlan, target MacroWeek) string {
+	weekStart := target.WeekStart
 
 	var sb strings.Builder
 	sb.WriteString("## Macro Block\n")
@@ -417,7 +407,7 @@ func buildMacroBlock(ctx context.Context, db *sql.DB, userID int64, block *Macro
 		sb.WriteString("### Next macro week\nNone — the target week is the last week of the block.\n\n")
 	}
 
-	return sb.String(), nil
+	return sb.String()
 }
 
 // shiftWeek returns the Monday n weeks from weekStart, or "" when weekStart is
@@ -544,7 +534,12 @@ type blockWeekAdherence struct {
 //
 // Only weeks that started before the target week are shown; the weeks still
 // ahead are the block's business, not this adjustment's.
-func buildBlockProgressTable(ctx context.Context, db *sql.DB, userID int64, block *MacroPlan, weekStart string) (string, error) {
+//
+// Every derived input degrades rather than failing, matching buildAdjustPrompt's
+// promise that only a missing macro week aborts the build: a query that fails
+// leaves its columns at zero and is logged, so the coach still gets the table's
+// shape and the rest of the prompt.
+func buildBlockProgressTable(ctx context.Context, db *sql.DB, userID int64, block *MacroPlan, weekStart string) string {
 	var sb strings.Builder
 	sb.WriteString("## Block Progress (elapsed weeks of this block)\n")
 
@@ -556,7 +551,7 @@ func buildBlockProgressTable(ctx context.Context, db *sql.DB, userID int64, bloc
 	}
 	if len(elapsed) == 0 {
 		sb.WriteString("No week of this block has elapsed yet — the target week is where the block starts.\n\n")
-		return sb.String(), nil
+		return sb.String()
 	}
 
 	ranges := make([]weekRange, 0, len(elapsed))
@@ -572,7 +567,8 @@ func buildBlockProgressTable(ctx context.Context, db *sql.DB, userID int64, bloc
 
 	distByWeek, err := computeWeeksDistanceMeters(db, userID, ranges)
 	if err != nil {
-		return "", fmt.Errorf("compute block distance: %w", err)
+		log.Printf("stride: compute block distance for user %d: %v", userID, err)
+		distByWeek = nil
 	}
 
 	// Zones need the athlete's HR boundaries; without them every week reports
@@ -584,25 +580,29 @@ func buildBlockProgressTable(ctx context.Context, db *sql.DB, userID int64, bloc
 	}
 	zoneByWeek, err := computeWeeksZoneSeconds(db, userID, ranges, zoneBoundaries)
 	if err != nil {
-		return "", fmt.Errorf("compute block zone seconds: %w", err)
+		log.Printf("stride: compute block zone seconds for user %d: %v", userID, err)
+		zoneByWeek = nil
 	}
 
 	adherence, err := loadBlockWeekAdherence(ctx, db, userID, weekStarts)
 	if err != nil {
-		return "", err
+		log.Printf("stride: load block adherence for user %d: %v", userID, err)
+		adherence = nil
 	}
 
 	sb.WriteString("Planned km and planned sessions are the macro week's targets. Actual km is logged volume across ALL sports, so read it as an upper bound on running.\n")
-	sb.WriteString("Done counts the plan's sessions that the coach's evaluations matched to a logged workout; `?` means that week was never evaluated at all, which is NOT the same as missed training.\n")
-	sb.WriteString("Thr min is minutes spent in HR zones 3-4. Flags counts the warning flags raised in that week's evaluations.\n\n")
+	sb.WriteString("Done counts the plan's sessions that the coach's evaluations matched to a logged workout; `?` means that week was never evaluated at all and `--` means no plan was ever generated for it — neither is the same as missed training.\n")
+	sb.WriteString("Thr min is the total minutes of workouts whose AVERAGE heart rate fell in zones 3-4, not time-in-zone. Flags counts the warning flags raised in that week's evaluations.\n\n")
 	sb.WriteString("| Week | Seq | Phase | Planned km | Actual km | Planned sessions | Done | Thr min | Flags |\n")
 	sb.WriteString("|------|-----|-------|------------|-----------|------------------|------|---------|-------|\n")
 	for _, w := range elapsed {
 		a := adherence[w.WeekStart]
-		done := "--"
+		var done string
 		switch {
 		case !a.hasPlan:
-			// No stride plan was ever generated for that week.
+			// No stride plan was ever generated for that week; the legend
+			// above tells the coach what "--" means.
+			done = "--"
 		case !a.evaluated:
 			done = "?"
 		default:
@@ -620,7 +620,7 @@ func buildBlockProgressTable(ctx context.Context, db *sql.DB, userID int64, bloc
 			planned, done, zones[1]/60, a.flags)
 	}
 	sb.WriteString("\n")
-	return sb.String(), nil
+	return sb.String()
 }
 
 // shiftDays returns the date n days after date, or "" when date is unparseable.
@@ -821,7 +821,10 @@ func renderHMPredictionSignal(db *sql.DB, userID int64, blockStart string) strin
 		log.Printf("stride: load race prediction history for user %d: %v", userID, err)
 		history = nil
 	}
-	// History is newest first.
+	// training.GetRacePredictionHistory orders by created_at DESC, so this
+	// slice is NEWEST first — the opposite of GetVO2maxHistory below. Read the
+	// latest off the front, and the block-start snapshot as the first entry
+	// scanning forward (backwards in time) that is not after the block started.
 	nowSecs := halfMarathonSeconds(firstOrNil(history))
 	var atStart *training.StoredRacePrediction
 	for i := range history {
@@ -894,7 +897,11 @@ func renderVO2maxSignal(db *sql.DB, userID int64, blockStart string) string {
 	if len(history) == 0 {
 		return "- VO2max: n/a\n"
 	}
-	// History is oldest first.
+	// training.GetVO2maxHistory re-sorts its LIMITed window by estimated_at
+	// ASC, so this slice is OLDEST first — the opposite of the prediction
+	// history above. The latest estimate is therefore the last element, and
+	// the block-start estimate is the LAST entry not after the block started,
+	// i.e. the one that was current on the block's first day.
 	latest := history[len(history)-1].VO2max
 	var atStart float64
 	for _, e := range history {
@@ -916,12 +923,22 @@ func buildRecentAdjustments(ctx context.Context, db *sql.DB, userID int64, weekS
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "## Recent Adjustments (last %d weeks)\n", adjustRecentAdjustmentWeeks)
 
+	// An unparseable week start means no window can be computed. Every other
+	// helper in this file treats that as "no data" rather than as a failure, so
+	// this one does too — the section renders empty instead of killing the
+	// prompt.
 	from := shiftWeek(weekStart, -adjustRecentAdjustmentWeeks)
 	if from == "" {
-		return "", fmt.Errorf("parse week start %q", weekStart)
+		log.Printf("stride: parse week start %q for recent adjustments", weekStart)
+		sb.WriteString("No adjustments recorded for the previous weeks.\n\n")
+		return sb.String(), nil
 	}
+	// adjustment_summary is TEXT NOT NULL DEFAULT '' (see db.go), but every
+	// plan written by the legacy weekly path leaves it empty and COALESCE keeps
+	// a future nullable column from turning a blank summary into a failed
+	// prompt build.
 	rows, err := db.QueryContext(ctx, `
-		SELECT week_start, adjustment_summary
+		SELECT week_start, COALESCE(adjustment_summary, '')
 		FROM stride_plans
 		WHERE user_id = ? AND week_start >= ? AND week_start < ?
 		ORDER BY week_start DESC

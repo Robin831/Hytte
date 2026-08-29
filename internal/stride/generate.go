@@ -874,18 +874,27 @@ func renderRacePredictionSection(racePrediction *training.StoredRacePrediction) 
 }
 
 // libraryRulesTemplate is the rotation contract that goes with the workout
-// library listing. The single %s names the training block a library entry has
-// to suit: the weekly generator has no macro week to name one from and passes
-// libraryBlockUnknown, while the AdjustWeek prompt substitutes the target
-// week's actual block so the rule is instantiated rather than abstract.
+// library listing. libraryRulesBlockToken names the training block a library
+// entry has to suit: the weekly generator has no macro week to name one from
+// and passes libraryBlockUnknown, while the AdjustWeek prompt substitutes the
+// target week's actual block so the rule is instantiated rather than abstract.
+//
+// The token is substituted with strings.Replace, not Fprintf: this prose is
+// prompt text that will keep growing, and a literal % added to it later (or a
+// % inside the phrase) would otherwise corrupt the prompt with %!x(MISSING)
+// noise that go vet cannot catch once the phrase is built elsewhere.
 const libraryRulesTemplate = `
 Library rules:
 - The [WEEKLY REFERENCE] session MUST appear exactly once this week, with its structure unchanged (adjust target paces to current fitness only). It is the fixed benchmark the athlete tracks week over week.
-- Draw the other quality sessions (threshold/hard/long-run variants) from the library when a suitable entry exists for %s — and VARY them: do not schedule a library workout whose "last" week is within the past 3 weeks, unless nothing else fits the block. Prefer higher-rated and less-recently-used entries.
+- Draw the other quality sessions (threshold/hard/long-run variants) from the library when a suitable entry exists for {{BLOCK}} — and VARY them: do not schedule a library workout whose "last" week is within the past 3 weeks, unless nothing else fits the block. Prefer higher-rated and less-recently-used entries.
 - When a session is taken from the library, set its "library_id" to the entry's id and keep the structure; you may tune paces/HR targets to current fitness.
 - Easy runs and sessions with no suitable library entry are composed freely as usual (library_id omitted).
 
 `
+
+// libraryRulesBlockToken is the placeholder libraryRulesTemplate reserves for
+// the training-block phrase.
+const libraryRulesBlockToken = "{{BLOCK}}"
 
 // libraryBlockUnknown is the abstract phrase libraryRulesTemplate falls back to
 // when the prompt cannot name the block concretely.
@@ -930,7 +939,7 @@ func renderWorkoutLibrarySection(libraryWorkouts []LibraryWorkout, blockPhrase s
 		}
 		sb.WriteString("\n")
 	}
-	fmt.Fprintf(&sb, libraryRulesTemplate, blockPhrase)
+	sb.WriteString(strings.Replace(libraryRulesTemplate, libraryRulesBlockToken, blockPhrase, 1))
 	return sb.String()
 }
 

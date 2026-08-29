@@ -638,10 +638,7 @@ func TestBlockProgressUnplannedAndUnevaluatedWeeks(t *testing.T) {
 	}
 	seedStridePlan(t, db, 1, monday, 4)
 
-	table, err := buildBlockProgressTable(ctx, db, 1, block, targetWeek)
-	if err != nil {
-		t.Fatalf("buildBlockProgressTable: %v", err)
-	}
+	table := buildBlockProgressTable(ctx, db, 1, block, targetWeek)
 	if row := promptRow(t, table, blockStart); !strings.Contains(row, "| ? |") {
 		t.Errorf("unevaluated week should report `?`, got: %s", row)
 	}
@@ -699,5 +696,163 @@ func TestGeneratePromptLibraryRuleStaysAbstract(t *testing.T) {
 	}
 	if strings.Contains(prompt, "which for this week is") {
 		t.Error("the weekly generator must not claim to know the block")
+	}
+}
+
+// The adherence fold has three distinguishable outcomes the coach reads
+// differently — no plan, a plan nobody evaluated, and a count of matched
+// sessions — and the count itself is de-duplicated per workout so a
+// re-evaluated session is not counted twice. Both IN-clause queries are
+// exercised across two weeks, so a placeholder miscount would fail here too.
+func TestLoadBlockWeekAdherenceFoldsEvaluations(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+	targetWeek, _ := upcomingWeek()
+	weekA := mondayAfter(targetWeek, -2)
+	weekB := mondayAfter(targetWeek, -1)
+
+	mondayA, err := parseWeekDate(weekA)
+	if err != nil {
+		t.Fatalf("parse week A: %v", err)
+	}
+	mondayB, err := parseWeekDate(weekB)
+	if err != nil {
+		t.Fatalf("parse week B: %v", err)
+	}
+	planA := seedStridePlan(t, db, 1, mondayA, 4)
+	seedStridePlan(t, db, 1, mondayB, 3)
+
+	w1 := seedWorkout(t, db, 1, weekA, 160, "adh-w1")
+	w2 := seedWorkout(t, db, 1, mondayA.AddDate(0, 0, 1).Format(dateLayout), 150, "adh-w2")
+	w3 := seedWorkout(t, db, 1, mondayA.AddDate(0, 0, 2).Format(dateLayout), 140, "adh-w3")
+
+	// Two evaluations of the SAME workout: only the first is folded in, so the
+	// second one's flags never reach the table either.
+	seedAdjustEvaluation(t, db, 1, planA, &w1, Evaluation{
+		PlannedType: "threshold", ActualType: "threshold", Compliance: "compliant",
+		Flags: []string{"hr_too_high"},
+	})
+	seedAdjustEvaluation(t, db, 1, planA, &w1, Evaluation{
+		PlannedType: "threshold", ActualType: "threshold", Compliance: "compliant",
+		Flags: []string{"overtraining", "injury_risk"},
+	})
+	// A missed session is evaluated but not completed.
+	seedAdjustEvaluation(t, db, 1, planA, &w2, Evaluation{
+		PlannedType: "threshold", ActualType: "none", Compliance: "missed",
+	})
+	// An unplanned extra workout: nothing was prescribed, so it is not a
+	// completed session however compliant the athlete was.
+	seedAdjustEvaluation(t, db, 1, planA, &w3, Evaluation{
+		PlannedType: "none", ActualType: "easy", Compliance: "compliant",
+	})
+	// Evaluations with no workout attached deliberately bypass the dedup set,
+	// so each of these counts on its own.
+	seedAdjustEvaluation(t, db, 1, planA, nil, Evaluation{
+		PlannedType: "easy", ActualType: "easy", Compliance: "compliant",
+	})
+	seedAdjustEvaluation(t, db, 1, planA, nil, Evaluation{
+		PlannedType: "long_run", ActualType: "long_run", Compliance: "partial",
+	})
+
+	got, err := loadBlockWeekAdherence(ctx, db, 1, []string{weekA, weekB})
+	if err != nil {
+		t.Fatalf("loadBlockWeekAdherence: %v", err)
+	}
+
+	a := got[weekA]
+	if !a.hasPlan || !a.evaluated {
+		t.Fatalf("week A: hasPlan=%v evaluated=%v, want both true", a.hasPlan, a.evaluated)
+	}
+	if a.planned != 4 {
+		t.Errorf("week A planned = %d, want 4", a.planned)
+	}
+	if a.completed != 3 {
+		t.Errorf("week A completed = %d, want 3 (one deduped workout + two workout-less evaluations)", a.completed)
+	}
+	if a.flags != 1 {
+		t.Errorf("week A flags = %d, want 1 — the duplicate evaluation's flags must not be counted", a.flags)
+	}
+
+	b := got[weekB]
+	if !b.hasPlan {
+		t.Error("week B has a plan and should say so")
+	}
+	if b.evaluated {
+		t.Error("week B was never evaluated and must render `?`, not a count")
+	}
+	if b.completed != 0 || b.flags != 0 {
+		t.Errorf("week B completed=%d flags=%d, want 0/0", b.completed, b.flags)
+	}
+
+	if _, ok := got[mondayAfter(targetWeek, -3)]; ok {
+		t.Error("a week that was never asked for leaked into the result")
+	}
+}
+
+// The two history signals read slices ordered in OPPOSITE directions:
+// training.GetRacePredictionHistory returns newest first, GetVO2maxHistory
+// oldest first. This pins both readings — "now" really is the latest estimate
+// and "block start" really is the one current when the block began — so a
+// change to either query's ORDER BY fails here instead of silently inverting
+// the deltas the coach reads.
+func TestFitnessSignalsReadHistoriesInTheirOwnOrder(t *testing.T) {
+	db := setupTestDB(t)
+	targetWeek, _ := upcomingWeek()
+	blockStart := mondayAfter(targetWeek, -4)
+	block := seedAdjustBlock(t, db, 1, blockStart)
+
+	// Predictions: two before the block (the later of which is the block-start
+	// reading) and one from today.
+	insertRacePrediction(t, db, 1, mondayAfter(blockStart, -3)+"T06:00:00Z", 5400)
+	insertRacePrediction(t, db, 1, mondayAfter(blockStart, -1)+"T06:00:00Z", 5280)
+	insertRacePrediction(t, db, 1, mondayAfter(blockStart, 2)+"T06:00:00Z", 5130)
+
+	// VO2max: same shape, so the block-start value is the last one recorded
+	// before the block and the latest is the most recent overall.
+	// One workout per estimate: vo2max_estimates is unique on (user, workout).
+	for i, e := range []struct {
+		value float64
+		weeks int
+	}{{50.0, -3}, {52.4, -1}, {54.1, 2}} {
+		// The workouts all sit before the block so they cannot disturb any
+		// week's volume; only estimated_at decides which side of the block
+		// start an estimate falls on.
+		w := seedWorkout(t, db, 1, mondayAfter(blockStart, -5), 150, fmt.Sprintf("order-vo2-%d", i))
+		insertVO2max(t, db, 1, w, e.value, mondayAfter(blockStart, e.weeks)+"T06:00:00Z")
+	}
+
+	got := buildFitnessSignals(db, 1, block, time.Now().UTC())
+
+	// 5130s is 1:25:30 and 5280s is 1:28:00, so the block is 2:30 to the good.
+	wantHM := "- Half-marathon prediction: " + formatRaceTime(5130) +
+		" (block start " + formatRaceTime(5280) + ", -" + formatRaceTime(150) + ")\n"
+	if !strings.Contains(got, wantHM) {
+		t.Errorf("half-marathon signal:\ngot  %q\nwant %q", got, wantHM)
+	}
+	if !strings.Contains(got, "- VO2max: 54.1 (block start 52.4, +1.7)\n") {
+		t.Errorf("VO2max signal read the history in the wrong direction:\n%s", got)
+	}
+}
+
+// The library rules are substituted by token, not by format string, so neither
+// a percent sign in the block phrase nor one added to the rules prose later can
+// leak %!x(MISSING) noise into a prompt sent to Claude.
+func TestWorkoutLibrarySectionSubstitutesTokenNotFormat(t *testing.T) {
+	library := []LibraryWorkout{{ID: 1, Name: "6x6min", WorkoutType: "threshold", MainSet: "6x6min", IsReference: true}}
+
+	got := renderWorkoutLibrarySection(library, "the build block (within 10% of target)")
+	if !strings.Contains(got, "a suitable entry exists for the build block (within 10% of target) — and VARY them") {
+		t.Errorf("the block phrase was not substituted verbatim:\n%s", got)
+	}
+	for _, bad := range []string{"%!", libraryRulesBlockToken, "MISSING"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("rendered library section contains %q:\n%s", bad, got)
+		}
+	}
+
+	// An empty phrase still falls back to the abstract wording.
+	if fallback := renderWorkoutLibrarySection(library, ""); !strings.Contains(fallback,
+		"a suitable entry exists for "+libraryBlockUnknown+" — and VARY them") {
+		t.Errorf("empty phrase did not fall back to the abstract wording:\n%s", fallback)
 	}
 }
