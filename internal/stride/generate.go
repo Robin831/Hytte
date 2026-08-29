@@ -275,44 +275,88 @@ func loadCustomPrompt(db *sql.DB, userID int64) string {
 	return decryptCustomPrompt(prefs["stride_custom_prompt"])
 }
 
+// weekForMode resolves a week mode to the Monday and Sunday of the week it
+// names: "current" for the week in progress, anything else — including the
+// empty mode every caller has always defaulted — for the upcoming one.
+//
+// It is the single definition of that mapping, because GeneratePlanHandler
+// resolves the week to plan and then reads the written plan back by the same
+// week_start; deriving it twice is how the two come to disagree.
+func weekForMode(weekMode string) (weekStart, weekEnd string) {
+	if weekMode == "current" {
+		return currentWeek()
+	}
+	return upcomingWeek()
+}
+
+// resolveStrideConfig loads the athlete's preferences and Claude config for one
+// planning run, with Stride's model default applied.
+//
+// enabled is false with a nil error when the athlete has not switched Stride
+// on. That is a configuration state rather than a failure: the caller writes
+// nothing and returns nil, and GeneratePlanHandler reads the missing plan as
+// "stride is not enabled" and answers 422. A disabled Claude integration *is*
+// returned as an error (training.ErrClaudeNotEnabled), because it names a
+// setting the athlete can act on.
+func resolveStrideConfig(db *sql.DB, userID int64) (prefs map[string]string, claudeCfg *training.ClaudeConfig, enabled bool, err error) {
+	prefs, err = auth.GetPreferences(db, userID)
+	if err != nil {
+		return nil, nil, false, fmt.Errorf("load preferences: %w", err)
+	}
+
+	// Stride must be explicitly enabled.
+	if prefs["stride_enabled"] != "true" {
+		return prefs, nil, false, nil
+	}
+
+	// Picks up the claude_model and claude_enabled preferences.
+	claudeCfg, err = training.LoadClaudeConfig(db, userID)
+	if err != nil {
+		return nil, nil, false, fmt.Errorf("load Claude config: %w", err)
+	}
+	if !claudeCfg.Enabled {
+		return nil, nil, false, training.ErrClaudeNotEnabled
+	}
+
+	// Override the model to strideDefaultModel unless the athlete picked one.
+	applyStrideModelDefault(prefs, claudeCfg)
+	return prefs, claudeCfg, true, nil
+}
+
 // GeneratePlan generates a weekly training plan for the given user using Claude AI.
 // It queries training context from the DB, builds a prompt with Marius Bakken
 // threshold-dominant model instructions, calls Claude, and stores the result in
 // stride_plans. Returns nil if stride is not enabled for the user.
 // weekMode controls the target week: "current" for the current week, "next" (default)
 // for the upcoming week.
+//
+// This is the LEGACY whole-week path: it plans from scratch and knows nothing
+// about macro blocks. Production enters through AdjustWeek (adjust.go), which
+// adjusts the block's week instead and falls back to generatePlanLegacy — the
+// body below — when no macro week covers the requested week. This entrypoint
+// remains the direct-entry form of that same code, so the fallback can never
+// drift from the path it falls back to.
 func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string) error {
-	// Load user preferences.
-	prefs, err := auth.GetPreferences(db, userID)
-	if err != nil {
-		return fmt.Errorf("load preferences: %w", err)
+	prefs, claudeCfg, enabled, err := resolveStrideConfig(db, userID)
+	if err != nil || !enabled {
+		return err
 	}
+	weekStart, weekEnd := weekForMode(weekMode)
+	return generatePlanLegacy(ctx, db, userID, prefs, claudeCfg, weekStart, weekEnd)
+}
 
-	// Stride must be explicitly enabled.
-	if prefs["stride_enabled"] != "true" {
-		return nil
-	}
-
-	// Load Claude config (picks up claude_model and claude_enabled preferences).
-	claudeCfg, err := training.LoadClaudeConfig(db, userID)
-	if err != nil {
-		return fmt.Errorf("load Claude config: %w", err)
-	}
-	if !claudeCfg.Enabled {
-		return training.ErrClaudeNotEnabled
-	}
-
-	// Override the model to strideDefaultModel unless the athlete picked one.
-	applyStrideModelDefault(prefs, claudeCfg)
-
-	// Determine the week to plan.
-	var weekStart, weekEnd string
-	if weekMode == "current" {
-		weekStart, weekEnd = currentWeek()
-	} else {
-		weekStart, weekEnd = upcomingWeek()
-	}
-
+// generatePlanLegacy builds the legacy whole-week prompt for weekStart..weekEnd,
+// calls Claude and stores the answer. The athlete's configuration is passed in
+// already resolved (see resolveStrideConfig) so AdjustWeek can fall back into
+// this without reading the same two settings a second time.
+func generatePlanLegacy(
+	ctx context.Context,
+	db *sql.DB,
+	userID int64,
+	prefs map[string]string,
+	claudeCfg *training.ClaudeConfig,
+	weekStart, weekEnd string,
+) error {
 	// Query stride races — filter to upcoming, unfinished races only.
 	allRaces, err := ListRaces(db, userID)
 	if err != nil {
@@ -392,8 +436,8 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 	profileBlock := training.BuildUserProfileBlock(db, userID)
 
 	// Latest race-prediction snapshot: the weekly cron refreshes it right
-	// before calling GeneratePlan, so the coach paces sessions off this week's
-	// honest fitness estimate instead of flying blind. Non-fatal when absent.
+	// before the plan step, so the coach paces sessions off this week's honest
+	// fitness estimate instead of flying blind. Non-fatal when absent.
 	racePrediction, err := training.GetLatestRacePrediction(db, userID)
 	if err != nil {
 		log.Printf("stride: load race prediction for user %d: %v", userID, err)
@@ -450,8 +494,8 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 
 	// This path plans without a macro block, so there is no phase to copy down
 	// and no macro week to mark materialised, and a goal proposal has no goal
-	// history to append to. The block-aware caller that fills those in is wired
-	// separately; saveWeeklyPlan is the same write either way.
+	// history to append to. AdjustWeek fills those in; saveWeeklyPlan is the
+	// same write either way.
 	return saveWeeklyPlan(ctx, db, weeklyPlanWrite{
 		UserID:    userID,
 		WeekStart: weekStart,

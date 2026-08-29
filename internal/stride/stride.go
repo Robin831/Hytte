@@ -118,7 +118,7 @@ const (
 	// weeklyPredictionTimeout bounds the race-prediction refresh. It is
 	// advisory input to the plan, so a slow refresh must not eat the run.
 	weeklyPredictionTimeout = 3 * time.Minute
-	// weeklyPlanTimeout bounds the 7-day plan generation. GeneratePlan applies
+	// weeklyPlanTimeout bounds the 7-day plan generation. AdjustWeek applies
 	// no deadline of its own — it hands the context straight to the Claude
 	// call — so this value *is* that call's budget, and it matches the budget
 	// every other Claude call in the package gets (evalClaudeTimeout,
@@ -132,7 +132,7 @@ const (
 // rather than apologies: nothing retries automatically, so the athlete opening
 // Stride is what actually fixes it.
 const (
-	weeklyPlanReadyBody = "Stride has your plan for next week"
+	weeklyPlanReadyBody = "Stride adjusted next week"
 	// weeklyPlanFailedBody covers the likeliest bad run: the horizon is fine
 	// but next week is not planned. Silence here would leave the athlete
 	// opening Stride on Monday to last week's plan with no explanation.
@@ -228,17 +228,17 @@ func RunWeekly(ctx context.Context, db *sql.DB, userID int64) error {
 		macroFailed = !configDisabled(err)
 	}
 
-	// Step 3 — the 7-day plan. Still the legacy whole-week generator; this
-	// becomes AdjustWeek (macro-aware weekly adjustment) once that lands, and
-	// the macro-failure path above is what keeps a legacy-mode run available
-	// when there is no usable block to adjust against.
+	// Step 3 — the 7-day plan, adjusted from the macro week step 2 just made
+	// sure exists. AdjustWeek falls back to the legacy whole-week generator by
+	// itself when it finds no macro week, which is what keeps this run
+	// producing a trainable week after a macro failure above.
 	planCtx, planCancel := context.WithTimeout(ctx, weeklyPlanTimeout)
-	planErr := GeneratePlan(planCtx, db, userID, "next")
+	planErr := adjustWeekFunc(planCtx, db, userID, weekStart)
 	planCancel()
 	if planErr != nil {
-		log.Printf("stride: generate plan for user %d: %v", userID, planErr)
+		log.Printf("stride: adjust week %s for user %d: %v", weekStart, userID, planErr)
 	}
-	// The same reading as step 2: GeneratePlan hands back
+	// The same reading as step 2: AdjustWeek hands back
 	// training.ErrClaudeNotEnabled verbatim when claude_enabled is not true, and
 	// the cron picks the athlete up on stride_enabled alone — so this is the
 	// reachable combination, every Monday, until they change a setting. It is

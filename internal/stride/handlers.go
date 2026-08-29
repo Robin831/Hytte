@@ -717,7 +717,12 @@ func GetPlanHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // GeneratePlanHandler triggers synchronous plan generation via Claude AI and returns the new plan.
-// POST /api/stride/plans/generate
+// POST /api/stride/plans/generate?week=next|current
+//
+// The week the query names is resolved here and handed to AdjustWeek, which
+// adjusts the athlete's macro week for it — or, when no block covers it, plans
+// it from scratch. The same resolved week_start is what the written plan is read
+// back by, so the answer can never be a different week from the one generated.
 func GeneratePlanHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -729,6 +734,7 @@ func GeneratePlanHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": `invalid week: must be "current" or "next"`})
 			return
 		}
+		weekStart, weekEnd := weekForMode(weekMode)
 
 		// Same lock the weekly run takes: two generations for one athlete spend
 		// two Claude calls and race on which answer ends up stored. The
@@ -742,25 +748,19 @@ func GeneratePlanHandler(db *sql.DB) http.HandlerFunc {
 		}
 		defer release()
 
-		if err := GeneratePlan(r.Context(), db, user.ID, weekMode); err != nil {
+		if err := adjustWeekFunc(r.Context(), db, user.ID, weekStart); err != nil {
 			if errors.Is(err, training.ErrClaudeNotEnabled) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 				return
 			}
-			log.Printf("stride: generate plan for user %d: %v", user.ID, err)
+			log.Printf("stride: adjust week %s for user %d: %v", weekStart, user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate plan"})
 			return
 		}
 
-		var weekStart, weekEnd string
-		if weekMode == "current" {
-			weekStart, weekEnd = currentWeek()
-		} else {
-			weekStart, weekEnd = upcomingWeek()
-		}
 		plan, err := getPlanByWeekStart(db, user.ID, weekStart)
 		if err != nil {
-			// GeneratePlan returned nil but no plan found — stride may not be enabled.
+			// AdjustWeek returned nil but no plan found — stride may not be enabled.
 			if errors.Is(err, sql.ErrNoRows) {
 				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "stride is not enabled — enable it in settings"})
 				return
