@@ -758,8 +758,11 @@ func TestLoadBlockWeekAdherenceFoldsEvaluations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadBlockWeekAdherence: %v", err)
 	}
+	if !got.plansKnown || !got.evalsKnown {
+		t.Fatalf("both reads succeeded but got plansKnown=%v evalsKnown=%v", got.plansKnown, got.evalsKnown)
+	}
 
-	a := got[weekA]
+	a := got.byWeek[weekA]
 	if !a.hasPlan || !a.evaluated {
 		t.Fatalf("week A: hasPlan=%v evaluated=%v, want both true", a.hasPlan, a.evaluated)
 	}
@@ -773,7 +776,7 @@ func TestLoadBlockWeekAdherenceFoldsEvaluations(t *testing.T) {
 		t.Errorf("week A flags = %d, want 1 — the duplicate evaluation's flags must not be counted", a.flags)
 	}
 
-	b := got[weekB]
+	b := got.byWeek[weekB]
 	if !b.hasPlan {
 		t.Error("week B has a plan and should say so")
 	}
@@ -784,7 +787,7 @@ func TestLoadBlockWeekAdherenceFoldsEvaluations(t *testing.T) {
 		t.Errorf("week B completed=%d flags=%d, want 0/0", b.completed, b.flags)
 	}
 
-	if _, ok := got[mondayAfter(targetWeek, -3)]; ok {
+	if _, ok := got.byWeek[mondayAfter(targetWeek, -3)]; ok {
 		t.Error("a week that was never asked for leaked into the result")
 	}
 }
@@ -854,5 +857,185 @@ func TestWorkoutLibrarySectionSubstitutesTokenNotFormat(t *testing.T) {
 	if fallback := renderWorkoutLibrarySection(library, ""); !strings.Contains(fallback,
 		"a suitable entry exists for "+libraryBlockUnknown+" — and VARY them") {
 		t.Errorf("empty phrase did not fall back to the abstract wording:\n%s", fallback)
+	}
+}
+
+// dropTable removes a table from the in-memory DB so the queries behind one
+// column of the progress table fail the way a transient DB fault would.
+func dropTable(t *testing.T, db *sql.DB, table string) {
+	t.Helper()
+	if _, err := db.Exec("DROP TABLE " + table); err != nil {
+		t.Fatalf("drop %s: %v", table, err)
+	}
+}
+
+// seedTwoElapsedWeeks builds the world the degradation tests share: a block two
+// weeks in, the first elapsed week planned (4 sessions where the macro targets
+// 5), run and evaluated with a flag, the second elapsed week never planned.
+// Every cell of the table therefore has a real value to lose.
+func seedTwoElapsedWeeks(t *testing.T, db *sql.DB) (block *MacroPlan, targetWeek, weekOne, weekTwo string) {
+	t.Helper()
+	targetWeek, _ = upcomingWeek()
+	blockStart := mondayAfter(targetWeek, -2)
+	block = seedAdjustBlock(t, db, 1, blockStart)
+
+	monday, err := parseWeekDate(blockStart)
+	if err != nil {
+		t.Fatalf("parse block start: %v", err)
+	}
+	// Without max_hr there are no HR zones, and threshold minutes would be
+	// unknown for a reason that has nothing to do with the dropped table.
+	setPref(t, db, 1, "max_hr", "185")
+	planID := seedStridePlan(t, db, 1, monday, 4)
+	w := seedWorkout(t, db, 1, blockStart, 160, "degrade-w1")
+	seedAdjustEvaluation(t, db, 1, planID, &w, Evaluation{
+		PlannedType: "threshold", ActualType: "threshold", Compliance: "compliant",
+		Flags: []string{"hr_too_high"},
+	})
+	return block, targetWeek, blockStart, mondayAfter(blockStart, 1)
+}
+
+// A failed query must render as unknown, never as zero: in this table a 0 km
+// week reads as "the athlete trained nothing" and a `--` reads as "no plan was
+// ever generated", both of which the coach acts on by cutting the week. Each
+// case drops the table behind one column and pins what the row then says.
+func TestBlockProgressRendersFailedQueriesAsUnknown(t *testing.T) {
+	tests := []struct {
+		name        string
+		drop        string
+		wantNote    string
+		wantWeekOne []string
+		wantWeekTwo []string
+		denyAny     []string
+	}{
+		{
+			// Both the distance and the zone query read workouts.
+			name:        "workouts unreadable",
+			drop:        "workouts",
+			wantNote:    "Actual km (the workout query failed); Thr min (the workout or HR-zone query failed)",
+			wantWeekOne: []string{"| 50.0 | n/a |", "| 5 (plan 4) | 1 | n/a | 1 |"},
+			wantWeekTwo: []string{"| 51.0 | n/a |", "| 5 | -- | n/a | 0 |"},
+		},
+		{
+			// Without the plans nothing is known about adherence: "--" would
+			// claim no plan existed and "0" would claim nothing was completed.
+			name:        "plans unreadable",
+			drop:        "stride_plans",
+			wantNote:    "Done, Flags and the plan's own session count (the plan query failed)",
+			wantWeekOne: []string{"| 50.0 | 10.0 |", "| 5 | n/a | 60 | n/a |"},
+			wantWeekTwo: []string{"| 51.0 | 0.0 |", "| 5 | n/a | 0 | n/a |"},
+			denyAny:     []string{"| -- |", "(plan "},
+		},
+		{
+			// The plans survive, so the week that never had one still reads
+			// "--"; only the evaluated columns go unknown.
+			name:        "evaluations unreadable",
+			drop:        "stride_evaluations",
+			wantNote:    "Done and Flags (the evaluation query failed)",
+			wantWeekOne: []string{"| 5 (plan 4) | n/a | 60 | n/a |"},
+			wantWeekTwo: []string{"| 5 | -- | 0 | 0 |"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupTestDB(t)
+			block, targetWeek, weekOne, weekTwo := seedTwoElapsedWeeks(t, db)
+			dropTable(t, db, tc.drop)
+
+			table := buildBlockProgressTable(context.Background(), db, 1, block, targetWeek)
+
+			if !strings.Contains(table, "DATA UNAVAILABLE: "+tc.wantNote) {
+				t.Errorf("table does not name %q as unavailable:\n%s", tc.wantNote, table)
+			}
+			if !strings.Contains(table, "do not read `n/a` as missed training") {
+				t.Errorf("the unavailability note must tell the coach not to act on it:\n%s", table)
+			}
+			// The table keeps its shape: one row per elapsed week, with the
+			// macro targets — which come from the block, not the DB — intact.
+			for _, tt := range []struct {
+				week string
+				want []string
+			}{{weekOne, tc.wantWeekOne}, {weekTwo, tc.wantWeekTwo}} {
+				row := promptRow(t, table, tt.week)
+				for _, want := range tt.want {
+					if !strings.Contains(row, want) {
+						t.Errorf("row for %s missing %q\nrow: %s", tt.week, want, row)
+					}
+				}
+			}
+			for _, deny := range tc.denyAny {
+				if strings.Contains(table, deny) {
+					t.Errorf("table claims %q on data it could not read:\n%s", deny, table)
+				}
+			}
+		})
+	}
+}
+
+// A healthy block must not carry the unavailability note — otherwise the note
+// would be noise the coach learns to ignore.
+func TestBlockProgressHasNoUnavailableNoteWhenHealthy(t *testing.T) {
+	db := setupTestDB(t)
+	block, targetWeek, _, _ := seedTwoElapsedWeeks(t, db)
+
+	table := buildBlockProgressTable(context.Background(), db, 1, block, targetWeek)
+	if strings.Contains(table, "DATA UNAVAILABLE") {
+		t.Errorf("every query succeeded but the table reports unavailable data:\n%s", table)
+	}
+	if strings.Contains(table, "n/a") {
+		t.Errorf("every query succeeded but a cell reads unknown:\n%s", table)
+	}
+}
+
+// The evaluation read failing must not throw away the plans that were already
+// read: the plan columns stay real and only the evaluated ones go unknown.
+func TestLoadBlockWeekAdherenceKeepsPlansWhenEvaluationsFail(t *testing.T) {
+	db := setupTestDB(t)
+	targetWeek, _ := upcomingWeek()
+	weekA := mondayAfter(targetWeek, -1)
+	mondayA, err := parseWeekDate(weekA)
+	if err != nil {
+		t.Fatalf("parse week A: %v", err)
+	}
+	seedStridePlan(t, db, 1, mondayA, 4)
+	dropTable(t, db, "stride_evaluations")
+
+	got, err := loadBlockWeekAdherence(context.Background(), db, 1, []string{weekA})
+	if err == nil {
+		t.Fatal("the evaluation query failed but no error was returned")
+	}
+	if !got.plansKnown {
+		t.Error("the plans were read successfully and must not be discarded with the error")
+	}
+	if got.evalsKnown {
+		t.Error("the evaluations were unreadable and must not be reported as known")
+	}
+	a := got.byWeek[weekA]
+	if !a.hasPlan || a.planned != 4 {
+		t.Errorf("week A hasPlan=%v planned=%d, want true/4 from the plan that was read", a.hasPlan, a.planned)
+	}
+}
+
+// The whole point of degrading instead of failing is that the coach still gets
+// a prompt: a sub-query of the progress table falling over must not abort the
+// build, and the prompt must say so rather than silently zero the columns.
+func TestBuildAdjustPromptSurvivesFailedProgressQueries(t *testing.T) {
+	db := setupTestDB(t)
+	fx := seedAdjustFixture(t, db, 1)
+	dropTable(t, db, "workouts")
+
+	got, err := buildAdjustPrompt(context.Background(), db, 1, fx.targetWeek, fx.targetEnd)
+	if err != nil {
+		t.Fatalf("buildAdjustPrompt with an unreadable workouts table: %v", err)
+	}
+	if !strings.Contains(got.Prompt, "DATA UNAVAILABLE") {
+		t.Error("the prompt hides that the progress table's inputs could not be read")
+	}
+	for _, week := range fx.elapsed {
+		row := promptRow(t, got.Prompt, week)
+		if !strings.Contains(row, "| n/a |") {
+			t.Errorf("row for %s reports a value for data that could not be read: %s", week, row)
+		}
 	}
 }

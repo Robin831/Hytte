@@ -527,6 +527,23 @@ type blockWeekAdherence struct {
 	evaluated bool
 }
 
+// blockAdherence is the per-week fold together with what is actually known
+// about it. The two reads behind it fail independently: plansKnown says the
+// stride plans were read, so hasPlan and planned mean something; evalsKnown
+// says the evaluations were folded in, so evaluated, completed and flags mean
+// something. A false flag makes the table render those columns as unknown,
+// because a failed read must never render as a fact about the athlete.
+type blockAdherence struct {
+	byWeek     map[string]blockWeekAdherence
+	plansKnown bool
+	evalsKnown bool
+}
+
+// blockCellUnknown marks a cell whose input could not be read. It is
+// deliberately distinct from "--" (no plan was generated) and "?" (the week was
+// never evaluated), both of which are facts about the athlete's training.
+const blockCellUnknown = "n/a"
+
 // buildBlockProgressTable renders one row per elapsed week of the block:
 // planned versus actual distance, planned versus completed sessions, threshold
 // minutes and flag count. It is the block's trajectory in the fewest tokens
@@ -535,10 +552,11 @@ type blockWeekAdherence struct {
 // Only weeks that started before the target week are shown; the weeks still
 // ahead are the block's business, not this adjustment's.
 //
-// Every derived input degrades rather than failing, matching buildAdjustPrompt's
-// promise that only a missing macro week aborts the build: a query that fails
-// leaves its columns at zero and is logged, so the coach still gets the table's
-// shape and the rest of the prompt.
+// Every derived input degrades rather than aborting the prompt, but degrading
+// is not zeroing: a failed lookup renders its cells as `n/a` and is named in a
+// note above the table. A zero here would read as "the athlete trained nothing"
+// and a "--" as "no plan was ever generated", and the coach cuts the week on
+// either — so a query failure must never be able to say them.
 func buildBlockProgressTable(ctx context.Context, db *sql.DB, userID int64, block *MacroPlan, weekStart string) string {
 	var sb strings.Builder
 	sb.WriteString("## Block Progress (elapsed weeks of this block)\n")
@@ -566,61 +584,110 @@ func buildBlockProgressTable(ctx context.Context, db *sql.DB, userID int64, bloc
 	}
 
 	distByWeek, err := computeWeeksDistanceMeters(db, userID, ranges)
+	distKnown := err == nil
 	if err != nil {
 		log.Printf("stride: compute block distance for user %d: %v", userID, err)
-		distByWeek = nil
 	}
 
-	// Zones need the athlete's HR boundaries; without them every week reports
-	// zero threshold minutes, which is a stable shape rather than a failure.
+	// Zones need the athlete's HR boundaries. Without them — or without the
+	// workouts to bucket — threshold minutes are unknown, not zero.
 	zoneBoundaries, zoneErr := hrzones.GetUserZones(db, userID)
 	if zoneErr != nil {
 		log.Printf("stride: load HR zones for user %d: %v", userID, zoneErr)
-		zoneBoundaries = nil
 	}
-	zoneByWeek, err := computeWeeksZoneSeconds(db, userID, ranges, zoneBoundaries)
-	if err != nil {
-		log.Printf("stride: compute block zone seconds for user %d: %v", userID, err)
-		zoneByWeek = nil
+	zoneByWeek, zoneComputeErr := computeWeeksZoneSeconds(db, userID, ranges, zoneBoundaries)
+	if zoneComputeErr != nil {
+		log.Printf("stride: compute block zone seconds for user %d: %v", userID, zoneComputeErr)
 	}
+	zonesUnknownReason := ""
+	switch {
+	case zoneErr != nil || zoneComputeErr != nil:
+		zonesUnknownReason = "the workout or HR-zone query failed"
+	case len(zoneBoundaries) == 0:
+		zonesUnknownReason = "this athlete has no HR zones configured"
+	}
+	zonesKnown := zonesUnknownReason == ""
 
+	// The loader hands back whatever it did read, so a failure that only hits
+	// the evaluations still leaves the plan columns usable.
 	adherence, err := loadBlockWeekAdherence(ctx, db, userID, weekStarts)
 	if err != nil {
 		log.Printf("stride: load block adherence for user %d: %v", userID, err)
-		adherence = nil
 	}
 
 	sb.WriteString("Planned km and planned sessions are the macro week's targets. Actual km is logged volume across ALL sports, so read it as an upper bound on running.\n")
 	sb.WriteString("Done counts the plan's sessions that the coach's evaluations matched to a logged workout; `?` means that week was never evaluated at all and `--` means no plan was ever generated for it — neither is the same as missed training.\n")
-	sb.WriteString("Thr min is the total minutes of workouts whose AVERAGE heart rate fell in zones 3-4, not time-in-zone. Flags counts the warning flags raised in that week's evaluations.\n\n")
+	sb.WriteString("Thr min is the total minutes of workouts whose AVERAGE heart rate fell in zones 3-4, not time-in-zone. Flags counts the warning flags raised in that week's evaluations.\n")
+	sb.WriteString(blockProgressUnavailableNote(distKnown, zonesUnknownReason, adherence))
+	sb.WriteString("\n")
 	sb.WriteString("| Week | Seq | Phase | Planned km | Actual km | Planned sessions | Done | Thr min | Flags |\n")
 	sb.WriteString("|------|-----|-------|------------|-----------|------------------|------|---------|-------|\n")
 	for _, w := range elapsed {
-		a := adherence[w.WeekStart]
-		var done string
+		a := adherence.byWeek[w.WeekStart]
+		var done, flags string
 		switch {
+		case !adherence.plansKnown:
+			// The plans could not be read, so nothing is known about the week:
+			// "--" would claim no plan existed and "0" would claim the athlete
+			// completed nothing.
+			done, flags = blockCellUnknown, blockCellUnknown
 		case !a.hasPlan:
 			// No stride plan was ever generated for that week; the legend
 			// above tells the coach what "--" means.
-			done = "--"
+			done, flags = "--", "0"
+		case !adherence.evalsKnown:
+			done, flags = blockCellUnknown, blockCellUnknown
 		case !a.evaluated:
-			done = "?"
+			done, flags = "?", "0"
 		default:
-			done = fmt.Sprintf("%d", a.completed)
+			done, flags = fmt.Sprintf("%d", a.completed), fmt.Sprintf("%d", a.flags)
 		}
 		planned := fmt.Sprintf("%d", w.TargetSessions)
-		if a.hasPlan && a.planned != w.TargetSessions {
+		if adherence.plansKnown && a.hasPlan && a.planned != w.TargetSessions {
 			// The plan that actually ran may have prescribed a different count
 			// from the macro target; show both rather than hide the deviation.
 			planned = fmt.Sprintf("%d (plan %d)", w.TargetSessions, a.planned)
 		}
-		zones := zoneByWeek[w.WeekStart]
-		fmt.Fprintf(&sb, "| %s | %d | %s | %.1f | %.1f | %s | %s | %d | %d |\n",
-			w.WeekStart, w.Seq, w.Phase, w.TargetKm, distByWeek[w.WeekStart]/1000,
-			planned, done, zones[1]/60, a.flags)
+		actual := blockCellUnknown
+		if distKnown {
+			actual = fmt.Sprintf("%.1f", distByWeek[w.WeekStart]/1000)
+		}
+		thrMin := blockCellUnknown
+		if zonesKnown {
+			zones := zoneByWeek[w.WeekStart]
+			thrMin = fmt.Sprintf("%d", zones[1]/60)
+		}
+		fmt.Fprintf(&sb, "| %s | %d | %s | %.1f | %s | %s | %s | %s | %s |\n",
+			w.WeekStart, w.Seq, w.Phase, w.TargetKm, actual,
+			planned, done, thrMin, flags)
 	}
 	sb.WriteString("\n")
 	return sb.String()
+}
+
+// blockProgressUnavailableNote names the inputs that could not be read and why,
+// so the coach knows an `n/a` cell is a missing lookup and not a training
+// absence. It returns "" when every input is known, which is the normal case.
+func blockProgressUnavailableNote(distKnown bool, zonesUnknownReason string, adherence blockAdherence) string {
+	var missing []string
+	if !distKnown {
+		missing = append(missing, "Actual km (the workout query failed)")
+	}
+	if zonesUnknownReason != "" {
+		missing = append(missing, "Thr min ("+zonesUnknownReason+")")
+	}
+	switch {
+	case !adherence.plansKnown:
+		missing = append(missing, "Done, Flags and the plan's own session count (the plan query failed)")
+	case !adherence.evalsKnown:
+		missing = append(missing, "Done and Flags (the evaluation query failed)")
+	}
+	if len(missing) == 0 {
+		return ""
+	}
+	return "DATA UNAVAILABLE: " + strings.Join(missing, "; ") + ". Those cells say `" + blockCellUnknown +
+		"`, which is a lookup this prompt could not make and NOT a fact about the athlete: do not read `" +
+		blockCellUnknown + "` as missed training, as an unplanned week or as zero volume, and never let it trigger a reduction.\n"
 }
 
 // shiftDays returns the date n days after date, or "" when date is unparseable.
@@ -635,13 +702,21 @@ func shiftDays(date string, n int) string {
 // loadBlockWeekAdherence reads the stride plans for the given weeks and folds
 // their evaluations into per-week adherence counts.
 //
+// It always returns what it managed to read, together with flags saying which
+// of the two reads succeeded, so a caller that hits an error on the evaluations
+// still keeps the plan counts instead of discarding a populated map.
+//
 // Evaluations are de-duplicated by workout within a plan, and only compliant or
 // partial evaluations of a real prescription count as done — the same reading
 // GetPlanHistory applies, so the two never disagree about the same week.
-func loadBlockWeekAdherence(ctx context.Context, db *sql.DB, userID int64, weekStarts []string) (map[string]blockWeekAdherence, error) {
+func loadBlockWeekAdherence(ctx context.Context, db *sql.DB, userID int64, weekStarts []string) (blockAdherence, error) {
 	out := make(map[string]blockWeekAdherence, len(weekStarts))
+	// Nothing read yet: until the plan query returns, every column behind it is
+	// unknown rather than empty.
+	result := blockAdherence{byWeek: out}
 	if len(weekStarts) == 0 {
-		return out, nil
+		result.plansKnown, result.evalsKnown = true, true
+		return result, nil
 	}
 
 	args := make([]any, 0, len(weekStarts)+1)
@@ -655,7 +730,7 @@ func loadBlockWeekAdherence(ctx context.Context, db *sql.DB, userID int64, weekS
 		WHERE user_id = ? AND week_start IN (`+placeholders(len(weekStarts))+`)
 	`, args...)
 	if err != nil {
-		return nil, fmt.Errorf("query block plans: %w", err)
+		return result, fmt.Errorf("query block plans: %w", err)
 	}
 	defer rows.Close()
 
@@ -664,7 +739,7 @@ func loadBlockWeekAdherence(ctx context.Context, db *sql.DB, userID int64, weekS
 		var planID int64
 		var week, planJSON string
 		if err := rows.Scan(&planID, &week, &planJSON); err != nil {
-			return nil, fmt.Errorf("scan block plan: %w", err)
+			return result, fmt.Errorf("scan block plan: %w", err)
 		}
 		var days []DayPlan
 		if err := json.Unmarshal([]byte(planJSON), &days); err != nil {
@@ -682,10 +757,15 @@ func loadBlockWeekAdherence(ctx context.Context, db *sql.DB, userID int64, weekS
 		weekByPlan[planID] = week
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return result, err
 	}
+	// The plans are fully read: hasPlan and planned are now facts.
+	result.plansKnown = true
 	if len(weekByPlan) == 0 {
-		return out, nil
+		// No plan means no evaluation can exist, so the evaluation columns are
+		// known to be empty rather than unread.
+		result.evalsKnown = true
+		return result, nil
 	}
 
 	planIDs := make([]any, 0, len(weekByPlan)+1)
@@ -699,7 +779,7 @@ func loadBlockWeekAdherence(ctx context.Context, db *sql.DB, userID int64, weekS
 		WHERE user_id = ? AND plan_id IN (`+placeholders(len(weekByPlan))+`)
 	`, planIDs...)
 	if err != nil {
-		return nil, fmt.Errorf("query block evaluations: %w", err)
+		return result, fmt.Errorf("query block evaluations: %w", err)
 	}
 	defer evalRows.Close()
 
@@ -709,7 +789,7 @@ func loadBlockWeekAdherence(ctx context.Context, db *sql.DB, userID int64, weekS
 		var workoutID sql.NullInt64
 		var encJSON string
 		if err := evalRows.Scan(&planID, &workoutID, &encJSON); err != nil {
-			return nil, fmt.Errorf("scan block evaluation: %w", err)
+			return result, fmt.Errorf("scan block evaluation: %w", err)
 		}
 		week, ok := weekByPlan[planID]
 		if !ok {
@@ -742,7 +822,12 @@ func loadBlockWeekAdherence(ctx context.Context, db *sql.DB, userID int64, weekS
 		}
 		out[week] = a
 	}
-	return out, evalRows.Err()
+	if err := evalRows.Err(); err != nil {
+		// The plan columns survive: only the evaluation fold is incomplete.
+		return result, fmt.Errorf("iterate block evaluations: %w", err)
+	}
+	result.evalsKnown = true
+	return result, nil
 }
 
 // placeholders returns "?, ?, ..." for an IN clause of n values.
