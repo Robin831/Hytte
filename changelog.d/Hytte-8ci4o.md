@@ -1,0 +1,3 @@
+category: Added
+- **Weekly plan adjustment envelope** - Stride now reads the AdjustWeek response envelope (the week plus how it deviates from the macro block), falling back to the legacy bare 7-day array, and stores the adjustment summary, phase and macro week link on the weekly plan. (Hytte-8ci4o)
+- **Automatic goal drift, clamped to 3%** - A weekly coach proposal to move the block's target half-marathon time is applied automatically only when it carries a reason and stays within +/-3% of the current target; larger proposals are left to the athlete and survive as coaching notes. (Hytte-8ci4o)

@@ -436,84 +436,28 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 		return fmt.Errorf("Claude prompt: %w", err)
 	}
 
-	// Parse the JSON response into the plan schema.
-	plan, err := parsePlanResponse(response, weekStart, weekEnd)
+	// Parse the response. The weekly contract asks for a bare array of 7 day
+	// objects; parsePlanEnvelope also accepts the AdjustWeek envelope, so a
+	// model answering in the richer shape is read rather than thrown away.
+	env, err := parsePlanEnvelope(response, weekStart, weekEnd)
 	if err != nil {
 		return fmt.Errorf("parse plan response: %w", err)
 	}
 
-	// Re-marshal the validated plan to canonical JSON for storage.
-	planBytes, err := json.Marshal(plan)
-	if err != nil {
-		return fmt.Errorf("marshal plan: %w", err)
-	}
-
-	// Encrypt sensitive fields before DB storage.
-	encPrompt, err := encryption.EncryptField(prompt)
-	if err != nil {
-		return fmt.Errorf("encrypt prompt: %w", err)
-	}
-	encResponse, err := encryption.EncryptField(response)
-	if err != nil {
-		return fmt.Errorf("encrypt response: %w", err)
-	}
-
-	now := time.Now().UTC().Format(time.RFC3339)
-
-	// Use a transaction so that the plan upsert and note consumption are atomic —
-	// a failed plan insert does not silently eat notes.
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	// Upsert into stride_plans (unique on user_id + week_start).
-	_, err = tx.ExecContext(ctx, `
-		INSERT INTO stride_plans (user_id, week_start, week_end, phase, plan_json, prompt, response, model, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(user_id, week_start) DO UPDATE SET
-			week_end   = excluded.week_end,
-			plan_json  = excluded.plan_json,
-			prompt     = excluded.prompt,
-			response   = excluded.response,
-			model      = excluded.model,
-			created_at = excluded.created_at
-	`, userID, weekStart, weekEnd, "", string(planBytes), encPrompt, encResponse, claudeCfg.Model, now)
-	if err != nil {
-		return fmt.Errorf("insert stride plan: %w", err)
-	}
-
-	// Mark consumed notes within the same transaction.
-	if len(notes) > 0 {
-		noteIDs := make([]int64, len(notes))
-		for i, n := range notes {
-			noteIDs[i] = n.ID
-		}
-		if err := MarkNotesConsumed(ctx, tx, userID, noteIDs, "weekly"); err != nil {
-			return fmt.Errorf("mark notes consumed: %w", err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit plan tx: %w", err)
-	}
-
-	// Record which library workouts the plan drew on — after commit, so a
-	// failed plan never inflates usage. Best-effort telemetry; a re-generate
-	// of the same week counts again, which slightly overstates usage but
-	// never understates recency (last_used_at is the plan's week).
-	var usedIDs []int64
-	for _, day := range plan {
-		if day.Session != nil && day.Session.LibraryID > 0 {
-			usedIDs = append(usedIDs, day.Session.LibraryID)
-		}
-	}
-	if len(usedIDs) > 0 {
-		RecordLibraryUsage(ctx, db, userID, usedIDs, weekStart)
-	}
-
-	return nil
+	// This path plans without a macro block, so there is no phase to copy down
+	// and no macro week to mark materialised, and a goal proposal has no goal
+	// history to append to. The block-aware caller that fills those in is wired
+	// separately; saveWeeklyPlan is the same write either way.
+	return saveWeeklyPlan(ctx, db, weeklyPlanWrite{
+		UserID:    userID,
+		WeekStart: weekStart,
+		WeekEnd:   weekEnd,
+		Envelope:  env,
+		Prompt:    prompt,
+		Response:  response,
+		Model:     claudeCfg.Model,
+		Notes:     notes,
+	})
 }
 
 // upcomingWeek returns the ISO date strings for the next Monday (week_start)
@@ -1133,6 +1077,10 @@ func buildGeneratePrompt(
 // parsePlanResponse strips optional markdown fences and unmarshals the Claude
 // response into a validated []DayPlan slice. weekStart and weekEnd are used to
 // verify the response covers exactly the requested 7-day window with no duplicates.
+//
+// This is the bare-array contract only. Callers that may receive the AdjustWeek
+// envelope instead go through parsePlanEnvelope (adjust.go), which accepts both
+// shapes and validates the week with the same validatePlanDays below.
 func parsePlanResponse(response, weekStart, weekEnd string) ([]DayPlan, error) {
 	// Strip markdown code fences if present, the same way the macro plan
 	// response is unwrapped — one heuristic, one place to fix it.
@@ -1142,15 +1090,28 @@ func parsePlanResponse(response, weekStart, weekEnd string) ([]DayPlan, error) {
 	if err := json.Unmarshal([]byte(response), &plan); err != nil {
 		return nil, fmt.Errorf("unmarshal plan JSON: %w", err)
 	}
+	if err := validatePlanDays(plan, weekStart, weekEnd); err != nil {
+		return nil, err
+	}
+	return plan, nil
+}
 
+// validatePlanDays checks that plan covers exactly the 7 dates of
+// weekStart..weekEnd, once each, with a session on every non-rest day. It
+// mutates plan in place only to strip the session off a day the coach marked
+// rest_day=true, which is a tolerated inconsistency rather than an error.
+//
+// Shared by both response contracts so the bare array and the envelope's "week"
+// can never diverge on what a valid week is.
+func validatePlanDays(plan []DayPlan, weekStart, weekEnd string) error {
 	if len(plan) != 7 {
-		return nil, fmt.Errorf("plan must have exactly 7 days, got %d", len(plan))
+		return fmt.Errorf("plan must have exactly 7 days, got %d", len(plan))
 	}
 
 	// Build the set of expected dates (weekStart inclusive through weekEnd inclusive).
 	start, err := time.Parse("2006-01-02", weekStart)
 	if err != nil {
-		return nil, fmt.Errorf("invalid weekStart %q: %w", weekStart, err)
+		return fmt.Errorf("invalid weekStart %q: %w", weekStart, err)
 	}
 	expectedDates := make(map[string]bool, 7)
 	for i := 0; i < 7; i++ {
@@ -1160,18 +1121,18 @@ func parsePlanResponse(response, weekStart, weekEnd string) ([]DayPlan, error) {
 	seenDates := make(map[string]bool, 7)
 	for i, day := range plan {
 		if day.Date == "" {
-			return nil, fmt.Errorf("day %d missing date", i)
+			return fmt.Errorf("day %d missing date", i)
 		}
 		if !expectedDates[day.Date] {
-			return nil, fmt.Errorf("day %d has unexpected date %s (not in week %s..%s)", i, day.Date, weekStart, weekEnd)
+			return fmt.Errorf("day %d has unexpected date %s (not in week %s..%s)", i, day.Date, weekStart, weekEnd)
 		}
 		if seenDates[day.Date] {
-			return nil, fmt.Errorf("duplicate date %s in plan", day.Date)
+			return fmt.Errorf("duplicate date %s in plan", day.Date)
 		}
 		seenDates[day.Date] = true
 
 		if !day.RestDay && day.Session == nil {
-			return nil, fmt.Errorf("day %d (%s): not a rest day but has no session", i, day.Date)
+			return fmt.Errorf("day %d (%s): not a rest day but has no session", i, day.Date)
 		}
 		if day.RestDay && day.Session != nil {
 			// Tolerate rest_day=true with an empty session — strip the session.
@@ -1182,11 +1143,11 @@ func parsePlanResponse(response, weekStart, weekEnd string) ([]DayPlan, error) {
 	// Confirm all expected dates were present.
 	for d := range expectedDates {
 		if !seenDates[d] {
-			return nil, fmt.Errorf("plan is missing date %s", d)
+			return fmt.Errorf("plan is missing date %s", d)
 		}
 	}
 
-	return plan, nil
+	return nil
 }
 
 // formatDurationSecs formats a duration in seconds as "Hh Mm" or "Mm" for display.

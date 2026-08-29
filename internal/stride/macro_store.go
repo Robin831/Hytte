@@ -581,10 +581,17 @@ func GetMacroWeek(ctx context.Context, db *sql.DB, userID int64, weekStart strin
 // skipped), scoped to the owning user. Returns ErrMacroWeekNotFound when no row
 // matched.
 func MarkMacroWeekStatus(ctx context.Context, db *sql.DB, id, userID int64, status string) error {
+	return markMacroWeekStatusTx(ctx, db, id, userID, status)
+}
+
+// markMacroWeekStatusTx is MarkMacroWeekStatus over any execer, so the weekly
+// write can flip a week to 'materialised' inside the same transaction that
+// stores the plan materialising it.
+func markMacroWeekStatusTx(ctx context.Context, q execer, id, userID int64, status string) error {
 	if err := ValidateMacroWeekStatus(status); err != nil {
 		return err
 	}
-	res, err := db.ExecContext(ctx, `
+	res, err := q.ExecContext(ctx, `
 		UPDATE stride_macro_weeks SET status = ? WHERE id = ? AND user_id = ?
 	`, status, id, userID)
 	if err != nil {
@@ -771,18 +778,6 @@ func AddGoalRevision(ctx context.Context, db *sql.DB, rev *GoalRevision) error {
 	if rev.WeekStart == "" {
 		return errors.New("goal revision week_start must be set")
 	}
-	createdAt, err := normaliseTimestamp(rev.CreatedAt, "goal revision created_at")
-	if err != nil {
-		return err
-	}
-	goalJSON, err := encryptJSON(rev.Goal, "goal_json")
-	if err != nil {
-		return err
-	}
-	encReason, err := encryption.EncryptField(rev.Reason)
-	if err != nil {
-		return fmt.Errorf("encrypt goal revision reason: %w", err)
-	}
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -813,7 +808,47 @@ func AddGoalRevision(ctx context.Context, db *sql.DB, rev *GoalRevision) error {
 		return err
 	}
 
-	res, err := tx.ExecContext(ctx, `
+	if err := insertGoalRevisionTx(ctx, tx, rev); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit goal revision tx: %w", err)
+	}
+	return nil
+}
+
+// insertGoalRevisionTx validates, encrypts and appends one goal revision
+// through q, filling in rev.ID and rev.CreatedAt on success.
+//
+// It performs NO ownership or foreign-reference check. AddGoalRevision does
+// those before calling it, because its revision comes from an HTTP caller;
+// saveWeeklyPlan does not, because its revision is the athlete's own current
+// block goal with only the target time moved. A new caller taking a goal from
+// anywhere else must check ownership the way AddGoalRevision does.
+func insertGoalRevisionTx(ctx context.Context, q execer, rev *GoalRevision) error {
+	if rev == nil {
+		return errors.New("goal revision must not be nil")
+	}
+	if err := ValidateGoalRevisionSource(rev.Source); err != nil {
+		return err
+	}
+	if rev.WeekStart == "" {
+		return errors.New("goal revision week_start must be set")
+	}
+	createdAt, err := normaliseTimestamp(rev.CreatedAt, "goal revision created_at")
+	if err != nil {
+		return err
+	}
+	goalJSON, err := encryptJSON(rev.Goal, "goal_json")
+	if err != nil {
+		return err
+	}
+	encReason, err := encryption.EncryptField(rev.Reason)
+	if err != nil {
+		return fmt.Errorf("encrypt goal revision reason: %w", err)
+	}
+
+	res, err := q.ExecContext(ctx, `
 		INSERT INTO stride_goal_revisions
 			(macro_plan_id, user_id, week_start, goal_json, reason, source, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -824,9 +859,6 @@ func AddGoalRevision(ctx context.Context, db *sql.DB, rev *GoalRevision) error {
 	id, err := res.LastInsertId()
 	if err != nil {
 		return fmt.Errorf("goal revision id: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit goal revision tx: %w", err)
 	}
 
 	rev.ID = id
