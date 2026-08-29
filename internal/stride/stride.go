@@ -132,7 +132,15 @@ const (
 // rather than apologies: nothing retries automatically, so the athlete opening
 // Stride is what actually fixes it.
 const (
-	weeklyPlanReadyBody = "Stride adjusted next week"
+	// weeklyPlanReadyBody states the outcome, not the mechanism. The run picks
+	// it whenever the plan step returned nil, and that does not imply the
+	// block-aware path ran: AdjustWeek falls back to the legacy whole-week
+	// generator whenever no macro week covers the week, and a nil from the
+	// macro step does not rule that out (generateMacroBlock folds an
+	// overlapping block back into success, and an active block can lack a row
+	// for this exact Monday). "Stride adjusted next week" would be a claim the
+	// run cannot make; "your plan is ready" is true either way.
+	weeklyPlanReadyBody = "Stride has your plan for next week"
 	// weeklyPlanFailedBody covers the likeliest bad run: the horizon is fine
 	// but next week is not planned. Silence here would leave the athlete
 	// opening Stride on Monday to last week's plan with no explanation.

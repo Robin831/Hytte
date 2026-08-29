@@ -292,6 +292,10 @@ func weekForMode(weekMode string) (weekStart, weekEnd string) {
 // resolveStrideConfig loads the athlete's preferences and Claude config for one
 // planning run, with Stride's model default applied.
 //
+// prefs and claudeCfg are valid only when enabled is true; every other return
+// leaves both nil, so a caller cannot reach for preferences it was never
+// cleared to plan with.
+//
 // enabled is false with a nil error when the athlete has not switched Stride
 // on. That is a configuration state rather than a failure: the caller writes
 // nothing and returns nil, and GeneratePlanHandler reads the missing plan as
@@ -306,7 +310,7 @@ func resolveStrideConfig(db *sql.DB, userID int64) (prefs map[string]string, cla
 
 	// Stride must be explicitly enabled.
 	if prefs["stride_enabled"] != "true" {
-		return prefs, nil, false, nil
+		return nil, nil, false, nil
 	}
 
 	// Picks up the claude_model and claude_enabled preferences.
@@ -323,19 +327,18 @@ func resolveStrideConfig(db *sql.DB, userID int64) (prefs map[string]string, cla
 	return prefs, claudeCfg, true, nil
 }
 
-// GeneratePlan generates a weekly training plan for the given user using Claude AI.
+// GeneratePlan is the LEGACY whole-week path: it plans from scratch and knows
+// nothing about macro blocks. Production enters through AdjustWeek (adjust.go),
+// which adjusts the block's week instead and falls back to generatePlanLegacy —
+// the body below — when no macro week covers the requested week. This
+// entrypoint remains the direct-entry form of that same code, so the fallback
+// can never drift from the path it falls back to.
+//
 // It queries training context from the DB, builds a prompt with Marius Bakken
 // threshold-dominant model instructions, calls Claude, and stores the result in
 // stride_plans. Returns nil if stride is not enabled for the user.
 // weekMode controls the target week: "current" for the current week, "next" (default)
 // for the upcoming week.
-//
-// This is the LEGACY whole-week path: it plans from scratch and knows nothing
-// about macro blocks. Production enters through AdjustWeek (adjust.go), which
-// adjusts the block's week instead and falls back to generatePlanLegacy — the
-// body below — when no macro week covers the requested week. This entrypoint
-// remains the direct-entry form of that same code, so the fallback can never
-// drift from the path it falls back to.
 func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string) error {
 	prefs, claudeCfg, enabled, err := resolveStrideConfig(db, userID)
 	if err != nil || !enabled {

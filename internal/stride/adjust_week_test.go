@@ -188,10 +188,12 @@ func TestRunWeeklyAdjustsTheUpcomingWeek(t *testing.T) {
 	if got := (*weeks)[0]; got != weekStart {
 		t.Errorf("AdjustWeek week_start = %q, want the upcoming Monday %q", got, weekStart)
 	}
-	// The push says what the run actually did to the week, so it is pinned to
-	// the literal text rather than to the constant it is read from.
-	if got := seams.onlyPush(t); got.Body != "Stride adjusted next week" {
-		t.Errorf("push body = %q, want %q", got.Body, "Stride adjusted next week")
+	// The push claims an outcome the run can actually stand behind, so it is
+	// pinned to the literal text rather than to the constant it is read from.
+	// Deliberately not "adjusted": a nil from the plan step does not tell the
+	// run whether the block-aware path or the legacy fallback produced it.
+	if got := seams.onlyPush(t); got.Body != "Stride has your plan for next week" {
+		t.Errorf("push body = %q, want %q", got.Body, "Stride has your plan for next week")
 	}
 }
 
@@ -232,6 +234,33 @@ func TestAdjustWeekWithoutMacroWeekFallsBackToLegacy(t *testing.T) {
 	}
 	if macroWeekID.Valid {
 		t.Errorf("macro_week_id = %d, want NULL", macroWeekID.Int64)
+	}
+}
+
+// The other half of the fallback rule: ErrNoMacroWeek is the ONLY
+// buildAdjustPrompt failure allowed to downgrade to the legacy generator. A
+// genuine fault — here a macro lookup that cannot run at all — must surface,
+// because falling back would hand the athlete a block-less week while leaving
+// the macro week unmaterialised and macro_week_id NULL, with nothing failing
+// loudly to say so.
+func TestAdjustWeekWithABrokenMacroLookupErrors(t *testing.T) {
+	db := extendedTestDB(t)
+	enableStride(t, db, 1)
+	failIfClaudeCalled(t)
+	if _, err := db.Exec("DROP TABLE stride_macro_plans"); err != nil {
+		t.Fatalf("drop stride_macro_plans: %v", err)
+	}
+
+	weekStart, _ := upcomingWeek()
+	err := AdjustWeek(context.Background(), db, 1, weekStart)
+	if err == nil {
+		t.Fatal("AdjustWeek fell back to the legacy generator on a broken macro lookup")
+	}
+	if !strings.Contains(err.Error(), "build adjust prompt") {
+		t.Errorf("error = %v, want it to name the failed prompt build", err)
+	}
+	if n := countPlansForWeek(t, db, 1, weekStart); n != 0 {
+		t.Errorf("stored plans = %d, want 0 — a fault must not write a block-less week", n)
 	}
 }
 

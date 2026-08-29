@@ -27,6 +27,12 @@ import (
 // adjustWeekFunc is the seam tests replace so the routing decisions of the two
 // callers — which week RunWeekly and GeneratePlanHandler each ask for — can be
 // asserted without a Claude call. Production always runs AdjustWeek.
+//
+// Package-level and mutable, the same shape as runPromptFunc, so a test that
+// swaps it mutates state shared with every other test in the package: the ones
+// that do must not call t.Parallel(). If a third seam of this shape is ever
+// needed, gather them into a config value passed into the callers instead of
+// widening that race surface again.
 var adjustWeekFunc = AdjustWeek
 
 // AdjustWeek materialises the training week starting at weekStart (a Monday):

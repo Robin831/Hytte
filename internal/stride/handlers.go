@@ -760,7 +760,12 @@ func GeneratePlanHandler(db *sql.DB) http.HandlerFunc {
 
 		plan, err := getPlanByWeekStart(db, user.ID, weekStart)
 		if err != nil {
-			// AdjustWeek returned nil but no plan found — stride may not be enabled.
+			// The plan step returned nil but wrote no row. Both paths it can
+			// take — AdjustWeek's own body and the legacy generator it falls
+			// back to — write a plan on success, and the only nil-without-a-
+			// write in either is the stride-disabled short-circuit, which
+			// happens in resolveStrideConfig before the fallback is chosen. So
+			// a missing row still means exactly one thing.
 			if errors.Is(err, sql.ErrNoRows) {
 				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "stride is not enabled — enable it in settings"})
 				return
