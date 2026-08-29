@@ -818,6 +818,204 @@ func listRaceResults(ctx context.Context, db *sql.DB, userID int64) ([]RaceResul
 	return results, rows.Err()
 }
 
+// renderUserConstraints renders the athlete's hard training limits. Shared with
+// the AdjustWeek prompt so both prompts state the same constraints in the same
+// words; see adjust_prompt.go.
+func renderUserConstraints(availableDays, weeklyDistanceCap string) string {
+	var sb strings.Builder
+	sb.WriteString("## User Constraints\n")
+	if availableDays != "" {
+		fmt.Fprintf(&sb, "- Training days per week: %s\n", availableDays)
+	} else {
+		sb.WriteString("- Training days per week: 5 (default)\n")
+	}
+	if weeklyDistanceCap != "" {
+		fmt.Fprintf(&sb, "- Weekly distance cap: %s km\n", weeklyDistanceCap)
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+// renderProfileSection wraps the athlete profile block (HR zones, threshold,
+// paces) in its prompt heading. Empty input yields no section.
+func renderProfileSection(profileBlock string) string {
+	if profileBlock == "" {
+		return ""
+	}
+	return "## User Profile\n" + profileBlock + "\n"
+}
+
+// renderRacePredictionSection renders the stored race-prediction snapshot: the
+// coach's honest anchor for session paces (threshold ~ current half-marathon
+// race pace) instead of guessing from raw workout history. Empty when no
+// snapshot exists.
+func renderRacePredictionSection(racePrediction *training.StoredRacePrediction) string {
+	if racePrediction == nil || len(racePrediction.Predictions) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	asOf := racePrediction.CreatedAt
+	if len(asOf) >= 10 {
+		asOf = asOf[:10]
+	}
+	fmt.Fprintf(&sb, "## Current Fitness Estimate (race predictions, as of %s)\n", asOf)
+	for _, p := range racePrediction.Predictions {
+		fmt.Fprintf(&sb, "- %s: %s (%s/km", p.Distance, p.PredictedTime, p.PacePerKm)
+		if p.Confidence != "" {
+			fmt.Fprintf(&sb, ", confidence %s", p.Confidence)
+		}
+		sb.WriteString(")\n")
+	}
+	if racePrediction.Rationale != "" {
+		fmt.Fprintf(&sb, "\nPrediction rationale: %s\n", racePrediction.Rationale)
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+// libraryRulesTemplate is the rotation contract that goes with the workout
+// library listing. libraryRulesBlockToken names the training block a library
+// entry has to suit: the weekly generator has no macro week to name one from
+// and passes libraryBlockUnknown, while the AdjustWeek prompt substitutes the
+// target week's actual block so the rule is instantiated rather than abstract.
+//
+// The token is substituted with strings.Replace, not Fprintf: this prose is
+// prompt text that will keep growing, and a literal % added to it later (or a
+// % inside the phrase) would otherwise corrupt the prompt with %!x(MISSING)
+// noise that go vet cannot catch once the phrase is built elsewhere.
+const libraryRulesTemplate = `
+Library rules:
+- The [WEEKLY REFERENCE] session MUST appear exactly once this week, with its structure unchanged (adjust target paces to current fitness only). It is the fixed benchmark the athlete tracks week over week.
+- Draw the other quality sessions (threshold/hard/long-run variants) from the library when a suitable entry exists for {{BLOCK}} — and VARY them: do not schedule a library workout whose "last" week is within the past 3 weeks, unless nothing else fits the block. Prefer higher-rated and less-recently-used entries.
+- When a session is taken from the library, set its "library_id" to the entry's id and keep the structure; you may tune paces/HR targets to current fitness.
+- Easy runs and sessions with no suitable library entry are composed freely as usual (library_id omitted).
+
+`
+
+// libraryRulesBlockToken is the placeholder libraryRulesTemplate reserves for
+// the training-block phrase.
+const libraryRulesBlockToken = "{{BLOCK}}"
+
+// libraryBlockUnknown is the abstract phrase libraryRulesTemplate falls back to
+// when the prompt cannot name the block concretely.
+const libraryBlockUnknown = "the current training block"
+
+// renderWorkoutLibrarySection lists the curated sessions the coach rotates
+// through, followed by the rotation rules. This is what breaks the "same
+// intervals every week" loop: the reference session is the one fixed weekly
+// benchmark, everything else must vary. blockPhrase instantiates the "suitable
+// for ..." rule — pass libraryBlockUnknown when no concrete block is known.
+func renderWorkoutLibrarySection(libraryWorkouts []LibraryWorkout, blockPhrase string) string {
+	if len(libraryWorkouts) == 0 {
+		return ""
+	}
+	if blockPhrase == "" {
+		blockPhrase = libraryBlockUnknown
+	}
+	var sb strings.Builder
+	sb.WriteString("## Workout Library\n")
+	sb.WriteString("Curated sessions to draw quality days from. For each: id, name, type, suitable blocks, athlete rating (0=unrated..5), times used, last used week.\n\n")
+	for _, lw := range libraryWorkouts {
+		marker := ""
+		if lw.IsReference {
+			marker = " [WEEKLY REFERENCE]"
+		}
+		blocks := strings.Join(lw.Blocks, ",")
+		if blocks == "" {
+			blocks = "any"
+		}
+		lastUsed := lw.LastUsedAt
+		if lastUsed == "" {
+			lastUsed = "never"
+		}
+		fmt.Fprintf(&sb, "- id=%d%s %q (%s; blocks: %s; rating %d; used %dx; last %s)\n",
+			lw.ID, marker, lw.Name, lw.WorkoutType, blocks, lw.Rating, lw.TimesUsed, lastUsed)
+		fmt.Fprintf(&sb, "  warmup: %s | main set: %s | cooldown: %s", lw.Warmup, lw.MainSet, lw.Cooldown)
+		if lw.Strides != "" {
+			fmt.Fprintf(&sb, " | strides: %s", lw.Strides)
+		}
+		if lw.TargetHRCap != "" {
+			fmt.Fprintf(&sb, " | HR cap: %s", lw.TargetHRCap)
+		}
+		sb.WriteString("\n")
+	}
+	sb.WriteString(strings.Replace(libraryRulesTemplate, libraryRulesBlockToken, blockPhrase, 1))
+	return sb.String()
+}
+
+// renderUpcomingRacesSection lists the races the plan has to respect, with
+// target time and derived target pace.
+func renderUpcomingRacesSection(races []Race) string {
+	if len(races) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("## Upcoming Races\n")
+	for _, r := range races {
+		// formatRaceTime/formatPaceSecPerKm are shared with the macro
+		// prompt so both prompts quote the same race in the same form.
+		paceInfo := ""
+		if r.TargetTime != nil && r.DistanceM > 0 {
+			paceInfo = fmt.Sprintf(", target pace: %s/km", formatPaceSecPerKm(float64(*r.TargetTime)/(r.DistanceM/1000)))
+		}
+		targetStr := ""
+		if r.TargetTime != nil {
+			targetStr = fmt.Sprintf(", target: %s", formatRaceTime(*r.TargetTime))
+		}
+		fmt.Fprintf(&sb, "- %s on %s (%.1f km, priority %s%s%s)\n",
+			r.Name, r.Date, r.DistanceM/1000, r.Priority, targetStr, paceInfo)
+		if r.Notes != "" {
+			fmt.Fprintf(&sb, "  Notes: %s\n", r.Notes)
+		}
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+// renderAthleteNotesSection renders the unconsumed stride notes the athlete
+// wrote for the plan generator.
+func renderAthleteNotesSection(notes []Note) string {
+	if len(notes) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("## Athlete Notes\n")
+	for _, n := range notes {
+		date := n.CreatedAt
+		if len(date) > 10 {
+			date = date[:10]
+		}
+		fmt.Fprintf(&sb, "- [%s] %s\n", date, n.Content)
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+// renderPreviousPlanSection embeds the previous week's plan JSON verbatim, so
+// the coach can carry structure forward instead of restarting every week.
+func renderPreviousPlanSection(prevPlanJSON, prevPlanModel, prevPlanCreatedAt string) string {
+	if prevPlanJSON == "" {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("## Previous Week's Plan\n")
+	if prevPlanCreatedAt != "" && len(prevPlanCreatedAt) > 10 {
+		fmt.Fprintf(&sb, "Generated: %s, Model: %s\n", prevPlanCreatedAt[:10], prevPlanModel)
+	}
+	sb.WriteString("```json\n")
+	sb.WriteString(prevPlanJSON)
+	sb.WriteString("\n```\n\n")
+	return sb.String()
+}
+
+// renderCustomPromptSection appends the athlete's own standing instructions.
+func renderCustomPromptSection(customPrompt string) string {
+	if customPrompt == "" {
+		return ""
+	}
+	return "## Additional Instructions\n" + customPrompt + "\n\n"
+}
+
 // buildGeneratePrompt assembles the full prompt string for Claude plan generation.
 func buildGeneratePrompt(
 	weekStart, weekEnd string,
@@ -844,90 +1042,22 @@ func buildGeneratePrompt(
 	fmt.Fprintf(&sb, "## Plan Request\nGenerate a 7-day training plan for the week of %s to %s.\n\n", weekStart, weekEnd)
 
 	// User training constraints.
-	sb.WriteString("## User Constraints\n")
-	if availableDays != "" {
-		fmt.Fprintf(&sb, "- Training days per week: %s\n", availableDays)
-	} else {
-		sb.WriteString("- Training days per week: 5 (default)\n")
-	}
-	if weeklyDistanceCap != "" {
-		fmt.Fprintf(&sb, "- Weekly distance cap: %s km\n", weeklyDistanceCap)
-	}
-	sb.WriteString("\n")
+	sb.WriteString(renderUserConstraints(availableDays, weeklyDistanceCap))
 
 	// User profile (HR zones, threshold, goal race, etc.).
-	if profileBlock != "" {
-		sb.WriteString("## User Profile\n")
-		sb.WriteString(profileBlock)
-		sb.WriteString("\n")
-	}
+	sb.WriteString(renderProfileSection(profileBlock))
 
 	// Athlete-measured treadmill calibration. Overrides the generic belt-speed
 	// and indoor-HR defaults in the instructions above.
 	sb.WriteString(renderTreadmillCalibration(treadmillCalibration))
 
 	// Current fitness estimate: the weekly race-prediction snapshot, refreshed
-	// just before this plan generates. Gives the coach an honest anchor for
-	// session paces (threshold ≈ current half-marathon race pace) instead of
-	// guessing from raw workout history.
-	if racePrediction != nil && len(racePrediction.Predictions) > 0 {
-		asOf := racePrediction.CreatedAt
-		if len(asOf) >= 10 {
-			asOf = asOf[:10]
-		}
-		fmt.Fprintf(&sb, "## Current Fitness Estimate (race predictions, as of %s)\n", asOf)
-		for _, p := range racePrediction.Predictions {
-			fmt.Fprintf(&sb, "- %s: %s (%s/km", p.Distance, p.PredictedTime, p.PacePerKm)
-			if p.Confidence != "" {
-				fmt.Fprintf(&sb, ", confidence %s", p.Confidence)
-			}
-			sb.WriteString(")\n")
-		}
-		if racePrediction.Rationale != "" {
-			fmt.Fprintf(&sb, "\nPrediction rationale: %s\n", racePrediction.Rationale)
-		}
-		sb.WriteString("\n")
-	}
+	// just before this plan generates.
+	sb.WriteString(renderRacePredictionSection(racePrediction))
 
-	// The workout library, with the rotation rules. This is what breaks the
-	// "same intervals every week" loop: the reference session is the one fixed
-	// weekly benchmark, everything else must vary.
-	if len(libraryWorkouts) > 0 {
-		sb.WriteString("## Workout Library\n")
-		sb.WriteString("Curated sessions to draw quality days from. For each: id, name, type, suitable blocks, athlete rating (0=unrated..5), times used, last used week.\n\n")
-		for _, lw := range libraryWorkouts {
-			marker := ""
-			if lw.IsReference {
-				marker = " [WEEKLY REFERENCE]"
-			}
-			blocks := strings.Join(lw.Blocks, ",")
-			if blocks == "" {
-				blocks = "any"
-			}
-			lastUsed := lw.LastUsedAt
-			if lastUsed == "" {
-				lastUsed = "never"
-			}
-			fmt.Fprintf(&sb, "- id=%d%s %q (%s; blocks: %s; rating %d; used %dx; last %s)\n",
-				lw.ID, marker, lw.Name, lw.WorkoutType, blocks, lw.Rating, lw.TimesUsed, lastUsed)
-			fmt.Fprintf(&sb, "  warmup: %s | main set: %s | cooldown: %s", lw.Warmup, lw.MainSet, lw.Cooldown)
-			if lw.Strides != "" {
-				fmt.Fprintf(&sb, " | strides: %s", lw.Strides)
-			}
-			if lw.TargetHRCap != "" {
-				fmt.Fprintf(&sb, " | HR cap: %s", lw.TargetHRCap)
-			}
-			sb.WriteString("\n")
-		}
-		sb.WriteString(`
-Library rules:
-- The [WEEKLY REFERENCE] session MUST appear exactly once this week, with its structure unchanged (adjust target paces to current fitness only). It is the fixed benchmark the athlete tracks week over week.
-- Draw the other quality sessions (threshold/hard/long-run variants) from the library when a suitable entry exists for the current training block — and VARY them: do not schedule a library workout whose "last" week is within the past 3 weeks, unless nothing else fits the block. Prefer higher-rated and less-recently-used entries.
-- When a session is taken from the library, set its "library_id" to the entry's id and keep the structure; you may tune paces/HR targets to current fitness.
-- Easy runs and sessions with no suitable library entry are composed freely as usual (library_id omitted).
-
-`)
-	}
+	// The workout library, with the rotation rules. The weekly generator has no
+	// macro week to read a concrete block off, so the rule stays abstract here.
+	sb.WriteString(renderWorkoutLibrarySection(libraryWorkouts, libraryBlockUnknown))
 
 	// ACR / training load status.
 	sb.WriteString("## Current Training Load (ACR)\n")
@@ -968,27 +1098,7 @@ Library rules:
 	}
 
 	// Upcoming races.
-	if len(races) > 0 {
-		sb.WriteString("## Upcoming Races\n")
-		for _, r := range races {
-			// formatRaceTime/formatPaceSecPerKm are shared with the macro
-			// prompt so both prompts quote the same race in the same form.
-			paceInfo := ""
-			if r.TargetTime != nil && r.DistanceM > 0 {
-				paceInfo = fmt.Sprintf(", target pace: %s/km", formatPaceSecPerKm(float64(*r.TargetTime)/(r.DistanceM/1000)))
-			}
-			targetStr := ""
-			if r.TargetTime != nil {
-				targetStr = fmt.Sprintf(", target: %s", formatRaceTime(*r.TargetTime))
-			}
-			fmt.Fprintf(&sb, "- %s on %s (%.1f km, priority %s%s%s)\n",
-				r.Name, r.Date, r.DistanceM/1000, r.Priority, targetStr, paceInfo)
-			if r.Notes != "" {
-				fmt.Fprintf(&sb, "  Notes: %s\n", r.Notes)
-			}
-		}
-		sb.WriteString("\n")
-	}
+	sb.WriteString(renderUpcomingRacesSection(races))
 
 	// Race history (completed races linked to workouts).
 	if len(raceHistory) > 0 {
@@ -1002,42 +1112,18 @@ Library rules:
 	}
 
 	// Athlete notes.
-	if len(notes) > 0 {
-		sb.WriteString("## Athlete Notes\n")
-		for _, n := range notes {
-			date := n.CreatedAt
-			if len(date) > 10 {
-				date = date[:10]
-			}
-			fmt.Fprintf(&sb, "- [%s] %s\n", date, n.Content)
-		}
-		sb.WriteString("\n")
-	}
+	sb.WriteString(renderAthleteNotesSection(notes))
 
 	// Previous week's plan for continuity.
-	if prevPlanJSON != "" {
-		sb.WriteString("## Previous Week's Plan\n")
-		if prevPlanCreatedAt != "" && len(prevPlanCreatedAt) > 10 {
-			fmt.Fprintf(&sb, "Generated: %s, Model: %s\n", prevPlanCreatedAt[:10], prevPlanModel)
-		}
-		sb.WriteString("```json\n")
-		sb.WriteString(prevPlanJSON)
-		sb.WriteString("\n```\n\n")
-	}
+	sb.WriteString(renderPreviousPlanSection(prevPlanJSON, prevPlanModel, prevPlanCreatedAt))
 
 	// Recent nightly evaluations from the previous ~2 weeks. Closes the planning
 	// loop by surfacing per-session adherence, fatigue flags, and any
 	// adjustments the coach already recommended.
-	if section := renderEvaluationsSection(evaluations); section != "" {
-		sb.WriteString(section)
-	}
+	sb.WriteString(renderEvaluationsSection(evaluations))
 
 	// User's custom prompt additions.
-	if customPrompt != "" {
-		sb.WriteString("## Additional Instructions\n")
-		sb.WriteString(customPrompt)
-		sb.WriteString("\n\n")
-	}
+	sb.WriteString(renderCustomPromptSection(customPrompt))
 
 	sb.WriteString("Generate the 7-day plan now as a JSON array. Output ONLY the JSON array, no other text.\n")
 
