@@ -419,7 +419,7 @@ func TestBuildAdjustPromptSections(t *testing.T) {
 	}
 
 	// The output envelope sub-task 3 parses.
-	for _, want := range []string{`"week"`, `"adjustment"`, `"deviates"`, `"goal_update"`, `"target_hm_time"`} {
+	for _, want := range []string{`"week"`, `"adjustment"`, `"deviates"`, `"goal_update"`, `"target_hm_time_s"`} {
 		if !strings.Contains(prompt, want) {
 			t.Errorf("output contract missing %s", want)
 		}

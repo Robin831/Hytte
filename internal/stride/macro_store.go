@@ -577,14 +577,21 @@ func GetMacroWeek(ctx context.Context, db *sql.DB, userID int64, weekStart strin
 	return &w, nil
 }
 
-// MarkMacroWeekStatus sets a macro week's status (planned, materialised or
-// skipped), scoped to the owning user. Returns ErrMacroWeekNotFound when no row
-// matched.
+// MarkMacroWeekStatus runs markMacroWeekStatusTx standalone, against the DB.
 func MarkMacroWeekStatus(ctx context.Context, db *sql.DB, id, userID int64, status string) error {
+	return markMacroWeekStatusTx(ctx, db, id, userID, status)
+}
+
+// markMacroWeekStatusTx sets a macro week's status (planned, materialised or
+// skipped), scoped to the owning user. Returns ErrMacroWeekNotFound when no row
+// matched. It runs over any execer, so the weekly write can flip a week to
+// 'materialised' inside the same transaction that stores the plan materialising
+// it.
+func markMacroWeekStatusTx(ctx context.Context, q execer, id, userID int64, status string) error {
 	if err := ValidateMacroWeekStatus(status); err != nil {
 		return err
 	}
-	res, err := db.ExecContext(ctx, `
+	res, err := q.ExecContext(ctx, `
 		UPDATE stride_macro_weeks SET status = ? WHERE id = ? AND user_id = ?
 	`, status, id, userID)
 	if err != nil {
@@ -765,24 +772,10 @@ func AddGoalRevision(ctx context.Context, db *sql.DB, rev *GoalRevision) error {
 	if rev == nil {
 		return errors.New("goal revision must not be nil")
 	}
-	if err := ValidateGoalRevisionSource(rev.Source); err != nil {
-		return err
-	}
-	if rev.WeekStart == "" {
-		return errors.New("goal revision week_start must be set")
-	}
-	createdAt, err := normaliseTimestamp(rev.CreatedAt, "goal revision created_at")
-	if err != nil {
-		return err
-	}
-	goalJSON, err := encryptJSON(rev.Goal, "goal_json")
-	if err != nil {
-		return err
-	}
-	encReason, err := encryption.EncryptField(rev.Reason)
-	if err != nil {
-		return fmt.Errorf("encrypt goal revision reason: %w", err)
-	}
+	// Source and week_start are validated once, by insertGoalRevisionTx below,
+	// so the two callers cannot drift apart on what a well-formed revision is.
+	// The nil check has to stay here because everything before the insert
+	// dereferences rev.
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -813,25 +806,70 @@ func AddGoalRevision(ctx context.Context, db *sql.DB, rev *GoalRevision) error {
 		return err
 	}
 
-	res, err := tx.ExecContext(ctx, `
-		INSERT INTO stride_goal_revisions
-			(macro_plan_id, user_id, week_start, goal_json, reason, source, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, rev.MacroPlanID, rev.UserID, rev.WeekStart, goalJSON, encReason, rev.Source, createdAt)
+	id, createdAt, err := insertGoalRevisionTx(ctx, tx, rev)
 	if err != nil {
-		return fmt.Errorf("insert goal revision: %w", err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("goal revision id: %w", err)
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit goal revision tx: %w", err)
 	}
 
+	// Only now does the revision have an identity: before the commit these
+	// describe a row that a failed Commit would have rolled away.
 	rev.ID = id
 	rev.CreatedAt = createdAt
 	return nil
+}
+
+// insertGoalRevisionTx validates, encrypts and appends one goal revision
+// through q, returning the new row's id and the normalised created_at.
+//
+// It returns them rather than writing them back through rev because q is
+// usually an uncommitted transaction: a caller whose Commit then fails must not
+// be left holding an id for a row that does not exist. Callers assign them to
+// rev after their commit succeeds.
+//
+// It performs NO ownership or foreign-reference check. AddGoalRevision does
+// those before calling it, because its revision comes from an HTTP caller;
+// saveWeeklyPlan does not, because its revision is the athlete's own current
+// block goal with only the target time moved. A new caller taking a goal from
+// anywhere else must check ownership the way AddGoalRevision does.
+func insertGoalRevisionTx(ctx context.Context, q execer, rev *GoalRevision) (int64, string, error) {
+	if rev == nil {
+		return 0, "", errors.New("goal revision must not be nil")
+	}
+	if err := ValidateGoalRevisionSource(rev.Source); err != nil {
+		return 0, "", err
+	}
+	if rev.WeekStart == "" {
+		return 0, "", errors.New("goal revision week_start must be set")
+	}
+	createdAt, err := normaliseTimestamp(rev.CreatedAt, "goal revision created_at")
+	if err != nil {
+		return 0, "", err
+	}
+	goalJSON, err := encryptJSON(rev.Goal, "goal_json")
+	if err != nil {
+		return 0, "", err
+	}
+	encReason, err := encryption.EncryptField(rev.Reason)
+	if err != nil {
+		return 0, "", fmt.Errorf("encrypt goal revision reason: %w", err)
+	}
+
+	res, err := q.ExecContext(ctx, `
+		INSERT INTO stride_goal_revisions
+			(macro_plan_id, user_id, week_start, goal_json, reason, source, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, rev.MacroPlanID, rev.UserID, rev.WeekStart, goalJSON, encReason, rev.Source, createdAt)
+	if err != nil {
+		return 0, "", fmt.Errorf("insert goal revision: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, "", fmt.Errorf("goal revision id: %w", err)
+	}
+	return id, createdAt, nil
 }
 
 // ListGoalRevisions returns a macro plan's goal history oldest first, scoped to
