@@ -1,0 +1,4 @@
+category: Added
+- **Week-by-week long-term plan** - The Stride long-term plan section now lists every week of the macro block behind a collapsed toggle, each row showing phase, load, mesocycle, key sessions, intent, its planned/materialised/skipped state and a target-vs-actual volume bar fed by the plan history. (Hytte-ifjr2.8)
+- **Regenerate and Extend the macro block** - Regenerate rebuilds the block from next Monday after a confirmation that says weeks already planned are kept; Extend appends a new 26-week block and is only offered once eight weeks or less remain and nothing is queued behind the current block. (Hytte-ifjr2.8)
+- **Stale plan banner** - A block whose races changed since it was made now says so above the long-term plan, with a Regenerate button; the plan is never rebuilt automatically. (Hytte-ifjr2.8)

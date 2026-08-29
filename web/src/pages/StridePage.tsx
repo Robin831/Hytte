@@ -6,7 +6,7 @@ import { formatDistance, formatDuration } from '../utils/training'
 import type { MacroPlanView, StrideEvaluationRecord, StridePlan, WeekSummary } from '../types/stride'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { TrainingBlockTimeline } from '../components/stride/TrainingBlockTimeline'
-import { LongTermPlanCard } from '../components/stride/LongTermPlanCard'
+import { LongTermPlanCard, type MacroAction } from '../components/stride/LongTermPlanCard'
 import { macroWeekForWeekStart } from '../components/stride/macroPlan'
 import WorkoutLibrary from '../components/stride/WorkoutLibrary'
 import RacePredictionsCard from '../components/training/RacePredictionsCard'
@@ -85,6 +85,11 @@ interface MonthSummary {
 }
 
 const HISTORY_PAGE_SIZE = 12
+
+// How many past weeks the long-term plan reads for its target-vs-actual bars.
+// 24 is the server's HistoryMaxLimit, so this is one request rather than a
+// paginated walk, and it covers most of a 26-week block's elapsed weeks.
+const MACRO_ACTUALS_WEEKS = 24
 
 // Zone palette: shares the easy/threshold/hard hues with the per-zone HR card on
 // TrainingDetail (#22c55e Z1, #eab308 Z3, #ef4444 Z5).
@@ -555,6 +560,15 @@ export default function StridePage() {
   // timeline then falls back to the A-race heuristic and the long-term plan
   // section stays hidden.
   const [macroPlan, setMacroPlan] = useState<MacroPlanView | null>(null)
+  // Past weeks behind the block's target-vs-actual bars. Loaded separately from
+  // the Plan History section below, which paginates its own copy.
+  const [macroHistory, setMacroHistory] = useState<WeekSummary[]>([])
+  const [macroHistoryLoading, setMacroHistoryLoading] = useState(true)
+  const [macroHistoryError, setMacroHistoryError] = useState(false)
+  // Which macro POST is in flight, or null. Both endpoints take the athlete's
+  // per-user lock server-side, so only one can run at a time.
+  const [macroAction, setMacroAction] = useState<MacroAction | null>(null)
+  const [macroActionError, setMacroActionError] = useState('')
   const [changedDates, setChangedDates] = useState<Set<string>>(new Set())
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [previousPlanId, setPreviousPlanId] = useState<number | null>(null)
@@ -717,6 +731,29 @@ export default function StridePage() {
     }
   }, [])
 
+  // Completed weeks for the block's target-vs-actual bars. A failure here only
+  // costs the bars, so it surfaces inside the week list rather than as a page
+  // error, with a Retry that re-runs this.
+  const loadMacroHistory = useCallback(async (signal?: AbortSignal) => {
+    setMacroHistoryError(false)
+    setMacroHistoryLoading(true)
+    try {
+      const res = await fetch(`/api/stride/history?limit=${MACRO_ACTUALS_WEEKS}&offset=0`, {
+        credentials: 'include',
+        signal,
+      })
+      if (!res.ok) throw new Error(`Failed to load history: ${res.status}`)
+      const data = await res.json()
+      if (!signal?.aborted) setMacroHistory((data.weeks ?? []) as WeekSummary[])
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      console.error('Failed to load plan history for the macro block', error)
+      if (!signal?.aborted) setMacroHistoryError(true)
+    } finally {
+      if (!signal?.aborted) setMacroHistoryLoading(false)
+    }
+  }, [])
+
   const loadWorkouts = useCallback(async (signal?: AbortSignal) => {
     try {
       const res = await fetch('/api/training/workouts', { credentials: 'include', signal })
@@ -781,9 +818,10 @@ export default function StridePage() {
     loadNotes(controller.signal)
     loadCurrentPlan(controller.signal)
     loadMacroPlan(controller.signal)
+    loadMacroHistory(controller.signal)
     loadWorkouts(controller.signal)
     return () => { controller.abort() }
-  }, [loadRaces, loadNotes, loadCurrentPlan, loadMacroPlan, loadWorkouts])
+  }, [loadRaces, loadNotes, loadCurrentPlan, loadMacroPlan, loadMacroHistory, loadWorkouts])
 
   // Current fitness estimate — the stored weekly race-prediction snapshot the
   // plan generator also reads. Non-fatal when unavailable; the card hides.
@@ -950,6 +988,39 @@ export default function StridePage() {
     } finally {
       setGenerating(false)
     }
+  }
+
+  // Regenerate / Extend the macro block. Both POSTs are minutes long — the
+  // server budgets a full Claude call — so the button stays busy for the whole
+  // request and a failure leaves the block on screen untouched.
+  async function runMacroAction(action: MacroAction, path: string) {
+    setMacroActionError('')
+    setMacroAction(action)
+    try {
+      const res = await fetch(path, { method: 'POST', credentials: 'include' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setMacroActionError(data.error ?? t(`longTermPlan.actions.${action}Error`))
+        return
+      }
+      // The response carries the block that was just written, which for an
+      // extension is the *next* one; /macro/current is what the section shows,
+      // so the block is re-read rather than swapped in from the response.
+      await loadMacroPlan()
+      await loadMacroHistory()
+    } catch {
+      setMacroActionError(t(`longTermPlan.actions.${action}Error`))
+    } finally {
+      setMacroAction(null)
+    }
+  }
+
+  function handleRegenerateMacro() {
+    void runMacroAction('regenerate', '/api/stride/macro/generate')
+  }
+
+  function handleExtendMacro() {
+    void runMacroAction('extend', '/api/stride/macro/extend')
   }
 
   function resetRaceForm() {
@@ -1231,7 +1302,19 @@ export default function StridePage() {
       <TrainingBlockTimeline races={races} loading={racesLoading} macroPlan={macroPlan} />
 
       {/* Long-term plan — only when a macro block exists */}
-      {macroPlan && <LongTermPlanCard view={macroPlan} />}
+      {macroPlan && (
+        <LongTermPlanCard
+          view={macroPlan}
+          historyWeeks={macroHistory}
+          historyLoading={macroHistoryLoading}
+          historyError={macroHistoryError}
+          onReloadHistory={() => { void loadMacroHistory() }}
+          onRegenerate={handleRegenerateMacro}
+          onExtend={handleExtendMacro}
+          busyAction={macroAction}
+          actionError={macroActionError}
+        />
+      )}
 
       {/* Current fitness estimate — the same weekly snapshot the coach reads
           when generating the plan, so athlete and coach see one number. */}

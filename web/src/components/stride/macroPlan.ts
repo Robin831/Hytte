@@ -77,3 +77,36 @@ export function groupWeekRuns(weeks: MacroWeek[], pick: (week: MacroWeek) => str
 export function sortMacroWeeks(weeks: MacroWeek[]): MacroWeek[] {
   return [...weeks].sort((a, b) => a.week_start.localeCompare(b.week_start))
 }
+
+// How many whole weeks of the block are still ahead of `fromWeek`, both
+// arguments being Monday week keys. Mirrors the backend's weeksRemaining
+// (internal/stride/macro_schedule.go): the difference is floored, so a horizon
+// that ends this week reads as 0 rather than as a week the athlete still has.
+//
+// The day difference is rounded before the division because mondayToDate builds
+// local midnights and a DST change puts an hour either side of a whole day.
+export function weeksRemaining(fromWeek: string, endWeek: string): number {
+  const from = mondayToDate(fromWeek)
+  const end = mondayToDate(endWeek)
+  if (isNaN(from.getTime()) || isNaN(end.getTime())) return 0
+  const days = Math.round((end.getTime() - from.getTime()) / (24 * 60 * 60 * 1000))
+  return Math.floor(days / 7)
+}
+
+// Left-edge accent per macro phase. The timeline, the mesocycle strip and the
+// week list all colour a phase the same way, so the palette lives here rather
+// than being re-declared next to each of them.
+const PHASE_ACCENT: Record<string, string> = {
+  base: 'border-blue-500/60',
+  build: 'border-green-500/60',
+  peak: 'border-orange-500/60',
+  taper: 'border-red-500/60',
+  race: 'border-yellow-500/60',
+  recovery: 'border-purple-500/60',
+}
+
+// The border class for a phase, falling back to a neutral edge for a phase the
+// palette does not know (a block written before a phase was renamed).
+export function phaseAccent(phase: string): string {
+  return PHASE_ACCENT[phase] ?? 'border-gray-600'
+}

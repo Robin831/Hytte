@@ -273,6 +273,54 @@
     "weekCount_one": "{{count}} uke",
     "weekCount_other": "{{count}} uker",
     "currentWeek": "Uke {{seq}} av {{total}}",
-    "current": "Nå"
+    "current": "Nå",
+    "actions": {
+      "regenerate": "Lag på nytt",
+      "regenerating": "Lager på nytt …",
+      "regenerateError": "Klarte ikke å lage langtidsplanen på nytt. Prøv igjen.",
+      "extend": "Forleng",
+      "extending": "Forlenger …",
+      "extendError": "Klarte ikke å forlenge langtidsplanen. Prøv igjen.",
+      "extendHint": "Legg til en ny 26-ukers blokk etter denne.",
+      "extendTooEarly": "Blir tilgjengelig når det er {{weeks}} uker eller mindre igjen av blokka.",
+      "extendQueued": "En ny blokk ligger allerede i kø etter denne."
+    },
+    "confirm": {
+      "title": "Lage langtidsplanen på nytt?",
+      "body": "Dette erstatter planen fra og med neste mandag; uker som allerede er planlagt beholdes.",
+      "cancel": "Avbryt"
+    },
+    "stale": {
+      "races_changed": "Løpene dine er endret siden denne planen ble laget",
+      "generic": "Denne planen er utdatert",
+      "hint": "Lag planen på nytt for å bygge blokka rundt løpskalenderen din slik den er nå."
+    },
+    "weeks": {
+      "title": "Uke for uke",
+      "range": "{{from}} – {{to}}",
+      "seq": "Uke {{seq}}",
+      "volume": "Volum",
+      "km": "{{actual}} / {{target}} km",
+      "kmTarget": "{{target}} km planlagt",
+      "kmAria": "Fullført distanse mot mål for uke {{seq}}",
+      "sessions": "Økter",
+      "sessionCount": "{{completed}} / {{target}}",
+      "sessionTarget": "{{target}} planlagt",
+      "actualsLoading": "Laster fullført trening …",
+      "actualsError": "Klarte ikke å laste fullført trening.",
+      "retry": "Prøv igjen",
+      "status": {
+        "planned": "Planlagt",
+        "materialised": "Detaljplanlagt",
+        "skipped": "Hoppet over"
+      },
+      "load": {
+        "deload": "Nedtrapping",
+        "normal": "Normal",
+        "build": "Oppbygging",
+        "peak": "Topp",
+        "taper": "Formtopping"
+      }
+    }
   }
 }

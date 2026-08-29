@@ -1676,6 +1676,7 @@ describe('StridePage – macro plan', () => {
     weeks: MACRO_WEEKS,
     current_goal_revision: REVISION,
     revisions: [REVISION],
+    has_next_block: false,
   }
 
   // phase is empty on purpose: the header has to fall back to the macro week's
@@ -1697,8 +1698,10 @@ describe('StridePage – macro plan', () => {
   }
 
   // `macro` null → GET /api/stride/macro/current answers 404 (no block).
+  // The init argument is unused but declared so the POST assertions below can
+  // read the method off the recorded calls.
   function makeFetch(macro: unknown, plan: unknown) {
-    return vi.fn((url: string) => {
+    return vi.fn((url: string, _init?: RequestInit) => {
       const make = (data: unknown) =>
         Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response)
       if (url.includes('/api/stride/macro/current')) {
@@ -1810,5 +1813,119 @@ describe('StridePage – macro plan', () => {
       screen.getByText('Add an A-priority race to see your training block timeline.'),
     ).toBeInTheDocument()
     expect(screen.getByText('Phase: Base')).toBeInTheDocument()
+  })
+
+  // --- Regenerate / Extend ---
+
+  it('regenerates the block only after the confirmation is accepted', async () => {
+    const fetchMock = makeFetch(MACRO_VIEW, makePlan())
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Long-term plan' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(within(longTermSection()).getByRole('button', { name: 'Regenerate' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }))
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/stride/macro/generate'))).toBe(false)
+
+    fireEvent.click(within(longTermSection()).getByRole('button', { name: 'Regenerate' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Regenerate' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/stride/macro/generate'))
+      expect(call).toBeDefined()
+      expect((call?.[1] as RequestInit | undefined)?.method).toBe('POST')
+    })
+  })
+
+  it('surfaces the server error from a failed regeneration and keeps the block on screen', async () => {
+    const base = makeFetch(MACRO_VIEW, makePlan())
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
+      if (url.includes('/api/stride/macro/generate')) {
+        return Promise.resolve({
+          ok: false,
+          status: 409,
+          json: () => Promise.resolve({ error: 'a generation is already running — try again in a moment' }),
+        } as Response)
+      }
+      return base(url)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Long-term plan' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(within(longTermSection()).getByRole('button', { name: 'Regenerate' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Regenerate' }))
+
+    await waitFor(() => {
+      expect(
+        within(longTermSection()).getByText('a generation is already running — try again in a moment'),
+      ).toBeInTheDocument()
+    })
+    expect(within(longTermSection()).getByText('Run 1:25 for the half marathon')).toBeInTheDocument()
+  })
+
+  it('extends the horizon from the Extend button', async () => {
+    const fetchMock = makeFetch(MACRO_VIEW, makePlan())
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Long-term plan' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(within(longTermSection()).getByRole('button', { name: 'Extend' }))
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/stride/macro/extend'))
+      expect(call).toBeDefined()
+      expect((call?.[1] as RequestInit | undefined)?.method).toBe('POST')
+    })
+  })
+
+  it('disables Extend when a block is already queued behind this one', async () => {
+    vi.stubGlobal('fetch', makeFetch({ ...MACRO_VIEW, has_next_block: true }, makePlan()))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Long-term plan' })).toBeInTheDocument()
+    })
+    expect(within(longTermSection()).getByRole('button', { name: 'Extend' })).toBeDisabled()
+  })
+
+  it('shows the stale banner and its Regenerate button when the races changed', async () => {
+    const stale = { ...MACRO_VIEW, plan: { ...MACRO_VIEW.plan, stale_reason: 'races_changed' } }
+    vi.stubGlobal('fetch', makeFetch(stale, makePlan()))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Long-term plan' })).toBeInTheDocument()
+    })
+    const banner = within(within(longTermSection()).getByRole('status'))
+    expect(banner.getByText('Your races changed since this plan was made')).toBeInTheDocument()
+    expect(banner.getByRole('button', { name: 'Regenerate' })).toBeInTheDocument()
+  })
+
+  it('lists the block week by week behind a collapsed toggle', async () => {
+    vi.stubGlobal('fetch', makeFetch(MACRO_VIEW, makePlan()))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Long-term plan' })).toBeInTheDocument()
+    })
+
+    const section = within(longTermSection())
+    expect(section.queryByText('55 km planned')).not.toBeInTheDocument()
+
+    fireEvent.click(section.getByRole('button', { name: /Week by week/ }))
+
+    // One row per macro week, each stating its target volume — no history was
+    // returned, so every week shows the target alone.
+    expect(section.getAllByText('55 km planned')).toHaveLength(3)
   })
 })

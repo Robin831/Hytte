@@ -273,6 +273,54 @@
     "weekCount_one": "{{count}} week",
     "weekCount_other": "{{count}} weeks",
     "currentWeek": "Week {{seq}} of {{total}}",
-    "current": "Current"
+    "current": "Current",
+    "actions": {
+      "regenerate": "Regenerate",
+      "regenerating": "Regenerating…",
+      "regenerateError": "Could not regenerate the long-term plan. Try again.",
+      "extend": "Extend",
+      "extending": "Extending…",
+      "extendError": "Could not extend the long-term plan. Try again.",
+      "extendHint": "Add a new 26-week block after this one.",
+      "extendTooEarly": "Available once {{weeks}} weeks or less remain in this block.",
+      "extendQueued": "A new block is already queued after this one."
+    },
+    "confirm": {
+      "title": "Regenerate the long-term plan?",
+      "body": "This replaces the plan from next Monday; weeks already planned are kept.",
+      "cancel": "Cancel"
+    },
+    "stale": {
+      "races_changed": "Your races changed since this plan was made",
+      "generic": "This plan is out of date",
+      "hint": "Regenerate to rebuild the block around your current race calendar."
+    },
+    "weeks": {
+      "title": "Week by week",
+      "range": "{{from}} – {{to}}",
+      "seq": "Week {{seq}}",
+      "volume": "Volume",
+      "km": "{{actual}} / {{target}} km",
+      "kmTarget": "{{target}} km planned",
+      "kmAria": "Distance completed against target for week {{seq}}",
+      "sessions": "Sessions",
+      "sessionCount": "{{completed}} / {{target}}",
+      "sessionTarget": "{{target}} planned",
+      "actualsLoading": "Loading completed training…",
+      "actualsError": "Could not load completed training.",
+      "retry": "Try again",
+      "status": {
+        "planned": "Planned",
+        "materialised": "Materialised",
+        "skipped": "Skipped"
+      },
+      "load": {
+        "deload": "Deload",
+        "normal": "Normal",
+        "build": "Build",
+        "peak": "Peak",
+        "taper": "Taper"
+      }
+    }
   }
 }

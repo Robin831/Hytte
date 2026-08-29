@@ -183,4 +183,7 @@ export interface MacroPlanView {
   weeks: MacroWeek[]
   current_goal_revision: GoalRevision | null
   revisions: GoalRevision[]
+  // True when an active block already covers the Monday after this one ends,
+  // i.e. the horizon is already extended and Extend has nothing to add.
+  has_next_block: boolean
 }
