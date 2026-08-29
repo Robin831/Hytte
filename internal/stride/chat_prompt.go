@@ -18,6 +18,12 @@ import (
 // durable athlete-specific context that shapes plan generation, so the chat
 // coach must see it too; otherwise it re-derives (and can contradict) it every
 // conversation. Pass an empty string when the athlete has not configured one.
+//
+// macroBlock is the rendered macro-block section from renderMacroPlanBlock —
+// the same block AdjustWeek plans inside, so a chat edit and the weekly
+// adjustment are held to one contract. Pass an empty string when no active
+// macro block covers the plan's week; the prompt is then exactly what it was
+// before macro planning existed.
 func BuildChatSystemPrompt(
 	profile training.UserTrainingProfile,
 	plan Plan,
@@ -28,6 +34,7 @@ func BuildChatSystemPrompt(
 	notes []Note,
 	treadmillCalibration string,
 	customPrompt string,
+	macroBlock string,
 ) string {
 	var b strings.Builder
 
@@ -68,6 +75,17 @@ Only output plan JSON when you are actually making a change — not when just di
 		b.WriteString("output format rules above, or athlete safety.\n\n")
 		b.WriteString(customPrompt)
 		b.WriteString("\n")
+	}
+
+	// 2b. The macro block this week belongs to, when one is active. Rendered
+	// before the plan so it reads as the contract the plan was materialised
+	// from rather than a footnote to it, and immediately followed by the same
+	// one-sentence half-marathon priority AdjustWeek is judged against.
+	if macroBlock != "" {
+		b.WriteString("\n")
+		b.WriteString(macroBlock)
+		b.WriteString(adjustHalfMarathonRule)
+		b.WriteString("\nEvery edit you make in this conversation stays inside this block. Keep the week's phase — the macro block fixes it and nothing the athlete asks in chat overrides it — and keep its target distance, session count and key sessions unless the athlete's request or the data below gives you a reason to depart from them. If the athlete asks for something the block does not allow, such as a different phase or a different block goal, say so and propose it rather than silently restructuring the week.\n")
 	}
 
 	// 3. Current plan
