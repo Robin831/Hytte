@@ -25,7 +25,10 @@
     "bpm": "{{value}} bpm",
     "sessionCount_one": "{{count}} session",
     "sessionCount_other": "{{count}} sessions",
-    "previousWeekFeedback": "Previous week feedback"
+    "previousWeekFeedback": "Previous week feedback",
+    "adjustThisWeek": "Adjust this week",
+    "adjustNextWeek": "Adjust next week",
+    "adjustmentSummary": "This week's adjustment"
   },
   "races": {
     "title": "Race Calendar",
@@ -142,8 +145,14 @@
       "base": "Base",
       "build": "Build",
       "peak": "Peak",
-      "taper": "Taper"
-    }
+      "taper": "Taper",
+      "race": "Race",
+      "recovery": "Recovery"
+    },
+    "weeksLeft_one": "{{count}} week left in block",
+    "weeksLeft_other": "{{count}} weeks left in block",
+    "currentWeek": "Current week",
+    "macroAriaLabel": "Training block timeline showing the mesocycles and weekly phases of your long-term plan"
   },
   "evaluation": {
     "compliant": "Completed",
@@ -246,5 +255,24 @@
       "error": "The coach did not answer. Try again.",
       "saveError": "Failed to save the workout."
     }
+  },
+  "longTermPlan": {
+    "title": "Long-term plan",
+    "targetHmTime": "Target half marathon",
+    "benchmark": "Benchmark session",
+    "rationale": "Why this goal",
+    "revisions_one": "{{count}} goal revision",
+    "revisions_other": "{{count}} goal revisions",
+    "revisionTarget": "Target {{time}}",
+    "revisionSource": {
+      "initial": "Initial",
+      "weekly": "Weekly job",
+      "manual": "Manual"
+    },
+    "mesocycles": "Mesocycles",
+    "weekCount_one": "{{count}} week",
+    "weekCount_other": "{{count}} weeks",
+    "currentWeek": "Week {{seq}} of {{total}}",
+    "current": "Current"
   }
 }

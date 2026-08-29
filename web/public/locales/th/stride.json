@@ -25,7 +25,10 @@
     "bpm": "{{value}} ครั้ง/นาที",
     "sessionCount_one": "{{count}} เซสชัน",
     "sessionCount_other": "{{count}} เซสชัน",
-    "previousWeekFeedback": "ข้อเสนอแนะจากสัปดาห์ที่แล้ว"
+    "previousWeekFeedback": "ข้อเสนอแนะจากสัปดาห์ที่แล้ว",
+    "adjustThisWeek": "ปรับแผนสัปดาห์นี้",
+    "adjustNextWeek": "ปรับแผนสัปดาห์หน้า",
+    "adjustmentSummary": "การปรับแผนของสัปดาห์นี้"
   },
   "races": {
     "title": "ปฏิทินการแข่งขัน",
@@ -142,8 +145,14 @@
       "base": "ฐาน",
       "build": "สร้าง",
       "peak": "จุดสูงสุด",
-      "taper": "ลดการฝึก"
-    }
+      "taper": "ลดการฝึก",
+      "race": "แข่งขัน",
+      "recovery": "ฟื้นตัว"
+    },
+    "weeksLeft_one": "เหลืออีก {{count}} สัปดาห์ในช่วงนี้",
+    "weeksLeft_other": "เหลืออีก {{count}} สัปดาห์ในช่วงนี้",
+    "currentWeek": "สัปดาห์ปัจจุบัน",
+    "macroAriaLabel": "ไทม์ไลน์ช่วงการฝึกซ้อมแสดงเมโซไซเคิลและเฟสรายสัปดาห์จากแผนระยะยาว"
   },
   "evaluation": {
     "compliant": "สำเร็จ",
@@ -245,5 +254,24 @@
       "error": "โค้ชไม่ตอบ ลองอีกครั้ง",
       "saveError": "บันทึกเซสชันไม่สำเร็จ"
     }
+  },
+  "longTermPlan": {
+    "title": "แผนระยะยาว",
+    "targetHmTime": "เป้าหมายฮาล์ฟมาราธอน",
+    "benchmark": "เซสชันวัดผล",
+    "rationale": "เหตุผลของเป้าหมายนี้",
+    "revisions_one": "แก้ไขเป้าหมาย {{count}} ครั้ง",
+    "revisions_other": "แก้ไขเป้าหมาย {{count}} ครั้ง",
+    "revisionTarget": "เป้าหมาย {{time}}",
+    "revisionSource": {
+      "initial": "เริ่มต้น",
+      "weekly": "งานรายสัปดาห์",
+      "manual": "ปรับเอง"
+    },
+    "mesocycles": "เมโซไซเคิล",
+    "weekCount_one": "{{count}} สัปดาห์",
+    "weekCount_other": "{{count}} สัปดาห์",
+    "currentWeek": "สัปดาห์ที่ {{seq}} จาก {{total}}",
+    "current": "ปัจจุบัน"
   }
 }

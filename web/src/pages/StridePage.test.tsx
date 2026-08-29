@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import StridePage from './StridePage'
 import { formatTargetTime, parseTargetTime } from './strideUtils'
@@ -1596,5 +1596,219 @@ describe('StridePage – live evaluation refresh over SSE', () => {
     unmount()
 
     expect(sse.openCount()).toBe(0)
+  })
+})
+
+// The macro block drives the timeline, the long-term plan section and the
+// wording of the generate button; without one the page keeps the A-race
+// heuristic and the original labels.
+describe('StridePage – macro plan', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  // Monday of the week `offset` weeks from the current one, so the block always
+  // straddles "today" regardless of when the suite runs.
+  function mondayOffset(offset: number): string {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + offset * 7)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  const GOAL = {
+    primary_focus: 'half_marathon',
+    statement: 'Run 1:25 for the half marathon',
+    target_hm_time_s: 5100,
+    benchmark: '3 x 3 km at threshold',
+    rationale: 'Threshold volume is the limiter.',
+    anchor_race_id: null,
+  }
+
+  const MACRO_WEEKS = [
+    { phase: 'base', mesocycle: 'Aerobic base', offset: -1 },
+    { phase: 'build', mesocycle: 'Threshold build', offset: 0 },
+    { phase: 'build', mesocycle: 'Threshold build', offset: 1 },
+  ].map((w, i) => ({
+    id: i + 1,
+    macro_plan_id: 7,
+    user_id: 1,
+    week_start: mondayOffset(w.offset),
+    seq: i + 1,
+    phase: w.phase,
+    mesocycle: w.mesocycle,
+    load_level: 'normal',
+    target_km: 55,
+    target_sessions: 5,
+    race_id: null,
+    key_sessions: [],
+    intent: '',
+    status: 'planned',
+  }))
+
+  const REVISION = {
+    id: 1,
+    macro_plan_id: 7,
+    user_id: 1,
+    week_start: mondayOffset(-1),
+    goal: GOAL,
+    reason: 'Initial goal for the block',
+    source: 'initial',
+    created_at: '2026-01-05T02:00:00Z',
+  }
+
+  const MACRO_VIEW = {
+    plan: {
+      id: 7,
+      user_id: 1,
+      start_week: MACRO_WEEKS[0].week_start,
+      end_week: MACRO_WEEKS[2].week_start,
+      status: 'active',
+      stale_reason: '',
+      goal: GOAL,
+      periodisation: [],
+      model: 'test',
+      generated_by: 'scheduled',
+      previous_plan_id: null,
+      created_at: '2026-01-05T02:00:00Z',
+    },
+    weeks: MACRO_WEEKS,
+    current_goal_revision: REVISION,
+    revisions: [REVISION],
+  }
+
+  // phase is empty on purpose: the header has to fall back to the macro week's
+  // phase rather than rendering nothing.
+  function makePlan(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 5,
+      user_id: 1,
+      week_start: mondayOffset(0),
+      week_end: mondayOffset(1),
+      phase: '',
+      model: 'test',
+      created_at: '2026-01-12T02:00:00Z',
+      macro_week_id: 2,
+      adjustment_summary: 'Long run cut to 14 km after the calf niggle.',
+      plan: [{ date: mondayOffset(0), rest_day: true } as DayPlan],
+      ...overrides,
+    }
+  }
+
+  // `macro` null → GET /api/stride/macro/current answers 404 (no block).
+  function makeFetch(macro: unknown, plan: unknown) {
+    return vi.fn((url: string) => {
+      const make = (data: unknown) =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response)
+      if (url.includes('/api/stride/macro/current')) {
+        if (!macro) {
+          return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({}) } as Response)
+        }
+        return make(macro)
+      }
+      if (url.includes('/api/stride/plans/current')) return make({ plan })
+      if (url.includes('/api/stride/plans?limit=2')) return make({ plans: [plan] })
+      if (url.includes('/api/stride/history')) {
+        return make({ weeks: [], months: [], limit: 12, offset: 0, has_more: false })
+      }
+      if (url.includes('/api/stride/evaluations')) return make({ evaluations: [] })
+      if (url.includes('/api/training/workouts')) return make({ workouts: [] })
+      if (url.includes('/api/stride/races')) return make({ races: [] })
+      if (url.includes('/api/stride/notes')) return make({ notes: [] })
+      return make({})
+    })
+  }
+
+  function longTermSection() {
+    return screen.getByRole('region', { name: 'Long-term plan' })
+  }
+
+  it('renders the goal card, the mesocycle strip and the current week from the macro block', async () => {
+    vi.stubGlobal('fetch', makeFetch(MACRO_VIEW, makePlan()))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Long-term plan' })).toBeInTheDocument()
+    })
+
+    const section = within(longTermSection())
+    expect(section.getByText('Run 1:25 for the half marathon')).toBeInTheDocument()
+    expect(section.getByText('1:25:00')).toBeInTheDocument()
+    expect(section.getByText('3 x 3 km at threshold')).toBeInTheDocument()
+    expect(section.getByText('Threshold volume is the limiter.')).toBeInTheDocument()
+
+    // The block's mesocycles, with the one covering this week marked current.
+    expect(section.getByText('Aerobic base')).toBeInTheDocument()
+    expect(section.getByText('Threshold build')).toBeInTheDocument()
+    expect(section.getByText('Current')).toBeInTheDocument()
+    expect(section.getByText('Week 2 of 3')).toBeInTheDocument()
+  })
+
+  it('shows the goal revision history behind a toggle', async () => {
+    vi.stubGlobal('fetch', makeFetch(MACRO_VIEW, makePlan()))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Long-term plan' })).toBeInTheDocument()
+    })
+
+    const section = within(longTermSection())
+    expect(section.queryByText('Initial goal for the block')).not.toBeInTheDocument()
+
+    fireEvent.click(section.getByRole('button', { name: /1 goal revision/ }))
+
+    expect(section.getByText('Initial goal for the block')).toBeInTheDocument()
+    expect(section.getByText('Initial')).toBeInTheDocument()
+  })
+
+  it('shows the macro week phase and the adjustment summary in the week header', async () => {
+    vi.stubGlobal('fetch', makeFetch(MACRO_VIEW, makePlan()))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Rest')).toBeInTheDocument()
+    })
+
+    // The plan row's own phase is empty, so the macro week's phase is shown.
+    expect(screen.getByText('Phase: Build')).toBeInTheDocument()
+    expect(screen.getByText("This week's adjustment")).toBeInTheDocument()
+    expect(screen.getByText('Long run cut to 14 km after the calf niggle.')).toBeInTheDocument()
+  })
+
+  it('omits the adjustment summary when the plan has none', async () => {
+    vi.stubGlobal('fetch', makeFetch(MACRO_VIEW, makePlan({ adjustment_summary: '' })))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Rest')).toBeInTheDocument()
+    })
+    expect(screen.queryByText("This week's adjustment")).not.toBeInTheDocument()
+  })
+
+  it('labels the generate button "Adjust next week" when a macro block exists', async () => {
+    vi.stubGlobal('fetch', makeFetch(MACRO_VIEW, makePlan()))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Adjust next week' })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('button', { name: 'Generate next week' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the A-race timeline, the original button label and no long-term section without a macro block', async () => {
+    vi.stubGlobal('fetch', makeFetch(null, makePlan({ phase: 'Base', adjustment_summary: '' })))
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Generate next week' })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('heading', { name: 'Long-term plan' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Adjust next week' })).not.toBeInTheDocument()
+    // No races and no macro block — the timeline asks for an A-priority race.
+    expect(
+      screen.getByText('Add an A-priority race to see your training block timeline.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Phase: Base')).toBeInTheDocument()
   })
 })

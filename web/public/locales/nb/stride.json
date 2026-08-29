@@ -25,7 +25,10 @@
     "bpm": "{{value}} slag/min",
     "sessionCount_one": "{{count}} økt",
     "sessionCount_other": "{{count}} økter",
-    "previousWeekFeedback": "Tilbakemelding fra forrige uke"
+    "previousWeekFeedback": "Tilbakemelding fra forrige uke",
+    "adjustThisWeek": "Juster denne uken",
+    "adjustNextWeek": "Juster neste uke",
+    "adjustmentSummary": "Ukens justering"
   },
   "races": {
     "title": "Løpskalender",
@@ -142,8 +145,14 @@
       "base": "Base",
       "build": "Bygging",
       "peak": "Topp",
-      "taper": "Nedtrapping"
-    }
+      "taper": "Nedtrapping",
+      "race": "Løp",
+      "recovery": "Restitusjon"
+    },
+    "weeksLeft_one": "{{count}} uke igjen av blokken",
+    "weeksLeft_other": "{{count}} uker igjen av blokken",
+    "currentWeek": "Denne uken",
+    "macroAriaLabel": "Tidslinje for treningsblokken med mesosykluser og ukefaser fra langtidsplanen"
   },
   "evaluation": {
     "compliant": "Fullført",
@@ -246,5 +255,24 @@
       "error": "Treneren svarte ikke. Prøv igjen.",
       "saveError": "Kunne ikke lagre økten."
     }
+  },
+  "longTermPlan": {
+    "title": "Langtidsplan",
+    "targetHmTime": "Måltid halvmaraton",
+    "benchmark": "Referanseøkt",
+    "rationale": "Hvorfor dette målet",
+    "revisions_one": "{{count}} målrevisjon",
+    "revisions_other": "{{count}} målrevisjoner",
+    "revisionTarget": "Mål {{time}}",
+    "revisionSource": {
+      "initial": "Opprinnelig",
+      "weekly": "Ukentlig jobb",
+      "manual": "Manuell"
+    },
+    "mesocycles": "Mesosykluser",
+    "weekCount_one": "{{count}} uke",
+    "weekCount_other": "{{count}} uker",
+    "currentWeek": "Uke {{seq}} av {{total}}",
+    "current": "Nå"
   }
 }

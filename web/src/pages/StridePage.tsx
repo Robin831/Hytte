@@ -3,9 +3,11 @@ import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, Trophy, Zap, ChevronRight, RefreshCw, History, Pencil, Loader2 } from 'lucide-react'
 import { formatDate, formatDateTime, formatNumber } from '../utils/formatDate'
 import { formatDistance, formatDuration } from '../utils/training'
-import type { StrideEvaluationRecord, StridePlan, WeekSummary } from '../types/stride'
+import type { MacroPlanView, StrideEvaluationRecord, StridePlan, WeekSummary } from '../types/stride'
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { TrainingBlockTimeline } from '../components/stride/TrainingBlockTimeline'
+import { LongTermPlanCard } from '../components/stride/LongTermPlanCard'
+import { macroWeekForWeekStart } from '../components/stride/macroPlan'
 import WorkoutLibrary from '../components/stride/WorkoutLibrary'
 import RacePredictionsCard from '../components/training/RacePredictionsCard'
 import type { RacePredictions } from '../types/training'
@@ -549,6 +551,10 @@ export default function StridePage() {
   const [notes, setNotes] = useState<Note[]>([])
   const [consumedNotes, setConsumedNotes] = useState<Note[]>([])
   const [currentPlan, setCurrentPlan] = useState<StridePlan | null>(null)
+  // The active macro block, or null when the athlete has none (404) — the
+  // timeline then falls back to the A-race heuristic and the long-term plan
+  // section stays hidden.
+  const [macroPlan, setMacroPlan] = useState<MacroPlanView | null>(null)
   const [changedDates, setChangedDates] = useState<Set<string>>(new Set())
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [previousPlanId, setPreviousPlanId] = useState<number | null>(null)
@@ -690,6 +696,27 @@ export default function StridePage() {
     }
   }, [])
 
+  // The macro block behind the weekly plans. A 404 means the athlete has no
+  // block yet, which is a normal state rather than an error, so it clears the
+  // plan instead of surfacing anything.
+  const loadMacroPlan = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch('/api/stride/macro/current', { credentials: 'include', signal })
+      if (!res.ok) {
+        if (!signal?.aborted) setMacroPlan(null)
+        return
+      }
+      const data = (await res.json()) as MacroPlanView | null
+      if (!signal?.aborted) {
+        setMacroPlan(data?.plan ? data : null)
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      console.error('Failed to load macro plan', error)
+      if (!signal?.aborted) setMacroPlan(null)
+    }
+  }, [])
+
   const loadWorkouts = useCallback(async (signal?: AbortSignal) => {
     try {
       const res = await fetch('/api/training/workouts', { credentials: 'include', signal })
@@ -753,9 +780,10 @@ export default function StridePage() {
     loadRaces(controller.signal)
     loadNotes(controller.signal)
     loadCurrentPlan(controller.signal)
+    loadMacroPlan(controller.signal)
     loadWorkouts(controller.signal)
     return () => { controller.abort() }
-  }, [loadRaces, loadNotes, loadCurrentPlan, loadWorkouts])
+  }, [loadRaces, loadNotes, loadCurrentPlan, loadMacroPlan, loadWorkouts])
 
   // Current fitness estimate — the stored weekly race-prediction snapshot the
   // plan generator also reads. Non-fatal when unavailable; the card hides.
@@ -914,6 +942,9 @@ export default function StridePage() {
       } else {
         setCurrentPlan(null)
       }
+      // Adjusting a week can auto-apply goal drift, so the block (and its goal
+      // history) is reloaded rather than left showing the pre-adjustment goal.
+      await loadMacroPlan()
     } catch {
       setGenerateError(t('plan.generateError'))
     } finally {
@@ -1133,6 +1164,16 @@ export default function StridePage() {
   const upcomingRaces = races.filter(r => r.date >= today)
   const pastRaces = races.filter(r => r.date < today)
 
+  // The macro week the plan on screen materialises. The plan carries its own
+  // phase (denormalised when the week was adjusted), so the macro week is only
+  // consulted when that column is empty — a legacy plan generated before the
+  // block existed.
+  const planMacroWeek = useMemo(() => {
+    if (!macroPlan || !currentPlan) return null
+    return macroWeekForWeekStart(macroPlan.weeks, currentPlan.week_start)
+  }, [macroPlan, currentPlan])
+  const weekPhase = currentPlan?.phase || planMacroWeek?.phase || ''
+
   // Sort plan days Monday–Sunday
   const sortedPlanDays = currentPlan
     ? [...currentPlan.plan].sort((a, b) => a.date.localeCompare(b.date))
@@ -1187,7 +1228,10 @@ export default function StridePage() {
       </div>
 
       {/* Training Block Timeline */}
-      <TrainingBlockTimeline races={races} loading={racesLoading} />
+      <TrainingBlockTimeline races={races} loading={racesLoading} macroPlan={macroPlan} />
+
+      {/* Long-term plan — only when a macro block exists */}
+      {macroPlan && <LongTermPlanCard view={macroPlan} />}
 
       {/* Current fitness estimate — the same weekly snapshot the coach reads
           when generating the plan, so athlete and coach see one number. */}
@@ -1206,9 +1250,13 @@ export default function StridePage() {
             className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-yellow-600 hover:bg-yellow-700 disabled:opacity-50 text-white rounded-lg transition-colors"
           >
             <RefreshCw size={14} className={generating ? 'animate-spin' : ''} />
+            {/* With a macro block the button adjusts the block's week rather
+                than planning one from scratch, and says so. */}
             {generating
               ? t('plan.generating')
-              : t(generateWeekMode === 'current' ? 'plan.generateThisWeek' : 'plan.generateNextWeek')}
+              : macroPlan
+                ? t(generateWeekMode === 'current' ? 'plan.adjustThisWeek' : 'plan.adjustNextWeek')
+                : t(generateWeekMode === 'current' ? 'plan.generateThisWeek' : 'plan.generateNextWeek')}
           </button>
         </div>
 
@@ -1240,8 +1288,10 @@ export default function StridePage() {
                   end: formatDate(`${currentPlan.week_end}T00:00:00`, { month: 'short', day: 'numeric' }),
                 })}
               </span>
-              {currentPlan.phase && (
-                <span className="px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded">{t('plan.phase', { phase: currentPlan.phase })}</span>
+              {weekPhase && (
+                <span className="px-1.5 py-0.5 bg-yellow-500/10 text-yellow-500 rounded">
+                  {t('plan.phase', { phase: t(`timeline.phases.${weekPhase}`, { defaultValue: weekPhase }) })}
+                </span>
               )}
               <span>
                 {t('plan.generatedAt', {
@@ -1249,6 +1299,17 @@ export default function StridePage() {
                 })}
               </span>
             </div>
+
+            {/* How this week deviates from its macro week target, in the
+                coach's own words. Absent on plans with nothing to report. */}
+            {currentPlan.adjustment_summary && (
+              <div className="mb-3 rounded-lg border border-gray-700 bg-gray-800/60 px-3 py-2">
+                <p className="text-xs uppercase tracking-wide text-gray-500 mb-0.5">
+                  {t('plan.adjustmentSummary')}
+                </p>
+                <p className="text-sm text-gray-300 whitespace-pre-line">{currentPlan.adjustment_summary}</p>
+              </div>
+            )}
 
             {/* Day cards */}
             <div className="space-y-2">
