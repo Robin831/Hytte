@@ -24,10 +24,13 @@ import (
 )
 
 // GoalUpdate is the coach's proposed change to the block's target half-marathon
-// time. The time is in SECONDS, matching both the "target_hm_time" key in
-// adjustOutputContract and MacroGoal.TargetHMTimeS.
+// time. The _s suffix on the wire key is deliberate and matches
+// adjustOutputContract, MacroGoal.TargetHMTimeS and the stored
+// target_hm_time_s column: the unit is part of the name everywhere, so no
+// reader (model included) has to guess whether the number is seconds or
+// minutes.
 type GoalUpdate struct {
-	TargetHMTimeS int    `json:"target_hm_time"`
+	TargetHMTimeS int    `json:"target_hm_time_s"`
 	Reason        string `json:"reason"`
 }
 
@@ -59,13 +62,27 @@ type PlanEnvelope struct {
 // validates the legacy shape — the same 7 dates, no duplicates, a session on
 // every non-rest day.
 //
-// The shape is chosen from the first non-space byte rather than by trying both
-// blindly, so a malformed envelope reports why the envelope failed instead of
-// the useless "cannot unmarshal object into []DayPlan" the array attempt would
-// give. A leading byte that is neither token is genuinely ambiguous (a model
-// that emitted a stray prefix, say), and only there are both shapes tried.
+// This is the reader for callers that asked for the BARE ARRAY contract, where
+// an envelope is a bonus rather than the promise. Only the summary of that
+// bonus is kept: the legacy caller has no macro block, so any goal_update it
+// carries is rejected by the clamp (see weeklyPlanWrite.MacroPlanID) and goal
+// proposals deliberately do not flow through this path. Callers that asked for
+// the AdjustWeek envelope must use parseAdjustEnvelope, which refuses to read a
+// bare array as "the coach changed nothing".
+//
+// The shape is chosen from the first significant byte rather than by trying
+// both blindly, so a malformed envelope reports why the envelope failed instead
+// of the useless "cannot unmarshal object into []DayPlan" the array attempt
+// would give. That first byte decides the shape completely: JSON allows only
+// whitespace before a value, and the whitespace is gone by then, so a body
+// starting with anything but '{' or '[' cannot parse as either shape and is
+// rejected here rather than run through two attempts that must both fail.
 func parsePlanEnvelope(response, weekStart, weekEnd string) (PlanEnvelope, error) {
-	body := stripCodeFence(response)
+	// Trim after unfencing as well: the dispatch below reads body[0] as the
+	// first SIGNIFICANT byte, so a leading newline would misroute a perfectly
+	// good envelope (and a blank-but-non-empty body would slip past the
+	// emptiness guard into unmarshal noise).
+	body := strings.TrimSpace(stripCodeFence(response))
 	if body == "" {
 		return PlanEnvelope{}, errors.New("empty plan response")
 	}
@@ -75,18 +92,41 @@ func parsePlanEnvelope(response, weekStart, weekEnd string) (PlanEnvelope, error
 		return parseEnvelopeObject(body, weekStart, weekEnd)
 	case '[':
 		return parseLegacyPlanArray(body, weekStart, weekEnd)
+	default:
+		return PlanEnvelope{}, fmt.Errorf(
+			"plan response is neither an envelope object nor a bare day array; it starts with %q",
+			truncateForError(body))
 	}
+}
 
-	env, objErr := parseEnvelopeObject(body, weekStart, weekEnd)
-	if objErr == nil {
-		return env, nil
+// truncateForError returns the head of a bad response, short enough to log and
+// long enough to recognise. AI prose, so never logged in full.
+func truncateForError(body string) string {
+	const max = 40
+	runes := []rune(body)
+	if len(runes) <= max {
+		return body
 	}
-	env, arrErr := parseLegacyPlanArray(body, weekStart, weekEnd)
-	if arrErr == nil {
-		return env, nil
+	return string(runes[:max]) + "..."
+}
+
+// parseAdjustEnvelope reads a response to the AdjustWeek contract, which
+// promised the {week, adjustment} envelope. Unlike parsePlanEnvelope it will
+// not fall back to the bare array: under this contract a naked 7-day array is a
+// shape slip, and reading it as an envelope with a zero adjustment would write
+// the week with deviates=false, an empty summary and no goal_update — silently
+// losing the coach's stated rationale and telling next week's prompt the week
+// was spec-conforming. A hard error re-runs the prompt instead.
+func parseAdjustEnvelope(response, weekStart, weekEnd string) (PlanEnvelope, error) {
+	body := strings.TrimSpace(stripCodeFence(response))
+	if body == "" {
+		return PlanEnvelope{}, errors.New("empty plan response")
 	}
-	return PlanEnvelope{}, fmt.Errorf(
-		"plan response is neither an envelope object (%v) nor a bare day array (%v)", objErr, arrErr)
+	if body[0] == '[' {
+		return PlanEnvelope{}, errors.New(
+			"adjust response is a bare day array, not the {week, adjustment} envelope the prompt asked for")
+	}
+	return parseEnvelopeObject(body, weekStart, weekEnd)
 }
 
 // parseEnvelopeObject reads the {week, adjustment} shape.
@@ -297,7 +337,7 @@ func saveWeeklyPlan(ctx context.Context, db *sql.DB, w weeklyPlanWrite) error {
 		// block and its goal came from this user's own active plan, and the
 		// only field moved is the target time, so there is no id here the
 		// athlete did not already own.
-		if err := insertGoalRevisionTx(ctx, tx, revision); err != nil {
+		if _, _, err := insertGoalRevisionTx(ctx, tx, revision); err != nil {
 			return fmt.Errorf("record weekly goal revision: %w", err)
 		}
 	}

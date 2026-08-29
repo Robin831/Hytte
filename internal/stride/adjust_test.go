@@ -63,7 +63,7 @@ func addDays(t *testing.T, date string, n int) string {
 func TestParsePlanEnvelopeReadsEnvelope(t *testing.T) {
 	response := `{"week":` + cannedWeekJSON(t) + `,"adjustment":{"deviates":true,` +
 		`"summary":"  Cut the second threshold session: ACR 1.41.  ",` +
-		`"goal_update":{"target_hm_time":5100,"reason":"the prediction moved out"}}}`
+		`"goal_update":{"target_hm_time_s":5100,"reason":"the prediction moved out"}}}`
 
 	env, err := parsePlanEnvelope(response, envelopeTestWeekStart, envelopeTestWeekEnd)
 	if err != nil {
@@ -88,7 +88,7 @@ func TestParsePlanEnvelopeReadsEnvelope(t *testing.T) {
 		t.Fatal("goal_update = nil, want the proposal")
 	}
 	if env.Adjustment.GoalUpdate.TargetHMTimeS != 5100 {
-		t.Errorf("target_hm_time = %d, want 5100", env.Adjustment.GoalUpdate.TargetHMTimeS)
+		t.Errorf("target_hm_time_s = %d, want 5100", env.Adjustment.GoalUpdate.TargetHMTimeS)
 	}
 	if env.Adjustment.GoalUpdate.Reason != "the prediction moved out" {
 		t.Errorf("reason = %q", env.Adjustment.GoalUpdate.Reason)
@@ -152,6 +152,90 @@ func TestParsePlanEnvelopeRejectsBadInput(t *testing.T) {
 				t.Fatal("parsePlanEnvelope = nil error, want a failure")
 			}
 		})
+	}
+}
+
+// After the fence and the whitespace are stripped, the first byte decides the
+// shape outright: JSON permits only whitespace before a value, so a body that
+// starts with anything else — a BOM, a stray fence remnant, prose — cannot
+// parse as either shape. It must be rejected by name rather than run through
+// two attempts that are both guaranteed to fail.
+func TestParsePlanEnvelopeRejectsAmbiguousPrefix(t *testing.T) {
+	for name, response := range map[string]string{
+		"BOM before an envelope": "\ufeff" + `{"week":` + cannedWeekJSON(t) +
+			`,"adjustment":{"deviates":false,"summary":""}}`,
+		"BOM before a bare array": "\ufeff" + cannedWeekJSON(t),
+		"a bare JSON string":      `"I could not plan this week."`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parsePlanEnvelope(response, envelopeTestWeekStart, envelopeTestWeekEnd)
+			if err == nil {
+				t.Fatal("parsePlanEnvelope = nil error, want a failure")
+			}
+			for _, want := range []string{"envelope object", "bare day array"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not name %q as an expected shape", err, want)
+				}
+			}
+		})
+	}
+}
+
+// The rejection quotes the head of the response so a shape slip is diagnosable
+// from the log, but never the whole of it — it is AI prose about the athlete.
+func TestParsePlanEnvelopeErrorTruncatesTheBody(t *testing.T) {
+	long := strings.Repeat("prose about the athlete's week ", 20)
+	_, err := parsePlanEnvelope(long, envelopeTestWeekStart, envelopeTestWeekEnd)
+	if err == nil {
+		t.Fatal("parsePlanEnvelope = nil error, want a failure")
+	}
+	if !strings.Contains(err.Error(), "prose about") {
+		t.Errorf("error %q should quote the head of the response", err)
+	}
+	if len(err.Error()) > 200 {
+		t.Errorf("error is %d bytes, want the body truncated", len(err.Error()))
+	}
+}
+
+// Under the AdjustWeek contract a bare array is a shape slip, not a week the
+// coach left alone: reading it as a zero adjustment would drop the deviation
+// rationale on the floor with no error and no log line.
+func TestParseAdjustEnvelopeRejectsBareArray(t *testing.T) {
+	_, err := parseAdjustEnvelope(cannedWeekJSON(t), envelopeTestWeekStart, envelopeTestWeekEnd)
+	if err == nil {
+		t.Fatal("parseAdjustEnvelope with a bare array = nil error, want a failure")
+	}
+	if !strings.Contains(err.Error(), "envelope") {
+		t.Errorf("error %q should say the envelope was missing", err)
+	}
+
+	// Fenced and whitespace-padded arrays are the same slip.
+	if _, err := parseAdjustEnvelope("```json\n"+cannedWeekJSON(t)+"\n```",
+		envelopeTestWeekStart, envelopeTestWeekEnd); err == nil {
+		t.Fatal("parseAdjustEnvelope with a fenced bare array = nil error, want a failure")
+	}
+}
+
+func TestParseAdjustEnvelopeReadsEnvelope(t *testing.T) {
+	response := "```json\n{\"week\":" + cannedWeekJSON(t) +
+		`,"adjustment":{"deviates":true,"summary":"cut the second threshold session",` +
+		"\"goal_update\":{\"target_hm_time_s\":5100,\"reason\":\"the prediction moved out\"}}}\n```"
+
+	env, err := parseAdjustEnvelope(response, envelopeTestWeekStart, envelopeTestWeekEnd)
+	if err != nil {
+		t.Fatalf("parseAdjustEnvelope: %v", err)
+	}
+	if len(env.Week) != 7 {
+		t.Fatalf("week = %d days, want 7", len(env.Week))
+	}
+	if !env.Adjustment.Deviates {
+		t.Error("deviates = false, want true")
+	}
+	if env.Adjustment.GoalUpdate == nil || env.Adjustment.GoalUpdate.TargetHMTimeS != 5100 {
+		t.Errorf("goal_update = %+v, want the 5100s proposal", env.Adjustment.GoalUpdate)
+	}
+	if _, err := parseAdjustEnvelope("   ", envelopeTestWeekStart, envelopeTestWeekEnd); err == nil {
+		t.Fatal("parseAdjustEnvelope with a blank body = nil error, want a failure")
 	}
 }
 
@@ -518,5 +602,95 @@ func TestSaveWeeklyPlanRollsBackOnForeignMacroWeek(t *testing.T) {
 	}
 	if consumedAt.Valid {
 		t.Error("the note was consumed by a write that rolled back")
+	}
+}
+
+// countGoalRevisions counts every stride_goal_revisions row, regardless of
+// plan — the blockless tests assert that no revision was written anywhere.
+func countGoalRevisions(t *testing.T, db *sql.DB) int {
+	t.Helper()
+
+	var n int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM stride_goal_revisions`).Scan(&n); err != nil {
+		t.Fatalf("count goal revisions: %v", err)
+	}
+	return n
+}
+
+// GeneratePlan's parser now accepts the envelope, so a legacy-path model that
+// answers in the richer shape reaches saveWeeklyPlan with an adjustment but no
+// block. The summary is kept; the goal proposal is not, because there is no
+// goal history to append it to.
+func TestSaveWeeklyPlanEnvelopeWithoutMacroBlockKeepsOnlyTheSummary(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	const summary = "Held the volume flat: two nights of bad sleep."
+	env := envelopeWithGoalUpdate(t, summary, &GoalUpdate{
+		TargetHMTimeS: 5141,
+		Reason:        "the prediction slipped",
+	})
+
+	if err := saveWeeklyPlan(ctx, db, weeklyPlanWrite{
+		UserID:    1,
+		WeekStart: envelopeTestWeekStart,
+		WeekEnd:   envelopeTestWeekEnd,
+		Envelope:  env,
+		Model:     "claude-opus-5",
+	}); err != nil {
+		t.Fatalf("saveWeeklyPlan: %v", err)
+	}
+
+	_, macroWeekID, storedSummary := readSavedPlan(t, db, envelopeTestWeekStart)
+	if macroWeekID.Valid {
+		t.Errorf("macro_week_id = %d, want NULL without a block", macroWeekID.Int64)
+	}
+	if storedSummary != summary {
+		t.Errorf("adjustment_summary = %q, want %q", storedSummary, summary)
+	}
+	if n := countGoalRevisions(t, db); n != 0 {
+		t.Fatalf("goal revisions = %d, want none — a blockless week has no history to append to", n)
+	}
+}
+
+// The one place an ACCEPTED goal decision still writes nothing: the proposal is
+// inside the +/-3% clamp and the block goal is known, but the week carries no
+// macro block to record the revision against. Without that guard the insert
+// would be handed macro_plan_id = 0 — a revision pointing at no block, with no
+// ownership check in the write path to catch it.
+func TestSaveWeeklyPlanInToleranceGoalUpdateWithoutMacroPlanID(t *testing.T) {
+	db := setupTestDB(t)
+	ctx := context.Background()
+
+	goal := MacroGoal{
+		PrimaryFocus:  "half_marathon",
+		Statement:     "run 1:24:00 for the half marathon",
+		TargetHMTimeS: 5040,
+	}
+	// 2% slower than 5040s and carrying a reason: evaluateGoalUpdate accepts it.
+	update := &GoalUpdate{TargetHMTimeS: 5141, Reason: "the prediction slipped after the missed sessions"}
+	if !evaluateGoalUpdate(goal.TargetHMTimeS, update).Accepted {
+		t.Fatal("fixture proposal must be inside the clamp for this test to mean anything")
+	}
+
+	if err := saveWeeklyPlan(ctx, db, weeklyPlanWrite{
+		UserID:      1,
+		WeekStart:   envelopeTestWeekStart,
+		WeekEnd:     envelopeTestWeekEnd,
+		Envelope:    envelopeWithGoalUpdate(t, "an in-tolerance proposal with nowhere to go", update),
+		Model:       "claude-opus-5",
+		CurrentGoal: goal,
+		// MacroPlanID deliberately left zero.
+	}); err != nil {
+		t.Fatalf("saveWeeklyPlan: %v", err)
+	}
+
+	// The week still lands — a proposal that cannot be recorded must never cost
+	// the athlete the week that carried it.
+	if _, _, summary := readSavedPlan(t, db, envelopeTestWeekStart); summary == "" {
+		t.Error("adjustment_summary is empty, want the proposal to survive there")
+	}
+	if n := countGoalRevisions(t, db); n != 0 {
+		t.Fatalf("goal revisions = %d, want none — there is no block to record one against", n)
 	}
 }

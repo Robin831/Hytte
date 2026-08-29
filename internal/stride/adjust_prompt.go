@@ -99,7 +99,7 @@ Return ONLY a single JSON object. No markdown, no explanation, no code fences.
     "summary": string — 1-3 sentences on how this week departs from the macro week and why, naming the evidence. Next week's coach reads this, so make it concrete.
     "goal_update": object or null — a proposed change to the block's target half-marathon time, null when you are not proposing one:
       {
-        "target_hm_time": integer — the proposed target half-marathon time in SECONDS
+        "target_hm_time_s": integer — the proposed target half-marathon time in SECONDS
         "reason": string — why the target should move
       }
   }

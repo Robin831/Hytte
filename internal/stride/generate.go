@@ -438,7 +438,11 @@ func GeneratePlan(ctx context.Context, db *sql.DB, userID int64, weekMode string
 
 	// Parse the response. The weekly contract asks for a bare array of 7 day
 	// objects; parsePlanEnvelope also accepts the AdjustWeek envelope, so a
-	// model answering in the richer shape is read rather than thrown away.
+	// model answering in the richer shape has its week and its adjustment
+	// summary read rather than thrown away. Only the summary: this path has no
+	// macro block, so an envelope's goal_update is always rejected by the clamp
+	// below (MacroPlanID stays zero) — goal proposals reach the athlete's
+	// history through the block-aware path, never through here.
 	env, err := parsePlanEnvelope(response, weekStart, weekEnd)
 	if err != nil {
 		return fmt.Errorf("parse plan response: %w", err)
@@ -1078,9 +1082,10 @@ func buildGeneratePrompt(
 // response into a validated []DayPlan slice. weekStart and weekEnd are used to
 // verify the response covers exactly the requested 7-day window with no duplicates.
 //
-// This is the bare-array contract only. Callers that may receive the AdjustWeek
-// envelope instead go through parsePlanEnvelope (adjust.go), which accepts both
-// shapes and validates the week with the same validatePlanDays below.
+// This is the bare-array contract only, and is what the chat handler uses to
+// validate a plan the athlete edited in conversation. Callers that may receive
+// the AdjustWeek envelope go through parsePlanEnvelope / parseAdjustEnvelope
+// (adjust.go), which validate the week with the same validatePlanDays below.
 func parsePlanResponse(response, weekStart, weekEnd string) ([]DayPlan, error) {
 	// Strip markdown code fences if present, the same way the macro plan
 	// response is unwrapped — one heuristic, one place to fix it.
