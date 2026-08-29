@@ -41,6 +41,11 @@ type MacroPlanView struct {
 	// CreateMacroPlan, which always writes an 'initial' revision).
 	CurrentGoalRevision *GoalRevision  `json:"current_goal_revision"`
 	Revisions           []GoalRevision `json:"revisions"`
+	// HasNextBlock reports whether an active block already covers the Monday
+	// after this one ends. It is the same coverage check EnsureMacroPlan makes
+	// before spending a Claude call on an extension, exposed so the UI can grey
+	// out its Extend button instead of letting the athlete queue a third block.
+	HasNextBlock bool `json:"has_next_block"`
 }
 
 // buildMacroPlanView loads a block's goal history and assembles the response
@@ -53,7 +58,12 @@ func buildMacroPlanView(ctx context.Context, db *sql.DB, plan *MacroPlan) (*Macr
 		return nil, err
 	}
 
-	view := &MacroPlanView{Plan: plan, Weeks: plan.Weeks, Revisions: revisions}
+	hasNext, err := hasSuccessorMacroPlan(ctx, db, plan.UserID, plan.EndWeek)
+	if err != nil {
+		return nil, err
+	}
+
+	view := &MacroPlanView{Plan: plan, Weeks: plan.Weeks, Revisions: revisions, HasNextBlock: hasNext}
 	if view.Weeks == nil {
 		view.Weeks = []MacroWeek{}
 	}
@@ -63,6 +73,29 @@ func buildMacroPlanView(ctx context.Context, db *sql.DB, plan *MacroPlan) (*Macr
 		view.CurrentGoalRevision = &revisions[len(revisions)-1]
 	}
 	return view, nil
+}
+
+// hasSuccessorMacroPlan reports whether the athlete has an active block over the
+// Monday after endWeek. Coverage rather than an exact start_week match, for the
+// same reason EnsureMacroPlan checks it that way: a block that starts earlier
+// and runs through that Monday already extends the horizon.
+//
+// An end_week that will not parse is not an error the read should fail on — the
+// answer is simply "no successor known", which at worst offers an Extend the
+// generator would reject.
+func hasSuccessorMacroPlan(ctx context.Context, db *sql.DB, userID int64, endWeek string) (bool, error) {
+	end, err := parseWeekDate(endWeek)
+	if err != nil {
+		log.Printf("stride: parse end week %q for user %d: %v", endWeek, userID, err)
+		return false, nil
+	}
+	next := end.AddDate(0, 0, 7).Format(dateLayout)
+
+	spans, err := listActiveMacroPlanSpans(ctx, db, userID, next, next)
+	if err != nil {
+		return false, err
+	}
+	return len(spans) > 0, nil
 }
 
 // GetCurrentMacroPlanHandler returns the active macro block covering the week

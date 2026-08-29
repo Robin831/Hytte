@@ -138,6 +138,7 @@ function macroView(overrides: Partial<MacroPlanView> = {}): MacroPlanView {
     weeks: MACRO_WEEKS,
     current_goal_revision: null,
     revisions: [],
+    has_next_block: false,
     ...overrides,
   }
 }

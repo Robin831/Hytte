@@ -474,3 +474,82 @@ func TestGenerateMacroPlanHandler_ConcurrentPostsSerialise(t *testing.T) {
 		t.Fatalf("generations started = %d, want 1", started)
 	}
 }
+
+// --- has_next_block ---
+
+func TestGetCurrentMacroPlanHandler_HasNextBlockFalseWithoutSuccessor(t *testing.T) {
+	db := setupTestDB(t)
+	thisMonday, _ := currentWeek()
+	insertMacroBlock(t, db, 1, thisMonday, MacroBlockWeeks, MacroPlanStatusActive)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/macro/current", nil), 1)
+	rec := httptest.NewRecorder()
+	GetCurrentMacroPlanHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if view := decodeMacroView(t, rec); view.HasNextBlock {
+		t.Error("has_next_block = true with only one block")
+	}
+}
+
+func TestGetCurrentMacroPlanHandler_HasNextBlockWithQueuedExtension(t *testing.T) {
+	db := setupTestDB(t)
+	thisMonday, _ := currentWeek()
+	insertMacroBlock(t, db, 1, thisMonday, MacroBlockWeeks, MacroPlanStatusActive)
+	// The extension starts the Monday after the first block's last week.
+	insertMacroBlock(t, db, 1, mondayAfter(thisMonday, MacroBlockWeeks), MacroBlockWeeks, MacroPlanStatusActive)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/macro/current", nil), 1)
+	rec := httptest.NewRecorder()
+	GetCurrentMacroPlanHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if view := decodeMacroView(t, rec); !view.HasNextBlock {
+		t.Error("has_next_block = false with an extension already queued")
+	}
+}
+
+// A superseded successor is not a horizon: it was replaced, so the athlete
+// still has nothing planned past the current block and Extend must stay live.
+func TestGetCurrentMacroPlanHandler_HasNextBlockIgnoresSupersededSuccessor(t *testing.T) {
+	db := setupTestDB(t)
+	thisMonday, _ := currentWeek()
+	insertMacroBlock(t, db, 1, thisMonday, MacroBlockWeeks, MacroPlanStatusActive)
+	insertMacroBlock(t, db, 1, mondayAfter(thisMonday, MacroBlockWeeks), MacroBlockWeeks, MacroPlanStatusSuperseded)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/macro/current", nil), 1)
+	rec := httptest.NewRecorder()
+	GetCurrentMacroPlanHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if view := decodeMacroView(t, rec); view.HasNextBlock {
+		t.Error("has_next_block = true for a superseded successor")
+	}
+}
+
+// Another athlete's block over the same weeks must not count as this one's
+// horizon — the successor lookup is scoped by user like every other read.
+func TestGetCurrentMacroPlanHandler_HasNextBlockIsScopedByUser(t *testing.T) {
+	db := setupTestDB(t)
+	insertSecondUser(t, db)
+	thisMonday, _ := currentWeek()
+	insertMacroBlock(t, db, 1, thisMonday, MacroBlockWeeks, MacroPlanStatusActive)
+	insertMacroBlock(t, db, 2, mondayAfter(thisMonday, MacroBlockWeeks), MacroBlockWeeks, MacroPlanStatusActive)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/macro/current", nil), 1)
+	rec := httptest.NewRecorder()
+	GetCurrentMacroPlanHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if view := decodeMacroView(t, rec); view.HasNextBlock {
+		t.Error("has_next_block = true for another athlete's block")
+	}
+}
