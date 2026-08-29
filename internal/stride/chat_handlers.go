@@ -608,7 +608,12 @@ func buildChatContext(ctx context.Context, db *sql.DB, userID int64, plan Plan) 
 	// instructions rather than failing the chat turn.
 	customPrompt := loadCustomPrompt(db, userID)
 
-	return BuildChatSystemPrompt(profile, plan, evaluations, races, acr, acute, chronic, notes, calibration, customPrompt)
+	// The macro block this week was materialised from, so chat edits stay inside
+	// the same contract AdjustWeek plans inside. Empty when no active block
+	// covers the week, which is the ordinary state for a legacy weekly plan.
+	macroBlock := loadMacroPlanBlock(ctx, db, userID, plan.WeekStart)
+
+	return BuildChatSystemPrompt(profile, plan, evaluations, races, acr, acute, chronic, notes, calibration, customPrompt, macroBlock)
 }
 
 // streamChatClaude runs the Claude CLI with stream-json output and sends text

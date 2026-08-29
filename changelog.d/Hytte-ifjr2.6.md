@@ -1,0 +1,2 @@
+category: Changed
+- **Stride chat sees the macro block** - The plan-editing chat now carries the same macro-block context the weekly adjustment does — the block's current goal revision, the current mesocycle, this week's spec and the weeks either side of it, plus the standing half-marathon priority — so chat edits stay inside the active block instead of quietly restructuring it. Athletes with no active macro plan get the previous prompt unchanged. (Hytte-ifjr2.6)
