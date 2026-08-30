@@ -68,12 +68,16 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences,
   const [strideTreadmillCalibrationDraft, setStrideTreadmillCalibrationDraft] = useState(
     preferences.stride_treadmill_calibration || ''
   )
-  const [strideAvailableDaysDraft, setStrideAvailableDaysDraft] = useState<string>(
-    preferences.stride_available_days || ''
-  )
-  const [strideWeeklyDistanceCapDraft, setStrideWeeklyDistanceCapDraft] = useState<string>(
-    preferences.stride_weekly_distance_cap || ''
-  )
+  // The numeric Stride drafts hold *only* an unsaved edit: null means "show the
+  // stored preference". A useState initializer runs once, so seeding them from
+  // `preferences` would strand the inputs empty whenever the preference map
+  // arrives or changes after mount; deriving the displayed value keeps them on
+  // the same source of truth as the toggle above, which reads `preferences`.
+  const [strideAvailableDaysDraft, setStrideAvailableDaysDraft] = useState<string | null>(null)
+  const [strideWeeklyDistanceCapDraft, setStrideWeeklyDistanceCapDraft] = useState<string | null>(null)
+  const strideAvailableDaysValue = strideAvailableDaysDraft ?? (preferences.stride_available_days || '')
+  const strideWeeklyDistanceCapValue =
+    strideWeeklyDistanceCapDraft ?? (preferences.stride_weekly_distance_cap || '')
   const [zoneDrafts, setZoneDrafts] = useState<Array<{ min: string; max: string }>>(() => initialZoneDrafts(preferences))
   const [zoneError, setZoneError] = useState<string | null>(null)
   const [autoDetecting, setAutoDetecting] = useState(false)
@@ -465,54 +469,13 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences,
               />
             </button>
           </div>
-
-          {/* Stride Custom Prompt */}
-          <div className="mt-4">
-            <label htmlFor="stride-custom-prompt">
-              <p className="font-medium">{t('training.strideCustomPrompt')}</p>
-              <p className="text-sm text-gray-400">{t('training.strideCustomPromptDescription')}</p>
-            </label>
-            <textarea
-              id="stride-custom-prompt"
-              rows={4}
-              value={strideCustomPromptDraft}
-              onChange={(e) => {
-                setStrideCustomPromptDraft(e.target.value)
-                queuePreference('stride_custom_prompt', e.target.value)
-              }}
-              onBlur={() => flushPreferences()}
-              placeholder={t('training.strideCustomPromptPlaceholder')}
-              disabled={saving}
-              className="mt-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
-            />
-          </div>
-
-          {/* Treadmill calibration — persisted so the coach reuses the athlete's
-              own measured belt/HR offsets instead of re-deriving them each week. */}
-          <div className="mt-4">
-            <label htmlFor="stride-treadmill-calibration">
-              <p className="font-medium">{t('training.strideTreadmillCalibration')}</p>
-              <p className="text-sm text-gray-400">{t('training.strideTreadmillCalibrationDescription')}</p>
-            </label>
-            <textarea
-              id="stride-treadmill-calibration"
-              rows={4}
-              value={strideTreadmillCalibrationDraft}
-              onChange={(e) => {
-                setStrideTreadmillCalibrationDraft(e.target.value)
-                queuePreference('stride_treadmill_calibration', e.target.value)
-              }}
-              onBlur={() => flushPreferences()}
-              placeholder={t('training.strideTreadmillCalibrationPlaceholder')}
-              disabled={saving}
-              className="mt-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
-            />
-          </div>
         </div>
 
-        {/* Stride — the coach's own switches. Kept here rather than on the Stride
-            page so every training preference lives in one place, and hidden
-            entirely for users without the Stride feature. */}
+        {/* Stride — every Stride-only preference, kept here rather than on the
+            Stride page so training preferences live in one place, and hidden
+            entirely for users without the Stride feature. The server enforces
+            the same gate: PUT /api/settings/preferences rejects stride_* keys
+            for a user without the feature. */}
         {hasStride && (
           <div className="border-t border-gray-700 pt-4 mt-4">
             <p className="text-sm font-medium text-gray-300 mb-3">{t('training.strideHeading')}</p>
@@ -531,7 +494,7 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences,
                     savePreference('stride_enabled', preferences.stride_enabled === 'true' ? 'false' : 'true')
                   }
                   disabled={saving}
-                  aria-label={preferences.stride_enabled === 'true' ? t('training.disableStride') : t('training.strideEnabled')}
+                  aria-label={preferences.stride_enabled === 'true' ? t('training.disableStride') : t('training.enableStride')}
                   className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                     preferences.stride_enabled === 'true' ? 'bg-blue-600' : 'bg-gray-600'
                   }`}
@@ -555,19 +518,21 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences,
                   type="number"
                   min="1"
                   max="7"
-                  value={strideAvailableDaysDraft}
+                  value={strideAvailableDaysValue}
                   onChange={(e) => setStrideAvailableDaysDraft(e.target.value)}
                   onBlur={() => {
-                    if (strideAvailableDaysDraft === '') {
+                    const draft = strideAvailableDaysValue.trim()
+                    if (draft === '') {
                       queuePreference('stride_available_days', '')
-                      return
+                    } else if (/^\d+$/.test(draft) && Number(draft) >= 1 && Number(draft) <= 7) {
+                      // The digits-only test matters: parseInt would accept
+                      // "3abc" from a keyboard the number input does not filter.
+                      queuePreference('stride_available_days', String(Number(draft)))
                     }
-                    const num = parseInt(strideAvailableDaysDraft)
-                    if (num >= 1 && num <= 7) {
-                      queuePreference('stride_available_days', String(num))
-                    } else {
-                      setStrideAvailableDaysDraft(preferences.stride_available_days || '')
-                    }
+                    // Dropping the draft falls back to the stored value: the
+                    // accepted write above (normalised, so "07" shows as "7"),
+                    // or the saved value when the entry was out of range.
+                    setStrideAvailableDaysDraft(null)
                   }}
                   placeholder={t('training.strideAvailableDaysPlaceholder')}
                   disabled={saving}
@@ -587,24 +552,64 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences,
                   type="number"
                   min="1"
                   max="500"
-                  value={strideWeeklyDistanceCapDraft}
+                  value={strideWeeklyDistanceCapValue}
                   onChange={(e) => setStrideWeeklyDistanceCapDraft(e.target.value)}
                   onBlur={() => {
-                    if (strideWeeklyDistanceCapDraft === '') {
+                    const draft = strideWeeklyDistanceCapValue.trim()
+                    if (draft === '') {
                       queuePreference('stride_weekly_distance_cap', '')
-                      return
+                    } else if (/^\d+$/.test(draft) && Number(draft) >= 1 && Number(draft) <= 500) {
+                      queuePreference('stride_weekly_distance_cap', String(Number(draft)))
                     }
-                    const num = parseInt(strideWeeklyDistanceCapDraft)
-                    if (num >= 1 && num <= 500) {
-                      queuePreference('stride_weekly_distance_cap', String(num))
-                    } else {
-                      setStrideWeeklyDistanceCapDraft(preferences.stride_weekly_distance_cap || '')
-                    }
+                    setStrideWeeklyDistanceCapDraft(null)
                   }}
                   placeholder={t('training.strideWeeklyDistanceCapPlaceholder')}
                   disabled={saving}
                   aria-label={t('training.strideWeeklyDistanceCap')}
                   className="w-24 shrink-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Stride Custom Prompt */}
+              <div>
+                <label htmlFor="stride-custom-prompt">
+                  <p className="font-medium">{t('training.strideCustomPrompt')}</p>
+                  <p className="text-sm text-gray-400">{t('training.strideCustomPromptDescription')}</p>
+                </label>
+                <textarea
+                  id="stride-custom-prompt"
+                  rows={4}
+                  value={strideCustomPromptDraft}
+                  onChange={(e) => {
+                    setStrideCustomPromptDraft(e.target.value)
+                    queuePreference('stride_custom_prompt', e.target.value)
+                  }}
+                  onBlur={() => flushPreferences()}
+                  placeholder={t('training.strideCustomPromptPlaceholder')}
+                  disabled={saving}
+                  className="mt-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                />
+              </div>
+
+              {/* Treadmill calibration — persisted so the coach reuses the athlete's
+                  own measured belt/HR offsets instead of re-deriving them each week. */}
+              <div>
+                <label htmlFor="stride-treadmill-calibration">
+                  <p className="font-medium">{t('training.strideTreadmillCalibration')}</p>
+                  <p className="text-sm text-gray-400">{t('training.strideTreadmillCalibrationDescription')}</p>
+                </label>
+                <textarea
+                  id="stride-treadmill-calibration"
+                  rows={4}
+                  value={strideTreadmillCalibrationDraft}
+                  onChange={(e) => {
+                    setStrideTreadmillCalibrationDraft(e.target.value)
+                    queuePreference('stride_treadmill_calibration', e.target.value)
+                  }}
+                  onBlur={() => flushPreferences()}
+                  placeholder={t('training.strideTreadmillCalibrationPlaceholder')}
+                  disabled={saving}
+                  className="mt-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
                 />
               </div>
             </div>

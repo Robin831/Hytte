@@ -90,6 +90,7 @@
     "strideEnabled": "Slå på Stride",
     "strideEnabledDescription": "La Stride bygge den langsiktige treningsblokken din og lage neste ukes plan hver mandag.",
     "disableStride": "Slå av Stride",
+    "enableStride": "Slå på Stride",
     "strideAvailableDays": "Treningsdager per uke",
     "strideAvailableDaysDescription": "Hvor mange dager i uken du kan løpe (1–7). Stride planlegger aldri flere enn dette.",
     "strideAvailableDaysPlaceholder": "f.eks. 5",

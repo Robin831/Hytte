@@ -94,6 +94,29 @@ func RequireFeature(db *sql.DB, featureKey string) func(http.Handler) http.Handl
 	}
 }
 
+// UserHasFeature reports whether the user has the given feature enabled, using
+// the request-scoped map cached by WithFeatures when present and falling back
+// to a query otherwise. Handlers that serve several features at once (the
+// preferences endpoint, say) use this where RequireFeature middleware cannot
+// be mounted. Admins bypass the check, matching RequireFeature.
+func UserHasFeature(ctx context.Context, db *sql.DB, user *User, featureKey string) (bool, error) {
+	if user == nil {
+		return false, nil
+	}
+	if user.IsAdmin {
+		return true, nil
+	}
+	features := FeaturesFromContext(ctx)
+	if features == nil {
+		var err error
+		features, err = GetUserFeatures(db, user.ID, user.IsAdmin)
+		if err != nil {
+			return false, err
+		}
+	}
+	return features[featureKey], nil
+}
+
 // RequireFeatureOrNotFound is like RequireFeature but returns 404 instead of
 // 403 when the feature is disabled, hiding the existence of the endpoint.
 func RequireFeatureOrNotFound(db *sql.DB, featureKey string) func(http.Handler) http.Handler {

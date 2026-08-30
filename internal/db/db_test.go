@@ -115,6 +115,51 @@ func initTestDB(t *testing.T) *sql.DB {
 	return database
 }
 
+// The goal_race_* preferences were removed with the Stride macro plan, and the
+// rows written before that removal are cleaned up at schema init — nothing in
+// the app can delete them otherwise, since the settings UI is gone and PUT
+// silently drops the keys. Other preferences must survive untouched.
+func TestGoalRacePreferenceCleanup(t *testing.T) {
+	database := initTestDB(t)
+
+	seed := map[string]string{
+		"goal_race_name":        "Oslo Marathon",
+		"goal_race_date":        "2026-09-20",
+		"goal_race_distance":    "42.2",
+		"goal_race_target_time": "3:45:00",
+		"theme":                 "dark",
+		"stride_enabled":        "true",
+	}
+	for k, v := range seed {
+		if _, err := database.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, ?, ?)`, k, v); err != nil {
+			t.Fatalf("insert %s: %v", k, err)
+		}
+	}
+
+	// Re-running createSchema is what startup does on an existing database.
+	if err := createSchema(database); err != nil {
+		t.Fatalf("createSchema: %v", err)
+	}
+
+	var goalRaceRows int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM user_preferences WHERE key LIKE 'goal_race_%'`).Scan(&goalRaceRows); err != nil {
+		t.Fatalf("count goal_race rows: %v", err)
+	}
+	if goalRaceRows != 0 {
+		t.Errorf("expected the legacy goal_race_* rows to be removed, %d remain", goalRaceRows)
+	}
+
+	for _, key := range []string{"theme", "stride_enabled"} {
+		var value string
+		if err := database.QueryRow(`SELECT value FROM user_preferences WHERE user_id = 1 AND key = ?`, key).Scan(&value); err != nil {
+			t.Fatalf("select %s: %v", key, err)
+		}
+		if value != seed[key] {
+			t.Errorf("%s = %q, want %q", key, value, seed[key])
+		}
+	}
+}
+
 func TestChatConversationInsertAndRetrieve(t *testing.T) {
 	db := initTestDB(t)
 

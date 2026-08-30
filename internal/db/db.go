@@ -2287,6 +2287,16 @@ func createSchema(db *sql.DB) error {
 		return err
 	}
 
+	// The goal_race_* preferences were removed with the Stride macro plan
+	// (Hytte-ifjr2.10): races live in stride_races now, the settings UI for
+	// them is gone and the preferences allow-list drops new writes. Without
+	// this, rows written before the removal would linger forever — still
+	// echoed by GET /api/settings/preferences and the data export — with no
+	// way for the user to delete them. No-op on databases that never had them.
+	if _, err := db.Exec(`DELETE FROM user_preferences WHERE key LIKE 'goal_race_%'`); err != nil {
+		return fmt.Errorf("remove legacy goal_race preferences: %w", err)
+	}
+
 	// Migrate training_insights to composite PRIMARY KEY (workout_id, user_id) — Hytte-5co review.
 	// The original schema used workout_id as the sole PK; SQLite requires a full table
 	// recreation to change the primary key.  We detect the old schema by counting

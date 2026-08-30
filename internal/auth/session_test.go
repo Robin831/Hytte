@@ -46,6 +46,12 @@ func setupTestDB(t *testing.T) *sql.DB {
 			value   TEXT NOT NULL DEFAULT '',
 			PRIMARY KEY (user_id, key)
 		);
+		CREATE TABLE user_features (
+			user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			feature_key TEXT NOT NULL,
+			enabled     INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (user_id, feature_key)
+		);
 		CREATE TABLE google_tokens (
 			user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
 			access_token  TEXT NOT NULL,
