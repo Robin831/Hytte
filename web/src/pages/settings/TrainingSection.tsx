@@ -1,9 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   secToMMSS,
   mmssToSec,
-  isValidTargetTime,
   computeDefaultZoneDrafts,
   ZONE_NAME_KEYS,
   type PreferenceSectionProps,
@@ -65,10 +64,12 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences,
   const [strideTreadmillCalibrationDraft, setStrideTreadmillCalibrationDraft] = useState(
     preferences.stride_treadmill_calibration || ''
   )
-  const [goalRaceNameDraft, setGoalRaceNameDraft] = useState<string>(preferences.goal_race_name || '')
-  const [goalRaceDateDraft, setGoalRaceDateDraft] = useState<string>(preferences.goal_race_date || '')
-  const [goalRaceDistanceDraft, setGoalRaceDistanceDraft] = useState<string>(preferences.goal_race_distance || '')
-  const [goalRaceTargetTimeDraft, setGoalRaceTargetTimeDraft] = useState<string>(preferences.goal_race_target_time || '')
+  const [strideAvailableDaysDraft, setStrideAvailableDaysDraft] = useState<string>(
+    preferences.stride_available_days || ''
+  )
+  const [strideWeeklyDistanceCapDraft, setStrideWeeklyDistanceCapDraft] = useState<string>(
+    preferences.stride_weekly_distance_cap || ''
+  )
   const [zoneDrafts, setZoneDrafts] = useState<Array<{ min: string; max: string }>>(() => initialZoneDrafts(preferences))
   const [zoneError, setZoneError] = useState<string | null>(null)
   const [autoDetecting, setAutoDetecting] = useState(false)
@@ -146,19 +147,6 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences,
     setZoneError(null)
     await savePreferences({ zone_boundaries: JSON.stringify(zones) }, true)
   }
-
-  // Compute weeks until race day.
-  const weeksUntilRace = useMemo(() => {
-    if (!goalRaceDateDraft) return null
-    const raceDate = new Date(goalRaceDateDraft + 'T00:00:00')
-    if (isNaN(raceDate.getTime())) return null
-    const now = new Date()
-    now.setHours(0, 0, 0, 0)
-    const diffMs = raceDate.getTime() - now.getTime()
-    if (diffMs < 0) return -1
-    if (diffMs === 0) return 0
-    return Math.ceil(diffMs / (7 * 24 * 60 * 60 * 1000))
-  }, [goalRaceDateDraft])
 
   return (
     <>
@@ -517,99 +505,102 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences,
             />
           </div>
         </div>
-        {/* Goal Race */}
+
+        {/* Stride — the coach's own switches. Kept here rather than on the Stride
+            page so every training preference lives in one place. */}
         <div className="border-t border-gray-700 pt-4 mt-4">
-          <p className="text-sm font-medium text-gray-300 mb-3">{t('goalRace.heading')}</p>
+          <p className="text-sm font-medium text-gray-300 mb-3">{t('training.strideHeading')}</p>
           <div className="space-y-4">
-            {/* Race name */}
+            {/* Enable Stride */}
             <div className="flex items-center justify-between gap-4">
-              <label htmlFor="goal-race-name" className="font-medium shrink-0">{t('goalRace.raceName')}</label>
-              <input
-                id="goal-race-name"
-                type="text"
-                value={goalRaceNameDraft}
-                onChange={(e) => setGoalRaceNameDraft(e.target.value)}
-                onBlur={() => queuePreference('goal_race_name', goalRaceNameDraft)}
-                placeholder={t('goalRace.raceNamePlaceholder')}
+              <div>
+                <p className="font-medium">{t('training.strideEnabled')}</p>
+                <p className="text-sm text-gray-400">{t('training.strideEnabledDescription')}</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={preferences.stride_enabled === 'true'}
+                onClick={() =>
+                  savePreference('stride_enabled', preferences.stride_enabled === 'true' ? 'false' : 'true')
+                }
                 disabled={saving}
-                className="w-56 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            {/* Race date */}
-            <div className="flex items-center justify-between gap-4">
-              <label htmlFor="goal-race-date" className="font-medium shrink-0">{t('goalRace.raceDate')}</label>
-              <input
-                id="goal-race-date"
-                type="date"
-                value={goalRaceDateDraft}
-                onChange={(e) => {
-                  setGoalRaceDateDraft(e.target.value)
-                  savePreference('goal_race_date', e.target.value, true)
-                }}
-                disabled={saving}
-                className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]"
-              />
-            </div>
-
-            {/* Distance */}
-            <div className="flex items-center justify-between gap-4">
-              <label htmlFor="goal-race-distance" className="font-medium shrink-0">{t('goalRace.raceDistance')}</label>
-              <select
-                id="goal-race-distance"
-                value={goalRaceDistanceDraft}
-                onChange={(e) => {
-                  setGoalRaceDistanceDraft(e.target.value)
-                  savePreference('goal_race_distance', e.target.value, true)
-                }}
-                disabled={saving}
-                className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label={preferences.stride_enabled === 'true' ? t('training.disableStride') : t('training.enableStride')}
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                  preferences.stride_enabled === 'true' ? 'bg-blue-600' : 'bg-gray-600'
+                }`}
               >
-                <option value="">{t('goalRace.distancePlaceholder')}</option>
-                <option value="5K">{t('goalRace.distance5K')}</option>
-                <option value="10K">{t('goalRace.distance10K')}</option>
-                <option value="half_marathon">{t('goalRace.distanceHalf')}</option>
-                <option value="marathon">{t('goalRace.distanceMarathon')}</option>
-                <option value="custom">{t('goalRace.distanceCustom')}</option>
-              </select>
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    preferences.stride_enabled === 'true' ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
             </div>
 
-            {/* Target time */}
+            {/* Training days per week */}
             <div className="flex items-center justify-between gap-4">
-              <label htmlFor="goal-race-target-time" className="font-medium shrink-0">{t('goalRace.targetTime')}</label>
+              <div>
+                <p className="font-medium">{t('training.strideAvailableDays')}</p>
+                <p className="text-sm text-gray-400">{t('training.strideAvailableDaysDescription')}</p>
+              </div>
               <input
-                id="goal-race-target-time"
-                type="text"
-                value={goalRaceTargetTimeDraft}
-                onChange={(e) => setGoalRaceTargetTimeDraft(e.target.value)}
+                id="stride-available-days"
+                type="number"
+                min="1"
+                max="7"
+                value={strideAvailableDaysDraft}
+                onChange={(e) => setStrideAvailableDaysDraft(e.target.value)}
                 onBlur={() => {
-                  if (goalRaceTargetTimeDraft === '') {
-                    queuePreference('goal_race_target_time', '')
-                  } else if (isValidTargetTime(goalRaceTargetTimeDraft)) {
-                    queuePreference('goal_race_target_time', goalRaceTargetTimeDraft)
+                  if (strideAvailableDaysDraft === '') {
+                    queuePreference('stride_available_days', '')
+                    return
+                  }
+                  const num = parseInt(strideAvailableDaysDraft)
+                  if (num >= 1 && num <= 7) {
+                    queuePreference('stride_available_days', String(num))
                   } else {
-                    setGoalRaceTargetTimeDraft(preferences.goal_race_target_time || '')
+                    setStrideAvailableDaysDraft(preferences.stride_available_days || '')
                   }
                 }}
-                placeholder={t('goalRace.targetTimePlaceholder')}
+                placeholder={t('training.strideAvailableDaysPlaceholder')}
                 disabled={saving}
-                aria-label={t('goalRace.targetTime')}
-                className="w-32 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white font-mono text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                aria-label={t('training.strideAvailableDays')}
+                className="w-24 shrink-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
-            {/* Countdown */}
-            {goalRaceDateDraft && (
-              <div className="pt-2 text-sm font-medium">
-                {weeksUntilRace === null ? null : weeksUntilRace === -1 ? (
-                  <span className="text-gray-400">{t('goalRace.raceInPast')}</span>
-                ) : weeksUntilRace === 0 ? (
-                  <span className="text-green-400">{t('goalRace.raceToday')}</span>
-                ) : (
-                  <span className="text-blue-400">{t('goalRace.countdown', { count: weeksUntilRace })}</span>
-                )}
+            {/* Weekly distance cap */}
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="font-medium">{t('training.strideWeeklyDistanceCap')}</p>
+                <p className="text-sm text-gray-400">{t('training.strideWeeklyDistanceCapDescription')}</p>
               </div>
-            )}
+              <input
+                id="stride-weekly-distance-cap"
+                type="number"
+                min="1"
+                max="500"
+                value={strideWeeklyDistanceCapDraft}
+                onChange={(e) => setStrideWeeklyDistanceCapDraft(e.target.value)}
+                onBlur={() => {
+                  if (strideWeeklyDistanceCapDraft === '') {
+                    queuePreference('stride_weekly_distance_cap', '')
+                    return
+                  }
+                  const num = parseInt(strideWeeklyDistanceCapDraft)
+                  if (num >= 1 && num <= 500) {
+                    queuePreference('stride_weekly_distance_cap', String(num))
+                  } else {
+                    setStrideWeeklyDistanceCapDraft(preferences.stride_weekly_distance_cap || '')
+                  }
+                }}
+                placeholder={t('training.strideWeeklyDistanceCapPlaceholder')}
+                disabled={saving}
+                aria-label={t('training.strideWeeklyDistanceCap')}
+                className="w-24 shrink-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
         </div>
       </div>

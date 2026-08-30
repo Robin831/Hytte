@@ -2919,7 +2919,7 @@ func createSchema(db *sql.DB) error {
 
 	// Add scope column to stride_notes table (Hytte-0vgd).
 	// Routes notes to a specific consumer: 'any' (default, current behaviour),
-	// 'nightly' (only the nightly evaluation), or 'weekly' (only weekly plan generation).
+	// 'nightly' (only the workout evaluation), or 'weekly' (only weekly plan generation).
 	var hasScope int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('stride_notes') WHERE name = 'scope'`).Scan(&hasScope); err != nil {
 		return fmt.Errorf("check stride_notes scope column: %w", err)

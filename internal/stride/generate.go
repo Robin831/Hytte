@@ -424,9 +424,9 @@ func generatePlanLegacy(
 		prevPlanJSON = ""
 	}
 
-	// Load nightly evaluations from the past 14 days so the coach can react to
-	// per-session adherence and any flags raised during nightly evaluation. The
-	// 14-day window covers the previous full week plus a buffer for late evals.
+	// Load coach evaluations from the past 14 days so the plan can react to
+	// per-session adherence and any flags they raised. The 14-day window covers
+	// the previous full week plus a buffer for late evals.
 	evalSince := time.Now().UTC().AddDate(0, 0, -14)
 	evaluations, err := listRecentEvaluations(ctx, db, userID, evalSince)
 	if err != nil {
@@ -591,7 +591,7 @@ type RaceResult struct {
 	Priority  string
 }
 
-// EvaluationRow is a single nightly evaluation joined with its workout (when
+// EvaluationRow is a single coach evaluation joined with its workout (when
 // present) for prompt rendering. Date is the YYYY-MM-DD of the workout, or of
 // the eval itself for rest-day / missed-session entries.
 type EvaluationRow struct {
@@ -607,18 +607,19 @@ type EvaluationRow struct {
 // entries) is at or after since, ordered by that date ascending with a stable
 // tiebreak on the eval row id.
 //
-// Filtering and ordering are done in Go rather than SQL because rest-day evals
-// have created_at set to the nightly job run time (D+1 T03:00) while their
-// effective date is eval.Date (D). Using created_at in the SQL WHERE/ORDER
-// would produce a window boundary that is off by one day and an ordering that
-// does not match the dates rendered in the prompt.
+// Filtering and ordering are done in Go rather than SQL because a rest-day
+// eval's created_at is whenever the evaluation actually ran — which can be days
+// after the date it covers — while its effective date is eval.Date. Using
+// created_at in the SQL WHERE/ORDER would produce a window boundary and an
+// ordering that do not match the dates rendered in the prompt.
 //
 // The SQL pre-filter uses a 2-day buffer to ensure no rest-day evals are
 // dropped before the Go post-filter can evaluate their effective date.
 func listRecentEvaluations(ctx context.Context, db *sql.DB, userID int64, since time.Time) ([]EvaluationRow, error) {
 	sinceDate := since.UTC().Format("2006-01-02")
-	// 2-day buffer so rest-day evals (created_at = eval.Date+1 T03:00) are not
-	// dropped by the SQL pre-filter before the Go date check below.
+	// 2-day buffer so rest-day evals, whose created_at trails the date they
+	// cover, are not dropped by the SQL pre-filter before the Go date check
+	// below.
 	sqlSince := since.UTC().AddDate(0, 0, -2).Format(time.RFC3339)
 	rows, err := db.QueryContext(ctx, `
 		SELECT e.id, e.workout_id, e.eval_json, e.created_at,
@@ -1112,7 +1113,7 @@ func buildGeneratePrompt(
 	// Previous week's plan for continuity.
 	sb.WriteString(renderPreviousPlanSection(prevPlanJSON, prevPlanModel, prevPlanCreatedAt))
 
-	// Recent nightly evaluations from the previous ~2 weeks. Closes the planning
+	// Recent coach evaluations from the previous ~2 weeks. Closes the planning
 	// loop by surfacing per-session adherence, fatigue flags, and any
 	// adjustments the coach already recommended.
 	sb.WriteString(renderEvaluationsSection(evaluations))

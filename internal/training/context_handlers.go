@@ -130,10 +130,10 @@ func PutWorkoutContextHandler(db *sql.DB) http.HandlerFunc {
 		// an analysis is already running or completed.
 		scheduleAnalysisAfterContextSave(db, user.ID, user.IsAdmin, workoutID)
 
-		// Trigger Stride re-evaluation for the workout's date so the user does
-		// not have to wait for the nightly 03:00 cron. Gates on stride_enabled
-		// + Claude enabled; the nightly path remains the fallback when context
-		// is never saved.
+		// Trigger Stride re-evaluation for the workout's date. Gates on
+		// stride_enabled + Claude enabled. Nothing evaluates on a schedule any
+		// more, so a workout whose context is never saved is only evaluated if
+		// the user presses "Re-run evaluation" for that day.
 		scheduleStrideEvalAfterContextSave(db, user.ID, workoutID)
 
 		saved, err := GetWorkoutContext(db, workoutID)

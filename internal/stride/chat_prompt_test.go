@@ -26,7 +26,6 @@ Sessions per week: 4
 Current block: Build
 Current phase: Threshold development`,
 		ThresholdHR: 166,
-		HasGoalRace: true,
 	}
 
 	days := []DayPlan{

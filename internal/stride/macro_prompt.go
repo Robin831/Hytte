@@ -197,9 +197,8 @@ const macroInstructions = bakkenPhilosophy + "\n\n" +
 // each, VO2max to 6 monthly points, lactate to the last 3 tests.
 //
 // Deliberately omitted: treadmill calibration and raw workouts (a macro block
-// prescribes weeks, not session texts), the legacy goal_race_* preferences
-// (superseded by stride_races and the block's own goal), and stride notes
-// (they belong to the weekly generator, which consumes them).
+// prescribes weeks, not session texts) and stride notes (they belong to the
+// weekly generator, which consumes them).
 //
 // Hard failures — an unparseable or non-Monday start week, a mode outside the
 // MacroMode vocabulary, preferences, the race calendar and training history —
@@ -246,11 +245,11 @@ func buildMacroInputs(ctx context.Context, db *sql.DB, userID int64, startWeek s
 	fmt.Fprintf(&sb, "- Block end week (Monday of the final week): %s\n", endWeek)
 	fmt.Fprintf(&sb, "- Mode: %s (%s)\n\n", mode, mode.describe())
 
-	// Athlete profile: HR zones, threshold HR/pace, easy pace range. The
-	// goal-race section is stripped — Stride's goal comes from the block itself
-	// and from stride_races, never from the legacy goal_race_* preferences.
+	// Athlete profile: HR zones, threshold HR/pace, easy pace range. Stride's
+	// goal comes from the block itself and from stride_races; the profile block
+	// carries no race of its own.
 	sb.WriteString("## Athlete Profile\n")
-	if profile := stripGoalRaceSection(training.BuildUserProfileBlock(db, userID)); profile != "" {
+	if profile := training.BuildUserProfileBlock(db, userID); profile != "" {
 		sb.WriteString(profile)
 	} else {
 		sb.WriteString("No profile recorded.\n")
@@ -368,71 +367,6 @@ func NormaliseMacroStartWeek(date string) (string, error) {
 	// 0 for Monday itself, 6 for Sunday.
 	daysBack := (int(t.Weekday()) + 6) % 7
 	return t.AddDate(0, 0, -daysBack).Format(dateLayout), nil
-}
-
-// stripGoalRaceSection removes the "Goal Race:" block that
-// BuildUserProfileBlock appends from the legacy goal_race_* preferences. Stride
-// macro planning derives its goal from stride_races and the block's own goal
-// object, so those preferences must not leak into the prompt and contradict it.
-//
-// Only the goal-race section itself is dropped, not everything after it: the
-// section is the "Goal Race:" header line plus the bullets the goal race
-// itself emits (goalRaceBullets). The first line that is not one of those ends
-// the section, so a profile that emitted the goal race before the rest of its
-// bullets — "- Threshold Pace: 4:28/km", "- Training Zones (custom):" and the
-// indented zone lines under it — keeps every one of them.
-// BuildUserProfileBlock happens to emit the goal race last today, but nothing
-// in this package enforces that.
-func stripGoalRaceSection(block string) string {
-	// Match on the line prefix rather than the whole "Goal Race:\n" header so a
-	// block that renders the goal inline on the same line is stripped too.
-	lines := strings.Split(block, "\n")
-	kept := make([]string, 0, len(lines))
-	inGoalRace := false
-	for _, line := range lines {
-		switch {
-		case strings.HasPrefix(line, "Goal Race:"):
-			inGoalRace = true
-		case inGoalRace && isGoalRaceBullet(line):
-			// Still inside the goal-race section — drop this line too.
-		default:
-			inGoalRace = false
-			kept = append(kept, line)
-		}
-	}
-	block = strings.TrimRight(strings.Join(kept, "\n"), "\n")
-	// An athlete with only goal_race_* preferences and no HR/zone data leaves
-	// nothing but the header behind — treat that as no profile at all.
-	if block == "" || block == "User Profile:" {
-		return ""
-	}
-	return block + "\n"
-}
-
-// goalRaceBullets is the complete bullet vocabulary
-// training.buildUserProfileFromPrefs emits under "Goal Race:". Matching this
-// exact set — rather than "any bullet" — is what stops the strip from
-// swallowing the profile's other top-level bullets, which use the same "- key:
-// value" shape. TestStripGoalRaceSectionMatchesProducerVocabulary pins the set
-// against the producer, so a new goal-race field fails a test rather than
-// leaking into the prompt.
-var goalRaceBullets = []string{
-	"- Event:",
-	"- Date:",
-	"- Distance:",
-	"- Target Time:",
-}
-
-// isGoalRaceBullet reports whether a line is one of the goal race's own
-// bullets. Anything else — another top-level bullet, a blank line, a new
-// section header — ends the goal-race section.
-func isGoalRaceBullet(line string) bool {
-	for _, prefix := range goalRaceBullets {
-		if strings.HasPrefix(line, prefix) {
-			return true
-		}
-	}
-	return false
 }
 
 // renderMacroRacePrediction renders the latest stored race-prediction snapshot.

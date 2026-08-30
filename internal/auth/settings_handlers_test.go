@@ -1613,7 +1613,10 @@ func TestPreferencesPutHandler_NonAdminPutDoesNotExposeClaudePrefs(t *testing.T)
 	}
 }
 
-func TestPreferencesPutHandler_GoalRaceKeys(t *testing.T) {
+// The legacy goal_race_* preferences were removed with the macro plan: races
+// live in stride_races now. The allow-list drops unknown keys silently, so the
+// contract to assert is that nothing is written back for them.
+func TestPreferencesPutHandler_GoalRaceKeysRejected(t *testing.T) {
 	db := setupTestDB(t)
 	userID := createTestUser(t, db)
 	token, _, err := CreateSession(db, userID)
@@ -1642,23 +1645,91 @@ func TestPreferencesPutHandler_GoalRaceKeys(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	prefs := resp["preferences"]
 	for _, key := range []string{"goal_race_name", "goal_race_date", "goal_race_distance", "goal_race_target_time"} {
-		if prefs[key] == "" {
-			t.Errorf("expected %s to be set in response, got empty string", key)
+		if v, ok := resp["preferences"][key]; ok {
+			t.Errorf("%s should no longer be an accepted preference, got %q", key, v)
 		}
 	}
-	if prefs["goal_race_name"] != "Oslo Marathon" {
-		t.Errorf("expected goal_race_name=Oslo Marathon, got %q", prefs["goal_race_name"])
+
+	stored, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
 	}
-	if prefs["goal_race_date"] != "2026-09-20" {
-		t.Errorf("expected goal_race_date=2026-09-20, got %q", prefs["goal_race_date"])
+	for _, key := range []string{"goal_race_name", "goal_race_date", "goal_race_distance", "goal_race_target_time"} {
+		if v, ok := stored[key]; ok {
+			t.Errorf("%s should not have been persisted, got %q", key, v)
+		}
 	}
-	if prefs["goal_race_distance"] != "42.2" {
-		t.Errorf("expected goal_race_distance=42.2, got %q", prefs["goal_race_distance"])
+}
+
+// The Stride switches used to be settable only by hand in SQL; they are part of
+// the allow-list now, with the same bounds the planner reads them under.
+func TestPreferencesPutHandler_StrideKeys(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
 	}
-	if prefs["goal_race_target_time"] != "3:45:00" {
-		t.Errorf("expected goal_race_target_time=3:45:00, got %q", prefs["goal_race_target_time"])
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	put := func(t *testing.T, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "session", Value: token})
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := put(t, `{"preferences":{"stride_enabled":"true","stride_available_days":"5","stride_weekly_distance_cap":"70"}}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	stored, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	want := map[string]string{"stride_enabled": "true", "stride_available_days": "5", "stride_weekly_distance_cap": "70"}
+	for k, v := range want {
+		if stored[k] != v {
+			t.Errorf("%s = %q, want %q", k, stored[k], v)
+		}
+	}
+
+	// Clearing is allowed — an empty string wipes the value.
+	if rec := put(t, `{"preferences":{"stride_weekly_distance_cap":""}}`); rec.Code != http.StatusOK {
+		t.Fatalf("clearing stride_weekly_distance_cap: expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Out-of-range and non-boolean values are rejected outright.
+	rejected := []struct {
+		name string
+		body string
+	}{
+		{"days too low", `{"preferences":{"stride_available_days":"0"}}`},
+		{"days too high", `{"preferences":{"stride_available_days":"8"}}`},
+		{"days not a number", `{"preferences":{"stride_available_days":"most"}}`},
+		{"cap too low", `{"preferences":{"stride_weekly_distance_cap":"0"}}`},
+		{"cap too high", `{"preferences":{"stride_weekly_distance_cap":"501"}}`},
+		{"enabled not a boolean", `{"preferences":{"stride_enabled":"yes"}}`},
+	}
+	for _, tc := range rejected {
+		t.Run(tc.name, func(t *testing.T) {
+			if rec := put(t, tc.body); rec.Code != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d; body: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	// A rejected write must not have disturbed the accepted values.
+	stored, err = GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if stored["stride_enabled"] != "true" || stored["stride_available_days"] != "5" {
+		t.Errorf("rejected writes changed stored prefs: %q / %q", stored["stride_enabled"], stored["stride_available_days"])
 	}
 }
 

@@ -59,8 +59,10 @@ type Note struct {
 }
 
 // Allowed values for Note.Scope. 'any' is the default and matches both consumers;
-// 'nightly' restricts the note to the nightly evaluation; 'weekly' restricts it
-// to the weekly plan generation.
+// 'nightly' restricts the note to the workout evaluation; 'weekly' restricts it
+// to the weekly plan generation. The stored value stays "nightly" for the
+// evaluation consumer even though the nightly cron is gone — the evaluation now
+// runs on context save or on demand.
 const (
 	NoteScopeAny     = "any"
 	NoteScopeNightly = "nightly"
@@ -816,7 +818,7 @@ func DeleteNote(db *sql.DB, id, userID int64) error {
 
 // MarkNotesConsumed sets consumed_at and consumed_by for the given note IDs
 // within the provided transaction. This marks notes as having been processed
-// by a consuming process (e.g. weekly plan generation, nightly evaluation).
+// by a consuming process (e.g. weekly plan generation, workout evaluation).
 func MarkNotesConsumed(ctx context.Context, tx *sql.Tx, userID int64, noteIDs []int64, consumedBy string) error {
 	if len(noteIDs) == 0 {
 		return nil
