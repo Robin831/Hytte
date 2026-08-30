@@ -292,7 +292,6 @@ type predictionFacts struct {
 	WeeklyLoads     []WeeklyLoad // most recent first (max 12)
 	ACR             *float64
 	RaceResults     []raceResultFact
-	GoalRace        string // free-text description from preferences, may be empty
 	AsOf            time.Time
 }
 
@@ -1038,8 +1037,6 @@ func buildPredictionFacts(db *sql.DB, userID int64) (*predictionFacts, error) {
 		}
 	}
 
-	prefs := loadGoalRacePrefs(db, userID)
-	facts.GoalRace = prefs
 	return facts, nil
 }
 
@@ -1049,43 +1046,6 @@ func decryptOrRaw(s string) string {
 		return dec
 	}
 	return s
-}
-
-// loadGoalRacePrefs renders the settings goal race as one line, or "".
-func loadGoalRacePrefs(db *sql.DB, userID int64) string {
-	rows, err := db.Query(`
-		SELECT key, value FROM user_preferences
-		WHERE user_id = ? AND key IN ('goal_race_name', 'goal_race_date', 'goal_race_distance', 'goal_race_target_time')`,
-		userID,
-	)
-	if err != nil {
-		return ""
-	}
-	defer rows.Close()
-	vals := map[string]string{}
-	for rows.Next() {
-		var k, v string
-		if err := rows.Scan(&k, &v); err == nil {
-			vals[k] = v
-		}
-	}
-	if vals["goal_race_name"] == "" && vals["goal_race_distance"] == "" {
-		return ""
-	}
-	parts := []string{}
-	if v := vals["goal_race_name"]; v != "" {
-		parts = append(parts, v)
-	}
-	if v := vals["goal_race_distance"]; v != "" {
-		parts = append(parts, v)
-	}
-	if v := vals["goal_race_date"]; v != "" {
-		parts = append(parts, "on "+v)
-	}
-	if v := vals["goal_race_target_time"]; v != "" {
-		parts = append(parts, "target "+v)
-	}
-	return strings.Join(parts, ", ")
 }
 
 // baselineAnchor is what set the deterministic baseline: a threshold-pace
@@ -1400,10 +1360,6 @@ func formatFacts(facts *predictionFacts) string {
 				r.Name, r.Date, r.DistanceM/1000, formatRaceTime(r.ResultTime),
 				formatPacePerKm(float64(r.ResultTime)/(r.DistanceM/1000)))
 		}
-	}
-
-	if facts.GoalRace != "" {
-		fmt.Fprintf(&b, "\nGoal race: %s\n", facts.GoalRace)
 	}
 	return b.String()
 }

@@ -142,8 +142,8 @@ func isTreadmillSurface(surface string) bool {
 
 // FormatWorkoutContextNote renders the user-reported context as a single
 // stride note string (feel notes + structured plan summary). Returns empty
-// when there is nothing useful to surface. Used by the nightly stride
-// evaluation to fold per-workout context into the notes that go to Claude.
+// when there is nothing useful to surface. Used by the stride evaluation to
+// fold per-workout context into the notes that go to Claude.
 //
 // The note is framed as a post-workout self-report so the Stride evaluator
 // reads the structured speed data as what the runner actually executed —

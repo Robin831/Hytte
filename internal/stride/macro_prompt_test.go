@@ -491,116 +491,24 @@ func TestMacroOutputContractMatchesPersistedJSONTags(t *testing.T) {
 	}
 }
 
-func TestStripGoalRaceSection(t *testing.T) {
-	cases := []struct {
-		name  string
-		block string
-		want  string
-	}{
-		{"empty", "", ""},
-		{"header only", "User Profile:\nGoal Race: 2026-05-01\n", ""},
-		{
-			"keeps body",
-			"User Profile:\n- Max HR: 190 bpm\nGoal Race:\n- Date: 2026-05-01\n",
-			"User Profile:\n- Max HR: 190 bpm\n",
-		},
-		// The goal race is trailing today, but nothing in the training package
-		// promises that. Anything after it must survive the strip — including
-		// the plain top-level bullets BuildUserProfileBlock actually emits,
-		// which share the goal race's "- key: value" shape.
-		{
-			"goal race in the middle",
-			"User Profile:\n- Max HR: 190 bpm\nGoal Race:\n- Event: Oslo\n- Date: 2026-05-01\n- Threshold Pace: 4:28/km\n- Training Zones (custom):\n  Zone 1 (Recovery): 100-138 bpm\n",
-			"User Profile:\n- Max HR: 190 bpm\n- Threshold Pace: 4:28/km\n- Training Zones (custom):\n  Zone 1 (Recovery): 100-138 bpm\n",
-		},
-		{
-			"inline goal race in the middle",
-			"User Profile:\n- Max HR: 190 bpm\nGoal Race: 2026-05-01\n- Threshold Pace: 4:28/km\n",
-			"User Profile:\n- Max HR: 190 bpm\n- Threshold Pace: 4:28/km\n",
-		},
-		// A blank separator after the goal race must end the section too, not
-		// carry it across the gap.
-		{
-			"blank line ends the section",
-			"User Profile:\n- Max HR: 190 bpm\nGoal Race:\n- Event: Oslo\n\n- Threshold Pace: 4:28/km\n",
-			"User Profile:\n- Max HR: 190 bpm\n\n- Threshold Pace: 4:28/km\n",
-		},
-		{
-			"no goal race",
-			"User Profile:\n- Max HR: 190 bpm\n- Threshold HR: 166 bpm\n",
-			"User Profile:\n- Max HR: 190 bpm\n- Threshold HR: 166 bpm\n",
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := stripGoalRaceSection(tc.block); got != tc.want {
-				t.Errorf("stripGoalRaceSection(%q) = %q, want %q", tc.block, got, tc.want)
-			}
-		})
-	}
-}
-
-// The strip recognises the goal race by its own bullet vocabulary, so that
-// vocabulary has to match what training.BuildUserProfileBlock actually emits —
-// hand-written fixtures cannot pin that. A goal-race field added upstream and
-// not added to goalRaceBullets would leak into the prompt and contradict the
-// block's own goal, which is the whole reason this strip exists.
-func TestStripGoalRaceSectionMatchesProducerVocabulary(t *testing.T) {
+// The legacy goal_race_* preferences are gone from the profile block. Rows left
+// behind in user_preferences must not reach the macro prompt, where they would
+// contradict the block's own goal.
+func TestMacroPromptIgnoresLegacyGoalRacePrefs(t *testing.T) {
 	db := setupTestDB(t)
+	setPref(t, db, 1, "max_hr", "190")
 	setPref(t, db, 1, "goal_race_name", "Oslo Half")
 	setPref(t, db, 1, "goal_race_date", "2027-05-01")
 	setPref(t, db, 1, "goal_race_distance", "21.1")
 	setPref(t, db, 1, "goal_race_target_time", "1:27:00")
 
 	block := training.BuildUserProfileBlock(db, 1)
-	if !strings.Contains(block, "Goal Race:") {
-		t.Fatalf("producer emitted no goal race to strip:\n%s", block)
+	if !strings.Contains(block, "- Max HR: 190 bpm") {
+		t.Fatalf("expected the profile block to still carry HR data:\n%s", block)
 	}
-	// Goal race only: every line of the block is either the profile header or a
-	// goal-race line, so a complete vocabulary leaves nothing behind.
-	if got := stripGoalRaceSection(block); got != "" {
-		t.Errorf("goal-race lines survived the strip — goalRaceBullets is missing a key the producer emits\nblock:\n%s\nkept:\n%s", block, got)
-	}
-}
-
-// The producer emits the goal race last today. Nothing enforces that, so the
-// strip is tested against the producer's real output with the goal race moved
-// to the front: every remaining line — top-level "- key: value" bullets and the
-// indented zone lines — must survive.
-func TestStripGoalRaceSectionKeepsProducerBulletsAfterGoalRace(t *testing.T) {
-	db := setupTestDB(t)
-	setPref(t, db, 1, "max_hr", "190")
-	setPref(t, db, 1, "threshold_hr", "166")
-	setPref(t, db, 1, "threshold_pace", "268")
-	setPref(t, db, 1, "goal_race_name", "Oslo Half")
-	setPref(t, db, 1, "goal_race_date", "2027-05-01")
-	setPref(t, db, 1, "goal_race_target_time", "1:27:00")
-
-	block := training.BuildUserProfileBlock(db, 1)
-	idx := strings.Index(block, "Goal Race:")
-	if idx < 0 {
-		t.Fatalf("producer emitted no goal race:\n%s", block)
-	}
-	// Rebuild the producer's own output with the goal race directly under the
-	// "User Profile:" header instead of at the end.
-	header := "User Profile:\n"
-	body := strings.TrimPrefix(block[:idx], header)
-	moved := header + block[idx:] + body
-
-	got := stripGoalRaceSection(moved)
-	for _, want := range []string{
-		"- Max HR: 190 bpm",
-		"- Threshold Pace: 4:28/km",
-		"- Training Zones (Olympiatoppen, estimated from max HR):",
-		"  Zone 1 (I1 - Recovery): 0-114 bpm",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("strip swallowed %q when the goal race came first\ninput:\n%s\nkept:\n%s", want, moved, got)
-		}
-	}
-	for _, unwanted := range []string{"Goal Race:", "Oslo Half", "1:27:00", "2027-05-01"} {
-		if strings.Contains(got, unwanted) {
-			t.Errorf("goal-race line %q survived the strip\nkept:\n%s", unwanted, got)
+	for _, unwanted := range []string{"Goal Race:", "Oslo Half", "1:27:00", "2027-05-01", "21.1"} {
+		if strings.Contains(block, unwanted) {
+			t.Errorf("legacy goal-race value %q leaked into the profile block:\n%s", unwanted, block)
 		}
 	}
 }

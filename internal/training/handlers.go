@@ -30,23 +30,22 @@ var claudeSemaphore = make(chan struct{}, 3)
 var starsSemaphore = make(chan struct{}, 5)
 
 // OnContextSavedReevaluateStride is invoked after a workout_context row is
-// persisted to trigger an immediate Stride evaluation for the workout's date,
-// short-circuiting the nightly 03:00 Europe/Oslo cron. It is set by the API
-// layer to avoid an import cycle between training and stride. Tests can swap
-// it to assert call shape and exercise gating without spinning up the real
-// evaluator.
+// persisted to trigger an immediate Stride evaluation for the workout's date.
+// It is set by the API layer to avoid an import cycle between training and
+// stride. Tests can swap it to assert call shape and exercise gating without
+// spinning up the real evaluator.
 var OnContextSavedReevaluateStride func(ctx context.Context, db *sql.DB, httpClient *http.Client, userID int64, date string) (int, error)
 
 // strideEvalHTTPClient is the HTTP client used by the context-save Stride
 // trigger to send push notifications for critical evaluation flags. Matches
-// the timeout used by the nightly evaluator.
+// the timeout the manual re-run path uses.
 var strideEvalHTTPClient = &http.Client{Timeout: 120 * time.Second}
 
 // scheduleStrideEvalAfterContextSave triggers an immediate Stride re-evaluation
 // for the workout's date after its workout_context row is saved. It gates on
-// stride_enabled=true and Claude being enabled — the same conditions the
-// nightly cron enforces — and silently no-ops otherwise. Errors are logged and
-// swallowed so a failed evaluation cannot fail the HTTP save.
+// stride_enabled=true and Claude being enabled — the same conditions every
+// other Stride entry point enforces — and silently no-ops otherwise. Errors are
+// logged and swallowed so a failed evaluation cannot fail the HTTP save.
 func scheduleStrideEvalAfterContextSave(db *sql.DB, userID, workoutID int64) {
 	hook := OnContextSavedReevaluateStride
 	if hook == nil {

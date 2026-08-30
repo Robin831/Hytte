@@ -1,9 +1,8 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   secToMMSS,
   mmssToSec,
-  isValidTargetTime,
   computeDefaultZoneDrafts,
   ZONE_NAME_KEYS,
   type PreferenceSectionProps,
@@ -12,6 +11,10 @@ import {
 interface TrainingSectionProps extends PreferenceSectionProps {
   queuePreference: (key: string, value: string) => void
   flushPreferences: () => void
+  // Whether the user has the `stride` feature. The Stride switches are hidden
+  // without it — an "Enable Stride" toggle for a user who has no Stride page
+  // would be misleading.
+  hasStride: boolean
 }
 
 // Initialize zone drafts from stored boundaries or computed defaults.
@@ -53,7 +56,7 @@ function initialZoneDrafts(prefs: Record<string, string>): Array<{ min: string; 
   return []
 }
 
-function TrainingSection({ preferences, saving, savePreference, savePreferences, queuePreference, flushPreferences }: TrainingSectionProps) {
+function TrainingSection({ preferences, saving, savePreference, savePreferences, queuePreference, flushPreferences, hasStride }: TrainingSectionProps) {
   const { t } = useTranslation(['settings', 'common'])
   const [maxHRDraft, setMaxHRDraft] = useState<string>(preferences.max_hr || '')
   const [thresholdHRDraft, setThresholdHRDraft] = useState<string>(preferences.threshold_hr || '')
@@ -65,10 +68,16 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences,
   const [strideTreadmillCalibrationDraft, setStrideTreadmillCalibrationDraft] = useState(
     preferences.stride_treadmill_calibration || ''
   )
-  const [goalRaceNameDraft, setGoalRaceNameDraft] = useState<string>(preferences.goal_race_name || '')
-  const [goalRaceDateDraft, setGoalRaceDateDraft] = useState<string>(preferences.goal_race_date || '')
-  const [goalRaceDistanceDraft, setGoalRaceDistanceDraft] = useState<string>(preferences.goal_race_distance || '')
-  const [goalRaceTargetTimeDraft, setGoalRaceTargetTimeDraft] = useState<string>(preferences.goal_race_target_time || '')
+  // The numeric Stride drafts hold *only* an unsaved edit: null means "show the
+  // stored preference". A useState initializer runs once, so seeding them from
+  // `preferences` would strand the inputs empty whenever the preference map
+  // arrives or changes after mount; deriving the displayed value keeps them on
+  // the same source of truth as the toggle above, which reads `preferences`.
+  const [strideAvailableDaysDraft, setStrideAvailableDaysDraft] = useState<string | null>(null)
+  const [strideWeeklyDistanceCapDraft, setStrideWeeklyDistanceCapDraft] = useState<string | null>(null)
+  const strideAvailableDaysValue = strideAvailableDaysDraft ?? (preferences.stride_available_days || '')
+  const strideWeeklyDistanceCapValue =
+    strideWeeklyDistanceCapDraft ?? (preferences.stride_weekly_distance_cap || '')
   const [zoneDrafts, setZoneDrafts] = useState<Array<{ min: string; max: string }>>(() => initialZoneDrafts(preferences))
   const [zoneError, setZoneError] = useState<string | null>(null)
   const [autoDetecting, setAutoDetecting] = useState(false)
@@ -146,19 +155,6 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences,
     setZoneError(null)
     await savePreferences({ zone_boundaries: JSON.stringify(zones) }, true)
   }
-
-  // Compute weeks until race day.
-  const weeksUntilRace = useMemo(() => {
-    if (!goalRaceDateDraft) return null
-    const raceDate = new Date(goalRaceDateDraft + 'T00:00:00')
-    if (isNaN(raceDate.getTime())) return null
-    const now = new Date()
-    now.setHours(0, 0, 0, 0)
-    const diffMs = raceDate.getTime() - now.getTime()
-    if (diffMs < 0) return -1
-    if (diffMs === 0) return 0
-    return Math.ceil(diffMs / (7 * 24 * 60 * 60 * 1000))
-  }, [goalRaceDateDraft])
 
   return (
     <>
@@ -473,145 +469,152 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences,
               />
             </button>
           </div>
-
-          {/* Stride Custom Prompt */}
-          <div className="mt-4">
-            <label htmlFor="stride-custom-prompt">
-              <p className="font-medium">{t('training.strideCustomPrompt')}</p>
-              <p className="text-sm text-gray-400">{t('training.strideCustomPromptDescription')}</p>
-            </label>
-            <textarea
-              id="stride-custom-prompt"
-              rows={4}
-              value={strideCustomPromptDraft}
-              onChange={(e) => {
-                setStrideCustomPromptDraft(e.target.value)
-                queuePreference('stride_custom_prompt', e.target.value)
-              }}
-              onBlur={() => flushPreferences()}
-              placeholder={t('training.strideCustomPromptPlaceholder')}
-              disabled={saving}
-              className="mt-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
-            />
-          </div>
-
-          {/* Treadmill calibration — persisted so the coach reuses the athlete's
-              own measured belt/HR offsets instead of re-deriving them each week. */}
-          <div className="mt-4">
-            <label htmlFor="stride-treadmill-calibration">
-              <p className="font-medium">{t('training.strideTreadmillCalibration')}</p>
-              <p className="text-sm text-gray-400">{t('training.strideTreadmillCalibrationDescription')}</p>
-            </label>
-            <textarea
-              id="stride-treadmill-calibration"
-              rows={4}
-              value={strideTreadmillCalibrationDraft}
-              onChange={(e) => {
-                setStrideTreadmillCalibrationDraft(e.target.value)
-                queuePreference('stride_treadmill_calibration', e.target.value)
-              }}
-              onBlur={() => flushPreferences()}
-              placeholder={t('training.strideTreadmillCalibrationPlaceholder')}
-              disabled={saving}
-              className="mt-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
-            />
-          </div>
         </div>
-        {/* Goal Race */}
-        <div className="border-t border-gray-700 pt-4 mt-4">
-          <p className="text-sm font-medium text-gray-300 mb-3">{t('goalRace.heading')}</p>
-          <div className="space-y-4">
-            {/* Race name */}
-            <div className="flex items-center justify-between gap-4">
-              <label htmlFor="goal-race-name" className="font-medium shrink-0">{t('goalRace.raceName')}</label>
-              <input
-                id="goal-race-name"
-                type="text"
-                value={goalRaceNameDraft}
-                onChange={(e) => setGoalRaceNameDraft(e.target.value)}
-                onBlur={() => queuePreference('goal_race_name', goalRaceNameDraft)}
-                placeholder={t('goalRace.raceNamePlaceholder')}
-                disabled={saving}
-                className="w-56 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
 
-            {/* Race date */}
-            <div className="flex items-center justify-between gap-4">
-              <label htmlFor="goal-race-date" className="font-medium shrink-0">{t('goalRace.raceDate')}</label>
-              <input
-                id="goal-race-date"
-                type="date"
-                value={goalRaceDateDraft}
-                onChange={(e) => {
-                  setGoalRaceDateDraft(e.target.value)
-                  savePreference('goal_race_date', e.target.value, true)
-                }}
-                disabled={saving}
-                className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [color-scheme:dark]"
-              />
-            </div>
-
-            {/* Distance */}
-            <div className="flex items-center justify-between gap-4">
-              <label htmlFor="goal-race-distance" className="font-medium shrink-0">{t('goalRace.raceDistance')}</label>
-              <select
-                id="goal-race-distance"
-                value={goalRaceDistanceDraft}
-                onChange={(e) => {
-                  setGoalRaceDistanceDraft(e.target.value)
-                  savePreference('goal_race_distance', e.target.value, true)
-                }}
-                disabled={saving}
-                className="bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">{t('goalRace.distancePlaceholder')}</option>
-                <option value="5K">{t('goalRace.distance5K')}</option>
-                <option value="10K">{t('goalRace.distance10K')}</option>
-                <option value="half_marathon">{t('goalRace.distanceHalf')}</option>
-                <option value="marathon">{t('goalRace.distanceMarathon')}</option>
-                <option value="custom">{t('goalRace.distanceCustom')}</option>
-              </select>
-            </div>
-
-            {/* Target time */}
-            <div className="flex items-center justify-between gap-4">
-              <label htmlFor="goal-race-target-time" className="font-medium shrink-0">{t('goalRace.targetTime')}</label>
-              <input
-                id="goal-race-target-time"
-                type="text"
-                value={goalRaceTargetTimeDraft}
-                onChange={(e) => setGoalRaceTargetTimeDraft(e.target.value)}
-                onBlur={() => {
-                  if (goalRaceTargetTimeDraft === '') {
-                    queuePreference('goal_race_target_time', '')
-                  } else if (isValidTargetTime(goalRaceTargetTimeDraft)) {
-                    queuePreference('goal_race_target_time', goalRaceTargetTimeDraft)
-                  } else {
-                    setGoalRaceTargetTimeDraft(preferences.goal_race_target_time || '')
+        {/* Stride — every Stride-only preference, kept here rather than on the
+            Stride page so training preferences live in one place, and hidden
+            entirely for users without the Stride feature. The server enforces
+            the same gate: PUT /api/settings/preferences rejects stride_* keys
+            for a user without the feature. */}
+        {hasStride && (
+          <div className="border-t border-gray-700 pt-4 mt-4">
+            <p className="text-sm font-medium text-gray-300 mb-3">{t('training.strideHeading')}</p>
+            <div className="space-y-4">
+              {/* Enable Stride */}
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium">{t('training.strideEnabled')}</p>
+                  <p className="text-sm text-gray-400">{t('training.strideEnabledDescription')}</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={preferences.stride_enabled === 'true'}
+                  onClick={() =>
+                    savePreference('stride_enabled', preferences.stride_enabled === 'true' ? 'false' : 'true')
                   }
-                }}
-                placeholder={t('goalRace.targetTimePlaceholder')}
-                disabled={saving}
-                aria-label={t('goalRace.targetTime')}
-                className="w-32 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white font-mono text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            {/* Countdown */}
-            {goalRaceDateDraft && (
-              <div className="pt-2 text-sm font-medium">
-                {weeksUntilRace === null ? null : weeksUntilRace === -1 ? (
-                  <span className="text-gray-400">{t('goalRace.raceInPast')}</span>
-                ) : weeksUntilRace === 0 ? (
-                  <span className="text-green-400">{t('goalRace.raceToday')}</span>
-                ) : (
-                  <span className="text-blue-400">{t('goalRace.countdown', { count: weeksUntilRace })}</span>
-                )}
+                  disabled={saving}
+                  aria-label={preferences.stride_enabled === 'true' ? t('training.disableStride') : t('training.enableStride')}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                    preferences.stride_enabled === 'true' ? 'bg-blue-600' : 'bg-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      preferences.stride_enabled === 'true' ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
               </div>
-            )}
+
+              {/* Training days per week */}
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium">{t('training.strideAvailableDays')}</p>
+                  <p className="text-sm text-gray-400">{t('training.strideAvailableDaysDescription')}</p>
+                </div>
+                <input
+                  id="stride-available-days"
+                  type="number"
+                  min="1"
+                  max="7"
+                  value={strideAvailableDaysValue}
+                  onChange={(e) => setStrideAvailableDaysDraft(e.target.value)}
+                  onBlur={() => {
+                    const draft = strideAvailableDaysValue.trim()
+                    if (draft === '') {
+                      queuePreference('stride_available_days', '')
+                    } else if (/^\d+$/.test(draft) && Number(draft) >= 1 && Number(draft) <= 7) {
+                      // The digits-only test matters: parseInt would accept
+                      // "3abc" from a keyboard the number input does not filter.
+                      queuePreference('stride_available_days', String(Number(draft)))
+                    }
+                    // Dropping the draft falls back to the stored value: the
+                    // accepted write above (normalised, so "07" shows as "7"),
+                    // or the saved value when the entry was out of range.
+                    setStrideAvailableDaysDraft(null)
+                  }}
+                  placeholder={t('training.strideAvailableDaysPlaceholder')}
+                  disabled={saving}
+                  aria-label={t('training.strideAvailableDays')}
+                  className="w-24 shrink-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Weekly distance cap */}
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium">{t('training.strideWeeklyDistanceCap')}</p>
+                  <p className="text-sm text-gray-400">{t('training.strideWeeklyDistanceCapDescription')}</p>
+                </div>
+                <input
+                  id="stride-weekly-distance-cap"
+                  type="number"
+                  min="1"
+                  max="500"
+                  value={strideWeeklyDistanceCapValue}
+                  onChange={(e) => setStrideWeeklyDistanceCapDraft(e.target.value)}
+                  onBlur={() => {
+                    const draft = strideWeeklyDistanceCapValue.trim()
+                    if (draft === '') {
+                      queuePreference('stride_weekly_distance_cap', '')
+                    } else if (/^\d+$/.test(draft) && Number(draft) >= 1 && Number(draft) <= 500) {
+                      queuePreference('stride_weekly_distance_cap', String(Number(draft)))
+                    }
+                    setStrideWeeklyDistanceCapDraft(null)
+                  }}
+                  placeholder={t('training.strideWeeklyDistanceCapPlaceholder')}
+                  disabled={saving}
+                  aria-label={t('training.strideWeeklyDistanceCap')}
+                  className="w-24 shrink-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Stride Custom Prompt */}
+              <div>
+                <label htmlFor="stride-custom-prompt">
+                  <p className="font-medium">{t('training.strideCustomPrompt')}</p>
+                  <p className="text-sm text-gray-400">{t('training.strideCustomPromptDescription')}</p>
+                </label>
+                <textarea
+                  id="stride-custom-prompt"
+                  rows={4}
+                  value={strideCustomPromptDraft}
+                  onChange={(e) => {
+                    setStrideCustomPromptDraft(e.target.value)
+                    queuePreference('stride_custom_prompt', e.target.value)
+                  }}
+                  onBlur={() => flushPreferences()}
+                  placeholder={t('training.strideCustomPromptPlaceholder')}
+                  disabled={saving}
+                  className="mt-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                />
+              </div>
+
+              {/* Treadmill calibration — persisted so the coach reuses the athlete's
+                  own measured belt/HR offsets instead of re-deriving them each week. */}
+              <div>
+                <label htmlFor="stride-treadmill-calibration">
+                  <p className="font-medium">{t('training.strideTreadmillCalibration')}</p>
+                  <p className="text-sm text-gray-400">{t('training.strideTreadmillCalibrationDescription')}</p>
+                </label>
+                <textarea
+                  id="stride-treadmill-calibration"
+                  rows={4}
+                  value={strideTreadmillCalibrationDraft}
+                  onChange={(e) => {
+                    setStrideTreadmillCalibrationDraft(e.target.value)
+                    queuePreference('stride_treadmill_calibration', e.target.value)
+                  }}
+                  onBlur={() => flushPreferences()}
+                  placeholder={t('training.strideTreadmillCalibrationPlaceholder')}
+                  disabled={saving}
+                  className="mt-2 w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+                />
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </>
   )

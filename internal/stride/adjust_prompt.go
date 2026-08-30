@@ -12,8 +12,8 @@ package stride
 // Deliberately omitted: raw workouts and their laps (a week is adjusted from
 // adherence and load, not from lap tables), the block's full 26-week table (the
 // macro prompt's job, and the elapsed weeks say the same thing in fewer
-// tokens), chat transcripts, and the legacy goal_race_* preferences — Stride's
-// goal comes from the block's own goal revision, never from those.
+// tokens) and chat transcripts. Stride's goal comes from the block's own goal
+// revision.
 
 import (
 	"context"
@@ -189,9 +189,9 @@ func buildAdjustPrompt(ctx context.Context, db *sql.DB, userID int64, weekStart,
 	// Hard limits the week must respect.
 	sb.WriteString(renderUserConstraints(prefs["stride_available_days"], prefs["stride_weekly_distance_cap"]))
 
-	// Athlete profile, with the legacy goal-race preferences stripped: the goal
-	// comes from the block's goal revision, never from goal_race_*.
-	sb.WriteString(renderProfileSection(stripGoalRaceSection(training.BuildUserProfileBlock(db, userID))))
+	// Athlete profile. It carries no race of its own — the goal comes from the
+	// block's goal revision.
+	sb.WriteString(renderProfileSection(training.BuildUserProfileBlock(db, userID)))
 
 	// Athlete-measured treadmill calibration; authoritative over the generic
 	// belt-speed and indoor-HR defaults in the instructions above.

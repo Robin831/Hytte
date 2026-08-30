@@ -318,25 +318,11 @@ func main() {
 				timer.Stop()
 				return
 			case <-timer.C:
-				rows, err := database.QueryContext(notifCtx,
-					`SELECT DISTINCT user_id FROM user_preferences WHERE key='stride_enabled' AND value='true'`)
+				userIDs, err := stride.EnabledUserIDs(notifCtx, database)
 				if err != nil {
 					log.Printf("stride: query enabled users: %v", err)
 					continue
 				}
-				var userIDs []int64
-				for rows.Next() {
-					var id int64
-					if err := rows.Scan(&id); err != nil {
-						log.Printf("stride: scan user id: %v", err)
-						continue
-					}
-					userIDs = append(userIDs, id)
-				}
-				if err := rows.Err(); err != nil {
-					log.Printf("stride: rows iteration error: %v", err)
-				}
-				rows.Close()
 
 				processed := 0
 				for _, userID := range userIDs {

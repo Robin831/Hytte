@@ -303,7 +303,7 @@ func TestBuildInsightsPrompt_WithRaceContext(t *testing.T) {
 		PacingProfile: "even",
 	}
 
-	prompt := buildInsightsPrompt(w, "Analyze this workout.", "", false, nil, "", "", "", rc)
+	prompt := buildInsightsPrompt(w, "Analyze this workout.", "", nil, "", "", "", rc)
 
 	if !strings.Contains(prompt, "RACE ANALYSIS CONTEXT") {
 		t.Error("expected race context in prompt")
@@ -324,7 +324,7 @@ func TestBuildInsightsPrompt_WithoutRaceContext(t *testing.T) {
 		StartedAt:       "2026-04-05T10:00:00Z",
 	}
 
-	prompt := buildInsightsPrompt(w, "Analyze this workout.", "", false, nil, "", "", "", nil)
+	prompt := buildInsightsPrompt(w, "Analyze this workout.", "", nil, "", "", "", nil)
 
 	if strings.Contains(prompt, "RACE ANALYSIS CONTEXT") {
 		t.Error("did not expect race context in prompt for nil RaceContext")

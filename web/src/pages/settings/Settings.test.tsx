@@ -23,7 +23,13 @@ vi.mock('../settings/ProfileSection', () => ({
     <div data-testid="profile-section" data-theme={preferences.theme ?? ''} />
   ),
 }))
-vi.mock('../settings/TrainingSection', () => ({ default: () => <div data-testid="training-section" /> }))
+// TrainingSection echoes hasStride so the Stride feature gate on its switches is
+// observable here — dropping, inverting or misspelling the prop fails a test.
+vi.mock('../settings/TrainingSection', () => ({
+  default: ({ hasStride }: { hasStride: boolean }) => (
+    <div data-testid="training-section" data-has-stride={String(hasStride)} />
+  ),
+}))
 vi.mock('../settings/NotificationsSection', () => ({ default: () => <div data-testid="notifications-section" /> }))
 vi.mock('../settings/SecuritySection', () => ({ default: () => <div data-testid="security-section" /> }))
 vi.mock('../settings/IntegrationsSection', () => ({ default: () => <div data-testid="integrations-section" /> }))
@@ -129,6 +135,15 @@ describe('Settings – section gating', () => {
     expect(screen.queryByTestId('kiosk-tokens-section')).not.toBeInTheDocument()
   })
 
+  it('tells TrainingSection to show the Stride block for a user with the stride feature', async () => {
+    authState.user = makeUser({ features: { stride: true } })
+    authState.hasFeature = (key: string) => key === 'stride'
+    renderSettings()
+
+    await waitFor(() => expect(screen.getByTestId('training-section')).toBeInTheDocument())
+    expect(screen.getByTestId('training-section')).toHaveAttribute('data-has-stride', 'true')
+  })
+
   it('shows integrations for a non-admin with the infra feature but hides admin-only sections', async () => {
     authState.user = makeUser({ features: { infra: true } })
     authState.hasFeature = (key: string) => key === 'infra'
@@ -136,6 +151,8 @@ describe('Settings – section gating', () => {
 
     await waitFor(() => expect(screen.getByTestId('profile-section')).toBeInTheDocument())
     expect(screen.getByTestId('training-section')).toBeInTheDocument()
+    // No stride feature: TrainingSection must be told to hide its Stride block.
+    expect(screen.getByTestId('training-section')).toHaveAttribute('data-has-stride', 'false')
     expect(screen.getByTestId('notifications-section')).toBeInTheDocument()
     expect(screen.getByTestId('integrations-section')).toBeInTheDocument()
     expect(screen.queryByTestId('pokemon-section')).not.toBeInTheDocument()

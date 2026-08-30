@@ -769,6 +769,60 @@ func TestNextStrideRun(t *testing.T) {
 	}
 }
 
+// The weekly cron enrols on stride_enabled *and* the stride feature, so
+// revoking the feature de-enrols an athlete whose preference row still says
+// 'true'. Without that, the Monday run keeps generating plans and pushing
+// notifications for a page the user can no longer open.
+func TestEnabledUserIDs(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := db.Exec(`
+		CREATE TABLE user_features (
+			user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			feature_key TEXT NOT NULL,
+			enabled     INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (user_id, feature_key)
+		);
+		-- 11: enabled + feature on          -> included
+		-- 12: enabled, feature revoked      -> excluded (the case this fixes)
+		-- 13: enabled, no user_features row -> excluded
+		-- 14: admin, enabled, no feature    -> included (admins bypass)
+		-- 15: feature on but not enabled    -> excluded
+		INSERT INTO users (id, email, name, google_id, is_admin) VALUES
+			(11, 'a@x.com', 'A', 'g11', 0),
+			(12, 'b@x.com', 'B', 'g12', 0),
+			(13, 'c@x.com', 'C', 'g13', 0),
+			(14, 'd@x.com', 'D', 'g14', 1),
+			(15, 'e@x.com', 'E', 'g15', 0);
+		INSERT INTO user_preferences (user_id, key, value) VALUES
+			(11, 'stride_enabled', 'true'),
+			(12, 'stride_enabled', 'true'),
+			(13, 'stride_enabled', 'true'),
+			(14, 'stride_enabled', 'true'),
+			(15, 'stride_enabled', 'false');
+		INSERT INTO user_features (user_id, feature_key, enabled) VALUES
+			(11, 'stride', 1),
+			(12, 'stride', 0),
+			(15, 'stride', 1);
+	`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	got, err := EnabledUserIDs(context.Background(), db)
+	if err != nil {
+		t.Fatalf("EnabledUserIDs: %v", err)
+	}
+	want := []int64{11, 14}
+	if len(got) != len(want) {
+		t.Fatalf("EnabledUserIDs = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("EnabledUserIDs = %v, want %v", got, want)
+		}
+	}
+}
+
 // --- LinkWorkoutToRace tests ---
 
 func TestLinkWorkoutToRace(t *testing.T) {

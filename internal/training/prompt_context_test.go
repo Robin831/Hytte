@@ -681,10 +681,12 @@ func TestBuildEnrichedWorkoutBlock_AllFields(t *testing.T) {
 	}
 }
 
-func TestBuildUserProfileBlock_GoalRacePresent(t *testing.T) {
+// The legacy goal_race_* preferences are gone: stride_races is the only race
+// source. Rows left behind in user_preferences must not resurface in the
+// profile block, and on their own they must not conjure a block at all.
+func TestBuildUserProfileBlock_IgnoresLegacyGoalRacePrefs(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Use a date two years from now so the test never expires with a hardcoded year.
 	futureDate := time.Now().AddDate(2, 0, 0).Format("2006-01-02")
 	prefs := []struct{ k, v string }{
 		{"max_hr", "195"},
@@ -702,62 +704,26 @@ func TestBuildUserProfileBlock_GoalRacePresent(t *testing.T) {
 	result := BuildUserProfileBlock(db, 1)
 
 	if result == "" {
-		t.Fatal("expected non-empty profile block when goal prefs are set")
-	}
-	checks := []string{
-		"Goal Race:",
-		"Event: Oslo Marathon",
-		"Date: " + futureDate,
-		"Distance: 42.2 km",
-		"Target Time: 3:45:00",
-	}
-	for _, want := range checks {
-		if !strings.Contains(result, want) {
-			t.Errorf("expected %q in profile block, got:\n%s", want, result)
-		}
-	}
-	// Date is in the future so should show "weeks away".
-	if !strings.Contains(result, "weeks away") {
-		t.Errorf("expected 'weeks away' in profile block for future race date, got:\n%s", result)
-	}
-}
-
-func TestBuildUserProfileBlock_GoalRaceAbsentWhenNotSet(t *testing.T) {
-	db := setupTestDB(t)
-
-	// Only HR data, no goal race preferences.
-	if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'max_hr', '185')`); err != nil {
-		t.Fatal(err)
-	}
-
-	result := BuildUserProfileBlock(db, 1)
-
-	if result == "" {
 		t.Fatal("expected non-empty profile block when max_hr is set")
 	}
-	if strings.Contains(result, "Goal Race:") {
-		t.Errorf("expected no Goal Race section when no goal prefs set, got:\n%s", result)
+	for _, unwanted := range []string{"Goal Race:", "Oslo Marathon", futureDate, "42.2", "3:45:00", "weeks away"} {
+		if strings.Contains(result, unwanted) {
+			t.Errorf("legacy goal race data %q leaked into the profile block:\n%s", unwanted, result)
+		}
 	}
 }
 
-func TestBuildUserProfileBlock_GoalRaceOnlyNoHR(t *testing.T) {
+func TestBuildUserProfileBlock_LegacyGoalRaceAloneProducesNoBlock(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Goal race set but no HR data — block should still be produced.
+	// A leftover goal_race_name row and nothing else: there is no profile data
+	// left to render, so the block must be omitted entirely.
 	if _, err := db.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'goal_race_name', 'Birkebeiner')`); err != nil {
 		t.Fatal(err)
 	}
 
-	result := BuildUserProfileBlock(db, 1)
-
-	if result == "" {
-		t.Fatal("expected non-empty profile block when only goal_race_name is set")
-	}
-	if !strings.Contains(result, "Goal Race:") {
-		t.Errorf("expected Goal Race section in profile block, got:\n%s", result)
-	}
-	if !strings.Contains(result, "Event: Birkebeiner") {
-		t.Errorf("expected Event: Birkebeiner in profile block, got:\n%s", result)
+	if result := BuildUserProfileBlock(db, 1); result != "" {
+		t.Errorf("expected empty profile block for a legacy goal_race_name row alone, got:\n%s", result)
 	}
 }
 

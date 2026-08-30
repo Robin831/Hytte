@@ -31,10 +31,10 @@ const PREF_KEY_SECTIONS: Record<string, string> = {
   zone_boundaries: 'training',
   ai_auto_analyze: 'training',
   stride_custom_prompt: 'training',
-  goal_race_name: 'training',
-  goal_race_date: 'training',
-  goal_race_distance: 'training',
-  goal_race_target_time: 'training',
+  stride_treadmill_calibration: 'training',
+  stride_enabled: 'training',
+  stride_available_days: 'training',
+  stride_weekly_distance_cap: 'training',
   notifications_enabled: 'notifications',
   notifications_degraded: 'notifications',
   notification_filter_sources: 'notifications',
@@ -272,6 +272,7 @@ function Settings() {
             savePreferences={savePreferences}
             queuePreference={queuePreference}
             flushPreferences={flushPreferences}
+            hasStride={hasFeature('stride')}
           />
         </CollapsibleSection>
       )}

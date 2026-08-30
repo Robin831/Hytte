@@ -272,9 +272,10 @@ func ReEvaluateDate(ctx context.Context, db *sql.DB, httpClient *http.Client, us
 		return 0, fmt.Errorf("query workouts for date %s: %w", date, err)
 	}
 
-	// Gather active nightly-scoped notes targeting this date so the re-run picks
-	// up correcting context the user added after the original evaluation.
-	// Weekly-only notes are excluded — ReEvaluateDate is a nightly-path consumer.
+	// Gather active evaluation-scoped notes targeting this date so the re-run
+	// picks up correcting context the user added after the original evaluation.
+	// Weekly-only notes are excluded — ReEvaluateDate consumes the evaluation
+	// scope (stored as "nightly").
 	allNotes, err := GetNotesByTargetDate(db, userID, date)
 	if err != nil {
 		log.Printf("stride eval: fetch notes for user %d date %s: %v", userID, date, err)

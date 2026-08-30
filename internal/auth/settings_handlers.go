@@ -255,10 +255,6 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"claude_model":                    true,
 			"ai_trend_weeks":                  true,
 			"ai_auto_analyze":                 true,
-			"goal_race_name":                  true,
-			"goal_race_date":                  true,
-			"goal_race_distance":              true,
-			"goal_race_target_time":           true,
 			"kids_stars_leaderboard_visible":  true,
 			"kids_stars_parent_participates":  true,
 			"work_hours_standard_day":         true,
@@ -273,6 +269,9 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"partner_income_day":              true,
 			"stride_custom_prompt":            true,
 			"stride_treadmill_calibration":    true,
+			"stride_enabled":                  true,
+			"stride_available_days":           true,
+			"stride_weekly_distance_cap":      true,
 			"calendar_visible_ids":            true,
 			"regnemester_muted":               true,
 			"pokemon_scan_daily_cap":          true,
@@ -290,6 +289,8 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"easy_pace_min":                   {120, 1200},
 			"easy_pace_max":                   {120, 1200},
 			"ai_trend_weeks":                  {1, 52},
+			"stride_available_days":           {1, 7},        // training days per week
+			"stride_weekly_distance_cap":      {1, 500},      // km/week; 500 is far above any human week
 			"work_hours_standard_day":         {60, 960},     // 1h–16h in minutes
 			"work_hours_lunch_minutes":        {0, 120},      // 0–2h
 			"work_hours_vacation_allowance":   {1, 100},      // 1–100 days/year
@@ -314,6 +315,32 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 		for k, v := range body.Preferences {
 			if allowed[k] {
 				toWrite[k] = v
+			}
+		}
+
+		// Stride preferences are feature-gated server-side, not just in the UI:
+		// stride_enabled recruits the user into the weekly Stride cron, so
+		// hiding the switches in React is not a gate. Reject stride_* keys for
+		// a user without the feature (admins bypass, as with RequireFeature) —
+		// except writes that only turn Stride off or clear a value. Someone
+		// whose feature was revoked while stride_enabled='true' must still be
+		// able to opt out; the gate must not lock them into the weekly cron.
+		strideRequested := false
+		for k, v := range toWrite {
+			if strings.HasPrefix(k, "stride_") && v != "" && v != "false" {
+				strideRequested = true
+				break
+			}
+		}
+		if strideRequested {
+			ok, err := UserHasFeature(r.Context(), db, user, "stride")
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check features"})
+				return
+			}
+			if !ok {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "Stride is not enabled for this account"})
+				return
 			}
 		}
 
@@ -426,6 +453,13 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work_hours_rounding must be 15, 30, or 60"})
 					return
 				}
+			}
+			// Validate stride_enabled: the weekly Stride job selects athletes on an
+			// exact "true", so any other value silently means "off". Reject typos
+			// instead of storing a setting that looks on and behaves off.
+			if k == "stride_enabled" && v != "" && v != "true" && v != "false" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": `stride_enabled must be "true" or "false"`})
+				return
 			}
 			// Validate work_hours_flex_reset_date: must be YYYY-MM-DD or empty.
 			if k == "work_hours_flex_reset_date" && v != "" {

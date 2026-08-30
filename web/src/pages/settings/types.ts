@@ -60,17 +60,6 @@ export function mmssToSec(pace: string): string {
   return String(total)
 }
 
-// Validate HH:MM:SS target time format.
-export function isValidTargetTime(s: string): boolean {
-  const trimmed = s.trim()
-  const match = /^(\d+):(\d{1,2}):(\d{1,2})$/.exec(trimmed)
-  if (!match) return false
-  const h = Number(match[1])
-  const m = Number(match[2])
-  const sec = Number(match[3])
-  return !Number.isNaN(h) && !Number.isNaN(m) && !Number.isNaN(sec) && h >= 0 && m >= 0 && m < 60 && sec >= 0 && sec < 60
-}
-
 // Olympiatoppen 5-zone model as percentages of max HR (matches backend hrzones package).
 export const DEFAULT_ZONE_PCTS = [
   { minPct: 0.00, maxPct: 0.60 },

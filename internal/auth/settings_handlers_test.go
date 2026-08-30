@@ -1613,7 +1613,10 @@ func TestPreferencesPutHandler_NonAdminPutDoesNotExposeClaudePrefs(t *testing.T)
 	}
 }
 
-func TestPreferencesPutHandler_GoalRaceKeys(t *testing.T) {
+// The legacy goal_race_* preferences were removed with the macro plan: races
+// live in stride_races now. The allow-list drops unknown keys silently, so the
+// contract to assert is that nothing is written back for them.
+func TestPreferencesPutHandler_GoalRaceKeysRejected(t *testing.T) {
 	db := setupTestDB(t)
 	userID := createTestUser(t, db)
 	token, _, err := CreateSession(db, userID)
@@ -1642,23 +1645,249 @@ func TestPreferencesPutHandler_GoalRaceKeys(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	prefs := resp["preferences"]
 	for _, key := range []string{"goal_race_name", "goal_race_date", "goal_race_distance", "goal_race_target_time"} {
-		if prefs[key] == "" {
-			t.Errorf("expected %s to be set in response, got empty string", key)
+		if v, ok := resp["preferences"][key]; ok {
+			t.Errorf("%s should no longer be an accepted preference, got %q", key, v)
 		}
 	}
-	if prefs["goal_race_name"] != "Oslo Marathon" {
-		t.Errorf("expected goal_race_name=Oslo Marathon, got %q", prefs["goal_race_name"])
+
+	stored, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
 	}
-	if prefs["goal_race_date"] != "2026-09-20" {
-		t.Errorf("expected goal_race_date=2026-09-20, got %q", prefs["goal_race_date"])
+	for _, key := range []string{"goal_race_name", "goal_race_date", "goal_race_distance", "goal_race_target_time"} {
+		if v, ok := stored[key]; ok {
+			t.Errorf("%s should not have been persisted, got %q", key, v)
+		}
 	}
-	if prefs["goal_race_distance"] != "42.2" {
-		t.Errorf("expected goal_race_distance=42.2, got %q", prefs["goal_race_distance"])
+}
+
+// The Stride switches used to be settable only by hand in SQL; they are part of
+// the allow-list now, with the same bounds the planner reads them under.
+func TestPreferencesPutHandler_StrideKeys(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	if err := SetUserFeature(db, userID, "stride", true); err != nil {
+		t.Fatalf("SetUserFeature: %v", err)
 	}
-	if prefs["goal_race_target_time"] != "3:45:00" {
-		t.Errorf("expected goal_race_target_time=3:45:00, got %q", prefs["goal_race_target_time"])
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	put := func(t *testing.T, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "session", Value: token})
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	rec := put(t, `{"preferences":{"stride_enabled":"true","stride_available_days":"5","stride_weekly_distance_cap":"70"}}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	stored, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	want := map[string]string{"stride_enabled": "true", "stride_available_days": "5", "stride_weekly_distance_cap": "70"}
+	for k, v := range want {
+		if stored[k] != v {
+			t.Errorf("%s = %q, want %q", k, stored[k], v)
+		}
+	}
+
+	// Clearing is allowed — an empty string wipes the value.
+	if rec := put(t, `{"preferences":{"stride_weekly_distance_cap":""}}`); rec.Code != http.StatusOK {
+		t.Fatalf("clearing stride_weekly_distance_cap: expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// Out-of-range and non-boolean values are rejected outright.
+	rejected := []struct {
+		name string
+		body string
+	}{
+		{"days too low", `{"preferences":{"stride_available_days":"0"}}`},
+		{"days too high", `{"preferences":{"stride_available_days":"8"}}`},
+		{"days not a number", `{"preferences":{"stride_available_days":"most"}}`},
+		{"cap too low", `{"preferences":{"stride_weekly_distance_cap":"0"}}`},
+		{"cap too high", `{"preferences":{"stride_weekly_distance_cap":"501"}}`},
+		{"enabled not a boolean", `{"preferences":{"stride_enabled":"yes"}}`},
+	}
+	for _, tc := range rejected {
+		t.Run(tc.name, func(t *testing.T) {
+			if rec := put(t, tc.body); rec.Code != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d; body: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	// A rejected write must not have disturbed the accepted values.
+	stored, err = GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if stored["stride_enabled"] != "true" || stored["stride_available_days"] != "5" {
+		t.Errorf("rejected writes changed stored prefs: %q / %q", stored["stride_enabled"], stored["stride_available_days"])
+	}
+}
+
+// The stride_* preferences are feature-gated server-side, not just hidden in
+// the UI: stride_enabled enrols the user in the weekly Stride cron, which picks
+// athletes on that preference alone.
+func TestPreferencesPutHandler_StrideKeysRequireFeature(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	put := func(t *testing.T, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "session", Value: token})
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	strideBodies := []struct {
+		name string
+		body string
+	}{
+		{"enabled", `{"preferences":{"stride_enabled":"true"}}`},
+		{"available days", `{"preferences":{"stride_available_days":"5"}}`},
+		{"weekly distance cap", `{"preferences":{"stride_weekly_distance_cap":"70"}}`},
+		{"custom prompt", `{"preferences":{"stride_custom_prompt":"go easy"}}`},
+		{"treadmill calibration", `{"preferences":{"stride_treadmill_calibration":"3% offset"}}`},
+		{"mixed with an allowed key", `{"preferences":{"theme":"dark","stride_enabled":"true"}}`},
+	}
+	for _, tc := range strideBodies {
+		t.Run("without feature/"+tc.name, func(t *testing.T) {
+			if rec := put(t, tc.body); rec.Code != http.StatusForbidden {
+				t.Errorf("expected 403, got %d; body: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	// Nothing was persisted — not even the non-stride key sent alongside.
+	stored, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	for k := range stored {
+		if strings.HasPrefix(k, "stride_") || k == "theme" {
+			t.Errorf("%s should not have been written without the stride feature (got %q)", k, stored[k])
+		}
+	}
+
+	// With the feature enabled the same write succeeds.
+	if err := SetUserFeature(db, userID, "stride", true); err != nil {
+		t.Fatalf("SetUserFeature: %v", err)
+	}
+	if rec := put(t, `{"preferences":{"stride_enabled":"true"}}`); rec.Code != http.StatusOK {
+		t.Fatalf("with feature: expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	stored, err = GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if stored["stride_enabled"] != "true" {
+		t.Errorf("stride_enabled = %q, want \"true\"", stored["stride_enabled"])
+	}
+}
+
+// The case the gate actually changes for existing data: a user who enrolled
+// while the feature was on and then had it revoked. The gate must not lock them
+// in — turning Stride off and clearing values has to keep working, otherwise
+// they stay in the weekly cron with the switches hidden and no way out.
+func TestPreferencesPutHandler_StrideDisableAllowedAfterFeatureRevoked(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	put := func(t *testing.T, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "session", Value: token})
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// Enrol while the feature is on.
+	if err := SetUserFeature(db, userID, "stride", true); err != nil {
+		t.Fatalf("SetUserFeature: %v", err)
+	}
+	if rec := put(t, `{"preferences":{"stride_enabled":"true","stride_available_days":"5","stride_custom_prompt":"go easy"}}`); rec.Code != http.StatusOK {
+		t.Fatalf("enrolling with feature: expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// An admin revokes the feature. The stride_enabled row survives, so the
+	// weekly cron would still pick the athlete up on the preference alone.
+	if err := SetUserFeature(db, userID, "stride", false); err != nil {
+		t.Fatalf("SetUserFeature(false): %v", err)
+	}
+
+	// Turning it back on stays blocked...
+	if rec := put(t, `{"preferences":{"stride_enabled":"true"}}`); rec.Code != http.StatusForbidden {
+		t.Errorf("re-enabling without the feature: expected 403, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// ...but turning it off, and clearing the other stride values, must work.
+	if rec := put(t, `{"preferences":{"stride_enabled":"false","stride_available_days":"","stride_custom_prompt":""}}`); rec.Code != http.StatusOK {
+		t.Fatalf("disabling after revocation: expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	stored, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if stored["stride_enabled"] != "false" {
+		t.Errorf("stride_enabled = %q, want \"false\" — the user must be able to opt out", stored["stride_enabled"])
+	}
+	if stored["stride_available_days"] != "" || stored["stride_custom_prompt"] != "" {
+		t.Errorf("clearing writes were rejected: days=%q prompt=%q", stored["stride_available_days"], stored["stride_custom_prompt"])
+	}
+}
+
+// Admins bypass feature checks everywhere else, and the stride preference gate
+// is no exception.
+func TestPreferencesPutHandler_StrideKeysAllowedForAdmin(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestAdminUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(`{"preferences":{"stride_enabled":"true"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "session", Value: token})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for admin, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	stored, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if stored["stride_enabled"] != "true" {
+		t.Errorf("stride_enabled = %q, want \"true\"", stored["stride_enabled"])
 	}
 }
 
@@ -1783,6 +2012,9 @@ func TestPreferencesPutHandler_ZoneBoundaries_MaxLessThanMin(t *testing.T) {
 func TestPreferencesPutHandler_StrideCustomPromptEncryptedRoundtrip(t *testing.T) {
 	database := setupTestDB(t)
 	userID := createTestUser(t, database)
+	if err := SetUserFeature(database, userID, "stride", true); err != nil {
+		t.Fatalf("SetUserFeature: %v", err)
+	}
 	token, _, err := CreateSession(database, userID)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
@@ -1855,6 +2087,9 @@ func TestPreferencesPutHandler_StrideCustomPromptEncryptedRoundtrip(t *testing.T
 func TestPreferencesPutHandler_StrideTreadmillCalibrationEncryptedRoundtrip(t *testing.T) {
 	database := setupTestDB(t)
 	userID := createTestUser(t, database)
+	if err := SetUserFeature(database, userID, "stride", true); err != nil {
+		t.Fatalf("SetUserFeature: %v", err)
+	}
 	token, _, err := CreateSession(database, userID)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
