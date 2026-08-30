@@ -89,7 +89,6 @@
     "strideHeading": "Stride",
     "strideEnabled": "เปิดใช้งาน Stride",
     "strideEnabledDescription": "ให้ Stride สร้างบล็อกการฝึกซ้อมระยะยาว และสร้างแผนของสัปดาห์หน้าทุกวันจันทร์",
-    "enableStride": "เปิดใช้งาน Stride",
     "disableStride": "ปิดใช้งาน Stride",
     "strideAvailableDays": "จำนวนวันซ้อมต่อสัปดาห์",
     "strideAvailableDaysDescription": "จำนวนวันต่อสัปดาห์ที่คุณวิ่งได้ (1–7) Stride จะไม่วางแผนเกินกว่านี้",

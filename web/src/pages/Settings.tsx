@@ -272,6 +272,7 @@ function Settings() {
             savePreferences={savePreferences}
             queuePreference={queuePreference}
             flushPreferences={flushPreferences}
+            hasStride={hasFeature('stride')}
           />
         </CollapsibleSection>
       )}

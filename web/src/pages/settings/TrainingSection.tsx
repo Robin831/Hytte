@@ -11,6 +11,10 @@ import {
 interface TrainingSectionProps extends PreferenceSectionProps {
   queuePreference: (key: string, value: string) => void
   flushPreferences: () => void
+  // Whether the user has the `stride` feature. The Stride switches are hidden
+  // without it — an "Enable Stride" toggle for a user who has no Stride page
+  // would be misleading.
+  hasStride: boolean
 }
 
 // Initialize zone drafts from stored boundaries or computed defaults.
@@ -52,7 +56,7 @@ function initialZoneDrafts(prefs: Record<string, string>): Array<{ min: string; 
   return []
 }
 
-function TrainingSection({ preferences, saving, savePreference, savePreferences, queuePreference, flushPreferences }: TrainingSectionProps) {
+function TrainingSection({ preferences, saving, savePreference, savePreferences, queuePreference, flushPreferences, hasStride }: TrainingSectionProps) {
   const { t } = useTranslation(['settings', 'common'])
   const [maxHRDraft, setMaxHRDraft] = useState<string>(preferences.max_hr || '')
   const [thresholdHRDraft, setThresholdHRDraft] = useState<string>(preferences.threshold_hr || '')
@@ -507,102 +511,105 @@ function TrainingSection({ preferences, saving, savePreference, savePreferences,
         </div>
 
         {/* Stride — the coach's own switches. Kept here rather than on the Stride
-            page so every training preference lives in one place. */}
-        <div className="border-t border-gray-700 pt-4 mt-4">
-          <p className="text-sm font-medium text-gray-300 mb-3">{t('training.strideHeading')}</p>
-          <div className="space-y-4">
-            {/* Enable Stride */}
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="font-medium">{t('training.strideEnabled')}</p>
-                <p className="text-sm text-gray-400">{t('training.strideEnabledDescription')}</p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={preferences.stride_enabled === 'true'}
-                onClick={() =>
-                  savePreference('stride_enabled', preferences.stride_enabled === 'true' ? 'false' : 'true')
-                }
-                disabled={saving}
-                aria-label={preferences.stride_enabled === 'true' ? t('training.disableStride') : t('training.enableStride')}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
-                  preferences.stride_enabled === 'true' ? 'bg-blue-600' : 'bg-gray-600'
-                }`}
-              >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    preferences.stride_enabled === 'true' ? 'translate-x-6' : 'translate-x-1'
+            page so every training preference lives in one place, and hidden
+            entirely for users without the Stride feature. */}
+        {hasStride && (
+          <div className="border-t border-gray-700 pt-4 mt-4">
+            <p className="text-sm font-medium text-gray-300 mb-3">{t('training.strideHeading')}</p>
+            <div className="space-y-4">
+              {/* Enable Stride */}
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium">{t('training.strideEnabled')}</p>
+                  <p className="text-sm text-gray-400">{t('training.strideEnabledDescription')}</p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={preferences.stride_enabled === 'true'}
+                  onClick={() =>
+                    savePreference('stride_enabled', preferences.stride_enabled === 'true' ? 'false' : 'true')
+                  }
+                  disabled={saving}
+                  aria-label={preferences.stride_enabled === 'true' ? t('training.disableStride') : t('training.strideEnabled')}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                    preferences.stride_enabled === 'true' ? 'bg-blue-600' : 'bg-gray-600'
                   }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      preferences.stride_enabled === 'true' ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Training days per week */}
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium">{t('training.strideAvailableDays')}</p>
+                  <p className="text-sm text-gray-400">{t('training.strideAvailableDaysDescription')}</p>
+                </div>
+                <input
+                  id="stride-available-days"
+                  type="number"
+                  min="1"
+                  max="7"
+                  value={strideAvailableDaysDraft}
+                  onChange={(e) => setStrideAvailableDaysDraft(e.target.value)}
+                  onBlur={() => {
+                    if (strideAvailableDaysDraft === '') {
+                      queuePreference('stride_available_days', '')
+                      return
+                    }
+                    const num = parseInt(strideAvailableDaysDraft)
+                    if (num >= 1 && num <= 7) {
+                      queuePreference('stride_available_days', String(num))
+                    } else {
+                      setStrideAvailableDaysDraft(preferences.stride_available_days || '')
+                    }
+                  }}
+                  placeholder={t('training.strideAvailableDaysPlaceholder')}
+                  disabled={saving}
+                  aria-label={t('training.strideAvailableDays')}
+                  className="w-24 shrink-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-              </button>
-            </div>
-
-            {/* Training days per week */}
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="font-medium">{t('training.strideAvailableDays')}</p>
-                <p className="text-sm text-gray-400">{t('training.strideAvailableDaysDescription')}</p>
               </div>
-              <input
-                id="stride-available-days"
-                type="number"
-                min="1"
-                max="7"
-                value={strideAvailableDaysDraft}
-                onChange={(e) => setStrideAvailableDaysDraft(e.target.value)}
-                onBlur={() => {
-                  if (strideAvailableDaysDraft === '') {
-                    queuePreference('stride_available_days', '')
-                    return
-                  }
-                  const num = parseInt(strideAvailableDaysDraft)
-                  if (num >= 1 && num <= 7) {
-                    queuePreference('stride_available_days', String(num))
-                  } else {
-                    setStrideAvailableDaysDraft(preferences.stride_available_days || '')
-                  }
-                }}
-                placeholder={t('training.strideAvailableDaysPlaceholder')}
-                disabled={saving}
-                aria-label={t('training.strideAvailableDays')}
-                className="w-24 shrink-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
 
-            {/* Weekly distance cap */}
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="font-medium">{t('training.strideWeeklyDistanceCap')}</p>
-                <p className="text-sm text-gray-400">{t('training.strideWeeklyDistanceCapDescription')}</p>
+              {/* Weekly distance cap */}
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="font-medium">{t('training.strideWeeklyDistanceCap')}</p>
+                  <p className="text-sm text-gray-400">{t('training.strideWeeklyDistanceCapDescription')}</p>
+                </div>
+                <input
+                  id="stride-weekly-distance-cap"
+                  type="number"
+                  min="1"
+                  max="500"
+                  value={strideWeeklyDistanceCapDraft}
+                  onChange={(e) => setStrideWeeklyDistanceCapDraft(e.target.value)}
+                  onBlur={() => {
+                    if (strideWeeklyDistanceCapDraft === '') {
+                      queuePreference('stride_weekly_distance_cap', '')
+                      return
+                    }
+                    const num = parseInt(strideWeeklyDistanceCapDraft)
+                    if (num >= 1 && num <= 500) {
+                      queuePreference('stride_weekly_distance_cap', String(num))
+                    } else {
+                      setStrideWeeklyDistanceCapDraft(preferences.stride_weekly_distance_cap || '')
+                    }
+                  }}
+                  placeholder={t('training.strideWeeklyDistanceCapPlaceholder')}
+                  disabled={saving}
+                  aria-label={t('training.strideWeeklyDistanceCap')}
+                  className="w-24 shrink-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
-              <input
-                id="stride-weekly-distance-cap"
-                type="number"
-                min="1"
-                max="500"
-                value={strideWeeklyDistanceCapDraft}
-                onChange={(e) => setStrideWeeklyDistanceCapDraft(e.target.value)}
-                onBlur={() => {
-                  if (strideWeeklyDistanceCapDraft === '') {
-                    queuePreference('stride_weekly_distance_cap', '')
-                    return
-                  }
-                  const num = parseInt(strideWeeklyDistanceCapDraft)
-                  if (num >= 1 && num <= 500) {
-                    queuePreference('stride_weekly_distance_cap', String(num))
-                  } else {
-                    setStrideWeeklyDistanceCapDraft(preferences.stride_weekly_distance_cap || '')
-                  }
-                }}
-                placeholder={t('training.strideWeeklyDistanceCapPlaceholder')}
-                disabled={saving}
-                aria-label={t('training.strideWeeklyDistanceCap')}
-                className="w-24 shrink-0 bg-gray-700 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
             </div>
           </div>
-        </div>
+        )}
       </div>
     </>
   )

@@ -89,7 +89,6 @@
     "strideHeading": "Stride",
     "strideEnabled": "Enable Stride",
     "strideEnabledDescription": "Let Stride build your long-term training block and generate next week's plan every Monday.",
-    "enableStride": "Enable Stride",
     "disableStride": "Disable Stride",
     "strideAvailableDays": "Training days per week",
     "strideAvailableDaysDescription": "How many days a week you can run (1–7). Stride never plans more than this.",
