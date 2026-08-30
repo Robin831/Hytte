@@ -1804,6 +1804,64 @@ func TestPreferencesPutHandler_StrideKeysRequireFeature(t *testing.T) {
 	}
 }
 
+// The case the gate actually changes for existing data: a user who enrolled
+// while the feature was on and then had it revoked. The gate must not lock them
+// in — turning Stride off and clearing values has to keep working, otherwise
+// they stay in the weekly cron with the switches hidden and no way out.
+func TestPreferencesPutHandler_StrideDisableAllowedAfterFeatureRevoked(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	put := func(t *testing.T, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "session", Value: token})
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// Enrol while the feature is on.
+	if err := SetUserFeature(db, userID, "stride", true); err != nil {
+		t.Fatalf("SetUserFeature: %v", err)
+	}
+	if rec := put(t, `{"preferences":{"stride_enabled":"true","stride_available_days":"5","stride_custom_prompt":"go easy"}}`); rec.Code != http.StatusOK {
+		t.Fatalf("enrolling with feature: expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// An admin revokes the feature. The stride_enabled row survives, so the
+	// weekly cron would still pick the athlete up on the preference alone.
+	if err := SetUserFeature(db, userID, "stride", false); err != nil {
+		t.Fatalf("SetUserFeature(false): %v", err)
+	}
+
+	// Turning it back on stays blocked...
+	if rec := put(t, `{"preferences":{"stride_enabled":"true"}}`); rec.Code != http.StatusForbidden {
+		t.Errorf("re-enabling without the feature: expected 403, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	// ...but turning it off, and clearing the other stride values, must work.
+	if rec := put(t, `{"preferences":{"stride_enabled":"false","stride_available_days":"","stride_custom_prompt":""}}`); rec.Code != http.StatusOK {
+		t.Fatalf("disabling after revocation: expected 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+	stored, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if stored["stride_enabled"] != "false" {
+		t.Errorf("stride_enabled = %q, want \"false\" — the user must be able to opt out", stored["stride_enabled"])
+	}
+	if stored["stride_available_days"] != "" || stored["stride_custom_prompt"] != "" {
+		t.Errorf("clearing writes were rejected: days=%q prompt=%q", stored["stride_available_days"], stored["stride_custom_prompt"])
+	}
+}
+
 // Admins bypass feature checks everywhere else, and the stride preference gate
 // is no exception.
 func TestPreferencesPutHandler_StrideKeysAllowedForAdmin(t *testing.T) {

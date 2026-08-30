@@ -112,6 +112,43 @@ func NextStrideRun(now time.Time, loc *time.Location) time.Time {
 	return time.Date(now.Year(), now.Month(), now.Day()+daysUntilMonday, 2, 0, 0, 0, loc)
 }
 
+// EnabledUserIDs returns the athletes the weekly cron should run for: those who
+// set stride_enabled='true' *and* still hold the stride feature. Both halves
+// matter. The preference alone is not enough — revoking the feature has to
+// de-enrol the athlete, otherwise the Monday run keeps generating plans and
+// pushing notifications for a page they can no longer open. Admins bypass the
+// feature check, matching auth.RequireFeature.
+func EnabledUserIDs(ctx context.Context, db *sql.DB) ([]int64, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT DISTINCT p.user_id
+		  FROM user_preferences p
+		  JOIN users u ON u.id = p.user_id
+		 WHERE p.key = 'stride_enabled' AND p.value = 'true'
+		   AND (u.is_admin = 1
+		        OR EXISTS (SELECT 1 FROM user_features f
+		                    WHERE f.user_id = p.user_id
+		                      AND f.feature_key = 'stride'
+		                      AND f.enabled = 1))
+		 ORDER BY p.user_id`)
+	if err != nil {
+		return nil, fmt.Errorf("query stride-enabled users: %w", err)
+	}
+	defer rows.Close()
+
+	var userIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan stride user id: %w", err)
+		}
+		userIDs = append(userIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate stride-enabled users: %w", err)
+	}
+	return userIDs, nil
+}
+
 // Timeouts for the two Claude-backed steps of a weekly run that do not bound
 // themselves. The macro step is not listed: GenerateMacroPlan applies its own
 // macroClaudeTimeout (300s), and wrapping a shorter one around it here would
@@ -250,7 +287,7 @@ func RunWeekly(ctx context.Context, db *sql.DB, userID int64) error {
 	}
 	// The same reading as step 2: AdjustWeek hands back
 	// training.ErrClaudeNotEnabled verbatim when claude_enabled is not true, and
-	// the cron picks the athlete up on stride_enabled alone — so this is the
+	// the cron picks the athlete up on stride_enabled, never claude_enabled — so this is the
 	// reachable combination, every Monday, until they change a setting. It is
 	// not a failed generation and must not be reported as one.
 	planFailed := planErr != nil && !configDisabled(planErr)

@@ -319,13 +319,15 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Stride preferences are feature-gated server-side, not just in the UI:
-		// stride_enabled recruits the user into the weekly Stride cron, which
-		// selects athletes on that preference alone. Hiding the switches in
-		// React is not a gate, so reject every stride_* key for a user without
-		// the feature (admins bypass, as with RequireFeature).
+		// stride_enabled recruits the user into the weekly Stride cron, so
+		// hiding the switches in React is not a gate. Reject stride_* keys for
+		// a user without the feature (admins bypass, as with RequireFeature) —
+		// except writes that only turn Stride off or clear a value. Someone
+		// whose feature was revoked while stride_enabled='true' must still be
+		// able to opt out; the gate must not lock them into the weekly cron.
 		strideRequested := false
-		for k := range toWrite {
-			if strings.HasPrefix(k, "stride_") {
+		for k, v := range toWrite {
+			if strings.HasPrefix(k, "stride_") && v != "" && v != "false" {
 				strideRequested = true
 				break
 			}

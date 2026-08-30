@@ -2292,9 +2292,23 @@ func createSchema(db *sql.DB) error {
 	// them is gone and the preferences allow-list drops new writes. Without
 	// this, rows written before the removal would linger forever — still
 	// echoed by GET /api/settings/preferences and the data export — with no
-	// way for the user to delete them. No-op on databases that never had them.
-	if _, err := db.Exec(`DELETE FROM user_preferences WHERE key LIKE 'goal_race_%'`); err != nil {
-		return fmt.Errorf("remove legacy goal_race preferences: %w", err)
+	// way for the user to delete them.
+	//
+	// This is a one-time cleanup, not a standing rule: a schema_migrations
+	// sentinel keeps the DELETE from re-running on every process start, so a
+	// future feature that legitimately reintroduces a goal_race_* key is not
+	// silently wiped at the next restart.
+	var goalRaceCleaned int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE key = 'goal_race_prefs_removed'`).Scan(&goalRaceCleaned); err != nil {
+		return fmt.Errorf("check goal_race preferences migration: %w", err)
+	}
+	if goalRaceCleaned == 0 {
+		if _, err := db.Exec(`DELETE FROM user_preferences WHERE key LIKE 'goal_race_%'`); err != nil {
+			return fmt.Errorf("remove legacy goal_race preferences: %w", err)
+		}
+		if _, err := db.Exec(`INSERT OR IGNORE INTO schema_migrations (key, value) VALUES ('goal_race_prefs_removed', '1')`); err != nil {
+			return fmt.Errorf("record goal_race preferences migration: %w", err)
+		}
 	}
 
 	// Migrate training_insights to composite PRIMARY KEY (workout_id, user_id) — Hytte-5co review.

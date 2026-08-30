@@ -122,6 +122,12 @@ func initTestDB(t *testing.T) *sql.DB {
 func TestGoalRacePreferenceCleanup(t *testing.T) {
 	database := initTestDB(t)
 
+	// Init already ran the cleanup on this fresh database. Clear the sentinel
+	// to reproduce a pre-migration database that still holds the legacy rows.
+	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE key = 'goal_race_prefs_removed'`); err != nil {
+		t.Fatalf("clear sentinel: %v", err)
+	}
+
 	seed := map[string]string{
 		"goal_race_name":        "Oslo Marathon",
 		"goal_race_date":        "2026-09-20",
@@ -157,6 +163,41 @@ func TestGoalRacePreferenceCleanup(t *testing.T) {
 		if value != seed[key] {
 			t.Errorf("%s = %q, want %q", key, value, seed[key])
 		}
+	}
+}
+
+// The cleanup is a one-time migration, not a standing rule: once the sentinel
+// is recorded the DELETE must not fire again, so a future feature that
+// legitimately reintroduces a goal_race_* key is not wiped at the next restart.
+func TestGoalRacePreferenceCleanupRunsOnce(t *testing.T) {
+	database := initTestDB(t)
+
+	// Init already recorded the sentinel.
+	var sentinel int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE key = 'goal_race_prefs_removed'`).Scan(&sentinel); err != nil {
+		t.Fatalf("count sentinel: %v", err)
+	}
+	if sentinel != 1 {
+		t.Fatalf("expected the cleanup sentinel to be recorded at init, got %d rows", sentinel)
+	}
+
+	if _, err := database.Exec(`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'goal_race_name', 'Reintroduced')`); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+
+	// Two more startups must leave it alone.
+	for i := 0; i < 2; i++ {
+		if err := createSchema(database); err != nil {
+			t.Fatalf("createSchema #%d: %v", i+1, err)
+		}
+	}
+
+	var value string
+	if err := database.QueryRow(`SELECT value FROM user_preferences WHERE user_id = 1 AND key = 'goal_race_name'`).Scan(&value); err != nil {
+		t.Fatalf("select goal_race_name after re-running createSchema: %v", err)
+	}
+	if value != "Reintroduced" {
+		t.Errorf("goal_race_name = %q, want %q", value, "Reintroduced")
 	}
 }
 
