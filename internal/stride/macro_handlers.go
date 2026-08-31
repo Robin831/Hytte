@@ -14,11 +14,12 @@ import (
 )
 
 // macroRequestTimeout bounds a hand-triggered macro generation end to end. It is
-// the same budget macroClaudeTimeout gives the Claude call, which is all but the
-// whole request — the DB reads either side of it are milliseconds. Bounding the
-// request as well as the call is what stops a wedged CLI from holding the
-// handler (and the athlete's lock) open for as long as the process lives.
-const macroRequestTimeout = macroClaudeTimeout
+// the budget macroClaudeTimeout gives each of the macroGenerateAttempts Claude
+// calls a generation may make, which is all but the whole request — the DB
+// reads either side of them are milliseconds. Bounding the request as well as
+// the calls is what stops a wedged CLI from holding the handler (and the
+// athlete's lock) open for as long as the process lives.
+const macroRequestTimeout = macroGenerateAttempts * macroClaudeTimeout
 
 // macroOpenEndedWeek is a week key past any real horizon, used as the upper
 // bound when asking for "every active block from this week onwards" rather than

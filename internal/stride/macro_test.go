@@ -141,6 +141,97 @@ func countMacroRows(t *testing.T, db *sql.DB, userID int64) (plans, weeks, revis
 	return plans, weeks, revisions
 }
 
+// stubMacroPromptSequence replaces the Claude seam with one canned answer per
+// call, in order, and returns a pointer to the prompts the calls were made
+// with. A call past the end of the list is a test bug and fails immediately.
+func stubMacroPromptSequence(t *testing.T, responses ...string) *[]string {
+	t.Helper()
+	var prompts []string
+	orig := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, prompt string) (string, error) {
+		if len(prompts) >= len(responses) {
+			t.Fatalf("unexpected call %d to runPromptFunc, only %d responses stubbed", len(prompts)+1, len(responses))
+		}
+		prompts = append(prompts, prompt)
+		return responses[len(prompts)-1], nil
+	}
+	t.Cleanup(func() { runPromptFunc = orig })
+	return &prompts
+}
+
+// A first answer that breaks the ramp rule is not the end of the generation:
+// the retry is shown its own answer and the validator's problems, and its
+// corrected plan is the one persisted — with the corrective prompt stored as
+// the block's prompt, since that is what the accepted answer was given.
+func TestGenerateMacroPlanRetriesRejectedAnswerWithFeedback(t *testing.T) {
+	ctx := context.Background()
+	db, fixture, _ := setupMacroGeneration(t, macroTestStartWeek)
+
+	good := macroFixtureJSON(t, fixture)
+	fixture.Weeks[1].TargetKm = fixture.Weeks[0].TargetKm * 1.5
+	bad := macroFixtureJSON(t, fixture)
+
+	prompts := stubMacroPromptSequence(t, bad, good)
+
+	plan, err := GenerateMacroPlan(ctx, db, 1, macroTestStartWeek, MacroModeScheduled)
+	if err != nil {
+		t.Fatalf("GenerateMacroPlan: %v", err)
+	}
+	if len(*prompts) != 2 {
+		t.Fatalf("runPromptFunc called %d times, want 2", len(*prompts))
+	}
+
+	retry := (*prompts)[1]
+	if !strings.Contains(retry, macroInstructions) {
+		t.Error("retry prompt does not carry the macro instruction block")
+	}
+	if !strings.Contains(retry, "more than +10%") {
+		t.Error("retry prompt does not carry the validator's problem")
+	}
+	if !strings.Contains(retry, bad) {
+		t.Error("retry prompt does not carry the rejected answer")
+	}
+	if plan.Prompt != retry {
+		t.Error("stored prompt is not the one the accepted answer was given")
+	}
+	if plan.Response != good {
+		t.Error("stored response is not the accepted answer")
+	}
+}
+
+// When every attempt is rejected the generation gives up with the last
+// rejection, after exactly macroGenerateAttempts calls and without writing
+// any rows.
+func TestGenerateMacroPlanGivesUpAfterMaxAttempts(t *testing.T) {
+	ctx := context.Background()
+	db, fixture, _ := setupMacroGeneration(t, macroTestStartWeek)
+
+	fixture.Weeks[1].TargetKm = fixture.Weeks[0].TargetKm * 1.5
+	bad := macroFixtureJSON(t, fixture)
+
+	prompts := stubMacroPromptSequence(t, bad, bad, bad)
+
+	plan, err := GenerateMacroPlan(ctx, db, 1, macroTestStartWeek, MacroModeScheduled)
+	if err == nil {
+		t.Fatal("expected the generation to give up")
+	}
+	if plan != nil {
+		t.Error("a rejected plan must not be returned")
+	}
+	if len(*prompts) != macroGenerateAttempts {
+		t.Errorf("runPromptFunc called %d times, want %d", len(*prompts), macroGenerateAttempts)
+	}
+	if !strings.Contains(err.Error(), "giving up after 3 attempts") {
+		t.Errorf("error = %q, want it to say it gave up after 3 attempts", err)
+	}
+	if !strings.Contains(err.Error(), "more than +10%") {
+		t.Errorf("error = %q, want it to carry the last rejection", err)
+	}
+	if plans, weeks, revisions := countMacroRows(t, db, 1); plans+weeks+revisions != 0 {
+		t.Errorf("rejected generation wrote rows: %d plans, %d weeks, %d revisions", plans, weeks, revisions)
+	}
+}
+
 func TestGenerateMacroPlanPersistsValidPlan(t *testing.T) {
 	ctx := context.Background()
 	start := macroTestStartWeek

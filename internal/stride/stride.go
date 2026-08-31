@@ -151,8 +151,9 @@ func EnabledUserIDs(ctx context.Context, db *sql.DB) ([]int64, error) {
 
 // Timeouts for the two Claude-backed steps of a weekly run that do not bound
 // themselves. The macro step is not listed: GenerateMacroPlan applies its own
-// macroClaudeTimeout (300s), and wrapping a shorter one around it here would
-// kill a block generation that was still inside its own budget.
+// macroClaudeTimeout (300s) to each of its up-to-macroGenerateAttempts calls,
+// and wrapping a shorter budget around it here would kill a block generation
+// that was still inside its own.
 const (
 	// weeklyPredictionTimeout bounds the race-prediction refresh. It is
 	// advisory input to the plan, so a slow refresh must not eat the run.
@@ -168,8 +169,9 @@ const (
 
 // Push bodies for the weekly run — one per outcome, because every run ends in
 // exactly one notification. The failure texts are deliberately instructions
-// rather than apologies: nothing retries automatically, so the athlete opening
-// Stride is what actually fixes it.
+// rather than apologies: a failure here has already exhausted the retries a
+// generation gives itself, so the athlete opening Stride is what actually
+// fixes it.
 const (
 	// weeklyPlanReadyBody states the outcome, not the mechanism. The run picks
 	// it whenever the plan step returned nil, and that does not imply the

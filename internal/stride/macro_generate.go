@@ -22,6 +22,16 @@ import (
 // exec.CommandContext SIGKILLs the CLI mid-flight.
 const macroClaudeTimeout = 300 * time.Second
 
+// macroGenerateAttempts is how many times one GenerateMacroPlan call may ask
+// the model for a block before giving up: the first ask plus two corrective
+// retries. ValidateMacroPlan writes its problems to be handed back verbatim,
+// and in practice a rejection is the model rounding a ramp to a tidy number a
+// hair over the +10% limit (36 km -> 40 km where 39.6 is the ceiling) — a
+// retry that is shown the problem almost always lands. Parse failures take
+// the same path: a truncated or oddly-fenced answer is as retryable as an
+// invalid one. Each attempt gets its own macroClaudeTimeout.
+const macroGenerateAttempts = 3
+
 // ErrStrideNotEnabled is returned when the athlete has not enabled Stride.
 // Generating a block spends a long Claude call on someone who has switched the
 // feature off, so the gate is checked before anything else is loaded.
@@ -43,7 +53,11 @@ var ErrNoPreviousMacroPlan = errors.New("no previous macro block to extend")
 // macroInstructions, call Claude through the runPromptFunc seam under
 // macroClaudeTimeout, decode the answer into MacroPlanResponse, check it with
 // ValidateMacroPlan against the same horizon, cap and race calendar the prompt
-// was built from, and only then write it. Validation happens before the write
+// was built from, and only then write it. An answer that fails to parse or
+// validate is asked again, up to macroGenerateAttempts calls in total, with
+// the rejected answer and the validator's problems appended to the prompt
+// (macroRetryPrompt); the prompt stored with the block is the one the
+// accepted answer was actually given. Validation happens before the write
 // on purpose: CreateMacroPlan's transaction covers the plan row, its weeks and
 // the block's 'initial' goal revision, and a rejected plan must never reach it.
 // The prompt and the raw answer are stored with the block; CreateMacroPlan
@@ -123,24 +137,41 @@ func GenerateMacroPlan(ctx context.Context, db *sql.DB, userID int64, startWeek 
 	}
 	prompt := macroInstructions + "\n\n" + inputs
 
-	callCtx, cancel := context.WithTimeout(ctx, macroClaudeTimeout)
-	defer cancel()
-	response, err := runPromptFunc(callCtx, claudeCfg, prompt)
-	if err != nil {
-		return nil, fmt.Errorf("Claude prompt: %w", err)
-	}
+	// Call, parse and validate as one unit, retried with the rejection fed
+	// back (macroRetryPrompt) — a bad answer costs one more call instead of
+	// failing the whole generation. A transport error is not retried here:
+	// runPromptFunc already has the CLI's own robustness behind it, and
+	// looping on a dead API would burn attempts a corrected answer needs.
+	attemptPrompt := prompt
+	var (
+		response string
+		parsed   *MacroPlanResponse
+	)
+	for attempt := 1; ; attempt++ {
+		callCtx, cancel := context.WithTimeout(ctx, macroClaudeTimeout)
+		response, err = runPromptFunc(callCtx, claudeCfg, attemptPrompt)
+		cancel()
+		if err != nil {
+			return nil, fmt.Errorf("Claude prompt: %w", err)
+		}
 
-	parsed, err := parseMacroPlanResponse(response)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := ValidateMacroPlan(parsed, MacroValidationContext{
-		StartWeek:         start,
-		WeeklyDistanceCap: parseWeeklyDistanceCap(prefs["stride_weekly_distance_cap"]),
-		Races:             races,
-	}); err != nil {
-		return nil, err
+		parsed, err = parseMacroPlanResponse(response)
+		if err == nil {
+			err = ValidateMacroPlan(parsed, MacroValidationContext{
+				StartWeek:         start,
+				WeeklyDistanceCap: parseWeeklyDistanceCap(prefs["stride_weekly_distance_cap"]),
+				Races:             races,
+			})
+		}
+		if err == nil {
+			break
+		}
+		if attempt == macroGenerateAttempts {
+			return nil, fmt.Errorf("giving up after %d attempts: %w", macroGenerateAttempts, err)
+		}
+		log.Printf("stride: macro block attempt %d/%d for user %d rejected, retrying with feedback: %v",
+			attempt, macroGenerateAttempts, userID, err)
+		attemptPrompt = macroRetryPrompt(prompt, response, err)
 	}
 
 	plan := &MacroPlan{
@@ -150,7 +181,7 @@ func GenerateMacroPlan(ctx context.Context, db *sql.DB, userID int64, startWeek 
 		Status:         MacroPlanStatusActive,
 		Goal:           parsed.Goal,
 		Periodisation:  parsed.Mesocycles,
-		Prompt:         prompt,
+		Prompt:         attemptPrompt,
 		Response:       response,
 		Model:          claudeCfg.Model,
 		GeneratedBy:    string(mode),
@@ -164,6 +195,29 @@ func GenerateMacroPlan(ctx context.Context, db *sql.DB, userID int64, startWeek 
 		return nil, fmt.Errorf("persist macro plan: %w", err)
 	}
 	return plan, nil
+}
+
+// macroRetryPrompt rebuilds the generation prompt after a rejected attempt:
+// the original ask, the answer the model gave, and why it was rejected, with
+// an instruction to return the whole corrected plan. The base prompt is
+// repeated rather than referenced because every attempt is a fresh stateless
+// call — the model has no memory of the ask it is being corrected on.
+func macroRetryPrompt(base, response string, rejection error) string {
+	return fmt.Sprintf(`%s
+
+## Correction required
+
+A previous attempt at this task produced the answer below, and it was rejected.
+
+Previous answer:
+
+%s
+
+Rejected because:
+
+%s
+
+Return the complete corrected plan in exactly the same JSON format, fixing every problem listed above without introducing new ones. Adjust neighbouring weeks where that is what it takes to satisfy the rules.`, base, response, rejection)
 }
 
 // macroLineage is what a new block displaces: previousPlanID is the block it
