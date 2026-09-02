@@ -41,7 +41,7 @@ const MINUTES_PER_DAY = 24 * 60
  * older than that was almost certainly forgotten, and counting the sleeping
  * hours in between would produce a meaningless running total.
  */
-export const MAX_LIVE_PUNCH_WRAP_DAYS = 1
+const MAX_LIVE_PUNCH_WRAP_DAYS = 1
 
 function parseHHMM(t: string): number | null {
   const parts = t.split(':')
@@ -74,6 +74,19 @@ export function daysSinceLocalDate(date: string, now: Date): number | null {
 }
 
 /**
+ * Whether an open punch-in is too old to keep estimating: it has been left
+ * running for more calendar days than {@link MAX_LIVE_PUNCH_WRAP_DAYS} allows,
+ * so it was forgotten rather than still ticking. This is the single definition
+ * of staleness — {@link calculateDayWithLivePunch} bails on it, and callers use
+ * it to tell that bail apart from an unusable start time.
+ */
+export function isPunchStale(punchDate: string | null, now: Date): boolean {
+  if (!punchDate) return false
+  const elapsedDays = daysSinceLocalDate(punchDate, now)
+  return elapsedDays !== null && elapsedDays > MAX_LIVE_PUNCH_WRAP_DAYS
+}
+
+/**
  * Duration of a session in minutes, mirroring the server-side rule: a session
  * flagged as crossing midnight ends on the following day, so a full day is
  * added before subtracting. Returns null when either time is malformed.
@@ -89,16 +102,21 @@ export function sessionMinutes(session: Pick<WorkSession, 'start_time' | 'end_ti
 /**
  * Live estimate for a day with an open punch-in.
  *
- * `punchDate` is the YYYY-MM-DD the punch-in was recorded on. When it is
- * supplied, the elapsed time spans the calendar days between it and `now`, so a
- * shift started at 22:00 and still open at 01:00 keeps counting instead of
- * looking like a start in the future. Without it a clock time earlier than the
- * start is ambiguous — a wrapped session and a genuinely future start are
- * indistinguishable — so null is returned as before.
+ * `punchDate` is the YYYY-MM-DD the punch-in was recorded on, or null when it
+ * is unknown. A clock time earlier than the start time only makes sense as a
+ * session that ran past midnight, so exactly one day is added — and only when
+ * `punchDate` confirms the punch-in belongs to an earlier calendar day. That
+ * keeps a shift started at 22:00 and still open at 01:00 counting instead of
+ * looking like a start in the future, while never adding time the punch-out
+ * itself could not record: `handlePunchOut` only marks a session as crossing
+ * midnight when the end time is at or before the start time.
  *
- * The wrap is capped at {@link MAX_LIVE_PUNCH_WRAP_DAYS}: a punch-in older than
- * that is a forgotten one, not a running shift, so null is returned rather than
- * a total that keeps growing through the nights in between.
+ * Without `punchDate` the wrap is unprovable — a wrapped session and a
+ * genuinely future start are indistinguishable — so null is returned.
+ *
+ * A punch-in left open for more than {@link MAX_LIVE_PUNCH_WRAP_DAYS} days is
+ * forgotten rather than running (see {@link isPunchStale}), so it yields null
+ * instead of a total that keeps growing through the nights in between.
  */
 export function calculateDayWithLivePunch(
   now: Date,
@@ -107,16 +125,21 @@ export function calculateDayWithLivePunch(
   lunch: boolean,
   deductions: WorkDeduction[],
   settings: WorkSettings,
-  punchDate?: string | null,
+  punchDate: string | null,
 ): LiveEstimate | null {
   const startMins = parseHHMM(punchStart)
   if (startMins === null) return null
+  if (isPunchStale(punchDate, now)) return null
   const nowMins = now.getHours() * 60 + now.getMinutes()
 
-  const elapsedDays = punchDate ? daysSinceLocalDate(punchDate, now) : null
-  if (elapsedDays !== null && elapsedDays > MAX_LIVE_PUNCH_WRAP_DAYS) return null
-  const elapsed = nowMins - startMins + (elapsedDays ?? 0) * MINUTES_PER_DAY
-  if (elapsed < 0) return null
+  let elapsed = nowMins - startMins
+  if (elapsed < 0) {
+    // The clock has wrapped. Only a punch-in dated to an earlier calendar day
+    // explains that; dated today it is simply a start time in the future.
+    const elapsedDays = punchDate ? daysSinceLocalDate(punchDate, now) : null
+    if (elapsedDays === null || elapsedDays < 1) return null
+    elapsed += MINUTES_PER_DAY
+  }
 
   let gross = elapsed
   for (const s of sessions) {

@@ -6,9 +6,8 @@ import { Skeleton } from '../../../components/ui/skeleton'
 import { Select, type SelectOption } from '../../../components/ui/select'
 import { TimePicker } from '../../../components/ui/time-picker'
 import {
-  MAX_LIVE_PUNCH_WRAP_DAYS,
   calculateDayWithLivePunch,
-  daysSinceLocalDate,
+  isPunchStale,
   sessionMinutes,
   type WorkSession,
   type WorkSettings,
@@ -873,18 +872,22 @@ export default function DayView({
               </div>
             </div>
 
-            {punchStart !== null && (() => {
+            {/* The estimate mixes the viewed day's sessions and deductions into the
+                open punch's elapsed time, so it is only meaningful on the day the
+                punch-in itself belongs to. */}
+            {punchStart !== null && (punchDate === null || punchDate === currentDate) && (() => {
               const estimate = calculateDayWithLivePunch(now, punchStart, sessions, lunchChecked, deductions, workSettings, punchDate)
               if (!estimate) {
                 // A punch-in that has been open for longer than the allowed
                 // wrap is forgotten, not running — say so instead of claiming
                 // the start time is in the future.
-                const elapsedDays = punchDate ? daysSinceLocalDate(punchDate, now) : null
-                const stale = elapsedDays !== null && elapsedDays > MAX_LIVE_PUNCH_WRAP_DAYS
+                const staleDate = isPunchStale(punchDate, now) ? punchDate : null
                 return (
                   <div className="rounded-lg border border-yellow-700/50 bg-yellow-900/20 px-3 py-2 text-xs text-yellow-400">
-                    {stale
-                      ? t('workhours:punchEstimate.stalePunch', { date: punchDate })
+                    {staleDate !== null
+                      ? t('workhours:punchEstimate.stalePunch', {
+                          date: formatDate(staleDate + 'T12:00:00', { year: 'numeric', month: 'long', day: 'numeric' }),
+                        })
                       : t('workhours:punchEstimate.invalidStart')}
                   </div>
                 )
