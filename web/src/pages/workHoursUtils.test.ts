@@ -164,6 +164,90 @@ describe('calculateDayWithLivePunch', () => {
   })
 })
 
+describe('calculateDayWithLivePunch across midnight', () => {
+  // makeDate pins the clock to 2026-04-17, so a punch on 2026-04-16 is "yesterday".
+  it('keeps counting an open session that started the previous evening', () => {
+    const result = calculateDayWithLivePunch(
+      makeDate(1, 0),
+      '22:00',
+      [],
+      false,
+      [],
+      defaultSettings,
+      '2026-04-16',
+    )
+    expect(result).not.toBeNull()
+    // 22:00 -> 01:00 the next day is 3h
+    expect(result!.grossMinutes).toBe(180)
+    expect(result!.netMinutes).toBe(180)
+  })
+
+  it('subtracts lunch and deductions from a wrapped in-progress session', () => {
+    const result = calculateDayWithLivePunch(
+      makeDate(2, 30),
+      '22:00',
+      [],
+      true,
+      [{ id: 1, day_id: 1, name: 'Break', minutes: 15 }],
+      defaultSettings,
+      '2026-04-16',
+    )
+    // gross=270, lunch=30, deductions=15, net=225, reported=floor(225/30)*30=210
+    expect(result!.grossMinutes).toBe(270)
+    expect(result!.netMinutes).toBe(225)
+    expect(result!.reportedMinutes).toBe(210)
+  })
+
+  it('spans multiple days for a punch-in that was never closed', () => {
+    const result = calculateDayWithLivePunch(
+      makeDate(10, 0),
+      '08:00',
+      [],
+      false,
+      [],
+      defaultSettings,
+      '2026-04-15',
+    )
+    // two full days plus 2h
+    expect(result!.grossMinutes).toBe(2 * 24 * 60 + 120)
+  })
+
+  it('still rejects a start later today than the current time', () => {
+    const result = calculateDayWithLivePunch(
+      makeDate(9, 0),
+      '10:00',
+      [],
+      false,
+      [],
+      defaultSettings,
+      '2026-04-17',
+    )
+    expect(result).toBeNull()
+  })
+
+  it('falls back to same-day behaviour when the punch date is malformed', () => {
+    expect(calculateDayWithLivePunch(makeDate(9, 0), '10:00', [], false, [], defaultSettings, 'not-a-date')).toBeNull()
+    expect(
+      calculateDayWithLivePunch(makeDate(14, 0), '10:00', [], false, [], defaultSettings, '2026-02-31')!.grossMinutes,
+    ).toBe(240)
+  })
+
+  it('adds completed sessions to a wrapped in-progress session', () => {
+    const result = calculateDayWithLivePunch(
+      makeDate(1, 0),
+      '22:00',
+      [
+        { id: 1, day_id: 1, start_time: '08:00', end_time: '12:00', sort_order: 0, is_internal: false, crosses_midnight: false },
+      ],
+      false,
+      [],
+      defaultSettings,
+      '2026-04-16',
+    )
+    expect(result!.grossMinutes).toBe(240 + 180)
+  })
+})
+
 describe('sessionMinutes', () => {
   const base = { id: 1, day_id: 1, sort_order: 0, is_internal: false }
 

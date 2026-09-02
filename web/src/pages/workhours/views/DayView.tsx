@@ -62,6 +62,9 @@ export default function DayView({
   const [newDeductionName, setNewDeductionName] = useState('')
   const [newDeductionMinutes, setNewDeductionMinutes] = useState('')
   const [punchStart, setPunchStart] = useState<string | null>(null)
+  // Calendar date the open punch-in was recorded on. Needed so the live
+  // estimate can tell a session that has run past midnight from a future start.
+  const [punchDate, setPunchDate] = useState<string | null>(null)
   const [leaveDay, setLeaveDay] = useState<LeaveDay | null>(null)
   const [leaveSaving, setLeaveSaving] = useState(false)
   const [redeemingFlex, setRedeemingFlex] = useState(false)
@@ -146,6 +149,7 @@ export default function DayView({
             setCurrentDate(sessionDate)
           }
           setPunchStart(session.start_time)
+          setPunchDate(sessionDate ?? null)
           setNewStart(session.start_time)
         }
       })
@@ -464,6 +468,7 @@ export default function DayView({
       const ok = await api.punchIn({ date: currentDate, start_time: startTime })
       if (ok) {
         setPunchStart(startTime)
+        setPunchDate(currentDate)
         setNewStart(startTime)
         setNewEnd('')
       } else {
@@ -480,6 +485,7 @@ export default function DayView({
       const ok = await api.cancelPunch()
       if (ok) {
         setPunchStart(null)
+        setPunchDate(null)
       } else {
         alert(t('workhours:punchCancelError'))
       }
@@ -514,6 +520,7 @@ export default function DayView({
       const data = await api.punchOut({ end_time: endTime, crosses_midnight: crossesMidnight })
       if (data) {
         setPunchStart(null)
+        setPunchDate(null)
         setNewStart('')
         setNewEnd('')
         if (data.date === currentDate) {
@@ -860,7 +867,7 @@ export default function DayView({
             </div>
 
             {punchStart !== null && (() => {
-              const estimate = calculateDayWithLivePunch(now, punchStart, sessions, lunchChecked, deductions, workSettings)
+              const estimate = calculateDayWithLivePunch(now, punchStart, sessions, lunchChecked, deductions, workSettings, punchDate)
               if (!estimate) {
                 return (
                   <div className="rounded-lg border border-yellow-700/50 bg-yellow-900/20 px-3 py-2 text-xs text-yellow-400">

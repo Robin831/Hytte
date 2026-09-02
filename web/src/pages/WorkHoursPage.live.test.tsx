@@ -134,6 +134,26 @@ describe('WorkHoursPage live punch estimate UI', () => {
     })
   })
 
+  it('keeps estimating an open session that started before midnight', async () => {
+    // Clock is 01:00 on the 17th; the punch-in was at 22:00 on the 16th.
+    vi.setSystemTime(new Date('2026-04-17T01:00:00'))
+    vi.stubGlobal('fetch', buildFetch({
+      '/api/workhours/punch-session': { session: { start_time: '22:00', date: '2026-04-16' } },
+      '/api/settings/preferences': {
+        preferences: { work_hours_lunch_minutes: '0', work_hours_rounding: '30' },
+      },
+    }))
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('If punched out now')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Start time is in the future — cannot estimate')).not.toBeInTheDocument()
+    // 22:00 -> 01:00 is 3h of gross time
+    await waitFor(() => {
+      expect(screen.getAllByText('3:00').length).toBeGreaterThan(0)
+    })
+  })
+
   it('registers a 60-second interval to refresh the live estimate when punched in', async () => {
     const intervalSpy = vi.spyOn(globalThis, 'setInterval')
     vi.stubGlobal('fetch', buildFetch({
