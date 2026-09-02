@@ -1008,7 +1008,7 @@ func buildPredictionFacts(db *sql.DB, userID int64) (*predictionFacts, error) {
 	if latest, err := GetLatestVO2max(db, userID); err == nil && latest != nil {
 		facts.VO2maxLatest = latest.VO2max
 	}
-	if hist, err := GetVO2maxHistory(db, userID, 12); err == nil {
+	if hist, err := GetVO2maxHistory(db, userID, vo2maxSummaryWindow); err == nil {
 		facts.VO2maxEstimates = hist
 	}
 	if loads, err := GetWeeklyLoads(db, userID, 12); err == nil {
@@ -1160,6 +1160,40 @@ func baselinePredictions(anchor *baselineAnchor) map[string]float64 {
 // estimator reacting to terrain, heat, HR artefacts and pacing.
 const vo2maxNoisySpread = 3.0
 
+// vo2maxSummaryWindow is how many of the most recent per-workout estimates are
+// summarised. Every surface that reports on these estimates — the race
+// predictor's narrative and the trends card — uses this one window, so the
+// median, the range and the noisy verdict are computed over the same samples
+// and cannot contradict each other on the same screen.
+const vo2maxSummaryWindow = 12
+
+// vo2maxStats reduces per-workout estimates to the quantities every surface
+// reports: the estimates that are actual measurements (VO2max > 0), their
+// median, and the min-to-max endpoints. formatVO2maxSummary and
+// computeVO2maxTrend both go through here so the arithmetic exists once.
+//
+// kept keeps the input order (chronological); the returned median/low/high are
+// zero when nothing is usable.
+func vo2maxStats(estimates []VO2maxEstimate) (kept []VO2maxEstimate, median, lo, hi float64) {
+	kept = make([]VO2maxEstimate, 0, len(estimates))
+	vals := make([]float64, 0, len(estimates))
+	for _, e := range estimates {
+		if e.VO2max > 0 {
+			kept = append(kept, e)
+			vals = append(vals, e.VO2max)
+		}
+	}
+	if len(vals) == 0 {
+		return nil, 0, 0, 0
+	}
+	sort.Float64s(vals)
+	median = vals[len(vals)/2]
+	if len(vals)%2 == 0 {
+		median = (vals[len(vals)/2-1] + vals[len(vals)/2]) / 2
+	}
+	return kept, median, vals[0], vals[len(vals)-1]
+}
+
 // vo2maxSingleEstimateCaveat is the wording used wherever the summary rests on
 // one estimate — both the history-unavailable fallback and the n=1 case. Kept
 // in one place so the two branches cannot drift apart.
@@ -1178,38 +1212,23 @@ const vo2maxSingleEstimateCaveat = "A single HR/pace-derived estimate is weak ev
 //
 // Returns "" when there is nothing to report.
 func formatVO2maxSummary(estimates []VO2maxEstimate, latest float64) string {
-	kept := make([]VO2maxEstimate, 0, len(estimates))
-	vals := make([]float64, 0, len(estimates))
-	for _, e := range estimates {
-		if e.VO2max > 0 {
-			kept = append(kept, e)
-			vals = append(vals, e.VO2max)
-		}
-	}
-	if len(vals) == 0 {
+	kept, median, lo, hi := vo2maxStats(estimates)
+	if len(kept) == 0 {
 		if latest <= 0 {
 			return ""
 		}
 		// History unavailable (query failed) but a latest estimate exists.
 		return fmt.Sprintf("\nVO2max: a single per-workout estimate of %.1f. %s\n", latest, vo2maxSingleEstimateCaveat)
 	}
-
-	sorted := append([]float64(nil), vals...)
-	sort.Float64s(sorted)
-	median := sorted[len(sorted)/2]
-	if len(sorted)%2 == 0 {
-		median = (sorted[len(sorted)/2-1] + sorted[len(sorted)/2]) / 2
-	}
-	lo, hi := sorted[0], sorted[len(sorted)-1]
 	spread := hi - lo
 
 	var b strings.Builder
 	// "range" for the min-to-max endpoints, "spread" for the scalar hi-lo below:
 	// one word per quantity, so the model is not asked to disambiguate them.
 	fmt.Fprintf(&b, "\nVO2max (per-workout estimates, n=%d%s): median %.1f, range %.1f-%.1f\n",
-		len(vals), vo2maxDateSpan(kept), median, lo, hi)
+		len(kept), vo2maxDateSpan(kept), median, lo, hi)
 	switch {
-	case len(vals) == 1:
+	case len(kept) == 1:
 		b.WriteString(vo2maxSingleEstimateCaveat + "\n")
 	case spread >= vo2maxNoisySpread:
 		fmt.Fprintf(&b, "The %.1f-unit spread is estimator noise (terrain, heat, HR artefacts, pacing), not fitness change: there is no trend to read in these estimates, and no single one of them — including the most recent — carries more weight than the median. Treat the median as a weak cross-check on the sustained-effort evidence above; where they disagree, the measured efforts win.\n", spread)
