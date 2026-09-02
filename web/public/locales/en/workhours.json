@@ -108,7 +108,8 @@
     "deductions": "Deductions",
     "overStandard": "+{{amount}} over standard",
     "atStandard": "Standard day reached",
-    "invalidStart": "Start time is in the future — cannot estimate"
+    "invalidStart": "Start time is in the future — cannot estimate",
+    "stalePunch": "Punched in on {{date}} and still open — punch out or cancel it to record the hours"
   },
   "shortcuts": {
     "hint": "Keyboard shortcuts",

@@ -34,6 +34,15 @@ export interface LiveEstimate {
 
 const MINUTES_PER_DAY = 24 * 60
 
+/**
+ * How many calendar days an open punch-in may wrap over before the live
+ * estimate is treated as stale. One day covers the intended case — a shift
+ * started in the evening and still running after midnight. A punch-in that is
+ * older than that was almost certainly forgotten, and counting the sleeping
+ * hours in between would produce a meaningless running total.
+ */
+export const MAX_LIVE_PUNCH_WRAP_DAYS = 1
+
 function parseHHMM(t: string): number | null {
   const parts = t.split(':')
   if (parts.length !== 2) return null
@@ -49,7 +58,7 @@ function parseHHMM(t: string): number | null {
  * Uses UTC midnights so a DST transition in between can't skew the count.
  * Returns null when the date is malformed.
  */
-function daysSinceLocalDate(date: string, now: Date): number | null {
+export function daysSinceLocalDate(date: string, now: Date): number | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
   if (!m) return null
   const year = Number(m[1])
@@ -86,6 +95,10 @@ export function sessionMinutes(session: Pick<WorkSession, 'start_time' | 'end_ti
  * looking like a start in the future. Without it a clock time earlier than the
  * start is ambiguous — a wrapped session and a genuinely future start are
  * indistinguishable — so null is returned as before.
+ *
+ * The wrap is capped at {@link MAX_LIVE_PUNCH_WRAP_DAYS}: a punch-in older than
+ * that is a forgotten one, not a running shift, so null is returned rather than
+ * a total that keeps growing through the nights in between.
  */
 export function calculateDayWithLivePunch(
   now: Date,
@@ -101,6 +114,7 @@ export function calculateDayWithLivePunch(
   const nowMins = now.getHours() * 60 + now.getMinutes()
 
   const elapsedDays = punchDate ? daysSinceLocalDate(punchDate, now) : null
+  if (elapsedDays !== null && elapsedDays > MAX_LIVE_PUNCH_WRAP_DAYS) return null
   const elapsed = nowMins - startMins + (elapsedDays ?? 0) * MINUTES_PER_DAY
   if (elapsed < 0) return null
 

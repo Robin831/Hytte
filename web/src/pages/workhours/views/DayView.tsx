@@ -5,7 +5,14 @@ import { formatDate } from '../../../utils/formatDate'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { Select, type SelectOption } from '../../../components/ui/select'
 import { TimePicker } from '../../../components/ui/time-picker'
-import { calculateDayWithLivePunch, sessionMinutes, type WorkSession, type WorkSettings } from '../../workHoursUtils'
+import {
+  MAX_LIVE_PUNCH_WRAP_DAYS,
+  calculateDayWithLivePunch,
+  daysSinceLocalDate,
+  sessionMinutes,
+  type WorkSession,
+  type WorkSettings,
+} from '../../workHoursUtils'
 import type { DaySummary, FlexState, LeaveDay, LeaveType, WorkDay, WorkDeductionPreset } from '../types'
 import {
   buildNavHolidaySet,
@@ -869,9 +876,16 @@ export default function DayView({
             {punchStart !== null && (() => {
               const estimate = calculateDayWithLivePunch(now, punchStart, sessions, lunchChecked, deductions, workSettings, punchDate)
               if (!estimate) {
+                // A punch-in that has been open for longer than the allowed
+                // wrap is forgotten, not running — say so instead of claiming
+                // the start time is in the future.
+                const elapsedDays = punchDate ? daysSinceLocalDate(punchDate, now) : null
+                const stale = elapsedDays !== null && elapsedDays > MAX_LIVE_PUNCH_WRAP_DAYS
                 return (
                   <div className="rounded-lg border border-yellow-700/50 bg-yellow-900/20 px-3 py-2 text-xs text-yellow-400">
-                    {t('workhours:punchEstimate.invalidStart')}
+                    {stale
+                      ? t('workhours:punchEstimate.stalePunch', { date: punchDate })
+                      : t('workhours:punchEstimate.invalidStart')}
                   </div>
                 )
               }

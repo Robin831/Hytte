@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { calculateDayWithLivePunch, sessionMinutes, type WorkSettings } from './workHoursUtils'
+import {
+  MAX_LIVE_PUNCH_WRAP_DAYS,
+  calculateDayWithLivePunch,
+  daysSinceLocalDate,
+  sessionMinutes,
+  type WorkSettings,
+} from './workHoursUtils'
 
 const defaultSettings: WorkSettings = {
   standard_day_minutes: 450,
@@ -198,7 +204,7 @@ describe('calculateDayWithLivePunch across midnight', () => {
     expect(result!.reportedMinutes).toBe(210)
   })
 
-  it('spans multiple days for a punch-in that was never closed', () => {
+  it('counts a full wrapped day at the edge of the allowed wrap', () => {
     const result = calculateDayWithLivePunch(
       makeDate(10, 0),
       '08:00',
@@ -206,10 +212,20 @@ describe('calculateDayWithLivePunch across midnight', () => {
       false,
       [],
       defaultSettings,
-      '2026-04-15',
+      '2026-04-16',
     )
-    // two full days plus 2h
-    expect(result!.grossMinutes).toBe(2 * 24 * 60 + 120)
+    // one full day plus 2h
+    expect(result!.grossMinutes).toBe(MAX_LIVE_PUNCH_WRAP_DAYS * 24 * 60 + 120)
+  })
+
+  it('gives up on a punch-in older than the allowed wrap instead of counting the nights', () => {
+    // Two calendar days back: forgotten, not a running shift.
+    expect(
+      calculateDayWithLivePunch(makeDate(10, 0), '08:00', [], false, [], defaultSettings, '2026-04-15'),
+    ).toBeNull()
+    expect(
+      calculateDayWithLivePunch(makeDate(10, 0), '08:00', [], false, [], defaultSettings, '2026-01-02'),
+    ).toBeNull()
   })
 
   it('still rejects a start later today than the current time', () => {
@@ -245,6 +261,23 @@ describe('calculateDayWithLivePunch across midnight', () => {
       '2026-04-16',
     )
     expect(result!.grossMinutes).toBe(240 + 180)
+  })
+})
+
+describe('daysSinceLocalDate', () => {
+  it('counts whole calendar days back from the local date of now', () => {
+    expect(daysSinceLocalDate('2026-04-17', makeDate(1, 0))).toBe(0)
+    expect(daysSinceLocalDate('2026-04-16', makeDate(23, 0))).toBe(1)
+    expect(daysSinceLocalDate('2026-04-10', makeDate(12, 0))).toBe(7)
+  })
+
+  it('returns a negative count for a date after today', () => {
+    expect(daysSinceLocalDate('2026-04-18', makeDate(12, 0))).toBe(-1)
+  })
+
+  it('returns null for a malformed or non-existent date', () => {
+    expect(daysSinceLocalDate('not-a-date', makeDate(12, 0))).toBeNull()
+    expect(daysSinceLocalDate('2026-02-31', makeDate(12, 0))).toBeNull()
   })
 })
 

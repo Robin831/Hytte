@@ -154,6 +154,22 @@ describe('WorkHoursPage live punch estimate UI', () => {
     })
   })
 
+  it('flags a punch-in left open for more than a day instead of estimating', async () => {
+    // Clock is on the 17th; the punch-in is from the 15th — forgotten, not running.
+    vi.setSystemTime(new Date('2026-04-17T10:00:00'))
+    vi.stubGlobal('fetch', buildFetch({
+      '/api/workhours/punch-session': { session: { start_time: '08:00', date: '2026-04-15' } },
+    }))
+    renderPage()
+    await waitFor(() => {
+      expect(
+        screen.getByText('Punched in on 2026-04-15 and still open — punch out or cancel it to record the hours'),
+      ).toBeInTheDocument()
+    })
+    expect(screen.queryByText('If punched out now')).not.toBeInTheDocument()
+    expect(screen.queryByText('Start time is in the future — cannot estimate')).not.toBeInTheDocument()
+  })
+
   it('registers a 60-second interval to refresh the live estimate when punched in', async () => {
     const intervalSpy = vi.spyOn(globalThis, 'setInterval')
     vi.stubGlobal('fetch', buildFetch({
