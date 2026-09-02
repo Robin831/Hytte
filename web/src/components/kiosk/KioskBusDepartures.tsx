@@ -54,13 +54,14 @@ function lineBadgeColor(line: string): string {
   return colors[line.charCodeAt(0) % colors.length]
 }
 
-// Countdown colours. The dimmed variants keep the same red/yellow/green
-// meaning at a much lower luminance so the strip stays readable in the dark
-// without lighting up the room.
+// Countdown colours. Colour is the whole signal for an imminent departure, so
+// the dimmed variants stop at the -700 shades: dark enough not to light up the
+// room, but still far enough apart in luminance and hue that red/yellow/green
+// stay tellable apart on a dark panel across the room.
 function countdownColor(mins: number, dimmed: boolean): string {
-  if (mins <= 1) return dimmed ? 'text-red-800' : 'text-red-400'
-  if (mins <= 5) return dimmed ? 'text-yellow-800' : 'text-yellow-400'
-  return dimmed ? 'text-green-800' : 'text-green-400'
+  if (mins <= 1) return dimmed ? 'text-red-700' : 'text-red-400'
+  if (mins <= 5) return dimmed ? 'text-yellow-700' : 'text-yellow-400'
+  return dimmed ? 'text-green-700' : 'text-green-400'
 }
 
 export default function KioskBusDepartures({ stops, dimmed = false }: Props) {
@@ -147,7 +148,7 @@ export default function KioskBusDepartures({ stops, dimmed = false }: Props) {
                     {mins === 0 ? 'nå' : `${mins} min`}
                   </span>
                   {dep.delay_minutes > 0 && (
-                    <span className={`text-xs ${dimmed ? 'text-red-800' : 'text-red-400'}`}>
+                    <span className={`text-xs ${dimmed ? 'text-red-700' : 'text-red-400'}`}>
                       +{dep.delay_minutes}
                     </span>
                   )}

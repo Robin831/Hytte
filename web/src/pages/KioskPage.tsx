@@ -11,6 +11,8 @@ import KioskStaleBadge from '../components/kiosk/KioskStaleBadge'
 import KioskStatusScreen from '../components/kiosk/KioskStatusScreen'
 import mockData from '../mocks/kioskData.json'
 import { useWakeLock } from '../hooks/useWakeLock'
+import { isNightMode, pixelShift } from '../components/kiosk/nightMode'
+import type { SunTimes, DimConfig } from '../components/kiosk/nightMode'
 
 // Error boundary so that JS errors show a visible message instead of a blank
 // white page. This is especially important on older browsers (Android 5 /
@@ -99,22 +101,6 @@ interface WindReadings {
   Direction: number
 }
 
-interface SunTimes {
-  kind: string
-  sunrise?: string
-  sunset?: string
-}
-
-// Optional night-mode overrides carried by the kiosk token config. Mirrors
-// kiosk.DimConfig on the backend: every field is optional, an absent `enabled`
-// means "keep the sun-driven default", and start/end are only ever sent
-// together as a complete local HH:MM window.
-interface DimConfig {
-  enabled?: boolean
-  start?: string
-  end?: string
-}
-
 interface KioskData {
   transit: StopDepartures[]
   outdoor?: OutdoorReadings | null
@@ -135,92 +121,6 @@ const STALE_TICK_INTERVAL_MS = 5_000
 // used for any further consecutive failures (cap). A successful fetch resets
 // the failure count, so the next poll fires at POLL_INTERVAL_MS again.
 const BACKOFF_SCHEDULE_MS = [30_000, 60_000, 120_000, 300_000]
-
-// ── Night mode ───────────────────────────────────────────────────────────────
-// The kiosk dims itself outside daylight hours so a wall-mounted screen does
-// not light up a dark room. The decision is a pure function of the current
-// time, the payload's sun times and the token's optional dim overrides, so it
-// is re-evaluated on the existing clock tick — no extra timer and no reload.
-
-// Convert a local "HH:MM" string or an RFC3339 timestamp to minutes since local
-// midnight. Returns null for anything unparsable so a malformed override can
-// never wedge the kiosk into (or out of) night mode.
-function minutesOfDay(value: string): number | null {
-  const hhmm = /^(\d{2}):(\d{2})$/.exec(value)
-  if (hhmm) {
-    const hours = Number(hhmm[1])
-    const minutes = Number(hhmm[2])
-    if (hours > 23 || minutes > 59) return null
-    return hours * 60 + minutes
-  }
-  const parsed = new Date(value)
-  const ms = parsed.getTime()
-  if (isNaN(ms)) return null
-  return parsed.getHours() * 60 + parsed.getMinutes()
-}
-
-// Half-open [start, end) membership over minutes-of-day, handling windows that
-// cross midnight (start > end). A zero-length window matches nothing.
-function inWindow(minute: number, start: number, end: number): boolean {
-  if (start === end) return false
-  if (start < end) return minute >= start && minute < end
-  return minute >= start || minute < end
-}
-
-// Precedence, highest first:
-//   1. dim.enabled === false — night mode is switched off entirely.
-//   2. An explicit dim.start/dim.end window replaces the sun window.
-//   3. polarDay is always day, polarNight is always night.
-//   4. Sun-driven: night between sunset and sunrise.
-//   5. No sun times and no window (a token without a location) — always day.
-export function isNightMode(
-  now: Date,
-  sun?: SunTimes | null,
-  dim?: DimConfig | null,
-): boolean {
-  if (dim?.enabled === false) return false
-
-  const minute = now.getHours() * 60 + now.getMinutes()
-
-  const overrideStart = dim?.start ? minutesOfDay(dim.start) : null
-  const overrideEnd = dim?.end ? minutesOfDay(dim.end) : null
-  if (overrideStart !== null && overrideEnd !== null) {
-    return inWindow(minute, overrideStart, overrideEnd)
-  }
-
-  if (sun?.kind === 'polarDay') return false
-  if (sun?.kind === 'polarNight') return true
-
-  const sunset = sun?.sunset ? minutesOfDay(sun.sunset) : null
-  const sunrise = sun?.sunrise ? minutesOfDay(sun.sunrise) : null
-  if (sunset !== null && sunrise !== null) return inWindow(minute, sunset, sunrise)
-
-  return false
-}
-
-// ── Pixel shift (burn-in mitigation) ─────────────────────────────────────────
-// A wall-mounted screen shows the same clock in the same place all day, which
-// burns static elements into OLED/LCD panels. Nudging the whole layout by a few
-// pixels every few minutes spreads that wear without being visible to a viewer.
-
-// Largest offset applied on either axis, in CSS pixels.
-export const PIXEL_SHIFT_MAX_PX = 3
-// Distinct offsets per axis: 0 … PIXEL_SHIFT_MAX_PX.
-const PIXEL_SHIFT_STEPS = PIXEL_SHIFT_MAX_PX + 1
-// How long each offset is held. With 4 steps per axis the full 4x4 lattice is
-// visited every 7 * 16 = 112 minutes.
-const PIXEL_SHIFT_HOLD_MINUTES = 7
-
-// Offset for the given local time. Pure function of minutes-of-day, so like
-// night mode it rides the existing clock tick.
-export function pixelShift(now: Date): { x: number; y: number } {
-  const minute = now.getHours() * 60 + now.getMinutes()
-  const step = Math.floor(minute / PIXEL_SHIFT_HOLD_MINUTES)
-  return {
-    x: step % PIXEL_SHIFT_STEPS,
-    y: Math.floor(step / PIXEL_SHIFT_STEPS) % PIXEL_SHIFT_STEPS,
-  }
-}
 
 // Offset mock departure times so they appear relative to the current time,
 // preventing all departures from showing as "now/0 min" once the static
@@ -561,8 +461,11 @@ function KioskPageInner() {
       <div
         data-testid="kiosk-shift"
         // A transform, not padding: it does not reflow the layout, so the
-        // panels keep their exact sizes and nothing is clipped beyond the
-        // pb-16 gutter at the bottom edge.
+        // panels keep their exact sizes. The offset is positive on both axes,
+        // so the outer overflow-hidden clips up to PIXEL_SHIFT_MAX_PX (3px)
+        // at the right edge and eats into the pb-16 gutter at the bottom —
+        // both are empty margin, and in exchange the shift can never add a
+        // scrollbar.
         style={{ transform: `translate(${shift.x}px, ${shift.y}px)` }}
         className={`min-h-screen flex flex-col overflow-hidden pb-16 ${
           dimmed ? 'text-gray-500' : 'text-white'
@@ -595,9 +498,13 @@ function KioskPageInner() {
 
         {/* Sunrise / Sunset */}
         <KioskSunrise sun={data.sun ?? null} />
-
-        <KioskStaleBadge isStale={isStale} lastSuccessAt={lastSuccessAt} now={now} />
       </div>
+
+      {/* Outside the shifted wrapper on purpose: a non-none transform makes an
+          element the containing block for its position:fixed descendants, so
+          the badge would be anchored to (and clipped with) the shifted layout
+          instead of staying pinned to the viewport. */}
+      <KioskStaleBadge isStale={isStale} lastSuccessAt={lastSuccessAt} now={now} />
     </div>
   )
 }

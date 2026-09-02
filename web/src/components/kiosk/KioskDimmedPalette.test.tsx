@@ -57,7 +57,7 @@ describe('KioskBusDepartures – dimmed palette', () => {
     const destination = screen.getByText('Galgeberg')
     expect(destination.className).toContain('text-gray-500')
     expect(destination.className).not.toContain('text-white')
-    expect(screen.getByText(/min$/).className).toContain('text-green-800')
+    expect(screen.getByText(/min$/).className).toContain('text-green-700')
     expect(screen.getByText('Majorstuen').className).toContain('text-gray-600')
   })
 

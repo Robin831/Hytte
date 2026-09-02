@@ -2,7 +2,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route, useNavigate } from 'react-router'
-import KioskPage, { isNightMode, pixelShift, PIXEL_SHIFT_MAX_PX } from './KioskPage'
+import KioskPage from './KioskPage'
+import { isNightMode, pixelShift, PIXEL_SHIFT_MAX_PX } from '../components/kiosk/nightMode'
 import { renderKiosk, flushMicrotasks } from '../test/kiosk'
 import enKiosk from '../../public/locales/en/kiosk.json'
 import nbKiosk from '../../public/locales/nb/kiosk.json'
@@ -113,6 +114,13 @@ describe('KioskPage – stale data badge', () => {
     const badge = screen.getByTestId('kiosk-stale-badge')
     expect(badge).toBeInTheDocument()
     expect(badge.textContent).toMatch(/Updated .* (sec|min|hr) ago/)
+
+    // The badge is position:fixed, so it must stay outside the pixel-shift
+    // wrapper: a transformed ancestor would become its containing block and
+    // the badge would ride (and get clipped with) the shifted layout instead
+    // of staying pinned to the viewport.
+    expect(screen.getByTestId('kiosk-shift')).not.toContainElement(badge)
+    expect(screen.getByTestId('kiosk-root')).toContainElement(badge)
   })
 
   it('updates the stale badge age via the clock tick without new fetches', async () => {
