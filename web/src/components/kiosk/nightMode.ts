@@ -22,23 +22,25 @@ export interface SunTimes {
 // no-op that keeps the sun-driven default (so a token with `dim: true`, no
 // window and no location never dims — there is nothing to drive it).
 //
-// The backend only ever sends start/end together as a complete local "HH:MM"
-// window, but a hand-edited or half-migrated config can still arrive with one
-// edge missing or an unparsable value; see isNightMode for how that is
-// handled.
+// kiosk.buildDimConfig only ever emits start and end together, and only when
+// both are a zero-padded local "HH:MM" (it logs and drops anything else), so a
+// half-configured or malformed window cannot reach this file over the API. The
+// tolerant handling in isNightMode is defence in depth for a payload that
+// somehow arrives that way, not a supported input.
 export interface DimConfig {
   enabled?: boolean
   start?: string
   end?: string
 }
 
-
-// Convert a local "H:MM"/"HH:MM" string or an RFC3339 timestamp to minutes
-// since local midnight. A single-digit hour is accepted, so a hand-written
-// "7:30" behaves the same as "07:30". Returns null for anything unparsable so a
-// malformed override can never wedge the kiosk into (or out of) night mode.
+// Convert a zero-padded local "HH:MM" string or an RFC3339 timestamp to minutes
+// since local midnight. The "HH:MM" shape matches kiosk.parseHHMM on the
+// backend exactly — same fixed width, same hour/minute bounds — so the two ends
+// agree on what a window edge is. Returns null for anything unparsable (bad
+// shape, hour above 23, minute above 59) so a malformed override can never
+// wedge the kiosk into (or out of) night mode.
 function minutesOfDay(value: string): number | null {
-  const hhmm = /^(\d{1,2}):(\d{2})$/.exec(value)
+  const hhmm = /^(\d{2}):(\d{2})$/.exec(value)
   if (hhmm) {
     const hours = Number(hhmm[1])
     const minutes = Number(hhmm[2])
@@ -59,31 +61,13 @@ function inWindow(minute: number, start: number, end: number): boolean {
   return minute >= start || minute < end
 }
 
-// Warn once per distinct value when a dim window is configured but unusable —
-// one edge missing, or a value we cannot parse. Without this the kiosk silently
-// falls back to the sun window, which on a wall-mounted screen looks exactly
-// like "night mode ignored my settings" with nothing anywhere to explain it.
-// Deduped because isNightMode runs on every clock tick.
-const warnedDimWindows = new Set<string>()
-
-function warnUnusableDimWindow(dim: DimConfig): void {
-  const key = `${dim.start ?? ''}|${dim.end ?? ''}`
-  if (warnedDimWindows.has(key)) return
-  warnedDimWindows.add(key)
-  console.warn(
-    '[kiosk] Ignoring the dim window override ' +
-      `(start=${JSON.stringify(dim.start ?? null)}, end=${JSON.stringify(dim.end ?? null)}): ` +
-      'both edges are required and must be a local "H:MM" time. ' +
-      'Falling back to the sun-driven night window.',
-  )
-}
-
 // Precedence, highest first:
 //   1. dim.enabled === false — night mode is switched off entirely.
 //      (dim.enabled === true is a no-op: it keeps the sun-driven default.)
 //   2. An explicit dim.start/dim.end window replaces the sun window. A window
-//      that is half-configured or unparsable is dropped — with a console
-//      warning — rather than wedging the screen on or off.
+//      that is half-configured or unparsable is dropped rather than wedging
+//      the screen on or off; the backend logs and drops those before they can
+//      get this far (kiosk.buildDimConfig).
 //   3. polarDay is always day, polarNight is always night.
 //   4. Sun-driven: night between sunset and sunrise.
 //   5. No sun times and no window (a token without a location) — always day.
@@ -101,7 +85,6 @@ export function isNightMode(
   if (overrideStart !== null && overrideEnd !== null) {
     return inWindow(minute, overrideStart, overrideEnd)
   }
-  if (dim && (dim.start || dim.end)) warnUnusableDimWindow(dim)
 
   if (sun?.kind === 'polarDay') return false
   if (sun?.kind === 'polarNight') return true

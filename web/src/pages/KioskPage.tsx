@@ -355,11 +355,12 @@ function KioskPageInner() {
   // badge, and the minute-derived night mode / pixel-shift offset. Both read
   // `now`, so one interval is enough — neither feature adds a timer of its own.
   //
-  // The effect stays gated on a token and a first successful fetch: a healthy
-  // kiosk that has never fetched successfully produces zero ticks. Nothing is
-  // lost by that — without data the page renders a full-screen status panel,
-  // which uses neither the badge nor the dimmed palette, and the token-less
-  // demo path is a preview rather than a wall display.
+  // The effect is gated on a tokened kiosk that has not fetched successfully
+  // yet: that screen shows a full-screen status panel, which uses neither the
+  // badge nor the dimmed palette, so ticking would repaint for nothing. The
+  // token-less demo path is *not* gated — it always has data (the mock
+  // payload), so it renders the full dimmable layout and needs the tick for
+  // night mode and the pixel shift just as a real kiosk does.
   //
   // The tick fires every 5 s but deliberately skips the state update (and
   // therefore the re-render) when nothing observable has changed: low-power
@@ -376,12 +377,19 @@ function KioskPageInner() {
   // the staleness half is always anchored to the most recent success and a
   // recovery fetch automatically resets it.
   useEffect(() => {
-    if (!token || lastSuccessAt === null) return
+    if (token && lastSuccessAt === null) return
     const id = setInterval(() => {
       const t = Date.now()
       setNow((prev) => {
         if (Math.floor(t / 60_000) !== Math.floor(prev / 60_000)) return t
-        if (t - lastSuccessAt >= STALE_THRESHOLD_MS - STALE_TICK_INTERVAL_MS) return t
+        // Staleness only exists on the tokened path; the demo preview has no
+        // badge, so it re-renders on the minute boundary alone.
+        if (
+          lastSuccessAt !== null &&
+          t - lastSuccessAt >= STALE_THRESHOLD_MS - STALE_TICK_INTERVAL_MS
+        ) {
+          return t
+        }
         return prev
       })
     }, STALE_TICK_INTERVAL_MS)

@@ -5,6 +5,7 @@ import { MemoryRouter, Routes, Route, useNavigate } from 'react-router'
 import KioskPage from './KioskPage'
 import { isNightMode, pixelShift, PIXEL_SHIFT_MAX_PX } from '../components/kiosk/nightMode'
 import { renderKiosk, flushMicrotasks } from '../test/kiosk'
+import mockKioskData from '../mocks/kioskData.json'
 import enKiosk from '../../public/locales/en/kiosk.json'
 import nbKiosk from '../../public/locales/nb/kiosk.json'
 import thKiosk from '../../public/locales/th/kiosk.json'
@@ -987,37 +988,6 @@ describe('isNightMode', () => {
     }
   })
 
-  it('accepts a single-digit hour in a window edge', () => {
-    // A hand-written "7:30" must behave exactly like "07:30" rather than being
-    // discarded as unparsable and silently falling back to the sun window.
-    expect(isNightMode(localTime(12, 0), NORMAL_SUN, { start: '7:30', end: '22:00' })).toBe(true)
-    expect(isNightMode(localTime(7, 0), NORMAL_SUN, { start: '7:30', end: '22:00' })).toBe(false)
-    expect(isNightMode(localTime(23, 0), NORMAL_SUN, { start: '7:30', end: '22:00' })).toBe(false)
-  })
-
-  it('warns when a configured window is unusable instead of failing silently', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-
-    // Only one edge set — the fallback is deliberate, but it must be visible.
-    expect(isNightMode(localTime(23, 0), NORMAL_SUN, { start: '04:15' })).toBe(true)
-    expect(warn).toHaveBeenCalledTimes(1)
-    expect(String(warn.mock.calls[0][0])).toContain('04:15')
-
-    // Deduped per distinct value: isNightMode runs on every clock tick.
-    isNightMode(localTime(23, 30), NORMAL_SUN, { start: '04:15' })
-    expect(warn).toHaveBeenCalledTimes(1)
-
-    // A different unusable value warns again.
-    expect(isNightMode(localTime(23, 0), NORMAL_SUN, { start: 'zzz', end: 'qqq' })).toBe(true)
-    expect(warn).toHaveBeenCalledTimes(2)
-
-    // A usable window is silent.
-    expect(isNightMode(localTime(23, 0), NORMAL_SUN, { start: '22:00', end: '06:00' })).toBe(true)
-    expect(warn).toHaveBeenCalledTimes(2)
-
-    warn.mockRestore()
-  })
-
   it('ignores a half-configured or unparsable window instead of wedging', () => {
     // Only one edge set: fall back to the sun window.
     expect(isNightMode(localTime(23, 0), NORMAL_SUN, { start: '01:00' })).toBe(true)
@@ -1031,6 +1001,22 @@ describe('isNightMode', () => {
     expect(isNightMode(localTime(3, 0), { kind: 'normal', sunrise: 'x', sunset: 'y' }, null)).toBe(
       false,
     )
+  })
+
+  it('rejects out-of-range and unpadded window edges', () => {
+    // These are shaped like a time but are not one. Without the hour/minute
+    // bound check they would yield a bogus minutes-of-day and wedge the screen
+    // into (or out of) night mode permanently, so pin that each falls back to
+    // the sun window (night at 23:00, day at 12:00) instead.
+    const bogus = ['99:00', '25:00', '12:60', '12:99', '7:30', '07:3']
+    for (const edge of bogus) {
+      expect(isNightMode(localTime(23, 0), NORMAL_SUN, { start: edge, end: '06:00' })).toBe(true)
+      expect(isNightMode(localTime(12, 0), NORMAL_SUN, { start: '22:00', end: edge })).toBe(false)
+    }
+    // '7:30' specifically: the backend's parseHHMM rejects an unpadded hour, so
+    // the client must agree rather than accepting a window the API can never
+    // send.
+    expect(isNightMode(localTime(12, 0), NORMAL_SUN, { start: '7:30', end: '22:00' })).toBe(false)
   })
 })
 
@@ -1069,6 +1055,9 @@ describe('KioskPage – night mode on the clock tick', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'] })
     vi.setSystemTime(localTime(19, 58))
+    // renderCounts is module-level and shared with every other suite in this
+    // file, so reset it here rather than letting counts leak between tests.
+    renderCounts.clock = 0
     try { localStorage.removeItem('hytte_kiosk_token') } catch { /* ignore */ }
   })
 
@@ -1204,23 +1193,45 @@ describe('KioskPage – night mode on the clock tick', () => {
     }
   })
 
-  it('produces no clock ticks on the token-less demo path', async () => {
-    // The tick is gated on a token and a first successful fetch, so the demo
-    // preview (and any kiosk that has never fetched) renders once and then
-    // stays put — a low-power wall panel should not repaint for nothing.
+  it('keeps night mode and the pixel shift live on the token-less demo path', async () => {
+    // The demo path always has data (the mock payload), so it renders the full
+    // dimmable layout — kiosk-root, the shift wrapper and all four panels. It
+    // therefore needs the tick: without it `now` would freeze at its mount
+    // value and the screen would hold whichever palette and pixel offset
+    // happened to apply at load, forever.
+    //
+    // Start two minutes before the mock payload's local sunset rather than at a
+    // hard-coded hour: the fixture carries a fixed UTC offset, so the wall-clock
+    // sunset depends on the runner's timezone.
+    const mockSunset = new Date(mockKioskData.sun.sunset)
+    vi.setSystemTime(localTime(mockSunset.getHours(), mockSunset.getMinutes() - 2))
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('should not be called'))))
     renderKiosk('/kiosk')
     await act(async () => { await flushMicrotasks() })
 
+    expect(root()).toHaveAttribute('data-dimmed', 'false')
+    const shiftAtMount = transformOf(screen.getByTestId('kiosk-shift'))
     const rendersAfterMount = renderCounts.clock
     expect(rendersAfterMount).toBeGreaterThan(0)
 
+    // Crossing the mock payload's own sunset must flip the palette.
     await act(async () => {
-      vi.advanceTimersByTime(10 * 60_000)
+      vi.advanceTimersByTime(4 * 60_000)
       await flushMicrotasks()
     })
+    expect(root()).toHaveAttribute('data-dimmed', 'true')
 
-    expect(renderCounts.clock).toBe(rendersAfterMount)
+    // ...and the burn-in offset must keep moving rather than sitting on one
+    // value all night.
+    await act(async () => {
+      vi.advanceTimersByTime(60 * 60_000)
+      await flushMicrotasks()
+    })
+    expect(transformOf(screen.getByTestId('kiosk-shift'))).not.toEqual(shiftAtMount)
+    expect(renderCounts.clock).toBeGreaterThan(rendersAfterMount)
+
+    // Still no fetch and still no stale badge: the demo path has neither.
+    expect(screen.queryByTestId('kiosk-stale-badge')).not.toBeInTheDocument()
   })
 
   it('starts no clock tick until a tokened kiosk has fetched successfully', async () => {
@@ -1240,6 +1251,49 @@ describe('KioskPage – night mode on the clock tick', () => {
     const tickIntervals = setIntervalSpy.mock.calls.filter(([, delay]) => delay === 5_000)
     expect(tickIntervals).toHaveLength(0)
     setIntervalSpy.mockRestore()
+  })
+
+  it('starts the clock tick once a tokened kiosk finally fetches successfully', async () => {
+    // The gate is `token && lastSuccessAt === null`, so a kiosk whose *first*
+    // poll fails must still start ticking when a later poll succeeds —
+    // otherwise the stale badge would never refresh on a screen that came up
+    // before the network did.
+    let succeed = false
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        succeed
+          ? Promise.resolve({
+              ok: true,
+              json: () => Promise.resolve({ ...apiPayload, sun: NORMAL_SUN }),
+            } as Response)
+          : Promise.reject(new Error('network down')),
+      ),
+    )
+
+    renderKiosk('/kiosk?token=test-token')
+    await act(async () => { await flushMicrotasks() })
+    // No data yet: the status panel is up and there is nothing to tick.
+    expect(screen.queryByTestId('kiosk-root')).not.toBeInTheDocument()
+
+    // Let the first backoff retry (30s after the failure) land, this time
+    // successfully.
+    succeed = true
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(31_000)
+      await flushMicrotasks()
+    })
+    expect(root()).toBeInTheDocument()
+    expect(screen.queryByTestId('kiosk-stale-badge')).not.toBeInTheDocument()
+
+    // From here fetches fail again; the tick started by that late success must
+    // carry the badge past the staleness threshold.
+    succeed = false
+    await act(async () => {
+      vi.advanceTimersByTime(90_000)
+      await flushMicrotasks()
+    })
+    expect(screen.getByTestId('kiosk-stale-badge')).toBeInTheDocument()
   })
 
   it('shifts the layout by a few pixels as the clock advances', async () => {
