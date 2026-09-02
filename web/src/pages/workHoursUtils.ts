@@ -108,8 +108,11 @@ export function sessionMinutes(session: Pick<WorkSession, 'start_time' | 'end_ti
  * `punchDate` confirms the punch-in belongs to an earlier calendar day. That
  * keeps a shift started at 22:00 and still open at 01:00 counting instead of
  * looking like a start in the future, while never adding time the punch-out
- * itself could not record: `handlePunchOut` only marks a session as crossing
- * midnight when the end time is at or before the start time.
+ * itself could not record: `handlePunchOut` marks a session as crossing
+ * midnight only when the end time is strictly before the start time, and
+ * refuses an end time equal to it as a zero-length punch. So the wrap needs a
+ * strictly negative difference — at exactly the start time the estimate reads
+ * 0, and there is no recorded session for it to disagree with.
  *
  * Without `punchDate` the wrap is unprovable — a wrapped session and a
  * genuinely future start are indistinguishable — so null is returned.

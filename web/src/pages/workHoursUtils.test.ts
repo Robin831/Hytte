@@ -10,12 +10,24 @@ import {
 // CI runs under UTC, where local and UTC midnights coincide and the deliberate
 // local/UTC mix in daysSinceLocalDate collapses into a no-op. Pin a DST-observing
 // zone so the "a DST transition can't skew the count" claim is actually exercised.
+// Node re-reads process.env.TZ on assignment (v16+), so stubbing it here takes
+// effect even though dates have already been constructed by then — but that is a
+// runtime detail, so the suite below proves the pin instead of assuming it.
 beforeAll(() => {
   vi.stubEnv('TZ', 'Europe/Oslo')
 })
 
 afterAll(() => {
   vi.unstubAllEnvs()
+})
+
+describe('timezone pinning', () => {
+  it('really runs in the DST-observing zone the DST cases below assume', () => {
+    // Without this the spring-forward cases would pass under UTC for the wrong
+    // reason — UTC has no transition to mishandle. Fail loudly instead.
+    expect(new Date(2026, 6, 1).getTimezoneOffset()).toBe(-120) // CEST, summer
+    expect(new Date(2026, 0, 1).getTimezoneOffset()).toBe(-60) // CET, winter
+  })
 })
 
 const defaultSettings: WorkSettings = {
@@ -254,6 +266,30 @@ describe('calculateDayWithLivePunch across midnight', () => {
       '2026-04-16',
     )
     expect(result!.grossMinutes).toBe(23 * 60 + 59 - 5)
+  })
+
+  it('reads zero at exactly the start time, whichever day the punch-in is dated', () => {
+    // The wrap needs a strictly negative difference: handlePunchOut refuses an
+    // end time equal to the start as a zero-length punch, so at equality there
+    // is no recorded session for the estimate to disagree with. One minute
+    // either side the two line up exactly.
+    expect(
+      calculateDayWithLivePunch(makeDate(9, 0), '09:00', [], false, [], defaultSettings, '2026-04-17')!.grossMinutes,
+    ).toBe(0)
+    expect(
+      calculateDayWithLivePunch(makeDate(9, 0), '09:00', [], false, [], defaultSettings, '2026-04-16')!.grossMinutes,
+    ).toBe(0)
+    expect(
+      calculateDayWithLivePunch(makeDate(9, 0), '09:00', [], false, [], defaultSettings, null)!.grossMinutes,
+    ).toBe(0)
+    // 09:01 punches out as a plain 1-minute session...
+    expect(
+      calculateDayWithLivePunch(makeDate(9, 1), '09:00', [], false, [], defaultSettings, '2026-04-16')!.grossMinutes,
+    ).toBe(1)
+    // ...and 08:59 as a wrapped one, one minute short of the full day.
+    expect(
+      calculateDayWithLivePunch(makeDate(8, 59), '09:00', [], false, [], defaultSettings, '2026-04-16')!.grossMinutes,
+    ).toBe(24 * 60 - 1)
   })
 
   it('gives up on a punch-in older than the allowed wrap instead of counting the nights', () => {
