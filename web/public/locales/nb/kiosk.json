@@ -5,5 +5,19 @@
   "ms": "m/s",
   "noWeatherData": "Ingen værdata",
   "polarDay": "Midnattssol — solen går ikke ned i dag",
-  "polarNight": "Mørketid — solen går ikke opp i dag"
+  "polarNight": "Mørketid — solen går ikke opp i dag",
+  "state": {
+    "loading": {
+      "title": "Kobler til…",
+      "body": "Venter på første oppdatering fra serveren."
+    },
+    "rejected": {
+      "title": "Kiosk-token avvist",
+      "body": "Denne skjermen er ikke lenger autorisert. Skann QR-koden fra Innstillinger på nytt for å sette den opp igjen."
+    },
+    "unreachable": {
+      "title": "Får ikke kontakt med serveren",
+      "body": "Kiosken prøver på nytt automatisk. Sjekk nettverksforbindelsen."
+    }
+  }
 }

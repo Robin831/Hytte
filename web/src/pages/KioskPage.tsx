@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo, Component } from 'react'
 import type { ReactNode, ErrorInfo } from 'react'
 import { useSearchParams } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import KioskClock from '../components/kiosk/KioskClock'
 import KioskBusDepartures from '../components/kiosk/KioskBusDepartures'
 import KioskWeather from '../components/kiosk/KioskWeather'
 import type { ForecastData } from '../components/kiosk/KioskWeather'
 import KioskSunrise from '../components/kiosk/KioskSunrise'
 import KioskStaleBadge from '../components/kiosk/KioskStaleBadge'
+import KioskStatusScreen from '../components/kiosk/KioskStatusScreen'
 import mockData from '../mocks/kioskData.json'
 import { useWakeLock } from '../hooks/useWakeLock'
 
@@ -144,8 +146,17 @@ function relativizeMockData(mock: typeof mockData): KioskData {
 
 const KIOSK_TOKEN_KEY = 'hytte_kiosk_token'
 
+// Outcome of the most recent fetch attempt. 'loading' covers the window before
+// the first attempt resolves; 'rejected' means the kiosk token was refused
+// (401/403); 'unreachable' covers network errors and every other non-2xx.
+type FetchState = 'loading' | 'ok' | 'rejected' | 'unreachable'
+
 function KioskPageInner() {
   const [searchParams] = useSearchParams()
+  // useSuspense is off and every string carries an English default so an
+  // unattended kiosk still renders these panels when the locale JSON cannot be
+  // fetched — which is exactly the situation the 'unreachable' panel reports.
+  const { t } = useTranslation('kiosk', { useSuspense: false })
 
   // Keep the screen awake while the kiosk is displayed (re-acquires on
   // visibility change; no-ops on browsers without the Wake Lock API).
@@ -180,10 +191,13 @@ function KioskPageInner() {
   const [apiData, setApiData] = useState<KioskData | null>(null)
   const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null)
   const [now, setNow] = useState<number>(() => Date.now())
+  const [fetchState, setFetchState] = useState<FetchState>('loading')
 
-  // When no token is present, display relativized mock data; otherwise show API data (or mock while loading)
-  const data = useMemo<KioskData>(() => {
-    if (token && apiData) return apiData
+  // Mock data is exclusive to the token-less demo path. A real kiosk must never
+  // display fabricated departures or weather, so it stays null until the first
+  // successful fetch and renders a loading/error screen instead.
+  const data = useMemo<KioskData | null>(() => {
+    if (token) return apiData
     return relativizeMockData(mockData)
   }, [token, apiData])
 
@@ -263,6 +277,7 @@ function KioskPageInner() {
         // Bail if unmounted or superseded by a newer fetch.
         if (cancelled || myRequestId !== requestId) return
         if (!res.ok) {
+          setFetchState(res.status === 401 || res.status === 403 ? 'rejected' : 'unreachable')
           failureCount += 1
           scheduleNext(backoffDelay())
           return
@@ -271,12 +286,14 @@ function KioskPageInner() {
         if (cancelled || myRequestId !== requestId) return
         setApiData(json)
         setLastSuccessAt(Date.now())
+        setFetchState('ok')
         failureCount = 0
         scheduleNext(POLL_INTERVAL_MS)
       } catch {
         // Network failure or abort. If the abort came from unmount/supersede,
         // skip; otherwise treat as a failure and back off.
         if (cancelled || myRequestId !== requestId) return
+        setFetchState('unreachable')
         failureCount += 1
         scheduleNext(backoffDelay())
       }
@@ -344,6 +361,48 @@ function KioskPageInner() {
     !!token &&
     lastSuccessAt !== null &&
     now - lastSuccessAt > STALE_THRESHOLD_MS
+
+  // `data` is only ever null on the tokened path before the first successful
+  // fetch, so these screens never replace the demo layout. Polling continues
+  // underneath, so a later success swaps the panel for live data; and once data
+  // has arrived a subsequent failure falls through to the normal layout, where
+  // the stale badge takes over.
+  if (!data) {
+    if (fetchState === 'rejected') {
+      return (
+        <KioskStatusScreen
+          tone="rejected"
+          testId="kiosk-token-rejected"
+          title={t('state.rejected.title', 'Kiosk token rejected')}
+          body={t(
+            'state.rejected.body',
+            'This screen is no longer authorised. Rescan the QR code from Settings to set it up again.'
+          )}
+        />
+      )
+    }
+    if (fetchState === 'unreachable') {
+      return (
+        <KioskStatusScreen
+          tone="unreachable"
+          testId="kiosk-unreachable"
+          title={t('state.unreachable.title', 'Cannot reach the server')}
+          body={t(
+            'state.unreachable.body',
+            'The kiosk keeps retrying automatically. Check the network connection.'
+          )}
+        />
+      )
+    }
+    return (
+      <KioskStatusScreen
+        tone="loading"
+        testId="kiosk-loading"
+        title={t('state.loading.title', 'Connecting…')}
+        body={t('state.loading.body', 'Waiting for the first update from the server.')}
+      />
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col overflow-hidden pb-16">

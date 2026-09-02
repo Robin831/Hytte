@@ -4,6 +4,16 @@ import { act, render, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router'
 import KioskPage from './KioskPage'
 
+// KioskPage resolves its status-screen copy through react-i18next; the real
+// backend loads locale JSON over HTTP, so resolve to the English defaults the
+// page passes in.
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, defaultValue?: string) => defaultValue ?? key,
+    i18n: { language: 'en' },
+  }),
+}))
+
 vi.mock('../components/kiosk/KioskClock', () => ({
   default: () => <div data-testid="mock-clock" />,
 }))
@@ -456,5 +466,158 @@ describe('KioskPage – visibility-aware polling and backoff', () => {
     expect(attachedVisibility).toBe(false)
 
     addSpy.mockRestore()
+  })
+})
+
+describe('KioskPage – fetch state screens', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'] })
+    vi.setSystemTime(new Date('2026-05-27T12:00:00Z'))
+    try { localStorage.removeItem('hytte_kiosk_token') } catch { /* ignore */ }
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+    vi.clearAllMocks()
+  })
+
+  it('shows the loading screen while the first fetch is still in flight', async () => {
+    const fetchMock = vi.fn(() => new Promise<Response>(() => {}))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderKiosk('/kiosk?token=test-token')
+
+    await act(async () => { await flushMicrotasks() })
+
+    expect(screen.getByTestId('kiosk-loading')).toBeInTheDocument()
+    // None of the normal kiosk panels (and therefore no mock data) are rendered.
+    expect(screen.queryByTestId('mock-buses')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('mock-weather')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('mock-sunrise')).not.toBeInTheDocument()
+  })
+
+  it.each([401, 403])('shows the token-rejected panel after a %i response', async (status) => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: false, status, json: () => Promise.resolve({}) } as Response),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderKiosk('/kiosk?token=test-token')
+
+    await act(async () => { await flushMicrotasks() })
+
+    const panel = screen.getByTestId('kiosk-token-rejected')
+    expect(panel).toBeInTheDocument()
+    expect(panel.textContent).toMatch(/rejected/i)
+    expect(panel.textContent).toMatch(/QR code/i)
+    expect(screen.queryByTestId('mock-buses')).not.toBeInTheDocument()
+  })
+
+  it('shows the unreachable panel after a 500 response, with copy distinct from the rejected panel', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) } as Response),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { unmount } = renderKiosk('/kiosk?token=test-token')
+    await act(async () => { await flushMicrotasks() })
+
+    const unreachableText = screen.getByTestId('kiosk-unreachable').textContent
+    expect(unreachableText).toMatch(/reach the server/i)
+    expect(screen.queryByTestId('kiosk-token-rejected')).not.toBeInTheDocument()
+    unmount()
+
+    // Same page, rejected token: the copy must be visibly different.
+    vi.stubGlobal('fetch', vi.fn(() =>
+      Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) } as Response),
+    ))
+    renderKiosk('/kiosk?token=test-token')
+    await act(async () => { await flushMicrotasks() })
+
+    expect(screen.getByTestId('kiosk-token-rejected').textContent).not.toEqual(unreachableText)
+  })
+
+  it('shows the unreachable panel after a network failure', async () => {
+    const fetchMock = vi.fn(() => Promise.reject(new Error('network down')))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderKiosk('/kiosk?token=test-token')
+
+    await act(async () => { await flushMicrotasks() })
+
+    expect(screen.getByTestId('kiosk-unreachable')).toBeInTheDocument()
+    expect(screen.queryByTestId('mock-buses')).not.toBeInTheDocument()
+  })
+
+  it('keeps polling behind the error panel and replaces it once a fetch succeeds', async () => {
+    let succeed = false
+    const fetchMock = vi.fn(() => {
+      if (succeed) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(apiPayload) } as Response)
+      }
+      return Promise.reject(new Error('network down'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderKiosk('/kiosk?token=test-token')
+
+    await act(async () => { await flushMicrotasks() })
+    expect(screen.getByTestId('kiosk-unreachable')).toBeInTheDocument()
+
+    // The backoff timer is still running while the panel is displayed.
+    succeed = true
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000)
+      await flushMicrotasks()
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(screen.queryByTestId('kiosk-unreachable')).not.toBeInTheDocument()
+    expect(screen.getByTestId('mock-buses')).toBeInTheDocument()
+  })
+
+  it('keeps last-known data and the stale badge after a failure that follows a success', async () => {
+    let succeed = true
+    const fetchMock = vi.fn(() => {
+      if (succeed) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve(apiPayload) } as Response)
+      }
+      return Promise.reject(new Error('network down'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderKiosk('/kiosk?token=test-token')
+
+    await act(async () => { await flushMicrotasks() })
+    expect(screen.getByTestId('mock-buses')).toBeInTheDocument()
+
+    succeed = false
+    await act(async () => {
+      vi.advanceTimersByTime(90_000)
+      await flushMicrotasks()
+    })
+
+    expect(screen.queryByTestId('kiosk-unreachable')).not.toBeInTheDocument()
+    expect(screen.getByTestId('mock-buses')).toBeInTheDocument()
+    expect(screen.getByTestId('kiosk-stale-badge')).toBeInTheDocument()
+  })
+
+  it('renders the demo layout immediately when no token is present', async () => {
+    const fetchMock = vi.fn(() => Promise.reject(new Error('should not be called')))
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderKiosk('/kiosk')
+
+    await act(async () => { await flushMicrotasks() })
+
+    expect(screen.getByTestId('mock-buses')).toBeInTheDocument()
+    expect(screen.queryByTestId('kiosk-loading')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('kiosk-unreachable')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('kiosk-token-rejected')).not.toBeInTheDocument()
   })
 })

@@ -5,5 +5,19 @@
   "ms": "m/s",
   "noWeatherData": "No weather data",
   "polarDay": "Midnight sun — sun does not set today",
-  "polarNight": "Polar night — sun does not rise today"
+  "polarNight": "Polar night — sun does not rise today",
+  "state": {
+    "loading": {
+      "title": "Connecting…",
+      "body": "Waiting for the first update from the server."
+    },
+    "rejected": {
+      "title": "Kiosk token rejected",
+      "body": "This screen is no longer authorised. Rescan the QR code from Settings to set it up again."
+    },
+    "unreachable": {
+      "title": "Cannot reach the server",
+      "body": "The kiosk keeps retrying automatically. Check the network connection."
+    }
+  }
 }

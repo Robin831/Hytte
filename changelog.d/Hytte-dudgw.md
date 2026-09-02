@@ -1,0 +1,2 @@
+category: Fixed
+- **Kiosk no longer shows demo data when its token fails** - A kiosk started with a token now shows a loading screen until its first successful fetch, and a full-screen error panel afterwards — distinguishing a rejected kiosk token (rescan the QR code) from an unreachable server — instead of silently displaying fabricated departures and weather from the demo fixture. Polling and backoff keep running behind the panel, and once live data has been shown a later failure keeps it on screen with the existing stale badge. (Hytte-dudgw)
