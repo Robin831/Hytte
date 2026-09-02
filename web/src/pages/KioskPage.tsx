@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo, Component } from 'react'
 import type { ReactNode, ErrorInfo } from 'react'
 import { useSearchParams } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import KioskClock from '../components/kiosk/KioskClock'
 import KioskBusDepartures from '../components/kiosk/KioskBusDepartures'
 import KioskWeather from '../components/kiosk/KioskWeather'
 import type { ForecastData } from '../components/kiosk/KioskWeather'
 import KioskSunrise from '../components/kiosk/KioskSunrise'
 import KioskStaleBadge from '../components/kiosk/KioskStaleBadge'
+import KioskStatusScreen from '../components/kiosk/KioskStatusScreen'
 import mockData from '../mocks/kioskData.json'
 import { useWakeLock } from '../hooks/useWakeLock'
 
@@ -144,8 +146,17 @@ function relativizeMockData(mock: typeof mockData): KioskData {
 
 const KIOSK_TOKEN_KEY = 'hytte_kiosk_token'
 
+// Outcome of the most recent fetch attempt. 'loading' covers the window before
+// the first attempt resolves; 'rejected' means the kiosk token was refused
+// (401/403); 'unreachable' covers network errors and every other non-2xx.
+type FetchState = 'loading' | 'ok' | 'rejected' | 'unreachable'
+
 function KioskPageInner() {
   const [searchParams] = useSearchParams()
+  // useSuspense is off and every string carries an English default so an
+  // unattended kiosk still renders these panels when the locale JSON cannot be
+  // fetched — which is exactly the situation the 'unreachable' panel reports.
+  const { t } = useTranslation('kiosk', { useSuspense: false })
 
   // Keep the screen awake while the kiosk is displayed (re-acquires on
   // visibility change; no-ops on browsers without the Wake Lock API).
@@ -177,15 +188,35 @@ function KioskPageInner() {
   })
   const token = urlToken ?? storedToken
 
-  const [apiData, setApiData] = useState<KioskData | null>(null)
-  const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null)
   const [now, setNow] = useState<number>(() => Date.now())
+  // Both the payload and the outcome are stored together with the token that
+  // produced them, so a rescan (token change) implicitly resets them during
+  // render. Keying matters for correctness, not just tidiness: kiosk tokens are
+  // individually scoped (stop IDs, location, Netatmo user), so re-showing the
+  // previous token's departures, forecast and indoor readings under a new token
+  // would leak another screen's — and another household's — data. It also stops
+  // a kiosk sitting on the rejected panel from telling the user to rescan the QR
+  // code while the freshly scanned token's first request is still in flight.
+  const [apiResult, setApiResult] = useState<
+    { token: string | null; data: KioskData; at: number } | null
+  >(null)
+  const [fetchStatus, setFetchStatus] = useState<{ token: string | null; state: FetchState }>(
+    () => ({ token, state: 'loading' })
+  )
+  const fetchState: FetchState = fetchStatus.token === token ? fetchStatus.state : 'loading'
+  const activeResult = apiResult && apiResult.token === token ? apiResult : null
+  // Anchored to the current token too, so the stale badge never reports the
+  // previous token's success time.
+  const lastSuccessAt = activeResult ? activeResult.at : null
 
-  // When no token is present, display relativized mock data; otherwise show API data (or mock while loading)
-  const data = useMemo<KioskData>(() => {
-    if (token && apiData) return apiData
+  // Mock data is exclusive to the token-less demo path. A real kiosk must never
+  // display fabricated departures or weather, so it stays null until the first
+  // successful fetch under *this* token and renders a loading/error screen
+  // instead.
+  const data = useMemo<KioskData | null>(() => {
+    if (token) return activeResult ? activeResult.data : null
     return relativizeMockData(mockData)
-  }, [token, apiData])
+  }, [token, activeResult])
 
   useEffect(() => {
     if (!token) {
@@ -256,27 +287,40 @@ function KioskPageInner() {
       const myRequestId = requestId
 
       try {
-        const res = await fetch('/api/kiosk/data?token=' + encodeURIComponent(token!), {
+        // Send the token as a Bearer header rather than a query parameter so
+        // it never lands in reverse-proxy access logs. KioskAuth reads
+        // Authorization first and only falls back to ?token= (internal/kiosk/
+        // auth.go), and /api/kiosk/data is the sole endpoint it guards, so no
+        // other request depends on the query form. Bookmarked /kiosk?token=...
+        // URLs keep working: that query parameter is consumed client-side by
+        // this page (and persisted to localStorage), never sent to the API.
+        const res = await fetch('/api/kiosk/data', {
           credentials: 'include',
+          headers: { Authorization: 'Bearer ' + token! },
           signal: myController?.signal,
         })
         // Bail if unmounted or superseded by a newer fetch.
         if (cancelled || myRequestId !== requestId) return
         if (!res.ok) {
+          setFetchStatus({
+            token,
+            state: res.status === 401 || res.status === 403 ? 'rejected' : 'unreachable',
+          })
           failureCount += 1
           scheduleNext(backoffDelay())
           return
         }
         const json: KioskData = await res.json()
         if (cancelled || myRequestId !== requestId) return
-        setApiData(json)
-        setLastSuccessAt(Date.now())
+        setApiResult({ token, data: json, at: Date.now() })
+        setFetchStatus({ token, state: 'ok' })
         failureCount = 0
         scheduleNext(POLL_INTERVAL_MS)
       } catch {
         // Network failure or abort. If the abort came from unmount/supersede,
         // skip; otherwise treat as a failure and back off.
         if (cancelled || myRequestId !== requestId) return
+        setFetchStatus({ token, state: 'unreachable' })
         failureCount += 1
         scheduleNext(backoffDelay())
       }
@@ -344,6 +388,54 @@ function KioskPageInner() {
     !!token &&
     lastSuccessAt !== null &&
     now - lastSuccessAt > STALE_THRESHOLD_MS
+
+  // A rejected token means the screen is deauthorised, so it takes precedence
+  // over any data we may already hold: a wall-mounted kiosk whose token is
+  // revoked would otherwise keep rendering its last payload forever behind
+  // nothing but the small stale badge, and never tell anyone to rescan.
+  // (The token is deliberately left in localStorage — a transient 401 should
+  // not demote the kiosk to the token-less demo layout on the next reload.)
+  if (token && fetchState === 'rejected') {
+    return (
+      <KioskStatusScreen
+        tone="rejected"
+        title={t('state.rejected.title', { defaultValue: 'Kiosk token rejected' })}
+        body={t('state.rejected.body', {
+          defaultValue:
+            'This screen is no longer authorised. Rescan the QR code from Settings to set it up again.',
+        })}
+      />
+    )
+  }
+
+  // Beyond that, `data` is only null on the tokened path before the first
+  // successful fetch, so these screens never replace the demo layout. Polling
+  // continues underneath, so a later success swaps the panel for live data; and
+  // once data has arrived a non-auth failure falls through to the normal
+  // layout, where the stale badge takes over.
+  if (!data) {
+    if (fetchState === 'unreachable') {
+      return (
+        <KioskStatusScreen
+          tone="unreachable"
+          title={t('state.unreachable.title', { defaultValue: 'Cannot reach the server' })}
+          body={t('state.unreachable.body', {
+            defaultValue:
+              'The kiosk keeps retrying automatically. Check the network connection.',
+          })}
+        />
+      )
+    }
+    return (
+      <KioskStatusScreen
+        tone="loading"
+        title={t('state.loading.title', { defaultValue: 'Connecting…' })}
+        body={t('state.loading.body', {
+          defaultValue: 'Waiting for the first update from the server.',
+        })}
+      />
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col overflow-hidden pb-16">
