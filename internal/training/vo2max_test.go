@@ -184,6 +184,7 @@ type vo2maxResponse struct {
 	History []VO2maxEstimate `json:"history"`
 	Latest  *VO2maxEstimate  `json:"latest"`
 	Trend   string           `json:"trend"`
+	Summary *vo2maxSummary   `json:"summary"`
 }
 
 // TestGetVO2maxHandler_Empty tests the handler when no estimates exist.
@@ -219,12 +220,17 @@ func TestGetVO2maxHandler_Empty(t *testing.T) {
 	if resp.Trend != "stable" {
 		t.Errorf("expected trend 'stable' for empty history, got %q", resp.Trend)
 	}
+	if resp.Summary != nil {
+		t.Errorf("expected summary to be null for empty history, got %+v", resp.Summary)
+	}
 }
 
-// TestGetVO2maxHandler_WithHistory tests the handler returning history and trend.
+// TestGetVO2maxHandler_WithHistory tests the handler returning history, the
+// median/range summary and a trend suppressed by the estimates' spread.
 func TestGetVO2maxHandler_WithHistory(t *testing.T) {
 	db := setupTestDB(t)
-	// Insert 5 workouts with increasing VO2max (46, 47, 48, 49, 50) — should be "improving".
+	// Insert 5 workouts with VO2max 46..50 — a 4-unit spread, which is estimator
+	// scatter rather than a readable slope, so the trend must be "noisy".
 	insertWorkoutsForVO2max(t, db, 5)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/training/vo2max", nil)
@@ -251,8 +257,26 @@ func TestGetVO2maxHandler_WithHistory(t *testing.T) {
 	if resp.Latest.VO2max != 50 {
 		t.Errorf("expected latest VO2max 50, got %v", resp.Latest.VO2max)
 	}
-	if resp.Trend != "improving" {
-		t.Errorf("expected trend 'improving' for ascending VO2max values, got %q", resp.Trend)
+	if resp.Trend != "noisy" {
+		t.Errorf("expected trend 'noisy' for a 4-unit spread, got %q", resp.Trend)
+	}
+	if resp.Summary == nil {
+		t.Fatal("expected a summary alongside the history")
+	}
+	if resp.Summary.Count != 5 {
+		t.Errorf("expected summary count 5, got %d", resp.Summary.Count)
+	}
+	if resp.Summary.Median != 48 {
+		t.Errorf("expected summary median 48, got %v", resp.Summary.Median)
+	}
+	if resp.Summary.Low != 46 || resp.Summary.High != 50 {
+		t.Errorf("expected summary range 46-50, got %v-%v", resp.Summary.Low, resp.Summary.High)
+	}
+	if resp.Summary.Spread != 4 {
+		t.Errorf("expected summary spread 4, got %v", resp.Summary.Spread)
+	}
+	if !resp.Summary.Noisy {
+		t.Error("expected summary to be flagged noisy for a 4-unit spread")
 	}
 }
 
@@ -265,9 +289,18 @@ func TestComputeVO2maxTrend(t *testing.T) {
 	}{
 		{"empty", nil, "stable"},
 		{"single", []float64{50}, "stable"},
-		{"improving", []float64{45, 47, 49, 51, 53}, "improving"},
-		{"declining", []float64{55, 53, 51, 49, 47}, "declining"},
+		{"improving", []float64{48.0, 48.5, 49.0, 49.5, 50.0}, "improving"},
+		{"declining", []float64{50.0, 49.5, 49.0, 48.5, 48.0}, "declining"},
 		{"stable", []float64{50, 50.1, 49.9, 50.2, 50}, "stable"},
+		// A wide spread is estimator scatter, not fitness change: no trend to read,
+		// however cleanly the values happen to line up.
+		{"noisy ascending", []float64{45, 47, 49, 51, 53}, "noisy"},
+		{"noisy scattered", []float64{37, 56, 44, 51, 41}, "noisy"},
+		// Only the trend window is considered, so an old outlier cannot poison a
+		// tight run of recent estimates.
+		{"old outlier outside window", []float64{37, 48.0, 48.5, 49.0, 49.5, 50.0}, "improving"},
+		// Zero values are placeholders, not estimates, and must not widen the range.
+		{"zeros ignored", []float64{0, 50, 50.1, 49.9, 50.2, 50}, "stable"},
 	}
 
 	for _, tc := range cases {
@@ -276,11 +309,61 @@ func TestComputeVO2maxTrend(t *testing.T) {
 			for _, v := range tc.values {
 				history = append(history, VO2maxEstimate{VO2max: v})
 			}
-			got := computeVO2maxTrend(history)
+			got, _ := computeVO2maxTrend(history)
 			if got != tc.expected {
 				t.Errorf("expected %q, got %q", tc.expected, got)
 			}
 		})
+	}
+}
+
+// TestComputeVO2maxSummary checks the median/range reported alongside the trend.
+func TestComputeVO2maxSummary(t *testing.T) {
+	history := []VO2maxEstimate{
+		{VO2max: 0}, // placeholder, ignored
+		{VO2max: 37},
+		{VO2max: 56},
+		{VO2max: 44},
+		{VO2max: 51},
+		{VO2max: 41},
+	}
+
+	trend, summary := computeVO2maxTrend(history)
+	if trend != "noisy" {
+		t.Errorf("expected trend 'noisy', got %q", trend)
+	}
+	if summary == nil {
+		t.Fatal("expected a summary")
+	}
+	if summary.Count != 5 {
+		t.Errorf("expected count 5 (zero excluded), got %d", summary.Count)
+	}
+	if summary.Median != 44 {
+		t.Errorf("expected median 44, got %v", summary.Median)
+	}
+	if summary.Low != 37 || summary.High != 56 {
+		t.Errorf("expected range 37-56, got %v-%v", summary.Low, summary.High)
+	}
+	if summary.Spread != 19 {
+		t.Errorf("expected spread 19, got %v", summary.Spread)
+	}
+	if !summary.Noisy {
+		t.Error("expected the 19-unit spread to be flagged noisy")
+	}
+
+	// An even-sized window averages the two middle values.
+	_, evenSummary := computeVO2maxTrend([]VO2maxEstimate{{VO2max: 48}, {VO2max: 49}})
+	if evenSummary == nil || evenSummary.Median != 48.5 {
+		t.Errorf("expected median 48.5 for an even window, got %+v", evenSummary)
+	}
+
+	// A single estimate still reports a summary, with no spread to speak of.
+	singleTrend, singleSummary := computeVO2maxTrend([]VO2maxEstimate{{VO2max: 44.2}})
+	if singleTrend != "stable" {
+		t.Errorf("expected trend 'stable' for a single estimate, got %q", singleTrend)
+	}
+	if singleSummary == nil || singleSummary.Count != 1 || singleSummary.Median != 44.2 || singleSummary.Noisy {
+		t.Errorf("unexpected summary for a single estimate: %+v", singleSummary)
 	}
 }
 

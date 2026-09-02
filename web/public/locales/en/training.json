@@ -276,7 +276,9 @@
     },
     "vo2max": {
       "title": "VO2max History",
-      "latest": "Latest: {{value}} mL/kg/min",
+      "median": "Median: {{value}} mL/kg/min",
+      "range": "Range: {{low}}–{{high}} (n={{count}})",
+      "noisy": "Spread {{spread}} – too noisy to read a trend",
       "trendLabel": "Trend: {{trend}}",
       "trend": {
         "improving": "Improving",

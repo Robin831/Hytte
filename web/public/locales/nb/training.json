@@ -276,7 +276,9 @@
     },
     "vo2max": {
       "title": "VO2max-historikk",
-      "latest": "Siste: {{value}} mL/kg/min",
+      "median": "Median: {{value}} mL/kg/min",
+      "range": "Område: {{low}}–{{high}} (n={{count}})",
+      "noisy": "Spredning {{spread}} – for mye støy til å lese en trend",
       "trendLabel": "Trend: {{trend}}",
       "trend": {
         "improving": "Bedres",

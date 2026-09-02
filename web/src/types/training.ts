@@ -234,10 +234,24 @@ export interface VO2maxEstimate {
   estimated_at: string
 }
 
+// VO2maxSummary is the median plus min-to-max range of the recent per-workout
+// estimates the trend is derived from. `noisy` means the spread is wide enough
+// that the estimates are scatter rather than fitness change — the backend
+// reports trend "noisy" in that case and the UI must not draw a direction.
+export interface VO2maxSummary {
+  count: number
+  median: number
+  low: number
+  high: number
+  spread: number
+  noisy: boolean
+}
+
 export interface VO2maxResponse {
   history: VO2maxEstimate[]
   latest: VO2maxEstimate | null
-  trend: 'improving' | 'declining' | 'stable'
+  trend: 'improving' | 'declining' | 'stable' | 'noisy'
+  summary: VO2maxSummary | null
 }
 
 export interface RacePrediction {

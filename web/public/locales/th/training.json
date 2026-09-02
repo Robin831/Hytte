@@ -276,7 +276,9 @@
     },
     "vo2max": {
       "title": "ประวัติ VO2max",
-      "latest": "ล่าสุด: {{value}} mL/kg/min",
+      "median": "มัธยฐาน: {{value}} mL/kg/min",
+      "range": "ช่วง: {{low}}–{{high}} (n={{count}})",
+      "noisy": "การกระจาย {{spread}} – ผันผวนเกินกว่าจะบอกแนวโน้มได้",
       "trendLabel": "แนวโน้ม: {{trend}}",
       "trend": {
         "improving": "ดีขึ้น",

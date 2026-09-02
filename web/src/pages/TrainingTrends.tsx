@@ -110,18 +110,38 @@ function VO2maxChart({ data }: VO2maxChartProps) {
     data.trend === 'declining' ? 'text-red-400' :
     'text-gray-400'
 
+  // The per-workout estimate is noisy, so the header reports the median of the
+  // recent estimates with their range rather than the latest single value. When
+  // the backend flags the spread as noise there is no slope to read, so the
+  // trend line is replaced by the caveat.
+  const summary = data.summary
+  const oneDecimal = { maximumFractionDigits: 1 }
+
   return (
     <div className="bg-gray-800 rounded-xl p-6 mb-6">
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-start justify-between gap-3 mb-1">
         <h2 className="text-lg font-semibold">{t('trends.vo2max.title')}</h2>
-        {data.latest && (
+        {summary && (
           <div className="text-right">
             <p className="text-sm text-gray-300">
-              {t('trends.vo2max.latest', { value: formatNumber(data.latest.vo2max, { maximumFractionDigits: 1 }) })}
+              {t('trends.vo2max.median', { value: formatNumber(summary.median, oneDecimal) })}
             </p>
-            <p className={`text-xs ${trendColor}`}>
-              {t('trends.vo2max.trendLabel', { trend: trendLabel })}
+            <p className="text-xs text-gray-400">
+              {t('trends.vo2max.range', {
+                low: formatNumber(summary.low, oneDecimal),
+                high: formatNumber(summary.high, oneDecimal),
+                count: summary.count,
+              })}
             </p>
+            {summary.noisy ? (
+              <p className="text-xs text-amber-400">
+                {t('trends.vo2max.noisy', { spread: formatNumber(summary.spread, oneDecimal) })}
+              </p>
+            ) : (
+              <p className={`text-xs ${trendColor}`}>
+                {t('trends.vo2max.trendLabel', { trend: trendLabel })}
+              </p>
+            )}
           </div>
         )}
       </div>
