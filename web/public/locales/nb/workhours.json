@@ -108,7 +108,8 @@
     "deductions": "Fradrag",
     "overStandard": "+{{amount}} over standard",
     "atStandard": "Standarddag oppnådd",
-    "invalidStart": "Starttid er i fremtiden — kan ikke estimere"
+    "invalidStart": "Starttid er i fremtiden — kan ikke estimere",
+    "stalePunch": "Stemplet inn {{date}} og fortsatt åpen — stemple ut eller avbryt for å registrere timene"
   },
   "shortcuts": {
     "hint": "Hurtigtaster",

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import WorkHoursPage from './WorkHoursPage'
 import enWorkhours from '../../public/locales/en/workhours.json'
@@ -43,8 +43,13 @@ vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
 }))
 
+// Stand-in for locale formatting. It renders dd.mm.yyyy so a date that reached
+// the DOM without going through formatDate is distinguishable from one that did.
 vi.mock('../utils/formatDate', () => ({
-  formatDate: () => '2026-04-17',
+  formatDate: (value: string) => {
+    const [y, m, d] = String(value).split('T')[0].split('-')
+    return `${d}.${m}.${y}`
+  },
   formatTime: () => '14:00',
   toLocalDateString: () => '2026-04-17',
 }))
@@ -132,6 +137,102 @@ describe('WorkHoursPage live punch estimate UI', () => {
       const section = heading.closest('section')
       expect(section?.className).toContain('bg-green-900')
     })
+  })
+
+  it('keeps estimating an open session that started before midnight', async () => {
+    // Clock is 01:00 on the 17th; the punch-in was at 22:00 on the 16th.
+    vi.setSystemTime(new Date('2026-04-17T01:00:00'))
+    vi.stubGlobal('fetch', buildFetch({
+      '/api/workhours/punch-session': { session: { start_time: '22:00', date: '2026-04-16' } },
+      '/api/settings/preferences': {
+        preferences: { work_hours_lunch_minutes: '0', work_hours_rounding: '30' },
+      },
+    }))
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('If punched out now')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Start time is in the future — cannot estimate')).not.toBeInTheDocument()
+    // 22:00 -> 01:00 is 3h of gross time
+    await waitFor(() => {
+      expect(screen.getAllByText('3:00').length).toBeGreaterThan(0)
+    })
+  })
+
+  it('keeps estimating when the clock ticks past midnight on a punch-in made in this session', async () => {
+    // The reload path seeds punchDate from the server; this is the live path —
+    // punch in through the UI at 22:00 and let the 60s tick carry the page over
+    // midnight without ever remounting. setInterval is faked so that tick can be
+    // advanced by hand.
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    vi.setSystemTime(new Date('2026-04-16T22:00:00'))
+    vi.stubGlobal('fetch', buildFetch({
+      '/api/workhours/punch-in': {},
+      '/api/settings/preferences': {
+        preferences: { work_hours_lunch_minutes: '0', work_hours_rounding: '30' },
+      },
+    }))
+    renderPage()
+    await waitFor(() => expect(screen.getByLabelText('Punch in')).toBeInTheDocument())
+
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Punch in'))
+    })
+    await waitFor(() => expect(screen.getByText('If punched out now')).toBeInTheDocument())
+
+    // Midnight passes while the page stays mounted.
+    vi.setSystemTime(new Date('2026-04-17T01:00:00'))
+    await act(async () => {
+      vi.advanceTimersByTime(60_000)
+    })
+
+    expect(screen.queryByText('Start time is in the future — cannot estimate')).not.toBeInTheDocument()
+    expect(screen.getByText('If punched out now')).toBeInTheDocument()
+    // 22:00 -> 01:00 is 3h of gross time
+    expect(screen.getAllByText('3:00').length).toBeGreaterThan(0)
+
+    // Cancelling clears the punch date along with the punch itself.
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Cancel'))
+    })
+    expect(screen.queryByText('If punched out now')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Punch in')).toBeInTheDocument()
+  })
+
+  it('hides the estimate when a different day than the punch-in is being viewed', async () => {
+    // The estimate adds the viewed day's sessions and deductions to the punch's
+    // elapsed time, so on another day it would describe neither day.
+    vi.setSystemTime(new Date('2026-04-17T01:00:00'))
+    vi.stubGlobal('fetch', buildFetch({
+      '/api/workhours/punch-session': { session: { start_time: '22:00', date: '2026-04-16' } },
+    }))
+    renderPage()
+    await waitFor(() => expect(screen.getByText('If punched out now')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByLabelText('Next day'))
+    await waitFor(() => expect(screen.queryByText('If punched out now')).not.toBeInTheDocument())
+    expect(screen.queryByText('Start time is in the future — cannot estimate')).not.toBeInTheDocument()
+
+    // Back on the punch-in's own day it returns.
+    fireEvent.click(screen.getByLabelText('Previous day'))
+    await waitFor(() => expect(screen.getByText('If punched out now')).toBeInTheDocument())
+  })
+
+  it('flags a punch-in left open for more than a day instead of estimating', async () => {
+    // Clock is on the 17th; the punch-in is from the 15th — forgotten, not running.
+    vi.setSystemTime(new Date('2026-04-17T10:00:00'))
+    vi.stubGlobal('fetch', buildFetch({
+      '/api/workhours/punch-session': { session: { start_time: '08:00', date: '2026-04-15' } },
+    }))
+    renderPage()
+    await waitFor(() => {
+      // The date goes through formatDate, so it reads 15.04.2026, not the raw ISO string.
+      expect(
+        screen.getByText('Punched in on 15.04.2026 and still open — punch out or cancel it to record the hours'),
+      ).toBeInTheDocument()
+    })
+    expect(screen.queryByText('If punched out now')).not.toBeInTheDocument()
+    expect(screen.queryByText('Start time is in the future — cannot estimate')).not.toBeInTheDocument()
   })
 
   it('registers a 60-second interval to refresh the live estimate when punched in', async () => {
