@@ -355,12 +355,20 @@ function KioskPageInner() {
   // badge, and the minute-derived night mode / pixel-shift offset. Both read
   // `now`, so one interval is enough — neither feature adds a timer of its own.
   //
+  // The effect stays gated on a token and a first successful fetch: a healthy
+  // kiosk that has never fetched successfully produces zero ticks. Nothing is
+  // lost by that — without data the page renders a full-screen status panel,
+  // which uses neither the badge nor the dimmed palette, and the token-less
+  // demo path is a preview rather than a wall display.
+  //
   // The tick fires every 5 s but deliberately skips the state update (and
   // therefore the re-render) when nothing observable has changed: low-power
   // wall-mounted devices should not repaint once per tick all day. A re-render
   // happens when either
   //   * the local minute rolls over — night mode and the pixel-shift offset
-  //     are both pure functions of minutes-of-day, or
+  //     are both pure functions of minutes-of-day, so they are observed up to
+  //     one tick (5 s) after the boundary they belong to, which is invisible
+  //     for a palette swap and a 3px nudge, or
   //   * we are within one tick of the stale threshold or already past it, so
   //     the badge age stays accurate.
   //
@@ -368,21 +376,17 @@ function KioskPageInner() {
   // the staleness half is always anchored to the most recent success and a
   // recovery fetch automatically resets it.
   useEffect(() => {
+    if (!token || lastSuccessAt === null) return
     const id = setInterval(() => {
       const t = Date.now()
       setNow((prev) => {
         if (Math.floor(t / 60_000) !== Math.floor(prev / 60_000)) return t
-        if (
-          lastSuccessAt !== null &&
-          t - lastSuccessAt >= STALE_THRESHOLD_MS - STALE_TICK_INTERVAL_MS
-        ) {
-          return t
-        }
+        if (t - lastSuccessAt >= STALE_THRESHOLD_MS - STALE_TICK_INTERVAL_MS) return t
         return prev
       })
     }, STALE_TICK_INTERVAL_MS)
     return () => clearInterval(id)
-  }, [lastSuccessAt])
+  }, [token, lastSuccessAt])
 
   const isStale =
     !!token &&
@@ -392,10 +396,12 @@ function KioskPageInner() {
   // Night mode and the burn-in pixel shift both ride the tick above: `now`
   // only changes when the minute rolls over (or the badge needs refreshing),
   // so these memos recompute at most once a minute.
-  const dimmed = useMemo(
-    () => isNightMode(new Date(now), data?.sun, data?.dim),
-    [now, data],
-  )
+  // Depend on the sun/dim slices rather than `data`: every successful poll
+  // hands back a fresh object identity, so keying on `data` would recompute on
+  // each fetch even though night mode only reads these two fields.
+  const sun = data?.sun
+  const dim = data?.dim
+  const dimmed = useMemo(() => isNightMode(new Date(now), sun, dim), [now, sun, dim])
   const shift = useMemo(() => pixelShift(new Date(now)), [now])
 
   // A rejected token means the screen is deauthorised, so it takes precedence
@@ -491,13 +497,14 @@ function KioskPageInner() {
           indoor={data.indoor ?? null}
           wind={data.wind ?? null}
           forecast={data.forecast ?? null}
+          dimmed={dimmed}
         />
 
         {/* Divider */}
         <div className={dividerClass} />
 
         {/* Sunrise / Sunset */}
-        <KioskSunrise sun={data.sun ?? null} />
+        <KioskSunrise sun={data.sun ?? null} dimmed={dimmed} />
       </div>
 
       {/* Outside the shifted wrapper on purpose: a non-none transform makes an

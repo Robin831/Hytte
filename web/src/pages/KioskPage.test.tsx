@@ -20,13 +20,19 @@ vi.mock('react-i18next', async () => {
   }
 })
 
-// The clock and departures mocks echo the `dimmed` prop back into the DOM so
-// the night-mode tests below can assert that KioskPage threads it down, without
-// having to reason about the real components' Tailwind classes.
+// All four panel mocks echo the `dimmed` prop back into the DOM so the
+// night-mode tests below can assert that KioskPage threads it down to every
+// panel, without having to reason about the real components' Tailwind classes.
+// (The real components' palettes are pinned by KioskDimmedPalette.test.tsx.)
+// The clock mock also counts its renders, so a test can assert that a kiosk
+// which has never fetched successfully produces no clock ticks at all.
+const renderCounts = vi.hoisted(() => ({ clock: 0 }))
+
 vi.mock('../components/kiosk/KioskClock', () => ({
-  default: ({ dimmed }: { dimmed?: boolean }) => (
-    <div data-testid="mock-clock" data-dimmed={dimmed ? 'true' : 'false'} />
-  ),
+  default: ({ dimmed }: { dimmed?: boolean }) => {
+    renderCounts.clock++
+    return <div data-testid="mock-clock" data-dimmed={dimmed ? 'true' : 'false'} />
+  },
 }))
 vi.mock('../components/kiosk/KioskBusDepartures', () => ({
   default: ({ dimmed }: { dimmed?: boolean }) => (
@@ -34,10 +40,14 @@ vi.mock('../components/kiosk/KioskBusDepartures', () => ({
   ),
 }))
 vi.mock('../components/kiosk/KioskWeather', () => ({
-  default: () => <div data-testid="mock-weather" />,
+  default: ({ dimmed }: { dimmed?: boolean }) => (
+    <div data-testid="mock-weather" data-dimmed={dimmed ? 'true' : 'false'} />
+  ),
 }))
 vi.mock('../components/kiosk/KioskSunrise', () => ({
-  default: () => <div data-testid="mock-sunrise" />,
+  default: ({ dimmed }: { dimmed?: boolean }) => (
+    <div data-testid="mock-sunrise" data-dimmed={dimmed ? 'true' : 'false'} />
+  ),
 }))
 
 const apiPayload = {
@@ -977,6 +987,37 @@ describe('isNightMode', () => {
     }
   })
 
+  it('accepts a single-digit hour in a window edge', () => {
+    // A hand-written "7:30" must behave exactly like "07:30" rather than being
+    // discarded as unparsable and silently falling back to the sun window.
+    expect(isNightMode(localTime(12, 0), NORMAL_SUN, { start: '7:30', end: '22:00' })).toBe(true)
+    expect(isNightMode(localTime(7, 0), NORMAL_SUN, { start: '7:30', end: '22:00' })).toBe(false)
+    expect(isNightMode(localTime(23, 0), NORMAL_SUN, { start: '7:30', end: '22:00' })).toBe(false)
+  })
+
+  it('warns when a configured window is unusable instead of failing silently', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    // Only one edge set — the fallback is deliberate, but it must be visible.
+    expect(isNightMode(localTime(23, 0), NORMAL_SUN, { start: '04:15' })).toBe(true)
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(String(warn.mock.calls[0][0])).toContain('04:15')
+
+    // Deduped per distinct value: isNightMode runs on every clock tick.
+    isNightMode(localTime(23, 30), NORMAL_SUN, { start: '04:15' })
+    expect(warn).toHaveBeenCalledTimes(1)
+
+    // A different unusable value warns again.
+    expect(isNightMode(localTime(23, 0), NORMAL_SUN, { start: 'zzz', end: 'qqq' })).toBe(true)
+    expect(warn).toHaveBeenCalledTimes(2)
+
+    // A usable window is silent.
+    expect(isNightMode(localTime(23, 0), NORMAL_SUN, { start: '22:00', end: '06:00' })).toBe(true)
+    expect(warn).toHaveBeenCalledTimes(2)
+
+    warn.mockRestore()
+  })
+
   it('ignores a half-configured or unparsable window instead of wedging', () => {
     // Only one edge set: fall back to the sun window.
     expect(isNightMode(localTime(23, 0), NORMAL_SUN, { start: '01:00' })).toBe(true)
@@ -1141,20 +1182,64 @@ describe('KioskPage – night mode on the clock tick', () => {
     expect(root()).toHaveAttribute('data-dimmed', 'false')
   })
 
-  it('passes dimmed down to the clock and departures strips', async () => {
+  it('passes dimmed down to every panel, not just the clock and departures', async () => {
     vi.setSystemTime(localTime(19, 58))
     await mountWith({ sun: NORMAL_SUN })
 
-    expect(screen.getByTestId('mock-clock')).toHaveAttribute('data-dimmed', 'false')
-    expect(screen.getByTestId('mock-buses')).toHaveAttribute('data-dimmed', 'false')
+    const panels = ['mock-clock', 'mock-buses', 'mock-weather', 'mock-sunrise']
+    for (const panel of panels) {
+      expect(screen.getByTestId(panel)).toHaveAttribute('data-dimmed', 'false')
+    }
 
     await act(async () => {
       vi.advanceTimersByTime(3 * 60_000)
       await flushMicrotasks()
     })
 
-    expect(screen.getByTestId('mock-clock')).toHaveAttribute('data-dimmed', 'true')
-    expect(screen.getByTestId('mock-buses')).toHaveAttribute('data-dimmed', 'true')
+    // Every panel dims together: leaving the weather strip's large white
+    // temperature or the yellow sun icons at day brightness would defeat the
+    // point of night mode on a wall-mounted screen.
+    for (const panel of panels) {
+      expect(screen.getByTestId(panel)).toHaveAttribute('data-dimmed', 'true')
+    }
+  })
+
+  it('produces no clock ticks on the token-less demo path', async () => {
+    // The tick is gated on a token and a first successful fetch, so the demo
+    // preview (and any kiosk that has never fetched) renders once and then
+    // stays put — a low-power wall panel should not repaint for nothing.
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('should not be called'))))
+    renderKiosk('/kiosk')
+    await act(async () => { await flushMicrotasks() })
+
+    const rendersAfterMount = renderCounts.clock
+    expect(rendersAfterMount).toBeGreaterThan(0)
+
+    await act(async () => {
+      vi.advanceTimersByTime(10 * 60_000)
+      await flushMicrotasks()
+    })
+
+    expect(renderCounts.clock).toBe(rendersAfterMount)
+  })
+
+  it('starts no clock tick until a tokened kiosk has fetched successfully', async () => {
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval')
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('network down'))))
+
+    renderKiosk('/kiosk?token=test-token')
+    await act(async () => { await flushMicrotasks() })
+    await act(async () => {
+      vi.advanceTimersByTime(2 * 60_000)
+      await flushMicrotasks()
+    })
+
+    // Polling keeps running behind the status panel, but the 5s tick that
+    // drives the stale badge and night mode never starts: with no data there
+    // is neither a badge nor a dimmable panel on screen.
+    const tickIntervals = setIntervalSpy.mock.calls.filter(([, delay]) => delay === 5_000)
+    expect(tickIntervals).toHaveLength(0)
+    setIntervalSpy.mockRestore()
   })
 
   it('shifts the layout by a few pixels as the clock advances', async () => {
