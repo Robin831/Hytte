@@ -32,9 +32,11 @@ async function flushMicrotasks() {
 }
 
 // Values that only exist in the demo fixture — none of them may appear on a
-// tokened kiosk that has not fetched successfully yet.
-const MOCK_STOP_NAME = mockData.transit[0].stop_name
-const MOCK_DESTINATION = mockData.transit[0].departures[0].destination
+// tokened kiosk that has not fetched successfully yet. Departure destinations
+// are deliberately not asserted on: every fixture departure_time predates
+// `fetched_at`, so relativizing shifts them into the past and the departure
+// rows are filtered out. Only the stop headers survive on the demo path.
+const MOCK_STOP_NAMES = mockData.transit.map((stop) => stop.stop_name)
 const MOCK_OUTDOOR_TEMP = `${mockData.outdoor.Temperature.toFixed(1)}°`
 const MOCK_SUNRISE = (() => {
   const d = new Date(mockData.sun.sunrise)
@@ -63,8 +65,9 @@ describe('KioskPage – mock data is limited to the demo path', () => {
     await act(async () => { await flushMicrotasks() })
 
     const text = document.body.textContent ?? ''
-    expect(text).toContain(MOCK_STOP_NAME)
-    expect(text).toContain(MOCK_DESTINATION)
+    for (const stopName of MOCK_STOP_NAMES) {
+      expect(text).toContain(stopName)
+    }
     expect(text).toContain(MOCK_OUTDOOR_TEMP)
     expect(text).toContain(MOCK_SUNRISE)
     expect(fetchMock).not.toHaveBeenCalled()
@@ -80,8 +83,9 @@ describe('KioskPage – mock data is limited to the demo path', () => {
 
     expect(screen.getByTestId('kiosk-loading')).toBeInTheDocument()
     const text = document.body.textContent ?? ''
-    expect(text).not.toContain(MOCK_STOP_NAME)
-    expect(text).not.toContain(MOCK_DESTINATION)
+    for (const stopName of MOCK_STOP_NAMES) {
+      expect(text).not.toContain(stopName)
+    }
     expect(text).not.toContain(MOCK_OUTDOOR_TEMP)
     expect(text).not.toContain(MOCK_SUNRISE)
   })
@@ -98,8 +102,9 @@ describe('KioskPage – mock data is limited to the demo path', () => {
 
     expect(screen.getByTestId('kiosk-token-rejected')).toBeInTheDocument()
     const text = document.body.textContent ?? ''
-    expect(text).not.toContain(MOCK_STOP_NAME)
-    expect(text).not.toContain(MOCK_DESTINATION)
+    for (const stopName of MOCK_STOP_NAMES) {
+      expect(text).not.toContain(stopName)
+    }
     expect(text).not.toContain(MOCK_OUTDOOR_TEMP)
     expect(text).not.toContain(MOCK_SUNRISE)
   })
