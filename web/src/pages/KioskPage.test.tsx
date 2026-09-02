@@ -1,18 +1,23 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
-import { MemoryRouter, Routes, Route } from 'react-router'
+import { MemoryRouter, Routes, Route, useNavigate } from 'react-router'
 import KioskPage from './KioskPage'
+import { renderKiosk, flushMicrotasks } from '../test/kiosk'
+import enKiosk from '../../public/locales/en/kiosk.json'
+import nbKiosk from '../../public/locales/nb/kiosk.json'
+import thKiosk from '../../public/locales/th/kiosk.json'
 
 // KioskPage resolves its status-screen copy through react-i18next; the real
-// backend loads locale JSON over HTTP, so resolve to the English defaults the
-// page passes in.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, defaultValue?: string) => defaultValue ?? key,
-    i18n: { language: 'en' },
-  }),
-}))
+// runtime loads locale JSON over HTTP, so resolve keys against the shipped
+// en/kiosk.json instead. The inline defaults the page passes are ignored, so a
+// renamed or dropped key fails these tests rather than falling back silently.
+vi.mock('react-i18next', async () => {
+  const { kioskT } = await import('../test/kioskI18n')
+  return {
+    useTranslation: () => ({ t: kioskT, i18n: { language: 'en' } }),
+  }
+})
 
 vi.mock('../components/kiosk/KioskClock', () => ({
   default: () => <div data-testid="mock-clock" />,
@@ -35,22 +40,6 @@ const apiPayload = {
   forecast: null,
   sun: null,
   fetched_at: '2026-05-27T12:00:00Z',
-}
-
-function renderKiosk(initialEntry: string) {
-  return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
-      <Routes>
-        <Route path="/kiosk" element={<KioskPage />} />
-      </Routes>
-    </MemoryRouter>,
-  )
-}
-
-async function flushMicrotasks() {
-  for (let i = 0; i < 5; i++) {
-    await Promise.resolve()
-  }
 }
 
 describe('KioskPage – stale data badge', () => {
@@ -619,5 +608,153 @@ describe('KioskPage – fetch state screens', () => {
     expect(screen.queryByTestId('kiosk-loading')).not.toBeInTheDocument()
     expect(screen.queryByTestId('kiosk-unreachable')).not.toBeInTheDocument()
     expect(screen.queryByTestId('kiosk-token-rejected')).not.toBeInTheDocument()
+  })
+})
+
+// The rescan test needs to change the ?token= query parameter on a *mounted*
+// page (remounting would reset component state and hide the bug), so it builds
+// its own router with a navigating harness instead of using renderKiosk.
+function RescanHarness() {
+  const navigate = useNavigate()
+  return (
+    <button data-testid="rescan" onClick={() => navigate('/kiosk?token=new-token')}>
+      rescan
+    </button>
+  )
+}
+
+describe('KioskPage – token revocation and rescan', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'] })
+    vi.setSystemTime(new Date('2026-05-27T12:00:00Z'))
+    try { localStorage.removeItem('hytte_kiosk_token') } catch { /* ignore */ }
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'visible',
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+    vi.clearAllMocks()
+  })
+
+  it('replaces live data with the rejected panel when the token is revoked after a success', async () => {
+    let rejected = false
+    const fetchMock = vi.fn(() => {
+      if (rejected) {
+        return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(apiPayload) } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderKiosk('/kiosk?token=test-token')
+
+    await act(async () => { await flushMicrotasks() })
+    expect(screen.getByTestId('mock-buses')).toBeInTheDocument()
+
+    // The owner revokes the token from Settings; every subsequent poll 401s.
+    rejected = true
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600_000)
+      await flushMicrotasks()
+    })
+
+    expect(screen.getByTestId('kiosk-token-rejected')).toBeInTheDocument()
+    expect(screen.queryByTestId('mock-buses')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('mock-weather')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('kiosk-stale-badge')).not.toBeInTheDocument()
+  })
+
+  it('sends the kiosk token as a Bearer header rather than a query parameter', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve(apiPayload) } as Response),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderKiosk('/kiosk?token=secret-token')
+
+    await act(async () => { await flushMicrotasks() })
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).not.toContain('secret-token')
+    expect((init.headers as Record<string, string>).Authorization).toBe('Bearer secret-token')
+  })
+
+  it('drops the rejected panel while the rescanned token is still being fetched', async () => {
+    const fetchMock = vi.fn((_url: string, init: RequestInit) => {
+      const auth = (init.headers as Record<string, string>).Authorization
+      if (auth === 'Bearer new-token') {
+        // Slow network (captive portal): the rescanned token never resolves.
+        return new Promise<Response>(() => {})
+      }
+      return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <MemoryRouter initialEntries={['/kiosk?token=old-token']}>
+        <Routes>
+          <Route
+            path="/kiosk"
+            element={
+              <>
+                <KioskPage />
+                <RescanHarness />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await act(async () => { await flushMicrotasks() })
+    expect(screen.getByTestId('kiosk-token-rejected')).toBeInTheDocument()
+
+    // The user follows the panel's instruction and rescans the QR code.
+    await act(async () => {
+      screen.getByTestId('rescan').click()
+      await flushMicrotasks()
+    })
+
+    expect(screen.queryByTestId('kiosk-token-rejected')).not.toBeInTheDocument()
+    expect(screen.getByTestId('kiosk-loading')).toBeInTheDocument()
+  })
+})
+
+// Key paths of every leaf string in a locale file, e.g. "state.rejected.title".
+function leafKeys(obj: Record<string, unknown>, prefix = ''): string[] {
+  return Object.entries(obj).flatMap(([key, value]) => {
+    const path = prefix ? `${prefix}.${key}` : key
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? leafKeys(value as Record<string, unknown>, path)
+      : [path]
+  })
+}
+
+describe('kiosk locale files', () => {
+  it('defines every key the page looks up', () => {
+    const keys = leafKeys(enKiosk as unknown as Record<string, unknown>)
+    for (const key of [
+      'state.loading.title',
+      'state.loading.body',
+      'state.rejected.title',
+      'state.rejected.body',
+      'state.unreachable.title',
+      'state.unreachable.body',
+    ]) {
+      expect(keys).toContain(key)
+    }
+  })
+
+  it.each([
+    ['nb', nbKiosk],
+    ['th', thKiosk],
+  ])('keeps %s in sync with en', (_lang, locale) => {
+    expect(leafKeys(locale as unknown as Record<string, unknown>).sort()).toEqual(
+      leafKeys(enKiosk as unknown as Record<string, unknown>).sort(),
+    )
   })
 })

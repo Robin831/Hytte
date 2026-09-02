@@ -1,42 +1,28 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
-import { MemoryRouter, Routes, Route } from 'react-router'
-import KioskPage from './KioskPage'
+import { act, screen } from '@testing-library/react'
+import { renderKiosk, flushMicrotasks } from '../test/kiosk'
 import mockData from '../mocks/kioskData.json'
 
 // Unlike KioskPage.test.tsx this suite renders the real kiosk panels, so it can
 // assert on the actual values from mocks/kioskData.json reaching (or not
 // reaching) the DOM.
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string, defaultValue?: string) => defaultValue ?? key,
-    i18n: { language: 'en' },
-  }),
-}))
-
-function renderKiosk(initialEntry: string) {
-  return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
-      <Routes>
-        <Route path="/kiosk" element={<KioskPage />} />
-      </Routes>
-    </MemoryRouter>,
-  )
-}
-
-async function flushMicrotasks() {
-  for (let i = 0; i < 5; i++) {
-    await Promise.resolve()
+vi.mock('react-i18next', async () => {
+  const { kioskT } = await import('../test/kioskI18n')
+  return {
+    useTranslation: () => ({ t: kioskT, i18n: { language: 'en' } }),
   }
-}
+})
 
 // Values that only exist in the demo fixture — none of them may appear on a
-// tokened kiosk that has not fetched successfully yet. Departure destinations
-// are deliberately not asserted on: every fixture departure_time predates
-// `fetched_at`, so relativizing shifts them into the past and the departure
-// rows are filtered out. Only the stop headers survive on the demo path.
+// tokened kiosk that has not fetched successfully yet. Every fixture
+// departure_time sits a few minutes after `fetched_at`, so relativizing lands
+// them in the near future and KioskBusDepartures renders the rows (it filters
+// out anything that has already departed).
 const MOCK_STOP_NAMES = mockData.transit.map((stop) => stop.stop_name)
+const MOCK_DESTINATIONS = Array.from(
+  new Set(mockData.transit.flatMap((stop) => stop.departures.map((dep) => dep.destination))),
+)
 const MOCK_OUTDOOR_TEMP = `${mockData.outdoor.Temperature.toFixed(1)}°`
 const MOCK_SUNRISE = (() => {
   const d = new Date(mockData.sun.sunrise)
@@ -68,6 +54,9 @@ describe('KioskPage – mock data is limited to the demo path', () => {
     for (const stopName of MOCK_STOP_NAMES) {
       expect(text).toContain(stopName)
     }
+    for (const destination of MOCK_DESTINATIONS) {
+      expect(text).toContain(destination)
+    }
     expect(text).toContain(MOCK_OUTDOOR_TEMP)
     expect(text).toContain(MOCK_SUNRISE)
     expect(fetchMock).not.toHaveBeenCalled()
@@ -85,6 +74,9 @@ describe('KioskPage – mock data is limited to the demo path', () => {
     const text = document.body.textContent ?? ''
     for (const stopName of MOCK_STOP_NAMES) {
       expect(text).not.toContain(stopName)
+    }
+    for (const destination of MOCK_DESTINATIONS) {
+      expect(text).not.toContain(destination)
     }
     expect(text).not.toContain(MOCK_OUTDOOR_TEMP)
     expect(text).not.toContain(MOCK_SUNRISE)
@@ -104,6 +96,9 @@ describe('KioskPage – mock data is limited to the demo path', () => {
     const text = document.body.textContent ?? ''
     for (const stopName of MOCK_STOP_NAMES) {
       expect(text).not.toContain(stopName)
+    }
+    for (const destination of MOCK_DESTINATIONS) {
+      expect(text).not.toContain(destination)
     }
     expect(text).not.toContain(MOCK_OUTDOOR_TEMP)
     expect(text).not.toContain(MOCK_SUNRISE)

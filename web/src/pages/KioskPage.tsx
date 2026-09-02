@@ -191,7 +191,15 @@ function KioskPageInner() {
   const [apiData, setApiData] = useState<KioskData | null>(null)
   const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null)
   const [now, setNow] = useState<number>(() => Date.now())
-  const [fetchState, setFetchState] = useState<FetchState>('loading')
+  // The outcome is stored together with the token it describes, so a rescan
+  // (token change) implicitly resets it to 'loading' during render. Without
+  // that, a kiosk sitting on the rejected panel would keep telling the user to
+  // rescan the QR code while the freshly scanned token's first request is
+  // still in flight.
+  const [fetchStatus, setFetchStatus] = useState<{ token: string | null; state: FetchState }>(
+    () => ({ token, state: 'loading' })
+  )
+  const fetchState: FetchState = fetchStatus.token === token ? fetchStatus.state : 'loading'
 
   // Mock data is exclusive to the token-less demo path. A real kiosk must never
   // display fabricated departures or weather, so it stays null until the first
@@ -270,14 +278,22 @@ function KioskPageInner() {
       const myRequestId = requestId
 
       try {
-        const res = await fetch('/api/kiosk/data?token=' + encodeURIComponent(token!), {
+        // Send the token as a Bearer header rather than a query parameter so
+        // it never lands in reverse-proxy access logs. The backend
+        // (internal/kiosk/auth.go) prefers the header and only falls back to
+        // ?token= for kiosk devices with the token baked into a bookmarked URL.
+        const res = await fetch('/api/kiosk/data', {
           credentials: 'include',
+          headers: { Authorization: 'Bearer ' + token! },
           signal: myController?.signal,
         })
         // Bail if unmounted or superseded by a newer fetch.
         if (cancelled || myRequestId !== requestId) return
         if (!res.ok) {
-          setFetchState(res.status === 401 || res.status === 403 ? 'rejected' : 'unreachable')
+          setFetchStatus({
+            token,
+            state: res.status === 401 || res.status === 403 ? 'rejected' : 'unreachable',
+          })
           failureCount += 1
           scheduleNext(backoffDelay())
           return
@@ -286,14 +302,14 @@ function KioskPageInner() {
         if (cancelled || myRequestId !== requestId) return
         setApiData(json)
         setLastSuccessAt(Date.now())
-        setFetchState('ok')
+        setFetchStatus({ token, state: 'ok' })
         failureCount = 0
         scheduleNext(POLL_INTERVAL_MS)
       } catch {
         // Network failure or abort. If the abort came from unmount/supersede,
         // skip; otherwise treat as a failure and back off.
         if (cancelled || myRequestId !== requestId) return
-        setFetchState('unreachable')
+        setFetchStatus({ token, state: 'unreachable' })
         failureCount += 1
         scheduleNext(backoffDelay())
       }
@@ -362,44 +378,50 @@ function KioskPageInner() {
     lastSuccessAt !== null &&
     now - lastSuccessAt > STALE_THRESHOLD_MS
 
-  // `data` is only ever null on the tokened path before the first successful
-  // fetch, so these screens never replace the demo layout. Polling continues
-  // underneath, so a later success swaps the panel for live data; and once data
-  // has arrived a subsequent failure falls through to the normal layout, where
-  // the stale badge takes over.
+  // A rejected token means the screen is deauthorised, so it takes precedence
+  // over any data we may already hold: a wall-mounted kiosk whose token is
+  // revoked would otherwise keep rendering its last payload forever behind
+  // nothing but the small stale badge, and never tell anyone to rescan.
+  // (The token is deliberately left in localStorage — a transient 401 should
+  // not demote the kiosk to the token-less demo layout on the next reload.)
+  if (token && fetchState === 'rejected') {
+    return (
+      <KioskStatusScreen
+        tone="rejected"
+        title={t('state.rejected.title', { defaultValue: 'Kiosk token rejected' })}
+        body={t('state.rejected.body', {
+          defaultValue:
+            'This screen is no longer authorised. Rescan the QR code from Settings to set it up again.',
+        })}
+      />
+    )
+  }
+
+  // Beyond that, `data` is only null on the tokened path before the first
+  // successful fetch, so these screens never replace the demo layout. Polling
+  // continues underneath, so a later success swaps the panel for live data; and
+  // once data has arrived a non-auth failure falls through to the normal
+  // layout, where the stale badge takes over.
   if (!data) {
-    if (fetchState === 'rejected') {
-      return (
-        <KioskStatusScreen
-          tone="rejected"
-          testId="kiosk-token-rejected"
-          title={t('state.rejected.title', 'Kiosk token rejected')}
-          body={t(
-            'state.rejected.body',
-            'This screen is no longer authorised. Rescan the QR code from Settings to set it up again.'
-          )}
-        />
-      )
-    }
     if (fetchState === 'unreachable') {
       return (
         <KioskStatusScreen
           tone="unreachable"
-          testId="kiosk-unreachable"
-          title={t('state.unreachable.title', 'Cannot reach the server')}
-          body={t(
-            'state.unreachable.body',
-            'The kiosk keeps retrying automatically. Check the network connection.'
-          )}
+          title={t('state.unreachable.title', { defaultValue: 'Cannot reach the server' })}
+          body={t('state.unreachable.body', {
+            defaultValue:
+              'The kiosk keeps retrying automatically. Check the network connection.',
+          })}
         />
       )
     }
     return (
       <KioskStatusScreen
         tone="loading"
-        testId="kiosk-loading"
-        title={t('state.loading.title', 'Connecting…')}
-        body={t('state.loading.body', 'Waiting for the first update from the server.')}
+        title={t('state.loading.title', { defaultValue: 'Connecting…' })}
+        body={t('state.loading.body', {
+          defaultValue: 'Waiting for the first update from the server.',
+        })}
       />
     )
   }
