@@ -354,6 +354,18 @@ func TestComputeVO2maxTrend(t *testing.T) {
 		{"drift below the minimum change", []float64{
 			48.0, 48.04, 48.08, 48.12, 48.16, 48.2, 48.24, 48.28, 48.32, 48.36, 48.4, 48.44,
 		}, "stable"},
+		// Short windows are where the per-step bar is widest, since the minimum
+		// change is spread over fewer steps: 1.0 per step at n=2, 0.5 at n=3.
+		// These pin both the exact-boundary tie — the comparison is `>`, so a run
+		// landing exactly on vo2maxTrendMinChange stays "stable" — and the first
+		// step past it, in both directions.
+		{"two estimates exactly at the minimum change", []float64{48, 49}, "stable"},
+		{"two estimates past the minimum change", []float64{48, 49.5}, "improving"},
+		{"two estimates declining exactly at the minimum change", []float64{49, 48}, "stable"},
+		{"two estimates declining past the minimum change", []float64{49.5, 48}, "declining"},
+		{"three estimates exactly at the minimum change", []float64{48, 48.5, 49}, "stable"},
+		{"three estimates past the minimum change", []float64{48, 48.6, 49.2}, "improving"},
+		{"three estimates declining past the minimum change", []float64{49.2, 48.6, 48}, "declining"},
 		// Zero values are placeholders, not estimates, and must not widen the range.
 		{"zeros ignored", []float64{0, 50, 50.1, 49.9, 50.2, 50}, "stable"},
 	}
