@@ -402,3 +402,216 @@ func TestDataHandler_SlowSourceYieldsPartialData(t *testing.T) {
 		t.Error("expected fast sun source to still populate despite slow weather")
 	}
 }
+
+// decodeDim runs the data handler with cfg and returns the decoded dim object.
+func decodeDim(t *testing.T, cfg KioskConfig) *DimConfig {
+	t.Helper()
+	resetKioskCache()
+
+	handler := DataHandler(nil, nil, nil, nil)
+	req := injectConfig(httptest.NewRequest("GET", "/api/kiosk/data", nil), cfg)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Dim *DimConfig `json:"dim"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return body.Dim
+}
+
+func TestDataHandler_DimAbsentWhenNotConfigured(t *testing.T) {
+	if dim := decodeDim(t, KioskConfig{}); dim != nil {
+		t.Errorf("expected dim omitted when no dim keys configured, got %+v", dim)
+	}
+}
+
+func TestDataHandler_DimEnabledValues(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  any
+		want bool
+	}{
+		{"bool true", true, true},
+		{"bool false", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dim := decodeDim(t, KioskConfig{"dim": tt.raw})
+			if dim == nil {
+				t.Fatalf("expected dim present for %v", tt.raw)
+			}
+			if dim.Enabled == nil {
+				t.Fatalf("expected dim.enabled present for %v", tt.raw)
+			}
+			if *dim.Enabled != tt.want {
+				t.Errorf("expected dim.enabled %v, got %v", tt.want, *dim.Enabled)
+			}
+		})
+	}
+}
+
+func TestDataHandler_DimWindowEmittedWhenBothParse(t *testing.T) {
+	dim := decodeDim(t, KioskConfig{"dim_start": "22:30", "dim_end": "06:00"})
+	if dim == nil {
+		t.Fatal("expected dim present when a valid window is configured")
+	}
+	if dim.Start != "22:30" {
+		t.Errorf("expected start 22:30, got %q", dim.Start)
+	}
+	if dim.End != "06:00" {
+		t.Errorf("expected end 06:00, got %q", dim.End)
+	}
+	if dim.Enabled != nil {
+		t.Errorf("expected enabled absent when only a window is configured, got %v", *dim.Enabled)
+	}
+}
+
+func TestDataHandler_DimWindowRequiresBothEnds(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  KioskConfig
+	}{
+		{"start only", KioskConfig{"dim_start": "22:30"}},
+		{"end only", KioskConfig{"dim_end": "06:00"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if dim := decodeDim(t, tt.cfg); dim != nil {
+				t.Errorf("expected dim omitted for a half-configured window, got %+v", dim)
+			}
+		})
+	}
+}
+
+// Malformed dim values must degrade to the sun-driven default, never a 500.
+func TestDataHandler_MalformedDimValuesFallBack(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  KioskConfig
+	}{
+		{"unknown enum", KioskConfig{"dim": "maybe"}},
+		{"auto is not a bool", KioskConfig{"dim": "auto"}},
+		{"string true is not a bool", KioskConfig{"dim": "true"}},
+		{"string false is not a bool", KioskConfig{"dim": "false"}},
+		{"string on is not a bool", KioskConfig{"dim": "on"}},
+		{"string 1 is not a bool", KioskConfig{"dim": "1"}},
+		{"number instead of bool", KioskConfig{"dim": float64(5)}},
+		{"object instead of bool", KioskConfig{"dim": map[string]any{"on": true}}},
+		{"null", KioskConfig{"dim": nil}},
+		{"garbage start", KioskConfig{"dim_start": "garbage", "dim_end": "06:00"}},
+		{"hour out of range", KioskConfig{"dim_start": "25:00", "dim_end": "06:00"}},
+		{"minute out of range", KioskConfig{"dim_start": "22:30", "dim_end": "12:60"}},
+		{"missing separator", KioskConfig{"dim_start": "2230", "dim_end": "0600"}},
+		{"non-digit", KioskConfig{"dim_start": "2a:30", "dim_end": "06:00"}},
+		{"signed hour", KioskConfig{"dim_start": "+1:30", "dim_end": "06:00"}},
+		{"unpadded", KioskConfig{"dim_start": "2:30", "dim_end": "06:00"}},
+		{"start wrong type", KioskConfig{"dim_start": float64(22), "dim_end": "06:00"}},
+		{"end wrong type", KioskConfig{"dim_start": "22:30", "dim_end": true}},
+		{"empty strings", KioskConfig{"dim_start": "", "dim_end": ""}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if dim := decodeDim(t, tt.cfg); dim != nil {
+				t.Errorf("expected dim omitted for malformed config, got %+v", dim)
+			}
+		})
+	}
+}
+
+func TestDataHandler_DimAndWindowTogether(t *testing.T) {
+	dim := decodeDim(t, KioskConfig{
+		"dim":       true,
+		"dim_start": "23:00",
+		"dim_end":   "07:15",
+	})
+	if dim == nil {
+		t.Fatal("expected dim present")
+	}
+	if dim.Enabled == nil || !*dim.Enabled {
+		t.Errorf("expected enabled true, got %v", dim.Enabled)
+	}
+	if dim.Start != "23:00" || dim.End != "07:15" {
+		t.Errorf("expected window 23:00-07:15, got %q-%q", dim.Start, dim.End)
+	}
+}
+
+// A malformed window must not suppress a valid dim flag, and vice versa.
+func TestDataHandler_MalformedWindowKeepsEnabledFlag(t *testing.T) {
+	dim := decodeDim(t, KioskConfig{"dim": false, "dim_start": "99:99", "dim_end": "06:00"})
+	if dim == nil {
+		t.Fatal("expected dim present when the enabled flag parses")
+	}
+	if dim.Enabled == nil || *dim.Enabled {
+		t.Errorf("expected enabled false, got %v", dim.Enabled)
+	}
+	if dim.Start != "" || dim.End != "" {
+		t.Errorf("expected window omitted, got %q-%q", dim.Start, dim.End)
+	}
+}
+
+// Two tokens differing only in dim overrides share an upstream cache entry, but
+// each response must still carry its own dim values.
+func TestDataHandler_CachedPayloadCarriesPerTokenDim(t *testing.T) {
+	resetKioskCache()
+
+	transitSvc := &fakeTransit{}
+	handler := DataHandler(nil, transitSvc, nil, nil)
+
+	read := func(cfg KioskConfig) *DimConfig {
+		req := injectConfig(httptest.NewRequest("GET", "/api/kiosk/data", nil), cfg)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", rec.Code)
+		}
+		var body struct {
+			Dim *DimConfig `json:"dim"`
+		}
+		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return body.Dim
+	}
+
+	base := []any{"NSR:StopPlace:1"}
+	first := read(KioskConfig{"stop_ids": base, "dim": true})
+	second := read(KioskConfig{"stop_ids": base, "dim": false})
+	// A token with no dim override must not inherit a previous token's dim from
+	// the shared cache entry.
+	third := read(KioskConfig{"stop_ids": base})
+
+	if got := transitSvc.calls.Load(); got != 1 {
+		t.Errorf("expected the second request to hit the cache, got %d transit calls", got)
+	}
+	if first == nil || first.Enabled == nil || !*first.Enabled {
+		t.Errorf("expected first response enabled=true, got %+v", first)
+	}
+	if second == nil || second.Enabled == nil || *second.Enabled {
+		t.Errorf("expected cached response to carry its own enabled=false, got %+v", second)
+	}
+	if third != nil {
+		t.Errorf("expected a token without dim keys to stay dim-free, got %+v", third)
+	}
+}
+
+func TestParseHHMM(t *testing.T) {
+	valid := []string{"00:00", "23:59", "09:05", " 22:30 "}
+	for _, s := range valid {
+		if _, ok := parseHHMM(s); !ok {
+			t.Errorf("expected %q to parse", s)
+		}
+	}
+	invalid := []string{"", "24:00", "23:60", "1:00", "100:00", "aa:bb", "12-30", "12:3"}
+	for _, s := range invalid {
+		if got, ok := parseHHMM(s); ok {
+			t.Errorf("expected %q to be rejected, got %q", s, got)
+		}
+	}
+}
