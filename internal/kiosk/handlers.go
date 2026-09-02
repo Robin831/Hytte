@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -480,7 +481,10 @@ func buildDimConfig(cfg KioskConfig) *DimConfig {
 	}
 
 	// A half-configured window is meaningless to the client, so start and end
-	// are only emitted when both parse.
+	// are only emitted when both parse. Dropping them here is the only place
+	// the mistake is visible: the client never sees the raw values, so a
+	// misconfigured window would otherwise leave a wall-mounted screen quietly
+	// following the sun with nothing anywhere to explain it.
 	startRaw := extractString(cfg, "dim_start")
 	endRaw := extractString(cfg, "dim_end")
 	start, startOK := parseHHMM(startRaw)
@@ -488,12 +492,34 @@ func buildDimConfig(cfg KioskConfig) *DimConfig {
 	if startOK && endOK {
 		dim.Start = start
 		dim.End = end
+	} else if startRaw != "" || endRaw != "" {
+		warnUnusableDimWindow(startRaw, endRaw)
 	}
 
 	if dim.Enabled == nil && dim.Start == "" {
 		return nil
 	}
 	return &dim
+}
+
+// warnedDimWindows dedupes the log line below. buildDimConfig runs on every
+// kiosk poll (every 30s per screen), so an un-deduped warning would be a
+// permanent log flood rather than a diagnostic.
+var warnedDimWindows sync.Map
+
+// warnUnusableDimWindow logs once per distinct raw start/end pair that the
+// kiosk config carries but buildDimConfig had to drop — one edge missing, or a
+// value parseHHMM rejects.
+func warnUnusableDimWindow(startRaw, endRaw string) {
+	key := startRaw + "\x00" + endRaw
+	if _, loaded := warnedDimWindows.LoadOrStore(key, struct{}{}); loaded {
+		return
+	}
+	log.Printf(
+		"kiosk: ignoring dim window override (dim_start=%q, dim_end=%q): both edges are required "+
+			"and must be a zero-padded local \"HH:MM\" time; falling back to the sun-driven night window",
+		startRaw, endRaw,
+	)
 }
 
 // parseHHMM validates a local "HH:MM" clock string. Anything else — unpadded or

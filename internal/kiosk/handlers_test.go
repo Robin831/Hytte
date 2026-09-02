@@ -1,11 +1,14 @@
 package kiosk
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -523,6 +526,71 @@ func TestDataHandler_MalformedDimValuesFallBack(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A dropped dim window is the one place the misconfiguration is visible: the
+// client never receives the raw values, so without this log a wall-mounted
+// screen would just quietly keep following the sun.
+func TestBuildDimConfig_LogsDroppedWindow(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  KioskConfig
+		want []string
+	}{
+		{"unpadded hour", KioskConfig{"dim_start": "7:31", "dim_end": "06:01"}, []string{"7:31", "06:01"}},
+		{"hour out of range", KioskConfig{"dim_start": "25:01", "dim_end": "06:02"}, []string{"25:01"}},
+		{"start only", KioskConfig{"dim_start": "22:31"}, []string{"22:31"}},
+		{"end only", KioskConfig{"dim_end": "06:03"}, []string{"06:03"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := captureLog(t, func() { buildDimConfig(tt.cfg) })
+			for _, want := range tt.want {
+				if !strings.Contains(out, want) {
+					t.Errorf("expected log to mention %q, got %q", want, out)
+				}
+			}
+			if !strings.Contains(out, "dim window") {
+				t.Errorf("expected a dim-window warning, got %q", out)
+			}
+		})
+	}
+}
+
+// The warning is deduped: buildDimConfig runs on every kiosk poll, so an
+// un-deduped line would be a permanent log flood rather than a diagnostic.
+func TestBuildDimConfig_DroppedWindowLoggedOnce(t *testing.T) {
+	cfg := KioskConfig{"dim_start": "9:44", "dim_end": "06:04"}
+	if first := captureLog(t, func() { buildDimConfig(cfg) }); first == "" {
+		t.Fatal("expected the first dropped window to be logged")
+	}
+	if again := captureLog(t, func() { buildDimConfig(cfg) }); again != "" {
+		t.Errorf("expected the repeat to be deduped, got %q", again)
+	}
+}
+
+// A usable window — and a config with no window at all — must stay silent.
+func TestBuildDimConfig_NoLogWhenNothingIsDropped(t *testing.T) {
+	for _, cfg := range []KioskConfig{
+		{"dim_start": "21:07", "dim_end": "05:07"},
+		{"dim": true},
+		{},
+	} {
+		if out := captureLog(t, func() { buildDimConfig(cfg) }); out != "" {
+			t.Errorf("expected no log for %v, got %q", cfg, out)
+		}
+	}
+}
+
+// captureLog redirects the standard logger for the duration of fn.
+func captureLog(t *testing.T, fn func()) string {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(prev)
+	fn()
+	return buf.String()
 }
 
 func TestDataHandler_DimAndWindowTogether(t *testing.T) {

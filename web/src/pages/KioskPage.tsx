@@ -11,6 +11,8 @@ import KioskStaleBadge from '../components/kiosk/KioskStaleBadge'
 import KioskStatusScreen from '../components/kiosk/KioskStatusScreen'
 import mockData from '../mocks/kioskData.json'
 import { useWakeLock } from '../hooks/useWakeLock'
+import { isNightMode, pixelShift } from '../components/kiosk/nightMode'
+import type { SunTimes, DimConfig } from '../components/kiosk/nightMode'
 
 // Error boundary so that JS errors show a visible message instead of a blank
 // white page. This is especially important on older browsers (Android 5 /
@@ -99,12 +101,6 @@ interface WindReadings {
   Direction: number
 }
 
-interface SunTimes {
-  kind: string
-  sunrise?: string
-  sunset?: string
-}
-
 interface KioskData {
   transit: StopDepartures[]
   outdoor?: OutdoorReadings | null
@@ -112,6 +108,7 @@ interface KioskData {
   wind?: WindReadings | null
   forecast?: ForecastData | null
   sun?: SunTimes | null
+  dim?: DimConfig | null
   fetched_at: string
 }
 
@@ -354,32 +351,47 @@ function KioskPageInner() {
     }
   }, [token])
 
-  // Drive the "Updated X ago" clock.
+  // The kiosk's single clock tick. It drives two things: the "Updated X ago"
+  // badge, and the minute-derived night mode / pixel-shift offset. Both read
+  // `now`, so one interval is enough — neither feature adds a timer of its own.
   //
-  // The effect is gated on lastSuccessAt being non-null so the interval
-  // never starts before we have received a first data payload — a healthy
-  // kiosk that has never fetched successfully produces zero ticks.
+  // The effect is gated on a tokened kiosk that has not fetched successfully
+  // yet: that screen shows a full-screen status panel, which uses neither the
+  // badge nor the dimmed palette, so ticking would repaint for nothing. The
+  // token-less demo path is *not* gated — it always has data (the mock
+  // payload), so it renders the full dimmable layout and needs the tick for
+  // night mode and the pixel shift just as a real kiosk does.
   //
-  // While data *is* fresh the interval fires every 5 s but skips the
-  // setNow call (and therefore skips the re-render) when we are still well
-  // below the stale threshold.  Only as we approach or cross the threshold
-  // does the state update fire, keeping the badge age display accurate
-  // without wasting renders on low-power wall-mounted devices during normal
-  // operation.
+  // The tick fires every 5 s but deliberately skips the state update (and
+  // therefore the re-render) when nothing observable has changed: low-power
+  // wall-mounted devices should not repaint once per tick all day. A re-render
+  // happens when either
+  //   * the local minute rolls over — night mode and the pixel-shift offset
+  //     are both pure functions of minutes-of-day, so they are observed up to
+  //     one tick (5 s) after the boundary they belong to, which is invisible
+  //     for a palette swap and a 3px nudge, or
+  //   * we are within one tick of the stale threshold or already past it, so
+  //     the badge age stays accurate.
   //
   // The effect re-runs on each successful fetch (lastSuccessAt changes), so
-  // the timer is always anchored to the most recent success and a recovery
-  // fetch automatically resets the clock.
+  // the staleness half is always anchored to the most recent success and a
+  // recovery fetch automatically resets it.
   useEffect(() => {
-    if (!token || lastSuccessAt === null) return
+    if (token && lastSuccessAt === null) return
     const id = setInterval(() => {
       const t = Date.now()
-      // Only trigger a re-render when we are within one tick of the stale
-      // threshold or already past it; during the clearly-fresh window the
-      // DOM does not need updating.
-      if (t - lastSuccessAt >= STALE_THRESHOLD_MS - STALE_TICK_INTERVAL_MS) {
-        setNow(t)
-      }
+      setNow((prev) => {
+        if (Math.floor(t / 60_000) !== Math.floor(prev / 60_000)) return t
+        // Staleness only exists on the tokened path; the demo preview has no
+        // badge, so it re-renders on the minute boundary alone.
+        if (
+          lastSuccessAt !== null &&
+          t - lastSuccessAt >= STALE_THRESHOLD_MS - STALE_TICK_INTERVAL_MS
+        ) {
+          return t
+        }
+        return prev
+      })
     }, STALE_TICK_INTERVAL_MS)
     return () => clearInterval(id)
   }, [token, lastSuccessAt])
@@ -388,6 +400,17 @@ function KioskPageInner() {
     !!token &&
     lastSuccessAt !== null &&
     now - lastSuccessAt > STALE_THRESHOLD_MS
+
+  // Night mode and the burn-in pixel shift both ride the tick above: `now`
+  // only changes when the minute rolls over (or the badge needs refreshing),
+  // so these memos recompute at most once a minute.
+  // Depend on the sun/dim slices rather than `data`: every successful poll
+  // hands back a fresh object identity, so keying on `data` would recompute on
+  // each fetch even though night mode only reads these two fields.
+  const sun = data?.sun
+  const dim = data?.dim
+  const dimmed = useMemo(() => isNightMode(new Date(now), sun, dim), [now, sun, dim])
+  const shift = useMemo(() => pixelShift(new Date(now)), [now])
 
   // A rejected token means the screen is deauthorised, so it takes precedence
   // over any data we may already hold: a wall-mounted kiosk whose token is
@@ -437,36 +460,65 @@ function KioskPageInner() {
     )
   }
 
+  const dividerClass = `h-px mx-4 ${dimmed ? 'bg-gray-900' : 'bg-gray-800'}`
+
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col overflow-hidden pb-16">
-      {/* Clock & Date */}
-      <KioskClock />
+    // Outer frame: clips the few pixels the shifted layout pokes outside the
+    // viewport, so the burn-in offset can never add a scrollbar. It grows with
+    // the inner element, so content taller than the screen still scrolls the
+    // page exactly as it did before the shift was introduced.
+    <div
+      data-testid="kiosk-root"
+      data-dimmed={dimmed ? 'true' : 'false'}
+      className={`min-h-screen w-full overflow-hidden ${dimmed ? 'bg-black' : 'bg-gray-950'}`}
+    >
+      <div
+        data-testid="kiosk-shift"
+        // A transform, not padding: it does not reflow the layout, so the
+        // panels keep their exact sizes. The offset is positive on both axes,
+        // so the outer overflow-hidden clips up to PIXEL_SHIFT_MAX_PX (3px)
+        // at the right edge and eats into the pb-16 gutter at the bottom —
+        // both are empty margin, and in exchange the shift can never add a
+        // scrollbar.
+        style={{ transform: `translate(${shift.x}px, ${shift.y}px)` }}
+        className={`min-h-screen flex flex-col overflow-hidden pb-16 ${
+          dimmed ? 'text-gray-500' : 'text-white'
+        }`}
+      >
+        {/* Clock & Date */}
+        <KioskClock dimmed={dimmed} />
 
-      {/* Divider */}
-      <div className="h-px bg-gray-800 mx-4" />
+        {/* Divider */}
+        <div className={dividerClass} />
 
-      {/* Bus Departures — scrollable but not greedy */}
-      <div className="overflow-y-auto py-2" style={{ maxHeight: '45vh' }}>
-        <KioskBusDepartures stops={data.transit} />
+        {/* Bus Departures — scrollable but not greedy */}
+        <div className="overflow-y-auto py-2" style={{ maxHeight: '45vh' }}>
+          <KioskBusDepartures stops={data.transit} dimmed={dimmed} />
+        </div>
+
+        {/* Divider */}
+        <div className={dividerClass} />
+
+        {/* Weather strip */}
+        <KioskWeather
+          outdoor={data.outdoor ?? null}
+          indoor={data.indoor ?? null}
+          wind={data.wind ?? null}
+          forecast={data.forecast ?? null}
+          dimmed={dimmed}
+        />
+
+        {/* Divider */}
+        <div className={dividerClass} />
+
+        {/* Sunrise / Sunset */}
+        <KioskSunrise sun={data.sun ?? null} dimmed={dimmed} />
       </div>
 
-      {/* Divider */}
-      <div className="h-px bg-gray-800 mx-4" />
-
-      {/* Weather strip */}
-      <KioskWeather
-        outdoor={data.outdoor ?? null}
-        indoor={data.indoor ?? null}
-        wind={data.wind ?? null}
-        forecast={data.forecast ?? null}
-      />
-
-      {/* Divider */}
-      <div className="h-px bg-gray-800 mx-4" />
-
-      {/* Sunrise / Sunset */}
-      <KioskSunrise sun={data.sun ?? null} />
-
+      {/* Outside the shifted wrapper on purpose: a non-none transform makes an
+          element the containing block for its position:fixed descendants, so
+          the badge would be anchored to (and clipped with) the shifted layout
+          instead of staying pinned to the viewport. */}
       <KioskStaleBadge isStale={isStale} lastSuccessAt={lastSuccessAt} now={now} />
     </div>
   )
