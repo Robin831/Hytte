@@ -668,6 +668,43 @@ describe('KioskPage – token revocation and rescan', () => {
     expect(screen.queryByTestId('kiosk-stale-badge')).not.toBeInTheDocument()
   })
 
+  it('clears the rejected panel again once a later poll succeeds', async () => {
+    // The rejected panel outranks existing data, so a single transient 401
+    // blanks a working kiosk. Recovery through the poll that keeps running
+    // behind the panel is therefore load-bearing: without it a kiosk would be
+    // bricked until someone physically rescans the QR code.
+    let rejected = false
+    const fetchMock = vi.fn(() => {
+      if (rejected) {
+        return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(apiPayload) } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderKiosk('/kiosk?token=test-token')
+
+    await act(async () => { await flushMicrotasks() })
+    expect(screen.getByTestId('mock-buses')).toBeInTheDocument()
+
+    rejected = true
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600_000)
+      await flushMicrotasks()
+    })
+    expect(screen.getByTestId('kiosk-token-rejected')).toBeInTheDocument()
+
+    // The server recovers (e.g. the 401 came from a restart mid-request).
+    rejected = false
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600_000)
+      await flushMicrotasks()
+    })
+
+    expect(screen.queryByTestId('kiosk-token-rejected')).not.toBeInTheDocument()
+    expect(screen.getByTestId('mock-buses')).toBeInTheDocument()
+  })
+
   it('sends the kiosk token as a Bearer header rather than a query parameter', async () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve({ ok: true, json: () => Promise.resolve(apiPayload) } as Response),
@@ -721,6 +758,72 @@ describe('KioskPage – token revocation and rescan', () => {
 
     expect(screen.queryByTestId('kiosk-token-rejected')).not.toBeInTheDocument()
     expect(screen.getByTestId('kiosk-loading')).toBeInTheDocument()
+  })
+
+  it('does not re-show the revoked token\'s payload after a rescan', async () => {
+    // Kiosk tokens are individually scoped (stop IDs, location, Netatmo user),
+    // so the old token's departures/weather/indoor readings must not reappear
+    // under the new token while its first request is still in flight.
+    let oldTokenRevoked = false
+    const fetchMock = vi.fn((_url: string, init: RequestInit) => {
+      const auth = (init.headers as Record<string, string>).Authorization
+      if (auth === 'Bearer new-token') {
+        // Slow network (captive portal): the rescanned token never resolves.
+        return new Promise<Response>(() => {})
+      }
+      if (oldTokenRevoked) {
+        return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(apiPayload) } as Response)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <MemoryRouter initialEntries={['/kiosk?token=old-token']}>
+        <Routes>
+          <Route
+            path="/kiosk"
+            element={
+              <>
+                <KioskPage />
+                <RescanHarness />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    // old-token succeeds first, so a payload is on screen before revocation.
+    await act(async () => { await flushMicrotasks() })
+    expect(screen.getByTestId('mock-buses')).toBeInTheDocument()
+
+    oldTokenRevoked = true
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600_000)
+      await flushMicrotasks()
+    })
+    expect(screen.getByTestId('kiosk-token-rejected')).toBeInTheDocument()
+
+    await act(async () => {
+      screen.getByTestId('rescan').click()
+      await flushMicrotasks()
+    })
+
+    expect(screen.queryByTestId('kiosk-token-rejected')).not.toBeInTheDocument()
+    expect(screen.getByTestId('kiosk-loading')).toBeInTheDocument()
+    expect(screen.queryByTestId('mock-buses')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('mock-weather')).not.toBeInTheDocument()
+
+    // ...and it stays blank rather than falling back to the old payload while
+    // the new token's fetch remains outstanding.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600_000)
+      await flushMicrotasks()
+    })
+    expect(screen.getByTestId('kiosk-loading')).toBeInTheDocument()
+    expect(screen.queryByTestId('mock-buses')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('kiosk-stale-badge')).not.toBeInTheDocument()
   })
 })
 

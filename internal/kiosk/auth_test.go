@@ -115,6 +115,101 @@ func TestKioskAuth_ValidToken(t *testing.T) {
 	}
 }
 
+// The kiosk SPA authenticates exclusively via the Authorization header (see
+// web/src/pages/KioskPage.tsx) so the token never reaches reverse-proxy access
+// logs; the query parameter is only a fallback for bookmarked kiosk URLs.
+func TestKioskAuth_BearerHeader(t *testing.T) {
+	db := setupTestDB(t)
+	insertToken(t, db, "headertoken", `{"screen":"main"}`, nil)
+
+	var gotCfg KioskConfig
+	handler := KioskAuth(db)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCfg = GetKioskConfig(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// No ?token= at all — the header is the only credential.
+	req := httptest.NewRequest("GET", "/kiosk", nil)
+	req.Header.Set("Authorization", "Bearer headertoken")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	if gotCfg == nil {
+		t.Fatal("expected kiosk config in context")
+	}
+	if gotCfg["screen"] != "main" {
+		t.Errorf("expected screen=main, got %v", gotCfg["screen"])
+	}
+}
+
+func TestKioskAuth_BearerHeaderTakesPrecedenceOverQuery(t *testing.T) {
+	db := setupTestDB(t)
+	insertToken(t, db, "headertoken", `{"screen":"header"}`, nil)
+	insertToken(t, db, "querytoken", `{"screen":"query"}`, nil)
+
+	var gotCfg KioskConfig
+	handler := KioskAuth(db)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCfg = GetKioskConfig(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/kiosk?token=querytoken", nil)
+	req.Header.Set("Authorization", "Bearer headertoken")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if gotCfg["screen"] != "header" {
+		t.Errorf("expected the header token's config (screen=header), got %v", gotCfg["screen"])
+	}
+}
+
+// A malformed Authorization header must not shadow a usable ?token= value, and
+// must not authenticate on its own.
+func TestKioskAuth_NonBearerHeaderFallsBackToQuery(t *testing.T) {
+	db := setupTestDB(t)
+	insertToken(t, db, "querytoken", `{"screen":"query"}`, nil)
+
+	var gotCfg KioskConfig
+	handler := KioskAuth(db)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotCfg = GetKioskConfig(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "/kiosk?token=querytoken", nil)
+	req.Header.Set("Authorization", "Basic querytoken")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if gotCfg["screen"] != "query" {
+		t.Errorf("expected the query token's config (screen=query), got %v", gotCfg["screen"])
+	}
+}
+
+func TestKioskAuth_BearerHeaderInvalidToken(t *testing.T) {
+	db := setupTestDB(t)
+	handler := KioskAuth(db)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("next handler should not be called")
+	}))
+
+	req := httptest.NewRequest("GET", "/kiosk", nil)
+	req.Header.Set("Authorization", "Bearer badtoken")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+}
+
 func TestKioskAuth_ExpiredToken(t *testing.T) {
 	db := setupTestDB(t)
 	past := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)

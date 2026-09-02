@@ -188,26 +188,35 @@ function KioskPageInner() {
   })
   const token = urlToken ?? storedToken
 
-  const [apiData, setApiData] = useState<KioskData | null>(null)
-  const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null)
   const [now, setNow] = useState<number>(() => Date.now())
-  // The outcome is stored together with the token it describes, so a rescan
-  // (token change) implicitly resets it to 'loading' during render. Without
-  // that, a kiosk sitting on the rejected panel would keep telling the user to
-  // rescan the QR code while the freshly scanned token's first request is
-  // still in flight.
+  // Both the payload and the outcome are stored together with the token that
+  // produced them, so a rescan (token change) implicitly resets them during
+  // render. Keying matters for correctness, not just tidiness: kiosk tokens are
+  // individually scoped (stop IDs, location, Netatmo user), so re-showing the
+  // previous token's departures, forecast and indoor readings under a new token
+  // would leak another screen's — and another household's — data. It also stops
+  // a kiosk sitting on the rejected panel from telling the user to rescan the QR
+  // code while the freshly scanned token's first request is still in flight.
+  const [apiResult, setApiResult] = useState<
+    { token: string | null; data: KioskData; at: number } | null
+  >(null)
   const [fetchStatus, setFetchStatus] = useState<{ token: string | null; state: FetchState }>(
     () => ({ token, state: 'loading' })
   )
   const fetchState: FetchState = fetchStatus.token === token ? fetchStatus.state : 'loading'
+  const activeResult = apiResult && apiResult.token === token ? apiResult : null
+  // Anchored to the current token too, so the stale badge never reports the
+  // previous token's success time.
+  const lastSuccessAt = activeResult ? activeResult.at : null
 
   // Mock data is exclusive to the token-less demo path. A real kiosk must never
   // display fabricated departures or weather, so it stays null until the first
-  // successful fetch and renders a loading/error screen instead.
+  // successful fetch under *this* token and renders a loading/error screen
+  // instead.
   const data = useMemo<KioskData | null>(() => {
-    if (token) return apiData
+    if (token) return activeResult ? activeResult.data : null
     return relativizeMockData(mockData)
-  }, [token, apiData])
+  }, [token, activeResult])
 
   useEffect(() => {
     if (!token) {
@@ -279,9 +288,12 @@ function KioskPageInner() {
 
       try {
         // Send the token as a Bearer header rather than a query parameter so
-        // it never lands in reverse-proxy access logs. The backend
-        // (internal/kiosk/auth.go) prefers the header and only falls back to
-        // ?token= for kiosk devices with the token baked into a bookmarked URL.
+        // it never lands in reverse-proxy access logs. KioskAuth reads
+        // Authorization first and only falls back to ?token= (internal/kiosk/
+        // auth.go), and /api/kiosk/data is the sole endpoint it guards, so no
+        // other request depends on the query form. Bookmarked /kiosk?token=...
+        // URLs keep working: that query parameter is consumed client-side by
+        // this page (and persisted to localStorage), never sent to the API.
         const res = await fetch('/api/kiosk/data', {
           credentials: 'include',
           headers: { Authorization: 'Bearer ' + token! },
@@ -300,8 +312,7 @@ function KioskPageInner() {
         }
         const json: KioskData = await res.json()
         if (cancelled || myRequestId !== requestId) return
-        setApiData(json)
-        setLastSuccessAt(Date.now())
+        setApiResult({ token, data: json, at: Date.now() })
         setFetchStatus({ token, state: 'ok' })
         failureCount = 0
         scheduleNext(POLL_INTERVAL_MS)
