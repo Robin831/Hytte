@@ -404,7 +404,7 @@ func TestDataHandler_SlowSourceYieldsPartialData(t *testing.T) {
 }
 
 // decodeDim runs the data handler with cfg and returns the decoded dim object.
-func decodeDim(t *testing.T, cfg KioskConfig) *dimConfig {
+func decodeDim(t *testing.T, cfg KioskConfig) *DimConfig {
 	t.Helper()
 	resetKioskCache()
 
@@ -418,7 +418,7 @@ func decodeDim(t *testing.T, cfg KioskConfig) *dimConfig {
 	}
 
 	var body struct {
-		Dim *dimConfig `json:"dim"`
+		Dim *DimConfig `json:"dim"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -440,10 +440,6 @@ func TestDataHandler_DimEnabledValues(t *testing.T) {
 	}{
 		{"bool true", true, true},
 		{"bool false", false, false},
-		{"string true", "true", true},
-		{"string false", "false", false},
-		{"string on", "on", true},
-		{"string off", "off", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -502,6 +498,10 @@ func TestDataHandler_MalformedDimValuesFallBack(t *testing.T) {
 	}{
 		{"unknown enum", KioskConfig{"dim": "maybe"}},
 		{"auto is not a bool", KioskConfig{"dim": "auto"}},
+		{"string true is not a bool", KioskConfig{"dim": "true"}},
+		{"string false is not a bool", KioskConfig{"dim": "false"}},
+		{"string on is not a bool", KioskConfig{"dim": "on"}},
+		{"string 1 is not a bool", KioskConfig{"dim": "1"}},
 		{"number instead of bool", KioskConfig{"dim": float64(5)}},
 		{"object instead of bool", KioskConfig{"dim": map[string]any{"on": true}}},
 		{"null", KioskConfig{"dim": nil}},
@@ -564,7 +564,7 @@ func TestDataHandler_CachedPayloadCarriesPerTokenDim(t *testing.T) {
 	transitSvc := &fakeTransit{}
 	handler := DataHandler(nil, transitSvc, nil, nil)
 
-	read := func(cfg KioskConfig) *dimConfig {
+	read := func(cfg KioskConfig) *DimConfig {
 		req := injectConfig(httptest.NewRequest("GET", "/api/kiosk/data", nil), cfg)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
@@ -572,7 +572,7 @@ func TestDataHandler_CachedPayloadCarriesPerTokenDim(t *testing.T) {
 			t.Fatalf("expected 200, got %d", rec.Code)
 		}
 		var body struct {
-			Dim *dimConfig `json:"dim"`
+			Dim *DimConfig `json:"dim"`
 		}
 		if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 			t.Fatalf("decode: %v", err)
@@ -583,6 +583,9 @@ func TestDataHandler_CachedPayloadCarriesPerTokenDim(t *testing.T) {
 	base := []any{"NSR:StopPlace:1"}
 	first := read(KioskConfig{"stop_ids": base, "dim": true})
 	second := read(KioskConfig{"stop_ids": base, "dim": false})
+	// A token with no dim override must not inherit a previous token's dim from
+	// the shared cache entry.
+	third := read(KioskConfig{"stop_ids": base})
 
 	if got := transitSvc.calls.Load(); got != 1 {
 		t.Errorf("expected the second request to hit the cache, got %d transit calls", got)
@@ -592,6 +595,9 @@ func TestDataHandler_CachedPayloadCarriesPerTokenDim(t *testing.T) {
 	}
 	if second == nil || second.Enabled == nil || *second.Enabled {
 		t.Errorf("expected cached response to carry its own enabled=false, got %+v", second)
+	}
+	if third != nil {
+		t.Errorf("expected a token without dim keys to stay dim-free, got %+v", third)
 	}
 }
 

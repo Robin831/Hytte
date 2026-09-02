@@ -53,10 +53,10 @@ type SunTimes struct {
 	Sunset  string `json:"sunset,omitempty"`  // RFC3339, present when Kind == "normal"
 }
 
-// dimConfig carries a kiosk token's optional night-mode overrides. Every field
+// DimConfig carries a kiosk token's optional night-mode overrides. Every field
 // is optional: an absent Enabled tells the client to keep using its sun-driven
 // default, and Start/End are only ever emitted together as a complete window.
-type dimConfig struct {
+type DimConfig struct {
 	Enabled *bool  `json:"enabled,omitempty"`
 	Start   string `json:"start,omitempty"` // local "HH:MM"
 	End     string `json:"end,omitempty"`   // local "HH:MM"
@@ -70,7 +70,7 @@ type KioskData struct {
 	Wind      *netatmo.WindReadings    `json:"wind,omitempty"`
 	Forecast  json.RawMessage          `json:"forecast,omitempty"`
 	Sun       *SunTimes                `json:"sun,omitempty"`
-	Dim       *dimConfig               `json:"dim,omitempty"`
+	Dim       *DimConfig               `json:"dim,omitempty"`
 	FetchedAt time.Time                `json:"fetched_at"`
 }
 
@@ -99,7 +99,7 @@ func DataHandler(db *sql.DB, transitSvc transitFetcher, netatmoClient netatmoFet
 		stopIDs := extractStringSlice(cfg, "stop_ids")
 		lat, hasLat := extractFloat(cfg, "lat")
 		lon, hasLon := extractFloat(cfg, "lon")
-		locationName, _ := cfg["location"].(string)
+		locationName := extractString(cfg, "location")
 		netatmoUserID, _ := extractInt64(cfg, "netatmo_user_id")
 		dim := buildDimConfig(cfg)
 
@@ -248,6 +248,9 @@ func DataHandler(db *sql.DB, transitSvc transitFetcher, netatmoClient netatmoFet
 		if r.Context().Err() == nil {
 			kioskCache.Set(cacheKey, result)
 		}
+		// Assigned after Set so the cached entry stays token-agnostic: the shared
+		// entry must hold no dim, and each response stamps its own (see the
+		// cache-hit branch above).
 		result.Dim = dim
 		writeKioskData(w, result)
 	}
@@ -469,8 +472,8 @@ func extractInt64(cfg KioskConfig, key string) (int64, bool) {
 // malformed or wrongly-typed entry is ignored so the client falls back to its
 // sun-driven default instead of the data endpoint failing. Returns nil when the
 // config carries no usable override at all.
-func buildDimConfig(cfg KioskConfig) *dimConfig {
-	var dim dimConfig
+func buildDimConfig(cfg KioskConfig) *DimConfig {
+	var dim DimConfig
 
 	if enabled, ok := extractBool(cfg, "dim"); ok {
 		dim.Enabled = &enabled
@@ -478,8 +481,8 @@ func buildDimConfig(cfg KioskConfig) *dimConfig {
 
 	// A half-configured window is meaningless to the client, so start and end
 	// are only emitted when both parse.
-	startRaw, _ := extractString(cfg, "dim_start")
-	endRaw, _ := extractString(cfg, "dim_end")
+	startRaw := extractString(cfg, "dim_start")
+	endRaw := extractString(cfg, "dim_end")
 	start, startOK := parseHHMM(startRaw)
 	end, endOK := parseHHMM(endRaw)
 	if startOK && endOK {
@@ -493,64 +496,34 @@ func buildDimConfig(cfg KioskConfig) *dimConfig {
 	return &dim
 }
 
-// parseHHMM validates a local "HH:MM" clock string. Anything else — wrong
-// length, non-digits, hour above 23 or minute above 59 — is rejected without an
+// parseHHMM validates a local "HH:MM" clock string. Anything else — unpadded or
+// non-digit fields, hour above 23 or minute above 59 — is rejected without an
 // error, since callers treat unparseable values as "not configured".
 func parseHHMM(s string) (string, bool) {
 	s = strings.TrimSpace(s)
-	if len(s) != 5 || s[2] != ':' {
+	// time.Parse accepts an unpadded hour ("1:00"), so the fixed width is checked
+	// separately; the rest — digits, separator, hour/minute ranges — is its job.
+	if len(s) != len("15:04") {
 		return "", false
 	}
-	for i, c := range []byte(s) {
-		if i == 2 {
-			continue
-		}
-		if c < '0' || c > '9' {
-			return "", false
-		}
-	}
-	hour := int(s[0]-'0')*10 + int(s[1]-'0')
-	minute := int(s[3]-'0')*10 + int(s[4]-'0')
-	if hour > 23 || minute > 59 {
+	if _, err := time.Parse("15:04", s); err != nil {
 		return "", false
 	}
 	return s, true
 }
 
-// extractString reads a string from a KioskConfig map entry. Values of any
-// other type are reported as absent rather than coerced.
-func extractString(cfg KioskConfig, key string) (string, bool) {
-	v, ok := cfg[key]
-	if !ok {
-		return "", false
-	}
-	s, ok := v.(string)
-	if !ok {
-		return "", false
-	}
-	return s, true
+// extractString reads a string from a KioskConfig map entry. A missing key or a
+// value of any other type yields "" rather than a coerced value.
+func extractString(cfg KioskConfig, key string) string {
+	s, _ := cfg[key].(string)
+	return s
 }
 
-// extractBool reads a bool from a KioskConfig map entry. JSON booleans are the
-// canonical form, but since kiosk configs are hand-edited JSON the equivalent
-// enum strings ("true"/"false", "on"/"off", "yes"/"no", "1"/"0") are accepted
-// too. Any other value — including "auto" and non-bool types — is reported as
-// absent so the caller keeps its default.
+// extractBool reads a bool from a KioskConfig map entry. Like the sibling
+// extractors it is strict about types: values of any other type — including the
+// strings "true" and "auto" — are reported as absent rather than coerced, so the
+// caller keeps its default.
 func extractBool(cfg KioskConfig, key string) (bool, bool) {
-	v, ok := cfg[key]
-	if !ok {
-		return false, false
-	}
-	switch val := v.(type) {
-	case bool:
-		return val, true
-	case string:
-		switch strings.ToLower(strings.TrimSpace(val)) {
-		case "true", "on", "yes", "1":
-			return true, true
-		case "false", "off", "no", "0":
-			return false, true
-		}
-	}
-	return false, false
+	b, ok := cfg[key].(bool)
+	return b, ok
 }
