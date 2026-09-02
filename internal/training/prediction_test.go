@@ -824,6 +824,21 @@ func TestFormatVO2maxSummaryTrustsTightCluster(t *testing.T) {
 	}
 }
 
+// TestFormatVO2maxSummaryNoiseThresholdBoundary pins the inclusive comparison
+// against vo2maxNoisySpread: a spread sitting exactly on the threshold is noise,
+// and anything under it is a tight cluster. The same boundary is exercised for
+// the trends card in TestComputeVO2maxTrend, which shares the constant.
+func TestFormatVO2maxSummaryNoiseThresholdBoundary(t *testing.T) {
+	onThreshold := formatVO2maxSummary(vo2maxEstimatesFrom(47, 48, 49, 49.5, 50), 50)
+	if !strings.Contains(onThreshold, "3.0-unit spread is estimator noise") {
+		t.Errorf("a spread of exactly %.1f must be called noise:\n%s", vo2maxNoisySpread, onThreshold)
+	}
+	justUnder := formatVO2maxSummary(vo2maxEstimatesFrom(47.1, 48, 49, 49.5, 50), 50)
+	if !strings.Contains(justUnder, "cluster tightly") {
+		t.Errorf("a 2.9-unit spread must not be called noise:\n%s", justUnder)
+	}
+}
+
 // TestFormatVO2maxSummaryEvenCountMedian pins the even-length median: with no
 // middle element the two central values must be averaged. History length is
 // whatever GetVO2maxHistory returns, so even counts are as common as odd.

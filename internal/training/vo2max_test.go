@@ -229,9 +229,9 @@ func TestGetVO2maxHandler_Empty(t *testing.T) {
 // median/range summary and a trend suppressed by the estimates' spread.
 func TestGetVO2maxHandler_WithHistory(t *testing.T) {
 	db := setupTestDB(t)
-	// Insert 5 workouts with VO2max 46..50 — a 4-unit spread, which is estimator
-	// scatter rather than a readable slope, so the trend must be "noisy".
-	insertWorkoutsForVO2max(t, db, 5)
+	// A 4-unit spread is estimator scatter rather than a readable slope, so the
+	// trend must be "noisy".
+	insertVO2maxSeries(t, db, []float64{46, 47, 48, 49, 50})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/training/vo2max", nil)
 	req = withUser(req, 1)
@@ -253,7 +253,7 @@ func TestGetVO2maxHandler_WithHistory(t *testing.T) {
 	if resp.Latest == nil {
 		t.Fatal("expected latest to be non-null")
 	}
-	// insertWorkoutsForVO2max stores VO2max = 45 + i, so latest (i=5) should be 50.
+	// The series ends at 50, so that is the latest estimate.
 	if resp.Latest.VO2max != 50 {
 		t.Errorf("expected latest VO2max 50, got %v", resp.Latest.VO2max)
 	}
@@ -280,6 +280,46 @@ func TestGetVO2maxHandler_WithHistory(t *testing.T) {
 	}
 }
 
+// TestGetVO2maxHandler_TightRun covers the other half of the response contract:
+// when the estimates cluster tightly the JSON must carry a direction in `trend`
+// *and* summary.noisy false, which is the pairing the frontend branches on.
+func TestGetVO2maxHandler_TightRun(t *testing.T) {
+	db := setupTestDB(t)
+	insertVO2maxSeries(t, db, []float64{48.0, 48.5, 49.0, 49.5, 50.0})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/training/vo2max", nil)
+	req = withUser(req, 1)
+	rr := httptest.NewRecorder()
+
+	GetVO2maxHandler(db).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var resp vo2maxResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Trend != "improving" {
+		t.Errorf("expected trend 'improving' for a tight rising run, got %q", resp.Trend)
+	}
+	if resp.Summary == nil {
+		t.Fatal("expected a summary alongside the history")
+	}
+	if resp.Summary.Noisy {
+		t.Error("a 2-unit spread must not be flagged noisy")
+	}
+	if resp.Summary.Median != 49 {
+		t.Errorf("expected summary median 49, got %v", resp.Summary.Median)
+	}
+	if resp.Summary.Low != 48 || resp.Summary.High != 50 {
+		t.Errorf("expected summary range 48-50, got %v-%v", resp.Summary.Low, resp.Summary.High)
+	}
+	if resp.Summary.Count != 5 {
+		t.Errorf("expected summary count 5, got %d", resp.Summary.Count)
+	}
+}
+
 // TestComputeVO2maxTrend tests trend calculation across various scenarios.
 func TestComputeVO2maxTrend(t *testing.T) {
 	cases := []struct {
@@ -296,9 +336,24 @@ func TestComputeVO2maxTrend(t *testing.T) {
 		// however cleanly the values happen to line up.
 		{"noisy ascending", []float64{45, 47, 49, 51, 53}, "noisy"},
 		{"noisy scattered", []float64{37, 56, 44, 51, 41}, "noisy"},
-		// Only the trend window is considered, so an old outlier cannot poison a
-		// tight run of recent estimates.
-		{"old outlier outside window", []float64{37, 48.0, 48.5, 49.0, 49.5, 50.0}, "improving"},
+		// The spread threshold is inclusive, so a run sitting exactly on it is
+		// noise. Pins the boundary against a `>=` → `>` slip.
+		{"spread exactly at the noise threshold", []float64{47, 48, 49, 49.5, 50}, "noisy"},
+		// Only the summary window (vo2maxSummaryWindow estimates) is considered,
+		// so an older outlier cannot poison a tight run of recent estimates.
+		{"old outlier outside window", []float64{
+			37,
+			48.0, 48.2, 48.4, 48.6, 48.8, 49.0, 49.2, 49.4, 49.6, 49.8, 50.0, 50.2,
+		}, "improving"},
+		// A slow but real rise across a full window: the threshold is a total
+		// change, so 1.1 units over twelve estimates still reads as a direction.
+		{"slow rise across a full window", []float64{
+			48.0, 48.1, 48.2, 48.3, 48.4, 48.5, 48.6, 48.7, 48.8, 48.9, 49.0, 49.1,
+		}, "improving"},
+		// Drift smaller than vo2maxTrendMinChange end to end is not a direction.
+		{"drift below the minimum change", []float64{
+			48.0, 48.04, 48.08, 48.12, 48.16, 48.2, 48.24, 48.28, 48.32, 48.36, 48.4, 48.44,
+		}, "stable"},
 		// Zero values are placeholders, not estimates, and must not widen the range.
 		{"zeros ignored", []float64{0, 50, 50.1, 49.9, 50.2, 50}, "stable"},
 	}
@@ -378,10 +433,13 @@ func insertWorkout(t *testing.T, db *sql.DB) {
 	}
 }
 
-// insertWorkoutsForVO2max inserts n workouts and corresponding VO2max estimates.
-func insertWorkoutsForVO2max(t *testing.T, db *sql.DB, n int) {
+// insertVO2maxSeries inserts one workout per value with that VO2max estimate,
+// oldest first. Taking the values rather than a count lets a test choose
+// between a scattered run (trend suppressed as noise) and a tight one (trend
+// readable), which the handler has to render differently.
+func insertVO2maxSeries(t *testing.T, db *sql.DB, values []float64) {
 	t.Helper()
-	for i := 1; i <= n; i++ {
+	for i := 1; i <= len(values); i++ {
 		_, err := db.Exec(`
 			INSERT OR IGNORE INTO workouts (id, user_id, sport, started_at, duration_seconds, created_at, fit_file_hash)
 			VALUES (?, 1, 'running', ?, 3600, ?, ?)`,
@@ -396,7 +454,7 @@ func insertWorkoutsForVO2max(t *testing.T, db *sql.DB, n int) {
 		est := &VO2maxEstimate{
 			UserID:      1,
 			WorkoutID:   int64(i),
-			VO2max:      45 + float64(i),
+			VO2max:      values[i-1],
 			Method:      "daniels",
 			EstimatedAt: "2026-01-" + formatDay(i) + "T11:00:00Z",
 		}
