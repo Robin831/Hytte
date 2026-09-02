@@ -7,7 +7,13 @@ const MONTHS = ['januar', 'februar', 'mars', 'april', 'mai', 'juni', 'juli', 'au
 
 function pad2(n: number): string { return String(n).padStart(2, '0') }
 
-export default function KioskClock() {
+interface Props {
+  // Night mode: render the reduced-contrast palette so a wall-mounted screen
+  // does not light up a dark room. Defaults to the normal daytime palette.
+  dimmed?: boolean
+}
+
+export default function KioskClock({ dimmed = false }: Props) {
   const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
@@ -19,11 +25,17 @@ export default function KioskClock() {
   const dateStr = `${DAYS[now.getDay()]} ${now.getDate()}. ${MONTHS[now.getMonth()]}`
 
   return (
-    <div className="flex flex-col items-center py-6">
-      <div className="text-8xl font-mono font-bold tracking-wider text-white tabular-nums">
+    <div className="flex flex-col items-center py-6" data-dimmed={dimmed ? 'true' : 'false'}>
+      <div
+        className={`text-8xl font-mono font-bold tracking-wider tabular-nums ${
+          dimmed ? 'text-gray-500' : 'text-white'
+        }`}
+      >
         {timeStr}
       </div>
-      <div className="mt-2 text-2xl text-gray-300 capitalize">{dateStr}</div>
+      <div className={`mt-2 text-2xl capitalize ${dimmed ? 'text-gray-600' : 'text-gray-300'}`}>
+        {dateStr}
+      </div>
     </div>
   )
 }

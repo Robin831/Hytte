@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route, useNavigate } from 'react-router'
-import KioskPage from './KioskPage'
+import KioskPage, { isNightMode, pixelShift, PIXEL_SHIFT_MAX_PX } from './KioskPage'
 import { renderKiosk, flushMicrotasks } from '../test/kiosk'
 import enKiosk from '../../public/locales/en/kiosk.json'
 import nbKiosk from '../../public/locales/nb/kiosk.json'
@@ -19,11 +19,18 @@ vi.mock('react-i18next', async () => {
   }
 })
 
+// The clock and departures mocks echo the `dimmed` prop back into the DOM so
+// the night-mode tests below can assert that KioskPage threads it down, without
+// having to reason about the real components' Tailwind classes.
 vi.mock('../components/kiosk/KioskClock', () => ({
-  default: () => <div data-testid="mock-clock" />,
+  default: ({ dimmed }: { dimmed?: boolean }) => (
+    <div data-testid="mock-clock" data-dimmed={dimmed ? 'true' : 'false'} />
+  ),
 }))
 vi.mock('../components/kiosk/KioskBusDepartures', () => ({
-  default: () => <div data-testid="mock-buses" />,
+  default: ({ dimmed }: { dimmed?: boolean }) => (
+    <div data-testid="mock-buses" data-dimmed={dimmed ? 'true' : 'false'} />
+  ),
 }))
 vi.mock('../components/kiosk/KioskWeather', () => ({
   default: () => <div data-testid="mock-weather" />,
@@ -859,5 +866,315 @@ describe('kiosk locale files', () => {
     expect(leafKeys(locale as unknown as Record<string, unknown>).sort()).toEqual(
       leafKeys(enKiosk as unknown as Record<string, unknown>).sort(),
     )
+  })
+})
+
+
+// ── Night mode & burn-in pixel shift ─────────────────────────────────────────
+// Every fixture below is built from local-time constructors rather than UTC
+// strings, because both features read local hours/minutes — hard-coding "Z"
+// timestamps would make the suite pass or fail depending on the machine's TZ.
+
+const DAY = { year: 2026, month: 4, day: 27 } // 27 May 2026, local
+
+function localTime(hours: number, minutes = 0): Date {
+  return new Date(DAY.year, DAY.month, DAY.day, hours, minutes, 0, 0)
+}
+
+// RFC3339 timestamp for a local wall-clock time, matching what the backend
+// emits for sunrise/sunset.
+function localStamp(hours: number, minutes = 0): string {
+  return localTime(hours, minutes).toISOString()
+}
+
+const NORMAL_SUN = {
+  kind: 'normal',
+  sunrise: localStamp(6, 0),
+  sunset: localStamp(20, 0),
+}
+
+describe('isNightMode', () => {
+  it('is sun-driven when no override is configured', () => {
+    expect(isNightMode(localTime(12, 0), NORMAL_SUN, null)).toBe(false)
+    expect(isNightMode(localTime(5, 59), NORMAL_SUN, null)).toBe(true)
+    expect(isNightMode(localTime(6, 0), NORMAL_SUN, null)).toBe(false)
+    expect(isNightMode(localTime(19, 59), NORMAL_SUN, null)).toBe(false)
+    expect(isNightMode(localTime(20, 0), NORMAL_SUN, null)).toBe(true)
+    expect(isNightMode(localTime(23, 30), NORMAL_SUN, null)).toBe(true)
+    expect(isNightMode(localTime(2, 0), NORMAL_SUN, null)).toBe(true)
+  })
+
+  it('never dims when dim.enabled is false, even deep in the sun-driven night', () => {
+    expect(isNightMode(localTime(2, 0), NORMAL_SUN, { enabled: false })).toBe(false)
+    expect(isNightMode(localTime(23, 0), NORMAL_SUN, { enabled: false })).toBe(false)
+    // enabled:false wins over an explicit window and over polar night too.
+    expect(
+      isNightMode(localTime(23, 0), NORMAL_SUN, { enabled: false, start: '22:00', end: '06:00' }),
+    ).toBe(false)
+    expect(isNightMode(localTime(12, 0), { kind: 'polarNight' }, { enabled: false })).toBe(false)
+  })
+
+  it('keeps the sun-driven default when dim.enabled is true but no window is set', () => {
+    expect(isNightMode(localTime(12, 0), NORMAL_SUN, { enabled: true })).toBe(false)
+    expect(isNightMode(localTime(23, 0), NORMAL_SUN, { enabled: true })).toBe(true)
+  })
+
+  it('lets an explicit window override the sun window', () => {
+    const dim = { start: '23:00', end: '05:00' }
+    // 21:00 is after sunset but before the configured window starts.
+    expect(isNightMode(localTime(21, 0), NORMAL_SUN, dim)).toBe(false)
+    expect(isNightMode(localTime(23, 0), NORMAL_SUN, dim)).toBe(true)
+    // 05:30 is before sunrise but after the configured window ends.
+    expect(isNightMode(localTime(5, 30), NORMAL_SUN, dim)).toBe(false)
+  })
+
+  it('handles a window that crosses midnight', () => {
+    const dim = { start: '22:00', end: '06:00' }
+    expect(isNightMode(localTime(23, 30), undefined, dim)).toBe(true)
+    expect(isNightMode(localTime(2, 0), undefined, dim)).toBe(true)
+    expect(isNightMode(localTime(5, 59), undefined, dim)).toBe(true)
+    expect(isNightMode(localTime(6, 0), undefined, dim)).toBe(false)
+    expect(isNightMode(localTime(7, 0), undefined, dim)).toBe(false)
+    expect(isNightMode(localTime(21, 59), undefined, dim)).toBe(false)
+  })
+
+  it('handles a same-day window', () => {
+    const dim = { start: '01:00', end: '04:00' }
+    expect(isNightMode(localTime(0, 30), undefined, dim)).toBe(false)
+    expect(isNightMode(localTime(1, 0), undefined, dim)).toBe(true)
+    expect(isNightMode(localTime(3, 59), undefined, dim)).toBe(true)
+    expect(isNightMode(localTime(4, 0), undefined, dim)).toBe(false)
+  })
+
+  it('treats polarDay as always day and polarNight as always dimmed', () => {
+    for (let hour = 0; hour < 24; hour++) {
+      expect(isNightMode(localTime(hour, 0), { kind: 'polarDay' }, null)).toBe(false)
+      expect(isNightMode(localTime(hour, 0), { kind: 'polarNight' }, null)).toBe(true)
+    }
+    // An explicit window still outranks the polar kinds.
+    expect(
+      isNightMode(localTime(12, 0), { kind: 'polarNight' }, { start: '22:00', end: '06:00' }),
+    ).toBe(false)
+    expect(
+      isNightMode(localTime(23, 0), { kind: 'polarDay' }, { start: '22:00', end: '06:00' }),
+    ).toBe(true)
+  })
+
+  it('never dims a token with no location and no window', () => {
+    for (let hour = 0; hour < 24; hour++) {
+      expect(isNightMode(localTime(hour, 0), null, null)).toBe(false)
+      expect(isNightMode(localTime(hour, 0), undefined, undefined)).toBe(false)
+      // dim.enabled=true alone cannot dim a kiosk that has no sun times.
+      expect(isNightMode(localTime(hour, 0), null, { enabled: true })).toBe(false)
+    }
+  })
+
+  it('ignores a half-configured or unparsable window instead of wedging', () => {
+    // Only one edge set: fall back to the sun window.
+    expect(isNightMode(localTime(23, 0), NORMAL_SUN, { start: '01:00' })).toBe(true)
+    expect(isNightMode(localTime(12, 0), NORMAL_SUN, { end: '01:00' })).toBe(false)
+    // Garbage values: fall back to the sun window rather than dimming forever.
+    expect(isNightMode(localTime(12, 0), NORMAL_SUN, { start: 'nope', end: '06:00' })).toBe(false)
+    expect(isNightMode(localTime(23, 0), NORMAL_SUN, { start: 'nope', end: 'nope' })).toBe(true)
+    // A zero-length window matches nothing.
+    expect(isNightMode(localTime(3, 0), NORMAL_SUN, { start: '03:00', end: '03:00' })).toBe(false)
+    // Broken sun timestamps degrade to "day" rather than throwing.
+    expect(isNightMode(localTime(3, 0), { kind: 'normal', sunrise: 'x', sunset: 'y' }, null)).toBe(
+      false,
+    )
+  })
+})
+
+describe('pixelShift', () => {
+  it('stays within a few pixels on both axes all day', () => {
+    for (let minute = 0; minute < 24 * 60; minute++) {
+      const { x, y } = pixelShift(localTime(0, minute))
+      expect(x).toBeGreaterThanOrEqual(0)
+      expect(x).toBeLessThanOrEqual(PIXEL_SHIFT_MAX_PX)
+      expect(y).toBeGreaterThanOrEqual(0)
+      expect(y).toBeLessThanOrEqual(PIXEL_SHIFT_MAX_PX)
+    }
+    expect(PIXEL_SHIFT_MAX_PX).toBeLessThanOrEqual(4)
+  })
+
+  it('holds each offset for minutes and eventually visits every offset', () => {
+    const first = pixelShift(localTime(0, 0))
+    expect(pixelShift(localTime(0, 1))).toEqual(first)
+    // The offset must actually move over a minutes-scale period.
+    const seen = new Set<string>()
+    for (let minute = 0; minute < 24 * 60; minute++) {
+      const { x, y } = pixelShift(localTime(0, minute))
+      seen.add(`${x},${y}`)
+    }
+    expect(seen.size).toBe((PIXEL_SHIFT_MAX_PX + 1) ** 2)
+  })
+})
+
+const TRANSFORM_RE = /^translate\(\s*(\d+)px,\s*(\d+)px\s*\)$/
+
+function transformOf(el: HTMLElement): string {
+  return el.style.transform
+}
+
+describe('KioskPage – night mode on the clock tick', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'setTimeout', 'clearTimeout', 'Date'] })
+    vi.setSystemTime(localTime(19, 58))
+    try { localStorage.removeItem('hytte_kiosk_token') } catch { /* ignore */ }
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+    vi.clearAllMocks()
+  })
+
+  async function mountWith(payload: Record<string, unknown>) {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ ...apiPayload, ...payload }),
+      } as Response),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    renderKiosk('/kiosk?token=test-token')
+    await act(async () => { await flushMicrotasks() })
+    return fetchMock
+  }
+
+  function root(): HTMLElement {
+    return screen.getByTestId('kiosk-root')
+  }
+
+  it('switches from day to night on a tick, without remounting or refetching', async () => {
+    const fetchMock = await mountWith({ sun: NORMAL_SUN })
+
+    expect(root()).toHaveAttribute('data-dimmed', 'false')
+    const clockBefore = screen.getByTestId('mock-clock')
+    const fetchesBefore = fetchMock.mock.calls.length
+
+    // Cross sunset (20:00) purely by letting the existing tick fire.
+    await act(async () => {
+      vi.advanceTimersByTime(3 * 60_000)
+      await flushMicrotasks()
+    })
+
+    expect(root()).toHaveAttribute('data-dimmed', 'true')
+    // Same DOM node -> the page re-rendered rather than remounting/reloading.
+    expect(screen.getByTestId('mock-clock')).toBe(clockBefore)
+    // Polling continued at its normal cadence; night mode added no fetches.
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(fetchesBefore)
+  })
+
+  it('switches back from night to day on a tick', async () => {
+    vi.setSystemTime(localTime(5, 58))
+    await mountWith({ sun: NORMAL_SUN })
+
+    expect(root()).toHaveAttribute('data-dimmed', 'true')
+
+    await act(async () => {
+      vi.advanceTimersByTime(3 * 60_000)
+      await flushMicrotasks()
+    })
+
+    expect(root()).toHaveAttribute('data-dimmed', 'false')
+  })
+
+  it('stays bright through the night when dim.enabled is false', async () => {
+    vi.setSystemTime(localTime(23, 0))
+    await mountWith({ sun: NORMAL_SUN, dim: { enabled: false } })
+
+    expect(root()).toHaveAttribute('data-dimmed', 'false')
+    expect(screen.getByTestId('mock-clock')).toHaveAttribute('data-dimmed', 'false')
+  })
+
+  it('prefers an explicit window over the sun window', async () => {
+    vi.setSystemTime(localTime(21, 0))
+    await mountWith({ sun: NORMAL_SUN, dim: { start: '23:00', end: '05:00' } })
+
+    // 21:00 is past sunset but outside the configured window.
+    expect(root()).toHaveAttribute('data-dimmed', 'false')
+
+    await act(async () => {
+      vi.advanceTimersByTime(2 * 60 * 60_000 + 60_000)
+      await flushMicrotasks()
+    })
+    expect(root()).toHaveAttribute('data-dimmed', 'true')
+  })
+
+  it('dims under polarNight even at midday', async () => {
+    vi.setSystemTime(localTime(12, 0))
+    await mountWith({ sun: { kind: 'polarNight' } })
+    expect(root()).toHaveAttribute('data-dimmed', 'true')
+    expect(screen.getByTestId('mock-buses')).toHaveAttribute('data-dimmed', 'true')
+  })
+
+  it('stays bright under polarDay even at 02:00', async () => {
+    vi.setSystemTime(localTime(2, 0))
+    await mountWith({ sun: { kind: 'polarDay' } })
+    expect(root()).toHaveAttribute('data-dimmed', 'false')
+
+    await act(async () => {
+      vi.advanceTimersByTime(60 * 60_000)
+      await flushMicrotasks()
+    })
+    expect(root()).toHaveAttribute('data-dimmed', 'false')
+  })
+
+  it('never dims a token with no location and no window', async () => {
+    vi.setSystemTime(localTime(2, 0))
+    await mountWith({ sun: null })
+    expect(root()).toHaveAttribute('data-dimmed', 'false')
+
+    await act(async () => {
+      vi.advanceTimersByTime(60 * 60_000)
+      await flushMicrotasks()
+    })
+    expect(root()).toHaveAttribute('data-dimmed', 'false')
+  })
+
+  it('passes dimmed down to the clock and departures strips', async () => {
+    vi.setSystemTime(localTime(19, 58))
+    await mountWith({ sun: NORMAL_SUN })
+
+    expect(screen.getByTestId('mock-clock')).toHaveAttribute('data-dimmed', 'false')
+    expect(screen.getByTestId('mock-buses')).toHaveAttribute('data-dimmed', 'false')
+
+    await act(async () => {
+      vi.advanceTimersByTime(3 * 60_000)
+      await flushMicrotasks()
+    })
+
+    expect(screen.getByTestId('mock-clock')).toHaveAttribute('data-dimmed', 'true')
+    expect(screen.getByTestId('mock-buses')).toHaveAttribute('data-dimmed', 'true')
+  })
+
+  it('shifts the layout by a few pixels as the clock advances', async () => {
+    await mountWith({ sun: NORMAL_SUN })
+
+    const shifted = screen.getByTestId('kiosk-shift')
+    const first = transformOf(shifted)
+    expect(first).toMatch(TRANSFORM_RE)
+
+    const offsets = new Set<string>([first])
+    // Sample across a couple of hours of ticks; every sample must stay within
+    // the documented bound and the offset must actually move.
+    for (let i = 0; i < 12; i++) {
+      await act(async () => {
+        vi.advanceTimersByTime(10 * 60_000)
+        await flushMicrotasks()
+      })
+      const value = transformOf(screen.getByTestId('kiosk-shift'))
+      const match = TRANSFORM_RE.exec(value)
+      expect(match).not.toBeNull()
+      expect(Number(match![1])).toBeLessThanOrEqual(PIXEL_SHIFT_MAX_PX)
+      expect(Number(match![2])).toBeLessThanOrEqual(PIXEL_SHIFT_MAX_PX)
+      offsets.add(value)
+    }
+    expect(offsets.size).toBeGreaterThan(1)
+
+    // The outer frame clips the overhang, so the shift can never add a
+    // scrollbar at kiosk viewport sizes.
+    expect(screen.getByTestId('kiosk-root').className).toContain('overflow-hidden')
   })
 })

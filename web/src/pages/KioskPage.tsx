@@ -105,6 +105,16 @@ interface SunTimes {
   sunset?: string
 }
 
+// Optional night-mode overrides carried by the kiosk token config. Mirrors
+// kiosk.DimConfig on the backend: every field is optional, an absent `enabled`
+// means "keep the sun-driven default", and start/end are only ever sent
+// together as a complete local HH:MM window.
+interface DimConfig {
+  enabled?: boolean
+  start?: string
+  end?: string
+}
+
 interface KioskData {
   transit: StopDepartures[]
   outdoor?: OutdoorReadings | null
@@ -112,6 +122,7 @@ interface KioskData {
   wind?: WindReadings | null
   forecast?: ForecastData | null
   sun?: SunTimes | null
+  dim?: DimConfig | null
   fetched_at: string
 }
 
@@ -124,6 +135,92 @@ const STALE_TICK_INTERVAL_MS = 5_000
 // used for any further consecutive failures (cap). A successful fetch resets
 // the failure count, so the next poll fires at POLL_INTERVAL_MS again.
 const BACKOFF_SCHEDULE_MS = [30_000, 60_000, 120_000, 300_000]
+
+// ── Night mode ───────────────────────────────────────────────────────────────
+// The kiosk dims itself outside daylight hours so a wall-mounted screen does
+// not light up a dark room. The decision is a pure function of the current
+// time, the payload's sun times and the token's optional dim overrides, so it
+// is re-evaluated on the existing clock tick — no extra timer and no reload.
+
+// Convert a local "HH:MM" string or an RFC3339 timestamp to minutes since local
+// midnight. Returns null for anything unparsable so a malformed override can
+// never wedge the kiosk into (or out of) night mode.
+function minutesOfDay(value: string): number | null {
+  const hhmm = /^(\d{2}):(\d{2})$/.exec(value)
+  if (hhmm) {
+    const hours = Number(hhmm[1])
+    const minutes = Number(hhmm[2])
+    if (hours > 23 || minutes > 59) return null
+    return hours * 60 + minutes
+  }
+  const parsed = new Date(value)
+  const ms = parsed.getTime()
+  if (isNaN(ms)) return null
+  return parsed.getHours() * 60 + parsed.getMinutes()
+}
+
+// Half-open [start, end) membership over minutes-of-day, handling windows that
+// cross midnight (start > end). A zero-length window matches nothing.
+function inWindow(minute: number, start: number, end: number): boolean {
+  if (start === end) return false
+  if (start < end) return minute >= start && minute < end
+  return minute >= start || minute < end
+}
+
+// Precedence, highest first:
+//   1. dim.enabled === false — night mode is switched off entirely.
+//   2. An explicit dim.start/dim.end window replaces the sun window.
+//   3. polarDay is always day, polarNight is always night.
+//   4. Sun-driven: night between sunset and sunrise.
+//   5. No sun times and no window (a token without a location) — always day.
+export function isNightMode(
+  now: Date,
+  sun?: SunTimes | null,
+  dim?: DimConfig | null,
+): boolean {
+  if (dim?.enabled === false) return false
+
+  const minute = now.getHours() * 60 + now.getMinutes()
+
+  const overrideStart = dim?.start ? minutesOfDay(dim.start) : null
+  const overrideEnd = dim?.end ? minutesOfDay(dim.end) : null
+  if (overrideStart !== null && overrideEnd !== null) {
+    return inWindow(minute, overrideStart, overrideEnd)
+  }
+
+  if (sun?.kind === 'polarDay') return false
+  if (sun?.kind === 'polarNight') return true
+
+  const sunset = sun?.sunset ? minutesOfDay(sun.sunset) : null
+  const sunrise = sun?.sunrise ? minutesOfDay(sun.sunrise) : null
+  if (sunset !== null && sunrise !== null) return inWindow(minute, sunset, sunrise)
+
+  return false
+}
+
+// ── Pixel shift (burn-in mitigation) ─────────────────────────────────────────
+// A wall-mounted screen shows the same clock in the same place all day, which
+// burns static elements into OLED/LCD panels. Nudging the whole layout by a few
+// pixels every few minutes spreads that wear without being visible to a viewer.
+
+// Largest offset applied on either axis, in CSS pixels.
+export const PIXEL_SHIFT_MAX_PX = 3
+// Distinct offsets per axis: 0 … PIXEL_SHIFT_MAX_PX.
+const PIXEL_SHIFT_STEPS = PIXEL_SHIFT_MAX_PX + 1
+// How long each offset is held. With 4 steps per axis the full 4x4 lattice is
+// visited every 7 * 16 = 112 minutes.
+const PIXEL_SHIFT_HOLD_MINUTES = 7
+
+// Offset for the given local time. Pure function of minutes-of-day, so like
+// night mode it rides the existing clock tick.
+export function pixelShift(now: Date): { x: number; y: number } {
+  const minute = now.getHours() * 60 + now.getMinutes()
+  const step = Math.floor(minute / PIXEL_SHIFT_HOLD_MINUTES)
+  return {
+    x: step % PIXEL_SHIFT_STEPS,
+    y: Math.floor(step / PIXEL_SHIFT_STEPS) % PIXEL_SHIFT_STEPS,
+  }
+}
 
 // Offset mock departure times so they appear relative to the current time,
 // preventing all departures from showing as "now/0 min" once the static
@@ -354,40 +451,52 @@ function KioskPageInner() {
     }
   }, [token])
 
-  // Drive the "Updated X ago" clock.
+  // The kiosk's single clock tick. It drives two things: the "Updated X ago"
+  // badge, and the minute-derived night mode / pixel-shift offset. Both read
+  // `now`, so one interval is enough — neither feature adds a timer of its own.
   //
-  // The effect is gated on lastSuccessAt being non-null so the interval
-  // never starts before we have received a first data payload — a healthy
-  // kiosk that has never fetched successfully produces zero ticks.
-  //
-  // While data *is* fresh the interval fires every 5 s but skips the
-  // setNow call (and therefore skips the re-render) when we are still well
-  // below the stale threshold.  Only as we approach or cross the threshold
-  // does the state update fire, keeping the badge age display accurate
-  // without wasting renders on low-power wall-mounted devices during normal
-  // operation.
+  // The tick fires every 5 s but deliberately skips the state update (and
+  // therefore the re-render) when nothing observable has changed: low-power
+  // wall-mounted devices should not repaint once per tick all day. A re-render
+  // happens when either
+  //   * the local minute rolls over — night mode and the pixel-shift offset
+  //     are both pure functions of minutes-of-day, or
+  //   * we are within one tick of the stale threshold or already past it, so
+  //     the badge age stays accurate.
   //
   // The effect re-runs on each successful fetch (lastSuccessAt changes), so
-  // the timer is always anchored to the most recent success and a recovery
-  // fetch automatically resets the clock.
+  // the staleness half is always anchored to the most recent success and a
+  // recovery fetch automatically resets it.
   useEffect(() => {
-    if (!token || lastSuccessAt === null) return
     const id = setInterval(() => {
       const t = Date.now()
-      // Only trigger a re-render when we are within one tick of the stale
-      // threshold or already past it; during the clearly-fresh window the
-      // DOM does not need updating.
-      if (t - lastSuccessAt >= STALE_THRESHOLD_MS - STALE_TICK_INTERVAL_MS) {
-        setNow(t)
-      }
+      setNow((prev) => {
+        if (Math.floor(t / 60_000) !== Math.floor(prev / 60_000)) return t
+        if (
+          lastSuccessAt !== null &&
+          t - lastSuccessAt >= STALE_THRESHOLD_MS - STALE_TICK_INTERVAL_MS
+        ) {
+          return t
+        }
+        return prev
+      })
     }, STALE_TICK_INTERVAL_MS)
     return () => clearInterval(id)
-  }, [token, lastSuccessAt])
+  }, [lastSuccessAt])
 
   const isStale =
     !!token &&
     lastSuccessAt !== null &&
     now - lastSuccessAt > STALE_THRESHOLD_MS
+
+  // Night mode and the burn-in pixel shift both ride the tick above: `now`
+  // only changes when the minute rolls over (or the badge needs refreshing),
+  // so these memos recompute at most once a minute.
+  const dimmed = useMemo(
+    () => isNightMode(new Date(now), data?.sun, data?.dim),
+    [now, data],
+  )
+  const shift = useMemo(() => pixelShift(new Date(now)), [now])
 
   // A rejected token means the screen is deauthorised, so it takes precedence
   // over any data we may already hold: a wall-mounted kiosk whose token is
@@ -437,37 +546,58 @@ function KioskPageInner() {
     )
   }
 
+  const dividerClass = `h-px mx-4 ${dimmed ? 'bg-gray-900' : 'bg-gray-800'}`
+
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col overflow-hidden pb-16">
-      {/* Clock & Date */}
-      <KioskClock />
+    // Outer frame: clips the few pixels the shifted layout pokes outside the
+    // viewport, so the burn-in offset can never add a scrollbar. It grows with
+    // the inner element, so content taller than the screen still scrolls the
+    // page exactly as it did before the shift was introduced.
+    <div
+      data-testid="kiosk-root"
+      data-dimmed={dimmed ? 'true' : 'false'}
+      className={`min-h-screen w-full overflow-hidden ${dimmed ? 'bg-black' : 'bg-gray-950'}`}
+    >
+      <div
+        data-testid="kiosk-shift"
+        // A transform, not padding: it does not reflow the layout, so the
+        // panels keep their exact sizes and nothing is clipped beyond the
+        // pb-16 gutter at the bottom edge.
+        style={{ transform: `translate(${shift.x}px, ${shift.y}px)` }}
+        className={`min-h-screen flex flex-col overflow-hidden pb-16 ${
+          dimmed ? 'text-gray-500' : 'text-white'
+        }`}
+      >
+        {/* Clock & Date */}
+        <KioskClock dimmed={dimmed} />
 
-      {/* Divider */}
-      <div className="h-px bg-gray-800 mx-4" />
+        {/* Divider */}
+        <div className={dividerClass} />
 
-      {/* Bus Departures — scrollable but not greedy */}
-      <div className="overflow-y-auto py-2" style={{ maxHeight: '45vh' }}>
-        <KioskBusDepartures stops={data.transit} />
+        {/* Bus Departures — scrollable but not greedy */}
+        <div className="overflow-y-auto py-2" style={{ maxHeight: '45vh' }}>
+          <KioskBusDepartures stops={data.transit} dimmed={dimmed} />
+        </div>
+
+        {/* Divider */}
+        <div className={dividerClass} />
+
+        {/* Weather strip */}
+        <KioskWeather
+          outdoor={data.outdoor ?? null}
+          indoor={data.indoor ?? null}
+          wind={data.wind ?? null}
+          forecast={data.forecast ?? null}
+        />
+
+        {/* Divider */}
+        <div className={dividerClass} />
+
+        {/* Sunrise / Sunset */}
+        <KioskSunrise sun={data.sun ?? null} />
+
+        <KioskStaleBadge isStale={isStale} lastSuccessAt={lastSuccessAt} now={now} />
       </div>
-
-      {/* Divider */}
-      <div className="h-px bg-gray-800 mx-4" />
-
-      {/* Weather strip */}
-      <KioskWeather
-        outdoor={data.outdoor ?? null}
-        indoor={data.indoor ?? null}
-        wind={data.wind ?? null}
-        forecast={data.forecast ?? null}
-      />
-
-      {/* Divider */}
-      <div className="h-px bg-gray-800 mx-4" />
-
-      {/* Sunrise / Sunset */}
-      <KioskSunrise sun={data.sun ?? null} />
-
-      <KioskStaleBadge isStale={isStale} lastSuccessAt={lastSuccessAt} now={now} />
     </div>
   )
 }

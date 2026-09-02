@@ -1,0 +1,2 @@
+category: Added
+- **Kiosk night mode and burn-in pixel shift** - The kiosk screen now dims to a reduced-contrast palette outside daylight hours, driven by the payload's sunrise/sunset (including polar day/night) and any `dim` / `dim_start` / `dim_end` overrides on the kiosk token; the whole layout is also nudged a few pixels every few minutes to spread panel wear. Both ride the existing clock tick, so nothing reloads. (Hytte-b6qmj)

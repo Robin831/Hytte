@@ -16,6 +16,9 @@ interface StopDepartures {
 
 interface Props {
   stops: StopDepartures[]
+  // Night mode: render the reduced-contrast palette so a wall-mounted screen
+  // does not light up a dark room. Defaults to the normal daytime palette.
+  dimmed?: boolean
 }
 
 function minutesUntil(departureTime: string): number {
@@ -51,7 +54,16 @@ function lineBadgeColor(line: string): string {
   return colors[line.charCodeAt(0) % colors.length]
 }
 
-export default function KioskBusDepartures({ stops }: Props) {
+// Countdown colours. The dimmed variants keep the same red/yellow/green
+// meaning at a much lower luminance so the strip stays readable in the dark
+// without lighting up the room.
+function countdownColor(mins: number, dimmed: boolean): string {
+  if (mins <= 1) return dimmed ? 'text-red-800' : 'text-red-400'
+  if (mins <= 5) return dimmed ? 'text-yellow-800' : 'text-yellow-400'
+  return dimmed ? 'text-green-800' : 'text-green-400'
+}
+
+export default function KioskBusDepartures({ stops, dimmed = false }: Props) {
   // Kiosk uses hardcoded strings (no i18n) to avoid old-browser failures
   // Toggle visibility to retrigger the fade-in animation whenever stops data refreshes
   const [visible, setVisible] = useState(true)
@@ -75,7 +87,9 @@ export default function KioskBusDepartures({ stops }: Props) {
 
   if (stops.length === 0) {
     return (
-      <div className="px-6 py-4 text-gray-400 text-xl">Ingen avganger</div>
+      <div className={`px-6 py-4 text-xl ${dimmed ? 'text-gray-600' : 'text-gray-400'}`}>
+        Ingen avganger
+      </div>
     )
   }
 
@@ -83,10 +97,15 @@ export default function KioskBusDepartures({ stops }: Props) {
     <div
       className="px-4 transition-opacity duration-300"
       style={{ opacity: visible ? 1 : 0 }}
+      data-dimmed={dimmed ? 'true' : 'false'}
     >
       {stops.map((stop) => (
         <div key={stop.stop_id} className="mb-4">
-          <div className="text-sm font-semibold uppercase tracking-widest text-gray-400 mb-2 px-2">
+          <div
+            className={`text-sm font-semibold uppercase tracking-widest mb-2 px-2 ${
+              dimmed ? 'text-gray-600' : 'text-gray-400'
+            }`}
+          >
             {stop.stop_name}
           </div>
           <div className="space-y-1">
@@ -106,25 +125,31 @@ export default function KioskBusDepartures({ stops }: Props) {
               return (
                 <div
                   key={`${dep.line}-${dep.departure_time}`}
-                  className="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2"
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 ${
+                    dimmed ? 'bg-gray-900' : 'bg-gray-800'
+                  }`}
                 >
                   <span
-                    className={`${lineBadgeColor(dep.line)} text-white text-sm font-bold w-10 h-8 flex items-center justify-center rounded`}
+                    className={`${lineBadgeColor(dep.line)} text-sm font-bold w-10 h-8 flex items-center justify-center rounded ${
+                      dimmed ? 'text-gray-400 opacity-40' : 'text-white'
+                    }`}
                   >
                     {dep.line}
                   </span>
-                  <span className="flex-1 text-lg text-white truncate">
+                  <span
+                    className={`flex-1 text-lg truncate ${dimmed ? 'text-gray-500' : 'text-white'}`}
+                  >
                     {dep.destination}
                   </span>
                   <span
-                    className={`text-lg font-mono font-semibold tabular-nums ${
-                      mins <= 1 ? 'text-red-400' : mins <= 5 ? 'text-yellow-400' : 'text-green-400'
-                    }`}
+                    className={`text-lg font-mono font-semibold tabular-nums ${countdownColor(mins, dimmed)}`}
                   >
                     {mins === 0 ? 'nå' : `${mins} min`}
                   </span>
                   {dep.delay_minutes > 0 && (
-                    <span className="text-xs text-red-400">+{dep.delay_minutes}</span>
+                    <span className={`text-xs ${dimmed ? 'text-red-800' : 'text-red-400'}`}>
+                      +{dep.delay_minutes}
+                    </span>
                   )}
                 </div>
                 )
