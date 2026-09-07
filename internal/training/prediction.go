@@ -86,9 +86,11 @@ const baselineRecencyDays = 84
 // ~5-8% of the median, so 10% clears real progress and catches garbage.
 const anchorOutlierMaxFasterThanMedian = 0.10
 
-// anchorCorroborationBand is how close a second candidate must be for a
-// materially faster candidate to be believed anyway. A real step change shows
-// up in more than one session; a parse artefact does not.
+// anchorCorroborationBand is how close a candidate from another session must
+// be for a materially faster candidate to be believed anyway. A real step
+// change shows up in more than one session; a parse artefact does not — which
+// is why corroboration only counts across sessions, never between two
+// candidates derived from the same workout.
 const anchorCorroborationBand = 0.02
 
 // minAnchorCandidatesForOutlierGuard is the fewest candidates from which a
@@ -1129,6 +1131,12 @@ type baselineAnchor struct {
 	Description           string
 	Stale                 bool // no evidence inside baselineRecencyDays
 	WorkDerived           bool // derived from interval work laps
+	// SourceKey identifies the session a candidate came from, so the outlier
+	// guard can tell two independent efforts from two readings of the same
+	// workout. One corrupt session can yield several candidates (a sustained
+	// window and an interval cluster, say) that all inherit the same bad
+	// number; without this they would corroborate each other.
+	SourceKey string
 }
 
 // deriveBaselineAnchor turns the facts into a threshold-pace estimate,
@@ -1144,14 +1152,19 @@ func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 	cutoff := facts.AsOf.AddDate(0, 0, -baselineRecencyDays).Format("2006-01-02")
 	pick := func(recentOnly bool) *baselineAnchor {
 		var candidates []baselineAnchor
-		consider := func(pace float64, desc string, work bool, date string) {
+		consider := func(pace float64, desc string, work bool, date string, workoutID int64) {
 			if len(date) >= 10 && recentOnly && date[:10] < cutoff {
 				return
 			}
 			if pace <= 0 {
 				return
 			}
-			candidates = append(candidates, baselineAnchor{ThresholdPaceSecPerKm: pace, Description: desc, WorkDerived: work})
+			candidates = append(candidates, baselineAnchor{
+				ThresholdPaceSecPerKm: pace,
+				Description:           desc,
+				WorkDerived:           work,
+				SourceKey:             anchorSourceKey(workoutID, date),
+			})
 		}
 		for _, e := range facts.BestEfforts {
 			date := e.Date
@@ -1160,7 +1173,7 @@ func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 			}
 			consider(e.PaceSecPerKm,
 				fmt.Sprintf("%.1f km sustained in %s on %s (%s/km)", e.DistanceMeters/1000, formatRaceTime(int(e.DurationSeconds)), date, formatPacePerKm(e.PaceSecPerKm)),
-				false, e.Date)
+				false, e.Date, e.WorkoutID)
 		}
 		for _, ie := range facts.IntervalEfforts {
 			date := ie.Date
@@ -1174,7 +1187,7 @@ func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 			}
 			consider(ie.WorkPaceSecPerKm+adj,
 				fmt.Sprintf("%d work reps totalling %s on %s (work pace %s/km, %s, %+.0fs/km continuous adjustment)", ie.Reps, formatRaceTime(int(ie.TotalWorkSeconds)), date, formatPacePerKm(ie.WorkPaceSecPerKm), hrNote, adj),
-				true, ie.Date)
+				true, ie.Date, ie.WorkoutID)
 		}
 		// Indoor efforts join the anchor pool only when converted from a
 		// RECORDED belt speed (never watch pace) — for a mostly-indoor
@@ -1195,7 +1208,7 @@ func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 			consider(ie.WorkPaceSecPerKm+adj,
 				fmt.Sprintf("%d indoor work reps totalling %s on %s (belt %.1f km/h x %.2f = %s/km outdoor-equivalent, %s, %+.0fs/km continuous adjustment)",
 					ie.Reps, formatRaceTime(int(ie.TotalWorkSeconds)), date, ie.BeltKmh, facts.TreadmillFactor, formatPacePerKm(ie.WorkPaceSecPerKm), hrNote, adj),
-				true, ie.Date)
+				true, ie.Date, ie.WorkoutID)
 		}
 		return selectAnchor(candidates)
 	}
@@ -1212,8 +1225,8 @@ func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 
 // selectAnchor picks the anchor from the candidate pool. It is the fastest
 // candidate, except that a candidate more than anchorOutlierMaxFasterThanMedian
-// below the median pace is only believed when a second candidate corroborates
-// it within anchorCorroborationBand. Without this guard a single corrupt
+// below the median pace is only believed when a candidate from another
+// session corroborates it within anchorCorroborationBand. Without this guard a single corrupt
 // effort set the entire prediction and the AI pass could not walk it back,
 // because clampToEnvelope pins the model's answer to the same baseline.
 // Returns nil for an empty pool.
@@ -1265,14 +1278,20 @@ func medianPace(sorted []baselineAnchor) float64 {
 	return (sorted[n/2-1].ThresholdPaceSecPerKm + sorted[n/2].ThresholdPaceSecPerKm) / 2
 }
 
-// hasCorroboration reports whether some other candidate sits within
-// anchorCorroborationBand of candidate i — the second effort that turns a
-// suspiciously fast number into a believable step change.
+// hasCorroboration reports whether a candidate from a DIFFERENT session sits
+// within anchorCorroborationBand of candidate i — the second effort that turns
+// a suspiciously fast number into a believable step change. Candidates sharing
+// a SourceKey come from the same workout and are only ever one piece of
+// evidence: a corrupt session can produce both a sustained window and an
+// interval cluster carrying the same bad pace, and those must not vouch for
+// each other. An empty SourceKey means the provenance is unknown, which cannot
+// establish independence either, so all such candidates are treated as one
+// source.
 func hasCorroboration(sorted []baselineAnchor, i int) bool {
 	pace := sorted[i].ThresholdPaceSecPerKm
 	band := pace * anchorCorroborationBand
 	for j := range sorted {
-		if j == i {
+		if j == i || sorted[j].SourceKey == sorted[i].SourceKey {
 			continue
 		}
 		if math.Abs(sorted[j].ThresholdPaceSecPerKm-pace) <= band {
@@ -1280,6 +1299,21 @@ func hasCorroboration(sorted []baselineAnchor, i int) bool {
 		}
 	}
 	return false
+}
+
+// anchorSourceKey identifies the session a candidate was derived from. The
+// workout ID is the real identity; facts assembled without one (older
+// snapshots, test fixtures) fall back to the date, which merges two sessions
+// run on the same day into one source — the conservative direction, since the
+// guard then asks for corroboration from another day.
+func anchorSourceKey(workoutID int64, date string) string {
+	if workoutID > 0 {
+		return fmt.Sprintf("w%d", workoutID)
+	}
+	if len(date) >= 10 {
+		return "d" + date[:10]
+	}
+	return "d" + date
 }
 
 // baselinePredictions computes the deterministic Riegel envelope centre from

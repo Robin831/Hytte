@@ -1023,3 +1023,61 @@ func TestSelectAnchorWideSpreadAnchorsOnPeers(t *testing.T) {
 		t.Errorf("want the 260 s/km median candidate, got %.0f", a.ThresholdPaceSecPerKm)
 	}
 }
+
+// TestDeriveBaselineAnchorRejectsSameWorkoutCorroboration: one corrupt session
+// can surface twice in the candidate pool — as a sustained window and as its
+// interval cluster — both carrying the same bad pace. Two readings of one
+// workout are one piece of evidence, so they must not vouch for each other and
+// wave the outlier through.
+func TestDeriveBaselineAnchorRejectsSameWorkoutCorroboration(t *testing.T) {
+	now := time.Now().UTC()
+	day := func(ago int) string { return now.AddDate(0, 0, -ago).Format(time.RFC3339) }
+
+	facts := &predictionFacts{
+		AsOf: now,
+		BestEfforts: []sustainedEffort{
+			{WorkoutID: 42, Date: day(3), DurationSeconds: 1398, DistanceMeters: 6000, PaceSecPerKm: 233},
+			{WorkoutID: 7, Date: day(10), DurationSeconds: 1800, DistanceMeters: 6224, PaceSecPerKm: 289},
+			{WorkoutID: 8, Date: day(17), DurationSeconds: 1800, DistanceMeters: 6182, PaceSecPerKm: 291},
+			{WorkoutID: 9, Date: day(24), DurationSeconds: 1800, DistanceMeters: 6140, PaceSecPerKm: 293},
+			{WorkoutID: 10, Date: day(31), DurationSeconds: 1800, DistanceMeters: 6099, PaceSecPerKm: 295},
+		},
+		// Same workout 42, same corrupt belt speed: 227 + 6s/km no-HR
+		// adjustment lands on the same bogus 233 s/km.
+		IntervalEfforts: []intervalEffort{
+			{WorkoutID: 42, Date: day(3), Reps: 5, TotalWorkSeconds: 1200, WorkPaceSecPerKm: 227},
+		},
+	}
+
+	a := deriveBaselineAnchor(facts)
+	if a == nil {
+		t.Fatal("expected an anchor")
+	}
+	if a.ThresholdPaceSecPerKm < 289 || a.ThresholdPaceSecPerKm > 296 {
+		t.Fatalf("two readings of workout 42 must not corroborate each other: anchor %.0f s/km should stay in the 289-296 peer range", a.ThresholdPaceSecPerKm)
+	}
+	if !strings.Contains(a.Description, "outlier") {
+		t.Errorf("description should record the rejection, got %q", a.Description)
+	}
+}
+
+// TestHasCorroborationRequiresDistinctSession pins the rule directly: same
+// SourceKey never corroborates, a different one does.
+func TestHasCorroborationRequiresDistinctSession(t *testing.T) {
+	sameSession := []baselineAnchor{
+		{ThresholdPaceSecPerKm: 233, SourceKey: "w42"},
+		{ThresholdPaceSecPerKm: 234, SourceKey: "w42"},
+		{ThresholdPaceSecPerKm: 290, SourceKey: "w7"},
+	}
+	if hasCorroboration(sameSession, 0) {
+		t.Error("candidates from the same workout must not corroborate each other")
+	}
+	twoSessions := []baselineAnchor{
+		{ThresholdPaceSecPerKm: 233, SourceKey: "w42"},
+		{ThresholdPaceSecPerKm: 234, SourceKey: "w43"},
+		{ThresholdPaceSecPerKm: 290, SourceKey: "w7"},
+	}
+	if !hasCorroboration(twoSessions, 0) {
+		t.Error("a matching effort from another session must corroborate")
+	}
+}
