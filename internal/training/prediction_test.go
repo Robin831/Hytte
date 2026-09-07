@@ -901,3 +901,183 @@ func TestFormatVO2maxSummaryEdgeCases(t *testing.T) {
 		t.Errorf("single estimate: %q", single)
 	}
 }
+
+// TestDeriveBaselineAnchorRejectsSingleOutlier reproduces the live 2026-09-04
+// snapshot: a feel-note parse bug read "the 15 min warmup" as belt 15.0 km/h
+// and produced a 3:53/km (233 s/km) candidate among 4:49-4:56/km peers, which
+// alone set a 1:27:17 half prediction. One anomalous effort must not be able
+// to carry the anchor.
+func TestDeriveBaselineAnchorRejectsSingleOutlier(t *testing.T) {
+	now := time.Now().UTC()
+	day := func(ago int) string { return now.AddDate(0, 0, -ago).Format(time.RFC3339) }
+
+	facts := &predictionFacts{
+		AsOf: now,
+		BestEfforts: []sustainedEffort{
+			{Date: day(3), DurationSeconds: 1398, DistanceMeters: 6000, PaceSecPerKm: 233}, // bogus 3:53/km
+			{Date: day(10), DurationSeconds: 1800, DistanceMeters: 6224, PaceSecPerKm: 289},
+			{Date: day(17), DurationSeconds: 1800, DistanceMeters: 6182, PaceSecPerKm: 291},
+			{Date: day(24), DurationSeconds: 1800, DistanceMeters: 6140, PaceSecPerKm: 293},
+			{Date: day(31), DurationSeconds: 1800, DistanceMeters: 6099, PaceSecPerKm: 295},
+			{Date: day(38), DurationSeconds: 1800, DistanceMeters: 6079, PaceSecPerKm: 296},
+		},
+	}
+
+	a := deriveBaselineAnchor(facts)
+	if a == nil {
+		t.Fatal("expected an anchor")
+	}
+	if a.ThresholdPaceSecPerKm < 289 || a.ThresholdPaceSecPerKm > 296 {
+		t.Fatalf("anchor %.0f s/km must stay in the 289-296 peer range, not follow the 233 s/km outlier", a.ThresholdPaceSecPerKm)
+	}
+	// The rationale must say the outlier was dropped, so a live recurrence is
+	// diagnosable from the stored snapshot.
+	if !strings.Contains(a.Description, "outlier") {
+		t.Errorf("description should record the rejection, got %q", a.Description)
+	}
+	// And the half prediction lands in the coach-reviewed band, not 1:27.
+	hm := baselinePredictions(a)["Half Marathon"]
+	if hm < 6200 || hm > 6600 {
+		t.Errorf("HM baseline %s outside the ~1:43-1:50 band", formatRaceTime(int(hm)))
+	}
+}
+
+// TestDeriveBaselineAnchorAcceptsCorroboratedStep: the guard must not swallow
+// a genuine step change. Two independent sessions at 4:10/km among 4:50/km
+// peers are evidence, not an artefact, so the fast pace still anchors.
+func TestDeriveBaselineAnchorAcceptsCorroboratedStep(t *testing.T) {
+	now := time.Now().UTC()
+	day := func(ago int) string { return now.AddDate(0, 0, -ago).Format(time.RFC3339) }
+
+	facts := &predictionFacts{
+		AsOf: now,
+		BestEfforts: []sustainedEffort{
+			{Date: day(3), DurationSeconds: 1500, DistanceMeters: 6000, PaceSecPerKm: 250},
+			{Date: day(6), DurationSeconds: 1512, DistanceMeters: 6000, PaceSecPerKm: 252},
+			{Date: day(17), DurationSeconds: 1800, DistanceMeters: 6207, PaceSecPerKm: 290},
+			{Date: day(24), DurationSeconds: 1800, DistanceMeters: 6164, PaceSecPerKm: 292},
+			{Date: day(31), DurationSeconds: 1800, DistanceMeters: 6122, PaceSecPerKm: 294},
+		},
+	}
+
+	a := deriveBaselineAnchor(facts)
+	if a == nil {
+		t.Fatal("expected an anchor")
+	}
+	if a.ThresholdPaceSecPerKm != 250 {
+		t.Errorf("a corroborated step change must anchor: want 250 s/km, got %.0f", a.ThresholdPaceSecPerKm)
+	}
+}
+
+// TestSelectAnchorSmallPoolKeepsFastest: with fewer than three candidates
+// there is no median worth trusting, so behaviour is unchanged.
+func TestSelectAnchorSmallPoolKeepsFastest(t *testing.T) {
+	if a := selectAnchor(nil); a != nil {
+		t.Errorf("empty pool must yield no anchor, got %+v", a)
+	}
+	one := []baselineAnchor{{ThresholdPaceSecPerKm: 233, Description: "solo"}}
+	if a := selectAnchor(one); a == nil || a.ThresholdPaceSecPerKm != 233 {
+		t.Errorf("single candidate must anchor unchanged, got %+v", a)
+	}
+	two := []baselineAnchor{
+		{ThresholdPaceSecPerKm: 290},
+		{ThresholdPaceSecPerKm: 233},
+	}
+	if a := selectAnchor(two); a == nil || a.ThresholdPaceSecPerKm != 233 {
+		t.Errorf("two candidates must keep the fastest, got %+v", a)
+	}
+}
+
+// TestSelectAnchorTightClusterKeepsFastest: normal training, no rejection and
+// no note appended to the rationale.
+func TestSelectAnchorTightClusterKeepsFastest(t *testing.T) {
+	cands := []baselineAnchor{
+		{ThresholdPaceSecPerKm: 296, Description: "d296"},
+		{ThresholdPaceSecPerKm: 289, Description: "d289"},
+		{ThresholdPaceSecPerKm: 292, Description: "d292"},
+		{ThresholdPaceSecPerKm: 294, Description: "d294"},
+	}
+	a := selectAnchor(cands)
+	if a == nil || a.ThresholdPaceSecPerKm != 289 {
+		t.Fatalf("tight cluster must keep the fastest 289 s/km, got %+v", a)
+	}
+	if a.Description != "d289" {
+		t.Errorf("no rejection happened, description must be untouched: %q", a.Description)
+	}
+}
+
+// TestSelectAnchorWideSpreadAnchorsOnPeers: when candidates are scattered,
+// the extreme fast value is uncorroborated and must not anchor — the guard
+// walks up to the first pace the rest of the pool supports.
+func TestSelectAnchorWideSpreadAnchorsOnPeers(t *testing.T) {
+	cands := []baselineAnchor{
+		{ThresholdPaceSecPerKm: 200},
+		{ThresholdPaceSecPerKm: 260},
+		{ThresholdPaceSecPerKm: 340},
+	}
+	a := selectAnchor(cands)
+	if a == nil {
+		t.Fatal("scattered pool must still anchor")
+	}
+	if a.ThresholdPaceSecPerKm != 260 {
+		t.Errorf("want the 260 s/km median candidate, got %.0f", a.ThresholdPaceSecPerKm)
+	}
+}
+
+// TestDeriveBaselineAnchorRejectsSameWorkoutCorroboration: one corrupt session
+// can surface twice in the candidate pool — as a sustained window and as its
+// interval cluster — both carrying the same bad pace. Two readings of one
+// workout are one piece of evidence, so they must not vouch for each other and
+// wave the outlier through.
+func TestDeriveBaselineAnchorRejectsSameWorkoutCorroboration(t *testing.T) {
+	now := time.Now().UTC()
+	day := func(ago int) string { return now.AddDate(0, 0, -ago).Format(time.RFC3339) }
+
+	facts := &predictionFacts{
+		AsOf: now,
+		BestEfforts: []sustainedEffort{
+			{WorkoutID: 42, Date: day(3), DurationSeconds: 1398, DistanceMeters: 6000, PaceSecPerKm: 233},
+			{WorkoutID: 7, Date: day(10), DurationSeconds: 1800, DistanceMeters: 6224, PaceSecPerKm: 289},
+			{WorkoutID: 8, Date: day(17), DurationSeconds: 1800, DistanceMeters: 6182, PaceSecPerKm: 291},
+			{WorkoutID: 9, Date: day(24), DurationSeconds: 1800, DistanceMeters: 6140, PaceSecPerKm: 293},
+			{WorkoutID: 10, Date: day(31), DurationSeconds: 1800, DistanceMeters: 6099, PaceSecPerKm: 295},
+		},
+		// Same workout 42, same corrupt belt speed: 227 + 6s/km no-HR
+		// adjustment lands on the same bogus 233 s/km.
+		IntervalEfforts: []intervalEffort{
+			{WorkoutID: 42, Date: day(3), Reps: 5, TotalWorkSeconds: 1200, WorkPaceSecPerKm: 227},
+		},
+	}
+
+	a := deriveBaselineAnchor(facts)
+	if a == nil {
+		t.Fatal("expected an anchor")
+	}
+	if a.ThresholdPaceSecPerKm < 289 || a.ThresholdPaceSecPerKm > 296 {
+		t.Fatalf("two readings of workout 42 must not corroborate each other: anchor %.0f s/km should stay in the 289-296 peer range", a.ThresholdPaceSecPerKm)
+	}
+	if !strings.Contains(a.Description, "outlier") {
+		t.Errorf("description should record the rejection, got %q", a.Description)
+	}
+}
+
+// TestHasCorroborationRequiresDistinctSession pins the rule directly: same
+// SourceKey never corroborates, a different one does.
+func TestHasCorroborationRequiresDistinctSession(t *testing.T) {
+	sameSession := []baselineAnchor{
+		{ThresholdPaceSecPerKm: 233, SourceKey: "w42"},
+		{ThresholdPaceSecPerKm: 234, SourceKey: "w42"},
+		{ThresholdPaceSecPerKm: 290, SourceKey: "w7"},
+	}
+	if hasCorroboration(sameSession, 0) {
+		t.Error("candidates from the same workout must not corroborate each other")
+	}
+	twoSessions := []baselineAnchor{
+		{ThresholdPaceSecPerKm: 233, SourceKey: "w42"},
+		{ThresholdPaceSecPerKm: 234, SourceKey: "w43"},
+		{ThresholdPaceSecPerKm: 290, SourceKey: "w7"},
+	}
+	if !hasCorroboration(twoSessions, 0) {
+		t.Error("a matching effort from another session must corroborate")
+	}
+}

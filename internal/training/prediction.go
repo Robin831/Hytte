@@ -75,6 +75,30 @@ const predictionFactsMonths = 12
 // snapshot is degraded to low confidence.
 const baselineRecencyDays = 84
 
+// anchorOutlierMaxFasterThanMedian is how far below the median candidate pace
+// a single uncorroborated candidate may sit and still anchor the baseline.
+// The anchor used to be the plain minimum, so one corrupt input carried the
+// whole estimate and the AI pass could not undo it (clampToEnvelope pins the
+// model to the same baseline). Seen live 2026-09-04: a feel-note parse bug
+// read "the 15 min warmup" as belt 15.0 km/h, giving a 3:53/km candidate
+// among 4:49-4:56/km peers — ~20% faster than the median, and it produced a
+// 1:27 half. Genuine breakthrough sessions inside a 12-week window sit within
+// ~5-8% of the median, so 10% clears real progress and catches garbage.
+const anchorOutlierMaxFasterThanMedian = 0.10
+
+// anchorCorroborationBand is how close a candidate from another session must
+// be for a materially faster candidate to be believed anyway. A real step
+// change shows up in more than one session; a parse artefact does not — which
+// is why corroboration only counts across sessions, never between two
+// candidates derived from the same workout.
+const anchorCorroborationBand = 0.02
+
+// minAnchorCandidatesForOutlierGuard is the fewest candidates from which a
+// median is worth trusting. Below this the guard is off and the fastest
+// candidate anchors, as before — with one or two efforts there is nothing to
+// judge an outlier against.
+const minAnchorCandidatesForOutlierGuard = 3
+
 // minSustainedEffortSeconds is the shortest lap window that counts as a
 // sustained effort anchor. 20 minutes is the classic threshold-effort floor;
 // anything shorter says little about race fitness at 10K and up.
@@ -1107,6 +1131,12 @@ type baselineAnchor struct {
 	Description           string
 	Stale                 bool // no evidence inside baselineRecencyDays
 	WorkDerived           bool // derived from interval work laps
+	// SourceKey identifies the session a candidate came from, so the outlier
+	// guard can tell two independent efforts from two readings of the same
+	// workout. One corrupt session can yield several candidates (a sustained
+	// window and an interval cluster, say) that all inherit the same bad
+	// number; without this they would corroborate each other.
+	SourceKey string
 }
 
 // deriveBaselineAnchor turns the facts into a threshold-pace estimate,
@@ -1114,22 +1144,27 @@ type baselineAnchor struct {
 // sustained effort's pace, or the best interval work pace plus a small
 // penalty (reps with recoveries run slightly faster than a continuous hour).
 // Only when the recency window is empty does older evidence anchor the
-// baseline, and then the snapshot is flagged stale (low confidence). Returns
-// nil when there is no usable effort at all.
+// baseline, and then the snapshot is flagged stale (low confidence). The
+// fastest candidate wins, but only after selectAnchor's outlier guard has
+// dropped uncorroborated candidates far faster than their peers. Returns nil
+// when there is no usable effort at all.
 func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 	cutoff := facts.AsOf.AddDate(0, 0, -baselineRecencyDays).Format("2006-01-02")
 	pick := func(recentOnly bool) *baselineAnchor {
-		var best *baselineAnchor
-		consider := func(pace float64, desc string, work bool, date string) {
+		var candidates []baselineAnchor
+		consider := func(pace float64, desc string, work bool, date string, workoutID int64) {
 			if len(date) >= 10 && recentOnly && date[:10] < cutoff {
 				return
 			}
 			if pace <= 0 {
 				return
 			}
-			if best == nil || pace < best.ThresholdPaceSecPerKm {
-				best = &baselineAnchor{ThresholdPaceSecPerKm: pace, Description: desc, WorkDerived: work}
-			}
+			candidates = append(candidates, baselineAnchor{
+				ThresholdPaceSecPerKm: pace,
+				Description:           desc,
+				WorkDerived:           work,
+				SourceKey:             anchorSourceKey(workoutID, date),
+			})
 		}
 		for _, e := range facts.BestEfforts {
 			date := e.Date
@@ -1138,7 +1173,7 @@ func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 			}
 			consider(e.PaceSecPerKm,
 				fmt.Sprintf("%.1f km sustained in %s on %s (%s/km)", e.DistanceMeters/1000, formatRaceTime(int(e.DurationSeconds)), date, formatPacePerKm(e.PaceSecPerKm)),
-				false, e.Date)
+				false, e.Date, e.WorkoutID)
 		}
 		for _, ie := range facts.IntervalEfforts {
 			date := ie.Date
@@ -1152,7 +1187,7 @@ func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 			}
 			consider(ie.WorkPaceSecPerKm+adj,
 				fmt.Sprintf("%d work reps totalling %s on %s (work pace %s/km, %s, %+.0fs/km continuous adjustment)", ie.Reps, formatRaceTime(int(ie.TotalWorkSeconds)), date, formatPacePerKm(ie.WorkPaceSecPerKm), hrNote, adj),
-				true, ie.Date)
+				true, ie.Date, ie.WorkoutID)
 		}
 		// Indoor efforts join the anchor pool only when converted from a
 		// RECORDED belt speed (never watch pace) — for a mostly-indoor
@@ -1173,9 +1208,9 @@ func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 			consider(ie.WorkPaceSecPerKm+adj,
 				fmt.Sprintf("%d indoor work reps totalling %s on %s (belt %.1f km/h x %.2f = %s/km outdoor-equivalent, %s, %+.0fs/km continuous adjustment)",
 					ie.Reps, formatRaceTime(int(ie.TotalWorkSeconds)), date, ie.BeltKmh, facts.TreadmillFactor, formatPacePerKm(ie.WorkPaceSecPerKm), hrNote, adj),
-				true, ie.Date)
+				true, ie.Date, ie.WorkoutID)
 		}
-		return best
+		return selectAnchor(candidates)
 	}
 	if a := pick(true); a != nil {
 		return a
@@ -1186,6 +1221,99 @@ func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 		return a
 	}
 	return nil
+}
+
+// selectAnchor picks the anchor from the candidate pool. It is the fastest
+// candidate, except that a candidate more than anchorOutlierMaxFasterThanMedian
+// below the median pace is only believed when a candidate from another
+// session corroborates it within anchorCorroborationBand. Without this guard a single corrupt
+// effort set the entire prediction and the AI pass could not walk it back,
+// because clampToEnvelope pins the model's answer to the same baseline.
+// Returns nil for an empty pool.
+func selectAnchor(candidates []baselineAnchor) *baselineAnchor {
+	if len(candidates) == 0 {
+		return nil
+	}
+	sorted := make([]baselineAnchor, len(candidates))
+	copy(sorted, candidates)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].ThresholdPaceSecPerKm < sorted[j].ThresholdPaceSecPerKm
+	})
+	if len(sorted) < minAnchorCandidatesForOutlierGuard {
+		best := sorted[0]
+		return &best
+	}
+
+	median := medianPace(sorted)
+	limit := median * (1 - anchorOutlierMaxFasterThanMedian)
+	for i := range sorted {
+		pace := sorted[i].ThresholdPaceSecPerKm
+		if pace >= limit || hasCorroboration(sorted, i) {
+			if i > 0 {
+				log.Printf("race prediction: rejected %d anchor candidate(s) faster than %.0f s/km (median %.0f s/km, %d candidates); anchoring on %.0f s/km",
+					i, limit, median, len(sorted), pace)
+				sorted[i].Description += fmt.Sprintf(" (%d faster but uncorroborated candidate(s) rejected as outliers against a %s/km median)",
+					i, formatPacePerKm(median))
+			}
+			best := sorted[i]
+			return &best
+		}
+	}
+	// Unreachable by construction: sorted[n/2] is at or above the median, so
+	// it always clears the limit and the loop returns there at the latest.
+	// Kept so a future change to the guard cannot silently drop the anchor.
+	best := sorted[len(sorted)/2]
+	return &best
+}
+
+// medianPace returns the median threshold pace of a pace-sorted candidate slice.
+func medianPace(sorted []baselineAnchor) float64 {
+	n := len(sorted)
+	if n == 0 {
+		return 0
+	}
+	if n%2 == 1 {
+		return sorted[n/2].ThresholdPaceSecPerKm
+	}
+	return (sorted[n/2-1].ThresholdPaceSecPerKm + sorted[n/2].ThresholdPaceSecPerKm) / 2
+}
+
+// hasCorroboration reports whether a candidate from a DIFFERENT session sits
+// within anchorCorroborationBand of candidate i — the second effort that turns
+// a suspiciously fast number into a believable step change. Candidates sharing
+// a SourceKey come from the same workout and are only ever one piece of
+// evidence: a corrupt session can produce both a sustained window and an
+// interval cluster carrying the same bad pace, and those must not vouch for
+// each other. An empty SourceKey means the provenance is unknown, which cannot
+// establish independence either, so all such candidates are treated as one
+// source.
+func hasCorroboration(sorted []baselineAnchor, i int) bool {
+	pace := sorted[i].ThresholdPaceSecPerKm
+	band := pace * anchorCorroborationBand
+	for j := range sorted {
+		if j == i || sorted[j].SourceKey == sorted[i].SourceKey {
+			continue
+		}
+		if math.Abs(sorted[j].ThresholdPaceSecPerKm-pace) <= band {
+			return true
+		}
+	}
+	return false
+}
+
+// anchorSourceKey identifies the session a candidate was derived from. The
+// workout ID is the real identity; facts assembled without one (older
+// snapshots, test fixtures) fall back to the date, which merges two sessions
+// run on the same day into one source — the conservative direction, since the
+// guard then asks for corroboration from another day.
+func anchorSourceKey(workoutID int64, date string) string {
+	if workoutID > 0 {
+		return fmt.Sprintf("w%d", workoutID)
+	}
+	if len(date) >= 10 {
+		return "d" + date[:10]
+	}
+	return "d" + date
 }
 
 // baselinePredictions computes the deterministic Riegel envelope centre from
