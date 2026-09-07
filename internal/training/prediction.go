@@ -75,6 +75,28 @@ const predictionFactsMonths = 12
 // snapshot is degraded to low confidence.
 const baselineRecencyDays = 84
 
+// anchorOutlierMaxFasterThanMedian is how far below the median candidate pace
+// a single uncorroborated candidate may sit and still anchor the baseline.
+// The anchor used to be the plain minimum, so one corrupt input carried the
+// whole estimate and the AI pass could not undo it (clampToEnvelope pins the
+// model to the same baseline). Seen live 2026-09-04: a feel-note parse bug
+// read "the 15 min warmup" as belt 15.0 km/h, giving a 3:53/km candidate
+// among 4:49-4:56/km peers — ~20% faster than the median, and it produced a
+// 1:27 half. Genuine breakthrough sessions inside a 12-week window sit within
+// ~5-8% of the median, so 10% clears real progress and catches garbage.
+const anchorOutlierMaxFasterThanMedian = 0.10
+
+// anchorCorroborationBand is how close a second candidate must be for a
+// materially faster candidate to be believed anyway. A real step change shows
+// up in more than one session; a parse artefact does not.
+const anchorCorroborationBand = 0.02
+
+// minAnchorCandidatesForOutlierGuard is the fewest candidates from which a
+// median is worth trusting. Below this the guard is off and the fastest
+// candidate anchors, as before — with one or two efforts there is nothing to
+// judge an outlier against.
+const minAnchorCandidatesForOutlierGuard = 3
+
 // minSustainedEffortSeconds is the shortest lap window that counts as a
 // sustained effort anchor. 20 minutes is the classic threshold-effort floor;
 // anything shorter says little about race fitness at 10K and up.
@@ -1114,12 +1136,14 @@ type baselineAnchor struct {
 // sustained effort's pace, or the best interval work pace plus a small
 // penalty (reps with recoveries run slightly faster than a continuous hour).
 // Only when the recency window is empty does older evidence anchor the
-// baseline, and then the snapshot is flagged stale (low confidence). Returns
-// nil when there is no usable effort at all.
+// baseline, and then the snapshot is flagged stale (low confidence). The
+// fastest candidate wins, but only after selectAnchor's outlier guard has
+// dropped uncorroborated candidates far faster than their peers. Returns nil
+// when there is no usable effort at all.
 func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 	cutoff := facts.AsOf.AddDate(0, 0, -baselineRecencyDays).Format("2006-01-02")
 	pick := func(recentOnly bool) *baselineAnchor {
-		var best *baselineAnchor
+		var candidates []baselineAnchor
 		consider := func(pace float64, desc string, work bool, date string) {
 			if len(date) >= 10 && recentOnly && date[:10] < cutoff {
 				return
@@ -1127,9 +1151,7 @@ func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 			if pace <= 0 {
 				return
 			}
-			if best == nil || pace < best.ThresholdPaceSecPerKm {
-				best = &baselineAnchor{ThresholdPaceSecPerKm: pace, Description: desc, WorkDerived: work}
-			}
+			candidates = append(candidates, baselineAnchor{ThresholdPaceSecPerKm: pace, Description: desc, WorkDerived: work})
 		}
 		for _, e := range facts.BestEfforts {
 			date := e.Date
@@ -1175,7 +1197,7 @@ func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 					ie.Reps, formatRaceTime(int(ie.TotalWorkSeconds)), date, ie.BeltKmh, facts.TreadmillFactor, formatPacePerKm(ie.WorkPaceSecPerKm), hrNote, adj),
 				true, ie.Date)
 		}
-		return best
+		return selectAnchor(candidates)
 	}
 	if a := pick(true); a != nil {
 		return a
@@ -1186,6 +1208,78 @@ func deriveBaselineAnchor(facts *predictionFacts) *baselineAnchor {
 		return a
 	}
 	return nil
+}
+
+// selectAnchor picks the anchor from the candidate pool. It is the fastest
+// candidate, except that a candidate more than anchorOutlierMaxFasterThanMedian
+// below the median pace is only believed when a second candidate corroborates
+// it within anchorCorroborationBand. Without this guard a single corrupt
+// effort set the entire prediction and the AI pass could not walk it back,
+// because clampToEnvelope pins the model's answer to the same baseline.
+// Returns nil for an empty pool.
+func selectAnchor(candidates []baselineAnchor) *baselineAnchor {
+	if len(candidates) == 0 {
+		return nil
+	}
+	sorted := make([]baselineAnchor, len(candidates))
+	copy(sorted, candidates)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].ThresholdPaceSecPerKm < sorted[j].ThresholdPaceSecPerKm
+	})
+	if len(sorted) < minAnchorCandidatesForOutlierGuard {
+		best := sorted[0]
+		return &best
+	}
+
+	median := medianPace(sorted)
+	limit := median * (1 - anchorOutlierMaxFasterThanMedian)
+	for i := range sorted {
+		pace := sorted[i].ThresholdPaceSecPerKm
+		if pace >= limit || hasCorroboration(sorted, i) {
+			if i > 0 {
+				log.Printf("race prediction: rejected %d anchor candidate(s) faster than %.0f s/km (median %.0f s/km, %d candidates); anchoring on %.0f s/km",
+					i, limit, median, len(sorted), pace)
+				sorted[i].Description += fmt.Sprintf(" (%d faster but uncorroborated candidate(s) rejected as outliers against a %s/km median)",
+					i, formatPacePerKm(median))
+			}
+			best := sorted[i]
+			return &best
+		}
+	}
+	// Unreachable by construction: sorted[n/2] is at or above the median, so
+	// it always clears the limit and the loop returns there at the latest.
+	// Kept so a future change to the guard cannot silently drop the anchor.
+	best := sorted[len(sorted)/2]
+	return &best
+}
+
+// medianPace returns the median threshold pace of a pace-sorted candidate slice.
+func medianPace(sorted []baselineAnchor) float64 {
+	n := len(sorted)
+	if n == 0 {
+		return 0
+	}
+	if n%2 == 1 {
+		return sorted[n/2].ThresholdPaceSecPerKm
+	}
+	return (sorted[n/2-1].ThresholdPaceSecPerKm + sorted[n/2].ThresholdPaceSecPerKm) / 2
+}
+
+// hasCorroboration reports whether some other candidate sits within
+// anchorCorroborationBand of candidate i — the second effort that turns a
+// suspiciously fast number into a believable step change.
+func hasCorroboration(sorted []baselineAnchor, i int) bool {
+	pace := sorted[i].ThresholdPaceSecPerKm
+	band := pace * anchorCorroborationBand
+	for j := range sorted {
+		if j == i {
+			continue
+		}
+		if math.Abs(sorted[j].ThresholdPaceSecPerKm-pace) <= band {
+			return true
+		}
+	}
+	return false
 }
 
 // baselinePredictions computes the deterministic Riegel envelope centre from
