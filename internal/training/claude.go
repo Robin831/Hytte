@@ -92,23 +92,30 @@ func IsCLITransportError(err error) bool {
 	return errors.As(err, &te)
 }
 
-// classifyCLIError builds the error a failed `claude` invocation returns,
-// tagging it as *CLITransportError when the process died with nothing to say
-// for itself.
+// isCLITransportFailure reports whether a failed `claude` invocation died with
+// nothing to say for itself, i.e. whether it deserves the *CLITransportError
+// tag.
 //
-// Three things disqualify a failure from that tag. A non-empty stderr means the
-// CLI reported a reason, so the failure is real. A cancelled or expired ctx
-// means we did the killing ourselves — CommandContext SIGKILLs on deadline, and
-// retrying would only spend the same wait again. And a non-ExitError comes from
-// exec failing to start the binary at all (missing path, bad permissions),
-// which no retry fixes.
-func classifyCLIError(ctx context.Context, err error, stderr string) error {
-	wrapped := fmt.Errorf("claude CLI error: %w: %s", err, stderr)
+// Three things disqualify a failure. A non-empty stderr means the CLI reported
+// a reason, so the failure is real. A cancelled or expired ctx means we did the
+// killing ourselves — CommandContext SIGKILLs on deadline, and retrying would
+// only spend the same wait again. And a non-ExitError comes from exec failing
+// to start the binary at all (missing path, bad permissions), which no retry
+// fixes.
+func isCLITransportFailure(ctx context.Context, err error, stderr string) bool {
 	if strings.TrimSpace(stderr) != "" || ctx.Err() != nil {
-		return wrapped
+		return false
 	}
 	var exitErr *exec.ExitError
-	if !errors.As(err, &exitErr) {
+	return errors.As(err, &exitErr)
+}
+
+// classifyCLIError builds the error a failed `claude` invocation returns,
+// tagging it as *CLITransportError when isCLITransportFailure says the process
+// died without the model ever answering.
+func classifyCLIError(ctx context.Context, err error, stderr string) error {
+	wrapped := fmt.Errorf("claude CLI error: %w: %s", err, stderr)
+	if !isCLITransportFailure(ctx, err, stderr) {
 		return wrapped
 	}
 	return &CLITransportError{Err: wrapped}
@@ -410,10 +417,21 @@ func runPromptWithSessionStreamCLI(ctx context.Context, cfg *ClaudeConfig, promp
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
-		if stderr := strings.TrimSpace(stderrBuf.String()); stderr != "" {
-			return "", fmt.Errorf("claude exit: %w: %s", err, stderr)
+		// Same classification as the non-streaming paths, but keeping this
+		// path's own "claude exit: ..." wording: a signal-killed or silent
+		// non-zero exit is transport-level, so a caller that knows how to
+		// retry one can tell it apart from the API saying no.
+		stderr := strings.TrimSpace(stderrBuf.String())
+		var wrapped error
+		if stderr != "" {
+			wrapped = fmt.Errorf("claude exit: %w: %s", err, stderr)
+		} else {
+			wrapped = fmt.Errorf("claude exit: %w", err)
 		}
-		return "", fmt.Errorf("claude exit: %w", err)
+		if isCLITransportFailure(ctx, err, stderr) {
+			return "", &CLITransportError{Err: wrapped}
+		}
+		return "", wrapped
 	}
 
 	return strings.TrimSpace(fullText), nil

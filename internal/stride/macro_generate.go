@@ -159,6 +159,11 @@ func GenerateMacroPlan(ctx context.Context, db *sql.DB, userID int64, startWeek 
 	// a budget deliberately kept apart from macroGenerateAttempts: a killed
 	// process never produced an answer to correct, so spending a corrective
 	// attempt on it would take one away from the rejection it was reserved for.
+	// That budget is spent once per generation, not once per attempt — a CLI
+	// killed on the first call leaves nothing for a second death during a later
+	// corrective attempt, which is deliberate: two deaths in one generation
+	// look less like an upgrade landing mid-call than like a CLI that cannot
+	// stay up.
 	// The case this exists for is the CLI auto-updating mid-call — its
 	// supervisor restarts on a binary change and SIGKILLs the live worker,
 	// which otherwise costs the athlete a whole 26-week regeneration. A genuine

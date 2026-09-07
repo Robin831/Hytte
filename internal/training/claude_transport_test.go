@@ -80,3 +80,50 @@ func TestIsCLITransportErrorOnUnrelatedErrors(t *testing.T) {
 		t.Errorf("Error() = %q, want it to carry the underlying message", transport.Error())
 	}
 }
+
+// stubStreamExec replaces the streaming path's exec seam with a shell snippet,
+// so the classification is exercised against a real subprocess death rather
+// than a synthesised error.
+func stubStreamExec(t *testing.T, script string) {
+	t.Helper()
+	orig := streamExecCommand
+	streamExecCommand = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "/bin/sh", "-c", script)
+	}
+	t.Cleanup(func() { streamExecCommand = orig })
+}
+
+// The streaming path classifies the same failures as the one-shot paths — the
+// chat session that died with "claude exit: signal: killed" during a CLI
+// auto-update is transport-level — while keeping its own message wording.
+func TestRunPromptWithSessionStreamClassifiesTransportFailures(t *testing.T) {
+	tests := []struct {
+		name      string
+		script    string
+		transport bool
+		wantMsg   string
+	}{
+		{"killed by a signal with nothing on stderr", "kill -9 $$", true, "claude exit: signal: killed"},
+		{"non-zero exit with nothing on stderr", "exit 3", true, "claude exit: exit status 3"},
+		{"non-zero exit that reported a reason", "echo 'API error: overloaded' >&2; exit 1", false,
+			"claude exit: exit status 1: API error: overloaded"},
+	}
+
+	cfg := &ClaudeConfig{Enabled: true, CLIPath: "claude", Model: "claude-sonnet-4-6"}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stubStreamExec(t, tt.script)
+
+			_, err := runPromptWithSessionStreamCLI(context.Background(), cfg, "hi", "", nil, nil)
+			if err == nil {
+				t.Fatal("expected the failed CLI call to return an error")
+			}
+			if IsCLITransportError(err) != tt.transport {
+				t.Errorf("IsCLITransportError = %v, want %v (err = %v)", !tt.transport, tt.transport, err)
+			}
+			if err.Error() != tt.wantMsg {
+				t.Errorf("Error() = %q, want %q", err.Error(), tt.wantMsg)
+			}
+		})
+	}
+}
