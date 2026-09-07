@@ -751,13 +751,14 @@ func feelNotesBeltWorkSpeed(notes string) float64 {
 		if isRepStructureToken(notes, start, end) {
 			continue
 		}
-		// Exclude duration tokens: a unit glued to the number that is not
-		// km/h ("11min warmup", "45s") is time, not speed.
-		if end < len(notes) {
-			rest := strings.ToLower(notes[end:])
-			if len(rest) > 0 && rest[0] >= 'a' && rest[0] <= 'z' && !strings.HasPrefix(rest, "km") && !strings.HasPrefix(rest, "k/") {
-				continue
-			}
+		// Exclude non-speed tokens by the unit that follows the number,
+		// whether it is glued on ("11min warmup") or separated by a space or
+		// hyphen ("15 min warmup", "8-years old"). An explicit speed unit
+		// always wins; otherwise a known time/distance/rate unit disqualifies
+		// the token. A following word that is not a unit at all ("12.6 for
+		// the rest") is left alone, so prose around a speed list still parses.
+		if !isSpeedUnitSuffix(notes[end:]) && isNonSpeedUnitSuffix(notes[end:]) {
+			continue
 		}
 		v, err := strconv.ParseFloat(strings.ReplaceAll(notes[start:end], ",", "."), 64)
 		if err != nil || v < 6 || v > 18 {
@@ -786,6 +787,57 @@ func feelNotesBeltWorkSpeed(notes string) float64 {
 		return 0
 	}
 	return sum / float64(n)
+}
+
+// nonSpeedUnitWords are units that, when they follow a number in a free-text
+// note, prove the number is not a belt speed. Durations are the dangerous
+// case: "15 min warmup" parsed as 15.0 km/h anchored a whole race prediction
+// on a warmup length.
+var nonSpeedUnitWords = map[string]bool{
+	"min": true, "mins": true, "minute": true, "minutes": true,
+	"m": true, "s": true, "sec": true, "secs": true, "second": true, "seconds": true,
+	"h": true, "hr": true, "hrs": true, "hour": true, "hours": true,
+	"km": true, "k": true, "mi": true, "mile": true, "miles": true, "meter": true, "meters": true,
+	"bpm": true, "spm": true, "rpm": true, "rep": true, "reps": true, "x": true,
+	"kg": true, "lb": true, "lbs": true, "deg": true, "degrees": true,
+	"year": true, "years": true, "yr": true, "yrs": true, "yo": true, "pct": true,
+}
+
+// speedUnitSuffixes mark the number as an explicit speed and override the
+// non-speed check ("km" alone is a distance, "km/h" is a speed).
+var speedUnitSuffixes = []string{"km/h", "km/t", "kmph", "kmt", "kph", "k/h"}
+
+// isSpeedUnitSuffix reports whether rest (the text immediately after a numeric
+// token) opens with an explicit speed unit, ignoring a separating space.
+func isSpeedUnitSuffix(rest string) bool {
+	r := strings.ToLower(strings.TrimLeft(rest, " \t"))
+	for _, u := range speedUnitSuffixes {
+		if strings.HasPrefix(r, u) {
+			return true
+		}
+	}
+	return false
+}
+
+// isNonSpeedUnitSuffix reports whether rest opens with a unit word that rules
+// the number out as a belt speed. The unit may be glued to the number, or
+// separated by spaces or a single hyphen.
+func isNonSpeedUnitSuffix(rest string) bool {
+	r := strings.ToLower(rest)
+	r = strings.TrimLeft(r, " \t")
+	r = strings.TrimPrefix(r, "-")
+	r = strings.TrimLeft(r, " \t")
+	if strings.HasPrefix(r, "%") {
+		return true
+	}
+	i := 0
+	for i < len(r) && r[i] >= 'a' && r[i] <= 'z' {
+		i++
+	}
+	if i == 0 {
+		return false
+	}
+	return nonSpeedUnitWords[r[:i]]
 }
 
 // isRepStructureToken reports whether the number at [start,end) in s is part

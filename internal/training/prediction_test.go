@@ -700,6 +700,20 @@ func TestFeelNotesBeltWorkSpeed(t *testing.T) {
 		// Rep structure is not speed: 25, 45 and 15 must all be ignored
 		// (45 out of range, 25/15 glued to 'x'), leaving 11.1.
 		{"25 x 45x15\n11min warmiup, starting at 11.1kmph and increasing 0.1 each interval", 11.1},
+		// A duration separated from its unit by a space is still a duration:
+		// "15 min warmup" once parsed as belt 15.0 km/h and anchored a whole
+		// race prediction on the length of a warmup.
+		{"Forgot chest HR, put it on after the 15 min warmup", 0},
+		{"15 min warmup including 4 20s strides\n6x4min with 1m standing still pause, all 6 at 12kmph", 12},
+		{"easy 40 minutes, nothing to report", 0},
+		{"tempo felt hard for 12 minutes then settled", 0},
+		// A hyphenated non-speed unit is not a speed either.
+		{"My 8-years old is getting fast..", 0},
+		// "km" alone is a distance; "km/h" is a speed.
+		{"9.8km/h", 9.8},
+		{"long run, 16 km steady", 0},
+		// An ordinary word after a speed is prose, not a unit: still a speed.
+		{"12.4 12.5 and 12.6 for the rest", (12.4 + 12.5 + 12.6) / 3},
 		{"", 0},
 		{"felt great, easy legs", 0},
 	}

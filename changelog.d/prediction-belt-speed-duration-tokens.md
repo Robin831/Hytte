@@ -1,0 +1,2 @@
+category: Fixed
+- **Race predictions no longer read a warmup duration as a treadmill speed** - Free-text workout notes like "15 min warmup" were parsed as belt 15.0 km/h, which anchored the whole race-prediction model on a bogus 3:53/km threshold and produced a 1:27 half-marathon estimate. Numbers followed by a time, distance or rate unit are now excluded whether the unit is glued on ("11min"), spaced ("15 min") or hyphenated ("8-years"), while genuine speed notes ("12.4-12.5-12.6", "9.8km/h", "12.6 for the rest") still parse. (Hytte-fw3b7)
