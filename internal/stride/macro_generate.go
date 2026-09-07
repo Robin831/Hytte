@@ -32,6 +32,20 @@ const macroClaudeTimeout = 300 * time.Second
 // invalid one. Each attempt gets its own macroClaudeTimeout.
 const macroGenerateAttempts = 3
 
+// macroTransportRetries is how many extra calls a transport-level CLI failure
+// — killed by a signal, or exited without a word on stderr — may buy, on top of
+// macroGenerateAttempts. One is enough for the case it was written for: the
+// Claude CLI auto-updates, its supervisor restarts and SIGKILLs the call in
+// flight, and the very next call lands on the new binary. More than one would
+// start to look like retrying a dead API, which is what the corrective budget
+// must not be spent on either.
+const macroTransportRetries = 1
+
+// macroTransportRetryDelay is the pause before that retry, giving a supervisor
+// restart time to finish rather than racing it. A var, not a const, so tests
+// need not sit through it.
+var macroTransportRetryDelay = 5 * time.Second
+
 // ErrStrideNotEnabled is returned when the athlete has not enabled Stride.
 // Generating a block spends a long Claude call on someone who has switched the
 // feature off, so the gate is checked before anything else is loaded.
@@ -139,20 +153,46 @@ func GenerateMacroPlan(ctx context.Context, db *sql.DB, userID int64, startWeek 
 
 	// Call, parse and validate as one unit, retried with the rejection fed
 	// back (macroRetryPrompt) — a bad answer costs one more call instead of
-	// failing the whole generation. A transport error is not retried here:
-	// runPromptFunc already has the CLI's own robustness behind it, and
-	// looping on a dead API would burn attempts a corrected answer needs.
+	// failing the whole generation.
+	//
+	// A transport-level CLI death gets one extra call from macroTransportRetries,
+	// a budget deliberately kept apart from macroGenerateAttempts: a killed
+	// process never produced an answer to correct, so spending a corrective
+	// attempt on it would take one away from the rejection it was reserved for.
+	// The case this exists for is the CLI auto-updating mid-call — its
+	// supervisor restarts on a binary change and SIGKILLs the live worker,
+	// which otherwise costs the athlete a whole 26-week regeneration. A genuine
+	// API failure (the CLI exiting with a reason on stderr) still fails fast
+	// rather than looping a several-minute call against an upstream that is
+	// down.
 	attemptPrompt := prompt
 	var (
-		response string
-		parsed   *MacroPlanResponse
+		response         string
+		parsed           *MacroPlanResponse
+		transportRetries = macroTransportRetries
 	)
-	for attempt := 1; ; attempt++ {
+	for attempt := 1; ; {
 		callCtx, cancel := context.WithTimeout(ctx, macroClaudeTimeout)
 		response, err = runPromptFunc(callCtx, claudeCfg, attemptPrompt)
 		cancel()
 		if err != nil {
-			return nil, fmt.Errorf("Claude prompt: %w", err)
+			if !training.IsCLITransportError(err) || transportRetries == 0 {
+				return nil, fmt.Errorf("Claude prompt: %w", err)
+			}
+			transportRetries--
+			log.Printf("stride: macro block attempt %d/%d for user %d hit a Claude CLI transport error, retrying once: %v",
+				attempt, macroGenerateAttempts, userID, err)
+			// Pause before asking again so a supervisor restart has finished by
+			// the time the retry starts, and bail rather than sleep if the
+			// caller has already given up.
+			select {
+			case <-ctx.Done():
+				return nil, fmt.Errorf("Claude prompt: %w", err)
+			case <-time.After(macroTransportRetryDelay):
+			}
+			// The prompt is unchanged: there is no answer to correct, and the
+			// attempt counter stays where it is.
+			continue
 		}
 
 		parsed, err = parseMacroPlanResponse(response)
@@ -172,6 +212,7 @@ func GenerateMacroPlan(ctx context.Context, db *sql.DB, userID int64, startWeek 
 		log.Printf("stride: macro block attempt %d/%d for user %d rejected, retrying with feedback: %v",
 			attempt, macroGenerateAttempts, userID, err)
 		attemptPrompt = macroRetryPrompt(prompt, response, err)
+		attempt++
 	}
 
 	plan := &MacroPlan{

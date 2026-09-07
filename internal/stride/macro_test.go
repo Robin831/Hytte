@@ -1075,3 +1075,154 @@ func TestParseWeeklyDistanceCap(t *testing.T) {
 		}
 	}
 }
+
+// macroCall is one canned outcome for the Claude seam: either an answer or a
+// failure, played back in order by stubMacroPromptOutcomes.
+type macroCall struct {
+	response string
+	err      error
+}
+
+// stubMacroPromptOutcomes replaces the Claude seam with one canned outcome per
+// call and returns a pointer to the prompts the calls were made with, so a test
+// can assert both how many calls a generation spent and what each was shown.
+// A call past the end of the list is a test bug and fails immediately.
+func stubMacroPromptOutcomes(t *testing.T, calls ...macroCall) *[]string {
+	t.Helper()
+	var prompts []string
+	orig := runPromptFunc
+	runPromptFunc = func(_ context.Context, _ *training.ClaudeConfig, prompt string) (string, error) {
+		if len(prompts) >= len(calls) {
+			t.Fatalf("unexpected call %d to runPromptFunc, only %d outcomes stubbed", len(prompts)+1, len(calls))
+		}
+		prompts = append(prompts, prompt)
+		c := calls[len(prompts)-1]
+		return c.response, c.err
+	}
+	t.Cleanup(func() { runPromptFunc = orig })
+	return &prompts
+}
+
+// macroTransportError is the error the CLI produces when its supervisor
+// SIGKILLs a call in flight — an empty stderr and a signal, tagged by
+// training.classifyCLIError as transport-level.
+func macroTransportError() error {
+	return &training.CLITransportError{Err: errors.New("claude CLI error: signal: killed: ")}
+}
+
+// shrinkMacroTransportRetryDelay removes the wait before the transport retry so
+// the tests that exercise it do not sit through the production pause.
+func shrinkMacroTransportRetryDelay(t *testing.T) {
+	t.Helper()
+	orig := macroTransportRetryDelay
+	macroTransportRetryDelay = time.Millisecond
+	t.Cleanup(func() { macroTransportRetryDelay = orig })
+}
+
+// A CLI that dies mid-call — the auto-updater restarting the supervisor
+// underneath a live worker — costs one more call, not the whole 26-week block.
+// The retry is shown the original prompt, since there is no answer to correct.
+func TestGenerateMacroPlanRetriesTransportError(t *testing.T) {
+	shrinkMacroTransportRetryDelay(t)
+	db, fixture, _ := setupMacroGeneration(t, macroTestStartWeek)
+	good := macroFixtureJSON(t, fixture)
+
+	prompts := stubMacroPromptOutcomes(t,
+		macroCall{err: macroTransportError()},
+		macroCall{response: good},
+	)
+
+	plan, err := GenerateMacroPlan(context.Background(), db, 1, macroTestStartWeek, MacroModeScheduled)
+	if err != nil {
+		t.Fatalf("GenerateMacroPlan: %v", err)
+	}
+	if len(*prompts) != 2 {
+		t.Fatalf("runPromptFunc called %d times, want 2", len(*prompts))
+	}
+	if (*prompts)[1] != (*prompts)[0] {
+		t.Error("the transport retry changed the prompt; a killed call produced no answer to correct")
+	}
+	if plan.Response != good {
+		t.Error("stored response is not the answer the retry gave")
+	}
+}
+
+// The transport budget is one call, not a loop: a CLI that keeps dying fails
+// the generation after exactly one extra attempt, and writes nothing.
+func TestGenerateMacroPlanRetriesTransportErrorOnlyOnce(t *testing.T) {
+	shrinkMacroTransportRetryDelay(t)
+	db, _, _ := setupMacroGeneration(t, macroTestStartWeek)
+
+	prompts := stubMacroPromptOutcomes(t,
+		macroCall{err: macroTransportError()},
+		macroCall{err: macroTransportError()},
+	)
+
+	plan, err := GenerateMacroPlan(context.Background(), db, 1, macroTestStartWeek, MacroModeScheduled)
+	if err == nil {
+		t.Fatal("expected the generation to fail")
+	}
+	if plan != nil {
+		t.Error("a failed generation must not return a plan")
+	}
+	if len(*prompts) != 1+macroTransportRetries {
+		t.Errorf("runPromptFunc called %d times, want %d", len(*prompts), 1+macroTransportRetries)
+	}
+	if !strings.Contains(err.Error(), "signal: killed") {
+		t.Errorf("error = %q, want it to carry the CLI failure", err)
+	}
+	if plans, weeks, revisions := countMacroRows(t, db, 1); plans+weeks+revisions != 0 {
+		t.Errorf("failed generation wrote rows: %d plans, %d weeks, %d revisions", plans, weeks, revisions)
+	}
+}
+
+// A CLI that exits with a reason is the API saying no, not a lost connection:
+// it fails on the first call rather than spending minutes asking a dead
+// upstream again.
+func TestGenerateMacroPlanDoesNotRetryAPIError(t *testing.T) {
+	shrinkMacroTransportRetryDelay(t)
+	db, _, _ := setupMacroGeneration(t, macroTestStartWeek)
+
+	prompts := stubMacroPromptOutcomes(t,
+		macroCall{err: errors.New("claude CLI error: exit status 1: API error: invalid model")},
+	)
+
+	if _, err := GenerateMacroPlan(context.Background(), db, 1, macroTestStartWeek, MacroModeScheduled); err == nil {
+		t.Fatal("expected the generation to fail")
+	} else if !strings.Contains(err.Error(), "invalid model") {
+		t.Errorf("error = %q, want it to carry the API failure", err)
+	}
+	if len(*prompts) != 1 {
+		t.Errorf("runPromptFunc called %d times, want 1", len(*prompts))
+	}
+}
+
+// The transport retry comes out of its own budget: a killed call still leaves
+// the full macroGenerateAttempts available for answers that need correcting.
+func TestGenerateMacroPlanTransportRetryKeepsCorrectiveBudget(t *testing.T) {
+	shrinkMacroTransportRetryDelay(t)
+	db, fixture, _ := setupMacroGeneration(t, macroTestStartWeek)
+
+	fixture.Weeks[1].TargetKm = fixture.Weeks[0].TargetKm * 1.5
+	bad := macroFixtureJSON(t, fixture)
+
+	calls := []macroCall{{err: macroTransportError()}}
+	for i := 0; i < macroGenerateAttempts; i++ {
+		calls = append(calls, macroCall{response: bad})
+	}
+	prompts := stubMacroPromptOutcomes(t, calls...)
+
+	_, err := GenerateMacroPlan(context.Background(), db, 1, macroTestStartWeek, MacroModeScheduled)
+	if err == nil {
+		t.Fatal("expected the generation to give up")
+	}
+	if want := 1 + macroGenerateAttempts; len(*prompts) != want {
+		t.Errorf("runPromptFunc called %d times, want %d", len(*prompts), want)
+	}
+	if !strings.Contains(err.Error(), "giving up after 3 attempts") {
+		t.Errorf("error = %q, want it to say it gave up after 3 attempts", err)
+	}
+	if !strings.Contains(err.Error(), "more than +10%") {
+		t.Errorf("error = %q, want it to carry the last rejection", err)
+	}
+}
