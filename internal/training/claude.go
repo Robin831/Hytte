@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -64,6 +65,60 @@ func LoadClaudeConfig(db *sql.DB, userID int64) (*ClaudeConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+// CLITransportError marks a claude CLI invocation that died without the model
+// ever answering: killed by a signal — the CLI's own supervisor SIGKILLs live
+// workers when the binary auto-updates underneath them — or exited non-zero
+// without writing a word to stderr. It is deliberately narrower than "the call
+// failed": a non-zero exit that explains itself on stderr is the API or the
+// prompt saying no, and a caller must not mistake that for something a retry
+// would absorb.
+//
+// The wrapped error keeps the exact "claude CLI error: ...: <stderr>" shape
+// callers already log, so tagging one changes no message.
+type CLITransportError struct {
+	Err error
+}
+
+func (e *CLITransportError) Error() string { return e.Err.Error() }
+
+func (e *CLITransportError) Unwrap() error { return e.Err }
+
+// IsCLITransportError reports whether err, or anything it wraps, is a
+// transport-level CLI failure worth one more call.
+func IsCLITransportError(err error) bool {
+	var te *CLITransportError
+	return errors.As(err, &te)
+}
+
+// isCLITransportFailure reports whether a failed `claude` invocation died with
+// nothing to say for itself, i.e. whether it deserves the *CLITransportError
+// tag.
+//
+// Three things disqualify a failure. A non-empty stderr means the CLI reported
+// a reason, so the failure is real. A cancelled or expired ctx means we did the
+// killing ourselves — CommandContext SIGKILLs on deadline, and retrying would
+// only spend the same wait again. And a non-ExitError comes from exec failing
+// to start the binary at all (missing path, bad permissions), which no retry
+// fixes.
+func isCLITransportFailure(ctx context.Context, err error, stderr string) bool {
+	if strings.TrimSpace(stderr) != "" || ctx.Err() != nil {
+		return false
+	}
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr)
+}
+
+// classifyCLIError builds the error a failed `claude` invocation returns,
+// tagging it as *CLITransportError when isCLITransportFailure says the process
+// died without the model ever answering.
+func classifyCLIError(ctx context.Context, err error, stderr string) error {
+	wrapped := fmt.Errorf("claude CLI error: %w: %s", err, stderr)
+	if !isCLITransportFailure(ctx, err, stderr) {
+		return wrapped
+	}
+	return &CLITransportError{Err: wrapped}
 }
 
 // runPromptFunc is the function used to run prompts. Override in tests.
@@ -150,7 +205,7 @@ func runPromptCLIWithCost(ctx context.Context, cfg *ClaudeConfig, prompt string)
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", 0, fmt.Errorf("claude CLI error: %w: %s", err, stderr.String())
+		return "", 0, classifyCLIError(ctx, err, stderr.String())
 	}
 
 	return parseClaudeCostEnvelope(stdout.Bytes())
@@ -222,7 +277,7 @@ func runPromptCLIWithImage(ctx context.Context, cfg *ClaudeConfig, prompt, image
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("claude CLI error: %w: %s", err, stderr.String())
+		return "", classifyCLIError(ctx, err, stderr.String())
 	}
 
 	text, _, err := parseClaudeCostEnvelope(stdout.Bytes())
@@ -253,7 +308,7 @@ func RunPromptWithSession(ctx context.Context, cfg *ClaudeConfig, prompt, sessio
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("claude CLI error: %w: %s", err, stderr.String())
+		return nil, classifyCLIError(ctx, err, stderr.String())
 	}
 
 	var resp claudeJSONResponse
@@ -362,10 +417,21 @@ func runPromptWithSessionStreamCLI(ctx context.Context, cfg *ClaudeConfig, promp
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
-		if stderr := strings.TrimSpace(stderrBuf.String()); stderr != "" {
-			return "", fmt.Errorf("claude exit: %w: %s", err, stderr)
+		// Same classification as the non-streaming paths, but keeping this
+		// path's own "claude exit: ..." wording: a signal-killed or silent
+		// non-zero exit is transport-level, so a caller that knows how to
+		// retry one can tell it apart from the API saying no.
+		stderr := strings.TrimSpace(stderrBuf.String())
+		var wrapped error
+		if stderr != "" {
+			wrapped = fmt.Errorf("claude exit: %w: %s", err, stderr)
+		} else {
+			wrapped = fmt.Errorf("claude exit: %w", err)
 		}
-		return "", fmt.Errorf("claude exit: %w", err)
+		if isCLITransportFailure(ctx, err, stderr) {
+			return "", &CLITransportError{Err: wrapped}
+		}
+		return "", wrapped
 	}
 
 	return strings.TrimSpace(fullText), nil

@@ -1,0 +1,2 @@
+category: Fixed
+- **Macro block generation survives a Claude CLI restart** - A macro block regeneration that died because the Claude CLI was killed mid-call (its supervisor restarts and SIGKILLs live workers when the binary auto-updates) now gets one extra attempt instead of failing the whole 26-week generation. A genuine API error still fails immediately, and the retry does not eat into the attempts reserved for correcting a rejected plan. (Hytte-276la)

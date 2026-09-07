@@ -15,11 +15,19 @@ import (
 
 // macroRequestTimeout bounds a hand-triggered macro generation end to end. It is
 // the budget macroClaudeTimeout gives each of the macroGenerateAttempts Claude
-// calls a generation may make, which is all but the whole request — the DB
-// reads either side of them are milliseconds. Bounding the request as well as
-// the calls is what stops a wedged CLI from holding the handler (and the
-// athlete's lock) open for as long as the process lives.
-const macroRequestTimeout = macroGenerateAttempts * macroClaudeTimeout
+// calls a generation may make, plus the extra call and the pause a
+// macroTransportRetries retry adds on top of them — together all but the whole
+// request, since the DB reads either side are milliseconds. The transport
+// retry has to be counted here or a generation that spends one would be cut
+// off by this deadline before it had used the corrective attempts it was still
+// owed, and the athlete would see a timeout instead. Bounding the request as
+// well as the calls is what stops a wedged CLI from holding the handler (and
+// the athlete's lock) open for as long as the process lives.
+//
+// A var rather than a const only because macroTransportRetryDelay is one (tests
+// shrink it); its value is fixed at start-up.
+var macroRequestTimeout = macroGenerateAttempts*macroClaudeTimeout +
+	macroTransportRetries*(macroClaudeTimeout+macroTransportRetryDelay)
 
 // macroOpenEndedWeek is a week key past any real horizon, used as the upper
 // bound when asking for "every active block from this week onwards" rather than
