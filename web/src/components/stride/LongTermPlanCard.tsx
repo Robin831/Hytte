@@ -181,6 +181,12 @@ export function LongTermPlanCard({
         />
       )}
 
+      {busy && (
+        <p className="text-xs text-gray-400 mb-3" role="status">
+          {t('longTermPlan.actions.inProgressHint')}
+        </p>
+      )}
+
       {actionError && (
         <p className="text-sm text-red-400 mb-3" role="alert">{actionError}</p>
       )}

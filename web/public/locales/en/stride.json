@@ -283,7 +283,8 @@
       "extendError": "Could not extend the long-term plan. Try again.",
       "extendHint": "Add a new 26-week block after this one.",
       "extendTooEarly": "Available once {{weeks}} weeks or less remain in this block.",
-      "extendQueued": "A new block is already queued after this one."
+      "extendQueued": "A new block is already queued after this one.",
+      "inProgressHint": "This takes a few minutes. You can leave the page; the new plan will be here when it is ready."
     },
     "confirm": {
       "title": "Regenerate the long-term plan?",

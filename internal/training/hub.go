@@ -16,11 +16,22 @@ import (
 // showing. Date is the evaluated UTC day (2006-01-02): an evaluation covers a
 // date, which may span several workouts (or none, for a rest-day eval), so the
 // date is the reliable match key and WorkoutID is a best-effort extra.
+//
+// MacroPlanID, Action and Error ride along on the macro block events. A
+// hand-triggered block generation runs for minutes, far longer than the
+// Cloudflare edge keeps a silent request open, so the POST answers 202 at once
+// and the outcome arrives here: Action names what was asked for ("generate" or
+// "extend") so the page can clear the right button, MacroPlanID is the block
+// that was written, and Error carries the athlete-facing reason when the run
+// gave up.
 type Event struct {
-	Type      string `json:"-"`
-	LatestID  int64  `json:"latest_id"`
-	WorkoutID int64  `json:"workout_id,omitempty"`
-	Date      string `json:"date,omitempty"`
+	Type        string `json:"-"`
+	LatestID    int64  `json:"latest_id"`
+	WorkoutID   int64  `json:"workout_id,omitempty"`
+	Date        string `json:"date,omitempty"`
+	MacroPlanID int64  `json:"macro_plan_id,omitempty"`
+	Action      string `json:"action,omitempty"`
+	Error       string `json:"error,omitempty"`
 }
 
 // Event types published into the hub. Kept as constants so callers cannot typo
@@ -42,6 +53,15 @@ const (
 	// "evaluating" indicator from EventStrideEvalStarted forever, since no
 	// ready event ever arrives.
 	EventStrideEvalFailed = "stride_eval_failed"
+	// EventStrideMacroReady — a hand-triggered macro block generation
+	// (/api/stride/macro/generate or /extend) stored its block. The POST that
+	// started it answered 202 long before, so this is how the Stride page
+	// learns the block is there and re-reads /macro/current.
+	EventStrideMacroReady = "stride_macro_ready"
+	// EventStrideMacroFailed — a hand-triggered macro block generation gave
+	// up. Error carries the reason the page shows in place of the block it
+	// was waiting for; without this the Regenerate button would spin forever.
+	EventStrideMacroFailed = "stride_macro_failed"
 )
 
 // Subscriber is a single SSE client subscription. The channel is buffered so a

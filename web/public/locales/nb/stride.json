@@ -283,7 +283,8 @@
       "extendError": "Klarte ikke å forlenge langtidsplanen. Prøv igjen.",
       "extendHint": "Legg til en ny 26-ukers blokk etter denne.",
       "extendTooEarly": "Blir tilgjengelig når det er {{weeks}} uker eller mindre igjen av blokka.",
-      "extendQueued": "En ny blokk ligger allerede i kø etter denne."
+      "extendQueued": "En ny blokk ligger allerede i kø etter denne.",
+      "inProgressHint": "Dette tar noen minutter. Du kan forlate siden – den nye planen ligger her når den er klar."
     },
     "confirm": {
       "title": "Lage langtidsplanen på nytt?",

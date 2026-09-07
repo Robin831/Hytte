@@ -1719,8 +1719,21 @@ describe('StridePage – macro plan', () => {
       if (url.includes('/api/training/workouts')) return make({ workouts: [] })
       if (url.includes('/api/stride/races')) return make({ races: [] })
       if (url.includes('/api/stride/notes')) return make({ notes: [] })
+      if (url.includes('/api/stride/macro/generate') || url.includes('/api/stride/macro/extend')) {
+        // The POSTs answer 202 the moment the background generation starts;
+        // the outcome arrives on the SSE stream.
+        return Promise.resolve({
+          ok: true,
+          status: 202,
+          json: () => Promise.resolve({ status: 'generating', action: 'generate', start_week: mondayOffset(7) }),
+        } as Response)
+      }
       return make({})
     })
+  }
+
+  function macroCurrentCalls(fetchMock: ReturnType<typeof makeFetch>) {
+    return fetchMock.mock.calls.filter(([url]) => String(url).includes('/api/stride/macro/current')).length
   }
 
   function longTermSection() {
@@ -1885,6 +1898,99 @@ describe('StridePage – macro plan', () => {
       const call = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/stride/macro/extend'))
       expect(call).toBeDefined()
       expect((call?.[1] as RequestInit | undefined)?.method).toBe('POST')
+    })
+  })
+
+  it('keeps Regenerate busy after the 202 until stride_macro_ready, then re-reads the block', async () => {
+    const fetchMock = makeFetch(MACRO_VIEW, makePlan())
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Long-term plan' })).toBeInTheDocument()
+    })
+    const currentBefore = macroCurrentCalls(fetchMock)
+
+    fireEvent.click(within(longTermSection()).getByRole('button', { name: 'Regenerate' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Regenerate' }))
+
+    await waitFor(() => {
+      expect(within(longTermSection()).getByRole('button', { name: 'Regenerating…' })).toBeDisabled()
+    })
+    expect(within(longTermSection()).getByRole('status')).toHaveTextContent('This takes a few minutes')
+    // The 202 alone does not refresh anything — the block is not there yet.
+    expect(macroCurrentCalls(fetchMock)).toBe(currentBefore)
+
+    act(() => sse.dispatch('stride_macro_ready', { action: 'generate', macro_plan_id: 99 }))
+
+    await waitFor(() => {
+      expect(macroCurrentCalls(fetchMock)).toBe(currentBefore + 1)
+    })
+    await waitFor(() => {
+      expect(within(longTermSection()).getByRole('button', { name: 'Regenerate' })).toBeEnabled()
+    })
+    expect(within(longTermSection()).queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('shows the reason from stride_macro_failed and releases the button', async () => {
+    const fetchMock = makeFetch(MACRO_VIEW, makePlan())
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Long-term plan' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(within(longTermSection()).getByRole('button', { name: 'Regenerate' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Regenerate' }))
+    await waitFor(() => {
+      expect(within(longTermSection()).getByRole('button', { name: 'Regenerating…' })).toBeDisabled()
+    })
+
+    act(() => sse.dispatch('stride_macro_failed', { action: 'generate', error: 'macro block generation timed out — try again' }))
+
+    await waitFor(() => {
+      expect(within(longTermSection()).getByRole('alert')).toHaveTextContent('macro block generation timed out — try again')
+    })
+    expect(within(longTermSection()).getByRole('button', { name: 'Regenerate' })).toBeEnabled()
+    expect(within(longTermSection()).getByText('Run 1:25 for the half marathon')).toBeInTheDocument()
+  })
+
+  it('falls back to the generic message when stride_macro_failed carries no reason', async () => {
+    const fetchMock = makeFetch(MACRO_VIEW, makePlan())
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Long-term plan' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(within(longTermSection()).getByRole('button', { name: 'Extend' }))
+    await waitFor(() => {
+      expect(within(longTermSection()).getByRole('button', { name: 'Extending…' })).toBeDisabled()
+    })
+
+    act(() => sse.dispatch('stride_macro_failed', { action: 'extend' }))
+
+    await waitFor(() => {
+      expect(within(longTermSection()).getByRole('alert')).toHaveTextContent('Could not extend the long-term plan. Try again.')
+    })
+  })
+
+  it('re-reads the block on stride_macro_ready even when this tab did not ask for it', async () => {
+    const fetchMock = makeFetch(MACRO_VIEW, makePlan())
+    vi.stubGlobal('fetch', fetchMock)
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Long-term plan' })).toBeInTheDocument()
+    })
+    const currentBefore = macroCurrentCalls(fetchMock)
+
+    act(() => sse.dispatch('stride_macro_ready', { action: 'generate', macro_plan_id: 99 }))
+
+    await waitFor(() => {
+      expect(macroCurrentCalls(fetchMock)).toBe(currentBefore + 1)
     })
   })
 

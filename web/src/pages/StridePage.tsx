@@ -565,10 +565,15 @@ export default function StridePage() {
   const [macroHistory, setMacroHistory] = useState<WeekSummary[]>([])
   const [macroHistoryLoading, setMacroHistoryLoading] = useState(true)
   const [macroHistoryError, setMacroHistoryError] = useState(false)
-  // Which macro POST is in flight, or null. Both endpoints take the athlete's
-  // per-user lock server-side, so only one can run at a time.
+  // Which macro action is waiting for its outcome, or null. The POST answers
+  // 202 as soon as the generation is under way — a 26-week block takes minutes,
+  // longer than a silent request survives the Cloudflare edge — and the result
+  // arrives on the training SSE stream as stride_macro_ready / _failed. Both
+  // endpoints take the athlete's per-user lock server-side, so only one can
+  // run at a time.
   const [macroAction, setMacroAction] = useState<MacroAction | null>(null)
   const [macroActionError, setMacroActionError] = useState('')
+  const macroFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [changedDates, setChangedDates] = useState<Set<string>>(new Set())
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [previousPlanId, setPreviousPlanId] = useState<number | null>(null)
@@ -893,12 +898,53 @@ export default function StridePage() {
   useEffect(() => {
     refreshEvaluationsRef.current = refreshEvaluations
   })
+  // The macro block outcome rides the same stream. Ready re-reads the block
+  // whether or not this tab asked for it — another tab, or a reload while the
+  // generation ran, still gets the new block without a refresh. Failed shows
+  // the server's reason, which names what the athlete can act on (Stride
+  // switched off, a race that is not theirs), falling back to the generic
+  // message for the action the event names.
+  const handleMacroOutcomeRef = useRef<(kind: 'ready' | 'failed', data: unknown) => void>(() => {})
+  useEffect(() => {
+    handleMacroOutcomeRef.current = (kind, data) => {
+      if (macroFallbackTimerRef.current) {
+        clearTimeout(macroFallbackTimerRef.current)
+        macroFallbackTimerRef.current = null
+      }
+      setMacroAction(null)
+      if (kind === 'ready') {
+        setMacroActionError('')
+        void loadMacroPlan()
+        void loadMacroHistory()
+        return
+      }
+      const payload = (data && typeof data === 'object' ? data : {}) as { action?: string; error?: string }
+      const action: MacroAction = payload.action === 'extend' ? 'extend' : 'regenerate'
+      setMacroActionError(payload.error || t(`longTermPlan.actions.${action}Error`))
+    }
+  })
   useEffect(() => {
     const es = new EventSource('/api/training/events', { withCredentials: true })
     es.addEventListener('stride_eval_ready', () => {
       void refreshEvaluationsRef.current()
     })
+    const parse = (e: MessageEvent): unknown => {
+      try {
+        return JSON.parse(String(e.data))
+      } catch {
+        return {}
+      }
+    }
+    es.addEventListener('stride_macro_ready', (e: MessageEvent) => {
+      handleMacroOutcomeRef.current('ready', parse(e))
+    })
+    es.addEventListener('stride_macro_failed', (e: MessageEvent) => {
+      handleMacroOutcomeRef.current('failed', parse(e))
+    })
     return () => es.close()
+  }, [])
+  useEffect(() => () => {
+    if (macroFallbackTimerRef.current) clearTimeout(macroFallbackTimerRef.current)
   }, [])
 
   async function handleRerunDay(date: string) {
@@ -993,6 +1039,10 @@ export default function StridePage() {
   // Regenerate / Extend the macro block. Both POSTs are minutes long — the
   // server budgets a full Claude call — so the button stays busy for the whole
   // request and a failure leaves the block on screen untouched.
+  // The server bounds a generation at three Claude attempts of 300s each; the
+  // page waits a little longer than that before giving up on the stream.
+  const MACRO_OUTCOME_FALLBACK_MS = 16 * 60 * 1000
+
   async function runMacroAction(action: MacroAction, path: string) {
     setMacroActionError('')
     setMacroAction(action)
@@ -1001,16 +1051,23 @@ export default function StridePage() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         setMacroActionError(data.error ?? t(`longTermPlan.actions.${action}Error`))
+        setMacroAction(null)
         return
       }
-      // The response carries the block that was just written, which for an
-      // extension is the *next* one; /macro/current is what the section shows,
-      // so the block is re-read rather than swapped in from the response.
-      await loadMacroPlan()
-      await loadMacroHistory()
+      // 202: the block is being generated in the background. The button stays
+      // busy until stride_macro_ready / stride_macro_failed arrives on the
+      // training stream (handleMacroOutcomeRef). Should the stream miss the
+      // event — a reconnect at the wrong moment — the fallback re-reads the
+      // block and releases the button instead of spinning forever.
+      if (macroFallbackTimerRef.current) clearTimeout(macroFallbackTimerRef.current)
+      macroFallbackTimerRef.current = setTimeout(() => {
+        macroFallbackTimerRef.current = null
+        setMacroAction(null)
+        void loadMacroPlan()
+        void loadMacroHistory()
+      }, MACRO_OUTCOME_FALLBACK_MS)
     } catch {
       setMacroActionError(t(`longTermPlan.actions.${action}Error`))
-    } finally {
       setMacroAction(null)
     }
   }

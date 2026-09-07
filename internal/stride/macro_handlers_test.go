@@ -4,11 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/Robin831/Hytte/internal/training"
 )
 
 // insertMacroBlock writes a complete block — plan row, week rows and the
@@ -74,6 +78,44 @@ func insertSecondUser(t *testing.T, db *sql.DB) {
 	if _, err := db.Exec("INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'g456')"); err != nil {
 		t.Fatalf("insert second user: %v", err)
 	}
+}
+
+// subscribeMacroEvents opens a training-hub subscription for userID before a
+// POST is made, so the outcome event of the background generation the POST
+// starts cannot be missed. Unsubscribed on cleanup.
+func subscribeMacroEvents(t *testing.T, userID int64) *training.Subscriber {
+	t.Helper()
+	sub := training.DefaultHub().Subscribe(userID)
+	t.Cleanup(func() { training.DefaultHub().Unsubscribe(userID, sub) })
+	return sub
+}
+
+// awaitMacroEvent blocks until the background generation publishes its
+// outcome and returns it. Waiting is not optional: the goroutine holds the
+// athlete's lock until it publishes, and userLocks is process-wide, so a test
+// that returned early would leave the next test's POST answering 409.
+func awaitMacroEvent(t *testing.T, sub *training.Subscriber) training.Event {
+	t.Helper()
+	select {
+	case evt := <-sub.Events():
+		return evt
+	case <-time.After(10 * time.Second):
+		t.Fatal("no macro outcome event within 10s")
+		return training.Event{}
+	}
+}
+
+// decodeMacroAccepted reads a POST macro endpoint's 202 body.
+func decodeMacroAccepted(t *testing.T, rec *httptest.ResponseRecorder) MacroAccepted {
+	t.Helper()
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body MacroAccepted
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode macro accepted body: %v", err)
+	}
+	return body
 }
 
 // --- GET /api/stride/macro/current ---
@@ -217,47 +259,105 @@ func TestGetMacroPlanHandler_InvalidID(t *testing.T) {
 func TestGenerateMacroPlanHandler_StartsAtUpcomingMonday(t *testing.T) {
 	db := setupTestDB(t)
 	calls := stubMacroGenerate(t, nil)
+	sub := subscribeMacroEvents(t, 1)
 
 	req := withUser(httptest.NewRequest("POST", "/api/stride/macro/generate", nil), 1)
 	rec := httptest.NewRecorder()
 	GenerateMacroPlanHandler(db).ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	wantStart, _ := upcomingWeek()
+	accepted := decodeMacroAccepted(t, rec)
+	if accepted.Status != "generating" || accepted.Action != "generate" || accepted.StartWeek != wantStart {
+		t.Fatalf("accepted = %+v, want generating / generate / %s", accepted, wantStart)
+	}
+
+	evt := awaitMacroEvent(t, sub)
+	if evt.Type != training.EventStrideMacroReady || evt.Action != "generate" {
+		t.Fatalf("event = %+v, want %s for generate", evt, training.EventStrideMacroReady)
 	}
 	if len(*calls) != 1 {
 		t.Fatalf("generation calls = %d, want 1", len(*calls))
 	}
-	wantStart, _ := upcomingWeek()
 	if got := (*calls)[0]; got.startWeek != wantStart || got.mode != MacroModeManual || got.userID != 1 {
 		t.Fatalf("generated %+v, want user 1 / %s / manual", got, wantStart)
 	}
 }
 
-func TestGenerateMacroPlanHandler_StrideNotEnabled(t *testing.T) {
+// The outcome is published for the athlete who asked, not for everyone.
+func TestGenerateMacroPlanHandler_EventIsScopedToTheAthlete(t *testing.T) {
 	db := setupTestDB(t)
-	stubMacroGenerate(t, ErrStrideNotEnabled)
+	insertSecondUser(t, db)
+	stubMacroGenerate(t, nil)
+	mine := subscribeMacroEvents(t, 1)
+	theirs := subscribeMacroEvents(t, 2)
 
 	req := withUser(httptest.NewRequest("POST", "/api/stride/macro/generate", nil), 1)
 	rec := httptest.NewRecorder()
 	GenerateMacroPlanHandler(db).ServeHTTP(rec, req)
+	decodeMacroAccepted(t, rec)
 
-	if rec.Code != http.StatusUnprocessableEntity {
-		t.Fatalf("expected 422, got %d: %s", rec.Code, rec.Body.String())
+	awaitMacroEvent(t, mine)
+	select {
+	case evt := <-theirs.Events():
+		t.Fatalf("user 2 received %+v for user 1's generation", evt)
+	default:
 	}
 }
 
-func TestGenerateMacroPlanHandler_OverlapIsConflict(t *testing.T) {
+// A generation that fails after the 202 reports why through the failed event,
+// with the message the athlete can act on where there is one.
+func TestGenerateMacroPlanHandler_FailureIsPublished(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		err     error
+		wantMsg string
+	}{
+		{"stride not enabled", ErrStrideNotEnabled, ErrStrideNotEnabled.Error()},
+		{"claude not enabled", training.ErrClaudeNotEnabled, training.ErrClaudeNotEnabled.Error()},
+		{"overlap", ErrOverlappingMacroPlan, "another macro block was created while this one was generating — reload and try again"},
+		{"foreign reference", ErrForeignReference, "the generated block references a race or workout that is not yours"},
+		{"timeout", context.DeadlineExceeded, "macro block generation timed out — try again"},
+		{"anything else", errors.New("claude CLI error: signal: killed"), "failed to generate macro block"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupTestDB(t)
+			stubMacroGenerate(t, tc.err)
+			sub := subscribeMacroEvents(t, 1)
+
+			req := withUser(httptest.NewRequest("POST", "/api/stride/macro/generate", nil), 1)
+			rec := httptest.NewRecorder()
+			GenerateMacroPlanHandler(db).ServeHTTP(rec, req)
+			decodeMacroAccepted(t, rec)
+
+			evt := awaitMacroEvent(t, sub)
+			if evt.Type != training.EventStrideMacroFailed {
+				t.Fatalf("event type = %q, want %s", evt.Type, training.EventStrideMacroFailed)
+			}
+			if evt.Action != "generate" || evt.Error != tc.wantMsg {
+				t.Fatalf("event = %+v, want generate / %q", evt, tc.wantMsg)
+			}
+		})
+	}
+}
+
+// The lock a background generation holds is released when it ends, success or
+// failure, so the athlete's next POST is not a 409 for the rest of the process.
+func TestGenerateMacroPlanHandler_ReleasesTheLockWhenDone(t *testing.T) {
 	db := setupTestDB(t)
-	stubMacroGenerate(t, ErrOverlappingMacroPlan)
+	stubMacroGenerate(t, errors.New("boom"))
+	sub := subscribeMacroEvents(t, 1)
 
 	req := withUser(httptest.NewRequest("POST", "/api/stride/macro/generate", nil), 1)
 	rec := httptest.NewRecorder()
 	GenerateMacroPlanHandler(db).ServeHTTP(rec, req)
+	decodeMacroAccepted(t, rec)
+	awaitMacroEvent(t, sub)
 
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("expected 409, got %d: %s", rec.Code, rec.Body.String())
+	release, ok := TryLockUser(1)
+	if !ok {
+		t.Fatal("lock still held after the generation published its outcome")
 	}
+	release()
 }
 
 // A real end-to-end regeneration: the previous block is retired, the new one
@@ -279,16 +379,30 @@ func TestGenerateMacroPlanHandler_SupersedesAndLeavesMaterialisedWeeks(t *testin
 		t.Fatalf("insert materialised week: %v", err)
 	}
 
+	sub := subscribeMacroEvents(t, 1)
 	req := withUser(httptest.NewRequest("POST", "/api/stride/macro/generate", nil), 1)
 	rec := httptest.NewRecorder()
 	GenerateMacroPlanHandler(db).ServeHTTP(rec, req)
+	decodeMacroAccepted(t, rec)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	evt := awaitMacroEvent(t, sub)
+	if evt.Type != training.EventStrideMacroReady {
+		t.Fatalf("event = %+v, want %s", evt, training.EventStrideMacroReady)
 	}
-	view := decodeMacroView(t, rec)
-	if view.Plan == nil || view.Plan.ID == previous.ID {
-		t.Fatalf("plan = %+v, want a block other than the replaced %d", view.Plan, previous.ID)
+	if evt.MacroPlanID == 0 || evt.MacroPlanID == previous.ID {
+		t.Fatalf("event macro_plan_id = %d, want a block other than the replaced %d", evt.MacroPlanID, previous.ID)
+	}
+
+	// What the page re-reads after the event.
+	getReq := withUser(httptest.NewRequest("GET", "/api/stride/macro/current", nil), 1)
+	getRec := httptest.NewRecorder()
+	GetCurrentMacroPlanHandler(db).ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 from /macro/current, got %d: %s", getRec.Code, getRec.Body.String())
+	}
+	view := decodeMacroView(t, getRec)
+	if view.Plan == nil || view.Plan.ID != evt.MacroPlanID {
+		t.Fatalf("plan = %+v, want the block %d the event announced", view.Plan, evt.MacroPlanID)
 	}
 	if view.Plan.GeneratedBy != MacroGeneratedByManual {
 		t.Errorf("generated_by = %q, want manual", view.Plan.GeneratedBy)
@@ -337,19 +451,25 @@ func TestExtendMacroPlanHandler_StartsAfterTheLastActiveBlock(t *testing.T) {
 	insertMacroBlock(t, db, 1, thisMonday, MacroBlockWeeks, MacroPlanStatusActive)
 	calls := stubMacroGenerate(t, nil)
 
+	sub := subscribeMacroEvents(t, 1)
 	req := withUser(httptest.NewRequest("POST", "/api/stride/macro/extend", nil), 1)
 	rec := httptest.NewRecorder()
 	ExtendMacroPlanHandler(db).ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	// end_week + 7d: the block runs MacroBlockWeeks weeks from thisMonday, so
+	// the extension starts the Monday after its last one.
+	wantStart := mondayAfter(thisMonday, MacroBlockWeeks)
+	accepted := decodeMacroAccepted(t, rec)
+	if accepted.Action != "extend" || accepted.StartWeek != wantStart {
+		t.Fatalf("accepted = %+v, want extend / %s", accepted, wantStart)
+	}
+	evt := awaitMacroEvent(t, sub)
+	if evt.Type != training.EventStrideMacroReady || evt.Action != "extend" {
+		t.Fatalf("event = %+v, want %s for extend", evt, training.EventStrideMacroReady)
 	}
 	if len(*calls) != 1 {
 		t.Fatalf("generation calls = %d, want 1", len(*calls))
 	}
-	// end_week + 7d: the block runs MacroBlockWeeks weeks from thisMonday, so
-	// the extension starts the Monday after its last one.
-	wantStart := mondayAfter(thisMonday, MacroBlockWeeks)
 	if got := (*calls)[0]; got.startWeek != wantStart || got.mode != MacroModeExtension {
 		t.Fatalf("generated %+v, want %s / extension", got, wantStart)
 	}
@@ -364,13 +484,13 @@ func TestExtendMacroPlanHandler_StacksBehindAQueuedExtension(t *testing.T) {
 	insertMacroBlock(t, db, 1, mondayAfter(thisMonday, MacroBlockWeeks), MacroBlockWeeks, MacroPlanStatusActive)
 	calls := stubMacroGenerate(t, nil)
 
+	sub := subscribeMacroEvents(t, 1)
 	req := withUser(httptest.NewRequest("POST", "/api/stride/macro/extend", nil), 1)
 	rec := httptest.NewRecorder()
 	ExtendMacroPlanHandler(db).ServeHTTP(rec, req)
+	decodeMacroAccepted(t, rec)
+	awaitMacroEvent(t, sub)
 
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
-	}
 	wantStart := mondayAfter(thisMonday, 2*MacroBlockWeeks)
 	if got := (*calls)[0]; got.startWeek != wantStart {
 		t.Fatalf("start week = %q, want %q", got.startWeek, wantStart)
@@ -428,45 +548,47 @@ func TestMacroPostHandlersShareThePerUserLock(t *testing.T) {
 	}
 }
 
-// Two simultaneous regenerations for one athlete must produce one generation
-// and one 409, never two Claude calls.
-func TestGenerateMacroPlanHandler_ConcurrentPostsSerialise(t *testing.T) {
+// A second POST while the background generation is still running must be a
+// 409, never a second Claude call — the lock outlives the 202 that started it.
+func TestGenerateMacroPlanHandler_SecondPostWhileGeneratingIsConflict(t *testing.T) {
 	db := setupTestDB(t)
 
 	var mu sync.Mutex
 	started := 0
 	orig := generateMacroPlanFunc
+	entered := make(chan struct{}, 1)
 	blocked := make(chan struct{})
 	generateMacroPlanFunc = func(_ context.Context, _ *sql.DB, userID int64, startWeek string, mode MacroMode) (*MacroPlan, error) {
 		mu.Lock()
 		started++
 		mu.Unlock()
+		entered <- struct{}{}
 		<-blocked
 		return &MacroPlan{UserID: userID, StartWeek: startWeek, GeneratedBy: string(mode)}, nil
 	}
 	t.Cleanup(func() { generateMacroPlanFunc = orig })
+	sub := subscribeMacroEvents(t, 1)
 
 	handler := GenerateMacroPlanHandler(db)
-	codes := make(chan int, 2)
-	for range 2 {
-		go func() {
-			req := withUser(httptest.NewRequest("POST", "/api/stride/macro/generate", nil), 1)
-			rec := httptest.NewRecorder()
-			handler.ServeHTTP(rec, req)
-			codes <- rec.Code
-		}()
+	post := func() int {
+		req := withUser(httptest.NewRequest("POST", "/api/stride/macro/generate", nil), 1)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec.Code
 	}
 
-	// Whichever request takes the lock is parked inside the generation seam, so
-	// the first answer can only be the other one's 409 — the two are provably
-	// overlapping rather than merely sequential.
-	if first := <-codes; first != http.StatusConflict {
-		t.Fatalf("first answer = %d, want 409 while the other request holds the lock", first)
+	if first := post(); first != http.StatusAccepted {
+		t.Fatalf("first answer = %d, want 202", first)
 	}
+	// The background run is parked inside the generation seam, holding the
+	// lock, when the second request arrives.
+	<-entered
+	if second := post(); second != http.StatusConflict {
+		t.Fatalf("second answer = %d, want 409 while the generation is running", second)
+	}
+
 	close(blocked)
-	if second := <-codes; second != http.StatusCreated {
-		t.Fatalf("second answer = %d, want 201", second)
-	}
+	awaitMacroEvent(t, sub)
 
 	mu.Lock()
 	defer mu.Unlock()

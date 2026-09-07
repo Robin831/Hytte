@@ -169,6 +169,13 @@ func GetMacroPlanHandler(db *sql.DB) http.HandlerFunc {
 // superseded in the transaction that inserts it (GenerateMacroPlan does the
 // demotion), and no stride_plans row is touched at all: weeks already
 // materialised into a 7-day plan stay exactly as the athlete has them.
+//
+// The generation itself runs in the background (startMacroGeneration) and the
+// request answers 202 as soon as it is under way; the outcome is published on
+// the training SSE hub. Answering only once the block is written did not
+// survive production: a 26-week generation takes minutes, Cloudflare drops a
+// request that has sent nothing for ~100s, and the cancelled request context
+// SIGKILLed the Claude CLI mid-flight (2026-09-07).
 func GenerateMacroPlanHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -178,19 +185,10 @@ func GenerateMacroPlanHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "a generation is already running — try again in a moment"})
 			return
 		}
-		defer release()
-
-		ctx, cancel := context.WithTimeout(r.Context(), macroRequestTimeout)
-		defer cancel()
 
 		startWeek, _ := upcomingWeek()
-		plan, err := generateMacroPlanFunc(ctx, db, user.ID, startWeek, MacroModeManual)
-		if err != nil {
-			writeMacroGenerateError(w, user.ID, "generate", startWeek, err)
-			return
-		}
-
-		writeMacroPlanView(w, r, db, http.StatusCreated, plan)
+		startMacroGeneration(db, user.ID, macroActionGenerate, startWeek, MacroModeManual, release)
+		writeMacroAccepted(w, macroActionGenerate, startWeek)
 	}
 }
 
@@ -203,7 +201,9 @@ func GenerateMacroPlanHandler(db *sql.DB) http.HandlerFunc {
 // athlete who already has an extension queued gets a third block behind it
 // rather than having the queued one regenerated away. With no active block left
 // to continue there is nothing to extend and the answer is 409 — that athlete
-// wants /macro/generate.
+// wants /macro/generate. Like /macro/generate the Claude call runs in the
+// background and the request answers 202; only the start-week lookup, which is
+// milliseconds, happens before the answer.
 func ExtendMacroPlanHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
@@ -213,13 +213,10 @@ func ExtendMacroPlanHandler(db *sql.DB) http.HandlerFunc {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "a generation is already running — try again in a moment"})
 			return
 		}
-		defer release()
 
-		ctx, cancel := context.WithTimeout(r.Context(), macroRequestTimeout)
-		defer cancel()
-
-		startWeek, err := macroExtensionStartWeek(ctx, db, user.ID)
+		startWeek, err := macroExtensionStartWeek(r.Context(), db, user.ID)
 		if err != nil {
+			release()
 			if errors.Is(err, ErrNoPreviousMacroPlan) {
 				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 				return
@@ -229,14 +226,65 @@ func ExtendMacroPlanHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		plan, err := generateMacroPlanFunc(ctx, db, user.ID, startWeek, MacroModeExtension)
+		startMacroGeneration(db, user.ID, macroActionExtend, startWeek, MacroModeExtension, release)
+		writeMacroAccepted(w, macroActionExtend, startWeek)
+	}
+}
+
+// macroAction names a hand-triggered generation in the 202 body, the SSE
+// events and the log, so the page can tell which of its two buttons an
+// outcome belongs to.
+const (
+	macroActionGenerate = "generate"
+	macroActionExtend   = "extend"
+)
+
+// MacroAccepted is the 202 body of the two POST macro endpoints: the block is
+// not there yet, this is what was started. The page waits for the matching
+// stride_macro_ready / stride_macro_failed event rather than for a body.
+type MacroAccepted struct {
+	Status    string `json:"status"`
+	Action    string `json:"action"`
+	StartWeek string `json:"start_week"`
+}
+
+func writeMacroAccepted(w http.ResponseWriter, action, startWeek string) {
+	writeJSON(w, http.StatusAccepted, MacroAccepted{Status: "generating", Action: action, StartWeek: startWeek})
+}
+
+// startMacroGeneration runs one hand-triggered generation off the request
+// goroutine. The caller has already taken the athlete's lock; release is called
+// when the run ends, whatever the outcome, so the lock is held for exactly as
+// long as a Claude call could be writing a block — the same window the Monday
+// run holds it for.
+//
+// The run gets its own context rather than the request's: the request is
+// answered and gone within milliseconds, and cancelling with it is precisely
+// the failure this exists to avoid. macroRequestTimeout still bounds the run so
+// a wedged CLI cannot hold the lock for as long as the process lives.
+//
+// The outcome is published on the training hub for the athlete: a ready event
+// carrying the new block's id, or a failed event carrying the same message the
+// synchronous endpoint used to answer with, so the page shows the athlete the
+// reason (a race that is not theirs, Stride switched off) rather than a
+// generic error.
+func startMacroGeneration(db *sql.DB, userID int64, action, startWeek string, mode MacroMode, release func()) {
+	go func() {
+		defer release()
+
+		ctx, cancel := context.WithTimeout(context.Background(), macroRequestTimeout)
+		defer cancel()
+
+		plan, err := generateMacroPlanFunc(ctx, db, userID, startWeek, mode)
 		if err != nil {
-			writeMacroGenerateError(w, user.ID, "extend", startWeek, err)
+			msg := macroGenerateErrorMessage(userID, action, startWeek, err)
+			training.DefaultHub().Publish(userID, training.Event{Type: training.EventStrideMacroFailed, Action: action, Error: msg})
 			return
 		}
 
-		writeMacroPlanView(w, r, db, http.StatusCreated, plan)
-	}
+		log.Printf("stride: %s macro block %d for user %d starting %s", action, plan.ID, userID, startWeek)
+		training.DefaultHub().Publish(userID, training.Event{Type: training.EventStrideMacroReady, Action: action, MacroPlanID: plan.ID})
+	}()
 }
 
 // macroExtensionStartWeek returns the Monday an on-demand extension starts: one
@@ -271,13 +319,8 @@ func macroExtensionStartWeek(ctx context.Context, db *sql.DB, userID int64) (str
 }
 
 // writeMacroPlanView loads the block's goal history and writes the shared
-// response shape. A failure here means the block itself was written but cannot
-// be read back, which is a 500 even on the POST paths — the generation is
-// committed either way, so the athlete's retry finds it through /macro/current.
+// response shape.
 func writeMacroPlanView(w http.ResponseWriter, r *http.Request, db *sql.DB, status int, plan *MacroPlan) {
-	// r.Context() rather than a generation's timed-out context: on the POST
-	// paths the block is already committed, so reading it back must not fail
-	// just because the Claude call ate the budget.
 	view, err := buildMacroPlanView(r.Context(), db, plan)
 	if err != nil {
 		log.Printf("stride: build macro plan view for plan %d: %v", plan.ID, err)
@@ -287,27 +330,26 @@ func writeMacroPlanView(w http.ResponseWriter, r *http.Request, db *sql.DB, stat
 	writeJSON(w, status, view)
 }
 
-// writeMacroGenerateError maps a GenerateMacroPlan failure onto a status code.
-// Everything the athlete can act on — a feature they have switched off, a race
-// they do not own, a concurrent generation that got there first — says so;
-// anything else is a 500 with the detail in the log.
-func writeMacroGenerateError(w http.ResponseWriter, userID int64, action, startWeek string, err error) {
+// macroGenerateErrorMessage turns a GenerateMacroPlan failure into the message
+// the stride_macro_failed event carries. Everything the athlete can act on — a
+// feature they have switched off, a race they do not own, a concurrent
+// generation that got there first — says so; anything else is a generic
+// message with the detail in the log.
+func macroGenerateErrorMessage(userID int64, action, startWeek string, err error) string {
 	switch {
-	case errors.Is(err, ErrStrideNotEnabled):
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
-	case errors.Is(err, training.ErrClaudeNotEnabled):
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-	case errors.Is(err, ErrNoPreviousMacroPlan):
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+	case errors.Is(err, ErrStrideNotEnabled),
+		errors.Is(err, training.ErrClaudeNotEnabled),
+		errors.Is(err, ErrNoPreviousMacroPlan):
+		return err.Error()
 	case errors.Is(err, ErrOverlappingMacroPlan):
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "another macro block was created while this one was generating — reload and try again"})
+		return "another macro block was created while this one was generating — reload and try again"
 	case errors.Is(err, ErrForeignReference):
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "the generated block references a race or workout that is not yours"})
+		return "the generated block references a race or workout that is not yours"
 	case errors.Is(err, context.DeadlineExceeded):
 		log.Printf("stride: %s macro block for user %d starting %s timed out after %s", action, userID, startWeek, macroRequestTimeout)
-		writeJSON(w, http.StatusGatewayTimeout, map[string]string{"error": "macro block generation timed out — try again"})
+		return "macro block generation timed out — try again"
 	default:
 		log.Printf("stride: %s macro block for user %d starting %s: %v", action, userID, startWeek, err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate macro block"})
+		return "failed to generate macro block"
 	}
 }
