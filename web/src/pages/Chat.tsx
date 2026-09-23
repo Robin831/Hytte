@@ -35,7 +35,7 @@ const PIN_THRESHOLD = 80
 // (internal/chat/handlers.go SupportedModels). The backend may accept
 // additional model IDs (e.g. older Opus variants) that we intentionally
 // omit from the UI dropdown.
-const MODEL_OPTIONS = ['claude-fable-5', 'claude-opus-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'] as const
+const MODEL_OPTIONS = ['claude-fable-5', 'claude-opus-5-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'] as const
 const DEFAULT_MODEL = 'claude-sonnet-4-6'
 
 // modelLabelKey maps a model ID to its i18n label key by family so any

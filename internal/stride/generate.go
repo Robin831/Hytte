@@ -181,7 +181,7 @@ var runPromptFunc = func(ctx context.Context, cfg *training.ClaudeConfig, prompt
 // strideDefaultModel is the model Stride's planning calls fall back to when the
 // athlete has not chosen one. Both the weekly generator and GenerateMacroPlan
 // read it, so the block is never planned on a cheaper model than its weeks.
-const strideDefaultModel = "claude-opus-4-6"
+const strideDefaultModel = "claude-opus-5-5"
 
 // applyStrideModelDefault pins cfg to strideDefaultModel when the athlete has
 // not chosen a model of their own.

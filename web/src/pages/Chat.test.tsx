@@ -444,7 +444,7 @@ describe('Chat – model selector', () => {
 
     const optionValues = Array.from(select.options).map(o => o.value)
     expect(optionValues).toContain('claude-fable-5')
-    expect(optionValues).toContain('claude-opus-5')
+    expect(optionValues).toContain('claude-opus-5-5')
     expect(optionValues).toContain('claude-sonnet-4-6')
     expect(optionValues).toContain('claude-haiku-4-5')
     expect(optionValues).toHaveLength(4)
@@ -454,7 +454,7 @@ describe('Chat – model selector', () => {
     const { conv, convListRes, convDetailRes } = await selectExistingConversation([])
     const putRes = {
       ok: true,
-      json: () => Promise.resolve({ conversation: { ...conv, model: 'claude-opus-5' } }),
+      json: () => Promise.resolve({ conversation: { ...conv, model: 'claude-opus-5-5' } }),
     }
     // Dispatch on URL+method rather than call order: an occasional extra
     // list/detail refetch otherwise shifts the queue so the PUT consumes the
@@ -482,7 +482,7 @@ describe('Chat – model selector', () => {
 
     const select = screen.getByLabelText('Model') as HTMLSelectElement
     await act(async () => {
-      fireEvent.change(select, { target: { value: 'claude-opus-5' } })
+      fireEvent.change(select, { target: { value: 'claude-opus-5-5' } })
     })
 
     await waitFor(() => {
@@ -491,13 +491,13 @@ describe('Chat – model selector', () => {
       )
       expect(putCall).toBeDefined()
       expect(JSON.parse((putCall![1] as RequestInit).body as string)).toEqual({
-        model: 'claude-opus-5',
+        model: 'claude-opus-5-5',
       })
     })
     // The select reflects the PUT response only after its json() resolves and
     // state applies — poll rather than assert synchronously (flaked in CI).
     await waitFor(() => {
-      expect((screen.getByLabelText('Model') as HTMLSelectElement).value).toBe('claude-opus-5')
+      expect((screen.getByLabelText('Model') as HTMLSelectElement).value).toBe('claude-opus-5-5')
     })
   })
 
