@@ -41,7 +41,27 @@
     "dataUsed": "{{amount}} used",
     "tipScreen": "Keep this page open with the screen on — phones pause the camera when the screen locks or you switch apps. A chest or arm mount works well.",
     "wakeLockUnsupported": "This browser can't keep the screen awake automatically — turn off auto-lock while streaming.",
-    "dataEstimate": "Normal quality uses about 0.5–0.7 GB of mobile data per hour."
+    "dataEstimate": "Normal quality uses about 0.5–0.7 GB of mobile data per hour.",
+    "optionsLabel": "Broadcast options",
+    "optNotify": "Notify family",
+    "optNotifyHint": "Sends a push notification to everyone who can watch.",
+    "optRecord": "Record",
+    "optRecordHint": "Saves a replay you can watch later (about 0.6 GB per hour).",
+    "optLocation": "Share location",
+    "optLocationHint": "Viewers see your route, distance and pace on a map.",
+    "recordUnavailable": "Recording isn't available on this server.",
+    "lowDisk": "Not enough free space on the server to record. Delete old replays or go live without recording.",
+    "replaySoon": "The replay will appear under Replays in a minute.",
+    "rec": "REC",
+    "autoLowData": "Weak signal — switched to low data.",
+    "locationError": "Couldn't get your location. Check that location access is allowed for this site.",
+    "shareLink": "Share link",
+    "shareTitle": "Watch me live",
+    "shareLinkLabel": "Share link",
+    "copyLink": "Copy",
+    "stopSharing": "Stop sharing",
+    "linkCopied": "Link copied.",
+    "shareError": "Couldn't update the share link."
   },
   "watch": {
     "back": "All streams",
@@ -53,6 +73,41 @@
     "unmute": "Unmute",
     "mute": "Mute",
     "fullscreen": "Fullscreen",
-    "fallbackHls": "Compatibility mode — a few seconds behind live."
+    "fallbackHls": "Compatibility mode — a few seconds behind live.",
+    "backSoon": "Back in a moment…",
+    "recording": "Recording",
+    "battery": "Broadcaster battery {{percent}}%",
+    "watchReplay": "Watch the replay",
+    "replayProcessing": "The replay is being prepared…"
+  },
+  "map": {
+    "label": "Route map",
+    "waiting": "Waiting for the first GPS position…"
+  },
+  "stats": {
+    "distance": "Distance",
+    "pace": "Pace",
+    "avgPace": "Avg pace",
+    "time": "Time"
+  },
+  "public": {
+    "liveFrom": "{{name}} is live",
+    "footer": "Shared with you from Hytte. This link stops working when the stream ends."
+  },
+  "replays": {
+    "title": "Replays",
+    "storage": "{{used}} used · {{free}} free",
+    "status": {
+      "recording": "Recording…",
+      "processing": "Processing…",
+      "ready": "Ready",
+      "failed": "Failed"
+    }
+  },
+  "replay": {
+    "delete": "Delete replay",
+    "confirmDelete": "Delete this replay? This can't be undone.",
+    "processing": "The replay is being prepared — this page updates automatically.",
+    "failed": "The replay couldn't be created. {{error}}"
   }
 }

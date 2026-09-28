@@ -73,3 +73,22 @@ describe('LivePage', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('list.loadError'))
   })
 })
+
+describe('LivePage replays', () => {
+  it('lists replays with status and storage', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      const body = url.includes('/recordings')
+        ? { used_bytes: 600_000_000, free_bytes: 11_000_000_000, recordings: [
+            { id: 9, session_id: 3, owner_name: 'Robin', title: 'Long run', started_at: '2026-09-28T08:00:00Z', status: 'ready', duration_seconds: 3725, size_bytes: 600_000_000, is_owner: false, has_track: true },
+            { id: 10, session_id: 4, owner_name: 'Me', title: '', started_at: '2026-09-28T09:00:00Z', status: 'processing', duration_seconds: 0, size_bytes: 0, is_owner: true, has_track: false },
+          ] }
+        : { configured: true, recording_available: true, heartbeat_interval: 15, sessions: [] }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
+    }))
+    renderPage()
+    await waitFor(() => expect(screen.getByText('replays.title')).toBeInTheDocument())
+    expect(screen.getByText('Long run').closest('a')).toHaveAttribute('href', '/live/replay/9')
+    expect(screen.getByText(/1:02:05/)).toBeInTheDocument()
+    expect(screen.getByText('replays.status.processing')).toBeInTheDocument()
+  })
+})
