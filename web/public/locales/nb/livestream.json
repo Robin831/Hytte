@@ -41,7 +41,27 @@
     "dataUsed": "{{amount}} brukt",
     "tipScreen": "Hold denne siden åpen med skjermen på — telefoner pauser kameraet når skjermen låses eller du bytter app. Bruk gjerne bryst- eller armfeste.",
     "wakeLockUnsupported": "Denne nettleseren kan ikke holde skjermen våken automatisk — slå av automatisk lås mens du sender.",
-    "dataEstimate": "Normal kvalitet bruker omtrent 0,5–0,7 GB mobildata per time."
+    "dataEstimate": "Normal kvalitet bruker omtrent 0,5–0,7 GB mobildata per time.",
+    "optionsLabel": "Innstillinger for sendingen",
+    "optNotify": "Varsle familien",
+    "optNotifyHint": "Sender et pushvarsel til alle som kan se på.",
+    "optRecord": "Ta opp",
+    "optRecordHint": "Lagrer et opptak du kan se senere (omtrent 0,6 GB per time).",
+    "optLocation": "Del posisjon",
+    "optLocationHint": "Seerne ser ruten, distansen og tempoet ditt på et kart.",
+    "recordUnavailable": "Opptak er ikke tilgjengelig på denne serveren.",
+    "lowDisk": "Ikke nok ledig plass på serveren til opptak. Slett gamle opptak eller gå direkte uten opptak.",
+    "replaySoon": "Opptaket dukker opp under Opptak om et minutt.",
+    "rec": "OPPTAK",
+    "autoLowData": "Svakt signal — byttet til lite data.",
+    "locationError": "Fikk ikke tak i posisjonen din. Sjekk at posisjonstilgang er tillatt for denne siden.",
+    "shareLink": "Del lenke",
+    "shareTitle": "Se meg direkte",
+    "shareLinkLabel": "Delingslenke",
+    "copyLink": "Kopier",
+    "stopSharing": "Slutt å dele",
+    "linkCopied": "Lenken er kopiert.",
+    "shareError": "Kunne ikke oppdatere delingslenken."
   },
   "watch": {
     "back": "Alle sendinger",
@@ -53,6 +73,41 @@
     "unmute": "Slå på lyd",
     "mute": "Slå av lyd",
     "fullscreen": "Fullskjerm",
-    "fallbackHls": "Kompatibilitetsmodus — noen sekunder etter direkte."
+    "fallbackHls": "Kompatibilitetsmodus — noen sekunder etter direkte.",
+    "backSoon": "Tilbake om et øyeblikk…",
+    "recording": "Tar opp",
+    "battery": "Batteri hos den som sender {{percent}} %",
+    "watchReplay": "Se opptaket",
+    "replayProcessing": "Opptaket klargjøres…"
+  },
+  "map": {
+    "label": "Rutekart",
+    "waiting": "Venter på første GPS-posisjon…"
+  },
+  "stats": {
+    "distance": "Distanse",
+    "pace": "Tempo",
+    "avgPace": "Snittempo",
+    "time": "Tid"
+  },
+  "public": {
+    "liveFrom": "{{name}} sender direkte",
+    "footer": "Delt med deg fra Hytte. Lenken slutter å virke når sendingen avsluttes."
+  },
+  "replays": {
+    "title": "Opptak",
+    "storage": "{{used}} brukt · {{free}} ledig",
+    "status": {
+      "recording": "Tar opp…",
+      "processing": "Behandles…",
+      "ready": "Klar",
+      "failed": "Mislyktes"
+    }
+  },
+  "replay": {
+    "delete": "Slett opptak",
+    "confirmDelete": "Slette dette opptaket? Dette kan ikke angres.",
+    "processing": "Opptaket klargjøres — siden oppdateres automatisk.",
+    "failed": "Opptaket kunne ikke lages. {{error}}"
   }
 }

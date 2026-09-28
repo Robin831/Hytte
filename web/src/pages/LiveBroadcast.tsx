@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
-import { ArrowLeft, Eye, Mic, MicOff, Radio, Square, SwitchCamera } from 'lucide-react'
+import { ArrowLeft, Copy, Eye, Link2Off, Mic, MicOff, Radio, Share2, Square, SwitchCamera } from 'lucide-react'
+import RunStatsBar from './live/RunStatsBar'
 import {
   HttpError,
+  computeRunStats,
   createSession,
+  createShareLink,
+  listSessions,
+  postTrack,
+  revokeShareLink,
+  type TrackPoint,
   endSession,
   fetchIceServers,
   formatBytes,
@@ -36,6 +43,38 @@ const STATS_INTERVAL_MS = 2_000
 // tear down and renegotiate if it lasts longer than this.
 const DISCONNECT_GRACE_MS = 5_000
 const MAX_RECONNECT_DELAY_MS = 15_000
+// GPS fixes are batched and uploaded this often while location sharing is on.
+const TRACK_FLUSH_MS = 5_000
+const MAX_TRACK_BUFFER = 1_000
+// Auto low-data: switch when the encoder reports it is bandwidth-limited and
+// the send rate stays under this for AUTO_LOW_STRIKES stats samples (~6 s).
+const AUTO_LOW_BITRATE = 500_000
+const AUTO_LOW_STRIKES = 5
+// WebRTC's bandwidth estimate starts low and ramps up; the encoder reports
+// "bandwidth-limited" during that ramp, so don't judge the first seconds.
+const AUTO_LOW_WARMUP_MS = 20_000
+const LOCATION_PREF_KEY = 'hytte-live-location'
+
+function readLocationPref(): boolean {
+  try {
+    return localStorage.getItem(LOCATION_PREF_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function writeLocationPref(on: boolean) {
+  try {
+    localStorage.setItem(LOCATION_PREF_KEY, on ? '1' : '0')
+  } catch {
+    // Private mode etc. — the checkbox just won't be remembered.
+  }
+}
+
+interface BatteryManagerLike extends EventTarget {
+  level: number
+  charging: boolean
+}
 
 export default function LiveBroadcast() {
   const { t, i18n } = useTranslation('livestream')
@@ -61,6 +100,13 @@ export default function LiveBroadcast() {
   const lastSampleRef = useRef<OutboundSample | null>(null)
   const heartbeatMsRef = useRef(DEFAULT_HEARTBEAT_MS)
   const connectRef = useRef<() => Promise<void>>(async () => {})
+  const phaseRef = useRef<Phase>('idle')
+  const batteryRef = useRef<{ level: number; charging: boolean } | null>(null)
+  const trackBufferRef = useRef<TrackPoint[]>([])
+  const geoWatchRef = useRef<number | null>(null)
+  const bandwidthStrikesRef = useRef(0)
+  const connectedAtRef = useRef(0)
+  const recordingRef = useRef(false)
 
   const [facing, setFacing] = useState<Facing>('environment')
   const [micOn, setMicOn] = useState(true)
@@ -75,6 +121,17 @@ export default function LiveBroadcast() {
   const [bitrate, setBitrate] = useState(0)
   const [bytesUsed, setBytesUsed] = useState(0)
   const [viewers, setViewers] = useState(0)
+  // Go live options.
+  const [notify, setNotify] = useState(true)
+  const [record, setRecord] = useState(false)
+  const [shareLocation, setShareLocation] = useState(readLocationPref)
+  const [recordingAvailable, setRecordingAvailable] = useState(false)
+  // State of the running broadcast.
+  const [isRecording, setIsRecording] = useState(false)
+  const [locationOn, setLocationOn] = useState(false)
+  const [myPoints, setMyPoints] = useState<TrackPoint[]>([])
+  const [shareUrl, setShareUrl] = useState<string | null>(null)
+  const [geoDenied, setGeoDenied] = useState(false)
   const wakeLockSupported = typeof navigator !== 'undefined' && 'wakeLock' in navigator
 
   // --- camera -------------------------------------------------------------
@@ -158,8 +215,7 @@ export default function LiveBroadcast() {
     }
   }, [])
 
-  const toggleLowData = async () => {
-    const next = !lowData
+  const setLowDataMode = useCallback(async (next: boolean) => {
     lowDataRef.current = next
     setLowData(next)
     const q = next ? QUALITY.low : QUALITY.normal
@@ -170,7 +226,74 @@ export default function LiveBroadcast() {
       // Constraint changes are best effort.
     }
     await applyBitrate(next)
-  }
+  }, [applyBitrate])
+
+  const toggleLowData = () => setLowDataMode(!lowDataRef.current)
+
+  // --- server capabilities + battery ---------------------------------------
+
+  useEffect(() => {
+    let cancelled = false
+    listSessions()
+      .then(d => { if (!cancelled) setRecordingAvailable(d.recording_available) })
+      .catch(() => {})
+    // Battery Status API: Chrome/Android only. Viewers see the level so they
+    // know when the phone is about to die.
+    const nav = navigator as Navigator & { getBattery?: () => Promise<BatteryManagerLike> }
+    let battery: BatteryManagerLike | null = null
+    const update = () => {
+      if (battery) batteryRef.current = { level: battery.level, charging: battery.charging }
+    }
+    nav.getBattery?.().then(b => {
+      if (cancelled) return
+      battery = b
+      update()
+      b.addEventListener('levelchange', update)
+      b.addEventListener('chargingchange', update)
+    }).catch(() => {})
+    return () => {
+      cancelled = true
+      battery?.removeEventListener('levelchange', update)
+      battery?.removeEventListener('chargingchange', update)
+    }
+  }, [])
+
+  useEffect(() => {
+    phaseRef.current = phase
+  }, [phase])
+
+  // --- GPS ---------------------------------------------------------------------
+
+  const stopGeo = useCallback(() => {
+    if (geoWatchRef.current !== null) navigator.geolocation?.clearWatch(geoWatchRef.current)
+    geoWatchRef.current = null
+    trackBufferRef.current = []
+  }, [])
+
+  const startGeo = useCallback(() => {
+    if (!navigator.geolocation || geoWatchRef.current !== null) return
+    geoWatchRef.current = navigator.geolocation.watchPosition(
+      pos => {
+        const point: TrackPoint = {
+          t: new Date(pos.timestamp).toISOString(),
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+          acc: pos.coords.accuracy,
+          ...(pos.coords.altitude !== null ? { alt: pos.coords.altitude } : {}),
+        }
+        trackBufferRef.current.push(point)
+        if (trackBufferRef.current.length > MAX_TRACK_BUFFER) trackBufferRef.current.shift()
+        setMyPoints(prev => [...prev, point])
+        setGeoDenied(false)
+      },
+      err => {
+        // Timeouts and "position unavailable" are routine (tunnels, tall
+        // buildings) and the watch keeps going — only a refusal needs the user.
+        if (err.code === err.PERMISSION_DENIED) setGeoDenied(true)
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20_000 },
+    )
+  }, [])
 
   // --- wake lock ----------------------------------------------------------
 
@@ -228,13 +351,21 @@ export default function LiveBroadcast() {
     clearTimers()
     teardownPeer()
     releaseWakeLock()
+    stopGeo()
     sessionRef.current = null
+    setShareUrl(null)
+    setLocationOn(false)
+    if (recordingRef.current && endedNotice) {
+      endedNotice = `${endedNotice} ${t('broadcast.replaySoon')}`
+    }
+    recordingRef.current = false
+    setIsRecording(false)
     setPhase('idle')
     setStartedAt(null)
     setBitrate(0)
     setViewers(0)
     setNotice(endedNotice)
-  }, [teardownPeer, releaseWakeLock])
+  }, [teardownPeer, releaseWakeLock, stopGeo, t])
 
   const scheduleReconnect = useCallback(() => {
     if (!activeRef.current) return
@@ -287,6 +418,8 @@ export default function LiveBroadcast() {
           if (disconnectTimerRef.current) clearTimeout(disconnectTimerRef.current)
           disconnectTimerRef.current = null
           attemptRef.current = 0
+          connectedAtRef.current = performance.now()
+          bandwidthStrikesRef.current = 0
           setPhase('live')
           break
         case 'disconnected':
@@ -356,14 +489,26 @@ export default function LiveBroadcast() {
     baseBytesRef.current = 0
     lastSampleRef.current = null
     setBytesUsed(0)
+    setMyPoints([])
+    writeLocationPref(shareLocation)
     try {
-      const res = await createSession(title.trim())
+      const res = await createSession(title.trim(), { notify, record, location: shareLocation })
       sessionRef.current = res.session
       heartbeatMsRef.current = (res.heartbeat_interval || 15) * 1000
+      recordingRef.current = res.session.recording
+      setIsRecording(res.session.recording)
+      setLocationOn(res.session.location)
+      if (res.session.location) startGeo()
     } catch (err) {
       activeRef.current = false
       setPhase('idle')
-      setError(t('broadcast.startError', { message: err instanceof Error ? err.message : String(err) }))
+      if (err instanceof HttpError && err.status === 507) {
+        setError(t('broadcast.lowDisk'))
+      } else if (err instanceof HttpError && err.status === 503 && record) {
+        setError(t('broadcast.recordUnavailable'))
+      } else {
+        setError(t('broadcast.startError', { message: err instanceof Error ? err.message : String(err) }))
+      }
       return
     }
     setStartedAt(Date.now())
@@ -394,7 +539,12 @@ export default function LiveBroadcast() {
       const session = sessionRef.current
       if (!session) return
       try {
-        await heartbeat(session.id)
+        const battery = batteryRef.current
+        const state = phaseRef.current === 'live' || phaseRef.current === 'reconnecting' ? phaseRef.current : 'connecting'
+        await heartbeat(session.id, {
+          state,
+          ...(battery ? { battery_level: battery.level, battery_charging: battery.charging } : {}),
+        })
         const fresh = await getSession(session.id)
         setViewers(fresh.viewers)
       } catch (err) {
@@ -421,7 +571,20 @@ export default function LiveBroadcast() {
         const sample = await sampleOutbound(pc)
         const prev = lastSampleRef.current
         if (prev && sample.at > prev.at && sample.bytes >= prev.bytes) {
-          setBitrate(((sample.bytes - prev.bytes) * 8) / ((sample.at - prev.at) / 1000))
+          const rate = ((sample.bytes - prev.bytes) * 8) / ((sample.at - prev.at) / 1000)
+          setBitrate(rate)
+          // Weak coverage: drop to low-data before the picture falls apart.
+          const warmedUp = connectedAtRef.current > 0 && performance.now() - connectedAtRef.current > AUTO_LOW_WARMUP_MS
+          if (!lowDataRef.current && warmedUp && sample.bandwidthLimited && rate < AUTO_LOW_BITRATE) {
+            bandwidthStrikesRef.current += 1
+            if (bandwidthStrikesRef.current >= AUTO_LOW_STRIKES) {
+              bandwidthStrikesRef.current = 0
+              setLowDataMode(true)
+              setNotice(t('broadcast.autoLowData'))
+            }
+          } else {
+            bandwidthStrikesRef.current = 0
+          }
         }
         lastSampleRef.current = sample
         setBytesUsed(baseBytesRef.current + sample.bytes)
@@ -430,7 +593,72 @@ export default function LiveBroadcast() {
       }
     }, STATS_INTERVAL_MS)
     return () => clearInterval(id)
-  }, [isActive])
+  }, [isActive, setLowDataMode, t])
+
+  // Upload buffered GPS fixes.
+  useEffect(() => {
+    if (!isActive || !locationOn) return
+    const id = setInterval(async () => {
+      const session = sessionRef.current
+      if (!session || trackBufferRef.current.length === 0) return
+      const batch = trackBufferRef.current.splice(0, 200)
+      try {
+        await postTrack(session.id, batch)
+      } catch {
+        // Keep them for the next attempt (tunnels, dead zones).
+        trackBufferRef.current.unshift(...batch)
+        trackBufferRef.current.splice(MAX_TRACK_BUFFER)
+      }
+    }, TRACK_FLUSH_MS)
+    return () => clearInterval(id)
+  }, [isActive, locationOn])
+
+  // --- share link -------------------------------------------------------------
+
+  const share = async () => {
+    const session = sessionRef.current
+    if (!session) return
+    let url: string
+    try {
+      const { path } = await createShareLink(session.id)
+      url = window.location.origin + path
+      setShareUrl(url)
+    } catch {
+      setError(t('broadcast.shareError'))
+      return
+    }
+    // The link exists now; handing it off is best effort (the field below
+    // shows it either way).
+    if (navigator.share) {
+      await navigator.share({ title: title.trim() || t('broadcast.shareTitle'), url }).catch(() => {})
+    } else {
+      await copyText(url)
+    }
+  }
+
+  const copyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setNotice(t('broadcast.linkCopied'))
+    } catch {
+      // Clipboard blocked — the link is visible and selectable anyway.
+    }
+  }
+
+  const copyShareUrl = () => {
+    if (shareUrl) copyText(shareUrl)
+  }
+
+  const stopSharing = async () => {
+    const session = sessionRef.current
+    if (!session) return
+    try {
+      await revokeShareLink(session.id)
+      setShareUrl(null)
+    } catch {
+      setError(t('broadcast.shareError'))
+    }
+  }
 
   // --- page exit ----------------------------------------------------------
 
@@ -450,6 +678,7 @@ export default function LiveBroadcast() {
       pcRef.current = null
       hangUp(resourceRef.current)
       pc?.close()
+      if (geoWatchRef.current !== null) navigator.geolocation?.clearWatch(geoWatchRef.current)
       wakeLockRef.current?.release().catch(() => {})
       streamRef.current?.getTracks().forEach(track => track.stop())
     }
@@ -496,6 +725,12 @@ export default function LiveBroadcast() {
               <Eye size={14} />
               {viewers}
             </span>
+            {isRecording && (
+              <span className="flex items-center gap-1 rounded bg-black/60 px-2 py-1 text-white">
+                <span className="h-2 w-2 rounded-full bg-red-500" />
+                {t('broadcast.rec')}
+              </span>
+            )}
             <span className="rounded bg-black/60 px-2 py-1 text-white">{t('broadcast.bitrate', { kbps })}</span>
             <span className="rounded bg-black/60 px-2 py-1 text-white">
               {t('broadcast.dataUsed', { amount: formatBytes(bytesUsed, locale) })}
@@ -512,6 +747,7 @@ export default function LiveBroadcast() {
 
       {cameraError && <div className="text-sm text-red-400" role="alert">{cameraError}</div>}
       {error && <div className="text-sm text-red-400" role="alert">{error}</div>}
+      {geoDenied && locationOn && <div className="text-sm text-red-400" role="alert">{t('broadcast.locationError')}</div>}
       {notice && <div className="text-sm text-gray-300" role="status">{notice}</div>}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -540,6 +776,71 @@ export default function LiveBroadcast() {
           </span>
         </label>
       </div>
+
+      {isActive && (
+        <div className="space-y-2">
+          {shareUrl ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-gray-800 p-2">
+              <input
+                readOnly
+                value={shareUrl}
+                aria-label={t('broadcast.shareLinkLabel')}
+                onFocus={e => e.currentTarget.select()}
+                className="min-w-0 flex-1 rounded bg-gray-900 px-2 py-1.5 text-xs text-gray-200"
+              />
+              <button type="button" onClick={copyShareUrl} className="flex items-center gap-1.5 rounded-lg bg-gray-700 px-3 py-1.5 text-sm text-gray-100 hover:bg-gray-600">
+                <Copy size={14} />
+                {t('broadcast.copyLink')}
+              </button>
+              <button type="button" onClick={stopSharing} className="flex items-center gap-1.5 rounded-lg bg-gray-700 px-3 py-1.5 text-sm text-red-300 hover:bg-gray-600">
+                <Link2Off size={14} />
+                {t('broadcast.stopSharing')}
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={share} className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700">
+              <Share2 size={16} />
+              {t('broadcast.shareLink')}
+            </button>
+          )}
+          {locationOn && myPoints.length > 1 && <RunStatsBar stats={computeRunStats(myPoints)} />}
+        </div>
+      )}
+
+      {!isActive && (
+        <fieldset className="space-y-2">
+          <legend className="sr-only">{t('broadcast.optionsLabel')}</legend>
+          <label className="flex items-start gap-3 rounded-lg bg-gray-800 px-3 py-2 text-sm text-gray-200">
+            <input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} className="mt-0.5 accent-blue-500" />
+            <span>
+              {t('broadcast.optNotify')}
+              <span className="block text-xs text-gray-400">{t('broadcast.optNotifyHint')}</span>
+            </span>
+          </label>
+          <label className={`flex items-start gap-3 rounded-lg bg-gray-800 px-3 py-2 text-sm ${recordingAvailable ? 'text-gray-200' : 'text-gray-500'}`}>
+            <input
+              type="checkbox"
+              checked={record && recordingAvailable}
+              disabled={!recordingAvailable}
+              onChange={e => setRecord(e.target.checked)}
+              className="mt-0.5 accent-blue-500"
+            />
+            <span>
+              {t('broadcast.optRecord')}
+              <span className="block text-xs text-gray-400">
+                {recordingAvailable ? t('broadcast.optRecordHint') : t('broadcast.recordUnavailable')}
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 rounded-lg bg-gray-800 px-3 py-2 text-sm text-gray-200">
+            <input type="checkbox" checked={shareLocation} onChange={e => setShareLocation(e.target.checked)} className="mt-0.5 accent-blue-500" />
+            <span>
+              {t('broadcast.optLocation')}
+              <span className="block text-xs text-gray-400">{t('broadcast.optLocationHint')}</span>
+            </span>
+          </label>
+        </fieldset>
+      )}
 
       {!isActive && (
         <div className="space-y-1">

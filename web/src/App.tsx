@@ -69,6 +69,8 @@ import RecipesPage from './pages/RecipesPage'
 import LivePage from './pages/LivePage'
 import LiveBroadcast from './pages/LiveBroadcast'
 import LiveWatch from './pages/LiveWatch'
+import LiveReplay from './pages/LiveReplay'
+import PublicWatch from './pages/PublicWatch'
 import RecipeDetail from './pages/RecipeDetail'
 import RecipeCookMode from './pages/RecipeCookMode'
 import MealPlanner from './pages/MealPlanner'
@@ -506,6 +508,14 @@ function MainLayout() {
             }
           />
           <Route
+            path="/live/replay/:id"
+            element={
+              <FeatureRoute feature="livestream">
+                <LiveReplay />
+              </FeatureRoute>
+            }
+          />
+          <Route
             path="/live/:id"
             element={
               <FeatureRoute feature="livestream">
@@ -824,6 +834,8 @@ function App() {
   return (
     <Routes>
       <Route path="/kiosk" element={<KioskPage />} />
+      {/* Livestream share links: the token is the credential, no login. */}
+      <Route path="/watch/:token" element={<PublicWatch />} />
       <Route path="*" element={<MainLayout />} />
     </Routes>
   )

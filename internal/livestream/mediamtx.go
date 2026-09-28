@@ -269,3 +269,47 @@ func (m *MediaServer) Kick(ctx context.Context, mediaPath string) error {
 	}
 	return firstErr
 }
+
+// SetRecording turns recording on (or off) for one path by adding (or
+// removing) an exact-name path config at runtime. An exact name takes
+// precedence over the ~^live/… regex in mediamtx.yml, whose default is
+// record: false. Runtime config is not persisted: a MediaMTX restart stops
+// recording for streams already live, which is acceptable for opt-in replays.
+func (m *MediaServer) SetRecording(ctx context.Context, mediaPath string, on bool) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var (
+		req *http.Request
+		err error
+	)
+	if on {
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, m.cfg.APIURL+"/v3/config/paths/add/"+mediaPath, strings.NewReader(`{"record":true}`))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+	} else {
+		req, err = http.NewRequestWithContext(ctx, http.MethodDelete, m.cfg.APIURL+"/v3/config/paths/delete/"+mediaPath, nil)
+	}
+	if err != nil {
+		return err
+	}
+	if m.cfg.APIURL == "" {
+		return fmt.Errorf("mediamtx API not configured")
+	}
+	if m.cfg.APIUser != "" {
+		req.SetBasicAuth(m.cfg.APIUser, m.cfg.APIPass)
+	}
+	resp, err := m.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if !on && resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode/100 != 2 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return fmt.Errorf("mediamtx config paths: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}

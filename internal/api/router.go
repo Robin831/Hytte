@@ -158,6 +158,10 @@ func NewRouter(db *sql.DB) http.Handler {
 		r.Get("/weather/reverse", weatherSvc.ReverseHandler())
 		r.Get("/weather/sun", weatherSvc.SunHandler())
 
+		// Livestream share links (Hytte-krwxy v2) — the share token is the
+		// credential, so these sit outside the auth groups.
+		livestream.RegisterPublicRoutes(r, db)
+
 		// Push notifications — public VAPID key endpoint.
 		r.Get("/push/vapid-key", push.VAPIDKeyHandler(db))
 

@@ -36,6 +36,34 @@ Viewer (Live page)
   viewers. Going live again ends the user's previous session. Nothing is
   recorded.
 
+## Go live options and features
+
+On the Go live screen the broadcaster picks, per broadcast:
+
+| Option | Default | What it does |
+|---|---|---|
+| **Notify family** | on | Push "<name> is live" to every other user with the `livestream` feature (admins included), skipping anyone in quiet hours. Tapping it opens `/live/{id}`. |
+| **Record** | off | Records the broadcast and builds a replay afterwards (see *Recording*). Greyed out when the server can't record; refused with 507 when free disk space is below `LIVE_RECORDING_MIN_FREE_MB` (default 2 GB). |
+| **Share location** | last choice | The phone sends GPS fixes (batched every 5 s). Viewers get a live route map (Leaflet + OpenStreetMap tiles) with distance, current pace, average pace and time. Each point is encrypted at rest. Without recording, the track is purged 30 minutes after the stream ends; with recording it's kept for the replay. |
+
+While live:
+
+- **Share link**: creates a `/watch/<token>` URL for people without an account (native share sheet on phones, clipboard otherwise). Only the SHA-256 of the token is stored. The link shows video, map and stats, stops serving media when the stream ends, and can be revoked ("Stop sharing"). Share-link viewers only see the broadcaster's first name.
+- **Battery and connection state** go out with every heartbeat. Viewers see a battery badge (red below 20%). While the phone is reconnecting, or the video stalls (no decoded frames for 4 s), viewers see "Back in a moment…" over the last frame instead of a black box.
+- **Auto low-data**: after a 20 s warm-up, if the encoder reports it is bandwidth-limited and the send rate stays under 500 kbps for ~10 s, the phone switches to low-data mode (480p, 600 kbps) and says so.
+
+### Recording
+
+1. At go-live Hytte adds an exact-name MediaMTX path config (`POST /v3/config/paths/add/live/<key>` with `{"record":true}`). It takes precedence over the `~^live/…` regex, whose default is `record: false`.
+2. MediaMTX writes fMP4 segments to `/var/lib/mediamtx/recordings/live/<key>/`.
+3. When the session ends (Stop, reaper, or going live again), Hytte removes the path config, waits 3 s for the last segment to flush, then runs **one ffmpeg at a time**: concat demuxer, video copied, Opus converted to AAC (Safari/iOS can't play Opus in MP4), `+faststart`. The result is `/var/lib/hytte-live/session-<id>-<rand>.mp4` (`LIVE_RECORDINGS_DIR`).
+4. The replay is linked to the owner's workout that overlaps the broadcast most (±15 min). This happens when the replay is built and again when it's viewed, because the watch usually syncs after the run.
+5. Replays interrupted by a Hytte restart are finished on startup (`ResumePending`).
+
+MediaMTX creates each stream's segment folder without group write permission, so Hytte can read segments but not delete them. MediaMTX's `recordDeleteAfter: 1d` cleans them up instead.
+
+Replays live under **Live → Replays** (all feature users can watch; only the owner can delete) at `/live/replay/{id}`. The video is served with range support (seekable). When there's a GPS track, a marker on the map follows the video position.
+
 ## API
 
 All routes require a session cookie and the `livestream` feature (admins bypass it).
@@ -44,15 +72,33 @@ All routes require a session cookie and the `livestream` feature (admins bypass 
 |---|---|---|---|
 | GET | /api/live/ice | any | STUN/TURN servers for `RTCPeerConnection` |
 | GET | /api/live/sessions | any | Live sessions (`on_air`, `viewers`), plus `configured` |
-| POST | /api/live/sessions | any | Go live: `{title}` → `{session, heartbeat_interval}` |
+| POST | /api/live/sessions | any | Go live: `{title, notify, record, location}` → `{session, heartbeat_interval}` |
 | GET | /api/live/sessions/{id} | any | One session, including ended ones |
-| POST | /api/live/sessions/{id}/heartbeat | owner | Keep alive; returns 409 once ended |
+| POST | /api/live/sessions/{id}/heartbeat | owner | Keep alive with `{state, battery_level?, battery_charging?}`; returns 409 once ended |
 | POST | /api/live/sessions/{id}/end | owner | End and kick everyone |
 | POST | /api/live/sessions/{id}/whip | owner | WHIP offer → answer (201 + `Location`) |
 | PATCH/DELETE | /api/live/sessions/{id}/whip/{resource} | owner | Trickle ICE / hang up |
 | POST | /api/live/sessions/{id}/whep | any | WHEP offer → answer |
 | PATCH/DELETE | /api/live/sessions/{id}/whep/{resource} | any | Trickle ICE / hang up |
 | GET | /api/live/sessions/{id}/hls/{file} | any | HLS playlists/segments, sent with `Cache-Control: private, no-store` |
+| POST/DELETE | /api/live/sessions/{id}/share | owner | Create (or rotate) / revoke the share link → `{token, path}` |
+| POST | /api/live/sessions/{id}/track | owner | Upload GPS fixes `{points:[{t,lat,lon,alt?,acc?}]}` (≤200 per request; needs Share location) |
+| GET | /api/live/sessions/{id}/track?after={pointId} | any | GPS track, incrementally |
+| GET | /api/live/recordings | any | Replays plus `used_bytes` / `free_bytes` |
+| GET | /api/live/recordings/{id} | any | One replay (links the workout lazily) |
+| GET | /api/live/recordings/{id}/video | any | The MP4 (HTTP range requests) |
+| GET | /api/live/recordings/{id}/track | any | The route kept with the replay |
+| DELETE | /api/live/recordings/{id} | owner | Delete the replay, its file and its track |
+
+Share-link routes have **no session auth**; the 64-hex token in the path is the credential:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | /api/live/public/{token} | Session status (trimmed: first name only, no user id) |
+| GET | /api/live/public/{token}/ice | TURN credentials, only while live |
+| POST, PATCH/DELETE | /api/live/public/{token}/whep[/{resource}] | Watch (WHEP). WHIP is never reachable this way |
+| GET | /api/live/public/{token}/hls/{file} | HLS fallback |
+| GET | /api/live/public/{token}/track | GPS track while live |
 
 For a session that has ended, new WHIP/WHEP/HLS requests get 410. DELETE still
 works so clients can clean up.
@@ -65,7 +111,11 @@ works so clients can clean up.
   github.com/bluenviron/mediamtx, checksum-verified; v1.21.1 at install).
 - Config: `/etc/mediamtx/mediamtx.yml`, `root:mediamtx 0640` (it holds secrets).
 - Service: `mediamtx.service`, runs as the `mediamtx` system user with
-  `ProtectSystem=strict` / `ProtectHome=true`.
+  `ProtectSystem=strict` / `ProtectHome=true`, `ReadWritePaths=/var/lib/mediamtx`
+  and `UMask=0007`.
+- Folders: `/var/lib/mediamtx/recordings` (`mediamtx:robin 2770`, so Hytte can
+  read segments) and `/var/lib/hytte-live` (`robin:robin 0750`, finished replays).
+  `ffmpeg`/`ffprobe` come from the Ubuntu package.
 
 ```yaml
 authMethod: internal
@@ -108,7 +158,11 @@ webrtcAdditionalHosts: [<server public IPv4>]  # the domain resolves to Cloudfla
 pathDefaults:
   source: publisher
   overridePublisher: true   # a reconnecting phone replaces its own stale publisher
-  record: false
+  record: false             # Hytte turns it on per broadcast via the API
+  recordPath: /var/lib/mediamtx/recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: fmp4
+  recordSegmentDuration: 1h
+  recordDeleteAfter: 1d     # Hytte can't delete segments itself (folder perms)
 
 paths:
   "~^live/[0-9a-f]{32}$": {}
@@ -142,6 +196,12 @@ and loopback ranges are in `denied-peer-ip`.
 | `LIVE_PUBLISH_USER` / `LIVE_PUBLISH_PASS` | `hytte-publisher` / … |
 | `LIVE_READ_USER` / `LIVE_READ_PASS` | `hytte-reader` / … |
 | `LIVE_API_USER` / `LIVE_API_PASS` | `hytte-api` / … |
+| `LIVE_RECORDING_SEGMENTS_DIR` | `/var/lib/mediamtx/recordings` (MediaMTX's record root) |
+| `LIVE_RECORDINGS_DIR` | `/var/lib/hytte-live` (finished replays) |
+| `LIVE_RECORDING_MIN_FREE_MB` | optional, default `2048` |
+
+Recording is off (the checkbox is greyed out) unless both folders are set,
+ffmpeg is on `PATH`, and the MediaMTX API is configured.
 
 If `LIVE_MEDIAMTX_WEBRTC_URL` is unset, the Live page says livestreaming isn't
 configured and `POST /api/live/sessions` returns 503.
@@ -157,10 +217,12 @@ configured and `POST /api/live/sessions` returns 503.
   has to stay unlocked in a mount.
 - Data use: normal quality (720p, 1.5 Mbps cap) is about 0.5–0.7 GB/hour.
   Low-data mode (480p, 600 kbps) is about 0.3 GB/hour.
+- Disk: the server has ~11 GB free as of Sept 2026, which is roughly 18 hours of
+  replays. The Replays header shows used/free space; delete old replays there.
+  `journalctl -u hytte | grep 'livestream: replay'` shows replay builds.
 
 ## Later
 
-Live GPS map next to the video, a "… is live" push notification, recording and
-replay, share links for people without an account, and permanent UniFi Protect
-cameras (RTSP over a WireGuard tunnel from the UCG‑Fiber, pulled into the same
-MediaMTX and `/live` viewer).
+A "cheer" button for viewers (sound or text-to-speech on the phone), and
+permanent UniFi Protect cameras (RTSP over a WireGuard tunnel from the
+UCG‑Fiber, pulled into the same MediaMTX and `/live` viewer).

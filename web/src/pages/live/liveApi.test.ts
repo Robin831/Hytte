@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { HttpError, formatBytes, formatDuration, negotiate, preferH264 } from './liveApi'
+import { HttpError, computeRunStats, formatBytes, formatDuration, formatPace, haversine, negotiate, preferH264, type TrackPoint } from './liveApi'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -83,5 +83,38 @@ describe('formatting', () => {
   it('formats data used', () => {
     expect(formatBytes(250_000_000, 'en')).toBe('250 MB')
     expect(formatBytes(1_250_000_000, 'en')).toBe('1.3 GB')
+  })
+})
+
+describe('run stats', () => {
+  // Fixes ~10 m apart heading north, one every 3 s: 100 steps ≈ 1 km in 300 s.
+  const track = (n: number, stepDeg = 0.00009, everyS = 3, acc = 5): TrackPoint[] =>
+    Array.from({ length: n }, (_, i) => ({
+      t: new Date(Date.UTC(2026, 8, 28, 12, 0, 0) + i * everyS * 1000).toISOString(),
+      lat: 59.9 + i * stepDeg,
+      lon: 10.7,
+      acc,
+    }))
+
+  it('measures distance with haversine', () => {
+    expect(haversine({ lat: 59.9, lon: 10.7 }, { lat: 59.90009, lon: 10.7 })).toBeCloseTo(10.0, 0)
+  })
+
+  it('computes distance, elapsed, average and current pace', () => {
+    const stats = computeRunStats(track(101))
+    expect(stats.distanceM).toBeCloseTo(1000.8, -1)
+    expect(stats.elapsedS).toBe(300)
+    // 300 s over ~1 km ≈ 5:00/km.
+    expect(formatPace(stats.avgPaceS)).toBe('5:00')
+    expect(formatPace(stats.currentPaceS)).toBe('5:00')
+  })
+
+  it('ignores inaccurate fixes and reports no pace when standing still', () => {
+    const noisy = track(10, 0.001, 3, 200)
+    expect(computeRunStats(noisy).distanceM).toBe(0)
+    const still = track(30, 0, 3)
+    const stats = computeRunStats(still)
+    expect(stats.currentPaceS).toBeNull()
+    expect(formatPace(stats.currentPaceS)).toBe('–')
   })
 })

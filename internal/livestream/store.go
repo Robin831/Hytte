@@ -41,6 +41,27 @@ type Session struct {
 	StartedAt  time.Time
 	EndedAt    time.Time
 	LastSeenAt time.Time
+
+	// Options chosen on the Go live screen.
+	Notify   bool
+	Record   bool
+	Location bool
+
+	// ShareTokenHash is the SHA-256 of the public share-link token, or "".
+	ShareTokenHash string
+
+	// Broadcaster status from the latest heartbeat. BatteryLevel is nil when
+	// the phone's browser does not expose the Battery Status API.
+	BatteryLevel    *float64
+	BatteryCharging bool
+	PublisherState  string
+}
+
+// Options are the per-broadcast choices made when going live.
+type Options struct {
+	Notify   bool
+	Record   bool
+	Location bool
 }
 
 // MediaPath is the MediaMTX path name for the session.
@@ -80,7 +101,7 @@ func parseTime(s string) time.Time {
 // still has marked live is ended first, so a user never has two broadcasts
 // running. The ended sessions are returned so the caller can kick their
 // MediaMTX connections.
-func CreateSession(db *sql.DB, userID int64, title string, now time.Time) (*Session, []*Session, error) {
+func CreateSession(db *sql.DB, userID int64, title string, opts Options, now time.Time) (*Session, []*Session, error) {
 	key, err := newStreamKey()
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate stream key: %w", err)
@@ -104,8 +125,9 @@ func CreateSession(db *sql.DB, userID int64, title string, now time.Time) (*Sess
 	if _, err := tx.Exec(`UPDATE live_sessions SET status = 'ended', ended_at = ? WHERE user_id = ? AND status = 'live'`, ts, userID); err != nil {
 		return nil, nil, err
 	}
-	res, err := tx.Exec(`INSERT INTO live_sessions (user_id, stream_key, title, status, started_at, last_seen_at) VALUES (?, ?, ?, 'live', ?, ?)`,
-		userID, key, encTitle, ts, ts)
+	res, err := tx.Exec(`INSERT INTO live_sessions (user_id, stream_key, title, status, started_at, last_seen_at, notify, record, location)
+		VALUES (?, ?, ?, 'live', ?, ?, ?, ?, ?)`,
+		userID, key, encTitle, ts, ts, opts.Notify, opts.Record, opts.Location)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -146,10 +168,50 @@ func EndSession(db *sql.DB, id int64, now time.Time) error {
 	return err
 }
 
-// Touch records a publisher heartbeat on a live session.
-func Touch(db *sql.DB, id int64, now time.Time) error {
-	_, err := db.Exec(`UPDATE live_sessions SET last_seen_at = ? WHERE id = ? AND status = 'live'`, formatTime(now), id)
+// Heartbeat is the broadcaster status reported with each keep-alive.
+type Heartbeat struct {
+	BatteryLevel    *float64 `json:"battery_level"`
+	BatteryCharging bool     `json:"battery_charging"`
+	State           string   `json:"state"`
+}
+
+// validPublisherStates are the broadcaster connection states viewers are told
+// about ("reconnecting" drives the "back in a moment" overlay).
+var validPublisherStates = map[string]bool{"": true, "connecting": true, "live": true, "reconnecting": true}
+
+// Touch records a publisher heartbeat (and its status) on a live session.
+func Touch(db *sql.DB, id int64, hb Heartbeat, now time.Time) error {
+	if !validPublisherStates[hb.State] {
+		hb.State = ""
+	}
+	var battery any
+	if hb.BatteryLevel != nil && *hb.BatteryLevel >= 0 && *hb.BatteryLevel <= 1 {
+		battery = *hb.BatteryLevel
+	}
+	_, err := db.Exec(`UPDATE live_sessions SET last_seen_at = ?, battery_level = ?, battery_charging = ?, publisher_state = ?
+		WHERE id = ? AND status = 'live'`, formatTime(now), battery, hb.BatteryCharging, hb.State, id)
 	return err
+}
+
+// SetShareTokenHash stores (or clears, with "") a session's share-link hash.
+func SetShareTokenHash(db *sql.DB, id int64, hash string) error {
+	_, err := db.Exec(`UPDATE live_sessions SET share_token_hash = ? WHERE id = ?`, hash, id)
+	return err
+}
+
+// GetSessionByShareHash finds the live session a share link points at.
+func GetSessionByShareHash(db *sql.DB, hash string) (*Session, error) {
+	if hash == "" {
+		return nil, ErrNotFound
+	}
+	list, err := querySessions(db, `WHERE s.share_token_hash = ?`, hash)
+	if err != nil {
+		return nil, err
+	}
+	if len(list) == 0 {
+		return nil, ErrNotFound
+	}
+	return list[0], nil
 }
 
 // EndStale ends every live session whose last heartbeat is older than cutoff
@@ -176,7 +238,8 @@ type queryer interface {
 func querySessions(q queryer, where string, args ...any) ([]*Session, error) {
 	rows, err := q.Query(`
 		SELECT s.id, s.user_id, COALESCE(u.name, ''), s.stream_key, s.title, s.status,
-		       s.started_at, s.ended_at, s.last_seen_at
+		       s.started_at, s.ended_at, s.last_seen_at, s.notify, s.record, s.location,
+		       s.share_token_hash, s.battery_level, s.battery_charging, s.publisher_state
 		FROM live_sessions s
 		LEFT JOIN users u ON u.id = s.user_id
 		`+where, args...)
@@ -189,7 +252,9 @@ func querySessions(q queryer, where string, args ...any) ([]*Session, error) {
 	for rows.Next() {
 		var s Session
 		var title, started, ended, seen string
-		if err := rows.Scan(&s.ID, &s.UserID, &s.OwnerName, &s.StreamKey, &title, &s.Status, &started, &ended, &seen); err != nil {
+		var battery sql.NullFloat64
+		if err := rows.Scan(&s.ID, &s.UserID, &s.OwnerName, &s.StreamKey, &title, &s.Status, &started, &ended, &seen,
+			&s.Notify, &s.Record, &s.Location, &s.ShareTokenHash, &battery, &s.BatteryCharging, &s.PublisherState); err != nil {
 			return nil, err
 		}
 		s.Title, err = encryption.DecryptField(title)
@@ -200,6 +265,10 @@ func querySessions(q queryer, where string, args ...any) ([]*Session, error) {
 		s.StartedAt = parseTime(started)
 		s.EndedAt = parseTime(ended)
 		s.LastSeenAt = parseTime(seen)
+		if battery.Valid {
+			b := battery.Float64
+			s.BatteryLevel = &b
+		}
 		out = append(out, &s)
 	}
 	return out, rows.Err()

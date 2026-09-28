@@ -51,10 +51,11 @@ func setupTestDB(t *testing.T) *sql.DB {
 
 // fakeMediaMTX records what Hytte sends to MediaMTX and answers like it.
 type fakeMediaMTX struct {
-	mu       sync.Mutex
-	requests []recordedRequest
-	ready    bool
-	kicked   []string
+	mu          sync.Mutex
+	requests    []recordedRequest
+	ready       bool
+	kicked      []string
+	configCalls []string
 }
 
 type recordedRequest struct {
@@ -74,6 +75,11 @@ func (f *fakeMediaMTX) handler(t *testing.T) http.Handler {
 		f.mu.Unlock()
 
 		switch {
+		case strings.HasPrefix(r.URL.Path, "/v3/config/paths/"):
+			f.mu.Lock()
+			f.configCalls = append(f.configCalls, r.Method+" "+r.URL.Path+" "+string(body))
+			f.mu.Unlock()
+			w.WriteHeader(http.StatusOK)
 		case r.Method == http.MethodPost && (strings.HasSuffix(r.URL.Path, "/whip") || strings.HasSuffix(r.URL.Path, "/whep")):
 			w.Header().Set("Content-Type", "application/sdp")
 			w.Header().Set("ETag", "*")
@@ -125,6 +131,12 @@ type testEnv struct {
 	router http.Handler
 	tokens map[int64]string
 	now    time.Time
+	pushed []pushedMsg
+}
+
+type pushedMsg struct {
+	userID  int64
+	payload string
 }
 
 func setupEnv(t *testing.T) *testEnv {
@@ -149,6 +161,11 @@ func setupEnv(t *testing.T) *testEnv {
 	}
 	env.h = NewHandlers(database, cfg, ice)
 	env.h.now = func() time.Time { return env.now }
+	env.h.async = func(f func()) { f() }
+	env.h.push = func(_ *sql.DB, userID int64, payload []byte) error {
+		env.pushed = append(env.pushed, pushedMsg{userID: userID, payload: string(payload)})
+		return nil
+	}
 
 	for _, id := range []int64{ownerID, viewerID, noFeatID} {
 		if id != noFeatID {
@@ -165,9 +182,12 @@ func setupEnv(t *testing.T) *testEnv {
 
 	r := chi.NewRouter()
 	r.Route("/api", func(r chi.Router) {
-		r.Use(auth.RequireAuth(database))
-		r.Use(auth.WithFeatures(database))
-		env.h.Mount(r)
+		env.h.MountPublic(r)
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAuth(database))
+			r.Use(auth.WithFeatures(database))
+			env.h.Mount(r)
+		})
 	})
 	env.router = r
 	return env

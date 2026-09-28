@@ -26,8 +26,10 @@ func Init(path string) (*sql.DB, error) {
 	// Embed PRAGMAs in the DSN so they are applied to every new connection
 	// opened by database/sql's pool. This lets the pool hold more than one
 	// connection (benefiting WAL concurrent reads) while still guaranteeing
-	// foreign_keys=ON on each one.
-	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(ON)&_pragma=journal_mode(WAL)", path)
+	// foreign_keys=ON on each one. busy_timeout makes a writer wait (up to
+	// 5 s) for another connection's write transaction instead of failing
+	// immediately with SQLITE_BUSY — WAL still allows only one writer.
+	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(ON)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)", path)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
@@ -2286,6 +2288,39 @@ func createSchema(db *sql.DB) error {
 	CREATE INDEX IF NOT EXISTS idx_live_sessions_status ON live_sessions(status);
 	CREATE INDEX IF NOT EXISTS idx_live_sessions_user ON live_sessions(user_id);
 
+	-- Replay of a broadcast the owner chose to record. MediaMTX writes fMP4
+	-- segments while live; when the session ends Hytte remuxes them into one
+	-- MP4 (file_name, under LIVE_RECORDINGS_DIR). workout_id is filled in once
+	-- a workout that overlaps the broadcast has been synced.
+	CREATE TABLE IF NOT EXISTS live_recordings (
+		id               INTEGER PRIMARY KEY,
+		session_id       INTEGER NOT NULL UNIQUE REFERENCES live_sessions(id) ON DELETE CASCADE,
+		user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		status           TEXT NOT NULL DEFAULT 'recording' CHECK (status IN ('recording', 'processing', 'ready', 'failed')),
+		file_name        TEXT NOT NULL DEFAULT '',
+		size_bytes       INTEGER NOT NULL DEFAULT 0,
+		duration_seconds REAL NOT NULL DEFAULT 0,
+		workout_id       INTEGER REFERENCES workouts(id) ON DELETE SET NULL,
+		error            TEXT NOT NULL DEFAULT '',
+		created_at       TEXT NOT NULL DEFAULT '',
+		updated_at       TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_live_recordings_user ON live_recordings(user_id);
+
+	-- GPS track shared while live (opt-in per broadcast). Each point's
+	-- {lat,lon,alt,acc} JSON is encrypted; recorded_at stays plaintext for
+	-- ordering and incremental polling. Purged when the session ends unless
+	-- the broadcast was recorded (the replay shows the route).
+	CREATE TABLE IF NOT EXISTS live_track_points (
+		id          INTEGER PRIMARY KEY,
+		session_id  INTEGER NOT NULL REFERENCES live_sessions(id) ON DELETE CASCADE,
+		recorded_at TEXT NOT NULL DEFAULT '',
+		point       TEXT NOT NULL DEFAULT ''  -- encrypted
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_live_track_points_session ON live_track_points(session_id, id);
+
 	`
 
 	_, err := db.Exec(schema)
@@ -3165,6 +3200,39 @@ func createSchema(db *sql.DB) error {
 		if _, err := db.Exec(`ALTER TABLE family_chat_calls ADD COLUMN kind TEXT NOT NULL DEFAULT 'voice'`); err != nil {
 			return fmt.Errorf("add family_chat_calls kind column: %w", err)
 		}
+	}
+
+	// Livestream v2 columns on live_sessions: per-broadcast options chosen on
+	// the Go live screen, the share-link token hash (SHA-256, empty = no link),
+	// and the broadcaster's last reported battery + connection state.
+	liveSessionCols := []struct {
+		name string
+		ddl  string
+	}{
+		{"notify", `ALTER TABLE live_sessions ADD COLUMN notify INTEGER NOT NULL DEFAULT 0`},
+		{"record", `ALTER TABLE live_sessions ADD COLUMN record INTEGER NOT NULL DEFAULT 0`},
+		{"location", `ALTER TABLE live_sessions ADD COLUMN location INTEGER NOT NULL DEFAULT 0`},
+		{"share_token_hash", `ALTER TABLE live_sessions ADD COLUMN share_token_hash TEXT NOT NULL DEFAULT ''`},
+		{"battery_level", `ALTER TABLE live_sessions ADD COLUMN battery_level REAL`},
+		{"battery_charging", `ALTER TABLE live_sessions ADD COLUMN battery_charging INTEGER NOT NULL DEFAULT 0`},
+		{"publisher_state", `ALTER TABLE live_sessions ADD COLUMN publisher_state TEXT NOT NULL DEFAULT ''`},
+	}
+	for _, col := range liveSessionCols {
+		var present int
+		if err := db.QueryRow(
+			`SELECT COUNT(*) FROM pragma_table_info('live_sessions') WHERE name = ?`,
+			col.name,
+		).Scan(&present); err != nil {
+			return fmt.Errorf("check live_sessions %s column: %w", col.name, err)
+		}
+		if present == 0 {
+			if _, err := db.Exec(col.ddl); err != nil {
+				return fmt.Errorf("add live_sessions %s column: %w", col.name, err)
+			}
+		}
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_live_sessions_share ON live_sessions(share_token_hash) WHERE share_token_hash != ''`); err != nil {
+		return fmt.Errorf("create live_sessions share index: %w", err)
 	}
 
 	// Add sign-in metadata to sessions (Hytte-8mg76): the user agent and client

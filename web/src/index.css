@@ -59,3 +59,8 @@
   display: inline-block;
   animation: star-pulse 2s ease-in-out infinite;
 }
+
+/* Livestream map: dim OSM tiles to sit in the dark theme without hiding streets. */
+.live-map-tiles {
+  filter: brightness(0.75) contrast(1.1) saturate(0.8);
+}

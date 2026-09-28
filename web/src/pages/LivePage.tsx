@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
-import { Eye, Radio } from 'lucide-react'
-import { listSessions, type LiveSession } from './live/liveApi'
+import { Eye, PlayCircle, Radio } from 'lucide-react'
+import { formatBytes, formatDuration, listRecordings, listSessions, type LiveSession, type RecordingList } from './live/liveApi'
 
 const POLL_MS = 10_000
 
@@ -12,6 +12,7 @@ export default function LivePage() {
   const [configured, setConfigured] = useState(true)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [recordings, setRecordings] = useState<RecordingList | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -28,8 +29,20 @@ export default function LivePage() {
         if (!cancelled) setLoading(false)
       }
     }
+    const loadRecordings = async () => {
+      try {
+        const data = await listRecordings()
+        if (!cancelled) setRecordings(data)
+      } catch {
+        // Replays are secondary; the live list still works without them.
+      }
+    }
     load()
-    const id = setInterval(load, POLL_MS)
+    loadRecordings()
+    const id = setInterval(() => {
+      load()
+      loadRecordings()
+    }, POLL_MS)
     return () => {
       cancelled = true
       clearInterval(id)
@@ -37,6 +50,9 @@ export default function LivePage() {
   }, [])
 
   const timeFmt = new Intl.DateTimeFormat(i18n.language, { hour: '2-digit', minute: '2-digit' })
+  const dateFmt = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' })
+  // A recording still in progress is the live stream above, not a replay yet.
+  const replays = (recordings?.recordings ?? []).filter(r => r.status !== 'recording')
 
   return (
     <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-4">
@@ -88,6 +104,42 @@ export default function LivePage() {
             </li>
           ))}
         </ul>
+      )}
+
+      {replays.length > 0 && recordings && (
+        <section className="space-y-2 pt-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="text-lg font-semibold text-white">{t('replays.title')}</h2>
+            <span className="text-xs text-gray-500">
+              {t('replays.storage', {
+                used: formatBytes(recordings.used_bytes, i18n.language),
+                free: recordings.free_bytes !== undefined ? formatBytes(recordings.free_bytes, i18n.language) : '–',
+              })}
+            </span>
+          </div>
+          <ul className="space-y-2">
+            {replays.map(r => (
+              <li key={r.id}>
+                <Link
+                  to={`/live/replay/${r.id}`}
+                  className="flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900 p-4 hover:border-gray-600"
+                >
+                  <PlayCircle size={22} className={r.status === 'ready' ? 'shrink-0 text-blue-400' : 'shrink-0 text-gray-600'} />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-white">{r.title || t('list.untitled')}</div>
+                    <div className="truncate text-sm text-gray-400">
+                      {r.is_owner ? t('list.you') : r.owner_name} · {dateFmt.format(new Date(r.started_at))}
+                      {r.status === 'ready' && r.duration_seconds > 0 && ` · ${formatDuration(r.duration_seconds)}`}
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-xs text-gray-500">
+                    {r.status === 'ready' ? formatBytes(r.size_bytes, i18n.language) : t(`replays.status.${r.status}`)}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   )
