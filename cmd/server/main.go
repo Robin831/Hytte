@@ -17,6 +17,7 @@ import (
 	"github.com/Robin831/Hytte/internal/daemon"
 	"github.com/Robin831/Hytte/internal/db"
 	"github.com/Robin831/Hytte/internal/familychat"
+	"github.com/Robin831/Hytte/internal/livestream"
 	"github.com/Robin831/Hytte/internal/offers"
 	"github.com/Robin831/Hytte/internal/pokemon"
 	"github.com/Robin831/Hytte/internal/stars"
@@ -436,6 +437,9 @@ func main() {
 	// unresolved matched/no_match/failed scans past the user's retention
 	// window and to force stuck queued/processing rows to 'failed'.
 	go pokemon.StartScanCleanupLoop(notifCtx, database)
+
+	// End livestream sessions whose broadcaster stopped sending heartbeats.
+	go livestream.StartReaper(notifCtx, database)
 
 	// Schedule weekly Pokémon TCG full sync (Sunday 04:00 Europe/Oslo) and
 	// a daily price refresh (07:00 Europe/Oslo). Both run in the same

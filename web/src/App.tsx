@@ -66,6 +66,9 @@ import Vault from './pages/Vault'
 import SkyWatchPage from './pages/SkyWatchPage'
 import GroceryPage from './pages/GroceryPage'
 import RecipesPage from './pages/RecipesPage'
+import LivePage from './pages/LivePage'
+import LiveBroadcast from './pages/LiveBroadcast'
+import LiveWatch from './pages/LiveWatch'
 import RecipeDetail from './pages/RecipeDetail'
 import RecipeCookMode from './pages/RecipeCookMode'
 import MealPlanner from './pages/MealPlanner'
@@ -481,6 +484,32 @@ function MainLayout() {
             element={
               <FeatureRoute feature="grocery">
                 <GroceryPage />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Livestream (Hytte-krwxy) */}
+          <Route
+            path="/live"
+            element={
+              <FeatureRoute feature="livestream">
+                <LivePage />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/live/broadcast"
+            element={
+              <FeatureRoute feature="livestream">
+                <LiveBroadcast />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/live/:id"
+            element={
+              <FeatureRoute feature="livestream">
+                <LiveWatch />
               </FeatureRoute>
             }
           />

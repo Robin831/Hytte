@@ -26,6 +26,7 @@ import (
 	"github.com/Robin831/Hytte/internal/kiosk"
 	"github.com/Robin831/Hytte/internal/lactate"
 	"github.com/Robin831/Hytte/internal/links"
+	"github.com/Robin831/Hytte/internal/livestream"
 	mathgame "github.com/Robin831/Hytte/internal/math"
 	"github.com/Robin831/Hytte/internal/netatmo"
 	"github.com/Robin831/Hytte/internal/news"
@@ -958,6 +959,10 @@ func NewRouter(db *sql.DB) http.Handler {
 
 			// Recipes — gated by "recipes" feature (routes in recipes.RegisterRoutes).
 			recipes.RegisterRoutes(r, db)
+
+			// Livestream (Hytte-krwxy) — gated by "livestream" feature. Proxies
+			// WHIP/WHEP/HLS to the localhost MediaMTX server (docs/livestream.md).
+			livestream.RegisterRoutes(r, db)
 
 			// Infrastructure monitoring — gated by "infra" feature.
 			r.Group(func(r chi.Router) {

@@ -2267,6 +2267,25 @@ func createSchema(db *sql.DB) error {
 	DROP INDEX IF EXISTS idx_meal_plan_entries_user_date;
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_meal_plan_entries_user_date_slot ON meal_plan_entries(user_id, plan_date, slot);
 
+	-- Livestream sessions (Hytte-krwxy). One row per "Go live" from the phone
+	-- broadcaster page. stream_key names the MediaMTX path live/<stream_key> and
+	-- never leaves the server (the frontend only sees the numeric id; Hytte
+	-- proxies WHIP/WHEP/HLS). title is encrypted; status and timestamps stay
+	-- plaintext because the live list and the stale-session reaper filter on them.
+	CREATE TABLE IF NOT EXISTS live_sessions (
+		id           INTEGER PRIMARY KEY,
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		stream_key   TEXT NOT NULL UNIQUE,
+		title        TEXT NOT NULL DEFAULT '',  -- encrypted
+		status       TEXT NOT NULL DEFAULT 'live' CHECK (status IN ('live', 'ended')),
+		started_at   TEXT NOT NULL DEFAULT '',
+		ended_at     TEXT NOT NULL DEFAULT '',
+		last_seen_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_live_sessions_status ON live_sessions(status);
+	CREATE INDEX IF NOT EXISTS idx_live_sessions_user ON live_sessions(user_id);
+
 	`
 
 	_, err := db.Exec(schema)

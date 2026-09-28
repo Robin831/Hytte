@@ -1,0 +1,58 @@
+{
+  "title": "Direkte",
+  "list": {
+    "empty": "Ingen sender direkte akkurat nå.",
+    "goLive": "Gå direkte",
+    "you": "Deg",
+    "untitled": "Direktesending",
+    "startedAt": "Startet {{time}}",
+    "viewers_one": "{{count}} seer",
+    "viewers_other": "{{count}} seere",
+    "onAir": "DIREKTE",
+    "connecting": "Kobler til…",
+    "notConfigured": "Direktesending er ikke satt opp på denne serveren ennå.",
+    "loadError": "Kunne ikke laste direktesendinger"
+  },
+  "broadcast": {
+    "title": "Gå direkte",
+    "backToList": "Alle sendinger",
+    "titleLabel": "Tittel",
+    "titlePlaceholder": "Hva sender du? (valgfritt)",
+    "start": "Start sending",
+    "stop": "Stopp sending",
+    "flipCamera": "Bytt kamera",
+    "micOn": "Slå av mikrofon",
+    "micOff": "Slå på mikrofon",
+    "muted": "Mikrofon av",
+    "lowData": "Lite data",
+    "lowDataHint": "480p, omtrent 0,3 GB per time",
+    "status": {
+      "idle": "Klar",
+      "connecting": "Kobler til…",
+      "live": "Direkte",
+      "reconnecting": "Kobler til på nytt…"
+    },
+    "ended": "Sendingen er avsluttet.",
+    "endedRemotely": "Sendingen ble avsluttet — forbindelsen var borte for lenge, eller du gikk direkte fra en annen enhet.",
+    "cameraError": "Kunne ikke åpne kameraet: {{message}}",
+    "cameraDenied": "Tilgang til kamera ble avvist. Tillat kamera og mikrofon for denne siden, og last siden på nytt.",
+    "startError": "Kunne ikke starte sendingen: {{message}}",
+    "bitrate": "{{kbps}} kbps",
+    "dataUsed": "{{amount}} brukt",
+    "tipScreen": "Hold denne siden åpen med skjermen på — telefoner pauser kameraet når skjermen låses eller du bytter app. Bruk gjerne bryst- eller armfeste.",
+    "wakeLockUnsupported": "Denne nettleseren kan ikke holde skjermen våken automatisk — slå av automatisk lås mens du sender.",
+    "dataEstimate": "Normal kvalitet bruker omtrent 0,5–0,7 GB mobildata per time."
+  },
+  "watch": {
+    "back": "Alle sendinger",
+    "connecting": "Kobler til…",
+    "waiting": "Venter på video fra den som sender…",
+    "ended": "Denne sendingen er avsluttet.",
+    "notFound": "Fant ikke sendingen.",
+    "error": "Kunne ikke spille av sendingen.",
+    "unmute": "Slå på lyd",
+    "mute": "Slå av lyd",
+    "fullscreen": "Fullskjerm",
+    "fallbackHls": "Kompatibilitetsmodus — noen sekunder etter direkte."
+  }
+}
