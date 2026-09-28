@@ -11,7 +11,8 @@
     "onAir": "LIVE",
     "connecting": "Connecting…",
     "notConfigured": "Livestreaming isn't set up on this server yet.",
-    "loadError": "Could not load live streams"
+    "loadError": "Could not load live streams",
+    "yourBroadcast": "Your broadcast — tap to return"
   },
   "broadcast": {
     "title": "Go live",
@@ -61,7 +62,17 @@
     "copyLink": "Copy",
     "stopSharing": "Stop sharing",
     "linkCopied": "Link copied.",
-    "shareError": "Couldn't update the share link."
+    "shareError": "Couldn't update the share link.",
+    "myLinkTitle": "Your live link",
+    "myLinkHint": "Send it before you start — it always shows whatever you're streaming and waits while you're offline, so you never have to leave the stream to share.",
+    "createMyLink": "Create my live link",
+    "resetMyLink": "Reset",
+    "resetConfirm": "Reset your live link? Anyone with the old link loses access.",
+    "share": "Share",
+    "resumed": "Picked up your stream where it left off.",
+    "restarted": "You were away too long, so the stream continued as a new broadcast.",
+    "liveElsewhere": "You're live from another tab or device.",
+    "continueHere": "Continue here"
   },
   "watch": {
     "back": "All streams",
@@ -78,7 +89,9 @@
     "recording": "Recording",
     "battery": "Broadcaster battery {{percent}}%",
     "watchReplay": "Watch the replay",
-    "replayProcessing": "The replay is being prepared…"
+    "replayProcessing": "The replay is being prepared…",
+    "offline": "{{name}} isn't live right now. This page starts playing by itself when they go live.",
+    "someone": "The broadcaster"
   },
   "map": {
     "label": "Route map",

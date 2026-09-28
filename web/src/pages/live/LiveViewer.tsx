@@ -22,7 +22,9 @@ interface LiveViewerProps {
 export default function LiveViewer({ endpoints, isPublic = false, onDetail }: LiveViewerProps) {
   const { t } = useTranslation('livestream')
   const [detail, setDetail] = useState<SessionDetail | null>(null)
-  const [points, setPoints] = useState<TrackPoint[]>([])
+  // The track belongs to one session; a personal link can move on to the
+  // owner's next broadcast, which starts a fresh route.
+  const [track, setTrack] = useState<{ sessionId: number; points: TrackPoint[] }>({ sessionId: 0, points: [] })
   const lastIdRef = useRef(0)
 
   const handleDetail = useCallback((d: SessionDetail) => {
@@ -30,19 +32,24 @@ export default function LiveViewer({ endpoints, isPublic = false, onDetail }: Li
     onDetail?.(d)
   }, [onDetail])
 
-  const session = detail?.session
+  const session = detail?.session ?? null
+  const sessionId = session?.id ?? 0
   const locationOn = !!session?.location
   const live = session?.status === 'live'
+  const points = track.sessionId === sessionId ? track.points : []
 
   useEffect(() => {
-    if (!locationOn) return
+    if (!locationOn || !sessionId) return
     let cancelled = false
+    lastIdRef.current = 0
     const load = async () => {
       try {
         const fresh = await getTrack(endpoints.track, lastIdRef.current)
         if (cancelled || fresh.length === 0) return
         lastIdRef.current = fresh[fresh.length - 1].id ?? lastIdRef.current
-        setPoints(prev => [...prev, ...fresh])
+        setTrack(prev => (prev.sessionId === sessionId
+          ? { sessionId, points: [...prev.points, ...fresh] }
+          : { sessionId, points: fresh }))
       } catch {
         // Try again on the next tick.
       }
@@ -54,7 +61,7 @@ export default function LiveViewer({ endpoints, isPublic = false, onDetail }: Li
       cancelled = true
       clearInterval(id)
     }
-  }, [endpoints.track, locationOn, live])
+  }, [endpoints.track, locationOn, live, sessionId])
 
   const stats = computeRunStats(points)
 

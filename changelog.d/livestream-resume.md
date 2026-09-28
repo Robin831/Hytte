@@ -1,0 +1,2 @@
+category: Fixed
+- **Livestream stopped when you switched apps** - Leaving or reloading the Go live page (for example to send the share link from another app) sent an "end stream" request, so the broadcast died and didn't come back. Now only Stop ends a broadcast. Coming back resumes the same stream (the camera is reopened if the phone released it), and if you were away longer than 5 minutes it continues as a new broadcast that viewers follow automatically. (Hytte-krwxy)

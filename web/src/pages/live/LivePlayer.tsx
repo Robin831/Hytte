@@ -4,7 +4,7 @@ import { Battery, BatteryCharging, BatteryLow, Eye, Maximize, Volume2, VolumeX }
 import type Hls from 'hls.js'
 import { HttpError, fetchIceServers, getSessionDetail, hangUp, negotiate, type SessionDetail, type ViewerEndpoints } from './liveApi'
 
-type Status = 'loading' | 'waiting' | 'connecting' | 'playing' | 'ended' | 'notFound' | 'error'
+type Status = 'loading' | 'waiting' | 'connecting' | 'playing' | 'ended' | 'offline' | 'notFound' | 'error'
 
 const POLL_MS = 5_000
 // Broadcaster not on air yet (MediaMTX answers WHEP with 404): retry soon.
@@ -39,6 +39,9 @@ export default function LivePlayer({ endpoints, onDetail }: LivePlayerProps) {
   const failuresRef = useRef(0)
   const startRef = useRef<() => void>(() => {})
   const onDetailRef = useRef(onDetail)
+  // Which session is playing. A personal share link moves on to the owner's
+  // next broadcast, so this can change without the page reloading.
+  const currentIdRef = useRef<number | null>(null)
 
   const [detail, setDetail] = useState<SessionDetail | null>(null)
   const [status, setStatus] = useState<Status>('loading')
@@ -212,20 +215,31 @@ export default function LivePlayer({ endpoints, onDetail }: LivePlayerProps) {
   // Initial load + periodic poll for status/viewers/battery/ended.
   useEffect(() => {
     activeRef.current = true
-    let started = false
+    currentIdRef.current = null
     const poll = async () => {
       try {
         const d = await getSessionDetail(endpoints.session)
         if (!activeRef.current) return
         setDetail(d)
         onDetailRef.current?.(d)
+        if (!d.session) {
+          // Personal link, owner offline: wait here and start by itself.
+          if (currentIdRef.current !== null) stopPlayback()
+          currentIdRef.current = null
+          setStatus('offline')
+          return
+        }
         if (d.session.status === 'ended') {
           stopPlayback()
           setStatus('ended')
           return
         }
-        if (!started) {
-          started = true
+        if (currentIdRef.current !== d.session.id) {
+          if (currentIdRef.current !== null) stopPlayback()
+          currentIdRef.current = d.session.id
+          failuresRef.current = 0
+          setMode('webrtc')
+          setStatus('connecting')
           startWebRTC()
         }
       } catch (err) {
@@ -297,7 +311,7 @@ export default function LivePlayer({ endpoints, onDetail }: LivePlayerProps) {
   const reconnecting = session?.publisher_state === 'reconnecting'
   // After the stream has played once, any interruption is the broadcaster
   // briefly dropping out — say so instead of "connecting".
-  const backSoon = hadPlayed && status !== 'ended' && status !== 'notFound' &&
+  const backSoon = hadPlayed && status !== 'ended' && status !== 'offline' && status !== 'notFound' &&
     (status === 'waiting' || status === 'connecting' || stalled || reconnecting)
 
   const overlay: Record<Status, string | null> = {
@@ -306,6 +320,7 @@ export default function LivePlayer({ endpoints, onDetail }: LivePlayerProps) {
     waiting: t('watch.waiting'),
     playing: null,
     ended: t('watch.ended'),
+    offline: t('watch.offline', { name: detail?.owner_name || t('watch.someone') }),
     notFound: t('watch.notFound'),
     error: t('watch.error'),
   }
@@ -352,7 +367,7 @@ export default function LivePlayer({ endpoints, onDetail }: LivePlayerProps) {
             )}
           </div>
         )}
-        {battery !== undefined && status !== 'ended' && status !== 'notFound' && (
+        {battery !== undefined && status !== 'ended' && status !== 'offline' && status !== 'notFound' && (
           <span
             className={`absolute top-2 right-2 flex items-center gap-1 rounded bg-black/60 px-2 py-1 text-xs font-medium ${battery < 0.2 && !session?.battery_charging ? 'text-red-400' : 'text-white'}`}
             aria-label={t('watch.battery', { percent: Math.round(battery * 100) })}
@@ -361,7 +376,7 @@ export default function LivePlayer({ endpoints, onDetail }: LivePlayerProps) {
             {Math.round(battery * 100)}%
           </span>
         )}
-        {status !== 'ended' && status !== 'notFound' && (
+        {status !== 'ended' && status !== 'offline' && status !== 'notFound' && (
           <div className="absolute bottom-2 right-2 flex gap-2">
             <button
               type="button"

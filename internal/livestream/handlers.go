@@ -21,11 +21,13 @@ import (
 )
 
 // Heartbeat timing. The broadcaster page pings every HeartbeatInterval while
-// live; a session with no ping for StaleAfter is ended by the reaper (closed
-// tab, dead battery, phone out of coverage for too long).
+// live; a session with no ping for StaleAfter is ended by the reaper (dead
+// battery, phone out of coverage for too long). Phones suspend background
+// tabs, so this is generous enough to survive a quick switch to another app —
+// the page resumes the same session when it comes back.
 const (
 	HeartbeatInterval = 15 * time.Second
-	StaleAfter        = 2 * time.Minute
+	StaleAfter        = 5 * time.Minute
 	reapInterval      = 30 * time.Second
 )
 
@@ -100,6 +102,9 @@ func (h *Handlers) Mount(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireFeature(h.db, "livestream"))
 		r.Get("/live/ice", h.HandleICE)
+		r.Get("/live/my-link", h.HandleMyLinkGet)
+		r.Post("/live/my-link", h.HandleMyLinkCreate)
+		r.Delete("/live/my-link", h.HandleMyLinkDelete)
 		r.Get("/live/sessions", h.HandleList)
 		r.Post("/live/sessions", h.HandleCreate)
 		r.Get("/live/sessions/{id}", h.HandleGet)
@@ -544,34 +549,93 @@ func (h *Handlers) serveHLS(w http.ResponseWriter, r *http.Request, s *Session) 
 
 // --- share-link (public) routes ------------------------------------------
 
-// loadShared resolves a share token to its session. Unknown, malformed and
-// revoked tokens all read as 404.
-func (h *Handlers) loadShared(w http.ResponseWriter, r *http.Request) (*Session, bool) {
+// resolveToken resolves a share token (per-session or personal link).
+// Unknown, malformed and revoked tokens all read as 404. s is nil when a
+// personal link's owner is not live right now.
+func (h *Handlers) resolveToken(w http.ResponseWriter, r *http.Request) (s *Session, ownerName string, ok bool) {
 	token := chi.URLParam(r, "token")
 	if !shareTokenPattern.MatchString(token) {
 		writeError(w, http.StatusNotFound, "stream not found")
-		return nil, false
+		return nil, "", false
 	}
-	s, err := GetSessionByShareHash(h.db, hashShareToken(token))
+	s, ownerName, err := resolveShare(h.db, token)
 	if errors.Is(err, ErrNotFound) {
 		writeError(w, http.StatusNotFound, "stream not found")
-		return nil, false
+		return nil, "", false
 	}
 	if err != nil {
-		log.Printf("livestream: load shared session: %v", err)
+		log.Printf("livestream: resolve share token: %v", err)
 		writeError(w, http.StatusInternalServerError, "failed to load stream")
+		return nil, "", false
+	}
+	return s, ownerName, true
+}
+
+// loadShared is resolveToken for media routes: an offline personal link is
+// "not live" (404) there.
+func (h *Handlers) loadShared(w http.ResponseWriter, r *http.Request) (*Session, bool) {
+	s, _, ok := h.resolveToken(w, r)
+	if !ok {
+		return nil, false
+	}
+	if s == nil {
+		writeError(w, http.StatusNotFound, "not live right now")
 		return nil, false
 	}
 	return s, true
 }
 
-// HandlePublicGet returns the shared session's public status.
+// HandlePublicGet returns what a share link currently shows. For a personal
+// link whose owner is offline, session is null and owner_name says who the
+// page is waiting for.
 func (h *Handlers) HandlePublicGet(w http.ResponseWriter, r *http.Request) {
-	s, ok := h.loadShared(w, r)
+	s, ownerName, ok := h.resolveToken(w, r)
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"session": h.publicResponse(r.Context(), s)})
+	if s == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"session": nil, "owner_name": firstName(ownerName)})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"session": h.publicResponse(r.Context(), s), "owner_name": firstName(ownerName)})
+}
+
+// HandleMyLinkGet returns the caller's personal live link, if they have one.
+func (h *Handlers) HandleMyLinkGet(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+	link, err := GetUserLink(h.db, user.ID)
+	if errors.Is(err, ErrNotFound) {
+		writeJSON(w, http.StatusOK, map[string]any{"path": nil})
+		return
+	}
+	if err != nil {
+		log.Printf("livestream: get my link for %d: %v", user.ID, err)
+		writeError(w, http.StatusInternalServerError, "failed to load link")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"path": "/watch/" + link.Token})
+}
+
+// HandleMyLinkCreate creates or resets the caller's personal live link.
+func (h *Handlers) HandleMyLinkCreate(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+	link, err := CreateUserLink(h.db, user.ID, h.now())
+	if err != nil {
+		log.Printf("livestream: create my link for %d: %v", user.ID, err)
+		writeError(w, http.StatusInternalServerError, "failed to create link")
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"path": "/watch/" + link.Token})
+}
+
+// HandleMyLinkDelete turns the caller's personal live link off.
+func (h *Handlers) HandleMyLinkDelete(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+	if err := DeleteUserLink(h.db, user.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to delete link")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // HandlePublicICE hands TURN credentials to share-link viewers, only while
@@ -590,11 +654,11 @@ func (h *Handlers) HandlePublicICE(w http.ResponseWriter, r *http.Request) {
 
 // HandlePublicTrack serves the GPS track to share-link viewers while live.
 func (h *Handlers) HandlePublicTrack(w http.ResponseWriter, r *http.Request) {
-	s, ok := h.loadShared(w, r)
+	s, _, ok := h.resolveToken(w, r)
 	if !ok {
 		return
 	}
-	if s.Status != StatusLive {
+	if s == nil || s.Status != StatusLive {
 		writeJSON(w, http.StatusOK, map[string]any{"points": []TrackPoint{}})
 		return
 	}

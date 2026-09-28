@@ -119,7 +119,10 @@ export function listSessions(): Promise<LiveList> {
 }
 
 export interface SessionDetail {
-  session: LiveSession
+  /** null when a personal live link's owner is offline. */
+  session: LiveSession | null
+  /** Whose stream a share link shows (set even while they are offline). */
+  owner_name?: string
   recording_id?: number
   recording_status?: Recording['status']
 }
@@ -129,7 +132,24 @@ export function getSessionDetail(url: string): Promise<SessionDetail> {
 }
 
 export function getSession(id: number): Promise<LiveSession> {
-  return getSessionDetail(sessionUrl(id)).then(d => d.session)
+  return getSessionDetail(sessionUrl(id)).then(d => {
+    if (!d.session) throw new HttpError(404)
+    return d.session
+  })
+}
+
+/** getMyLink returns the path of the user's personal live link, or null. */
+export function getMyLink(): Promise<string | null> {
+  return fetch('/api/live/my-link', { credentials: 'include' })
+    .then(r => json<{ path: string | null }>(r))
+    .then(d => d.path)
+}
+
+/** createMyLink creates or resets the personal live link. */
+export function createMyLink(): Promise<string> {
+  return fetch('/api/live/my-link', { method: 'POST', credentials: 'include' })
+    .then(r => json<{ path: string }>(r))
+    .then(d => d.path)
 }
 
 export function createSession(title: string, opts: LiveOptions): Promise<{ session: LiveSession; heartbeat_interval: number }> {
