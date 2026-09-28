@@ -22,7 +22,9 @@ export default function PublicWatch() {
           <Radio size={22} className="shrink-0 text-red-500" />
           <div className="min-w-0">
             <h1 className="truncate text-xl font-semibold">
-              {session ? session.title || t('public.liveFrom', { name: session.owner_name }) : t('title')}
+              {session
+                ? session.title || t('public.liveFrom', { name: session.owner_name })
+                : detail?.owner_name || t('title')}
             </h1>
             {session?.title && <div className="truncate text-sm text-gray-400">{session.owner_name}</div>}
           </div>

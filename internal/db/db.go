@@ -2321,6 +2321,16 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_live_track_points_session ON live_track_points(session_id, id);
 
+	-- Personal "My live link" per user: a permanent share link that always
+	-- shows whatever the user is streaming right now. token_hash (SHA-256) is
+	-- the lookup key; token is kept encrypted so the owner can copy it again.
+	CREATE TABLE IF NOT EXISTS live_user_links (
+		user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		token_hash TEXT NOT NULL UNIQUE,
+		token      TEXT NOT NULL DEFAULT '',  -- encrypted
+		created_at TEXT NOT NULL DEFAULT ''
+	);
+
 	`
 
 	_, err := db.Exec(schema)

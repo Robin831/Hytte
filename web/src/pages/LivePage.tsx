@@ -81,7 +81,7 @@ export default function LivePage() {
           {sessions.map(s => (
             <li key={s.id}>
               <Link
-                to={`/live/${s.id}`}
+                to={s.is_owner ? '/live/broadcast' : `/live/${s.id}`}
                 className="flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900 p-4 hover:border-gray-600"
               >
                 <span
@@ -92,7 +92,7 @@ export default function LivePage() {
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium text-white">{s.title || t('list.untitled')}</div>
                   <div className="truncate text-sm text-gray-400">
-                    {s.is_owner ? t('list.you') : s.owner_name} ·{' '}
+                    {s.is_owner ? t('list.yourBroadcast') : s.owner_name} ·{' '}
                     {t('list.startedAt', { time: timeFmt.format(new Date(s.started_at)) })}
                   </div>
                 </div>

@@ -11,7 +11,8 @@
     "onAir": "DIREKTE",
     "connecting": "Kobler til…",
     "notConfigured": "Direktesending er ikke satt opp på denne serveren ennå.",
-    "loadError": "Kunne ikke laste direktesendinger"
+    "loadError": "Kunne ikke laste direktesendinger",
+    "yourBroadcast": "Din sending — trykk for å gå tilbake"
   },
   "broadcast": {
     "title": "Gå direkte",
@@ -61,7 +62,17 @@
     "copyLink": "Kopier",
     "stopSharing": "Slutt å dele",
     "linkCopied": "Lenken er kopiert.",
-    "shareError": "Kunne ikke oppdatere delingslenken."
+    "shareError": "Kunne ikke oppdatere delingslenken.",
+    "myLinkTitle": "Din direktelenke",
+    "myLinkHint": "Send den før du starter — den viser alltid det du sender, og venter når du ikke er direkte, så du slipper å forlate sendingen for å dele.",
+    "createMyLink": "Lag min direktelenke",
+    "resetMyLink": "Tilbakestill",
+    "resetConfirm": "Tilbakestille direktelenken? Alle med den gamle lenken mister tilgang.",
+    "share": "Del",
+    "resumed": "Fortsatte sendingen der den slapp.",
+    "restarted": "Du var borte for lenge, så sendingen fortsatte som en ny sending.",
+    "liveElsewhere": "Du sender direkte fra en annen fane eller enhet.",
+    "continueHere": "Fortsett her"
   },
   "watch": {
     "back": "Alle sendinger",
@@ -78,7 +89,9 @@
     "recording": "Tar opp",
     "battery": "Batteri hos den som sender {{percent}} %",
     "watchReplay": "Se opptaket",
-    "replayProcessing": "Opptaket klargjøres…"
+    "replayProcessing": "Opptaket klargjøres…",
+    "offline": "{{name}} sender ikke direkte akkurat nå. Siden starter av seg selv når sendingen begynner.",
+    "someone": "Den som sender"
   },
   "map": {
     "label": "Rutekart",

@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
-import { ArrowLeft, Copy, Eye, Link2Off, Mic, MicOff, Radio, Share2, Square, SwitchCamera } from 'lucide-react'
+import { ArrowLeft, Copy, Eye, Mic, MicOff, Radio, RotateCcw, Share2, Square, SwitchCamera } from 'lucide-react'
 import RunStatsBar from './live/RunStatsBar'
 import {
   HttpError,
   computeRunStats,
+  createMyLink,
   createSession,
-  createShareLink,
+  getMyLink,
   listSessions,
   postTrack,
-  revokeShareLink,
   type TrackPoint,
   endSession,
   fetchIceServers,
@@ -54,6 +54,27 @@ const AUTO_LOW_STRIKES = 5
 // "bandwidth-limited" during that ramp, so don't judge the first seconds.
 const AUTO_LOW_WARMUP_MS = 20_000
 const LOCATION_PREF_KEY = 'hytte-live-location'
+// The session this device is broadcasting, so a reloaded or restored page
+// picks it up again instead of starting over.
+const ACTIVE_KEY = 'hytte-live-active'
+
+function readActive(): number | null {
+  try {
+    const v = Number(localStorage.getItem(ACTIVE_KEY))
+    return Number.isInteger(v) && v > 0 ? v : null
+  } catch {
+    return null
+  }
+}
+
+function writeActive(id: number | null) {
+  try {
+    if (id === null) localStorage.removeItem(ACTIVE_KEY)
+    else localStorage.setItem(ACTIVE_KEY, String(id))
+  } catch {
+    // Storage blocked: resume just won't happen automatically.
+  }
+}
 
 function readLocationPref(): boolean {
   try {
@@ -107,6 +128,11 @@ export default function LiveBroadcast() {
   const bandwidthStrikesRef = useRef(0)
   const connectedAtRef = useRef(0)
   const recordingRef = useRef(false)
+  const facingRef = useRef<Facing>('environment')
+  const audioSenderRef = useRef<RTCRtpSender | null>(null)
+  const restartingRef = useRef(false)
+  const endedRemotelyRef = useRef<() => void>(() => {})
+  const resumeRef = useRef<(s: LiveSession) => void>(() => {})
 
   const [facing, setFacing] = useState<Facing>('environment')
   const [micOn, setMicOn] = useState(true)
@@ -130,7 +156,10 @@ export default function LiveBroadcast() {
   const [isRecording, setIsRecording] = useState(false)
   const [locationOn, setLocationOn] = useState(false)
   const [myPoints, setMyPoints] = useState<TrackPoint[]>([])
-  const [shareUrl, setShareUrl] = useState<string | null>(null)
+  // Personal live link: undefined while loading, null when not created yet.
+  const [myLink, setMyLink] = useState<string | null | undefined>(undefined)
+  // Own live session started in another tab/device, offered as "Continue here".
+  const [resumable, setResumable] = useState<LiveSession | null>(null)
   const [geoDenied, setGeoDenied] = useState(false)
   const wakeLockSupported = typeof navigator !== 'undefined' && 'wakeLock' in navigator
 
@@ -141,7 +170,10 @@ export default function LiveBroadcast() {
     const old = streamRef.current
     // Phones often cannot open two cameras at once: release the old one first.
     old?.getVideoTracks().forEach(track => track.stop())
-    const needAudio = !old || old.getAudioTracks().length === 0
+    // Phones end the capture tracks when the page is backgrounded or the
+    // camera is taken by another app; reuse only tracks that are still live.
+    const liveAudio = old?.getAudioTracks().filter(track => track.readyState === 'live') ?? []
+    const needAudio = liveAudio.length === 0
     const media = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: facingMode },
@@ -153,7 +185,7 @@ export default function LiveBroadcast() {
     })
     const videoTrack = media.getVideoTracks()[0]
     if ('contentHint' in videoTrack) videoTrack.contentHint = 'motion'
-    const audioTracks = needAudio ? media.getAudioTracks() : (old?.getAudioTracks() ?? [])
+    const audioTracks = needAudio ? media.getAudioTracks() : liveAudio
     audioTracks.forEach(track => { track.enabled = micOnRef.current })
     const stream = new MediaStream([videoTrack, ...audioTracks])
     streamRef.current = stream
@@ -161,6 +193,9 @@ export default function LiveBroadcast() {
     // Swap the camera on a live connection without renegotiating.
     if (videoSenderRef.current) {
       await videoSenderRef.current.replaceTrack(videoTrack)
+    }
+    if (needAudio && audioTracks[0] && audioSenderRef.current) {
+      await audioSenderRef.current.replaceTrack(audioTracks[0])
     }
   }, [])
 
@@ -173,18 +208,42 @@ export default function LiveBroadcast() {
 
   useEffect(() => {
     let cancelled = false
-    openCamera('environment', false).catch(err => {
-      if (!cancelled) setCameraError(describeCameraError(err))
-    })
+    openCamera('environment', false)
+      .then(async () => {
+        const list = await listSessions()
+        if (cancelled) return
+        setRecordingAvailable(list.recording_available)
+        const mine = list.sessions.find(x => x.is_owner && x.status === 'live')
+        if (!mine) {
+          writeActive(null)
+          return
+        }
+        // This device was broadcasting it (page reloaded or restored after
+        // switching apps): carry on. Otherwise offer to take it over.
+        if (readActive() === mine.id) resumeRef.current(mine)
+        else setResumable(mine)
+      })
+      .catch(err => {
+        if (!cancelled && !(err instanceof HttpError)) setCameraError(describeCameraError(err))
+      })
     return () => {
       cancelled = true
     }
   }, [openCamera, describeCameraError])
 
+  useEffect(() => {
+    let cancelled = false
+    getMyLink()
+      .then(path => { if (!cancelled) setMyLink(path ? window.location.origin + path : null) })
+      .catch(() => { if (!cancelled) setMyLink(null) })
+    return () => { cancelled = true }
+  }, [])
+
   const flipCamera = async () => {
     const next: Facing = facing === 'environment' ? 'user' : 'environment'
     try {
       await openCamera(next, lowDataRef.current)
+      facingRef.current = next
       setFacing(next)
       setCameraError(null)
     } catch (err) {
@@ -234,9 +293,6 @@ export default function LiveBroadcast() {
 
   useEffect(() => {
     let cancelled = false
-    listSessions()
-      .then(d => { if (!cancelled) setRecordingAvailable(d.recording_available) })
-      .catch(() => {})
     // Battery Status API: Chrome/Android only. Viewers see the level so they
     // know when the phone is about to die.
     const nav = navigator as Navigator & { getBattery?: () => Promise<BatteryManagerLike> }
@@ -339,6 +395,7 @@ export default function LiveBroadcast() {
     if (!pc) return
     pcRef.current = null
     videoSenderRef.current = null
+    audioSenderRef.current = null
     if (lastSampleRef.current) baseBytesRef.current += lastSampleRef.current.bytes
     lastSampleRef.current = null
     hangUp(resourceRef.current)
@@ -353,7 +410,7 @@ export default function LiveBroadcast() {
     releaseWakeLock()
     stopGeo()
     sessionRef.current = null
-    setShareUrl(null)
+    writeActive(null)
     setLocationOn(false)
     if (recordingRef.current && endedNotice) {
       endedNotice = `${endedNotice} ${t('broadcast.replaySoon')}`
@@ -399,7 +456,9 @@ export default function LiveBroadcast() {
         streams: [stream],
         sendEncodings: [{ maxBitrate: q.bitrate, maxFramerate: q.fps }],
       })
-      if (audioTrack) pc.addTransceiver(audioTrack, { direction: 'sendonly', streams: [stream] })
+      if (audioTrack) {
+        audioSenderRef.current = pc.addTransceiver(audioTrack, { direction: 'sendonly', streams: [stream] }).sender
+      }
     } catch (err) {
       // WebRTC unavailable: retrying will not help, so end the session.
       const failed = sessionRef.current
@@ -442,7 +501,7 @@ export default function LiveBroadcast() {
     } catch (err) {
       if (pcRef.current !== pc) return
       if (err instanceof HttpError && (err.status === 404 || err.status === 410)) {
-        finish(t('broadcast.endedRemotely'))
+        endedRemotelyRef.current()
         return
       }
       scheduleReconnect()
@@ -479,6 +538,124 @@ export default function LiveBroadcast() {
     return () => window.removeEventListener('online', onOnline)
   }, [])
 
+  // adoptSession makes s the broadcast this page is sending to.
+  const adoptSession = useCallback((s: LiveSession, startedAtMs: number) => {
+    sessionRef.current = s
+    writeActive(s.id)
+    recordingRef.current = s.recording
+    setIsRecording(s.recording)
+    setLocationOn(s.location)
+    if (s.location) startGeo()
+    else stopGeo()
+    setStartedAt(startedAtMs)
+    setNow(Date.now())
+  }, [startGeo, stopGeo])
+
+  // resume picks up a session that is still live on the server (page
+  // reloaded, restored after switching apps, or taken over from another tab).
+  const resume = useCallback(async (s: LiveSession) => {
+    if (activeRef.current || !streamRef.current) return
+    setResumable(null)
+    setError(null)
+    activeRef.current = true
+    attemptRef.current = 0
+    baseBytesRef.current = 0
+    lastSampleRef.current = null
+    setPhase('reconnecting')
+    adoptSession(s, Date.parse(s.started_at) || Date.now())
+    setNotice(t('broadcast.resumed'))
+    acquireWakeLock()
+    await connectRef.current()
+  }, [adoptSession, acquireWakeLock, t])
+
+  // The server ended the session while we still want to be live — usually
+  // the phone was in the background longer than the stale timeout. Carry on
+  // as a new broadcast with the same settings (no second notification),
+  // unless this user is already live somewhere else.
+  const handleEndedRemotely = useCallback(async () => {
+    if (!activeRef.current || restartingRef.current) return
+    restartingRef.current = true
+    const old = sessionRef.current
+    try {
+      const list = await listSessions()
+      if (list.sessions.some(x => x.is_owner && x.status === 'live' && x.id !== old?.id)) {
+        finish(t('broadcast.endedRemotely'))
+        return
+      }
+      teardownPeer()
+      setPhase('reconnecting')
+      const res = await createSession(old?.title ?? title.trim(), {
+        notify: false,
+        record: old?.recording ?? false,
+        location: old?.location ?? false,
+      })
+      if (!activeRef.current) return
+      adoptSession(res.session, Date.now())
+      setNotice(t('broadcast.restarted'))
+      attemptRef.current = 0
+      await connectRef.current()
+    } catch {
+      finish(t('broadcast.endedRemotely'))
+    } finally {
+      restartingRef.current = false
+    }
+  }, [adoptSession, finish, teardownPeer, title, t])
+
+  useEffect(() => {
+    endedRemotelyRef.current = handleEndedRemotely
+    resumeRef.current = resume
+  }, [handleEndedRemotely, resume])
+
+  // recover runs when the page becomes visible again while broadcasting:
+  // phones suspend background tabs and may have stopped the camera.
+  const recover = useCallback(async () => {
+    if (!activeRef.current) return
+    acquireWakeLock()
+    const stream = streamRef.current
+    const video = stream?.getVideoTracks()[0]
+    const audio = stream?.getAudioTracks()[0]
+    if (!video || video.readyState === 'ended' || (audio && audio.readyState === 'ended')) {
+      try {
+        await openCamera(facingRef.current, lowDataRef.current)
+      } catch (err) {
+        setCameraError(describeCameraError(err))
+      }
+    }
+    const session = sessionRef.current
+    if (!session) return
+    try {
+      await heartbeat(session.id, { state: 'reconnecting' })
+    } catch (err) {
+      if (err instanceof HttpError && (err.status === 404 || err.status === 409)) {
+        endedRemotelyRef.current()
+        return
+      }
+    }
+    const pc = pcRef.current
+    if (!pc || pc.connectionState !== 'connected') {
+      // Don't wait out the backoff — the user is looking at the screen.
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+      attemptRef.current = 0
+      teardownPeer()
+      setPhase('reconnecting')
+      connectRef.current()
+    }
+  }, [acquireWakeLock, openCamera, describeCameraError, teardownPeer])
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') recover()
+    }
+    // pageshow covers iOS restoring the page from the back/forward cache.
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('pageshow', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('pageshow', onVisible)
+    }
+  }, [recover])
+
   const start = async () => {
     if (!streamRef.current) return
     setError(null)
@@ -493,12 +670,8 @@ export default function LiveBroadcast() {
     writeLocationPref(shareLocation)
     try {
       const res = await createSession(title.trim(), { notify, record, location: shareLocation })
-      sessionRef.current = res.session
       heartbeatMsRef.current = (res.heartbeat_interval || 15) * 1000
-      recordingRef.current = res.session.recording
-      setIsRecording(res.session.recording)
-      setLocationOn(res.session.location)
-      if (res.session.location) startGeo()
+      adoptSession(res.session, Date.now())
     } catch (err) {
       activeRef.current = false
       setPhase('idle')
@@ -511,8 +684,6 @@ export default function LiveBroadcast() {
       }
       return
     }
-    setStartedAt(Date.now())
-    setNow(Date.now())
     acquireWakeLock()
     await connect()
   }
@@ -549,14 +720,14 @@ export default function LiveBroadcast() {
         setViewers(fresh.viewers)
       } catch (err) {
         if (err instanceof HttpError && (err.status === 404 || err.status === 409)) {
-          finish(t('broadcast.endedRemotely'))
+          endedRemotelyRef.current()
         }
         // Network errors: keep going; the reconnect logic handles media.
       }
     }
     const id = setInterval(beat, heartbeatMsRef.current)
     return () => clearInterval(id)
-  }, [isActive, finish, t])
+  }, [isActive])
 
   useEffect(() => {
     if (!isActive) return
@@ -613,28 +784,7 @@ export default function LiveBroadcast() {
     return () => clearInterval(id)
   }, [isActive, locationOn])
 
-  // --- share link -------------------------------------------------------------
-
-  const share = async () => {
-    const session = sessionRef.current
-    if (!session) return
-    let url: string
-    try {
-      const { path } = await createShareLink(session.id)
-      url = window.location.origin + path
-      setShareUrl(url)
-    } catch {
-      setError(t('broadcast.shareError'))
-      return
-    }
-    // The link exists now; handing it off is best effort (the field below
-    // shows it either way).
-    if (navigator.share) {
-      await navigator.share({ title: title.trim() || t('broadcast.shareTitle'), url }).catch(() => {})
-    } else {
-      await copyText(url)
-    }
-  }
+  // --- personal live link ------------------------------------------------------
 
   const copyText = async (text: string) => {
     try {
@@ -645,16 +795,20 @@ export default function LiveBroadcast() {
     }
   }
 
-  const copyShareUrl = () => {
-    if (shareUrl) copyText(shareUrl)
+  const shareMyLink = async () => {
+    if (!myLink) return
+    if (navigator.share) {
+      await navigator.share({ title: t('broadcast.shareTitle'), url: myLink }).catch(() => {})
+    } else {
+      await copyText(myLink)
+    }
   }
 
-  const stopSharing = async () => {
-    const session = sessionRef.current
-    if (!session) return
+  const makeMyLink = async (reset: boolean) => {
+    if (reset && !window.confirm(t('broadcast.resetConfirm'))) return
     try {
-      await revokeShareLink(session.id)
-      setShareUrl(null)
+      const path = await createMyLink()
+      setMyLink(window.location.origin + path)
     } catch {
       setError(t('broadcast.shareError'))
     }
@@ -662,16 +816,13 @@ export default function LiveBroadcast() {
 
   // --- page exit ----------------------------------------------------------
 
+  // Leaving the page never ends the broadcast — only Stop does. Phones fire
+  // pagehide/unload when they suspend or reload a background tab (e.g. while
+  // you share a link from another app), and ending there killed the stream.
+  // Here we only let go of the camera and connection; the session stays live
+  // until the page comes back and resumes it, or the server's stale timeout.
   useEffect(() => {
-    const endOnExit = () => {
-      const session = sessionRef.current
-      if (activeRef.current && session) navigator.sendBeacon?.(sessionUrl(session.id, '/end'))
-    }
-    window.addEventListener('pagehide', endOnExit)
     return () => {
-      window.removeEventListener('pagehide', endOnExit)
-      // Navigating away inside the app: end the broadcast and free the camera.
-      endOnExit()
       activeRef.current = false
       clearTimers()
       const pc = pcRef.current
@@ -777,35 +928,51 @@ export default function LiveBroadcast() {
         </label>
       </div>
 
-      {isActive && (
-        <div className="space-y-2">
-          {shareUrl ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-gray-800 p-2">
-              <input
-                readOnly
-                value={shareUrl}
-                aria-label={t('broadcast.shareLinkLabel')}
-                onFocus={e => e.currentTarget.select()}
-                className="min-w-0 flex-1 rounded bg-gray-900 px-2 py-1.5 text-xs text-gray-200"
-              />
-              <button type="button" onClick={copyShareUrl} className="flex items-center gap-1.5 rounded-lg bg-gray-700 px-3 py-1.5 text-sm text-gray-100 hover:bg-gray-600">
+      {resumable && !isActive && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-800 bg-red-950/40 p-3 text-sm text-gray-200">
+          <span>{t('broadcast.liveElsewhere')}</span>
+          <button type="button" onClick={() => resume(resumable)} className="rounded-lg bg-red-600 px-3 py-1.5 font-medium text-white hover:bg-red-500">
+            {t('broadcast.continueHere')}
+          </button>
+        </div>
+      )}
+
+      <section className="space-y-2 rounded-lg bg-gray-800 p-3" aria-label={t('broadcast.myLinkTitle')}>
+        <div className="text-sm font-medium text-gray-100">{t('broadcast.myLinkTitle')}</div>
+        {myLink ? (
+          <>
+            <input
+              readOnly
+              value={myLink}
+              aria-label={t('broadcast.myLinkTitle')}
+              onFocus={e => e.currentTarget.select()}
+              className="w-full rounded bg-gray-900 px-2 py-1.5 text-xs text-gray-200"
+            />
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={shareMyLink} className="flex items-center gap-1.5 rounded-lg bg-gray-700 px-3 py-1.5 text-sm text-gray-100 hover:bg-gray-600">
+                <Share2 size={14} />
+                {t('broadcast.share')}
+              </button>
+              <button type="button" onClick={() => copyText(myLink)} className="flex items-center gap-1.5 rounded-lg bg-gray-700 px-3 py-1.5 text-sm text-gray-100 hover:bg-gray-600">
                 <Copy size={14} />
                 {t('broadcast.copyLink')}
               </button>
-              <button type="button" onClick={stopSharing} className="flex items-center gap-1.5 rounded-lg bg-gray-700 px-3 py-1.5 text-sm text-red-300 hover:bg-gray-600">
-                <Link2Off size={14} />
-                {t('broadcast.stopSharing')}
+              <button type="button" onClick={() => makeMyLink(true)} className="flex items-center gap-1.5 rounded-lg bg-gray-700 px-3 py-1.5 text-sm text-gray-300 hover:bg-gray-600">
+                <RotateCcw size={14} />
+                {t('broadcast.resetMyLink')}
               </button>
             </div>
-          ) : (
-            <button type="button" onClick={share} className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-2 text-sm text-gray-200 hover:bg-gray-700">
-              <Share2 size={16} />
-              {t('broadcast.shareLink')}
-            </button>
-          )}
-          {locationOn && myPoints.length > 1 && <RunStatsBar stats={computeRunStats(myPoints)} />}
-        </div>
-      )}
+          </>
+        ) : myLink === null ? (
+          <button type="button" onClick={() => makeMyLink(false)} className="flex items-center gap-1.5 rounded-lg bg-gray-700 px-3 py-1.5 text-sm text-gray-100 hover:bg-gray-600">
+            <Share2 size={14} />
+            {t('broadcast.createMyLink')}
+          </button>
+        ) : null}
+        <p className="text-xs text-gray-400">{t('broadcast.myLinkHint')}</p>
+      </section>
+
+      {isActive && locationOn && myPoints.length > 1 && <RunStatsBar stats={computeRunStats(myPoints)} />}
 
       {!isActive && (
         <fieldset className="space-y-2">

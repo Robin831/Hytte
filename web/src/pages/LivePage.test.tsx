@@ -49,7 +49,9 @@ describe('LivePage', () => {
     expect(screen.getByText('list.connecting')).toBeInTheDocument()
     // Untitled session falls back to the generic title; own session says "you".
     expect(screen.getByText('list.untitled')).toBeInTheDocument()
-    expect(screen.getByText(/list\.you/)).toBeInTheDocument()
+    // Own live session links back to the broadcaster page (resume).
+    expect(screen.getByText(/list\.yourBroadcast/)).toBeInTheDocument()
+    expect(screen.getByText('list.untitled').closest('a')).toHaveAttribute('href', '/live/broadcast')
     expect(screen.getByLabelText('2 viewers')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /list\.goLive/ })).toHaveAttribute('href', '/live/broadcast')
   })

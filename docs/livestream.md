@@ -31,7 +31,7 @@ Viewer (Live page)
   `GET /api/live/ice`. Mobile carrier NATs often need that TURN relay.
 - **Session lifecycle:** "Go live" creates a `live_sessions` row (the title is
   encrypted). The broadcaster sends a heartbeat every 15 s. A reaper in
-  `cmd/server/main.go` ends any session with no heartbeat for 2 minutes (dead
+  `cmd/server/main.go` ends any session with no heartbeat for 5 minutes (dead
   battery, closed tab, long dead zone) and kicks its MediaMTX publisher and
   viewers. Going live again ends the user's previous session. Nothing is
   recorded.
@@ -48,7 +48,12 @@ On the Go live screen the broadcaster picks, per broadcast:
 
 While live:
 
-- **Share link**: creates a `/watch/<token>` URL for people without an account (native share sheet on phones, clipboard otherwise). Only the SHA-256 of the token is stored. The link shows video, map and stats, stops serving media when the stream ends, and can be revoked ("Stop sharing"). Share-link viewers only see the broadcaster's first name.
+- **Your live link** (on the Go live screen, before and during a broadcast): a permanent personal `/watch/<token>` URL. Send it once, ahead of the run, so you never have to switch apps mid-stream (phones suspend the page when you do). It always shows whatever you're streaming right now. While you're offline it says "<name> isn't live right now" and starts playing by itself when you go live, including when you continue as a new broadcast. **Reset** issues a new URL and kills the old one. The table is `live_user_links`: SHA-256 hash for lookup, token encrypted so you can copy it again. Viewers only see your first name. (The older per-session link API, `POST /api/live/sessions/{id}/share`, still works but has no button any more.)
+- **Leaving the page never ends the broadcast.** Only Stop does. Phones fire `pagehide` when they suspend or reload a background tab, and ending the stream there is exactly what broke streams when sharing from another app. What happens instead:
+  - On reload or restore, the page finds the session it was sending to (remembered on the device) and **resumes it**: same session, same links, recording continues.
+  - On returning from the background, it reopens the camera or mic if the phone ended them, heartbeats immediately, and reconnects without waiting out the backoff.
+  - If the phone was away longer than the 5-minute stale timeout, the reaper has ended the session. The page then **continues as a new broadcast** with the same settings and no second notification. Member viewers on `/live/{id}` follow automatically, and personal-link viewers just keep watching.
+  - A live session started in another tab or on another device is offered as "Continue here".
 - **Battery and connection state** go out with every heartbeat. Viewers see a battery badge (red below 20%). While the phone is reconnecting, or the video stalls (no decoded frames for 4 s), viewers see "Back in a moment…" over the last frame instead of a black box.
 - **Auto low-data**: after a 20 s warm-up, if the encoder reports it is bandwidth-limited and the send rate stays under 500 kbps for ~10 s, the phone switches to low-data mode (480p, 600 kbps) and says so.
 
@@ -82,6 +87,7 @@ All routes require a session cookie and the `livestream` feature (admins bypass 
 | PATCH/DELETE | /api/live/sessions/{id}/whep/{resource} | any | Trickle ICE / hang up |
 | GET | /api/live/sessions/{id}/hls/{file} | any | HLS playlists/segments, sent with `Cache-Control: private, no-store` |
 | POST/DELETE | /api/live/sessions/{id}/share | owner | Create (or rotate) / revoke the share link → `{token, path}` |
+| GET/POST/DELETE | /api/live/my-link | any | Personal live link: get `{path}` (null if none) / create or reset / turn off |
 | POST | /api/live/sessions/{id}/track | owner | Upload GPS fixes `{points:[{t,lat,lon,alt?,acc?}]}` (≤200 per request; needs Share location) |
 | GET | /api/live/sessions/{id}/track?after={pointId} | any | GPS track, incrementally |
 | GET | /api/live/recordings | any | Replays plus `used_bytes` / `free_bytes` |
@@ -94,7 +100,7 @@ Share-link routes have **no session auth**; the 64-hex token in the path is the 
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | /api/live/public/{token} | Session status (trimmed: first name only, no user id) |
+| GET | /api/live/public/{token} | Session status (trimmed: first name only, no user id). For a personal link whose owner is offline: `{"session": null, "owner_name": "…"}` |
 | GET | /api/live/public/{token}/ice | TURN credentials, only while live |
 | POST, PATCH/DELETE | /api/live/public/{token}/whep[/{resource}] | Watch (WHEP). WHIP is never reachable this way |
 | GET | /api/live/public/{token}/hls/{file} | HLS fallback |
