@@ -41,7 +41,8 @@
     "regnemester": "Regnemester",
     "suggestions": "Suggestions",
     "pokemon": "Pokémon",
-    "recipes": "Recipes"
+    "recipes": "Recipes",
+    "live": "Live"
   },
   "actions": {
     "save": "Save",

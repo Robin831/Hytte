@@ -105,6 +105,7 @@ Hytte/
   - VAPID: private_key
   - Analysis: prompt, response_json
   - Chat: conversation title, message content (`chat_conversations.title`, `chat_messages.content`)
+  - Livestream: session title (`live_sessions.title`)
   - User preferences: claude_cli_path
   - Sessions: user_agent, ip_address (sign-in metadata; the token column holds a SHA-256 hash, not ciphertext)
 - **Fields that must NOT be encrypted** (needed for queries/filtering): IDs, timestamps, status fields, sport, duration, distance, heart rate, tags, labels, email
@@ -116,7 +117,7 @@ Hytte/
 
 - Features are gated per-user via `user_features` table and `auth.RequireFeature(db, "feature_key")` middleware
 - Admin users (`is_admin=true`) bypass all feature checks
-- Available features: dashboard, weather, calendar, notes, links, training, lactate, infra, webhooks, claude_ai
+- Available features: dashboard, weather, calendar, notes, links, training, lactate, infra, webhooks, claude_ai, livestream
 - Claude AI settings/endpoints require admin (`is_admin`) — not just the `claude_ai` feature flag
 
 ### Changelog Fragments
@@ -162,6 +163,7 @@ All prefixed with `/api/`.
 | DELETE | /settings/sessions/{id} | Required | Revoke a single session by token prefix |
 | GET | /settings/export | Required | Stream a JSON archive of the user's profile, notes, workouts, lactate tests, preferences and session metadata |
 | DELETE | /settings/account | Required | Delete account + cascade |
+| GET/POST | /live/sessions | Required + `livestream` | List live sessions / go live (see docs/livestream.md for the WHIP/WHEP/HLS proxy routes) |
 
 ## CI
 

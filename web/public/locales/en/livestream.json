@@ -1,0 +1,58 @@
+{
+  "title": "Live",
+  "list": {
+    "empty": "Nobody is live right now.",
+    "goLive": "Go live",
+    "you": "You",
+    "untitled": "Live stream",
+    "startedAt": "Started {{time}}",
+    "viewers_one": "{{count}} viewer",
+    "viewers_other": "{{count}} viewers",
+    "onAir": "LIVE",
+    "connecting": "Connecting…",
+    "notConfigured": "Livestreaming isn't set up on this server yet.",
+    "loadError": "Could not load live streams"
+  },
+  "broadcast": {
+    "title": "Go live",
+    "backToList": "All streams",
+    "titleLabel": "Title",
+    "titlePlaceholder": "What are you streaming? (optional)",
+    "start": "Start stream",
+    "stop": "Stop stream",
+    "flipCamera": "Switch camera",
+    "micOn": "Mute mic",
+    "micOff": "Unmute mic",
+    "muted": "Mic muted",
+    "lowData": "Low data",
+    "lowDataHint": "480p, about 0.3 GB per hour",
+    "status": {
+      "idle": "Ready",
+      "connecting": "Connecting…",
+      "live": "Live",
+      "reconnecting": "Reconnecting…"
+    },
+    "ended": "Stream ended.",
+    "endedRemotely": "The stream was ended — the connection was lost for too long, or you went live from another device.",
+    "cameraError": "Could not open the camera: {{message}}",
+    "cameraDenied": "Camera access was denied. Allow camera and microphone for this site, then reload the page.",
+    "startError": "Could not start the stream: {{message}}",
+    "bitrate": "{{kbps}} kbps",
+    "dataUsed": "{{amount}} used",
+    "tipScreen": "Keep this page open with the screen on — phones pause the camera when the screen locks or you switch apps. A chest or arm mount works well.",
+    "wakeLockUnsupported": "This browser can't keep the screen awake automatically — turn off auto-lock while streaming.",
+    "dataEstimate": "Normal quality uses about 0.5–0.7 GB of mobile data per hour."
+  },
+  "watch": {
+    "back": "All streams",
+    "connecting": "Connecting…",
+    "waiting": "Waiting for the broadcaster's video…",
+    "ended": "This stream has ended.",
+    "notFound": "Stream not found.",
+    "error": "Could not play the stream.",
+    "unmute": "Unmute",
+    "mute": "Mute",
+    "fullscreen": "Fullscreen",
+    "fallbackHls": "Compatibility mode — a few seconds behind live."
+  }
+}

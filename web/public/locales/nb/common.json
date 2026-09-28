@@ -41,7 +41,8 @@
     "regnemester": "Regnemester",
     "suggestions": "Forslag",
     "pokemon": "Pokémon",
-    "recipes": "Oppskrifter"
+    "recipes": "Oppskrifter",
+    "live": "Direkte"
   },
   "actions": {
     "save": "Lagre",

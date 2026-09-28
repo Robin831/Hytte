@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router'
 import {
   House,
+  Radio,
   LayoutDashboard,
   CloudSun,
   Calendar,
@@ -91,6 +92,7 @@ const navItems: NavItem[] = [
   { to: '/skywatch', icon: <Moon size={20} />, label: 'nav.skywatch', requiresAuth: true, feature: 'skywatch' },
   { to: '/grocery', icon: <ShoppingCart size={20} />, label: 'nav.grocery', requiresAuth: true, feature: 'grocery' },
   { to: '/recipes', icon: <ChefHat size={20} />, label: 'nav.recipes', requiresAuth: true, feature: 'recipes' },
+  { to: '/live', icon: <Radio size={20} />, label: 'nav.live', requiresAuth: true, feature: 'livestream' },
   { to: '/wardrobe', icon: <Shirt size={20} />, label: 'nav.wardrobe', requiresAuth: true, feature: 'wardrobe' },
   { to: '/offers', icon: <Percent size={20} />, label: 'nav.offers', requiresAuth: true, feature: 'offers' },
   { to: '/wordfeud', icon: <Gamepad2 size={20} />, label: 'nav.wordfeud', requiresAuth: true, feature: 'wordfeud' },

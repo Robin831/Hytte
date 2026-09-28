@@ -31,6 +31,7 @@ import type regnemesterEn from '../public/locales/en/regnemester.json'
 import type suggestionsEn from '../public/locales/en/suggestions.json'
 import type pokemonEn from '../public/locales/en/pokemon.json'
 import type recipesEn from '../public/locales/en/recipes.json'
+import type livestreamEn from '../public/locales/en/livestream.json'
 
 declare module 'i18next' {
   interface CustomTypeOptions {
@@ -69,6 +70,7 @@ declare module 'i18next' {
       suggestions: typeof suggestionsEn
       pokemon: typeof pokemonEn
       recipes: typeof recipesEn
+      livestream: typeof livestreamEn
     }
   }
 }
