@@ -515,10 +515,10 @@ export default function BudgetPage() {
   // Per-account month-to-date total: each row shows the cumulative sum of its
   // own account's transactions in the viewed month, so accounts and currencies
   // never mix.
-  const balanceByTransactionId = computeAccountMonthToDate(transactions)
-  const withBalance = transactions.map(txn => ({
+  const monthToDateByTransactionId = computeAccountMonthToDate(transactions)
+  const withMonthToDate = transactions.map(txn => ({
     txn,
-    balance: balanceByTransactionId.get(txn.id) ?? 0,
+    monthToDate: monthToDateByTransactionId.get(txn.id) ?? 0,
   }))
 
   // Income vs expenses bar widths
@@ -809,7 +809,7 @@ export default function BudgetPage() {
             {t('summary.transactions')}
           </h2>
           <ul className="divide-y divide-gray-800">
-            {withBalance.map(({ txn, balance }) => {
+            {withMonthToDate.map(({ txn, monthToDate }) => {
               const cat = txn.category_id != null ? catById.get(txn.category_id) : undefined
               const acct = acctById.get(txn.account_id)
               const isIncome = txn.amount > 0
@@ -853,7 +853,7 @@ export default function BudgetPage() {
                       {formatNOK(txn.amount, acct?.currency)}
                     </p>
                     <p className="text-xs text-gray-500 tabular-nums">
-                      {t('summary.accountMonthToDate')}: {formatNOK(balance, acct?.currency)}
+                      {t('summary.accountMonthToDate')}: {formatNOK(monthToDate, acct?.currency)}
                     </p>
                   </div>
 
