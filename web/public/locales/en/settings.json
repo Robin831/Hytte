@@ -319,7 +319,29 @@
     "showQrTitle": "QR Code — {{name}}",
     "showQrDescription": "Scan this QR code to navigate to the kiosk page on a tablet.",
     "showQrNoToken": "Note: This QR code does not include the token. For first-time setup, use the QR code shown at token creation time.",
-    "done": "Done"
+    "done": "Done",
+    "dim": {
+      "heading": "Night dimming",
+      "column": "Night dimming",
+      "modeLabel": "Dimming",
+      "mode": {
+        "auto": "On",
+        "off": "Off"
+      },
+      "startLabel": "Dim from (optional)",
+      "endLabel": "Dim until (optional)",
+      "hint": "When on, the screen dims between sunset and sunrise and shifts its layout slightly to prevent burn-in. Set both times to dim on a fixed schedule instead (needed for a token without a location, which otherwise never dims), or choose Off to never dim.",
+      "summaryWindow": "{{mode}} ({{start}}–{{end}})",
+      "editAriaLabel": "Edit night dimming for {{name}}",
+      "editTitle": "Night dimming — {{name}}",
+      "save": "Save",
+      "saving": "Saving...",
+      "error": {
+        "invalidTime": "Times must be in HH:MM format (00:00–23:59)",
+        "windowIncomplete": "Set both a start and an end time, or leave both empty",
+        "save": "Failed to save night dimming settings"
+      }
+    }
   },
   "webhooks": {
     "heading": "Webhooks",

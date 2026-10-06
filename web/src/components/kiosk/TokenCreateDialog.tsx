@@ -4,6 +4,8 @@ import { X, Copy, Check, Plus } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
 import LocationSearch from '../LocationSearch'
+import DimOverrideFields from './DimOverrideFields'
+import { EMPTY_DIM_OVERRIDE, applyDimOverride, validateDimOverride, type DimOverride } from './dimOverride'
 
 interface StopResult {
   id: string
@@ -35,6 +37,7 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
   const [showDropdown, setShowDropdown] = useState(false)
 
   const [selectedLocation, setSelectedLocation] = useState<SelectedLocation | null>(null)
+  const [dimOverride, setDimOverride] = useState<DimOverride>(EMPTY_DIM_OVERRIDE)
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -55,6 +58,7 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
       setSelectedStops([])
       setShowDropdown(false)
       setSelectedLocation(null)
+      setDimOverride(EMPTY_DIM_OVERRIDE)
       setSubmitting(false)
       setError('')
       setCreatedToken(null)
@@ -131,6 +135,11 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
       setError(t('kioskTokens.errorNameRequired'))
       return
     }
+    const dimError = validateDimOverride(dimOverride)
+    if (dimError) {
+      setError(t(`kioskTokens.dim.error.${dimError}`))
+      return
+    }
 
     const config: Record<string, unknown> = {}
     if (selectedStops.length > 0) {
@@ -141,6 +150,7 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
       config.lon = selectedLocation.lon
       config.location = selectedLocation.name
     }
+    applyDimOverride(config, dimOverride)
 
     // date input gives YYYY-MM-DD; convert to RFC3339 at end of day UTC, or omit if unset
     const expiresAtRFC = expiresAt ? `${expiresAt}T23:59:59Z` : undefined
@@ -347,6 +357,9 @@ export default function TokenCreateDialog({ open, onClose, onSuccess }: Props) {
                   />
                 )}
               </div>
+
+              {/* Night dimming override */}
+              <DimOverrideFields value={dimOverride} onChange={setDimOverride} />
 
               {/* Expiry date */}
               <div>

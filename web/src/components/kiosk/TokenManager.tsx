@@ -1,14 +1,23 @@
 import { useState, useEffect, useCallback, useId } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Plus, QrCode } from 'lucide-react'
+import { Trash2, Plus, QrCode, Moon } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { ConfirmDialog, Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
 import TokenCreateDialog from './TokenCreateDialog'
+import DimOverrideFields from './DimOverrideFields'
+import {
+  EMPTY_DIM_OVERRIDE,
+  dimOverrideFromConfig,
+  dimOverrideToRequest,
+  validateDimOverride,
+  type DimOverride,
+} from './dimOverride'
 import { formatDate } from '../../utils/formatDate'
 
 interface KioskToken {
   id: number
   name: string
+  config: unknown
   created_by: string
   created_at: string
   expires_at: string | null
@@ -27,6 +36,11 @@ export default function TokenManager() {
   const [qrToken, setQrToken] = useState<KioskToken | null>(null)
   const qrTitleId = useId()
   const qrDescId = useId()
+  const [dimTarget, setDimTarget] = useState<KioskToken | null>(null)
+  const [dimDraft, setDimDraft] = useState<DimOverride>(EMPTY_DIM_OVERRIDE)
+  const [dimSaving, setDimSaving] = useState(false)
+  const [dimError, setDimError] = useState('')
+  const dimTitleId = useId()
 
   const fetchTokens = useCallback(async () => {
     setLoading(true)
@@ -69,6 +83,60 @@ export default function TokenManager() {
     }
   }
 
+  function openDimEditor(token: KioskToken) {
+    setDimTarget(token)
+    setDimDraft(dimOverrideFromConfig(token.config))
+    setDimError('')
+  }
+
+  function closeDimEditor() {
+    if (dimSaving) return
+    setDimTarget(null)
+    setDimError('')
+  }
+
+  async function handleDimSave(e: React.FormEvent) {
+    e.preventDefault()
+    if (!dimTarget) return
+    setDimError('')
+    const validation = validateDimOverride(dimDraft)
+    if (validation) {
+      setDimError(t(`kioskTokens.dim.error.${validation}`))
+      return
+    }
+    setDimSaving(true)
+    try {
+      const res = await fetch(`/api/kiosk/tokens/${dimTarget.id}/dim`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dimOverrideToRequest(dimDraft)),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setDimError(data.error ?? t('kioskTokens.dim.error.save'))
+        return
+      }
+      const data: { config: unknown } = await res.json()
+      const id = dimTarget.id
+      setTokens((prev) => prev.map((tok) => (tok.id === id ? { ...tok, config: data.config } : tok)))
+      setDimTarget(null)
+    } catch {
+      setDimError(t('kioskTokens.dim.error.save'))
+    } finally {
+      setDimSaving(false)
+    }
+  }
+
+  function dimSummary(token: KioskToken): string {
+    const dim = dimOverrideFromConfig(token.config)
+    const mode = t(`kioskTokens.dim.mode.${dim.mode}`)
+    if (dim.mode !== 'off' && dim.start && dim.end) {
+      return t('kioskTokens.dim.summaryWindow', { mode, start: dim.start, end: dim.end })
+    }
+    return mode
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -109,6 +177,7 @@ export default function TokenManager() {
                 <th className="pb-2 pr-4 font-medium">{t('kioskTokens.colName')}</th>
                 <th className="pb-2 pr-4 font-medium">{t('kioskTokens.colExpiry')}</th>
                 <th className="pb-2 pr-4 font-medium">{t('kioskTokens.colLastUsed')}</th>
+                <th className="pb-2 pr-4 font-medium hidden sm:table-cell">{t('kioskTokens.dim.column')}</th>
                 <th className="pb-2 font-medium sr-only">{t('kioskTokens.colActions')}</th>
               </tr>
             </thead>
@@ -118,6 +187,7 @@ export default function TokenManager() {
                   <td className="py-3 pr-4">
                     <span className="text-white font-medium">{token.name}</span>
                     <span className="block text-xs text-gray-500">{token.created_by}</span>
+                    <span className="block text-xs text-gray-500 sm:hidden">{dimSummary(token)}</span>
                   </td>
                   <td className="py-3 pr-4 text-gray-300">
                     {token.expires_at
@@ -127,8 +197,17 @@ export default function TokenManager() {
                   <td className="py-3 pr-4 text-gray-400">
                     {token.last_used_at ? formatDate(token.last_used_at, { dateStyle: 'medium' }) : '—'}
                   </td>
+                  <td className="py-3 pr-4 text-gray-400 hidden sm:table-cell">{dimSummary(token)}</td>
                   <td className="py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openDimEditor(token)}
+                        aria-label={t('kioskTokens.dim.editAriaLabel', { name: token.name })}
+                        className="text-gray-500 hover:text-white transition-colors cursor-pointer"
+                      >
+                        <Moon size={16} />
+                      </button>
                       <button
                         type="button"
                         onClick={() => setQrToken(token)}
@@ -171,6 +250,37 @@ export default function TokenManager() {
         confirmLabel={t('kioskTokens.revokeConfirm')}
         variant="destructive"
       />
+
+      <Dialog open={dimTarget !== null} onClose={closeDimEditor} maxWidth="max-w-md" aria-labelledby={dimTitleId}>
+        <DialogHeader
+          id={dimTitleId}
+          title={t('kioskTokens.dim.editTitle', { name: dimTarget?.name ?? '' })}
+          onClose={closeDimEditor}
+        />
+        <form onSubmit={handleDimSave}>
+          <DialogBody>
+            <DimOverrideFields value={dimDraft} onChange={setDimDraft} disabled={dimSaving} />
+            {dimError && <p className="text-sm text-red-400 mt-3">{dimError}</p>}
+          </DialogBody>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={closeDimEditor}
+              disabled={dimSaving}
+              className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              {t('kioskTokens.cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={dimSaving}
+              className="px-4 py-2 text-sm font-medium rounded bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              {dimSaving ? t('kioskTokens.dim.saving') : t('kioskTokens.dim.save')}
+            </button>
+          </DialogFooter>
+        </form>
+      </Dialog>
 
       <Dialog open={qrToken !== null} onClose={() => setQrToken(null)} maxWidth="max-w-sm" aria-labelledby={qrTitleId} aria-describedby={qrDescId}>
         <DialogHeader id={qrTitleId} title={t('kioskTokens.showQrTitle', { name: qrToken?.name ?? '' })} onClose={() => setQrToken(null)} />
