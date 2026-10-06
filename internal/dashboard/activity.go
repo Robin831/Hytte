@@ -31,17 +31,11 @@ func ActivityHandler(db *sql.DB) http.HandlerFunc {
 
 		// The endpoint is registered outside every RequireFeature group, so
 		// resolve the caller's feature set here and only query the sources
-		// they can access. Prefer the map cached by WithFeatures; fall back to
-		// a DB lookup (which returns all-true for admins), mirroring
-		// auth.RequireFeature.
-		features := auth.FeaturesFromContext(r.Context())
-		if features == nil {
-			var err error
-			features, err = auth.GetUserFeatures(db, user.ID, user.IsAdmin)
-			if err != nil {
-				writeActivityError(w)
-				return
-			}
+		// they can access (all-true for admins).
+		features, err := auth.ResolveFeatures(r.Context(), db, user)
+		if err != nil {
+			writeActivityError(w)
+			return
 		}
 
 		items, err := recentActivity(db, user.ID, features)

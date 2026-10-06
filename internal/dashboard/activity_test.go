@@ -815,10 +815,11 @@ func TestActivityHandler_FeatureResolution(t *testing.T) {
 		admin bool
 		// stored are the user_features rows to write for the user.
 		stored map[string]bool
-		// withFeatures wraps the handler in auth.WithFeatures so the
-		// context-cached feature map is used instead of the fallback lookup.
-		withFeatures bool
-		want         map[string]bool
+		// contextFeatures, when non-nil, is injected as the WithFeatures
+		// cache. It deliberately differs from stored so the test proves the
+		// cached map wins over the fallback lookup.
+		contextFeatures map[string]bool
+		want            map[string]bool
 	}{
 		{
 			name:  "admin bypass without user_features rows",
@@ -837,19 +838,13 @@ func TestActivityHandler_FeatureResolution(t *testing.T) {
 		},
 		{
 			name: "non-admin with no stored features uses defaults",
-			want: map[string]bool{},
+			want: auth.FeatureDefaults,
 		},
 		{
-			name:         "non-admin via WithFeatures cache",
-			stored:       map[string]bool{"training": true, "links": true},
-			withFeatures: true,
-			want:         map[string]bool{"training": true, "links": true},
-		},
-		{
-			name:         "admin via WithFeatures cache",
-			admin:        true,
-			withFeatures: true,
-			want:         allActivityFeatures(),
+			name:            "non-admin uses context cache over stored rows",
+			stored:          map[string]bool{"notes": true},
+			contextFeatures: map[string]bool{"training": true},
+			want:            map[string]bool{"training": true},
 		},
 	}
 
@@ -873,13 +868,13 @@ func TestActivityHandler_FeatureResolution(t *testing.T) {
 			seedAllActivitySources(t, d, user.ID)
 
 			req := httptest.NewRequest("GET", "/api/dashboard/activity", nil)
-			req = req.WithContext(auth.ContextWithUser(req.Context(), user))
-			rr := httptest.NewRecorder()
-			var handler http.Handler = ActivityHandler(d)
-			if tc.withFeatures {
-				handler = auth.WithFeatures(d)(handler)
+			ctx := auth.ContextWithUser(req.Context(), user)
+			if tc.contextFeatures != nil {
+				ctx = auth.ContextWithFeatures(ctx, tc.contextFeatures)
 			}
-			handler.ServeHTTP(rr, req)
+			req = req.WithContext(ctx)
+			rr := httptest.NewRecorder()
+			ActivityHandler(d).ServeHTTP(rr, req)
 
 			if rr.Code != http.StatusOK {
 				t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
