@@ -7,7 +7,7 @@ import { Select, type SelectOption } from '../../../components/ui/select'
 import { TimePicker } from '../../../components/ui/time-picker'
 import {
   calculateDayWithLivePunch,
-  findOverlappingSessionIds,
+  findSessionOverlaps,
   isPunchStale,
   sessionMinutes,
   type WorkSession,
@@ -25,6 +25,14 @@ import {
 } from '../dateUtils'
 import { normalizePresetIcon } from '../presetIcons'
 import { SessionConflict, useWorkHoursApi } from '../useWorkHoursApi'
+
+type ConflictCause = 'save' | 'toggle' | 'copy'
+
+const CONFLICT_MESSAGE_KEYS = {
+  save: 'workhours:sessionConflict',
+  toggle: 'workhours:sessionConflictToggle',
+  copy: 'workhours:sessionConflictCopy',
+} as const satisfies Record<ConflictCause, string>
 
 export default function DayView({
   currentDate,
@@ -69,7 +77,9 @@ export default function DayView({
   // Overlap conflict from the last rejected save, shown inline next to the form
   // it came from: 'add' for the add-session row, or the id of the edited session.
   // Tagged with its day like editSession so it disappears on a day change.
-  const [sessionConflict, setSessionConflict] = useState<{ date: string; target: 'add' | number; conflict: WorkSession } | null>(null)
+  // `cause` picks the message: a rejected save of typed times, an internal
+  // toggle on a stored overlap, or a copy-yesterday that stopped part way.
+  const [sessionConflict, setSessionConflict] = useState<{ date: string; target: 'add' | number; cause: ConflictCause; conflict: WorkSession } | null>(null)
   const [newDeductionName, setNewDeductionName] = useState('')
   const [newDeductionMinutes, setNewDeductionMinutes] = useState('')
   const [punchStart, setPunchStart] = useState<string | null>(null)
@@ -96,6 +106,11 @@ export default function DayView({
 
   const editSessionId = editSession && editSession.date === currentDate ? editSession.id : null
   const activeConflict = sessionConflict && sessionConflict.date === currentDate ? sessionConflict : null
+  // Records a 409 overlap from a session save; anything else is rethrown.
+  const reportConflict = (err: unknown, target: 'add' | number, cause: ConflictCause) => {
+    if (!(err instanceof SessionConflict)) throw err
+    setSessionConflict({ date: currentDate, target, cause, conflict: err.conflict })
+  }
   const setEditSessionId = useCallback((id: number | null) => {
     setEditSession(id === null ? null : { date: currentDate, id })
   }, [currentDate])
@@ -308,8 +323,7 @@ export default function DayView({
         loadFlex()
       }
     } catch (err) {
-      if (!(err instanceof SessionConflict)) throw err
-      setSessionConflict({ date: currentDate, target: 'add', conflict: err.conflict })
+      reportConflict(err, 'add', 'save')
     } finally {
       setSaving(false)
     }
@@ -320,6 +334,8 @@ export default function DayView({
     try {
       const ok = await api.deleteSession(sessionID)
       if (ok) {
+        // The message may name the deleted session.
+        setSessionConflict(null)
         await loadDay(currentDate)
         loadFlex()
       }
@@ -365,8 +381,7 @@ export default function DayView({
       await loadDay(currentDate)
       loadFlex()
     } catch (err) {
-      if (!(err instanceof SessionConflict)) throw err
-      setSessionConflict({ date: currentDate, target: session.id, conflict: err.conflict })
+      reportConflict(err, session.id, 'save')
     } finally {
       setSaving(false)
     }
@@ -391,8 +406,7 @@ export default function DayView({
     } catch (err) {
       // The times are unchanged, but a session already stored overlapping
       // another is still rejected by the server's overlap check.
-      if (!(err instanceof SessionConflict)) throw err
-      setSessionConflict({ date: currentDate, target: session.id, conflict: err.conflict })
+      reportConflict(err, session.id, 'toggle')
     } finally {
       setSaving(false)
     }
@@ -631,14 +645,22 @@ export default function DayView({
       }
 
       for (const session of data.day.sessions) {
-        const ok = await api.addSession({
-          day_id: d.id,
-          start_time: session.start_time,
-          end_time: session.end_time,
-          sort_order: (d.sessions?.length ?? 0),
-          is_internal: session.is_internal,
-          crosses_midnight: session.crosses_midnight,
-        })
+        let ok: boolean
+        try {
+          ok = await api.addSession({
+            day_id: d.id,
+            start_time: session.start_time,
+            end_time: session.end_time,
+            sort_order: (d.sessions?.length ?? 0),
+            is_internal: session.is_internal,
+            crosses_midnight: session.crosses_midnight,
+          })
+        } catch (err) {
+          // Yesterday's sessions overlapped each other; the ones copied before
+          // the conflict are kept.
+          reportConflict(err, 'add', 'copy')
+          break
+        }
         if (!ok) {
           console.error('workhours: failed to copy session', session)
           break
@@ -646,13 +668,6 @@ export default function DayView({
         // Keep track so subsequent sessions don't overwrite each other
         d = { ...d, sessions: [...(d.sessions ?? []), session] }
       }
-      await loadDay(currentDate)
-      loadFlex()
-    } catch (err) {
-      // Yesterday's sessions overlapped each other; the ones copied before the
-      // conflict are kept.
-      if (!(err instanceof SessionConflict)) throw err
-      setSessionConflict({ date: currentDate, target: 'add', conflict: err.conflict })
       await loadDay(currentDate)
       loadFlex()
     } finally {
@@ -688,7 +703,7 @@ export default function DayView({
   const summary = dayData?.summary ?? null
   const lunchChecked = day?.lunch ?? false
   const sessions = day?.sessions ?? []
-  const overlaps = useMemo(() => findOverlappingSessionIds(day?.sessions ?? []), [day])
+  const overlaps = useMemo(() => findSessionOverlaps(day?.sessions ?? []), [day])
 
   // Inline message for a save rejected because it overlaps another session.
   const renderSessionConflict = (target: 'add' | number) => {
@@ -696,7 +711,7 @@ export default function DayView({
     return (
       <p role="alert" className="flex items-start gap-1.5 text-xs text-red-400">
         <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-        <span>{t('workhours:sessionConflict', { start: activeConflict.conflict.start_time, end: activeConflict.conflict.end_time })}</span>
+        <span>{t(CONFLICT_MESSAGE_KEYS[activeConflict.cause], { start: activeConflict.conflict.start_time, end: activeConflict.conflict.end_time })}</span>
       </p>
     )
   }
@@ -1002,13 +1017,13 @@ export default function DayView({
                         <div className={`flex items-center gap-2 flex-wrap rounded-lg border bg-gray-800 px-3 py-2 ${overlapping ? 'border-amber-500/60' : 'border-blue-700/40'}`}>
                           <TimePicker
                             value={editStart}
-                            onChange={v => { setSessionConflict(null); setEditStart(v) }}
+                            onChange={v => { if (v !== editStart) setSessionConflict(null); setEditStart(v) }}
                             aria-label={t('workhours:startTime')}
                           />
                           <span className="text-gray-500 text-xs">→</span>
                           <TimePicker
                             value={editEnd}
-                            onChange={v => { setSessionConflict(null); setEditEnd(v) }}
+                            onChange={v => { if (v !== editEnd) setSessionConflict(null); setEditEnd(v) }}
                             aria-label={t('workhours:endTime')}
                           />
                           <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 select-none">
@@ -1108,13 +1123,13 @@ export default function DayView({
             <div className="flex items-center gap-2 flex-wrap">
               <TimePicker
                 value={newStart}
-                onChange={v => { setSessionConflict(null); setNewStart(v) }}
+                onChange={v => { if (v !== newStart) setSessionConflict(null); setNewStart(v) }}
                 aria-label={t('workhours:startTime')}
               />
               <span className="text-gray-500 text-xs">→</span>
               <TimePicker
                 value={newEnd}
-                onChange={v => { setSessionConflict(null); setNewEnd(v) }}
+                onChange={v => { if (v !== newEnd) setSessionConflict(null); setNewEnd(v) }}
                 aria-label={t('workhours:endTime')}
               />
               <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 select-none">

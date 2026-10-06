@@ -185,7 +185,7 @@ export function calculateDayWithLivePunch(
  * Returns the ids of every overlapping session and each overlapping pair,
  * ordered by start time (earlier session first).
  */
-export function findOverlappingSessionIds(sessions: WorkSession[]): {
+export function findSessionOverlaps(sessions: WorkSession[]): {
   ids: Set<number>
   pairs: Array<[WorkSession, WorkSession]>
 } {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import {
   calculateDayWithLivePunch,
   daysSinceLocalDate,
-  findOverlappingSessionIds,
+  findSessionOverlaps,
   isPunchStale,
   sessionMinutes,
   type WorkSession,
@@ -455,7 +455,7 @@ describe('calculateDayWithLivePunch with wrapped sessions', () => {
   })
 })
 
-describe('findOverlappingSessionIds', () => {
+describe('findSessionOverlaps', () => {
   const session = (id: number, start: string, end: string, extra: Partial<WorkSession> = {}): WorkSession => ({
     id,
     day_id: 1,
@@ -469,37 +469,37 @@ describe('findOverlappingSessionIds', () => {
   const pairIds = (pairs: Array<[WorkSession, WorkSession]>) => pairs.map(([a, b]) => [a.id, b.id])
 
   it('returns nothing for an empty list', () => {
-    const result = findOverlappingSessionIds([])
+    const result = findSessionOverlaps([])
     expect(result.ids.size).toBe(0)
     expect(result.pairs).toEqual([])
   })
 
   it('returns nothing when sessions do not overlap', () => {
-    const result = findOverlappingSessionIds([session(1, '08:00', '10:00'), session(2, '11:00', '12:00')])
+    const result = findSessionOverlaps([session(1, '08:00', '10:00'), session(2, '11:00', '12:00')])
     expect(result.ids.size).toBe(0)
     expect(result.pairs).toEqual([])
   })
 
   it('treats adjacent sessions as not overlapping', () => {
-    const result = findOverlappingSessionIds([session(1, '08:00', '10:00'), session(2, '10:00', '12:00')])
+    const result = findSessionOverlaps([session(1, '08:00', '10:00'), session(2, '10:00', '12:00')])
     expect(result.ids.size).toBe(0)
     expect(result.pairs).toEqual([])
   })
 
   it('detects a partial overlap', () => {
-    const result = findOverlappingSessionIds([session(1, '08:00', '10:00'), session(2, '09:00', '11:00')])
+    const result = findSessionOverlaps([session(1, '08:00', '10:00'), session(2, '09:00', '11:00')])
     expect([...result.ids].sort()).toEqual([1, 2])
     expect(pairIds(result.pairs)).toEqual([[1, 2]])
   })
 
   it('detects containment', () => {
-    const result = findOverlappingSessionIds([session(1, '08:00', '12:00'), session(2, '09:00', '10:00')])
+    const result = findSessionOverlaps([session(1, '08:00', '12:00'), session(2, '09:00', '10:00')])
     expect([...result.ids].sort()).toEqual([1, 2])
     expect(pairIds(result.pairs)).toEqual([[1, 2]])
   })
 
   it('reports every overlapping pair', () => {
-    const result = findOverlappingSessionIds([
+    const result = findSessionOverlaps([
       session(1, '08:00', '12:00'),
       session(2, '09:00', '10:00'),
       session(3, '11:00', '13:00'),
@@ -512,7 +512,7 @@ describe('findOverlappingSessionIds', () => {
   })
 
   it('ignores the internal flag', () => {
-    const result = findOverlappingSessionIds([
+    const result = findSessionOverlaps([
       session(1, '08:00', '10:00', { is_internal: true }),
       session(2, '09:30', '11:00'),
     ])
@@ -520,14 +520,14 @@ describe('findOverlappingSessionIds', () => {
   })
 
   it('sorts unsorted input by start time', () => {
-    const result = findOverlappingSessionIds([session(1, '13:00', '15:00'), session(2, '08:00', '14:00')])
+    const result = findSessionOverlaps([session(1, '13:00', '15:00'), session(2, '08:00', '14:00')])
     expect(pairIds(result.pairs)).toEqual([[2, 1]])
   })
 
   it('places a crosses-midnight session on the day it started', () => {
     // 22:00-02:00 runs into the next day, so it overlaps 23:00-23:30 but not
     // an early-morning session on the same day.
-    const result = findOverlappingSessionIds([
+    const result = findSessionOverlaps([
       session(1, '22:00', '02:00', { crosses_midnight: true }),
       session(2, '23:00', '23:30'),
       session(3, '01:00', '03:00'),
@@ -536,7 +536,7 @@ describe('findOverlappingSessionIds', () => {
   })
 
   it('skips malformed and empty sessions', () => {
-    const result = findOverlappingSessionIds([
+    const result = findSessionOverlaps([
       session(1, '08:00', '12:00'),
       session(2, 'nope', '10:00'),
       session(3, '10:00', '09:00'),
