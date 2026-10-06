@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Building2, Calendar, Check, ChevronLeft, ChevronRight, Clock, Copy, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Building2, Calendar, Check, ChevronLeft, ChevronRight, Clock, Copy, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { formatDate } from '../../../utils/formatDate'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { Select, type SelectOption } from '../../../components/ui/select'
 import { TimePicker } from '../../../components/ui/time-picker'
 import {
   calculateDayWithLivePunch,
+  findSessionOverlaps,
   isPunchStale,
   sessionMinutes,
   type WorkSession,
@@ -23,7 +24,15 @@ import {
   prevWeekday,
 } from '../dateUtils'
 import { normalizePresetIcon } from '../presetIcons'
-import { useWorkHoursApi } from '../useWorkHoursApi'
+import { SessionConflict, useWorkHoursApi } from '../useWorkHoursApi'
+
+type ConflictCause = 'save' | 'toggle' | 'copy'
+
+const CONFLICT_MESSAGE_KEYS = {
+  save: 'workhours:sessionConflict',
+  toggle: 'workhours:sessionConflictToggle',
+  copy: 'workhours:sessionConflictCopy',
+} as const satisfies Record<ConflictCause, string>
 
 export default function DayView({
   currentDate,
@@ -65,6 +74,12 @@ export default function DayView({
   const [editStart, setEditStart] = useState('')
   const [editEnd, setEditEnd] = useState('')
   const [editCrossesMidnight, setEditCrossesMidnight] = useState(false)
+  // Overlap conflict from the last rejected save, shown inline next to the form
+  // it came from: 'add' for the add-session row, or the id of the edited session.
+  // Tagged with its day like editSession so it disappears on a day change.
+  // `cause` picks the message: a rejected save of typed times, an internal
+  // toggle on a stored overlap, or a copy-yesterday that stopped part way.
+  const [sessionConflict, setSessionConflict] = useState<{ date: string; target: 'add' | number; cause: ConflictCause; conflict: WorkSession } | null>(null)
   const [newDeductionName, setNewDeductionName] = useState('')
   const [newDeductionMinutes, setNewDeductionMinutes] = useState('')
   const [punchStart, setPunchStart] = useState<string | null>(null)
@@ -90,6 +105,12 @@ export default function DayView({
   })
 
   const editSessionId = editSession && editSession.date === currentDate ? editSession.id : null
+  const activeConflict = sessionConflict && sessionConflict.date === currentDate ? sessionConflict : null
+  // Records a 409 overlap from a session save; anything else is rethrown.
+  const reportConflict = (err: unknown, target: 'add' | number, cause: ConflictCause) => {
+    if (!(err instanceof SessionConflict)) throw err
+    setSessionConflict({ date: currentDate, target, cause, conflict: err.conflict })
+  }
   const setEditSessionId = useCallback((id: number | null) => {
     setEditSession(id === null ? null : { date: currentDate, id })
   }, [currentDate])
@@ -293,6 +314,7 @@ export default function DayView({
         crosses_midnight: crossesMidnight,
       })
       if (ok) {
+        setSessionConflict(null)
         setNewStart('')
         setNewEnd('')
         setNewIsInternal(false)
@@ -300,6 +322,8 @@ export default function DayView({
         await loadDay(currentDate)
         loadFlex()
       }
+    } catch (err) {
+      reportConflict(err, 'add', 'save')
     } finally {
       setSaving(false)
     }
@@ -310,6 +334,8 @@ export default function DayView({
     try {
       const ok = await api.deleteSession(sessionID)
       if (ok) {
+        // The message may name the deleted session.
+        setSessionConflict(null)
         await loadDay(currentDate)
         loadFlex()
       }
@@ -319,6 +345,7 @@ export default function DayView({
   }
 
   const handleStartEditSession = (session: WorkSession) => {
+    setSessionConflict(null)
     setEditSessionId(session.id)
     setEditStart(session.start_time)
     setEditEnd(session.end_time)
@@ -326,6 +353,7 @@ export default function DayView({
   }
 
   const handleCancelEditSession = () => {
+    setSessionConflict(null)
     setEditSessionId(null)
   }
 
@@ -348,9 +376,12 @@ export default function DayView({
         alert(t('workhours:punchSaveError'))
         return
       }
+      setSessionConflict(null)
       setEditSessionId(null)
       await loadDay(currentDate)
       loadFlex()
+    } catch (err) {
+      reportConflict(err, session.id, 'save')
     } finally {
       setSaving(false)
     }
@@ -370,7 +401,12 @@ export default function DayView({
         console.error('Failed to toggle internal flag')
         return
       }
+      setSessionConflict(null)
       await loadDay(currentDate)
+    } catch (err) {
+      // The times are unchanged, but a session already stored overlapping
+      // another is still rejected by the server's overlap check.
+      reportConflict(err, session.id, 'toggle')
     } finally {
       setSaving(false)
     }
@@ -609,14 +645,22 @@ export default function DayView({
       }
 
       for (const session of data.day.sessions) {
-        const ok = await api.addSession({
-          day_id: d.id,
-          start_time: session.start_time,
-          end_time: session.end_time,
-          sort_order: (d.sessions?.length ?? 0),
-          is_internal: session.is_internal,
-          crosses_midnight: session.crosses_midnight,
-        })
+        let ok: boolean
+        try {
+          ok = await api.addSession({
+            day_id: d.id,
+            start_time: session.start_time,
+            end_time: session.end_time,
+            sort_order: (d.sessions?.length ?? 0),
+            is_internal: session.is_internal,
+            crosses_midnight: session.crosses_midnight,
+          })
+        } catch (err) {
+          // Yesterday's sessions overlapped each other; the ones copied before
+          // the conflict are kept.
+          reportConflict(err, 'add', 'copy')
+          break
+        }
         if (!ok) {
           console.error('workhours: failed to copy session', session)
           break
@@ -659,6 +703,18 @@ export default function DayView({
   const summary = dayData?.summary ?? null
   const lunchChecked = day?.lunch ?? false
   const sessions = day?.sessions ?? []
+  const overlaps = useMemo(() => findSessionOverlaps(day?.sessions ?? []), [day])
+
+  // Inline message for a save rejected because it overlaps another session.
+  const renderSessionConflict = (target: 'add' | number) => {
+    if (!activeConflict || activeConflict.target !== target) return null
+    return (
+      <p role="alert" className="flex items-start gap-1.5 text-xs text-red-400">
+        <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+        <span>{t(CONFLICT_MESSAGE_KEYS[activeConflict.cause], { start: activeConflict.conflict.start_time, end: activeConflict.conflict.end_time })}</span>
+      </p>
+    )
+  }
   const deductions = day?.deductions ?? []
 
   const sortedPresets = [...presets].sort((a, b) => {
@@ -934,100 +990,123 @@ export default function DayView({
               )
             })()}
 
+            {overlaps.pairs.length > 0 && (
+              <div role="status" className="rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-2 text-xs text-amber-300">
+                <p className="flex items-center gap-1.5 font-medium">
+                  <AlertTriangle size={14} className="shrink-0" aria-hidden="true" />
+                  {t('workhours:storedOverlapTitle')}
+                </p>
+                <ul className="mt-1 space-y-0.5 pl-5">
+                  {overlaps.pairs.map(([a, b]) => (
+                    <li key={`${a.id}-${b.id}`} className="font-mono">
+                      {t('workhours:storedOverlapWarning', { startA: a.start_time, endA: a.end_time, startB: b.start_time, endB: b.end_time })}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {sessions.length > 0 && (
               <div className="space-y-2">
                 {sessions.map(s => {
                   const mins = sessionMinutes(s) ?? 0
+                  const overlapping = overlaps.ids.has(s.id)
                   if (editSessionId === s.id) {
                     return (
-                      <div key={s.id} className="flex items-center gap-2 flex-wrap rounded-lg border border-blue-700/40 bg-gray-800 px-3 py-2">
-                        <TimePicker
-                          value={editStart}
-                          onChange={setEditStart}
-                          aria-label={t('workhours:startTime')}
-                        />
-                        <span className="text-gray-500 text-xs">→</span>
-                        <TimePicker
-                          value={editEnd}
-                          onChange={setEditEnd}
-                          aria-label={t('workhours:endTime')}
-                        />
-                        <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 select-none">
-                          <input
-                            type="checkbox"
-                            checked={editCrossesMidnight}
-                            onChange={e => setEditCrossesMidnight(e.target.checked)}
-                            className="accent-blue-500"
-                            aria-label={t('workhours:endsNextDay')}
+                      <div key={s.id} className="space-y-1">
+                        <div className={`flex items-center gap-2 flex-wrap rounded-lg border bg-gray-800 px-3 py-2 ${overlapping ? 'border-amber-500/60' : 'border-blue-700/40'}`}>
+                          <TimePicker
+                            value={editStart}
+                            onChange={v => { if (v !== editStart) setSessionConflict(null); setEditStart(v) }}
+                            aria-label={t('workhours:startTime')}
                           />
-                          <span className={editCrossesMidnight ? 'text-blue-300' : ''}>{t('workhours:endsNextDay')}</span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => handleSaveEditSession(s)}
-                          disabled={saving || !editStart || !editEnd}
-                          className="ml-auto text-green-400 hover:text-green-300 transition-colors disabled:opacity-40 cursor-pointer"
-                          aria-label={t('workhours:saveSession')}
-                          title={t('workhours:saveSession')}
-                        >
-                          <Check size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleCancelEditSession}
-                          disabled={saving}
-                          className="text-gray-500 hover:text-white transition-colors disabled:opacity-40 cursor-pointer"
-                          aria-label={t('workhours:cancelEditSession')}
-                          title={t('workhours:cancelEditSession')}
-                        >
-                          <X size={16} />
-                        </button>
+                          <span className="text-gray-500 text-xs">→</span>
+                          <TimePicker
+                            value={editEnd}
+                            onChange={v => { if (v !== editEnd) setSessionConflict(null); setEditEnd(v) }}
+                            aria-label={t('workhours:endTime')}
+                          />
+                          <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 select-none">
+                            <input
+                              type="checkbox"
+                              checked={editCrossesMidnight}
+                              onChange={e => { setSessionConflict(null); setEditCrossesMidnight(e.target.checked) }}
+                              className="accent-blue-500"
+                              aria-label={t('workhours:endsNextDay')}
+                            />
+                            <span className={editCrossesMidnight ? 'text-blue-300' : ''}>{t('workhours:endsNextDay')}</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEditSession(s)}
+                            disabled={saving || !editStart || !editEnd}
+                            className="ml-auto text-green-400 hover:text-green-300 transition-colors disabled:opacity-40 cursor-pointer"
+                            aria-label={t('workhours:saveSession')}
+                            title={t('workhours:saveSession')}
+                          >
+                            <Check size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCancelEditSession}
+                            disabled={saving}
+                            className="text-gray-500 hover:text-white transition-colors disabled:opacity-40 cursor-pointer"
+                            aria-label={t('workhours:cancelEditSession')}
+                            title={t('workhours:cancelEditSession')}
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                        {renderSessionConflict(s.id)}
                       </div>
                     )
                   }
                   return (
-                    <div key={s.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${s.is_internal ? 'bg-purple-900/40 border-purple-700/40' : 'bg-gray-800 border-transparent'}`}>
-                      <span className="text-white font-mono text-sm">{s.start_time}</span>
-                      <span className="text-gray-500 text-xs">→</span>
-                      <span className="text-white font-mono text-sm">{s.end_time}</span>
-                      {s.crosses_midnight && (
-                        <span
-                          className="rounded bg-blue-900/50 px-1 py-0.5 text-[0.65rem] font-medium text-blue-300"
-                          title={t('workhours:endsNextDayTitle')}
+                    <div key={s.id} className="space-y-1">
+                      <div className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${s.is_internal ? 'bg-purple-900/40' : 'bg-gray-800'} ${overlapping ? 'border-amber-500/60' : s.is_internal ? 'border-purple-700/40' : 'border-transparent'}`}>
+                        <span className="text-white font-mono text-sm">{s.start_time}</span>
+                        <span className="text-gray-500 text-xs">→</span>
+                        <span className="text-white font-mono text-sm">{s.end_time}</span>
+                        {s.crosses_midnight && (
+                          <span
+                            className="rounded bg-blue-900/50 px-1 py-0.5 text-[0.65rem] font-medium text-blue-300"
+                            title={t('workhours:endsNextDayTitle')}
+                          >
+                            {t('workhours:nextDayMarker')}
+                          </span>
+                        )}
+                        <span className="text-gray-400 text-xs ml-auto">{formatMins(mins)}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditSession(s)}
+                          disabled={saving}
+                          className="text-gray-500 hover:text-blue-400 transition-colors disabled:opacity-40 cursor-pointer"
+                          aria-label={t('workhours:editSession')}
+                          title={t('workhours:editSession')}
                         >
-                          {t('workhours:nextDayMarker')}
-                        </span>
-                      )}
-                      <span className="text-gray-400 text-xs ml-auto">{formatMins(mins)}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleStartEditSession(s)}
-                        disabled={saving}
-                        className="text-gray-500 hover:text-blue-400 transition-colors disabled:opacity-40 cursor-pointer"
-                        aria-label={t('workhours:editSession')}
-                        title={t('workhours:editSession')}
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleInternal(s)}
-                        disabled={saving}
-                        className={`transition-colors disabled:opacity-40 cursor-pointer ${s.is_internal ? 'text-purple-400 hover:text-purple-300' : 'text-gray-500 hover:text-purple-400'}`}
-                        aria-label={s.is_internal ? t('workhours:markExternal') : t('workhours:markInternal')}
-                        title={s.is_internal ? t('workhours:markExternal') : t('workhours:markInternal')}
-                      >
-                        <Building2 size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteSession(s.id)}
-                        disabled={saving}
-                        className="text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40 cursor-pointer"
-                        aria-label={t('workhours:removeSession')}
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                          <Pencil size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleInternal(s)}
+                          disabled={saving}
+                          className={`transition-colors disabled:opacity-40 cursor-pointer ${s.is_internal ? 'text-purple-400 hover:text-purple-300' : 'text-gray-500 hover:text-purple-400'}`}
+                          aria-label={s.is_internal ? t('workhours:markExternal') : t('workhours:markInternal')}
+                          title={s.is_internal ? t('workhours:markExternal') : t('workhours:markInternal')}
+                        >
+                          <Building2 size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSession(s.id)}
+                          disabled={saving}
+                          className="text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40 cursor-pointer"
+                          aria-label={t('workhours:removeSession')}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      {renderSessionConflict(s.id)}
                     </div>
                   )
                 })}
@@ -1044,20 +1123,20 @@ export default function DayView({
             <div className="flex items-center gap-2 flex-wrap">
               <TimePicker
                 value={newStart}
-                onChange={setNewStart}
+                onChange={v => { if (v !== newStart) setSessionConflict(null); setNewStart(v) }}
                 aria-label={t('workhours:startTime')}
               />
               <span className="text-gray-500 text-xs">→</span>
               <TimePicker
                 value={newEnd}
-                onChange={setNewEnd}
+                onChange={v => { if (v !== newEnd) setSessionConflict(null); setNewEnd(v) }}
                 aria-label={t('workhours:endTime')}
               />
               <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 select-none">
                 <input
                   type="checkbox"
                   checked={newCrossesMidnight}
-                  onChange={e => setNewCrossesMidnight(e.target.checked)}
+                  onChange={e => { setSessionConflict(null); setNewCrossesMidnight(e.target.checked) }}
                   className="accent-blue-500"
                   aria-label={t('workhours:endsNextDay')}
                 />
@@ -1067,7 +1146,7 @@ export default function DayView({
                 <input
                   type="checkbox"
                   checked={newIsInternal}
-                  onChange={e => setNewIsInternal(e.target.checked)}
+                  onChange={e => { setSessionConflict(null); setNewIsInternal(e.target.checked) }}
                   className="accent-purple-500"
                   aria-label={t('workhours:markInternal')}
                 />
@@ -1084,6 +1163,7 @@ export default function DayView({
                 {t('workhours:addSession')}
               </button>
             </div>
+            {renderSessionConflict('add')}
           </section>
 
           {/* Deductions */}

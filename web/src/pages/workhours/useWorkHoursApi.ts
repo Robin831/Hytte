@@ -8,12 +8,36 @@ import type {
   LeaveType,
   MonthSummaryResponse,
   PunchSession,
+  SessionConflictError,
   WeekSummaryResponse,
   WorkDay,
   WorkDeductionPreset,
 } from './types'
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
+
+// Thrown by addSession/updateSession when the server rejects the save with 409
+// because the times overlap another session on the same day. `conflict` is the
+// existing session that blocked it.
+export class SessionConflict extends Error {
+  conflict: SessionConflictError['conflict']
+
+  constructor(body: SessionConflictError) {
+    super(body.error)
+    this.name = 'SessionConflict'
+    this.conflict = body.conflict
+  }
+}
+
+// Throws SessionConflict for a 409 carrying a conflict session. Any other
+// response (including a 409 with an unparseable body) is left to the caller.
+async function throwIfSessionConflict(r: Response): Promise<void> {
+  if (r.status !== 409) return
+  const data = (await r.json().catch(() => null)) as Partial<SessionConflictError> | null
+  if (data && typeof data.conflict === 'object' && data.conflict !== null) {
+    throw new SessionConflict({ error: data.error ?? '', conflict: data.conflict })
+  }
+}
 
 interface SessionInput {
   day_id: number
@@ -65,6 +89,7 @@ export interface WorkHoursApi {
   getDay(date: string, signal?: AbortSignal): Promise<DayDetail | null>
   saveDay(body: { date: string; lunch: boolean }): Promise<DayDetail | null>
   // ── Sessions ──
+  // addSession and updateSession throw SessionConflict on a 409 overlap.
   addSession(body: SessionInput): Promise<boolean>
   updateSession(id: number, body: SessionUpdate): Promise<boolean>
   deleteSession(id: number): Promise<boolean>
@@ -127,6 +152,7 @@ export function useWorkHoursApi(): WorkHoursApi {
         headers: JSON_HEADERS,
         body: JSON.stringify(body),
       })
+      await throwIfSessionConflict(r)
       return r.ok
     },
     async updateSession(id, body) {
@@ -136,6 +162,7 @@ export function useWorkHoursApi(): WorkHoursApi {
         headers: JSON_HEADERS,
         body: JSON.stringify(body),
       })
+      await throwIfSessionConflict(r)
       return r.ok
     },
     async deleteSession(id) {
