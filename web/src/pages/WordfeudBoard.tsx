@@ -141,6 +141,8 @@ export default function WordfeudBoard() {
   const [finishedExpanded, setFinishedExpanded] = useState(false)
   const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
   const [loadingGames, setLoadingGames] = useState(false)
+  // Bumped by refresh so the open game re-fetches too (opponent may have moved)
+  const [gameReloadKey, setGameReloadKey] = useState(0)
   const [loadingGame, setLoadingGame] = useState(false)
   const [gamesAvailable, setGamesAvailable] = useState<boolean | null>(null)
   const [gamesError, setGamesError] = useState<'not_connected' | 'auth_expired' | 'unknown' | null>(null)
@@ -191,6 +193,7 @@ export default function WordfeudBoard() {
     const controller = new AbortController()
     gamesControllerRef.current = controller
     fetchGames(controller.signal)
+    setGameReloadKey(k => k + 1)
   }, [fetchGames])
 
   // Load game state when a game is selected
@@ -266,7 +269,7 @@ export default function WordfeudBoard() {
       cancelled = true
       controller.abort()
     }
-  }, [selectedGameId])
+  }, [selectedGameId, gameReloadKey])
 
   // Focus the selected cell
   useEffect(() => {
@@ -608,6 +611,46 @@ export default function WordfeudBoard() {
     // game list + tile tracker move into a left rail so pick-game → board →
     // moves is one glance with nothing below the fold.
     <div className="flex flex-col gap-6 xl:grid xl:grid-cols-[280px_minmax(0,1fr)] xl:items-start">
+      {/* Mobile quick switcher: your-turn games as chips plus refresh, so
+          changing game doesn't require scrolling to the list at the bottom.
+          Sticky at this level (not inside the board column) so it stays in
+          view while scrolling the solver moves below the board. top-14 on
+          phones clears the fixed sidebar menu button (main has pt-14). */}
+      {gamesAvailable && (
+        <div className="sticky top-14 md:top-0 z-30 -mx-4 px-4 md:-mx-8 md:px-8 -mb-3 py-2 bg-gray-900/95 backdrop-blur-sm flex items-center gap-2 lg:hidden">
+          <div
+            className="flex flex-1 min-w-0 gap-1.5 overflow-x-auto"
+            role="group"
+            aria-label={t('board.quickSwitch')}
+          >
+            {games.filter(g => g.is_my_turn).map(game => (
+              <button
+                key={game.id}
+                type="button"
+                onClick={() => setSelectedGameId(game.id)}
+                disabled={loadingGame}
+                className={`shrink-0 rounded-full px-3 py-1 text-xs transition-colors cursor-pointer disabled:opacity-50 ${
+                  selectedGameId === game.id
+                    ? 'bg-blue-900/60 border border-blue-700 text-blue-200'
+                    : 'bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700'
+                }`}
+              >
+                {game.opponent}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={handleRefreshGames}
+            disabled={loadingGames}
+            className="shrink-0 p-1.5 text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-full transition-colors cursor-pointer disabled:opacity-50"
+            title={t('gameList.refresh')}
+            aria-label={t('gameList.refresh')}
+          >
+            <RefreshCw size={14} className={loadingGames ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      )}
       {/* Board and solver side by side so move hover previews stay in view */}
       <div className="flex flex-col lg:flex-row gap-6 xl:col-start-2 xl:row-start-1">
         {/* Board. The column is pinned to the grid's rendered width at lg+
@@ -651,31 +694,6 @@ export default function WordfeudBoard() {
               <span className={`ml-auto text-sm font-medium ${activeGame.is_my_turn ? 'text-green-400' : 'text-gray-400'}`}>
                 {activeGame.is_my_turn ? t('yourTurn') : t('theirTurn')}
               </span>
-            </div>
-          )}
-          {/* Mobile quick switcher: your-turn games as chips, so changing game
-              doesn't require scrolling to the list at the bottom */}
-          {games.some(g => g.is_my_turn) && (
-            <div
-              className="flex gap-1.5 overflow-x-auto pb-1 mb-3 lg:hidden"
-              role="group"
-              aria-label={t('board.quickSwitch')}
-            >
-              {games.filter(g => g.is_my_turn).map(game => (
-                <button
-                  key={game.id}
-                  type="button"
-                  onClick={() => setSelectedGameId(game.id)}
-                  disabled={loadingGame}
-                  className={`shrink-0 rounded-full px-3 py-1 text-xs transition-colors cursor-pointer disabled:opacity-50 ${
-                    selectedGameId === game.id
-                      ? 'bg-blue-900/60 border border-blue-700 text-blue-200'
-                      : 'bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700'
-                  }`}
-                >
-                  {game.opponent}
-                </button>
-              ))}
             </div>
           )}
           <div

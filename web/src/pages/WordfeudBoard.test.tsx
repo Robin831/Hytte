@@ -315,6 +315,34 @@ describe('WordfeudBoard layout behaviors', () => {
     })
   })
 
+  it('refreshes the game list and the open game from the quick-switch bar', async () => {
+    const fetchMock = gamesFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    renderBoard()
+
+    const group = await screen.findByRole('group', { name: 'Quick game switch' })
+    await act(async () => {
+      fireEvent.click(within(group).getByRole('button', { name: 'kari' }))
+    })
+    await waitFor(() => {
+      expect((screen.getByLabelText('Your rack') as HTMLInputElement).value).toBe('A')
+    })
+
+    const calls = (re: RegExp) => fetchMock.mock.calls.filter(([u]) => re.test(String(u))).length
+    const listBefore = calls(/\/api\/wordfeud\/games$/)
+    const gameBefore = calls(/\/api\/wordfeud\/games\/42$/)
+
+    const bar = group.parentElement as HTMLElement
+    await act(async () => {
+      fireEvent.click(within(bar).getByRole('button', { name: 'gameList.refresh' }))
+    })
+
+    await waitFor(() => {
+      expect(calls(/\/api\/wordfeud\/games$/)).toBe(listBefore + 1)
+      expect(calls(/\/api\/wordfeud\/games\/42$/)).toBe(gameBefore + 1)
+    })
+  })
+
   it('scrolls the board into view when a move is selected on a narrow screen', async () => {
     vi.stubGlobal('fetch', mockFetch())
     const scrolls: unknown[] = []
