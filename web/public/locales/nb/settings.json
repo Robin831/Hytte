@@ -269,6 +269,13 @@
     "enableScanPush": "Slå på varsler om skanneresultater",
     "disableScanPush": "Slå av varsler om skanneresultater"
   },
+  "offers": {
+    "heading": "Mattilbud",
+    "notifyTitle": "Varsle meg om tilbud som matcher",
+    "notifyDescription": "Få et push når nye tilbud matcher varene du ser etter. Krever et push-abonnement — slå på push-varsler under Varsler først.",
+    "enableNotify": "Slå på varsler om tilbud som matcher",
+    "disableNotify": "Slå av varsler om tilbud som matcher"
+  },
   "kioskTokens": {
     "heading": "Kiosktokens",
     "description": "Administrer tilgangstokens for offentlig kioskvisning",

@@ -269,6 +269,13 @@
     "enableScanPush": "Enable scan result notifications",
     "disableScanPush": "Disable scan result notifications"
   },
+  "offers": {
+    "heading": "Grocery Offers",
+    "notifyTitle": "Notify me about matching offers",
+    "notifyDescription": "Get a push when new offers match the items you're looking for. Requires a push subscription — turn on push notifications under Notifications first.",
+    "enableNotify": "Enable notifications for matching offers",
+    "disableNotify": "Disable notifications for matching offers"
+  },
   "kioskTokens": {
     "heading": "Kiosk Tokens",
     "description": "Manage access tokens for the public kiosk display",
