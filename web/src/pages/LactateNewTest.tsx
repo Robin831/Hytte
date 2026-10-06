@@ -7,6 +7,7 @@ import { formatDate } from '../utils/formatDate'
 import type { Workout } from '../types/training'
 import LactateImportDialog from '../components/LactateImportDialog'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { localDateString } from '../lib/dates'
 import { Skeleton } from '../components/ui/skeleton'
 import { useWizardDraft } from '../hooks/useWizardDraft'
 import { useUnloadWarning } from '../hooks/useUnloadWarning'
@@ -24,11 +25,6 @@ type WizardStep = 'protocol' | 'stages' | 'review'
 type Mode = 'manual' | 'import'
 
 let _stageIdCounter = 0
-
-function localDateString() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 const defaultProtocol = {
   date: localDateString(),
