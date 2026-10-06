@@ -60,7 +60,8 @@ interface Props {
   wind?: WindReadings | null
   forecast?: ForecastData | null
   // Night mode: render the reduced-contrast palette so a wall-mounted screen
-  // does not light up a dark room. Defaults to the normal daytime palette.
+  // does not light up a dark room, in a compact layout that gives up vertical
+  // space to the rest of the page. Defaults to the normal daytime layout.
   dimmed?: boolean
 }
 
@@ -105,19 +106,23 @@ export default function KioskWeather({ outdoor, indoor, wind, forecast, dimmed =
     return result
   }, [forecast, now])
 
-  // The weather symbols are SVG images, so a text colour cannot touch them —
-  // knock them back with opacity instead, the same way the departure line
-  // badges are dimmed.
-  const iconOpacity = dimmed ? 'opacity-40' : ''
+  // The night variant is also the compact one: smaller temperatures, tighter
+  // spacing and forecast cards that fold the icon and temperature onto one
+  // line. The sizes stop at text-3xl / text-sm so the readings stay legible
+  // from across the room.
+  const padding = dimmed ? 'py-2' : 'py-3'
+  const gap = dimmed ? 'gap-5' : 'gap-6'
+  const marginBottom = dimmed ? 'mb-2' : 'mb-3'
+  const tempSize = dimmed ? 'text-3xl' : 'text-4xl'
 
   return (
-    <div className="px-4 py-3" data-dimmed={dimmed ? 'true' : 'false'}>
+    <div className={`px-4 ${padding}`} data-dimmed={dimmed ? 'true' : 'false'}>
       {/* Netatmo readings — outdoor + indoor side by side */}
-      <div className="flex gap-6 mb-3">
+      <div className={`flex ${gap} ${marginBottom}`}>
         {/* Outdoor */}
         {outdoor != null ? (
           <div className="flex items-center gap-3">
-            <div className={`text-4xl font-bold ${dimmed ? 'text-gray-500' : 'text-white'}`}>
+            <div className={`${tempSize} font-bold ${dimmed ? 'text-gray-500' : 'text-white'}`}>
               {outdoor.Temperature.toFixed(1)}°
             </div>
             <div className={`flex flex-col gap-0.5 text-sm ${dimmed ? 'text-gray-600' : 'text-gray-300'}`}>
@@ -135,7 +140,7 @@ export default function KioskWeather({ outdoor, indoor, wind, forecast, dimmed =
         {/* Indoor */}
         {indoor != null && (
           <div className="flex items-center gap-3">
-            <div className={`text-4xl font-bold ${dimmed ? 'text-gray-600' : 'text-gray-300'}`}>
+            <div className={`${tempSize} font-bold ${dimmed ? 'text-gray-600' : 'text-gray-300'}`}>
               {indoor.Temperature.toFixed(1)}°
             </div>
             <div className={`flex flex-col gap-0.5 text-sm ${dimmed ? 'text-gray-600' : 'text-gray-300'}`}>
@@ -159,22 +164,32 @@ export default function KioskWeather({ outdoor, indoor, wind, forecast, dimmed =
       {/* 6-hour forecast strip */}
       {hourlyForecast.length > 0 && (
         <div className="flex gap-2 overflow-x-auto">
-          {hourlyForecast.map((h) => (
-            <div
-              key={h.time}
-              className={`flex flex-col items-center rounded-lg px-3 py-2 min-w-[64px] ${
-                dimmed ? 'bg-gray-900' : 'bg-gray-800'
-              }`}
-            >
-              <span className={`text-xs mb-1 ${dimmed ? 'text-gray-700' : 'text-gray-400'}`}>
-                {h.hour}
-              </span>
-              <span className={iconOpacity}>{getWeatherIcon(h.symbolCode, 22)}</span>
-              <span className={`text-sm mt-1 ${dimmed ? 'text-gray-500' : 'text-white'}`}>
-                {h.temp}°
-              </span>
-            </div>
-          ))}
+          {hourlyForecast.map((h) =>
+            dimmed ? (
+              <div
+                key={h.time}
+                className="flex flex-col items-center rounded-lg px-2 py-1 min-w-[64px] bg-gray-900"
+              >
+                <span className="text-xs text-gray-700">{h.hour}</span>
+                <div className="flex items-center gap-1">
+                  {/* The weather symbols are SVG images, so a text colour cannot
+                      touch them — knock them back with opacity instead, the same
+                      way the departure line badges are dimmed. */}
+                  <span className="opacity-40">{getWeatherIcon(h.symbolCode, 18)}</span>
+                  <span className="text-sm text-gray-500">{h.temp}°</span>
+                </div>
+              </div>
+            ) : (
+              <div
+                key={h.time}
+                className="flex flex-col items-center rounded-lg px-3 py-2 min-w-[64px] bg-gray-800"
+              >
+                <span className="text-xs mb-1 text-gray-400">{h.hour}</span>
+                {getWeatherIcon(h.symbolCode, 22)}
+                <span className="text-sm mt-1 text-white">{h.temp}°</span>
+              </div>
+            ),
+          )}
         </div>
       )}
     </div>
