@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"time"
 
@@ -47,9 +49,29 @@ func NewNotifier(db *sql.DB) *Notifier {
 	}
 }
 
-// NotifyNewMatches runs the notify pass with production dependencies.
-func NotifyNewMatches(ctx context.Context, db *sql.DB, newOfferIDs []string, now time.Time) error {
-	return NewNotifier(db).Notify(ctx, newOfferIDs, now)
+// RecentWindow is how long after its first insert an offer stays eligible
+// for a watchlist push. A day covers any quiet-hours window (the daily sync
+// runs at 06:30, inside many overnight windows) and leaves room for retries
+// after a failed send, without ever pushing week-old catalog entries.
+const RecentWindow = 24 * time.Hour
+
+// NotifyRecent runs the notify pass with production dependencies over every
+// offer first seen within RecentWindow before now.
+func NotifyRecent(ctx context.Context, db *sql.DB, now time.Time) error {
+	return NewNotifier(db).NotifyRecent(ctx, now)
+}
+
+// NotifyRecent runs Notify over every offer first seen within RecentWindow
+// before now. Running it repeatedly is safe: offers already pushed to a user
+// are recorded in offer_notifications and skipped, so each pass only delivers
+// what earlier passes held back (quiet hours, failed sends) or what arrived
+// since.
+func (n *Notifier) NotifyRecent(ctx context.Context, now time.Time) error {
+	ids, err := RecentOfferIDs(ctx, n.DB, now.Add(-RecentWindow))
+	if err != nil {
+		return fmt.Errorf("offers notify: %w", err)
+	}
+	return n.Notify(ctx, ids, now)
 }
 
 // defaultSend pushes via push.SendToUser and treats the send as successful
@@ -69,7 +91,7 @@ func defaultSend(db *sql.DB, userID int64, payload []byte) error {
 			continue
 		}
 		if r.Err != nil {
-			lastErr = r.Err
+			lastErr = redactPushErr(r.Err)
 		} else {
 			lastErr = fmt.Errorf("push endpoint returned %d", r.StatusCode)
 		}
@@ -84,6 +106,18 @@ func defaultSend(db *sql.DB, userID int64, payload []byte) error {
 	return fmt.Errorf("no subscription accepted the push (%d attempted): %w", len(results), lastErr)
 }
 
+// redactPushErr strips the request URL from transport errors. push.sendPush
+// wraps the *url.Error from the HTTP client, whose text includes the
+// subscription endpoint — a bearer-style address that is sensitive user data
+// and must not reach the logs.
+func redactPushErr(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return fmt.Errorf("send request: %s: %w", ue.Op, ue.Err)
+	}
+	return err
+}
+
 // vapidKeysExist reports whether the server's VAPID key pair has been
 // created. Keys are generated lazily when a browser first subscribes, so a
 // missing row means nobody can have a working subscription yet.
@@ -96,7 +130,7 @@ func vapidKeysExist(db *sql.DB) (bool, error) {
 }
 
 // Notify sends at most one push per eligible user summarising which of
-// newOfferIDs match their watchlist. Eligible users have the offers feature
+// offerIDs match their watchlist and have not been pushed to them yet. Eligible users have the offers feature
 // (admins always do), offers_notify = "true", at least one watchlist keyword
 // and at least one push subscription.
 //
@@ -104,36 +138,32 @@ func vapidKeysExist(db *sql.DB) (bool, error) {
 // offer the page would not highlight. Offers already recorded in
 // offer_notifications for the user are dropped, and the remaining ones are
 // marked only after a successful send, so a delivered offer is never pushed
-// twice and a failed send leaves them unmarked (pushed again only if the same
-// ids are passed to a later pass).
+// twice and a failed send leaves them unmarked for a later pass.
 //
 // Quiet hours: a user inside their quiet window is skipped and the matched
-// offers are left unmarked; no retry is scheduled. Only newly inserted offer
-// ids are ever considered, so an offer that arrives during quiet hours is not
-// pushed later — it is still highlighted on the page. This keeps quiet hours
-// silent without a deferred-delivery queue and avoids a flood of stale
-// matches being bundled into a later push.
+// offers are left unmarked. They are not lost: NotifyRecent re-offers every
+// offer first seen within RecentWindow, so the periodic pass delivers them
+// once the window ends.
 //
 // Per-user failures are logged and the loop continues. An error is returned
-// only when the shared inputs (offers, candidate users) cannot be loaded.
+// when a shared input (VAPID keys, offers, candidate users) cannot be read.
 // Missing VAPID keys are a logged no-op.
-func (n *Notifier) Notify(ctx context.Context, newOfferIDs []string, now time.Time) error {
-	if len(newOfferIDs) == 0 {
+func (n *Notifier) Notify(ctx context.Context, offerIDs []string, now time.Time) error {
+	if len(offerIDs) == 0 {
 		return nil
 	}
 	if n.VAPIDConfigured != nil {
 		ok, err := n.VAPIDConfigured(n.DB)
 		if err != nil {
-			log.Printf("offers: notify: check vapid keys: %v", err)
-			return nil
+			return fmt.Errorf("offers notify: check vapid keys: %w", err)
 		}
 		if !ok {
-			log.Printf("offers: notify: VAPID keys not configured, skipping %d new offers", len(newOfferIDs))
+			log.Printf("offers: notify: VAPID keys not configured, skipping %d new offers", len(offerIDs))
 			return nil
 		}
 	}
 
-	newOffers, err := loadOffersByID(ctx, n.DB, newOfferIDs, now)
+	newOffers, err := OffersByID(ctx, n.DB, offerIDs, now)
 	if err != nil {
 		return err
 	}
@@ -238,50 +268,6 @@ func buildNotification(count int, keywords []string) push.Notification {
 		URL:   "/offers",
 		Tag:   "offers-matches",
 	}
-}
-
-// loadOffersByID returns the stored offers among ids that have not already
-// expired at now. Offers whose window starts in the future are kept: they
-// are new catalog entries the user will want to know about.
-func loadOffersByID(ctx context.Context, db *sql.DB, ids []string, now time.Time) ([]Offer, error) {
-	today := now.UTC().Format("2006-01-02")
-	var out []Offer
-	for start := 0; start < len(ids); start += notifiedLookupChunk {
-		end := min(start+notifiedLookupChunk, len(ids))
-		chunk := ids[start:end]
-
-		args := make([]any, 0, len(chunk)+1)
-		for _, id := range chunk {
-			args = append(args, id)
-		}
-		args = append(args, today)
-		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(chunk)), ",")
-		rows, err := db.QueryContext(ctx, `
-			SELECT id, dealer_id, dealer_name, heading, description, price, pre_price,
-			       currency, unit_price, unit_label, image_url, run_from, run_till
-			FROM shop_offers
-			WHERE id IN (`+placeholders+`) AND run_till >= ?
-			ORDER BY id ASC
-		`, args...)
-		if err != nil {
-			return nil, fmt.Errorf("offers notify: query new offers: %w", err)
-		}
-		for rows.Next() {
-			var o Offer
-			if err := rows.Scan(&o.ID, &o.DealerID, &o.DealerName, &o.Heading, &o.Description, &o.Price,
-				&o.PrePrice, &o.Currency, &o.UnitPrice, &o.UnitLabel, &o.ImageURL, &o.RunFrom, &o.RunTill); err != nil {
-				rows.Close()
-				return nil, fmt.Errorf("offers notify: scan offer: %w", err)
-			}
-			out = append(out, o)
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return nil, fmt.Errorf("offers notify: iterate offers: %w", err)
-		}
-	}
-	return out, nil
 }
 
 // notifyCandidates returns the ids of users who have the offers feature

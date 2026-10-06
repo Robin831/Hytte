@@ -126,7 +126,9 @@ func HandleDeleteWatch(db *sql.DB) http.HandlerFunc {
 const refreshTimeout = 3 * time.Minute
 
 // HandleRefresh triggers a synchronous sync sweep. Admin-only (registered
-// behind RequireAdmin) — the scheduled daily run is the normal path.
+// behind RequireAdmin) — the scheduled daily run is the normal path. It does
+// not push watchlist matches itself; RunNotifyLoop delivers them within
+// NotifyInterval, so the response never waits on push delivery.
 func HandleRefresh(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), refreshTimeout)

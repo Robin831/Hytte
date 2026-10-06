@@ -11,7 +11,7 @@ import (
 )
 
 // UpsertOffers replaces or inserts the given offers in one transaction,
-// stamping fetched_at. Calling it repeatedly with the same ids leaves one row
+// stamping fetched_at (and first_seen_at for new rows). Calling it repeatedly with the same ids leaves one row
 // per id. Only the first call reports an id as inserted.
 // It returns the ids of offers that did not exist before this call (in input
 // order); offers that were merely updated are not included. The slice is only
@@ -28,8 +28,8 @@ func UpsertOffers(ctx context.Context, db *sql.DB, offers []Offer) ([]string, er
 
 	insertStmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO shop_offers (id, dealer_id, dealer_name, heading, description, price, pre_price,
-			currency, unit_price, unit_label, image_url, run_from, run_till, fetched_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			currency, unit_price, unit_label, image_url, run_from, run_till, fetched_at, first_seen_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO NOTHING
 	`)
 	if err != nil {
@@ -62,7 +62,7 @@ func UpsertOffers(ctx context.Context, db *sql.DB, offers []Offer) ([]string, er
 	var inserted []string
 	for _, o := range offers {
 		res, err := insertStmt.ExecContext(ctx, o.ID, o.DealerID, o.DealerName, o.Heading, o.Description,
-			o.Price, o.PrePrice, o.Currency, o.UnitPrice, o.UnitLabel, o.ImageURL, o.RunFrom, o.RunTill, now)
+			o.Price, o.PrePrice, o.Currency, o.UnitPrice, o.UnitLabel, o.ImageURL, o.RunFrom, o.RunTill, now, now)
 		if err != nil {
 			return nil, fmt.Errorf("offers insert %s: %w", o.ID, err)
 		}
@@ -85,13 +85,27 @@ func UpsertOffers(ctx context.Context, db *sql.DB, offers []Offer) ([]string, er
 	return inserted, nil
 }
 
+// offerColumns is the shop_offers column list read into an Offer by
+// scanOffer. Keep the two in sync.
+const offerColumns = `id, dealer_id, dealer_name, heading, description, price, pre_price,
+	currency, unit_price, unit_label, image_url, run_from, run_till`
+
+// scanOffer scans one row selected with offerColumns, followed by any extra
+// destinations for columns appended after them.
+func scanOffer(rows *sql.Rows, extra ...any) (Offer, error) {
+	var o Offer
+	dest := append([]any{&o.ID, &o.DealerID, &o.DealerName, &o.Heading, &o.Description, &o.Price,
+		&o.PrePrice, &o.Currency, &o.UnitPrice, &o.UnitLabel, &o.ImageURL, &o.RunFrom, &o.RunTill}, extra...)
+	err := rows.Scan(dest...)
+	return o, err
+}
+
 // ListCurrent returns all offers whose validity window includes today,
 // unranked (ranking is per-user).
 func ListCurrent(db *sql.DB) ([]Offer, error) {
 	today := time.Now().UTC().Format("2006-01-02")
 	rows, err := db.Query(`
-		SELECT id, dealer_id, dealer_name, heading, description, price, pre_price,
-		       currency, unit_price, unit_label, image_url, run_from, run_till, fetched_at
+		SELECT `+offerColumns+`, fetched_at
 		FROM shop_offers
 		WHERE run_till >= ? AND run_from <= ?
 		ORDER BY dealer_id ASC, heading ASC
@@ -103,16 +117,72 @@ func ListCurrent(db *sql.DB) ([]Offer, error) {
 
 	out := []Offer{}
 	for rows.Next() {
-		var o Offer
 		var fetchedAt string
-		if err := rows.Scan(&o.ID, &o.DealerID, &o.DealerName, &o.Heading, &o.Description, &o.Price,
-			&o.PrePrice, &o.Currency, &o.UnitPrice, &o.UnitLabel, &o.ImageURL, &o.RunFrom, &o.RunTill, &fetchedAt); err != nil {
+		o, err := scanOffer(rows, &fetchedAt)
+		if err != nil {
 			return nil, fmt.Errorf("scan offer: %w", err)
 		}
 		o.FetchedAt, _ = time.Parse(time.RFC3339, fetchedAt)
 		out = append(out, o)
 	}
 	return out, rows.Err()
+}
+
+// OffersByID returns the stored offers among ids that have not already
+// expired at now, ordered by id. Offers whose window starts in the future are
+// kept: they are new catalog entries a user will want to know about.
+func OffersByID(ctx context.Context, db *sql.DB, ids []string, now time.Time) ([]Offer, error) {
+	today := now.UTC().Format("2006-01-02")
+	var out []Offer
+	err := forEachIDChunk(ids, func(placeholders string, idArgs []any) error {
+		rows, err := db.QueryContext(ctx, `
+			SELECT `+offerColumns+`
+			FROM shop_offers
+			WHERE id IN (`+placeholders+`) AND run_till >= ?
+			ORDER BY id ASC
+		`, append(idArgs, today)...)
+		if err != nil {
+			return fmt.Errorf("query offers by id: %w", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			o, err := scanOffer(rows)
+			if err != nil {
+				return fmt.Errorf("scan offer: %w", err)
+			}
+			out = append(out, o)
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate offers by id: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// RecentOfferIDs returns the ids of offers first inserted at or after since,
+// ordered by id.
+func RecentOfferIDs(ctx context.Context, db *sql.DB, since time.Time) ([]string, error) {
+	rows, err := db.QueryContext(ctx,
+		"SELECT id FROM shop_offers WHERE first_seen_at >= ? ORDER BY id ASC",
+		since.UTC().Format(time.RFC3339))
+	if err != nil {
+		return nil, fmt.Errorf("query recent offers: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan recent offer: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // PurgeExpired deletes offers whose validity ended more than seven days ago,
@@ -150,39 +220,51 @@ func PurgeExpired(ctx context.Context, db *sql.DB) (int64, error) {
 // large offer batches stay well under SQLite's bound-variable limit.
 const notifiedLookupChunk = 500
 
-// NotifiedOfferIDs returns the subset of offerIDs the user has already been
-// notified about. The map only contains ids that were found (all true).
-func NotifiedOfferIDs(ctx context.Context, db *sql.DB, userID int64, offerIDs []string) (map[string]bool, error) {
-	out := make(map[string]bool)
-	for start := 0; start < len(offerIDs); start += notifiedLookupChunk {
-		end := min(start+notifiedLookupChunk, len(offerIDs))
-		chunk := offerIDs[start:end]
-
+// forEachIDChunk calls fn once per chunk of at most notifiedLookupChunk ids,
+// passing a "?,?,..." placeholder list and the chunk as query args. It stops
+// at the first error.
+func forEachIDChunk(ids []string, fn func(placeholders string, args []any) error) error {
+	for start := 0; start < len(ids); start += notifiedLookupChunk {
+		end := min(start+notifiedLookupChunk, len(ids))
+		chunk := ids[start:end]
 		args := make([]any, 0, len(chunk)+1)
-		args = append(args, userID)
 		for _, id := range chunk {
 			args = append(args, id)
 		}
 		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(chunk)), ",")
+		if err := fn(placeholders, args); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// NotifiedOfferIDs returns the subset of offerIDs the user has already been
+// notified about. The map only contains ids that were found (all true).
+func NotifiedOfferIDs(ctx context.Context, db *sql.DB, userID int64, offerIDs []string) (map[string]bool, error) {
+	out := make(map[string]bool)
+	err := forEachIDChunk(offerIDs, func(placeholders string, idArgs []any) error {
 		rows, err := db.QueryContext(ctx,
 			"SELECT offer_id FROM offer_notifications WHERE user_id = ? AND offer_id IN ("+placeholders+")",
-			args...)
+			append([]any{userID}, idArgs...)...)
 		if err != nil {
-			return nil, fmt.Errorf("query notified offers: %w", err)
+			return fmt.Errorf("query notified offers: %w", err)
 		}
+		defer rows.Close()
 		for rows.Next() {
 			var id string
 			if err := rows.Scan(&id); err != nil {
-				rows.Close()
-				return nil, fmt.Errorf("scan notified offer: %w", err)
+				return fmt.Errorf("scan notified offer: %w", err)
 			}
 			out[id] = true
 		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return nil, fmt.Errorf("iterate notified offers: %w", err)
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("iterate notified offers: %w", err)
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }

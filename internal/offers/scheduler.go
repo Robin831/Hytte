@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -59,12 +60,6 @@ func Sync(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	// The upsert has committed, so the new offers are stored whatever happens
-	// next. Notify before the purge result is inspected: a purge failure must
-	// not cause freshly inserted offers to be skipped forever (they will not
-	// be "new" on the next sync).
-	defer runNotify(ctx, db, inserted)
-
 	purged, err := PurgeExpired(ctx, db)
 	if err != nil {
 		return err
@@ -74,26 +69,48 @@ func Sync(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-// notifyTimeout bounds the push pass that follows a sync.
+// NotifyInterval is how often the background notify pass runs. It bounds the
+// delay between quiet hours ending (or a manual refresh) and the push.
+const NotifyInterval = 15 * time.Minute
+
+// notifyTimeout bounds a single notify pass.
 const notifyTimeout = 2 * time.Minute
 
-// notifyNewMatches is the notify pass run after every sync (scheduled,
-// startup warm-run and admin refresh alike). Swappable in tests.
-var notifyNewMatches = NotifyNewMatches
+// notifyMu serialises notify passes so the post-sync pass and the periodic
+// pass cannot both push the same unmarked offers.
+var notifyMu sync.Mutex
 
-// runNotify pushes watchlist matches for newly inserted offers. Errors are
-// only logged: notifications never change the sync result or roll back the
-// stored offers. It detaches from the caller's cancellation (a long sweep may
-// have nearly exhausted the sync deadline, or the admin request may be gone)
-// but keeps its own timeout.
-func runNotify(ctx context.Context, db *sql.DB, inserted []string) {
-	if len(inserted) == 0 {
-		return
-	}
-	nctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), notifyTimeout)
+// notifyRecent is the pass RunNotifyPass executes. Swappable in tests.
+var notifyRecent = NotifyRecent
+
+// RunNotifyPass pushes watchlist matches for offers first seen within
+// RecentWindow. Errors are only logged: notifications never affect syncing.
+// The pass is bounded by notifyTimeout and stops early when ctx is cancelled
+// (server shutdown); anything it did not get to is picked up by a later pass.
+func RunNotifyPass(ctx context.Context, db *sql.DB) {
+	notifyMu.Lock()
+	defer notifyMu.Unlock()
+	nctx, cancel := context.WithTimeout(ctx, notifyTimeout)
 	defer cancel()
-	if err := notifyNewMatches(nctx, db, inserted, time.Now()); err != nil {
-		log.Printf("offers: notify new matches: %v", err)
+	if err := notifyRecent(nctx, db, time.Now()); err != nil {
+		log.Printf("offers: notify pass: %v", err)
+	}
+}
+
+// RunNotifyLoop runs RunNotifyPass every interval until ctx is cancelled.
+// Sync itself never pushes, so this loop is what delivers matches from the
+// startup warm-run and admin refreshes, and what retries matches held back by
+// quiet hours or a failed send.
+func RunNotifyLoop(ctx context.Context, db *sql.DB, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			RunNotifyPass(ctx, db)
+		}
 	}
 }
 

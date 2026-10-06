@@ -3257,6 +3257,23 @@ func createSchema(db *sql.DB) error {
 		return fmt.Errorf("create live_sessions share index: %w", err)
 	}
 
+	// Add first_seen_at to shop_offers (Hytte-x043y): when an offer was first
+	// inserted (fetched_at is refreshed on every sync). The watchlist notify
+	// pass retries recent arrivals that quiet hours or a failed send held
+	// back. Rows that predate the column keep '' and are never "recent".
+	var hasFirstSeen int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('shop_offers') WHERE name = 'first_seen_at'`).Scan(&hasFirstSeen); err != nil {
+		return fmt.Errorf("check shop_offers first_seen_at column: %w", err)
+	}
+	if hasFirstSeen == 0 {
+		if _, err := db.Exec(`ALTER TABLE shop_offers ADD COLUMN first_seen_at TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add shop_offers first_seen_at column: %w", err)
+		}
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_shop_offers_first_seen ON shop_offers(first_seen_at)`); err != nil {
+		return fmt.Errorf("create shop_offers first_seen_at index: %w", err)
+	}
+
 	// Add sign-in metadata to sessions (Hytte-8mg76): the user agent and client
 	// IP recorded when the session was created, so the data export can tell a
 	// user which device each session came from. Both are encrypted at rest;

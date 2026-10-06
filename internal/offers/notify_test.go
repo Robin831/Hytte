@@ -2,12 +2,18 @@ package offers
 
 import (
 	"context"
+	"crypto/ecdh"
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -385,58 +391,205 @@ func TestNotifyMatchingParityWithRank(t *testing.T) {
 	}
 }
 
-func TestSyncSucceedsWhenNotifySenderFails(t *testing.T) {
+func TestNotifyRecentDeliversAfterQuietHoursEnd(t *testing.T) {
 	db := setupTestDB(t)
-	noPause(t)
 	seedNotifyUser(t, db, 1, "melk")
+	storeOffers(t, db, headingOffer("a", "Helmelk"))
 
-	today := time.Now().UTC()
-	runFrom := today.AddDate(0, 0, -1).Format("2006-01-02T15:04:05-0700")
-	runTill := today.AddDate(0, 0, 5).Format("2006-01-02T15:04:05-0700")
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		dealer := r.URL.Query().Get("dealer_ids")
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `[{"id":"milk-%s","heading":"Helmelk","pricing":{"price":20,"currency":"NOK"},
-			"run_from":%q,"run_till":%q,"dealer_id":%q}]`, dealer, runFrom, runTill, dealer)
-	}))
-	defer srv.Close()
-	overrideBaseURL = srv.URL
-	t.Cleanup(func() { overrideBaseURL = "" })
+	sender := &fakeSender{}
+	quiet := map[int64]bool{1: true}
+	n := testNotifier(db, sender, quiet)
 
-	sender := &fakeSender{failFor: map[int64]bool{1: true}}
-	var notifiedWith []string
-	orig := notifyNewMatches
-	notifyNewMatches = func(ctx context.Context, db *sql.DB, ids []string, now time.Time) error {
-		notifiedWith = ids
-		return testNotifier(db, sender, nil).Notify(ctx, ids, now)
+	// The sync lands inside the user's quiet window: nothing is sent.
+	if err := n.NotifyRecent(context.Background(), time.Now()); err != nil {
+		t.Fatalf("quiet pass: %v", err)
 	}
-	t.Cleanup(func() { notifyNewMatches = orig })
-
-	if err := Sync(context.Background(), db); err != nil {
-		t.Fatalf("sync returned %v despite only the notify pass failing", err)
-	}
-	if len(notifiedWith) != len(Dealers) {
-		t.Errorf("notify pass got %d ids, want %d", len(notifiedWith), len(Dealers))
-	}
-	current, err := ListCurrent(db)
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(current) != len(Dealers) {
-		t.Errorf("stored %d offers, want %d", len(current), len(Dealers))
-	}
-	if len(notifiedIDs(t, db, 1, notifiedWith)) != 0 {
-		t.Error("offers marked notified despite the failed send")
+	if len(sender.sent) != 0 {
+		t.Fatalf("sent %d pushes during quiet hours", len(sender.sent))
 	}
 
-	// A notify pass that errors outright also leaves the sync successful.
-	notifyNewMatches = func(context.Context, *sql.DB, []string, time.Time) error {
-		return errors.New("boom")
+	// A later periodic pass after the window ends delivers the held-back match.
+	delete(quiet, 1)
+	if err := n.NotifyRecent(context.Background(), time.Now()); err != nil {
+		t.Fatalf("post-quiet pass: %v", err)
 	}
-	if _, err := db.Exec("DELETE FROM shop_offers"); err != nil {
+	if len(sender.forUser(1)) != 1 || sender.sent[0].note.Body != "1 new match: melk" {
+		t.Fatalf("sent = %+v", sender.sent)
+	}
+	if !notifiedIDs(t, db, 1, []string{"a"})["a"] {
+		t.Error("offer not marked notified after delivery")
+	}
+
+	// Further passes do not repeat it.
+	if err := n.NotifyRecent(context.Background(), time.Now()); err != nil {
+		t.Fatalf("repeat pass: %v", err)
+	}
+	if len(sender.sent) != 1 {
+		t.Fatalf("sent %d pushes after repeat pass, want 1", len(sender.sent))
+	}
+}
+
+func TestNotifyRecentIgnoresOffersOutsideWindow(t *testing.T) {
+	db := setupTestDB(t)
+	seedNotifyUser(t, db, 1, "melk")
+	storeOffers(t, db, headingOffer("old", "Helmelk"), headingOffer("legacy", "Lettmelk"), headingOffer("new", "Skummet melk"))
+	stale := time.Now().Add(-RecentWindow - time.Hour).UTC().Format(time.RFC3339)
+	if _, err := db.Exec("UPDATE shop_offers SET first_seen_at = ? WHERE id = 'old'", stale); err != nil {
 		t.Fatal(err)
 	}
-	if err := Sync(context.Background(), db); err != nil {
-		t.Fatalf("sync returned %v when notify errored", err)
+	// Rows that predate the first_seen_at column keep the '' default.
+	if _, err := db.Exec("UPDATE shop_offers SET first_seen_at = '' WHERE id = 'legacy'"); err != nil {
+		t.Fatal(err)
+	}
+
+	ids, err := RecentOfferIDs(context.Background(), db, time.Now().Add(-RecentWindow))
+	if err != nil {
+		t.Fatalf("recent ids: %v", err)
+	}
+	if !reflect.DeepEqual(ids, []string{"new"}) {
+		t.Fatalf("recent ids = %v, want [new]", ids)
+	}
+
+	sender := &fakeSender{}
+	if err := testNotifier(db, sender, nil).NotifyRecent(context.Background(), time.Now()); err != nil {
+		t.Fatalf("notify: %v", err)
+	}
+	if len(sender.sent) != 1 || sender.sent[0].note.Body != "1 new match: melk" {
+		t.Fatalf("sent = %+v", sender.sent)
+	}
+}
+
+func TestNotifyVAPIDLookupErrorIsReturned(t *testing.T) {
+	db := setupTestDB(t)
+	seedNotifyUser(t, db, 1, "melk")
+	ids := storeOffers(t, db, headingOffer("a", "Helmelk"))
+
+	sender := &fakeSender{}
+	n := testNotifier(db, sender, nil)
+	n.VAPIDConfigured = func(*sql.DB) (bool, error) { return false, errors.New("disk I/O error") }
+	if err := n.Notify(context.Background(), ids, notifyNow); err == nil {
+		t.Fatal("notify returned nil for a failed VAPID lookup")
+	}
+	if len(sender.sent) != 0 {
+		t.Fatalf("sent %d pushes after a failed VAPID lookup", len(sender.sent))
+	}
+}
+
+func TestRunNotifyPassLogsErrorsAndHonoursCancel(t *testing.T) {
+	db := setupTestDB(t)
+	orig := notifyRecent
+	t.Cleanup(func() { notifyRecent = orig })
+
+	var gotDeadline bool
+	var gotCtxErr error
+	notifyRecent = func(ctx context.Context, _ *sql.DB, _ time.Time) error {
+		_, gotDeadline = ctx.Deadline()
+		gotCtxErr = ctx.Err()
+		return errors.New("boom")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	RunNotifyPass(ctx, db) // must not panic on the error
+	if !gotDeadline {
+		t.Error("notify pass ran without a timeout")
+	}
+	if gotCtxErr == nil {
+		t.Error("notify pass ignored the caller's cancellation")
+	}
+}
+
+// newPushSubscription saves a subscription for userID pointing at endpoint
+// with real P-256 / auth keys so push.sendPush can encrypt for it.
+func newPushSubscription(t *testing.T, db *sql.DB, userID int64, endpoint string) {
+	t.Helper()
+	key, err := ecdh.P256().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := make([]byte, 16)
+	if _, err := rand.Read(secret); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := push.SaveSubscription(db, userID,
+		endpoint,
+		base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes()),
+		base64.RawURLEncoding.EncodeToString(secret)); err != nil {
+		t.Fatalf("save subscription: %v", err)
+	}
+}
+
+func TestDefaultSend(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/created":
+			w.WriteHeader(http.StatusCreated)
+		case "/gone":
+			w.WriteHeader(http.StatusGone)
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+
+	// A listener that is closed straight away yields a transport error.
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL := dead.URL + "/secret-token"
+	dead.Close()
+
+	tests := []struct {
+		name       string
+		endpoints  []string
+		wantErr    bool
+		wantErrMsg string
+	}{
+		{"partial delivery", []string{srv.URL + "/created", srv.URL + "/gone", srv.URL + "/fail"}, false, ""},
+		{"all non-2xx", []string{srv.URL + "/gone", srv.URL + "/fail"}, true, "push endpoint returned"},
+		{"no subscriptions", nil, true, "no push subscriptions"},
+		{"transport error", []string{deadURL}, true, "send request"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			db := setupTestDB(t)
+			if _, err := push.GetOrCreateVAPIDKeys(db); err != nil {
+				t.Fatalf("vapid keys: %v", err)
+			}
+			for _, ep := range tc.endpoints {
+				newPushSubscription(t, db, 1, ep)
+			}
+			var logs strings.Builder
+			log.SetOutput(&logs)
+			t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+			err := defaultSend(db, 1, []byte(`{"title":"t"}`))
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("defaultSend returned nil, want an error (offers would be marked notified)")
+				}
+				if !strings.Contains(err.Error(), tc.wantErrMsg) {
+					t.Errorf("error = %q, want it to contain %q", err, tc.wantErrMsg)
+				}
+			} else if err != nil {
+				t.Fatalf("defaultSend returned %v, want nil when one subscription accepted", err)
+			}
+			if strings.Contains(logs.String(), "secret-token") || (err != nil && strings.Contains(err.Error(), "secret-token")) {
+				t.Errorf("push endpoint leaked into logs/error: %s / %v", logs.String(), err)
+			}
+		})
+	}
+}
+
+func TestRedactPushErr(t *testing.T) {
+	inner := errors.New("connection refused")
+	wrapped := fmt.Errorf("send request: %w", &url.Error{Op: "Post", URL: "https://fcm.example/send/abc123", Err: inner})
+	got := redactPushErr(wrapped)
+	if strings.Contains(got.Error(), "abc123") {
+		t.Errorf("redacted error still contains the endpoint: %v", got)
+	}
+	if !errors.Is(got, inner) {
+		t.Errorf("redacted error lost the cause: %v", got)
+	}
+	plain := errors.New("encrypt: bad key")
+	if redactPushErr(plain) != plain {
+		t.Error("non-URL errors should pass through unchanged")
 	}
 }
