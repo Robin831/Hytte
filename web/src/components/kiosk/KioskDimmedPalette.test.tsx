@@ -149,6 +149,47 @@ describe('KioskWeather – dimmed palette', () => {
     expect(container.firstElementChild).toHaveAttribute('data-dimmed', 'true')
   })
 
+  it('uses the full-size layout by default', () => {
+    const { container } = render(
+      <KioskWeather outdoor={outdoor} indoor={indoor} wind={null} forecast={forecastFrom(Date.now())} />,
+    )
+    expect(container.firstElementChild!.className).toContain('py-3')
+    expect(screen.getByText('12.3°').className).toContain('text-4xl')
+    expect(screen.getByText('21.5°').className).toContain('text-4xl')
+    const card = container.querySelector('.min-w-\\[64px\\]')!
+    expect(card.className).toContain('py-2')
+    // Hour, icon and temperature each sit on their own row.
+    expect(card.children).toHaveLength(3)
+    expect(container.querySelector('img')).toHaveAttribute('width', '22')
+  })
+
+  it('shrinks to a compact layout when dimmed', () => {
+    const { container } = render(
+      <KioskWeather
+        outdoor={outdoor}
+        indoor={indoor}
+        wind={null}
+        forecast={forecastFrom(Date.now())}
+        dimmed
+      />,
+    )
+    expect(container.firstElementChild!.className).toContain('py-2')
+    expect(container.firstElementChild!.className).not.toContain('py-3')
+    // Smaller, but still the largest type in the strip — legible across a room.
+    expect(screen.getByText('12.3°').className).toContain('text-3xl')
+    expect(screen.getByText('12.3°').className).not.toContain('text-4xl')
+    expect(screen.getByText('21.5°').className).toContain('text-3xl')
+    // The forecast card folds the icon and temperature onto one row.
+    const card = container.querySelector('.min-w-\\[64px\\]')!
+    expect(card.className).toContain('py-1')
+    expect(card.className).not.toContain('py-2')
+    expect(card.children).toHaveLength(2)
+    const iconRow = card.children[1]
+    expect(iconRow.querySelector('img')).not.toBeNull()
+    expect(iconRow).toHaveTextContent('7°')
+    expect(container.querySelector('img')).toHaveAttribute('width', '18')
+  })
+
   it('dims the "no weather data" fallback too', () => {
     render(<KioskWeather outdoor={null} indoor={null} wind={null} forecast={null} dimmed />)
     expect(screen.getByText('Ingen værdata').className).toContain('text-gray-600')
@@ -177,6 +218,33 @@ describe('KioskSunrise – dimmed palette', () => {
     expect(sunsetIcon).not.toContain('text-orange-400')
     expect(container.firstElementChild!.className).toContain('text-gray-600')
     expect(container.firstElementChild).toHaveAttribute('data-dimmed', 'true')
+  })
+
+  it('uses the full-size layout by default', () => {
+    const { container } = render(<KioskSunrise sun={SUN} />)
+    expect(container.firstElementChild!.className).toContain('py-3')
+    expect(container.querySelector('.lucide-sunrise')).toHaveAttribute('width', '20')
+    expect(container.querySelector('.lucide-sunrise')!.parentElement!.className).toContain('text-lg')
+  })
+
+  it('shrinks to a compact layout when dimmed', () => {
+    const { container } = render(<KioskSunrise sun={SUN} dimmed />)
+    expect(container.firstElementChild!.className).toContain('py-1.5')
+    expect(container.firstElementChild!.className).not.toContain('py-3')
+    expect(container.querySelector('.lucide-sunrise')).toHaveAttribute('width', '16')
+    expect(container.querySelector('.lucide-sunset')).toHaveAttribute('width', '16')
+    const row = container.querySelector('.lucide-sunrise')!.parentElement!
+    expect(row.className).toContain('text-base')
+    expect(row.className).not.toContain('text-lg')
+  })
+
+  it('shrinks the polar-kind banners when dimmed', () => {
+    const { container: day } = render(<KioskSunrise sun={{ kind: 'polarDay' }} />)
+    expect(day.firstElementChild!.className).toContain('py-3')
+    expect(day.firstElementChild!.className).toContain('text-lg')
+    const { container: night } = render(<KioskSunrise sun={{ kind: 'polarNight' }} dimmed />)
+    expect(night.firstElementChild!.className).toContain('py-1.5')
+    expect(night.firstElementChild!.className).toContain('text-base')
   })
 
   it('dims the polar-kind banners', () => {
