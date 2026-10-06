@@ -196,6 +196,41 @@ func TestGetCurrentMacroPlanHandler_IgnoresSupersededBlock(t *testing.T) {
 	}
 }
 
+// A block regenerated mid-week starts next Monday; until then it is still the
+// athlete's current block rather than a 404.
+func TestGetCurrentMacroPlanHandler_FallsBackToBlockStartingNextWeek(t *testing.T) {
+	db := setupTestDB(t)
+	thisMonday, _ := currentWeek()
+	insertMacroBlock(t, db, 1, thisMonday, MacroBlockWeeks, MacroPlanStatusSuperseded)
+	next := insertMacroBlock(t, db, 1, mondayAfter(thisMonday, 1), MacroBlockWeeks, MacroPlanStatusActive)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/macro/current", nil), 1)
+	rec := httptest.NewRecorder()
+	GetCurrentMacroPlanHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if view := decodeMacroView(t, rec); view.Plan == nil || view.Plan.ID != next.ID {
+		t.Fatalf("plan = %+v, want the block %d starting next week", view.Plan, next.ID)
+	}
+}
+
+// Only next week's block counts; one further out is not "current".
+func TestGetCurrentMacroPlanHandler_IgnoresBlockStartingLater(t *testing.T) {
+	db := setupTestDB(t)
+	thisMonday, _ := currentWeek()
+	insertMacroBlock(t, db, 1, mondayAfter(thisMonday, 2), MacroBlockWeeks, MacroPlanStatusActive)
+
+	req := withUser(httptest.NewRequest("GET", "/api/stride/macro/current", nil), 1)
+	rec := httptest.NewRecorder()
+	GetCurrentMacroPlanHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 // --- GET /api/stride/macro/{id} ---
 
 func TestGetMacroPlanHandler_OwnedBlock(t *testing.T) {

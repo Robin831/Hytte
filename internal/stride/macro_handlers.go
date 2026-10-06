@@ -121,6 +121,15 @@ func GetCurrentMacroPlanHandler(db *sql.DB) http.HandlerFunc {
 		thisMonday, _ := currentWeek()
 
 		plan, err := GetActiveMacroPlan(r.Context(), db, user.ID, thisMonday)
+		if err == nil && plan == nil {
+			// A block generated mid-week starts next Monday (upcomingWeek) and
+			// supersedes the one covering this week, so fall back to it rather
+			// than 404 until Monday.
+			if monday, perr := parseWeekDate(thisMonday); perr == nil {
+				nextMonday := monday.AddDate(0, 0, 7).Format(dateLayout)
+				plan, err = GetActiveMacroPlan(r.Context(), db, user.ID, nextMonday)
+			}
+		}
 		if err != nil {
 			log.Printf("stride: get current macro plan for user %d: %v", user.ID, err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get current macro block"})
