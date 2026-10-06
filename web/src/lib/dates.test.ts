@@ -4,12 +4,8 @@ import { localDateString, parseLocalDate } from './dates'
 // Run under a non-UTC zone so the UTC-based implementations these helpers
 // replace (`toISOString().slice(0, 10)`, `new Date('YYYY-MM-DD')`) would fail.
 function withTimeZone(tz: string) {
-  let saved: string | undefined
-  beforeAll(() => { saved = process.env.TZ; process.env.TZ = tz })
-  afterAll(() => {
-    if (saved === undefined) delete process.env.TZ
-    else process.env.TZ = saved
-  })
+  beforeAll(() => { vi.stubEnv('TZ', tz) })
+  afterAll(() => { vi.unstubAllEnvs() })
 }
 
 describe('localDateString (Europe/Oslo)', () => {

@@ -251,14 +251,10 @@ describe('WardrobePage', () => {
 })
 
 // Date handling must follow the browser's local calendar, not UTC. Each block
-// pins process.env.TZ so the old UTC-based code would produce the wrong day.
+// pins the TZ env var so the old UTC-based code would produce the wrong day.
 function withTimeZone(tz: string) {
-  let saved: string | undefined
-  beforeAll(() => { saved = process.env.TZ; process.env.TZ = tz })
-  afterAll(() => {
-    if (saved === undefined) delete process.env.TZ
-    else process.env.TZ = saved
-  })
+  beforeAll(() => { vi.stubEnv('TZ', tz) })
+  afterAll(() => { vi.unstubAllEnvs() })
 }
 
 describe('WardrobePage local dates (Europe/Oslo)', () => {
