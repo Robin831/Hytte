@@ -23,6 +23,15 @@
     "saving": "Saving…",
     "cancel": "Cancel"
   },
+  "edit": {
+    "editTransaction": "Edit transaction",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel editing",
+    "errors": {
+      "updateFailed": "Failed to update transaction."
+    }
+  },
   "summary": {
     "income": "Income",
     "expenses": "Expenses",

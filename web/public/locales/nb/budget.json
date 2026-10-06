@@ -23,6 +23,15 @@
     "saving": "Lagrer…",
     "cancel": "Avbryt"
   },
+  "edit": {
+    "editTransaction": "Rediger transaksjon",
+    "save": "Lagre",
+    "saving": "Lagrer…",
+    "cancel": "Avbryt redigering",
+    "errors": {
+      "updateFailed": "Kunne ikke oppdatere transaksjon."
+    }
+  },
   "summary": {
     "income": "Inntekt",
     "expenses": "Utgifter",

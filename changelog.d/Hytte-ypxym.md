@@ -1,0 +1,2 @@
+category: Added
+- **Edit transactions inline on the budget page** - Each transaction row now has an edit button that turns the row into a pre-filled form (description, amount, date, category, account) and saves via `PUT /api/budget/transactions/{id}`, so typos and uncategorised CSV imports can be fixed without deleting and re-entering them. Transfer links and tags are preserved on save. (Hytte-ypxym)

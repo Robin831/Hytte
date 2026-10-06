@@ -23,6 +23,15 @@
     "saving": "กำลังบันทึก…",
     "cancel": "ยกเลิก"
   },
+  "edit": {
+    "editTransaction": "แก้ไขธุรกรรม",
+    "save": "บันทึก",
+    "saving": "กำลังบันทึก…",
+    "cancel": "ยกเลิกการแก้ไข",
+    "errors": {
+      "updateFailed": "อัปเดตธุรกรรมไม่สำเร็จ"
+    }
+  },
   "summary": {
     "income": "รายได้",
     "expenses": "รายจ่าย",
