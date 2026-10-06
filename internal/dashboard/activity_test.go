@@ -637,7 +637,7 @@ func TestRecentActivity_ErrorPropagation(t *testing.T) {
 		t.Fatalf("close db: %v", err)
 	}
 
-	if _, err := recentActivity(d, user.ID); err == nil {
+	if _, err := recentActivity(d, user.ID, allActivityFeatures()); err == nil {
 		t.Fatal("expected recentActivity to return an error when the DB is closed")
 	}
 }
@@ -674,5 +674,244 @@ func TestActivityHandler_LimitTen(t *testing.T) {
 	}
 	if len(resp.Items) != 10 {
 		t.Errorf("expected 10 items (limit), got %d", len(resp.Items))
+	}
+}
+
+// allActivityFeatures returns a feature map with every activity source enabled.
+func allActivityFeatures() map[string]bool {
+	return map[string]bool{"training": true, "lactate": true, "notes": true, "links": true}
+}
+
+// createNonAdminUser creates a user that is not an admin. UpsertUser promotes
+// the first user to admin, so the flag is cleared explicitly.
+func createNonAdminUser(t *testing.T, d *sql.DB) *auth.User {
+	t.Helper()
+	u := createTestUser(t, d)
+	if _, err := d.Exec(`UPDATE users SET is_admin = 0 WHERE id = ?`, u.ID); err != nil {
+		t.Fatalf("clear admin flag: %v", err)
+	}
+	u.IsAdmin = false
+	return u
+}
+
+// seedAllActivitySources inserts one row per activity source (workout,
+// lactate test, note, short link) for the user, all inside the 30-day window.
+func seedAllActivitySources(t *testing.T, d *sql.DB, userID int64) {
+	t.Helper()
+	now := time.Now().UTC()
+
+	if _, err := d.Exec(
+		`INSERT INTO workouts (user_id, sport, title, started_at, duration_seconds, distance_meters,
+		 avg_heart_rate, max_heart_rate, avg_pace_sec_per_km, avg_cadence, calories,
+		 ascent_meters, descent_meters, fit_file_hash, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		userID, "running", "Feature Run", now.Add(-1*time.Hour).Format(time.RFC3339),
+		1800, 5000, 150, 170, 360, 180, 300, 50, 30, "hash-feature", now.Add(-1*time.Hour).Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("insert workout: %v", err)
+	}
+	if _, err := d.Exec(
+		`INSERT INTO lactate_tests (user_id, date, comment, created_at) VALUES (?, ?, ?, ?)`,
+		userID, now.Add(-24*time.Hour).Format("2006-01-02"), "Feature lactate",
+		now.Add(-24*time.Hour).Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("insert lactate: %v", err)
+	}
+	if _, err := d.Exec(
+		`INSERT INTO notes (user_id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		userID, "Feature Note", "body",
+		now.Add(-3*time.Hour).Format(time.RFC3339), now.Add(-3*time.Hour).Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("insert note: %v", err)
+	}
+	if _, err := d.Exec(
+		`INSERT INTO short_links (user_id, code, target_url, title, created_at) VALUES (?, ?, ?, ?, ?)`,
+		userID, "feat", "https://example.com", "Feature Link",
+		now.Add(-4*time.Hour).Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("insert short link: %v", err)
+	}
+}
+
+// activityTypeFeature and activityLinkFeature map item types and link routes
+// back to the feature key that gates them.
+var activityTypeFeature = map[string]string{
+	"workout": "training",
+	"lactate": "lactate",
+	"note":    "notes",
+	"link":    "links",
+}
+
+var activityLinkFeature = map[string]string{
+	"/training": "training",
+	"/lactate":  "lactate",
+	"/notes":    "notes",
+	"/links":    "links",
+}
+
+// assertItemsMatchFeatures checks that items contain exactly one entry per
+// enabled source and that no item type or link belongs to a disabled feature.
+func assertItemsMatchFeatures(t *testing.T, items []ActivityItem, features map[string]bool) {
+	t.Helper()
+	gotTypes := map[string]int{}
+	for _, item := range items {
+		gotTypes[item.Type]++
+		if f, ok := activityTypeFeature[item.Type]; !ok || !features[f] {
+			t.Errorf("unexpected item type %q for features %v", item.Type, features)
+		}
+		if f, ok := activityLinkFeature[item.Link]; !ok || !features[f] {
+			t.Errorf("item link %q points at a route the user cannot open (features %v)", item.Link, features)
+		}
+	}
+	for typ, f := range activityTypeFeature {
+		want := 0
+		if features[f] {
+			want = 1
+		}
+		if gotTypes[typ] != want {
+			t.Errorf("expected %d %q items, got %d", want, typ, gotTypes[typ])
+		}
+	}
+}
+
+// TestRecentActivity_FeatureFiltering verifies that recentActivity only
+// returns items for sources whose feature is enabled. Every source has a row
+// in the DB, so an absent type proves the gated query was skipped.
+func TestRecentActivity_FeatureFiltering(t *testing.T) {
+	tests := []struct {
+		name     string
+		features map[string]bool
+	}{
+		{"all enabled", allActivityFeatures()},
+		{"none enabled", map[string]bool{}},
+		{"training only", map[string]bool{"training": true}},
+		{"notes and links", map[string]bool{"notes": true, "links": true}},
+		{"notes only", map[string]bool{"notes": true}},
+		{"explicitly disabled", map[string]bool{"training": false, "lactate": true, "notes": false, "links": false}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := setupTestDB(t)
+			user := createNonAdminUser(t, d)
+			seedAllActivitySources(t, d, user.ID)
+
+			items, err := recentActivity(d, user.ID, tc.features)
+			if err != nil {
+				t.Fatalf("recentActivity: %v", err)
+			}
+			assertItemsMatchFeatures(t, items, tc.features)
+		})
+	}
+}
+
+// TestActivityHandler_FeatureResolution exercises the handler's feature
+// lookup: the context-cached map from WithFeatures, the GetUserFeatures
+// fallback for non-admins, and the admin bypass.
+func TestActivityHandler_FeatureResolution(t *testing.T) {
+	tests := []struct {
+		name string
+		// admin controls whether the user keeps the admin flag.
+		admin bool
+		// stored are the user_features rows to write for the user.
+		stored map[string]bool
+		// contextFeatures, when non-nil, is injected as the WithFeatures
+		// cache. It deliberately differs from stored so the test proves the
+		// cached map wins over the fallback lookup.
+		contextFeatures map[string]bool
+		want            map[string]bool
+	}{
+		{
+			name:  "admin bypass without user_features rows",
+			admin: true,
+			want:  allActivityFeatures(),
+		},
+		{
+			name:   "non-admin with only notes stored",
+			stored: map[string]bool{"notes": true},
+			want:   map[string]bool{"notes": true},
+		},
+		{
+			name:   "non-admin with all four stored",
+			stored: allActivityFeatures(),
+			want:   allActivityFeatures(),
+		},
+		{
+			name: "non-admin with no stored features uses defaults",
+			want: auth.FeatureDefaults,
+		},
+		{
+			name:            "non-admin uses context cache over stored rows",
+			stored:          map[string]bool{"notes": true},
+			contextFeatures: map[string]bool{"training": true},
+			want:            map[string]bool{"training": true},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := setupTestDB(t)
+			var user *auth.User
+			if tc.admin {
+				user = createTestUser(t, d)
+				if !user.IsAdmin {
+					t.Fatal("expected first user to be admin")
+				}
+			} else {
+				user = createNonAdminUser(t, d)
+			}
+			for key, enabled := range tc.stored {
+				if err := auth.SetUserFeature(d, user.ID, key, enabled); err != nil {
+					t.Fatalf("set feature %q: %v", key, err)
+				}
+			}
+			seedAllActivitySources(t, d, user.ID)
+
+			req := httptest.NewRequest("GET", "/api/dashboard/activity", nil)
+			ctx := auth.ContextWithUser(req.Context(), user)
+			if tc.contextFeatures != nil {
+				ctx = auth.ContextWithFeatures(ctx, tc.contextFeatures)
+			}
+			req = req.WithContext(ctx)
+			rr := httptest.NewRecorder()
+			ActivityHandler(d).ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+			}
+			var resp struct {
+				Items []ActivityItem `json:"items"`
+			}
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			assertItemsMatchFeatures(t, resp.Items, tc.want)
+		})
+	}
+}
+
+// TestActivityHandler_FeatureLookupError verifies that a failing feature
+// lookup returns the standard activity error response.
+func TestActivityHandler_FeatureLookupError(t *testing.T) {
+	d := setupTestDB(t)
+	user := createNonAdminUser(t, d)
+	if err := d.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "/api/dashboard/activity", nil)
+	req = req.WithContext(auth.ContextWithUser(req.Context(), user))
+	rr := httptest.NewRecorder()
+	ActivityHandler(d).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rr.Code)
+	}
+	var resp map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp["error"] != "failed to load activity" {
+		t.Errorf("unexpected error message: %q", resp["error"])
 	}
 }

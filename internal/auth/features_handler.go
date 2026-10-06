@@ -23,8 +23,7 @@ func WithFeatures(db *sql.DB) func(http.Handler) http.Handler {
 			user := UserFromContext(r.Context())
 			if user != nil {
 				if features, err := GetUserFeatures(db, user.ID, user.IsAdmin); err == nil {
-					ctx := context.WithValue(r.Context(), featuresContextKey{}, features)
-					r = r.WithContext(ctx)
+					r = r.WithContext(ContextWithFeatures(r.Context(), features))
 				}
 			}
 			next.ServeHTTP(w, r)
@@ -37,6 +36,21 @@ func WithFeatures(db *sql.DB) func(http.Handler) http.Handler {
 func FeaturesFromContext(ctx context.Context) map[string]bool {
 	m, _ := ctx.Value(featuresContextKey{}).(map[string]bool)
 	return m
+}
+
+// ContextWithFeatures returns a copy of ctx carrying the given feature map, as
+// WithFeatures does. Exposed so tests in other packages can inject a cached map.
+func ContextWithFeatures(ctx context.Context, features map[string]bool) context.Context {
+	return context.WithValue(ctx, featuresContextKey{}, features)
+}
+
+// ResolveFeatures returns the user's feature map, preferring the map cached by
+// WithFeatures and falling back to GetUserFeatures (all-true for admins).
+func ResolveFeatures(ctx context.Context, db *sql.DB, user *User) (map[string]bool, error) {
+	if features := FeaturesFromContext(ctx); features != nil {
+		return features, nil
+	}
+	return GetUserFeatures(db, user.ID, user.IsAdmin)
 }
 
 // RequireAdmin is middleware that checks the current user is an admin.
@@ -74,14 +88,10 @@ func RequireFeature(db *sql.DB, featureKey string) func(http.Handler) http.Handl
 
 			// Use the context-cached feature map (populated by WithFeatures) to
 			// avoid a second DB query when multiple RequireFeature checks are nested.
-			features := FeaturesFromContext(r.Context())
-			if features == nil {
-				var err error
-				features, err = GetUserFeatures(db, user.ID, user.IsAdmin)
-				if err != nil {
-					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check features"})
-					return
-				}
+			features, err := ResolveFeatures(r.Context(), db, user)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check features"})
+				return
 			}
 
 			if !features[featureKey] {
@@ -106,13 +116,9 @@ func UserHasFeature(ctx context.Context, db *sql.DB, user *User, featureKey stri
 	if user.IsAdmin {
 		return true, nil
 	}
-	features := FeaturesFromContext(ctx)
-	if features == nil {
-		var err error
-		features, err = GetUserFeatures(db, user.ID, user.IsAdmin)
-		if err != nil {
-			return false, err
-		}
+	features, err := ResolveFeatures(ctx, db, user)
+	if err != nil {
+		return false, err
 	}
 	return features[featureKey], nil
 }
@@ -133,14 +139,10 @@ func RequireFeatureOrNotFound(db *sql.DB, featureKey string) func(http.Handler) 
 				return
 			}
 
-			features := FeaturesFromContext(r.Context())
-			if features == nil {
-				var err error
-				features, err = GetUserFeatures(db, user.ID, user.IsAdmin)
-				if err != nil {
-					writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check features"})
-					return
-				}
+			features, err := ResolveFeatures(r.Context(), db, user)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check features"})
+				return
 			}
 
 			if !features[featureKey] {
