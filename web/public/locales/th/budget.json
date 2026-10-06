@@ -27,14 +27,14 @@
     "income": "รายได้",
     "expenses": "รายจ่าย",
     "net": "คงเหลือ",
-    "remaining": "ยอดคงเหลือ",
     "byCategory": "แยกตามหมวดหมู่",
     "transactions": "รายการธุรกรรม",
     "incomeSplit": "สัดส่วนรายได้",
     "yourShare": "คุณ: {{amount}} ({{pct}}%)",
     "partnerShare": "คู่: {{amount}} ({{pct}}%)",
     "editSplit": "แก้ไขสัดส่วนรายได้",
-    "saveSplit": "บันทึกสัดส่วน"
+    "saveSplit": "บันทึกสัดส่วน",
+    "accountMonthToDate": "ยอดสะสมของบัญชีเดือนนี้"
   },
   "limits": {
     "hint": "คลิกไอคอนดินสอเพื่อกำหนดวงเงินงบประมาณรายเดือนต่อหมวดหมู่",

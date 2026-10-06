@@ -1,0 +1,2 @@
+category: Fixed
+- **Budget transaction sub-total is now per account** - The running figure under each transaction on the budget list previously summed every account in the month into one number and showed it in each row's currency. It now only accumulates that row's own account, in that account's currency, and is labelled "Account month-to-date" so it no longer reads like an account balance. (Hytte-tro8x)

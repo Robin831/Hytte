@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronLeft, ChevronRight, Plus, Trash2, X, Pencil, Check, TrendingUp, Home, Tag, CreditCard, Repeat, Receipt, Zap, Clock } from 'lucide-react'
 import { formatDate as fmtDate, toLocalDateString } from '../utils/formatDate'
 import { formatNOK } from './budget/hooks'
+import { computeAccountMonthToDate } from './budget/runningTotals'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -511,25 +512,13 @@ export default function BudgetPage() {
   const catById = new Map(categories.map(c => [c.id, c]))
   const acctById = new Map(accounts.map(a => [a.id, a]))
 
-  // Running balance: sort oldest→newest and accumulate from 0, so each
-  // transaction's balance reflects the sum of all transactions up to and including it.
-  const getTransactionDateTime = (date: string) => {
-    const [year, month, day] = date.split('-').map(Number)
-    return Date.UTC(year, month - 1, day)
-  }
-  const transactionsOldestFirst = [...transactions].sort((a, b) => {
-    const dateDiff = getTransactionDateTime(a.date) - getTransactionDateTime(b.date)
-    return dateDiff !== 0 ? dateDiff : a.id - b.id
-  })
-  let runningBalance = 0
-  const balanceByTransactionId = new Map<number, number>()
-  for (const txn of transactionsOldestFirst) {
-    runningBalance += txn.amount
-    balanceByTransactionId.set(txn.id, runningBalance)
-  }
-  const withBalance = transactions.map(txn => ({
+  // Per-account month-to-date total: each row shows the cumulative sum of its
+  // own account's transactions in the viewed month, so accounts and currencies
+  // never mix.
+  const monthToDateByTransactionId = computeAccountMonthToDate(transactions)
+  const withMonthToDate = transactions.map(txn => ({
     txn,
-    balance: balanceByTransactionId.get(txn.id) ?? 0,
+    monthToDate: monthToDateByTransactionId.get(txn.id) ?? 0,
   }))
 
   // Income vs expenses bar widths
@@ -820,7 +809,7 @@ export default function BudgetPage() {
             {t('summary.transactions')}
           </h2>
           <ul className="divide-y divide-gray-800">
-            {withBalance.map(({ txn, balance }) => {
+            {withMonthToDate.map(({ txn, monthToDate }) => {
               const cat = txn.category_id != null ? catById.get(txn.category_id) : undefined
               const acct = acctById.get(txn.account_id)
               const isIncome = txn.amount > 0
@@ -864,7 +853,7 @@ export default function BudgetPage() {
                       {formatNOK(txn.amount, acct?.currency)}
                     </p>
                     <p className="text-xs text-gray-500 tabular-nums">
-                      {t('summary.remaining')}: {formatNOK(balance, acct?.currency)}
+                      {t('summary.accountMonthToDate')}: {formatNOK(monthToDate, acct?.currency)}
                     </p>
                   </div>
 
