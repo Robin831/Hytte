@@ -34,7 +34,8 @@
     "yourShare": "Deg: {{amount}} ({{pct}}%)",
     "partnerShare": "Partner: {{amount}} ({{pct}}%)",
     "editSplit": "Rediger inntektsfordeling",
-    "saveSplit": "Lagre fordeling"
+    "saveSplit": "Lagre fordeling",
+    "accountMonthToDate": "Konto hittil i måneden"
   },
   "limits": {
     "hint": "Klikk blyantsikonet for å sette en månedlig budsjettgrense per kategori.",

@@ -34,7 +34,8 @@
     "yourShare": "You: {{amount}} ({{pct}}%)",
     "partnerShare": "Partner: {{amount}} ({{pct}}%)",
     "editSplit": "Edit income split",
-    "saveSplit": "Save split"
+    "saveSplit": "Save split",
+    "accountMonthToDate": "Account month-to-date"
   },
   "limits": {
     "hint": "Click the pencil icon to set a monthly budget limit per category.",
