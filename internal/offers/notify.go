@@ -54,22 +54,29 @@ func NotifyNewMatches(ctx context.Context, db *sql.DB, newOfferIDs []string, now
 
 // defaultSend pushes via push.SendToUser and treats the send as successful
 // only when at least one subscription accepted it (2xx), so offers are not
-// marked notified when every endpoint failed.
+// marked notified when every endpoint failed. Every per-subscription failure
+// is logged, even when another subscription accepted the push.
 func defaultSend(db *sql.DB, userID int64, payload []byte) error {
 	results, err := push.SendToUser(db, push.DefaultHTTPClient, userID, payload)
 	if err != nil {
 		return err
 	}
+	delivered := false
 	var lastErr error
 	for _, r := range results {
 		if r.Err == nil && r.StatusCode >= 200 && r.StatusCode < 300 {
-			return nil
+			delivered = true
+			continue
 		}
 		if r.Err != nil {
 			lastErr = r.Err
 		} else {
 			lastErr = fmt.Errorf("push endpoint returned %d", r.StatusCode)
 		}
+		log.Printf("offers: notify: user %d subscription %d: %v", userID, r.SubscriptionID, lastErr)
+	}
+	if delivered {
+		return nil
 	}
 	if lastErr == nil {
 		return fmt.Errorf("no push subscriptions")
