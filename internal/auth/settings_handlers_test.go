@@ -2589,3 +2589,64 @@ func TestPreferencesPutHandler_DashboardWidgetsRejectsInvalid(t *testing.T) {
 		t.Error("expected dashboard_widgets not to be stored after rejections")
 	}
 }
+
+// offers_notify opts a user into watchlist push notifications. The notify pass
+// selects on an exact "true", so only boolean strings (or a clear) are accepted.
+func TestPreferencesPutHandler_OffersNotify(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+
+	put := func(t *testing.T, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "session", Value: token})
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// Absent means off: nothing is stored until the user opts in.
+	stored, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if v, ok := stored["offers_notify"]; ok {
+		t.Fatalf("offers_notify should be absent by default, got %q", v)
+	}
+
+	for _, v := range []string{"false", "true"} {
+		if rec := put(t, `{"preferences":{"offers_notify":"`+v+`"}}`); rec.Code != http.StatusOK {
+			t.Fatalf("offers_notify=%s: expected 200, got %d; body: %s", v, rec.Code, rec.Body.String())
+		}
+		stored, err := GetPreferences(db, userID)
+		if err != nil {
+			t.Fatalf("GetPreferences: %v", err)
+		}
+		if stored["offers_notify"] != v {
+			t.Errorf("offers_notify = %q, want %q", stored["offers_notify"], v)
+		}
+	}
+
+	for _, v := range []string{"yes", "1", "TRUE", "on"} {
+		t.Run("reject "+v, func(t *testing.T) {
+			if rec := put(t, `{"preferences":{"offers_notify":"`+v+`"}}`); rec.Code != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d; body: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	// A rejected write must not have disturbed the accepted value.
+	stored, err = GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if stored["offers_notify"] != "true" {
+		t.Errorf("rejected writes changed offers_notify: %q", stored["offers_notify"])
+	}
+}

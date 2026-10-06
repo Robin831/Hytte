@@ -34,6 +34,7 @@ vi.mock('../settings/NotificationsSection', () => ({ default: () => <div data-te
 vi.mock('../settings/SecuritySection', () => ({ default: () => <div data-testid="security-section" /> }))
 vi.mock('../settings/IntegrationsSection', () => ({ default: () => <div data-testid="integrations-section" /> }))
 vi.mock('../settings/PokemonSection', () => ({ default: () => <div data-testid="pokemon-section" /> }))
+vi.mock('../settings/OffersSection', () => ({ default: () => <div data-testid="offers-section" /> }))
 vi.mock('../settings/AIAutomationSection', () => ({ default: () => <div data-testid="ai-automation-section" /> }))
 vi.mock('../settings/KioskTokensSection', () => ({ default: () => <div data-testid="kiosk-tokens-section" /> }))
 
@@ -156,8 +157,27 @@ describe('Settings – section gating', () => {
     expect(screen.getByTestId('notifications-section')).toBeInTheDocument()
     expect(screen.getByTestId('integrations-section')).toBeInTheDocument()
     expect(screen.queryByTestId('pokemon-section')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('offers-section')).not.toBeInTheDocument()
     expect(screen.queryByTestId('ai-automation-section')).not.toBeInTheDocument()
     expect(screen.queryByTestId('kiosk-tokens-section')).not.toBeInTheDocument()
+  })
+
+  it('shows the offers section only for a user with the offers feature', async () => {
+    authState.user = makeUser({ features: { offers: true } })
+    authState.hasFeature = (key: string) => key === 'offers'
+    renderSettings()
+
+    await waitFor(() => expect(screen.getByTestId('offers-section')).toBeInTheDocument())
+    expect(screen.queryByTestId('pokemon-section')).not.toBeInTheDocument()
+  })
+
+  it('hides the offers section without the offers feature', async () => {
+    authState.user = makeUser({ features: { pokemon: true } })
+    authState.hasFeature = (key: string) => key === 'pokemon'
+    renderSettings()
+
+    await waitFor(() => expect(screen.getByTestId('pokemon-section')).toBeInTheDocument())
+    expect(screen.queryByTestId('offers-section')).not.toBeInTheDocument()
   })
 })
 

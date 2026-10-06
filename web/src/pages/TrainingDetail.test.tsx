@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act, cleanup } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router'
 import TrainingDetail from './TrainingDetail'
 import { stubEventSource, type EventSourceStub } from '../test/stubEventSource'
@@ -237,6 +237,9 @@ describe('TrainingDetail – workout context flow', () => {
   })
 
   afterEach(() => {
+    // Unmount before un-stubbing: a passive effect still queued from the last
+    // render would otherwise open an EventSource after the stub is gone.
+    cleanup()
     vi.unstubAllGlobals()
     vi.clearAllMocks()
   })
@@ -415,6 +418,9 @@ describe('TrainingDetail – stride evaluation over SSE', () => {
   })
 
   afterEach(() => {
+    // Unmount before un-stubbing: a passive effect still queued from the last
+    // render would otherwise open an EventSource after the stub is gone.
+    cleanup()
     vi.unstubAllGlobals()
     vi.clearAllMocks()
   })

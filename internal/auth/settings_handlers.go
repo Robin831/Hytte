@@ -278,6 +278,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"pokemon_scan_push_enabled":       true,
 			"pokemon_scan_auto_discard_hours": true,
 			"dashboard_widgets":               true,
+			"offers_notify":                   true,
 		}
 
 		// Integer range keys: HR/pace, work hours, budget preferences, and other numeric settings.
@@ -459,6 +460,12 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			// instead of storing a setting that looks on and behaves off.
 			if k == "stride_enabled" && v != "" && v != "true" && v != "false" {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": `stride_enabled must be "true" or "false"`})
+				return
+			}
+			// Validate offers_notify: the offers notify pass selects users on an
+			// exact "true", so reject anything that is not a boolean string.
+			if k == "offers_notify" && v != "" && v != "true" && v != "false" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": `offers_notify must be "true" or "false"`})
 				return
 			}
 			// Validate work_hours_flex_reset_date: must be YYYY-MM-DD or empty.

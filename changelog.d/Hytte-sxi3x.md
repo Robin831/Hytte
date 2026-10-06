@@ -1,0 +1,2 @@
+category: Added
+- **Opt-in toggle for watchlist push notifications** - Settings has a new Grocery Offers section, shown only to users with the offers feature. Its switch turns on push notifications when new offers match your watchlist. It is off by default, needs a push subscription, and saves the `offers_notify` preference. The server accepts only "true" or "false" for this preference. (Hytte-sxi3x)
