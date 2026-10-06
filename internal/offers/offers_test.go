@@ -235,6 +235,37 @@ func TestUpsertOffersReportsInserted(t *testing.T) {
 	}
 }
 
+func TestUpsertOffersDuplicateIDInBatch(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	changedA := testOffer("a", 7, 0)
+	changedA.Heading = "Changed A"
+	inserted, err := UpsertOffers(ctx, d, []Offer{testOffer("a", 1, 0), changedA})
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if len(inserted) != 1 || inserted[0] != "a" {
+		t.Fatalf("inserted = %v, want [a]", inserted)
+	}
+
+	var heading string
+	var price float64
+	if err := d.QueryRow("SELECT heading, price FROM shop_offers WHERE id = 'a'").Scan(&heading, &price); err != nil {
+		t.Fatalf("read offer a: %v", err)
+	}
+	if heading != "Changed A" || price != 7 {
+		t.Errorf("second copy not saved: heading=%q price=%v", heading, price)
+	}
+	var count int
+	if err := d.QueryRow("SELECT COUNT(*) FROM shop_offers").Scan(&count); err != nil {
+		t.Fatalf("count offers: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("got %d offers, want 1", count)
+	}
+}
+
 func TestMarkAndLookupNotifiedOffers(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()

@@ -11,7 +11,8 @@ import (
 )
 
 // UpsertOffers replaces or inserts the given offers in one transaction,
-// stamping fetched_at. Calling it repeatedly with the same ids is idempotent.
+// stamping fetched_at. Calling it repeatedly with the same ids leaves one row
+// per id. Only the first call reports an id as inserted.
 // It returns the ids of offers that did not exist before this call (in input
 // order); offers that were merely updated are not included. The slice is only
 // returned once the transaction has committed.
