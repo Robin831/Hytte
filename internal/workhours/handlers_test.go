@@ -1718,3 +1718,53 @@ func TestSessionUpdateHandler_NotFound(t *testing.T) {
 		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestPunchOutHandler_OverlapReturns409(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := CreateOpenSession(db, 1, "2026-03-30", "08:00"); err != nil {
+		t.Fatalf("CreateOpenSession: %v", err)
+	}
+	day, err := UpsertDay(db, 1, "2026-03-30", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	manual, err := AddSession(db, day.ID, 1, "09:00", "10:00", 0, false, false)
+	if err != nil {
+		t.Fatalf("add manual session: %v", err)
+	}
+
+	body := jsonBody(t, map[string]any{"end_time": "12:00"})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/punch-out", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	PunchOutHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Conflict WorkSession `json:"conflict"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Conflict.ID != manual.ID {
+		t.Errorf("conflict id: got %d, want %d", resp.Conflict.ID, manual.ID)
+	}
+
+	// Nothing written; the open session stays so the user can retry.
+	got, err := GetDay(db, 1, "2026-03-30")
+	if err != nil {
+		t.Fatalf("get day: %v", err)
+	}
+	if len(got.Sessions) != 1 {
+		t.Errorf("sessions: got %d, want 1", len(got.Sessions))
+	}
+	open, err := GetOpenSession(db, 1)
+	if err != nil {
+		t.Fatalf("GetOpenSession: %v", err)
+	}
+	if open == nil {
+		t.Error("expected open session to remain after rejected punch-out")
+	}
+}

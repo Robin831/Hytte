@@ -107,16 +107,67 @@ func boolToInt(b bool) int {
 	return 0
 }
 
+// dbQuerier is implemented by both *sql.DB and *sql.Tx.
+type dbQuerier interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+// OverlapError is returned by AddSession and UpdateSession when the session
+// would overlap another session on the same work day. Nothing is written.
+type OverlapError struct {
+	Conflict WorkSession
+}
+
+func (e *OverlapError) Error() string {
+	return fmt.Sprintf("session overlaps existing session %d (%s-%s)", e.Conflict.ID, e.Conflict.StartTime, e.Conflict.EndTime)
+}
+
+// lockDay verifies that dayID belongs to userID and takes SQLite's write lock
+// for tx by issuing a no-op UPDATE on the day row. Taking the lock before the
+// overlap check serialises concurrent writers to the same database, so two
+// requests cannot both pass the check and then both insert overlapping
+// sessions. Returns sql.ErrNoRows if the day does not belong to userID.
+func lockDay(tx *sql.Tx, dayID, userID int64) error {
+	res, err := tx.Exec("UPDATE work_days SET lunch = lunch WHERE id = ? AND user_id = ?", dayID, userID)
+	if err != nil {
+		return fmt.Errorf("lock work_days: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // AddSession adds a new time session to an existing work day. The day must
 // belong to the given userID. isInternal marks company meetings/admin time;
 // crossesMidnight marks a session whose endTime falls on the following day.
+// Returns *OverlapError if the session would overlap another session on the
+// same day; the check and the insert run in one transaction.
 func AddSession(db *sql.DB, dayID, userID int64, startTime, endTime string, sortOrder int, isInternal, crossesMidnight bool) (*WorkSession, error) {
-	// Verify ownership.
-	if err := verifyDayOwnership(db, dayID, userID); err != nil {
+	tx, err := db.Begin()
+	if err != nil {
 		return nil, err
 	}
+	defer tx.Rollback()
 
-	res, err := db.Exec(`
+	// Verify ownership and serialise against concurrent writers.
+	if err := lockDay(tx, dayID, userID); err != nil {
+		return nil, err
+	}
+	conflict, err := findOverlap(tx, dayID, startTime, endTime, crossesMidnight, 0)
+	if err != nil {
+		return nil, err
+	}
+	if conflict != nil {
+		return nil, &OverlapError{Conflict: *conflict}
+	}
+
+	res, err := tx.Exec(`
 		INSERT INTO work_sessions (day_id, start_time, end_time, sort_order, is_internal, crosses_midnight)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, dayID, startTime, endTime, sortOrder, boolToInt(isInternal), boolToInt(crossesMidnight))
@@ -125,6 +176,9 @@ func AddSession(db *sql.DB, dayID, userID int64, startTime, endTime string, sort
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
@@ -142,8 +196,31 @@ func AddSession(db *sql.DB, dayID, userID int64, startTime, endTime string, sort
 // UpdateSession modifies an existing session. The session must belong to a
 // day owned by the given userID. isInternal marks company meetings/admin time;
 // crossesMidnight marks a session whose endTime falls on the following day.
+// Returns *OverlapError if the new times would overlap another session on the
+// same day; the check and the update run in one transaction.
 func UpdateSession(db *sql.DB, sessionID, userID int64, startTime, endTime string, sortOrder int, isInternal, crossesMidnight bool) error {
-	res, err := db.Exec(`
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	dayID, err := GetSessionDayID(tx, sessionID, userID)
+	if err != nil {
+		return err
+	}
+	if err := lockDay(tx, dayID, userID); err != nil {
+		return err
+	}
+	conflict, err := findOverlap(tx, dayID, startTime, endTime, crossesMidnight, sessionID)
+	if err != nil {
+		return err
+	}
+	if conflict != nil {
+		return &OverlapError{Conflict: *conflict}
+	}
+
+	res, err := tx.Exec(`
 		UPDATE work_sessions SET start_time = ?, end_time = ?, sort_order = ?, is_internal = ?, crosses_midnight = ?
 		WHERE id = ? AND day_id IN (SELECT id FROM work_days WHERE user_id = ?)
 	`, startTime, endTime, sortOrder, boolToInt(isInternal), boolToInt(crossesMidnight), sessionID, userID)
@@ -157,42 +234,7 @@ func UpdateSession(db *sql.DB, sessionID, userID int64, startTime, endTime strin
 	if n == 0 {
 		return sql.ErrNoRows
 	}
-	return nil
-}
-
-// sessionsOverlap reports whether two sessions overlap in wall-clock time.
-// Intervals are half-open ([start, end)), so back-to-back sessions where one
-// ends exactly when the next starts do not overlap. An end that is not after
-// its start belongs to the following day (crosses_midnight; validation
-// guarantees this is the only way end <= start can be stored), so a full day is
-// added to it. Malformed times never count as overlapping.
-func sessionsOverlap(aStart, aEnd, bStart, bEnd string) bool {
-	as, ae, ok := sessionBounds(aStart, aEnd)
-	if !ok {
-		return false
-	}
-	bs, be, ok := sessionBounds(bStart, bEnd)
-	if !ok {
-		return false
-	}
-	return as < be && bs < ae
-}
-
-// sessionBounds converts a session's HH:MM bounds to minutes since the start
-// of the session's day, extending the end past midnight when needed.
-func sessionBounds(startTime, endTime string) (int, int, bool) {
-	start, err := parseHHMM(startTime)
-	if err != nil {
-		return 0, 0, false
-	}
-	end, err := parseHHMM(endTime)
-	if err != nil {
-		return 0, 0, false
-	}
-	if end <= start {
-		end += minutesPerDay
-	}
-	return start, end, true
+	return tx.Commit()
 }
 
 // FindOverlappingSession returns the first session on the given work day whose
@@ -200,12 +242,20 @@ func sessionBounds(startTime, endTime string) (int, int, bool) {
 // session with ID excludeID is skipped so an update does not conflict with
 // itself (pass 0 when adding). The internal/non-internal flag is ignored:
 // overlap is about wall-clock time only. Returns sql.ErrNoRows if the day does
-// not belong to userID.
-func FindOverlappingSession(db *sql.DB, userID, dayID int64, startTime, endTime string, excludeID int64) (*WorkSession, error) {
+// not belong to userID. AddSession and UpdateSession already run this check
+// atomically with their write; use this only for read-only lookups.
+func FindOverlappingSession(db *sql.DB, userID, dayID int64, startTime, endTime string, crossesMidnight bool, excludeID int64) (*WorkSession, error) {
 	if err := verifyDayOwnership(db, dayID, userID); err != nil {
 		return nil, err
 	}
-	sessions, err := getSessions(db, dayID)
+	return findOverlap(db, dayID, startTime, endTime, crossesMidnight, excludeID)
+}
+
+// findOverlap is FindOverlappingSession without the ownership check, usable
+// inside a transaction. Existing rows are compared using their stored
+// crosses_midnight flag.
+func findOverlap(q dbQuerier, dayID int64, startTime, endTime string, crossesMidnight bool, excludeID int64) (*WorkSession, error) {
+	sessions, err := getSessions(q, dayID)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +263,7 @@ func FindOverlappingSession(db *sql.DB, userID, dayID int64, startTime, endTime 
 		if s.ID == excludeID {
 			continue
 		}
-		if sessionsOverlap(startTime, endTime, s.StartTime, s.EndTime) {
+		if sessionsOverlap(startTime, endTime, crossesMidnight, s.StartTime, s.EndTime, s.CrossesMidnight) {
 			conflict := s
 			return &conflict, nil
 		}
@@ -223,9 +273,9 @@ func FindOverlappingSession(db *sql.DB, userID, dayID int64, startTime, endTime 
 
 // GetSessionDayID returns the work day ID of a session owned by userID, or
 // sql.ErrNoRows if the session does not exist or belongs to another user.
-func GetSessionDayID(db *sql.DB, sessionID, userID int64) (int64, error) {
+func GetSessionDayID(q dbQuerier, sessionID, userID int64) (int64, error) {
 	var dayID int64
-	err := db.QueryRow(`
+	err := q.QueryRow(`
 		SELECT s.day_id FROM work_sessions s
 		JOIN work_days d ON d.id = s.day_id
 		WHERE s.id = ? AND d.user_id = ?
@@ -585,7 +635,7 @@ func ListDaysInRange(db *sql.DB, userID int64, fromDate, toDate string) ([]WorkD
 }
 
 // getSessions returns all sessions for a work day, ordered by sort_order then id.
-func getSessions(db *sql.DB, dayID int64) ([]WorkSession, error) {
+func getSessions(db dbQuerier, dayID int64) ([]WorkSession, error) {
 	rows, err := db.Query(`
 		SELECT id, day_id, start_time, end_time, sort_order, is_internal, crosses_midnight
 		FROM work_sessions
@@ -947,7 +997,7 @@ func SumFlexRedemptionsForDate(db *sql.DB, userID int64, date string) (int, erro
 }
 
 // verifyDayOwnership returns an error if dayID does not belong to userID.
-func verifyDayOwnership(db *sql.DB, dayID, userID int64) error {
+func verifyDayOwnership(db dbQuerier, dayID, userID int64) error {
 	var count int
 	err := db.QueryRow(
 		"SELECT COUNT(*) FROM work_days WHERE id = ? AND user_id = ?",

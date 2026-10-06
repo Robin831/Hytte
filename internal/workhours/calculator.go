@@ -71,18 +71,58 @@ const minutesPerDay = 24 * 60
 // roll up work hours (for example salary) must go through it so the
 // crosses_midnight rule cannot drift between call sites.
 func SessionDurationMinutes(startTime, endTime string, crossesMidnight bool) (int, error) {
+	start, end, err := sessionBounds(startTime, endTime, crossesMidnight)
+	if err != nil {
+		return 0, err
+	}
+	return max(end-start, 0), nil
+}
+
+// sessionBounds converts a session's HH:MM bounds to minutes since the start
+// of the day the session started on. When crossesMidnight is set the end time
+// belongs to the next calendar day, so a full day is added to it. This is the
+// only place the crosses_midnight rule is applied; durations and overlap
+// checks both build on it. end may be <= start for a malformed row stored
+// without the flag — callers treat that as an empty session.
+func sessionBounds(startTime, endTime string, crossesMidnight bool) (int, int, error) {
 	start, err := parseHHMM(startTime)
 	if err != nil {
-		return 0, fmt.Errorf("start_time: %w", err)
+		return 0, 0, fmt.Errorf("start_time: %w", err)
 	}
 	end, err := parseHHMM(endTime)
 	if err != nil {
-		return 0, fmt.Errorf("end_time: %w", err)
+		return 0, 0, fmt.Errorf("end_time: %w", err)
 	}
 	if crossesMidnight {
 		end += minutesPerDay
 	}
-	return max(end-start, 0), nil
+	return start, end, nil
+}
+
+// sessionsOverlap reports whether two sessions on the same work day overlap in
+// wall-clock time. Intervals are half-open ([start, end)), so back-to-back
+// sessions where one ends exactly when the next starts do not overlap.
+//
+// Both sessions are placed on the timeline of the day they started on, so a
+// crosses-midnight session's tail (minutes >= 1440) is never compared with an
+// early-morning session on the same day: 22:00-02:00 and 01:00-03:00 on day D
+// do not overlap, because the latter is on D while the former's tail is on
+// D+1. Sessions on the following day are not checked at all — overlap is only
+// detected within a single work day.
+//
+// Malformed times and empty sessions (end not after start, e.g. a legacy row
+// with end <= start but no crosses_midnight flag, which counts as 0 minutes in
+// CalculateDay) never count as overlapping.
+func sessionsOverlap(aStart, aEnd string, aCrossesMidnight bool, bStart, bEnd string, bCrossesMidnight bool) bool {
+	as, ae, err := sessionBounds(aStart, aEnd, aCrossesMidnight)
+	if err != nil || ae <= as {
+		return false
+	}
+	bs, be, err := sessionBounds(bStart, bEnd, bCrossesMidnight)
+	if err != nil || be <= bs {
+		return false
+	}
+	return as < be && bs < ae
 }
 
 // sessionMinutes returns the duration of a session in minutes.

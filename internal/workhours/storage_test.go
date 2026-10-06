@@ -3,6 +3,7 @@ package workhours
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"testing"
 
@@ -295,7 +296,8 @@ func TestSessionCrossesMidnightRoundTrip(t *testing.T) {
 	}
 
 	// A session written with the flag reads back as true.
-	if _, err := AddSession(db, day.ID, 1, "22:00", "02:00", 1, false, true); err != nil {
+	wrapped, err := AddSession(db, day.ID, 1, "22:00", "02:00", 1, false, true)
+	if err != nil {
 		t.Fatalf("add wrapped session: %v", err)
 	}
 
@@ -311,6 +313,12 @@ func TestSessionCrossesMidnightRoundTrip(t *testing.T) {
 	}
 	if !fetched.Sessions[1].CrossesMidnight {
 		t.Error("wrapped session crosses_midnight after read: got false, want true")
+	}
+
+	// Two crosses-midnight sessions on one day always overlap, so remove the
+	// wrapped one before toggling the flag on the plain session.
+	if err := DeleteSession(db, wrapped.ID, 1); err != nil {
+		t.Fatalf("delete wrapped session: %v", err)
 	}
 
 	// The flag can be toggled off and on again via UpdateSession.
@@ -949,26 +957,40 @@ func TestGetFlexRedemptions_FiltersByFromDate(t *testing.T) {
 
 func TestSessionsOverlap(t *testing.T) {
 	tests := []struct {
-		name                       string
-		aStart, aEnd, bStart, bEnd string
-		want                       bool
+		name         string
+		aStart, aEnd string
+		aCross       bool
+		bStart, bEnd string
+		bCross       bool
+		want         bool
 	}{
-		{"exact match", "08:00", "12:00", "08:00", "12:00", true},
-		{"partial overlap at front", "07:00", "09:00", "08:00", "12:00", true},
-		{"partial overlap at back", "11:00", "13:00", "08:00", "12:00", true},
-		{"a contains b", "08:00", "16:00", "10:00", "12:00", true},
-		{"b contains a", "10:00", "12:00", "08:00", "16:00", true},
-		{"adjacent a before b", "08:00", "12:00", "12:00", "16:00", false},
-		{"adjacent b before a", "12:00", "16:00", "08:00", "12:00", false},
-		{"disjoint", "08:00", "10:00", "13:00", "16:00", false},
-		{"crosses midnight overlaps late session", "22:00", "02:00", "23:00", "23:30", true},
-		{"crosses midnight adjacent to evening session", "22:00", "02:00", "18:00", "22:00", false},
-		{"malformed time", "bad", "12:00", "08:00", "12:00", false},
+		{"exact match", "08:00", "12:00", false, "08:00", "12:00", false, true},
+		{"partial overlap at front", "07:00", "09:00", false, "08:00", "12:00", false, true},
+		{"partial overlap at back", "11:00", "13:00", false, "08:00", "12:00", false, true},
+		{"a contains b", "08:00", "16:00", false, "10:00", "12:00", false, true},
+		{"b contains a", "10:00", "12:00", false, "08:00", "16:00", false, true},
+		{"adjacent a before b", "08:00", "12:00", false, "12:00", "16:00", false, false},
+		{"adjacent b before a", "12:00", "16:00", false, "08:00", "12:00", false, false},
+		{"disjoint", "08:00", "10:00", false, "13:00", "16:00", false, false},
+		{"crosses midnight overlaps late session", "22:00", "02:00", true, "23:00", "23:30", false, true},
+		{"crosses midnight adjacent to evening session", "22:00", "02:00", true, "18:00", "22:00", false, false},
+		{"two crosses midnight sessions overlap", "22:00", "02:00", true, "23:00", "01:00", true, true},
+		// Both sessions sit on the timeline of the day they started on: the
+		// post-midnight tail (D+1) of 22:00-02:00 is not compared with an
+		// early-morning session on D.
+		{"crosses midnight tail vs same-day morning", "22:00", "02:00", true, "01:00", "03:00", false, false},
+		{"same-day morning vs crosses midnight tail", "01:00", "03:00", false, "22:00", "02:00", true, false},
+		// A legacy row with end <= start but no crosses_midnight flag counts
+		// as 0 minutes in CalculateDay, so it must not block anything.
+		{"unflagged end before start is empty", "22:00", "02:00", false, "23:00", "23:30", false, false},
+		{"unflagged end before start is empty (reversed)", "23:00", "23:30", false, "22:00", "02:00", false, false},
+		{"zero-length session", "10:00", "10:00", false, "08:00", "12:00", false, false},
+		{"malformed time", "bad", "12:00", false, "08:00", "12:00", false, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := sessionsOverlap(tc.aStart, tc.aEnd, tc.bStart, tc.bEnd); got != tc.want {
-				t.Errorf("sessionsOverlap(%s-%s, %s-%s) = %v, want %v", tc.aStart, tc.aEnd, tc.bStart, tc.bEnd, got, tc.want)
+			if got := sessionsOverlap(tc.aStart, tc.aEnd, tc.aCross, tc.bStart, tc.bEnd, tc.bCross); got != tc.want {
+				t.Errorf("sessionsOverlap(%s-%s/%v, %s-%s/%v) = %v, want %v", tc.aStart, tc.aEnd, tc.aCross, tc.bStart, tc.bEnd, tc.bCross, got, tc.want)
 			}
 		})
 	}
@@ -1030,7 +1052,7 @@ func TestFindOverlappingSession(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := FindOverlappingSession(db, 1, tc.dayID, tc.start, tc.end, tc.excludeID)
+			got, err := FindOverlappingSession(db, 1, tc.dayID, tc.start, tc.end, false, tc.excludeID)
 			if err != nil {
 				t.Fatalf("find overlap: %v", err)
 			}
@@ -1050,7 +1072,7 @@ func TestFindOverlappingSession(t *testing.T) {
 	}
 
 	// A day owned by another user is reported as not found.
-	if _, err := FindOverlappingSession(db, 1, otherUserDay.ID, "15:00", "17:00", 0); err != sql.ErrNoRows {
+	if _, err := FindOverlappingSession(db, 1, otherUserDay.ID, "15:00", "17:00", false, 0); err != sql.ErrNoRows {
 		t.Errorf("other user's day: expected sql.ErrNoRows, got %v", err)
 	}
 }
@@ -1077,5 +1099,135 @@ func TestGetSessionDayID(t *testing.T) {
 	}
 	if _, err := GetSessionDayID(db, session.ID, 2); err != sql.ErrNoRows {
 		t.Errorf("other user: expected sql.ErrNoRows, got %v", err)
+	}
+}
+
+func TestFindOverlappingSessionCrossesMidnightNotCheckedAgainstNextDay(t *testing.T) {
+	db := setupTestDB(t)
+
+	nextDay, err := UpsertDay(db, 1, "2026-03-28", false, "")
+	if err != nil {
+		t.Fatalf("upsert next day: %v", err)
+	}
+	if _, err := AddSession(db, nextDay.ID, 1, "01:00", "03:00", 0, false, false); err != nil {
+		t.Fatalf("add next-day session: %v", err)
+	}
+	day, err := UpsertDay(db, 1, "2026-03-27", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	// Deliberate limitation: overlap is checked within one work day only, so
+	// the tail of a 22:00-02:00 session on D is not compared with D+1.
+	got, err := FindOverlappingSession(db, 1, day.ID, "22:00", "02:00", true, 0)
+	if err != nil {
+		t.Fatalf("find overlap: %v", err)
+	}
+	if got != nil {
+		t.Errorf("expected no conflict across days, got session %d", got.ID)
+	}
+}
+
+func TestFindOverlappingSessionUsesStoredCrossesMidnightFlag(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-27", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	// Legacy row: end <= start without the flag. CalculateDay counts it as 0
+	// minutes, so it must not block new sessions either.
+	if _, err := db.Exec(
+		`INSERT INTO work_sessions (day_id, start_time, end_time, sort_order, is_internal, crosses_midnight) VALUES (?, '22:00', '02:00', 0, 0, 0)`,
+		day.ID,
+	); err != nil {
+		t.Fatalf("insert legacy row: %v", err)
+	}
+	got, err := FindOverlappingSession(db, 1, day.ID, "23:00", "23:30", false, 0)
+	if err != nil {
+		t.Fatalf("find overlap: %v", err)
+	}
+	if got != nil {
+		t.Errorf("legacy unflagged row should not conflict, got session %d", got.ID)
+	}
+
+	// The same times stored with the flag do conflict.
+	flagged, err := AddSession(db, day.ID, 1, "18:00", "20:00", 1, false, false)
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if err := UpdateSession(db, flagged.ID, 1, "22:00", "02:00", 1, false, true); err != nil {
+		t.Fatalf("update to crosses midnight: %v", err)
+	}
+	got, err = FindOverlappingSession(db, 1, day.ID, "23:00", "23:30", false, 0)
+	if err != nil {
+		t.Fatalf("find overlap: %v", err)
+	}
+	if got == nil || got.ID != flagged.ID {
+		t.Errorf("expected conflict with flagged session %d, got %+v", flagged.ID, got)
+	}
+}
+
+func TestAddSessionRejectsOverlap(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-27", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	existing, err := AddSession(db, day.ID, 1, "08:00", "12:00", 0, false, false)
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+
+	_, err = AddSession(db, day.ID, 1, "11:00", "13:00", 1, false, false)
+	var overlap *OverlapError
+	if !errors.As(err, &overlap) {
+		t.Fatalf("expected *OverlapError, got %v", err)
+	}
+	if overlap.Conflict.ID != existing.ID {
+		t.Errorf("conflict id: got %d, want %d", overlap.Conflict.ID, existing.ID)
+	}
+
+	got, err := GetDay(db, 1, "2026-03-27")
+	if err != nil {
+		t.Fatalf("get day: %v", err)
+	}
+	if len(got.Sessions) != 1 {
+		t.Errorf("sessions after rejected add: got %d, want 1", len(got.Sessions))
+	}
+}
+
+func TestUpdateSessionRejectsOverlap(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-27", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	morning, err := AddSession(db, day.ID, 1, "08:00", "12:00", 0, false, false)
+	if err != nil {
+		t.Fatalf("add morning: %v", err)
+	}
+	afternoon, err := AddSession(db, day.ID, 1, "13:00", "16:00", 1, false, false)
+	if err != nil {
+		t.Fatalf("add afternoon: %v", err)
+	}
+
+	err = UpdateSession(db, afternoon.ID, 1, "11:00", "16:00", 1, false, false)
+	var overlap *OverlapError
+	if !errors.As(err, &overlap) {
+		t.Fatalf("expected *OverlapError, got %v", err)
+	}
+	if overlap.Conflict.ID != morning.ID {
+		t.Errorf("conflict id: got %d, want %d", overlap.Conflict.ID, morning.ID)
+	}
+
+	// Moving a session within its own old range is not a self-conflict.
+	if err := UpdateSession(db, morning.ID, 1, "09:00", "12:00", 0, false, false); err != nil {
+		t.Errorf("self update: %v", err)
+	}
+	if err := UpdateSession(db, 99999, 1, "09:00", "12:00", 0, false, false); err != sql.ErrNoRows {
+		t.Errorf("missing session: expected sql.ErrNoRows, got %v", err)
 	}
 }
