@@ -261,7 +261,11 @@ func AnalysesHandler(db *sql.DB) http.HandlerFunc {
 		analyses := make(map[string]AnalysisResponse, len(tests))
 		for i := range tests {
 			analysis, err := buildAnalysis(&tests[i], methodParam, maxHR)
+			if errors.Is(err, errTooFewStages) {
+				continue
+			}
 			if err != nil {
+				log.Printf("Failed to analyse lactate test %d: %v", tests[i].ID, err)
 				continue
 			}
 			analyses[strconv.FormatInt(tests[i].ID, 10)] = analysis

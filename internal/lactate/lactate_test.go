@@ -60,6 +60,12 @@ func setupTestDB(t *testing.T) *sql.DB {
 			notes          TEXT NOT NULL DEFAULT '',
 			UNIQUE(test_id, stage_number)
 		);
+		CREATE TABLE user_preferences (
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			key     TEXT NOT NULL,
+			value   TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (user_id, key)
+		);
 	`)
 	if err != nil {
 		t.Fatalf("create schema: %v", err)

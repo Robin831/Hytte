@@ -892,3 +892,98 @@ func TestAnalysesHandler_MethodParam(t *testing.T) {
 		}
 	}
 }
+
+func TestMaxHRPreference(t *testing.T) {
+	tests := []struct {
+		name  string
+		value *string
+		want  int
+	}{
+		{"missing", nil, 0},
+		{"valid", ptr("190"), 190},
+		{"lower bound", ptr("100"), 100},
+		{"upper bound", ptr("230"), 230},
+		{"below range", ptr("99"), 0},
+		{"above range", ptr("231"), 0},
+		{"non-numeric", ptr("fast"), 0},
+		{"empty", ptr(""), 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupTestDB(t)
+			if tt.value != nil {
+				if err := auth.SetPreference(db, 1, "max_hr", *tt.value); err != nil {
+					t.Fatalf("set preference: %v", err)
+				}
+			}
+			if got := maxHRPreference(db, 1); got != tt.want {
+				t.Errorf("maxHRPreference = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func ptr(s string) *string { return &s }
+
+func TestAnalysesHandler_MaxHRMatchesSingle(t *testing.T) {
+	db := setupTestDB(t)
+	if err := auth.SetPreference(db, 1, "max_hr", "195"); err != nil {
+		t.Fatalf("set preference: %v", err)
+	}
+
+	created, err := Create(db, 1, analysisTestFixture())
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	idStr := strconv.FormatInt(created.ID, 10)
+
+	batch, ok := getAnalyses(t, db, 1, "")[idStr]
+	if !ok {
+		t.Fatalf("missing analysis for test %s", idStr)
+	}
+
+	req := withUser(httptest.NewRequest("GET", "/api/lactate/tests/"+idStr+"/analysis", nil), 1)
+	req = withChiParam(req, "id", idStr)
+	rec := httptest.NewRecorder()
+	AnalysisHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("single analysis: expected 200, got %d", rec.Code)
+	}
+	var single AnalysisResponse
+	if err := json.NewDecoder(rec.Body).Decode(&single); err != nil {
+		t.Fatalf("decode single: %v", err)
+	}
+
+	batchZones, _ := json.Marshal(batch.Zones)
+	singleZones, _ := json.Marshal(single.Zones)
+	if string(batchZones) != string(singleZones) {
+		t.Errorf("zones differ between batch and single\nbatch:  %s\nsingle: %s", batchZones, singleZones)
+	}
+
+	// max_hr must actually change the zones, otherwise this test proves nothing.
+	if err := auth.SetPreference(db, 1, "max_hr", ""); err != nil {
+		t.Fatalf("clear preference: %v", err)
+	}
+	noMaxHR := getAnalyses(t, db, 1, "")[idStr]
+	noMaxHRZones, _ := json.Marshal(noMaxHR.Zones)
+	if string(noMaxHRZones) == string(batchZones) {
+		t.Error("expected max_hr preference to affect zone output")
+	}
+}
+
+func TestAnalysesHandler_CorruptStageNotesDoNotFailBatch(t *testing.T) {
+	db := setupTestDB(t)
+
+	created, err := Create(db, 1, analysisTestFixture())
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := db.Exec("UPDATE lactate_test_stages SET notes = 'enc:not-valid-ciphertext' WHERE test_id = ?", created.ID); err != nil {
+		t.Fatalf("corrupt notes: %v", err)
+	}
+
+	body := getAnalyses(t, db, 1, "")
+	if _, ok := body[strconv.FormatInt(created.ID, 10)]; !ok {
+		t.Error("expected analysis despite undecryptable stage notes")
+	}
+}

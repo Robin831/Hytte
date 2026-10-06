@@ -96,8 +96,10 @@ func List(db *sql.DB, userID int64) ([]Test, error) {
 }
 
 // ListWithStages returns all lactate tests for a user, ordered by date
-// descending, with full stages attached. Stages for every test are loaded in a
-// single batch query.
+// descending, with the stage data needed for analysis attached (stage number,
+// speed, lactate and heart rate; no notes/RPE). Stages for every test are
+// loaded in a single batch query. Skipping the encrypted notes avoids both the
+// decryption cost and a single corrupt ciphertext failing the whole batch.
 func ListWithStages(db *sql.DB, userID int64) ([]Test, error) {
 	tests, err := listTests(db, userID)
 	if err != nil {
@@ -107,11 +109,13 @@ func ListWithStages(db *sql.DB, userID int64) ([]Test, error) {
 		return tests, nil
 	}
 
-	stagesByTest, err := getStagesForTests(db, testIDs(tests))
+	stagesByTest, err := getThresholdStagesForTests(db, testIDs(tests))
 	if err != nil {
 		return nil, fmt.Errorf("get stages for tests: %w", err)
 	}
 	for i := range tests {
+		// Only overwrite when stages exist so stage-less tests keep the empty
+		// slice from listTests (serialises as [] rather than null).
 		if stages, ok := stagesByTest[tests[i].ID]; ok {
 			tests[i].Stages = stages
 		}
