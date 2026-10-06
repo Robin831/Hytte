@@ -18,6 +18,13 @@ func IsActive(db *sql.DB, userID int64) bool {
 	return isActiveAt(db, userID, time.Now())
 }
 
+// IsActiveAt is like IsActive but evaluates quiet hours at the given instant
+// instead of the wall clock. Background jobs that already carry a "now" use it
+// so their decisions stay consistent (and testable).
+func IsActiveAt(db *sql.DB, userID int64, now time.Time) bool {
+	return isActiveAt(db, userID, now)
+}
+
 // IsActiveWithPrefs is like IsActive but accepts pre-fetched preferences,
 // avoiding a redundant DB query when the caller already has them.
 func IsActiveWithPrefs(prefs map[string]string) bool {

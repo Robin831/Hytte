@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 )
 
@@ -55,16 +56,62 @@ func Sync(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("offers: all %d dealers failed — check OFFERS_TJEK_API_KEY", failures)
 	}
 
-	if _, err := UpsertOffers(ctx, db, collected); err != nil {
+	inserted, err := UpsertOffers(ctx, db, collected)
+	if err != nil {
 		return err
 	}
 	purged, err := PurgeExpired(ctx, db)
 	if err != nil {
 		return err
 	}
-	log.Printf("offers: synced %d offers from %d/%d dealers (purged %d expired)",
-		len(collected), len(Dealers)-failures, len(Dealers), purged)
+	log.Printf("offers: synced %d offers (%d new) from %d/%d dealers (purged %d expired)",
+		len(collected), len(inserted), len(Dealers)-failures, len(Dealers), purged)
 	return nil
+}
+
+// NotifyInterval is how often the background notify pass runs. It bounds the
+// delay between quiet hours ending (or a manual refresh) and the push.
+const NotifyInterval = 15 * time.Minute
+
+// notifyTimeout bounds a single notify pass.
+const notifyTimeout = 2 * time.Minute
+
+// notifyMu serialises notify passes so the post-sync pass and the periodic
+// pass cannot both push the same unmarked offers.
+var notifyMu sync.Mutex
+
+// notifyRecent is the pass RunNotifyPass executes. Swappable in tests.
+var notifyRecent = NotifyRecent
+
+// RunNotifyPass pushes watchlist matches for offers first seen within
+// RecentWindow. Errors are only logged: notifications never affect syncing.
+// The pass is bounded by notifyTimeout and stops early when ctx is cancelled
+// (server shutdown); anything it did not get to is picked up by a later pass.
+func RunNotifyPass(ctx context.Context, db *sql.DB) {
+	notifyMu.Lock()
+	defer notifyMu.Unlock()
+	nctx, cancel := context.WithTimeout(ctx, notifyTimeout)
+	defer cancel()
+	if err := notifyRecent(nctx, db, time.Now()); err != nil {
+		log.Printf("offers: notify pass: %v", err)
+	}
+}
+
+// RunNotifyLoop runs RunNotifyPass every interval until ctx is cancelled.
+// Sync itself never pushes, so this loop is what delivers matches from the
+// startup warm-run and admin refreshes, and what retries matches held back by
+// quiet hours or a failed send.
+func RunNotifyLoop(ctx context.Context, db *sql.DB, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			RunNotifyPass(ctx, db)
+		}
+	}
 }
 
 // SyncIfStale runs Sync only when the stored data is older than StaleAfter

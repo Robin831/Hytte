@@ -419,9 +419,18 @@ func main() {
 					log.Printf("offers: scheduled sync failed: %v", err)
 				}
 				syncCancel()
+				// Push new watchlist matches right away rather than waiting
+				// for the next periodic pass.
+				offers.RunNotifyPass(notifCtx, database)
 			}
 		}
 	}()
+
+	// Watchlist match pushes for offers first seen in the last day. Runs
+	// independently of the sync so matches held back by quiet hours (the
+	// 06:30 sync falls inside many overnight windows) or a failed send are
+	// delivered on a later pass (Hytte-x043y).
+	go offers.RunNotifyLoop(notifCtx, database, offers.NotifyInterval)
 
 	// Sweep orphaned Family Chat attachment files every hour. Files uploaded but
 	// never referenced by a message row (e.g. aborted sends) are removed after

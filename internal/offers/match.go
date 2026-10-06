@@ -15,10 +15,7 @@ import (
 // "HELMELK" and "MELK 1L" but not "melkesjokolade". Multi-word keywords match
 // as phrases.
 func Rank(offers []Offer, keywords []string) []RankedOffer {
-	lowered := make([]string, len(keywords))
-	for i, k := range keywords {
-		lowered[i] = strings.ToLower(strings.TrimSpace(k))
-	}
+	lowered := lowerKeywords(keywords)
 
 	ranked := make([]RankedOffer, 0, len(offers))
 	for _, o := range offers {
@@ -26,15 +23,7 @@ func Rank(offers []Offer, keywords []string) []RankedOffer {
 		if o.PrePrice > o.Price && o.PrePrice > 0 {
 			r.DiscountPct = int((o.PrePrice-o.Price)/o.PrePrice*100 + 0.5)
 		}
-		haystack := strings.ToLower(o.Heading + " " + o.Description)
-		for i, k := range lowered {
-			if k == "" {
-				continue
-			}
-			if containsCompound(haystack, k) {
-				r.MatchedKeywords = append(r.MatchedKeywords, keywords[i])
-			}
-		}
+		r.MatchedKeywords = matchKeywords(o, keywords, lowered)
 		ranked = append(ranked, r)
 	}
 
@@ -49,6 +38,33 @@ func Rank(offers []Offer, keywords []string) []RankedOffer {
 		return a.Heading < b.Heading
 	})
 	return ranked
+}
+
+// lowerKeywords normalises watchlist keywords for matchKeywords.
+func lowerKeywords(keywords []string) []string {
+	lowered := make([]string, len(keywords))
+	for i, k := range keywords {
+		lowered[i] = strings.ToLower(strings.TrimSpace(k))
+	}
+	return lowered
+}
+
+// matchKeywords returns the original keywords (in watchlist order) that match
+// the offer's heading or description. lowered must be lowerKeywords(keywords).
+// Shared by Rank and the push notifier so both agree on what counts as a
+// match.
+func matchKeywords(o Offer, keywords, lowered []string) []string {
+	var matched []string
+	haystack := strings.ToLower(o.Heading + " " + o.Description)
+	for i, k := range lowered {
+		if k == "" {
+			continue
+		}
+		if containsCompound(haystack, k) {
+			matched = append(matched, keywords[i])
+		}
+	}
+	return matched
 }
 
 // containsCompound reports whether needle occurs in haystack ending at a word
