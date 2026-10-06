@@ -1,0 +1,2 @@
+category: Added
+- **Push notifications for new watchlist offer matches** - After each grocery-offer sync (daily, startup warm-run or admin refresh), users with the offers feature, the `offers_notify` preference enabled, a watchlist and a push subscription get one push such as "3 new matches: melk, kaffe, laks" linking to /offers. Matching uses the same compound-word rules as the offers page, offers are never pushed twice, quiet hours suppress the push, and notification failures never affect the sync. (Hytte-x043y)

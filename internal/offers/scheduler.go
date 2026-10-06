@@ -55,16 +55,46 @@ func Sync(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("offers: all %d dealers failed — check OFFERS_TJEK_API_KEY", failures)
 	}
 
-	if _, err := UpsertOffers(ctx, db, collected); err != nil {
+	inserted, err := UpsertOffers(ctx, db, collected)
+	if err != nil {
 		return err
 	}
+	// The upsert has committed, so the new offers are stored whatever happens
+	// next. Notify before the purge result is inspected: a purge failure must
+	// not cause freshly inserted offers to be skipped forever (they will not
+	// be "new" on the next sync).
+	defer runNotify(ctx, db, inserted)
+
 	purged, err := PurgeExpired(ctx, db)
 	if err != nil {
 		return err
 	}
-	log.Printf("offers: synced %d offers from %d/%d dealers (purged %d expired)",
-		len(collected), len(Dealers)-failures, len(Dealers), purged)
+	log.Printf("offers: synced %d offers (%d new) from %d/%d dealers (purged %d expired)",
+		len(collected), len(inserted), len(Dealers)-failures, len(Dealers), purged)
 	return nil
+}
+
+// notifyTimeout bounds the push pass that follows a sync.
+const notifyTimeout = 2 * time.Minute
+
+// notifyNewMatches is the notify pass run after every sync (scheduled,
+// startup warm-run and admin refresh alike). Swappable in tests.
+var notifyNewMatches = NotifyNewMatches
+
+// runNotify pushes watchlist matches for newly inserted offers. Errors are
+// only logged: notifications never change the sync result or roll back the
+// stored offers. It detaches from the caller's cancellation (a long sweep may
+// have nearly exhausted the sync deadline, or the admin request may be gone)
+// but keeps its own timeout.
+func runNotify(ctx context.Context, db *sql.DB, inserted []string) {
+	if len(inserted) == 0 {
+		return
+	}
+	nctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), notifyTimeout)
+	defer cancel()
+	if err := notifyNewMatches(nctx, db, inserted, time.Now()); err != nil {
+		log.Printf("offers: notify new matches: %v", err)
+	}
 }
 
 // SyncIfStale runs Sync only when the stored data is older than StaleAfter
