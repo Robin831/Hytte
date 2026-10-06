@@ -56,38 +56,37 @@ export default function LactateInsights() {
     return () => controller.abort()
   }, [user, t])
 
-  // Fetch analysis for all tests with sufficient stages (for threshold trends)
+  // Fetch analyses for all tests with sufficient stages (for threshold trends)
+  // in a single request. Eligibility (2+ stages) is decided server-side; tests
+  // without an entry in the response are simply left out of the trend.
   useEffect(() => {
-    if (tests.length === 0) return
-    const eligible = tests.filter((t) => t.stages.length >= 2)
-    if (eligible.length === 0) return
-
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
     abortRef.current = controller
 
     const run = async () => {
+      // Nothing to analyse: make sure no stale spinner or data is left behind.
+      if (tests.length === 0) {
+        setTestsWithAnalysis([])
+        setAnalysisLoading(false)
+        return
+      }
       setAnalysisLoading(true)
       try {
-        const settled = await Promise.allSettled(
-          eligible.map(async (test) => {
-            const res = await fetch(`/api/lactate/tests/${test.id}/analysis`, {
-              credentials: 'include',
-              signal: controller.signal,
-            })
-            if (!res.ok) return { test, analysis: null }
-            const analysis = await res.json()
-            return { test, analysis } as TestWithAnalysis
-          })
-        )
-        if (controller.signal.aborted) return
-        const results = settled.map((outcome, i) => {
-          if (outcome.status === 'fulfilled') return outcome.value
-          return { test: eligible[i], analysis: null }
+        const res = await fetch('/api/lactate/analyses', {
+          credentials: 'include',
+          signal: controller.signal,
         })
-        setTestsWithAnalysis(results)
+        const analyses: Record<string, Analysis> = res.ok ? await res.json() : {}
+        if (controller.signal.aborted) return
+        setTestsWithAnalysis(
+          tests.map((test) => ({ test, analysis: analyses[String(test.id)] ?? null }))
+        )
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        setTestsWithAnalysis(tests.map((test) => ({ test, analysis: null })))
       } finally {
-        setAnalysisLoading(false)
+        if (!controller.signal.aborted) setAnalysisLoading(false)
       }
     }
     run()

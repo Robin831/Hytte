@@ -74,6 +74,63 @@ type Stage struct {
 // Each test carries a precomputed PrimaryThreshold (when derivable) but no
 // stages; use GetByID for full test details including stages.
 func List(db *sql.DB, userID int64) ([]Test, error) {
+	tests, err := listTests(db, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(tests) == 0 {
+		return tests, nil
+	}
+
+	// Batch-load stages for all listed tests in one query (avoid N+1), then
+	// compute each test's primary threshold for glanceable list display.
+	stagesByTest, err := getThresholdStagesForTests(db, testIDs(tests))
+	if err != nil {
+		return nil, fmt.Errorf("get stages for tests: %w", err)
+	}
+	for i := range tests {
+		tests[i].PrimaryThreshold = primaryThresholdFor(stagesByTest[tests[i].ID])
+	}
+
+	return tests, nil
+}
+
+// ListWithStages returns all lactate tests for a user, ordered by date
+// descending, with full stages attached. Stages for every test are loaded in a
+// single batch query.
+func ListWithStages(db *sql.DB, userID int64) ([]Test, error) {
+	tests, err := listTests(db, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(tests) == 0 {
+		return tests, nil
+	}
+
+	stagesByTest, err := getStagesForTests(db, testIDs(tests))
+	if err != nil {
+		return nil, fmt.Errorf("get stages for tests: %w", err)
+	}
+	for i := range tests {
+		if stages, ok := stagesByTest[tests[i].ID]; ok {
+			tests[i].Stages = stages
+		}
+	}
+
+	return tests, nil
+}
+
+func testIDs(tests []Test) []int64 {
+	ids := make([]int64, len(tests))
+	for i := range tests {
+		ids[i] = tests[i].ID
+	}
+	return ids
+}
+
+// listTests loads a user's test rows (without stages) ordered by date
+// descending. Stages is initialised to an empty slice on every test.
+func listTests(db *sql.DB, userID int64) ([]Test, error) {
 	rows, err := db.Query(`
 		SELECT id, user_id, date, comment, protocol_type,
 		       warmup_duration_min, stage_duration_min,
@@ -112,21 +169,6 @@ func List(db *sql.DB, userID int64) ([]Test, error) {
 	if tests == nil {
 		return []Test{}, nil
 	}
-
-	// Batch-load stages for all listed tests in one query (avoid N+1), then
-	// compute each test's primary threshold for glanceable list display.
-	ids := make([]int64, len(tests))
-	for i := range tests {
-		ids[i] = tests[i].ID
-	}
-	stagesByTest, err := getThresholdStagesForTests(db, ids)
-	if err != nil {
-		return nil, fmt.Errorf("get stages for tests: %w", err)
-	}
-	for i := range tests {
-		tests[i].PrimaryThreshold = primaryThresholdFor(stagesByTest[tests[i].ID])
-	}
-
 	return tests, nil
 }
 
