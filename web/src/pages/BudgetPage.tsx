@@ -35,6 +35,9 @@ interface Transaction {
   date: string
   tags: string[]
   is_transfer: boolean
+  // Linked counterpart of a transfer; the API serialises it as "transfer_to".
+  // Round-tripped untouched on edit because UpdateTransaction overwrites it.
+  transfer_to?: number | null
 }
 
 interface CategorySummary {
@@ -107,22 +110,39 @@ function progressColor(pct: number): string {
   return 'bg-green-500'
 }
 
-// ── Quick-add row ────────────────────────────────────────────────────────────
+// ── Transaction row form (shared by quick-add and inline edit) ───────────────
 
-interface QuickAddRowProps {
+type TransactionFormValues = Pick<Transaction, 'account_id' | 'category_id' | 'amount' | 'description' | 'date'>
+
+interface TransactionRowFormProps {
   accounts: Account[]
   categories: Category[]
-  onAdd: (t: Omit<Transaction, 'id'>) => Promise<void>
+  initial: TransactionFormValues
+  submitLabel: string
+  savingLabel: string
+  cancelLabel: string
+  fallbackError: string
+  onSubmit: (values: TransactionFormValues) => Promise<void>
   onCancel: () => void
 }
 
-function QuickAddRow({ accounts, categories, onAdd, onCancel }: QuickAddRowProps) {
+function TransactionRowForm({
+  accounts,
+  categories,
+  initial,
+  submitLabel,
+  savingLabel,
+  cancelLabel,
+  fallbackError,
+  onSubmit,
+  onCancel,
+}: TransactionRowFormProps) {
   const { t } = useTranslation('budget')
-  const [description, setDescription] = useState('')
-  const [amount, setAmount] = useState('')
-  const [date, setDate] = useState(toLocalDateString())
-  const [accountId, setAccountId] = useState(accounts[0]?.id ?? 0)
-  const [categoryId, setCategoryId] = useState<number | null>(null)
+  const [description, setDescription] = useState(initial.description)
+  const [amount, setAmount] = useState(initial.amount ? String(initial.amount) : '')
+  const [date, setDate] = useState(initial.date)
+  const [accountId, setAccountId] = useState(initial.account_id)
+  const [categoryId, setCategoryId] = useState<number | null>(initial.category_id)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -133,17 +153,15 @@ function QuickAddRow({ accounts, categories, onAdd, onCancel }: QuickAddRowProps
     setSaving(true)
     setSaveError(null)
     try {
-      await onAdd({
+      await onSubmit({
         account_id: accountId,
         category_id: categoryId,
         amount: parsed,
         description,
         date,
-        tags: [],
-        is_transfer: false,
       })
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : t('errors.saveFailed'))
+      setSaveError(err instanceof Error ? err.message : fallbackError)
     } finally {
       setSaving(false)
     }
@@ -152,37 +170,39 @@ function QuickAddRow({ accounts, categories, onAdd, onCancel }: QuickAddRowProps
   return (
     <>
     {saveError && (
-      <div className="px-4 py-2 bg-red-900/40 text-red-300 text-xs border-t border-red-800">
+      <div role="alert" className="px-4 py-2 bg-red-900/40 text-red-300 text-xs border-t border-red-800">
         {saveError}
       </div>
     )}
     <form
       onSubmit={handleSubmit}
-      className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 px-4 py-2 bg-gray-800 border-t border-gray-700 items-center text-sm"
+      className="grid grid-cols-2 sm:grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 px-4 py-2 bg-gray-800 border-t border-gray-700 items-center text-sm"
     >
       <input
-        className="bg-gray-700 text-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 min-w-0"
+        className="col-span-2 sm:col-span-1 bg-gray-700 text-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 min-w-0"
         placeholder={t('quickAdd.description')}
         value={description}
         onChange={e => setDescription(e.target.value)}
+        aria-label={t('quickAdd.description')}
         autoFocus
       />
       <input
-        className="bg-gray-700 text-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 w-28 text-right"
+        className="bg-gray-700 text-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 min-w-0 w-full sm:w-28 text-right"
         placeholder={t('quickAdd.amount')}
         value={amount}
         onChange={e => setAmount(e.target.value)}
         aria-label={t('quickAdd.amount')}
+        inputMode="decimal"
       />
       <input
         type="date"
-        className="bg-gray-700 text-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 w-36"
+        className="bg-gray-700 text-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 min-w-0 w-full sm:w-36"
         value={date}
         onChange={e => setDate(e.target.value)}
         aria-label={t('quickAdd.date')}
       />
       <select
-        className="bg-gray-700 text-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500"
+        className="bg-gray-700 text-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 min-w-0"
         value={categoryId ?? ''}
         onChange={e => setCategoryId(e.target.value ? Number(e.target.value) : null)}
         aria-label={t('quickAdd.category')}
@@ -195,7 +215,7 @@ function QuickAddRow({ accounts, categories, onAdd, onCancel }: QuickAddRowProps
         ))}
       </select>
       <select
-        className="bg-gray-700 text-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500"
+        className="bg-gray-700 text-white rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500 min-w-0"
         value={accountId}
         onChange={e => setAccountId(Number(e.target.value))}
         aria-label={t('quickAdd.account')}
@@ -206,25 +226,90 @@ function QuickAddRow({ accounts, categories, onAdd, onCancel }: QuickAddRowProps
           </option>
         ))}
       </select>
-      <div className="flex gap-1">
+      <div className="col-span-2 sm:col-span-1 flex gap-1 justify-end">
         <button
           type="submit"
           disabled={saving}
           className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded px-3 py-1 text-sm"
         >
-          {saving ? t('quickAdd.saving') : t('quickAdd.add')}
+          {saving ? savingLabel : submitLabel}
         </button>
         <button
           type="button"
           onClick={onCancel}
           className="text-gray-400 hover:text-white rounded p-1"
-          aria-label={t('quickAdd.cancel')}
+          aria-label={cancelLabel}
         >
           <X size={16} />
         </button>
       </div>
     </form>
     </>
+  )
+}
+
+// ── Quick-add row ────────────────────────────────────────────────────────────
+
+interface QuickAddRowProps {
+  accounts: Account[]
+  categories: Category[]
+  onAdd: (t: Omit<Transaction, 'id'>) => Promise<void>
+  onCancel: () => void
+}
+
+function QuickAddRow({ accounts, categories, onAdd, onCancel }: QuickAddRowProps) {
+  const { t } = useTranslation('budget')
+  return (
+    <TransactionRowForm
+      accounts={accounts}
+      categories={categories}
+      initial={{
+        account_id: accounts[0]?.id ?? 0,
+        category_id: null,
+        amount: 0,
+        description: '',
+        date: toLocalDateString(),
+      }}
+      submitLabel={t('quickAdd.add')}
+      savingLabel={t('quickAdd.saving')}
+      cancelLabel={t('quickAdd.cancel')}
+      fallbackError={t('errors.saveFailed')}
+      onSubmit={values => onAdd({ ...values, tags: [], is_transfer: false })}
+      onCancel={onCancel}
+    />
+  )
+}
+
+// ── Inline edit row ──────────────────────────────────────────────────────────
+
+interface EditTransactionRowProps {
+  txn: Transaction
+  accounts: Account[]
+  categories: Category[]
+  onSave: (txn: Transaction, values: TransactionFormValues) => Promise<void>
+  onCancel: () => void
+}
+
+function EditTransactionRow({ txn, accounts, categories, onSave, onCancel }: EditTransactionRowProps) {
+  const { t } = useTranslation('budget')
+  return (
+    <TransactionRowForm
+      accounts={accounts}
+      categories={categories}
+      initial={{
+        account_id: txn.account_id,
+        category_id: txn.category_id,
+        amount: txn.amount,
+        description: txn.description,
+        date: txn.date,
+      }}
+      submitLabel={t('edit.save')}
+      savingLabel={t('edit.saving')}
+      cancelLabel={t('edit.cancel')}
+      fallbackError={t('edit.errors.updateFailed')}
+      onSubmit={values => onSave(txn, values)}
+      onCancel={onCancel}
+    />
   )
 }
 
@@ -403,6 +488,7 @@ export default function BudgetPage() {
   const [error, setError] = useState<string | null>(null)
   const [showQuickAdd, setShowQuickAdd] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
   const [upcoming, setUpcoming] = useState<UpcomingTransaction[]>([])
   const [splitEditing, setSplitEditing] = useState(false)
   const [splitInput, setSplitInput] = useState('')
@@ -464,6 +550,20 @@ export default function BudgetPage() {
     })
     if (!res.ok) throw new Error(t('errors.saveFailed'))
     setShowQuickAdd(false)
+    await loadData(month)
+  }
+
+  const handleUpdateTransaction = async (txn: Transaction, values: TransactionFormValues) => {
+    // Spread the original transaction so fields the form does not expose
+    // (tags, is_transfer, transfer_to) survive the full-row PUT.
+    const res = await fetch(`/api/budget/transactions/${txn.id}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...txn, ...values }),
+    })
+    if (!res.ok) throw new Error(t('edit.errors.updateFailed'))
+    setEditingId(null)
     await loadData(month)
   }
 
@@ -814,6 +914,20 @@ export default function BudgetPage() {
               const acct = acctById.get(txn.account_id)
               const isIncome = txn.amount > 0
 
+              if (txn.id === editingId) {
+                return (
+                  <li key={txn.id}>
+                    <EditTransactionRow
+                      txn={txn}
+                      accounts={accounts}
+                      categories={categories}
+                      onSave={handleUpdateTransaction}
+                      onCancel={() => setEditingId(null)}
+                    />
+                  </li>
+                )
+              }
+
               return (
                 <li key={txn.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-800/60 group">
                   {/* Date */}
@@ -856,6 +970,16 @@ export default function BudgetPage() {
                       {t('summary.accountMonthToDate')}: {formatNOK(monthToDate, acct?.currency)}
                     </p>
                   </div>
+
+                  {/* Edit button */}
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(txn.id)}
+                    className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 text-gray-500 hover:text-blue-400 focus-visible:text-blue-400 transition-opacity p-1"
+                    aria-label={t('edit.editTransaction')}
+                  >
+                    <Pencil size={16} />
+                  </button>
 
                   {/* Delete button */}
                   <button
