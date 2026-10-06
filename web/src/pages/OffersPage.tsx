@@ -28,6 +28,17 @@ interface WatchlistEntry {
 
 const HIDDEN_DEALERS_KEY = 'offers-hidden-dealers'
 
+// Number of un-watched offer cards rendered per "Show more" step.
+const PAGE_SIZE = 50
+
+function saveHiddenDealers(hidden: Set<string>) {
+  try {
+    localStorage.setItem(HIDDEN_DEALERS_KEY, JSON.stringify([...hidden]))
+  } catch {
+    // localStorage unavailable — filter still works for this session
+  }
+}
+
 function loadHiddenDealers(): Set<string> {
   try {
     const raw = localStorage.getItem(HIDDEN_DEALERS_KEY)
@@ -52,6 +63,7 @@ export default function OffersPage() {
   const [hiddenDealers, setHiddenDealers] = useState<Set<string>>(loadHiddenDealers)
   const [addedToGrocery, setAddedToGrocery] = useState<Set<string>>(new Set())
   const [refreshing, setRefreshing] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const res = await fetch('/api/offers', { credentials: 'include', signal })
@@ -127,7 +139,12 @@ export default function OffersPage() {
     }
   }
 
+  useEffect(() => {
+    saveHiddenDealers(hiddenDealers)
+  }, [hiddenDealers])
+
   const toggleDealer = (dealerId: string) => {
+    setVisibleCount(PAGE_SIZE)
     setHiddenDealers(prev => {
       const next = new Set(prev)
       if (next.has(dealerId)) {
@@ -135,13 +152,19 @@ export default function OffersPage() {
       } else {
         next.add(dealerId)
       }
-      try {
-        localStorage.setItem(HIDDEN_DEALERS_KEY, JSON.stringify([...next]))
-      } catch {
-        // localStorage unavailable — filter still works for this session
-      }
       return next
     })
+  }
+
+  const changeSearch = (value: string) => {
+    setVisibleCount(PAGE_SIZE)
+    setSearch(value)
+  }
+
+  const clearFilters = () => {
+    setVisibleCount(PAGE_SIZE)
+    setSearch('')
+    setHiddenDealers(new Set<string>())
   }
 
   const addToGrocery = async (offer: RankedOffer) => {
@@ -193,8 +216,17 @@ export default function OffersPage() {
     })
   }, [offers, hiddenDealers, search])
 
-  const watched = visible.filter(o => (o.matched_keywords?.length ?? 0) > 0)
-  const rest = visible.filter(o => (o.matched_keywords?.length ?? 0) === 0)
+  const { watched, rest } = useMemo(() => {
+    const watchedOffers: RankedOffer[] = []
+    const restOffers: RankedOffer[] = []
+    for (const o of visible) {
+      if ((o.matched_keywords?.length ?? 0) > 0) watchedOffers.push(o)
+      else restOffers.push(o)
+    }
+    return { watched: watchedOffers, rest: restOffers }
+  }, [visible])
+
+  const shownRest = useMemo(() => rest.slice(0, visibleCount), [rest, visibleCount])
 
   const dateFmt = useMemo(() => new Intl.DateTimeFormat(i18n.language, { day: 'numeric', month: 'short' }), [i18n.language])
   const timeFmt = useMemo(() => new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }), [i18n.language])
@@ -285,7 +317,7 @@ export default function OffersPage() {
           <input
             type="search"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => changeSearch(e.target.value)}
             placeholder={t('searchPlaceholder')}
             aria-label={t('searchPlaceholder')}
             className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
@@ -314,6 +346,16 @@ export default function OffersPage() {
           <p className="text-lg">{t('empty')}</p>
           <p className="text-sm mt-1">{t('emptyHint')}</p>
         </div>
+      ) : visible.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">
+          <p className="text-lg">{t('filteredEmpty')}</p>
+          <button
+            onClick={clearFilters}
+            className="mt-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 rounded-lg px-4 py-2 text-sm cursor-pointer transition-colors"
+          >
+            {t('clearFilters')}
+          </button>
+        </div>
       ) : (
         <>
           {watched.length > 0 && (
@@ -331,12 +373,26 @@ export default function OffersPage() {
           )}
 
           <section>
-            <h2 className="text-sm font-medium text-gray-400 mb-2">{t('topSection', { count: rest.length })}</h2>
+            <h2 className="text-sm font-medium text-gray-400 mb-2 break-words">
+              {shownRest.length < rest.length
+                ? t('topSectionShowing', { shown: shownRest.length, total: rest.length })
+                : t('topSection', { count: rest.length })}
+            </h2>
             <div className="space-y-2">
-              {rest.map(o => (
+              {shownRest.map(o => (
                 <OfferCard key={o.id} offer={o} dateFmt={dateFmt} added={addedToGrocery.has(o.id)} onAddToGrocery={addToGrocery} />
               ))}
             </div>
+            {shownRest.length < rest.length && (
+              <div className="mt-3 flex justify-center">
+                <button
+                  onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+                  className="w-full sm:w-auto bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 rounded-lg px-4 py-2 text-sm cursor-pointer transition-colors break-words"
+                >
+                  {t('showMore', { count: Math.min(PAGE_SIZE, rest.length - shownRest.length) })}
+                </button>
+              </div>
+            )}
           </section>
         </>
       )}
