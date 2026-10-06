@@ -19,5 +19,3 @@ export function fmtPct(n: number): string {
 export function effectiveRate(nominalAnnual: number): number {
   return Math.pow(1 + nominalAnnual / 12, 12) - 1
 }
-
-export { localDateString } from '../../../lib/dates'

@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import WardrobePage from './WardrobePage'
+import { withTimeZone } from '../test/withTimeZone'
 import { ApiError, api, messageFor } from './wardrobeApi'
 
 // ── Translation mock ──────────────────────────────────────────────────────────
@@ -252,11 +253,6 @@ describe('WardrobePage', () => {
 
 // Date handling must follow the browser's local calendar, not UTC. Each block
 // pins the TZ env var so the old UTC-based code would produce the wrong day.
-function withTimeZone(tz: string) {
-  beforeAll(() => { vi.stubEnv('TZ', tz) })
-  afterAll(() => { vi.unstubAllEnvs() })
-}
-
 describe('WardrobePage local dates (Europe/Oslo)', () => {
   withTimeZone('Europe/Oslo')
   beforeEach(() => {

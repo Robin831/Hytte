@@ -1,13 +1,9 @@
-import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { localDateString, parseLocalDate } from './dates'
+import { withTimeZone } from '../test/withTimeZone'
 
 // Run under a non-UTC zone so the UTC-based implementations these helpers
 // replace (`toISOString().slice(0, 10)`, `new Date('YYYY-MM-DD')`) would fail.
-function withTimeZone(tz: string) {
-  beforeAll(() => { vi.stubEnv('TZ', tz) })
-  afterAll(() => { vi.unstubAllEnvs() })
-}
-
 describe('localDateString (Europe/Oslo)', () => {
   withTimeZone('Europe/Oslo')
   afterEach(() => { vi.useRealTimers() })
