@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -25,6 +28,33 @@ func setupTestDB(t *testing.T) *sql.DB {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	t.Cleanup(func() { db.Close() })
+	initTestSchema(t, db)
+	return db
+}
+
+// setupFileTestDB opens a temp-file database with the production DSN pragmas
+// (WAL, busy_timeout) and no connection cap, so concurrent tests exercise
+// real SQLite locking across multiple connections.
+func setupFileTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+
+	if os.Getenv("ENCRYPTION_KEY") == "" {
+		t.Setenv("ENCRYPTION_KEY", "dGVzdGtleXRlc3RrZXl0ZXN0a2V5dGVzdGtleXQ=")
+	}
+
+	path := filepath.Join(t.TempDir(), "test.db")
+	dsn := fmt.Sprintf("file:%s?_pragma=foreign_keys(ON)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)", path)
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatalf("open test db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	initTestSchema(t, db)
+	return db
+}
+
+func initTestSchema(t *testing.T, db *sql.DB) {
+	t.Helper()
 
 	schema := `
 	CREATE TABLE IF NOT EXISTS users (
@@ -119,8 +149,6 @@ func setupTestDB(t *testing.T) *sql.DB {
 	); err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
-
-	return db
 }
 
 func TestUpsertAndGetDay(t *testing.T) {
@@ -1229,5 +1257,118 @@ func TestUpdateSessionRejectsOverlap(t *testing.T) {
 	}
 	if err := UpdateSession(db, 99999, 1, "09:00", "12:00", 0, false, false); err != sql.ErrNoRows {
 		t.Errorf("missing session: expected sql.ErrNoRows, got %v", err)
+	}
+}
+
+// concurrentWriters is high enough to make the add/update races likely to
+// interleave if the transaction did not serialise writers.
+const concurrentWriters = 16
+
+func TestAddSessionConcurrentOverlap(t *testing.T) {
+	db := setupFileTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-27", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	errs := make([]error, concurrentWriters)
+	for i := range concurrentWriters {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			_, errs[i] = AddSession(db, day.ID, 1, "09:00", "10:00", i, false, false)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	succeeded := 0
+	for i, err := range errs {
+		var overlap *OverlapError
+		switch {
+		case err == nil:
+			succeeded++
+		case errors.As(err, &overlap):
+		default:
+			t.Errorf("writer %d: unexpected error: %v", i, err)
+		}
+	}
+	if succeeded != 1 {
+		t.Errorf("successful adds: got %d, want 1", succeeded)
+	}
+
+	got, err := GetDay(db, 1, "2026-03-27")
+	if err != nil {
+		t.Fatalf("get day: %v", err)
+	}
+	if len(got.Sessions) != 1 {
+		t.Errorf("stored sessions: got %d, want 1", len(got.Sessions))
+	}
+}
+
+func TestUpdateSessionConcurrentOverlap(t *testing.T) {
+	db := setupFileTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-27", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	ids := make([]int64, concurrentWriters)
+	for i := range concurrentWriters {
+		// Disjoint one-minute slots from 12:00 onwards.
+		start := fmt.Sprintf("12:%02d", i*2)
+		end := fmt.Sprintf("12:%02d", i*2+1)
+		s, err := AddSession(db, day.ID, 1, start, end, i, false, false)
+		if err != nil {
+			t.Fatalf("add session %d: %v", i, err)
+		}
+		ids[i] = s.ID
+	}
+
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	errs := make([]error, concurrentWriters)
+	for i := range concurrentWriters {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			errs[i] = UpdateSession(db, ids[i], 1, "09:00", "10:00", i, false, false)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	succeeded := 0
+	for i, err := range errs {
+		var overlap *OverlapError
+		switch {
+		case err == nil:
+			succeeded++
+		case errors.As(err, &overlap):
+		default:
+			t.Errorf("writer %d: unexpected error: %v", i, err)
+		}
+	}
+	if succeeded != 1 {
+		t.Errorf("successful updates: got %d, want 1", succeeded)
+	}
+
+	got, err := GetDay(db, 1, "2026-03-27")
+	if err != nil {
+		t.Fatalf("get day: %v", err)
+	}
+	inSlot := 0
+	for _, s := range got.Sessions {
+		if s.StartTime == "09:00" {
+			inSlot++
+		}
+	}
+	if inSlot != 1 {
+		t.Errorf("sessions moved into 09:00 slot: got %d, want 1", inSlot)
 	}
 }

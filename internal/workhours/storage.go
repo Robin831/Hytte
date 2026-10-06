@@ -143,6 +143,31 @@ func lockDay(tx *sql.Tx, dayID, userID int64) error {
 	return nil
 }
 
+// lockSessionDay is lockDay keyed by session: it resolves the session's day
+// and takes the write lock in a single UPDATE, so the transaction never holds
+// a read snapshot before becoming a writer. (In WAL mode a deferred
+// transaction that reads first and writes later fails with
+// SQLITE_BUSY_SNAPSHOT if another connection commits in between, and
+// busy_timeout does not retry that.) Returns sql.ErrNoRows if the session
+// does not exist or its day does not belong to userID.
+func lockSessionDay(tx *sql.Tx, sessionID, userID int64) error {
+	res, err := tx.Exec(
+		"UPDATE work_days SET lunch = lunch WHERE id = (SELECT day_id FROM work_sessions WHERE id = ?) AND user_id = ?",
+		sessionID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("lock work_days: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // AddSession adds a new time session to an existing work day. The day must
 // belong to the given userID. isInternal marks company meetings/admin time;
 // crossesMidnight marks a session whose endTime falls on the following day.
@@ -205,11 +230,13 @@ func UpdateSession(db *sql.DB, sessionID, userID int64, startTime, endTime strin
 	}
 	defer tx.Rollback()
 
-	dayID, err := GetSessionDayID(tx, sessionID, userID)
-	if err != nil {
+	// Take the write lock before any read so the transaction cannot hit
+	// SQLITE_BUSY_SNAPSHOT when upgrading from reader to writer.
+	if err := lockSessionDay(tx, sessionID, userID); err != nil {
 		return err
 	}
-	if err := lockDay(tx, dayID, userID); err != nil {
+	dayID, err := GetSessionDayID(tx, sessionID, userID)
+	if err != nil {
 		return err
 	}
 	conflict, err := findOverlap(tx, dayID, startTime, endTime, crossesMidnight, sessionID)
