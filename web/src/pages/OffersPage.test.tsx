@@ -201,6 +201,23 @@ describe('OffersPage', () => {
       expect(countCards('Offer')).toBe(50)
     })
 
+    it('keeps persisted hidden dealers on mount', async () => {
+      localStorage.setItem('offers-hidden-dealers', '["kiwi"]')
+      stubOffers(Array.from({ length: 10 }, (_, i) => makeOffer(i)))
+      renderPage()
+      await waitFor(() => expect(screen.getByText('Top offers (5)')).toBeInTheDocument())
+      expect(screen.getByRole('button', { name: 'KIWI' })).toHaveAttribute('aria-pressed', 'false')
+      expect(localStorage.getItem('offers-hidden-dealers')).toBe('["kiwi"]')
+    })
+
+    it('saves a toggled chain to localStorage', async () => {
+      stubOffers(Array.from({ length: 10 }, (_, i) => makeOffer(i)))
+      renderPage()
+      await waitFor(() => expect(screen.getByText('Top offers (10)')).toBeInTheDocument())
+      fireEvent.click(screen.getByRole('button', { name: 'KIWI' }))
+      expect(JSON.parse(localStorage.getItem('offers-hidden-dealers') ?? 'null')).toEqual(['kiwi'])
+    })
+
     it('shows a single filtered-empty state that clears search and chain filters', async () => {
       stubOffers(Array.from({ length: 10 }, (_, i) => makeOffer(i)))
       renderPage()
