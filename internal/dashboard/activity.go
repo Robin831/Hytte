@@ -28,11 +28,25 @@ type ActivityItem struct {
 func ActivityHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
-		items, err := recentActivity(db, user.ID)
+
+		// The endpoint is registered outside every RequireFeature group, so
+		// resolve the caller's feature set here and only query the sources
+		// they can access. Prefer the map cached by WithFeatures; fall back to
+		// a DB lookup (which returns all-true for admins), mirroring
+		// auth.RequireFeature.
+		features := auth.FeaturesFromContext(r.Context())
+		if features == nil {
+			var err error
+			features, err = auth.GetUserFeatures(db, user.ID, user.IsAdmin)
+			if err != nil {
+				writeActivityError(w)
+				return
+			}
+		}
+
+		items, err := recentActivity(db, user.ID, features)
 		if err != nil {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusInternalServerError)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "failed to load activity"})
+			writeActivityError(w)
 			return
 		}
 		if items == nil {
@@ -43,23 +57,40 @@ func ActivityHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+func writeActivityError(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusInternalServerError)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": "failed to load activity"})
+}
+
+// activitySources maps each activity query helper to the feature key that
+// gates it. Sources whose feature is disabled for the user are never queried.
+var activitySources = []struct {
+	feature string
+	query   func(*sql.DB, int64, string) ([]ActivityItem, error)
+}{
+	{"training", queryWorkouts},
+	{"lactate", queryLactate},
+	{"notes", queryNotes},
+	{"links", queryLinks},
+}
+
 // recentActivity queries the most recent items across multiple tables and
-// merges them into a single chronological list, limited to 10 items.
+// merges them into a single chronological list, limited to 10 items. Only
+// sources whose feature is enabled in features are queried.
 //
 // Each source is queried via its own helper so the sql.Rows handle is scoped
 // to that helper (defer rows.Close runs on helper return), guaranteeing no
 // rows are left open if a later source fails.
-func recentActivity(db *sql.DB, userID int64) ([]ActivityItem, error) {
+func recentActivity(db *sql.DB, userID int64, features map[string]bool) ([]ActivityItem, error) {
 	cutoff := time.Now().UTC().AddDate(0, 0, -30).Format(time.RFC3339)
 
 	var items []ActivityItem
-	for _, query := range []func(*sql.DB, int64, string) ([]ActivityItem, error){
-		queryWorkouts,
-		queryLactate,
-		queryNotes,
-		queryLinks,
-	} {
-		got, err := query(db, userID, cutoff)
+	for _, src := range activitySources {
+		if !features[src.feature] {
+			continue
+		}
+		got, err := src.query(db, userID, cutoff)
 		if err != nil {
 			return nil, err
 		}
