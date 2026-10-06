@@ -3,6 +3,7 @@ package lactate
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"math"
 	"net/http"
@@ -228,67 +229,129 @@ func AnalysisHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if len(test.Stages) < 2 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "test must have at least 2 stages"})
+		analysis, err := buildAnalysis(test, r.URL.Query().Get("method"), maxHRPreference(db, user.ID))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 
-		thresholds := CalculateThresholds(test.Stages)
+		writeJSON(w, http.StatusOK, analysis)
+	}
+}
 
-		// Use the first valid threshold for zones and predictions (prefer OBLA).
-		var bestThreshold *ThresholdResult
+// AnalysesHandler returns the analysis of every eligible test (at least 2
+// stages) belonging to the authenticated user, keyed by test ID. Each value has
+// the same shape as the AnalysisHandler response. Tests and stages are loaded
+// in two batch queries and preferences are read once, regardless of how many
+// tests the user has.
+func AnalysesHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+
+		tests, err := ListWithStages(db, user.ID)
+		if err != nil {
+			log.Printf("Failed to list lactate tests for analyses: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list tests"})
+			return
+		}
+
+		methodParam := r.URL.Query().Get("method")
+		maxHR := maxHRPreference(db, user.ID)
+
+		analyses := make(map[string]AnalysisResponse, len(tests))
+		for i := range tests {
+			analysis, err := buildAnalysis(&tests[i], methodParam, maxHR)
+			if errors.Is(err, errTooFewStages) {
+				continue
+			}
+			if err != nil {
+				log.Printf("Failed to analyse lactate test %d: %v", tests[i].ID, err)
+				continue
+			}
+			analyses[strconv.FormatInt(tests[i].ID, 10)] = analysis
+		}
+
+		writeJSON(w, http.StatusOK, analyses)
+	}
+}
+
+// AnalysisResponse is the full analysis of a single test: thresholds, zones,
+// predictions, and traffic light classification.
+type AnalysisResponse struct {
+	Thresholds    []ThresholdResult   `json:"thresholds"`
+	Zones         []ZonesResult       `json:"zones"`
+	Predictions   []RacePrediction    `json:"predictions"`
+	TrafficLights []StageTrafficLight `json:"traffic_lights"`
+	MethodUsed    string              `json:"method_used"`
+}
+
+var errTooFewStages = errors.New("test must have at least 2 stages")
+
+// buildAnalysis computes the analysis for a test with its stages loaded.
+// methodParam optionally selects a specific threshold method; maxHR (0 when
+// unknown) is used for zone calculations. Returns errTooFewStages when the test
+// has fewer than 2 stages.
+func buildAnalysis(test *Test, methodParam string, maxHR int) (AnalysisResponse, error) {
+	if len(test.Stages) < 2 {
+		return AnalysisResponse{}, errTooFewStages
+	}
+
+	thresholds := CalculateThresholds(test.Stages)
+
+	// Use the first valid threshold for zones and predictions (prefer OBLA).
+	var bestThreshold *ThresholdResult
+	for i := range thresholds {
+		if thresholds[i].Valid {
+			bestThreshold = &thresholds[i]
+			break
+		}
+	}
+
+	// Allow a specific threshold method to be selected when it is valid.
+	if methodParam != "" {
 		for i := range thresholds {
-			if thresholds[i].Valid {
+			if string(thresholds[i].Method) == methodParam && thresholds[i].Valid {
 				bestThreshold = &thresholds[i]
 				break
 			}
 		}
-
-		// Allow ?method= query param to select a specific threshold method.
-		if methodParam := r.URL.Query().Get("method"); methodParam != "" {
-			for i := range thresholds {
-				if string(thresholds[i].Method) == methodParam && thresholds[i].Valid {
-					bestThreshold = &thresholds[i]
-					break
-				}
-			}
-		}
-
-		// Read max HR from user preferences for zone calculations.
-		// Only accept physiologically plausible values (same range the UI enforces).
-		var maxHR int
-		prefs, prefsErr := auth.GetPreferences(db, user.ID)
-		if prefsErr == nil {
-			if v, ok := prefs["max_hr"]; ok {
-				if parsed, parseErr := strconv.Atoi(v); parseErr == nil && parsed >= 100 && parsed <= 230 {
-					maxHR = parsed
-				}
-			}
-		}
-
-		zones := []ZonesResult{}
-		predictions := []RacePrediction{}
-		var trafficLights []StageTrafficLight
-		thresholdLactate := DefaultOBLAThreshold
-
-		if bestThreshold != nil {
-			olympiatoppen := CalculateZones(ZoneSystemOlympiatoppen, bestThreshold.SpeedKmh, bestThreshold.HeartRateBpm, maxHR)
-			norwegian := CalculateZones(ZoneSystemNorwegian, bestThreshold.SpeedKmh, bestThreshold.HeartRateBpm, maxHR)
-			zones = []ZonesResult{*olympiatoppen, *norwegian}
-			predictions = PredictRaceTimes(bestThreshold.SpeedKmh)
-			thresholdLactate = bestThreshold.LactateMmol
-		}
-
-		trafficLights = ClassifyStages(test.Stages, thresholdLactate)
-
-		writeJSON(w, http.StatusOK, map[string]any{
-			"thresholds":     thresholds,
-			"zones":          zones,
-			"predictions":    predictions,
-			"traffic_lights": trafficLights,
-			"method_used":    methodUsedName(bestThreshold),
-		})
 	}
+
+	zones := []ZonesResult{}
+	predictions := []RacePrediction{}
+	thresholdLactate := DefaultOBLAThreshold
+
+	if bestThreshold != nil {
+		olympiatoppen := CalculateZones(ZoneSystemOlympiatoppen, bestThreshold.SpeedKmh, bestThreshold.HeartRateBpm, maxHR)
+		norwegian := CalculateZones(ZoneSystemNorwegian, bestThreshold.SpeedKmh, bestThreshold.HeartRateBpm, maxHR)
+		zones = []ZonesResult{*olympiatoppen, *norwegian}
+		predictions = PredictRaceTimes(bestThreshold.SpeedKmh)
+		thresholdLactate = bestThreshold.LactateMmol
+	}
+
+	return AnalysisResponse{
+		Thresholds:    thresholds,
+		Zones:         zones,
+		Predictions:   predictions,
+		TrafficLights: ClassifyStages(test.Stages, thresholdLactate),
+		MethodUsed:    methodUsedName(bestThreshold),
+	}, nil
+}
+
+// maxHRPreference reads the user's max HR preference for zone calculations.
+// Only physiologically plausible values (same range the UI enforces) are
+// accepted; 0 is returned when the preference is missing or invalid.
+func maxHRPreference(db *sql.DB, userID int64) int {
+	prefs, err := auth.GetPreferences(db, userID)
+	if err != nil {
+		return 0
+	}
+	if v, ok := prefs["max_hr"]; ok {
+		if parsed, parseErr := strconv.Atoi(v); parseErr == nil && parsed >= 100 && parsed <= 230 {
+			return parsed
+		}
+	}
+	return 0
 }
 
 func methodUsedName(t *ThresholdResult) string {

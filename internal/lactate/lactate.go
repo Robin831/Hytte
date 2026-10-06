@@ -74,6 +74,63 @@ type Stage struct {
 // Each test carries a precomputed PrimaryThreshold (when derivable) but no
 // stages; use GetByID for full test details including stages.
 func List(db *sql.DB, userID int64) ([]Test, error) {
+	tests, stagesByTest, err := listTestsWithThresholdStages(db, userID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range tests {
+		tests[i].PrimaryThreshold = primaryThresholdFor(stagesByTest[tests[i].ID])
+	}
+	return tests, nil
+}
+
+// ListWithStages returns all lactate tests for a user, ordered by date
+// descending, with the stage data needed for analysis attached (stage number,
+// speed, lactate and heart rate; no notes/RPE).
+func ListWithStages(db *sql.DB, userID int64) ([]Test, error) {
+	tests, stagesByTest, err := listTestsWithThresholdStages(db, userID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range tests {
+		// Only overwrite when stages exist so stage-less tests keep the empty
+		// slice from listTests (serialises as [] rather than null).
+		if stages, ok := stagesByTest[tests[i].ID]; ok {
+			tests[i].Stages = stages
+		}
+	}
+	return tests, nil
+}
+
+// listTestsWithThresholdStages loads a user's tests plus their threshold
+// stages (keyed by test ID) using one batch stage query, avoiding N+1. Shared
+// by List and ListWithStages so both paths stay in sync.
+func listTestsWithThresholdStages(db *sql.DB, userID int64) ([]Test, map[int64][]Stage, error) {
+	tests, err := listTests(db, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(tests) == 0 {
+		return tests, map[int64][]Stage{}, nil
+	}
+	stagesByTest, err := getThresholdStagesForTests(db, testIDs(tests))
+	if err != nil {
+		return nil, nil, fmt.Errorf("get stages for tests: %w", err)
+	}
+	return tests, stagesByTest, nil
+}
+
+func testIDs(tests []Test) []int64 {
+	ids := make([]int64, len(tests))
+	for i := range tests {
+		ids[i] = tests[i].ID
+	}
+	return ids
+}
+
+// listTests loads a user's test rows (without stages) ordered by date
+// descending. Stages is initialised to an empty slice on every test.
+func listTests(db *sql.DB, userID int64) ([]Test, error) {
 	rows, err := db.Query(`
 		SELECT id, user_id, date, comment, protocol_type,
 		       warmup_duration_min, stage_duration_min,
@@ -112,73 +169,16 @@ func List(db *sql.DB, userID int64) ([]Test, error) {
 	if tests == nil {
 		return []Test{}, nil
 	}
-
-	// Batch-load stages for all listed tests in one query (avoid N+1), then
-	// compute each test's primary threshold for glanceable list display.
-	ids := make([]int64, len(tests))
-	for i := range tests {
-		ids[i] = tests[i].ID
-	}
-	stagesByTest, err := getThresholdStagesForTests(db, ids)
-	if err != nil {
-		return nil, fmt.Errorf("get stages for tests: %w", err)
-	}
-	for i := range tests {
-		tests[i].PrimaryThreshold = primaryThresholdFor(stagesByTest[tests[i].ID])
-	}
-
 	return tests, nil
 }
 
-// getStagesForTests batch-loads stages for the given test IDs in a single query,
-// grouping them by test ID. Stages are returned ordered by stage number.
-func getStagesForTests(db *sql.DB, testIDs []int64) (map[int64][]Stage, error) {
-	result := make(map[int64][]Stage, len(testIDs))
-	if len(testIDs) == 0 {
-		return result, nil
-	}
-
-	placeholders := make([]string, len(testIDs))
-	args := make([]any, len(testIDs))
-	for i, id := range testIDs {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-
-	query := `
-		SELECT id, test_id, stage_number, speed_kmh, lactate_mmol,
-		       heart_rate_bpm, rpe, notes
-		FROM lactate_test_stages
-		WHERE test_id IN (` + strings.Join(placeholders, ",") + `)
-		ORDER BY test_id, stage_number`
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var s Stage
-		if err := rows.Scan(
-			&s.ID, &s.TestID, &s.StageNumber, &s.SpeedKmh, &s.LactateMmol,
-			&s.HeartRateBpm, &s.RPE, &s.Notes,
-		); err != nil {
-			return nil, err
-		}
-		if s.Notes, err = encryption.DecryptField(s.Notes); err != nil {
-			return nil, fmt.Errorf("decrypt stage notes: %w", err)
-		}
-		result[s.TestID] = append(result[s.TestID], s)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-// getThresholdStagesForTests is a lightweight variant of getStagesForTests that
-// only fetches columns needed for threshold computation (no notes/RPE), avoiding
-// unnecessary decryption overhead in the list path.
+// getThresholdStagesForTests batch-loads stages for the given test IDs in a
+// single query, grouped by test ID and ordered by stage number. It fetches only
+// the columns needed for threshold/analysis computation (no notes/RPE). Callers:
+// List (primary threshold per test) and ListWithStages (the batch analyses
+// endpoint: thresholds, zones, predictions, traffic lights). Do not add the
+// encrypted notes column here: besides the decryption cost, one corrupt
+// ciphertext would fail the whole batch with a 500.
 func getThresholdStagesForTests(db *sql.DB, testIDs []int64) (map[int64][]Stage, error) {
 	result := make(map[int64][]Stage, len(testIDs))
 	if len(testIDs) == 0 {

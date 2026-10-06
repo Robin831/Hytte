@@ -474,6 +474,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Delete("/lactate/tests/{id}", lactate.DeleteHandler(db))
 				r.Get("/lactate/tests/{id}/thresholds", lactate.ThresholdsHandler(db))
 				r.Get("/lactate/tests/{id}/analysis", lactate.AnalysisHandler(db))
+				r.Get("/lactate/analyses", lactate.AnalysesHandler(db))
 				r.Post("/lactate/calculate", lactate.CalculateHandler())
 				r.Post("/lactate/tests/preview-from-workout", lactate.PreviewFromWorkoutHandler(db))
 				r.Post("/lactate/tests/from-workout", lactate.ImportFromWorkoutHandler(db))

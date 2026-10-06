@@ -163,6 +163,7 @@ All prefixed with `/api/`.
 | DELETE | /settings/sessions/{id} | Required | Revoke a single session by token prefix |
 | GET | /settings/export | Required | Stream a JSON archive of the user's profile, notes, workouts, lactate tests, preferences and session metadata |
 | DELETE | /settings/account | Required | Delete account + cascade |
+| GET | /lactate/analyses | Required + `lactate` | Analysis (thresholds, zones, predictions, traffic lights) of every test with 2+ stages, keyed by test ID; optional `?method=` |
 | GET/POST | /live/sessions | Required + `livestream` | List live sessions / go live (see docs/livestream.md for WHIP/WHEP/HLS, share, track and replay routes) |
 | GET | /live/public/{token} | Public (share token) | Share-link viewer status; `/whep`, `/hls`, `/ice`, `/track` under the same prefix |
 
