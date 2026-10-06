@@ -160,6 +160,82 @@ func UpdateSession(db *sql.DB, sessionID, userID int64, startTime, endTime strin
 	return nil
 }
 
+// sessionsOverlap reports whether two sessions overlap in wall-clock time.
+// Intervals are half-open ([start, end)), so back-to-back sessions where one
+// ends exactly when the next starts do not overlap. An end that is not after
+// its start belongs to the following day (crosses_midnight; validation
+// guarantees this is the only way end <= start can be stored), so a full day is
+// added to it. Malformed times never count as overlapping.
+func sessionsOverlap(aStart, aEnd, bStart, bEnd string) bool {
+	as, ae, ok := sessionBounds(aStart, aEnd)
+	if !ok {
+		return false
+	}
+	bs, be, ok := sessionBounds(bStart, bEnd)
+	if !ok {
+		return false
+	}
+	return as < be && bs < ae
+}
+
+// sessionBounds converts a session's HH:MM bounds to minutes since the start
+// of the session's day, extending the end past midnight when needed.
+func sessionBounds(startTime, endTime string) (int, int, bool) {
+	start, err := parseHHMM(startTime)
+	if err != nil {
+		return 0, 0, false
+	}
+	end, err := parseHHMM(endTime)
+	if err != nil {
+		return 0, 0, false
+	}
+	if end <= start {
+		end += minutesPerDay
+	}
+	return start, end, true
+}
+
+// FindOverlappingSession returns the first session on the given work day whose
+// wall-clock time overlaps [startTime, endTime), or nil if there is none. The
+// session with ID excludeID is skipped so an update does not conflict with
+// itself (pass 0 when adding). The internal/non-internal flag is ignored:
+// overlap is about wall-clock time only. Returns sql.ErrNoRows if the day does
+// not belong to userID.
+func FindOverlappingSession(db *sql.DB, userID, dayID int64, startTime, endTime string, excludeID int64) (*WorkSession, error) {
+	if err := verifyDayOwnership(db, dayID, userID); err != nil {
+		return nil, err
+	}
+	sessions, err := getSessions(db, dayID)
+	if err != nil {
+		return nil, err
+	}
+	for _, s := range sessions {
+		if s.ID == excludeID {
+			continue
+		}
+		if sessionsOverlap(startTime, endTime, s.StartTime, s.EndTime) {
+			conflict := s
+			return &conflict, nil
+		}
+	}
+	return nil, nil
+}
+
+// GetSessionDayID returns the work day ID of a session owned by userID, or
+// sql.ErrNoRows if the session does not exist or belongs to another user.
+func GetSessionDayID(db *sql.DB, sessionID, userID int64) (int64, error) {
+	var dayID int64
+	err := db.QueryRow(`
+		SELECT s.day_id FROM work_sessions s
+		JOIN work_days d ON d.id = s.day_id
+		WHERE s.id = ? AND d.user_id = ?
+	`, sessionID, userID).Scan(&dayID)
+	if err != nil {
+		return 0, err
+	}
+	return dayID, nil
+}
+
 // DeleteSession removes a session. The session must belong to a day owned by
 // the given userID.
 func DeleteSession(db *sql.DB, sessionID, userID int64) error {

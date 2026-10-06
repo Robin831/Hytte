@@ -188,6 +188,16 @@ func DayDeleteHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// writeOverlapConflict writes the 409 response returned when a session would
+// overlap an existing session on the same day. The conflicting session is
+// included in the same JSON shape the session endpoints return.
+func writeOverlapConflict(w http.ResponseWriter, conflict *WorkSession) {
+	writeJSON(w, http.StatusConflict, map[string]any{
+		"error":    "session overlaps an existing session",
+		"conflict": conflict,
+	})
+}
+
 // SessionAddHandler handles POST /api/workhours/day/session.
 func SessionAddHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -215,6 +225,20 @@ func SessionAddHandler(db *sql.DB) http.HandlerFunc {
 		}
 		if err := ValidateSessionTimes(body.StartTime, body.EndTime, body.CrossesMidnight); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+
+		conflict, err := FindOverlappingSession(db, user.ID, body.DayID, body.StartTime, body.EndTime, 0)
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "day not found"})
+			return
+		} else if err != nil {
+			log.Printf("workhours: add session overlap check: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to add session"})
+			return
+		}
+		if conflict != nil {
+			writeOverlapConflict(w, conflict)
 			return
 		}
 
@@ -263,6 +287,29 @@ func SessionUpdateHandler(db *sql.DB) http.HandlerFunc {
 		}
 		if err := ValidateSessionTimes(body.StartTime, body.EndTime, body.CrossesMidnight); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+
+		dayID, err := GetSessionDayID(db, sessionID, user.ID)
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+			return
+		} else if err != nil {
+			log.Printf("workhours: update session lookup: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update session"})
+			return
+		}
+		conflict, err := FindOverlappingSession(db, user.ID, dayID, body.StartTime, body.EndTime, sessionID)
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
+			return
+		} else if err != nil {
+			log.Printf("workhours: update session overlap check: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update session"})
+			return
+		}
+		if conflict != nil {
+			writeOverlapConflict(w, conflict)
 			return
 		}
 

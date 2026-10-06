@@ -946,3 +946,136 @@ func TestGetFlexRedemptions_FiltersByFromDate(t *testing.T) {
 		t.Errorf("count: got %d, want 1", len(redemptions))
 	}
 }
+
+func TestSessionsOverlap(t *testing.T) {
+	tests := []struct {
+		name                       string
+		aStart, aEnd, bStart, bEnd string
+		want                       bool
+	}{
+		{"exact match", "08:00", "12:00", "08:00", "12:00", true},
+		{"partial overlap at front", "07:00", "09:00", "08:00", "12:00", true},
+		{"partial overlap at back", "11:00", "13:00", "08:00", "12:00", true},
+		{"a contains b", "08:00", "16:00", "10:00", "12:00", true},
+		{"b contains a", "10:00", "12:00", "08:00", "16:00", true},
+		{"adjacent a before b", "08:00", "12:00", "12:00", "16:00", false},
+		{"adjacent b before a", "12:00", "16:00", "08:00", "12:00", false},
+		{"disjoint", "08:00", "10:00", "13:00", "16:00", false},
+		{"crosses midnight overlaps late session", "22:00", "02:00", "23:00", "23:30", true},
+		{"crosses midnight adjacent to evening session", "22:00", "02:00", "18:00", "22:00", false},
+		{"malformed time", "bad", "12:00", "08:00", "12:00", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := sessionsOverlap(tc.aStart, tc.aEnd, tc.bStart, tc.bEnd); got != tc.want {
+				t.Errorf("sessionsOverlap(%s-%s, %s-%s) = %v, want %v", tc.aStart, tc.aEnd, tc.bStart, tc.bEnd, got, tc.want)
+			}
+		})
+	}
+}
+
+// insertSecondUser adds a second user (id 2) for cross-user isolation tests.
+func insertSecondUser(t *testing.T, db *sql.DB) {
+	t.Helper()
+	if _, err := db.Exec(
+		`INSERT INTO users (id, email, name, google_id) VALUES (2, 'other@example.com', 'Other', 'google-2')`,
+	); err != nil {
+		t.Fatalf("insert user 2: %v", err)
+	}
+}
+
+func TestFindOverlappingSession(t *testing.T) {
+	db := setupTestDB(t)
+	insertSecondUser(t, db)
+
+	day, err := UpsertDay(db, 1, "2026-03-27", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	emptyDay, err := UpsertDay(db, 1, "2026-03-28", false, "")
+	if err != nil {
+		t.Fatalf("upsert empty day: %v", err)
+	}
+	otherUserDay, err := UpsertDay(db, 2, "2026-03-27", false, "")
+	if err != nil {
+		t.Fatalf("upsert other user day: %v", err)
+	}
+
+	morning, err := AddSession(db, day.ID, 1, "08:00", "12:00", 0, false, false)
+	if err != nil {
+		t.Fatalf("add morning: %v", err)
+	}
+	meeting, err := AddSession(db, day.ID, 1, "13:00", "14:00", 1, true, false)
+	if err != nil {
+		t.Fatalf("add meeting: %v", err)
+	}
+	if _, err := AddSession(db, otherUserDay.ID, 2, "15:00", "17:00", 0, false, false); err != nil {
+		t.Fatalf("add other user session: %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		dayID      int64
+		start, end string
+		excludeID  int64
+		wantID     int64 // 0 = no conflict
+	}{
+		{"empty day", emptyDay.ID, "08:00", "12:00", 0, 0},
+		{"overlaps morning", day.ID, "11:00", "16:00", 0, morning.ID},
+		{"self exclusion on update", day.ID, "09:00", "11:00", morning.ID, 0},
+		{"excluding one still finds another", day.ID, "11:00", "13:30", morning.ID, meeting.ID},
+		{"non-internal overlaps internal session", day.ID, "13:30", "15:00", 0, meeting.ID},
+		{"adjacent is allowed", day.ID, "12:00", "13:00", 0, 0},
+		{"other user's sessions ignored", day.ID, "15:00", "17:00", 0, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FindOverlappingSession(db, 1, tc.dayID, tc.start, tc.end, tc.excludeID)
+			if err != nil {
+				t.Fatalf("find overlap: %v", err)
+			}
+			if tc.wantID == 0 {
+				if got != nil {
+					t.Fatalf("expected no conflict, got session %d (%s-%s)", got.ID, got.StartTime, got.EndTime)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("expected conflict with session %d, got nil", tc.wantID)
+			}
+			if got.ID != tc.wantID {
+				t.Errorf("conflict id: got %d, want %d", got.ID, tc.wantID)
+			}
+		})
+	}
+
+	// A day owned by another user is reported as not found.
+	if _, err := FindOverlappingSession(db, 1, otherUserDay.ID, "15:00", "17:00", 0); err != sql.ErrNoRows {
+		t.Errorf("other user's day: expected sql.ErrNoRows, got %v", err)
+	}
+}
+
+func TestGetSessionDayID(t *testing.T) {
+	db := setupTestDB(t)
+	insertSecondUser(t, db)
+
+	day, err := UpsertDay(db, 1, "2026-03-27", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	session, err := AddSession(db, day.ID, 1, "08:00", "12:00", 0, false, false)
+	if err != nil {
+		t.Fatalf("add session: %v", err)
+	}
+
+	got, err := GetSessionDayID(db, session.ID, 1)
+	if err != nil {
+		t.Fatalf("get day id: %v", err)
+	}
+	if got != day.ID {
+		t.Errorf("day id: got %d, want %d", got, day.ID)
+	}
+	if _, err := GetSessionDayID(db, session.ID, 2); err != sql.ErrNoRows {
+		t.Errorf("other user: expected sql.ErrNoRows, got %v", err)
+	}
+}
