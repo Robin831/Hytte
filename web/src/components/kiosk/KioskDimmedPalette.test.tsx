@@ -238,13 +238,22 @@ describe('KioskSunrise – dimmed palette', () => {
     expect(row.className).not.toContain('text-lg')
   })
 
-  it('shrinks the polar-kind banners when dimmed', () => {
-    const { container: day } = render(<KioskSunrise sun={{ kind: 'polarDay' }} />)
-    expect(day.firstElementChild!.className).toContain('py-3')
-    expect(day.firstElementChild!.className).toContain('text-lg')
-    const { container: night } = render(<KioskSunrise sun={{ kind: 'polarNight' }} dimmed />)
-    expect(night.firstElementChild!.className).toContain('py-1.5')
-    expect(night.firstElementChild!.className).toContain('text-base')
+  it('uses the full-size layout for the polar-kind banners by default', () => {
+    for (const kind of ['polarDay', 'polarNight'] as const) {
+      const { container } = render(<KioskSunrise sun={{ kind }} />)
+      expect(container.firstElementChild!.className).toContain('py-3')
+      expect(container.firstElementChild!.className).toContain('text-lg')
+    }
+  })
+
+  it('shrinks the polar-kind banners to a compact layout when dimmed', () => {
+    for (const kind of ['polarDay', 'polarNight'] as const) {
+      const { container } = render(<KioskSunrise sun={{ kind }} dimmed />)
+      expect(container.firstElementChild!.className).toContain('py-1.5')
+      expect(container.firstElementChild!.className).not.toContain('py-3')
+      expect(container.firstElementChild!.className).toContain('text-base')
+      expect(container.firstElementChild!.className).not.toContain('text-lg')
+    }
   })
 
   it('dims the polar-kind banners', () => {
