@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest'
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import WardrobePage from './WardrobePage'
@@ -39,6 +39,7 @@ const TRANSLATIONS: Record<string, string> = {
 
 function mockT(key: string, opts?: Record<string, unknown>): string {
   if (key === 'stats.buy') return `buy ${opts?.size}`
+  if (key === 'stats.measuredOn') return `measured ${opts?.date}`
   if (key === 'needs.have') return `${opts?.have} of ${opts?.target}`
   if (key === 'needs.buySize') return `Buy ${opts?.size}`
   return TRANSLATIONS[key] ?? key
@@ -246,6 +247,84 @@ describe('WardrobePage', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(within(dialog).getByLabelText('Name')).toHaveValue('Kari')
     expect(screen.queryByText('Failed to save')).not.toBeInTheDocument()
+  })
+})
+
+// Date handling must follow the browser's local calendar, not UTC. Each block
+// pins process.env.TZ so the old UTC-based code would produce the wrong day.
+function withTimeZone(tz: string) {
+  let saved: string | undefined
+  beforeAll(() => { saved = process.env.TZ; process.env.TZ = tz })
+  afterAll(() => {
+    if (saved === undefined) delete process.env.TZ
+    else process.env.TZ = saved
+  })
+}
+
+describe('WardrobePage local dates (Europe/Oslo)', () => {
+  withTimeZone('Europe/Oslo')
+  beforeEach(() => {
+    authState.user = { id: 1 }
+    vi.useFakeTimers({ toFake: ['Date'] })
+    // 2026-07-01 00:30 in Oslo (UTC+2) — still 2026-06-30 in UTC.
+    vi.setSystemTime(new Date('2026-06-30T22:30:00Z'))
+  })
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  it('defaults the new-measurement date to the local date and posts it', async () => {
+    let posted: Record<string, unknown> | undefined
+    stubFetch({}, (path, init) => {
+      if (init?.method === 'POST' && path === '/kids/1/measurements') {
+        posted = JSON.parse(String(init.body))
+        return { ok: true, status: 201, json: () => Promise.resolve({}) }
+      }
+      return undefined
+    })
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Ola').length).toBeGreaterThan(0)
+    })
+    fireEvent.click(screen.getByRole('tab', { name: /Measurements/ }))
+    const panel = screen.getByRole('tabpanel', { name: /Measurements/ })
+    const dateInput = panel.querySelector('input[type="date"]') as HTMLInputElement
+    expect(dateInput.value).toBe('2026-07-01')
+
+    fireEvent.change(within(panel).getByLabelText('Height (cm)'), { target: { value: '101' } })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => {
+      expect(posted?.measured_at).toBe('2026-07-01')
+    })
+    // After saving, the form resets to the local date as well.
+    await waitFor(() => {
+      expect(within(panel).getByLabelText('Height (cm)')).toHaveValue(null)
+    })
+    expect(dateInput.value).toBe('2026-07-01')
+  })
+})
+
+describe('WardrobePage local dates (America/New_York)', () => {
+  withTimeZone('America/New_York')
+  beforeEach(() => { authState.user = { id: 1 } })
+  afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+
+  it('renders a stored YYYY-MM-DD as that calendar day in the stats card and history', async () => {
+    stubFetch()
+    renderPage()
+
+    const expected = new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(new Date(2026, 6, 1))
+    // Sanity check: the expected label really is 1 Jul, not 30 Jun.
+    expect(expected).toMatch(/Jul 1, 2026/)
+
+    await waitFor(() => {
+      expect(screen.getByText(`measured ${expected}`)).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('tab', { name: /Measurements/ }))
+    const panel = screen.getByRole('tabpanel', { name: /Measurements/ })
+    await waitFor(() => {
+      expect(within(panel).getByText(expected)).toBeInTheDocument()
+    })
   })
 })
 

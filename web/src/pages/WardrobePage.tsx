@@ -7,6 +7,7 @@ import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../components/ui
 import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
 import { Select, type SelectOption } from '../components/ui/select'
 import ConfirmDialog from '../components/ConfirmDialog'
+import { localDateString, parseLocalDate } from '../lib/dates'
 
 interface Measurement {
   id: number
@@ -93,10 +94,6 @@ const emptyItemForm = (kidId: number): ItemForm => ({
   season: 'all',
   notes: '',
 })
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10)
-}
 
 // FormError renders a validation message inside the form that produced it.
 function FormError({ message, className }: { message: string; className?: string }) {
@@ -671,7 +668,7 @@ function KidStatsCard({ kid, dateFmt, onEdit, onDelete }: {
           <div className="min-w-0">
             <h2 className="font-semibold truncate">{kid.name}</h2>
             {m && (
-              <p className="text-xs text-gray-500">{t('stats.measuredOn', { date: dateFmt.format(new Date(m.measured_at)) })}</p>
+              <p className="text-xs text-gray-500">{t('stats.measuredOn', { date: dateFmt.format(parseLocalDate(m.measured_at)) })}</p>
             )}
           </div>
         </div>
@@ -846,7 +843,7 @@ function MeasurementsTab({ kid, measurements, dateFmt, onChanged }: {
   onChanged: () => Promise<void>
 }) {
   const { t } = useTranslation(['wardrobe', 'common'])
-  const [form, setForm] = useState({ date: today(), height: '', foot: '', weight: '', note: '' })
+  const [form, setForm] = useState({ date: localDateString(), height: '', foot: '', weight: '', note: '' })
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
 
@@ -867,7 +864,7 @@ function MeasurementsTab({ kid, measurements, dateFmt, onChanged }: {
           note: form.note.trim(),
         }),
       })
-      setForm({ date: today(), height: '', foot: '', weight: '', note: '' })
+      setForm({ date: localDateString(), height: '', foot: '', weight: '', note: '' })
       await onChanged()
     } catch (e) {
       // Keep the typed values so the offending field can be corrected.
@@ -931,7 +928,7 @@ function MeasurementsTab({ kid, measurements, dateFmt, onChanged }: {
         <div className="space-y-1">
           {newestFirst.map(m => (
             <div key={m.id} className="flex items-center gap-3 bg-gray-800/40 border border-gray-700/60 rounded-lg px-3 py-2">
-              <span className="text-sm text-gray-300 w-28 shrink-0">{dateFmt.format(new Date(m.measured_at))}</span>
+              <span className="text-sm text-gray-300 w-28 shrink-0">{dateFmt.format(parseLocalDate(m.measured_at))}</span>
               <span className="flex-1 text-sm text-gray-400 flex flex-wrap gap-x-4">
                 {m.height_cm > 0 && <span>{m.height_cm} cm</span>}
                 {m.foot_length_mm > 0 && <span>{m.foot_length_mm} mm</span>}

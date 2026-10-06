@@ -20,10 +20,4 @@ export function effectiveRate(nominalAnnual: number): number {
   return Math.pow(1 + nominalAnnual / 12, 12) - 1
 }
 
-export function localDateString(): string {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
+export { localDateString } from '../../../lib/dates'
