@@ -1,0 +1,2 @@
+category: Changed
+- **Dependency updates** - Bumped Go modules (`golang.org/x/net` v0.59.0, `golang.org/x/oauth2` v0.37.0, `golang.org/x/sync` v0.23.0, `google.golang.org/api` v0.300.0, `modernc.org/sqlite` v1.60.1, `github.com/muktihari/fit` v0.28.4) and frontend packages (React 19.3, react-router 8.4, lucide-react 1.52, Vite 8.3, ESLint 10.12, typescript-eslint 8.71 and assorted minor/patch updates). TypeScript 7 and vitest 5 major upgrades are deferred for manual review. (Hytte-yg7sp)
