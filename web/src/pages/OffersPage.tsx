@@ -139,6 +139,10 @@ export default function OffersPage() {
     }
   }
 
+  useEffect(() => {
+    saveHiddenDealers(hiddenDealers)
+  }, [hiddenDealers])
+
   const toggleDealer = (dealerId: string) => {
     setVisibleCount(PAGE_SIZE)
     setHiddenDealers(prev => {
@@ -148,7 +152,6 @@ export default function OffersPage() {
       } else {
         next.add(dealerId)
       }
-      saveHiddenDealers(next)
       return next
     })
   }
@@ -161,9 +164,7 @@ export default function OffersPage() {
   const clearFilters = () => {
     setVisibleCount(PAGE_SIZE)
     setSearch('')
-    const none = new Set<string>()
-    saveHiddenDealers(none)
-    setHiddenDealers(none)
+    setHiddenDealers(new Set<string>())
   }
 
   const addToGrocery = async (offer: RankedOffer) => {
@@ -216,16 +217,16 @@ export default function OffersPage() {
   }, [offers, hiddenDealers, search])
 
   const { watched, rest } = useMemo(() => {
-    const watched: RankedOffer[] = []
-    const rest: RankedOffer[] = []
+    const watchedOffers: RankedOffer[] = []
+    const restOffers: RankedOffer[] = []
     for (const o of visible) {
-      if ((o.matched_keywords?.length ?? 0) > 0) watched.push(o)
-      else rest.push(o)
+      if ((o.matched_keywords?.length ?? 0) > 0) watchedOffers.push(o)
+      else restOffers.push(o)
     }
-    return { watched, rest }
+    return { watched: watchedOffers, rest: restOffers }
   }, [visible])
 
-  const shownRest = useMemo(() => rest.slice(0, Math.min(visibleCount, rest.length)), [rest, visibleCount])
+  const shownRest = useMemo(() => rest.slice(0, visibleCount), [rest, visibleCount])
 
   const dateFmt = useMemo(() => new Intl.DateTimeFormat(i18n.language, { day: 'numeric', month: 'short' }), [i18n.language])
   const timeFmt = useMemo(() => new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }), [i18n.language])
