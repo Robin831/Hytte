@@ -111,13 +111,14 @@ export default function KioskWeather({ outdoor, indoor, wind, forecast, dimmed =
   // line. The sizes stop at text-3xl / text-sm so the readings stay legible
   // from across the room.
   const padding = dimmed ? 'py-2' : 'py-3'
-  const gap = dimmed ? 'gap-5 mb-2' : 'gap-6 mb-3'
+  const gap = dimmed ? 'gap-5' : 'gap-6'
+  const marginBottom = dimmed ? 'mb-2' : 'mb-3'
   const tempSize = dimmed ? 'text-3xl' : 'text-4xl'
 
   return (
     <div className={`px-4 ${padding}`} data-dimmed={dimmed ? 'true' : 'false'}>
       {/* Netatmo readings — outdoor + indoor side by side */}
-      <div className={`flex ${gap}`}>
+      <div className={`flex ${gap} ${marginBottom}`}>
         {/* Outdoor */}
         {outdoor != null ? (
           <div className="flex items-center gap-3">
