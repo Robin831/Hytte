@@ -2183,6 +2183,18 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_offer_watchlist_user ON offer_watchlist(user_id);
 
+	-- Offers a user has already been pushed about for a watchlist match, so
+	-- the notify pass never alerts twice for the same offer. Rows are removed
+	-- alongside their offer by offers.PurgeExpired.
+	CREATE TABLE IF NOT EXISTS offer_notifications (
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		offer_id    TEXT NOT NULL,
+		notified_at TEXT NOT NULL,
+		PRIMARY KEY (user_id, offer_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_offer_notifications_offer ON offer_notifications(offer_id);
+
 	-- Cache of LLM relevance scores. profile_version is bumped whenever the
 	-- user's feedback set changes, invalidating stale scores.
 	CREATE TABLE IF NOT EXISTS news_scores (

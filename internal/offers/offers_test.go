@@ -145,12 +145,12 @@ func TestUpsertListPurge(t *testing.T) {
 	ctx := context.Background()
 
 	offers := []Offer{testOffer("a", 10, 20), testOffer("b", 5, 0)}
-	if err := UpsertOffers(ctx, d, offers); err != nil {
+	if _, err := UpsertOffers(ctx, d, offers); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
 	// Second upsert with a changed price replaces, not duplicates.
 	offers[0].Price = 12
-	if err := UpsertOffers(ctx, d, offers); err != nil {
+	if _, err := UpsertOffers(ctx, d, offers); err != nil {
 		t.Fatalf("second upsert: %v", err)
 	}
 	current, err := ListCurrent(d)
@@ -170,7 +170,7 @@ func TestUpsertListPurge(t *testing.T) {
 	old := testOffer("old", 1, 0)
 	old.RunFrom = "2026-01-01"
 	old.RunTill = "2026-01-07"
-	if err := UpsertOffers(ctx, d, []Offer{old}); err != nil {
+	if _, err := UpsertOffers(ctx, d, []Offer{old}); err != nil {
 		t.Fatalf("upsert old: %v", err)
 	}
 	current, _ = ListCurrent(d)
@@ -188,6 +188,190 @@ func TestUpsertListPurge(t *testing.T) {
 	last, err := LastFetchedAt(d)
 	if err != nil || last.IsZero() {
 		t.Errorf("LastFetchedAt = %v, %v; want recent time", last, err)
+	}
+}
+
+func TestUpsertOffersReportsInserted(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	inserted, err := UpsertOffers(ctx, d, []Offer{testOffer("a", 10, 20), testOffer("b", 5, 0)})
+	if err != nil {
+		t.Fatalf("first upsert: %v", err)
+	}
+	if len(inserted) != 2 || inserted[0] != "a" || inserted[1] != "b" {
+		t.Fatalf("first upsert inserted = %v, want [a b]", inserted)
+	}
+
+	changedA := testOffer("a", 7, 20)
+	changedA.Heading = "Changed A"
+	inserted, err = UpsertOffers(ctx, d, []Offer{changedA, testOffer("c", 3, 0)})
+	if err != nil {
+		t.Fatalf("second upsert: %v", err)
+	}
+	if len(inserted) != 1 || inserted[0] != "c" {
+		t.Fatalf("second upsert inserted = %v, want [c]", inserted)
+	}
+
+	var heading string
+	var price float64
+	if err := d.QueryRow("SELECT heading, price FROM shop_offers WHERE id = 'a'").Scan(&heading, &price); err != nil {
+		t.Fatalf("read offer a: %v", err)
+	}
+	if heading != "Changed A" || price != 7 {
+		t.Errorf("offer a not updated: heading=%q price=%v", heading, price)
+	}
+	var count int
+	if err := d.QueryRow("SELECT COUNT(*) FROM shop_offers").Scan(&count); err != nil {
+		t.Fatalf("count offers: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("got %d offers, want 3", count)
+	}
+
+	inserted, err = UpsertOffers(ctx, d, nil)
+	if err != nil || len(inserted) != 0 {
+		t.Errorf("empty upsert = %v, %v; want no inserts and no error", inserted, err)
+	}
+}
+
+func TestUpsertOffersDuplicateIDInBatch(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	changedA := testOffer("a", 7, 0)
+	changedA.Heading = "Changed A"
+	inserted, err := UpsertOffers(ctx, d, []Offer{testOffer("a", 1, 0), changedA})
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if len(inserted) != 1 || inserted[0] != "a" {
+		t.Fatalf("inserted = %v, want [a]", inserted)
+	}
+
+	var heading string
+	var price float64
+	if err := d.QueryRow("SELECT heading, price FROM shop_offers WHERE id = 'a'").Scan(&heading, &price); err != nil {
+		t.Fatalf("read offer a: %v", err)
+	}
+	if heading != "Changed A" || price != 7 {
+		t.Errorf("second copy not saved: heading=%q price=%v", heading, price)
+	}
+	var count int
+	if err := d.QueryRow("SELECT COUNT(*) FROM shop_offers").Scan(&count); err != nil {
+		t.Fatalf("count offers: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("got %d offers, want 1", count)
+	}
+}
+
+func TestMarkAndLookupNotifiedOffers(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 6, 8, 0, 0, 0, time.UTC)
+
+	if err := MarkOffersNotified(ctx, d, 1, []string{"a", "b"}, now); err != nil {
+		t.Fatalf("mark: %v", err)
+	}
+	// Re-marking is a no-op and keeps the original timestamp.
+	if err := MarkOffersNotified(ctx, d, 1, []string{"a"}, now.Add(time.Hour)); err != nil {
+		t.Fatalf("re-mark: %v", err)
+	}
+	if err := MarkOffersNotified(ctx, d, 1, nil, now); err != nil {
+		t.Fatalf("mark empty: %v", err)
+	}
+	var notifiedAt string
+	if err := d.QueryRow("SELECT notified_at FROM offer_notifications WHERE user_id = 1 AND offer_id = 'a'").Scan(&notifiedAt); err != nil {
+		t.Fatalf("read notified_at: %v", err)
+	}
+	if notifiedAt != now.Format(time.RFC3339) {
+		t.Errorf("notified_at = %q, want original %q", notifiedAt, now.Format(time.RFC3339))
+	}
+
+	got, err := NotifiedOfferIDs(ctx, d, 1, []string{"a", "b", "c"})
+	if err != nil {
+		t.Fatalf("lookup user 1: %v", err)
+	}
+	if len(got) != 2 || !got["a"] || !got["b"] || got["c"] {
+		t.Errorf("user 1 notified = %v, want {a b}", got)
+	}
+
+	got, err = NotifiedOfferIDs(ctx, d, 2, []string{"a"})
+	if err != nil {
+		t.Fatalf("lookup user 2: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("user 2 notified = %v, want empty", got)
+	}
+
+	got, err = NotifiedOfferIDs(ctx, d, 1, nil)
+	if err != nil {
+		t.Fatalf("lookup empty: %v", err)
+	}
+	if got == nil || len(got) != 0 {
+		t.Errorf("empty lookup = %v, want empty non-nil map", got)
+	}
+}
+
+func TestNotifiedOfferIDsChunksLargeLookups(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	ids := make([]string, 0, notifiedLookupChunk*2+10)
+	for i := range cap(ids) {
+		ids = append(ids, fmt.Sprintf("offer-%d", i))
+	}
+	marked := []string{ids[0], ids[notifiedLookupChunk], ids[len(ids)-1]}
+	if err := MarkOffersNotified(ctx, d, 1, marked, time.Now()); err != nil {
+		t.Fatalf("mark: %v", err)
+	}
+	got, err := NotifiedOfferIDs(ctx, d, 1, ids)
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if len(got) != len(marked) {
+		t.Fatalf("got %d notified ids, want %d: %v", len(got), len(marked), got)
+	}
+	for _, id := range marked {
+		if !got[id] {
+			t.Errorf("missing notified id %s", id)
+		}
+	}
+}
+
+func TestPurgeExpiredRemovesNotifications(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+
+	expired := testOffer("x", 1, 0)
+	expired.RunFrom = "2026-01-01"
+	expired.RunTill = "2026-01-07"
+	live := testOffer("y", 2, 0)
+	if _, err := UpsertOffers(ctx, d, []Offer{expired, live}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if err := MarkOffersNotified(ctx, d, 1, []string{"x", "y"}, time.Now()); err != nil {
+		t.Fatalf("mark: %v", err)
+	}
+
+	purged, err := PurgeExpired(ctx, d)
+	if err != nil {
+		t.Fatalf("purge: %v", err)
+	}
+	if purged != 1 {
+		t.Errorf("purged %d offers, want 1", purged)
+	}
+
+	got, err := NotifiedOfferIDs(ctx, d, 1, []string{"x", "y"})
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if got["x"] {
+		t.Error("notification row for purged offer x was not removed")
+	}
+	if !got["y"] {
+		t.Error("notification row for live offer y was removed")
 	}
 }
 

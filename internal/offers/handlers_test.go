@@ -32,7 +32,7 @@ func TestHandleListRanksPerUser(t *testing.T) {
 	}
 	seed[0].Heading = "TINE HELMELK"
 	seed[1].Heading = "Pizza"
-	if err := UpsertOffers(context.Background(), d, seed); err != nil {
+	if _, err := UpsertOffers(context.Background(), d, seed); err != nil {
 		t.Fatalf("seed offers: %v", err)
 	}
 	if _, err := AddWatchlist(d, 1, "melk"); err != nil {

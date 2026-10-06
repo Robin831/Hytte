@@ -1,0 +1,2 @@
+category: Added
+- **Offer sync tracks new offers and per-user notifications** - `UpsertOffers` now reports which offer IDs were newly inserted rather than updated, and a new `offer_notifications` table records which offers each user has already been alerted about, so the upcoming watchlist push never notifies twice for the same offer. Notification rows are cleaned up together with their offers when expired offers are purged. (Hytte-kuqck)
