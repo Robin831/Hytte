@@ -235,3 +235,113 @@ func DeleteTokenHandler(db *sql.DB) http.HandlerFunc {
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
+
+// updateDimRequest is the request body for PUT /api/kiosk/tokens/{id}/dim.
+// Dim is a tri-state: null (or absent) clears the override so the screen
+// follows the sun, true/false is stored as-is. Empty DimStart/DimEnd clear the
+// custom window; otherwise both must be a zero-padded local "HH:MM".
+type updateDimRequest struct {
+	Dim      *bool  `json:"dim"`
+	DimStart string `json:"dim_start"`
+	DimEnd   string `json:"dim_end"`
+}
+
+// UpdateTokenDimHandler handles PUT /api/kiosk/tokens/{id}/dim.
+// Replaces the night-mode override keys ("dim", "dim_start", "dim_end") in the
+// token's config while leaving every other config key untouched, and returns
+// the updated config.
+func UpdateTokenDimHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		idStr := chi.URLParam(r, "id")
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil || id <= 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid token id"})
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, 4*1024)
+		var req updateDimRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
+
+		startRaw := strings.TrimSpace(req.DimStart)
+		endRaw := strings.TrimSpace(req.DimEnd)
+		if (startRaw == "") != (endRaw == "") {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "dim_start and dim_end must be set together"})
+			return
+		}
+		var start, end string
+		if startRaw != "" {
+			var startOK, endOK bool
+			start, startOK = parseHHMM(startRaw)
+			end, endOK = parseHHMM(endRaw)
+			if !startOK || !endOK {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "dim_start and dim_end must be HH:MM"})
+				return
+			}
+		}
+
+		tx, err := db.BeginTx(r.Context(), nil)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update token"})
+			return
+		}
+		defer tx.Rollback()
+
+		var configRaw string
+		err = tx.QueryRowContext(r.Context(),
+			"SELECT config FROM kiosk_tokens WHERE id = ?", id,
+		).Scan(&configRaw)
+		if err == sql.ErrNoRows {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "token not found"})
+			return
+		}
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update token"})
+			return
+		}
+
+		// Refuse to rewrite a config that is not a JSON object: replacing it
+		// with a fresh object would silently drop whatever it held.
+		cfg := map[string]any{}
+		if strings.TrimSpace(configRaw) != "" {
+			if err := json.Unmarshal([]byte(configRaw), &cfg); err != nil || cfg == nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "stored token config is not a JSON object"})
+				return
+			}
+		}
+
+		if req.Dim == nil {
+			delete(cfg, "dim")
+		} else {
+			cfg["dim"] = *req.Dim
+		}
+		if start == "" {
+			delete(cfg, "dim_start")
+			delete(cfg, "dim_end")
+		} else {
+			cfg["dim_start"] = start
+			cfg["dim_end"] = end
+		}
+
+		updated, err := json.Marshal(cfg)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update token"})
+			return
+		}
+		if _, err := tx.ExecContext(r.Context(),
+			"UPDATE kiosk_tokens SET config = ? WHERE id = ?", string(updated), id,
+		); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update token"})
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update token"})
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"config": cfg})
+	}
+}

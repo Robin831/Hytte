@@ -226,6 +226,7 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/kiosk/tokens", kiosk.CreateTokenHandler(db))
 				r.Get("/kiosk/tokens", kiosk.ListTokensHandler(db))
 				r.Delete("/kiosk/tokens/{id}", kiosk.DeleteTokenHandler(db))
+				r.Put("/kiosk/tokens/{id}/dim", kiosk.UpdateTokenDimHandler(db))
 
 				// Suggestions: AI-generated page improvement ideas — admin only.
 				r.Get("/suggestions", suggestions.ListHandler(db))

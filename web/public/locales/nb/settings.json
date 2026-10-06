@@ -312,7 +312,31 @@
     "showQrTitle": "QR-kode — {{name}}",
     "showQrDescription": "Skann denne QR-koden for å navigere til kiosksiden på et nettbrett.",
     "showQrNoToken": "Merk: Denne QR-koden inneholder ikke tokenen. For førstegangsoppsett, bruk QR-koden som vises ved opprettelse.",
-    "done": "Ferdig"
+    "done": "Ferdig",
+    "dim": {
+      "heading": "Nattdemping",
+      "column": "Nattdemping",
+      "modeLabel": "Demping",
+      "mode": {
+        "auto": "Automatisk (sol)",
+        "on": "På",
+        "off": "Av"
+      },
+      "startLabel": "Demp fra (valgfritt)",
+      "endLabel": "Demp til (valgfritt)",
+      "timePlaceholder": "TT:MM",
+      "hint": "Som standard dempes skjermen mellom solnedgang og soloppgang, og oppsettet flyttes litt for å unngå innbrenning. Angi begge tidspunktene for å dempe etter en fast tidsplan i stedet, eller velg Av for aldri å dempe.",
+      "summaryWindow": "{{mode}} ({{start}}–{{end}})",
+      "editAriaLabel": "Rediger nattdemping for {{name}}",
+      "editTitle": "Nattdemping — {{name}}",
+      "save": "Lagre",
+      "saving": "Lagrer...",
+      "error": {
+        "invalidTime": "Tidspunkter må ha formatet TT:MM (00:00–23:59)",
+        "windowIncomplete": "Angi både start- og sluttidspunkt, eller la begge stå tomme",
+        "save": "Kunne ikke lagre innstillingene for nattdemping"
+      }
+    }
   },
   "webhooks": {
     "heading": "Webhooks",

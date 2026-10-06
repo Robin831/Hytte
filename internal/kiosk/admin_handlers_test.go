@@ -343,3 +343,123 @@ func TestDeleteTokenHandler_InvalidID(t *testing.T) {
 		t.Errorf("expected 400, got %d", rec.Code)
 	}
 }
+
+func insertDimTestToken(t *testing.T, db *sql.DB, config string) int64 {
+	t.Helper()
+	var id int64
+	err := db.QueryRow(
+		`INSERT INTO kiosk_tokens (token_hash, name, config, created_by, created_at) VALUES (?, ?, ?, '', ?) RETURNING id`,
+		hashToken("dimtoken"), "dim", config, time.Now().UTC().Format(time.RFC3339),
+	).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	return id
+}
+
+func putDim(t *testing.T, db *sql.DB, id string, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := chi.NewRouter()
+	r.Put("/api/kiosk/tokens/{id}/dim", UpdateTokenDimHandler(db))
+	req := httptest.NewRequest(http.MethodPut, "/api/kiosk/tokens/"+id+"/dim", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+func storedConfig(t *testing.T, db *sql.DB, id int64) map[string]any {
+	t.Helper()
+	var raw string
+	if err := db.QueryRow("SELECT config FROM kiosk_tokens WHERE id = ?", id).Scan(&raw); err != nil {
+		t.Fatalf("query config: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		t.Fatalf("decode config %q: %v", raw, err)
+	}
+	return cfg
+}
+
+func TestUpdateTokenDimHandler_SetsKeysAndKeepsOthers(t *testing.T) {
+	db := setupAdminTestDB(t)
+	id := insertDimTestToken(t, db, `{"stop_ids":["NSR:1"],"location":"Oslo"}`)
+
+	rec := putDim(t, db, fmt.Sprint(id), `{"dim":false,"dim_start":"22:30","dim_end":"06:00"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	cfg := storedConfig(t, db, id)
+	if cfg["dim"] != false {
+		t.Errorf("dim = %v, want false", cfg["dim"])
+	}
+	if cfg["dim_start"] != "22:30" || cfg["dim_end"] != "06:00" {
+		t.Errorf("window = %v-%v, want 22:30-06:00", cfg["dim_start"], cfg["dim_end"])
+	}
+	if cfg["location"] != "Oslo" {
+		t.Errorf("location = %v, want Oslo (unrelated keys must be kept)", cfg["location"])
+	}
+	if stops, ok := cfg["stop_ids"].([]any); !ok || len(stops) != 1 {
+		t.Errorf("stop_ids = %v, want [NSR:1]", cfg["stop_ids"])
+	}
+}
+
+func TestUpdateTokenDimHandler_NullAndEmptyClearOverrides(t *testing.T) {
+	db := setupAdminTestDB(t)
+	id := insertDimTestToken(t, db, `{"location":"Oslo","dim":true,"dim_start":"22:00","dim_end":"06:00"}`)
+
+	rec := putDim(t, db, fmt.Sprint(id), `{"dim":null,"dim_start":"","dim_end":""}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	cfg := storedConfig(t, db, id)
+	for _, key := range []string{"dim", "dim_start", "dim_end"} {
+		if _, ok := cfg[key]; ok {
+			t.Errorf("expected %q to be removed, got %v", key, cfg[key])
+		}
+	}
+	if cfg["location"] != "Oslo" {
+		t.Errorf("location = %v, want Oslo", cfg["location"])
+	}
+}
+
+func TestUpdateTokenDimHandler_RejectsBadInput(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"start only", `{"dim_start":"22:00"}`},
+		{"end only", `{"dim_end":"06:00"}`},
+		{"hour out of range", `{"dim_start":"25:00","dim_end":"06:00"}`},
+		{"unpadded", `{"dim_start":"7:5","dim_end":"06:00"}`},
+		{"dim wrong type", `{"dim":"auto"}`},
+		{"malformed json", `{`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupAdminTestDB(t)
+			id := insertDimTestToken(t, db, `{"location":"Oslo"}`)
+
+			rec := putDim(t, db, fmt.Sprint(id), tt.body)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+			cfg := storedConfig(t, db, id)
+			if len(cfg) != 1 || cfg["location"] != "Oslo" {
+				t.Errorf("config changed on rejected request: %v", cfg)
+			}
+		})
+	}
+}
+
+func TestUpdateTokenDimHandler_NotFoundAndInvalidID(t *testing.T) {
+	db := setupAdminTestDB(t)
+
+	if rec := putDim(t, db, "9999", `{"dim":true}`); rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d", rec.Code)
+	}
+	if rec := putDim(t, db, "notanumber", `{"dim":true}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
