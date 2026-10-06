@@ -16,6 +16,13 @@ export interface WorkDay {
   deductions: WorkDeduction[]
 }
 
+// 409 body returned by the add/update session endpoints when the new times
+// would overlap another session on the same day.
+export interface SessionConflictError {
+  error: string
+  conflict: WorkSession
+}
+
 export interface DaySummary {
   date: string
   gross_minutes: number

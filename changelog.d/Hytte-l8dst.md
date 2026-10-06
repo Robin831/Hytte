@@ -1,0 +1,2 @@
+category: Added
+- **Overlapping work sessions are flagged in the day view** - When saving a session is rejected because it overlaps another session, the day view now shows an inline message next to the form naming the conflicting session's times. Sessions already stored with overlapping times are highlighted, and a warning above the list names each overlapping pair; the day stays fully editable. (Hytte-l8dst)
