@@ -55,7 +55,7 @@ func Sync(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("offers: all %d dealers failed — check OFFERS_TJEK_API_KEY", failures)
 	}
 
-	if err := UpsertOffers(ctx, db, collected); err != nil {
+	if _, err := UpsertOffers(ctx, db, collected); err != nil {
 		return err
 	}
 	purged, err := PurgeExpired(ctx, db)

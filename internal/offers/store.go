@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -11,47 +12,76 @@ import (
 
 // UpsertOffers replaces or inserts the given offers in one transaction,
 // stamping fetched_at. Calling it repeatedly with the same ids is idempotent.
-func UpsertOffers(ctx context.Context, db *sql.DB, offers []Offer) error {
+// It returns the ids of offers that did not exist before this call (in input
+// order); offers that were merely updated are not included. The slice is only
+// returned once the transaction has committed.
+func UpsertOffers(ctx context.Context, db *sql.DB, offers []Offer) ([]string, error) {
 	if len(offers) == 0 {
-		return nil
+		return nil, nil
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("offers upsert: begin: %w", err)
+		return nil, fmt.Errorf("offers upsert: begin: %w", err)
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	stmt, err := tx.PrepareContext(ctx, `
+	insertStmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO shop_offers (id, dealer_id, dealer_name, heading, description, price, pre_price,
 			currency, unit_price, unit_label, image_url, run_from, run_till, fetched_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET
-			dealer_name = excluded.dealer_name,
-			heading     = excluded.heading,
-			description = excluded.description,
-			price       = excluded.price,
-			pre_price   = excluded.pre_price,
-			currency    = excluded.currency,
-			unit_price  = excluded.unit_price,
-			unit_label  = excluded.unit_label,
-			image_url   = excluded.image_url,
-			run_from    = excluded.run_from,
-			run_till    = excluded.run_till,
-			fetched_at  = excluded.fetched_at
+		ON CONFLICT(id) DO NOTHING
 	`)
 	if err != nil {
-		return fmt.Errorf("offers upsert: prepare: %w", err)
+		return nil, fmt.Errorf("offers upsert: prepare insert: %w", err)
 	}
-	defer stmt.Close()
+	defer insertStmt.Close()
+
+	updateStmt, err := tx.PrepareContext(ctx, `
+		UPDATE shop_offers SET
+			dealer_name = ?,
+			heading     = ?,
+			description = ?,
+			price       = ?,
+			pre_price   = ?,
+			currency    = ?,
+			unit_price  = ?,
+			unit_label  = ?,
+			image_url   = ?,
+			run_from    = ?,
+			run_till    = ?,
+			fetched_at  = ?
+		WHERE id = ?
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("offers upsert: prepare update: %w", err)
+	}
+	defer updateStmt.Close()
 
 	now := time.Now().UTC().Format(time.RFC3339)
+	var inserted []string
 	for _, o := range offers {
-		if _, err := stmt.ExecContext(ctx, o.ID, o.DealerID, o.DealerName, o.Heading, o.Description,
-			o.Price, o.PrePrice, o.Currency, o.UnitPrice, o.UnitLabel, o.ImageURL, o.RunFrom, o.RunTill, now); err != nil {
-			return fmt.Errorf("offers upsert %s: %w", o.ID, err)
+		res, err := insertStmt.ExecContext(ctx, o.ID, o.DealerID, o.DealerName, o.Heading, o.Description,
+			o.Price, o.PrePrice, o.Currency, o.UnitPrice, o.UnitLabel, o.ImageURL, o.RunFrom, o.RunTill, now)
+		if err != nil {
+			return nil, fmt.Errorf("offers insert %s: %w", o.ID, err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return nil, fmt.Errorf("offers insert %s: rows affected: %w", o.ID, err)
+		}
+		if n > 0 {
+			inserted = append(inserted, o.ID)
+			continue
+		}
+		if _, err := updateStmt.ExecContext(ctx, o.DealerName, o.Heading, o.Description, o.Price, o.PrePrice,
+			o.Currency, o.UnitPrice, o.UnitLabel, o.ImageURL, o.RunFrom, o.RunTill, now, o.ID); err != nil {
+			return nil, fmt.Errorf("offers update %s: %w", o.ID, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("offers upsert: commit: %w", err)
+	}
+	return inserted, nil
 }
 
 // ListCurrent returns all offers whose validity window includes today,
@@ -84,14 +114,109 @@ func ListCurrent(db *sql.DB) ([]Offer, error) {
 	return out, rows.Err()
 }
 
-// PurgeExpired deletes offers whose validity ended more than seven days ago.
+// PurgeExpired deletes offers whose validity ended more than seven days ago,
+// together with any offer_notifications rows that reference them. It returns
+// the number of offers removed.
 func PurgeExpired(ctx context.Context, db *sql.DB) (int64, error) {
 	cutoff := time.Now().UTC().AddDate(0, 0, -7).Format("2006-01-02")
-	res, err := db.ExecContext(ctx, "DELETE FROM shop_offers WHERE run_till < ?", cutoff)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("purge expired offers: begin: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM offer_notifications
+		WHERE offer_id IN (SELECT id FROM shop_offers WHERE run_till < ?)
+	`, cutoff); err != nil {
+		return 0, fmt.Errorf("purge expired offer notifications: %w", err)
+	}
+	res, err := tx.ExecContext(ctx, "DELETE FROM shop_offers WHERE run_till < ?", cutoff)
 	if err != nil {
 		return 0, fmt.Errorf("purge expired offers: %w", err)
 	}
-	return res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("purge expired offers: rows affected: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("purge expired offers: commit: %w", err)
+	}
+	return n, nil
+}
+
+// notifiedLookupChunk bounds the number of placeholders per IN (...) query so
+// large offer batches stay well under SQLite's bound-variable limit.
+const notifiedLookupChunk = 500
+
+// NotifiedOfferIDs returns the subset of offerIDs the user has already been
+// notified about. The map only contains ids that were found (all true).
+func NotifiedOfferIDs(ctx context.Context, db *sql.DB, userID int64, offerIDs []string) (map[string]bool, error) {
+	out := make(map[string]bool)
+	for start := 0; start < len(offerIDs); start += notifiedLookupChunk {
+		end := min(start+notifiedLookupChunk, len(offerIDs))
+		chunk := offerIDs[start:end]
+
+		args := make([]any, 0, len(chunk)+1)
+		args = append(args, userID)
+		for _, id := range chunk {
+			args = append(args, id)
+		}
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(chunk)), ",")
+		rows, err := db.QueryContext(ctx,
+			"SELECT offer_id FROM offer_notifications WHERE user_id = ? AND offer_id IN ("+placeholders+")",
+			args...)
+		if err != nil {
+			return nil, fmt.Errorf("query notified offers: %w", err)
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("scan notified offer: %w", err)
+			}
+			out[id] = true
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, fmt.Errorf("iterate notified offers: %w", err)
+		}
+	}
+	return out, nil
+}
+
+// MarkOffersNotified records that the user has been notified about offerIDs.
+// Already-marked offers keep their original notified_at, so the call is
+// idempotent.
+func MarkOffersNotified(ctx context.Context, db *sql.DB, userID int64, offerIDs []string, now time.Time) error {
+	if len(offerIDs) == 0 {
+		return nil
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("mark offers notified: begin: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT OR IGNORE INTO offer_notifications (user_id, offer_id, notified_at) VALUES (?, ?, ?)
+	`)
+	if err != nil {
+		return fmt.Errorf("mark offers notified: prepare: %w", err)
+	}
+	defer stmt.Close()
+
+	ts := now.UTC().Format(time.RFC3339)
+	for _, id := range offerIDs {
+		if _, err := stmt.ExecContext(ctx, userID, id, ts); err != nil {
+			return fmt.Errorf("mark offer %s notified: %w", id, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("mark offers notified: commit: %w", err)
+	}
+	return nil
 }
 
 // LastFetchedAt returns the most recent fetch timestamp, or the zero time when
