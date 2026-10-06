@@ -3,6 +3,7 @@ package workhours
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -1535,5 +1536,235 @@ func TestSessionUpdateHandler_CrossesMidnight(t *testing.T) {
 	}
 	if !fetched.Sessions[0].CrossesMidnight {
 		t.Error("crosses_midnight after update: got false, want true")
+	}
+}
+
+// --- Session overlap (409) ---
+
+func TestSessionAddHandler_OverlapReturns409(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-10", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	existing, err := AddSession(db, day.ID, 1, "08:00", "12:00", 0, false, false)
+	if err != nil {
+		t.Fatalf("add session: %v", err)
+	}
+
+	before, err := GetDay(db, 1, "2026-03-10")
+	if err != nil {
+		t.Fatalf("get day before: %v", err)
+	}
+	summaryBefore, err := CalculateDay(*before, DefaultSettings())
+	if err != nil {
+		t.Fatalf("calculate before: %v", err)
+	}
+
+	body := jsonBody(t, map[string]any{
+		"day_id":     day.ID,
+		"start_time": "11:00",
+		"end_time":   "16:00",
+		"sort_order": 1,
+	})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/day/session", body), testUser)
+	rec := httptest.NewRecorder()
+	SessionAddHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Error    string      `json:"error"`
+		Conflict WorkSession `json:"conflict"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Error != "session overlaps an existing session" {
+		t.Errorf("error: got %q", resp.Error)
+	}
+	if resp.Conflict.ID != existing.ID || resp.Conflict.StartTime != "08:00" || resp.Conflict.EndTime != "12:00" {
+		t.Errorf("conflict: got %+v, want id=%d 08:00-12:00", resp.Conflict, existing.ID)
+	}
+
+	after, err := GetDay(db, 1, "2026-03-10")
+	if err != nil {
+		t.Fatalf("get day after: %v", err)
+	}
+	if len(after.Sessions) != 1 {
+		t.Fatalf("sessions after rejected add: got %d, want 1", len(after.Sessions))
+	}
+	summaryAfter, err := CalculateDay(*after, DefaultSettings())
+	if err != nil {
+		t.Fatalf("calculate after: %v", err)
+	}
+	if summaryAfter.GrossMinutes != summaryBefore.GrossMinutes || summaryAfter.NetMinutes != summaryBefore.NetMinutes {
+		t.Errorf("summary changed: before %+v, after %+v", summaryBefore, summaryAfter)
+	}
+}
+
+func TestSessionAddHandler_AdjacentAllowed(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-10", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := AddSession(db, day.ID, 1, "08:00", "12:00", 0, false, false); err != nil {
+		t.Fatalf("add session: %v", err)
+	}
+
+	body := jsonBody(t, map[string]any{
+		"day_id":     day.ID,
+		"start_time": "12:00",
+		"end_time":   "16:00",
+		"sort_order": 1,
+	})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/day/session", body), testUser)
+	rec := httptest.NewRecorder()
+	SessionAddHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// updateSessionRequest sends a PUT to SessionUpdateHandler for sessionID.
+func updateSessionRequest(t *testing.T, db *sql.DB, sessionID int64, start, end string) *httptest.ResponseRecorder {
+	t.Helper()
+	body := jsonBody(t, map[string]any{
+		"start_time": start,
+		"end_time":   end,
+		"sort_order": 0,
+	})
+	req := withUser(httptest.NewRequest("PUT", fmt.Sprintf("/api/workhours/day/session/%d", sessionID), body), testUser)
+	req = withChiParam(req, "id", fmt.Sprintf("%d", sessionID))
+	rec := httptest.NewRecorder()
+	SessionUpdateHandler(db).ServeHTTP(rec, req)
+	return rec
+}
+
+func TestSessionUpdateHandler_OverlapReturns409(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-10", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	morning, err := AddSession(db, day.ID, 1, "08:00", "12:00", 0, false, false)
+	if err != nil {
+		t.Fatalf("add morning: %v", err)
+	}
+	afternoon, err := AddSession(db, day.ID, 1, "13:00", "16:00", 1, false, false)
+	if err != nil {
+		t.Fatalf("add afternoon: %v", err)
+	}
+
+	rec := updateSessionRequest(t, db, afternoon.ID, "11:00", "16:00")
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Error    string      `json:"error"`
+		Conflict WorkSession `json:"conflict"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Conflict.ID != morning.ID {
+		t.Errorf("conflict id: got %d, want %d", resp.Conflict.ID, morning.ID)
+	}
+
+	after, err := GetDay(db, 1, "2026-03-10")
+	if err != nil {
+		t.Fatalf("get day: %v", err)
+	}
+	for _, s := range after.Sessions {
+		if s.ID == afternoon.ID && (s.StartTime != "13:00" || s.EndTime != "16:00") {
+			t.Errorf("afternoon session changed to %s-%s", s.StartTime, s.EndTime)
+		}
+	}
+}
+
+func TestSessionUpdateHandler_UnchangedAndShrinkAllowed(t *testing.T) {
+	db := setupTestDB(t)
+
+	day, err := UpsertDay(db, 1, "2026-03-10", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	morning, err := AddSession(db, day.ID, 1, "08:00", "12:00", 0, false, false)
+	if err != nil {
+		t.Fatalf("add morning: %v", err)
+	}
+	if _, err := AddSession(db, day.ID, 1, "12:00", "16:00", 1, false, false); err != nil {
+		t.Fatalf("add afternoon: %v", err)
+	}
+
+	if rec := updateSessionRequest(t, db, morning.ID, "08:00", "12:00"); rec.Code != http.StatusNoContent {
+		t.Fatalf("unchanged save: expected 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec := updateSessionRequest(t, db, morning.ID, "09:00", "11:00"); rec.Code != http.StatusNoContent {
+		t.Fatalf("shrink: expected 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSessionUpdateHandler_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+
+	if rec := updateSessionRequest(t, db, 999, "08:00", "12:00"); rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPunchOutHandler_OverlapReturns409(t *testing.T) {
+	db := setupTestDB(t)
+	if _, err := CreateOpenSession(db, 1, "2026-03-30", "08:00"); err != nil {
+		t.Fatalf("CreateOpenSession: %v", err)
+	}
+	day, err := UpsertDay(db, 1, "2026-03-30", false, "")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	manual, err := AddSession(db, day.ID, 1, "09:00", "10:00", 0, false, false)
+	if err != nil {
+		t.Fatalf("add manual session: %v", err)
+	}
+
+	body := jsonBody(t, map[string]any{"end_time": "12:00"})
+	req := withUser(httptest.NewRequest("POST", "/api/workhours/punch-out", body), testUser)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	PunchOutHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Conflict WorkSession `json:"conflict"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Conflict.ID != manual.ID {
+		t.Errorf("conflict id: got %d, want %d", resp.Conflict.ID, manual.ID)
+	}
+
+	// Nothing written; the open session stays so the user can retry.
+	got, err := GetDay(db, 1, "2026-03-30")
+	if err != nil {
+		t.Fatalf("get day: %v", err)
+	}
+	if len(got.Sessions) != 1 {
+		t.Errorf("sessions: got %d, want 1", len(got.Sessions))
+	}
+	open, err := GetOpenSession(db, 1)
+	if err != nil {
+		t.Fatalf("GetOpenSession: %v", err)
+	}
+	if open == nil {
+		t.Error("expected open session to remain after rejected punch-out")
 	}
 }

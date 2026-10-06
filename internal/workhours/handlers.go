@@ -3,6 +3,7 @@ package workhours
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -188,6 +189,16 @@ func DayDeleteHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// writeOverlapConflict writes the 409 response returned when a session would
+// overlap an existing session on the same day. The conflicting session is
+// included in the same JSON shape the session endpoints return.
+func writeOverlapConflict(w http.ResponseWriter, conflict *WorkSession) {
+	writeJSON(w, http.StatusConflict, map[string]any{
+		"error":    "session overlaps an existing session",
+		"conflict": conflict,
+	})
+}
+
 // SessionAddHandler handles POST /api/workhours/day/session.
 func SessionAddHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -219,7 +230,11 @@ func SessionAddHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		session, err := AddSession(db, body.DayID, user.ID, body.StartTime, body.EndTime, body.SortOrder, body.IsInternal, body.CrossesMidnight)
-		if err == sql.ErrNoRows {
+		var overlap *OverlapError
+		if errors.As(err, &overlap) {
+			writeOverlapConflict(w, &overlap.Conflict)
+			return
+		} else if err == sql.ErrNoRows {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "day not found"})
 			return
 		} else if err != nil {
@@ -266,7 +281,12 @@ func SessionUpdateHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if err := UpdateSession(db, sessionID, user.ID, body.StartTime, body.EndTime, body.SortOrder, body.IsInternal, body.CrossesMidnight); err == sql.ErrNoRows {
+		err = UpdateSession(db, sessionID, user.ID, body.StartTime, body.EndTime, body.SortOrder, body.IsInternal, body.CrossesMidnight)
+		var overlap *OverlapError
+		if errors.As(err, &overlap) {
+			writeOverlapConflict(w, &overlap.Conflict)
+			return
+		} else if err == sql.ErrNoRows {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "session not found"})
 			return
 		} else if err != nil {
@@ -1171,6 +1191,13 @@ func PunchOutHandler(db *sql.DB) http.HandlerFunc {
 
 		sortOrder := len(day.Sessions)
 		if _, err := AddSession(db, day.ID, user.ID, open.StartTime, body.EndTime, sortOrder, false, body.CrossesMidnight); err != nil {
+			// Leave the open session in place so the user can fix the
+			// conflicting session and punch out again.
+			var overlap *OverlapError
+			if errors.As(err, &overlap) {
+				writeOverlapConflict(w, &overlap.Conflict)
+				return
+			}
 			log.Printf("workhours: punch out add session: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save session"})
 			return
