@@ -318,14 +318,12 @@
       "column": "Night dimming",
       "modeLabel": "Dimming",
       "mode": {
-        "auto": "Automatic (sun)",
-        "on": "On",
+        "auto": "On",
         "off": "Off"
       },
       "startLabel": "Dim from (optional)",
       "endLabel": "Dim until (optional)",
-      "timePlaceholder": "HH:MM",
-      "hint": "By default the screen dims between sunset and sunrise and shifts its layout slightly to prevent burn-in. Set both times to dim on a fixed schedule instead, or choose Off to never dim.",
+      "hint": "When on, the screen dims between sunset and sunrise and shifts its layout slightly to prevent burn-in. Set both times to dim on a fixed schedule instead (needed for a token without a location, which otherwise never dims), or choose Off to never dim.",
       "summaryWindow": "{{mode}} ({{start}}–{{end}})",
       "editAriaLabel": "Edit night dimming for {{name}}",
       "editTitle": "Night dimming — {{name}}",

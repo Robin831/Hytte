@@ -463,3 +463,42 @@ func TestUpdateTokenDimHandler_NotFoundAndInvalidID(t *testing.T) {
 		t.Errorf("expected 400, got %d", rec.Code)
 	}
 }
+
+func TestUpdateTokenDimHandler_NonObjectStoredConfig(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   string
+		wantCode int
+	}{
+		{"json null", `null`, http.StatusInternalServerError},
+		{"json array", `[1]`, http.StatusInternalServerError},
+		{"empty string", ``, http.StatusOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := setupAdminTestDB(t)
+			id := insertDimTestToken(t, db, tt.config)
+
+			rec := putDim(t, db, fmt.Sprint(id), `{"dim":false,"dim_start":"22:00","dim_end":"06:00"}`)
+			if rec.Code != tt.wantCode {
+				t.Fatalf("expected %d, got %d: %s", tt.wantCode, rec.Code, rec.Body.String())
+			}
+
+			if tt.wantCode != http.StatusOK {
+				var raw string
+				if err := db.QueryRow("SELECT config FROM kiosk_tokens WHERE id = ?", id).Scan(&raw); err != nil {
+					t.Fatalf("query config: %v", err)
+				}
+				if raw != tt.config {
+					t.Errorf("stored config = %q, want it left unchanged as %q", raw, tt.config)
+				}
+				return
+			}
+
+			cfg := storedConfig(t, db, id)
+			if len(cfg) != 3 || cfg["dim"] != false || cfg["dim_start"] != "22:00" || cfg["dim_end"] != "06:00" {
+				t.Errorf("config = %v, want only the dim keys", cfg)
+			}
+		})
+	}
+}

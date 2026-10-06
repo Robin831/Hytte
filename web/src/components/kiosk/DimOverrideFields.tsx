@@ -8,7 +8,7 @@ interface Props {
   disabled?: boolean
 }
 
-const MODES: DimMode[] = ['auto', 'on', 'off']
+const MODES: DimMode[] = ['auto', 'off']
 
 // Form controls for a kiosk token's night-mode override, shared by the create
 // dialog and the edit dialog in TokenManager.
@@ -54,7 +54,6 @@ export default function DimOverrideFields({ value, onChange, disabled }: Props) 
             type="time"
             value={value.start}
             onChange={(e) => onChange({ ...value, start: e.target.value })}
-            placeholder={t('kioskTokens.dim.timePlaceholder')}
             aria-describedby={hintId}
             className={inputClass}
           />
@@ -68,7 +67,6 @@ export default function DimOverrideFields({ value, onChange, disabled }: Props) 
             type="time"
             value={value.end}
             onChange={(e) => onChange({ ...value, end: e.target.value })}
-            placeholder={t('kioskTokens.dim.timePlaceholder')}
             aria-describedby={hintId}
             className={inputClass}
           />

@@ -318,14 +318,12 @@
       "column": "Nattdemping",
       "modeLabel": "Demping",
       "mode": {
-        "auto": "Automatisk (sol)",
-        "on": "På",
+        "auto": "På",
         "off": "Av"
       },
       "startLabel": "Demp fra (valgfritt)",
       "endLabel": "Demp til (valgfritt)",
-      "timePlaceholder": "TT:MM",
-      "hint": "Som standard dempes skjermen mellom solnedgang og soloppgang, og oppsettet flyttes litt for å unngå innbrenning. Angi begge tidspunktene for å dempe etter en fast tidsplan i stedet, eller velg Av for aldri å dempe.",
+      "hint": "Når dette er på, dempes skjermen mellom solnedgang og soloppgang, og oppsettet flyttes litt for å unngå innbrenning. Angi begge tidspunktene for å dempe etter en fast tidsplan i stedet (nødvendig for en token uten sted, som ellers aldri dempes), eller velg Av for aldri å dempe.",
       "summaryWindow": "{{mode}} ({{start}}–{{end}})",
       "editAriaLabel": "Rediger nattdemping for {{name}}",
       "editTitle": "Nattdemping — {{name}}",
