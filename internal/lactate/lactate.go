@@ -75,14 +75,8 @@ type Stage struct {
 // stages; use ListWithStages to batch-load stage data for every test, or
 // GetByID for full details (including notes/RPE) of a single test.
 func List(db *sql.DB, userID int64) ([]Test, error) {
-	tests, stagesByTest, err := listTestsWithThresholdStages(db, userID)
-	if err != nil {
-		return nil, err
-	}
-	for i := range tests {
-		tests[i].PrimaryThreshold = primaryThresholdFor(stagesByTest[tests[i].ID])
-	}
-	return tests, nil
+	tests, _, err := listTestsWithThresholdStages(db, userID)
+	return tests, err
 }
 
 // ListWithStages returns all lactate tests for a user, ordered by date
@@ -95,7 +89,6 @@ func ListWithStages(db *sql.DB, userID int64) ([]Test, error) {
 		return nil, err
 	}
 	for i := range tests {
-		tests[i].PrimaryThreshold = primaryThresholdFor(stagesByTest[tests[i].ID])
 		// Only overwrite when stages exist so stage-less tests keep the empty
 		// slice from listTests (serialises as [] rather than null).
 		if stages, ok := stagesByTest[tests[i].ID]; ok {
@@ -106,8 +99,9 @@ func ListWithStages(db *sql.DB, userID int64) ([]Test, error) {
 }
 
 // listTestsWithThresholdStages loads a user's tests plus their threshold
-// stages (keyed by test ID) using one batch stage query, avoiding N+1. Shared
-// by List and ListWithStages so both paths stay in sync.
+// stages (keyed by test ID) using one batch stage query, avoiding N+1, and
+// sets each test's PrimaryThreshold. Shared by List and ListWithStages so
+// both paths stay in sync.
 func listTestsWithThresholdStages(db *sql.DB, userID int64) ([]Test, map[int64][]Stage, error) {
 	tests, err := listTests(db, userID)
 	if err != nil {
@@ -119,6 +113,9 @@ func listTestsWithThresholdStages(db *sql.DB, userID int64) ([]Test, map[int64][
 	stagesByTest, err := getThresholdStagesForTests(db, testIDs(tests))
 	if err != nil {
 		return nil, nil, fmt.Errorf("get stages for tests: %w", err)
+	}
+	for i := range tests {
+		tests[i].PrimaryThreshold = primaryThresholdFor(stagesByTest[tests[i].ID])
 	}
 	return tests, stagesByTest, nil
 }
