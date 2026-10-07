@@ -92,7 +92,7 @@ type AnalysesResponse =
 
 function stubFetch(tests: LactateTest[], analyses: AnalysesResponse) {
   const fetchMock = vi.fn((url: string) => {
-    if (url === '/api/lactate/tests') {
+    if (url === '/api/lactate/tests?include=stages') {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ tests }) })
     }
     if (url === '/api/lactate/analyses') {

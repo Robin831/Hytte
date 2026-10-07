@@ -224,6 +224,36 @@ func TestList_PrimaryThreshold(t *testing.T) {
 	}
 }
 
+func TestListWithStages_IncludesPrimaryThreshold(t *testing.T) {
+	db := setupTestDB(t)
+
+	if _, err := Create(db, 1, sampleTest()); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	withStages, err := ListWithStages(db, 1)
+	if err != nil {
+		t.Fatalf("list with stages: %v", err)
+	}
+	plain, err := List(db, 1)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(withStages) != 1 || len(plain) != 1 {
+		t.Fatalf("expected 1 test from each list, got %d and %d", len(withStages), len(plain))
+	}
+	if len(withStages[0].Stages) == 0 {
+		t.Error("expected stages to be attached")
+	}
+	got, want := withStages[0].PrimaryThreshold, plain[0].PrimaryThreshold
+	if got == nil || want == nil {
+		t.Fatalf("expected primary threshold on both lists, got %+v and %+v", got, want)
+	}
+	if *got != *want {
+		t.Errorf("ListWithStages threshold = %+v, want %+v (same as List)", *got, *want)
+	}
+}
+
 func TestList_PrimaryThreshold_TooFewStages(t *testing.T) {
 	db := setupTestDB(t)
 
