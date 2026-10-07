@@ -25,12 +25,25 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
-// ListHandler returns all lactate tests for the authenticated user.
+// ListHandler returns all lactate tests for the authenticated user. By default
+// each test carries only its precomputed primary threshold (stages: []); pass
+// ?include=stages to attach the analysis stage data (stage number, speed,
+// lactate, heart rate) for chart views such as Lactate Insights.
 func ListHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 
-		tests, err := List(db, user.ID)
+		var tests []Test
+		var err error
+		switch r.URL.Query().Get("include") {
+		case "":
+			tests, err = List(db, user.ID)
+		case "stages":
+			tests, err = ListWithStages(db, user.ID)
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid include parameter"})
+			return
+		}
 		if err != nil {
 			log.Printf("Failed to list lactate tests: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list tests"})

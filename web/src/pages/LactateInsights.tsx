@@ -34,7 +34,7 @@ export default function LactateInsights() {
     const controller = new AbortController()
     const load = async () => {
       try {
-        const res = await fetch('/api/lactate/tests', {
+        const res = await fetch('/api/lactate/tests?include=stages', {
           credentials: 'include',
           signal: controller.signal,
         })

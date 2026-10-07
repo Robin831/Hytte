@@ -67,6 +67,81 @@ func TestListHandler_Empty(t *testing.T) {
 	}
 }
 
+func createSampleTest(t *testing.T, db *sql.DB, userID int64) {
+	t.Helper()
+	req := withUser(httptest.NewRequest("POST", "/api/lactate/tests", strings.NewReader(samplePayload)), userID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	CreateHandler(db).ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create: expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func decodeListTests(t *testing.T, rec *httptest.ResponseRecorder) []Test {
+	t.Helper()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Tests []Test `json:"tests"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return body.Tests
+}
+
+func TestListHandler_DefaultOmitsStages(t *testing.T) {
+	db := setupTestDB(t)
+	createSampleTest(t, db, 1)
+
+	req := withUser(httptest.NewRequest("GET", "/api/lactate/tests", nil), 1)
+	rec := httptest.NewRecorder()
+	ListHandler(db).ServeHTTP(rec, req)
+
+	tests := decodeListTests(t, rec)
+	if len(tests) != 1 {
+		t.Fatalf("expected 1 test, got %d", len(tests))
+	}
+	if len(tests[0].Stages) != 0 {
+		t.Errorf("expected no stages by default, got %d", len(tests[0].Stages))
+	}
+}
+
+func TestListHandler_IncludeStages(t *testing.T) {
+	db := setupTestDB(t)
+	createSampleTest(t, db, 1)
+
+	req := withUser(httptest.NewRequest("GET", "/api/lactate/tests?include=stages", nil), 1)
+	rec := httptest.NewRecorder()
+	ListHandler(db).ServeHTTP(rec, req)
+
+	tests := decodeListTests(t, rec)
+	if len(tests) != 1 {
+		t.Fatalf("expected 1 test, got %d", len(tests))
+	}
+	stages := tests[0].Stages
+	if len(stages) != 5 {
+		t.Fatalf("expected 5 stages, got %d", len(stages))
+	}
+	if stages[2].SpeedKmh != 12.0 || stages[2].LactateMmol != 2.1 || stages[2].HeartRateBpm != 155 {
+		t.Errorf("unexpected stage 2: %+v", stages[2])
+	}
+}
+
+func TestListHandler_InvalidInclude(t *testing.T) {
+	db := setupTestDB(t)
+
+	req := withUser(httptest.NewRequest("GET", "/api/lactate/tests?include=bogus", nil), 1)
+	rec := httptest.NewRecorder()
+	ListHandler(db).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
 func TestCreateHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 
