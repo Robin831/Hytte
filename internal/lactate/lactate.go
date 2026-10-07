@@ -72,7 +72,8 @@ type Stage struct {
 
 // List returns all lactate tests for a user, ordered by date descending.
 // Each test carries a precomputed PrimaryThreshold (when derivable) but no
-// stages; use GetByID for full test details including stages.
+// stages; use ListWithStages to batch-load stage data for every test, or
+// GetByID for full details (including notes/RPE) of a single test.
 func List(db *sql.DB, userID int64) ([]Test, error) {
 	tests, stagesByTest, err := listTestsWithThresholdStages(db, userID)
 	if err != nil {
@@ -86,13 +87,15 @@ func List(db *sql.DB, userID int64) ([]Test, error) {
 
 // ListWithStages returns all lactate tests for a user, ordered by date
 // descending, with the stage data needed for analysis attached (stage number,
-// speed, lactate and heart rate; no notes/RPE).
+// speed, lactate and heart rate; no notes/RPE) in addition to the same
+// precomputed PrimaryThreshold that List provides.
 func ListWithStages(db *sql.DB, userID int64) ([]Test, error) {
 	tests, stagesByTest, err := listTestsWithThresholdStages(db, userID)
 	if err != nil {
 		return nil, err
 	}
 	for i := range tests {
+		tests[i].PrimaryThreshold = primaryThresholdFor(stagesByTest[tests[i].ID])
 		// Only overwrite when stages exist so stage-less tests keep the empty
 		// slice from listTests (serialises as [] rather than null).
 		if stages, ok := stagesByTest[tests[i].ID]; ok {
