@@ -2590,6 +2590,55 @@ func TestPreferencesPutHandler_DashboardWidgetsRejectsInvalid(t *testing.T) {
 	}
 }
 
+// The race notification toggles only accept boolean strings, and ui_language
+// (used for server-rendered push text) only the app's languages.
+func TestPreferencesPutHandler_RacesNotifyAndLanguage(t *testing.T) {
+	db := setupTestDB(t)
+	userID := createTestUser(t, db)
+	token, _, err := CreateSession(db, userID)
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	handler := RequireAuth(db)(PreferencesPutHandler(db))
+	put := func(body string) int {
+		req := httptest.NewRequest("PUT", "/api/settings/preferences", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "session", Value: token})
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	for _, body := range []string{
+		`{"preferences":{"races_notify_deadlines":"false"}}`,
+		`{"preferences":{"races_notify_changes":"true"}}`,
+		`{"preferences":{"ui_language":"th"}}`,
+		`{"preferences":{"ui_language":"nb"}}`,
+	} {
+		if code := put(body); code != http.StatusOK {
+			t.Errorf("%s: expected 200, got %d", body, code)
+		}
+	}
+	stored, err := GetPreferences(db, userID)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if stored["races_notify_deadlines"] != "false" || stored["ui_language"] != "nb" {
+		t.Errorf("stored = %v", stored)
+	}
+
+	for _, body := range []string{
+		`{"preferences":{"races_notify_deadlines":"off"}}`,
+		`{"preferences":{"races_notify_changes":"1"}}`,
+		`{"preferences":{"ui_language":"de"}}`,
+		`{"preferences":{"ui_language":"nb-NO"}}`,
+	} {
+		if code := put(body); code != http.StatusBadRequest {
+			t.Errorf("%s: expected 400, got %d", body, code)
+		}
+	}
+}
+
 // offers_notify opts a user into watchlist push notifications. The notify pass
 // selects on an exact "true", so only boolean strings (or a clear) are accepted.
 func TestPreferencesPutHandler_OffersNotify(t *testing.T) {

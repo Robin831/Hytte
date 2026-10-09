@@ -395,6 +395,8 @@ func main() {
 	if err := races.SeedCatalog(context.Background(), database); err != nil {
 		log.Printf("races: seed catalog failed: %v", err)
 	}
+	// Deadline reminders and change pushes for tracked races.
+	go races.RunNotifyLoop(notifCtx, database, races.NotifyInterval)
 
 	// Daily grocery-offer sync from the Tjek API at 06:30 Europe/Oslo
 	// (Hytte-offr). Warm-runs at startup only when stored offers are stale

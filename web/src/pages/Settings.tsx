@@ -13,6 +13,7 @@ import SecuritySection from './settings/SecuritySection'
 import IntegrationsSection from './settings/IntegrationsSection'
 import PokemonSection from './settings/PokemonSection'
 import OffersSection from './settings/OffersSection'
+import RacesSection from './settings/RacesSection'
 import AIAutomationSection from './settings/AIAutomationSection'
 import KioskTokensSection from './settings/KioskTokensSection'
 
@@ -51,6 +52,8 @@ const PREF_KEY_SECTIONS: Record<string, string> = {
   pokemon_scan_daily_cap: 'pokemon',
   pokemon_scan_auto_discard_hours: 'pokemon',
   offers_notify: 'offers',
+  races_notify_deadlines: 'races',
+  races_notify_changes: 'races',
 }
 
 function sectionForPrefKey(key: string): string {
@@ -346,6 +349,21 @@ function Settings() {
           }
         >
           <OffersSection preferences={preferences} saving={saving} savePreference={savePreference} />
+        </CollapsibleSection>
+      )}
+
+      {/* Races — gated by the per-user feature flag */}
+      {hasFeature('races') && (
+        <CollapsibleSection
+          id="races"
+          title={
+            <span className="inline-flex items-center gap-2">
+              {t('races.heading')}
+              <SectionStatusBadge status={prefSectionStatus.races} texts={statusTexts} />
+            </span>
+          }
+        >
+          <RacesSection preferences={preferences} saving={saving} savePreference={savePreference} />
         </CollapsibleSection>
       )}
 

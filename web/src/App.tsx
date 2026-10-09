@@ -94,8 +94,10 @@ import PokemonSet from './pages/PokemonSet'
 import PokemonTop from './pages/PokemonTop'
 import PokemonScanned from './pages/PokemonScanned'
 import { AchievementUnlockOverlay } from './components/regnemester/AchievementUnlockOverlay'
+import { useSyncLanguagePreference } from './hooks/useSyncLanguagePreference'
 
 function MainLayout() {
+  useSyncLanguagePreference()
   return (
     <div className="flex min-h-screen bg-gray-900 text-white">
       <Sidebar />

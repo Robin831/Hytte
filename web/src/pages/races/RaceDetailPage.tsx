@@ -207,6 +207,10 @@ export default function RaceDetailPage() {
                 {savedNote && <span className="text-sm text-green-400" role="status">{t('watch.saved')}</span>}
               </div>
             </div>
+            <p className="text-xs text-gray-500">
+              {t('watch.remindersHint')}{' '}
+              <Link to="/settings#races" className="text-blue-400 hover:text-blue-300">{t('watch.remindersSettings')}</Link>
+            </p>
           </div>
         ) : (
           <div className="mt-2">

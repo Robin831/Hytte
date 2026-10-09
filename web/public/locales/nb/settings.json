@@ -276,6 +276,14 @@
     "enableNotify": "Slå på varsler om tilbud som matcher",
     "disableNotify": "Slå av varsler om tilbud som matcher"
   },
+  "races": {
+    "heading": "Løp",
+    "deadlinesTitle": "Påminnelser om frister",
+    "deadlinesDescription": "Et varsel 7 dager og 1 dag før frister for løp du følger, og et siste samme dag. Påminnelser som ville havnet i stilletiden din, kommer like før den starter.",
+    "changesTitle": "Endringer i løp",
+    "changesDescription": "Et varsel når et løp du følger, endrer status, dato eller frister.",
+    "pushHint": "Krever push-abonnement — slå på push-varsler under Varsler først."
+  },
   "kioskTokens": {
     "heading": "Kiosktokens",
     "description": "Administrer tilgangstokens for offentlig kioskvisning",

@@ -279,6 +279,9 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"pokemon_scan_auto_discard_hours": true,
 			"dashboard_widgets":               true,
 			"offers_notify":                   true,
+			"races_notify_deadlines":          true,
+			"races_notify_changes":            true,
+			"ui_language":                     true,
 		}
 
 		// Integer range keys: HR/pace, work hours, budget preferences, and other numeric settings.
@@ -466,6 +469,18 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			// exact "true", so reject anything that is not a boolean string.
 			if k == "offers_notify" && v != "" && v != "true" && v != "false" {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": `offers_notify must be "true" or "false"`})
+				return
+			}
+			// Validate the race notification toggles: the races notifier only
+			// treats an exact "false" as off, so reject anything else.
+			if (k == "races_notify_deadlines" || k == "races_notify_changes") && v != "" && v != "true" && v != "false" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": k + ` must be "true" or "false"`})
+				return
+			}
+			// Validate ui_language: server-rendered texts (push notifications)
+			// only exist in the app's languages.
+			if k == "ui_language" && v != "" && v != "en" && v != "nb" && v != "th" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": `ui_language must be "en", "nb" or "th"`})
 				return
 			}
 			// Validate work_hours_flex_reset_date: must be YYYY-MM-DD or empty.

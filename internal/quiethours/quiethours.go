@@ -31,6 +31,14 @@ func IsActiveWithPrefs(prefs map[string]string) bool {
 	return isActiveWithPrefsAt(prefs, time.Now())
 }
 
+// IsActiveWithPrefsAt is like IsActiveWithPrefs but evaluates the quiet window
+// at the given instant. Planners that probe several future instants for one
+// user (e.g. shifting a reminder out of quiet hours) load prefs once and call
+// this repeatedly.
+func IsActiveWithPrefsAt(prefs map[string]string, at time.Time) bool {
+	return isActiveWithPrefsAt(prefs, at)
+}
+
 // isActiveAt is the testable core — accepts an explicit "now" time.
 func isActiveAt(db *sql.DB, userID int64, now time.Time) bool {
 	prefs, err := auth.GetPreferences(db, userID)

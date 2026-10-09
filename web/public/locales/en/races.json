@@ -90,7 +90,9 @@
     "notesPlaceholder": "Bib number, who you're travelling with, hotel booking…",
     "saveNotes": "Save notes",
     "saved": "Saved",
-    "notTracking": "You're not tracking this race yet."
+    "notTracking": "You're not tracking this race yet.",
+    "remindersHint": "Deadline reminders and updates for this race come as push notifications.",
+    "remindersSettings": "Notification settings"
   },
   "watchState": {
     "watching": "Watching",

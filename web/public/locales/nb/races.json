@@ -90,7 +90,9 @@
     "notesPlaceholder": "Startnummer, hvem du reiser med, hotellbestilling …",
     "saveNotes": "Lagre notater",
     "saved": "Lagret",
-    "notTracking": "Du følger ikke dette løpet ennå."
+    "notTracking": "Du følger ikke dette løpet ennå.",
+    "remindersHint": "Påminnelser om frister og endringer for dette løpet kommer som push-varsler.",
+    "remindersSettings": "Varselinnstillinger"
   },
   "watchState": {
     "watching": "Følger med",

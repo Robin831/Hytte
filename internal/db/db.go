@@ -2269,6 +2269,26 @@ func createSchema(db *sql.DB) error {
 		PRIMARY KEY (user_id, event_id)
 	);
 
+	-- Deadline reminder pushes already sent (races.Notifier). due_key is the
+	-- deadline's date/time when sent, so moving a deadline re-arms its reminders.
+	CREATE TABLE IF NOT EXISTS race_reminders (
+		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		deadline_id INTEGER NOT NULL REFERENCES race_deadlines(id) ON DELETE CASCADE,
+		slot        TEXT NOT NULL,
+		due_key     TEXT NOT NULL,
+		sent_at     TEXT NOT NULL,
+		PRIMARY KEY (user_id, deadline_id, slot, due_key)
+	);
+
+	-- Catalog changes already pushed to a watcher, so each change is announced
+	-- to each user once (a quiet-hours hold just delays it to a later pass).
+	CREATE TABLE IF NOT EXISTS race_change_deliveries (
+		user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		change_id    INTEGER NOT NULL REFERENCES race_changes(id) ON DELETE CASCADE,
+		delivered_at TEXT NOT NULL,
+		PRIMARY KEY (user_id, change_id)
+	);
+
 	-- Cache of LLM relevance scores. profile_version is bumped whenever the
 	-- user's feedback set changes, invalidating stale scores.
 	CREATE TABLE IF NOT EXISTS news_scores (

@@ -276,6 +276,14 @@
     "enableNotify": "Enable notifications for matching offers",
     "disableNotify": "Disable notifications for matching offers"
   },
+  "races": {
+    "heading": "Races",
+    "deadlinesTitle": "Deadline reminders",
+    "deadlinesDescription": "A push 7 days and 1 day before deadlines on races you track, and a last one on the day. Reminders that would land in your quiet hours come just before they start.",
+    "changesTitle": "Race updates",
+    "changesDescription": "A push when a race you track changes status, date or deadlines.",
+    "pushHint": "Requires a push subscription — turn on push notifications under Notifications first."
+  },
   "kioskTokens": {
     "heading": "Kiosk Tokens",
     "description": "Manage access tokens for the public kiosk display",
